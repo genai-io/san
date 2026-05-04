@@ -6,13 +6,14 @@ import (
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/app/conv"
 	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
 	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/gen-code/internal/identity"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
 	"github.com/genai-io/gen-code/internal/mcp"
@@ -26,12 +27,32 @@ import (
 // Build params from model state
 // ============================================================
 
-func (m *model) buildAgentParams() agent.BuildParams {
-	var extra []system.ExtraLayer
-	if m.userInput.Skill.ActiveInvocation != "" {
-		extra = append(extra, system.ExtraLayer{Name: "skill-invocation", Content: m.userInput.Skill.ActiveInvocation})
+// activeIdentityBody returns the markdown body of the currently-active
+// identity, or "" to mean "use the built-in default". Resolution order:
+//  1. settings.identity (user or project level, project wins)
+//  2. registry lookup by name
+//  3. body field of that Identity
+//
+// A configured name that does not resolve logs a warning and falls back to
+// the built-in default — that way a typo or stale value surfaces in the log
+// instead of silently degrading the persona.
+func (m *model) activeIdentityBody() string {
+	if m.services.Setting == nil || m.services.Identity == nil {
+		return ""
 	}
+	snap := m.services.Setting.Snapshot()
+	if snap == nil {
+		return ""
+	}
+	body := m.services.Identity.Active(snap.Identity)
+	if body == "" && snap.Identity != "" && snap.Identity != identity.DefaultName {
+		log.Logger().Warn("configured identity not found; falling back to default",
+			zap.String("identity", snap.Identity))
+	}
+	return body
+}
 
+func (m *model) buildAgentParams() agent.BuildParams {
 	var mcpTools []core.Tool
 	if m.services.MCP.Registry() != nil {
 		schemas := m.services.MCP.Registry().GetToolSchemas()
@@ -53,7 +74,8 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		ProjectInstructions: m.env.CachedProjectInstructions,
 		SkillsPrompt:        m.services.Skill.PromptSection(),
 		AgentsPrompt:        m.services.Subagent.PromptSection(),
-		Extra:               extra,
+		IdentityText:        m.activeIdentityBody(),
+		SkillInvocation:     m.userInput.Skill.ActiveInvocation,
 
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,

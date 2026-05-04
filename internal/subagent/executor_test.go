@@ -66,8 +66,8 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	if rc.permMode != PermissionAcceptEdits {
 		t.Fatalf("expected permission mode override, got %q", rc.permMode)
 	}
-	if !strings.Contains(rc.agentPrompt, "## Mode: Accept Edits") {
-		t.Fatalf("expected accept-edits mode prompt, got %q", rc.agentPrompt)
+	if rc.brief.Mode != string(PermissionAcceptEdits) {
+		t.Fatalf("expected accept-edits mode in brief, got %q", rc.brief.Mode)
 	}
 }
 
@@ -250,24 +250,48 @@ Use conventional commits.
 	}, userStore, projectStore))
 
 	executor := &Executor{}
-	prompt := executor.buildSystemPrompt(&AgentConfig{
+	brief := executor.buildBrief(&AgentConfig{
 		Name:         "Reviewer",
 		Description:  "Reviews code changes.",
 		SystemPrompt: "Prefer minimal, surgical fixes.",
 		Skills:       []string{"git:commit"},
 	}, PermissionDefault)
 
-	if !strings.Contains(prompt, "## Additional Instructions") {
-		t.Fatal("expected additional instructions section in prompt")
+	if !strings.Contains(brief.CustomPrompt, "Prefer minimal, surgical fixes.") {
+		t.Fatal("expected custom system prompt content in brief")
 	}
-	if !strings.Contains(prompt, "Prefer minimal, surgical fixes.") {
-		t.Fatal("expected custom system prompt content")
+	if !strings.Contains(brief.CustomPrompt, `<skill-invocation name="git:commit">`) {
+		t.Fatal("expected preloaded skill invocation block in brief")
 	}
-	if !strings.Contains(prompt, `<skill-invocation name="git:commit">`) {
-		t.Fatal("expected preloaded skill invocation prompt")
+	if !strings.Contains(brief.CustomPrompt, "Use conventional commits.") {
+		t.Fatal("expected skill instructions in brief")
 	}
-	if !strings.Contains(prompt, "Use conventional commits.") {
-		t.Fatal("expected skill instructions in agent prompt")
+}
+
+func TestCapabilityPromptsFollowReachableTools(t *testing.T) {
+	executor := &Executor{
+		skillsPrompt: "- review: Review changes",
+		agentsPrompt: "- code-reviewer: Review code",
+	}
+
+	skills, agents := executor.capabilityPrompts(&AgentConfig{AllowTools: nil})
+	if skills == "" || agents == "" {
+		t.Fatalf("nil AllowTools should expose all capability prompts, got skills=%q agents=%q", skills, agents)
+	}
+
+	skills, agents = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read", "Skill")})
+	if skills == "" || agents != "" {
+		t.Fatalf("Skill-only agent should expose skills but not agents, got skills=%q agents=%q", skills, agents)
+	}
+
+	skills, agents = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read", "Agent")})
+	if skills != "" || agents == "" {
+		t.Fatalf("Agent-capable agent should expose agents but not skills, got skills=%q agents=%q", skills, agents)
+	}
+
+	skills, agents = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read")})
+	if skills != "" || agents != "" {
+		t.Fatalf("read-only agent should not expose capability prompts, got skills=%q agents=%q", skills, agents)
 	}
 }
 
@@ -523,9 +547,7 @@ func (s *stubLLM) InputLimit() int { return 0 }
 // stubSystem is a minimal core.System for tests.
 type stubSystem struct{}
 
-func (s *stubSystem) Prompt() string                  { return "" }
-func (s *stubSystem) Set(_ core.Layer)                {}
-func (s *stubSystem) Remove(_ string)                 {}
-func (s *stubSystem) Get(_ string) (core.Layer, bool) { return core.Layer{}, false }
-func (s *stubSystem) Layers() []core.Layer            { return nil }
-func (s *stubSystem) Invalidate()                     {}
+func (s *stubSystem) Prompt() string     { return "" }
+func (s *stubSystem) Use(_ core.Section) {}
+func (s *stubSystem) Drop(_ string)      {}
+func (s *stubSystem) Refresh(_ string)   {}

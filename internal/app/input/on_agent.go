@@ -19,6 +19,9 @@ type AgentConfigInfo struct {
 	PermissionMode string
 	Tools          []string // nil = all tools
 	SourceFile     string
+	// Source indicates where the agent definition came from:
+	// "built-in", "user", "project", or "plugin". Empty defaults to project.
+	Source string
 }
 
 // AgentRegistry provides agent display and management for the selector UI.
@@ -28,14 +31,35 @@ type AgentRegistry interface {
 	SetEnabled(name string, enabled bool, userLevel bool) error
 }
 
+// agentTab identifies a category tab in the agent selector.
+type agentTab int
+
+const (
+	agentTabBuiltin agentTab = iota
+	agentTabProject
+	agentTabUser
+)
+
+func (t agentTab) String() string {
+	switch t {
+	case agentTabBuiltin:
+		return "Built-in"
+	case agentTabProject:
+		return "Project"
+	case agentTabUser:
+		return "User"
+	}
+	return ""
+}
+
 type agentItem struct {
 	Name           string
 	Description    string
 	Model          string
 	PermissionMode string
 	Tools          string
-	IsCustom       bool
-	PluginName     string
+	Source         string // "built-in", "user", "project", "plugin"
+	PluginName     string // populated when Source == "plugin" or name has "ns:" prefix
 	Enabled        bool
 }
 
@@ -49,25 +73,30 @@ type AgentToggleMsg struct {
 type AgentSelector struct {
 	registry       AgentRegistry
 	active         bool
-	agents         []agentItem
-	filteredAgents []agentItem
+	agents         []agentItem // all loaded, before filtering
+	filteredAgents []agentItem // after tab + search filter
 	nav            kit.ListNav
 	width          int
 	height         int
-	saveLevel      kit.SaveLevel
+	activeTab      agentTab
 }
 
 func NewAgentSelector(reg AgentRegistry) AgentSelector {
 	return AgentSelector{
-		registry: reg,
-		agents:   []agentItem{},
-		nav:      kit.ListNav{MaxVisible: 10},
+		registry:  reg,
+		agents:    []agentItem{},
+		nav:       kit.ListNav{MaxVisible: 10},
+		activeTab: agentTabProject,
 	}
 }
 
+// EnterSelect activates the selector and loads agents from the registry.
 func (s *AgentSelector) EnterSelect(width, height int) error {
 	allConfigs := s.registry.ListConfigs()
-	disabledAgents := s.registry.GetDisabledAt(s.saveLevel == kit.SaveLevelUser)
+	disabledByLevel := map[bool]map[string]bool{
+		false: s.registry.GetDisabledAt(false),
+		true:  s.registry.GetDisabledAt(true),
+	}
 
 	s.agents = make([]agentItem, 0, len(allConfigs))
 	for _, cfg := range allConfigs {
@@ -76,24 +105,28 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		if idx := strings.Index(cfg.Name, ":"); idx > 0 {
 			pluginName = cfg.Name[:idx]
 		}
+		source := cfg.Source
+		// Disabled state lookup uses the user-level map for built-in/user
+		// agents, project-level map for project agents.
+		userLevel := source == "user" || source == "built-in"
 		s.agents = append(s.agents, agentItem{
 			Name:           cfg.Name,
 			Description:    cfg.Description,
 			Model:          cfg.Model,
 			PermissionMode: formatAgentPermMode(cfg.PermissionMode),
 			Tools:          formatAgentTools(cfg.Tools),
-			IsCustom:       cfg.SourceFile != "" && pluginName == "",
+			Source:         source,
 			PluginName:     pluginName,
-			Enabled:        !disabledAgents[lowerName],
+			Enabled:        !disabledByLevel[userLevel][lowerName],
 		})
 	}
 
 	s.active = true
 	s.width = width
 	s.height = height
-	s.filteredAgents = s.agents
 	s.nav.Reset()
-	s.nav.Total = len(s.filteredAgents)
+	s.activeTab = s.firstNonEmptyTab()
+	s.applyFilters()
 	return nil
 }
 
@@ -130,31 +163,64 @@ func (s *AgentSelector) Cancel() {
 	s.nav.Total = 0
 }
 
-func (s *AgentSelector) updateFilter() {
-	if s.nav.Search == "" {
-		s.filteredAgents = s.agents
-	} else {
-		query := strings.ToLower(s.nav.Search)
-		s.filteredAgents = make([]agentItem, 0)
-		for _, a := range s.agents {
-			if kit.FuzzyMatch(strings.ToLower(a.Name), query) ||
-				kit.FuzzyMatch(strings.ToLower(a.Description), query) {
-				s.filteredAgents = append(s.filteredAgents, a)
+// agentMatchesTab returns true when an agent belongs to the given tab.
+// Plugin agents are folded into Project or User tab depending on install path
+// (a "user-plugin" source is treated as User; bare "plugin" defaults to Project).
+func agentMatchesTab(a agentItem, tab agentTab) bool {
+	switch tab {
+	case agentTabBuiltin:
+		return a.Source == "built-in"
+	case agentTabProject:
+		return a.Source == "project" || a.Source == "plugin" || a.Source == "project-plugin"
+	case agentTabUser:
+		return a.Source == "user" || a.Source == "user-plugin"
+	}
+	return false
+}
+
+func (s *AgentSelector) tabCount(tab agentTab) int {
+	count := 0
+	for _, a := range s.agents {
+		if agentMatchesTab(a, tab) {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *AgentSelector) firstNonEmptyTab() agentTab {
+	for _, t := range []agentTab{agentTabProject, agentTabUser, agentTabBuiltin} {
+		if s.tabCount(t) > 0 {
+			return t
+		}
+	}
+	return agentTabProject
+}
+
+// applyFilters rebuilds filteredAgents from the active tab + search query.
+func (s *AgentSelector) applyFilters() {
+	query := strings.ToLower(s.nav.Search)
+	s.filteredAgents = s.filteredAgents[:0]
+	for _, a := range s.agents {
+		if !agentMatchesTab(a, s.activeTab) {
+			continue
+		}
+		if query != "" {
+			if !kit.FuzzyMatch(strings.ToLower(a.Name), query) &&
+				!kit.FuzzyMatch(strings.ToLower(a.Description), query) {
+				continue
 			}
 		}
+		s.filteredAgents = append(s.filteredAgents, a)
 	}
 	s.nav.ResetCursor()
 	s.nav.Total = len(s.filteredAgents)
 }
 
-func (s *AgentSelector) reloadAgentStates() {
-	disabledAgents := s.registry.GetDisabledAt(s.saveLevel == kit.SaveLevelUser)
-	for i := range s.agents {
-		s.agents[i].Enabled = !disabledAgents[strings.ToLower(s.agents[i].Name)]
-	}
-	for i := range s.filteredAgents {
-		s.filteredAgents[i].Enabled = !disabledAgents[strings.ToLower(s.filteredAgents[i].Name)]
-	}
+func (s *AgentSelector) saveLevelForActiveTab() bool {
+	// Built-in and User tabs persist disable-state at the user level;
+	// Project tab persists at the project level.
+	return s.activeTab != agentTabProject
 }
 
 func (s *AgentSelector) Toggle() tea.Cmd {
@@ -169,28 +235,47 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 			break
 		}
 	}
-	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.saveLevel == kit.SaveLevelUser)
+	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.saveLevelForActiveTab())
 	return func() tea.Msg {
 		return AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled}
 	}
 }
 
-func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	if key.Type == tea.KeyTab {
-		if s.saveLevel == kit.SaveLevelProject {
-			s.saveLevel = kit.SaveLevelUser
-		} else {
-			s.saveLevel = kit.SaveLevelProject
+func (s *AgentSelector) cycleTab(delta int) {
+	tabs := []agentTab{agentTabBuiltin, agentTabProject, agentTabUser}
+	idx := 0
+	for i, t := range tabs {
+		if t == s.activeTab {
+			idx = i
+			break
 		}
-		s.reloadAgentStates()
-		return nil
 	}
-	if key.Type == tea.KeyEnter {
+	n := len(tabs)
+	for step := 1; step <= n; step++ {
+		next := tabs[((idx+delta*step)%n+n)%n]
+		s.activeTab = next
+		s.applyFilters()
+		// Allow landing on empty tabs only when no other tab has items.
+		if len(s.filteredAgents) > 0 || s.tabCount(next) > 0 {
+			return
+		}
+	}
+}
+
+func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
+	switch key.Type {
+	case tea.KeyTab, tea.KeyRight:
+		s.cycleTab(+1)
+		return nil
+	case tea.KeyShiftTab, tea.KeyLeft:
+		s.cycleTab(-1)
+		return nil
+	case tea.KeyEnter:
 		return s.Toggle()
 	}
 	searchChanged, consumed := s.nav.HandleKey(key)
 	if searchChanged {
-		s.updateFilter()
+		s.applyFilters()
 	}
 	if consumed {
 		return nil
@@ -202,92 +287,197 @@ func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+// ── Rendering ──────────────────────────────────────────────────────────────────
+
 func (s *AgentSelector) Render() string {
 	if !s.active {
 		return ""
 	}
 
+	panel := kit.Panel{Width: s.width, Height: s.height}
+
+	// Resize the visible window to fit the body height. Each item renders on
+	// 2 lines (row + spacer); the selected item adds 1 description sub-line.
+	// Reserve 2 lines for more-above/more-below indicators.
+	s.nav.MaxVisible = max(3, (panel.BodyHeight()-2)/2)
+	s.nav.EnsureVisible()
+
 	var sb strings.Builder
 
-	levelIndicator := fmt.Sprintf("[%s]", s.saveLevel.String())
-	title := fmt.Sprintf("Manage Agents (%d/%d)  %s", len(s.filteredAgents), len(s.agents), levelIndicator)
-	sb.WriteString(kit.SelectorTitleStyle().Render(title))
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
-
-	searchPrompt := "\U0001f50d "
-	if s.nav.Search == "" {
-		sb.WriteString(kit.SelectorHintStyle().Render(searchPrompt + "Type to filter..."))
-	} else {
-		sb.WriteString(kit.SelectorBreadcrumbStyle().Render(searchPrompt + s.nav.Search + "\u258f"))
-	}
+	sb.WriteString(s.renderTabs())
+	sb.WriteString("\n\n")
+	sb.WriteString(kit.RenderSearchBox(kit.SearchBoxOpts{
+		Query:       s.nav.Search,
+		Placeholder: "Type to filter agents...",
+		Filtered:    len(s.filteredAgents),
+		Total:       s.tabCount(s.activeTab),
+		Width:       panel.ContentWidth(),
+	}))
 	sb.WriteString("\n\n")
 
-	boxWidth := max(70, s.width*85/100)
-
+	var body strings.Builder
 	if len(s.filteredAgents) == 0 {
-		sb.WriteString(kit.SelectorHintStyle().Render("  No agents match the filter"))
-		sb.WriteString("\n")
+		body.WriteString(s.renderEmpty())
 	} else {
-		startIdx, endIdx := s.nav.VisibleRange()
-		if startIdx > 0 {
-			sb.WriteString(kit.SelectorHintStyle().Render("  \u2191 more above"))
+		s.renderItemList(&body, panel)
+	}
+	sb.WriteString(panel.PadViewport(body.String()))
+
+	sb.WriteString("\n")
+	sb.WriteString(panel.SeparatorLine())
+	sb.WriteString("\n")
+	sb.WriteString(s.renderHints())
+
+	return panel.Wrap(sb.String())
+}
+
+func (s *AgentSelector) renderTabs() string {
+	tabs := []kit.PanelTab{
+		{Name: agentTabBuiltin.String(), Count: s.tabCount(agentTabBuiltin), Show: true, Disable: s.tabCount(agentTabBuiltin) == 0},
+		{Name: agentTabProject.String(), Count: s.tabCount(agentTabProject), Show: true},
+		{Name: agentTabUser.String(), Count: s.tabCount(agentTabUser), Show: true},
+	}
+	return kit.RenderPanelTabs(tabs, int(s.activeTab))
+}
+
+func (s *AgentSelector) renderEmpty() string {
+	if len(s.agents) == 0 {
+		return kit.DimStyle().PaddingLeft(2).Render("No agents available")
+	}
+	if s.tabCount(s.activeTab) == 0 {
+		return kit.DimStyle().PaddingLeft(2).Render(
+			fmt.Sprintf("No %s agents — press Tab to switch tabs",
+				strings.ToLower(s.activeTab.String())))
+	}
+	return kit.DimStyle().PaddingLeft(2).Render("No agents match the filter")
+}
+
+func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
+	startIdx, endIdx := s.nav.VisibleRange()
+
+	if startIdx > 0 {
+		sb.WriteString(kit.MoreAbove())
+		sb.WriteString("\n")
+	}
+
+	// Compute name column width based on visible items so the model/mode
+	// columns align nicely while still adapting to long names.
+	maxNameLen := 12
+	for i := startIdx; i < endIdx; i++ {
+		if l := len(s.filteredAgents[i].Name); l > maxNameLen {
+			maxNameLen = l
+		}
+	}
+	maxNameLen = min(maxNameLen, 28)
+
+	descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	badge := kit.BadgeStyle()
+
+	for i := startIdx; i < endIdx; i++ {
+		a := s.filteredAgents[i]
+
+		var statusIcon string
+		var statusStyle lipgloss.Style
+		if a.Enabled {
+			statusIcon = "●"
+			statusStyle = kit.SelectorStatusConnected()
+		} else {
+			statusIcon = "○"
+			statusStyle = kit.SelectorStatusNone()
+		}
+
+		name := kit.TruncateText(a.Name, maxNameLen)
+		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-len(name)))
+
+		model := kit.TruncateText(a.Model, 14)
+		paddedModel := model + strings.Repeat(" ", max(0, 14-len(model)))
+
+		mode := kit.TruncateText(a.PermissionMode, 8)
+		paddedMode := mode + strings.Repeat(" ", max(0, 8-len(mode)))
+
+		// Reserve room for an inline source badge on the right.
+		badgeText := ""
+		switch {
+		case a.PluginName != "":
+			badgeText = "[Plugin: " + a.PluginName + "]"
+		case a.Source == "built-in":
+			badgeText = "[Built-in]"
+		}
+
+		// Width budget for one row, accounting for the panel's Padding(1, 2)
+		// (4 cols total) plus the row's own decoration:
+		//   2 ("> ") + 1 (icon) + 1 (space) + name + 2 (sep) +
+		//   14 (model) + 2 (sep) + 8 (mode) + 2 (sep) + tools
+		//   [+ 1 space + badge]
+		// The trailing -4 is a right-margin safety buffer.
+		rowFixed := 2 + 1 + 1 + maxNameLen + 2 + 14 + 2 + 8 + 2
+		if badgeText != "" {
+			rowFixed += 1 + len(badgeText)
+		}
+		toolsWidth := max(8, panel.ContentWidth()-4-rowFixed-4)
+		tools := kit.TruncateText(a.Tools, toolsWidth)
+
+		line := fmt.Sprintf("%s %s  %s  %s  %s",
+			statusStyle.Render(statusIcon),
+			paddedName,
+			paddedModel,
+			paddedMode,
+			descStyle.Render(tools),
+		)
+		if badgeText != "" {
+			line += " " + badge.Render(badgeText)
+		}
+
+		// Render the row without SelectorSelectedStyle/SelectorItemStyle's
+		// PaddingLeft(2) so the row's left edge lines up with tabs/search/
+		// separator. Width(...) right-pads each row to the full inner content
+		// area so the right edge also matches the separator line.
+		rowWidth := max(20, panel.ContentWidth()-4)
+		if i == s.nav.Selected {
+			sb.WriteString(lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextBright).
+				Bold(true).
+				Width(rowWidth).
+				Render("> " + line))
+		} else {
+			sb.WriteString(lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Text).
+				Width(rowWidth).
+				Render("  " + line))
+		}
+		sb.WriteString("\n")
+
+		// Description sub-line aligned under the agent name (4 cols in:
+		// 2 cursor + 1 icon + 1 space).
+		if i == s.nav.Selected && a.Description != "" {
+			subStyle := lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Muted).
+				PaddingLeft(4)
+			descLineWidth := max(10, panel.ContentWidth()-8)
+			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
 			sb.WriteString("\n")
 		}
-		for i := startIdx; i < endIdx; i++ {
-			a := s.filteredAgents[i]
-			var statusIcon string
-			var statusStyle lipgloss.Style
-			if a.Enabled {
-				statusIcon = "\u25cf"
-				statusStyle = kit.SelectorStatusConnected()
-			} else {
-				statusIcon = "\u25cb"
-				statusStyle = kit.SelectorStatusNone()
-			}
-			name := a.Name
-			if len(name) > 15 {
-				name = name[:12] + "..."
-			}
-			model := a.Model
-			if len(model) > 7 {
-				model = model[:7]
-			}
-			mode := a.PermissionMode
-			if len(mode) > 8 {
-				mode = mode[:8]
-			}
-			toolsWidth := max(10, boxWidth-54)
-			tools := a.Tools
-			if len(tools) > toolsWidth {
-				tools = tools[:toolsWidth-3] + "..."
-			}
-			sourceTag := ""
-			if a.PluginName != "" {
-				sourceTag = " [Plugin: " + a.PluginName + "]"
-			} else if a.IsCustom {
-				sourceTag = " [Custom]"
-			}
-			descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-			line := fmt.Sprintf("%s %-15s %-7s %-8s %s%s",
-				statusStyle.Render(statusIcon), name, model, mode,
-				descStyle.Render(tools), sourceTag)
-			if i == s.nav.Selected {
-				sb.WriteString(kit.SelectorSelectedStyle().Render("> " + line))
-			} else {
-				sb.WriteString(kit.SelectorItemStyle().Render("  " + line))
-			}
-			sb.WriteString("\n")
-		}
-		if endIdx < len(s.filteredAgents) {
-			sb.WriteString(kit.SelectorHintStyle().Render("  \u2193 more below"))
+
+		// Spacer for breathing room between rows (skip after the last item;
+		// PadViewport will handle the trailing blank lines).
+		if i < endIdx-1 {
 			sb.WriteString("\n")
 		}
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(kit.SelectorHintStyle().Render("\u2191/\u2193 navigate \u00b7 Enter toggle \u00b7 Tab level \u00b7 Esc cancel"))
+	if endIdx < len(s.filteredAgents) {
+		sb.WriteString(kit.MoreBelow())
+		sb.WriteString("\n")
+	}
+}
 
-	content := sb.String()
-	box := kit.SelectorBorderStyle().Width(boxWidth).Render(content)
-	return lipgloss.Place(s.width, s.height-4, lipgloss.Center, lipgloss.Center, box)
+func (s *AgentSelector) renderHints() string {
+	return kit.HintLine(
+		"↑/↓ navigate",
+		"Enter toggle",
+		"←/→/Tab switch tab",
+		"Esc cancel",
+	)
 }

@@ -4,68 +4,45 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/genai-io/gen-code/internal/core/system"
 	"github.com/genai-io/gen-code/internal/skill"
 	"github.com/genai-io/gen-code/internal/task/tracker"
 )
 
-// buildSystemPrompt builds agent-specific Extra content for the system prompt.
-// Identity, environment, instructions, and tool guidelines are already provided
-// by system.System — this method only adds agent-specific content.
-func (e *Executor) buildSystemPrompt(config *AgentConfig, permMode PermissionMode) string {
-	var sb strings.Builder
+// buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
+// It bundles the agent's charter (name, description, mode, tool pattern
+// constraints) plus the AGENT.md body and any preloaded skills, all of which
+// land in the subagent's identity slot — there is no separate "assignment"
+// section anymore.
+func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) system.SubagentBrief {
+	custom := strings.TrimSpace(config.GetSystemPrompt())
 
-	// Agent type header
-	sb.WriteString("## Agent Type: ")
-	sb.WriteString(config.Name)
-	sb.WriteString("\n")
-	sb.WriteString(config.Description)
-	sb.WriteString("\n\n")
-
-	// Mode-specific instructions
-	switch permMode {
-	case PermissionExplore, PermissionDontAsk:
-		sb.WriteString("## Mode: Explore\n")
-		sb.WriteString("You are in explore mode. You can use non-mutating research tools such as Read, Glob, Grep, WebFetch, and WebSearch. Do not modify files, execute shell commands, or change the workspace.\n\n")
-	case PermissionAcceptEdits, PermissionAuto:
-		sb.WriteString("## Mode: Accept Edits\n")
-		sb.WriteString("You are in accept-edits mode. You can read and edit files using tools such as Read, Glob, Grep, Edit, and Write. Bash and other approval-gated tools are not available unless explicitly allowed.\n\n")
-	case PermissionBypass:
-		sb.WriteString("## Mode: Bypass Permissions\n")
-		sb.WriteString("All permission checks are bypassed for this agent. Use any available tool, but be mindful that destructive or sensitive actions still require care.\n\n")
-	}
-	if constrained := config.AllowTools.ConstrainedDisplayNames(); len(constrained) > 0 {
-		sb.WriteString("## Tool Access\n")
-		sb.WriteString("Some tools are limited by parameter patterns: ")
-		sb.WriteString(strings.Join(constrained, ", "))
-		sb.WriteString(". Do not run tool calls outside these constraints.\n\n")
-	}
-
-	// Custom system prompt from config (lazily loaded from AGENT.md body)
-	if sysPrompt := config.GetSystemPrompt(); sysPrompt != "" {
-		sb.WriteString("## Additional Instructions\n")
-		sb.WriteString(sysPrompt)
-		sb.WriteString("\n\n")
-	}
-
-	// Preload skills into agent system prompt
+	// Preloaded skills are static configuration on AgentConfig.Skills. We
+	// inline their bodies into CustomPrompt so they sit in the identity slot
+	// — they are part of "who this agent is", not a runtime invocation.
 	if len(config.Skills) > 0 && skill.DefaultIfInit() != nil {
-		for _, skillName := range config.Skills {
-			prompt := skill.Default().GetSkillInvocationPrompt(skillName)
-			if prompt != "" {
-				sb.WriteString("\n")
-				sb.WriteString(prompt)
-				sb.WriteString("\n")
+		var sb strings.Builder
+		if custom != "" {
+			sb.WriteString(custom)
+			sb.WriteString("\n\n")
+		}
+		for _, name := range config.Skills {
+			body := skill.Default().GetSkillInvocationPrompt(name)
+			if body != "" {
+				sb.WriteString(body)
+				sb.WriteString("\n\n")
 			}
 		}
+		custom = strings.TrimRight(sb.String(), "\n")
 	}
 
-	// Guidelines
-	sb.WriteString("## Guidelines\n")
-	sb.WriteString("- Focus on completing your assigned task efficiently\n")
-	sb.WriteString("- Return a clear summary when your task is complete\n")
-	sb.WriteString("- If you encounter errors, report them clearly\n")
-
-	return sb.String()
+	return system.SubagentBrief{
+		AgentName:       config.Name,
+		Description:     config.Description,
+		Mode:            string(permMode),
+		ToolConstraints: config.AllowTools.ConstrainedDisplayNames(),
+		CustomPrompt:    custom,
+	}
 }
 
 // toolProgressParams maps tool names to the parameter key used for display.

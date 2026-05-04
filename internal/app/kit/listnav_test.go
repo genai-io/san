@@ -164,6 +164,18 @@ func TestListNav_HandleKey_SearchRunes(t *testing.T) {
 	}
 }
 
+func TestListNav_HandleKey_BackspaceIsRuneSafe(t *testing.T) {
+	n := ListNav{MaxVisible: 5, Total: 10, Search: "模型"}
+
+	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	if !changed || !consumed {
+		t.Fatalf("backspace: changed=%v consumed=%v", changed, consumed)
+	}
+	if n.Search != "模" {
+		t.Fatalf("Search = %q, want %q", n.Search, "模")
+	}
+}
+
 func TestListNav_HandleKey_EscClearsSearchFirst(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10, Search: "test"}
 

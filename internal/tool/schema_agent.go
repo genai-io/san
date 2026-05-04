@@ -7,7 +7,7 @@ var agentToolSchema = core.ToolSchema{
 	Name: "Agent",
 	Description: `Launch a subagent for complex work that benefits from separate context or parallel execution.
 
-Check <available-agents> for available agent types and their when-to-use guidance. Use agent name as subagent_type. If omitted, the general-purpose agent is used.
+Check <agents> for available agent types and their when-to-use guidance. Use agent name as subagent_type. If omitted, the general-purpose agent is used.
 
 Use direct tools instead for simple reads, narrow searches, or tasks that only need 1-2 tool calls.
 
@@ -63,14 +63,6 @@ Usage notes:
 				"type":        "string",
 				"description": "Isolation mode for the agent.",
 				"enum":        []string{"worktree"},
-			},
-			"fork": map[string]any{
-				"type":        "boolean",
-				"description": "If true, the agent inherits the parent conversation context. Use when the agent needs to understand what has been discussed so far. Cannot be combined with resume.",
-			},
-			"team_name": map[string]any{
-				"type":        "string",
-				"description": "Team name for spawning. Uses current team context if omitted.",
 			},
 		},
 		"required": []string{"description", "prompt"},

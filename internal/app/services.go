@@ -5,6 +5,7 @@ import (
 	"github.com/genai-io/gen-code/internal/command"
 	"github.com/genai-io/gen-code/internal/cron"
 	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/gen-code/internal/identity"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/mcp"
 	"github.com/genai-io/gen-code/internal/plugin"
@@ -35,6 +36,7 @@ type services struct {
 	MCP      mcp.Service
 	Plugin   plugin.Service
 	Agent    agent.Service
+	Identity *identity.Registry
 }
 
 func newServices() services {
@@ -53,6 +55,7 @@ func newServices() services {
 		MCP:      mcp.Default(),
 		Plugin:   plugin.Default(),
 		Agent:    agent.Default(),
+		Identity: identity.Default(),
 	}
 }
 
@@ -66,4 +69,5 @@ func (s *services) refreshAfterReload() {
 	s.Command = command.Default()
 	s.Subagent = subagent.Default()
 	s.MCP = mcp.Default()
+	s.Identity = identity.Default()
 }

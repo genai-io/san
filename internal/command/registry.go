@@ -34,6 +34,7 @@ func builtinCommands() []Info {
 		{Name: "tools", Description: "Manage available tools (enable/disable)"},
 		{Name: "skills", Description: "Manage skills (enable/disable/activate)"},
 		{Name: "agents", Description: "Manage available agents (enable/disable)"},
+		{Name: "identity", Description: "Switch active persona, or create/edit one (open selector, /identity create, /identity edit <name>)"},
 		{Name: "tokenlimit", Description: "View or set token limits for current model"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
 		{Name: "init", Description: "Initialize memory files (GEN.md, local, rules)"},

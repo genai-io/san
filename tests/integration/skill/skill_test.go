@@ -125,8 +125,8 @@ func TestSkill_AvailablePrompt(t *testing.T) {
 	if strings.Contains(prompt, "review") {
 		t.Error("enabled (non-active) skill 'review' should not be in prompt")
 	}
-	if !strings.Contains(prompt, "<available-skills>") {
-		t.Error("expected XML wrapper tags")
+	if !strings.Contains(prompt, "Use the Skill tool to invoke") {
+		t.Error("expected skills directory header in body")
 	}
 }
 
@@ -313,9 +313,10 @@ func TestSkill_Active_AppearsInSystemPrompt(t *testing.T) {
 		t.Error("disabled skill 'archive' must not appear in system prompt section")
 	}
 
-	// XML wrapper must be present
-	if !strings.Contains(prompt, "<available-skills>") {
-		t.Error("expected <available-skills> XML tag in system prompt section")
+	// Body must include the directory header (XML wrapping is added by the
+	// system catalog, not the registry).
+	if !strings.Contains(prompt, "Use the Skill tool to invoke") {
+		t.Error("expected skills directory header in body")
 	}
 
 	// GetSkillInvocationPrompt must include the instructions body

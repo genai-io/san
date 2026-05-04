@@ -107,6 +107,7 @@ func builtinCommandHandlers() map[string]commandHandler {
 		"think":          (*CommandController).handleThinkCommand,
 		"loop":           (*CommandController).handleLoopCommand,
 		"search":         (*CommandController).handleSearchCommand,
+		"identity":       (*CommandController).handleIdentityCommand,
 	}
 }
 
@@ -215,19 +216,22 @@ func ApplySkillInvocation(state *Model, sk *skill.Skill, args string, skillSvc s
 }
 
 func (c CommandController) executeCustomCommand(pc *command.CustomCommand, args string) string {
-	instructions := pc.GetInstructions()
-	if instructions != "" {
-		c.deps.Input.Skill.PendingInstructions = fmt.Sprintf("<custom-command name=%q>\n%s\n</custom-command>", pc.FullName(), instructions)
+	if instructions := pc.GetInstructions(); instructions != "" {
+		c.deps.Input.Skill.PendingInstructions = command.WrapInvocation(pc.FullName(), instructions)
 	}
 	if c.deps.Plugin != nil {
 		c.deps.Plugin.SetActivePluginRoot(c.deps.Plugin.FindPluginRootForPath(pc.FilePath))
 	}
-	if args != "" {
-		c.deps.Input.Skill.PendingArgs = fmt.Sprintf("/%s %s", pc.FullName(), args)
-	} else {
-		c.deps.Input.Skill.PendingArgs = fmt.Sprintf("/%s", pc.FullName())
-	}
+	c.deps.Input.Skill.PendingArgs = formatSlashInvocation(pc.FullName(), args)
 	return ""
+}
+
+// formatSlashInvocation renders "/<name>" or "/<name> <args>".
+func formatSlashInvocation(name, args string) string {
+	if args == "" {
+		return "/" + name
+	}
+	return "/" + name + " " + args
 }
 
 func (c *CommandController) handleHelpCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
@@ -316,6 +320,48 @@ func (c *CommandController) handleSearchCommand(_ context.Context, _ string) (st
 		return "", nil, err
 	}
 	return "", nil, nil
+}
+
+// handleIdentityCommand dispatches:
+//   - /identity            → open selector
+//   - /identity create [hint] → inject create workflow as PendingInstructions
+//   - /identity edit <name>   → inject edit workflow with target
+//
+// Subcommands reuse the same skill-invocation pipeline as user-defined
+// commands — the workflow body lives in internal/command/builtin/.
+func (c *CommandController) handleIdentityCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	sub, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
+	rest = strings.TrimSpace(rest)
+	switch sub {
+	case "":
+		_, err := c.deps.Input.Identity.Enter(ctx, c.deps.Width, c.deps.Height)
+		return "", nil, err
+	case "create":
+		c.injectIdentityWorkflow("create", rest)
+		return "", c.deps.HandleSkillInvocation(), nil
+	case "edit":
+		if rest == "" {
+			return "Usage: /identity edit <name>", nil, nil
+		}
+		c.injectIdentityWorkflow("edit", rest)
+		return "", c.deps.HandleSkillInvocation(), nil
+	default:
+		return "Usage: /identity [create | edit <name>]", nil, nil
+	}
+}
+
+// injectIdentityWorkflow loads an embedded workflow template, substitutes
+// $ARGUMENTS, and primes the skill invocation pipeline so the next user
+// submit prepends the workflow as hidden instructions.
+func (c *CommandController) injectIdentityWorkflow(sub, args string) {
+	body := command.BuiltinWorkflow("identity-" + sub)
+	if body == "" {
+		return
+	}
+	body = strings.ReplaceAll(body, "$ARGUMENTS", args)
+	name := "identity " + sub
+	c.deps.Input.Skill.PendingInstructions = command.WrapInvocation(name, body)
+	c.deps.Input.Skill.PendingArgs = formatSlashInvocation(name, args)
 }
 
 func (c *CommandController) handleModelCommand(ctx context.Context, _ string) (string, tea.Cmd, error) {

@@ -65,20 +65,18 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	Agent          string
-	Name           string
-	Prompt         string
-	Description    string
-	Background     bool
-	Model          string
-	MaxTurns       int
-	Mode           string
-	ResumeID       string
-	Isolation      string
-	TeamName       string
-	ParentMessages []core.Message // conversation context for fork
-	OnProgress     ProgressFunc
-	OnQuestion     AskQuestionFunc
+	Agent       string
+	Name        string
+	Prompt      string
+	Description string
+	Background  bool
+	Model       string
+	MaxTurns    int
+	Mode        string
+	ResumeID    string
+	Isolation   string
+	OnProgress  ProgressFunc
+	OnQuestion  AskQuestionFunc
 }
 
 // AgentExecResult contains the result of agent execution.

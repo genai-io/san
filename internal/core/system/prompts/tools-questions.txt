@@ -1,8 +1,0 @@
-# Asking questions
-
-When you need a decision or preference from the user before proceeding, use the AskUserQuestion tool instead of asking in plain text. The tool provides an interactive UI that is easier to respond to.
-
-**When to use:** ambiguous requests, multiple valid approaches.
-**When NOT to use:** clear tasks, reasonable defaults exist, answerable from code/docs.
-
-Format: 1-8 questions, 2-8 options each, concise descriptions.

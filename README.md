@@ -1,41 +1,38 @@
-# Gen Code
-
-<p align="center">
-  <h1 align="center">< GEN ✦ /></h1>
-  <p align="center">
-    <strong>Open-source AI coding assistant for the terminal</strong>
-  </p>
-  <p align="center">
+<div align="center">
+  <h1>&lt; GEN ✦ /&gt;</h1>
+  <p><strong>Open-source AI coding assistant for the terminal</strong></p>
+  <p>
     <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/gen-code"><img src="https://goreportcard.com/badge/github.com/genai-io/gen-code?style=flat-square" alt="Go Report Card"></a>
     <a href="https://pkg.go.dev/github.com/genai-io/gen-code"><img src="https://pkg.go.dev/badge/github.com/genai-io/gen-code.svg" alt="Go Reference"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   </p>
-</p>
+</div>
 
-Open-source AI coding assistant for the terminal built with Go. Multi-provider LLM support, event-driven multi-agent orchestration, and full compatibility with [Claude Code](https://claude.ai/code) extensions, plugins, and project instructions.
+Gen Code is a terminal coding assistant with interchangeable LLM providers, assistant personas, and search engines. Existing [Claude Code](https://claude.ai/code) skills, plugins, and project instructions work unchanged. Implemented in Go as a single binary with concurrent multi-agent orchestration.
 
 ## Features
 
-- **Multi-provider** — Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax — switch with `/model`
-- **Tools & MCP** — Built-in tools (Edit, Bash, Glob, Grep, WebSearch, etc.) + [MCP](https://modelcontextprotocol.io) integration
-- **Skills, Subagents & Plugins** — [Claude Code](https://claude.ai/code) compatible format, marketplace install
-- **Event-driven multi-agent** — Parallel agent execution with decoupled event-based coordination
-- **Hooks** — Lifecycle extensibility via shell, LLM, agent, or HTTP hooks
-- **Session** — Auto-persist, resume, fork, auto-compact
-- **Performance** — Minimal context injection, fast response, low token consumption
-- **Other** — Prompt prediction, configurable thinking effort, scheduled loops, permission control, etc.
+### Open architecture
 
-### Providers
+- **LLM providers** — Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax. Runtime selection via `/model`.
+- **Assistant personas** — Markdown-defined identities at user or project scope; switch with `/identity` ([details](docs/system-prompt.md#identity-custom-personas)).
+- **Search engines** — Exa, Brave, or Serper; switch with `/search`.
 
-| Provider | Models | Environment Variables |
-|:---------|:-------|:----------------------|
-| **Anthropic** | Claude Opus 4.6, Sonnet 4.6 | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** | GPT-5.2, GPT-5, o3, o4-mini, Codex | `OPENAI_API_KEY` |
-| **Google** | Gemini 3 Pro/Flash, 2.5 Pro/Flash | `GOOGLE_API_KEY` |
-| **Moonshot** | Kimi K2.5, K2 Thinking | `MOONSHOT_API_KEY` |
-| **Alibaba** | Qwen3.5 Plus, Qwen3 Max/Plus/Flash, QwQ, DeepSeek-V3/R1 | `DASHSCOPE_API_KEY` |
-| **MiniMax** | M2.7, M2.7 Highspeed, M2.5, M2.5 Highspeed, M2.1, M2.1 Highspeed, M2 | `MINIMAX_API_KEY` |
+### Extensibility
+
+- **Claude Code compatible** — Existing `~/.claude/`, `.claude/`, plugin marketplaces, and MCP server definitions integrate without modification.
+- **Skills** — Three-state lifecycle (active / enabled / disabled), per user or per project, managed via `/skills`.
+- **Subagents** — Per-agent permission modes (`explore` / `edit` / `default`), tool whitelists, and optional git-worktree sandboxing. Managed via `/agents` and the `Agent` tool.
+- **Lifecycle hooks** — Shell, LLM, agent, and HTTP backends across the full Claude Code event set.
+- **Project instructions** — `GEN.md` or `CLAUDE.md` auto-loaded into the system prompt.
+
+### Engineering
+
+- **Native performance** — Single Go binary; see [benchmark](#benchmark-gencode-vs-claude-code) for measured numbers.
+- **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/subagent.md)).
+- **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
+- **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
 
 
 ## Installation
@@ -93,44 +90,64 @@ gen --resume          # Select from list
 
 ### Commands
 
-`/model` `/tools` `/skills` `/agents` `/mcp` `/plugin` `/compact` `/think` `/search` `/loop` `/resume` `/fork` `/clear` `/init` `/memory` — type `/help` for details.
+`/model` `/tools` `/skills` `/agents` `/identity` `/mcp` `/plugin` `/compact` `/think` `/search` `/loop` `/resume` `/fork` `/clear` `/init` `/memory` — type `/help` for details.
 
 Keyboard: `Shift+Tab` toggle permission mode, `Ctrl+O` expand tool details, `Ctrl+C` cancel, `Ctrl+D` exit.
 
 ## Configuration
 
-Gen Code stores configuration in `~/.gen/`:
+User-level config lives in `~/.gen/`; project-level files in `<project>/.gen/` override per workspace. Place a `GEN.md` (or `CLAUDE.md`) in your project root for project-specific instructions — Gen Code auto-loads them into the system prompt.
+
+### LLM provider credentials
+
+| Provider | Environment Variables |
+|:---------|:----------------------|
+| **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
+| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY` |
+| **Google** (Gemini) | `GOOGLE_API_KEY` |
+| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
+| **Alibaba** (Qwen, DeepSeek) | `DASHSCOPE_API_KEY` |
+| **MiniMax** | `MINIMAX_API_KEY` |
+
+Run `/model` in the TUI to see the currently available model list.
+
+### Web-search backend credentials
+
+| Backend | Environment Variable |
+|:--------|:---------------------|
+| **Exa** | `EXA_API_KEY` |
+| **Brave Search** | `BRAVE_API_KEY` |
+| **Serper** | `SERPER_API_KEY` |
+
+<details>
+<summary><b>Directory layout</b></summary>
+
+User-level (`~/.gen/`):
 
 ```
-~/.gen/
-├── providers.json    # Provider connections and current model
-├── settings.json     # User settings (permissions, hooks, env)
-├── skills.json       # Skill states
-├── projects/         # Project-scoped session transcripts + indexes
-├── skills/           # Custom skill definitions
-├── agents/           # Custom agent definitions
-├── commands/         # Custom slash commands
-└── plugins/          # Installed plugins
+providers.json    # Provider connections and current model
+settings.json     # Permissions, hooks, env, identity
+skills.json       # Skill states
+identities/       # Custom personas (see /identity)
+skills/           # Custom skill definitions
+agents/           # Custom agent definitions
+commands/         # Custom slash commands
+plugins/          # Installed plugins
+projects/         # Session transcripts + indexes
 ```
 
-### Project Instructions
+Project-level (`.gen/`):
 
-Place a `GEN.md` (or `CLAUDE.md`) in your project root to provide project-specific instructions. These are automatically loaded into the system prompt. Project-level settings can also be placed in `.gen/settings.json`.
-
-### File-Based Configuration
-
-GenCode reads user-level files from `~/.gen/` and project-level files from `<project>/.gen/`. Project files override user defaults for that workspace.
-
-Common project files:
-
-```text
-.gen/settings.json      # Project permissions, hooks, disabled tools
-.gen/mcp.json           # Project MCP server definitions
-.gen/agents/*.md        # Project subagent definitions
-.gen/skills/*/SKILL.md  # Project skills
-.gen/commands/*.md      # Project slash commands
-GEN.md                  # Project instructions
 ```
+settings.json      # Permissions, hooks, disabled tools
+mcp.json           # MCP server definitions
+identities/*.md    # Project-scoped personas (override user-level)
+agents/*.md        # Subagent definitions
+skills/*/SKILL.md  # Skills
+commands/*.md      # Slash commands
+```
+
+</details>
 
 ## Benchmark: GenCode vs Claude Code
 
@@ -148,6 +165,14 @@ Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, s
 Both tools have comparable features (hooks, skills, plugins, session, MCP, etc.). The performance gap comes from Go's native compilation, minimal architecture design, and lean prompt engineering — vs Node.js V8/JIT/GC runtime overhead.
 
 See full details: [docs/benchmark-gencode-vs-claudecode.md](docs/benchmark-gencode-vs-claudecode.md)
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — TUI MVU model and package layout
+- [System Prompt](docs/system-prompt.md) — Slot model, identity, skill/agent injection
+- [Subagents](docs/subagent.md) · [Skills](docs/skill-system.md) · [Plugins](docs/plugin-system.md) · [MCP](docs/mcp-servers.md)
+- [Hooks](docs/hook.md) · [Permissions](docs/gen-permission.md) · [Tasks](docs/task-management.md)
+- Per-feature notes under [`docs/features/`](docs/features/)
 
 ## Related Projects
 

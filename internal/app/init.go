@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/gen-code/internal/command"
 	"github.com/genai-io/gen-code/internal/cron"
 	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/gen-code/internal/identity"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
 	"github.com/genai-io/gen-code/internal/mcp"
@@ -78,6 +79,7 @@ func initExtensions(cwd string) {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
 	skill.Initialize(skill.Options{CWD: cwd})
+	identity.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{skillCommandInfos},
@@ -165,6 +167,7 @@ func (a *agentRegistryAdapter) ListConfigs() []input.AgentConfigInfo {
 			PermissionMode: string(cfg.PermissionMode),
 			Tools:          tools,
 			SourceFile:     cfg.SourceFile,
+			Source:         cfg.Source,
 		}
 	}
 	return out

@@ -209,18 +209,22 @@ The Skill tool allows the LLM to invoke skills programmatically.
 
 ### System Prompt Integration
 
-Active skills are included in the system prompt with minimal metadata:
+Active skills are included in the system prompt as the `<skills>` directory
+(slot 5). The body lists name + one-line description; the `<skills>`
+envelope is added by the catalog. See
+[System Prompt → Skills](system-prompt.md#skills--agent-injection) for
+the slot model and how `Skill.Registry.GetSkillsSection()` plugs in.
 
-```markdown
-# Available Skills
-
+```xml
+<skills>
 Use the Skill tool to invoke these capabilities:
 
-- **git:commit**: Create git commits with DCO sign-off [2 scripts]
-- **pdf**: Process PDF files [3 scripts, 2 refs]
-- **my-skill**: Do something useful
+- git:commit: Create git commits with DCO sign-off [2 scripts]
+- pdf: Process PDF files [3 scripts, 2 refs]
+- my-skill: Do something useful
 
 Invoke with: Skill(skill="name", args="optional args")
+</skills>
 ```
 
 ## Progressive Loading
@@ -229,35 +233,23 @@ The skill system uses three-level progressive loading to conserve context:
 
 | Level | When Loaded | Content |
 |-------|-------------|---------|
-| 1 | Always (system prompt) | Name + description (~100 words) |
+| 1 | Always (in `<skills>` slot) | Name + description (~100 words) |
 | 2 | On skill invocation | Full SKILL.md instructions (<5k words) |
 | 3 | On demand | Resource files (scripts, references, assets) |
 
-### Level 1: System Prompt
+### Level 1: Always in slot 5
 
-Only metadata is included:
-
-```go
-func (r *Registry) GetSkillMetadataPrompt() string {
-    active := r.GetActive()
-    var sb strings.Builder
-    sb.WriteString("# Available Skills\n\n")
-    for _, s := range active {
-        sb.WriteString(fmt.Sprintf("- **%s**: %s\n", s.FullName(), s.Description))
-    }
-    return sb.String()
-}
-```
+`Registry.GetSkillsSection()` returns plain body text (no XML wrapper);
+the system catalog adds `<skills>...</skills>`. Only **active** skills
+appear (state machine in §Skill State Management).
 
 ### Level 2: Skill Invocation
 
-Full instructions loaded when skill is called:
-
-```xml
-<skill-invocation name="git:commit">
-[Full SKILL.md content]
-</skill-invocation>
-```
+When the LLM calls `Skill(name, args)`, the SkillTool returns the full
+content via `Registry.GetSkillInvocationPrompt(name)`. When the user types
+`/<skill-name>`, the body is also injected as `Skill.PendingInstructions`
+and prepended to the next user message — see
+[System Prompt → Invocation](system-prompt.md#invocation-slot-6).
 
 ### Level 3: Resource Files
 
@@ -370,8 +362,8 @@ chmod +x scripts/run.sh
 ## See Also
 
 - [Plugin System](plugin-system.md) — Skills can be bundled and distributed as plugins
-- [Context Loading](agent-context-loading.md) — Progressive loading strategy shared with agents
-- [Subagent System](subagent-system.md) — Agent-based execution (isolated loop vs skill injection)
+- [System Prompt](system-prompt.md) — Slot/Section model and progressive loading strategy
+- [Subagent System](subagent.md) — Agent-based execution (isolated loop vs skill injection)
 
 ## References
 

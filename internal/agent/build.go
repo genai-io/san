@@ -27,7 +27,15 @@ type BuildParams struct {
 	ProjectInstructions string
 	SkillsPrompt        string
 	AgentsPrompt        string
-	Extra               []system.ExtraLayer
+
+	// IdentityText, when non-empty, replaces the default identity slot with
+	// a user-defined persona. Sourced from ~/.gen/identities/<name>.md.
+	IdentityText string
+
+	// SkillInvocation, when non-empty, is registered as the active skill body
+	// in the system prompt. Equivalent to a /skill activation that survives
+	// agent re-creation.
+	SkillInvocation string
 
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
@@ -45,17 +53,20 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 	client := llm.NewClient(p.Provider, p.ModelID, p.MaxTokens)
 	client.SetThinkingEffort(p.ThinkingEffort)
 
-	sys := system.Build(system.Config{
-		ProviderName:        client.Name(),
-		ModelID:             client.ModelID(),
-		Cwd:                 p.CWD,
-		IsGit:               p.IsGit,
-		UserInstructions:    p.UserInstructions,
-		ProjectInstructions: p.ProjectInstructions,
-		Skills:              p.SkillsPrompt,
-		Agents:              p.AgentsPrompt,
-		Extra:               p.Extra,
-	})
+	sys := system.Build(core.ScopeMain,
+		system.WithProvider(client.Name()),
+		system.WithIdentity(p.IdentityText),
+		system.WithGitGuidelines(p.IsGit),
+		system.WithMemory(p.UserInstructions, p.ProjectInstructions),
+		system.WithSkills(p.SkillsPrompt),
+		system.WithAgents(p.AgentsPrompt),
+		system.WithSkillInvocation(p.SkillInvocation),
+		system.WithEnvironment(system.Environment{
+			Cwd:     p.CWD,
+			IsGit:   p.IsGit,
+			ModelID: client.ModelID(),
+		}),
+	)
 
 	cwdFunc := p.CWDFunc
 	if cwdFunc == nil {

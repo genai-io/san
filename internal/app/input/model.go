@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/gen-code/internal/app/kit/history"
 	"github.com/genai-io/gen-code/internal/app/kit/suggest"
 	"github.com/genai-io/gen-code/internal/core"
+	coreidentity "github.com/genai-io/gen-code/internal/identity"
 	coremcp "github.com/genai-io/gen-code/internal/mcp"
 	coreplugin "github.com/genai-io/gen-code/internal/plugin"
 	coresetting "github.com/genai-io/gen-code/internal/setting"
@@ -50,6 +51,7 @@ type Model struct {
 	Plugin   PluginSelector
 	Provider ProviderState
 	Tool     ToolSelector
+	Identity IdentitySelector
 }
 
 type PendingImage struct {
@@ -88,13 +90,14 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
-	AgentRegistry  AgentRegistry
-	SkillRegistry  *coreskill.Registry
-	MCPRegistry    *coremcp.Registry
-	PluginRegistry *coreplugin.Registry
-	Setting        coresetting.Service
-	LoadDisabled   func(userLevel bool) map[string]bool
-	UpdateDisabled func(disabled map[string]bool, userLevel bool) error
+	AgentRegistry    AgentRegistry
+	SkillRegistry    *coreskill.Registry
+	MCPRegistry      *coremcp.Registry
+	PluginRegistry   *coreplugin.Registry
+	IdentityRegistry *coreidentity.Registry
+	Setting          coresetting.Service
+	LoadDisabled     func(userLevel bool) map[string]bool
+	UpdateDisabled   func(disabled map[string]bool, userLevel bool) error
 }
 
 func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
@@ -116,6 +119,16 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Plugin:   NewPluginSelector(deps.PluginRegistry),
 		Provider: ProviderState{Selector: NewProviderSelector()},
 		Tool:     NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
+		Identity: NewIdentitySelector(deps.IdentityRegistry, func() string {
+			if deps.Setting == nil {
+				return ""
+			}
+			snap := deps.Setting.Snapshot()
+			if snap == nil {
+				return ""
+			}
+			return snap.Identity
+		}),
 	}
 }
 

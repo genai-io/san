@@ -330,21 +330,19 @@ type ProgressCallback func(msg string)
 
 // AgentRequest represents a request to spawn an agent
 type AgentRequest struct {
-	Agent          string
-	Name           string
-	Prompt         string
-	Description    string
-	Background     bool
-	Model          string
-	MaxTurns       int
-	Mode           string
-	ResumeID       string
-	LiveTaskID     string
-	Isolation      string
-	TeamName       string
-	ParentMessages []core.Message
-	OnProgress     ProgressCallback
-	OnQuestion     tool.AskQuestionFunc
+	Agent       string
+	Name        string
+	Prompt      string
+	Description string
+	Background  bool
+	Model       string
+	MaxTurns    int
+	Mode        string
+	ResumeID    string
+	LiveTaskID  string
+	Isolation   string
+	OnProgress  ProgressCallback
+	OnQuestion  tool.AskQuestionFunc
 }
 
 // AgentResult contains the result of an agent execution

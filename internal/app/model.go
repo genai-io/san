@@ -26,6 +26,7 @@ import (
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/filecache"
 	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/gen-code/internal/identity"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/llm/minmax"
 	"github.com/genai-io/gen-code/internal/log"
@@ -113,13 +114,14 @@ func newBaseModel() model {
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
-			AgentRegistry:  &agentRegistryAdapter{svc.Subagent.Registry()},
-			SkillRegistry:  svc.Skill.Registry(),
-			MCPRegistry:    svc.MCP.Registry(),
-			PluginRegistry: svc.Plugin.Registry(),
-			Setting:        svc.Setting,
-			LoadDisabled:   svc.Setting.GetDisabledToolsAt,
-			UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
+			AgentRegistry:    &agentRegistryAdapter{svc.Subagent.Registry()},
+			SkillRegistry:    svc.Skill.Registry(),
+			MCPRegistry:      svc.MCP.Registry(),
+			PluginRegistry:   svc.Plugin.Registry(),
+			IdentityRegistry: svc.Identity,
+			Setting:          svc.Setting,
+			LoadDisabled:     svc.Setting.GetDisabledToolsAt,
+			UpdateDisabled:   svc.Setting.UpdateDisabledToolsAt,
 		}),
 		conv:        conv.NewModel(defaultWidth),
 		eventHub:    hub.New(),
@@ -172,6 +174,7 @@ func (m *model) ReloadPluginBackedState() error {
 	setting.Initialize(setting.Options{CWD: m.env.CWD})
 
 	m.services.refreshAfterReload()
+	m.userInput.Identity.SetRegistry(m.services.Identity)
 
 	if m.services.Hook != nil {
 		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
@@ -648,6 +651,7 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 	case "Write", "Edit":
 		if filePath := kit.MapString(resp, "filePath"); filePath != "" {
 			m.fireFileChanged(filePath, toolName)
+			m.reloadIdentitiesIfChanged(filePath)
 			if m.env.FileCache != nil {
 				m.env.FileCache.Touch(filePath)
 			}
@@ -735,10 +739,20 @@ func (m *model) ReloadProjectContext(cwd string) {
 	initExtensions(cwd)
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.refreshAfterReload()
+	m.userInput.Identity.SetRegistry(m.services.Identity)
 	if m.services.Hook != nil {
 		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	}
 	m.syncSettingsToHookEngine()
+}
+
+func (m *model) reloadIdentitiesIfChanged(filePath string) {
+	if !identity.IsIdentityFile(m.env.CWD, filePath) || m.services.Identity == nil {
+		return
+	}
+	m.services.Identity.Reload()
+	m.userInput.Identity.SetRegistry(m.services.Identity)
+	m.ReconfigureAgentTool()
 }
 
 func (m *model) applyStartupHookOutcome(outcome hook.HookOutcome) {
@@ -957,6 +971,27 @@ func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
 	}
 }
 
+// setActiveIdentity persists the user's identity choice and rebuilds the
+// agent so the new persona takes effect. Empty name = revert to built-in.
+func (m *model) setActiveIdentity(name string) error {
+	if err := setting.SaveIdentity(name); err != nil {
+		return err
+	}
+	if m.services.Setting != nil {
+		_ = m.services.Setting.Reload(m.env.CWD)
+	}
+	m.ReconfigureAgentTool()
+	return nil
+}
+
+// dispatchSlashCommand runs an arbitrary slash command as if the user had
+// typed it. Used by selector hotkeys (Shift+N / Shift+E in /identity).
+func (m *model) dispatchSlashCommand(cmd string) tea.Cmd {
+	ctrl := input.NewCommandController(m.commandDeps())
+	teaCmd, _ := ctrl.HandleSubmit(cmd)
+	return teaCmd
+}
+
 func (m *model) overlayDeps() input.OverlayDeps {
 	return input.OverlayDeps{
 		State:             &m.userInput,
@@ -977,6 +1012,8 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		FireFileChanged:         m.fireFileChanged,
 		ReloadPluginState:       m.ReloadPluginBackedState,
 		LoadSession:             m.loadSessionByID,
+		SetActiveIdentity:       m.setActiveIdentity,
+		DispatchSlashCommand:    m.dispatchSlashCommand,
 	}
 }
 

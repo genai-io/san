@@ -2,7 +2,7 @@
 
 ## Overview
 
-Agents are defined in AGENT.md files. They run their own `core.Loop` with an independent system prompt, tool set, and permission mode. They can be invoked headlessly or spawned from within the TUI via the `Agent` tool.
+Agents are defined in AGENT.md files. They run their own `core.Agent` with an independent system prompt, tool set, and permission mode. They can be invoked headlessly or spawned from within the TUI via the `Agent` tool. See [System Prompt](../system-prompt.md) for how the subagent's identity is built from `AgentConfig`.
 
 For the `explore` permission mode contract, see [Feature 22](./22-explore-agent.md).
 

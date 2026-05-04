@@ -3,26 +3,27 @@ package system
 import (
 	"strings"
 	"testing"
+
+	"github.com/genai-io/gen-code/internal/core"
 )
 
-func TestFormatEnvIncludesSessionWorkingDirectoryFacts(t *testing.T) {
-	env := formatEnv("/tmp/project", true, "test-model")
-	if !strings.Contains(env, "Session working directory: /tmp/project") {
-		t.Fatalf("formatEnv() = %q, want session working directory", env)
+func TestBuildEnvironmentRendersFacts(t *testing.T) {
+	body := renderEnvironment(Environment{Cwd: "/tmp/project", IsGit: true, ModelID: "test-model"})
+	if !strings.Contains(body, "cwd: /tmp/project") {
+		t.Fatalf("renderEnvironment missing cwd: %q", body)
 	}
-	if !strings.Contains(env, "Is git repo: Yes") {
-		t.Fatalf("formatEnv() = %q, want git status", env)
+	if !strings.Contains(body, "git: yes") {
+		t.Fatalf("renderEnvironment missing git status: %q", body)
 	}
-	if strings.Contains(env, "Bash commands start in the session working directory.") {
-		t.Fatalf("formatEnv() = %q, should keep tool guidance out of env", env)
+	if !strings.Contains(body, "model: test-model") {
+		t.Fatalf("renderEnvironment missing model: %q", body)
 	}
 }
 
 func TestBuildPromptCaching(t *testing.T) {
-	sys := Build(Config{
-		Cwd:   "/tmp/test",
-		IsGit: true,
-	})
+	sys := Build(core.ScopeMain,
+		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
+	)
 
 	first := sys.Prompt()
 	if first == "" {
@@ -31,151 +32,210 @@ func TestBuildPromptCaching(t *testing.T) {
 
 	second := sys.Prompt()
 	if first != second {
-		t.Error("Second Prompt() call should return same cached result")
-	}
-
-	sys.Invalidate()
-	third := sys.Prompt()
-	if third == "" {
-		t.Error("Prompt() after Invalidate() should return non-empty string")
+		t.Error("Second Prompt() call should return cached result identical to the first")
 	}
 }
 
-func TestBuildPromptContainsInstructions(t *testing.T) {
-	sys := Build(Config{
-		Cwd:                 "/tmp/test",
-		UserInstructions:    "Always use tabs for indentation.",
-		ProjectInstructions: "This is a Go project using Bubble Tea.",
-	})
+func TestBuildPromptContainsMemory(t *testing.T) {
+	sys := Build(core.ScopeMain,
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
+		WithMemory("Always use tabs for indentation.", "This is a Go project using Bubble Tea."),
+	)
 
 	prompt := sys.Prompt()
-
-	if !strings.Contains(prompt, "<user-instructions>") {
-		t.Error("prompt should contain <user-instructions> tag")
+	if !strings.Contains(prompt, `<memory scope="user">`) {
+		t.Error("prompt should contain <memory scope=\"user\"> tag")
 	}
 	if !strings.Contains(prompt, "Always use tabs for indentation.") {
-		t.Error("prompt should contain user instructions content")
+		t.Error("prompt should contain user memory content")
 	}
-	if !strings.Contains(prompt, "<project-instructions>") {
-		t.Error("prompt should contain <project-instructions> tag")
+	if !strings.Contains(prompt, `<memory scope="project">`) {
+		t.Error("prompt should contain <memory scope=\"project\"> tag")
 	}
 	if !strings.Contains(prompt, "This is a Go project using Bubble Tea.") {
-		t.Error("prompt should contain project instructions content")
+		t.Error("prompt should contain project memory content")
 	}
 }
 
-func TestBuildPromptDirectFields(t *testing.T) {
-	sys := Build(Config{
-		Cwd:    "/tmp/test",
-		Skills: "<available-skills>\n- commit\n</available-skills>",
-		Agents: "<available-agents>\n- Explore\n</available-agents>",
+func TestBuildPromptContainsCapabilities(t *testing.T) {
+	sys := Build(core.ScopeMain,
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
+		WithSkills("- commit: Write commit messages"),
+		WithAgents("- explorer: read-only research"),
+	)
+
+	prompt := sys.Prompt()
+	if !strings.Contains(prompt, "<skills>") {
+		t.Error("prompt should contain <skills> tag")
+	}
+	if !strings.Contains(prompt, "<agents>") {
+		t.Error("prompt should contain <agents> tag")
+	}
+}
+
+func TestBuildPromptOrder_StableBeforeVolatile(t *testing.T) {
+	// Volatile sections (env, notice) must sit AFTER stable ones so the
+	// prompt-cache prefix survives daily date rollovers and hook injections.
+	sys := Build(core.ScopeMain,
+		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
+		WithMemory("USER_MARKER", "PROJECT_MARKER"),
+		WithSkills("SKILLS_MARKER"),
+		WithAgents("AGENTS_MARKER"),
+		WithNotice("test", "NOTICE_MARKER"),
+	)
+	prompt := sys.Prompt()
+
+	indices := map[string]int{
+		"identity":   strings.Index(prompt, "interactive AI assistant"),
+		"policy":     strings.Index(prompt, "<policy>"),
+		"guidelines": strings.Index(prompt, `<guidelines name="tools">`),
+		// guidelines body markers come from the new tools.txt which no longer has a # header
+
+		"user":    strings.Index(prompt, "USER_MARKER"),
+		"project": strings.Index(prompt, "PROJECT_MARKER"),
+		"skills":  strings.Index(prompt, "SKILLS_MARKER"),
+		"agents":  strings.Index(prompt, "AGENTS_MARKER"),
+		"env":     strings.Index(prompt, "<environment>"),
+		"notice":  strings.Index(prompt, "NOTICE_MARKER"),
+	}
+	for name, idx := range indices {
+		if idx < 0 {
+			t.Fatalf("section %q not found", name)
+		}
+	}
+
+	order := []string{"identity", "policy", "guidelines", "user", "project", "skills", "agents", "env", "notice"}
+	for i := 1; i < len(order); i++ {
+		if indices[order[i-1]] >= indices[order[i]] {
+			t.Errorf("expected %s before %s; got idx %d vs %d",
+				order[i-1], order[i], indices[order[i-1]], indices[order[i]])
+		}
+	}
+}
+
+func TestBuildPromptEmptyOptionsExcluded(t *testing.T) {
+	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/test"}))
+	prompt := sys.Prompt()
+
+	if strings.Contains(prompt, "<memory") {
+		t.Error("empty memory should not produce <memory> tag")
+	}
+	if strings.Contains(prompt, "<skills>") {
+		t.Error("empty skills should not produce <skills> tag")
+	}
+	if strings.Contains(prompt, "<agents>") {
+		t.Error("empty agents should not produce <agents> tag")
+	}
+}
+
+func TestBuildScopeMain_HasTaskAndQuestionGuidelines(t *testing.T) {
+	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/test"}))
+	prompt := sys.Prompt()
+
+	if !strings.Contains(prompt, "TaskCreate") {
+		t.Error("main scope should include task guidelines")
+	}
+	if !strings.Contains(prompt, "AskUserQuestion") {
+		t.Error("main scope should include question guidelines")
+	}
+}
+
+func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
+	sys := Build(core.ScopeSubagent, WithEnvironment(Environment{Cwd: "/tmp/test"}))
+	prompt := sys.Prompt()
+
+	if strings.Contains(prompt, "TaskCreate") {
+		t.Error("subagent scope should not include task guidelines")
+	}
+	if strings.Contains(prompt, "AskUserQuestion") {
+		t.Error("subagent scope should not include question guidelines")
+	}
+}
+
+func TestBuildSubagentIdentity_ReplacesDefault(t *testing.T) {
+	sys := Build(core.ScopeSubagent,
+		WithSubagentIdentity(SubagentBrief{
+			AgentName:    "code-reviewer",
+			Description:  "Reviews code changes for bugs.",
+			Mode:         "explore",
+			CustomPrompt: "Use git diff to inspect changes.",
+		}),
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
+	)
+	prompt := sys.Prompt()
+
+	if !strings.Contains(prompt, "You are a code-reviewer subagent") {
+		t.Error("subagent identity should announce agent name")
+	}
+	if !strings.Contains(prompt, `<identity mode="explore">`) {
+		t.Error("identity tag should carry mode attribute")
+	}
+	if !strings.Contains(prompt, "Use git diff to inspect changes.") {
+		t.Error("custom prompt body should appear inside identity")
+	}
+	// Default identity should be replaced, not duplicated.
+	if strings.Contains(prompt, "interactive AI assistant") {
+		t.Error("default identity should be replaced by subagent identity")
+	}
+}
+
+func TestBuildGitGuidelinesToggle(t *testing.T) {
+	withGit := Build(core.ScopeMain,
+		WithGitGuidelines(true),
+		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
+	)
+	withoutGit := Build(core.ScopeMain,
+		WithGitGuidelines(false),
+		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: false}),
+	)
+
+	if !strings.Contains(withGit.Prompt(), `<guidelines name="git">`) {
+		t.Error("git=true should include git guidelines")
+	}
+	if strings.Contains(withoutGit.Prompt(), `<guidelines name="git">`) {
+		t.Error("git=false should omit git guidelines")
+	}
+}
+
+func TestSystemUseDropRefresh(t *testing.T) {
+	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/test"}))
+	first := sys.Prompt()
+
+	// Use: register a new section.
+	sys.Use(core.Section{
+		Slot: core.SlotInvocation, Name: "invocation-test", Source: core.Dynamic,
+		Render: func() string { return "INVOCATION_BODY" },
 	})
-
-	prompt := sys.Prompt()
-
-	if !strings.Contains(prompt, "<available-skills>") {
-		t.Error("prompt should contain skills")
+	if !strings.Contains(sys.Prompt(), "INVOCATION_BODY") {
+		t.Error("Use should add a new section's content to Prompt()")
 	}
-	if !strings.Contains(prompt, "<available-agents>") {
-		t.Error("prompt should contain agents")
+
+	// Drop: remove it.
+	sys.Drop("invocation-test")
+	if strings.Contains(sys.Prompt(), "INVOCATION_BODY") {
+		t.Error("Drop should remove the section from Prompt()")
+	}
+
+	// After Drop the prompt should match the original.
+	if sys.Prompt() != first {
+		t.Error("Prompt should return to original state after Drop")
 	}
 }
 
-func TestBuildPromptExtra(t *testing.T) {
-	sys := Build(Config{
-		Cwd:   "/tmp/test",
-		Extra: []ExtraLayer{{Name: "test-extra", Content: "agent identity content here"}},
-	})
-
-	prompt := sys.Prompt()
-
-	if !strings.Contains(prompt, "agent identity content here") {
-		t.Error("prompt should contain Extra content")
+func TestCachedTemplatesNonEmpty(t *testing.T) {
+	if cachedIdentity == "" {
+		t.Error("cachedIdentity should be non-empty after init()")
 	}
-}
-
-func TestBuildPromptNarrativeOrder(t *testing.T) {
-	sys := Build(Config{
-		Cwd:                 "/tmp/test",
-		UserInstructions:    "USER_INSTRUCTIONS_MARKER",
-		ProjectInstructions: "PROJECT_INSTRUCTIONS_MARKER",
-		Skills:              "<available-skills>\nSKILLS_MARKER\n</available-skills>",
-		Agents:              "<available-agents>\nAGENTS_MARKER\n</available-agents>",
-		Extra:               []ExtraLayer{{Name: "test", Content: "EXTRA_MARKER"}},
-	})
-
-	prompt := sys.Prompt()
-
-	envIdx := strings.Index(prompt, "<env>")
-	userIdx := strings.Index(prompt, "USER_INSTRUCTIONS_MARKER")
-	projectIdx := strings.Index(prompt, "PROJECT_INSTRUCTIONS_MARKER")
-	skillsIdx := strings.Index(prompt, "SKILLS_MARKER")
-	agentsIdx := strings.Index(prompt, "AGENTS_MARKER")
-	extraIdx := strings.Index(prompt, "EXTRA_MARKER")
-
-	if envIdx < 0 || userIdx < 0 || projectIdx < 0 ||
-		skillsIdx < 0 || agentsIdx < 0 || extraIdx < 0 {
-		t.Fatal("prompt is missing one or more expected sections")
+	if cachedPolicy == "" {
+		t.Error("cachedPolicy should be non-empty after init()")
 	}
-
-	if envIdx >= userIdx {
-		t.Error("environment should appear before user instructions")
-	}
-	if userIdx >= projectIdx {
-		t.Error("user instructions should appear before project instructions")
-	}
-	if projectIdx >= skillsIdx {
-		t.Error("project instructions should appear before skills")
-	}
-	if skillsIdx >= agentsIdx {
-		t.Error("skills should appear before agents")
-	}
-	if agentsIdx >= extraIdx {
-		t.Error("agents should appear before extra content")
-	}
-}
-
-func TestBuildPromptEmptyFieldsExcluded(t *testing.T) {
-	sys := Build(Config{
-		Cwd: "/tmp/test",
-	})
-	prompt := sys.Prompt()
-
-	if strings.Contains(prompt, "<user-instructions>") {
-		t.Error("empty UserInstructions should not produce <user-instructions> tag")
-	}
-	if strings.Contains(prompt, "<project-instructions>") {
-		t.Error("empty ProjectInstructions should not produce <project-instructions> tag")
-	}
-	if strings.Contains(prompt, "<available-skills>") {
-		t.Error("empty Skills should not produce <available-skills> tag")
-	}
-	if strings.Contains(prompt, "<available-agents>") {
-		t.Error("empty Agents should not produce <available-agents> tag")
-	}
-}
-
-func TestPromptInitCachedFiles(t *testing.T) {
-	if cachedBase == "" {
-		t.Error("cachedBase should be non-empty after init()")
-	}
-	if cachedToolsCore == "" {
-		t.Error("cachedToolsCore should be non-empty after init()")
-	}
-	sys := Build(Config{Cwd: "/tmp/test"})
-	prompt := sys.Prompt()
-
-	if !strings.Contains(prompt, cachedBase[:50]) {
-		t.Error("prompt should contain base.txt content")
-	}
-	if !strings.Contains(prompt, cachedToolsCore[:50]) {
-		t.Error("prompt should contain tools content")
+	if cachedTools == "" {
+		t.Error("cachedTools should be non-empty after init()")
 	}
 }
 
 func TestCompactPrompt(t *testing.T) {
-	result := CompactPrompt()
-	if result == "" {
+	if CompactPrompt() == "" {
 		t.Error("CompactPrompt() should return non-empty string")
 	}
 }

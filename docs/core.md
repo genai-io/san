@@ -144,24 +144,32 @@ tool execution, see [permission.md](permission.md#hook-integration).
   └──────────────────────────────────────────────┘
 ```
 
-## System Prompt Layers
+## System Prompt
+
+`core.System` is a layered structure of named **Sections**, each in a fixed
+**Slot**. The agent calls `system.Prompt()` once per inference; the result
+is cached and only rebuilt when a section is mutated (`Use` / `Drop` /
+`Refresh`).
 
 ```
-Priority    Band             Source
-─────────────────────────────────────────────────
-  0-99      Identity         base template
-100-199     Environment      provider, cwd, git, model
-200-299     Instructions     user GEN.md, project GEN.md
-400-499     Capabilities     skills, agents
-500-599     Guidelines       tool usage, git workflow
-600-699     Mode             plan mode
-700+        Extra            skill invocation, agent identity
-─────────────────────────────────────────────────
-                    │
-                    ▼
-            System.Prompt()
-         (cached, rebuild on change)
+core.System
+├── slot 0: identity      ─┐
+├── slot 1: provider       │
+├── slot 2: policy         │  stable cache prefix
+├── slot 3: guidelines     │
+├── slot 4: memory         │
+├── slot 5: capabilities  ─┘
+├── slot 6: invocation       per-turn
+├── slot 7: environment   ─┐
+└── slot 8: notice        ─┘  volatile (date, hooks)
+                │
+                ▼
+        System.Prompt()
+   (cached, rebuilds on mutation)
 ```
+
+See [System Prompt](system-prompt.md) for full slot semantics, build API,
+XML envelopes, and identity/skill/agent injection paths.
 
 ## Outbox Events
 

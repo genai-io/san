@@ -29,6 +29,9 @@ type Settings struct {
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
 	AllowBypass    *bool              `json:"allowBypass,omitempty"`
+	// Identity selects an active persona under ~/.gen/identities/<name>.md or
+	// .gen/identities/<name>.md. Empty = use built-in default identity.
+	Identity string `json:"identity,omitempty"`
 }
 
 // PermissionSettings defines permission rules for tool execution.

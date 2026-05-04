@@ -252,11 +252,12 @@ func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState {
 	return result
 }
 
-// GetSkillsSection generates the available skills section for the system prompt.
-// Only includes active skills (state = active).
-// Uses progressive loading: only name + description are included here.
-// Full instructions are loaded when the Skill tool is invoked.
-// Returns content wrapped in <available-skills> XML tags for consistency.
+// GetSkillsSection generates the body of the skills directory for the system
+// prompt. Only includes active skills (progressive loading — full instructions
+// arrive only when the Skill tool is invoked).
+//
+// Returns plain body text without the outer XML tag; the system catalog
+// wraps it in <skills>…</skills>.
 func (r *Registry) GetSkillsSection() string {
 	active := r.GetActive()
 	if len(active) == 0 {
@@ -264,7 +265,6 @@ func (r *Registry) GetSkillsSection() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString("<available-skills>\n")
 	sb.WriteString("Use the Skill tool to invoke these capabilities:\n\n")
 
 	for _, skill := range active {
@@ -273,7 +273,6 @@ func (r *Registry) GetSkillsSection() string {
 		if skill.ArgumentHint != "" {
 			sb.WriteString(fmt.Sprintf(" %s", skill.ArgumentHint))
 		}
-		// Indicate if skill has resources
 		if skill.HasResources() {
 			resources := []string{}
 			if len(skill.Scripts) > 0 {
@@ -287,8 +286,7 @@ func (r *Registry) GetSkillsSection() string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString("\nInvoke with: Skill(skill=\"name\", args=\"optional args\")\n")
-	sb.WriteString("</available-skills>")
+	sb.WriteString("\nInvoke with: Skill(skill=\"name\", args=\"optional args\")")
 	return sb.String()
 }
 

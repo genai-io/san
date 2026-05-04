@@ -32,6 +32,21 @@ type SkillCycleMsg struct {
 	NewState  coreskill.SkillState
 }
 
+// skillTab identifies a category tab in the skill selector.
+type skillTab int
+
+const (
+	skillTabProject skillTab = iota
+	skillTabUser
+)
+
+func (t skillTab) String() string {
+	if t == skillTabUser {
+		return "User"
+	}
+	return "Project"
+}
+
 type SkillSelector struct {
 	registry       *coreskill.Registry
 	active         bool
@@ -40,7 +55,7 @@ type SkillSelector struct {
 	nav            kit.ListNav
 	width          int
 	height         int
-	saveLevel      kit.SaveLevel
+	activeTab      skillTab
 }
 
 type SkillState struct {
@@ -77,25 +92,32 @@ func (s *SkillState) ClearPending() {
 
 func NewSkillSelector(reg *coreskill.Registry) SkillSelector {
 	return SkillSelector{
-		registry: reg,
-		active:   false,
-		skills:   []skillItem{},
-		nav:      kit.ListNav{MaxVisible: 10},
+		registry:  reg,
+		active:    false,
+		skills:    []skillItem{},
+		nav:       kit.ListNav{MaxVisible: 10},
+		activeTab: skillTabProject,
 	}
 }
 
+// EnterSelect activates the selector and loads skills with their states.
 func (s *SkillSelector) EnterSelect(width, height int) error {
 	if s.registry == nil {
 		return fmt.Errorf("skill registry not initialized")
 	}
 
 	allSkills := s.registry.List()
-	levelStates := s.registry.GetStatesAt(s.saveLevel == kit.SaveLevelUser)
+	// Pre-load both stores so each tab shows the correct enabled state.
+	statesByLevel := map[bool]map[string]coreskill.SkillState{
+		false: s.registry.GetStatesAt(false),
+		true:  s.registry.GetStatesAt(true),
+	}
 
 	s.skills = make([]skillItem, 0, len(allSkills))
 	for _, sk := range allSkills {
+		userLevel := scopeIsUser(sk.Scope)
 		state := sk.State
-		if levelState, ok := levelStates[sk.FullName()]; ok {
+		if levelState, ok := statesByLevel[userLevel][sk.FullName()]; ok {
 			state = levelState
 		}
 		s.skills = append(s.skills, skillItem{
@@ -111,29 +133,53 @@ func (s *SkillSelector) EnterSelect(width, height int) error {
 	s.active = true
 	s.width = width
 	s.height = height
-	s.filteredSkills = s.skills
 	s.nav.Reset()
-	s.nav.Total = len(s.filteredSkills)
-
+	s.activeTab = s.firstNonEmptyTab()
+	s.applyFilters()
 	return nil
 }
 
-func (s *SkillSelector) reloadSkillStates() {
-	if s.registry == nil {
-		return
+func scopeIsUser(scope coreskill.SkillScope) bool {
+	switch scope {
+	case coreskill.ScopeClaudeUser, coreskill.ScopeUserPlugin, coreskill.ScopeUser:
+		return true
 	}
+	return false
+}
 
-	levelStates := s.registry.GetStatesAt(s.saveLevel == kit.SaveLevelUser)
+func scopeIsPlugin(scope coreskill.SkillScope) bool {
+	return scope == coreskill.ScopeUserPlugin || scope == coreskill.ScopeProjectPlugin
+}
 
-	for i := range s.skills {
-		fullName := s.skills[i].FullName()
-		if state, ok := levelStates[fullName]; ok {
-			s.skills[i].State = state
-		} else {
-			s.skills[i].State = coreskill.StateEnable
+func skillMatchesTab(it skillItem, tab skillTab) bool {
+	if tab == skillTabUser {
+		return scopeIsUser(it.Scope)
+	}
+	return !scopeIsUser(it.Scope)
+}
+
+func (s *SkillSelector) tabCount(tab skillTab) int {
+	count := 0
+	for _, it := range s.skills {
+		if skillMatchesTab(it, tab) {
+			count++
 		}
 	}
-	s.updateFilter()
+	return count
+}
+
+func (s *SkillSelector) firstNonEmptyTab() skillTab {
+	if s.tabCount(skillTabProject) > 0 {
+		return skillTabProject
+	}
+	if s.tabCount(skillTabUser) > 0 {
+		return skillTabUser
+	}
+	return skillTabProject
+}
+
+func (s *SkillSelector) saveLevelForActiveTab() bool {
+	return s.activeTab == skillTabUser
 }
 
 func (s *SkillSelector) IsActive() bool {
@@ -148,22 +194,43 @@ func (s *SkillSelector) Cancel() {
 	s.nav.Total = 0
 }
 
-func (s *SkillSelector) updateFilter() {
-	if s.nav.Search == "" {
-		s.filteredSkills = s.skills
-	} else {
-		query := strings.ToLower(s.nav.Search)
-		s.filteredSkills = make([]skillItem, 0)
-		for _, sk := range s.skills {
-			if kit.FuzzyMatch(strings.ToLower(sk.FullName()), query) ||
-				kit.FuzzyMatch(strings.ToLower(sk.Name), query) ||
-				kit.FuzzyMatch(strings.ToLower(sk.Description), query) {
-				s.filteredSkills = append(s.filteredSkills, sk)
+// applyFilters rebuilds filteredSkills from the active tab + search query.
+func (s *SkillSelector) applyFilters() {
+	query := strings.ToLower(s.nav.Search)
+	s.filteredSkills = s.filteredSkills[:0]
+	for _, sk := range s.skills {
+		if !skillMatchesTab(sk, s.activeTab) {
+			continue
+		}
+		if query != "" {
+			full := strings.ToLower(sk.FullName())
+			name := strings.ToLower(sk.Name)
+			desc := strings.ToLower(sk.Description)
+			if !kit.FuzzyMatch(full, query) &&
+				!kit.FuzzyMatch(name, query) &&
+				!kit.FuzzyMatch(desc, query) {
+				continue
 			}
 		}
+		s.filteredSkills = append(s.filteredSkills, sk)
 	}
 	s.nav.ResetCursor()
 	s.nav.Total = len(s.filteredSkills)
+}
+
+func (s *SkillSelector) cycleTab(delta int) {
+	tabs := []skillTab{skillTabProject, skillTabUser}
+	idx := 0
+	for i, t := range tabs {
+		if t == s.activeTab {
+			idx = i
+			break
+		}
+	}
+	n := len(tabs)
+	next := tabs[((idx+delta)%n+n)%n]
+	s.activeTab = next
+	s.applyFilters()
 }
 
 func (s *SkillSelector) CycleState() tea.Cmd {
@@ -185,7 +252,7 @@ func (s *SkillSelector) CycleState() tea.Cmd {
 	}
 
 	if s.registry != nil {
-		_ = s.registry.SetState(fullName, newState, s.saveLevel == kit.SaveLevelUser)
+		_ = s.registry.SetState(fullName, newState, s.saveLevelForActiveTab())
 	}
 
 	return func() tea.Msg {
@@ -197,23 +264,20 @@ func (s *SkillSelector) CycleState() tea.Cmd {
 }
 
 func (s *SkillSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	if key.Type == tea.KeyTab {
-		if s.saveLevel == kit.SaveLevelProject {
-			s.saveLevel = kit.SaveLevelUser
-		} else {
-			s.saveLevel = kit.SaveLevelProject
-		}
-		s.reloadSkillStates()
+	switch key.Type {
+	case tea.KeyTab, tea.KeyRight:
+		s.cycleTab(+1)
 		return nil
-	}
-
-	if key.Type == tea.KeyEnter {
+	case tea.KeyShiftTab, tea.KeyLeft:
+		s.cycleTab(-1)
+		return nil
+	case tea.KeyEnter:
 		return s.CycleState()
 	}
 
 	searchChanged, consumed := s.nav.HandleKey(key)
 	if searchChanged {
-		s.updateFilter()
+		s.applyFilters()
 	}
 	if consumed {
 		return nil
@@ -227,125 +291,183 @@ func (s *SkillSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+// ── Rendering ──────────────────────────────────────────────────────────────────
+
 func (s *SkillSelector) Render() string {
 	if !s.active {
 		return ""
 	}
 
+	panel := kit.Panel{Width: s.width, Height: s.height}
+
+	// Each item renders on 2 lines (row + spacer); the selected item adds
+	// 1 hint sub-line. Reserve 2 lines for more-above/more-below indicators.
+	s.nav.MaxVisible = max(3, (panel.BodyHeight()-2)/2)
+	s.nav.EnsureVisible()
+
 	var sb strings.Builder
 
-	boxWidth := max(60, s.width*80/100)
-
-	levelIndicator := fmt.Sprintf("[%s]", s.saveLevel.String())
-	title := fmt.Sprintf("Manage Skills (%d/%d)  %s", len(s.filteredSkills), len(s.skills), levelIndicator)
-	sb.WriteString(kit.SelectorTitleStyle().Render(title))
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
-
-	searchPrompt := "\U0001f50d "
-	if s.nav.Search == "" {
-		sb.WriteString(kit.SelectorHintStyle().Render(searchPrompt + "Type to filter..."))
-	} else {
-		sb.WriteString(kit.SelectorBreadcrumbStyle().Render(searchPrompt + s.nav.Search + "\u258f"))
-	}
+	sb.WriteString(s.renderTabs())
+	sb.WriteString("\n\n")
+	sb.WriteString(kit.RenderSearchBox(kit.SearchBoxOpts{
+		Query:       s.nav.Search,
+		Placeholder: "Type to filter skills...",
+		Filtered:    len(s.filteredSkills),
+		Total:       s.tabCount(s.activeTab),
+		Width:       panel.ContentWidth(),
+	}))
 	sb.WriteString("\n\n")
 
+	var body strings.Builder
 	if len(s.filteredSkills) == 0 {
-		sb.WriteString(kit.SelectorHintStyle().Render("  No skills match the filter"))
-		sb.WriteString("\n")
+		body.WriteString(s.renderEmpty())
 	} else {
-		startIdx, endIdx := s.nav.VisibleRange()
+		s.renderItemList(&body, panel)
+	}
+	sb.WriteString(panel.PadViewport(body.String()))
 
-		contentWidth := boxWidth - 6
+	sb.WriteString("\n")
+	sb.WriteString(panel.SeparatorLine())
+	sb.WriteString("\n")
+	sb.WriteString(s.renderHints())
 
-		maxNameWidth := 0
-		for i := startIdx; i < endIdx; i++ {
-			nameLen := len(s.filteredSkills[i].FullName())
-			if nameLen > maxNameWidth {
-				maxNameWidth = nameLen
-			}
+	return panel.Wrap(sb.String())
+}
+
+func (s *SkillSelector) renderTabs() string {
+	tabs := []kit.PanelTab{
+		{Name: skillTabProject.String(), Count: s.tabCount(skillTabProject), Show: true},
+		{Name: skillTabUser.String(), Count: s.tabCount(skillTabUser), Show: true},
+	}
+	return kit.RenderPanelTabs(tabs, int(s.activeTab))
+}
+
+func (s *SkillSelector) renderEmpty() string {
+	if len(s.skills) == 0 {
+		return kit.DimStyle().PaddingLeft(2).Render("No skills available")
+	}
+	if s.tabCount(s.activeTab) == 0 {
+		return kit.DimStyle().PaddingLeft(2).Render(
+			fmt.Sprintf("No %s skills — press Tab to switch tabs",
+				strings.ToLower(s.activeTab.String())))
+	}
+	return kit.DimStyle().PaddingLeft(2).Render("No skills match the filter")
+}
+
+func (s *SkillSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
+	startIdx, endIdx := s.nav.VisibleRange()
+
+	if startIdx > 0 {
+		sb.WriteString(kit.MoreAbove())
+		sb.WriteString("\n")
+	}
+
+	maxNameLen := 12
+	for i := startIdx; i < endIdx; i++ {
+		if l := len(s.filteredSkills[i].FullName()); l > maxNameLen {
+			maxNameLen = l
 		}
-		maxNameWidth += 5
-		maxNameWidth = max(15, min(30, maxNameWidth))
+	}
+	maxNameLen = min(maxNameLen, 32)
 
-		if startIdx > 0 {
-			sb.WriteString(kit.SelectorHintStyle().Render("  \u2191 more above"))
+	descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	badge := kit.BadgeStyle()
+
+	for i := startIdx; i < endIdx; i++ {
+		sk := s.filteredSkills[i]
+
+		var statusIcon string
+		var statusStyle lipgloss.Style
+		switch sk.State {
+		case coreskill.StateActive:
+			statusIcon = "●"
+			statusStyle = kit.SelectorStatusConnected()
+		case coreskill.StateEnable:
+			statusIcon = "◐"
+			statusStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
+		default:
+			statusIcon = "○"
+			statusStyle = kit.SelectorStatusNone()
+		}
+
+		name := kit.TruncateText(sk.FullName(), maxNameLen)
+		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-len(name)))
+
+		badgeText := ""
+		if scopeIsPlugin(sk.Scope) && sk.Namespace != "" {
+			badgeText = "[Plugin: " + sk.Namespace + "]"
+		}
+
+		// Width budget for one row, accounting for the panel's Padding(1, 2)
+		// (4 cols total) plus the row's own decoration:
+		//   2 ("> ") + 1 (icon) + 1 (space) + name + 2 (sep) + desc
+		//   [+ 1 space + badge]
+		// The trailing -4 is a right-margin safety buffer.
+		rowFixed := 2 + 1 + 1 + maxNameLen + 2
+		if badgeText != "" {
+			rowFixed += 1 + len(badgeText)
+		}
+		descWidth := max(15, panel.ContentWidth()-4-rowFixed-4)
+		desc := kit.TruncateText(sk.Description, descWidth)
+
+		line := fmt.Sprintf("%s %s  %s",
+			statusStyle.Render(statusIcon),
+			paddedName,
+			descStyle.Render(desc),
+		)
+		if badgeText != "" {
+			line += " " + badge.Render(badgeText)
+		}
+
+		// Render the row without SelectorSelectedStyle/SelectorItemStyle's
+		// PaddingLeft(2) so the row's left edge lines up with tabs/search/
+		// separator. Width(...) right-pads each row to the full inner content
+		// area so the right edge also matches the separator line.
+		rowWidth := max(20, panel.ContentWidth()-4)
+		if i == s.nav.Selected {
+			sb.WriteString(lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextBright).
+				Bold(true).
+				Width(rowWidth).
+				Render("> " + line))
+		} else {
+			sb.WriteString(lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Text).
+				Width(rowWidth).
+				Render("  " + line))
+		}
+		sb.WriteString("\n")
+
+		// Argument hint sub-line aligned under the skill name (4 cols in:
+		// 2 cursor + 1 icon + 1 space).
+		if i == s.nav.Selected && sk.Hint != "" {
+			subStyle := lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Muted).
+				PaddingLeft(4)
+			hintLineWidth := max(10, panel.ContentWidth()-8)
+			sb.WriteString(subStyle.Render(kit.TruncateText("hint: "+sk.Hint, hintLineWidth)))
 			sb.WriteString("\n")
 		}
 
-		for i := startIdx; i < endIdx; i++ {
-			sk := s.filteredSkills[i]
-
-			var statusIcon string
-			var statusStyle lipgloss.Style
-			switch sk.State {
-			case coreskill.StateActive:
-				statusIcon = "\u25cf"
-				statusStyle = kit.SelectorStatusConnected()
-			case coreskill.StateEnable:
-				statusIcon = "\u25d0"
-				statusStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
-			default:
-				statusIcon = "\u25cb"
-				statusStyle = kit.SelectorStatusNone()
-			}
-
-			displayName := sk.FullName()
-
-			scopeIndicator := ""
-			if sk.Scope == coreskill.ScopeProject || sk.Scope == coreskill.ScopeClaudeProject || sk.Scope == coreskill.ScopeProjectPlugin {
-				scopeIndicator = "[P]"
-			}
-
-			nameWithScope := displayName
-			if scopeIndicator != "" {
-				nameWithScope = displayName + " " + scopeIndicator
-			}
-			paddedName := nameWithScope
-			if len(paddedName) < maxNameWidth {
-				paddedName = paddedName + strings.Repeat(" ", maxNameWidth-len(paddedName))
-			} else if len(paddedName) > maxNameWidth {
-				paddedName = paddedName[:maxNameWidth-3] + "..."
-			}
-
-			usedWidth := 6 + maxNameWidth
-			descMaxLen := contentWidth - usedWidth
-			if descMaxLen < 15 {
-				descMaxLen = 15
-			}
-
-			desc := sk.Description
-			if len(desc) > descMaxLen {
-				desc = desc[:descMaxLen-3] + "..."
-			}
-
-			descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-
-			line := fmt.Sprintf("%s %-*s  %s",
-				statusStyle.Render(statusIcon),
-				maxNameWidth,
-				paddedName,
-				descStyle.Render(desc),
-			)
-
-			if i == s.nav.Selected {
-				sb.WriteString("> " + line)
-			} else {
-				sb.WriteString("  " + line)
-			}
-			sb.WriteString("\n")
-		}
-
-		if endIdx < len(s.filteredSkills) {
-			sb.WriteString(kit.SelectorHintStyle().Render("  \u2193 more below"))
+		// Spacer for breathing room between rows.
+		if i < endIdx-1 {
 			sb.WriteString("\n")
 		}
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(kit.SelectorHintStyle().Render("\u2191/\u2193 navigate \u00b7 Tab level \u00b7 Enter toggle \u00b7 Esc close"))
+	if endIdx < len(s.filteredSkills) {
+		sb.WriteString(kit.MoreBelow())
+		sb.WriteString("\n")
+	}
+}
 
-	content := sb.String()
-	box := kit.SelectorBorderStyle().Width(boxWidth).Render(content)
-
-	return lipgloss.Place(s.width, s.height-4, lipgloss.Center, lipgloss.Center, box)
+func (s *SkillSelector) renderHints() string {
+	return kit.HintLine(
+		"↑/↓ navigate",
+		"Enter cycle state",
+		"←/→/Tab switch tab",
+		"Esc close",
+	)
 }

@@ -8,25 +8,35 @@ import (
 
 // system is the default System implementation.
 //
-// Layers are stored by name and assembled by priority order on Prompt().
-// The result is cached until a layer changes.
+// Sections are stored by Name and rendered by (Slot ascending, insertion order
+// ascending) on Prompt(). Each section's rendered output is cached
+// individually; the joined prompt is cached once per mutation cycle.
+//
+// Insertion order (not Name) breaks ties within a slot so callers control
+// fine-grained order by registering sections in the order they want them
+// rendered (e.g. user memory before project memory).
 type system struct {
-	mu     sync.RWMutex
-	layers map[string]Layer
-	cached string
-	dirty  bool
+	mu       sync.RWMutex
+	sections map[string]*sectionEntry
+	counter  int // monotonic insertion sequence
+	cached   string
+	dirty    bool
 }
 
-// NewSystem creates an empty System.
-func NewSystem(layers ...Layer) System {
-	s := &system{
-		layers: make(map[string]Layer, len(layers)),
-		dirty:  true,
+type sectionEntry struct {
+	def      Section
+	inserted int // sequence number assigned on first Use
+	cached   string
+	fresh    bool
+}
+
+// NewSystem creates an empty System. For normal construction use the
+// internal/core/system.Build helper, which Use's the stock sections.
+func NewSystem() System {
+	return &system{
+		sections: make(map[string]*sectionEntry),
+		dirty:    true,
 	}
-	for _, l := range layers {
-		s.layers[l.Name] = l
-	}
-	return s
 }
 
 func (s *system) Prompt() string {
@@ -47,60 +57,71 @@ func (s *system) Prompt() string {
 	return s.cached
 }
 
-func (s *system) Set(layer Layer) {
+func (s *system) Use(sec Section) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.layers[layer.Name] = layer
+	if e, ok := s.sections[sec.Name]; ok {
+		// Replacing an existing section: preserve its insertion order so
+		// position in the prompt does not jump around on hot updates.
+		e.def = sec
+		e.fresh = false
+	} else {
+		s.counter++
+		s.sections[sec.Name] = &sectionEntry{def: sec, inserted: s.counter}
+	}
 	s.dirty = true
 }
 
-func (s *system) Get(name string) (Layer, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	l, ok := s.layers[name]
-	return l, ok
-}
-
-func (s *system) Remove(name string) {
+func (s *system) Drop(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.layers[name]; ok {
-		delete(s.layers, name)
+	if _, ok := s.sections[name]; ok {
+		delete(s.sections, name)
 		s.dirty = true
 	}
 }
 
-func (s *system) Layers() []Layer {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.sorted()
-}
-
-func (s *system) Invalidate() {
+func (s *system) Refresh(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.dirty = true
-}
-
-// sorted returns layers ordered by priority (ascending).
-func (s *system) sorted() []Layer {
-	ls := make([]Layer, 0, len(s.layers))
-	for _, l := range s.layers {
-		ls = append(ls, l)
+	if e, ok := s.sections[name]; ok {
+		e.fresh = false
+		s.dirty = true
 	}
-	sort.Slice(ls, func(i, j int) bool {
-		return ls[i].Priority < ls[j].Priority
-	})
-	return ls
 }
 
-// build assembles all layers into a single prompt string.
+// sortedEntries returns entries in render order (Slot, insertion order).
+func (s *system) sortedEntries() []*sectionEntry {
+	entries := make([]*sectionEntry, 0, len(s.sections))
+	for _, e := range s.sections {
+		entries = append(entries, e)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].def.Slot != entries[j].def.Slot {
+			return entries[i].def.Slot < entries[j].def.Slot
+		}
+		return entries[i].inserted < entries[j].inserted
+	})
+	return entries
+}
+
+// build assembles all non-empty sections in render order, separated by blank
+// lines. Section.Render returning "" is treated as "skip this section".
+// Per-section results are cached so unchanged sections don't re-render.
 func (s *system) build() string {
-	ls := s.sorted()
-	parts := make([]string, 0, len(ls))
-	for _, l := range ls {
-		if l.Content != "" {
-			parts = append(parts, l.Content)
+	entries := s.sortedEntries()
+	parts := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.fresh {
+			if e.def.Render != nil {
+				e.cached = e.def.Render()
+			} else {
+				e.cached = ""
+			}
+			e.fresh = true
+		}
+		if e.cached != "" {
+			parts = append(parts, e.cached)
 		}
 	}
 	return strings.Join(parts, "\n\n")

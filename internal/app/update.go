@@ -48,6 +48,7 @@ func (m *model) overlaySelectors() []overlaySelector {
 		&m.userInput.Session.Selector,
 		&m.userInput.Memory.Selector,
 		&m.userInput.Search,
+		&m.userInput.Identity,
 	}
 }
 

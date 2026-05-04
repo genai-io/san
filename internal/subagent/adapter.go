@@ -22,19 +22,17 @@ var _ tool.AgentExecutor = (*ExecutorAdapter)(nil)
 // Run executes an agent and returns the result
 func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
 	agentReq := AgentRequest{
-		Agent:          req.Agent,
-		Name:           req.Name,
-		Prompt:         req.Prompt,
-		Description:    req.Description,
-		Background:     req.Background,
-		Model:          req.Model,
-		MaxTurns:       req.MaxTurns,
-		Mode:           req.Mode,
-		ResumeID:       req.ResumeID,
-		Isolation:      req.Isolation,
-		TeamName:       req.TeamName,
-		ParentMessages: req.ParentMessages,
-		OnQuestion:     req.OnQuestion,
+		Agent:       req.Agent,
+		Name:        req.Name,
+		Prompt:      req.Prompt,
+		Description: req.Description,
+		Background:  req.Background,
+		Model:       req.Model,
+		MaxTurns:    req.MaxTurns,
+		Mode:        req.Mode,
+		ResumeID:    req.ResumeID,
+		Isolation:   req.Isolation,
+		OnQuestion:  req.OnQuestion,
 	}
 
 	if req.OnProgress != nil {
@@ -65,18 +63,16 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 // RunBackground executes an agent in background
 func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	agentReq := AgentRequest{
-		Agent:          req.Agent,
-		Name:           req.Name,
-		Prompt:         req.Prompt,
-		Description:    req.Description,
-		Background:     true,
-		Model:          req.Model,
-		MaxTurns:       req.MaxTurns,
-		Mode:           req.Mode,
-		ResumeID:       req.ResumeID,
-		Isolation:      req.Isolation,
-		TeamName:       req.TeamName,
-		ParentMessages: req.ParentMessages,
+		Agent:       req.Agent,
+		Name:        req.Name,
+		Prompt:      req.Prompt,
+		Description: req.Description,
+		Background:  true,
+		Model:       req.Model,
+		MaxTurns:    req.MaxTurns,
+		Mode:        req.Mode,
+		ResumeID:    req.ResumeID,
+		Isolation:   req.Isolation,
 	}
 
 	agentTask, err := a.Executor.RunBackground(agentReq)

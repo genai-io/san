@@ -20,7 +20,9 @@ func mergeSettings(base, overlay *Settings) *Settings {
 	result.Env = mergeMaps(base.Env, overlay.Env)
 	result.EnabledPlugins = mergeMaps(base.EnabledPlugins, overlay.EnabledPlugins)
 	result.DisabledTools = mergeMaps(base.DisabledTools, overlay.DisabledTools)
+	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalesceBool(overlay.AllowBypass, base.AllowBypass)
+	result.Identity = coalesce(overlay.Identity, base.Identity)
 
 	return result
 }

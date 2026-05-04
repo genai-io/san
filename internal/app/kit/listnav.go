@@ -89,7 +89,8 @@ func (n *ListNav) HandleKey(key tea.KeyMsg) (searchChanged, consumed bool) {
 		return false, false
 	case tea.KeyBackspace:
 		if len(n.Search) > 0 {
-			n.Search = n.Search[:len(n.Search)-1]
+			runes := []rune(n.Search)
+			n.Search = string(runes[:len(runes)-1])
 			return true, true
 		}
 		return false, true

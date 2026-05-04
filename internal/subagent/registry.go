@@ -210,10 +210,11 @@ func (r *Registry) isDisabledInternal(name string) bool {
 	return false
 }
 
-// GetAgentsSection returns a formatted string describing available agents.
-// This is used to inform the LLM about what agents are available.
-// Only includes enabled agents. Output is sorted for deterministic prompts.
-// Returns content wrapped in <available-agents> XML tags for consistency.
+// GetAgentsSection returns the body of the agents directory for the system
+// prompt. Only enabled agents, sorted by name (deterministic output).
+//
+// Returns plain body text without the outer XML tag; the system catalog
+// wraps it in <agents>…</agents>.
 func (r *Registry) GetAgentsSection() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -248,17 +249,17 @@ func (r *Registry) GetAgentsSection() string {
 	})
 
 	var sb strings.Builder
-	sb.WriteString("<available-agents>\n")
 	sb.WriteString("Available agent types for the Agent tool:\n\n")
-	for _, e := range entries {
+	for i, e := range entries {
 		sb.WriteString("- " + e.name + ": " + e.desc)
 		if e.whenToUse != "" {
 			sb.WriteString("\n  Use when: " + e.whenToUse)
 		}
-		sb.WriteString("\n  Tools: " + e.tools + "\n")
+		sb.WriteString("\n  Tools: " + e.tools)
+		if i < len(entries)-1 {
+			sb.WriteString("\n")
+		}
 	}
-	sb.WriteString("</available-agents>")
-
 	return sb.String()
 }
 

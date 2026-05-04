@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/tool"
 	"github.com/genai-io/gen-code/internal/tool/perm"
 	"github.com/genai-io/gen-code/internal/tool/toolresult"
@@ -145,8 +144,6 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	mode := tool.GetString(params, "mode")
 	resumeID := tool.GetString(params, "resume")
 	isolation := tool.GetString(params, "isolation")
-	teamName := tool.GetString(params, "team_name")
-	fork := tool.GetBool(params, "fork")
 
 	var onProgress tool.ProgressFunc
 	if cb, ok := params["_onProgress"].(tool.ProgressFunc); ok {
@@ -164,43 +161,21 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
-	// Validate fork + resume are mutually exclusive
-	if fork && resumeID != "" {
-		return toolresult.NewErrorResult(t.Name(), "fork and resume cannot be used together")
-	}
-
-	// Resolve parent messages for fork
-	var parentMessages []core.Message
-	if fork {
-		if getter, ok := params["_messagesGetter"].(tool.MessagesGetter); ok {
-			parentMessages = getter()
-		}
-		if len(parentMessages) == 0 {
-			if getter := tool.GetMessagesGetter(ctx); getter != nil {
-				parentMessages = getter()
-			}
-		}
-		if len(parentMessages) == 0 {
-			return toolresult.NewErrorResult(t.Name(), "fork requires parent conversation context but none is available")
-		}
-	}
-
-	// Build request
+	// Build request — subagents always start with fresh context. Parent agent
+	// is responsible for putting all needed background into Prompt.
 	req := tool.AgentExecRequest{
-		Agent:          agentType,
-		Name:           agentName,
-		Prompt:         prompt,
-		Description:    description,
-		Background:     runBackground,
-		Model:          model,
-		MaxTurns:       maxTurns,
-		Mode:           mode,
-		ResumeID:       resumeID,
-		Isolation:      isolation,
-		TeamName:       teamName,
-		ParentMessages: parentMessages,
-		OnProgress:     onProgress,
-		OnQuestion:     onQuestion,
+		Agent:       agentType,
+		Name:        agentName,
+		Prompt:      prompt,
+		Description: description,
+		Background:  runBackground,
+		Model:       model,
+		MaxTurns:    maxTurns,
+		Mode:        mode,
+		ResumeID:    resumeID,
+		Isolation:   isolation,
+		OnProgress:  onProgress,
+		OnQuestion:  onQuestion,
 	}
 
 	// Handle background execution

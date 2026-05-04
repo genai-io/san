@@ -48,13 +48,12 @@ type runConfig struct {
 	modelID     string
 	maxTurns    int
 	displayName string
-	agentPrompt string
+	brief       system.SubagentBrief // identity/charter for this run; immutable
 	permMode    PermissionMode
 }
 
-// NewExecutor creates a new agent executor
-// parentModelID is the model used by the parent conversation (for inheritance)
-// hookEngine is optional — when non-nil, PreToolUse hooks will fire during agent tool calls
+// NewExecutor creates a new agent executor. parentModelID is used for model
+// inheritance; hookEngine, when non-nil, fires PreToolUse hooks during runs.
 func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hookEngine *hook.Engine) *Executor {
 	return &Executor{
 		provider:      llmProvider,
@@ -127,21 +126,16 @@ func (e *Executor) Run(ctx context.Context, req AgentRequest) (*AgentResult, err
 	return e.buildAgentResult(run, result), nil
 }
 
-// RunBackground executes an agent in the background and returns the task
+// RunBackground executes an agent in the background and returns the task.
 func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
-	// Get agent configuration for validation
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
 	}
 
-	// Create context with cancel
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// Use custom name if provided, otherwise use config name
 	displayName := displayNameFor(config, req)
 
-	// Create agent task
 	agentTask := task.NewAgentTask(
 		generateShortID(),
 		displayName,
@@ -152,15 +146,12 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 	agentTask.SetIdentity(req.Agent, req.ResumeID)
 	req.LiveTaskID = agentTask.GetID()
 
-	// Register with task manager
 	task.Default().RegisterTask(agentTask)
 
-	// Set up progress callback to forward to task
 	req.OnProgress = func(msg string) {
 		agentTask.AppendProgress(msg)
 	}
 
-	// Start goroutine to run agent
 	go func() {
 		defer cancel()
 
@@ -171,15 +162,12 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 			return
 		}
 
-		// Append result content to output
 		if result.Content != "" {
 			agentTask.AppendOutput([]byte(result.Content))
 		}
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
-
-		// Update progress
 		agentTask.UpdateProgress(result.TurnCount, result.TokenUsage.TotalTokens)
 
 		if result.Success {
@@ -195,9 +183,6 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 func (e *Executor) validateRequest(req AgentRequest) error {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return fmt.Errorf("agent prompt cannot be empty")
-	}
-	if req.TeamName != "" {
-		return fmt.Errorf("team spawning is not yet supported (team: %s)", req.TeamName)
 	}
 	return nil
 }
@@ -237,7 +222,7 @@ func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
 		modelID:     e.resolveModelID(req.Model, config.Model),
 		maxTurns:    maxTurns,
 		displayName: displayName,
-		agentPrompt: e.buildSystemPrompt(config, permMode),
+		brief:       e.buildBrief(config, permMode),
 		permMode:    permMode,
 	}, nil
 }
@@ -266,29 +251,21 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 		}
 	}
 
-	// Capabilities — only inject for subagents with corresponding tools.
-	// nil AllowTools means all tools are accessible.
-	var skillsPrompt, agentsPrompt string
-	if rc.config.AllowTools == nil || rc.config.AllowTools.HasName("Skill") {
-		skillsPrompt = e.skillsPrompt
-	}
-	if rc.config.AllowTools == nil || rc.config.AllowTools.HasName("Agent") {
-		agentsPrompt = e.agentsPrompt
-	}
+	skillsPrompt, agentsPrompt := e.capabilityPrompts(rc.config)
 
-	// System prompt
-	sys := system.Build(system.Config{
-		ProviderName:        e.provider.Name(),
-		ModelID:             rc.modelID,
-		Cwd:                 agentCwd,
-		IsGit:               e.isGit,
-		IsSubagent:          true,
-		UserInstructions:    e.userInstructions,
-		ProjectInstructions: e.projectInstructions,
-		Skills:              skillsPrompt,
-		Agents:              agentsPrompt,
-		Extra:               []system.ExtraLayer{{Name: "agent-identity", Content: rc.agentPrompt}},
-	})
+	sys := system.Build(core.ScopeSubagent,
+		system.WithProvider(e.provider.Name()),
+		system.WithGitGuidelines(e.isGit),
+		system.WithMemory(e.userInstructions, e.projectInstructions),
+		system.WithSkills(skillsPrompt),
+		system.WithAgents(agentsPrompt),
+		system.WithSubagentIdentity(rc.brief),
+		system.WithEnvironment(system.Environment{
+			Cwd:     agentCwd,
+			IsGit:   e.isGit,
+			ModelID: rc.modelID,
+		}),
+	)
 
 	// Tools — adapt legacy tool registry + MCP tools
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.mcpGetter)
@@ -333,17 +310,6 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 }
 
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, req AgentRequest) error {
-	// Fork: inherit parent conversation context
-	if len(req.ParentMessages) > 0 {
-		if depth := countForkDepth(req.ParentMessages); depth >= maxForkDepth {
-			return fmt.Errorf("maximum fork depth (%d) exceeded — forked agents cannot fork more than %d levels deep", maxForkDepth, maxForkDepth)
-		}
-		forked := prepareForkedMessages(req.ParentMessages)
-		ag.SetMessages(forked)
-		ag.Append(ctx, core.UserMessage(req.Prompt, nil))
-		return nil
-	}
-
 	// Resume from saved session
 	if req.ResumeID != "" {
 		if err := e.resumeFromSession(ag, ctx, req.ResumeID, req.Prompt); err != nil {
@@ -424,6 +390,19 @@ func modeChecker(mode PermissionMode) perm.Checker {
 	default:
 		return perm.Default()
 	}
+}
+
+func (e *Executor) capabilityPrompts(config *AgentConfig) (skillsPrompt, agentsPrompt string) {
+	if config == nil {
+		return "", ""
+	}
+	if config.AllowTools == nil || config.AllowTools.HasName("Skill") {
+		skillsPrompt = e.skillsPrompt
+	}
+	if config.AllowTools == nil || config.AllowTools.HasName("Agent") {
+		agentsPrompt = e.agentsPrompt
+	}
+	return skillsPrompt, agentsPrompt
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline

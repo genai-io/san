@@ -8,7 +8,7 @@ The Main Agent runs in the TUI, driving an LLM loop:
 User input → LLM inference → Tool execution → LLM inference → ... → end_turn → Wait for next input
 ```
 
-The Main Agent can spawn Subagents via the `Agent` tool to delegate work. Each Subagent is a full LLM loop with its own conversation, tool set, and system prompt.
+The Main Agent can spawn Subagents via the `Agent` tool to delegate work. Each Subagent is a full LLM loop with its own conversation, tool set, and system prompt. Subagents start with a fresh context — the parent must put all needed background into `AgentRequest.Prompt`. See [System Prompt → Subagent identity replacement](system-prompt.md#subagent-identity-replacement) for how the subagent's identity slot is built from its `AgentConfig`.
 
 There are exactly two interaction patterns:
 

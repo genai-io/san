@@ -30,5 +30,8 @@ func Update(deps OverlayDeps, msg tea.Msg) (tea.Cmd, bool) {
 	if cmd, ok := UpdateSearch(deps, &deps.State.Search, msg); ok {
 		return cmd, true
 	}
+	if cmd, ok := UpdateIdentity(deps, msg); ok {
+		return cmd, true
+	}
 	return nil, false
 }

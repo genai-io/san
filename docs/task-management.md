@@ -153,4 +153,4 @@ all completed + idle  →  renderTodoList() calls Reset()  →  tasks={}, nextID
 ## See Also
 
 - [Subagent System](subagent-system.md) — Task tools used within agent workflows
-- [Context Loading](agent-context-loading.md) — How agent context is constructed
+- [System Prompt](system-prompt.md) — How agent context is constructed

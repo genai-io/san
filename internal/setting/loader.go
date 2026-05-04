@@ -187,10 +187,6 @@ func (l *Loader) SaveToUser(settings *Settings) error {
 }
 
 func (l *Loader) saveToFile(path string, settings *Settings) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-
 	toSave := settings
 	if data, err := os.ReadFile(path); err == nil {
 		existing := NewSettings()
@@ -198,8 +194,16 @@ func (l *Loader) saveToFile(path string, settings *Settings) error {
 			toSave = mergeSettings(existing, settings)
 		}
 	}
+	return writeJSONAtomic(path, toSave)
+}
 
-	data, err := json.MarshalIndent(toSave, "", "  ")
+// writeJSONAtomic marshals v as indented JSON and writes it to path via a
+// temp file + rename so a kill mid-write cannot truncate the target.
+func writeJSONAtomic(path string, v any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -360,6 +364,34 @@ func SaveTheme(t string) error {
 	if err := NewLoader().SaveToUser(&Settings{Theme: t}); err != nil {
 		return err
 	}
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
+// SaveIdentity persists the chosen identity name to ~/.gen/settings.json.
+// An empty name clears the override so the built-in default is used.
+//
+// Bypasses mergeSettings (which preserves existing string fields when the
+// overlay is empty) so we can actually clear the value on disk.
+func SaveIdentity(name string) error {
+	loader := NewLoader()
+	if loader.userDir == "" {
+		return os.ErrNotExist
+	}
+	path := filepath.Join(loader.userDir, "settings.json")
+
+	existing := NewSettings()
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, existing)
+	}
+	existing.Identity = name
+
+	if err := writeJSONAtomic(path, existing); err != nil {
+		return err
+	}
+
 	loadedSettingsMu.Lock()
 	loadedSettings = nil
 	loadedSettingsMu.Unlock()
