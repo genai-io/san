@@ -29,6 +29,7 @@ import (
 	"github.com/genai-io/gen-code/internal/hook"
 	"github.com/genai-io/gen-code/internal/identity"
 	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/gen-code/internal/llm/deepseek"
 	"github.com/genai-io/gen-code/internal/llm/minmax"
 	"github.com/genai-io/gen-code/internal/log"
 	"github.com/genai-io/gen-code/internal/mcp"
@@ -481,6 +482,16 @@ func (m *model) SetTokenUsage(resp *core.InferResponse) {
 		switch m.env.CurrentModel.Provider {
 		case llm.MinMax:
 			cost, ok := minmax.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
+				InputTokens:              resp.TokensIn,
+				OutputTokens:             resp.TokensOut,
+				CacheCreationInputTokens: resp.CacheCreateTokens,
+				CacheReadInputTokens:     resp.CacheReadTokens,
+			})
+			if ok {
+				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
+			}
+		case llm.DeepSeek:
+			cost, ok := deepseek.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
 				InputTokens:              resp.TokensIn,
 				OutputTokens:             resp.TokensOut,
 				CacheCreationInputTokens: resp.CacheCreateTokens,

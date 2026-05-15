@@ -5,7 +5,6 @@ package deepseek
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/openai/openai-go/v3"
 
@@ -28,16 +27,9 @@ func NewClient(client openai.Client, name string) *Client {
 // Name returns the provider name.
 func (c *Client) Name() string { return c.name }
 
-// supportsThinking returns true if the model supports thinking/reasoning mode.
-// V4 models (deepseek-v4-*) and legacy deepseek-reasoner all support thinking.
+// supportsThinking returns true — all DeepSeek V4 models support reasoning_effort.
 func supportsThinking(model string) bool {
-	lower := strings.ToLower(model)
-	return strings.Contains(lower, "reasoner") || strings.Contains(lower, "v4")
-}
-
-// isV4Model returns true for the DeepSeek V4 model family.
-func isV4Model(model string) bool {
-	return strings.Contains(strings.ToLower(model), "v4")
+	return true
 }
 
 // makeAssistantConverter returns a provider-specific assistant message converter.
@@ -54,10 +46,7 @@ func (c *Client) ThinkingEfforts(model string) []string {
 	if !supportsThinking(model) {
 		return nil
 	}
-	if isV4Model(model) {
-		return []string{"off", "high", "max"}
-	}
-	return []string{"off", "think"}
+	return []string{"off", "high", "max"}
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
@@ -76,10 +65,7 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 		Options:          opts,
 		ConvertAssistant: makeAssistantConverter(thinking),
 		ConfigureParams: func(params *openai.ChatCompletionNewParams) {
-			if !thinking {
-				return
-			}
-			if isV4Model(opts.Model) && opts.ThinkingEffort != "" && opts.ThinkingEffort != "off" {
+			if thinking && opts.ThinkingEffort != "" && opts.ThinkingEffort != "off" {
 				params.SetExtraFields(map[string]any{
 					"reasoning_effort": opts.ThinkingEffort,
 				})
@@ -89,11 +75,11 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 	})
 }
 
-// ListModels returns the available models from the DeepSeek API, falling back to the static catalog.
+// ListModels returns the available models from the DeepSeek API.
 func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	page, err := c.client.Models.List(ctx)
 	if err != nil {
-		return StaticModels(), nil
+		return nil, err
 	}
 
 	models := make([]llm.ModelInfo, 0, len(page.Data))

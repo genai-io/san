@@ -35,27 +35,6 @@ var catalog = []modelCatalogEntry{
 		},
 		pricing: pricing{inputPerMTokens: 1.74, outputPerMTokens: 3.48, cacheReadPerMTokens: 0.145, cacheWritePerMTokens: 1.74},
 	},
-	// Legacy names — mapped by DeepSeek API to deepseek-v4-flash (deprecated July 24, 2026)
-	{
-		info: llm.ModelInfo{
-			ID:               "deepseek-chat",
-			Name:             "DeepSeek Chat (legacy → V4 Flash)",
-			DisplayName:      "DeepSeek Chat",
-			InputTokenLimit:  1_000_000,
-			OutputTokenLimit: 384000,
-		},
-		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.028, cacheWritePerMTokens: 0.14},
-	},
-	{
-		info: llm.ModelInfo{
-			ID:               "deepseek-reasoner",
-			Name:             "DeepSeek Reasoner (legacy → V4 Flash thinking)",
-			DisplayName:      "DeepSeek Reasoner",
-			InputTokenLimit:  1_000_000,
-			OutputTokenLimit: 384000,
-		},
-		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.028, cacheWritePerMTokens: 0.14},
-	},
 }
 
 func StaticModels() []llm.ModelInfo {

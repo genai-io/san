@@ -49,7 +49,7 @@ func (t *modelsErrorTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}, nil
 }
 
-func TestDeepSeekListModelsFallsBackToStatic(t *testing.T) {
+func TestDeepSeekListModelsPropagatesError(t *testing.T) {
 	client := openai.NewClient(
 		option.WithAPIKey("test"),
 		option.WithBaseURL("https://example.com/v1"),
@@ -57,15 +57,9 @@ func TestDeepSeekListModelsFallsBackToStatic(t *testing.T) {
 	)
 
 	c := NewClient(client, "deepseek:test")
-	models, err := c.ListModels(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models) == 0 {
-		t.Fatal("expected static fallback models")
-	}
-	if models[0].ID != "deepseek-v4-flash" {
-		t.Fatalf("expected deepseek-v4-flash, got %s", models[0].ID)
+	_, err := c.ListModels(context.Background())
+	if err == nil {
+		t.Fatal("expected error from unauthorized models list request")
 	}
 }
 
@@ -150,37 +144,10 @@ func TestDeepSeekV4StreamIncludesReasoningEffort(t *testing.T) {
 }
 
 func TestDeepSeekSupportsThinking(t *testing.T) {
-	tests := []struct {
-		model    string
-		expected bool
-	}{
-		{"deepseek-chat", false},
-		{"deepseek-reasoner", true},
-		{"deepseek-v4-flash", true},
-		{"deepseek-v4-pro", true},
-	}
-	for _, tt := range tests {
-		got := supportsThinking(tt.model)
-		if got != tt.expected {
-			t.Errorf("supportsThinking(%q) = %v, want %v", tt.model, got, tt.expected)
-		}
-	}
-}
-
-func TestDeepSeekIsV4Model(t *testing.T) {
-	tests := []struct {
-		model    string
-		expected bool
-	}{
-		{"deepseek-chat", false},
-		{"deepseek-reasoner", false},
-		{"deepseek-v4-flash", true},
-		{"deepseek-v4-pro", true},
-	}
-	for _, tt := range tests {
-		got := isV4Model(tt.model)
-		if got != tt.expected {
-			t.Errorf("isV4Model(%q) = %v, want %v", tt.model, got, tt.expected)
+	tests := []string{"deepseek-v4-flash", "deepseek-v4-pro"}
+	for _, model := range tests {
+		if !supportsThinking(model) {
+			t.Errorf("supportsThinking(%q) = false, want true", model)
 		}
 	}
 }
@@ -192,8 +159,6 @@ func TestDeepSeekThinkingEfforts(t *testing.T) {
 		model   string
 		efforts []string
 	}{
-		{"deepseek-chat", nil},
-		{"deepseek-reasoner", []string{"off", "think"}},
 		{"deepseek-v4-flash", []string{"off", "high", "max"}},
 		{"deepseek-v4-pro", []string{"off", "high", "max"}},
 	}
