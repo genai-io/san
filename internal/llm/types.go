@@ -19,6 +19,7 @@ const (
 	Alibaba   Name = "alibaba"
 	MinMax    Name = "minmax"
 	BigModel  Name = "bigmodel"
+	DeepSeek  Name = "deepseek"
 )
 
 // AuthMethod represents an authentication method for an LLM provider.

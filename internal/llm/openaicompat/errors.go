@@ -55,6 +55,8 @@ func providerAuthHelp(providerName string) (label string, envVar string) {
 		return "Alibaba", "DASHSCOPE_API_KEY"
 	case "minmax":
 		return "MiniMax", "MINIMAX_API_KEY"
+	case "deepseek":
+		return "DeepSeek", "DEEPSEEK_API_KEY"
 	default:
 		if base == "" {
 			return "Provider", ""

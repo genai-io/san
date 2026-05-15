@@ -19,6 +19,7 @@ import (
 	_ "github.com/genai-io/gen-code/internal/llm/alibaba"
 	_ "github.com/genai-io/gen-code/internal/llm/anthropic"
 	_ "github.com/genai-io/gen-code/internal/llm/bigmodel"
+	_ "github.com/genai-io/gen-code/internal/llm/deepseek"
 	_ "github.com/genai-io/gen-code/internal/llm/google"
 	_ "github.com/genai-io/gen-code/internal/llm/minmax"
 	_ "github.com/genai-io/gen-code/internal/llm/moonshot"
