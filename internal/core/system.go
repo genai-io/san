@@ -19,13 +19,26 @@ type System interface {
 	// invalidated only when sections change.
 	Prompt() string
 
-	// Use registers or replaces a section by Name.
-	Use(Section)
+	// Use registers or replaces a section by Name. Caller is a short tag
+	// describing what triggered the mutation (e.g. "system:init",
+	// "command:/identity") and surfaces in the trace.
+	Use(sec Section, caller string)
 
 	// Drop removes a section by Name. No-op if absent.
-	Drop(name string)
+	Drop(name, caller string)
 
 	// Refresh marks one section's rendered output stale. Use after the
 	// section's underlying state changed but the Section value did not.
-	Refresh(name string)
+	Refresh(name, caller string)
+
+	// Sections returns a snapshot of currently registered sections in
+	// render order (slot ascending, insertion order ascending). Used by
+	// observers that attach after construction to replay the existing state.
+	Sections() []Section
+
+	// SetObserver installs a callback invoked synchronously on every
+	// subsequent mutation. Attaching also replays existing sections as
+	// "added" events so the observer sees a complete history starting
+	// from the moment of attachment.
+	SetObserver(fn func(SystemChange))
 }

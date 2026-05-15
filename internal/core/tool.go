@@ -34,7 +34,15 @@ type ToolSchema struct {
 type Tools interface {
 	Get(name string) Tool
 	All() []Tool
-	Add(tool Tool)
-	Remove(name string)
+	// Add registers (or replaces) a tool. Caller tags the mutation source
+	// (e.g. "mcp:weather", "agent:init") for trace records.
+	Add(tool Tool, caller string)
+	// Remove unregisters a tool by name. No-op if absent.
+	Remove(name, caller string)
 	Schemas() []ToolSchema
+
+	// SetObserver installs a callback invoked synchronously on every
+	// subsequent Add/Remove. Attaching also replays existing tools as
+	// synthetic Add events so the observer sees the full registry from t0.
+	SetObserver(fn func(ToolsChange))
 }

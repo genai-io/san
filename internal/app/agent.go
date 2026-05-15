@@ -61,11 +61,18 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		mcpTools = mcp.AsCoreTools(schemas, mcpCaller)
 	}
 
+	maxTokens := kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
+	var onEvent func(core.Event)
+	if rec := m.services.Session.NewRecorder("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens); rec != nil {
+		onEvent = rec.OnAgentEvent
+	}
+
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
 		ModelID:        m.env.GetModelID(),
-		MaxTokens:      kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens),
+		MaxTokens:      maxTokens,
 		ThinkingEffort: m.env.EffectiveThinkingEffort(),
+		OnEvent:        onEvent,
 
 		CWD:     m.env.CWD,
 		CWDFunc: func() string { return m.env.CWD },

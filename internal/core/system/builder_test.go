@@ -188,13 +188,13 @@ func TestSystemUseDropRefresh(t *testing.T) {
 	sys.Use(core.Section{
 		Slot: core.SlotEnvironment, Name: "test-section", Source: core.Dynamic,
 		Render: func() string { return "TEST_SECTION_BODY" },
-	})
+	}, "test")
 	if !strings.Contains(sys.Prompt(), "TEST_SECTION_BODY") {
 		t.Error("Use should add a new section's content to Prompt()")
 	}
 
 	// Drop: remove it.
-	sys.Drop("test-section")
+	sys.Drop("test-section", "test")
 	if strings.Contains(sys.Prompt(), "TEST_SECTION_BODY") {
 		t.Error("Drop should remove the section from Prompt()")
 	}

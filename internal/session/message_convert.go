@@ -13,6 +13,47 @@ import (
 
 var inlineImageTokenPattern = regexp.MustCompile(`\[Image #(\d+)\]`)
 
+// systemReminderRe matches a complete <system-reminder>...</system-reminder>
+// block including tags. Reminders are appended verbatim by reminder.AttachToContent
+// and hook UserPromptSubmit additionalContext flows through the same path, so
+// recognizing the wrapper suffices to mark harness-injected content.
+var systemReminderRe = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+
+const SourceReminder = "reminder"
+
+// splitTextByProvenance returns ContentBlocks that together preserve the input
+// byte-for-byte, marking <system-reminder> blocks with Source="reminder" so
+// traces can distinguish user-typed text from harness-injected reminders /
+// hook additionalContext. Empty input returns nil.
+//
+// The function never trims whitespace — concatenating all returned Text fields
+// in order reproduces the original input. This keeps the read path
+// (extractUserContent, which joins text blocks) round-trip safe.
+func splitTextByProvenance(text string) []ContentBlock {
+	if text == "" {
+		return nil
+	}
+	matches := systemReminderRe.FindAllStringIndex(text, -1)
+	if len(matches) == 0 {
+		return []ContentBlock{{Type: "text", Text: text}}
+	}
+
+	blocks := make([]ContentBlock, 0, 2*len(matches)+1)
+	cursor := 0
+	for _, m := range matches {
+		start, end := m[0], m[1]
+		if start > cursor {
+			blocks = append(blocks, ContentBlock{Type: "text", Text: text[cursor:start]})
+		}
+		blocks = append(blocks, ContentBlock{Type: "text", Text: text[start:end], Source: SourceReminder})
+		cursor = end
+	}
+	if cursor < len(text) {
+		blocks = append(blocks, ContentBlock{Type: "text", Text: text[cursor:]})
+	}
+	return blocks
+}
+
 func messagesToEntries(msgs []core.Message) []Entry {
 	entries := make([]Entry, 0, len(msgs))
 	var prevUUID string
@@ -102,13 +143,11 @@ func userContentToBlocks(content, displayContent string, images []core.Image) []
 	var blocks []ContentBlock
 	for _, img := range images {
 		blocks = append(blocks, ContentBlock{
-			Type:   "image",
-			Source: &ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
+			Type:        "image",
+			ImageSource: &ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
 		})
 	}
-	if content != "" {
-		blocks = append(blocks, ContentBlock{Type: "text", Text: content})
-	}
+	blocks = append(blocks, splitTextByProvenance(content)...)
 	return blocks
 }
 
@@ -123,9 +162,8 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 		start, end := match[0], match[1]
 		idStart, idEnd := match[2], match[3]
 
-		textPart := displayContent[last:start]
-		if textPart != "" {
-			blocks = append(blocks, ContentBlock{Type: "text", Text: textPart})
+		if textPart := displayContent[last:start]; textPart != "" {
+			blocks = append(blocks, splitTextByProvenance(textPart)...)
 		}
 
 		id, err := strconv.Atoi(displayContent[idStart:idEnd])
@@ -134,7 +172,7 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 				img := images[idx]
 				blocks = append(blocks, ContentBlock{
 					Type:   "image",
-					Source: &ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
+					ImageSource: &ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
 				})
 			}
 		}
@@ -143,11 +181,11 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 	}
 
 	if tail := displayContent[last:]; tail != "" {
-		blocks = append(blocks, ContentBlock{Type: "text", Text: tail})
+		blocks = append(blocks, splitTextByProvenance(tail)...)
 	}
 
 	if len(blocks) == 0 && content != "" {
-		blocks = append(blocks, ContentBlock{Type: "text", Text: content})
+		blocks = append(blocks, splitTextByProvenance(content)...)
 	}
 
 	return blocks
@@ -199,8 +237,8 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 			content.WriteString(block.Text)
 			display.WriteString(block.Text)
 		case "image":
-			if block.Source != nil {
-				msg.Images = append(msg.Images, core.Image{MediaType: block.Source.MediaType, Data: block.Source.Data})
+			if block.ImageSource != nil {
+				msg.Images = append(msg.Images, core.Image{MediaType: block.ImageSource.MediaType, Data: block.ImageSource.Data})
 				imageCount++
 				display.WriteString(fmt.Sprintf("[Image #%d]", imageCount))
 			}

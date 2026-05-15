@@ -21,6 +21,11 @@ type system struct {
 	counter  int // monotonic insertion sequence
 	cached   string
 	dirty    bool
+
+	// observer is invoked synchronously on every Use/Drop after the mutation
+	// applies. Set via SetObserver; nil until then. Reads happen on the same
+	// goroutine that mutated, so no extra locking around the call.
+	observer func(SystemChange)
 }
 
 type sectionEntry struct {
@@ -57,9 +62,8 @@ func (s *system) Prompt() string {
 	return s.cached
 }
 
-func (s *system) Use(sec Section) {
+func (s *system) Use(sec Section, caller string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if e, ok := s.sections[sec.Name]; ok {
 		// Replacing an existing section: preserve its insertion order so
 		// position in the prompt does not jump around on hot updates.
@@ -70,24 +74,102 @@ func (s *system) Use(sec Section) {
 		s.sections[sec.Name] = &sectionEntry{def: sec, inserted: s.counter}
 	}
 	s.dirty = true
+	obs := s.observer
+	s.mu.Unlock()
+
+	if obs != nil {
+		obs(SystemChange{
+			Name:    sec.Name,
+			Slot:    int(sec.Slot),
+			Content: renderSection(sec),
+			Caller:  caller,
+		})
+	}
 }
 
-func (s *system) Drop(name string) {
+func (s *system) Drop(name, caller string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.sections[name]; ok {
+	_, existed := s.sections[name]
+	if existed {
 		delete(s.sections, name)
 		s.dirty = true
 	}
+	obs := s.observer
+	s.mu.Unlock()
+
+	if existed && obs != nil {
+		obs(SystemChange{Name: name, Removed: true, Caller: caller})
+	}
 }
 
-func (s *system) Refresh(name string) {
+func (s *system) Refresh(name, caller string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var (
+		obs     func(SystemChange)
+		changed bool
+		sec     Section
+	)
 	if e, ok := s.sections[name]; ok {
 		e.fresh = false
 		s.dirty = true
+		changed = true
+		sec = e.def
+		obs = s.observer
 	}
+	s.mu.Unlock()
+
+	if changed && obs != nil {
+		obs(SystemChange{
+			Name:    sec.Name,
+			Slot:    int(sec.Slot),
+			Content: renderSection(sec),
+			Caller:  caller,
+		})
+	}
+}
+
+// Sections returns a snapshot of currently registered sections in render order.
+func (s *system) Sections() []Section {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entries := s.sortedEntries()
+	out := make([]Section, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.def)
+	}
+	return out
+}
+
+// SetObserver attaches an observer for section mutations. On attach, the
+// existing sections are replayed as synthetic "added" events so the observer
+// sees a complete history starting from this moment.
+func (s *system) SetObserver(fn func(SystemChange)) {
+	s.mu.Lock()
+	s.observer = fn
+	entries := s.sortedEntries()
+	s.mu.Unlock()
+
+	if fn == nil {
+		return
+	}
+	for _, e := range entries {
+		fn(SystemChange{
+			Name:    e.def.Name,
+			Slot:    int(e.def.Slot),
+			Content: renderSection(e.def),
+			Caller:  "system:init",
+		})
+	}
+}
+
+// renderSection invokes a Section's Render func once, returning "" on nil.
+// Used by observers that need the rendered content without going through the
+// cached-Prompt path (which joins all sections).
+func renderSection(sec Section) string {
+	if sec.Render == nil {
+		return ""
+	}
+	return sec.Render()
 }
 
 // sortedEntries returns entries in render order (Slot, insertion order).

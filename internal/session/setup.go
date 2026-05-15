@@ -134,3 +134,25 @@ func (s *Setup) Fork(id string) (*Snapshot, error) {
 	}
 	return st.Fork(id)
 }
+
+// NewRecorder binds a Recorder to the current session and transcript store.
+// Returns nil if the store is not initialized — callers can pass the nil
+// result through to core.Config.OnEvent safely because Recorder.OnAgentEvent
+// is nil-safe.
+func (s *Setup) NewRecorder(agentID, provider, model string, maxTokens int) *Recorder {
+	s.mu.RLock()
+	st := s.Store
+	sessionID := s.SessionID
+	s.mu.RUnlock()
+	if st == nil || st.transcriptStore == nil || sessionID == "" {
+		return nil
+	}
+	return NewRecorder(RecorderOptions{
+		FileStore: st.transcriptStore,
+		SessionID: sessionID,
+		AgentID:   agentID,
+		Provider:  provider,
+		Model:     model,
+		MaxTokens: maxTokens,
+	})
+}

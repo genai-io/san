@@ -13,6 +13,8 @@ type toolSet struct {
 	tools map[string]Tool
 	dirty bool         // true when schemas cache needs rebuild
 	cache []ToolSchema // cached schemas
+
+	observer func(ToolsChange) // invoked after Add/Remove; nil until SetObserver
 }
 
 // NewTools creates an empty tool set.
@@ -44,19 +46,51 @@ func (s *toolSet) All() []Tool {
 	return out
 }
 
-func (s *toolSet) Add(tool Tool) {
+func (s *toolSet) Add(tool Tool, caller string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.tools[tool.Name()] = tool
 	s.dirty = true
+	obs := s.observer
+	s.mu.Unlock()
+
+	if obs != nil {
+		obs(ToolsChange{Schema: tool.Schema(), Caller: caller})
+	}
 }
 
-func (s *toolSet) Remove(name string) {
+func (s *toolSet) Remove(name, caller string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.tools[name]; ok {
+	_, existed := s.tools[name]
+	if existed {
 		delete(s.tools, name)
 		s.dirty = true
+	}
+	obs := s.observer
+	s.mu.Unlock()
+
+	if existed && obs != nil {
+		obs(ToolsChange{Name: name, Removed: true, Caller: caller})
+	}
+}
+
+// SetObserver attaches a callback invoked on every Add/Remove. On attach,
+// existing tools are replayed as Add events with caller="tools:init".
+func (s *toolSet) SetObserver(fn func(ToolsChange)) {
+	s.mu.Lock()
+	s.observer = fn
+	snapshot := make([]Tool, 0, len(s.tools))
+	for _, t := range s.tools {
+		snapshot = append(snapshot, t)
+	}
+	s.mu.Unlock()
+
+	if fn == nil {
+		return
+	}
+	// Stable order so replay is reproducible across processes.
+	sort.Slice(snapshot, func(i, j int) bool { return snapshot[i].Name() < snapshot[j].Name() })
+	for _, t := range snapshot {
+		fn(ToolsChange{Schema: t.Schema(), Caller: "tools:init"})
 	}
 }
 

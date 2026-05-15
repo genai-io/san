@@ -26,6 +26,9 @@ type Service interface {
 	LoadLatest() (*Snapshot, error)
 	List() ([]*SessionMetadata, error)
 	Fork(id string) (*Snapshot, error)
+
+	// tracing
+	NewRecorder(agentID, provider, model string, maxTokens int) *Recorder
 }
 
 // Compile-time check: *Setup implements Service.

@@ -57,13 +57,14 @@ func loadEmbedOptional(path string) string {
 // applyDefaults registers the always-on sections for a Scope.
 // Options passed to Build can override identity by Name.
 func applyDefaults(sys core.System, scope core.Scope) {
-	sys.Use(defaultIdentity())
-	sys.Use(policy())
-	sys.Use(guidelines("tools", cachedTools))
+	const caller = "system:init"
+	sys.Use(defaultIdentity(), caller)
+	sys.Use(policy(), caller)
+	sys.Use(guidelines("tools", cachedTools), caller)
 	if scope == core.ScopeMain {
 		// Task tracking + interactive questions are main-agent behaviors.
-		sys.Use(guidelines("tasks", cachedTasks))
-		sys.Use(guidelines("questions", cachedQuestions))
+		sys.Use(guidelines("tasks", cachedTasks), caller)
+		sys.Use(guidelines("questions", cachedQuestions), caller)
 	}
 }
 
@@ -139,7 +140,7 @@ func WithIdentity(text string) Option {
 		if text == "" {
 			return
 		}
-		sys.Use(identitySection(text))
+		sys.Use(identitySection(text), "system:init")
 	}
 }
 
@@ -148,10 +149,10 @@ func WithIdentity(text string) Option {
 func SwapIdentity(sys core.System, text string) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		sys.Use(defaultIdentity())
+		sys.Use(defaultIdentity(), "command:identity")
 		return
 	}
-	sys.Use(identitySection(text))
+	sys.Use(identitySection(text), "command:identity")
 }
 
 // identitySection builds the slot-0 identity Section for a user-defined persona.
@@ -178,7 +179,7 @@ func WithProvider(name string) Option {
 			Render: func() string {
 				return wrap("provider", map[string]string{"name": name}, body)
 			},
-		})
+		}, "system:init")
 	}
 }
 
@@ -188,7 +189,7 @@ func WithGitGuidelines(isGit bool) Option {
 		if !isGit {
 			return
 		}
-		sys.Use(guidelines("git", cachedGit))
+		sys.Use(guidelines("git", cachedGit), "system:init")
 	}
 }
 
@@ -216,7 +217,7 @@ func WithSubagentIdentity(b SubagentBrief) Option {
 		sys.Use(core.Section{
 			Slot: core.SlotIdentity, Name: "identity", Source: core.Injected,
 			Render: func() string { return renderSubagentIdentity(b) },
-		})
+		}, "subagent:init")
 	}
 }
 
@@ -278,7 +279,7 @@ func WithEnvironment(env Environment) Option {
 		sys.Use(core.Section{
 			Slot: core.SlotEnvironment, Name: "environment", Source: core.Dynamic,
 			Render: func() string { return renderEnvironment(env) },
-		})
+		}, "system:init")
 	}
 }
 

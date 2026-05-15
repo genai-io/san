@@ -554,7 +554,9 @@ func (s *stubLLM) InputLimit() int { return 0 }
 // stubSystem is a minimal core.System for tests.
 type stubSystem struct{}
 
-func (s *stubSystem) Prompt() string     { return "" }
-func (s *stubSystem) Use(_ core.Section) {}
-func (s *stubSystem) Drop(_ string)      {}
-func (s *stubSystem) Refresh(_ string)   {}
+func (s *stubSystem) Prompt() string                       { return "" }
+func (s *stubSystem) Use(_ core.Section, _ string)         {}
+func (s *stubSystem) Drop(_, _ string)                     {}
+func (s *stubSystem) Refresh(_, _ string)                  {}
+func (s *stubSystem) Sections() []core.Section             { return nil }
+func (s *stubSystem) SetObserver(_ func(core.SystemChange)) {}

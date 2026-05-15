@@ -19,10 +19,11 @@ func (p *progressTools) Get(name string) core.Tool {
 	}
 	return &progressTool{inner: t, onExec: p.onExec}
 }
-func (p *progressTools) All() []core.Tool           { return p.inner.All() }
-func (p *progressTools) Add(t core.Tool)            { p.inner.Add(t) }
-func (p *progressTools) Remove(name string)         { p.inner.Remove(name) }
-func (p *progressTools) Schemas() []core.ToolSchema { return p.inner.Schemas() }
+func (p *progressTools) All() []core.Tool                       { return p.inner.All() }
+func (p *progressTools) Add(t core.Tool, caller string)         { p.inner.Add(t, caller) }
+func (p *progressTools) Remove(name, caller string)             { p.inner.Remove(name, caller) }
+func (p *progressTools) Schemas() []core.ToolSchema             { return p.inner.Schemas() }
+func (p *progressTools) SetObserver(fn func(core.ToolsChange))  { p.inner.SetObserver(fn) }
 
 type progressTool struct {
 	inner  core.Tool

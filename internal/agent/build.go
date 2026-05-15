@@ -39,6 +39,10 @@ type BuildParams struct {
 	PermissionDecider PermDecisionFunc
 	InteractionFunc   tool.InteractionFunc
 	ToolProgress      func(toolCallID string, msg string)
+
+	// OnEvent observes every agent lifecycle event synchronously, alongside
+	// outbox delivery. Used by the trace recorder; nil leaves recording off.
+	OnEvent func(core.Event)
 }
 
 func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
@@ -87,7 +91,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 	}))
 	tools := tool.AdaptToolRegistry(schemas, cwdFunc, adaptOpts...)
 	for _, t := range p.MCPTools {
-		tools.Add(t)
+		tools.Add(t, "mcp:"+t.Name())
 	}
 
 	compactClient := client
@@ -111,6 +115,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 		Tools:       tool.WithPermission(tools, pb.PermissionFunc()),
 		CompactFunc: compactFunc,
 		CWD:         p.CWD,
+		OnEvent:     p.OnEvent,
 	})
 
 	return ag, pb, nil

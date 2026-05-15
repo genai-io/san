@@ -133,7 +133,7 @@ func NewAgent(cfg Config) Agent {
 		outbox = make(chan Event, cfg.OutboxBuf)
 	}
 
-	return &agent{
+	a := &agent{
 		id:                cfg.ID,
 		agentType:         cfg.AgentType,
 		color:             cfg.Color,
@@ -148,6 +148,16 @@ func NewAgent(cfg Config) Agent {
 		outbox:            outbox,
 		onEvent:           cfg.OnEvent,
 	}
+	// Mirror system + tools mutations onto the event bus. Attach after
+	// construction so each registry replays its initial members back to the
+	// observer — the recorder sees a complete event chain from t0.
+	cfg.System.SetObserver(func(c SystemChange) {
+		a.emitTelemetry(SystemChangeEvent(a.id, c))
+	})
+	cfg.Tools.SetObserver(func(c ToolsChange) {
+		a.emitTelemetry(ToolsChangeEvent(a.id, c))
+	})
+	return a
 }
 
 // Result represents the outcome of one completed turn (end_turn).
@@ -178,6 +188,15 @@ const (
 	OnMessage EventType = "Message"    // message received on inbox (Message in Data)
 	OnTurn    EventType = "Turn"       // think+act cycle completed (Result in Data)
 	OnCompact EventType = "Compact"    // conversation compacted (CompactInfo in Data)
+
+	// OnSystemChange fires when a system-prompt section is added, replaced,
+	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
+	// the outbox on backpressure.
+	OnSystemChange EventType = "SystemChange"
+
+	// OnToolsChange fires when a tool is registered or unregistered. Data is
+	// ToolsChange. Like OnSystemChange, non-blocking telemetry.
+	OnToolsChange EventType = "ToolsChange"
 )
 
 // Event carries context for an agent lifecycle point.
@@ -205,6 +224,50 @@ type CompactInfo struct {
 	OriginalCount int
 }
 
+// InferenceContext is the PreInfer payload — what was about to be sent to the
+// LLM, expressed as content-addressed digests so consumers (trace recorder,
+// debug logger) can reference inputs without copying them on every turn.
+type InferenceContext struct {
+	SystemDigest string   // sha256 of rendered system prompt
+	ToolsDigest  string   // sha256 of canonicalized tool schemas
+	MessageIDs   []string // active chain at request time, in send order
+}
+
+func (e Event) InferenceContext() (InferenceContext, bool) {
+	ic, ok := e.Data.(InferenceContext)
+	return ic, ok
+}
+
+// SystemChange describes one mutation to the system prompt's section map.
+// Emitted on Use/Drop. The recorder translates these into
+// system.section.added / system.section.removed records.
+type SystemChange struct {
+	Name    string // section name (stable across mutations)
+	Slot    int    // render slot
+	Content string // rendered content; empty when Removed
+	Removed bool   // true on Drop, false on Use
+	Caller  string // who triggered the mutation (e.g. "system:init", "command:/identity")
+}
+
+func (e Event) SystemChange() (SystemChange, bool) {
+	c, ok := e.Data.(SystemChange)
+	return c, ok
+}
+
+// ToolsChange describes one mutation to the tool registry. On removal,
+// Schema.Name carries the dropped tool's name and other fields are zero.
+type ToolsChange struct {
+	Schema  ToolSchema // populated on Add (zero on Remove)
+	Name    string     // populated on Remove (empty on Add)
+	Removed bool       // true on Remove, false on Add
+	Caller  string     // who triggered the mutation
+}
+
+func (e Event) ToolsChange() (ToolsChange, bool) {
+	c, ok := e.Data.(ToolsChange)
+	return c, ok
+}
+
 // Typed event constructors — enforce correct Data types at construction.
 
 func StartEvent(agentID string) Event { return Event{Type: OnStart, Source: agentID} }
@@ -214,7 +277,9 @@ func StopEvent(agentID string, err error) Event {
 func ChunkEvent(agentID string, c Chunk) Event { return Event{Type: OnChunk, Source: agentID, Data: c} }
 func MessageEvent(msg Message) Event           { return Event{Type: OnMessage, Source: msg.From, Data: msg} }
 func TurnEvent(agentID string, r Result) Event { return Event{Type: OnTurn, Source: agentID, Data: r} }
-func PreInferEvent(agentID string) Event       { return Event{Type: PreInfer, Source: agentID} }
+func PreInferEvent(agentID string, ctx InferenceContext) Event {
+	return Event{Type: PreInfer, Source: agentID, Data: ctx}
+}
 func PostInferEvent(agentID string, r *InferResponse) Event {
 	return Event{Type: PostInfer, Source: agentID, Data: r}
 }
@@ -222,4 +287,12 @@ func PreToolEvent(tc ToolCall) Event    { return Event{Type: PreTool, Source: tc
 func PostToolEvent(tr ToolResult) Event { return Event{Type: PostTool, Source: tr.ToolName, Data: tr} }
 func CompactEvent(agentID string, info CompactInfo) Event {
 	return Event{Type: OnCompact, Source: agentID, Data: info}
+}
+
+func SystemChangeEvent(agentID string, c SystemChange) Event {
+	return Event{Type: OnSystemChange, Source: agentID, Data: c}
+}
+
+func ToolsChangeEvent(agentID string, c ToolsChange) Event {
+	return Event{Type: OnToolsChange, Source: agentID, Data: c}
 }

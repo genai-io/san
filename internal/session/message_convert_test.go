@@ -1,10 +1,60 @@
 package session
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/genai-io/gen-code/internal/core"
 )
+
+// A user message that contains harness-injected <system-reminder> blocks must
+// be persisted as multiple ContentBlocks: user-typed text with empty Source,
+// reminder text with Source="reminder". Concatenating the text fields must
+// reproduce the input byte-for-byte (round-trip safety for read path).
+func Test_userContentToBlocks_splitsByProvenance(t *testing.T) {
+	const reminder1 = "<system-reminder>\nskills directory\n</system-reminder>"
+	const reminder2 = "<system-reminder>\nuser memory\n</system-reminder>"
+	input := "hello\n\n" + reminder1 + "\n\n" + reminder2
+
+	blocks := userContentToBlocks(input, "", nil)
+
+	var sb strings.Builder
+	var reminderCount, userCount int
+	for _, b := range blocks {
+		if b.Type != "text" {
+			t.Fatalf("unexpected block type: %q", b.Type)
+		}
+		sb.WriteString(b.Text)
+		switch b.Source {
+		case SourceReminder:
+			reminderCount++
+			if !strings.HasPrefix(b.Text, "<system-reminder>") {
+				t.Errorf("reminder block missing wrapper: %q", b.Text)
+			}
+		case "":
+			userCount++
+		default:
+			t.Fatalf("unexpected Source: %q", b.Source)
+		}
+	}
+	if sb.String() != input {
+		t.Fatalf("round-trip mismatch:\n got: %q\nwant: %q", sb.String(), input)
+	}
+	if reminderCount != 2 {
+		t.Fatalf("reminder block count = %d, want 2", reminderCount)
+	}
+	if userCount == 0 {
+		t.Fatalf("expected at least one user block, got %d", userCount)
+	}
+}
+
+// Plain user content with no reminders produces exactly one user-text block.
+func Test_userContentToBlocks_plainTextOneBlock(t *testing.T) {
+	blocks := userContentToBlocks("just a question", "", nil)
+	if len(blocks) != 1 || blocks[0].Type != "text" || blocks[0].Source != "" {
+		t.Fatalf("expected 1 user-text block, got %+v", blocks)
+	}
+}
 
 func Test_messagesToEntries_roundtrip(t *testing.T) {
 	// Test that messagesToEntries -> EntriesToMessages roundtrips correctly.
@@ -82,7 +132,7 @@ func Test_extractUserContent_restoresDisplayContent(t *testing.T) {
 			Role: "user",
 			Content: []ContentBlock{
 				{Type: "text", Text: "前面 "},
-				{Type: "image", Source: &ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
+				{Type: "image", ImageSource: &ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
 				{Type: "text", Text: " 后面"},
 			},
 		},

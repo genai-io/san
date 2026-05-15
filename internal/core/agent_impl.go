@@ -210,8 +210,6 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			}
 		}
 
-		a.emit(ctx, PreInferEvent(a.id))
-
 		resp, err := a.streamInfer(ctx)
 		if err != nil {
 			// Reactive compaction: if prompt too long, compact and retry
@@ -424,11 +422,24 @@ func ToolCallIDFromContext(ctx context.Context) string {
 // --- internals ---
 
 // streamInfer calls the LLM, streams chunks to outbox, returns the final response.
+//
+// Emits PreInferEvent (with input digests) before the LLM call so observers
+// can record exactly what was sent without copying the bytes on every turn.
 func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
+	sys := a.system.Prompt()
+	msgs := a.snapshot()
+	tools := a.tools.Schemas()
+
+	a.emit(ctx, PreInferEvent(a.id, InferenceContext{
+		SystemDigest: sha256Hex([]byte(sys)),
+		ToolsDigest:  toolsDigest(tools),
+		MessageIDs:   messageIDs(msgs),
+	}))
+
 	chunks, err := a.llm.Infer(ctx, InferRequest{
-		System:   a.system.Prompt(),
-		Messages: a.snapshot(),
-		Tools:    a.tools.Schemas(),
+		System:   sys,
+		Messages: msgs,
+		Tools:    tools,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("infer: %w", err)
@@ -472,6 +483,23 @@ func (a *agent) emit(ctx context.Context, event Event) {
 	select {
 	case a.outbox <- event:
 	case <-ctx.Done():
+	}
+}
+
+// emitTelemetry delivers a fire-and-forget event: synchronously to onEvent,
+// non-blocking to the outbox (dropped if full). Used for events whose
+// consumers tolerate misses (system changes, hot-path tracing) and which can
+// fire from goroutines without a useful ctx (e.g. system observer callbacks).
+func (a *agent) emitTelemetry(event Event) {
+	if a.onEvent != nil {
+		a.onEvent(event)
+	}
+	if a.outbox == nil || a.closed.Load() {
+		return
+	}
+	select {
+	case a.outbox <- event:
+	default:
 	}
 }
 

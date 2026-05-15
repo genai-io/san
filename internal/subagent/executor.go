@@ -285,7 +285,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	if e.mcpRegistry != nil {
 		mcpCaller := mcp.NewCaller(e.mcpRegistry)
 		for _, t := range mcp.AsCoreTools(schemas, mcpCaller) {
-			tools.Add(t)
+			tools.Add(t, "mcp:"+t.Name())
 		}
 	}
 
