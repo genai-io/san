@@ -43,7 +43,7 @@ func MetadataFromTranscript(t *Transcript) MetadataView {
 
 func MetadataFromListItem(item ListItem, cwd string) MetadataView {
 	return MetadataView{
-		ID:           item.TranscriptID,
+		ID:           item.SessionID,
 		Title:        item.Title,
 		LastPrompt:   item.LastPrompt,
 		CreatedAt:    item.CreatedAt,

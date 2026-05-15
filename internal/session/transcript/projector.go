@@ -15,11 +15,11 @@ func Project(records []Record) (*Transcript, error) {
 
 	for _, r := range records {
 		switch r.Type {
-		case RecordStarted:
+		case SessionStarted:
 			applyStarted(t, r)
-		case RecordForked:
+		case SessionForked:
 			applyForked(t, r)
-		case RecordMessageAppended:
+		case MessageAppended:
 			n, err := buildNode(r)
 			if err != nil {
 				return nil, err
@@ -27,7 +27,7 @@ func Project(records []Record) (*Transcript, error) {
 			messageMap[n.ID] = n
 			order = append(order, n.ID)
 			if t.ID == "" {
-				t.ID = r.TranscriptID
+				t.ID = r.SessionID
 			}
 			if t.Cwd == "" {
 				t.Cwd = r.Cwd
@@ -38,27 +38,29 @@ func Project(records []Record) (*Transcript, error) {
 			if t.UpdatedAt.Before(r.Time) {
 				t.UpdatedAt = r.Time
 			}
-		case RecordStatePatched:
+		case StatePatched:
 			if err := applyStatePatch(&t.State, r.State); err != nil {
 				return nil, err
 			}
 			if t.ID == "" {
-				t.ID = r.TranscriptID
+				t.ID = r.SessionID
 			}
 			if t.UpdatedAt.Before(r.Time) {
 				t.UpdatedAt = r.Time
 			}
-		case RecordCompacted:
-			if r.System != nil {
-				compactBoundary = r.System.BoundaryID
+		case SessionCompacted:
+			if r.Session != nil {
+				compactBoundary = r.Session.BoundaryID
 			}
 			if t.ID == "" {
-				t.ID = r.TranscriptID
+				t.ID = r.SessionID
 			}
 			if t.UpdatedAt.Before(r.Time) {
 				t.UpdatedAt = r.Time
 			}
 		}
+		// Unknown types are intentionally ignored: the trace is forward-
+		// compatible with record kinds the projector doesn't model yet.
 	}
 
 	t.Messages = materializeActiveChain(messageMap, order, compactBoundary)
@@ -67,7 +69,7 @@ func Project(records []Record) (*Transcript, error) {
 
 func applyStarted(t *Transcript, r Record) {
 	if t.ID == "" {
-		t.ID = r.TranscriptID
+		t.ID = r.SessionID
 	}
 	if t.Cwd == "" {
 		t.Cwd = r.Cwd
@@ -78,22 +80,22 @@ func applyStarted(t *Transcript, r Record) {
 	if t.UpdatedAt.Before(r.Time) {
 		t.UpdatedAt = r.Time
 	}
-	if r.System != nil {
-		t.Provider = r.System.Provider
-		t.Model = r.System.Model
-		t.ParentID = r.System.ParentID
+	if r.Session != nil {
+		t.Provider = r.Session.Provider
+		t.Model = r.Session.Model
+		t.ParentID = r.Session.ParentID
 	}
 }
 
 func applyForked(t *Transcript, r Record) {
 	if t.ID == "" {
-		t.ID = r.TranscriptID
+		t.ID = r.SessionID
 	}
 	if t.UpdatedAt.Before(r.Time) {
 		t.UpdatedAt = r.Time
 	}
-	if r.System != nil && r.System.ParentID != "" {
-		t.ParentID = r.System.ParentID
+	if r.Session != nil && r.Session.ParentID != "" {
+		t.ParentID = r.Session.ParentID
 	}
 }
 
@@ -161,7 +163,10 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 			}
 			state.Worktree = &wt
 		default:
-			return fmt.Errorf("unknown state patch path: %s", op.Path)
+			// Unknown patch paths are ignored so older readers tolerate
+			// records produced by newer schemas. New paths must remain
+			// additive; never repurpose an existing path's meaning.
+			continue
 		}
 	}
 	return nil

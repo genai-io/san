@@ -9,13 +9,13 @@ import (
 func TestRecordJSONRoundTrip(t *testing.T) {
 	now := time.Date(2026, 4, 6, 12, 0, 0, 0, time.UTC)
 	rec := Record{
-		ID:           "rec-1",
-		TranscriptID: "tx-1",
-		Time:         now,
-		Type:         RecordMessageAppended,
-		ParentID:     "msg-0",
-		Cwd:          "/tmp/project",
-		GitBranch:    "main",
+		ID:        "rec-1",
+		SessionID: "tx-1",
+		Time:      now,
+		Type:      MessageAppended,
+		ParentID:  "msg-0",
+		Cwd:       "/tmp/project",
+		GitBranch: "main",
 		Message: &MessageRecord{
 			MessageID: "msg-1",
 			Role:      "assistant",
@@ -36,7 +36,7 @@ func TestRecordJSONRoundTrip(t *testing.T) {
 		t.Fatalf("Unmarshal(): %v", err)
 	}
 
-	if got.ID != rec.ID || got.TranscriptID != rec.TranscriptID || got.Type != rec.Type {
+	if got.ID != rec.ID || got.SessionID != rec.SessionID || got.Type != rec.Type {
 		t.Fatalf("round-trip mismatch: got %+v want %+v", got, rec)
 	}
 	if got.Message == nil || len(got.Message.Content) != 2 {

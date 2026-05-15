@@ -83,7 +83,7 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 	}
 
 	itemMeta := MetadataFromListItem(ListItem{
-		TranscriptID: "tx-2",
+		SessionID:    "tx-2",
 		Title:        "Resume work",
 		LastPrompt:   "continue",
 		CreatedAt:    now,
