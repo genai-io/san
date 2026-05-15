@@ -3,8 +3,9 @@ package llm
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
+
+	"github.com/genai-io/gen-code/internal/secret"
 )
 
 // registryEntry holds a provider's metadata and factory
@@ -99,7 +100,7 @@ func IsReady(meta Meta) bool {
 // IsReady checks if all required environment variables are set for a provider
 func (r *Registry) IsReady(meta Meta) bool {
 	for _, envVar := range meta.EnvVars {
-		if os.Getenv(envVar) == "" {
+		if secret.Resolve(envVar) == "" {
 			return false
 		}
 	}

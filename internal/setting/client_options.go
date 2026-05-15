@@ -26,7 +26,7 @@ func DefaultModel(providerName string, authMethod string) string {
 	case "bigmodel":
 		return "glm-5.1"
 	case "deepseek":
-		return "deepseek-chat"
+		return "deepseek-v4-flash"
 	default:
 		return "claude-sonnet-4-20250514"
 	}

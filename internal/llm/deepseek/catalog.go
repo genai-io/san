@@ -17,23 +17,44 @@ type modelCatalogEntry struct {
 var catalog = []modelCatalogEntry{
 	{
 		info: llm.ModelInfo{
-			ID:               "deepseek-chat",
-			Name:             "DeepSeek V3",
-			DisplayName:      "DeepSeek V3",
-			InputTokenLimit:  128000,
-			OutputTokenLimit: 8192,
+			ID:               "deepseek-v4-flash",
+			Name:             "DeepSeek V4 Flash",
+			DisplayName:      "DeepSeek V4 Flash",
+			InputTokenLimit:  1_000_000,
+			OutputTokenLimit: 384000,
 		},
-		pricing: pricing{inputPerMTokens: 0.27, outputPerMTokens: 1.10, cacheReadPerMTokens: 0.07, cacheWritePerMTokens: 0.27},
+		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.028, cacheWritePerMTokens: 0.14},
+	},
+	{
+		info: llm.ModelInfo{
+			ID:               "deepseek-v4-pro",
+			Name:             "DeepSeek V4 Pro",
+			DisplayName:      "DeepSeek V4 Pro",
+			InputTokenLimit:  1_000_000,
+			OutputTokenLimit: 384000,
+		},
+		pricing: pricing{inputPerMTokens: 1.74, outputPerMTokens: 3.48, cacheReadPerMTokens: 0.145, cacheWritePerMTokens: 1.74},
+	},
+	// Legacy names — mapped by DeepSeek API to deepseek-v4-flash (deprecated July 24, 2026)
+	{
+		info: llm.ModelInfo{
+			ID:               "deepseek-chat",
+			Name:             "DeepSeek Chat (legacy → V4 Flash)",
+			DisplayName:      "DeepSeek Chat",
+			InputTokenLimit:  1_000_000,
+			OutputTokenLimit: 384000,
+		},
+		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.028, cacheWritePerMTokens: 0.14},
 	},
 	{
 		info: llm.ModelInfo{
 			ID:               "deepseek-reasoner",
-			Name:             "DeepSeek R1",
-			DisplayName:      "DeepSeek R1",
-			InputTokenLimit:  128000,
-			OutputTokenLimit: 8192,
+			Name:             "DeepSeek Reasoner (legacy → V4 Flash thinking)",
+			DisplayName:      "DeepSeek Reasoner",
+			InputTokenLimit:  1_000_000,
+			OutputTokenLimit: 384000,
 		},
-		pricing: pricing{inputPerMTokens: 0.55, outputPerMTokens: 2.19, cacheReadPerMTokens: 0.14, cacheWritePerMTokens: 0.55},
+		pricing: pricing{inputPerMTokens: 0.14, outputPerMTokens: 0.28, cacheReadPerMTokens: 0.028, cacheWritePerMTokens: 0.14},
 	},
 }
 

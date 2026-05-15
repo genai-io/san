@@ -28,9 +28,16 @@ func NewClient(client openai.Client, name string) *Client {
 // Name returns the provider name.
 func (c *Client) Name() string { return c.name }
 
-// isReasonerModel returns true if the model supports thinking/reasoning mode.
-func isReasonerModel(model string) bool {
-	return strings.Contains(strings.ToLower(model), "reasoner")
+// supportsThinking returns true if the model supports thinking/reasoning mode.
+// V4 models (deepseek-v4-*) and legacy deepseek-reasoner all support thinking.
+func supportsThinking(model string) bool {
+	lower := strings.ToLower(model)
+	return strings.Contains(lower, "reasoner") || strings.Contains(lower, "v4")
+}
+
+// isV4Model returns true for the DeepSeek V4 model family.
+func isV4Model(model string) bool {
+	return strings.Contains(strings.ToLower(model), "v4")
 }
 
 // makeAssistantConverter returns a provider-specific assistant message converter.
@@ -44,14 +51,17 @@ func makeAssistantConverter(thinking bool) func(core.Message) openai.ChatComplet
 }
 
 func (c *Client) ThinkingEfforts(model string) []string {
-	if !isReasonerModel(model) {
+	if !supportsThinking(model) {
 		return nil
+	}
+	if isV4Model(model) {
+		return []string{"off", "high", "max"}
 	}
 	return []string{"off", "think"}
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
-	if !isReasonerModel(model) {
+	if !supportsThinking(model) {
 		return ""
 	}
 	return "off"
@@ -59,12 +69,22 @@ func (c *Client) DefaultThinkingEffort(model string) string {
 
 // Stream sends a completion request and returns a channel of streaming chunks.
 func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
-	thinking := isReasonerModel(opts.Model)
+	thinking := supportsThinking(opts.Model)
 	return openaicompat.StreamChatCompletions(ctx, openaicompat.ChatStreamConfig{
 		Client:           c.client,
 		ProviderName:     c.name,
 		Options:          opts,
 		ConvertAssistant: makeAssistantConverter(thinking),
+		ConfigureParams: func(params *openai.ChatCompletionNewParams) {
+			if !thinking {
+				return
+			}
+			if isV4Model(opts.Model) && opts.ThinkingEffort != "" && opts.ThinkingEffort != "off" {
+				params.SetExtraFields(map[string]any{
+					"reasoning_effort": opts.ThinkingEffort,
+				})
+			}
+		},
 		ExtractReasoning: thinking,
 	})
 }
