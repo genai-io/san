@@ -129,6 +129,14 @@ func (s *Store) Load(id string) (*Snapshot, error) {
 	return sess, nil
 }
 
+// Save persists the snapshot via append-only writes:
+//
+//  1. Start (idempotent; no-op if the transcript already exists)
+//  2. AppendMessage per entry (deduped by message ID — cheap re-saves)
+//  3. PatchState with the full projected state (last-wins on read)
+//
+// No file rewrites; each call writes only the records that didn't already
+// exist plus a single state-patch record.
 func (s *Store) Save(sess *Snapshot) error {
 	if sess == nil {
 		return fmt.Errorf("session is nil")
@@ -148,8 +156,48 @@ func (s *Store) Save(sess *Snapshot) error {
 	NormalizeMetadata(&sess.Metadata, sess.Entries, s.cwd, now)
 	nodes := EntriesToNodes(sess.Entries, sess.Metadata.ID, sess.Metadata.Cwd, sess.Metadata.CreatedAt, gitBranch)
 
-	return s.transcriptStore.Replace(context.Background(), transcript.ReplaceCommand{
-		Transcript: TranscriptFromSnapshot(sess, nodes, sess.Tasks),
+	ctx := context.Background()
+	id := sess.Metadata.ID
+
+	if err := s.transcriptStore.Start(ctx, transcript.StartCommand{
+		SessionID: id,
+		ProjectID: s.projectID,
+		Cwd:       sess.Metadata.Cwd,
+		Provider:  sess.Metadata.Provider,
+		Model:     sess.Metadata.Model,
+		ParentID:  sess.Metadata.ParentSessionID,
+		Time:      sess.Metadata.CreatedAt,
+	}); err != nil {
+		return err
+	}
+
+	for _, n := range nodes {
+		if err := s.transcriptStore.AppendMessage(ctx, transcript.AppendMessageCommand{
+			SessionID:   id,
+			MessageID:   n.ID,
+			ParentID:    n.ParentID,
+			Time:        n.Time,
+			Cwd:         n.Cwd,
+			GitBranch:   n.GitBranch,
+			AgentID:     n.AgentID,
+			IsSidechain: n.IsSidechain,
+			Role:        n.Role,
+			Content:     n.Content,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return s.transcriptStore.PatchState(ctx, transcript.PatchStateCommand{
+		SessionID: id,
+		Time:      now,
+		Ops: transcript.StateOpsFor(transcript.State{
+			Title:      sess.Metadata.Title,
+			LastPrompt: sess.Metadata.LastPrompt,
+			Tag:        sess.Metadata.Tag,
+			Mode:       sess.Metadata.Mode,
+			Tasks:      transcript.TrackerTaskViewsFromTasks(sess.Tasks),
+		}),
 	})
 }
 
@@ -159,9 +207,9 @@ func (s *Store) Fork(sourceID string) (*Snapshot, error) {
 
 	newID := generateSessionID()
 	if err := s.transcriptStore.Fork(context.Background(), transcript.ForkCommand{
-		SourceTranscriptID: sourceID,
-		NewTranscriptID:    newID,
-		Time:               time.Now(),
+		SourceSessionID: sourceID,
+		NewSessionID:    newID,
+		Time:            time.Now(),
 	}); err != nil {
 		return nil, err
 	}

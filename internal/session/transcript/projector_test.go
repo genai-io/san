@@ -12,27 +12,27 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 	now := time.Date(2026, 4, 6, 14, 0, 0, 0, time.UTC)
 	transcript, err := Project([]Record{
 		{
-			ID:           "tx-1:start",
-			TranscriptID: "tx-1",
-			Time:         now,
-			Type:         RecordStarted,
-			Cwd:          "/tmp/project",
-			System:       &SystemRecord{Provider: "openai", Model: "gpt-test"},
+			ID:        "tx-1:start",
+			SessionID: "tx-1",
+			Time:      now,
+			Type:      SessionStarted,
+			Cwd:       "/tmp/project",
+			Session:   &SessionRecord{Provider: "openai", Model: "gpt-test"},
 		},
 		{
-			ID:           "rec-1",
-			TranscriptID: "tx-1",
-			Time:         now.Add(time.Second),
-			Type:         RecordMessageAppended,
-			Message:      &MessageRecord{MessageID: "msg-1", Role: "user", Content: []ContentBlock{{Type: "text", Text: "hello"}}},
+			ID:        "rec-1",
+			SessionID: "tx-1",
+			Time:      now.Add(time.Second),
+			Type:      MessageAppended,
+			Message:   &MessageRecord{MessageID: "msg-1", Role: "user", Content: []ContentBlock{{Type: "text", Text: "hello"}}},
 		},
 		{
-			ID:           "rec-2",
-			TranscriptID: "tx-1",
-			Time:         now.Add(2 * time.Second),
-			Type:         RecordMessageAppended,
-			ParentID:     "msg-1",
-			Message:      &MessageRecord{MessageID: "msg-2", Role: "assistant", Content: []ContentBlock{{Type: "text", Text: "world"}}},
+			ID:        "rec-2",
+			SessionID: "tx-1",
+			Time:      now.Add(2 * time.Second),
+			Type:      MessageAppended,
+			ParentID:  "msg-1",
+			Message:   &MessageRecord{MessageID: "msg-2", Role: "assistant", Content: []ContentBlock{{Type: "text", Text: "world"}}},
 		},
 	})
 	if err != nil {
@@ -51,9 +51,9 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 
 func TestProjectStatePatchLastWins(t *testing.T) {
 	transcript, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("A"), patchMode("normal")}}},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("B"), patchMode("plan")}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("A"), PatchMode("normal")}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("B"), PatchMode("plan")}}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -75,8 +75,8 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	}
 	wt := &WorktreeState{OriginalCwd: "/repo", WorktreePath: "/repo/.wt/1", WorktreeName: "fix-1"}
 	transcript, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]tracker.Task{task}), patchWorktree(wt)}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]tracker.Task{task}), PatchWorktree(wt)}}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -91,9 +91,9 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 
 func TestProjectWorktreeNullClears(t *testing.T) {
 	transcript, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{patchWorktree(&WorktreeState{WorktreeName: "a"})}}},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{patchWorktree(nil)}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{PatchWorktree(&WorktreeState{WorktreeName: "a"})}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{PatchWorktree(nil)}}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -106,11 +106,11 @@ func TestProjectWorktreeNullClears(t *testing.T) {
 func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
 	now := time.Date(2026, 4, 6, 14, 20, 0, 0, time.UTC)
 	transcript, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: now, Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: now.Add(time.Second), Type: RecordMessageAppended, Message: &MessageRecord{MessageID: "m1", Role: "user"}},
-		{TranscriptID: "tx-1", Time: now.Add(2 * time.Second), Type: RecordMessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m2", Role: "assistant"}},
-		{TranscriptID: "tx-1", Time: now.Add(3 * time.Second), Type: RecordMessageAppended, ParentID: "m2", Message: &MessageRecord{MessageID: "m3", Role: "user"}},
-		{TranscriptID: "tx-1", Time: now.Add(4 * time.Second), Type: RecordCompacted, System: &SystemRecord{BoundaryID: "m2"}},
+		{SessionID: "tx-1", Time: now, Type: SessionStarted},
+		{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &MessageRecord{MessageID: "m1", Role: "user"}},
+		{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m2", Role: "assistant"}},
+		{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: MessageAppended, ParentID: "m2", Message: &MessageRecord{MessageID: "m3", Role: "user"}},
+		{SessionID: "tx-1", Time: now.Add(4 * time.Second), Type: SessionCompacted, Session: &SessionRecord{BoundaryID: "m2"}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -120,23 +120,31 @@ func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
 	}
 }
 
-func TestProjectUnknownPatchPathReturnsError(t *testing.T) {
-	_, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: time.Now(), Type: RecordStatePatched, State: &StateRecord{Ops: []PatchOp{{Path: "bad.path", Value: json.RawMessage(`"x"`)}}}},
+// Unknown patch paths are silently ignored so older readers tolerate records
+// produced by newer schemas. The rest of the patch list must still apply.
+func TestProjectUnknownPatchPathIsIgnored(t *testing.T) {
+	tx, err := Project([]Record{
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
+		{SessionID: "tx-1", Time: time.Now(), Type: StatePatched, State: &StateRecord{Ops: []PatchOp{
+			{Path: "bad.path", Value: json.RawMessage(`"x"`)},
+			PatchTitle("Still applied"),
+		}}},
 	})
-	if err == nil {
-		t.Fatal("expected error for unknown patch path")
+	if err != nil {
+		t.Fatalf("Project(): %v", err)
+	}
+	if tx.State.Title != "Still applied" {
+		t.Fatalf("Title = %q, want %q (unknown path should not block subsequent ops)", tx.State.Title, "Still applied")
 	}
 }
 
 func TestProjectLatestLeafWins(t *testing.T) {
 	now := time.Date(2026, 4, 6, 14, 30, 0, 0, time.UTC)
 	transcript, err := Project([]Record{
-		{TranscriptID: "tx-1", Time: now, Type: RecordStarted},
-		{TranscriptID: "tx-1", Time: now.Add(time.Second), Type: RecordMessageAppended, Message: &MessageRecord{MessageID: "m1", Role: "user"}},
-		{TranscriptID: "tx-1", Time: now.Add(2 * time.Second), Type: RecordMessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m2", Role: "assistant"}},
-		{TranscriptID: "tx-1", Time: now.Add(3 * time.Second), Type: RecordMessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m3", Role: "assistant"}},
+		{SessionID: "tx-1", Time: now, Type: SessionStarted},
+		{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &MessageRecord{MessageID: "m1", Role: "user"}},
+		{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m2", Role: "assistant"}},
+		{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: MessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m3", Role: "assistant"}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)

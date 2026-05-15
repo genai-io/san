@@ -26,8 +26,8 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	}{
 		{name: "title", got: PatchTitle("New Title"), want: `"New Title"`},
 		{name: "lastPrompt", got: PatchLastPrompt("continue"), want: `"continue"`},
-		{name: "mode", got: patchMode("plan"), want: `"plan"`},
-		{name: "tag", got: patchTag("urgent"), want: `"urgent"`},
+		{name: "mode", got: PatchMode("plan"), want: `"plan"`},
+		{name: "tag", got: PatchTag("urgent"), want: `"urgent"`},
 	}
 
 	for _, tc := range cases {
@@ -45,7 +45,7 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 		t.Fatalf("unexpected task patch payload: %+v", decodedTasks)
 	}
 
-	wtPatch := patchWorktree(&WorktreeState{
+	wtPatch := PatchWorktree(&WorktreeState{
 		OriginalCwd:  "/repo",
 		WorktreePath: "/repo/.wt/1",
 		WorktreeName: "fix-1",
@@ -59,8 +59,8 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	}
 }
 
-func Test_patchWorktreeAllowsNil(t *testing.T) {
-	patch := patchWorktree(nil)
+func Test_PatchWorktreeAllowsNil(t *testing.T) {
+	patch := PatchWorktree(nil)
 	if string(patch.Value) != "null" {
 		t.Fatalf("expected null payload, got %s", string(patch.Value))
 	}

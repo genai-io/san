@@ -1,11 +1,6 @@
 package session
 
-import (
-	"time"
-
-	"github.com/genai-io/gen-code/internal/session/transcript"
-	"github.com/genai-io/gen-code/internal/task/tracker"
-)
+import "time"
 
 func NormalizeMetadata(meta *SessionMetadata, entries []Entry, defaultCwd string, now time.Time) {
 	for i := range entries {
@@ -29,25 +24,5 @@ func NormalizeMetadata(meta *SessionMetadata, entries []Entry, defaultCwd string
 	}
 	if meta.Title == "" {
 		meta.Title = GenerateTitle(entries)
-	}
-}
-
-func TranscriptFromSnapshot(sess *Snapshot, nodes []transcript.Node, tasks []tracker.Task) transcript.Transcript {
-	return transcript.Transcript{
-		ID:        sess.Metadata.ID,
-		ParentID:  sess.Metadata.ParentSessionID,
-		Cwd:       sess.Metadata.Cwd,
-		CreatedAt: sess.Metadata.CreatedAt,
-		UpdatedAt: sess.Metadata.UpdatedAt,
-		Provider:  sess.Metadata.Provider,
-		Model:     sess.Metadata.Model,
-		Messages:  nodes,
-		State: transcript.State{
-			Title:      sess.Metadata.Title,
-			LastPrompt: sess.Metadata.LastPrompt,
-			Tag:        sess.Metadata.Tag,
-			Mode:       sess.Metadata.Mode,
-			Tasks:      transcript.TrackerTaskViewsFromTasks(tasks),
-		},
 	}
 }
