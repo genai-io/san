@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>gen trace</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>gen trace</h1>
+    <span id="status" class="status idle"></span>
+  </header>
+
+  <main>
+    <aside id="sidebar">
+      <h2>Sessions</h2>
+      <ul id="session-list" class="session-list"></ul>
+    </aside>
+
+    <section id="viewer">
+      <div id="timeline-header">
+        <span id="session-meta">Select a session to begin.</span>
+        <label class="filters">
+          <input type="checkbox" id="filter-state" checked> state.patched
+        </label>
+        <label class="filters">
+          <input type="checkbox" id="filter-tools" checked> tools.*
+        </label>
+        <label class="filters">
+          <input type="checkbox" id="filter-system" checked> system.section.*
+        </label>
+        <label class="filters">
+          <input type="checkbox" id="filter-inference" checked> inference.*
+        </label>
+        <label class="filters">
+          <input type="checkbox" id="filter-message" checked> message
+        </label>
+      </div>
+      <div id="timeline" class="timeline"></div>
+    </section>
+
+    <section id="detail" class="detail">
+      <pre id="detail-body">Click a record to inspect its payload.</pre>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
