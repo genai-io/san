@@ -21,7 +21,8 @@ explanations here.
 - `packages/` — one page per Go package; each has a Contract section with
   the package's public Go interface.
 - `concepts/` — cross-cutting concepts that span multiple packages
-  (data flow, extension model, harness channels, permission model).
+  (data flow, rendering, extension model, harness channels,
+  permission model).
 
 ### Look up a fact
 

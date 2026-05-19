@@ -1,6 +1,9 @@
 # Data Flow: Input → Agent → Render
 
 > 中文版本：[`data-flow.zh.md`](data-flow.zh.md)
+>
+> Companion: [`rendering.md`](rendering.md) — how the rendered output
+> is actually composed (View() layout, Markdown pipeline, tool blocks).
 
 How a keystroke (or a cron fire, or a hub event) travels through the TUI
 and becomes either a slash-command result or an agent response that the

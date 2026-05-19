@@ -1,6 +1,9 @@
 # 数据流转：输入 → Agent → 渲染
 
 > English version: [`data-flow.md`](data-flow.md)
+>
+> 姊妹篇：[`rendering.zh.md`](rendering.zh.md) ——
+> 真正的渲染输出是怎么组装的（View() 布局、Markdown pipeline、工具块）。
 
 一次按键（或一次 cron 触发、一次 hub 事件）如何穿过 TUI，最终变成
 slash 命令的结果或 agent 的回复呈现在终端里。
