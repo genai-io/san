@@ -1,6 +1,6 @@
 // Turn-boundary inbox drain and prompt injection. After every agent turn
 // ends we drain (in priority order) queued user messages, cron-fired
-// prompts, async-hook continuations, and the main eventHub buffer. Each
+// prompts, async-hook continuations, and the main agentEventHub buffer. Each
 // drained item is converted to a notice + optional re-send to the agent.
 // Also handles the Stop hook result that gates session persistence.
 package app

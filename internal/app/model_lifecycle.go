@@ -27,7 +27,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	base := newBaseModel()
 	m := &base
 
-	m.eventHub.Register("main", func(e hub.Event) { m.mainEvents <- e })
+	m.agentEventHub.Register("main", func(e hub.Event) { m.mainEvents <- e })
 
 	// Wire task completion: closure captures hub + hooks + tracker directly.
 	var hookEngine *hook.Engine
@@ -64,12 +64,12 @@ func newBaseModel() model {
 			LoadDisabled:     svc.Setting.GetDisabledToolsAt,
 			UpdateDisabled:   svc.Setting.UpdateDisabledToolsAt,
 		}),
-		conv:        conv.NewModel(defaultWidth),
-		eventHub:    hub.New(),
-		mainEvents:  make(chan hub.Event, 64),
-		systemInput: trigger.New(),
-		env:         environment,
-		services:    svc,
+		conv:          conv.NewModel(defaultWidth),
+		agentEventHub: hub.New(),
+		mainEvents:    make(chan hub.Event, 64),
+		systemInput:   trigger.New(),
+		env:           environment,
+		services:      svc,
 	}
 }
 
@@ -173,7 +173,7 @@ func (m *model) ensureMemoryContextLoaded() {
 
 func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 	trackerSvc := m.services.Tracker
-	eventHub := m.eventHub
+	agentEventHub := m.agentEventHub
 
 	fireHook := func(event hook.EventType, info task.TaskInfo) {
 		if hookEngine == nil {
@@ -200,7 +200,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			if !ok {
 				return
 			}
-			eventHub.Publish(hub.Event{
+			agentEventHub.Publish(hub.Event{
 				Type:    "task.completed",
 				Source:  fmt.Sprintf("agent:%s", info.ID),
 				Target:  "main",

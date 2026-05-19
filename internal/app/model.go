@@ -35,13 +35,13 @@ const defaultWidth = 80
 
 type model struct {
 	// ── Sub-models (one per event source / concern) ─────────────
-	userInput   input.Model    // Source 1: user keyboard input
-	eventHub    *hub.Hub       // Source 2: inter-agent event routing (pure pub/sub)
-	mainEvents  chan hub.Event // TUI turn-boundary buffer: batches async events (task completions, agent messages) for priority-ordered drain
-	systemInput trigger.Model  // Source 3: system events (cron/hooks/watcher)
-	conv        conv.Model     // Agent Outbox: conversation + output rendering
-	env         env            // Shared app state: provider, session, permission, plan, config
-	services    services       // Domain service singletons, injected at construction
+	userInput     input.Model    // Source 1: user keyboard input
+	agentEventHub *hub.Hub       // Source 2: inter-agent event routing (pure pub/sub)
+	mainEvents    chan hub.Event // TUI turn-boundary buffer: batches async events (task completions, agent messages) for priority-ordered drain
+	systemInput   trigger.Model  // Source 3: system events (cron/hooks/watcher)
+	conv          conv.Model     // Agent Outbox: conversation + output rendering
+	env           env            // Shared app state: provider, session, permission, plan, config
+	services      services       // Domain service singletons, injected at construction
 }
 
 var (

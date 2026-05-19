@@ -226,26 +226,71 @@ rejoin Path A at the SubmitToAgent step.
 
 ## Path C — Background trigger
 
-Cron fires, an async hook produces a follow-up, or a subagent emits an
-event on the hub. All three end at SubmitToAgent.
+Three producers can run while no user is typing. They each park their
+output in a queue/channel, then the **turn boundary** (the moment an
+agent turn ends) drains them.
+
+### Producers
 
 ```
-cron.Tick fires due jobs                trigger pkg pushes onto m.systemInput.CronQueue
-hook produces continuation              trigger pushes onto m.systemInput.AsyncHookQueue
-subagent completes                      eventHub publishes → m.mainEvents channel
+┌─ Producer ────────────┬─ Where it lives ────┬─ Where it parks ──────────────┐
+│ Cron tick             │ trigger.StartCron-  │ m.systemInput.CronQueue       │
+│   (every minute the   │ Ticker (background  │   []string (prompts queued)   │
+│    ticker checks      │ goroutine)          │                               │
+│    durable jobs)      │                     │                               │
+├───────────────────────┼─────────────────────┼───────────────────────────────┤
+│ Async hook follow-up  │ trigger.StartAsync- │ m.systemInput.AsyncHookQueue  │
+│   (a hook script's    │ HookTicker          │   each item carries Notice +  │
+│    JSON output said   │                     │   Context lines + Contin-     │
+│    `nextPrompt: ...`) │                     │   uationPrompt                │
+├───────────────────────┼─────────────────────┼───────────────────────────────┤
+│ Subagent completes    │ agent.SetLife-      │ m.agentEventHub → publishes a │
+│   (background Task,   │ cycleHandler →      │ "task.completed" event;       │
+│    spawned by the     │ hub.Publish         │ subscriber pushes it onto     │
+│    Agent tool)        │                     │ m.mainEvents (a Go channel)   │
+└───────────────────────┴─────────────────────┴───────────────────────────────┘
+```
 
-────────── turn boundary ──────────
+`m.agentEventHub` is a small pub/sub bus internal to the foreground
+process — its only event today is "task.completed" from a finished
+background subagent.
 
-OnTurnEnd                          model_agent_events.go
-   └─ drainTurnQueues                   model_turn_queue.go (priority order)
-        ├─ user input queue?
-        ├─ cron queue?       → injectCronPrompt(prompt)
-        ├─ async hook queue? → injectAsyncHookContinuation(item)
-        └─ main event hub?   → injectNotification(msg)
+### Drain at turn boundary
 
+When the live agent finishes a turn, `OnTurnEnd` calls
+`drainTurnQueues` to take the next-highest-priority queued item and
+play it as if the user had just typed it.
+
+```
+OnTurnEnd                                    model_agent_events.go
+   └─ drainTurnQueues                        model_turn_queue.go
+        First non-empty wins, priority high → low:
+        │
+        ├─ user input queue?  ─── parked while a turn was streaming
+        │                        (handled inline; not an inject*)
+        ├─ cron queue?       ──► injectCronPrompt(prompt)
+        ├─ async hook queue? ──► injectAsyncHookContinuation(item)
+        └─ agentEventHub batch ► injectNotification(merged hub.Message)
+```
+
+### What inject* does
+
+Each inject* function has the same shape: tell the user what triggered
+this round (a notice), make the trigger's payload look like a user
+message in conv, then hand the payload to SubmitToAgent so the agent
+actually responds. The "payload" varies by producer:
+
+| Producer | Payload sent to agent |
+| --- | --- |
+| Cron | The cron job's `Prompt` string (what the user wrote when scheduling) |
+| Async hook | The hook's `ContinuationPrompt` field |
+| Subagent done | `Data` from the merged `hub.Message` — usually the subagent's final output |
+
+```
 each inject*
-   ├─ append notice / user-visible content to conv
-   └─ SubmitToAgent(promptForAgent, nil)
+   ├─ conv.AddNotice(...)                          ◄── "Scheduled task fired", etc.
+   ├─ conv.Append(ChatMessage{Role: user, ...})    ◄── shows in scrollback
+   └─ SubmitToAgent(<payload>, nil)                ◄── kicks off the next turn
 ```
 
 All three converge on **SubmitToAgent**. Same provider check, same
@@ -265,8 +310,14 @@ agent goroutine                         (runs in core.Agent.Run)
 core.Event onto Outbox
    │
    ▼
-ContinueOutbox tea.Cmd                  agent.go: reads one event
-   │                                    re-arms itself to read the next
+ContinueOutbox tea.Cmd                  agent.go: blocks on the channel,
+   │                                    reads one event, returns a
+   │                                    tea.Msg that ALSO carries the
+   │                                    next ContinueOutbox cmd. So
+   │                                    Update keeps scheduling fresh
+   │                                    polls until events stop arriving
+   │                                    (one-shot tea.Cmds simulating a
+   │                                    continuous listener).
    ▼
 tea.Msg (typed as a conv.* msg)
    │
