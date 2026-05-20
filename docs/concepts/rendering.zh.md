@@ -5,6 +5,13 @@
 [`data-flow.zh.md`](data-flow.zh.md) 的姊妹篇。数据流转讲的是输入怎么变成
 状态；本文讲的是状态怎么变成屏幕上的字符。
 
+> **"渲染"在这个代码库里的意思是：返回一个字符串。** 所有 `Render*`
+> 函数返回的就是 `string`——ANSI 转义码控制颜色和样式，UTF-8 字符是
+> 内容。没有 off-screen buffer，没有 canvas。Bubble Tea 的 `View()`
+> 返回一个 string，框架把它写到终端；`tea.Println` 接受一个 string，
+> 把它写到 alt-screen 区域之上。下面的"渲染管线"全程都是字符串组装；
+> 真正的"画"是终端干的。
+
 ## 两条渲染通路，同一套渲染函数
 
 TUI 里每一个可见字节都由 `internal/app/conv/view.go` 里的代码产生 ——

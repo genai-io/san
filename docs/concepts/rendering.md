@@ -3,7 +3,15 @@
 > 中文版本：[`rendering.zh.md`](rendering.zh.md)
 
 Companion to [`data-flow.md`](data-flow.md). Data flow covers how input
-becomes state; this doc covers how state becomes pixels on screen.
+becomes state; this doc covers how state becomes characters on screen.
+
+> **"Render" means: return a string.** Every `Render*` function in
+> this codebase returns a `string` — ANSI escape codes for color and
+> style, plain UTF-8 for content. No off-screen buffers, no canvases.
+> Bubble Tea's `View()` returns a string and the framework writes it
+> to the terminal; `tea.Println` takes a string and writes it above
+> the alt-screen region. The "rendering pipeline" below is entirely
+> string composition; the terminal does the actual drawing.
 
 ## Two render paths, same render functions
 
