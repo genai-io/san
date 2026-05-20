@@ -247,8 +247,53 @@ OnTurnEnd                                    model_agent_events.go
         ├─ 用户输入队列?     ─── 流式期间排过队的（直接发，不走 inject*）
         ├─ cron 队列?         ──► injectCronPrompt(prompt)
         ├─ 异步 hook 队列?    ──► injectAsyncHookContinuation(item)
-        └─ agentEventHub 批量 ──► injectNotification(merged hub.Message)
+        └─ m.pendingMainEvents ──► injectNotification(merged hub.Message)
 ```
+
+### 唤醒 Update 循环（idle 路径）
+
+`drainTurnQueues` 只在 `OnTurnEnd` 跑一次，所以两个 turn **之间**到达
+的事件（subagent 启动几分钟后才完成的常见情况）需要另一条路径唤醒
+Update 循环。Hub 那一侧的投递本来就是 Go channel（`m.mainEvents`），
+所以直接借用 agent outbox 的同款套路——一个**阻塞接收的 `tea.Cmd`**，
+把 "chan 上的下一条消息" 转成 `tea.Msg`：
+
+```
+Init                                       model.go
+   └─ awaitMainEvent(m.mainEvents)         model_turn_queue.go
+        └─ 阻塞读 chan，到一条就 yield mainEventMsg{event}
+
+Update                                     update.go
+   case mainEventMsg:
+        └─ onMainEvent(ev)                 model_turn_queue.go
+              ├─ 把 ev（连同 chan 上的同伴）追加到 m.pendingMainEvents
+              ├─ 重新挂一次 awaitMainEvent，等下次 publish 唤醒
+              └─ 如果 !Stream.Active:
+                   injectNotification(merge(pending))；清空 pending
+```
+
+`onMainEvent` 每次都重新挂一次 `awaitMainEvent`——安全的，因为重新挂
+时 chan 已经被读空，下一次触发会一直阻塞等下次 publish（不会自旋）。
+事件到达时根据 agent 状态走两条不同路径：
+
+| 事件什么时候到 | 谁来交付 | 延迟 |
+|---|---|---|
+| 流式期间（agent 正在回答） | `OnTurnEnd → drainTurnQueues` 读 `m.pendingMainEvents` | 当前 turn 结束 |
+| 闲着（turn 之间） | `onMainEvent` 自己走 `!Stream.Active` 分支直接 inject | 立刻 |
+
+idle 分支正是处理你最常遇到的情况：后台 subagent 在启动它的那一轮
+turn 结束很久之后才完成。`pendingMainEvents` 只为"流式期间到的"事件
+存在 —— 那种必须等，免得跟正在生成的回答撞车。
+
+Hub 的 publisher 侧没有变化：subagent（或任何后台 task）完成 →
+`notifyTaskCompleted` → `wireTaskLifecycle` 里注册的 lifecycle handler
+调用 `agentEventHub.Publish` → `Register("main", ...)` 回调推入
+`m.mainEvents`。所以 producer 就是后台 task（`run_in_background: true`
+的 agent 和 bash 命令）；当前只有一种事件 `"task.completed"`。
+
+跟 `conv.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
+Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
+没有 tick、idle 时 0 CPU。
 
 ### inject* 在干啥
 
@@ -273,6 +318,80 @@ OnTurnEnd                                    model_agent_events.go
 三条路径都汇聚到 **SubmitToAgent**。一样的 provider 检查、一样的
 `ensureAgentSession`、一样的 `sendToAgent` 推入。**没有别的途径**
 能进 agent 的 inbox。
+
+### 端到端走一遍：subagent 完成 → 主 agent inbox
+
+把上面这些拼起来 —— 一个后台 subagent 完成，到它的产出落进主 agent
+inbox 触发下一轮，中间发生的就是这一串。**涉及三条 goroutine**，每条
+`─ ─ ─►` 都是一次跨 goroutine 的交付。
+
+```
+   Subagent goroutine               TUI Update goroutine            主 Agent goroutine
+   ──────────────────               ────────────────────            ────────────────────
+   ① task.Run() 返回
+       │
+       ▼
+   ② notifyTaskCompleted(info)
+       │   task/hooks.go
+       ▼
+   ③ lifecycleHandler.TaskCompleted
+       │   model_lifecycle.go:194
+       ▼
+   ④ agentEventHub.Publish(
+       Type: "task.completed",
+       Target: "main", ...)
+       │   model_lifecycle.go:203
+       ▼
+   ⑤ Register("main",...) 回调触发
+       │   model_lifecycle.go:30
+       ▼
+   ⑥ m.mainEvents <- e  ─ ─ ─ ─ ─►  ⑦ awaitMainEvent 解阻塞
+                                       返回 mainEventMsg{event}
+                                       (Init 时挂在 chan 上的那个
+                                        goroutine，此刻才醒)
+                                          │   bubbletea 把这条 msg
+                                          │   送回 Update 循环
+                                          ▼
+                                       ⑧ Update case mainEventMsg:
+                                          → onMainEvent(ev)
+                                          │   model_turn_queue.go
+                                          ├─ append 到 pendingMainEvents
+                                          ├─ 重启 awaitMainEvent
+                                          ▼
+                                       ⑨ Stream.Active?
+                                          ├─ true  → return; 等 OnTurnEnd
+                                          │           调 drainTurnQueues
+                                          └─ false → 继续 ↓
+                                          ▼
+                                      ⑩ injectNotification(merged)
+                                          ├─ conv.AddNotice("…completed")
+                                          └─ SubmitToAgent(content, nil)
+                                          │   update_submit.go
+                                          ├─ 检查 LLMProvider
+                                          ├─ ensureAgentSession
+                                          ▼
+                                      ⑪ sendToAgent(content, images)
+                                          │   agent.go
+                                          ├─ attachPendingReminders
+                                          ▼
+                                      ⑫ m.services.Agent.Send(...)
+                                          ◄── 进入主 AGENT INBOX ──►  ⑬ agent 从 inbox 取出
+                                                                          运行新一轮 turn
+                                                                          （后面就是 Path D）
+```
+
+关键的跨 goroutine 交付：
+
+| 步骤 | 从哪儿到哪儿 | 机制 |
+|---|---|---|
+| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainEvents`) + 阻塞接收的 `tea.Cmd` |
+| ⑫ → ⑬ | TUI Update goroutine → 主 agent goroutine | `Agent.Send` 写 agent 自己的 inbox chan |
+
+**两条 chan、两道 goroutine 边界**。TUI 故意夹在中间 —— `AddNotice`、
+provider/session 检查、优先级排序，这些都是 TUI 该干的事。如果 ⑨
+那里碰上 Stream.Active=true 走了 `pendingMainEvents` 分支，⑩-⑫ 这串
+完全一样的步骤会在下一次 `OnTurnEnd` 由 `drainTurnQueues` 触发，
+**唯一的差别就是早一点还是晚一点**。
 
 ## Path D —— Agent → 渲染
 

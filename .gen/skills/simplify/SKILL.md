@@ -22,7 +22,7 @@ Run `git diff` (or `git diff HEAD` if there are staged changes) to see what chan
 
 ## Phase 2: Launch Three Review Agents in Parallel
 
-Use the Agent tool to launch all three agents concurrently in a single message with `run_in_background=true`. Pass each agent the full diff so it has the complete context. After launching, briefly tell the user what you launched and end your response — you will be automatically notified as each agent completes. Do NOT poll, read output files, or check status manually.
+Use the Agent tool to launch all three agents concurrently in a single message (foreground — do NOT set `run_in_background`). Pass each agent the full diff so it has the complete context. All three agents run in parallel and return their results in the same turn.
 
 ### Agent 1: Code Reuse Review
 
@@ -59,6 +59,6 @@ Review the same changes for efficiency:
 
 ## Phase 3: Fix Issues
 
-Wait for all three agents to complete. Aggregate their findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.
+Aggregate the three agents' findings and fix each issue directly. If a finding is a false positive or not worth addressing, note it and move on — do not argue with the finding, just skip it.
 
 When done, briefly summarize what was fixed (or confirm the code was already clean).

@@ -74,9 +74,15 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 		}
 	}
 
-	if events := drainEvents(m.mainEvents, maxEventsPerDrain); len(events) > 0 {
-		msgs := eventsToMessages(events)
-		return m.injectNotification(hub.Merge(msgs)), true
+	if len(m.pendingMainEvents) > 0 {
+		events := m.pendingMainEvents
+		m.pendingMainEvents = nil
+		// Listener may have just re-armed during OnTurnEnd processing;
+		// catch any chan events that landed in that window too.
+		if extra := drainEvents(m.mainEvents, maxEventsPerDrain-len(events)); len(extra) > 0 {
+			events = append(events, extra...)
+		}
+		return m.injectHubEvents(events), true
 	}
 
 	return nil, false
@@ -106,6 +112,35 @@ func drainEvents(ch <-chan hub.Event, max int) []hub.Event {
 		}
 	}
 	return out
+}
+
+// mainEventMsg wraps a hub.Event for delivery to the Update loop.
+// Counterpart to AgentOutboxMsg for the agent outbox chan.
+type mainEventMsg struct{ event hub.Event }
+
+// awaitMainEvent blocks until one event arrives on the chan, then
+// yields a mainEventMsg. onMainEvent re-arms after handling.
+func awaitMainEvent(ch <-chan hub.Event) tea.Cmd {
+	return func() tea.Msg {
+		return mainEventMsg{event: <-ch}
+	}
+}
+
+// onMainEvent injects the event immediately when idle, or queues it
+// in pendingMainEvents for drainTurnQueues at the next turn boundary
+// (mid-stream). Re-arming is unconditional: after the read the chan
+// is empty, so the next firing waits for the next publish.
+func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
+	next := awaitMainEvent(m.mainEvents)
+	if m.conv.Stream.Active {
+		m.pendingMainEvents = append(m.pendingMainEvents, ev)
+		return next
+	}
+	return tea.Batch(m.injectHubEvents([]hub.Event{ev}), next)
+}
+
+func (m *model) injectHubEvents(events []hub.Event) tea.Cmd {
+	return m.injectNotification(hub.Merge(eventsToMessages(events)))
 }
 
 func eventsToMessages(events []hub.Event) []hub.Message {

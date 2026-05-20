@@ -264,6 +264,55 @@ OnTurnEnd                                    model_agent_events.go
         └─ agentEventHub batch ► injectNotification(merged hub.Message)
 ```
 
+### Waking the Update loop (idle path)
+
+`drainTurnQueues` only fires at `OnTurnEnd`, so an event that arrives
+*between* turns (the common case for a subagent that finishes minutes
+after launch) needs another way to wake the Update loop. The hub-side
+delivery is already a Go channel (`m.mainEvents`), so we use the same
+trick the agent outbox uses — a **blocking-receive `tea.Cmd`** that
+turns "next item on the chan" into a `tea.Msg`:
+
+```
+Init                                       model.go
+   └─ awaitMainEvent(m.mainEvents)         model_turn_queue.go
+        └─ blocks on chan, yields mainEventMsg{event} when one arrives
+
+Update                                     update.go
+   case mainEventMsg:
+        └─ onMainEvent(ev)                 model_turn_queue.go
+              ├─ append ev (+ chan peers) to m.pendingMainEvents
+              ├─ start awaitMainEvent again so the next publish wakes us
+              └─ if !Stream.Active:
+                   injectNotification(merge(pending)); clear pending
+```
+
+`onMainEvent` always starts a fresh `awaitMainEvent` — safe because
+the chan is empty when we restart, so the next firing waits for the
+next publish (no spin loop). There are two delivery paths depending
+on what the live agent is doing when the event arrives:
+
+| When the event arrives | Who delivers it | Latency |
+|---|---|---|
+| Mid-stream (agent answering) | `OnTurnEnd → drainTurnQueues` drains `m.pendingMainEvents` | next turn boundary |
+| Idle (between turns) | `onMainEvent` itself takes the `!Stream.Active` branch and injects directly | immediate |
+
+The idle branch is what handles the common case of a background
+subagent finishing long after the launching turn ended. `pendingMainEvents`
+exists only to bridge events that landed *during* a stream — those
+must wait so they don't collide with the answer in progress.
+
+The hub publisher side is unchanged: a subagent (or any background
+task) finishes → `notifyTaskCompleted` → the task-lifecycle handler
+registered in `wireTaskLifecycle` calls `agentEventHub.Publish` → the
+`Register("main", ...)` callback pushes onto `m.mainEvents`. So the
+producers are background tasks (`run_in_background: true` agents and
+bash commands); the only event type today is `"task.completed"`.
+
+Same pattern as `conv.DrainAgentOutbox` reading the agent outbox chan
+— two Go channels, two blocking-receive cmds, one Update loop. No
+polling, no tick, zero idle CPU.
+
 ### What inject* does
 
 Each inject* function has the same shape: tell the user what triggered
@@ -287,6 +336,83 @@ each inject*
 All three converge on **SubmitToAgent**. Same provider check, same
 `ensureAgentSession`, same `sendToAgent` push. There is no other way
 to reach the agent's inbox from the TUI.
+
+### End-to-end trace: subagent done → main agent inbox
+
+Putting all the pieces above together — this is exactly what happens
+between the moment a background subagent finishes and the moment its
+result hits the main agent's inbox to drive the next turn. Three
+goroutines are involved; each `─ ─ ─►` is a handoff across one.
+
+```
+   Subagent goroutine               TUI Update goroutine            Main Agent goroutine
+   ──────────────────               ────────────────────            ────────────────────
+   ① task.Run() returns
+       │
+       ▼
+   ② notifyTaskCompleted(info)
+       │   task/hooks.go
+       ▼
+   ③ lifecycleHandler.TaskCompleted
+       │   model_lifecycle.go:194
+       ▼
+   ④ agentEventHub.Publish(
+       Type: "task.completed",
+       Target: "main", ...)
+       │   model_lifecycle.go:203
+       ▼
+   ⑤ Register("main",...) callback
+       │   model_lifecycle.go:30
+       ▼
+   ⑥ m.mainEvents <- e  ─ ─ ─ ─ ─►  ⑦ awaitMainEvent unblocks
+                                       returns mainEventMsg{event}
+                                       (was parked on chan in own
+                                        goroutine spawned by Init)
+                                          │   bubbletea routes the
+                                          │   msg to Update loop
+                                          ▼
+                                       ⑧ Update case mainEventMsg:
+                                          → onMainEvent(ev)
+                                          │   model_turn_queue.go
+                                          ├─ append to pendingMainEvents
+                                          ├─ restart awaitMainEvent
+                                          ▼
+                                       ⑨ Stream.Active?
+                                          ├─ true → return; wait OnTurnEnd
+                                          │         to call drainTurnQueues
+                                          └─ false → fall through ↓
+                                          ▼
+                                      ⑩ injectNotification(merged)
+                                          ├─ conv.AddNotice("…completed")
+                                          └─ SubmitToAgent(content, nil)
+                                          │   update_submit.go
+                                          ├─ check LLMProvider
+                                          ├─ ensureAgentSession
+                                          ▼
+                                      ⑪ sendToAgent(content, images)
+                                          │   agent.go
+                                          ├─ attachPendingReminders
+                                          ▼
+                                      ⑫ m.services.Agent.Send(...)
+                                          ◄── ENTERS MAIN AGENT INBOX ──►  ⑬ agent picks up
+                                                                                from inbox,
+                                                                                runs a turn
+                                                                                (now → Path D)
+```
+
+Key handoffs:
+
+| Step | What crosses what | Mechanism |
+|---|---|---|
+| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainEvents`) + blocking-receive `tea.Cmd` |
+| ⑫ → ⑬ | TUI Update goroutine → main agent goroutine | `Agent.Send` writes the agent's internal inbox chan |
+
+Two chans, two goroutine boundaries. The TUI sits in the middle on
+purpose — that's where `AddNotice`, provider/session checks, and
+priority ordering happen. If a Stream.Active=true diverted us into
+the `pendingMainEvents` branch at ⑨, the same ⑩-⑫ sequence runs
+later from `drainTurnQueues` at the next OnTurnEnd; the only
+difference is *when*.
 
 ## Path D — Agent → render
 

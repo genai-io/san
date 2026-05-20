@@ -121,7 +121,10 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 	}
 
 	if trackerView != "" {
-		parts = append(parts, strings.TrimSuffix(trackerView, "\n"))
+		// Leading "\n" forces a blank line between the assistant content
+		// (often flushed to scrollback via tea.Println) and the tracker
+		// block that anchors the bottom of the active view.
+		parts = append(parts, "\n"+strings.TrimSuffix(trackerView, "\n"))
 	}
 
 	if m.userInput.Provider.FetchingLimits {

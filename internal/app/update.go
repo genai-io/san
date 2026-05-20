@@ -110,6 +110,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
+	case mainEventMsg:
+		return m, m.onMainEvent(msg.event)
 	}
 
 	if cmd, handled := m.routeToSubModel(msg); handled {
