@@ -3,6 +3,31 @@
 All notable changes to Gen Code are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.19.0] - 2026-05-23
+
+### Added
+- Welcome splash screen with ❭ input prompt glyph
+- "auto" theme to match terminal appearance automatically (zhujian)
+- Persist thinking effort per model across launches
+- Concept documentation: data-flow (en + zh), rendering (en + zh)
+
+### Changed
+- Rotate the thinking spinner and agent task indicator instead of flickering
+- Cancel/interrupt flow: quiescence handshake, pending latch, defensive fixes across agent/llm/conv layers
+- Refactor app model: split model.go (1103 lines) and update.go (821 lines)
+- Collapse submit-path indirection; centralize agent submission into SubmitToAgent
+- Drop Service interfaces across 7 packages; use concrete types (session, subagent, skill, plugin, mcp, hook)
+- Rename Command* → SlashCommand*, overlay → popup, Pairs → InlinedResults, for clarity
+- Restructure docs into goal-axis taxonomy with per-package contracts
+
+### Fixed
+- Drop thinking-only assistant messages before sending to LLM
+- /agent and /skills tab switching skips empty tabs despite help hint (zhujian)
+- Preserve old agent IDs across ResyncMessages reconciliation
+- Skip interrupt marker in ExtractLastUserText
+- Wake Update loop on background hub events
+- Remove dead autoTheme variable from theme init (zhujian)
+
 ## [v1.18.0] - 2026-05-17
 
 ### Added
