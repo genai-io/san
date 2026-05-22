@@ -105,7 +105,7 @@ func separatorWrapped(trackerPrefix, separator, content string) string {
 }
 
 func (m model) renderInputView() string {
-	prompt := conv.InputPromptStyle.Render("❯ ")
+	prompt := conv.InputPromptStyle.Render("❭ ")
 	if m.userInput.PromptSuggestion.Text != "" && m.userInput.Textarea.Value() == "" &&
 		!m.conv.Stream.Active && !m.userInput.Suggestions.IsVisible() {
 		return prompt + ghostTextStyle.Render(m.userInput.PromptSuggestion.Text)

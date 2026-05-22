@@ -32,6 +32,16 @@ func Run(opts setting.RunOptions) error {
 		return err
 	}
 
+	// Fresh sessions get the splash screen before Bubbletea takes over.
+	// Resumed sessions skip it — commitAllMessages will reprint the
+	// conversation immediately, so a splash would just be churn.
+	if len(m.conv.Messages) == 0 {
+		printWelcome(welcomeInfo{
+			Model: m.services.LLM.ModelID(),
+			CWD:   m.env.CWD,
+		})
+	}
+
 	finalModel, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return fmt.Errorf("failed to run TUI: %w", err)

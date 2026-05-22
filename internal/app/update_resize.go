@@ -23,11 +23,11 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	if !m.env.Ready {
 		m.env.Ready = true
 
+		// Welcome banner is drawn before tea.NewProgram (see run.go); here
+		// we only need to commit any resumed conversation.
 		var cmds []tea.Cmd
 		if len(m.conv.Messages) > 0 {
 			cmds = append(cmds, m.commitAllMessages()...)
-		} else {
-			cmds = append(cmds, tea.Println(conv.RenderWelcome()))
 		}
 
 		if m.userInput.Session.PendingSelector {

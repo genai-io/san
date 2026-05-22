@@ -1,0 +1,96 @@
+// Interactive-mode splash: a single-line brand mark + cwd-basename + model,
+// nothing else. Called once at startup, before tea.NewProgram(m).Run() —
+// Bubbletea draws inline, so the splash stays in scrollback above the
+// live view.
+package app
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
+)
+
+// Three-hue palette: teal for the brand mark, star blue for the ✦ accent
+// inside the logo, dim gray for everything else. Each token has Dark and
+// Light variants so contrast holds either way.
+var (
+	welcomeTeal = lipgloss.AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"}
+	welcomeStar = lipgloss.AdaptiveColor{Dark: "#7FD4FF", Light: "#0284C7"}
+	welcomeDim  = lipgloss.AdaptiveColor{Dark: "#65707A", Light: "#9CA3AF"}
+)
+
+type welcomeInfo struct {
+	Model string
+	CWD   string
+}
+
+// printWelcome writes the splash to stdout. Falls back to plain text when
+// stdout is not a TTY or NO_COLOR is set.
+func printWelcome(info welcomeInfo) {
+	if !welcomeUseColor() {
+		printWelcomePlain(info)
+		return
+	}
+	fmt.Println(renderWelcome(info))
+}
+
+func welcomeUseColor() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+func renderWelcome(info welcomeInfo) string {
+	var (
+		star    = lipgloss.NewStyle().Foreground(welcomeStar)
+		brand   = lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
+		bracket = lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
+		dim     = lipgloss.NewStyle().Foreground(welcomeDim)
+	)
+
+	header := bracket.Render("< ") + brand.Render("GEN") + " " + star.Render("✦") + " " + bracket.Render("/>")
+
+	parts := []string{header}
+	if proj := projectName(info.CWD); proj != "" {
+		parts = append(parts, dim.Render(proj))
+	}
+	if info.Model != "" {
+		parts = append(parts, dim.Render(info.Model))
+	}
+	return "\n" + strings.Join(parts, dim.Render("  ·  "))
+}
+
+// projectName returns a compact, human-friendly label for the working
+// directory — basename of the path, with $HOME folded to "~".
+func projectName(p string) string {
+	if p == "" {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if p == home {
+			return "~"
+		}
+	}
+	base := filepath.Base(p)
+	if base == "." || base == "/" {
+		return ""
+	}
+	return base
+}
+
+func printWelcomePlain(info welcomeInfo) {
+	parts := []string{"< GEN ✦ />"}
+	if proj := projectName(info.CWD); proj != "" {
+		parts = append(parts, proj)
+	}
+	if info.Model != "" {
+		parts = append(parts, info.Model)
+	}
+	fmt.Println()
+	fmt.Println(strings.Join(parts, "  ·  "))
+}

@@ -36,21 +36,6 @@ const (
 	agentContentIndent = "    "
 )
 
-// RenderWelcome renders the welcome screen.
-func RenderWelcome() string {
-	genStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.AI).Bold(true)
-	bracketStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
-	slashStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
-
-	icon := bracketStyle.Render("   < ") +
-		genStyle.Render("GEN") +
-		slashStyle.Render(" ✦ ") +
-		slashStyle.Render("/") +
-		bracketStyle.Render(">")
-
-	return "\n" + icon
-}
-
 // OperationModeParams holds the parameters needed for rendering mode status.
 type OperationModeParams struct {
 	Mode             OperationMode
@@ -277,7 +262,7 @@ var inlineImageTokenPattern = regexp.MustCompile(`\[Image #\d+\]`)
 // RenderUserMessage renders a user message with prompt and optional images.
 func RenderUserMessage(content, displayContent string, images []core.Image, mdRenderer *MDRenderer, width int) string {
 	var sb strings.Builder
-	prompt := InputPromptStyle.Render("❯ ")
+	prompt := InputPromptStyle.Render("❭ ")
 	if displayContent == "" {
 		displayContent = content
 	}
