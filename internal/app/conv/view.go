@@ -139,6 +139,14 @@ func (p inlinedToolResults) IsResultInlined(idx int) bool {
 
 func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	msg := p.Messages[idx]
+
+	// The interrupt marker is a payload-only signal for the next LLM turn —
+	// the user already sees "[Interrupted]" on the assistant message and
+	// rendering this again as a `❯ ...` line reads as if they typed it.
+	if msg.Role == core.RoleUser && msg.ToolResult == nil && msg.Content == InterruptedByUserMarker {
+		return ""
+	}
+
 	var sb strings.Builder
 
 	if msg.ToolResult == nil {
