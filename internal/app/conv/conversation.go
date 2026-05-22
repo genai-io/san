@@ -124,6 +124,30 @@ func (m *ConversationModel) MarkLastInterrupted() {
 	}
 }
 
+// InterruptedByUserMarker is the user-role marker appended after a
+// cancelled stream. It gives the next turn an explicit, parseable
+// signal that the prior assistant response did not complete because
+// the user interrupted it.
+const InterruptedByUserMarker = "[Request interrupted by user]"
+
+// AppendInterruptedByUserMarker appends [[InterruptedByUserMarker]] as a
+// user-role message so subsequent inference sees a clean turn boundary
+// after a cancel. Idempotent: skips if the last message is already the
+// marker (or a tool result, which already conveys the interruption via
+// its cancelled-tool-result content).
+func (m *ConversationModel) AppendInterruptedByUserMarker() {
+	if len(m.Messages) > 0 {
+		last := m.Messages[len(m.Messages)-1]
+		if last.Role == core.RoleUser && last.ToolResult == nil && last.Content == InterruptedByUserMarker {
+			return
+		}
+	}
+	m.Append(core.ChatMessage{
+		Role:    core.RoleUser,
+		Content: InterruptedByUserMarker,
+	})
+}
+
 func (m *ConversationModel) ToggleMostRecentExpandable() {
 	for i := len(m.Messages) - 1; i >= 0; i-- {
 		msg := &m.Messages[i]

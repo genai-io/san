@@ -19,6 +19,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.conv.Modal.Question.Hide()
 	m.cancelPendingToolCalls()
 	m.conv.MarkLastInterrupted()
+	m.conv.AppendInterruptedByUserMarker()
 
 	cmds := m.CommitMessages()
 	if cmd := m.drainInputQueueAfterCancel(); cmd != nil {

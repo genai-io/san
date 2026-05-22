@@ -60,3 +60,42 @@ func TestMarkToolCallCompleteAdvancesAndClearsPendingState(t *testing.T) {
 		t.Fatalf("CurrentIdx = %d, want 0", state.CurrentIdx)
 	}
 }
+
+func TestAppendInterruptedByUserMarkerAddsMessage(t *testing.T) {
+	m := NewConversation()
+	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: "partial [Interrupted]"})
+
+	m.AppendInterruptedByUserMarker()
+
+	if len(m.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(m.Messages))
+	}
+	last := m.Messages[len(m.Messages)-1]
+	if last.Role != core.RoleUser || last.Content != InterruptedByUserMarker {
+		t.Fatalf("unexpected last message: %#v", last)
+	}
+}
+
+func TestAppendInterruptedByUserMarkerIsIdempotent(t *testing.T) {
+	m := NewConversation()
+	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: "x"})
+	m.AppendInterruptedByUserMarker()
+	m.AppendInterruptedByUserMarker()
+
+	if len(m.Messages) != 2 {
+		t.Fatalf("expected idempotent append, got %d messages: %#v", len(m.Messages), m.Messages)
+	}
+}
+
+func TestAppendInterruptedByUserMarkerOnEmptyConversation(t *testing.T) {
+	m := NewConversation()
+
+	m.AppendInterruptedByUserMarker()
+
+	if len(m.Messages) != 1 {
+		t.Fatalf("expected marker to be appended on empty conv, got %d", len(m.Messages))
+	}
+	if m.Messages[0].Content != InterruptedByUserMarker {
+		t.Fatalf("unexpected content: %q", m.Messages[0].Content)
+	}
+}
