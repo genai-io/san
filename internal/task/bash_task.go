@@ -7,6 +7,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/genai-io/gen-code/internal/proc"
 )
 
 // BashTask represents a background bash command task
@@ -176,14 +178,10 @@ func (t *BashTask) Stop() error {
 		t.cancel()
 	}
 
-	// Send SIGTERM to process group
-	if t.PID > 0 {
-		if err := syscall.Kill(-t.PID, syscall.SIGTERM); err != nil {
-			// Ignore if process already exited
-			if err != syscall.ESRCH {
-				return err
-			}
-		}
+	// Send SIGTERM to the process group (Unix) or fall back to Process.Kill
+	// on Windows, where signal-based group termination is unavailable.
+	if err := proc.TerminateGroupByPID(t.PID, syscall.SIGTERM); err != nil {
+		return err
 	}
 
 	return nil
@@ -196,14 +194,8 @@ func (t *BashTask) Kill() error {
 		t.cancel()
 	}
 
-	// Send SIGKILL to process group
-	if t.PID > 0 {
-		if err := syscall.Kill(-t.PID, syscall.SIGKILL); err != nil {
-			// Ignore if process already exited
-			if err != syscall.ESRCH {
-				return err
-			}
-		}
+	if err := proc.TerminateGroupByPID(t.PID, syscall.SIGKILL); err != nil {
+		return err
 	}
 
 	t.markKilled()

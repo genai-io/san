@@ -11,6 +11,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/genai-io/gen-code/internal/proc"
 )
 
 // STDIOConfig contains configuration for STDIO transport
@@ -63,10 +65,8 @@ func (t *STDIOTransport) Start(ctx context.Context) error {
 	t.cmd = exec.CommandContext(ctx, command, args...)
 	t.cmd.Env = buildEnv(env)
 
-	// Set up process group for clean termination
-	t.cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	// Set up process group for clean termination (no-op on Windows).
+	proc.SetProcessGroup(t.cmd)
 
 	// Connect stdin/stdout
 	var err error

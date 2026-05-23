@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/genai-io/gen-code/internal/proc"
 	"github.com/genai-io/gen-code/internal/setting"
 )
 
@@ -38,11 +39,9 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Stdin = bytes.NewReader(inputJSON)
 	cmd.Env = e.buildEnv(ctx, input)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	proc.SetProcessGroup(cmd)
 	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
+		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
 		return nil
 	}
 
@@ -92,11 +91,9 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 	cwd := e.getCwd()
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Env = e.buildEnv(ctx, input)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	proc.SetProcessGroup(cmd)
 	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
+		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
 		return nil
 	}
 

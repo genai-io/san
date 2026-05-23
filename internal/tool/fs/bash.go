@@ -11,9 +11,9 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
+	"github.com/genai-io/gen-code/internal/proc"
 	"github.com/genai-io/gen-code/internal/task"
 	"github.com/genai-io/gen-code/internal/tool"
 	"github.com/genai-io/gen-code/internal/tool/perm"
@@ -227,8 +227,9 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 
-	// Set process group so we can kill all child processes
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Place the child in its own process group so cancellation can take down
+	// any descendants it spawns (Unix). No-op on Windows.
+	proc.SetProcessGroup(cmd)
 
 	// Set up pipes for stdout and stderr
 	stdout, err := cmd.StdoutPipe()
