@@ -238,35 +238,39 @@ const TruncatedResumePrompt = "Your response was truncated due to output token l
 // the chain without triggering a spurious inference on the lone summary.
 func (a *agent) waitForInput(ctx context.Context) error {
 	for {
+		// Block until a message arrives (idle state).
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case msg, ok := <-a.inbox:
-			if !ok || msg.Signal == SigStop {
-				return errStopped
+			startsTurn, err := a.ingestBatch(ctx, msg, ok)
+			if err != nil {
+				return err
 			}
-			startsTurn := a.ingest(ctx, msg)
-
-			// Drain remaining (non-blocking).
-		drain:
-			for {
-				select {
-				case msg, ok := <-a.inbox:
-					if !ok || msg.Signal == SigStop {
-						return errStopped
-					}
-					if a.ingest(ctx, msg) {
-						startsTurn = true
-					}
-				default:
-					break drain
-				}
-			}
-
 			if startsTurn {
 				return nil
 			}
-			// Only control signals arrived — stay idle.
-		case <-ctx.Done():
-			return ctx.Err()
+			// Only control signals arrived — keep waiting.
+		}
+	}
+}
+
+// ingestBatch processes the just-received message plus any others already
+// queued (non-blocking), and reports whether any of them starts a turn. A
+// closed inbox or SigStop yields errStopped.
+func (a *agent) ingestBatch(ctx context.Context, msg Message, ok bool) (startsTurn bool, err error) {
+	for {
+		if !ok || msg.Signal == SigStop {
+			return false, errStopped
+		}
+		if a.ingest(ctx, msg) {
+			startsTurn = true
+		}
+		select {
+		case msg, ok = <-a.inbox:
+			// another message was already queued — loop to process it
+		default:
+			return startsTurn, nil
 		}
 	}
 }
