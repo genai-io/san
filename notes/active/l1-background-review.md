@@ -95,27 +95,59 @@ layers like other gen-code settings):
 ## 3. What L1 writes — directly
 
 The write tools (`memory_write` + `skill_manage`) belong **only to the L1
-reviewer fork** in this phase. The main agent never writes memory/skills — it
-only reads/invokes them (existing skills-directory injection + skill-view).
-Because only the reviewer writes, provenance is simply **by location**: every
-L1 write lands under agent-created paths, kept apart from user-authored skills,
-so the future L2 curator can manage them without touching the user's. (Letting
-the main agent write — Hermes-style provenance flags — can come later.)
+reviewer fork** in this phase; the main agent reads/invokes skills and memory
+but never writes them. L1-written content is marked **agent-owned** — skills via
+the `origin: agent-created` frontmatter field (§3b), memory by living in its own
+dedicated store (§3a) — so the future L2 curator manages only agent-owned
+content and never the user's. (Letting the main agent write skills too can come
+later.)
 
-### 3a. Memory flow
+### 3a. Memory flow — when to add vs replace
 
-- Trigger: every N user turns (§2).
-- The reviewer reads the recent conversation history and extracts **durable
-  user/project facts** (preferences, project conventions, build/debug insights).
-- Writes via `memory_write` to a **user-level, project-partitioned** store:
-  `~/.gen/projects/<project>/memory/MEMORY.md` (+ topic files, Claude-Code-style:
-  a concise `MEMORY.md` index, detail files loaded on demand). `<project>` is
-  derived from the git repo so worktrees/subdirs of one repo share a store;
-  fall back to the project root outside a repo.
-- **Why user-level + project-partitioned, not in-repo**: it isolates memory per
-  project but keeps it **machine-local and out of the repo**, so there is no
-  commit/gitignore decision and no agent churn in git history. (This mirrors
-  Claude Code's auto-memory.) Append/replace entries; "Nothing to save." valid.
+**Precondition (whether a memory review runs):** the memory cadence is due
+(every N user turns, §2), the memory arm is enabled, and the turn ended cleanly
+(`StopEndTurn`). Unlike skills, this is a **turn cadence** — independent of how
+much work the turn did.
+
+**Inputs to the fork:** the conversation snapshot (the recent turns) + the
+memory-review prompt; the fork also **reads the current memory store** so it can
+refresh/dedupe rather than blindly append.
+
+```
+memory cadence due  (memory arm enabled)
+  │  StopEndTurn ?   ── no ──▶ skip (cancelled / interrupted)
+  ▼ yes
+memory review fork  (inherits system prompt; reads conversation snapshot +
+                     current MEMORY.md)
+  │
+  ▼
+a durable fact worth keeping?  (user preference, project convention,
+  │                             build/debug insight — NOT one-off task state)
+  │  no ──▶ Nothing to save
+  ▼ yes
+already an entry about this?
+  │  yes ──────────▶  memory_write(replace …)   refresh / correct it
+  ▼ no
+  └────────────────▶  memory_write(add …)       append new entry
+                          → ~/.gen/projects/<project>/memory/MEMORY.md
+```
+
+`memory_write` actions: `add`, `replace`, `remove`, operating on the memory
+store (the `MEMORY.md` index; long detail may spill into topic files like
+`debugging.md`, loaded on demand). "Nothing to save." is valid.
+
+**Anti-patterns (don't save):** one-off task state, transient errors,
+"what we did this session" narratives — those are not durable across sessions.
+
+**Store:** `~/.gen/projects/<project>/memory/MEMORY.md` (+ topic files,
+Claude-Code-style: concise index, details on demand). `<project>` is the **git
+repo root path, separators replaced** (the same encoding Claude Code uses, e.g.
+`-Users-me-work-gen-code`), so worktrees/subdirs of one repo share a store; fall
+back to the project root outside a repo.
+
+**Why user-level + project-partitioned, not in-repo:** isolates memory per
+project but keeps it **machine-local and out of the repo** — no commit/gitignore
+decision, no agent churn in git history. (Mirrors Claude Code's auto-memory.)
 
 **Injection integration (required).** `LoadMemoryFiles` currently reads only
 user-authored files (`GEN.md`/`CLAUDE.md`/rules); it does **not** read this
@@ -253,15 +285,24 @@ Fresh `core.Agent` (`core.NewAgent`) run with `ThinkAct` in a goroutine — **no
 `subagent.Executor` (which is built for named, user-facing subagents with
 registry/hooks/session-persistence a silent reviewer must not carry).
 
+**Construction & seeding:** the fork inherits the parent's `system.System`
+verbatim, is seeded with the parent's **message snapshot** (`SetMessages`) plus
+an injected user message carrying the review prompt, then runs `ThinkAct` under
+a **tight cap** — `MaxTurns ≈ 16` and a context deadline (≈5 min); drop the
+result if it exceeds either.
+
 Invariants (each one cost hermes a production bug):
 
 1. **Run AFTER the user reply is delivered.** Gate on `Result.StopReason ==
    StopEndTurn` (skip cancelled/interrupted/max-turns).
 2. **Inherit the parent's cached system prompt byte-for-byte** for prefix-cache
    parity (Anthropic/OpenRouter). Hermes measured ~26% cost reduction.
-3. **Tool whitelist at dispatch.** Fork's `tools[]` matches the parent (cache-key
-   parity) but a static permission func allows only `memory_write` +
-   `skill_manage`.
+3. **Toolset whitelist at dispatch.** Fork's `tools[]` matches the parent
+   (cache-key parity) but a static permission func allows only the **memory +
+   skill toolsets** — both **read and write**: it must read current memory and
+   list/view existing skills (to dedupe and choose add-vs-replace / patch-vs-
+   create), and write via `memory_write` / `skill_manage`. Everything else
+   denied.
 4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge` (would
    deadlock the TUI); auto-deny any approval.
 5. **Best-effort.** Wrap in recover; review failure never affects the user turn.
