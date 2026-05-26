@@ -143,9 +143,32 @@ review prompt against the turn snapshot and follows a **preference order**
 
 "Umbrella" is a **convention, not a data-model marker** — the preference order
 above is what keeps the collection broad instead of sprouting one narrow skill
-per session. New skills are written to `.gen/skills/agent-created/<name>/`
-(a `SKILL.md` with frontmatter `name`/`description` + optional
-`references/`/`templates/`/`scripts/`), isolated from user-authored skills.
+per session.
+
+**Two levels (user + project), for both create and update.** gen-code already
+loads skills from two scopes — `ScopeUser` (`~/.gen/skills/`) and `ScopeProject`
+(`.gen/skills/`) — so no new loader source is needed (unlike memory). Agent
+writes go to an isolated `agent-created/` subdir at each scope:
+
+- **User-level** (cross-project, reusable): `~/.gen/skills/agent-created/<name>/`
+- **Project-level** (this repo's code/conventions/tooling): `./.gen/skills/agent-created/<name>/`
+
+A skill is a `SKILL.md` (frontmatter `name`/`description` + optional
+`references/`/`templates/`/`scripts/`).
+
+- **On create**, L1 picks the level: reusable/general → user; specific to this
+  project → project (the review prompt encodes the rule).
+- **On update**, patch the skill **at its existing scope** (don't relocate).
+- **Scope of L1 writes (Phase 1):** L1 only creates/patches **agent-created**
+  skills; it reads/consults user-authored skills (to avoid duplication) but does
+  **not** modify them — keeping user skills untouched. (Relaxing this to let L1
+  patch a just-used user skill, Hermes-style, is a later option.)
+
+**Why this differs from memory:** memory is personal/accumulated → machine-local,
+project-partitioned, not in the repo. Skills are reusable artifacts a team may
+want to share → they follow gen-code's existing user/project scopes; project-
+level lives in-repo `./.gen/skills/` (gitignore the `agent-created/` subdir if
+you don't want auto-generated skills committed).
 
 `skill_manage` actions: `create`, `edit` (full rewrite — rare), `patch`,
 `write_file`, `remove_file`, `delete`. **`patch`** is targeted find-and-replace
@@ -195,8 +218,8 @@ Module map:
 | Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
-| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → agent-created skills (location TBD, §7) |
-| Injection read | extend `LoadMemoryFiles` to read the memory store as a new "auto" source (§3a) |
+| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/agent-created/` (user) or `./.gen/skills/agent-created/` (project) |
+| Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source (§3a). skills: no change — existing user/project scope loader picks up the `agent-created/` subdir. |
 
 ---
 
@@ -247,13 +270,11 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 
 ## 7. Open questions (L1)
 
-- **Skill store location.** Memory is project-partitioned at user level
-  (`~/.gen/projects/<project>/memory/`, settled). Skills are different — a skill
-  like `go-table-tests` is **reusable across projects**, so agent-created skills
-  may belong at user-global level (e.g. `~/.gen/skills/agent-created/`, as hermes
-  does with `~/.hermes/skills/`) rather than per-project or in-repo. Decide:
-  user-global vs project-partitioned vs in-repo, and keep them isolated from
-  user-authored skills regardless.
+- **Let L1 patch user-authored skills?** Phase 1 default is no (L1 only writes
+  agent-created skills). Hermes allows patching a just-used user skill (its
+  preference #1); revisit if "fix the skill I just used" turns out important.
+- **gitignore `./.gen/skills/agent-created/`?** Default: commit (team-shared
+  project skills) or gitignore (keep auto-generated skills local) — team choice.
 - **Cache parity on non-Anthropic providers** — verify system-prompt inheritance
   helps (or at least doesn't hurt) across gen-code's providers.
 - **Usage telemetry** — whether to land the minimal usage log in this phase (for
