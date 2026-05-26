@@ -182,9 +182,9 @@ start**. Acceptable, since memory mainly serves future turns/sessions.
 
 > **Umbrella** = a broad, **class-level** skill (e.g. `go-testing`,
 > `code-review`) that accumulates many specific learnings over time — as opposed
-> to a **narrow, session-specific** skill (`fix-flaky-test-pr-1234`). The whole
-> flow prefers extending an umbrella over spawning narrow skills, so the
-> collection stays "broad and few", not "narrow and many".
+> to a **narrow, session-specific** skill (`fix-flaky-test-pr-1234`). It is a
+> naming convention, not a stored field — the flow prefers extending an umbrella
+> over spawning narrow skills, so the collection stays "broad and few".
 
 **Precondition (whether a skill review runs at all):** this turn did real work
 (tool-iters ≥ K, §2), the turn ended cleanly (`StopEndTurn`), and the skill arm
@@ -222,19 +222,16 @@ fix/extend an existing skill; `skill_manage(write_file, …)` to add a
 Patch the skill **in place**, at its existing scope.
 
 **CREATE — only when the learning is a genuinely new class of task no skill
-covers (③).** Last resort. `skill_manage(create, name, content)`; the name must
-be **class-level** (e.g. `go-table-tests`), never session-specific (no PR
-numbers, error strings, `fix-x-today`). Always written with
-`origin: agent-created`, at the level L1 chose (user vs project, below).
+covers (③).** Last resort. `skill_manage(create, name, content)` with
+`origin: agent-created`; the name must be **class-level** (e.g. `go-table-tests`),
+never session-specific (no PR numbers, error strings, `fix-x-today`). L1 picks
+the level: reusable/general → user (`~/.gen/skills/`), project-specific →
+project (`./.gen/skills/`).
 
 **NOTHING TO SAVE — when** the session ran smoothly with no correction and no
 new technique, or the only candidate is an **anti-pattern**: environment-
 dependent failures, negative claims about tools, transient errors, one-off task
 narratives.
-
-"Umbrella" is a **convention, not a data-model marker** — the decision flow
-above is what keeps the collection broad instead of sprouting one narrow skill
-per session.
 
 **Two levels (user + project), for both create and update.** gen-code already
 loads skills from two scopes — `ScopeUser` (`~/.gen/skills/`) and `ScopeProject`
@@ -250,14 +247,10 @@ unknown frontmatter). This mirrors hermes, which marks provenance with a flag,
 not a separate path. (A sidecar file is the alternative; a field is simpler for
 Phase 1.)
 
-- **On create**, L1 writes `origin: agent-created` and picks the level:
-  reusable/general → user (`~/.gen/skills/`); specific to this project →
-  project (`./.gen/skills/`). The review prompt encodes the rule.
-- **On update**, patch the skill **in place** (don't relocate or change scope).
-- **Scope of L1 writes (Phase 1):** L1 only creates/patches skills it owns
-  (`origin: agent-created`); it reads/consults `user-created` skills (to avoid
-  duplication) but does **not** modify them. The future L2 curator likewise only
-  manages `agent-created` skills, never the user's.
+**Scope of L1 writes (Phase 1):** L1 only creates/patches skills it owns
+(`origin: agent-created`); it reads `user-created` skills (to avoid duplication)
+but never modifies them. The future L2 curator likewise touches only
+`agent-created` skills.
 
 **Why this differs from memory:** memory is personal/accumulated → machine-local,
 project-partitioned, not in the repo. Skills are reusable artifacts a team may
@@ -274,8 +267,7 @@ in the file, prompting a clean re-read). Requires a unique match unless
 
 Three review prompts, picked by which triggers fired (memory-only / skill-only /
 combined). The skill prompt is **active** (most working sessions produce ≥1
-update) and embeds an anti-pattern list (no environment-dependent failures, no
-negative tool claims, no transient errors, no one-off task narratives).
+update) and embeds the anti-pattern list from NOTHING TO SAVE above.
 
 ---
 
