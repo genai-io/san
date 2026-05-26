@@ -59,11 +59,36 @@ on its own and matches the production-proven hermes shape.
   *which* skill to update (see §3b), not *whether* to review — otherwise new
   skills for tasks that had no skill yet would never be learned.
 
-Both config-overridable; `0` disables that arm. Combined when both fire on the
-same turn. The trigger is a **pure event consumer** subscribed to
-`core.Agent.Outbox()`, reading `TurnEvent` (`Result.Turns`/`ToolUses`/
-`StopReason`). No `internal/core` changes; counters live in the consumer and
-hydrate from history on session resume.
+Combined when both fire on the same turn. The trigger is a **pure event
+consumer** subscribed to `core.Agent.Outbox()`, reading `TurnEvent`
+(`Result.Turns`/`ToolUses`/`StopReason`). No `internal/core` changes; counters
+live in the consumer and hydrate from history on session resume.
+
+**Configuration.** The two arms are toggled and tuned independently via
+`settings.json` (a new `selfLearn` section, merged across user/project/local
+layers like other gen-code settings):
+
+```json
+{
+  "selfLearn": {
+    "memory": { "enabled": false, "everyTurns": 10 },
+    "skills": { "enabled": false, "everyToolIters": 10 }
+  }
+}
+```
+
+- `memory.enabled` / `skills.enabled` — enable each arm separately. You can run
+  memory-evolving without skill-evolving and vice versa.
+- `memory.everyTurns` — memory cadence (user turns); `skills.everyToolIters` —
+  skill threshold (tool iterations this turn).
+- **When both arms are off, no L1 reviewer goroutine is started** — zero
+  overhead, no extra model calls, nothing written.
+- **Default: off (opt-in).** L1 forks an extra model call per cadence and writes
+  files automatically; ship it opt-in, then consider defaulting on once trusted
+  (Claude Code ships auto-memory on — we can match later). *(Default value is an
+  easily-changed decision.)*
+- Optional escape hatch: an env override (e.g. `GEN_DISABLE_SELF_LEARN=1`),
+  mirroring Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
 
 ---
 
@@ -265,7 +290,9 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
    tools; extend `LoadMemoryFiles` to read the memory store.
 3. Review prompt templates (memory / skill / combined), rewritten for gen-code
    terminology.
-4. Wire-up in `Task.Start` / `stopLocked`; gate on `StopEndTurn`.
+4. Add the `selfLearn` settings section (`internal/setting`); wire-up in
+   `Task.Start` / `stopLocked` — start the reviewer only when ≥1 arm is enabled,
+   pass the enabled arms + intervals to it; gate reviews on `StopEndTurn`.
 5. Concurrency cap ≤1; drop-and-log on overlap.
 6. Tests: trigger cadence (turns / iters / combined), interrupted-turn skip,
    concurrency cap, restricted-toolset enforcement.
