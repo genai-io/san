@@ -59,10 +59,12 @@ on its own and matches the production-proven hermes shape.
   *which* skill to update (see §3b), not *whether* to review — otherwise new
   skills for tasks that had no skill yet would never be learned.
 
-Combined when both fire on the same turn. The trigger is a **pure event
-consumer** subscribed to `core.Agent.Outbox()`, reading `TurnEvent`
-(`Result.Turns`/`ToolUses`/`StopReason`). No `internal/core` changes; counters
-live in the consumer and hydrate from history on session resume.
+Combined when both fire on the same turn. The trigger **observes completed
+turns**: it is handed each turn `Result` (`Turns`/`ToolUses`/`StopReason`) as
+the turn finishes — the `Outbox` is single-consumer (already drained by the
+app), so the reviewer is fed rather than subscribing to it. No `internal/core`
+changes; counters live in the reviewer and hydrate from history on session
+resume.
 
 **Configuration.** The two arms are toggled and tuned independently via
 `settings.json` (a new `selfLearn` section, merged across user/project/local
@@ -309,7 +311,7 @@ Module map:
 
 | Concern | Module |
 |---|---|
-| Trigger + fork | new `internal/selflearn/l1` (subscribes to `core.Agent.Outbox()`, owns counters) |
+| Trigger + fork | new `internal/selflearn` (observes completed turns, owns counters) |
 | Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
@@ -350,8 +352,8 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 
 ### Concrete next steps (Phase 1)
 
-1. New package `internal/selflearn/l1`: `Reviewer` (counters + Outbox
-   subscription + trigger), `forkAgent(parent, snapshot, mode)` (restricted
+1. New package `internal/selflearn`: `Reviewer` (counters + turn observation +
+   trigger), `forkAgent(parent, snapshot, mode)` (restricted
    `core.Agent`, runs `ThinkAct`, surfaces the one-line summary).
 2. `memory_write` (store at `~/.gen/projects/<project>/memory/`) + `skill_manage`
    tools; extend `LoadMemoryFiles` to read the memory store.
