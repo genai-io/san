@@ -126,7 +126,7 @@ func (m *model) ReloadPluginBackedState() error {
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for SessionStart/PostCompact.
 	if m.services.Reminder != nil {
-		m.services.Reminder.EnqueueAllProviders()
+		m.services.Reminder.RequeueSystemReminders()
 	}
 
 	return nil

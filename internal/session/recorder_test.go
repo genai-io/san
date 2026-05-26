@@ -207,6 +207,50 @@ func TestRecorderWritesToolsChangeEvents(t *testing.T) {
 	}
 }
 
+// Compaction must persist the summary as a message.appended and a
+// session.compacted record whose SummaryMessageID is that summary's ID, so replay
+// reconstructs the compacted chain instead of the summarized-away history.
+func TestRecorderWritesCompactionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-c", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewRecorder(RecorderOptions{
+		FileStore: fs, SessionID: "sess-c", AgentID: "main",
+		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
+	})
+
+	// A pre-compaction message, then the summary append + compaction boundary.
+	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "m1", Role: core.RoleUser, Content: "hi"}})
+	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Data: core.Message{ID: "sum-1", Role: core.RoleUser, Content: "Previous context:\nsummary"}})
+	rec.OnAgentEvent(core.Event{Type: core.OnCompact, Data: core.CompactInfo{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"}})
+
+	records := readAllRecords(t, dir, "sess-c")
+	var summaryAppended bool
+	var boundary string
+	for _, r := range records {
+		if r.Type == transcript.MessageAppended && r.Message != nil && r.Message.MessageID == "sum-1" {
+			summaryAppended = true
+		}
+		if r.Type == transcript.SessionCompacted && r.Session != nil {
+			boundary = r.Session.SummaryMessageID
+		}
+	}
+	if !summaryAppended {
+		t.Fatal("summary message.appended was not recorded")
+	}
+	if boundary != "sum-1" {
+		t.Fatalf("compaction boundary = %q, want sum-1", boundary)
+	}
+}
+
 // A nil-safe recorder (no FileStore) must accept events without panicking.
 func TestRecorderNilSafe(t *testing.T) {
 	var rec *Recorder

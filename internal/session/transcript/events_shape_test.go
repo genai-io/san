@@ -122,7 +122,7 @@ func TestEventsShape(t *testing.T) {
 
 	// compaction
 	mustOK(t, "Compact", store.Compact(ctx, CompactCommand{
-		SessionID: sid, Time: at(13), BoundaryID: "m2",
+		SessionID: sid, Time: at(13), SummaryMessageID: "m2",
 	}))
 
 	// Read raw lines.
@@ -258,14 +258,14 @@ func TestEventsShape(t *testing.T) {
 		}
 	}
 
-	// 6. session.compacted carries only the boundaryId, no constants.
+	// 6. session.compacted carries only the summaryMessageId, no constants.
 	cs := byType["session.compacted"]
 	if len(cs) != 1 {
 		t.Fatalf("session.compacted count = %d, want 1", len(cs))
 	}
 	csess := cs[0]["session"].(map[string]any)
-	if csess["boundaryId"] != "m2" {
-		t.Errorf("compact boundary = %v, want m2", csess["boundaryId"])
+	if csess["summaryMessageId"] != "m2" {
+		t.Errorf("compact summaryMessageId = %v, want m2", csess["summaryMessageId"])
 	}
 	for _, forbidden := range []string{"provider", "model", "maxTokens", "agentId"} {
 		if _, has := csess[forbidden]; has {

@@ -152,6 +152,27 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 		r.onToolsChange(ev)
 	case core.OnAppend:
 		r.onAppend(ev)
+	case core.OnCompact:
+		r.onCompact(ev)
+	}
+}
+
+// onCompact persists the compaction boundary. The summary message itself is
+// recorded via the preceding message.appended (compaction emits OnAppend for
+// it first); this record marks that summary's ID as the point where replay
+// stops walking parents, so the summarized-away history is not resurrected.
+func (r *Recorder) onCompact(ev core.Event) {
+	info, ok := ev.CompactInfo()
+	if !ok || info.SummaryMessageID == "" {
+		return
+	}
+	err := r.fs.Compact(context.Background(), transcript.CompactCommand{
+		SessionID:        r.sessionID,
+		Time:             time.Now(),
+		SummaryMessageID: info.SummaryMessageID,
+	})
+	if err != nil {
+		log.Logger().Warn("recorder: compact boundary failed", zap.Error(err))
 	}
 }
 

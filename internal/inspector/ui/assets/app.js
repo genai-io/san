@@ -284,7 +284,7 @@ function ingestForChain(rec) {
     return;
   }
   if (rec.type === "session.compacted") {
-    state.compactBoundary = (rec.session && rec.session.boundaryId) || "";
+    state.compactBoundary = (rec.session && rec.session.summaryMessageId) || "";
     state.activeChain = computeActiveChain(state.messageParents, state.compactBoundary);
     state.activeLeaf = lastChainLeaf(state.activeChain);
     rehighlightMessageRows();
@@ -478,8 +478,7 @@ function inferenceDetailNodes(raw, replay) {
 
   if (replay.messages && replay.messages.length) {
     nodes.push(sectionHeader("Active message chain (" + replay.messages.length + ")"));
-    const lines = replay.messages.map((m) => "  " + m.role + "  " + m.id);
-    nodes.push(textBlock(lines.join("\n")));
+    nodes.push(messageChainList(replay.messages));
   }
 
   if (replay.integrity && replay.integrity.length) {
@@ -869,6 +868,55 @@ function toolsList(tools) {
     wrap.appendChild(item);
   }
   return wrap;
+}
+
+// messageChainList renders each active-chain message as a collapsible row:
+// the summary shows "role  id  — preview" and expanding it reveals the full
+// content blocks (text, tool_use, tool_result, …) via renderContentBlock.
+function messageChainList(messages) {
+  const wrap = document.createElement("div");
+  for (const m of messages) {
+    const item = document.createElement("details");
+    item.style.margin = "2px 0";
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.textContent = m.role + "  " + m.id + messagePreview(m);
+    item.appendChild(summary);
+
+    const body = document.createElement("div");
+    const blocks = m.content || [];
+    if (blocks.length) {
+      for (const b of blocks) {
+        body.appendChild(renderContentBlock(b));
+      }
+    } else {
+      const empty = document.createElement("pre");
+      empty.style.cssText = blockPreStyle();
+      empty.textContent = "(no content)";
+      body.appendChild(empty);
+    }
+    item.appendChild(body);
+    wrap.appendChild(item);
+  }
+  return wrap;
+}
+
+// messagePreview extracts a short one-line hint for the collapsed summary so a
+// row is identifiable without expanding it.
+function messagePreview(m) {
+  const blocks = m.content || [];
+  for (const b of blocks) {
+    if (b && b.type === "text" && b.text) {
+      const oneLine = b.text.replace(/\s+/g, " ").trim();
+      if (oneLine) return "  — " + (oneLine.length > 60 ? oneLine.slice(0, 60) + "…" : oneLine);
+    }
+  }
+  for (const b of blocks) {
+    if (b && b.type === "tool_use") return "  — " + (b.name || "tool_use");
+    if (b && b.type === "tool_result") return "  — tool_result";
+    if (b && b.type === "image") return "  — image";
+  }
+  return "";
 }
 
 // renderToolSchema produces a structured DOM for one tool schema:

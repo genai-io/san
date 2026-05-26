@@ -76,7 +76,7 @@ func TestServiceProviderRegistration(t *testing.T) {
 		return "- foo: do foo"
 	}))
 
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	if rendered != 1 {
 		t.Fatalf("provider Body should be called once, got %d", rendered)
 	}
@@ -92,7 +92,7 @@ func TestServiceProviderReplaceByID(t *testing.T) {
 	s.Register(NewProvider("skills", func() string { return "old" }))
 	s.Register(NewProvider("skills", func() string { return "new" }))
 
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	out := s.Drain()
 	if len(out) != 1 {
 		t.Fatalf("registering same ID twice should produce one reminder, got %d: %v", len(out), out)
@@ -107,7 +107,7 @@ func TestServiceProviderEmptyOutput(t *testing.T) {
 	s.Register(NewProvider("skills", func() string { return "" }))
 	s.Register(NewProvider("memory", func() string { return "stuff" }))
 
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	out := s.Drain()
 	if len(out) != 1 {
 		t.Fatalf("empty provider output should be skipped, got %d reminders: %v", len(out), out)
@@ -123,7 +123,7 @@ func TestServiceUnregister(t *testing.T) {
 	s.Register(NewProvider("b", func() string { return "beta" }))
 
 	s.Unregister("a")
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 
 	out := s.Drain()
 	if len(out) != 1 || !strings.Contains(out[0], "beta") {
@@ -172,7 +172,7 @@ func TestServiceFullSessionLifecycle(t *testing.T) {
 	s.Register(NewProvider("memory-user", func() string { return memoryBody }))
 
 	// SessionStart: harness enqueues all providers.
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 
 	// User submits "hello"; sendToAgent drains and attaches.
 	firstUserMsg := AttachToContent("hello", s.Drain())
@@ -196,7 +196,7 @@ func TestServiceFullSessionLifecycle(t *testing.T) {
 	}
 
 	// PostCompact: harness re-enqueues providers so the LLM can recover.
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	postCompactMsg := AttachToContent("after compact", s.Drain())
 	if !strings.Contains(postCompactMsg, skillsBody) {
 		t.Error("post-compact message should re-attach skills reminder")
@@ -214,24 +214,24 @@ func TestServiceProviderReflectsLatestState(t *testing.T) {
 	state := "v1"
 	s.Register(NewProvider("skills", func() string { return state }))
 
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	if got := s.Drain(); !strings.Contains(got[0], "v1") {
 		t.Fatalf("first emission should reflect v1, got %v", got)
 	}
 
 	state = "v2"
 
-	s.EnqueueAllProviders()
+	s.RequeueSystemReminders()
 	if got := s.Drain(); !strings.Contains(got[0], "v2") {
 		t.Errorf("second emission should reflect mutated state v2, got %v", got)
 	}
 }
 
-// TestServiceEnqueueAllProvidersIsIdempotent guards against the slow-growing
+// TestServiceRequeueSystemRemindersIsIdempotent guards against the slow-growing
 // duplicate-emission leak: SessionStart → PostCompact → /skills toggle in
 // close succession should produce one emission per provider, not three.
 // One-time notices (Enqueue) must survive a re-emission unmolested.
-func TestServiceEnqueueAllProvidersIsIdempotent(t *testing.T) {
+func TestServiceRequeueSystemRemindersIsIdempotent(t *testing.T) {
 	s := NewService()
 	s.Register(NewProvider("skills-directory", func() string { return "skills body" }))
 	s.Register(NewProvider("memory-user", func() string { return "user mem" }))
@@ -239,9 +239,9 @@ func TestServiceEnqueueAllProvidersIsIdempotent(t *testing.T) {
 	// Hook-context notice queued before the first emission.
 	s.Enqueue("hook context A")
 
-	s.EnqueueAllProviders() // first SessionStart
-	s.EnqueueAllProviders() // /skills toggle
-	s.EnqueueAllProviders() // PostCompact
+	s.RequeueSystemReminders() // first SessionStart
+	s.RequeueSystemReminders() // /skills toggle
+	s.RequeueSystemReminders() // PostCompact
 
 	out := s.Drain()
 	// 1 notice + 2 provider entries (one per provider) = 3 total.

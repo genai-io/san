@@ -84,6 +84,23 @@ func (s *Task) Send(content string, images []core.Image) {
 	ag.Inbox() <- core.Message{Role: core.RoleUser, Content: content, Images: images}
 }
 
+// Compact asks the running agent to compact in place using the precomputed
+// summary, replacing its conversation chain without tearing the agent down (so
+// the system prompt and tools are not rebuilt). The agent records the summary
+// and a compaction boundary and emits CompactEvent. Returns false when there is
+// no active agent to compact. Safe because the agent applies it at a phase
+// boundary on its own goroutine.
+func (s *Task) Compact(summary string) bool {
+	s.mu.RLock()
+	ag := s.agent
+	s.mu.RUnlock()
+	if ag == nil {
+		return false
+	}
+	ag.Inbox() <- core.Message{Signal: core.SigCompact, Content: summary}
+	return true
+}
+
 // interruptDrainTimeout caps how long InterruptTurn waits for the agent
 // goroutine to actually unwind its in-flight ThinkAct. Keeping this
 // tight avoids UI stalls; if the agent is still in a slow tool the

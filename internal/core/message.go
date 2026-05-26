@@ -38,6 +38,10 @@ type Signal string
 
 const (
 	SigStop Signal = "stop"
+	// SigCompact asks the agent to compact in place using a precomputed
+	// summary carried in the message Content. Handled at a phase boundary on
+	// the agent's own goroutine, so it never races the conversation chain.
+	SigCompact Signal = "compact"
 )
 
 // Message is the canonical message type used across the codebase.

@@ -237,6 +237,14 @@ func (e Event) CompactInfo() (CompactInfo, bool) { ci, ok := e.Data.(CompactInfo
 type CompactInfo struct {
 	Summary       string
 	OriginalCount int
+	// SummaryMessageID is the ID of the synthetic summary message that replaces
+	// the pre-compaction chain. The session recorder writes it as the transcript
+	// compaction boundary so replay truncates history at the summary instead of
+	// resurrecting the summarized-away messages.
+	SummaryMessageID string
+	// Trigger is "auto" (proactive/reactive in-loop compaction) or "manual"
+	// (user /compact). Observers use it to vary post-compaction behavior.
+	Trigger string
 }
 
 // InferenceContext is the PreInfer payload — what was about to be sent to the

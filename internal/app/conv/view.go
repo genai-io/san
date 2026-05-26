@@ -147,7 +147,8 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 
 	switch msg.Role {
 	case core.RoleUser:
-		if msg.ToolResult != nil {
+		switch {
+		case msg.ToolResult != nil:
 			sb.WriteString(RenderToolResultInline(ToolResultData{
 				ToolName: msg.ToolName,
 				Content:  msg.ToolResult.Content,
@@ -155,7 +156,12 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 				IsError:  msg.ToolResult.IsError,
 				Expanded: msg.Expanded,
 			}, p.MDRenderer))
-		} else {
+		case core.IsCompactSummary(msg.Content):
+			// The post-compaction summary is injected as a user message (the
+			// model reads it, and it persists/seeds resume), but it's shown as a
+			// system notice — not a "❭" user turn — so the transcript stays clean.
+			sb.WriteString(RenderSystemMessage(msg.DisplayContent))
+		default:
 			sb.WriteString(RenderUserMessage(msg.Content, msg.DisplayContent, msg.Images, p.MDRenderer, p.Width))
 		}
 	case core.RoleNotice:

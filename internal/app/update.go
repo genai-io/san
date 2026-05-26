@@ -88,7 +88,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// PostCompact. Without this nudge the LLM sees stale state until
 		// one of those fires.
 		if m.services.Reminder != nil {
-			m.services.Reminder.EnqueueAllProviders()
+			m.services.Reminder.RequeueSystemReminders()
 		}
 		return m, nil
 	case input.AgentToggleMsg:

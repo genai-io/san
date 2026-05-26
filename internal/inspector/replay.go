@@ -132,7 +132,7 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 		}
 	case transcript.SessionCompacted:
 		if rec.Session != nil {
-			b.boundaryID = rec.Session.BoundaryID
+			b.boundaryID = rec.Session.SummaryMessageID
 		}
 	case transcript.SystemSectionAdded:
 		if rec.System == nil {

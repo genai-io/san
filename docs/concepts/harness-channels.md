@@ -134,54 +134,24 @@ capabilities) but not the human's project/user instructions. See
 
 ## Compaction
 
-When the context window approaches its limit, the harness compacts:
-
-1. Build the summarization input from the conversation, **stripping every
-   `<system-reminder>` block** out of the user messages first (see below).
-2. Call the LLM with a "summarize the following conversation" prompt to
-   produce a `CompactInfo` summary.
-3. Replace the conversation with a single synthetic message containing the
-   summary.
-4. Drop one-time notices (`DiscardPendingNotices`) and re-emit all providers
-   (`EnqueueAllProviders`) so the post-compact conversation has fresh
-   skill/memory context on the next user turn.
-
-### Reminders are skipped during compaction, not summarized
-
-Reminders ride *inside* user-message content (attached below the prompt),
-so a naive summarizer would fold stale skill/memory/notice text into the
-summary. That is wasteful and risks pinning outdated context into the
-permanent summary. Instead, `core.BuildCompactionText` peels the trailing
-run of `<system-reminder>` blocks off each user message before summarizing;
-a message that was *only* reminders contributes nothing. The fresh state
-comes back through the re-emission step (4), giving every reminder
-provider — skills, memory-user, memory-project, and notices — the same
-lifecycle:
-
-- **injected** on the first user message (`SessionStart`),
-- **skipped** from the summarization input during compaction,
-- **re-injected** on the next user message after `PostCompact`.
-
-`BuildCompactionText` is used by both the auto-compaction path
-(`internal/agent/build.go`) and the manual `/compact` path
-(`internal/app/conv/compact.go`). Its sibling `BuildConversationText` keeps
-reminders intact and is used for proactive-compaction *size estimation*
-(`agent_impl.go`), where the real prompt — reminders included — is what the
-estimate must track.
-
-Stripping peels blocks from the end by anchoring on the last *opening* tag
-rather than matching the merged text with a regex: a closing tag never
-contains the opening-tag prefix, so a reminder body that itself quotes
-`</system-reminder>` is still removed in full, and a `<system-reminder>` the
-user typed mid-message is left untouched.
-
 Compaction is **not** a channel by itself — it's a mutation of the
-user-message channel. The strip-then-re-emit pair is what keeps the
-reminder channel coherent across a compaction.
+user-message channel that leaves the other two alone:
 
-Implementation: `internal/app/conv/compact.go` and
-`internal/core/message.go` (`BuildCompactionText`). The agent emits
-`OnCompact` events for observers.
+- the **system prompt** is reused from cache (never rebuilt),
+- the **messages** collapse into a single `Previous context:` summary message,
+- the **`<system-reminder>` blocks** are stripped from the summarization input
+  (`core.BuildCompactionText` peels the trailing reminder run off each user
+  message) and re-emitted fresh on the next user turn, so every reminder
+  provider shares one lifecycle: injected on the first user message, skipped
+  from the summary during compaction, re-injected after `PostCompact`.
+
+`BuildCompactionText`'s sibling `BuildConversationText` keeps reminders intact
+and is used for proactive-compaction *size estimation*, where the real prompt —
+reminders included — is what the estimate must track.
+
+For the full mechanism — the common pipeline, auto-compact vs. manual
+`/compact`, transcript boundary recording, and reminder freshness — see
+[`concepts/compaction.md`](compaction.md).
 
 ## See Also
 
@@ -190,5 +160,7 @@ Implementation: `internal/app/conv/compact.go` and
 - [`packages/core.md`](../packages/core.md) — `System`, `Section`, slot
   layout.
 - [`packages/reminder.md`](../packages/reminder.md) — runtime API.
+- [`concepts/compaction.md`](compaction.md) — the full compaction mechanism
+  (channels, auto vs. manual, transcript boundary).
 - [`packages/session.md`](../packages/session.md) — how compaction
   records flow into the transcript.

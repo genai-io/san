@@ -61,7 +61,7 @@ func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		return rt.OnAgentStop(err)
 	case core.OnCompact:
 		info, _ := ev.CompactInfo()
-		return rt.OnAutoCompact(info)
+		return rt.OnCompacted(info)
 	default:
 		if extra := applyAgentEvent(rt, m, ev); extra != nil {
 			return tea.Batch(extra, rt.ContinueOutbox())
@@ -91,7 +91,7 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 			needsContinue = false
 		case core.OnCompact:
 			info, _ := ev.CompactInfo()
-			cmds = append(cmds, rt.OnAutoCompact(info))
+			cmds = append(cmds, rt.OnCompacted(info))
 			needsContinue = false
 		default:
 			if extra := applyAgentEvent(rt, m, ev); extra != nil {

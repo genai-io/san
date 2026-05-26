@@ -61,7 +61,7 @@ func (p providerFunc) Render() string { return p.render() }
 //   - providers: long-lived sources that re-emit on SessionStart and
 //     PostCompact (e.g. skills, memory).
 //   - pending: reminders queued for the next user message; each entry tracks
-//     which provider (if any) emitted it so EnqueueAllProviders can replace
+//     which provider (if any) emitted it so RequeueSystemReminders can replace
 //     stale provider entries instead of duplicating them. Entries with no
 //     provider are one-time notices (see Enqueue).
 //
@@ -122,7 +122,7 @@ func (s *Service) Unregister(id string) {
 // <system-reminder> wrapper; this method adds it.
 //
 // Empty bodies are dropped silently. Notices persist independently of
-// EnqueueAllProviders — the latter only touches provider-emitted entries.
+// RequeueSystemReminders — the latter only touches provider-emitted entries.
 func (s *Service) Enqueue(body string) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -174,19 +174,23 @@ func (s *Service) EnqueueOnce(body string) {
 	s.pending = append(s.pending, pendingEntry{wrapped: wrapped})
 }
 
-// EnqueueAllProviders renders every registered provider and queues the
-// non-empty bodies. Idempotent across repeated calls: any prior pending
-// entry from the same provider is dropped before re-emitting, so SessionStart
-// → PostCompact → /skills toggle in close succession produces a single
-// emission per provider rather than accumulating duplicates. One-time notices
-// queued via Enqueue are preserved.
+// RequeueSystemReminders re-renders the provider-sourced reminders only: it
+// renders every registered provider and queues the non-empty bodies. Despite
+// the name it does NOT touch one-time notices (Enqueue) — those are also
+// <system-reminder> blocks but are preserved here, since they describe a
+// past event rather than live session state.
+//
+// Idempotent across repeated calls: any prior pending entry from the same
+// provider is dropped before re-emitting, so SessionStart → PostCompact →
+// /skills toggle in close succession produces a single emission per provider
+// rather than accumulating duplicates.
 //
 // Each provider's body is wrapped with the provider ID as the `source`
 // attribute on the system-reminder tag (e.g. `<system-reminder
 // source="skills-directory">…`) so trace/audit can attribute who injected
 // what without parsing the body itself. Models treat unknown attributes
 // transparently — the model-visible meaning is unchanged.
-func (s *Service) EnqueueAllProviders() {
+func (s *Service) RequeueSystemReminders() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

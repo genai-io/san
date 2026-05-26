@@ -36,6 +36,7 @@ type CompactState struct {
 	LastResult        string
 	LastError         bool
 	Phase             string
+	Count             int // messages being compacted, shown in the in-progress line
 	WarningSuppressed bool
 }
 
@@ -45,6 +46,7 @@ func (c *CompactState) Reset() {
 	c.LastResult = ""
 	c.LastError = false
 	c.Phase = ""
+	c.Count = 0
 	c.WarningSuppressed = false
 }
 
@@ -90,75 +92,29 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 	return summary, count, nil
 }
 
-func RenderCompactStatus(width int, spinnerView string, state CompactState) string {
-	if !state.Active && state.LastResult == "" {
+// RenderCompactStatus renders a single dim line while a manual /compact is in
+// flight (a spinner + how many messages are being compacted), and a one-line
+// error if it failed. A successful compaction shows nothing here — the boundary
+// line + the collapsed summary message communicate it. No box, no multi-line.
+func RenderCompactStatus(_ int, spinnerView string, state CompactState) string {
+	switch {
+	case state.Active:
+		msg := "Compacting conversation…"
+		if state.Count > 0 {
+			msg = fmt.Sprintf("Compacting %d messages…", state.Count)
+		}
+		return lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.TextDim).
+			PaddingLeft(1).
+			Render(spinnerView + " " + msg)
+	case state.LastResult != "" && state.LastError:
+		return lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.Error).
+			PaddingLeft(1).
+			Render("✗ " + state.LastResult)
+	default:
 		return ""
 	}
-
-	label := "SESSION SUMMARY"
-	title := "Conversation compacted"
-	subtitle := "Older context was folded into a shorter summary. You can continue normally."
-	detail := state.LastResult
-	accent := kit.CurrentTheme.Success
-	icon := "✓"
-
-	if state.Active {
-		if state.Phase != "" {
-			title = spinnerView + " " + state.Phase
-		} else {
-			title = spinnerView + " Compacting conversation"
-		}
-		subtitle = "Summarizing recent history into a shorter reusable summary."
-		if strings.TrimSpace(state.Focus) != "" {
-			detail = "Focus: " + state.Focus
-		} else {
-			detail = "Preparing a smaller conversation state for the next turns."
-		}
-		accent = kit.CurrentTheme.Primary
-		icon = ""
-	} else if state.LastError {
-		label = "COMPACT ERROR"
-		title = "Compact failed"
-		subtitle = "Conversation history was not replaced. You can retry once the issue is resolved."
-		accent = kit.CurrentTheme.Error
-		icon = "✗"
-	}
-
-	if icon != "" {
-		title = icon + " " + title
-	}
-
-	boxWidth := kit.CalculateBoxWidth(width)
-
-	labelStyle := lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.TextDim).
-		Bold(true)
-	headerStyle := lipgloss.NewStyle().
-		Foreground(accent).
-		Bold(true)
-	subtitleStyle := lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.Text)
-	bodyStyle := lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.TextDim)
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(accent).
-		Background(kit.CurrentTheme.Background).
-		Padding(0, 1).
-		Width(boxWidth).
-		MarginLeft(1)
-
-	var lines []string
-	lines = append(lines, labelStyle.Render(label))
-	lines = append(lines, headerStyle.Render(title))
-	if strings.TrimSpace(subtitle) != "" {
-		lines = append(lines, subtitleStyle.Render(subtitle))
-	}
-	if strings.TrimSpace(detail) != "" {
-		lines = append(lines, bodyStyle.Render(detail))
-	}
-
-	return boxStyle.Render(strings.Join(lines, "\n"))
 }
 
 // --- Compact command ---

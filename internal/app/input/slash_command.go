@@ -626,6 +626,7 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	c.env.Conversation.Compact.Active = true
 	c.env.Conversation.Compact.Focus = strings.TrimSpace(args)
 	c.env.Conversation.Compact.Phase = conv.PhaseSummarizing
+	c.env.Conversation.Compact.Count = len(c.env.Conversation.ConvertToProvider())
 	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(c.env.BuildCompactRequest(c.env.Conversation.Compact.Focus, "manual"))), nil
 }
 

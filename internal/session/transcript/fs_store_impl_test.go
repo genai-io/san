@@ -118,9 +118,9 @@ func TestFileStoreCompactAndFork(t *testing.T) {
 		t.Fatalf("AppendMessage(m2): %v", err)
 	}
 	if err := store.Compact(context.Background(), CompactCommand{
-		SessionID:  "tx-1",
-		Time:       now.Add(3 * time.Second),
-		BoundaryID: "m1",
+		SessionID:        "tx-1",
+		Time:             now.Add(3 * time.Second),
+		SummaryMessageID: "m1",
 	}); err != nil {
 		t.Fatalf("Compact(): %v", err)
 	}
@@ -331,9 +331,9 @@ func TestFileStoreWritesExpectedEventShapes(t *testing.T) {
 		t.Fatalf("PatchState(): %v", err)
 	}
 	if err := store.Compact(context.Background(), CompactCommand{
-		SessionID:  "tx-shape",
-		Time:       now.Add(10 * time.Second),
-		BoundaryID: "m2",
+		SessionID:        "tx-shape",
+		Time:             now.Add(10 * time.Second),
+		SummaryMessageID: "m2",
 	}); err != nil {
 		t.Fatalf("Compact(): %v", err)
 	}
@@ -440,7 +440,7 @@ func TestFileStoreWritesExpectedEventShapes(t *testing.T) {
 
 	compact := records[10]
 	session = objectAt(t, compact, "session")
-	assertString(t, session, "boundaryId", "m2")
+	assertString(t, session, "summaryMessageId", "m2")
 	assertNoTopLevel(t, session, "provider", "model", "maxTokens", "agentId")
 }
 

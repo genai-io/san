@@ -2,9 +2,83 @@ package core
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
+
+// Compaction must record the synthetic summary as a normal message.appended
+// (so replay can resolve the ID the next inference references) and emit a
+// CompactEvent whose SummaryMessageID equals that summary's ID (so replay truncates
+// the summarized-away history at the summary).
+func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
+	var captured []Event
+	ag := NewAgent(Config{
+		ID:     "test",
+		LLM:    newBlockingLLM(1),
+		System: NewSystem(),
+		Tools:  NewTools(),
+		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
+			return "the summary", nil
+		},
+		OnEvent: func(e Event) { captured = append(captured, e) },
+	})
+	a := ag.(*agent)
+
+	// Drain the outbox so the blocking CompactEvent emit doesn't stall.
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("hi", nil),
+		AssistantMessage("hello", "", nil),
+		UserMessage("tell me more", nil),
+	})
+
+	if !a.compact(context.Background()) {
+		t.Fatal("compact() returned false")
+	}
+
+	var summaryAppend *Message
+	var info *CompactInfo
+	for _, e := range captured {
+		switch e.Type {
+		case OnAppend:
+			if m, ok := e.Data.(Message); ok {
+				mm := m
+				summaryAppend = &mm
+			}
+		case OnCompact:
+			if ci, ok := e.CompactInfo(); ok {
+				c := ci
+				info = &c
+			}
+		}
+	}
+
+	if summaryAppend == nil {
+		t.Fatal("compact did not emit OnAppend for the summary message")
+	}
+	if summaryAppend.ID == "" {
+		t.Fatal("summary message must carry a stable ID")
+	}
+	if info == nil {
+		t.Fatal("compact did not emit OnCompact")
+	}
+	if info.SummaryMessageID != summaryAppend.ID {
+		t.Fatalf("SummaryMessageID %q must equal the appended summary ID %q", info.SummaryMessageID, summaryAppend.ID)
+	}
+
+	msgs := a.snapshot()
+	if len(msgs) != 1 || msgs[0].ID != summaryAppend.ID {
+		t.Fatalf("post-compact chain must be the single summary, got %d messages", len(msgs))
+	}
+	if !strings.Contains(msgs[0].Content, "the summary") {
+		t.Fatalf("summary content missing from chain: %q", msgs[0].Content)
+	}
+}
 
 func TestEstimatePromptTokensUsesConversationGrowth(t *testing.T) {
 	got := estimatePromptTokens(1000, 2000, 3000)
@@ -17,6 +91,63 @@ func TestEstimatePromptTokensNeverDropsBelowLastKnownPromptSize(t *testing.T) {
 	got := estimatePromptTokens(1000, 3000, 2000)
 	if got != 1000 {
 		t.Fatalf("estimatePromptTokens() = %d, want 1000", got)
+	}
+}
+
+// A SigCompact applies an in-place compaction (replacing the chain with the
+// precomputed summary, recording the manual boundary) and must NOT start a
+// turn — otherwise the lone summary would trigger a spurious inference.
+func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
+	var captured []Event
+	ag := NewAgent(Config{
+		ID:      "test",
+		LLM:     newBlockingLLM(1),
+		System:  NewSystem(),
+		Tools:   NewTools(),
+		OnEvent: func(e Event) { captured = append(captured, e) },
+	})
+	a := ag.(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("hi", nil),
+		AssistantMessage("hello", "", nil),
+		UserMessage("more", nil),
+	})
+
+	if a.ingest(context.Background(), Message{Signal: SigCompact, Content: "the summary"}) {
+		t.Fatal("SigCompact must not start a turn")
+	}
+
+	msgs := a.snapshot()
+	if len(msgs) != 1 || !strings.Contains(msgs[0].Content, "the summary") {
+		t.Fatalf("SigCompact should compact in place to the single summary, got %d messages", len(msgs))
+	}
+
+	var info *CompactInfo
+	for _, e := range captured {
+		if e.Type == OnCompact {
+			if ci, ok := e.CompactInfo(); ok {
+				c := ci
+				info = &c
+			}
+		}
+	}
+	if info == nil {
+		t.Fatal("SigCompact should emit a CompactEvent")
+	}
+	if info.Trigger != "manual" {
+		t.Fatalf("manual compaction trigger = %q, want manual", info.Trigger)
+	}
+	if info.SummaryMessageID == "" || info.SummaryMessageID != msgs[0].ID {
+		t.Fatalf("boundary %q must equal the summary message ID %q", info.SummaryMessageID, msgs[0].ID)
+	}
+
+	if !a.ingest(context.Background(), UserMessage("next", nil)) {
+		t.Fatal("a normal user message must start a turn")
 	}
 }
 

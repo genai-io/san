@@ -41,9 +41,9 @@ type PatchStateCommand struct {
 }
 
 type CompactCommand struct {
-	SessionID  string
-	Time       time.Time
-	BoundaryID string
+	SessionID        string
+	Time             time.Time
+	SummaryMessageID string
 }
 
 type ForkCommand struct {

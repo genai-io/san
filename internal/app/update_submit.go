@@ -31,6 +31,16 @@ func (m *model) handleSubmit() tea.Cmd {
 		return m.enqueueWhileStreaming(raw)
 	}
 
+	// A manual /compact computes its summary asynchronously, then applies it
+	// in place. Accepting a message in that window would race the compaction
+	// (the summary predates the new message, so an in-place replace could drop
+	// it). Hold submission until compaction finishes; the textarea keeps the
+	// text so the user just presses Enter again.
+	if m.conv.Compact.Active {
+		m.conv.AddNotice("Compaction in progress — please resubmit in a moment.")
+		return nil
+	}
+
 	log.QueueLog("handleSubmit: stream idle, normal submit %q", raw)
 	m.conv.Compact.ClearResult()
 	return m.dispatchSubmission(raw)

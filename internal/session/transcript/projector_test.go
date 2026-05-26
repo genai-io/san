@@ -110,7 +110,7 @@ func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
 		{SessionID: "tx-1", Time: now.Add(time.Second), Type: MessageAppended, Message: &MessageRecord{MessageID: "m1", Role: "user"}},
 		{SessionID: "tx-1", Time: now.Add(2 * time.Second), Type: MessageAppended, ParentID: "m1", Message: &MessageRecord{MessageID: "m2", Role: "assistant"}},
 		{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: MessageAppended, ParentID: "m2", Message: &MessageRecord{MessageID: "m3", Role: "user"}},
-		{SessionID: "tx-1", Time: now.Add(4 * time.Second), Type: SessionCompacted, Session: &SessionRecord{BoundaryID: "m2"}},
+		{SessionID: "tx-1", Time: now.Add(4 * time.Second), Type: SessionCompacted, Session: &SessionRecord{SummaryMessageID: "m2"}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)

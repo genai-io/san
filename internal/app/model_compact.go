@@ -11,7 +11,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/genai-io/gen-code/internal/app/conv"
 	"github.com/genai-io/gen-code/internal/app/kit"
@@ -35,78 +34,91 @@ func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 	}
 }
 
-func (m *model) OnAutoCompact(info core.CompactInfo) tea.Cmd {
+// OnCompacted handles the CompactEvent emitted by the agent for BOTH
+// auto-compaction and manual /compact. By the time it runs the agent has
+// already replaced its in-memory chain with the summary and recorded the
+// compaction boundary — here we mirror that in the UI and refresh
+// session-level reminders. The agent is NOT torn down, so the system prompt
+// and tools are reused from cache (no rebuild).
+func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 	scrollbackCmds := m.commitAllMessages()
-	boundaryStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	boundary := boundaryStyle.Render(fmt.Sprintf("✻ Conversation compacted — %d messages summarized (scroll up for history)", info.OriginalCount))
 
 	m.conv.Clear()
 	m.env.ResetContextDisplay()
 	token := m.userInput.Provider.SetStatusMessage("compacted")
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: core.FormatCompactSummary(info.Summary)})
+	// The summary is injected as a user message — the model reads it (Content),
+	// and it persists + seeds resume — but the UI renders it as a single system
+	// notice (see RenderMessageAt: IsCompactSummary), so the transcript shows
+	// one clean line instead of the raw summary markdown or a "❭" user turn.
+	m.conv.Append(core.ChatMessage{
+		Role:           core.RoleUser,
+		Content:        core.FormatCompactSummary(info.Summary),
+		DisplayContent: fmt.Sprintf("≡ Conversation compacted — %d messages summarized (scroll up for history)", info.OriginalCount),
+	})
 
+	trigger := info.Trigger
+	if trigger == "" {
+		trigger = "auto"
+	}
+	// Manual /compact shows the SESSION SUMMARY box; complete it here so its
+	// count matches the boundary line (both info.OriginalCount). Auto-compaction
+	// stays silent — just the boundary line.
+	if trigger == "manual" {
+		m.conv.Compact.Complete(fmt.Sprintf("Condensed %d earlier messages.", info.OriginalCount), false)
+	}
 	if m.services.Hook != nil {
-		m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: "auto"})
-	}
-	// Auto-compact summarizes the conversation history, dropping any
-	// system-reminder content that previously rode on user messages. Re-enqueue
-	// session-level reminders so they reattach to the next user turn and the
-	// LLM still has skills/memory/etc. context.
-	if m.services.Reminder != nil {
-		// One-time notices (cancel notice, prior hook context) refer to
-		// the now-summarized history; the model can't act on them
-		// meaningfully against the compacted prefix.
-		m.services.Reminder.DiscardPendingNotices()
-		m.services.Reminder.EnqueueAllProviders()
+		m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: trigger})
 	}
 
-	scrollPart := tea.Sequence(append(scrollbackCmds, tea.Println(boundary), tea.ClearScreen)...)
+	// Compaction summarized away the system-reminder content that rode on the
+	// old user messages. Re-read memory from disk (a provider renders from the
+	// cached instructions, so an edited memory file would otherwise re-inject
+	// stale content), drop now-irrelevant one-time notices, and re-emit the
+	// providers so skills/memory reattach to the next user turn.
+	if m.services.Reminder != nil {
+		m.refreshMemoryContext(m.env.CWD, "post_compact")
+		m.services.Reminder.DiscardPendingNotices()
+		m.services.Reminder.RequeueSystemReminders()
+
+		// Manual /compact restores recently-accessed files as a one-time notice
+		// so they ride on the next user turn. Enqueued AFTER DiscardPendingNotices
+		// so it survives. Auto-compaction happens mid-task and skips this.
+		if trigger == "manual" && m.env.FileCache != nil {
+			if restored, _ := m.env.FileCache.RestoreRecent(); len(restored) > 0 {
+				m.services.Reminder.Enqueue(filecache.FormatRestoredFiles(restored))
+				m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", len(restored)))
+			}
+		}
+	}
+
+	scrollPart := tea.Sequence(append(scrollbackCmds, tea.ClearScreen)...)
 	return tea.Batch(scrollPart, m.ContinueOutbox(), kit.StatusTimer(3*time.Second, token))
 }
 
-// OnCompactResult handles manual /compact results.
-// Stops the agent so the next user message restarts it with compacted messages.
+// OnCompactResult applies a manual /compact result. It does not reset the UI
+// itself: it asks the running agent to compact in place (which records the
+// summary + boundary and emits CompactEvent), and that event drives
+// OnCompacted — the same path auto-compaction takes, with no agent rebuild.
+// Only when there is no active agent does it drive OnCompacted directly so the
+// next session start still seeds the summary.
 func (m *model) OnCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	if msg.Error != nil {
 		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Error), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
-	m.conv.Compact.Complete(fmt.Sprintf("Condensed %d earlier messages.", msg.OriginalCount), false)
-	scrollbackCmds := m.commitAllMessages()
-	boundaryStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	boundary := boundaryStyle.Render(fmt.Sprintf("✻ Conversation compacted — %d messages summarized (scroll up for history)", msg.OriginalCount))
 
-	m.conv.Clear()
-	m.env.ResetTokens()
-	token := m.userInput.Provider.SetStatusMessage("compacted")
-	m.StopAgentSession()
-
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: core.FormatCompactSummary(msg.Summary)})
-
-	var restoredFiles []filecache.RestoredFile
-	if m.env.FileCache != nil {
-		restoredFiles, _ = m.env.FileCache.RestoreRecent()
-		if len(restoredFiles) > 0 {
-			restoredContext := filecache.FormatRestoredFiles(restoredFiles)
-			m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: restoredContext})
-			m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", len(restoredFiles)))
-		}
+	// Don't complete the SESSION SUMMARY box here: the count is finalized in
+	// OnCompacted from the agent's authoritative message count, so the box and
+	// the boundary line never disagree. The spinner stays until the agent's
+	// CompactEvent arrives.
+	if m.services.Agent.Compact(msg.Summary) {
+		return tea.Batch(m.CommitMessages()...)
 	}
-	if m.services.Hook != nil {
-		m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: msg.Trigger})
-	}
-	// Manual /compact also drops conversation-history reminders. Re-enqueue
-	// providers so the next user turn carries fresh session-level context.
-	if m.services.Reminder != nil {
-		// One-time notices (cancel notice, prior hook context) refer to
-		// the now-summarized history; the model can't act on them
-		// meaningfully against the compacted prefix.
-		m.services.Reminder.DiscardPendingNotices()
-		m.services.Reminder.EnqueueAllProviders()
-	}
-
-	scrollPart := tea.Sequence(append(scrollbackCmds, tea.Println(boundary), tea.ClearScreen)...)
-	return tea.Batch(scrollPart, tea.Batch(m.CommitMessages()...), kit.StatusTimer(3*time.Second, token))
+	return m.OnCompacted(core.CompactInfo{
+		Summary:       msg.Summary,
+		OriginalCount: msg.OriginalCount,
+		Trigger:       "manual",
+	})
 }
 
 func (m *model) OnTokenLimitResult(msg kit.TokenLimitResultMsg) tea.Cmd {

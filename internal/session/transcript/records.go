@@ -109,12 +109,15 @@ type PatchOp struct {
 // (provider, model, maxTokens, agentId). Every following record inherits
 // them — they are not restamped per record.
 type SessionRecord struct {
-	Provider   string `json:"provider,omitempty"`
-	Model      string `json:"model,omitempty"`
-	MaxTokens  int    `json:"maxTokens,omitempty"`
-	AgentID    string `json:"agentId,omitempty"`
-	ParentID   string `json:"parentId,omitempty"`
-	BoundaryID string `json:"boundaryId,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Model     string `json:"model,omitempty"`
+	MaxTokens int    `json:"maxTokens,omitempty"`
+	AgentID   string `json:"agentId,omitempty"`
+	ParentID  string `json:"parentId,omitempty"`
+	// SummaryMessageID, on a session.compacted record, is the ID of the summary
+	// message that replaced the pre-compaction chain. Replay uses it as the
+	// boundary to stop walking parents at.
+	SummaryMessageID string `json:"summaryMessageId,omitempty"`
 }
 
 // InferenceRecord carries the payload for inference.requested /

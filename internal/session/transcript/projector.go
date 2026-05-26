@@ -50,7 +50,7 @@ func Project(records []Record) (*Transcript, error) {
 			}
 		case SessionCompacted:
 			if r.Session != nil {
-				compactBoundary = r.Session.BoundaryID
+				compactBoundary = r.Session.SummaryMessageID
 			}
 			if t.ID == "" {
 				t.ID = r.SessionID

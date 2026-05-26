@@ -64,7 +64,7 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	// they ride on the first user message of this session. The system-prompt
 	// cache prefix stays untouched.
 	if m.services.Reminder != nil {
-		m.services.Reminder.EnqueueAllProviders()
+		m.services.Reminder.RequeueSystemReminders()
 	}
 	return m.services.Hook.Execute(ctx, hook.SessionStart, hook.HookInput{
 		Source: source,

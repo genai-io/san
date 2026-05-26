@@ -387,7 +387,7 @@ func (s *FileStore) Compact(ctx context.Context, cmd CompactCommand) error {
 		SessionID: cmd.SessionID,
 		Time:      cmd.Time,
 		Type:      SessionCompacted,
-		Session:   &SessionRecord{BoundaryID: cmd.BoundaryID},
+		Session:   &SessionRecord{SummaryMessageID: cmd.SummaryMessageID},
 	}
 	if err := s.appendRecord(s.transcriptPath(cmd.SessionID), rec, true); err != nil {
 		return err
