@@ -9,12 +9,74 @@ import (
 	"strings"
 
 	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/gen-code/internal/session"
 	"go.uber.org/zap"
 )
 
 const (
 	maxImportDepth = 5
+
+	// AutoMemoryIndexName is the index file of the agent-written auto-memory
+	// store. Topic files (loaded on demand by the agent) live beside it.
+	AutoMemoryIndexName = "MEMORY.md"
+
+	// autoMemoryByteCap bounds how much of the auto-memory index is injected at
+	// session start, mirroring Claude Code's index cap. Topic files are never
+	// injected — the agent reads them on demand.
+	autoMemoryByteCap = 25 * 1024
 )
+
+// AutoMemoryDir is the project-partitioned directory backing the agent-written
+// auto-memory store: ~/.gen/projects/<encoded-cwd>/memory/. It shares the
+// project partitioning used by the session transcript store, so worktrees and
+// subdirectories of one repo resolve to the same store.
+func AutoMemoryDir(cwd string) string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(cwd, ".gen", "memory")
+	}
+	return filepath.Join(homeDir, ".gen", "projects", session.EncodePath(cwd), "memory")
+}
+
+// AutoMemoryIndexPath is the auto-memory index file for cwd's project.
+func AutoMemoryIndexPath(cwd string) string {
+	return filepath.Join(AutoMemoryDir(cwd), AutoMemoryIndexName)
+}
+
+// LoadAutoMemory reads the agent-written auto-memory index for cwd, capped at
+// autoMemoryByteCap. It is a distinct source from LoadMemoryFiles: agent-written
+// memory and user-authored GEN.md/CLAUDE.md instructions are injected as
+// separate blocks and never mixed. Returns ("", false) when the store is empty
+// or absent. When the index exceeds the cap it is truncated on a line boundary
+// with a marker — topic files are read on demand and never injected.
+func LoadAutoMemory(cwd string) (string, bool) {
+	data, err := os.ReadFile(AutoMemoryIndexPath(cwd))
+	if err != nil {
+		return "", false
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return "", false
+	}
+	if len(content) > autoMemoryByteCap {
+		content = truncateOnLineBoundary(content, autoMemoryByteCap) +
+			"\n\n<!-- auto-memory truncated; read topic files on demand -->"
+	}
+	return content, true
+}
+
+// truncateOnLineBoundary trims s to at most max bytes, cutting at the last
+// newline within the budget so a partial line is never injected.
+func truncateOnLineBoundary(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := s[:max]
+	if i := strings.LastIndexByte(cut, '\n'); i > 0 {
+		return cut[:i]
+	}
+	return cut
+}
 
 // MemoryFile represents a loaded memory file with metadata.
 type MemoryFile struct {

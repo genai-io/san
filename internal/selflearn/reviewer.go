@@ -129,7 +129,7 @@ func (r *Reviewer) Observe(result core.Result) {
 		// Drop, don't reset: the threshold stays tripped and fires again on
 		// the next clean turn once the prior review finishes.
 		r.mu.Unlock()
-		log.Logger().Warn("l1: skipping review, a prior review is still running")
+		log.Logger().Warn("selflearn: skipping review, a prior review is still running")
 		return
 	}
 	r.inFlight = true
@@ -147,7 +147,7 @@ func (r *Reviewer) Observe(result core.Result) {
 func (r *Reviewer) run(kinds ReviewKind) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Logger().Warn("l1: review panicked (recovered)")
+			log.Logger().Warn("selflearn: review panicked (recovered)")
 		}
 		r.mu.Lock()
 		r.inFlight = false
