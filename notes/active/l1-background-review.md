@@ -148,6 +148,12 @@ start**. Acceptable, since memory mainly serves future turns/sessions.
 
 ### 3b. Skill flow — when to create vs update
 
+> **Umbrella** = a broad, **class-level** skill (e.g. `go-testing`,
+> `code-review`) that accumulates many specific learnings over time — as opposed
+> to a **narrow, session-specific** skill (`fix-flaky-test-pr-1234`). The whole
+> flow prefers extending an umbrella over spawning narrow skills, so the
+> collection stays "broad and few", not "narrow and many".
+
 **Precondition (whether a skill review runs at all):** this turn did real work
 (tool-iters ≥ K, §2), the turn ended cleanly (`StopEndTurn`), and the skill arm
 is enabled. The trigger is about *work done* — not about whether a skill was
