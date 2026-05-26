@@ -146,27 +146,55 @@ live-patched into the in-flight context — it becomes visible at the next load
 point: the next **PostCompact** (which re-reads from disk) or the next **session
 start**. Acceptable, since memory mainly serves future turns/sessions.
 
-### 3b. Skill flow — creation / update
+### 3b. Skill flow — when to create vs update
 
-Trigger: this turn did real work (tool-iters ≥ K). The reviewer runs the skill
-review prompt against the turn snapshot and follows a **preference order**
-(broadest reuse first; create new only as a last resort):
+**Precondition (whether a skill review runs at all):** this turn did real work
+(tool-iters ≥ K, §2), the turn ended cleanly (`StopEndTurn`), and the skill arm
+is enabled. The trigger is about *work done* — not about whether a skill was
+invoked.
 
-1. **Patch a skill that was loaded/used this turn.** If the agent consulted a
-   skill (a skill-view in the turn history) and it was wrong/outdated →
-   `skill_manage(patch, name, old, new)` to fix it. *(This is where "a skill was
-   invoked" matters — it picks the target.)*
-2. **Patch an existing umbrella.** List + view existing broad, class-level
-   skills; if one covers this learning, patch it (add a pitfall/step, broaden a
-   trigger).
-3. **Add a support file** to an umbrella: `skill_manage(write_file, name,
-   "references|templates|scripts/…", content)`, plus a pointer line in SKILL.md.
-4. **Create a new class-level umbrella** — only when nothing above fits.
-   `skill_manage(create, name, content)`. The name must be **class-level**
-   (e.g. `go-table-tests`), never session-specific (no PR numbers, error
-   strings, `fix-x-today`).
+Once the review runs, the model chooses create / update / nothing by this
+decision flow (broadest reuse first; create is the last resort):
 
-"Umbrella" is a **convention, not a data-model marker** — the preference order
+```
+turn ends
+  │  tool-iters ≥ K ?                    ── no ──▶ no skill review
+  │  StopEndTurn & skill arm enabled ?   ── no ──▶ skip
+  ▼ yes
+skill review fork  (reads the turn snapshot)
+  │
+  ▼
+① a skill loaded/used this turn was wrong / outdated / incomplete ?
+  │  yes ──────────▶  UPDATE · patch that skill
+  ▼ no
+② an existing umbrella skill covers this learning ?
+  │  yes ──────────▶  UPDATE · patch the umbrella, or add a
+  │                            references/templates/scripts support file
+  ▼ no
+③ a NEW, generalizable class of task that no skill covers ?
+  │  yes ──────────▶  CREATE · new class-level umbrella (origin: agent-created)
+  ▼ no
+            Nothing to save   (smooth session, or only anti-patterns)
+```
+
+**UPDATE — when an applicable skill already exists (① or ②).** Preferred (keeps
+the collection broad, avoids near-duplicates). `skill_manage(patch, …)` to
+fix/extend an existing skill; `skill_manage(write_file, …)` to add a
+`references/templates/scripts` support file (plus a pointer line in `SKILL.md`).
+Patch the skill **in place**, at its existing scope.
+
+**CREATE — only when the learning is a genuinely new class of task no skill
+covers (③).** Last resort. `skill_manage(create, name, content)`; the name must
+be **class-level** (e.g. `go-table-tests`), never session-specific (no PR
+numbers, error strings, `fix-x-today`). Always written with
+`origin: agent-created`, at the level L1 chose (user vs project, below).
+
+**NOTHING TO SAVE — when** the session ran smoothly with no correction and no
+new technique, or the only candidate is an **anti-pattern**: environment-
+dependent failures, negative claims about tools, transient errors, one-off task
+narratives.
+
+"Umbrella" is a **convention, not a data-model marker** — the decision flow
 above is what keeps the collection broad instead of sprouting one narrow skill
 per session.
 
