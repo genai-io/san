@@ -147,28 +147,31 @@ per session.
 
 **Two levels (user + project), for both create and update.** gen-code already
 loads skills from two scopes — `ScopeUser` (`~/.gen/skills/`) and `ScopeProject`
-(`.gen/skills/`) — so no new loader source is needed (unlike memory). Agent
-writes go to an isolated `agent-created/` subdir at each scope:
+(`.gen/skills/`) — so no new loader source is needed (unlike memory). Skills
+live directly in those dirs (`~/.gen/skills/<name>/`, `./.gen/skills/<name>/`);
+**no separate `agent-created/` subdir.**
 
-- **User-level** (cross-project, reusable): `~/.gen/skills/agent-created/<name>/`
-- **Project-level** (this repo's code/conventions/tooling): `./.gen/skills/agent-created/<name>/`
+**Provenance is a frontmatter field, not a directory.** Add one field to
+`SKILL.md`, e.g. `origin: agent-created`; **absent = `user-created`** (the
+default). The `Skill` struct (`internal/skill/types.go`) currently has no
+metadata map, so this is a one-field addition (`Origin string`, Claude ignores
+unknown frontmatter). This mirrors hermes, which marks provenance with a flag,
+not a separate path. (A sidecar file is the alternative; a field is simpler for
+Phase 1.)
 
-A skill is a `SKILL.md` (frontmatter `name`/`description` + optional
-`references/`/`templates/`/`scripts/`).
-
-- **On create**, L1 picks the level: reusable/general → user; specific to this
-  project → project (the review prompt encodes the rule).
-- **On update**, patch the skill **at its existing scope** (don't relocate).
-- **Scope of L1 writes (Phase 1):** L1 only creates/patches **agent-created**
-  skills; it reads/consults user-authored skills (to avoid duplication) but does
-  **not** modify them — keeping user skills untouched. (Relaxing this to let L1
-  patch a just-used user skill, Hermes-style, is a later option.)
+- **On create**, L1 writes `origin: agent-created` and picks the level:
+  reusable/general → user (`~/.gen/skills/`); specific to this project →
+  project (`./.gen/skills/`). The review prompt encodes the rule.
+- **On update**, patch the skill **in place** (don't relocate or change scope).
+- **Scope of L1 writes (Phase 1):** L1 only creates/patches skills it owns
+  (`origin: agent-created`); it reads/consults `user-created` skills (to avoid
+  duplication) but does **not** modify them. The future L2 curator likewise only
+  manages `agent-created` skills, never the user's.
 
 **Why this differs from memory:** memory is personal/accumulated → machine-local,
 project-partitioned, not in the repo. Skills are reusable artifacts a team may
-want to share → they follow gen-code's existing user/project scopes; project-
-level lives in-repo `./.gen/skills/` (gitignore the `agent-created/` subdir if
-you don't want auto-generated skills committed).
+want to share → they live in gen-code's existing user/project scopes (project-
+level in-repo `./.gen/skills/`), distinguished only by the `origin` field.
 
 `skill_manage` actions: `create`, `edit` (full rewrite — rare), `patch`,
 `write_file`, `remove_file`, `delete`. **`patch`** is targeted find-and-replace
@@ -218,8 +221,9 @@ Module map:
 | Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
-| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/agent-created/` (user) or `./.gen/skills/agent-created/` (project) |
-| Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source (§3a). skills: no change — existing user/project scope loader picks up the `agent-created/` subdir. |
+| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/<name>/` (user) or `./.gen/skills/<name>/` (project), with `origin: agent-created` |
+| Provenance | add `Origin` to the skill frontmatter struct (`internal/skill/types.go`); absent = `user-created` |
+| Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source (§3a). skills: no change — existing user/project scope loader already covers it. |
 
 ---
 
@@ -271,10 +275,12 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 ## 7. Open questions (L1)
 
 - **Let L1 patch user-authored skills?** Phase 1 default is no (L1 only writes
-  agent-created skills). Hermes allows patching a just-used user skill (its
-  preference #1); revisit if "fix the skill I just used" turns out important.
-- **gitignore `./.gen/skills/agent-created/`?** Default: commit (team-shared
-  project skills) or gitignore (keep auto-generated skills local) — team choice.
+  `origin: agent-created` skills). Hermes allows patching a just-used user skill
+  (its preference #1); revisit if "fix the skill I just used" turns out
+  important.
+- **Commit agent-created project skills?** They live in-repo at `./.gen/skills/`
+  mixed with user skills (distinguished by `origin`). Team choice whether to
+  commit auto-generated ones; can be filtered by the `origin` field if needed.
 - **Cache parity on non-Anthropic providers** — verify system-prompt inheritance
   helps (or at least doesn't hurt) across gen-code's providers.
 - **Usage telemetry** — whether to land the minimal usage log in this phase (for
