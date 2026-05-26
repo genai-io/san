@@ -1,92 +1,49 @@
-# Self-learning loop — design (L1 capture, L2 curate)
+# L1 — Background Review (per-turn self-learning)
 
-Design for the self-learning loop in [#46](https://github.com/genai-io/gen-code/issues/46).
-[#52](https://github.com/genai-io/gen-code/issues/52) is Layer 1 (L1).
+Design for Layer 1 of the self-learning loop in
+[#46](https://github.com/genai-io/gen-code/issues/46). This is
+[#52](https://github.com/genai-io/gen-code/issues/52).
 
-**Decision** (after comparing against the hermes-agent reference implementation
-at `agent/background_review.py` + `agent/curator.py`): gen-code uses an
-**out-of-band, two-layer** loop, aligned with how hermes does it in production:
+**Decision** (after comparing against the hermes-agent reference,
+`agent/background_review.py`): gen-code uses an **out-of-band** review that
+**writes memory/skills directly** per turn — useful on its own the moment it
+ships. A later, separate **L2 curator** keeps the collection healthy; its design
+is deferred to its own issue (a short rationale is in §5).
 
-- **L1 — per-turn capture (direct write).** After a turn, fork a fresh
-  `core.Agent` that reflects on the turn and writes memory/skill updates
-  **directly**. Useful on its own, the moment it ships.
-- **L2 — periodic curator (maintenance).** Runs on idle/schedule, not per turn.
-  Evaluates the *collection's* health and dedups / prunes / consolidates /
-  archives. Keeps the directly-written collection from drifting.
-
-This doc covers: the horizontal comparison, why L1 direct-write still needs L2,
-the L1 capture mechanics, the L2 evaluation basis, storage layout, and phasing.
+This doc focuses on L1: comparison, trigger, what it writes, fork mechanics, and
+phasing.
 
 ---
 
-## 1. How three systems do self-evolving memory (horizontal comparison)
+## 1. How three systems do self-evolving memory (comparison)
 
-Two fundamentally different places the "write memory" decision can live:
+Two places the "write memory" decision can live: **in-band** (the main agent
+writes mid-session, on its own judgment) vs **out-of-band** (a separate agent
+reviews after a turn and writes).
 
-- **In-band** — the *main* agent writes memory itself, mid-session, on its own
-  judgment, using its file tools.
-- **Out-of-band** — after a turn, a *separate* agent reviews and writes.
-
-| Axis | Hermes (`background_review.py` + `curator.py`) | Claude Code (auto memory) | gen-code (decided) |
+| Axis | Hermes (`background_review.py`) | Claude Code (auto memory) | gen-code (decided) |
 |---|---|---|---|
-| Write decision | **Out-of-band** review fork | **In-band** main agent | **Out-of-band**, aligned with Hermes |
-| When | After a turn (L1), + idle (L2 curator) | During the session, on model judgment | After a turn (L1), + idle (L2) |
-| L1 writes directly? | **Yes** — fork has memory + skill tools, persists immediately | Yes (main agent's own tool calls) | **Yes** (L1 captures directly) |
-| L2 role | Curator: archive stale / consolidate / pin-unpin / audit | (none — in-band only) | Curator: evaluate + dedup/prune/consolidate |
-| Trigger | turns (memory) + tool-iters (skill); curator on idle | model judgment + explicit "remember this" | same two signals; L2 on idle |
-| Storage | `~/.hermes/MEMORY.md` + `USER.md`; `~/.hermes/skills/<name>/` | `MEMORY.md` (index, first 200 lines/25KB loaded) + topic files | `.gen/memory/` + `.gen/skills/agent-created/` |
+| Write decision | **Out-of-band** review fork | **In-band** main agent | **Out-of-band** (aligned with Hermes) |
+| When | After a turn | During the session, on model judgment | After a turn |
+| Writes directly? | **Yes** (fork has memory + skill tools) | Yes (main agent's own tool calls) | **Yes** |
+| Trigger | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | same two signals |
+| Storage | `~/.hermes/MEMORY.md` + `USER.md`, `~/.hermes/skills/<name>/` | `MEMORY.md` index (first 200 lines/25KB loaded) + topic files | `.gen/memory/` + `.gen/skills/agent-created/` |
 
-**What gen-code already has** (from the reminder/compaction work): the
-*injection* side — memory is loaded and re-injected as `<system-reminder>`
-blocks (`memory-user`/`memory-project`), refreshed from disk on PostCompact.
-What is missing is the *write* side (`internal/reminder` injects but never
-persists) and the *curation* side.
+**gen-code already has the *injection* side** (from the reminder/compaction
+work): memory loads + re-injects as `<system-reminder>` blocks
+(`memory-user`/`memory-project`), refreshed from disk on PostCompact. What's
+missing is the *write* side — `internal/reminder` injects but never persists.
+L1 adds the write side.
 
-**Why out-of-band + direct-write for gen-code** (first-principles):
-
-- In-band (Claude Code) is cheapest and the decider has full context, but it
-  spends main-context tokens every session and only appends in the flow of
-  work — no natural moment to step back and prune. Out-of-band keeps the main
-  turn clean and lets a dedicated prompt review thoroughly after the reply.
-- **L1 writes directly** (rather than staging proposals for L2 to commit)
-  because direct write makes Phase 1 useful on its own and matches the
-  production-proven hermes shape. The churn risk of a local, frequent,
-  append-only writer is handled by L2, not by deferring all writes.
+**Why out-of-band + direct-write:** in-band (Claude Code) is cheapest but spends
+main-context tokens every session and only appends in the flow of work.
+Out-of-band keeps the main turn clean and lets a dedicated prompt review after
+the reply is delivered. Direct write (vs staging proposals) makes Phase 1 useful
+on its own and matches the production-proven hermes shape.
 
 ---
 
-## 2. Two layers: capture (L1) → curate (L2)
-
-Different **scope**, not just different cadence:
-
-- **L1 = capture.** Local view (this one turn), frequent, additive. Good at
-  "spotting something new", blind to the collection as a whole.
-- **L2 = groundskeeper.** Global view (the whole memory/skill collection),
-  periodic, consolidating.
-
-**Why direct-write L1 still needs L2.** Because L1 only ever sees one turn and
-writes immediately, over many turns the collection *drifts* in ways no single
-L1 write can fix:
-
-1. **Duplication / overlap** — L1 re-discovers and re-writes near-duplicate
-   entries/skills. L2 merges.
-2. **Contradiction / staleness** — a preference changes; a skill goes out of
-   date. L1 can't know "this conflicts with an older entry". L2 reconciles and
-   archives.
-3. **Unbounded growth** — direct appends bloat `MEMORY.md` past the injection
-   budget (first 200 lines / 25KB). L2 trims/compacts so the injected index
-   stays useful.
-4. **Reorg / promotion** — a one-off note may deserve promotion to an umbrella
-   skill; scattered notes get consolidated. L2 restructures.
-5. **Lifecycle** — pin/unpin, archive long-unused items.
-
-hermes uses `agent/curator.py` (idle-triggered, not per-turn) for exactly this.
-
----
-
-## 3. L1 — per-turn capture (this issue, #52)
-
-### Trigger — two signals
+## 2. Trigger — two signals
 
 | Review kind | Signal | Default | Rationale |
 |---|---|---|---|
@@ -94,155 +51,121 @@ hermes uses `agent/curator.py` (idle-triggered, not per-turn) for exactly this.
 | Skills | tool iterations within the turn | when this turn ≥ 10 tool iters | Skill capture should fire when the agent actually *did* work; tool-iter count is the cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
 
 Both config-overridable; `0` disables that arm. Combined when both fire on the
-same turn. The trigger is a **pure event consumer** subscribed to
-`core.Agent.Outbox()`, reading `TurnEvent` (`Result.Turns/ToolUses/StopReason`).
-No `internal/core` changes; counters live in the consumer and hydrate from
-history on resume.
+same turn.
 
-### What L1 writes — directly
+The trigger is a **pure event consumer** subscribed to `core.Agent.Outbox()`,
+reading `TurnEvent` (which already carries `Result.Turns`, `Result.ToolUses`,
+`Result.StopReason`). No `internal/core` changes; counters live in the consumer
+and hydrate from history on session resume.
+
+---
+
+## 3. What L1 writes — directly
 
 - **Memory**: durable user/project facts → `.gen/memory/MEMORY.md` / `USER.md`.
 - **Skill**: how to do a class of task → `.gen/skills/agent-created/<name>/`
-  (create or patch an agent-created skill; never touch user-curated/pinned).
+  (create or patch an agent-created skill; never touch user-curated/pinned ones,
+  so the future L2 curator can manage them without surprises).
 
-Three review prompts picked by which triggers fired (memory-only / skill-only /
-combined). "Nothing to save" is valid; for skills it should not be the default.
-Skill prompt embeds an anti-pattern list (no environment-dependent failures, no
-negative tool claims, no transient errors, no one-off task narratives).
+Three review prompts, picked by which triggers fired:
 
-### Fork mechanics + invariants
+- **memory-only**: user persona, preferences, expectations. "Nothing to save."
+  is a valid output.
+- **skill-only**: be active (most working sessions produce ≥1 update); preference
+  order = update a loaded skill → update an umbrella → add a support file →
+  create a new umbrella. Embeds an anti-pattern list (no environment-dependent
+  failures, no negative tool claims, no transient errors, no one-off task
+  narratives). "Nothing to save." is valid but not the default.
+- **combined**: both, when both triggers fire on the same turn.
 
-Fresh `core.Agent` (`core.NewAgent`), **not** `subagent.Executor`. Invariants
-(each cost hermes a production bug):
+---
 
-1. **Run AFTER the user reply is delivered**; gate on `Result.StopReason ==
+## 4. Fork mechanics + invariants
+
+Fresh `core.Agent` (`core.NewAgent`) run with `ThinkAct` in a goroutine — **not**
+`subagent.Executor` (which is built for named, user-facing subagents with
+registry/hooks/session-persistence a silent reviewer must not carry).
+
+Invariants (each one cost hermes a production bug):
+
+1. **Run AFTER the user reply is delivered.** Gate on `Result.StopReason ==
    StopEndTurn` (skip cancelled/interrupted/max-turns).
-2. **Inherit the parent's cached system prompt byte-for-byte** (prefix-cache
-   parity; hermes measured ~26% cost reduction).
-3. **Tool whitelist at dispatch**: fork's `tools[]` matches the parent (cache
-   key parity) but a static permission func allows only `memory_write` +
+2. **Inherit the parent's cached system prompt byte-for-byte** for prefix-cache
+   parity (Anthropic/OpenRouter). Hermes measured ~26% cost reduction.
+3. **Tool whitelist at dispatch.** Fork's `tools[]` matches the parent (cache-key
+   parity) but a static permission func allows only `memory_write` +
    `skill_manage`.
-4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge`
-   (would deadlock the TUI); auto-deny any approval.
-5. **Best-effort**: wrap in recover; failure never affects the user turn.
+4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge` (would
+   deadlock the TUI); auto-deny any approval.
+5. **Best-effort.** Wrap in recover; review failure never affects the user turn.
 6. **No session-scoped side effects** (no hooks, no session persistence).
-7. **Suppress fork status**; only a one-line `💾 Self-improvement review:
-   <summary>` surfaces on the main outbox. Silent on "nothing to save".
-8. **≤1 in-flight fork per session**; drop new triggers while one runs (log,
-   no queue).
+7. **Suppress fork status.** Only a one-line `💾 Self-improvement review:
+   <summary>` surfaces on the main outbox (`MessageEvent`, `From: "l1-review"`).
+   Silent on "nothing to save".
+8. **≤1 in-flight fork per session.** Drop new triggers while one runs (log, no
+   queue).
 
-### Emit usage telemetry (so L2 can evaluate later)
+Module map:
 
-L2's strongest evaluation signal is *usage* (see §4), and gen-code does not
-record it today. As part of normal operation (not the fork), record a light
-usage log: per-skill last-used / invoke count, and memory-recall hits. This is
-telemetry to *inform* L2 — distinct from the memory/skill writes themselves.
-Minimal hooks: skill invocation (Skill tool / reminder injection) and memory
-reference. Can land with L1 or just before L2.
-
----
-
-## 4. L2 — periodic curator (next issue)
-
-Evaluates the collection's health, then dedups / prunes / consolidates /
-promotes / archives. Only touches agent-created / unprotected items.
-
-### Evaluation basis
-
-**(A) Usage / behavioral data (dynamic — the strongest signal):**
-- skill activity: last-used time + frequency (archive long-idle; pin/unpin by
-  activity).
-- memory hit: was an entry ever recalled/relevant.
-- correction signals: a user correction attributable to a memory/skill entry is
-  strong evidence it is wrong → reconcile/remove.
-
-Requires the usage telemetry from §3; without it L2 can only do static
-evaluation.
-
-**(B) Collection intrinsics (static — model reads and judges):**
-- size vs injection budget (200 lines / 25KB) → trim/compact.
-- redundancy/overlap → merge.
-- contradiction → reconcile, keep newest.
-- dangling references / stale facts → fix or archive.
-- provenance/protection → what L2 is allowed to change.
-
-### Maps to the original reflection dimensions
-
-| Dimension | L2 basis |
+| Concern | Module |
 |---|---|
-| scale | size vs injection budget (static) |
-| effective | usage: used? helped? (dynamic) |
-| correct | contradiction + correction signals |
-| efficient | redundancy/overlap (lean collection) |
-
-### How it decides
-
-Hybrid: **hard heuristics** (deterministic, cheap: "idle 30 days → archive
-candidate", "over budget → must trim", "protected → never touch") +
-**LLM judgment** (semantic: "do these two skills overlap?", "which contradicting
-memory wins?", "promote to umbrella?"). L2 is a periodic agent run that reads
-the whole collection + the usage log, produces an assessment, then executes.
-
-### Trigger
-
-Idle/periodic (e.g. idle ≥ N hours and ≥ M since last run), not per-turn.
-Exact policy TBD (open question).
+| Trigger + fork | new `internal/selflearn/l1` (subscribes to `core.Agent.Outbox()`, owns counters) |
+| Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
+| Fork | `core.NewAgent` directly, restricted `core.Tools` |
+| System prompt | pass the parent's `system.System` verbatim |
+| Writes | `memory_write` → `.gen/memory/`; `skill_manage` → `.gen/skills/agent-created/` |
 
 ---
 
-## 5. Storage layout
+## 5. Why a later L2 curator (rationale only — design deferred)
 
-| What | Path | Writer |
-|---|---|---|
-| Agent memory | `.gen/memory/MEMORY.md` | L1 writes, L2 maintains |
-| User profile | `.gen/memory/USER.md` | L1 writes, L2 maintains |
-| Agent-created skills | `.gen/skills/agent-created/<name>/` | L1 writes, L2 maintains |
-| Usage log | `.gen/usage/` (or similar) | normal operation; L2 reads |
+L1 writes with a **local** view (one turn) and **frequently**. Over many turns
+the collection drifts in ways no single L1 write can fix: duplicate/overlapping
+entries, contradictions and stale facts, unbounded `MEMORY.md` growth past the
+injection budget. A separate, idle-triggered **L2 curator** evaluates the whole
+collection and dedups/prunes/consolidates/archives — the same role hermes'
+`agent/curator.py` plays. Its evaluation basis (usage telemetry + collection
+intrinsics) and trigger policy are out of scope here and tracked in a separate
+L2 issue.
 
-Agent-created skills stay isolated from user-curated ones so L2 lifecycle ops
-(archive/consolidate) never surprise the user. Injection already reads
-`GEN.md`/`CLAUDE.md` via reminder providers; `.gen/memory/MEMORY.md` slots into
-the same injection path.
+One L1-side implication worth noting now: L2's strongest signal will be **usage**
+(which skill was used, when), which gen-code doesn't record today. A light usage
+log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 
 ---
 
 ## 6. Phasing + prerequisites
 
-- **Phase 1 — L1 capture (this issue, #52).** Trigger + fork + direct
-  memory/skill writes + the three review prompts. Useful on its own.
+- **Phase 1 — L1 (this issue, #52).** Trigger + fork + direct memory/skill writes
+  + the three review prompts.
   - Prereqs: `skill_manage` tool with patch semantics; a first-class memory
-    writer (`.gen/memory/MEMORY.md` + `USER.md`). (These move back to L1 since
-    L1 now writes directly.)
-- **Phase 2 — L2 curator (next, new issue).** Evaluation (usage + intrinsics) +
-  dedup/prune/consolidate/archive.
-  - Prereq: usage telemetry (§3) for activity-based evaluation.
+    writer (`.gen/memory/MEMORY.md` + `USER.md`). gen-code's injection side
+    already reads these once they exist.
+- **Phase 2 — L2 curator (separate issue).** Deferred (see §5).
 
 ### Concrete next steps (Phase 1)
 
 1. New package `internal/selflearn/l1`: `Reviewer` (counters + Outbox
    subscription + trigger), `forkAgent(parent, snapshot, mode)` (restricted
    `core.Agent`, runs `ThinkAct`, surfaces the one-line summary).
-2. `memory_write` + `skill_manage` tools (Phase-1 prereqs) and their stores
-   under `.gen/`.
+2. `memory_write` + `skill_manage` tools and their stores under `.gen/`.
 3. Review prompt templates (memory / skill / combined), rewritten for gen-code
    terminology.
 4. Wire-up in `Task.Start` / `stopLocked`; gate on `StopEndTurn`.
 5. Concurrency cap ≤1; drop-and-log on overlap.
-6. Light usage telemetry hooks (so L2 has data when it ships).
-7. Tests: trigger cadence (turns / iters / combined), interrupted-turn skip,
+6. Tests: trigger cadence (turns / iters / combined), interrupted-turn skip,
    concurrency cap, restricted-toolset enforcement.
 
 ---
 
-## 7. Open questions
+## 7. Open questions (L1)
 
-- **L2 trigger policy** (idle thresholds / schedule / on-demand `/curate`).
-- **On-disk skill layout** confirmation (`.gen/skills/agent-created/`).
-- **Usage-telemetry shape** — what exactly to log, where, retention.
-- **Cache parity on non-Anthropic providers** — verify system-prompt
-  inheritance helps (or doesn't hurt) across gen-code's providers.
-- **Concurrency across writers** — L1 fork(s) vs a running L2 writing the same
-  files; serialize or atomic-replace.
+- **On-disk skill layout** — confirm `.gen/skills/agent-created/` (isolated from
+  user-curated skills).
+- **Cache parity on non-Anthropic providers** — verify system-prompt inheritance
+  helps (or at least doesn't hurt) across gen-code's providers.
+- **Usage telemetry** — whether to land the minimal usage log in this phase (for
+  the future L2) or defer it entirely.
 
 ---
 
@@ -250,12 +173,12 @@ the same injection path.
 
 - hermes-agent L1: `agent/background_review.py` (fork, prompts, direct writes);
   triggers in `agent/conversation_loop.py` (memory ~`:387–394`, skill
-  ~`:4046–4051`, guard `:4062`); L2 curator: `agent/curator.py`
-  (idle-triggered: archive stale / consolidate / pin-unpin / audit).
-- Claude Code memory model: <https://code.claude.com/docs/en/memory>
-  (CLAUDE.md vs in-band auto memory).
-- gen-code turn loop & outbox: `internal/core/agent_impl.go` (`Run`,
-  `TurnEvent`, `ThinkAct`).
+  ~`:4046–4051`, guard `:4062`). L2 (for context): `agent/curator.py`
+  (idle-triggered maintenance).
+- Claude Code memory model: <https://code.claude.com/docs/en/memory> (in-band
+  contrast).
+- gen-code turn loop & outbox: `internal/core/agent_impl.go` (`Run`, `TurnEvent`,
+  `ThinkAct`).
 - gen-code injection side (built): `internal/reminder` providers, PostCompact
   re-emit.
 - Session wire-up: `internal/agent/session.go` (`Task.Start`).
