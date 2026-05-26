@@ -97,9 +97,29 @@ user-authored files (`GEN.md`/`CLAUDE.md`/rules); it does **not** read this
 store today. A small change must add `~/.gen/projects/<project>/memory/MEMORY.md`
 as a **new, distinct memory source** (its own level, e.g. "auto"), kept separate
 from the user-authored `GEN.md`/`CLAUDE.md` — so agent-written memory and
-user-written instructions never mix. Load the `MEMORY.md` index (cap like Claude
-Code: first ~200 lines / 25KB); topic files load on demand. Without this read
-side, L1 writes would never be injected.
+user-written instructions never mix. Without this read side, L1 writes would
+never be injected.
+
+**Load timing — reuses the existing injection lifecycle:**
+
+- **Session start:** read the `MEMORY.md` index → cache → inject as a
+  `<system-reminder source="memory-auto">` block on the first user message.
+  Cap the index like Claude Code (first ~200 lines / 25KB); topic files are read
+  on demand by the agent's file tools, not injected.
+- **PostCompact:** re-read from disk (`refreshMemoryContext`) + re-emit
+  (`RequeueSystemReminders`) — the same path already built for `GEN.md`/`CLAUDE.md`
+  memory — so the latest memory survives compaction.
+- **cwd change:** re-read, because `<project>` (and thus the store) changes when
+  the working directory moves to a different repo.
+
+**Update timing:** the L1 fork writes post-turn, on the memory cadence (every N
+user turns, §2), gated on `StopEndTurn`.
+
+**Write→visibility lag (by design):** L1 writes out-of-band, while the running
+session's memory was injected at a load point. So a fresh write is **not**
+live-patched into the in-flight context — it becomes visible at the next load
+point: the next **PostCompact** (which re-reads from disk) or the next **session
+start**. Acceptable, since memory mainly serves future turns/sessions.
 
 ### 3b. Skill flow — creation / update
 
