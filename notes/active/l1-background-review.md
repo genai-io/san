@@ -27,7 +27,8 @@ reviews after a turn and writes).
 | When | After a turn | During the session, on model judgment | After a turn |
 | Writes directly? | **Yes** (fork has memory + skill tools) | Yes (main agent's own tool calls) | **Yes** |
 | Trigger | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | same two signals |
-| Storage | `~/.hermes/MEMORY.md` + `USER.md`, `~/.hermes/skills/<name>/` | `MEMORY.md` index (first 200 lines/25KB loaded) + topic files | `.gen/memory/` + `.gen/skills/agent-created/` |
+| Memory path | `~/.hermes/MEMORY.md` + `USER.md` — **global** (`$HERMES_HOME`, not per-project) | `~/.claude/projects/<repo>/memory/MEMORY.md` — **per-project**, `<repo>` = git-root path with `/`→`-`; index (first 200 lines/25KB) + topic files | `~/.gen/projects/<project>/memory/MEMORY.md` — **per-project**, like Claude Code |
+| Project isolation | none (one global store) | yes (keyed on git repo; worktrees share) | yes (keyed on git repo) |
 
 **gen-code already has the *injection* side** (from the reminder/compaction
 work): memory loads + re-injects as `<system-reminder>` blocks
@@ -80,12 +81,25 @@ the main agent write — Hermes-style provenance flags — can come later.)
 
 - Trigger: every N user turns (§2).
 - The reviewer reads the recent conversation history and extracts **durable
-  user/project facts** (who the user is, preferences, project conventions,
-  build/debug insights).
-- Writes via `memory_write` to `.gen/memory/MEMORY.md` (+ `USER.md` for the user
-  profile). Append/replace existing entries; "Nothing to save." is valid.
-- This is the corpus the existing reminder injection already loads — so a write
-  here shows up in the next session's `<memory>` reminder.
+  user/project facts** (preferences, project conventions, build/debug insights).
+- Writes via `memory_write` to a **user-level, project-partitioned** store:
+  `~/.gen/projects/<project>/memory/MEMORY.md` (+ topic files, Claude-Code-style:
+  a concise `MEMORY.md` index, detail files loaded on demand). `<project>` is
+  derived from the git repo so worktrees/subdirs of one repo share a store;
+  fall back to the project root outside a repo.
+- **Why user-level + project-partitioned, not in-repo**: it isolates memory per
+  project but keeps it **machine-local and out of the repo**, so there is no
+  commit/gitignore decision and no agent churn in git history. (This mirrors
+  Claude Code's auto-memory.) Append/replace entries; "Nothing to save." valid.
+
+**Injection integration (required).** `LoadMemoryFiles` currently reads only
+user-authored files (`GEN.md`/`CLAUDE.md`/rules); it does **not** read this
+store today. A small change must add `~/.gen/projects/<project>/memory/MEMORY.md`
+as a **new, distinct memory source** (its own level, e.g. "auto"), kept separate
+from the user-authored `GEN.md`/`CLAUDE.md` — so agent-written memory and
+user-written instructions never mix. Load the `MEMORY.md` index (cap like Claude
+Code: first ~200 lines / 25KB); topic files load on demand. Without this read
+side, L1 writes would never be injected.
 
 ### 3b. Skill flow — creation / update
 
@@ -161,7 +175,8 @@ Module map:
 | Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
-| Writes | `memory_write` → `.gen/memory/`; `skill_manage` → `.gen/skills/agent-created/` |
+| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → agent-created skills (location TBD, §7) |
+| Injection read | extend `LoadMemoryFiles` to read the memory store as a new "auto" source (§3a) |
 
 ---
 
@@ -186,9 +201,12 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 
 - **Phase 1 — L1 (this issue, #52).** Trigger + fork + direct memory/skill writes
   + the three review prompts.
-  - Prereqs: `skill_manage` tool with patch semantics; a first-class memory
-    writer (`.gen/memory/MEMORY.md` + `USER.md`). gen-code's injection side
-    already reads these once they exist.
+  - Prereqs:
+    - `skill_manage` tool with patch semantics.
+    - A first-class memory writer to `~/.gen/projects/<project>/memory/MEMORY.md`.
+    - **Injection read side**: extend `LoadMemoryFiles` to load that store as a
+      new, distinct "auto" source (§3a) — it does not today, so without this L1
+      writes are never injected.
 - **Phase 2 — L2 curator (separate issue).** Deferred (see §5).
 
 ### Concrete next steps (Phase 1)
@@ -196,7 +214,8 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 1. New package `internal/selflearn/l1`: `Reviewer` (counters + Outbox
    subscription + trigger), `forkAgent(parent, snapshot, mode)` (restricted
    `core.Agent`, runs `ThinkAct`, surfaces the one-line summary).
-2. `memory_write` + `skill_manage` tools and their stores under `.gen/`.
+2. `memory_write` (store at `~/.gen/projects/<project>/memory/`) + `skill_manage`
+   tools; extend `LoadMemoryFiles` to read the memory store.
 3. Review prompt templates (memory / skill / combined), rewritten for gen-code
    terminology.
 4. Wire-up in `Task.Start` / `stopLocked`; gate on `StopEndTurn`.
@@ -208,8 +227,13 @@ log can be added with L1 or just before L2 — flagged so it isn't forgotten.
 
 ## 7. Open questions (L1)
 
-- **On-disk skill layout** — confirm `.gen/skills/agent-created/` (isolated from
-  user-curated skills).
+- **Skill store location.** Memory is project-partitioned at user level
+  (`~/.gen/projects/<project>/memory/`, settled). Skills are different — a skill
+  like `go-table-tests` is **reusable across projects**, so agent-created skills
+  may belong at user-global level (e.g. `~/.gen/skills/agent-created/`, as hermes
+  does with `~/.hermes/skills/`) rather than per-project or in-repo. Decide:
+  user-global vs project-partitioned vs in-repo, and keep them isolated from
+  user-authored skills regardless.
 - **Cache parity on non-Anthropic providers** — verify system-prompt inheritance
   helps (or at least doesn't hurt) across gen-code's providers.
 - **Usage telemetry** — whether to land the minimal usage log in this phase (for
