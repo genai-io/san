@@ -50,33 +50,81 @@ on its own and matches the production-proven hermes shape.
 | Memory | user turns since last review | every 10 turns | User-modeling drifts on conversational cadence, not work intensity. |
 | Skills | tool iterations within the turn | when this turn ≥ 10 tool iters | Skill capture should fire when the agent actually *did* work; tool-iter count is the cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
 
-Both config-overridable; `0` disables that arm. Combined when both fire on the
-same turn.
+- **Memory** fires on a **turn cadence** (default every 10 user turns) — it is
+  not tied to whether work happened. When it fires, the reviewer reads the
+  **recent conversation history** (the turn snapshot) and updates durable facts.
+- **Skills** fire on **work done this turn** (tool-iters ≥ K), not on a turn
+  cadence and not on "a skill was invoked". Whether a skill was invoked affects
+  *which* skill to update (see §3b), not *whether* to review — otherwise new
+  skills for tasks that had no skill yet would never be learned.
 
-The trigger is a **pure event consumer** subscribed to `core.Agent.Outbox()`,
-reading `TurnEvent` (which already carries `Result.Turns`, `Result.ToolUses`,
-`Result.StopReason`). No `internal/core` changes; counters live in the consumer
-and hydrate from history on session resume.
+Both config-overridable; `0` disables that arm. Combined when both fire on the
+same turn. The trigger is a **pure event consumer** subscribed to
+`core.Agent.Outbox()`, reading `TurnEvent` (`Result.Turns`/`ToolUses`/
+`StopReason`). No `internal/core` changes; counters live in the consumer and
+hydrate from history on session resume.
 
 ---
 
 ## 3. What L1 writes — directly
 
-- **Memory**: durable user/project facts → `.gen/memory/MEMORY.md` / `USER.md`.
-- **Skill**: how to do a class of task → `.gen/skills/agent-created/<name>/`
-  (create or patch an agent-created skill; never touch user-curated/pinned ones,
-  so the future L2 curator can manage them without surprises).
+The write tools (`memory_write` + `skill_manage`) belong **only to the L1
+reviewer fork** in this phase. The main agent never writes memory/skills — it
+only reads/invokes them (existing skills-directory injection + skill-view).
+Because only the reviewer writes, provenance is simply **by location**: every
+L1 write lands under agent-created paths, kept apart from user-authored skills,
+so the future L2 curator can manage them without touching the user's. (Letting
+the main agent write — Hermes-style provenance flags — can come later.)
 
-Three review prompts, picked by which triggers fired:
+### 3a. Memory flow
 
-- **memory-only**: user persona, preferences, expectations. "Nothing to save."
-  is a valid output.
-- **skill-only**: be active (most working sessions produce ≥1 update); preference
-  order = update a loaded skill → update an umbrella → add a support file →
-  create a new umbrella. Embeds an anti-pattern list (no environment-dependent
-  failures, no negative tool claims, no transient errors, no one-off task
-  narratives). "Nothing to save." is valid but not the default.
-- **combined**: both, when both triggers fire on the same turn.
+- Trigger: every N user turns (§2).
+- The reviewer reads the recent conversation history and extracts **durable
+  user/project facts** (who the user is, preferences, project conventions,
+  build/debug insights).
+- Writes via `memory_write` to `.gen/memory/MEMORY.md` (+ `USER.md` for the user
+  profile). Append/replace existing entries; "Nothing to save." is valid.
+- This is the corpus the existing reminder injection already loads — so a write
+  here shows up in the next session's `<memory>` reminder.
+
+### 3b. Skill flow — creation / update
+
+Trigger: this turn did real work (tool-iters ≥ K). The reviewer runs the skill
+review prompt against the turn snapshot and follows a **preference order**
+(broadest reuse first; create new only as a last resort):
+
+1. **Patch a skill that was loaded/used this turn.** If the agent consulted a
+   skill (a skill-view in the turn history) and it was wrong/outdated →
+   `skill_manage(patch, name, old, new)` to fix it. *(This is where "a skill was
+   invoked" matters — it picks the target.)*
+2. **Patch an existing umbrella.** List + view existing broad, class-level
+   skills; if one covers this learning, patch it (add a pitfall/step, broaden a
+   trigger).
+3. **Add a support file** to an umbrella: `skill_manage(write_file, name,
+   "references|templates|scripts/…", content)`, plus a pointer line in SKILL.md.
+4. **Create a new class-level umbrella** — only when nothing above fits.
+   `skill_manage(create, name, content)`. The name must be **class-level**
+   (e.g. `go-table-tests`), never session-specific (no PR numbers, error
+   strings, `fix-x-today`).
+
+"Umbrella" is a **convention, not a data-model marker** — the preference order
+above is what keeps the collection broad instead of sprouting one narrow skill
+per session. New skills are written to `.gen/skills/agent-created/<name>/`
+(a `SKILL.md` with frontmatter `name`/`description` + optional
+`references/`/`templates/`/`scripts/`), isolated from user-authored skills.
+
+`skill_manage` actions: `create`, `edit` (full rewrite — rare), `patch`,
+`write_file`, `remove_file`, `delete`. **`patch`** is targeted find-and-replace
+with a fuzzy-match chain (exact → line-trimmed → whitespace/indent/escape/
+unicode-normalized → block-anchor → context-similarity) and an **escape-drift
+guard** (rejects matches where transport-added `\'`/`\"` backslashes don't exist
+in the file, prompting a clean re-read). Requires a unique match unless
+`replace_all`.
+
+Three review prompts, picked by which triggers fired (memory-only / skill-only /
+combined). The skill prompt is **active** (most working sessions produce ≥1
+update) and embeds an anti-pattern list (no environment-dependent failures, no
+negative tool claims, no transient errors, no one-off task narratives).
 
 ---
 
