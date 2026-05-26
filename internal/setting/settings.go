@@ -32,6 +32,28 @@ type Data struct {
 	// Identity selects an active persona under ~/.gen/identities/<name>.md or
 	// .gen/identities/<name>.md. Empty = use built-in default identity.
 	Identity string `json:"identity,omitempty"`
+	// SelfLearn toggles + tunes the self-learning loop (per-turn background
+	// review of memory and skills). Both arms are off by default (opt-in).
+	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
+}
+
+// SelfLearnSettings configures the two independent self-learning arms.
+type SelfLearnSettings struct {
+	Memory SelfLearnMemory `json:"memory,omitempty"`
+	Skills SelfLearnSkills `json:"skills,omitempty"`
+}
+
+// SelfLearnMemory controls memory-evolving: review every N user turns.
+type SelfLearnMemory struct {
+	Enabled    bool `json:"enabled,omitempty"`
+	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = default cadence
+}
+
+// SelfLearnSkills controls skill-evolving: review when a turn reaches N tool
+// iterations.
+type SelfLearnSkills struct {
+	Enabled        bool `json:"enabled,omitempty"`
+	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = default threshold
 }
 
 // PermissionSettings defines permission rules for tool execution.
