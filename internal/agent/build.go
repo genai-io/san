@@ -96,7 +96,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 
 	compactClient := client
 	compactFunc := func(ctx context.Context, msgs []core.Message) (string, error) {
-		text := core.BuildConversationText(msgs)
+		text := core.BuildCompactionText(msgs)
 		resp, err := compactClient.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, core.CompactMaxTokens)
 		if err != nil {
 			return "", err

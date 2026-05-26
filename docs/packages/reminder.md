@@ -103,8 +103,8 @@ A handful of nits:
 - Per-event: skill toggles / memory updates call `EnqueueAllProviders`
   to refresh provider-emitted reminders.
 - On compaction: reminder blocks are **skipped, not summarized**.
-  `core.BuildConversationText` strips `<system-reminder>…</system-reminder>`
-  from user content before the summarizer runs, then the harness calls
+  `core.BuildCompactionText` peels trailing `<system-reminder>…</system-reminder>`
+  blocks from user content before the summarizer runs, then the harness calls
   `DiscardPendingNotices` + `EnqueueAllProviders` so fresh provider state
   reattaches to the next user turn. All providers (skills, memory-user,
   memory-project) and one-time notices share this lifecycle. See

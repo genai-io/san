@@ -67,7 +67,7 @@ func (c *CompactState) Complete(result string, isError bool) {
 func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message, focus string) (summary string, count int, err error) {
 	count = len(msgs)
 
-	conversationText := core.BuildConversationText(msgs)
+	conversationText := core.BuildCompactionText(msgs)
 
 	if focus != "" {
 		conversationText += fmt.Sprintf("\n\n**Important**: Focus the summary on: %s", focus)

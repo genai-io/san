@@ -151,26 +151,36 @@ When the context window approaches its limit, the harness compacts:
 Reminders ride *inside* user-message content (attached below the prompt),
 so a naive summarizer would fold stale skill/memory/notice text into the
 summary. That is wasteful and risks pinning outdated context into the
-permanent summary. Instead, `core.BuildConversationText` strips
-`<system-reminder>…</system-reminder>` blocks before summarizing; a message
-that was *only* reminders contributes nothing. The fresh state comes back
-through the re-emission step (4), giving every reminder provider — skills,
-memory-user, memory-project, and notices — the same lifecycle:
+permanent summary. Instead, `core.BuildCompactionText` peels the trailing
+run of `<system-reminder>` blocks off each user message before summarizing;
+a message that was *only* reminders contributes nothing. The fresh state
+comes back through the re-emission step (4), giving every reminder
+provider — skills, memory-user, memory-project, and notices — the same
+lifecycle:
 
 - **injected** on the first user message (`SessionStart`),
 - **skipped** from the summarization input during compaction,
 - **re-injected** on the next user message after `PostCompact`.
 
-This is the single behavior `core.BuildConversationText` enforces for both
-the auto-compaction path (`internal/agent/build.go`) and the manual
-`/compact` path (`internal/app/conv/compact.go`).
+`BuildCompactionText` is used by both the auto-compaction path
+(`internal/agent/build.go`) and the manual `/compact` path
+(`internal/app/conv/compact.go`). Its sibling `BuildConversationText` keeps
+reminders intact and is used for proactive-compaction *size estimation*
+(`agent_impl.go`), where the real prompt — reminders included — is what the
+estimate must track.
+
+Stripping peels blocks from the end by anchoring on the last *opening* tag
+rather than matching the merged text with a regex: a closing tag never
+contains the opening-tag prefix, so a reminder body that itself quotes
+`</system-reminder>` is still removed in full, and a `<system-reminder>` the
+user typed mid-message is left untouched.
 
 Compaction is **not** a channel by itself — it's a mutation of the
 user-message channel. The strip-then-re-emit pair is what keeps the
 reminder channel coherent across a compaction.
 
 Implementation: `internal/app/conv/compact.go` and
-`internal/core/message.go` (`BuildConversationText`). The agent emits
+`internal/core/message.go` (`BuildCompactionText`). The agent emits
 `OnCompact` events for observers.
 
 ## See Also

@@ -24,17 +24,17 @@ import (
 
 // Executor runs agent LLM loops
 type Executor struct {
-	provider            llm.Provider
-	cwd                 string
-	parentModelID       string // Parent conversation's model ID (used when inheriting)
-	hooks               hook.Handler
-	sessionStore        SubagentSessionStore // Optional: when set, subagent sessions are persisted
-	parentSessionID     string               // Parent session ID for linking subagent sessions
-	isGit               bool                 // whether cwd is a git repository
-	skillsPrompt        string               // available skills section for capable subagents
-	agentsPrompt        string               // available agents section for capable subagents
-	mcpTools            mcp.Tools            // tool schemas + execution
-	mcpServers          mcp.Servers          // connect/disconnect for per-subagent server sets
+	provider        llm.Provider
+	cwd             string
+	parentModelID   string // Parent conversation's model ID (used when inheriting)
+	hooks           hook.Handler
+	sessionStore    SubagentSessionStore // Optional: when set, subagent sessions are persisted
+	parentSessionID string               // Parent session ID for linking subagent sessions
+	isGit           bool                 // whether cwd is a git repository
+	skillsPrompt    string               // available skills section for capable subagents
+	agentsPrompt    string               // available agents section for capable subagents
+	mcpTools        mcp.Tools            // tool schemas + execution
+	mcpServers      mcp.Servers          // connect/disconnect for per-subagent server sets
 }
 
 type SubagentSessionStore interface {
