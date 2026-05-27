@@ -388,7 +388,7 @@ func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 }
 
 // providerSpinnerFrames is the braille spinner shown while a connect/refresh
-// is in flight, advanced by each ProviderSpinnerTickMsg.
+// is in flight, advanced by each ProviderConnectingMsg.
 var providerSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func (s *ProviderSelector) renderConnectResult() string {

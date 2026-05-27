@@ -49,11 +49,12 @@ type ProviderStatusExpiredMsg = kit.StatusExpiredMsg
 // UpdateProvider routes provider connection and selection messages.
 func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case ProviderSpinnerTickMsg:
-		// Keep ticking while work is in flight; stop once it completes.
+	case ProviderConnectingMsg:
+		// Keep ticking the spinner while connect/refresh is in flight; stop once
+		// the matching ProviderConnectResultMsg lands and IsBusy goes false.
 		if state.Selector.IsBusy() {
 			state.Selector.AdvanceSpinner()
-			return providerSpinnerTickCmd(), true
+			return providerConnectingTickCmd(), true
 		}
 		return nil, true
 	case ProviderConnectResultMsg:
@@ -211,7 +212,7 @@ type ProviderSelector struct {
 	lastConnectAuthIdx int // item index that triggered the connection
 	lastConnectSuccess bool
 
-	// spinnerTick advances on each ProviderSpinnerTickMsg; used to pick a braille
+	// spinnerTick advances on each ProviderConnectingMsg; used to pick a braille
 	// frame while a connect/refresh is in flight.
 	spinnerTick int
 }
@@ -221,13 +222,15 @@ type ProviderSelector struct {
 // thinking-spinner tick).
 const providerSpinnerInterval = 90 * time.Millisecond
 
-// ProviderSpinnerTickMsg drives the in-flight braille spinner animation.
-type ProviderSpinnerTickMsg struct{}
+// ProviderConnectingMsg is the periodic "still connecting/refreshing" tick that
+// advances the in-flight spinner; the terminal counterpart to
+// ProviderConnectResultMsg, which signals the work is done.
+type ProviderConnectingMsg struct{}
 
-// providerSpinnerTickCmd schedules the next spinner frame.
-func providerSpinnerTickCmd() tea.Cmd {
+// providerConnectingTickCmd schedules the next connecting tick (spinner frame).
+func providerConnectingTickCmd() tea.Cmd {
 	return tea.Tick(providerSpinnerInterval, func(time.Time) tea.Msg {
-		return ProviderSpinnerTickMsg{}
+		return ProviderConnectingMsg{}
 	})
 }
 
@@ -1052,7 +1055,7 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 	}
 	// Start the spinner alongside the async work.
-	return tea.Batch(providerSpinnerTickCmd(), work)
+	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
 // connectAuthMethod initiates an async connection to a provider auth method.
@@ -1084,7 +1087,7 @@ func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authId
 			NewStatus: llm.StatusConnected,
 		}
 	}
-	return tea.Batch(providerSpinnerTickCmd(), work)
+	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
 // HandleConnectResult updates the selector state with connection result.
