@@ -50,6 +50,61 @@ func NewSkillManager(cwd string) *SkillManager {
 	}
 }
 
+// SkillInfo is a one-line summary of an existing skill, used to brief the
+// reviewer so it prefers updating over creating and never re-derives a skill
+// that already exists.
+type SkillInfo struct {
+	Name        string
+	Level       string // user | project
+	Origin      string // agent-created | user-created
+	Description string
+	Editable    bool // true only for agent-created skills
+}
+
+// Inventory lists existing skills across both scopes (project entries shadow
+// user entries of the same name, matching loader precedence).
+func (m *SkillManager) Inventory() []SkillInfo {
+	seen := make(map[string]bool)
+	var out []SkillInfo
+	for _, scope := range []struct {
+		dir   string
+		level string
+	}{{m.projectDir, "project"}, {m.userDir, "user"}} {
+		entries, err := os.ReadDir(scope.dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() || seen[e.Name()] {
+				continue
+			}
+			path := filepath.Join(scope.dir, e.Name(), "SKILL.md")
+			fm, _, err := markdown.ParseFrontmatterFile(path)
+			if err != nil {
+				continue
+			}
+			var meta struct {
+				Description string `yaml:"description"`
+				Origin      string `yaml:"origin"`
+			}
+			_ = yaml.Unmarshal([]byte(fm), &meta)
+			origin := meta.Origin
+			if origin == "" {
+				origin = "user-created"
+			}
+			seen[e.Name()] = true
+			out = append(out, SkillInfo{
+				Name:        e.Name(),
+				Level:       scope.level,
+				Origin:      origin,
+				Description: meta.Description,
+				Editable:    origin == agentOrigin,
+			})
+		}
+	}
+	return out
+}
+
 func (m *SkillManager) dirFor(level string) (string, error) {
 	switch strings.TrimSpace(level) {
 	case "", "user":

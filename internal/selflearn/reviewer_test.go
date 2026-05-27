@@ -35,7 +35,7 @@ func assertNoFire(t *testing.T, fired <-chan ReviewKind) {
 
 func TestMemoryFiresOnTurnCadence(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
-	r := New(Config{Memory: Arm{Enabled: true, Interval: 3}}, func(k ReviewKind) { fired <- k })
+	r := New(Config{Memory: Arm{Enabled: true, Interval: 3}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(endTurn(0))
 	r.Observe(endTurn(0))
@@ -48,7 +48,7 @@ func TestMemoryFiresOnTurnCadence(t *testing.T) {
 
 func TestSkillFiresOnToolIterThreshold(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
-	r := New(Config{Skills: Arm{Enabled: true, Interval: 5}}, func(k ReviewKind) { fired <- k })
+	r := New(Config{Skills: Arm{Enabled: true, Interval: 5}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(endTurn(2))
 	r.Observe(endTurn(2))
@@ -64,7 +64,7 @@ func TestCombinedFiresBothArms(t *testing.T) {
 	r := New(Config{
 		Memory: Arm{Enabled: true, Interval: 1},
 		Skills: Arm{Enabled: true, Interval: 3},
-	}, func(k ReviewKind) { fired <- k })
+	}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(endTurn(3)) // memory due (1 turn) AND skills due (3 iters)
 	k := waitFire(t, fired)
@@ -75,7 +75,7 @@ func TestCombinedFiresBothArms(t *testing.T) {
 
 func TestSkipsNonEndTurn(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
-	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind) { fired <- k })
+	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(core.Result{StopReason: core.StopCancelled, ToolUses: 9})
 	r.Observe(core.Result{StopReason: core.StopMaxTurns})
@@ -91,7 +91,7 @@ func TestConcurrencyCapDropsAndRetries(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
 	release := make(chan struct{})
 	started := make(chan struct{}, 4)
-	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind) {
+	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind, _ []core.Message) {
 		started <- struct{}{}
 		<-release // block until released → keeps the review in-flight
 		fired <- k
@@ -122,7 +122,7 @@ func TestConcurrencyCapDropsAndRetries(t *testing.T) {
 
 func TestSeedTurns(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
-	r := New(Config{Memory: Arm{Enabled: true, Interval: 5}}, func(k ReviewKind) { fired <- k })
+	r := New(Config{Memory: Arm{Enabled: true, Interval: 5}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.SeedTurns(4) // 4 prior user turns → 1 more should trip the cadence
 	r.Observe(endTurn(0))

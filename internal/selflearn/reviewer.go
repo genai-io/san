@@ -51,10 +51,11 @@ const (
 // Has reports whether k includes x.
 func (k ReviewKind) Has(x ReviewKind) bool { return k&x != 0 }
 
-// ReviewFunc performs the actual fork+review for the fired arms. It runs on a
-// background goroutine and must be best-effort (never panic out / never block
-// the user). Injected so trigger logic is unit-testable without an LLM.
-type ReviewFunc func(kinds ReviewKind)
+// ReviewFunc performs the actual fork+review for the fired arms, given the
+// snapshot of the just-completed turn's conversation. It runs on a background
+// goroutine and must be best-effort (never panic out / never block the user).
+// Injected so trigger logic is unit-testable without an LLM.
+type ReviewFunc func(kinds ReviewKind, snapshot []core.Message)
 
 // Reviewer owns the per-session counters and fires reviews on cadence. Safe for
 // concurrent use; Observe is the only entry point.
@@ -141,10 +142,10 @@ func (r *Reviewer) Observe(result core.Result) {
 	}
 	r.mu.Unlock()
 
-	go r.run(kinds)
+	go r.run(kinds, result.Messages)
 }
 
-func (r *Reviewer) run(kinds ReviewKind) {
+func (r *Reviewer) run(kinds ReviewKind, snapshot []core.Message) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			log.Logger().Warn("selflearn: review panicked (recovered)")
@@ -154,7 +155,7 @@ func (r *Reviewer) run(kinds ReviewKind) {
 		r.mu.Unlock()
 	}()
 	if r.review != nil {
-		r.review(kinds)
+		r.review(kinds, snapshot)
 	}
 }
 
