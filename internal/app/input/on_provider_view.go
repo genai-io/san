@@ -359,9 +359,9 @@ func (s *ProviderSelector) renderHints() string {
 
 // ── Connection result ───────────────────────────────────────────────────────
 
-// appendConnectResult appends the inline connect/refresh result (e.g.
-// "Refreshed · 2 models") to a row's info column when it belongs to itemIdx,
-// separated from the env-var status by a gap.
+// appendConnectResult appends the inline connect/refresh result (an in-flight
+// spinner, or e.g. "● 2 models" once done) to a row's info column when it
+// belongs to itemIdx, separated from the env-var status by a gap.
 func (s *ProviderSelector) appendConnectResult(envInfo string, itemIdx int) string {
 	if s.lastConnectResult == "" || itemIdx != s.lastConnectAuthIdx {
 		return envInfo
@@ -373,11 +373,10 @@ func (s *ProviderSelector) appendConnectResult(envInfo string, itemIdx int) stri
 	return envInfo + "   " + result
 }
 
+// connectResultStyle styles a completed (non-in-flight) result; the in-flight
+// case is handled by renderConnectResult before this is called.
 func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 	if !s.lastConnectSuccess {
-		if s.IsBusy() {
-			return kit.DimStyle()
-		}
 		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
 	}
 	if strings.HasPrefix(s.lastConnectResult, "⚠") {
@@ -389,7 +388,7 @@ func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 }
 
 // providerSpinnerFrames is the braille spinner shown while a connect/refresh
-// is in flight, advanced by the shared animation tick.
+// is in flight, advanced by each ProviderSpinnerTickMsg.
 var providerSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func (s *ProviderSelector) renderConnectResult() string {

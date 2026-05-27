@@ -241,8 +241,8 @@ const (
 	providerStatusConnecting = "Connecting..."
 )
 
-// IsBusy reports whether a connect/refresh is in flight, so the shared spinner
-// keeps ticking and the row renders an animated frame.
+// IsBusy reports whether a connect/refresh is in flight, so the spinner-tick
+// loop keeps ticking and the row renders an animated frame.
 func (s *ProviderSelector) IsBusy() bool {
 	return s.active &&
 		(s.lastConnectResult == providerStatusRefreshing || s.lastConnectResult == providerStatusConnecting)
@@ -999,6 +999,11 @@ func (s *ProviderSelector) clampSelection() {
 
 // refreshAuthMethod re-fetches models for an already connected provider auth method.
 func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
+	if s.IsBusy() {
+		// A connect/refresh is already in flight; ignore re-entry so we don't
+		// start a second spinner-tick loop or a concurrent store write.
+		return nil
+	}
 	s.lastConnectResult = providerStatusRefreshing
 	s.lastConnectAuthIdx = authIdx
 	s.lastConnectSuccess = false
@@ -1052,6 +1057,11 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 
 // connectAuthMethod initiates an async connection to a provider auth method.
 func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
+	if s.IsBusy() {
+		// A connect/refresh is already in flight; ignore re-entry so we don't
+		// start a second spinner-tick loop or a concurrent store write.
+		return nil
+	}
 	s.lastConnectResult = providerStatusConnecting
 	s.lastConnectAuthIdx = authIdx
 	s.lastConnectSuccess = false
