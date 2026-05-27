@@ -22,7 +22,7 @@ type Source string
 
 const (
 	Predefined Source = "predefined" // embedded templates
-	FromFile   Source = "file"       // GEN.md, AGENT.md, skill defs
+	FromFile   Source = "file"       // instruction documents, agent and skill definitions
 	Injected   Source = "injected"   // passed by parent agent or app layer
 	Dynamic    Source = "dynamic"    // generated at runtime (env, hook context)
 )

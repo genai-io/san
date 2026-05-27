@@ -89,7 +89,7 @@ For API keys, set the matching env var (see Credentials below) or paste when pro
 
 ### Configuration
 
-Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user). A `GEN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
+Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user). Project instructions are loaded as mutable reminders from the first available file in this order: `.gen/GEN.md`, `GEN.md`, `.claude/CLAUDE.md`, `CLAUDE.md`, `AGENTS.md`.
 
 <details>
 <summary><b>Credentials</b></summary>

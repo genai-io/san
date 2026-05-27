@@ -18,7 +18,7 @@ session and need to surface mid-conversation without busting the prompt
 cache — currently:
 
 - skills directory (re-emit when a skill is enabled / disabled / activated)
-- memory user / memory project (re-emit on memory file change)
+- memory user / memory project (re-emit on instruction file change)
 - one-time notices (queued from hooks or commands)
 
 See [`concepts/harness-channels.md`](../concepts/harness-channels.md) for

@@ -14,7 +14,7 @@ import (
 
 	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
+	"github.com/genai-io/gen-code/internal/instruction"
 )
 
 // ── State ───────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
 	m.active = true
 	m.selectedIdx = 0
 
-	paths := system.GetAllMemoryPaths(cwd)
+	paths := instruction.AllPaths(cwd)
 	m.items = []memoryItem{
 		m.buildMemoryItem("Global", "global", paths.Global, cwd,
 			fmt.Sprintf("Saved in %s", kit.ShortenPath(paths.Global[0])),
@@ -94,7 +94,12 @@ func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
 }
 
 func (m *MemorySelector) buildMemoryItem(label, level string, searchPaths []string, cwd, defaultDesc, createHint string) memoryItem {
-	foundPath := system.FindMemoryFile(searchPaths)
+	foundPath := instruction.FindActiveFile(searchPaths)
+	if foundPath == "" {
+		// Keep an otherwise inactive empty draft editable when no loaded
+		// instruction file exists for this scope.
+		foundPath = instruction.FindExisting(searchPaths)
+	}
 	exists := foundPath != ""
 
 	path := foundPath
@@ -112,7 +117,7 @@ func (m *MemorySelector) buildMemoryItem(label, level string, searchPaths []stri
 		Description: description,
 		Path:        path,
 		Exists:      exists,
-		Size:        system.GetFileSize(path),
+		Size:        instruction.FileSize(path),
 		Level:       level,
 		CreateHint:  createHint,
 	}
@@ -224,7 +229,7 @@ func (m *MemorySelector) Render() string {
 		numKey := fmt.Sprintf("%d.", i+1)
 		sizeStr := ""
 		if item.Exists && item.Size > 0 {
-			sizeStr = fmt.Sprintf(" (%s)", system.FormatFileSize(item.Size))
+			sizeStr = fmt.Sprintf(" (%s)", instruction.FormatFileSize(item.Size))
 		}
 
 		line := fmt.Sprintf("%s %s %s",
@@ -328,7 +333,12 @@ func HandleInitCommand(cwd, args string) (string, error) {
 	args = strings.TrimSpace(args)
 	parts := strings.Fields(args)
 
-	isClaude := strings.Contains(args, "--claude")
+	formatID := instruction.FormatGen
+	for _, format := range instruction.Formats() {
+		if strings.Contains(args, "--"+format.ID) {
+			formatID = format.ID
+		}
+	}
 
 	subCmd := ""
 	if len(parts) > 0 && !strings.HasPrefix(parts[0], "--") {
@@ -339,31 +349,27 @@ func HandleInitCommand(cwd, args string) (string, error) {
 	case "local":
 		return handleInitLocal(cwd)
 	case "rules":
-		return handleInitRules(cwd, isClaude)
+		return handleInitRules(cwd, formatID == instruction.FormatClaude)
 	default:
-		return handleInitProject(cwd, isClaude)
+		return handleInitProject(cwd, formatID)
 	}
 }
 
-func handleInitProject(cwd string, isClaude bool) (string, error) {
-	var targetDir, fileName string
-	if isClaude {
-		targetDir = filepath.Join(cwd, ".claude")
-		fileName = "CLAUDE.md"
-	} else {
-		targetDir = filepath.Join(cwd, ".gen")
-		fileName = "GEN.md"
+func handleInitProject(cwd, formatID string) (string, error) {
+	filePath, ok := instruction.ProjectFile(cwd, formatID)
+	if !ok {
+		return "", fmt.Errorf("unsupported instruction format: %s", formatID)
 	}
-	filePath := filepath.Join(targetDir, fileName)
 
 	if _, err := os.Stat(filePath); err == nil {
 		return fmt.Sprintf("File already exists: %s\nUse /memory edit to modify it.", filePath), nil
 	}
 
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+		return "", fmt.Errorf("failed to create directory %s: %w", filepath.Dir(filePath), err)
 	}
-	if err := os.WriteFile(filePath, []byte(getMemoryProjectTemplate(cwd)), 0o644); err != nil {
+	template, _ := instruction.ProjectTemplate(cwd, formatID)
+	if err := os.WriteFile(filePath, []byte(template), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
@@ -381,7 +387,7 @@ func handleInitLocal(cwd string) (string, error) {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return "", fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
-	if err := os.WriteFile(filePath, []byte(getMemoryLocalTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(filePath, []byte(instruction.LocalTemplate()), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
@@ -407,7 +413,7 @@ func handleInitRules(cwd string, isClaude bool) (string, error) {
 	}
 
 	examplePath := filepath.Join(rulesDir, "example.md")
-	if err := os.WriteFile(examplePath, []byte(getMemoryRulesTemplate()), 0o644); err != nil {
+	if err := os.WriteFile(examplePath, []byte(instruction.RulesTemplate()), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write example rule: %w", err)
 	}
 
@@ -492,7 +498,7 @@ const (
 
 // handleMemoryList lists all memory files.
 func handleMemoryList(cwd string) (string, error) {
-	paths := system.GetAllMemoryPaths(cwd)
+	paths := instruction.AllPaths(cwd)
 	state := &memoryListState{cwd: cwd}
 
 	var sb strings.Builder
@@ -507,7 +513,7 @@ func handleMemoryList(cwd string) (string, error) {
 	sb.WriteString("╰────────────────────────────────────────────────────╯\n")
 
 	if state.totalFiles > 0 {
-		fmt.Fprintf(&sb, "  Total: %d file(s) loaded (%s)\n", state.totalFiles, system.FormatFileSize(state.totalSize))
+		fmt.Fprintf(&sb, "  Total: %d file(s) loaded (%s)\n", state.totalFiles, instruction.FormatFileSize(state.totalSize))
 	} else {
 		sb.WriteString("  No memory files loaded. Create with /init\n")
 	}
@@ -518,8 +524,8 @@ func handleMemoryList(cwd string) (string, error) {
 }
 
 func (s *memoryListState) writeMemorySection(sb *strings.Builder, label string, mainPaths []string, rulesDir, createHint string, isProject bool) {
-	mainFound := system.FindMemoryFile(mainPaths)
-	rulesFiles := system.ListRulesFiles(rulesDir)
+	mainFound := instruction.FindActiveFile(mainPaths)
+	rulesFiles := instruction.ListRulesFiles(rulesDir)
 
 	if mainFound != "" || len(rulesFiles) > 0 {
 		sb.WriteString(memoryFormatBoxLine(fmt.Sprintf(" ● %s", label)))
@@ -537,7 +543,7 @@ func (s *memoryListState) writeMemorySection(sb *strings.Builder, label string, 
 }
 
 func (s *memoryListState) writeMemoryLocalSection(sb *strings.Builder, localPaths []string) {
-	localFound := system.FindMemoryFile(localPaths)
+	localFound := instruction.FindActiveFile(localPaths)
 	if localFound != "" {
 		sb.WriteString(memoryFormatBoxLine(" ● Local (git-ignored)"))
 		s.writeMemoryFileLine(sb, localFound, true)
@@ -549,13 +555,13 @@ func (s *memoryListState) writeMemoryLocalSection(sb *strings.Builder, localPath
 }
 
 func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, isProject bool) {
-	size := system.GetFileSize(path)
+	size := instruction.FileSize(path)
 	s.totalFiles++
 	s.totalSize += size
 
 	displayPath := memoryShortenPathForDisplay(path, s.cwd, isProject)
 	displayPath = memoryTruncatePathKeepFilename(displayPath, memoryMaxPath)
-	sizeStr := fmt.Sprintf("(%s)", system.FormatFileSize(size))
+	sizeStr := fmt.Sprintf("(%s)", instruction.FormatFileSize(size))
 	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", memoryPadRight(displayPath, memoryMaxPath), sizeStr)))
 }
 
@@ -604,7 +610,7 @@ func memoryPadRight(s string, length int) string {
 
 // handleMemoryShow shows the current loaded memory content.
 func handleMemoryShow(cwd string) (string, error) {
-	files := system.LoadMemoryFiles(cwd)
+	files := instruction.LoadFiles(cwd)
 	if len(files) == 0 {
 		return "No memory files loaded.\n\nCreate project memory with: /init", nil
 	}
@@ -625,18 +631,18 @@ func handleMemoryShow(cwd string) (string, error) {
 // handleMemoryEdit resolves the file to edit for the given scope.
 // Returns the file path to edit, or an empty string with a message if no file was found.
 func handleMemoryEdit(cwd, scope string) (string, error) {
-	paths := system.GetAllMemoryPaths(cwd)
+	paths := instruction.AllPaths(cwd)
 
 	switch scope {
 	case "global", "user":
-		filePath, err := ensureMemoryFile(paths.Global, getMemoryGlobalTemplate())
+		filePath, err := ensureMemoryFile(paths.Global, instruction.GlobalTemplate())
 		if err != nil {
 			return "", err
 		}
 		return filePath, nil
 
 	case "local":
-		filePath, err := ensureMemoryFile(paths.Local, getMemoryLocalTemplate())
+		filePath, err := ensureMemoryFile(paths.Local, instruction.LocalTemplate())
 		if err != nil {
 			return "", err
 		}
@@ -644,7 +650,10 @@ func handleMemoryEdit(cwd, scope string) (string, error) {
 		return filePath, nil
 
 	default:
-		filePath := system.FindMemoryFile(paths.Project)
+		filePath := instruction.FindActiveFile(paths.Project)
+		if filePath == "" {
+			filePath = instruction.FindExisting(paths.Project)
+		}
 		if filePath == "" {
 			// Return empty path; caller should display the message.
 			return "", nil
@@ -655,7 +664,10 @@ func handleMemoryEdit(cwd, scope string) (string, error) {
 
 // ensureMemoryFile finds or creates a memory file from the given search paths.
 func ensureMemoryFile(searchPaths []string, template string) (string, error) {
-	filePath := system.FindMemoryFile(searchPaths)
+	filePath := instruction.FindActiveFile(searchPaths)
+	if filePath == "" {
+		filePath = instruction.FindExisting(searchPaths)
+	}
 	if filePath != "" {
 		return filePath, nil
 	}
@@ -668,81 +680,6 @@ func ensureMemoryFile(searchPaths []string, template string) (string, error) {
 		return "", fmt.Errorf("failed to create file: %w", err)
 	}
 	return filePath, nil
-}
-
-func getMemoryProjectTemplate(cwd string) string {
-	projectName := filepath.Base(cwd)
-	return fmt.Sprintf(`# GEN.md
-
-This file provides guidance to GenCode when working with code in this repository.
-
-## Project Overview
-
-%s - Describe what this project does.
-
-## Build & Run
-
-`+"`"+`bash
-# Add your build commands here
-`+"`"+`
-
-## Architecture
-
-<!-- Key directories and their purpose -->
-
-## Key Patterns
-
-<!-- Important conventions to follow -->
-`, projectName)
-}
-
-func getMemoryGlobalTemplate() string {
-	return `# GEN.md
-
-Global instructions for GenCode (applies to all projects).
-
-## Coding Preferences
-
-<!-- Your preferred coding style -->
-
-## Security
-
-<!-- Security practices to follow -->
-`
-}
-
-func getMemoryLocalTemplate() string {
-	return `# GEN.local.md
-
-Local instructions for this project (not committed to git).
-
-Use this file for:
-- Personal notes and reminders
-- Environment-specific settings
-- Credentials and secrets (keep these safe!)
-- Work-in-progress ideas
-
-## Notes
-
-<!-- Your local notes here -->
-`
-}
-
-func getMemoryRulesTemplate() string {
-	return `# Example Rule
-
-This file defines specific rules for GenCode to follow.
-
-## Guidelines
-
-- Add specific guidelines here
-- Each rule file should focus on one topic
-- Rules are loaded alphabetically by filename
-
-## Example
-
-<!-- Remove this example and add your actual rules -->
-`
 }
 
 // CreateMemoryFile creates a memory file if it doesn't exist.
@@ -761,11 +698,12 @@ func CreateMemoryFile(filePath, level, cwd string) error {
 func getMemoryTemplateForLevel(level, cwd string) string {
 	switch level {
 	case "global":
-		return getMemoryGlobalTemplate()
+		return instruction.GlobalTemplate()
 	case "project":
-		return getMemoryProjectTemplate(cwd)
+		template, _ := instruction.ProjectTemplate(cwd, instruction.FormatGen)
+		return template
 	case "local":
-		return getMemoryLocalTemplate()
+		return instruction.LocalTemplate()
 	default:
 		return ""
 	}

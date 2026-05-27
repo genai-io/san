@@ -10,8 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
 	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/gen-code/internal/instruction"
 	"github.com/genai-io/gen-code/internal/llm"
 )
 
@@ -133,7 +133,7 @@ func (m *model) switchProvider(p llm.Provider) {
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
-	files := system.LoadMemoryFiles(cwd)
+	files := instruction.LoadFiles(cwd)
 	var userParts, projectParts []string
 	for _, f := range files {
 		switch f.Level {

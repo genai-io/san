@@ -35,6 +35,7 @@ Agent, persistence, and orchestration:
 | Path | Layer | Responsibility |
 | --- | --- | --- |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and session-facing setup. |
+| `internal/instruction` | `feature` | Instruction document discovery, format compatibility, imports, and templates. |
 | `internal/llm` | `feature` | LLM service, provider registry, provider setup, cost tracking, logging. |
 | `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. |
 | `internal/session` | `feature` | Session metadata, transcript persistence, resume, projection, message conversion. |

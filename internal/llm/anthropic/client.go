@@ -181,7 +181,7 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 		if opts.SystemPrompt != "" {
 			// Mark the last system block as ephemeral to enable prompt caching.
 			// This lets Anthropic cache the system prompt across requests, reducing
-			// cost and latency for long system prompts (tools, memory, CLAUDE.md).
+			// cost and latency for long system prompts (tools, policy, guidelines).
 			params.System = []anthropic.TextBlockParam{
 				{Text: opts.SystemPrompt, CacheControl: anthropic.NewCacheControlEphemeralParam()},
 			}

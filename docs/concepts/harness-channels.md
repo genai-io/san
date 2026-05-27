@@ -6,7 +6,7 @@ each with different cache, lifecycle, and stability properties:
 | Channel | What lives there | Cache-friendly? | Mutable mid-session? |
 |---|---|---|---|
 | **System prompt** | Identity, output style, engineering defaults, provider quirks, policy, guidelines, environment footer. Slot-sectioned. | Yes — invariant per session unless a section mutates. | Yes (Use/Drop), but expensive (cache miss). |
-| **`<system-reminder>` blocks** | Session-level / project-level dynamic content: **active-skills directory**, GEN.md/CLAUDE.md memory, one-time notices. Attached below the next user message. | Yes — once attached, the user message is immutable. | No (re-emitted as new attachments, never mutated). |
+| **`<system-reminder>` blocks** | Session-level / project-level dynamic content: **active-skills directory**, instruction documents (`GEN.md`/`CLAUDE.md`/`AGENTS.md`), one-time notices. Attached below the next user message. | Yes — once attached, the user message is immutable. | No (re-emitted as new attachments, never mutated). |
 | **User messages** | The actual prompt the user typed. | Yes — already cached. | No. |
 
 > The active-skills list (what skills the model is currently aware of) used
@@ -75,8 +75,8 @@ harness has standard providers:
 | Provider ID | Source | Re-emit triggers |
 |---|---|---|
 | `skills-directory` | active skills (and the "use Skill tool to invoke" preamble) | session start, PostCompact, skill enable/disable/activate |
-| `memory-user` | `~/.gen/GEN.md` and `~/.claude/CLAUDE.md` | session start, PostCompact, file change |
-| `memory-project` | `<project>/GEN.md` and `<project>/CLAUDE.md` | session start, PostCompact, file change, cwd change |
+| `memory-user` | First available of `~/.gen/GEN.md`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` | session start, PostCompact, file change |
+| `memory-project` | First available of `.gen/GEN.md`, `GEN.md`, `.claude/CLAUDE.md`, `CLAUDE.md`, `AGENTS.md` | session start, PostCompact, file change, cwd change |
 
 Each provider has a stable ID; re-emitting from the same ID **drops the
 previous queued entry**, so toggling a skill three times in a row
@@ -104,16 +104,23 @@ tags back to the user.
 
 Implementation: [`packages/reminder.md`](../packages/reminder.md).
 
-## Memory: GEN.md / CLAUDE.md
+## Memory: Instruction Documents
 
 Two memory tiers:
 
-- **User memory**: `~/.gen/GEN.md` (Gen Code) and `~/.claude/CLAUDE.md`
-  (Claude Code compat). Loaded once per session, attached as
+- **User memory** selects the first non-empty file from `~/.gen/GEN.md`
+  (Gen Code), `~/.claude/CLAUDE.md` (Claude Code compatibility), and
+  `~/.codex/AGENTS.md` (Codex filename compatibility). It is attached as the
   `memory-user` reminder.
-- **Project memory**: `<project>/GEN.md`, `<project>/CLAUDE.md`, plus
-  recursively-loaded `<dir>/GEN.md` upwards from the start path.
-  Attached as `memory-project` reminder.
+- **Project memory** selects the first non-empty file from `.gen/GEN.md`,
+  `GEN.md`, `.claude/CLAUDE.md`, `CLAUDE.md`, and `AGENTS.md`, in that
+  precedence order. It is attached as the `memory-project` reminder.
+- `.gen/rules/*.md` and `.gen/GEN.local.md` remain additive Gen Code-native
+  sources after the selected main document.
+
+Codex compatibility in this release covers the `AGENTS.md` filename and
+`~/.codex` fallback only. It does not implement Codex's
+`AGENTS.override.md`, directory-chain merge, or configurable fallback rules.
 
 Memory is **never** in the system prompt — that would invalidate the
 prompt cache every time the user edited their memory file.

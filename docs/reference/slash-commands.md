@@ -18,7 +18,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/agents` | Manage agents |
 | `/tokenlimit` | View / set token budget |
 | `/compact` | Compress conversation history |
-| `/init` | Create GEN.md and config files |
+| `/init` | Create instruction files (`GEN.md` by default, `--claude` or `--codex` for compatible files) |
 | `/memory` | View / edit memory files |
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |
@@ -47,7 +47,7 @@ Covered:
 TestHandlerRegistryMatchesBuiltinCommands — all 20 commands registered
 TestExecuteCommandExit                    — /exit returns quit command
 TestExecuteCommandUnknown                 — unknown commands show error message
-TestHandleInitCommand                     — /init creates .gen/GEN.md file
+TestHandleInitCommand                     — /init creates native or compatible instruction files
 TestHandleInitCommand (local)             — /init local creates .gen/GEN.local.md
 TestHandleInitCommand (rules)             — /init rules creates .gen/rules directory
 TestHandleMemoryList                      — /memory list formats output with sections
@@ -163,6 +163,10 @@ tmux send-keys -t t_cmds '/init' Enter
 sleep 3
 ls /tmp/init_test/.gen/
 # Expected: GEN.md created under .gen/
+
+# Create a Codex-compatible project instruction file
+tmux send-keys -t t_cmds '/init --codex' Enter
+# Expected: AGENTS.md created in the project root
 
 # Test 9: Command suggestion dropdown
 tmux send-keys -t t_cmds C-c

@@ -20,7 +20,9 @@ agents.
 ## Accepted Exceptions
 
 - Standard root files keep conventional uppercase names: `README.md`,
-  `CONTRIBUTING.md`, `CHANGELOG.md`, `AGENTS.md`.
+  `CONTRIBUTING.md`, `CHANGELOG.md`.
+- External instruction compatibility files keep their required uppercase
+  names: `GEN.md`, `CLAUDE.md`, `AGENTS.md`.
 - Skill definitions keep the required `SKILL.md` name.
 - Versioned manuals may include semantic versions, for example
   `manual-v1.17.md`.

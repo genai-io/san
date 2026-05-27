@@ -24,6 +24,7 @@ each package works internally and what contract it exposes upward.
 | [`cron`](cron.md) | feature | Cron expressions and one-shot scheduling for `/loop` and `/schedule`. |
 | [`hook`](hook.md) | feature | Pre/post hook engine with command / HTTP / LLM / function executors. |
 | [`identity`](identity.md) | feature | User-defined persona markdown files; concrete registry, no god service. |
+| [`instruction`](instruction.md) | feature | Runtime instruction document discovery and Gen/Claude/Codex filename compatibility. |
 | [`inspector`](inspector.md) | feature | Local web UI for transcript replay; SSE live-tail. |
 | [`llm`](llm.md) | feature | Provider registry, model store, `Client` factory implementing `core.LLM`. |
 | [`mcp`](mcp.md) | feature | MCP client + transport + `Caller` for external tool servers. |
@@ -50,4 +51,3 @@ types, no kitchen-sink `Service`:
 - [`reminder.md`](reminder.md) — concrete `*Service` struct, small 2-method `Provider` interface.
 - [`search.md`](search.md) — pure consumer-defined `Provider`, no singleton.
 - [`worktree.md`](worktree.md) — two functions, no types.
-

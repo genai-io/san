@@ -2,7 +2,8 @@
 
 ## Documentation
 
-- Keep short navigation in `AGENTS.md`.
+- Keep short contributor navigation in `docs/agent-guide.md`; reserve
+  `AGENTS.md` for Codex-compatible runtime instructions.
 - Keep durable explanations in `docs/`.
 - Prefer a single obvious index for each documentation area.
 - Document package ownership and dependency direction before large refactors.

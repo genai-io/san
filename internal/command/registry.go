@@ -37,7 +37,7 @@ func builtinCommands() []Info {
 		{Name: "identity", Description: "Switch active persona, or create/edit one (open selector, /identity create, /identity edit <name>)"},
 		{Name: "tokenlimit", Description: "View or set token limits for current model"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
-		{Name: "init", Description: "Initialize memory files (GEN.md, local, rules)"},
+		{Name: "init", Description: "Initialize instruction files (GEN.md, AGENTS.md, local, rules)"},
 		{Name: "memory", Description: "View and manage memory files (list/show/edit) with @import support"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
 		{Name: "plugin", Description: "Manage plugins (list/install/marketplace/enable/disable/info)"},

@@ -1,13 +1,13 @@
 # Documentation Index
 
 This directory is the durable knowledge base for Gen Code. Keep `README.md`
-concise, use `AGENTS.md` as the short navigation map, and put lasting
+concise, use `agent-guide.md` as the short navigation map, and put lasting
 explanations here.
 
 ## Primary Entrypoints
 
 - `../README.md` — product overview, installation, usage.
-- `../AGENTS.md` — short agent and contributor navigation guide.
+- `agent-guide.md` — short agent and contributor navigation guide.
 - `architecture.md` — system-level overview and primitives.
 - `packages/index.md` — per-package design pages.
 - `concepts/index.md` — cross-cutting concept pages.

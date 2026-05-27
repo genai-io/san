@@ -91,7 +91,7 @@ gen --continue                       # resume the last session
 | User | `~/.gen/skills/` `~/.gen/agents/` `~/.gen/commands/` `~/.gen/plugins/` | Your personal extensions |
 | Project | `<project>/.gen/settings.json` | Per-project overrides |
 | Project | `<project>/.gen/{skills,agents,commands}/` | Project-scoped extensions |
-| Project | `<project>/GEN.md` or `CLAUDE.md` | Auto-loaded into the system prompt |
+| Project | `.gen/GEN.md`, `GEN.md`, `.claude/CLAUDE.md`, `CLAUDE.md`, or `AGENTS.md` | First available file is attached as a mutable instruction reminder |
 
 See [`reference/configuration.md`](../reference/configuration.md) for the
 full schema.
