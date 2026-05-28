@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Getting Started — Gen Code</title>
+<meta name="description" content="Get started with Gen Code in three steps: install, launch and pick a theme, then connect your model.">
+<meta property="og:title" content="Getting Started — Gen Code">
+<meta property="og:description" content="Install, pick a theme, and connect your model — up and running in a couple of minutes.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://genai-io.github.io/gen-code/getting-started.html">
+<meta property="og:image" content="https://genai-io.github.io/gen-code/gen-code.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="logo"><a href="index.html">&lt; GEN <span class="spark">✦</span> /&gt;</a></span>
+    <div class="nav-links">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#benchmark">Benchmark</a>
+      <a href="getting-started.html">Get Started</a>
+      <a href="https://github.com/genai-io/gen-code/tree/main/docs">Docs</a>
+      <a class="nav-cta" href="https://github.com/genai-io/gen-code">★ Star on GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="page-hero">
+  <div class="wrap">
+    <h1>Getting Started</h1>
+    <p>From install to your first prompt in a couple of minutes.</p>
+  </div>
+</header>
+
+<section style="padding-top: 24px;">
+  <div class="wrap">
+    <div class="steps">
+
+      <div class="step">
+        <div class="num">1</div>
+        <div class="step-body">
+          <h3>Install</h3>
+          <p>One command on macOS or Linux. Re-run anytime to upgrade.</p>
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</code>
+            <button class="copy-btn" onclick="copyEl('install-cmd', this)">Copy</button>
+          </div>
+          <p style="margin-top:14px;">Prefer Go? <code class="inline">go install github.com/genai-io/gen-code/cmd/gen@latest</code></p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">2</div>
+        <div class="step-body">
+          <h3>Launch &amp; pick a theme</h3>
+          <p>Start Gen Code by running <code class="inline">gen</code>. On first launch you'll pick a color theme — choose one, and you're ready to connect a model.</p>
+          <div class="cmd">
+            <span class="prompt">$</span>
+            <code id="run-cmd">gen</code>
+            <button class="copy-btn" onclick="copyEl('run-cmd', this)">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num">3</div>
+        <div class="step-body">
+          <h3>Connect a model</h3>
+          <p>Type <code class="inline">/model</code> to open model settings, then:</p>
+          <ol class="substeps">
+            <li>In the <b>Provider</b> pane on the right, paste your API key — this loads that provider's available models.</li>
+            <li>Wait for the provider's models to finish loading.</li>
+            <li>Pick the model you want from the <b>Model</b> list, and start coding.</li>
+          </ol>
+          <p style="margin-top:14px;">Switch providers or models anytime with <code class="inline">/model</code>. Your choice is saved to <code class="inline">~/.gen/providers.json</code>.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="cta-box" style="margin-top: 56px;">
+      <h2>You're set</h2>
+      <p>Explore slash commands with <code class="inline" style="background:var(--bg);">/help</code>, or dive into the docs.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/genai-io/gen-code/tree/main/docs">Read the docs</a>
+        <a class="btn btn-ghost" href="index.html">Back to home</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> Gen Code · Apache 2.0</span>
+    <span>
+      <a href="https://github.com/genai-io/gen-code">GitHub</a> ·
+      <a href="https://github.com/genai-io/gen-code/tree/main/docs">Docs</a> ·
+      <a href="https://github.com/genai-io/gen-code/blob/main/CONTRIBUTING.md">Contributing</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  function copyEl(id, btn) {
+    const text = document.getElementById(id).innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const old = btn.innerText;
+      btn.innerText = 'Copied!';
+      setTimeout(() => btn.innerText = old, 1500);
+    });
+  }
+  document.getElementById('year').innerText = new Date().getFullYear();
+</script>
+</body>
+</html>
