@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gen Code — Open-source AI coding assistant for the terminal</title>
+<meta name="description" content="Gen Code is a terminal coding assistant: a single Go binary, pluggable LLM providers, fully compatible with Claude Code skills, plugins, and MCP. 20x faster startup, 5x smaller than Claude Code.">
+<meta property="og:title" content="Gen Code — AI coding assistant for the terminal">
+<meta property="og:description" content="Single Go binary. Pluggable LLM providers. Claude Code compatible. 20x faster startup.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://genai-io.github.io/gen-code/">
+<meta property="og:image" content="https://genai-io.github.io/gen-code/gen-code.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f8fa;
+    --card: #ffffff;
+    --border: #e3e7ec;
+    --text: #1a1f26;
+    --muted: #5b6573;
+    --accent: #0d9488;
+    --accent-2: #6366f1;
+    --green: #16a34a;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: var(--mono); }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .logo { font-family: var(--mono); font-weight: 700; font-size: 18px; color: var(--text); }
+  .logo .spark { color: var(--accent); }
+  .nav-links { display: flex; gap: 24px; align-items: center; font-size: 14px; }
+  .nav-links a { color: var(--muted); }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  .nav-cta {
+    background: var(--accent); color: #fff !important;
+    padding: 7px 16px; border-radius: 7px; font-weight: 600;
+  }
+  .nav-cta:hover { text-decoration: none; opacity: .9; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 90px 0 60px; }
+  .hero h1 { font-size: clamp(38px, 6vw, 60px); line-height: 1.1; letter-spacing: -1.5px; font-weight: 800; }
+  .hero h1 .grad {
+    background: linear-gradient(120deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p.sub { font-size: clamp(17px, 2.5vw, 21px); color: var(--muted); max-width: 640px; margin: 22px auto 0; }
+  .badges { margin-top: 18px; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .badges img { height: 20px; }
+
+  /* Install box */
+  .install { margin: 36px auto 0; max-width: 640px; }
+  .cmd {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    font-family: var(--mono); font-size: 14px; text-align: left;
+  }
+  .cmd .prompt { color: var(--accent); user-select: none; }
+  .cmd code { flex: 1; color: var(--text); overflow-x: auto; white-space: nowrap; }
+  .copy-btn {
+    background: var(--border); color: var(--text); border: none;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    font-family: var(--sans); white-space: nowrap;
+  }
+  .copy-btn:hover { background: #d4dae1; }
+  .hero-actions { margin-top: 22px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    padding: 12px 24px; border-radius: 9px; font-weight: 600; font-size: 15px;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { text-decoration: none; opacity: .9; }
+  .btn-ghost { border: 1px solid var(--border); color: var(--text); }
+  .btn-ghost:hover { text-decoration: none; background: var(--bg-soft); }
+
+  .screenshot { margin: 56px auto 0; max-width: 920px; }
+  .screenshot img {
+    width: 100%; display: block; border-radius: 14px;
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 50px -24px rgba(26,31,38,.25);
+  }
+
+  /* Sections */
+  section { padding: 64px 0; }
+  .section-title { font-size: 30px; font-weight: 700; letter-spacing: -.5px; text-align: center; }
+  .section-sub { color: var(--muted); text-align: center; margin-top: 8px; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+  /* Feature grid */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; margin-top: 40px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px;
+  }
+  .card h3 { font-size: 17px; display: flex; align-items: center; gap: 10px; }
+  .card .ico { font-size: 20px; }
+  .card p { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  .card code { font-family: var(--mono); font-size: 13px; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; color: var(--accent); }
+  .card.wide {
+    grid-column: 1 / -1;
+    background: linear-gradient(120deg, rgba(13,148,136,.06), rgba(99,102,241,.06));
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .levels { display: flex; flex-wrap: wrap; gap: 10px; }
+  .level {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px;
+  }
+  .level b { color: var(--accent); font-family: var(--mono); }
+  .level .arrow { color: var(--muted); }
+  .soon {
+    font-family: var(--sans); font-size: 11px; font-weight: 600;
+    letter-spacing: .5px; text-transform: uppercase;
+    color: var(--accent-2); background: rgba(99,102,241,.1);
+    border: 1px solid rgba(99,102,241,.25);
+    padding: 2px 9px; border-radius: 999px; vertical-align: middle;
+  }
+
+  /* Benchmark table */
+  .bench-wrap { margin-top: 40px; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 13px 18px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: var(--bg-soft); color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td.adv { color: var(--green); font-weight: 600; }
+  .bench-note { color: var(--muted); font-size: 13px; text-align: center; margin-top: 16px; }
+
+  /* Providers */
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 36px; }
+  .pill {
+    background: var(--card); border: 1px solid var(--border);
+    padding: 8px 16px; border-radius: 999px; font-size: 14px; color: var(--text);
+  }
+
+  /* CTA */
+  .cta-box {
+    background: linear-gradient(120deg, rgba(94,234,212,.08), rgba(129,140,248,.08));
+    border: 1px solid var(--border); border-radius: 16px;
+    padding: 50px 30px; text-align: center; margin-top: 20px;
+  }
+  .cta-box h2 { font-size: 28px; }
+  .cta-box p { color: var(--muted); margin-top: 10px; }
+
+  footer { border-top: 1px solid var(--border); padding: 36px 0; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+    .nav-links a:not(.nav-cta) { display: none; }
+    .hero { padding: 56px 0 40px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="logo">&lt; GEN <span class="spark">✦</span> /&gt;</span>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#benchmark">Benchmark</a>
+      <a href="https://github.com/genai-io/gen-code/tree/main/docs">Docs</a>
+      <a class="nav-cta" href="https://github.com/genai-io/gen-code">★ Star on GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>The AI coding agent<br>that <span class="grad">lives in your terminal</span></h1>
+    <p class="sub">A single Go binary with pluggable LLM providers, search engines, and personas — fully compatible with Claude Code skills, plugins, and MCP servers.</p>
+
+    <div class="badges">
+      <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
+      <a href="https://github.com/genai-io/gen-code/stargazers"><img src="https://img.shields.io/github/stars/genai-io/gen-code?style=flat-square&color=5eead4" alt="Stars"></a>
+      <a href="https://goreportcard.com/report/github.com/genai-io/gen-code"><img src="https://goreportcard.com/badge/github.com/genai-io/gen-code?style=flat-square" alt="Go Report Card"></a>
+      <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License">
+    </div>
+
+    <div class="install">
+      <div class="cmd">
+        <span class="prompt">$</span>
+        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</code>
+        <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="https://github.com/genai-io/gen-code">Get started →</a>
+      <a class="btn btn-ghost" href="#benchmark">See the benchmark</a>
+    </div>
+
+    <div class="screenshot">
+      <img src="gen-code.png" alt="Gen Code — multi-search, multiple AI providers, personas, skills & extensions, self-evolving agents" loading="lazy">
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="section-title">Open by design</h2>
+    <p class="section-sub">Every layer is swappable at runtime. No lock-in.</p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ico">🔌</span> Any LLM provider</h3>
+        <p>Seven providers, from Anthropic to Z.ai. Switch with <code>/model</code>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🔍</span> Pluggable search</h3>
+        <p>Exa, Tavily, Brave, or Serper. Switch with <code>/search</code>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🧩</span> Claude Code compatible</h3>
+        <p>Runs Claude Code skills, plugins, and MCP servers unmodified.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🎭</span> Personas &amp; subagents</h3>
+        <p>Markdown-defined identities, sandboxed subagents, and lifecycle hooks.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">⚡</span> Native performance</h3>
+        <p>A single Go binary. 12 MB, ~0.01s startup, no runtime.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">💾</span> Session persistence</h3>
+        <p>Sessions auto-save, resume, and fork, with automatic context compaction.</p>
+      </div>
+      <div class="card wide">
+        <div>
+          <h3><span class="ico">✦</span> Self-evolving &nbsp;<span class="soon">Coming soon</span></h3>
+          <p>A background reviewer distills each session into durable memory and reusable skills — so the agent improves with use, no manual tuning.</p>
+        </div>
+        <div class="levels">
+          <span class="level"><b>Lv.1</b> Curious</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.10</b> Better</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.50</b> Stronger</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.∞</b> Legendary</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="benchmark" style="background: var(--bg-soft);">
+  <div class="wrap">
+    <h2 class="section-title">Faster &amp; leaner than Claude Code</h2>
+    <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>) on Apple Silicon, comparable feature set.</p>
+    <div class="bench-wrap">
+      <table>
+        <thead>
+          <tr><th>Metric</th><th>Gen Code</th><th>Claude Code</th><th>Advantage</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller</td></tr>
+          <tr><td>Disk footprint</td><td>38 MB</td><td>175 MB</td><td class="adv">4.6× smaller</td></tr>
+          <tr><td>Startup time</td><td>~0.01s</td><td>~0.20s</td><td class="adv">20× faster</td></tr>
+          <tr><td>Startup memory</td><td>~32 MB</td><td>~189 MB</td><td class="adv">5.8× less</td></tr>
+          <tr><td>Simple task</td><td>~2.4s / 39 MB</td><td>~10.4s / 286 MB</td><td class="adv">4.3× faster</td></tr>
+          <tr><td>Tool-use task</td><td>~3.3s / 39 MB</td><td>~26.0s / 285 MB</td><td class="adv">7.9× faster</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="bench-note">Go native compilation vs Node.js V8/JIT/GC overhead. <a href="https://github.com/genai-io/gen-code/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta-box">
+      <h2>Try it in 30 seconds</h2>
+      <p>Open source under Apache 2.0. Star the repo if it's useful — it genuinely helps.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/genai-io/gen-code">★ Star on GitHub</a>
+        <a class="btn btn-ghost" href="https://github.com/genai-io/gen-code/tree/main/docs/guides/getting-started.md">Read the guide</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> Gen Code · Apache 2.0</span>
+    <span>
+      <a href="https://github.com/genai-io/gen-code">GitHub</a> ·
+      <a href="https://github.com/genai-io/gen-code/tree/main/docs">Docs</a> ·
+      <a href="https://github.com/genai-io/gen-code/blob/main/CONTRIBUTING.md">Contributing</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  function copyInstall(btn) {
+    const text = document.getElementById('install-cmd').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const old = btn.innerText;
+      btn.innerText = 'Copied!';
+      setTimeout(() => btn.innerText = old, 1500);
+    });
+  }
+  document.getElementById('year').innerText = new Date().getFullYear();
+</script>
+</body>
+</html>
