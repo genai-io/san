@@ -15,7 +15,7 @@ go build -o gen ./cmd/gen
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.25+
 - An LLM API key (Anthropic, OpenAI, or Google)
 
 ### Project Structure
@@ -63,17 +63,15 @@ GEN_DEBUG=1 ./gen
 
 ### Report Bugs
 
-Open an issue with:
-- Steps to reproduce
-- Expected vs actual behavior
-- OS, Go version, and provider used
+Use the [Bug report](https://github.com/genai-io/gen-code/issues/new?template=bug_report.yml)
+template. For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead —
+do not open a public issue.
 
 ### Suggest Features
 
-Open an issue describing:
-- The problem you're solving
-- Your proposed solution
-- Alternative approaches considered
+Use the [Feature request](https://github.com/genai-io/gen-code/issues/new?template=feature_request.yml)
+template. For open-ended ideas, start a
+[discussion](https://github.com/genai-io/gen-code/discussions) first.
 
 ### Submit Code
 
@@ -109,8 +107,14 @@ chore: maintenance tasks
 
 ## Code of Conduct
 
-Be respectful and constructive. We welcome contributors of all backgrounds and experience levels.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+All participants are expected to uphold these standards.
+
+## Security
+
+Found a security vulnerability? Please do **not** open a public issue.
+See our [security policy](SECURITY.md) for private reporting instructions.
 
 ## Questions?
 
-Open an issue or start a discussion. We're happy to help!
+Start a [discussion](https://github.com/genai-io/gen-code/discussions). We're happy to help!
