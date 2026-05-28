@@ -1,74 +1,100 @@
 # L1 — Background Review (per-turn self-learning)
 
-Design for Layer 1 of the self-learning loop in
-[#46](https://github.com/genai-io/gen-code/issues/46). This is
-[#52](https://github.com/genai-io/gen-code/issues/52).
+Layer 1 of the self-learning loop in [#46](https://github.com/genai-io/gen-code/issues/46).
+This is [#52](https://github.com/genai-io/gen-code/issues/52).
 
-**Decision** (after comparing against the hermes-agent reference,
-`agent/background_review.py`): gen-code uses an **out-of-band** review that
-**writes memory/skills directly** per turn — useful on its own the moment it
-ships. A later, separate **L2 curator** keeps the collection healthy; its design
-is deferred to its own issue (a short rationale is in §5).
-
-This doc focuses on L1: comparison, trigger, what it writes, fork mechanics, and
-phasing.
+**Decision.** After every clean turn, an **out-of-band reviewer fork** writes
+to memory/skill stores **directly** — no proposal queue, no human gating. The
+fork is best-effort, capped at one in-flight per session, and never touches the
+main turn's prompt cache. Collection-level grooming (dedup, contradictions,
+unbounded growth) is the job of a later **L2 curator**, designed in its own
+issue (rationale in §8).
 
 ---
 
-## 1. How three systems do self-evolving memory (comparison)
+## 1. Three systems compared
 
-Two places the "write memory" decision can live: **in-band** (the main agent
-writes mid-session, on its own judgment) vs **out-of-band** (a separate agent
-reviews after a turn and writes).
-
-| Axis | Hermes (`background_review.py`) | Claude Code (auto memory) | gen-code (decided) |
+| Axis | Hermes (`background_review.py`) | Claude Code (auto memory) | gen-code L1 (this doc) |
 |---|---|---|---|
-| Write decision | **Out-of-band** review fork | **In-band** main agent | **Out-of-band** (aligned with Hermes) |
-| When | After a turn | During the session, on model judgment | After a turn |
-| Writes directly? | **Yes** (fork has memory + skill tools) | Yes (main agent's own tool calls) | **Yes** |
-| Trigger | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | same two signals |
-| Memory path | `~/.hermes/MEMORY.md` + `USER.md` — **global** (`$HERMES_HOME`, not per-project) | `~/.claude/projects/<repo>/memory/MEMORY.md` — **per-project**, `<repo>` = git-root path with `/`→`-`; index (first 200 lines/25KB) + topic files | `~/.gen/projects/<project>/memory/MEMORY.md` — **per-project**, like Claude Code |
-| Project isolation | none (one global store) | yes (keyed on git repo; worktrees share) | yes (keyed on git repo) |
+| Where the write decision lives | **Out-of-band** fork | **In-band** main agent | **Out-of-band** (Hermes-aligned) |
+| When | After a clean turn | Mid-turn, on model judgment | After a clean turn |
+| Writes directly | yes (fork has memory + skill tools) | yes (main agent's own tool) | yes |
+| Trigger signals | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | **turns + tool-iters** |
+| Memory scope | **global** `~/.hermes/MEMORY.md` + `USER.md` | **per-project** `~/.claude/projects/<repo>/memory/` (index + topic files) | **per-project** `~/.gen/projects/<project>/memory/` (Claude-Code-aligned) |
+| Skill scope | global, with provenance flags | global, with provenance | **user + project**, `origin: agent-created` field |
+| Cache parity | inherits cached system prompt verbatim (≈26% cost cut measured) | n/a (no fork) | inherits verbatim |
 
-**gen-code already has the *injection* side** (from the reminder/compaction
-work): memory loads + re-injects as `<system-reminder>` blocks
-(`memory-user`/`memory-project`), refreshed from disk on PostCompact. What's
-missing is the *write* side — `internal/reminder` injects but never persists.
-L1 adds the write side.
-
-**Why out-of-band + direct-write:** in-band (Claude Code) is cheapest but spends
-main-context tokens every session and only appends in the flow of work.
-Out-of-band keeps the main turn clean and lets a dedicated prompt review after
-the reply is delivered. Direct write (vs staging proposals) makes Phase 1 useful
-on its own and matches the production-proven hermes shape.
+**Why this mix.** Hermes' out-of-band shape is the production-proven one (best
+turn responsiveness, dedicated reviewer prompt, no main-context bloat); Claude
+Code's per-project memory layout is the right home for gen-code's multi-repo
+users (worktrees of one repo share a store; different repos don't leak into
+each other). gen-code already has the **read/injection side** (memory loads
++ `<system-reminder>` re-emit on PostCompact); L1 only adds the **write side**.
 
 ---
 
-## 2. Trigger — two signals
+## 2. Architecture
 
-| Review kind | Signal | Default | Rationale |
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant M as Main agent
+    participant R as Reviewer<br/>(internal/selflearn)
+    participant F as Fork<br/>(restricted)
+    participant S as Stores<br/>(memory · skills)
+
+    U->>M: prompt
+    M-->>U: reply (StopEndTurn)
+    M->>R: Observe(Result)
+    Note right of R: counters++<br/>any arm tripped?
+    R->>F: spawn fork<br/>(cached system prompt,<br/>turn snapshot,<br/>memory+skill tools only)
+    F->>S: read existing entries
+    F->>S: memory_write / skill_manage
+    F-->>R: actions summary
+    R-->>U: 💾 Self-improvement review: one-line summary
+```
+
+Key points the diagram encodes:
+
+- The reviewer is **fed** completed turns (single-consumer outbox is already
+  drained by the app); it doesn't subscribe.
+- The fork's read side reads current memory + lists existing skills so it can
+  pick **update over create** and **replace over append**.
+- The user-visible surface is a single line per fork — silent on "Nothing to
+  save."
+
+---
+
+## 3. Trigger — two arms
+
+```mermaid
+flowchart TD
+    A[turn ends] --> B{StopEndTurn?}
+    B -- no --> Z[skip]
+    B -- yes --> C[mem_counter++<br/>skill_counter += ToolUses]
+    C --> D{mem ≥ N or<br/>skill ≥ K?}
+    D -- no --> Z
+    D -- yes --> E{review in flight?}
+    E -- yes --> X[drop · don't reset counter]
+    E -- no --> G[mark in-flight,<br/>reset tripped arms,<br/>spawn fork]
+    G --> H[run review] --> I[clear in-flight]
+```
+
+| Arm | Signal | Default | Why this signal |
 |---|---|---|---|
-| Memory | user turns since last review | every 10 turns | User-modeling drifts on conversational cadence, not work intensity. |
-| Skills | tool iterations within the turn | when this turn ≥ 10 tool iters | Skill capture should fire when the agent actually *did* work; tool-iter count is the cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
+| Memory | user turns since last review | every **10** user turns | User-modelling drifts on conversational cadence, not work intensity. |
+| Skills | tool iterations **this turn** | when turn ≥ **10** tool-iters | Skill capture should fire when the agent actually *did* work; tool-iters is a cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
 
-- **Memory** fires on a **turn cadence** (default every 10 user turns) — it is
-  not tied to whether work happened. When it fires, the reviewer reads the
-  **recent conversation history** (the turn snapshot) and updates durable facts.
-- **Skills** fire on **work done this turn** (tool-iters ≥ K), not on a turn
-  cadence and not on "a skill was invoked". Whether a skill was invoked affects
-  *which* skill to update (see §3b), not *whether* to review — otherwise new
-  skills for tasks that had no skill yet would never be learned.
+Both arms count independently and may fire on the same turn (combined prompt).
+Counters live in the reviewer and **hydrate from history on session resume**
+(memory only — the skill counter is intra-turn).
 
-Combined when both fire on the same turn. The trigger **observes completed
-turns**: it is handed each turn `Result` (`Turns`/`ToolUses`/`StopReason`) as
-the turn finishes — the `Outbox` is single-consumer (already drained by the
-app), so the reviewer is fed rather than subscribing to it. No `internal/core`
-changes; counters live in the reviewer and hydrate from history on session
-resume.
+### 3.1 Configuration
 
-**Configuration.** The two arms are toggled and tuned independently via
-`settings.json` (a new `selfLearn` section, merged across user/project/local
-layers like other gen-code settings):
+The two arms are toggled and tuned independently via `settings.json` (a new
+`selfLearn` section, merged across user / project / local layers like other
+gen-code settings):
 
 ```json
 {
@@ -79,235 +105,151 @@ layers like other gen-code settings):
 }
 ```
 
-- `memory.enabled` / `skills.enabled` — enable each arm separately. You can run
-  memory-evolving without skill-evolving and vice versa.
-- `memory.everyTurns` — memory cadence (user turns); `skills.everyToolIters` —
-  skill threshold (tool iterations this turn).
-- **When both arms are off, no L1 reviewer goroutine is started** — zero
+- `memory.enabled` / `skills.enabled` — enable each arm separately. Running
+  memory-evolving without skill-evolving (or vice versa) is supported.
+- `memory.everyTurns` — memory cadence in user turns.
+- `skills.everyToolIters` — skill threshold in tool iterations this turn.
+- **When both arms are off, no reviewer goroutine is started** — zero
   overhead, no extra model calls, nothing written.
-- **Default: off (opt-in).** L1 forks an extra model call per cadence and writes
-  files automatically; ship it opt-in, then consider defaulting on once trusted
-  (Claude Code ships auto-memory on — we can match later). *(Default value is an
-  easily-changed decision.)*
-- Optional escape hatch: an env override (e.g. `GEN_DISABLE_SELF_LEARN=1`),
-  mirroring Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
+- **Default: off (opt-in).** L1 forks an extra model call per cadence and
+  writes files automatically; ship opt-in, default-on later once trusted
+  (Claude Code ships auto-memory on — we can match).
+- Optional escape hatch: env override `GEN_DISABLE_SELF_LEARN=1`, mirroring
+  Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
 
 ---
 
-## 3. What L1 writes — directly
+## 4. Memory flow
 
-The write tools (`memory_write` + `skill_manage`) belong **only to the L1
-reviewer fork** in this phase; the main agent reads/invokes skills and memory
-but never writes them. L1-written content is marked **agent-owned** — skills via
-the `origin: agent-created` frontmatter field (§3b), memory by living in its own
-dedicated store (§3a) — so the future L2 curator manages only agent-owned
-content and never the user's. (Letting the main agent write skills too can come
-later.)
-
-### 3a. Memory flow — when to add vs replace
-
-**Precondition (whether a memory review runs):** the memory cadence is due
-(every N user turns, §2), the memory arm is enabled, and the turn ended cleanly
-(`StopEndTurn`). Unlike skills, this is a **turn cadence** — independent of how
-much work the turn did.
-
-**Inputs to the fork:** the conversation snapshot (the recent turns) + the
-memory-review prompt; the fork also **reads the current memory store** so it can
-refresh/dedupe rather than blindly append.
-
-```
-memory cadence due  (memory arm enabled)
-  │  StopEndTurn ?   ── no ──▶ skip (cancelled / interrupted)
-  ▼ yes
-memory review fork  (inherits system prompt; reads conversation snapshot +
-                     current MEMORY.md)
-  │
-  ▼
-a durable fact worth keeping?  (user preference, project convention,
-  │                             build/debug insight — NOT one-off task state)
-  │  no ──▶ Nothing to save
-  ▼ yes
-already an entry about this?
-  │  yes ──────────▶  memory_write(replace …)   refresh / correct it
-  ▼ no
-  └────────────────▶  memory_write(add …)       append new entry
-                          → ~/.gen/projects/<project>/memory/MEMORY.md
+```mermaid
+flowchart TD
+    A[memory cadence due<br/>+ StopEndTurn + arm enabled] --> B[fork reads<br/>snapshot + MEMORY.md]
+    B --> C{durable fact<br/>worth keeping?}
+    C -- no --> Z[Nothing to save]
+    C -- yes --> D{existing entry<br/>covers it?}
+    D -- yes --> R[memory_write replace]
+    D -- no --> N[memory_write add]
+    R --> P[~/.gen/projects/&lt;project&gt;/memory/]
+    N --> P
 ```
 
-`memory_write` actions: `add`, `replace`, `remove`, operating on the memory
-store (the `MEMORY.md` index; long detail may spill into topic files like
-`debugging.md`, loaded on demand). "Nothing to save." is valid.
+**Tool actions:** `add` / `replace` / `remove`. "Nothing to save." is a valid
+outcome.
 
 **Anti-patterns (don't save):** one-off task state, transient errors,
-"what we did this session" narratives — those are not durable across sessions.
+"what-we-did-this-session" narratives — none are durable across sessions.
 
-**Store:** `~/.gen/projects/<project>/memory/MEMORY.md` (+ topic files,
-Claude-Code-style: concise index, details on demand). `<project>` is the **git
-repo root path, separators replaced** (the same encoding Claude Code uses, e.g.
-`-Users-me-work-gen-code`), so worktrees/subdirs of one repo share a store; fall
-back to the project root outside a repo.
+**Store layout.** `~/.gen/projects/<project>/memory/MEMORY.md` is the index;
+long detail spills into topic files (`debugging.md`, …) loaded on demand.
+`<project>` is the git-repo root path with `/` → `-` (Claude Code's encoding,
+e.g. `-Users-me-work-gen-code`), so worktrees of one repo share a store. Fall
+back to cwd outside a repo. User-level + project-partitioned is
+**machine-local, out of the repo** — no commit/gitignore decision, no agent
+churn in git history.
 
-**Why user-level + project-partitioned, not in-repo:** isolates memory per
-project but keeps it **machine-local and out of the repo** — no commit/gitignore
-decision, no agent churn in git history. (Mirrors Claude Code's auto-memory.)
+**Injection lifecycle (reuses existing infrastructure).**
 
-**Injection integration (required).** `LoadMemoryFiles` currently reads only
-user-authored files (`GEN.md`/`CLAUDE.md`/rules); it does **not** read this
-store today. A small change must add `~/.gen/projects/<project>/memory/MEMORY.md`
-as a **new, distinct memory source** (its own level, e.g. "auto"), kept separate
-from the user-authored `GEN.md`/`CLAUDE.md` — so agent-written memory and
-user-written instructions never mix. Without this read side, L1 writes would
+| When | What happens |
+|---|---|
+| Session start | Read `MEMORY.md` index (cap ~200 lines / 25 KB) → inject as `<system-reminder source="memory-auto">` on first user message. Topic files are read on demand by file tools, not injected. |
+| PostCompact | Re-read from disk + re-emit reminders (same path as `GEN.md` / `CLAUDE.md`). |
+| cwd change | Re-read, because `<project>` changes. |
+
+This requires one small read-side change: extend `LoadMemoryFiles` with a new,
+**distinct "auto" source** so agent-written memory and user-authored
+`GEN.md` / `CLAUDE.md` never mix. Without this read side, L1 writes would
 never be injected.
 
-**Load timing — reuses the existing injection lifecycle:**
-
-- **Session start:** read the `MEMORY.md` index → cache → inject as a
-  `<system-reminder source="memory-auto">` block on the first user message.
-  Cap the index like Claude Code (first ~200 lines / 25KB); topic files are read
-  on demand by the agent's file tools, not injected.
-- **PostCompact:** re-read from disk (`refreshMemoryContext`) + re-emit
-  (`RequeueSystemReminders`) — the same path already built for `GEN.md`/`CLAUDE.md`
-  memory — so the latest memory survives compaction.
-- **cwd change:** re-read, because `<project>` (and thus the store) changes when
-  the working directory moves to a different repo.
-
-**Update timing:** the L1 fork writes post-turn, on the memory cadence (every N
-user turns, §2), gated on `StopEndTurn`.
-
-**Write→visibility lag (by design):** L1 writes out-of-band, while the running
-session's memory was injected at a load point. So a fresh write is **not**
-live-patched into the in-flight context — it becomes visible at the next load
-point: the next **PostCompact** (which re-reads from disk) or the next **session
-start**. Acceptable, since memory mainly serves future turns/sessions.
-
-### 3b. Skill flow — when to create vs update
-
-> **Umbrella** = a broad, **class-level** skill (e.g. `go-testing`,
-> `code-review`) that accumulates many specific learnings over time — as opposed
-> to a **narrow, session-specific** skill (`fix-flaky-test-pr-1234`). It is a
-> naming convention, not a stored field — the flow prefers extending an umbrella
-> over spawning narrow skills, so the collection stays "broad and few".
-
-**Precondition (whether a skill review runs at all):** this turn did real work
-(tool-iters ≥ K, §2), the turn ended cleanly (`StopEndTurn`), and the skill arm
-is enabled. The trigger is about *work done* — not about whether a skill was
-invoked.
-
-Once the review runs, the model chooses create / update / nothing by this
-decision flow (broadest reuse first; create is the last resort):
-
-```
-turn ends
-  │  tool-iters ≥ K ?                    ── no ──▶ no skill review
-  │  StopEndTurn & skill arm enabled ?   ── no ──▶ skip
-  ▼ yes
-skill review fork  (reads the turn snapshot)
-  │
-  ▼
-① a skill loaded/used this turn was wrong / outdated / incomplete ?
-  │  yes ──────────▶  UPDATE · patch that skill
-  ▼ no
-② an existing umbrella skill covers this learning ?
-  │  yes ──────────▶  UPDATE · patch the umbrella, or add a
-  │                            references/templates/scripts support file
-  ▼ no
-③ a NEW, generalizable class of task that no skill covers ?
-  │  yes ──────────▶  CREATE · new class-level umbrella (origin: agent-created)
-  ▼ no
-            Nothing to save   (smooth session, or only anti-patterns)
-```
-
-**UPDATE — when an applicable skill already exists (① or ②).** Preferred (keeps
-the collection broad, avoids near-duplicates). `skill_manage(patch, …)` to
-fix/extend an existing skill; `skill_manage(write_file, …)` to add a
-`references/templates/scripts` support file (plus a pointer line in `SKILL.md`).
-Patch the skill **in place**, at its existing scope.
-
-**CREATE — only when the learning is a genuinely new class of task no skill
-covers (③).** Last resort. `skill_manage(create, name, content)` with
-`origin: agent-created`; the name must be **class-level** (e.g. `go-table-tests`),
-never session-specific (no PR numbers, error strings, `fix-x-today`). L1 picks
-the level: reusable/general → user (`~/.gen/skills/`), project-specific →
-project (`./.gen/skills/`).
-
-**NOTHING TO SAVE — when** the session ran smoothly with no correction and no
-new technique, or the only candidate is an **anti-pattern**: environment-
-dependent failures, negative claims about tools, transient errors, one-off task
-narratives.
-
-**Two levels (user + project), for both create and update.** gen-code already
-loads skills from two scopes — `ScopeUser` (`~/.gen/skills/`) and `ScopeProject`
-(`.gen/skills/`) — so no new loader source is needed (unlike memory). Skills
-live directly in those dirs (`~/.gen/skills/<name>/`, `./.gen/skills/<name>/`);
-**no separate `agent-created/` subdir.**
-
-**Provenance is a frontmatter field, not a directory.** Add one field to
-`SKILL.md`, e.g. `origin: agent-created`; **absent = `user-created`** (the
-default). The `Skill` struct (`internal/skill/types.go`) currently has no
-metadata map, so this is a one-field addition (`Origin string`, Claude ignores
-unknown frontmatter). This mirrors hermes, which marks provenance with a flag,
-not a separate path. (A sidecar file is the alternative; a field is simpler for
-Phase 1.)
-
-**Scope of L1 writes (Phase 1):** L1 only creates/patches skills it owns
-(`origin: agent-created`); it reads `user-created` skills (to avoid duplication)
-but never modifies them. The future L2 curator likewise touches only
-`agent-created` skills.
-
-**Why this differs from memory:** memory is personal/accumulated → machine-local,
-project-partitioned, not in the repo. Skills are reusable artifacts a team may
-want to share → they live in gen-code's existing user/project scopes (project-
-level in-repo `./.gen/skills/`), distinguished only by the `origin` field.
-
-`skill_manage` actions: `create`, `edit` (full rewrite — rare), `patch`,
-`write_file`, `remove_file`, `delete`. **`patch`** is targeted find-and-replace
-with a fuzzy-match chain (exact → line-trimmed → whitespace/indent/escape/
-unicode-normalized → block-anchor → context-similarity) and an **escape-drift
-guard** (rejects matches where transport-added `\'`/`\"` backslashes don't exist
-in the file, prompting a clean re-read). Requires a unique match unless
-`replace_all`.
-
-Three review prompts, picked by which triggers fired (memory-only / skill-only /
-combined). The skill prompt is **active** (most working sessions produce ≥1
-update) and embeds the anti-pattern list from NOTHING TO SAVE above.
+**Write→visibility lag (by design).** L1 writes out-of-band while the running
+session's memory was injected at a load point, so a fresh write becomes
+visible at the next load point (next PostCompact / next session) — not
+live-patched. Acceptable: memory primarily serves future turns.
 
 ---
 
-## 4. Fork mechanics + invariants
+## 5. Skill flow
 
-Fresh `core.Agent` (`core.NewAgent`) run with `ThinkAct` in a goroutine — **not**
-`subagent.Executor` (which is built for named, user-facing subagents with
-registry/hooks/session-persistence a silent reviewer must not carry).
+> **Umbrella** = a broad, **class-level** skill (e.g. `go-testing`,
+> `code-review`) that accumulates many learnings over time, as opposed to a
+> **narrow, session-specific** skill (`fix-flaky-test-pr-1234`). It is a
+> naming convention, not a stored field — the flow prefers extending an
+> umbrella over spawning narrow skills so the library stays "broad and few".
 
-**Construction & seeding:** the fork inherits the parent's `system.System`
-verbatim, is seeded with the parent's **message snapshot** (`SetMessages`) plus
-an injected user message carrying the review prompt, then runs `ThinkAct` under
-a **tight cap** — `MaxTurns ≈ 16` and a context deadline (≈5 min); drop the
-result if it exceeds either.
+```mermaid
+flowchart TD
+    A[turn ≥ K tool-iters<br/>+ StopEndTurn + arm enabled] --> B[fork reads turn snapshot]
+    B --> C{loaded skill<br/>was wrong / outdated?}
+    C -- yes --> U1[UPDATE · patch that skill]
+    C -- no --> D{existing umbrella<br/>covers this?}
+    D -- yes --> U2[UPDATE · patch umbrella<br/>+/- references/templates/scripts]
+    D -- no --> E{new class of task<br/>no skill covers?}
+    E -- yes --> N[CREATE · class-level umbrella<br/>origin: agent-created]
+    E -- no --> Z[Nothing to save]
+```
 
-Invariants (each one cost hermes a production bug):
+**UPDATE preferred.** Keeps the library broad and avoids near-duplicates.
+`skill_manage(patch, …)` to fix/extend; `skill_manage(write_file, …)` to add
+a `references/`, `templates/`, or `scripts/` support file (plus a pointer
+line in `SKILL.md`). Patch in place, at the existing scope.
 
-1. **Run AFTER the user reply is delivered.** Gate on `Result.StopReason ==
-   StopEndTurn` (skip cancelled/interrupted/max-turns).
+**CREATE as last resort.** Names must be **class-level** (`go-table-tests`,
+not `fix-pr-1234`). L1 picks the level: reusable/general → user
+(`~/.gen/skills/`), project-specific → project (`./.gen/skills/`).
+
+**Provenance is a frontmatter field, not a directory.** Add
+`origin: agent-created` to `SKILL.md`; absent ⇒ `user-created`. The `Skill`
+struct grows one field (`Origin string`). Skills live directly in gen-code's
+existing two scopes — no `agent-created/` subdir, no loader change.
+
+**Scope of L1 writes (Phase 1).** L1 only creates/patches
+`origin: agent-created` skills. It **reads** user-created skills (to avoid
+duplication) but never modifies them. The future L2 likewise touches only
+agent-owned content.
+
+**`skill_manage` actions.** `create`, `edit` (full rewrite — rare), `patch`,
+`write_file`, `remove_file`, `delete`. **`patch`** is targeted
+find-and-replace with a fuzzy-match chain (exact → line-trimmed → whitespace/
+indent/escape/unicode-normalized → block-anchor → context-similarity) and an
+**escape-drift guard** (rejects matches where transport-added `\'` / `\"`
+backslashes don't exist in the file).
+
+**Three review prompts**, picked by which arms fired (memory / skill /
+combined). The skill prompt is **active** (most working sessions produce ≥1
+update) and embeds the anti-pattern list.
+
+---
+
+## 6. Fork mechanics — invariants
+
+Fresh `core.Agent` (`core.NewAgent`) in a goroutine, **not**
+`subagent.Executor` (which carries registry / hooks / session-persistence a
+silent reviewer must not). The fork inherits the parent's `system.System`
+verbatim, is seeded with `SetMessages(snapshot)` + a user message carrying
+the review prompt, then runs `ThinkAct` under `MaxTurns ≈ 16` and a context
+deadline (≈ 5 min).
+
+Eight invariants, each one cost Hermes a production bug:
+
+1. **Run AFTER the user reply is delivered.** Gate on
+   `Result.StopReason == StopEndTurn` (skip cancelled / interrupted / max-turns).
 2. **Inherit the parent's cached system prompt byte-for-byte** for prefix-cache
-   parity (Anthropic/OpenRouter). Hermes measured ~26% cost reduction.
-3. **Toolset whitelist at dispatch.** Fork's `tools[]` matches the parent
-   (cache-key parity) but a static permission func allows only the **memory +
-   skill toolsets** — both **read and write**: it must read current memory and
-   list/view existing skills (to dedupe and choose add-vs-replace / patch-vs-
-   create), and write via `memory_write` / `skill_manage`. Everything else
-   denied.
-4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge` (would
-   deadlock the TUI); auto-deny any approval.
-5. **Best-effort.** Wrap in recover; review failure never affects the user turn.
+   parity (≈26% cost cut on Sonnet 4.5 per Hermes).
+3. **Toolset whitelist at dispatch.** `tools[]` matches the parent (cache-key
+   parity); a static permission func allows only the **memory + skill
+   toolsets** (read *and* write — needs read for dedupe). All else denied.
+4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge`
+   (would deadlock the TUI). Approvals auto-deny.
+5. **Best-effort.** Wrap in `recover`; review failure never affects the user
+   turn.
 6. **No session-scoped side effects** (no hooks, no session persistence).
-7. **Suppress fork status.** Only a one-line `💾 Self-improvement review:
-   <summary>` surfaces on the main outbox (`MessageEvent`, `From: "l1-review"`).
-   Silent on "nothing to save".
-8. **≤1 in-flight fork per session.** Drop new triggers while one runs (log, no
-   queue).
+7. **Suppress fork status.** Only one line surfaces on the main outbox:
+   `💾 Self-improvement review: <summary>` (`MessageEvent`,
+   `From: "l1-review"`). Silent on "Nothing to save."
+8. **≤1 in-flight fork per session.** Drop new triggers while one runs (log,
+   no queue). Counters are **not** reset on drop — the threshold stays
+   tripped and re-fires next clean turn.
 
-Module map:
+### Module map
 
 | Concern | Module |
 |---|---|
@@ -316,88 +258,112 @@ Module map:
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
 | Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/<name>/` (user) or `./.gen/skills/<name>/` (project), with `origin: agent-created` |
-| Provenance | add `Origin` to the skill frontmatter struct (`internal/skill/types.go`); absent = `user-created` |
-| Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source (§3a). skills: no change — existing user/project scope loader already covers it. |
+| Provenance | add `Origin` to skill frontmatter struct (`internal/skill/types.go`); absent ⇒ `user-created` |
+| Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source. Skills: no change (existing user/project loader covers it). |
 
 ---
 
-## 5. Why a later L2 curator (rationale only — design deferred)
+## 7. Filesystem layout
 
-L1 writes with a **local** view (one turn) and **frequently**. Over many turns
-the collection drifts in ways no single L1 write can fix: duplicate/overlapping
-entries, contradictions and stale facts, unbounded `MEMORY.md` growth past the
-injection budget. A separate, idle-triggered **L2 curator** evaluates the whole
-collection and dedups/prunes/consolidates/archives — the same role hermes'
-`agent/curator.py` plays. Its evaluation basis (usage telemetry + collection
-intrinsics) and trigger policy are out of scope here and tracked in a separate
-L2 issue.
+```
+# Skills (existing scopes, distinguished by origin)
+~/.gen/skills/<name>/
+├── SKILL.md            origin: agent-created | user-created
+├── references/         session-specific detail, condensed knowledge banks
+├── templates/          starter files meant to be copied
+└── scripts/            re-runnable actions (verification, fixtures)
 
-One L1-side implication worth noting now: L2's strongest signal will be **usage**
-(which skill was used, when), which gen-code doesn't record today. A light usage
-log can be added with L1 or just before L2 — flagged so it isn't forgotten.
+./.gen/skills/<name>/   project-level (same layout)
+
+# Memory (new "auto" source, machine-local, per-project)
+~/.gen/projects/<encoded-cwd>/memory/
+├── MEMORY.md           index, ≤200 lines / 25 KB injected
+├── debugging.md        topic file, read on demand
+└── ...
+```
 
 ---
 
-## 6. Phasing + prerequisites
+## 8. Why a later L2 curator (deferred)
 
-- **Phase 1 — L1 (this issue, #52).** Trigger + fork + direct memory/skill writes
-  + the three review prompts.
-  - Prereqs:
-    - `skill_manage` tool with patch semantics.
-    - A first-class memory writer to `~/.gen/projects/<project>/memory/MEMORY.md`.
-    - **Injection read side**: extend `LoadMemoryFiles` to load that store as a
-      new, distinct "auto" source (§3a) — it does not today, so without this L1
-      writes are never injected.
-- **Phase 2 — L2 curator (separate issue).** Deferred (see §5).
+L1 writes with a **local** view (one turn) and **frequently**. Across many
+turns the collection drifts in ways no single L1 write can fix:
+duplicate/overlapping entries, contradictions, stale facts, unbounded
+`MEMORY.md` growth past the injection budget. A separate, idle-triggered
+**L2 curator** evaluates the whole collection and dedups / prunes /
+consolidates / archives — the role Hermes' `agent/curator.py` plays. Its
+evaluation basis (usage telemetry + collection intrinsics) and trigger policy
+are out of scope here and tracked in a separate L2 issue.
 
-### Concrete next steps (Phase 1)
+One L1-side implication worth flagging now: L2's strongest signal will be
+**usage** (which skill was used when), which gen-code doesn't record today.
+A light usage log can land with L1 or just before L2 — flagged so it isn't
+forgotten.
 
-1. New package `internal/selflearn`: `Reviewer` (counters + turn observation +
-   trigger), `forkAgent(parent, snapshot, mode)` (restricted
-   `core.Agent`, runs `ThinkAct`, surfaces the one-line summary).
-2. `memory_write` (store at `~/.gen/projects/<project>/memory/`) + `skill_manage`
-   tools; extend `LoadMemoryFiles` to read the memory store.
-3. Review prompt templates (memory / skill / combined), rewritten for gen-code
+---
+
+## 9. Phasing + next steps
+
+**Phase 1 (this issue, #52)** — Trigger + fork + direct memory/skill writes
++ three review prompts.
+
+Prereqs:
+- `skill_manage` tool with patch semantics.
+- A first-class memory writer to `~/.gen/projects/<project>/memory/`.
+- **Injection read side**: extend `LoadMemoryFiles` to load that store as a
+  new, distinct "auto" source (§4) — without this, L1 writes are never injected.
+
+Concrete steps:
+1. New package `internal/selflearn`: `Reviewer` (counters + observation +
+   trigger), `forkAgent(parent, snapshot, mode)` (restricted `core.Agent`,
+   runs `ThinkAct`, surfaces one-line summary).
+2. `memory_write` + `skill_manage` tools; extend `LoadMemoryFiles` for the
+   "auto" source.
+3. Review prompt templates (memory / skill / combined) rewritten for gen-code
    terminology.
-4. Add the `selfLearn` settings section (`internal/setting`); wire-up in
-   `Task.Start` / `stopLocked` — start the reviewer only when ≥1 arm is enabled,
-   pass the enabled arms + intervals to it; gate reviews on `StopEndTurn`.
+4. Add the `selfLearn` settings section (§3.1); wire-up in `Task.Start` /
+   `stopLocked` — start the reviewer only when ≥1 arm is enabled, pass enabled
+   arms + intervals; gate reviews on `StopEndTurn`.
 5. Concurrency cap ≤1; drop-and-log on overlap.
 6. Tests: trigger cadence (turns / iters / combined), interrupted-turn skip,
    concurrency cap, restricted-toolset enforcement.
 
+**Phase 2 — L2 curator** (separate issue). Deferred; see §8.
+
 ---
 
-## 7. Open questions (L1)
+## 10. Open questions
 
-- **Let L1 patch user-authored skills?** Phase 1 default is no (L1 only writes
-  `origin: agent-created` skills). Hermes allows patching a just-used user skill
-  (its preference #1); revisit if "fix the skill I just used" turns out
-  important.
-- **Commit agent-created project skills?** They live in-repo at `./.gen/skills/`
-  mixed with user skills (distinguished by `origin`). Team choice whether to
-  commit auto-generated ones; can be filtered by the `origin` field if needed.
-- **Cache parity on non-Anthropic providers** — verify system-prompt inheritance
-  helps (or at least doesn't hurt) across gen-code's providers.
-- **Usage telemetry** — whether to land the minimal usage log in this phase (for
-  the future L2) or defer it entirely.
+- **User-level auto-memory?** Hermes has `USER.md` (global) alongside
+  `MEMORY.md`; Claude Code has user-level `~/.claude/CLAUDE.md` alongside
+  project `CLAUDE.md`. gen-code L1 currently writes only to project-partitioned
+  memory, so cross-project user persona ("I prefer terse output") would be
+  re-learned per repo. Options: (a) accept and let the user curate
+  `~/.gen/GEN.md` by hand; (b) extend L1 to choose user vs project level,
+  mirroring how skills already do. Recommend (b) once Phase 1 is stable.
+- **Let L1 patch user-authored skills?** Phase 1 default is no. Hermes allows
+  patching a just-used user skill (its preference #1); revisit if "fix the
+  skill I just used" turns out important.
+- **Commit agent-created project skills?** They live in-repo at
+  `./.gen/skills/` mixed with user skills (distinguished by `origin`). Team
+  choice whether to commit auto-generated ones; can be filtered by `origin`.
+- **Cache parity on non-Anthropic providers** — verify system-prompt
+  inheritance helps (or at least doesn't hurt) across gen-code's providers.
+- **Usage telemetry** — whether to land the minimal usage log in this phase
+  (for the future L2) or defer it entirely.
 
 ---
 
 ## References
 
-- hermes-agent L1: `agent/background_review.py` (fork, prompts, direct writes);
-  triggers in `agent/conversation_loop.py` (memory ~`:387–394`, skill
-  ~`:4046–4051`, guard `:4062`). L2 (for context): `agent/curator.py`
-  (idle-triggered maintenance).
-- Claude Code memory model: <https://code.claude.com/docs/en/memory> (in-band
-  contrast).
-- gen-code turn loop & outbox: `internal/core/agent_impl.go` (`Run`, `TurnEvent`,
-  `ThinkAct`).
-- gen-code injection side (built): `internal/reminder` providers, PostCompact
-  re-emit.
+- Hermes L1: `agent/background_review.py` (fork, prompts, direct writes);
+  triggers in `agent/conversation_loop.py` (memory `:387–394`, skill
+  `:4046–4051`, guard `:4062`). L2 (for context): `agent/curator.py`.
+- Claude Code memory model: <https://code.claude.com/docs/en/memory>.
+- gen-code turn loop & outbox: `internal/core/agent_impl.go`.
+- gen-code injection side (built): `internal/reminder` providers, PostCompact re-emit.
 - Session wire-up: `internal/agent/session.go` (`Task.Start`).
-- Permission model: `internal/agent/permission.go` (`PermissionBridge` — avoid),
-  `internal/tool/perm` (static funcs L1 uses).
+- Permission model: `internal/agent/permission.go` (`PermissionBridge` —
+  avoid), `internal/tool/perm` (static funcs L1 uses).
 - Parent issue: <https://github.com/genai-io/gen-code/issues/46>;
-  L1: <https://github.com/genai-io/gen-code/issues/52>
+  L1: <https://github.com/genai-io/gen-code/issues/52>.
