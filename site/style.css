@@ -189,6 +189,15 @@ footer a { color: var(--muted); }
 }
 .substeps li b { color: var(--accent-2); }
 
+/* ---- Docs index page ---- */
+.doc-card h3 { font-size: 16px; display: flex; align-items: center; gap: 9px; }
+.doc-card ul { list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 9px; }
+.doc-card li a {
+  color: var(--text); font-size: 14px; display: inline-flex; align-items: baseline; gap: 7px;
+}
+.doc-card li a::before { content: "›"; color: var(--accent); font-weight: 700; }
+.doc-card li a:hover { color: var(--accent); text-decoration: none; }
+
 @media (max-width: 640px) {
   .grid { grid-template-columns: 1fr; }
   .nav-links a:not(.nav-cta) { display: none; }
