@@ -3,9 +3,15 @@
   <p><strong>Open-source AI coding assistant for the terminal</strong></p>
   <p>
     <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
+    <a href="https://github.com/genai-io/gen-code/stargazers"><img src="https://img.shields.io/github/stars/genai-io/gen-code?style=flat-square" alt="Stars"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/gen-code"><img src="https://goreportcard.com/badge/github.com/genai-io/gen-code?style=flat-square" alt="Go Report Card"></a>
     <a href="https://pkg.go.dev/github.com/genai-io/gen-code"><img src="https://pkg.go.dev/badge/github.com/genai-io/gen-code.svg" alt="Go Reference"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
+  </p>
+  <p>
+    🌐 <a href="https://genai-io.github.io/gen-code/">Website</a> ·
+    📖 <a href="docs/index.md">Docs</a> ·
+    🚀 <a href="docs/guides/getting-started.md">Getting Started</a>
   </p>
   <p>
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
