@@ -22,6 +22,7 @@ issue (rationale in §8).
 | Trigger signals | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | **turns + tool-iters** |
 | Memory scope | **global** `~/.hermes/MEMORY.md` + `USER.md` | **per-project** `~/.claude/projects/<repo>/memory/` (index + topic files) | **per-project** `~/.gen/projects/<project>/memory/` (Claude-Code-aligned) |
 | Skill scope | global, with provenance flags | global, with provenance | **user + project**, `origin: agent-created` field |
+| Eviction policy | review prompt steers retire; L2 curator does deep grooming | in-band agent prunes stale entries to stay under index cap | review prompt steers **retire + replace before add**; on-disk cap ≡ inject cap (25 KB); L2 deferred for deep grooming |
 | Cache parity | inherits cached system prompt verbatim (≈26% cost cut measured) | n/a (no fork) | inherits verbatim |
 
 **Why this mix.** Hermes' out-of-band shape is the production-proven one (best
@@ -121,37 +122,88 @@ gen-code settings):
 
 ## 4. Memory flow
 
+### 4.1 Decision flow — addition AND subtraction
+
+L1 is **not only allowed to remove — it is required to**. Claude Code's
+in-band agent keeps its index lean by pruning expired info before the cap
+forces a truncation; gen-code's out-of-band reviewer inherits that policy by
+prompt. Every review pass scans the existing index first and retires stale,
+superseded, or merged-PR-specific entries **before** considering new
+additions. A pass that only adds is a missed pruning opportunity.
+
 ```mermaid
 flowchart TD
     A[memory cadence due<br/>+ StopEndTurn + arm enabled] --> B[fork reads<br/>snapshot + MEMORY.md]
-    B --> C{durable fact<br/>worth keeping?}
+    B --> S{any entry now stale,<br/>superseded, or obsolete?}
+    S -- yes --> R0[memory_write remove<br/>or replace · prune first]
+    S -- no --> C
+    R0 --> C{durable new fact<br/>worth keeping?}
     C -- no --> Z[Nothing to save]
-    C -- yes --> D{existing entry<br/>covers it?}
-    D -- yes --> R[memory_write replace]
+    C -- yes --> H{index near<br/>25 KB hard cap?}
+    H -- yes --> P1[must prune more first<br/>before this write fits]
+    H -- no --> D{existing entry<br/>covers it?}
+    D -- yes --> R1[memory_write replace]
     D -- no --> N[memory_write add]
-    R --> P[~/.gen/projects/&lt;project&gt;/memory/]
-    N --> P
+    P1 --> ALL[~/.gen/projects/&lt;project&gt;/memory/]
+    R1 --> ALL
+    N --> ALL
 ```
 
 **Tool actions:** `add` / `replace` / `remove`. "Nothing to save." is a valid
-outcome.
+outcome — but a pass that does **only** add (no retirement of anything) is
+flagged in the prompt as suspect.
 
 **Anti-patterns (don't save):** one-off task state, transient errors,
 "what-we-did-this-session" narratives — none are durable across sessions.
 
-**Store layout.** `~/.gen/projects/<project>/memory/MEMORY.md` is the index;
-long detail spills into topic files (`debugging.md`, …) loaded on demand.
-`<project>` is the git-repo root path with `/` → `-` (Claude Code's encoding,
-e.g. `-Users-me-work-gen-code`), so worktrees of one repo share a store. Fall
-back to cwd outside a repo. User-level + project-partitioned is
-**machine-local, out of the repo** — no commit/gitignore decision, no agent
-churn in git history.
+### 4.2 Size budgets
 
-**Injection lifecycle (reuses existing infrastructure).**
+| What | Cap | Where enforced | Behavior at cap |
+|---|---|---|---|
+| Single memory file on disk (index or topic) | **25 000 chars (~25 KB)** | `internal/selflearn/memory.go memoryFileCharLimit` | `memory_write add/replace` returns an error; the reviewer must prune first |
+| `MEMORY.md` injected into system prompt | **25 KB (25 × 1024 bytes)** — matches Claude Code | `internal/core/system/memory.go autoMemoryByteCap` | Truncated on a line boundary with a marker |
+| Topic file count | none yet | — | Review prompt biases toward consolidation; flagged in §10 for L2 |
+
+**Invariant (intentional).** The on-disk per-file cap **equals** the injection
+cap. Anything that fits on disk fits when injected, so L1 never produces a
+file the loader has to truncate. The hard write cap is a safety net; the
+review prompt is the active policy.
+
+### 4.3 Store anatomy
+
+```mermaid
+flowchart LR
+    subgraph store["~/.gen/projects/&lt;project&gt;/memory/"]
+        IDX["MEMORY.md (index)<br/>≤25 KB hard cap<br/>injected at session start"]
+        T1["debugging.md<br/>≤25 KB · read on demand"]
+        T2["perf.md<br/>≤25 KB · read on demand"]
+        T3["…<br/>≤25 KB · read on demand"]
+        IDX -. one-line pointer .-> T1
+        IDX -. one-line pointer .-> T2
+        IDX -. one-line pointer .-> T3
+    end
+```
+
+The **index** is always injected (capped at 25 KB). **Topic files** are read
+on demand by the agent's file tools when the index pointer is dereferenced;
+they don't pay the prompt budget on their own, but their *count* can drift
+upward — handled by §10 / L2.
+
+### 4.4 Store layout
+
+`~/.gen/projects/<project>/memory/MEMORY.md` is the index; long detail spills
+into topic files (`debugging.md`, …) loaded on demand. `<project>` is the
+git-repo root path with `/` → `-` (Claude Code's encoding, e.g.
+`-Users-me-work-gen-code`), so worktrees of one repo share a store; fall back
+to cwd outside a repo. User-level + project-partitioned is **machine-local,
+out of the repo** — no commit/gitignore decision, no agent churn in git
+history.
+
+### 4.5 Injection lifecycle (reuses existing infrastructure)
 
 | When | What happens |
 |---|---|
-| Session start | Read `MEMORY.md` index (cap ~200 lines / 25 KB) → inject as `<system-reminder source="memory-auto">` on first user message. Topic files are read on demand by file tools, not injected. |
+| Session start | Read `MEMORY.md` index → inject as `<system-reminder source="memory-auto">` on first user message. Topic files are read on demand by file tools, not injected. |
 | PostCompact | Re-read from disk + re-emit reminders (same path as `GEN.md` / `CLAUDE.md`). |
 | cwd change | Re-read, because `<project>` changes. |
 
@@ -160,10 +212,29 @@ This requires one small read-side change: extend `LoadMemoryFiles` with a new,
 `GEN.md` / `CLAUDE.md` never mix. Without this read side, L1 writes would
 never be injected.
 
-**Write→visibility lag (by design).** L1 writes out-of-band while the running
-session's memory was injected at a load point, so a fresh write becomes
-visible at the next load point (next PostCompact / next session) — not
-live-patched. Acceptable: memory primarily serves future turns.
+### 4.6 Write→visibility lag (by design)
+
+L1 writes out-of-band; the running session's memory was injected at a load
+point, so a fresh write becomes visible at the **next** load point — not
+live-patched.
+
+```mermaid
+sequenceDiagram
+    participant M as Main session
+    participant L1 as L1 reviewer
+    participant Disk as MEMORY.md
+
+    Note over M: session start: MEMORY.md cached in prompt
+    M->>L1: turn N ends, Observe()
+    L1->>Disk: memory_write
+    Note over M: turns N+1, N+2, … still see the OLD cached prompt
+    Note over M,Disk: PostCompact OR next session
+    Disk-->>M: re-read + re-inject (new content visible)
+```
+
+Acceptable: memory primarily serves future turns / sessions, not the very
+turn that produced the learning. Live-patching would invalidate the prefix
+cache and waste the parity savings from §6 invariant #2.
 
 ---
 
@@ -175,47 +246,83 @@ live-patched. Acceptable: memory primarily serves future turns.
 > naming convention, not a stored field — the flow prefers extending an
 > umbrella over spawning narrow skills so the library stays "broad and few".
 
+### 5.1 Decision flow — UPDATE / DELETE / CREATE
+
+L1 must **retire**, not only add. A skill the conversation just proved wrong,
+superseded, or obsolete is deleted in the same review pass that learned the
+replacement; otherwise the library grows monotonically and drifts toward
+narrow, overlapping noise. Usage-based retirement (skills nobody invokes any
+more) is L2's job — but in-pass "this skill is wrong, kill it" lives at L1.
+
 ```mermaid
 flowchart TD
-    A[turn ≥ K tool-iters<br/>+ StopEndTurn + arm enabled] --> B[fork reads turn snapshot]
-    B --> C{loaded skill<br/>was wrong / outdated?}
+    A[turn ≥ K tool-iters<br/>+ StopEndTurn + arm enabled] --> B[fork reads turn snapshot<br/>+ existing skill inventory]
+    B --> X{any agent-created skill<br/>now wrong / superseded /<br/>encodes an anti-pattern?}
+    X -- yes --> XD[DELETE · skill_manage delete<br/>or replace with new learning]
+    X -- no --> C
+    XD --> C{loaded skill<br/>was wrong / outdated?}
     C -- yes --> U1[UPDATE · patch that skill]
     C -- no --> D{existing umbrella<br/>covers this?}
     D -- yes --> U2[UPDATE · patch umbrella<br/>+/- references/templates/scripts]
     D -- no --> E{new class of task<br/>no skill covers?}
-    E -- yes --> N[CREATE · class-level umbrella<br/>origin: agent-created]
+    E -- yes --> L{reusable across<br/>projects?}
+    L -- yes --> N1[CREATE · ~/.gen/skills/&lt;name&gt;/<br/>origin: agent-created]
+    L -- no --> N2[CREATE · ./.gen/skills/&lt;name&gt;/<br/>origin: agent-created]
     E -- no --> Z[Nothing to save]
 ```
 
-**UPDATE preferred.** Keeps the library broad and avoids near-duplicates.
-`skill_manage(patch, …)` to fix/extend; `skill_manage(write_file, …)` to add
-a `references/`, `templates/`, or `scripts/` support file (plus a pointer
-line in `SKILL.md`). Patch in place, at the existing scope.
+**UPDATE preferred over CREATE.** Keeps the library broad and avoids
+near-duplicates. `skill_manage(patch, …)` to fix/extend;
+`skill_manage(write_file, …)` to add a `references/` / `templates/` /
+`scripts/` support file (plus a pointer line in `SKILL.md`). Patch in place,
+at the existing scope.
 
-**CREATE as last resort.** Names must be **class-level** (`go-table-tests`,
-not `fix-pr-1234`). L1 picks the level: reusable/general → user
-(`~/.gen/skills/`), project-specific → project (`./.gen/skills/`).
+**DELETE when superseded.** `skill_manage(delete, name)`. Triggers:
+- the new learning supersedes the whole skill (replace rather than coexist);
+- the skill encoded a transient/environment-dependent failure that has since
+  been fixed (the skill is now wrong);
+- the skill turned out to encode an anti-pattern.
+
+**CREATE is the last resort.** Names must be **class-level** (`go-table-tests`,
+not `fix-pr-1234`). The level decision is in the diagram: reusable / general
+→ user (`~/.gen/skills/`), project-specific → project (`./.gen/skills/`).
+
+### 5.2 Provenance and L1 write scope
 
 **Provenance is a frontmatter field, not a directory.** Add
 `origin: agent-created` to `SKILL.md`; absent ⇒ `user-created`. The `Skill`
 struct grows one field (`Origin string`). Skills live directly in gen-code's
 existing two scopes — no `agent-created/` subdir, no loader change.
 
-**Scope of L1 writes (Phase 1).** L1 only creates/patches
+**Scope of L1 writes (Phase 1).** L1 creates / patches / **deletes** only
 `origin: agent-created` skills. It **reads** user-created skills (to avoid
-duplication) but never modifies them. The future L2 likewise touches only
-agent-owned content.
+duplication) but never modifies or deletes them. The future L2 likewise
+touches only agent-owned content.
 
-**`skill_manage` actions.** `create`, `edit` (full rewrite — rare), `patch`,
+### 5.3 Tool surface
+
+`skill_manage` actions: `create`, `edit` (full rewrite — rare), `patch`,
 `write_file`, `remove_file`, `delete`. **`patch`** is targeted
 find-and-replace with a fuzzy-match chain (exact → line-trimmed → whitespace/
 indent/escape/unicode-normalized → block-anchor → context-similarity) and an
 **escape-drift guard** (rejects matches where transport-added `\'` / `\"`
 backslashes don't exist in the file).
 
+### 5.4 Soft size budget (prompt-enforced)
+
+Unlike memory, skills have **no hard byte cap in code** — a per-skill or
+total-count cap would be arbitrary. L1 enforces shape through the review
+prompt's preference order; the hard guarantee against drift comes from L2.
+
+| What | Bound | Mechanism |
+|---|---|---|
+| Single skill body (`SKILL.md`) | none in code | Prompt: keep at class level; factor session-specific detail into `references/` |
+| Number of agent-created skills | none in code | Prompt: preference is **UPDATE > DELETE > CREATE**; CREATE is last resort |
+| Support files per skill | none in code | Prompt: consolidate when topics overlap |
+
 **Three review prompts**, picked by which arms fired (memory / skill /
 combined). The skill prompt is **active** (most working sessions produce ≥1
-update) and embeds the anti-pattern list.
+update or retirement) and embeds the anti-pattern list.
 
 ---
 
@@ -277,25 +384,36 @@ Eight invariants, each one cost Hermes a production bug:
 
 # Memory (new "auto" source, machine-local, per-project)
 ~/.gen/projects/<encoded-cwd>/memory/
-├── MEMORY.md           index, ≤200 lines / 25 KB injected
+├── MEMORY.md           index, ≤25 KB on disk and injected (caps match)
 ├── debugging.md        topic file, read on demand
 └── ...
 ```
 
 ---
 
-## 8. Why a later L2 curator (deferred)
+## 8. L1 vs L2 — where grooming lives
 
-L1 writes with a **local** view (one turn) and **frequently**. Across many
-turns the collection drifts in ways no single L1 write can fix:
-duplicate/overlapping entries, contradictions, stale facts, unbounded
-`MEMORY.md` growth past the injection budget. A separate, idle-triggered
-**L2 curator** evaluates the whole collection and dedups / prunes /
-consolidates / archives — the role Hermes' `agent/curator.py` plays. Its
-evaluation basis (usage telemetry + collection intrinsics) and trigger policy
-are out of scope here and tracked in a separate L2 issue.
+L1 already does **in-pass retirement** (§4.1 / §5.1): retire stale memory
+entries before adding, delete an obsolete skill when its replacement is
+learned, prune to fit when the 25 KB hard cap is near. That is the floor —
+without it L1 would be a pure accumulator.
 
-One L1-side implication worth flagging now: L2's strongest signal will be
+What L1 **cannot** do well from its local view:
+
+| Drift symptom | Why L1 misses it | L2's basis |
+|---|---|---|
+| Two skills overlap (different sessions wrote each) | L1 sees one turn at a time | Whole-collection scan |
+| A skill nobody invokes any more | L1 has no usage signal | Usage telemetry |
+| Two memory facts contradict, written months apart | L1 doesn't re-evaluate past entries | Idle full pass |
+| Topic-file count creeping up | L1 only judges per-write | Idle full pass |
+| `MEMORY.md` slowly approaching cap from many small adds | L1's per-pass prune is local | Idle full pass |
+
+A separate, idle-triggered **L2 curator** evaluates the whole collection and
+dedups / consolidates / archives — the role Hermes' `agent/curator.py` plays.
+Its evaluation basis (usage telemetry + collection intrinsics) and trigger
+policy are out of scope here and tracked in a separate L2 issue.
+
+**L1-side implication worth flagging now:** L2's strongest signal will be
 **usage** (which skill was used when), which gen-code doesn't record today.
 A light usage log can land with L1 or just before L2 — flagged so it isn't
 forgotten.
@@ -341,6 +459,14 @@ Concrete steps:
   re-learned per repo. Options: (a) accept and let the user curate
   `~/.gen/GEN.md` by hand; (b) extend L1 to choose user vs project level,
   mirroring how skills already do. Recommend (b) once Phase 1 is stable.
+- **Topic-file count is unbounded.** Per-file cap (25 KB) bounds size but
+  not count — the reviewer can keep creating new topics indefinitely. L1's
+  review prompt biases toward consolidation, but only L2's idle full pass
+  can reliably retire orphans. Acceptable for Phase 1; tracked for L2.
+- **Skill body and skill count have no hard caps in code** (§5.4). L1
+  enforces shape by prompt (UPDATE > DELETE > CREATE, class-level naming);
+  the hard guarantee against drift comes from L2 using usage telemetry to
+  retire what nobody invokes.
 - **Let L1 patch user-authored skills?** Phase 1 default is no. Hermes allows
   patching a just-used user skill (its preference #1); revisit if "fix the
   skill I just used" turns out important.
