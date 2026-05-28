@@ -3,9 +3,15 @@
   <p><strong>面向终端的开源 AI 编程助手</strong></p>
   <p>
     <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
+    <a href="https://github.com/genai-io/gen-code/stargazers"><img src="https://img.shields.io/github/stars/genai-io/gen-code?style=flat-square" alt="Stars"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/gen-code"><img src="https://goreportcard.com/badge/github.com/genai-io/gen-code?style=flat-square" alt="Go Report Card"></a>
     <a href="https://pkg.go.dev/github.com/genai-io/gen-code"><img src="https://pkg.go.dev/badge/github.com/genai-io/gen-code.svg" alt="Go Reference"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
+  </p>
+  <p>
+    🌐 <a href="https://genai-io.github.io/gen-code/">官网</a> ·
+    📖 <a href="docs/index.md">文档</a> ·
+    🚀 <a href="docs/guides/getting-started.md">快速开始</a>
   </p>
   <p>
     <a href="README.md">English</a> · <strong>简体中文</strong>
