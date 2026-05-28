@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussions
+    url: https://github.com/genai-io/gen-code/discussions
+    about: Ask questions, share ideas, and discuss usage here.
+  - name: 📖 Documentation
+    url: https://genai-io.github.io/gen-code/docs.html
+    about: Guides, concepts, and reference.

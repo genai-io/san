@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a problem with Gen Code
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug! Please fill in as much as you can.
+  - type: checkboxes
+    id: duplicate-check
+    attributes:
+      label: Duplicate check
+      options:
+        - label: I searched existing issues and didn't find a duplicate
+          required: true
+        - label: This is a functional bug, not a security vulnerability (those must go through [SECURITY.md](https://github.com/genai-io/gen-code/blob/main/SECURITY.md))
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including expected vs. actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Run `gen ...`
+        2. Type `/...`
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Run `gen --version` and fill in the rest.
+      value: |
+        - Gen Code version:
+        - OS / arch:
+        - Go version (if building from source):
+        - Provider / model:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant output. Run with `GEN_DEBUG=1` and attach `~/.gen/debug.log` if useful.
+        ⚠️ **Redact API keys, tokens, and any other secrets** before pasting — this issue is public.
+      render: shell
+    validations:
+      required: false
