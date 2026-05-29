@@ -10,6 +10,8 @@ main turn's prompt cache. Collection-level grooming (dedup, contradictions,
 unbounded growth) is the job of a later **L2 curator**, designed in its own
 issue (rationale in §8).
 
+**Contents.** [§1 Compare](#1-three-systems-compared) · [§2 Architecture](#2-architecture) · [§3 Trigger](#3-trigger--two-arms) · [§4 Memory](#4-memory-flow) · [§5 Skill](#5-skill-flow) · [§6 Fork & UI](#6-fork-mechanics--invariants) · [§7 Filesystem](#7-filesystem-layout) · [§8 L1 vs L2](#8-l1-vs-l2--where-grooming-lives) · [§9 Phasing](#9-phasing--next-steps) · [§10 Open questions](#10-open-questions)
+
 ---
 
 ## 1. Three systems compared
@@ -53,7 +55,7 @@ sequenceDiagram
     F->>S: read existing entries
     F->>S: memory_write / skill_manage
     F-->>R: actions summary
-    R-->>U: 💾 Self-improvement review: one-line summary
+    R-->>U: Self-improvement review (recap block)
 ```
 
 Key points the diagram encodes:
@@ -165,12 +167,12 @@ flowchart TD
     R0 --> C{durable new fact<br/>worth keeping?}
     C -- no --> Z[Nothing to save]
     C -- yes --> H{index near<br/>25 KB hard cap?}
-    H -- yes --> P1[must prune more first<br/>before this write fits]
+    H -- yes --> P1[loop: pick another<br/>entry to retire]
     H -- no --> D{existing entry<br/>covers it?}
     D -- yes --> R1[memory_write replace]
     D -- no --> N[memory_write add]
-    P1 --> ALL[~/.gen/projects/&lt;project&gt;/memory/]
-    R1 --> ALL
+    P1 -. retry .-> S
+    R1 --> ALL[~/.gen/projects/&lt;project&gt;/memory/]
     N --> ALL
 ```
 
@@ -319,21 +321,28 @@ flowchart TD
     E -- no --> Z[Nothing to save]
 ```
 
-**UPDATE preferred over CREATE.** Keeps the library broad and avoids
-near-duplicates. `skill_manage(patch, …)` to fix/extend;
-`skill_manage(write_file, …)` to add a `references/` / `templates/` /
-`scripts/` support file (plus a pointer line in `SKILL.md`). Patch in place,
-at the existing scope.
+**Trigger conditions per action.** Within a review pass, the model picks an
+action only when the semantic conditions below hold. The permission layer
+(§5.5) then allows or vetoes each dispatch.
 
-**DELETE when superseded.** `skill_manage(delete, name)`. Triggers:
-- the new learning supersedes the whole skill (replace rather than coexist);
-- the skill encoded a transient/environment-dependent failure that has since
-  been fixed (the skill is now wrong);
-- the skill turned out to encode an anti-pattern.
+| Action | Semantic triggers | Permission · Allowed targets |
+|---|---|---|
+| **CREATE** | **All four:** ① turn produced a non-trivial, generalizable technique / fix / pattern; ② **no** existing skill (agent OR user) covers this class; ③ name is class-level (`go-table-tests` ✅, `fix-pr-1234` ❌); ④ not an anti-pattern (env-dependent failure, tool negative claim, transient error, one-off narrative). | `allowCreate=true` · `agent-created` only |
+| **UPDATE** | **Any one:** ① a skill loaded / consulted this turn was proven wrong / incomplete / outdated; ② an existing umbrella skill covers the new learning; ③ user voiced a style / format / workflow correction that belongs in the skill governing that task. | `allowUpdate=true` · `agent-created`, plus `user-created` iff `allowUpdateUserCreated=true` |
+| **DELETE** | **Any one:** ① superseded wholesale — the new learning replaces the entire skill; ② transient / environment-dependent failure the skill encoded is now resolved (skill is now wrong); ③ skill turned out to encode an anti-pattern. | `allowDelete=true` · `agent-created` only (no config opens user-created) |
 
-**CREATE is the last resort.** Names must be **class-level** (`go-table-tests`,
-not `fix-pr-1234`). The level decision is in the diagram: reusable / general
-→ user (`~/.gen/skills/`), project-specific → project (`./.gen/skills/`).
+A single pass may chain multiple actions (e.g. delete one obsolete + patch
+one umbrella + create one new); each is independently evaluated. The
+preference order is **UPDATE > DELETE > CREATE** — keeps the library broad
+and avoids near-duplicates.
+
+**Tool surface per action.** UPDATE uses `skill_manage(patch, …)` to
+fix/extend, or `skill_manage(write_file, …)` to add a `references/` /
+`templates/` / `scripts/` support file (plus a pointer line in `SKILL.md`).
+DELETE uses `skill_manage(delete, name)`. CREATE uses
+`skill_manage(create, name, content, level)` where the **level**
+(`~/.gen/skills/` user-wide vs `./.gen/skills/` project) follows the
+diagram's *reusable across projects?* branch.
 
 ### 5.2 Provenance and L1 write scope
 
@@ -419,14 +428,17 @@ Eight invariants, each one cost Hermes a production bug:
 3. **Toolset whitelist at dispatch.** `tools[]` matches the parent (cache-key
    parity); a static permission func allows only the **memory + skill
    toolsets** (read *and* write — needs read for dedupe). All else denied.
+   Within `skill_manage`, individual actions are **further gated** by the
+   §5.5 boolean permissions.
 4. **Static `tool.WithPermission` only** — never `agent.PermissionBridge`
    (would deadlock the TUI). Approvals auto-deny.
 5. **Best-effort.** Wrap in `recover`; review failure never affects the user
    turn.
 6. **No session-scoped side effects** (no hooks, no session persistence).
-7. **Suppress fork status.** Only one line surfaces on the main outbox:
-   `💾 Self-improvement review: <summary>` (`MessageEvent`,
-   `From: "l1-review"`). Silent on "Nothing to save."
+7. **Suppress fork status.** Fork's internal events stay private; the only
+   thing reaching the main outbox is the delimiter-bounded recap defined in
+   §"User-visible surface" (`MessageEvent`, `From: "l1-review"`), plus the
+   live status-bar tail. Silent on "Nothing to save."
 8. **≤1 in-flight fork per session.** Drop new triggers while one runs (log,
    no queue). Counters are **not** reset on drop — the threshold stays
    tripped and re-fires next clean turn.
@@ -571,7 +583,9 @@ Concrete steps:
    arms + intervals; gate reviews on `StopEndTurn`.
 5. Concurrency cap ≤1; drop-and-log on overlap.
 6. Tests: trigger cadence (turns / iters / combined), interrupted-turn skip,
-   concurrency cap, restricted-toolset enforcement.
+   concurrency cap, restricted-toolset enforcement, **permission gate** (each
+   legal §5.5 combination behaves as expected; the three illegal combinations
+   from §3.1 are rejected at startup; `allowUpdateUserCreated` toggle).
 
 **Phase 2 — L2 curator** (separate issue). Deferred; see §8.
 
