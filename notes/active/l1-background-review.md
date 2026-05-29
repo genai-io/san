@@ -3,14 +3,56 @@
 Layer 1 of the self-learning loop in [#46](https://github.com/genai-io/gen-code/issues/46).
 This is [#52](https://github.com/genai-io/gen-code/issues/52).
 
-**Decision.** After every clean turn, an **out-of-band reviewer fork** writes
-to memory/skill stores **directly** — no proposal queue, no human gating. The
-fork is best-effort, capped at one in-flight per session, and never touches the
-main turn's prompt cache. Collection-level grooming (dedup, contradictions,
-unbounded growth) is the job of a later **L2 curator**, designed in its own
-issue (rationale in §8).
+**Contents.** [§0 Overview](#0-what-l1-is-and-the-problems-it-solves) · [§1 Compare](#1-three-systems-compared) · [§2 Architecture](#2-architecture) · [§3 Trigger](#3-trigger--two-arms) · [§4 Memory](#4-memory-flow) · [§5 Skill](#5-skill-flow) · [§6 Fork & UI](#6-fork-mechanics--invariants) · [§7 Filesystem](#7-filesystem-layout) · [§8 L1 vs L2](#8-l1-vs-l2--where-grooming-lives) · [§9 Phasing](#9-phasing--next-steps) · [§10 Open questions](#10-open-questions)
 
-**Contents.** [§1 Compare](#1-three-systems-compared) · [§2 Architecture](#2-architecture) · [§3 Trigger](#3-trigger--two-arms) · [§4 Memory](#4-memory-flow) · [§5 Skill](#5-skill-flow) · [§6 Fork & UI](#6-fork-mechanics--invariants) · [§7 Filesystem](#7-filesystem-layout) · [§8 L1 vs L2](#8-l1-vs-l2--where-grooming-lives) · [§9 Phasing](#9-phasing--next-steps) · [§10 Open questions](#10-open-questions)
+---
+
+## 0. What L1 is, and the problems it solves
+
+### What it is
+
+L1 is a **background reviewer** that runs after each clean turn in its own
+forked agent. It reads the just-completed conversation and writes directly
+to two stores:
+
+- **Auto-memory** — per-project durable facts (user preferences, project
+  conventions, recurring context). Stored at
+  `~/.gen/projects/<project>/memory/`; injected into the system prompt of
+  every future session.
+- **Skill library** — class-level techniques marked
+  `origin: agent-created`, living alongside user-authored skills in
+  `~/.gen/skills/` (user-wide) and `./.gen/skills/` (project). Loaded the
+  same way user skills already are.
+
+The reviewer is **best-effort, out-of-band, eviction-first**: it never
+blocks the user's turn; it retires stale entries before adding new ones;
+every action is gated by config (§5.5). At most one review is in flight per
+session; failures never affect the user reply.
+
+### Problems L1 solves
+
+| Symptom today (without L1) | What L1 changes |
+|---|---|
+| Every session starts at zero. User re-explains preferences, working style, and project conventions each time. | Reviewer captures durable user/project facts; future sessions start already knowing them. |
+| Skills get used but their mistakes never get fixed. Same mistake repeats across sessions. | Reviewer patches a skill the conversation just proved wrong, incomplete, or outdated (§5.1). |
+| Skills accumulate but never retire. Obsolete entries pile up and mislead later sessions. | Reviewer deletes a skill in the same pass that learned its replacement (§5.1). |
+| Non-trivial fixes, debug paths, and tool-usage patterns evaporate at session end. | Generalizable learnings captured as class-level skills; level (user vs project) chosen by reusability. |
+| `GEN.md` / `CLAUDE.md` only grows if the user hand-curates it. | A separate auto-memory store grows alongside, machine-local and project-partitioned (§4) — never mixed with the user-authored instructions. |
+
+### What L1 deliberately does not do
+
+- **No cross-collection grooming.** L1 sees one turn at a time.
+  Whole-library dedup, contradiction resolution, and usage-based
+  retirement is L2's job (§8) — deferred to a separate issue.
+- **No approval prompts.** L1 writes directly, gated by config rather
+  than by interrupts. Default is opt-in (off); permission defaults stay
+  conservative once on.
+- **No touch on user-authored content**, unless `allowUpdateUserCreated`
+  is explicitly enabled (§5.5). Even then, only `patch` —
+  create/delete on user-created skills are impossible at any setting.
+- **No live patching of the running session.** Writes become visible at
+  the next memory load (PostCompact or new session, §4.6). Live-patching
+  would invalidate the prefix cache.
 
 ---
 
