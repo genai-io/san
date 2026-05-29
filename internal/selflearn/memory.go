@@ -29,7 +29,7 @@ const memoryFileCharLimit = 25000
 // MemoryStore is the project-partitioned, file-backed durable memory written by
 // the L1 reviewer fork and read back via system.LoadMemoryFiles. It lives under
 // ~/.gen/projects/<encoded-cwd>/memory/ — machine-local, out of the repo, and
-// isolated per project (see notes/active/l1-background-review.md §3a).
+// isolated per project (see notes/active/l1-background-review.md §4).
 //
 // Entries are delimited (memoryEntryDelimiter); add/replace/remove locate an
 // entry by a unique substring rather than by index or full text. Writes are
@@ -75,7 +75,7 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 	if content == "" {
 		return "", fmt.Errorf("content cannot be empty")
 	}
-	if err := scanMemoryContent(content); err != nil {
+	if err := scanContent(content); err != nil {
 		return "", err
 	}
 
@@ -112,7 +112,7 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 	if newContent == "" {
 		return "", fmt.Errorf("content cannot be empty; use remove to delete an entry")
 	}
-	if err := scanMemoryContent(newContent); err != nil {
+	if err := scanContent(newContent); err != nil {
 		return "", err
 	}
 

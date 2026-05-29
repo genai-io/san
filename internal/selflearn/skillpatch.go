@@ -8,7 +8,7 @@ import (
 
 // applyPatch performs a targeted find-and-replace of oldText with newText in
 // content, using a pragmatic fuzzy-match chain (Phase 1 subset of the chain
-// described in notes/active/l1-background-review.md §3b):
+// described in notes/active/l1-background-review.md §5.3):
 //
 //  1. exact substring
 //  2. line-trimmed (ignore leading/trailing whitespace per line)

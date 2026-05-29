@@ -18,7 +18,7 @@ import (
 
 // agentOrigin is the provenance value L1 writes; only skills carrying it are
 // mutable by the reviewer (it reads user-created skills but never modifies
-// them). See notes/active/l1-background-review.md §3b.
+// them). See notes/active/l1-background-review.md §5.2.
 const agentOrigin = "agent-created"
 
 // skillNameRe enforces class-level kebab names and doubles as a traversal guard
@@ -153,6 +153,14 @@ func (m *SkillManager) Create(name, description, body, level string) (string, er
 	if body == "" {
 		return "", fmt.Errorf("skill content cannot be empty")
 	}
+	// Skill bodies and descriptions are loaded into a future system prompt, so
+	// they carry the same stored-injection risk as memory entries.
+	if err := scanContent(body); err != nil {
+		return "", err
+	}
+	if err := scanForThreats(description); err != nil {
+		return "", err
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -179,6 +187,9 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return "", fmt.Errorf("skill content cannot be empty")
+	}
+	if err := scanContent(body); err != nil {
+		return "", err
 	}
 
 	m.mu.Lock()
@@ -214,6 +225,11 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 	if err != nil {
 		return "", err
 	}
+	// Scan the merged body so an injection assembled across patches is caught,
+	// while still allowing a patch that legitimately removes text.
+	if err := scanForThreats(patched); err != nil {
+		return "", err
+	}
 	if err := os.WriteFile(path, []byte(joinFrontmatter(fm, patched)), 0o644); err != nil {
 		return "", err
 	}
@@ -221,6 +237,12 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 }
 
 func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
+	// Support files (references/templates/scripts) are read or executed by the
+	// agent, so they get the same threat scan as skill bodies.
+	if err := scanForThreats(content); err != nil {
+		return "", err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

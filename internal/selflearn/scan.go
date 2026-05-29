@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// Memory content is injected verbatim into a future system prompt, so a
-// poisoned entry is a stored prompt-injection / exfiltration vector. Content
-// that trips a pattern is rejected at write time. This is a coarse guard, not a
-// sandbox — it catches the obvious payloads.
+// Memory entries and skill bodies are injected verbatim into a future system
+// prompt, so a poisoned one is a stored prompt-injection / exfiltration vector.
+// Content that trips a pattern is rejected at write time. This is a coarse
+// guard, not a sandbox — it catches the obvious payloads.
 
-var memoryThreatPatterns = []struct {
+var threatPatterns = []struct {
 	re *regexp.Regexp
 	id string
 }{
@@ -41,18 +41,27 @@ var invisibleRunes = map[rune]struct{}{
 	0x202E: {}, // right-to-left override
 }
 
-func scanMemoryContent(content string) error {
+// scanContent rejects empty input and then applies the threat scan. Use it for
+// required, non-empty content (memory entries, skill bodies).
+func scanContent(content string) error {
 	if strings.TrimSpace(content) == "" {
 		return fmt.Errorf("content cannot be empty")
 	}
+	return scanForThreats(content)
+}
+
+// scanForThreats applies the injection/exfiltration guard without requiring the
+// content to be non-empty. Use it for optional or deletion-capable fields
+// (skill descriptions, patch replacements, support files) where empty is valid.
+func scanForThreats(content string) error {
 	for _, r := range content {
 		if _, bad := invisibleRunes[r]; bad {
 			return fmt.Errorf("rejected: content contains an invisible unicode character (U+%04X)", r)
 		}
 	}
-	for _, p := range memoryThreatPatterns {
+	for _, p := range threatPatterns {
 		if p.re.MatchString(content) {
-			return fmt.Errorf("rejected: content matches threat pattern %q; memory is injected into the system prompt and must not carry injection/exfiltration payloads", p.id)
+			return fmt.Errorf("rejected: content matches threat pattern %q; this text is injected into the system prompt and must not carry injection/exfiltration payloads", p.id)
 		}
 	}
 	return nil
