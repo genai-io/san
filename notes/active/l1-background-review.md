@@ -85,7 +85,7 @@ flowchart TD
 | Arm | Signal | Default | Why this signal |
 |---|---|---|---|
 | Memory | user turns since last review | every **10** user turns | User-modelling drifts on conversational cadence, not work intensity. |
-| Skills | tool iterations **this turn** | when turn ≥ **10** tool-iters | Skill capture should fire when the agent actually *did* work; tool-iters is a cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
+| Skills | **accumulated** tool iterations **since last skill review** | total ≥ **10** tool-iters since last review | Skill capture should fire after meaningful cumulative work; tool-iters is a cheap, provider-agnostic proxy (tokens are per-provider and post-hoc). |
 
 Both arms count independently and may fire on the same turn (combined prompt).
 Counters live in the reviewer and **hydrate from history on session resume**
@@ -93,30 +93,55 @@ Counters live in the reviewer and **hydrate from history on session resume**
 
 ### 3.1 Configuration
 
-The two arms are toggled and tuned independently via `settings.json` (a new
-`selfLearn` section, merged across user / project / local layers like other
-gen-code settings):
+Settings live under `selfLearn` in `settings.json`, merged across user /
+project / local layers like other gen-code settings.
 
 ```json
 {
   "selfLearn": {
-    "memory": { "enabled": false, "everyTurns": 10 },
-    "skills": { "enabled": false, "everyToolIters": 10 }
+    "memory": {
+      "enabled": false,
+      "everyTurns": 10,
+      "maxKB": 25
+    },
+    "skills": {
+      "enabled": false,
+      "everyToolIters": 10,
+      "allowCreate": true,
+      "allowUpdate": true,
+      "allowDelete": true,
+      "allowUpdateUserCreated": false
+    }
   }
 }
 ```
 
-- `memory.enabled` / `skills.enabled` — enable each arm separately. Running
-  memory-evolving without skill-evolving (or vice versa) is supported.
-- `memory.everyTurns` — memory cadence in user turns.
-- `skills.everyToolIters` — skill threshold in tool iterations this turn.
-- **When both arms are off, no reviewer goroutine is started** — zero
-  overhead, no extra model calls, nothing written.
-- **Default: off (opt-in).** L1 forks an extra model call per cadence and
-  writes files automatically; ship opt-in, default-on later once trusted
-  (Claude Code ships auto-memory on — we can match).
-- Optional escape hatch: env override `GEN_DISABLE_SELF_LEARN=1`, mirroring
-  Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
+**Fields.**
+
+| Field | Default | Meaning |
+|---|---|---|
+| `memory.enabled` / `skills.enabled` | `false` | Independently toggle each arm. Both off ⇒ no reviewer goroutine, zero overhead. |
+| `memory.everyTurns` | 10 | Memory cadence in user turns. |
+| `memory.maxKB` | 25 | Hard cap on every memory file. Default = injection cap; lower values force more aggressive pruning. May not exceed 25 (would break the §4.2 invariant). 1 KB ≈ 180 EN words ≈ 340 中文字 (UTF-8). |
+| `skills.everyToolIters` | 10 | Cumulative tool-iters since last skill review (§3 table). |
+| `skills.allowCreate` | `true` | L1 may create new agent-created skills. |
+| `skills.allowUpdate` | `true` | L1 may patch existing agent-created skills. |
+| `skills.allowDelete` | `true` | L1 may delete agent-created skills (never user-created). |
+| `skills.allowUpdateUserCreated` | `false` | Advanced opt-in: extends `allowUpdate` to also patch user-created skills (§5.5). |
+
+**Startup validation** rejects three illegal combinations:
+
+| Rejected | Reason |
+|---|---|
+| `allowCreate=true, allowUpdate=false` | Created skills could never be refined → unfixable errors accumulate. |
+| `allowCreate=true, allowUpdate=true, allowDelete=false` | "Only-add, never-subtract" violates §4.1 / §5.1 retire policy. |
+| `allowUpdateUserCreated=true, allowUpdate=false` | Depends on `allowUpdate`; combination is meaningless. |
+
+**Default off (opt-in).** L1 forks an extra model call per cadence and writes
+files automatically; ship opt-in, default-on later once trusted.
+
+**Env override.** `GEN_DISABLE_SELF_LEARN=1` disables everything regardless of
+config, mirroring Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
 
 ---
 
@@ -158,16 +183,24 @@ flagged in the prompt as suspect.
 
 ### 4.2 Size budgets
 
-| What | Cap | Where enforced | Behavior at cap |
+| What | Cap | Source | At cap |
 |---|---|---|---|
-| Single memory file on disk (index or topic) | **25 000 chars (~25 KB)** | `internal/selflearn/memory.go memoryFileCharLimit` | `memory_write add/replace` returns an error; the reviewer must prune first |
-| `MEMORY.md` injected into system prompt | **25 KB (25 × 1024 bytes)** — matches Claude Code | `internal/core/system/memory.go autoMemoryByteCap` | Truncated on a line boundary with a marker |
-| Topic file count | none yet | — | Review prompt biases toward consolidation; flagged in §10 for L2 |
+| Single memory file on disk (index or topic) | **`memory.maxKB`** (default 25 KB, user-lowerable per §3.1) | `internal/selflearn/memory.go memoryFileCharLimit` | `memory_write add/replace` returns an error; reviewer must prune first |
+| `MEMORY.md` injected into system prompt | **25 KB** — matches Claude Code | `internal/core/system/memory.go autoMemoryByteCap` | Truncated on a line boundary |
+| Topic file count | unbounded (see §10) | — | Review prompt biases toward consolidation |
 
-**Invariant (intentional).** The on-disk per-file cap **equals** the injection
-cap. Anything that fits on disk fits when injected, so L1 never produces a
-file the loader has to truncate. The hard write cap is a safety net; the
-review prompt is the active policy.
+**Invariant.** `memory.maxKB ≤ 25 KB` is enforced at config load. So the
+on-disk per-file cap is always ≤ the injection cap, and L1 never produces a
+file the loader has to truncate.
+
+**Capacity reference.**
+
+| `maxKB` | ≈ EN words | ≈ 中文字 (UTF-8) | Feel |
+|---|---|---|---|
+| 5 | 900 | 1 700 | short note |
+| 10 | 1 800 | 3 400 | short blog post |
+| 15 | 2 700 | 5 100 | long blog post |
+| 25 *(default)* | 4 500 | 8 500 | short report |
 
 ### 4.3 Store anatomy
 
@@ -246,6 +279,21 @@ cache and waste the parity savings from §6 invariant #2.
 > naming convention, not a stored field — the flow prefers extending an
 > umbrella over spawning narrow skills so the library stays "broad and few".
 
+### 5.0 Trigger layers
+
+Three independent layers gate every skill action:
+
+| Layer | Decides | Where |
+|---|---|---|
+| **Cadence** | Whether *any* review pass runs at all | `Reviewer.Observe`: `itersSinceSkill >= everyToolIters` (§3) |
+| **Semantic** | Which action (create / update / delete) and on which target | Review prompt + model judgment, against §5.1 flow |
+| **Permission** | Final allow / deny of each tool call | `skill_manage` dispatch checks `allowCreate / allowUpdate / allowDelete` (§5.5) |
+
+Cadence triggers a pass; semantic decides what to attempt; permission can
+veto each tool call. The review prompt is assembled per-config so the model
+doesn't waste turns proposing forbidden actions — but the permission layer
+remains the hard floor.
+
 ### 5.1 Decision flow — UPDATE / DELETE / CREATE
 
 L1 must **retire**, not only add. A skill the conversation just proved wrong,
@@ -294,10 +342,12 @@ not `fix-pr-1234`). The level decision is in the diagram: reusable / general
 struct grows one field (`Origin string`). Skills live directly in gen-code's
 existing two scopes — no `agent-created/` subdir, no loader change.
 
-**Scope of L1 writes (Phase 1).** L1 creates / patches / **deletes** only
-`origin: agent-created` skills. It **reads** user-created skills (to avoid
-duplication) but never modifies or deletes them. The future L2 likewise
-touches only agent-owned content.
+**Scope of L1 writes.** By default L1 creates / patches / **deletes** only
+`origin: agent-created` skills. It reads user-created skills (to avoid
+duplication) but never modifies or deletes them. The single exception is the
+advanced opt-in `allowUpdateUserCreated` (§5.5), which extends `patch` to
+user-created — create and delete on user-created **remain impossible at any
+config setting**.
 
 ### 5.3 Tool surface
 
@@ -323,6 +373,31 @@ prompt's preference order; the hard guarantee against drift comes from L2.
 **Three review prompts**, picked by which arms fired (memory / skill /
 combined). The skill prompt is **active** (most working sessions produce ≥1
 update or retirement) and embeds the anti-pattern list.
+
+### 5.5 Action permissions
+
+Three booleans + one advanced opt-in (see §3.1) control what L1 may do.
+The first three operate **only on `origin: agent-created`** skills.
+
+Meaningful combinations:
+
+| `create` | `update` | `delete` | What L1 does |
+|---|---|---|---|
+| ✅ | ✅ | ✅ | *Default.* Grows and maintains its own subset. |
+| ❌ | ✅ | ✅ | Freezes the set; only refines and prunes. |
+| ❌ | ✅ | ❌ | Most conservative; only patches existing. |
+| ❌ | ❌ | ❌ | Equivalent to `enabled: false`. |
+
+Of the 8 boolean tuples: 4 meaningful, 2 rejected at startup (§3.1), 2 no-ops.
+
+**`allowUpdateUserCreated`** is the single door that lets `allowUpdate`
+extend to user-created skills (Hermes-style "patch the skill just used"). It
+is off by default; turning it on rewrites user-authored files when warranted
+by the §5.1 flow.
+
+**Prompt synthesis.** Disallowed actions are stripped from the review prompt
+so the model doesn't propose them. `allowUpdateUserCreated=true` swaps in
+"patch any loaded skill including user-authored" as the top preference.
 
 ---
 
@@ -367,6 +442,58 @@ Eight invariants, each one cost Hermes a production bug:
 | Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/<name>/` (user) or `./.gen/skills/<name>/` (project), with `origin: agent-created` |
 | Provenance | add `Origin` to skill frontmatter struct (`internal/skill/types.go`); absent ⇒ `user-created` |
 | Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source. Skills: no change (existing user/project loader covers it). |
+
+### User-visible surface
+
+Three places the user encounters self-learning.
+
+**Settings — `/config` Self-Learning panel.** `/config` opens a multi-panel
+settings page (left sidebar + right pane); Self-Learning is one panel among
+others (Provider, Permissions, Appearance, …). The panel groups §3.1
+config into two sections (Memory / Skills) with checkboxes for the three
+skill permissions; `allowUpdateUserCreated` lives under a collapsed
+**Advanced** with a ⚠ "rewrites your authored files" caption.
+
+Panel rules:
+- Sub-fields grey out while the section's `enabled` is off.
+- `maxKB` field shows live equivalence: `⟨25⟩ ≈ 4500 EN words / 8500 中文字`.
+- Illegal config combinations (§3.1) surface as inline warnings; save is
+  disabled until resolved.
+- Panels with unsaved changes get a `•` marker in the sidebar.
+
+**Runtime — status bar.** Hidden while idle. Surfaces only during an active
+review or the brief post-completion window. Label is single-word `evolving`
+(gerund — echoes the project theme); a braille spinner conveys activity;
+the target name comes from the fork's most recent tool call.
+
+| State | Status bar shows | Duration |
+|---|---|---|
+| Idle / disabled | — | hidden |
+| Review just started | `evolving ⠋` | until first tool call |
+| Fork called `skill_manage(name=X)` | `evolving ⠋ X` | until next tool call (debounce ≥ 400 ms) |
+| Fork called `memory_write(file="t.md")` | `evolving ⠋ memory · t` | same |
+| Review done | `evolved · N changes` | 2 s, then hide |
+| Failed / timed out | `evolving failed` | 3 s, then hide |
+
+No emoji; the spinner is structural Unicode, the label is text. Skill
+actions show the name directly (no `creating/deleting` prefix — "evolving"
+already conveys the verb); memory actions are `memory` or `memory · <topic>`.
+
+**Completion — in-stream summary.** After each successful review pass, the
+main outbox surfaces a delimiter-bounded block (`MessageEvent`,
+`From: "l1-review"`):
+
+```
+─────────────────────────────────────────────────
+Self-improvement review
+  · updated skill   go-testing      (added flaky-test guidance)
+  · saved memory    "user prefers concise output"
+  · retired skill   outdated-migrate-tool
+─────────────────────────────────────────────────
+```
+
+Silent on "Nothing to save." The status bar is the live tail; this block is
+the recap — two layers, distinct purposes.
 
 ---
 
@@ -467,9 +594,6 @@ Concrete steps:
   enforces shape by prompt (UPDATE > DELETE > CREATE, class-level naming);
   the hard guarantee against drift comes from L2 using usage telemetry to
   retire what nobody invokes.
-- **Let L1 patch user-authored skills?** Phase 1 default is no. Hermes allows
-  patching a just-used user skill (its preference #1); revisit if "fix the
-  skill I just used" turns out important.
 - **Commit agent-created project skills?** They live in-repo at
   `./.gen/skills/` mixed with user skills (distinguished by `origin`). Team
   choice whether to commit auto-generated ones; can be filtered by `origin`.
