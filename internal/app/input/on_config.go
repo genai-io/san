@@ -251,24 +251,24 @@ func (c *ConfigSelector) rows() []configRow {
 			label:      "Create new skills",
 			indent:     2,
 			editable:   true,
-			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowCreateOr() },
-			toggle:     toggleAllowCreate,
+			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowCreate() },
+			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyCreate = !s.Skills.DenyCreate },
 		},
 		{
 			kind:       rowBool,
 			label:      "Update existing skills",
 			indent:     2,
 			editable:   true,
-			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdateOr() },
-			toggle:     toggleAllowUpdate,
+			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdate() },
+			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyUpdate = !s.Skills.DenyUpdate },
 		},
 		{
 			kind:       rowBool,
 			label:      "Delete obsolete skills",
 			indent:     2,
 			editable:   true,
-			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowDeleteOr() },
-			toggle:     toggleAllowDelete,
+			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowDelete() },
+			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyDelete = !s.Skills.DenyDelete },
 		},
 		{kind: rowSpacer},
 		{kind: rowHeader, label: "  Advanced", indent: 1},
@@ -292,27 +292,6 @@ func defaultIfZero(v, def int) int {
 	}
 	return v
 }
-
-// toggleAllowCreate / toggleAllowUpdate / toggleAllowDelete flip the *bool
-// fields, going from "nil (default true)" through "explicit false" back to
-// "explicit true". This three-state cycle is what lets the user move
-// between the four §5.5 legal combinations.
-func toggleAllowCreate(s *setting.SelfLearnSettings) {
-	v := s.Skills.AllowCreateOr()
-	s.Skills.AllowCreate = boolPtr(!v)
-}
-
-func toggleAllowUpdate(s *setting.SelfLearnSettings) {
-	v := s.Skills.AllowUpdateOr()
-	s.Skills.AllowUpdate = boolPtr(!v)
-}
-
-func toggleAllowDelete(s *setting.SelfLearnSettings) {
-	v := s.Skills.AllowDeleteOr()
-	s.Skills.AllowDelete = boolPtr(!v)
-}
-
-func boolPtr(b bool) *bool { return &b }
 
 // ── Rendering ────────────────────────────────────────────────────────────
 

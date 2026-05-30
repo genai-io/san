@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// ptr is a tiny convenience for the *bool fields in SelfLearnSkills tests.
-func ptr(b bool) *bool { return &b }
-
 // TestSelfLearnValidate exercises the three rejected boolean combinations and
 // the maxKB invariant from notes/active/l1-background-review.md §3.1 / §4.2.
 // The all-zero "feature off" baseline and several legal combinations must
@@ -27,69 +24,48 @@ func TestSelfLearnValidate(t *testing.T) {
 			name: "explicit defaults",
 			cfg: SelfLearnSettings{
 				Memory: SelfLearnMemory{Enabled: true, EveryTurns: 10, MaxKB: 25},
-				Skills: SelfLearnSkills{
-					Enabled:        true,
-					EveryToolIters: 10,
-					AllowCreate:    ptr(true),
-					AllowUpdate:    ptr(true),
-					AllowDelete:    ptr(true),
-				},
+				Skills: SelfLearnSkills{Enabled: true, EveryToolIters: 10},
 			},
 			wantErr: "",
 		},
 		{
-			name: "freeze mode (no create, only update + delete)",
+			name: "freeze mode (deny create; update + delete default-allow)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{
-					Enabled:     true,
-					AllowCreate: ptr(false),
-					// update + delete defaulted true
-				},
+				Skills: SelfLearnSkills{Enabled: true, DenyCreate: true},
 			},
 			wantErr: "",
 		},
 		{
-			name: "patch-only mode (no create, no delete)",
+			name: "patch-only mode (deny create + delete)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{
-					Enabled:     true,
-					AllowCreate: ptr(false),
-					AllowDelete: ptr(false),
-				},
+				Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, DenyDelete: true},
 			},
 			wantErr: "",
 		},
 		{
-			name: "rejected: create without update",
+			name: "rejected: create allowed but update denied",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{
-					AllowCreate: ptr(true),
-					AllowUpdate: ptr(false),
-				},
+				Skills: SelfLearnSkills{DenyUpdate: true},
 			},
-			wantErr: "allowCreate=true requires allowUpdate=true",
+			wantErr: "denyUpdate=true requires denyCreate=true",
 		},
 		{
-			name: "rejected: create + update without delete",
+			name: "rejected: create + update allowed but delete denied",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{
-					AllowCreate: ptr(true),
-					AllowUpdate: ptr(true),
-					AllowDelete: ptr(false),
-				},
+				Skills: SelfLearnSkills{DenyDelete: true},
 			},
-			wantErr: "allowCreate=true requires allowDelete=true",
+			wantErr: "denyDelete=true requires denyCreate=true",
 		},
 		{
 			name: "rejected: advanced opt-in without update base",
 			cfg: SelfLearnSettings{
 				Skills: SelfLearnSkills{
-					AllowUpdate:            ptr(false),
-					AllowCreate:            ptr(false),
+					DenyUpdate:             true,
+					DenyCreate:             true,
 					AllowUpdateUserCreated: true,
 				},
 			},
-			wantErr: "allowUpdateUserCreated=true requires allowUpdate=true",
+			wantErr: "allowUpdateUserCreated=true requires denyUpdate=false",
 		},
 		{
 			name: "rejected: maxKB above injection cap",
@@ -127,21 +103,18 @@ func TestSelfLearnValidate(t *testing.T) {
 	}
 }
 
-// TestSelfLearnAllowAccessors confirms the *bool helpers default to true on
-// nil and pass through the explicit value otherwise — the contract every
-// downstream consumer (skill.go, prompts.go) depends on.
+// TestSelfLearnAllowAccessors confirms the Deny-encoded fields read out as
+// the expected Allow* boolean — zero ⇒ allow, true ⇒ deny — for every
+// permission. The contract every downstream consumer (skill.go,
+// prompts.go) depends on.
 func TestSelfLearnAllowAccessors(t *testing.T) {
 	zero := SelfLearnSkills{}
-	if !zero.AllowCreateOr() || !zero.AllowUpdateOr() || !zero.AllowDeleteOr() {
-		t.Fatal("unset (nil) booleans must default to true")
+	if !zero.AllowCreate() || !zero.AllowUpdate() || !zero.AllowDelete() {
+		t.Fatal("zero-valued Deny fields must read as Allow=true")
 	}
-	explicit := SelfLearnSkills{
-		AllowCreate: ptr(false),
-		AllowUpdate: ptr(false),
-		AllowDelete: ptr(false),
-	}
-	if explicit.AllowCreateOr() || explicit.AllowUpdateOr() || explicit.AllowDeleteOr() {
-		t.Fatal("explicit false must pass through")
+	denied := SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
+	if denied.AllowCreate() || denied.AllowUpdate() || denied.AllowDelete() {
+		t.Fatal("explicit Deny must read as Allow=false")
 	}
 }
 

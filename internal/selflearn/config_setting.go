@@ -36,9 +36,9 @@ func ResolveSettings(s setting.SelfLearnSettings) (Resolved, error) {
 			Skills: Arm{Enabled: s.Skills.Enabled, Interval: s.Skills.EveryToolIters},
 		},
 		Perms: ActionPermissions{
-			AllowCreate:            s.Skills.AllowCreateOr(),
-			AllowUpdate:            s.Skills.AllowUpdateOr(),
-			AllowDelete:            s.Skills.AllowDeleteOr(),
+			AllowCreate:            s.Skills.AllowCreate(),
+			AllowUpdate:            s.Skills.AllowUpdate(),
+			AllowDelete:            s.Skills.AllowDelete(),
 			AllowUpdateUserCreated: s.Skills.AllowUpdateUserCreated,
 		},
 		MemoryMaxChars: s.Memory.MaxKBOr() * 1024,

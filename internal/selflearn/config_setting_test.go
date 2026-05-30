@@ -7,8 +7,6 @@ import (
 	"github.com/genai-io/gen-code/internal/setting"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 // TestResolveSettingsHappyPath confirms a sensible config converts cleanly
 // to a Resolved bundle and that defaults apply where fields are unset.
 func TestResolveSettingsHappyPath(t *testing.T) {
@@ -47,16 +45,13 @@ func TestResolveSettingsHappyPath(t *testing.T) {
 // the wire-up caller can refuse to start the reviewer on bad config.
 func TestResolveSettingsRejectsInvalid(t *testing.T) {
 	s := setting.SelfLearnSettings{
-		Skills: setting.SelfLearnSkills{
-			AllowCreate: boolPtr(true),
-			AllowUpdate: boolPtr(false),
-		},
+		Skills: setting.SelfLearnSkills{DenyUpdate: true}, // create is default-allow, so this is the illegal create-without-update combo
 	}
 	_, err := ResolveSettings(s)
 	if err == nil {
 		t.Fatal("expected validation error to propagate")
 	}
-	if !strings.Contains(err.Error(), "allowCreate=true requires allowUpdate=true") {
+	if !strings.Contains(err.Error(), "denyUpdate=true requires denyCreate=true") {
 		t.Fatalf("error not from Validate: %v", err)
 	}
 }

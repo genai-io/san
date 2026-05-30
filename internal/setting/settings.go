@@ -65,33 +65,36 @@ type SelfLearnMemory struct {
 
 // SelfLearnSkills controls skill-evolving: review when accumulated tool
 // iterations since the last review reach EveryToolIters, plus the action
-// permissions of §5.5. Pointer-bool fields distinguish "unset" (use default
-// true) from explicit false.
+// permissions of §5.5.
+//
+// Permission fields are encoded as Deny* booleans so the zero value is
+// "allow" — the Go idiom of "zero value should be sensible default" — and
+// every settings.json that omits the field gets the conservative
+// permissive default without any pointer-vs-nil ceremony.
 type SelfLearnSkills struct {
 	Enabled        bool `json:"enabled,omitempty"`
 	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = default (10)
 
-	// AllowCreate / AllowUpdate / AllowDelete gate the corresponding action
-	// on agent-created skills. Unset (nil) ⇒ true. See §5.5.
-	AllowCreate *bool `json:"allowCreate,omitempty"`
-	AllowUpdate *bool `json:"allowUpdate,omitempty"`
-	AllowDelete *bool `json:"allowDelete,omitempty"`
+	// DenyCreate / DenyUpdate / DenyDelete gate the corresponding action on
+	// agent-created skills. Zero ⇒ allowed; set to true to disable that
+	// action. See §5.5.
+	DenyCreate bool `json:"denyCreate,omitempty"`
+	DenyUpdate bool `json:"denyUpdate,omitempty"`
+	DenyDelete bool `json:"denyDelete,omitempty"`
 
-	// AllowUpdateUserCreated is the advanced opt-in that extends AllowUpdate
-	// to also patch user-created skills (Hermes-style). Default false. Even
-	// when true, create and delete on user-created remain impossible at any
-	// config setting.
+	// AllowUpdateUserCreated is the advanced opt-in that extends update to
+	// also patch user-created skills (Hermes-style). Default false. Even
+	// when true, create and delete on user-created remain impossible at
+	// any config setting.
 	AllowUpdateUserCreated bool `json:"allowUpdateUserCreated,omitempty"`
 }
 
-// AllowCreateOr returns the resolved AllowCreate (default true if unset).
-func (s SelfLearnSkills) AllowCreateOr() bool { return boolOrTrue(s.AllowCreate) }
-
-// AllowUpdateOr returns the resolved AllowUpdate (default true if unset).
-func (s SelfLearnSkills) AllowUpdateOr() bool { return boolOrTrue(s.AllowUpdate) }
-
-// AllowDeleteOr returns the resolved AllowDelete (default true if unset).
-func (s SelfLearnSkills) AllowDeleteOr() bool { return boolOrTrue(s.AllowDelete) }
+// AllowCreate / AllowUpdate / AllowDelete report whether the named action
+// is permitted under the current configuration. These are the read paths
+// the runtime takes — settings.json stores Deny*.
+func (s SelfLearnSkills) AllowCreate() bool { return !s.DenyCreate }
+func (s SelfLearnSkills) AllowUpdate() bool { return !s.DenyUpdate }
+func (s SelfLearnSkills) AllowDelete() bool { return !s.DenyDelete }
 
 // MaxKBOr returns the resolved MaxKB (default SelfLearnDefaultMemoryKB if zero).
 func (m SelfLearnMemory) MaxKBOr() int {
@@ -102,7 +105,7 @@ func (m SelfLearnMemory) MaxKBOr() int {
 }
 
 // Validate enforces the cross-field invariants of §3.1: three illegal skill
-// boolean combinations are rejected, and memory.maxKB must lie in (0, 25].
+// boolean combinations are rejected, and memory.maxKB must lie in [0, 25].
 // Returns nil when the configuration is acceptable (including the all-zero
 // "feature off" case).
 func (s SelfLearnSettings) Validate() error {
@@ -112,32 +115,25 @@ func (s SelfLearnSettings) Validate() error {
 			s.Memory.MaxKB, SelfLearnMaxMemoryKB,
 		)
 	}
-	create := s.Skills.AllowCreateOr()
-	update := s.Skills.AllowUpdateOr()
-	deleteOK := s.Skills.AllowDeleteOr()
+	create := s.Skills.AllowCreate()
+	update := s.Skills.AllowUpdate()
+	deleteOK := s.Skills.AllowDelete()
 	if create && !update {
 		return fmt.Errorf(
-			"selfLearn.skills: allowCreate=true requires allowUpdate=true; otherwise created skills could never be refined",
+			"selfLearn.skills: denyUpdate=true requires denyCreate=true; otherwise created skills could never be refined",
 		)
 	}
 	if create && update && !deleteOK {
 		return fmt.Errorf(
-			"selfLearn.skills: allowCreate=true requires allowDelete=true; only-add-never-subtract violates the §4.1 retire policy",
+			"selfLearn.skills: denyDelete=true requires denyCreate=true; only-add-never-subtract violates the §4.1 retire policy",
 		)
 	}
 	if s.Skills.AllowUpdateUserCreated && !update {
 		return fmt.Errorf(
-			"selfLearn.skills: allowUpdateUserCreated=true requires allowUpdate=true",
+			"selfLearn.skills: allowUpdateUserCreated=true requires denyUpdate=false (the base update permission)",
 		)
 	}
 	return nil
-}
-
-func boolOrTrue(p *bool) bool {
-	if p == nil {
-		return true
-	}
-	return *p
 }
 
 // PermissionSettings defines permission rules for tool execution.

@@ -85,11 +85,10 @@ func TestConfigSelectorIntEditAndClamp(t *testing.T) {
 // message inline beneath the rows.
 func TestConfigSelectorRenderShowsValidationError(t *testing.T) {
 	c := newConfigSelectorForTest()
-	// Force an illegal combo: AllowCreate=true (default), AllowUpdate=false.
-	false_ := false
-	c.snap.Skills.AllowUpdate = &false_
+	// Force an illegal combo: create allowed (zero), update denied.
+	c.snap.Skills.DenyUpdate = true
 	out := c.Render()
-	if !strings.Contains(out, "allowCreate=true requires allowUpdate=true") {
+	if !strings.Contains(out, "denyUpdate=true requires denyCreate=true") {
 		t.Fatalf("Render should show §3.1 validation error, got:\n%s", out)
 	}
 }

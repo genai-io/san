@@ -151,9 +151,9 @@ project / local layers like other gen-code settings.
     "skills": {
       "enabled": false,
       "everyToolIters": 10,
-      "allowCreate": true,
-      "allowUpdate": true,
-      "allowDelete": true,
+      "denyCreate": false,
+      "denyUpdate": false,
+      "denyDelete": false,
       "allowUpdateUserCreated": false
     }
   }
@@ -168,18 +168,22 @@ project / local layers like other gen-code settings.
 | `memory.everyTurns` | 10 | Memory cadence in user turns. |
 | `memory.maxKB` | 25 | Hard cap on every memory file. Default = injection cap; lower values force more aggressive pruning. May not exceed 25 (would break the §4.2 invariant). 1 KB ≈ 180 EN words ≈ 340 中文字 (UTF-8). |
 | `skills.everyToolIters` | 10 | Cumulative tool-iters since last skill review (§3 table). |
-| `skills.allowCreate` | `true` | L1 may create new agent-created skills. |
-| `skills.allowUpdate` | `true` | L1 may patch existing agent-created skills. |
-| `skills.allowDelete` | `true` | L1 may delete agent-created skills (never user-created). |
-| `skills.allowUpdateUserCreated` | `false` | Advanced opt-in: extends `allowUpdate` to also patch user-created skills (§5.5). |
+| `skills.denyCreate` | `false` | Zero ⇒ L1 may create new agent-created skills. Set true to disable creation. |
+| `skills.denyUpdate` | `false` | Zero ⇒ L1 may patch existing agent-created skills. Set true to disable updates. |
+| `skills.denyDelete` | `false` | Zero ⇒ L1 may delete agent-created skills (never user-created). Set true to disable deletion. |
+| `skills.allowUpdateUserCreated` | `false` | Advanced opt-in: extends update to also patch user-created skills (§5.5). |
+
+The `denyX` encoding inverts the polarity so the zero value is the safe
+permissive default (Go idiom — "zero value should be sensible"). Every
+omitted field reads as "allow"; setting true is the explicit lockdown.
 
 **Startup validation** rejects three illegal combinations:
 
 | Rejected | Reason |
 |---|---|
-| `allowCreate=true, allowUpdate=false` | Created skills could never be refined → unfixable errors accumulate. |
-| `allowCreate=true, allowUpdate=true, allowDelete=false` | "Only-add, never-subtract" violates §4.1 / §5.1 retire policy. |
-| `allowUpdateUserCreated=true, allowUpdate=false` | Depends on `allowUpdate`; combination is meaningless. |
+| `denyCreate=false, denyUpdate=true` | Created skills could never be refined → unfixable errors accumulate. |
+| `denyCreate=false, denyUpdate=false, denyDelete=true` | "Only-add, never-subtract" violates §4.1 / §5.1 retire policy. |
+| `allowUpdateUserCreated=true, denyUpdate=true` | Depends on the update permission; combination is meaningless. |
 
 **Default off (opt-in).** L1 forks an extra model call per cadence and writes
 files automatically; ship opt-in, default-on later once trusted.
@@ -331,7 +335,7 @@ Three independent layers gate every skill action:
 |---|---|---|
 | **Cadence** | Whether *any* review pass runs at all | `Reviewer.Observe`: `itersSinceSkill >= everyToolIters` (§3) |
 | **Semantic** | Which action (create / update / delete) and on which target | Review prompt + model judgment, against §5.1 flow |
-| **Permission** | Final allow / deny of each tool call | `skill_manage` dispatch checks `allowCreate / allowUpdate / allowDelete` (§5.5) |
+| **Permission** | Final allow / deny of each tool call | `skill_manage` dispatch checks `denyCreate / denyUpdate / denyDelete` (§5.5) |
 
 Cadence triggers a pass; semantic decides what to attempt; permission can
 veto each tool call. The review prompt is assembled per-config so the model
@@ -369,9 +373,9 @@ action only when the semantic conditions below hold. The permission layer
 
 | Action | Semantic triggers | Permission · Allowed targets |
 |---|---|---|
-| **CREATE** | **All four:** ① turn produced a non-trivial, generalizable technique / fix / pattern; ② **no** existing skill (agent OR user) covers this class; ③ name is class-level (`go-table-tests` ✅, `fix-pr-1234` ❌); ④ not an anti-pattern (env-dependent failure, tool negative claim, transient error, one-off narrative). | `allowCreate=true` · `agent-created` only |
-| **UPDATE** | **Any one:** ① a skill loaded / consulted this turn was proven wrong / incomplete / outdated; ② an existing umbrella skill covers the new learning; ③ user voiced a style / format / workflow correction that belongs in the skill governing that task. | `allowUpdate=true` · `agent-created`, plus `user-created` iff `allowUpdateUserCreated=true` |
-| **DELETE** | **Any one:** ① superseded wholesale — the new learning replaces the entire skill; ② transient / environment-dependent failure the skill encoded is now resolved (skill is now wrong); ③ skill turned out to encode an anti-pattern. | `allowDelete=true` · `agent-created` only (no config opens user-created) |
+| **CREATE** | **All four:** ① turn produced a non-trivial, generalizable technique / fix / pattern; ② **no** existing skill (agent OR user) covers this class; ③ name is class-level (`go-table-tests` ✅, `fix-pr-1234` ❌); ④ not an anti-pattern (env-dependent failure, tool negative claim, transient error, one-off narrative). | `denyCreate=false` · `agent-created` only |
+| **UPDATE** | **Any one:** ① a skill loaded / consulted this turn was proven wrong / incomplete / outdated; ② an existing umbrella skill covers the new learning; ③ user voiced a style / format / workflow correction that belongs in the skill governing that task. | `denyUpdate=false` · `agent-created`, plus `user-created` iff `allowUpdateUserCreated=true` |
+| **DELETE** | **Any one:** ① superseded wholesale — the new learning replaces the entire skill; ② transient / environment-dependent failure the skill encoded is now resolved (skill is now wrong); ③ skill turned out to encode an anti-pattern. | `denyDelete=false` · `agent-created` only (no config opens user-created) |
 
 A single pass may chain multiple actions (e.g. delete one obsolete + patch
 one umbrella + create one new); each is independently evaluated. The
@@ -427,17 +431,20 @@ update or retirement) and embeds the anti-pattern list.
 
 ### 5.5 Action permissions
 
-Three booleans + one advanced opt-in (see §3.1) control what L1 may do.
-The first three operate **only on `origin: agent-created`** skills.
+Three Deny-encoded booleans + one advanced opt-in (see §3.1) control what
+L1 may do. The first three operate **only on `origin: agent-created`**
+skills.
 
-Meaningful combinations:
+Meaningful combinations (showing the effective Allow permissions; the
+config-side fields are the negation, so all-zero = all-allowed = the
+default row):
 
 | `create` | `update` | `delete` | What L1 does |
 |---|---|---|---|
-| ✅ | ✅ | ✅ | *Default.* Grows and maintains its own subset. |
-| ❌ | ✅ | ✅ | Freezes the set; only refines and prunes. |
-| ❌ | ✅ | ❌ | Most conservative; only patches existing. |
-| ❌ | ❌ | ❌ | Equivalent to `enabled: false`. |
+| ✅ | ✅ | ✅ | *Default* (all `denyX` zero). Grows and maintains its own subset. |
+| ❌ | ✅ | ✅ | `denyCreate=true`. Freezes the set; only refines and prunes. |
+| ❌ | ✅ | ❌ | `denyCreate=true, denyDelete=true`. Most conservative; only patches existing. |
+| ❌ | ❌ | ❌ | All three `denyX=true`. Equivalent to `enabled: false`. |
 
 Of the 8 boolean tuples: 4 meaningful, 2 rejected at startup (§3.1), 2 no-ops.
 

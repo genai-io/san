@@ -108,6 +108,14 @@ type SkillInfo struct {
 
 // Inventory lists existing skills across both scopes (project entries shadow
 // user entries of the same name, matching loader precedence).
+//
+// Why the disk scan instead of consulting skill.Registry: the registry is
+// initialized once at startup and only refreshed on
+// ReloadPluginBackedState. The L1 reviewer mutates ~/.gen/skills and
+// ./.gen/skills mid-session via skill_manage; a registry-backed Inventory
+// would not see skills the reviewer just created in earlier passes, which
+// would cause it to re-create duplicates. Reading the on-disk state
+// directly is the correct freshness for this caller.
 func (m *SkillManager) Inventory() []SkillInfo {
 	seen := make(map[string]bool)
 	var out []SkillInfo
