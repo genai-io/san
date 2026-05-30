@@ -12,6 +12,7 @@ package setting
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -38,22 +39,105 @@ type Data struct {
 }
 
 // SelfLearnSettings configures the two independent self-learning arms.
+// See notes/active/l1-background-review.md §3.1.
 type SelfLearnSettings struct {
 	Memory SelfLearnMemory `json:"memory,omitempty"`
 	Skills SelfLearnSkills `json:"skills,omitempty"`
 }
 
-// SelfLearnMemory controls memory-evolving: review every N user turns.
+// SelfLearnMaxMemoryKB is the upper bound on memory.maxKB. It matches the
+// injection cap (autoMemoryByteCap = 25 KB) so the on-disk per-file cap can
+// never exceed what the loader would have to truncate — see §4.2 invariant.
+const SelfLearnMaxMemoryKB = 25
+
+// SelfLearnDefaultMemoryKB is the default memory.maxKB when the config field
+// is zero (unset). Equal to SelfLearnMaxMemoryKB by design.
+const SelfLearnDefaultMemoryKB = 25
+
+// SelfLearnMemory controls memory-evolving: review every N user turns. MaxKB
+// is the on-disk cap per memory file; lower values force more aggressive
+// pruning. May not exceed SelfLearnMaxMemoryKB.
 type SelfLearnMemory struct {
 	Enabled    bool `json:"enabled,omitempty"`
-	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = default cadence
+	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = default cadence (10)
+	MaxKB      int  `json:"maxKB,omitempty"`      // 0 = SelfLearnDefaultMemoryKB
 }
 
-// SelfLearnSkills controls skill-evolving: review when a turn reaches N tool
-// iterations.
+// SelfLearnSkills controls skill-evolving: review when accumulated tool
+// iterations since the last review reach EveryToolIters, plus the action
+// permissions of §5.5. Pointer-bool fields distinguish "unset" (use default
+// true) from explicit false.
 type SelfLearnSkills struct {
 	Enabled        bool `json:"enabled,omitempty"`
-	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = default threshold
+	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = default (10)
+
+	// AllowCreate / AllowUpdate / AllowDelete gate the corresponding action
+	// on agent-created skills. Unset (nil) ⇒ true. See §5.5.
+	AllowCreate *bool `json:"allowCreate,omitempty"`
+	AllowUpdate *bool `json:"allowUpdate,omitempty"`
+	AllowDelete *bool `json:"allowDelete,omitempty"`
+
+	// AllowUpdateUserCreated is the advanced opt-in that extends AllowUpdate
+	// to also patch user-created skills (Hermes-style). Default false. Even
+	// when true, create and delete on user-created remain impossible at any
+	// config setting.
+	AllowUpdateUserCreated bool `json:"allowUpdateUserCreated,omitempty"`
+}
+
+// AllowCreateOr returns the resolved AllowCreate (default true if unset).
+func (s SelfLearnSkills) AllowCreateOr() bool { return boolOrTrue(s.AllowCreate) }
+
+// AllowUpdateOr returns the resolved AllowUpdate (default true if unset).
+func (s SelfLearnSkills) AllowUpdateOr() bool { return boolOrTrue(s.AllowUpdate) }
+
+// AllowDeleteOr returns the resolved AllowDelete (default true if unset).
+func (s SelfLearnSkills) AllowDeleteOr() bool { return boolOrTrue(s.AllowDelete) }
+
+// MaxKBOr returns the resolved MaxKB (default SelfLearnDefaultMemoryKB if zero).
+func (m SelfLearnMemory) MaxKBOr() int {
+	if m.MaxKB <= 0 {
+		return SelfLearnDefaultMemoryKB
+	}
+	return m.MaxKB
+}
+
+// Validate enforces the cross-field invariants of §3.1: three illegal skill
+// boolean combinations are rejected, and memory.maxKB must lie in (0, 25].
+// Returns nil when the configuration is acceptable (including the all-zero
+// "feature off" case).
+func (s SelfLearnSettings) Validate() error {
+	if s.Memory.MaxKB < 0 || s.Memory.MaxKB > SelfLearnMaxMemoryKB {
+		return fmt.Errorf(
+			"selfLearn.memory.maxKB=%d out of range; must satisfy 0 < maxKB <= %d (§4.2 invariant)",
+			s.Memory.MaxKB, SelfLearnMaxMemoryKB,
+		)
+	}
+	create := s.Skills.AllowCreateOr()
+	update := s.Skills.AllowUpdateOr()
+	deleteOK := s.Skills.AllowDeleteOr()
+	if create && !update {
+		return fmt.Errorf(
+			"selfLearn.skills: allowCreate=true requires allowUpdate=true; otherwise created skills could never be refined",
+		)
+	}
+	if create && update && !deleteOK {
+		return fmt.Errorf(
+			"selfLearn.skills: allowCreate=true requires allowDelete=true; only-add-never-subtract violates the §4.1 retire policy",
+		)
+	}
+	if s.Skills.AllowUpdateUserCreated && !update {
+		return fmt.Errorf(
+			"selfLearn.skills: allowUpdateUserCreated=true requires allowUpdate=true",
+		)
+	}
+	return nil
+}
+
+func boolOrTrue(p *bool) bool {
+	if p == nil {
+		return true
+	}
+	return *p
 }
 
 // PermissionSettings defines permission rules for tool execution.

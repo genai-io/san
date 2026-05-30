@@ -29,6 +29,26 @@ var skillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // supportSubdirs are the only places a skill_manage support file may be written.
 var supportSubdirs = map[string]struct{}{"references": {}, "templates": {}, "scripts": {}}
 
+// ActionPermissions controls what L1 may do via skill_manage. See
+// notes/active/l1-background-review.md §5.5.
+//
+// The first three flags restrict actions only on agent-created skills.
+// AllowUpdateUserCreated is the single advanced opt-in that extends
+// AllowUpdate to also patch user-created skills — create and delete on
+// user-created remain impossible at any setting.
+type ActionPermissions struct {
+	AllowCreate            bool
+	AllowUpdate            bool
+	AllowDelete            bool
+	AllowUpdateUserCreated bool
+}
+
+// DefaultActionPermissions is the safe default: everything allowed within
+// the agent-created scope; user-created stays read-only.
+func DefaultActionPermissions() ActionPermissions {
+	return ActionPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
+}
+
 // SkillManager is the L1-only skill write surface. Skills live directly in
 // gen-code's existing user/project scopes — ~/.gen/skills/<name>/ and
 // ./.gen/skills/<name>/ — distinguished by the origin frontmatter field, not a
@@ -36,19 +56,24 @@ var supportSubdirs = map[string]struct{}{"references": {}, "templates": {}, "scr
 type SkillManager struct {
 	userDir    string
 	projectDir string
+	perms      ActionPermissions
 
 	mu sync.Mutex
 }
 
-// NewSkillManager returns the manager for cwd. The skill dirs are created lazily
-// on first create.
-func NewSkillManager(cwd string) *SkillManager {
+// NewSkillManager returns the manager for cwd with the given action
+// permissions. The skill dirs are created lazily on first create.
+func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
 	home, _ := os.UserHomeDir()
 	return &SkillManager{
 		userDir:    filepath.Join(home, ".gen", "skills"),
 		projectDir: filepath.Join(cwd, ".gen", "skills"),
+		perms:      perms,
 	}
 }
+
+// Perms returns the current action permissions (read-only snapshot).
+func (m *SkillManager) Perms() ActionPermissions { return m.perms }
 
 // SkillInfo is a one-line summary of an existing skill, used to brief the
 // reviewer so it prefers updating over creating and never re-derives a skill
@@ -129,7 +154,9 @@ func (m *SkillManager) resolve(name string) (string, error) {
 }
 
 // requireAgentOwned resolves name and confirms it is agent-created, returning
-// the SKILL.md path. L1 must never mutate user-curated skills.
+// the SKILL.md path. Used for actions where user-created remains off-limits
+// at every config setting (create's existence check is path-based, but delete
+// and full-rewrite edit always use this guard).
 func (m *SkillManager) requireAgentOwned(name string) (string, error) {
 	path, err := m.resolve(name)
 	if err != nil {
@@ -145,7 +172,39 @@ func (m *SkillManager) requireAgentOwned(name string) (string, error) {
 	return path, nil
 }
 
+// requirePatchable resolves name and returns its SKILL.md path when L1 is
+// allowed to patch the body in place. Agent-created skills are always
+// patchable (subject to AllowUpdate); user-created skills are patchable only
+// when AllowUpdateUserCreated is set (§5.5 advanced opt-in).
+func (m *SkillManager) requirePatchable(name string) (string, error) {
+	path, err := m.resolve(name)
+	if err != nil {
+		return "", err
+	}
+	origin, err := readOrigin(path)
+	if err != nil {
+		return "", err
+	}
+	switch origin {
+	case agentOrigin:
+		return path, nil
+	case "", "user-created":
+		if m.perms.AllowUpdateUserCreated {
+			return path, nil
+		}
+		return "", fmt.Errorf(
+			"skill %q is user-created; set selfLearn.skills.allowUpdateUserCreated=true to allow patching",
+			name,
+		)
+	default:
+		return "", fmt.Errorf("skill %q has unknown origin %q", name, origin)
+	}
+}
+
 func (m *SkillManager) Create(name, description, body, level string) (string, error) {
+	if !m.perms.AllowCreate {
+		return "", errActionDenied("create", "allowCreate=false")
+	}
 	if !skillNameRe.MatchString(name) {
 		return "", fmt.Errorf("invalid skill name %q; use a class-level kebab-case name (e.g. go-table-tests)", name)
 	}
@@ -184,6 +243,9 @@ func (m *SkillManager) Create(name, description, body, level string) (string, er
 }
 
 func (m *SkillManager) Edit(name, body string) (string, error) {
+	if !m.perms.AllowUpdate {
+		return "", errActionDenied("edit", "allowUpdate=false")
+	}
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return "", fmt.Errorf("skill content cannot be empty")
@@ -195,6 +257,10 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Edit is a full-body rewrite — restricted to agent-created skills even
+	// with allowUpdateUserCreated=true. Hermes-style "patch a user skill" is
+	// targeted; rewriting the whole body of someone's authored file goes too
+	// far.
 	path, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
@@ -210,10 +276,17 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 }
 
 func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (string, error) {
+	if !m.perms.AllowUpdate {
+		return "", errActionDenied("patch", "allowUpdate=false")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	path, err := m.requireAgentOwned(name)
+	// Patch is the one action whose target scope is extended by
+	// allowUpdateUserCreated (§5.5). Other update-shaped actions (edit,
+	// write_file, remove_file, delete) stay agent-created only.
+	path, err := m.requirePatchable(name)
 	if err != nil {
 		return "", err
 	}
@@ -237,6 +310,9 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 }
 
 func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
+	if !m.perms.AllowUpdate {
+		return "", errActionDenied("write_file", "allowUpdate=false")
+	}
 	// Support files (references/templates/scripts) are read or executed by the
 	// agent, so they get the same threat scan as skill bodies.
 	if err := scanForThreats(content); err != nil {
@@ -246,6 +322,9 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Support-file writes don't extend to user-created skills — adding
+	// references/scripts to someone's authored skill is a structural change,
+	// not a targeted patch, so it stays out of allowUpdateUserCreated.
 	path, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
@@ -265,9 +344,14 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 }
 
 func (m *SkillManager) RemoveFile(name, file string) (string, error) {
+	if !m.perms.AllowUpdate {
+		return "", errActionDenied("remove_file", "allowUpdate=false")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Same scope as WriteFile — agent-created only.
 	path, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
@@ -287,9 +371,15 @@ func (m *SkillManager) RemoveFile(name, file string) (string, error) {
 }
 
 func (m *SkillManager) Delete(name string) (string, error) {
+	if !m.perms.AllowDelete {
+		return "", errActionDenied("delete", "allowDelete=false")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Delete is always restricted to agent-created — no config setting
+	// (including allowUpdateUserCreated) opens user-created deletion (§5.5).
 	path, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
@@ -298,6 +388,14 @@ func (m *SkillManager) Delete(name string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Deleted skill %q.", name), nil
+}
+
+// errActionDenied builds a uniform "permission denied" error for actions the
+// configured ActionPermissions reject. Used as the early-return in the four
+// action entry points so the model sees a consistent shape on the
+// permission-veto path (§5.5).
+func errActionDenied(action, reason string) error {
+	return fmt.Errorf("skill_manage(%s) denied: %s (see selfLearn.skills permissions in §3.1)", action, reason)
 }
 
 // safeSupportFile validates a support-file path: <subdir>/<file>, where subdir

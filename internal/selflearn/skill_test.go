@@ -55,14 +55,22 @@ func TestApplyPatchEscapeDrift(t *testing.T) {
 	}
 }
 
-// newTestSkillManager points user/project skill dirs at temp dirs.
+// newTestSkillManager points user/project skill dirs at temp dirs, with
+// DefaultActionPermissions (all three flags on, user-created untouched).
 func newTestSkillManager(t *testing.T) (*SkillManager, string) {
+	t.Helper()
+	return newTestSkillManagerWithPerms(t, DefaultActionPermissions())
+}
+
+// newTestSkillManagerWithPerms is like newTestSkillManager but lets a test
+// override the action permission set under exercise.
+func newTestSkillManagerWithPerms(t *testing.T, perms ActionPermissions) (*SkillManager, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	cwd := t.TempDir()
-	return NewSkillManager(cwd), cwd
+	return NewSkillManager(cwd, perms), cwd
 }
 
 func TestSkillCreateMarksAgentOrigin(t *testing.T) {
@@ -239,6 +247,114 @@ func TestSkillRejectsInjectionContent(t *testing.T) {
 	_, body, _ := parseSkill(t, mgr, "notes")
 	if !strings.Contains(body, "Original clean body.") {
 		t.Fatalf("clean body was mutated by a rejected write: %q", body)
+	}
+}
+
+// TestSkillActionPermissions covers the §5.5 boolean matrix: each `allow*`
+// flag, when off, must veto its action at dispatch with a uniform
+// "permission denied" error and leave the on-disk state untouched.
+func TestSkillActionPermissions(t *testing.T) {
+	// allowCreate=false vetoes Create.
+	t.Run("create denied", func(t *testing.T) {
+		perms := DefaultActionPermissions()
+		perms.AllowCreate = false
+		mgr, _ := newTestSkillManagerWithPerms(t, perms)
+		_, err := mgr.Create("blocked", "x", "Body.", "user")
+		if err == nil || !strings.Contains(err.Error(), "allowCreate=false") {
+			t.Fatalf("create should be denied with allowCreate=false; got err=%v", err)
+		}
+	})
+
+	// allowUpdate=false vetoes all four update-shaped actions.
+	t.Run("update denied across actions", func(t *testing.T) {
+		// Seed a skill with a permissive manager, then exercise a denying
+		// manager pointed at the same disk.
+		seedPerms := DefaultActionPermissions()
+		seedMgr, cwd := newTestSkillManagerWithPerms(t, seedPerms)
+		if _, err := seedMgr.Create("seeded", "x", "Original body.", "user"); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		denyPerms := DefaultActionPermissions()
+		denyPerms.AllowUpdate = false
+		denyMgr := NewSkillManager(cwd, denyPerms)
+		for _, c := range []struct {
+			name string
+			fn   func() (string, error)
+		}{
+			{"edit", func() (string, error) { return denyMgr.Edit("seeded", "New body.") }},
+			{"patch", func() (string, error) { return denyMgr.Patch("seeded", "Original", "Modified", false) }},
+			{"write_file", func() (string, error) { return denyMgr.WriteFile("seeded", "references/x.md", "note") }},
+			{"remove_file", func() (string, error) { return denyMgr.RemoveFile("seeded", "references/x.md") }},
+		} {
+			if _, err := c.fn(); err == nil || !strings.Contains(err.Error(), "allowUpdate=false") {
+				t.Fatalf("%s should be denied with allowUpdate=false; got err=%v", c.name, err)
+			}
+		}
+
+		// Seed body must still be on disk untouched.
+		_, body, _ := parseSkill(t, seedMgr, "seeded")
+		if !strings.Contains(body, "Original body.") {
+			t.Fatalf("seeded body mutated despite update veto: %q", body)
+		}
+	})
+
+	// allowDelete=false vetoes Delete.
+	t.Run("delete denied", func(t *testing.T) {
+		seedMgr, cwd := newTestSkillManagerWithPerms(t, DefaultActionPermissions())
+		if _, err := seedMgr.Create("doomed", "x", "Body.", "user"); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		denyPerms := DefaultActionPermissions()
+		denyPerms.AllowDelete = false
+		denyMgr := NewSkillManager(cwd, denyPerms)
+		if _, err := denyMgr.Delete("doomed"); err == nil || !strings.Contains(err.Error(), "allowDelete=false") {
+			t.Fatalf("delete should be denied with allowDelete=false; got err=%v", err)
+		}
+		if _, err := seedMgr.resolve("doomed"); err != nil {
+			t.Fatalf("skill should still exist after denied delete: %v", err)
+		}
+	})
+}
+
+// TestSkillAllowUpdateUserCreated covers the single advanced opt-in: it
+// extends Patch to user-created skills, but never Edit, Delete, or Create.
+func TestSkillAllowUpdateUserCreated(t *testing.T) {
+	// Hand-write a user-created skill (no origin field — defaults to user).
+	mgr, cwd := newTestSkillManagerWithPerms(t, DefaultActionPermissions())
+	userDir := filepath.Join(mgr.userDir, "human-authored")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	md := "---\nname: human-authored\ndescription: by a human\n---\n\nOriginal user body.\n"
+	if err := os.WriteFile(filepath.Join(userDir, "SKILL.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Default perms (advanced opt-in OFF): Patch user-created is refused.
+	if _, err := mgr.Patch("human-authored", "Original", "Hacked", false); err == nil {
+		t.Fatal("default perms must refuse patch on user-created")
+	}
+
+	// Advanced opt-in ON: Patch goes through.
+	perms := DefaultActionPermissions()
+	perms.AllowUpdateUserCreated = true
+	advMgr := NewSkillManager(cwd, perms)
+	if _, err := advMgr.Patch("human-authored", "Original user body.", "Refined user body.", false); err != nil {
+		t.Fatalf("advanced opt-in should allow patch on user-created: %v", err)
+	}
+
+	// But Edit (full rewrite), Delete, and WriteFile remain forbidden even
+	// with the advanced opt-in — design invariant: only patch crosses the
+	// user-created boundary.
+	if _, err := advMgr.Edit("human-authored", "Wholesale rewrite."); err == nil {
+		t.Fatal("Edit on user-created must remain forbidden even with allowUpdateUserCreated=true")
+	}
+	if _, err := advMgr.Delete("human-authored"); err == nil {
+		t.Fatal("Delete on user-created must remain forbidden at any setting")
+	}
+	if _, err := advMgr.WriteFile("human-authored", "references/x.md", "note"); err == nil {
+		t.Fatal("WriteFile on user-created must remain forbidden even with allowUpdateUserCreated=true")
 	}
 }
 

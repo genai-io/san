@@ -42,7 +42,7 @@ func (s *scriptedLLM) Infer(_ context.Context, req core.InferRequest) (<-chan co
 
 func TestAllowOnlyPolicy(t *testing.T) {
 	store := newTestStore(t)
-	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp")))
+	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp", DefaultActionPermissions())))
 	policy := allowOnly(tools)
 
 	for _, name := range []string{"memory_write", "skill_manage"} {
@@ -60,7 +60,7 @@ func TestAllowOnlyPolicy(t *testing.T) {
 func TestBuildReviewPromptSelectsArms(t *testing.T) {
 	store := newTestStore(t)
 	mustAdd(t, store, "existing fact about the build")
-	mgr := NewSkillManager("/work/project-x")
+	mgr := NewSkillManager("/work/project-x", DefaultActionPermissions())
 
 	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", mgr)
 	if !strings.Contains(memOnly, "existing fact about the build") {
@@ -83,7 +83,7 @@ func TestBuildReviewPromptSelectsArms(t *testing.T) {
 
 func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	store := newTestStore(t)
-	mgr := NewSkillManager("/work/project-x")
+	mgr := NewSkillManager("/work/project-x", DefaultActionPermissions())
 
 	llm := &scriptedLLM{responses: []core.InferResponse{
 		{
