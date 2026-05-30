@@ -27,8 +27,8 @@ func TestSelfLearnUIPhaseTransitions(t *testing.T) {
 	}
 
 	// Complete → done with change count.
-	s.Step("go-testing")
-	s.Step("memory · debugging")
+	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
+	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory · debugging"})
 	s.Complete()
 	snap = s.Snapshot()
 	if snap.Phase != selflearnDone || snap.Changes != 2 {
@@ -77,12 +77,12 @@ func TestSelfLearnUIFailDecay(t *testing.T) {
 func TestSelfLearnUIStepDebouncesTarget(t *testing.T) {
 	s := NewSelfLearnUIState()
 	s.BeginReview()
-	s.Step("first")
+	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "first"})
 	if got := s.Snapshot().Target; got != "first" {
 		t.Fatalf("initial target: %q", got)
 	}
-	// Immediate second Step is inside the debounce window.
-	s.Step("second")
+	// Immediate second RecordAction is inside the debounce window.
+	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "second"})
 	if got := s.Snapshot().Target; got != "first" {
 		t.Fatalf("debounced target should stay %q, got %q", "first", got)
 	}
@@ -102,6 +102,53 @@ func TestSelfLearnUITickFrameAdvances(t *testing.T) {
 	frame1 := s.Snapshot().Frame
 	if frame1 == frame0 {
 		t.Fatalf("Tick should advance the spinner frame: %d → %d", frame0, frame1)
+	}
+}
+
+// TestFormatRecapBlock locks the §"User-visible surface" delimiter-bounded
+// recap shape: two horizontal rules + one "  · <verb> <kind>   <target>"
+// row per action. Empty input ⇒ "" so the wire-up's "skip publish on no
+// writes" branch keeps working.
+func TestFormatRecapBlock(t *testing.T) {
+	if got := formatRecapBlock(nil); got != "" {
+		t.Fatalf("empty input should yield empty string; got %q", got)
+	}
+	got := formatRecapBlock([]ReviewAction{
+		{Verb: "updated", Kind: "skill", Target: "go-testing"},
+		{Verb: "saved", Kind: "memory", Target: "memory · debugging"},
+		{Verb: "retired", Kind: "skill", Target: "outdated-thing"},
+	})
+	for _, want := range []string{
+		"─",
+		"· updated skill   go-testing",
+		"· saved memory   memory · debugging",
+		"· retired skill   outdated-thing",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("recap missing %q; got:\n%s", want, got)
+		}
+	}
+}
+
+// TestVerbMapping covers the memory_write / skill_manage → recap verb maps
+// so a future action surface stays consistent with the §"User-visible
+// surface" example.
+func TestVerbMapping(t *testing.T) {
+	memCases := map[string]string{"add": "saved", "replace": "replaced", "remove": "removed", "unknown": "unknown"}
+	for in, want := range memCases {
+		if got := memoryVerb(in); got != want {
+			t.Fatalf("memoryVerb(%q): got %q, want %q", in, got, want)
+		}
+	}
+	skillCases := map[string]string{
+		"create": "created", "patch": "updated", "edit": "updated",
+		"write_file": "extended", "remove_file": "trimmed",
+		"delete": "retired", "unknown": "unknown",
+	}
+	for in, want := range skillCases {
+		if got := skillVerb(in); got != want {
+			t.Fatalf("skillVerb(%q): got %q, want %q", in, got, want)
+		}
 	}
 }
 

@@ -73,17 +73,28 @@ const (
 	selflearnFailed
 )
 
+// ReviewAction is one row in the post-pass recap block (§"User-visible
+// surface"). Built from each successful memory_write / skill_manage
+// observer callback — derived from the actual tool calls, NOT from the
+// model's narration, so the recap is structurally accurate.
+type ReviewAction struct {
+	Verb   string // "saved" | "replaced" | "removed" | "updated" | "extended" | "retired" | "created"
+	Kind   string // "memory" or "skill"
+	Target string // skill name, "memory", or "memory · <topic>"
+}
+
 // SelfLearnUIState is the live UI-side state for the L1 indicator. Held by
 // pointer on services so all goroutines mutate the same instance.
 type SelfLearnUIState struct {
 	mu sync.Mutex
 
 	phase     selflearnPhase
-	target    string    // current target shown next to the spinner
-	frame     int       // braille frame index
-	changes   int       // count of writes the current pass has made
-	enteredAt time.Time // for done/failed auto-decay
-	lastSwap  time.Time // for target-swap debounce
+	target    string         // current target shown next to the spinner
+	frame     int            // braille frame index
+	changes   int            // count of writes the current pass has made
+	actions   []ReviewAction // recap action log for the current pass
+	enteredAt time.Time      // for done/failed auto-decay
+	lastSwap  time.Time      // for target-swap debounce
 }
 
 // NewSelfLearnUIState returns a fresh idle state.
@@ -99,21 +110,25 @@ func (s *SelfLearnUIState) BeginReview() {
 	s.target = ""
 	s.frame = 0
 	s.changes = 0
+	s.actions = nil
 	s.enteredAt = time.Now()
 	s.lastSwap = time.Time{}
 }
 
-// Step records a successful write of `target` (a skill name or
-// "memory · <topic>"). Increments the change counter; updates the displayed
-// target unless the previous swap is still inside the debounce window — in
-// which case the old target stays put to avoid flicker.
-func (s *SelfLearnUIState) Step(target string) {
+// RecordAction logs one successful tool call from the fork. It appends to
+// the recap action log, increments the change counter, and (subject to
+// debounce) swaps the displayed target so the user sees the fork's
+// progress as a moving label rather than a single static one. Target is
+// the display string for the spinner tail — for memory writes the caller
+// supplies "memory" or "memory · <topic>", for skills the bare skill name.
+func (s *SelfLearnUIState) RecordAction(act ReviewAction) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.actions = append(s.actions, act)
 	s.changes++
 	now := time.Now()
 	if s.lastSwap.IsZero() || now.Sub(s.lastSwap) >= selflearnTargetDebounce {
-		s.target = target
+		s.target = act.Target
 		s.lastSwap = now
 	}
 }
@@ -179,6 +194,17 @@ func (s *SelfLearnUIState) Snapshot() SelfLearnUISnapshot {
 		Frame:   s.frame,
 		Changes: s.changes,
 	}
+}
+
+// DrainActions returns the action log of the current pass and clears it.
+// Called from the wire-up on Complete to format the user-visible recap
+// block.
+func (s *SelfLearnUIState) DrainActions() []ReviewAction {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.actions
+	s.actions = nil
+	return out
 }
 
 // SelfLearnUISnapshot is the read-only view of the state taken at render

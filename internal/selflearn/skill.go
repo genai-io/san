@@ -173,51 +173,75 @@ func (m *SkillManager) resolve(name string) (string, error) {
 	return "", fmt.Errorf("no skill named %q", name)
 }
 
-// requireAgentOwned resolves name and confirms it is agent-created, returning
-// the SKILL.md path. Used for actions where user-created remains off-limits
-// at every config setting (create's existence check is path-based, but delete
-// and full-rewrite edit always use this guard).
-func (m *SkillManager) requireAgentOwned(name string) (string, error) {
-	path, err := m.resolve(name)
-	if err != nil {
-		return "", err
-	}
-	origin, err := readOrigin(path)
-	if err != nil {
-		return "", err
-	}
-	if origin != agentOrigin {
-		return "", fmt.Errorf("skill %q is user-created and must not be modified by the reviewer", name)
-	}
-	return path, nil
+// parsed is the result of locating + parsing a skill's SKILL.md once. It
+// is the return type of the two guards below so callers (Edit, Patch)
+// don't have to re-parse the same file.
+type parsed struct {
+	path   string
+	origin string
+	fm     string
+	body   string
 }
 
-// requirePatchable resolves name and returns its SKILL.md path when L1 is
-// allowed to patch the body in place. Agent-created skills are always
-// patchable (subject to AllowUpdate); user-created skills are patchable only
-// when AllowUpdateUserCreated is set (§5.5 advanced opt-in).
-func (m *SkillManager) requirePatchable(name string) (string, error) {
+// parseSkill resolves name and parses its SKILL.md frontmatter exactly
+// once. Returns the path, the origin field (empty ⇒ user-created), the
+// raw frontmatter block, and the body.
+func (m *SkillManager) parseSkill(name string) (parsed, error) {
 	path, err := m.resolve(name)
 	if err != nil {
-		return "", err
+		return parsed{}, err
 	}
-	origin, err := readOrigin(path)
+	fm, body, err := markdown.ParseFrontmatterFile(path)
 	if err != nil {
-		return "", err
+		return parsed{}, err
 	}
-	switch origin {
+	var meta struct {
+		Origin string `yaml:"origin"`
+	}
+	if fm != "" {
+		if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
+			return parsed{}, err
+		}
+	}
+	return parsed{path: path, origin: meta.Origin, fm: fm, body: body}, nil
+}
+
+// requireAgentOwned parses name and confirms it is agent-created. Used for
+// actions where user-created remains off-limits at every config setting
+// (delete, edit, write_file, remove_file).
+func (m *SkillManager) requireAgentOwned(name string) (parsed, error) {
+	p, err := m.parseSkill(name)
+	if err != nil {
+		return parsed{}, err
+	}
+	if p.origin != agentOrigin {
+		return parsed{}, fmt.Errorf("skill %q is user-created and must not be modified by the reviewer", name)
+	}
+	return p, nil
+}
+
+// requirePatchable parses name and returns it when L1 is allowed to patch
+// the body in place. Agent-created skills are always patchable (subject to
+// AllowUpdate); user-created skills are patchable only when
+// AllowUpdateUserCreated is set (§5.5 advanced opt-in).
+func (m *SkillManager) requirePatchable(name string) (parsed, error) {
+	p, err := m.parseSkill(name)
+	if err != nil {
+		return parsed{}, err
+	}
+	switch p.origin {
 	case agentOrigin:
-		return path, nil
+		return p, nil
 	case "", "user-created":
 		if m.perms.AllowUpdateUserCreated {
-			return path, nil
+			return p, nil
 		}
-		return "", fmt.Errorf(
+		return parsed{}, fmt.Errorf(
 			"skill %q is user-created; set selfLearn.skills.allowUpdateUserCreated=true to allow patching",
 			name,
 		)
 	default:
-		return "", fmt.Errorf("skill %q has unknown origin %q", name, origin)
+		return parsed{}, fmt.Errorf("skill %q has unknown origin %q", name, p.origin)
 	}
 }
 
@@ -282,15 +306,11 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 	// with allowUpdateUserCreated=true. Hermes-style "patch a user skill" is
 	// targeted; rewriting the whole body of someone's authored file goes too
 	// far.
-	path, err := m.requireAgentOwned(name)
+	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
 	}
-	fm, _, err := markdown.ParseFrontmatterFile(path)
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(path, []byte(joinFrontmatter(fm, body)), 0o644); err != nil {
+	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, body)), 0o644); err != nil {
 		return "", err
 	}
 	m.fireWrite("edit", name)
@@ -308,15 +328,11 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 	// Patch is the one action whose target scope is extended by
 	// allowUpdateUserCreated (§5.5). Other update-shaped actions (edit,
 	// write_file, remove_file, delete) stay agent-created only.
-	path, err := m.requirePatchable(name)
+	p, err := m.requirePatchable(name)
 	if err != nil {
 		return "", err
 	}
-	fm, body, err := markdown.ParseFrontmatterFile(path)
-	if err != nil {
-		return "", err
-	}
-	patched, err := applyPatch(body, oldText, newText, replaceAll)
+	patched, err := applyPatch(p.body, oldText, newText, replaceAll)
 	if err != nil {
 		return "", err
 	}
@@ -325,7 +341,7 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 	if err := scanForThreats(patched); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(joinFrontmatter(fm, patched)), 0o644); err != nil {
+	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, patched)), 0o644); err != nil {
 		return "", err
 	}
 	m.fireWrite("patch", name)
@@ -348,7 +364,7 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 	// Support-file writes don't extend to user-created skills — adding
 	// references/scripts to someone's authored skill is a structural change,
 	// not a targeted patch, so it stays out of allowUpdateUserCreated.
-	path, err := m.requireAgentOwned(name)
+	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +372,7 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(filepath.Dir(path), rel)
+	dest := filepath.Join(filepath.Dir(p.path), rel)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return "", err
 	}
@@ -376,7 +392,7 @@ func (m *SkillManager) RemoveFile(name, file string) (string, error) {
 	defer m.mu.Unlock()
 
 	// Same scope as WriteFile — agent-created only.
-	path, err := m.requireAgentOwned(name)
+	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
 	}
@@ -384,7 +400,7 @@ func (m *SkillManager) RemoveFile(name, file string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	dest := filepath.Join(filepath.Dir(path), rel)
+	dest := filepath.Join(filepath.Dir(p.path), rel)
 	if err := os.Remove(dest); err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("no such support file %q", rel)
@@ -405,11 +421,11 @@ func (m *SkillManager) Delete(name string) (string, error) {
 
 	// Delete is always restricted to agent-created — no config setting
 	// (including allowUpdateUserCreated) opens user-created deletion (§5.5).
-	path, err := m.requireAgentOwned(name)
+	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
 	}
-	if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+	if err := os.RemoveAll(filepath.Dir(p.path)); err != nil {
 		return "", err
 	}
 	m.fireWrite("delete", name)

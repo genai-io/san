@@ -79,15 +79,23 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	//     event loop surfaces a notice + content block in the conversation
 	//     flow ("Nothing to save" stays silent).
 	// Wire per-write observers so the UI state picks up each successful
-	// memory_write / skill_manage call and the status-bar target swap
-	// ("evolving ⠋ go-testing", "evolving ⠋ memory · debugging", …). The
-	// callbacks run on the fork's goroutine; SelfLearnUIState handles its
-	// own mutex.
-	memStore.SetWriteObserver(func(file string) {
-		m.services.SelfLearnUI.Step("memory" + memoryTopicSuffix(file))
+	// memory_write / skill_manage call. The action verbs feed both the
+	// live spinner-tail label and the post-pass recap block formatted by
+	// formatRecapBlock. The callbacks run on the fork's goroutine;
+	// SelfLearnUIState handles its own mutex.
+	memStore.SetWriteObserver(func(action, file string) {
+		m.services.SelfLearnUI.RecordAction(ReviewAction{
+			Verb:   memoryVerb(action),
+			Kind:   "memory",
+			Target: "memory" + memoryTopicSuffix(file),
+		})
 	})
-	skillMgr.SetWriteObserver(func(_action, name string) {
-		m.services.SelfLearnUI.Step(name)
+	skillMgr.SetWriteObserver(func(action, name string) {
+		m.services.SelfLearnUI.RecordAction(ReviewAction{
+			Verb:   skillVerb(action),
+			Kind:   "skill",
+			Target: name,
+		})
 	})
 
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
@@ -131,14 +139,17 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			m.publishSelfLearnFailure(kinds, runErr)
 			return
 		}
-		if isNothingToSave(summary) {
-			return // §6 invariant #7 — silent on "Nothing to save."
+		// Drain the action log AFTER Complete so the snapshot the status
+		// bar formats during the done-hold still has the change count.
+		actions := m.services.SelfLearnUI.DrainActions()
+		if len(actions) == 0 || isNothingToSave(summary) {
+			return // §6 invariant #7 — silent when nothing changed.
 		}
 		log.Logger().Info("self-learning review",
 			zap.String("kinds", kinds.String()),
-			zap.String("summary", summary),
+			zap.Int("changes", len(actions)),
 		)
-		m.publishSelfLearnSummary(kinds, summary)
+		m.publishSelfLearnSummary(kinds, actions)
 	}
 
 	r := selflearn.New(resolved.Config, review)
@@ -210,14 +221,14 @@ func countUserTurns(msgs []core.Message) int {
 	return n
 }
 
-// publishSelfLearnSummary surfaces the just-completed review's one-line
-// summary as a hub.Event targeted at "main", which the model loop routes
-// through onMainEvent → injectNotification to display in the conversation
-// flow. The recap block (§"User-visible surface") is the user's audit
-// trail of what L1 just changed. Silent on "Nothing to save" by virtue of
-// the caller's empty-summary check.
-func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, summary string) {
-	if m.agentEventHub == nil {
+// publishSelfLearnSummary surfaces the just-completed review's recap block
+// as a hub.Event targeted at "main", which the model loop routes through
+// onMainEvent → injectNotification to display in the conversation flow.
+// The block is built from the action log (the actual tool calls), not the
+// model's narration, so it reads as a structural audit trail rather than
+// a self-report.
+func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []ReviewAction) {
+	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
 	m.agentEventHub.Publish(hub.Event{
@@ -225,8 +236,61 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, summary stri
 		Source:  "selflearn",
 		Target:  "main",
 		Subject: fmt.Sprintf("Self-improvement review (%s)", kinds.String()),
-		Data:    summary,
+		Data:    formatRecapBlock(actions),
 	})
+}
+
+// formatRecapBlock builds the delimiter-bounded multi-line recap from the
+// pass's action log. Layout matches the design doc's §"User-visible surface"
+// example. Empty input ⇒ "" so callers can skip the publish on a no-write
+// pass.
+func formatRecapBlock(actions []ReviewAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	const rule = "─────────────────────────────────────────────────"
+	var b strings.Builder
+	b.WriteString(rule)
+	b.WriteString("\n")
+	for _, a := range actions {
+		fmt.Fprintf(&b, "  · %s %s   %s\n", a.Verb, a.Kind, a.Target)
+	}
+	b.WriteString(rule)
+	return b.String()
+}
+
+// memoryVerb maps a memory_write action to the recap-line verb.
+func memoryVerb(action string) string {
+	switch action {
+	case "add":
+		return "saved"
+	case "replace":
+		return "replaced"
+	case "remove":
+		return "removed"
+	default:
+		return action
+	}
+}
+
+// skillVerb maps a skill_manage action to the recap-line verb. patch / edit
+// collapse to "updated" because the distinction matters at write time but
+// not in a recap; write_file / remove_file describe support-file edits.
+func skillVerb(action string) string {
+	switch action {
+	case "create":
+		return "created"
+	case "patch", "edit":
+		return "updated"
+	case "write_file":
+		return "extended"
+	case "remove_file":
+		return "trimmed"
+	case "delete":
+		return "retired"
+	default:
+		return action
+	}
 }
 
 // publishSelfLearnStarted fires a small hub event the instant a review fork

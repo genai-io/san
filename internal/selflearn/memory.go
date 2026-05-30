@@ -39,14 +39,16 @@ const DefaultMemoryFileCharLimit = 25000
 // concurrency is best-effort (atomic rename only) — flagged as an open question
 // for L2.
 // MemoryWriteObserver is invoked after every successful Add / Replace /
-// Remove. file is the basename being written ("" ⇒ MEMORY.md index). Used
-// by the UI layer to track the current target for the
-// §"User-visible surface" "evolving … memory · <topic>" status-bar line.
+// Remove. action is the §4.1 tool action ("add" | "replace" | "remove");
+// file is the basename being written ("" ⇒ MEMORY.md index). Used by the
+// UI layer to track the current target for the §"User-visible surface"
+// "evolving … memory · <topic>" status-bar line and to build the recap
+// action log.
 //
 // Contract: SetWriteObserver MUST be called before the first write; the
 // reviewer fork is single-flight per session (§6 invariant #8) so we do
 // not guard the observer field with a lock.
-type MemoryWriteObserver func(file string)
+type MemoryWriteObserver func(action, file string)
 
 type MemoryStore struct {
 	dir     string
@@ -70,9 +72,9 @@ func NewMemoryStore(cwd string, maxFile int) *MemoryStore {
 // write. Must be called before the first write (see type doc).
 func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) { s.onWrite = fn }
 
-func (s *MemoryStore) fireWrite(file string) {
+func (s *MemoryStore) fireWrite(action, file string) {
 	if s.onWrite != nil {
-		s.onWrite(file)
+		s.onWrite(action, file)
 	}
 }
 
@@ -125,7 +127,7 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite(file)
+	s.fireWrite("add", file)
 	return "Entry added.", nil
 }
 
@@ -164,7 +166,7 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite(file)
+	s.fireWrite("replace", file)
 	return "Entry replaced.", nil
 }
 
@@ -191,7 +193,7 @@ func (s *MemoryStore) Remove(file, oldText string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite(file)
+	s.fireWrite("remove", file)
 	return "Entry removed.", nil
 }
 
