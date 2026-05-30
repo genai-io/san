@@ -132,6 +132,13 @@ func awaitMainEvent(ch <-chan hub.Event) tea.Cmd {
 // is empty, so the next firing waits for the next publish.
 func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
 	next := awaitMainEvent(m.mainEvents)
+	// Selflearn tick-start events are internal wake-ups for the spinner —
+	// they must never become user-visible notices. Drain immediately into a
+	// tick schedule regardless of stream state; the tick itself is cheap
+	// and the indicator should be visible from the first frame.
+	if ev.Type == "selflearn.review.started" {
+		return tea.Batch(scheduleSelflearnTick(), next)
+	}
 	if m.conv.Stream.Active {
 		m.pendingMainEvents = append(m.pendingMainEvents, ev)
 		return next

@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/gen-code/internal/agent"
@@ -64,9 +66,35 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	//   - Publish a hub.Event with the completion summary so the main
 	//     event loop surfaces a notice + content block in the conversation
 	//     flow ("Nothing to save" stays silent).
+	// Wire per-write observers so the UI state picks up each successful
+	// memory_write / skill_manage call and the status-bar target swap
+	// ("evolving ⠋ go-testing", "evolving ⠋ memory · debugging", …). The
+	// callbacks run on the fork's goroutine; SelfLearnUIState handles its
+	// own mutex.
+	memStore.SetWriteObserver(func(file string) {
+		m.services.SelfLearnUI.Step("memory" + memoryTopicSuffix(file))
+	})
+	skillMgr.SetWriteObserver(func(_action, name string) {
+		m.services.SelfLearnUI.Step(name)
+	})
+
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
-		m.services.SelfLearnRunning.Store(true)
-		defer m.services.SelfLearnRunning.Store(false)
+		m.services.SelfLearnUI.BeginReview()
+		// Tell the main loop to start the spinner tick. Published before the
+		// fork runs so the indicator is visible from the first frame.
+		m.publishSelfLearnStarted(kinds)
+		var (
+			summary string
+			runErr  error
+		)
+		defer func() {
+			switch {
+			case runErr != nil:
+				m.services.SelfLearnUI.Fail()
+			default:
+				m.services.SelfLearnUI.Complete()
+			}
+		}()
 
 		ag, ok := m.currentAgent()
 		if !ok {
@@ -82,7 +110,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Memory: memStore,
 			Skills: skillMgr,
 		}
-		summary, runErr := selflearn.RunReview(context.Background(), fc, kinds, snapshot)
+		summary, runErr = selflearn.RunReview(context.Background(), fc, kinds, snapshot)
 		if runErr != nil {
 			log.Logger().Warn("self-learning review failed",
 				zap.String("kinds", kinds.String()),
@@ -103,6 +131,20 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	r := selflearn.New(resolved.Config, review)
 	r.SeedTurns(countUserTurns(m.conv.ConvertToProvider()))
 	m.services.SelfLearn = r
+}
+
+// handleSelflearnTick advances the L1 indicator state (spinner frame +
+// done/failed decay) and re-arms the next tick if the indicator is still
+// in a non-idle phase. Returns nil when the state is idle so the tick
+// loop quiesces cleanly.
+func (m *model) handleSelflearnTick() tea.Cmd {
+	if m.services.SelfLearnUI == nil {
+		return nil
+	}
+	if !m.services.SelfLearnUI.Tick(time.Now()) {
+		return nil
+	}
+	return scheduleSelflearnTick()
 }
 
 // forwardTurnToSelfLearn hands the just-completed turn Result to the L1
@@ -150,6 +192,17 @@ type systemOnlyAgent struct {
 
 func (s systemOnlyAgent) System() core.System { return s.sys }
 
+// memoryTopicSuffix turns the file name reported by MemoryStore into the
+// status-bar tail rendered after the "memory" label. "" or the index file
+// produce no suffix; topic files like "debugging.md" become " · debugging".
+func memoryTopicSuffix(file string) string {
+	file = strings.TrimSuffix(file, ".md")
+	if file == "" || file == "MEMORY" || file == "memory" {
+		return ""
+	}
+	return " · " + file
+}
+
 // countUserTurns counts the user messages in a preloaded history so the
 // memory arm's counter resumes on the right cadence beat after session
 // restore (invariant #8 hydrate). Skips system / tool messages.
@@ -179,6 +232,22 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, summary stri
 		Target:  "main",
 		Subject: fmt.Sprintf("Self-improvement review (%s)", kinds.String()),
 		Data:    summary,
+	})
+}
+
+// publishSelfLearnStarted fires a small hub event the instant a review fork
+// is about to run. The main loop reacts by scheduling the first spinner
+// tick, so the "evolving ⠋" indicator is visible from frame one without
+// the render path having to poll for state changes.
+func (m *model) publishSelfLearnStarted(kinds selflearn.ReviewKind) {
+	if m.agentEventHub == nil {
+		return
+	}
+	m.agentEventHub.Publish(hub.Event{
+		Type:    "selflearn.review.started",
+		Source:  "selflearn",
+		Target:  "main",
+		Subject: kinds.String(),
 	})
 }
 

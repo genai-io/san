@@ -1,8 +1,6 @@
 package app
 
 import (
-	"sync/atomic"
-
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/command"
 	"github.com/genai-io/gen-code/internal/cron"
@@ -49,13 +47,11 @@ type services struct {
 	// overhead: no goroutine, no counters, no extra model calls.
 	SelfLearn *selflearn.Reviewer
 
-	// SelfLearnRunning reflects whether a review fork is currently in flight.
-	// Drives the status-bar "evolving" indicator (§"User-visible surface").
-	// Set by the ReviewFunc on entry / cleared on exit; the value is safe to
-	// read from the render goroutine without locking. Held as a pointer so
-	// the surrounding services struct stays freely copy-able (the View()
-	// path takes the model by value through several helpers).
-	SelfLearnRunning *atomic.Bool
+	// SelfLearnUI drives the four-phase status-bar surface from the design's
+	// §"User-visible surface". Always non-nil so the render path can take
+	// Snapshot() without a nil check; the snapshot reports an idle phase
+	// when L1 is off or no review has run yet.
+	SelfLearnUI *SelfLearnUIState
 }
 
 func newServices() services {
@@ -73,10 +69,10 @@ func newServices() services {
 		Cron:     cron.Default(),
 		MCP:      mcp.DefaultRegistry(),
 		Plugin:   plugin.Default(),
-		Agent:            agent.Default(),
-		Identity:         identity.Default(),
-		Reminder:         reminder.NewService(),
-		SelfLearnRunning: new(atomic.Bool),
+		Agent:       agent.Default(),
+		Identity:    identity.Default(),
+		Reminder:    reminder.NewService(),
+		SelfLearnUI: NewSelfLearnUIState(),
 	}
 }
 

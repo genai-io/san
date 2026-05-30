@@ -112,6 +112,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleStopHookResult(msg)
 	case mainEventMsg:
 		return m, m.onMainEvent(msg.event)
+	case selflearnTickMsg:
+		return m, m.handleSelflearnTick()
 	}
 
 	if cmd, handled := m.routeToSubModel(msg); handled {

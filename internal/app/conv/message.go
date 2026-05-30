@@ -50,11 +50,13 @@ type OperationModeParams struct {
 	ShowThinking     bool
 	QueueCount       int
 
-	// SelfLearnEvolving is true while an L1 review fork is in flight. Drives
-	// the bottom-left "evolving" indicator (see
-	// notes/active/l1-background-review.md §"User-visible surface"). Hidden
-	// when false — idle and disabled both produce the same status line.
-	SelfLearnEvolving bool
+	// SelfLearnSegment is the rendered "evolving …" / "evolved · N changes"
+	// / "evolving failed" status-bar segment for the L1 reviewer. Empty
+	// when the reviewer is idle or disabled — and idle and disabled
+	// produce the same status line. The owning package computes the body
+	// from its UI-state snapshot so this layer stays string-only and the
+	// rendering style lives in one place.
+	SelfLearnSegment string
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -75,8 +77,8 @@ func RenderModeStatus(params OperationModeParams) string {
 		leftParts = append(leftParts, queueBadge)
 	}
 
-	if params.SelfLearnEvolving {
-		leftParts = append(leftParts, renderSelfLearnIndicator())
+	if params.SelfLearnSegment != "" {
+		leftParts = append(leftParts, renderSelfLearnIndicator(params.SelfLearnSegment))
 	}
 
 	left := strings.Join(leftParts, "  ")
@@ -680,12 +682,13 @@ var selfLearnIndicatorStyle = lipgloss.NewStyle().
 	Foreground(kit.CurrentTheme.Muted).
 	Italic(true)
 
-// renderSelfLearnIndicator returns the compact "evolving …" text shown in
-// the status bar while a review fork is running. No emoji or braille —
-// just the gerund + ellipsis (echoes the project theme "self-evolving").
-// Hidden when the review is idle or disabled.
-func renderSelfLearnIndicator() string {
-	return selfLearnIndicatorStyle.Render("evolving …")
+// renderSelfLearnIndicator wraps the caller-provided segment in the muted,
+// italic style so the L1 review status reads as a single visual unit with
+// the rest of the bar. The segment text itself ("evolving ⠋ go-testing" /
+// "evolved · 3 changes" / "evolving failed") comes from the UI-state
+// owner so the rendering style lives in one place.
+func renderSelfLearnIndicator(segment string) string {
+	return selfLearnIndicatorStyle.Render(segment)
 }
 
 func truncateQueueContent(s string, maxLen int) string {

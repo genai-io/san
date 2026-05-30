@@ -38,9 +38,19 @@ const DefaultMemoryFileCharLimit = 25000
 // mutating, so an in-flight write never clobbers a concurrent one. Cross-process
 // concurrency is best-effort (atomic rename only) — flagged as an open question
 // for L2.
+// MemoryWriteObserver is invoked after every successful Add / Replace /
+// Remove. Implementations must be cheap and goroutine-safe: the callback
+// fires from the reviewer fork's goroutine, holding no MemoryStore locks.
+// file is the basename being written (empty ⇒ MEMORY.md index). Used by the
+// UI layer to track the current target for the §"User-visible surface"
+// "evolving … memory · <topic>" status-bar line.
+type MemoryWriteObserver func(file string)
+
 type MemoryStore struct {
-	dir     string
-	maxFile int // per-file char cap; 0 ⇒ DefaultMemoryFileCharLimit
+	dir       string
+	maxFile   int // per-file char cap; 0 ⇒ DefaultMemoryFileCharLimit
+	onWrite   MemoryWriteObserver
+	observeMu sync.RWMutex
 
 	mu sync.Mutex
 }
@@ -65,6 +75,27 @@ func NewMemoryStoreWithCap(cwd string, maxFile int) *MemoryStore {
 
 // MaxFileChars returns the per-file char cap this store enforces.
 func (s *MemoryStore) MaxFileChars() int { return s.maxFile }
+
+// SetWriteObserver registers a callback invoked after every successful
+// write. Pass nil to clear. Safe to call concurrently with the writes
+// themselves.
+func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) {
+	s.observeMu.Lock()
+	s.onWrite = fn
+	s.observeMu.Unlock()
+}
+
+// fireWrite invokes the registered observer, holding observeMu only for the
+// pointer read. The callback runs unlocked so it can synchronize with its
+// own state without nesting locks under MemoryStore.mu.
+func (s *MemoryStore) fireWrite(file string) {
+	s.observeMu.RLock()
+	fn := s.onWrite
+	s.observeMu.RUnlock()
+	if fn != nil {
+		fn(file)
+	}
+}
 
 // Dir is the on-disk directory backing the store.
 func (s *MemoryStore) Dir() string { return s.dir }
@@ -115,6 +146,7 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
+	s.fireWrite(file)
 	return "Entry added.", nil
 }
 
@@ -153,6 +185,7 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
+	s.fireWrite(file)
 	return "Entry replaced.", nil
 }
 
@@ -179,6 +212,7 @@ func (s *MemoryStore) Remove(file, oldText string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
+	s.fireWrite(file)
 	return "Entry removed.", nil
 }
 

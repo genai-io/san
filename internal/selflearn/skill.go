@@ -49,6 +49,13 @@ func DefaultActionPermissions() ActionPermissions {
 	return ActionPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
 }
 
+// SkillWriteObserver is invoked after every successful create / patch /
+// edit / write_file / remove_file / delete. action is the §5.3 action name;
+// name is the affected skill. Used by the UI layer to track the current
+// target for the "evolving … <skill-name>" status-bar line. Implementations
+// must be cheap and goroutine-safe.
+type SkillWriteObserver func(action, name string)
+
 // SkillManager is the L1-only skill write surface. Skills live directly in
 // gen-code's existing user/project scopes — ~/.gen/skills/<name>/ and
 // ./.gen/skills/<name>/ — distinguished by the origin frontmatter field, not a
@@ -57,6 +64,8 @@ type SkillManager struct {
 	userDir    string
 	projectDir string
 	perms      ActionPermissions
+	onWrite    SkillWriteObserver
+	observeMu  sync.RWMutex
 
 	mu sync.Mutex
 }
@@ -74,6 +83,27 @@ func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
 
 // Perms returns the current action permissions (read-only snapshot).
 func (m *SkillManager) Perms() ActionPermissions { return m.perms }
+
+// SetWriteObserver registers a callback invoked after every successful
+// write. Pass nil to clear. Safe to call concurrently with the writes
+// themselves.
+func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) {
+	m.observeMu.Lock()
+	m.onWrite = fn
+	m.observeMu.Unlock()
+}
+
+// fireWrite invokes the registered observer with the action / name pair.
+// The callback runs unlocked so it can synchronize with its own state
+// without nesting under SkillManager.mu.
+func (m *SkillManager) fireWrite(action, name string) {
+	m.observeMu.RLock()
+	fn := m.onWrite
+	m.observeMu.RUnlock()
+	if fn != nil {
+		fn(action, name)
+	}
+}
 
 // SkillInfo is a one-line summary of an existing skill, used to brief the
 // reviewer so it prefers updating over creating and never re-derives a skill
@@ -239,6 +269,7 @@ func (m *SkillManager) Create(name, description, body, level string) (string, er
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
 		return "", err
 	}
+	m.fireWrite("create", name)
 	return fmt.Sprintf("Created skill %q.", name), nil
 }
 
@@ -272,6 +303,7 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 	if err := os.WriteFile(path, []byte(joinFrontmatter(fm, body)), 0o644); err != nil {
 		return "", err
 	}
+	m.fireWrite("edit", name)
 	return fmt.Sprintf("Rewrote skill %q.", name), nil
 }
 
@@ -306,6 +338,7 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 	if err := os.WriteFile(path, []byte(joinFrontmatter(fm, patched)), 0o644); err != nil {
 		return "", err
 	}
+	m.fireWrite("patch", name)
 	return fmt.Sprintf("Patched skill %q.", name), nil
 }
 
@@ -340,6 +373,7 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
 		return "", err
 	}
+	m.fireWrite("write_file", name)
 	return fmt.Sprintf("Wrote %s to skill %q.", rel, name), nil
 }
 
@@ -367,6 +401,7 @@ func (m *SkillManager) RemoveFile(name, file string) (string, error) {
 		}
 		return "", err
 	}
+	m.fireWrite("remove_file", name)
 	return fmt.Sprintf("Removed %s from skill %q.", rel, name), nil
 }
 
@@ -387,6 +422,7 @@ func (m *SkillManager) Delete(name string) (string, error) {
 	if err := os.RemoveAll(filepath.Dir(path)); err != nil {
 		return "", err
 	}
+	m.fireWrite("delete", name)
 	return fmt.Sprintf("Deleted skill %q.", name), nil
 }
 

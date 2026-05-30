@@ -221,9 +221,18 @@ func (m model) renderModeStatus() string {
 		Width:             m.env.Width,
 		ThinkingEffort:    thinkingEffort,
 		ShowThinking:      showThinking,
-		QueueCount:        m.userInput.Queue.Len(),
-		SelfLearnEvolving: m.services.SelfLearnRunning != nil && m.services.SelfLearnRunning.Load(),
+		QueueCount:       m.userInput.Queue.Len(),
+		SelfLearnSegment: m.selfLearnSegment(),
 	})
+}
+
+// selfLearnSegment returns the rendered L1 status-bar text (or "" when the
+// state is idle / unwired). The render style is applied by the conv layer.
+func (m model) selfLearnSegment() string {
+	if m.services.SelfLearnUI == nil {
+		return ""
+	}
+	return m.services.SelfLearnUI.Snapshot().Render()
 }
 
 func (m model) renderQueuePreview() string {
