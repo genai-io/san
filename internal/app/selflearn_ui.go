@@ -10,7 +10,7 @@
 //
 // The state is updated from two goroutines:
 //
-//   - The reviewer fork's goroutine, via BeginReview / Step / Complete / Fail.
+//   - The reviewer fork's goroutine, via BeginReview / RecordAction / Complete / Fail.
 //   - The Bubble Tea Update goroutine, via Tick (which advances the spinner
 //     frame and decays done/failed back to idle once their hold expires).
 //
@@ -24,6 +24,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/genai-io/gen-code/internal/app/kit"
 )
 
 // selflearnTickMsg is the periodic tea.Msg that advances the spinner frame
@@ -38,13 +40,6 @@ func scheduleSelflearnTick() tea.Cmd {
 	return tea.Tick(selflearnTickInterval, func(time.Time) tea.Msg {
 		return selflearnTickMsg{}
 	})
-}
-
-// brailleSpinnerFrames is the ten-frame braille spinner used while a review
-// fork is in flight. Standard terminal-spinner glyphs (not emoji), chosen
-// because they render in every monospace font and animate smoothly.
-var brailleSpinnerFrames = []string{
-	"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
 }
 
 // selflearnTickInterval is the spinner cadence. ~100 ms reads as a smooth
@@ -91,8 +86,8 @@ type SelfLearnUIState struct {
 	phase     selflearnPhase
 	target    string         // current target shown next to the spinner
 	frame     int            // braille frame index
-	changes   int            // count of writes the current pass has made
 	actions   []ReviewAction // recap action log for the current pass
+	doneCount int            // captures len(actions) at Complete so the done-hold render survives DrainActions
 	enteredAt time.Time      // for done/failed auto-decay
 	lastSwap  time.Time      // for target-swap debounce
 }
@@ -109,8 +104,8 @@ func (s *SelfLearnUIState) BeginReview() {
 	s.phase = selflearnReviewing
 	s.target = ""
 	s.frame = 0
-	s.changes = 0
 	s.actions = nil
+	s.doneCount = 0
 	s.enteredAt = time.Now()
 	s.lastSwap = time.Time{}
 }
@@ -125,7 +120,6 @@ func (s *SelfLearnUIState) RecordAction(act ReviewAction) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.actions = append(s.actions, act)
-	s.changes++
 	now := time.Now()
 	if s.lastSwap.IsZero() || now.Sub(s.lastSwap) >= selflearnTargetDebounce {
 		s.target = act.Target
@@ -134,13 +128,14 @@ func (s *SelfLearnUIState) RecordAction(act ReviewAction) {
 }
 
 // Complete is called when the fork returns successfully. The change
-// counter is preserved through the done-hold so "evolved · N changes"
-// can show it.
+// count is snapshotted into doneCount so the done-hold render survives
+// a subsequent DrainActions (which clears s.actions for the next pass).
 func (s *SelfLearnUIState) Complete() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.phase = selflearnDone
 	s.target = ""
+	s.doneCount = len(s.actions)
 	s.enteredAt = time.Now()
 }
 
@@ -162,12 +157,11 @@ func (s *SelfLearnUIState) Tick(now time.Time) (stillActive bool) {
 	defer s.mu.Unlock()
 	switch s.phase {
 	case selflearnReviewing:
-		s.frame = (s.frame + 1) % len(brailleSpinnerFrames)
+		s.frame = (s.frame + 1) % len(kit.BrailleSpinnerFrames)
 		return true
 	case selflearnDone:
 		if now.Sub(s.enteredAt) >= selflearnDoneHoldDuration {
 			s.phase = selflearnIdle
-			s.changes = 0
 			return false
 		}
 		return true
@@ -192,8 +186,19 @@ func (s *SelfLearnUIState) Snapshot() SelfLearnUISnapshot {
 		Phase:   s.phase,
 		Target:  s.target,
 		Frame:   s.frame,
-		Changes: s.changes,
+		Changes: s.changesForRender(),
 	}
+}
+
+// changesForRender returns the count appropriate for the current phase:
+// during reviewing it tracks the live len(actions); during done it sticks
+// at the snapshot captured in Complete so DrainActions doesn't blank
+// "evolved · N changes" mid-hold.
+func (s *SelfLearnUIState) changesForRender() int {
+	if s.phase == selflearnDone {
+		return s.doneCount
+	}
+	return len(s.actions)
 }
 
 // DrainActions returns the action log of the current pass and clears it.
@@ -222,7 +227,7 @@ type SelfLearnUISnapshot struct {
 func (s SelfLearnUISnapshot) Render() string {
 	switch s.Phase {
 	case selflearnReviewing:
-		spinner := brailleSpinnerFrames[s.Frame%len(brailleSpinnerFrames)]
+		spinner := kit.BrailleSpinnerFrames[s.Frame%len(kit.BrailleSpinnerFrames)]
 		if s.Target == "" {
 			return "evolving " + spinner
 		}

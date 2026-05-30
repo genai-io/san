@@ -387,9 +387,10 @@ func (s *ProviderSelector) connectResultStyle() lipgloss.Style {
 	return kit.DimStyle()
 }
 
-// providerSpinnerFrames is the braille spinner shown while a connect/refresh
-// is in flight, advanced by each ProviderConnectingMsg.
-var providerSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+// providerSpinnerFrames aliases kit.BrailleSpinnerFrames so callers keep
+// the existing local name; the table itself is shared (see kit/spinner.go)
+// so non-Unicode TTY fallbacks land in one place.
+var providerSpinnerFrames = kit.BrailleSpinnerFrames
 
 func (s *ProviderSelector) renderConnectResult() string {
 	// While in flight, show just the animated braille spinner (no text).

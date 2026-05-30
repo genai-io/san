@@ -282,7 +282,7 @@ func (m *model) wireReminderProviders() {
 func (m *model) StopAgentSession() {
 	m.services.Agent.Stop()
 	// Stop feeding the L1 reviewer. Any in-flight review goroutine finishes
-	// on its own deadline (selflearn.DefaultForkDeadline).
+	// on its own deadline (forkDeadline inside selflearn).
 	m.services.SelfLearn = nil
 }
 

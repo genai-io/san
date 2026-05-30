@@ -381,6 +381,7 @@ func (s *Data) Clone() *Data {
 	dst.Theme = s.Theme
 	dst.SearchProvider = s.SearchProvider
 	dst.Identity = s.Identity
+	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v

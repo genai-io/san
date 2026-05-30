@@ -179,15 +179,14 @@ const (
 type configRow struct {
 	kind       rowKind
 	label      string
-	tail       string                                              // right-aligned value text (computed at render)
-	toggle     func(*setting.SelfLearnSettings)                    // for rowBool
-	boolGetter func(*setting.SelfLearnSettings) bool               // for rowBool render
-	intGetter  func(*setting.SelfLearnSettings) int                // for rowInt
-	intSetter  func(*setting.SelfLearnSettings, int)               // for rowInt
-	intMin     int                                                 // for rowInt
-	intMax     int                                                 // for rowInt
-	editable   bool                                                // whether ↑↓ stops here
-	indent     int                                                 // visual indent level
+	toggle     func(*setting.SelfLearnSettings)      // for rowBool
+	boolGetter func(*setting.SelfLearnSettings) bool // for rowBool render
+	intGetter  func(*setting.SelfLearnSettings) int  // for rowInt
+	intSetter  func(*setting.SelfLearnSettings, int) // for rowInt
+	intMin     int                                   // for rowInt
+	intMax     int                                   // for rowInt
+	editable   bool                                  // whether ↑↓ stops here
+	indent     int                                   // visual indent level
 }
 
 // rows materializes the panel layout: section headers + every editable

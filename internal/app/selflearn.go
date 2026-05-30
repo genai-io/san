@@ -103,22 +103,21 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		// Tell the main loop to start the spinner tick. Published before the
 		// fork runs so the indicator is visible from the first frame.
 		m.publishSelfLearnStarted(kinds)
-		var (
-			summary string
-			runErr  error
-		)
+		var runErr error
 		defer func() {
-			switch {
-			case runErr != nil:
+			if runErr != nil {
 				m.services.SelfLearnUI.Fail()
-			default:
+			} else {
 				m.services.SelfLearnUI.Complete()
 			}
 		}()
 
-		sys, ok := m.currentSystem()
-		if !ok {
+		if !m.services.Agent.Active() {
 			return // session ended between Observe and run; drop silently
+		}
+		sys := m.services.Agent.System()
+		if sys == nil {
+			return
 		}
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
@@ -130,7 +129,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Memory: memStore,
 			Skills: skillMgr,
 		}
-		summary, runErr = selflearn.RunReview(context.Background(), fc, kinds, snapshot)
+		_, runErr = selflearn.RunReview(context.Background(), fc, kinds, snapshot)
 		if runErr != nil {
 			log.Logger().Warn("self-learning review failed",
 				zap.String("kinds", kinds.String()),
@@ -141,9 +140,11 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		// Drain the action log AFTER Complete so the snapshot the status
 		// bar formats during the done-hold still has the change count.
+		// Empty log ⇒ no writes ⇒ silent (§6 invariant #7). The action
+		// log is authoritative; the model's text reply is not consulted.
 		actions := m.services.SelfLearnUI.DrainActions()
-		if len(actions) == 0 || isNothingToSave(summary) {
-			return // §6 invariant #7 — silent when nothing changed.
+		if len(actions) == 0 {
+			return
 		}
 		log.Logger().Info("self-learning review",
 			zap.String("kinds", kinds.String()),
@@ -171,32 +172,6 @@ func (m *model) handleSelflearnTick() tea.Cmd {
 	return scheduleSelflearnTick()
 }
 
-// currentSystem returns the live agent's System (used by the reviewer fork
-// for prefix-cache parity, §6 invariant #2) or false if the session is
-// already torn down. We surface only the one thing the ReviewFunc needs
-// — keeping the dependency surface narrow avoids the systemOnlyAgent shim
-// of an earlier iteration that lied about its capabilities.
-func (m *model) currentSystem() (core.System, bool) {
-	if !m.services.Agent.Active() {
-		return nil, false
-	}
-	sys := m.services.Agent.System()
-	return sys, sys != nil
-}
-
-// isNothingToSave matches the model's exit token for a no-op review:
-// an empty string or any case/whitespace variant of "Nothing to save."
-// The wire-up suppresses the user-visible recap on this branch
-// (§6 invariant #7 — silent on "Nothing to save").
-func isNothingToSave(summary string) bool {
-	s := strings.ToLower(strings.TrimSpace(summary))
-	if s == "" {
-		return true
-	}
-	s = strings.TrimSuffix(s, ".")
-	return s == "nothing to save"
-}
-
 // memoryTopicSuffix turns the file name reported by MemoryStore into the
 // status-bar tail rendered after the "memory" label. "" or the index file
 // produce no suffix; topic files like "debugging.md" become " · debugging".
@@ -222,21 +197,24 @@ func countUserTurns(msgs []core.Message) int {
 }
 
 // publishSelfLearnSummary surfaces the just-completed review's recap block
-// as a hub.Event targeted at "main", which the model loop routes through
-// onMainEvent → injectNotification to display in the conversation flow.
-// The block is built from the action log (the actual tool calls), not the
-// model's narration, so it reads as a structural audit trail rather than
-// a self-report.
+// in the conversation flow. The block is built from the action log (the
+// actual tool calls), not the model's narration, so it reads as a
+// structural audit trail rather than a self-report.
+//
+// We pack the whole recap into Subject (which becomes a Notice — display
+// only) rather than Data (which injectNotification re-submits to the LLM
+// as a fresh user turn — would re-prompt the agent with its own audit
+// trail and break the §6 out-of-band promise).
 func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []ReviewAction) {
 	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
+	header := fmt.Sprintf("Self-improvement review (%s)", kinds.String())
 	m.agentEventHub.Publish(hub.Event{
 		Type:    "selflearn.review.done",
 		Source:  "selflearn",
 		Target:  "main",
-		Subject: fmt.Sprintf("Self-improvement review (%s)", kinds.String()),
-		Data:    formatRecapBlock(actions),
+		Subject: header + "\n" + formatRecapBlock(actions),
 	})
 }
 
@@ -322,11 +300,12 @@ func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
 	if msg == "" {
 		msg = "review failed (see log)"
 	}
+	// Subject only — Data routes through SubmitToAgent (see
+	// publishSelfLearnSummary docstring for the trap).
 	m.agentEventHub.Publish(hub.Event{
 		Type:    "selflearn.review.failed",
 		Source:  "selflearn",
 		Target:  "main",
-		Subject: fmt.Sprintf("Self-improvement review failed (%s)", kinds.String()),
-		Data:    msg,
+		Subject: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg),
 	})
 }

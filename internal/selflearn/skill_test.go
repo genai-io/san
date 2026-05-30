@@ -78,11 +78,11 @@ func TestSkillCreateMarksAgentOrigin(t *testing.T) {
 	if _, err := mgr.Create("go-table-tests", "table-driven test patterns", "Use t.Run subtests.", "user"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	path := filepath.Join(mgr.userDir, "go-table-tests", "SKILL.md")
-	origin, err := readOrigin(path)
+	p, err := mgr.parseSkill("go-table-tests")
 	if err != nil {
 		t.Fatal(err)
 	}
+	origin := p.origin
 	if origin != agentOrigin {
 		t.Fatalf("origin = %q, want %q", origin, agentOrigin)
 	}
@@ -360,14 +360,12 @@ func TestSkillAllowUpdateUserCreated(t *testing.T) {
 
 func parseSkill(t *testing.T, mgr *SkillManager, name string) (origin, body string, path string) {
 	t.Helper()
-	p, err := mgr.resolve(name)
+	pr, err := mgr.parseSkill(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	origin, err = readOrigin(p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	origin = pr.origin
+	p := pr.path
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)

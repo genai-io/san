@@ -468,22 +468,6 @@ func safeSupportFile(file string) (string, error) {
 	return filepath.Join(parts[0], parts[1]), nil
 }
 
-func readOrigin(path string) (string, error) {
-	fm, _, err := markdown.ParseFrontmatterFile(path)
-	if err != nil {
-		return "", err
-	}
-	var meta struct {
-		Origin string `yaml:"origin"`
-	}
-	if fm != "" {
-		if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
-			return "", err
-		}
-	}
-	return meta.Origin, nil
-}
-
 func buildSkillMD(name, description, origin, body string) string {
 	var b strings.Builder
 	b.WriteString("---\n")

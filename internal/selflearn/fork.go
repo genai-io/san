@@ -9,29 +9,27 @@ import (
 	"github.com/genai-io/gen-code/internal/tool/perm"
 )
 
-// DefaultMaxTurns caps the reviewer fork's inference rounds. A review is a small
-// bounded task (read the turn, write at most a few entries); the cap stops a
-// confused fork from looping.
-const DefaultMaxTurns = 16
+// forkMaxTurns caps the reviewer fork's inference rounds. A review is a
+// small bounded task (read the turn, write at most a few entries); the cap
+// stops a confused fork from looping.
+const forkMaxTurns = 16
 
-// DefaultForkDeadline is the wall-clock cap on a single review pass. The
-// design's invariant #5 is "best-effort" — if the fork hangs (slow provider,
-// stuck tool call), an indefinite block would leave inFlight=true and
-// silently disable all future reviews for the session (see Observe's drop
-// path). The deadline guarantees the goroutine returns and clears inFlight.
-const DefaultForkDeadline = 5 * time.Minute
+// forkDeadline is the wall-clock cap on a single review pass. The design's
+// invariant #5 is "best-effort" — if the fork hangs (slow provider, stuck
+// tool call), an indefinite block would leave inFlight=true and silently
+// disable all future reviews for the session (see Observe's drop path).
+// The deadline guarantees the goroutine returns and clears inFlight.
+const forkDeadline = 5 * time.Minute
 
 // ForkConfig carries everything RunReview needs to fork a restricted reviewer
 // agent. LLM and System come from the parent so the fork inherits its provider
 // and (verbatim) system prompt; Memory and Skills are the write surfaces.
 type ForkConfig struct {
-	LLM      core.LLM
-	System   core.System // parent's system — read for its prompt only
-	CWD      string
-	Memory   *MemoryStore
-	Skills   *SkillManager
-	MaxTurns int           // 0 = DefaultMaxTurns
-	Deadline time.Duration // 0 = DefaultForkDeadline
+	LLM    core.LLM
+	System core.System // parent's system — read for its prompt only
+	CWD    string
+	Memory *MemoryStore
+	Skills *SkillManager
 }
 
 // RunReview forks a restricted agent over the turn snapshot and runs the review
@@ -39,21 +37,13 @@ type ForkConfig struct {
 // of what it changed, or a "nothing to save" note). Best-effort: the caller runs
 // it on a background goroutine and never lets its error affect the user turn.
 //
-// The fork runs under a wall-clock deadline (fc.Deadline or DefaultForkDeadline)
+// The fork runs under a wall-clock deadline (forkDeadline)
 // so a hung provider call can't leave the goroutine pinned and the reviewer's
 // inFlight flag stuck (invariant #5 / #8).
 func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error) {
 	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Skills)
 
-	maxTurns := fc.MaxTurns
-	if maxTurns <= 0 {
-		maxTurns = DefaultMaxTurns
-	}
-	deadline := fc.Deadline
-	if deadline <= 0 {
-		deadline = DefaultForkDeadline
-	}
-	ctx, cancel := context.WithTimeout(ctx, deadline)
+	ctx, cancel := context.WithTimeout(ctx, forkDeadline)
 	defer cancel()
 
 	// Fresh System that renders the parent's prompt verbatim (prefix-cache
@@ -81,7 +71,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		Tools:     restricted,
 		AgentType: "selflearn-review",
 		CWD:       fc.CWD,
-		MaxTurns:  maxTurns,
+		MaxTurns:  forkMaxTurns,
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
 	})
 
