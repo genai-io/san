@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -33,6 +34,12 @@ import (
 	"github.com/genai-io/gen-code/internal/selflearn"
 )
 
+// selfLearnDisableEnv is the env-var escape hatch documented in
+// notes/active/l1-background-review.md §3.1. Set to "1" / "true" to disable
+// the L1 reviewer regardless of settings.json — mirrors Claude Code's
+// CLAUDE_CODE_DISABLE_AUTO_MEMORY.
+const selfLearnDisableEnv = "GEN_DISABLE_SELF_LEARN"
+
 // wireSelfLearn constructs the L1 Reviewer for the running session, if the
 // config has at least one arm enabled. The params snapshot captures the
 // provider / model / max-tokens the parent agent was built with — the
@@ -40,6 +47,11 @@ import (
 // same prefix-cache key (§6 invariant #2).
 func (m *model) wireSelfLearn(params agent.BuildParams) {
 	if m.services.Setting == nil {
+		return
+	}
+	// Env override wins: documented as the hard kill switch (§3.1).
+	if v := os.Getenv(selfLearnDisableEnv); v == "1" || strings.EqualFold(v, "true") {
+		m.services.SelfLearn = nil
 		return
 	}
 	snap := m.services.Setting.Snapshot()
@@ -119,13 +131,14 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			m.publishSelfLearnFailure(kinds, runErr)
 			return
 		}
-		if summary != "" {
-			log.Logger().Info("self-learning review",
-				zap.String("kinds", kinds.String()),
-				zap.String("summary", summary),
-			)
-			m.publishSelfLearnSummary(kinds, summary)
+		if isNothingToSave(summary) {
+			return // §6 invariant #7 — silent on "Nothing to save."
 		}
+		log.Logger().Info("self-learning review",
+			zap.String("kinds", kinds.String()),
+			zap.String("summary", summary),
+		)
+		m.publishSelfLearnSummary(kinds, summary)
 	}
 
 	r := selflearn.New(resolved.Config, review)
@@ -191,6 +204,19 @@ type systemOnlyAgent struct {
 }
 
 func (s systemOnlyAgent) System() core.System { return s.sys }
+
+// isNothingToSave matches the model's exit token for a no-op review:
+// an empty string or any case/whitespace variant of "Nothing to save."
+// The wire-up suppresses the user-visible recap on this branch
+// (§6 invariant #7 — silent on "Nothing to save").
+func isNothingToSave(summary string) bool {
+	s := strings.ToLower(strings.TrimSpace(summary))
+	if s == "" {
+		return true
+	}
+	s = strings.TrimSuffix(s, ".")
+	return s == "nothing to save"
+}
 
 // memoryTopicSuffix turns the file name reported by MemoryStore into the
 // status-bar tail rendered after the "memory" label. "" or the index file

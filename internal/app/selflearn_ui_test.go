@@ -105,6 +105,35 @@ func TestSelfLearnUITickFrameAdvances(t *testing.T) {
 	}
 }
 
+// TestIsNothingToSave covers the §6 invariant #7 silent-on-nothing-to-save
+// branch: an empty string and any whitespace / case / trailing-period
+// variant of "Nothing to save" suppresses the user-visible recap; anything
+// else (including a one-line model summary) passes through.
+func TestIsNothingToSave(t *testing.T) {
+	for _, in := range []string{
+		"",
+		" ",
+		"Nothing to save.",
+		"nothing to save",
+		"  Nothing to save  ",
+		"NOTHING TO SAVE.",
+	} {
+		if !isNothingToSave(in) {
+			t.Fatalf("%q should be silenced", in)
+		}
+	}
+	for _, in := range []string{
+		"Updated go-testing",
+		"Saved memory: user prefers concise output",
+		"Nothing important",
+		"Saved nothing in particular",
+	} {
+		if isNothingToSave(in) {
+			t.Fatalf("%q should NOT be silenced", in)
+		}
+	}
+}
+
 // TestMemoryTopicSuffixStrips checks the helper that produces the bit shown
 // after "memory" in the status line: empty when writing the index, " · X"
 // when writing a topic file.

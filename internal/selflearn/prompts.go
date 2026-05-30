@@ -68,20 +68,29 @@ func skillSectionFor(mgr *SkillManager) string {
 		b.WriteString(" Creation is disabled: only modify existing skills.")
 	}
 
-	b.WriteString("\nDecide in this order:\n")
+	b.WriteString("\nDecide in this order (preference: UPDATE > DELETE > CREATE):\n")
 	step := 1
 	if perms.AllowUpdate {
-		fmt.Fprintf(&b, "%d. A skill used this turn was wrong/outdated/incomplete → patch that skill.\n", step)
-		step++
-		fmt.Fprintf(&b, "%d. An existing skill covers this learning → patch it (or add a references/templates/scripts support file).\n", step)
+		fmt.Fprintf(&b, "%d. UPDATE — patch an existing skill when ANY of the following:\n", step)
+		b.WriteString("     · a skill loaded / consulted this turn was proven wrong, incomplete, or outdated;\n")
+		b.WriteString("     · an existing umbrella skill covers the new learning (extend it; consider adding a references/templates/scripts support file);\n")
+		b.WriteString("     · the user voiced a style / format / workflow correction that belongs in the skill governing that task (embed it so the next session starts already knowing).\n")
 		step++
 	}
 	if perms.AllowDelete {
-		fmt.Fprintf(&b, "%d. An agent-created skill is now superseded, encodes a since-fixed environment quirk, or proved to be an anti-pattern → delete it (retire it in the same pass that learned the replacement).\n", step)
+		fmt.Fprintf(&b, "%d. DELETE — retire an agent-created skill when ANY of the following:\n", step)
+		b.WriteString("     · the new learning supersedes the entire skill wholesale (replace, don't coexist);\n")
+		b.WriteString("     · the skill encoded a transient / environment-dependent failure that is now resolved (the skill is now wrong);\n")
+		b.WriteString("     · the skill turned out to encode an anti-pattern.\n")
 		step++
 	}
 	if perms.AllowCreate {
-		fmt.Fprintf(&b, "%d. A genuinely new class of task that no skill covers → create a new class-level skill (kebab name, no PR numbers or error strings). Pick the level: reusable/general → user, project-specific → project.\n", step)
+		fmt.Fprintf(&b, "%d. CREATE — only when ALL of the following hold:\n", step)
+		b.WriteString("     · the turn produced a non-trivial, generalizable technique / fix / pattern;\n")
+		b.WriteString("     · NO existing skill (agent OR user) covers this class of task;\n")
+		b.WriteString("     · the name is class-level (e.g. go-table-tests), NOT a PR number, error string, codename, or 'fix-X / debug-Y / audit-Z-today' session artifact;\n")
+		b.WriteString("     · the learning is not an anti-pattern (see below).\n")
+		b.WriteString("     Pick the level: reusable / general → user; project-specific → project.\n")
 		step++
 	}
 
@@ -92,7 +101,7 @@ func skillSectionFor(mgr *SkillManager) string {
 		b.WriteString("You may only modify skills marked editable (agent-created); read user-created skills to avoid duplication but never change them.\n")
 	}
 
-	b.WriteString("NOTHING TO SAVE when: the session ran smoothly with no correction or new technique, or the only candidate is an anti-pattern — environment-dependent failures, negative claims about tools, transient errors, or one-off task narratives.")
+	b.WriteString("ANTI-PATTERNS (do NOT capture as a skill): environment-dependent failures, negative claims about tools, transient errors that resolved on retry, one-off task narratives. If the only candidate falls in this bucket, save nothing.")
 	return b.String()
 }
 
@@ -119,9 +128,25 @@ func renderInventory(skills *SkillManager) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-const reviewPreamble = `You are the self-learning reviewer for a coding agent. The conversation above is a just-completed turn. Reflect on it and capture only durable learnings using the write tools available to you. You are out-of-band: your writes affect future sessions, not the one above. Be conservative — "nothing to save" is a perfectly good outcome. Do not narrate; make the tool calls, then reply with a single short line summarizing what you changed (or "Nothing to save").`
+// reviewPreamble frames the fork as an out-of-band reviewer. The recap shown
+// to the user is built from the action log of the actual tool calls (not from
+// the model's own narration), so the closing instruction is just a sentinel
+// — empty when nothing was saved — that lets the wire-up suppress the
+// notification entirely.
+const reviewPreamble = `You are the self-learning reviewer for a coding agent. The conversation above is a just-completed turn. Reflect on it and capture only durable learnings using the write tools available to you. You are out-of-band: your writes affect future sessions, not the one above. Be conservative — "nothing to save" is a perfectly good outcome. Do not narrate to the user; do the work via tool calls.`
 
-const memorySection = `MEMORY (memory_write tool). Save durable facts that will matter in future sessions: user preferences and corrections, project conventions, environment/build/debug insights. Before adding, check the current store below: if an entry already covers the topic, use action=replace to refresh it instead of adding a near-duplicate; use action=remove for anything now wrong.
+const memorySection = `MEMORY (memory_write tool). Save durable facts that will matter in future sessions: user preferences and corrections, project conventions, environment/build/debug insights.
+
+Eviction is part of the job, not an afterthought:
+
+1. First, scan the current store below and retire stale / superseded / merged-PR-specific entries via action=remove. A pass that only adds is a missed pruning opportunity.
+2. If an existing entry covers the same topic as your new learning, use action=replace to refresh it — never add a near-duplicate.
+3. The store has a hard 25 KB cap per file. When the index is near cap, you MUST prune another entry first before your new add will fit.
+4. Only then, action=add for the genuinely new durable fact.
+
 Do NOT save: one-off task state, transient errors, or "what we did this session" narratives — those are not durable.`
 
-const reviewClosing = `Make any warranted tool calls now, then end with one short summary line.`
+// reviewClosing tells the model how to signal completion. An empty reply or
+// the literal "Nothing to save." both cause the wire-up to suppress the
+// user-visible notice (§6 invariant #7).
+const reviewClosing = `When you have made the tool calls (or decided none are warranted), reply with the literal string "Nothing to save." if no writes occurred, or with an empty message if the action log already captured what you did. Do not write a free-form summary; the user-visible recap is assembled from your actual tool calls.`
