@@ -198,6 +198,11 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		return nil, err
 	}
 
+	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
+	// the live Agent + System for its fork. Builds nothing if both arms are
+	// off (§3.1 zero-overhead guarantee).
+	m.wireSelfLearn(params)
+
 	cmds := []tea.Cmd{
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
 		conv.PollPermBridge(m.services.Agent.PermissionBridge()),
@@ -276,6 +281,9 @@ func (m *model) wireReminderProviders() {
 
 func (m *model) StopAgentSession() {
 	m.services.Agent.Stop()
+	// Stop feeding the L1 reviewer. Any in-flight review goroutine finishes on
+	// its own deadline (selflearn.DefaultForkDeadline).
+	m.clearSelfLearn()
 }
 
 // ============================================================

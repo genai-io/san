@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/gen-code/internal/mcp"
 	"github.com/genai-io/gen-code/internal/plugin"
 	"github.com/genai-io/gen-code/internal/reminder"
+	"github.com/genai-io/gen-code/internal/selflearn"
 	"github.com/genai-io/gen-code/internal/session"
 	"github.com/genai-io/gen-code/internal/setting"
 	"github.com/genai-io/gen-code/internal/skill"
@@ -39,6 +40,12 @@ type services struct {
 	Agent    *agent.Task
 	Identity *identity.Registry
 	Reminder *reminder.Service
+
+	// SelfLearn is the L1 background reviewer. It is non-nil only when the
+	// selfLearn settings have at least one arm enabled at session start
+	// (see notes/active/l1-background-review.md §3.1 / §9). Nil ⇒ zero
+	// overhead: no goroutine, no counters, no extra model calls.
+	SelfLearn *selflearn.Reviewer
 }
 
 func newServices() services {

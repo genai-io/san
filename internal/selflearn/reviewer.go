@@ -51,6 +51,23 @@ const (
 // Has reports whether k includes x.
 func (k ReviewKind) Has(x ReviewKind) bool { return k&x != 0 }
 
+// String renders the active arms as a stable, log-friendly label. Used by the
+// wire-up's review-summary log line.
+func (k ReviewKind) String() string {
+	switch k {
+	case 0:
+		return "none"
+	case KindMemory:
+		return "memory"
+	case KindSkills:
+		return "skill"
+	case KindMemory | KindSkills:
+		return "memory+skill"
+	default:
+		return "unknown"
+	}
+}
+
 // ReviewFunc performs the actual fork+review for the fired arms, given the
 // snapshot of the just-completed turn's conversation. It runs on a background
 // goroutine and must be best-effort (never panic out / never block the user).

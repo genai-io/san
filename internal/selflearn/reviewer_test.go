@@ -33,6 +33,22 @@ func assertNoFire(t *testing.T, fired <-chan ReviewKind) {
 	}
 }
 
+// TestReviewKindString covers the log-friendly labels surfaced to the
+// wire-up's review-summary log entry.
+func TestReviewKindString(t *testing.T) {
+	cases := map[ReviewKind]string{
+		0:                       "none",
+		KindMemory:              "memory",
+		KindSkills:              "skill",
+		KindMemory | KindSkills: "memory+skill",
+	}
+	for k, want := range cases {
+		if got := k.String(); got != want {
+			t.Fatalf("kind %b: got %q, want %q", k, got, want)
+		}
+	}
+}
+
 func TestMemoryFiresOnTurnCadence(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
 	r := New(Config{Memory: Arm{Enabled: true, Interval: 3}}, func(k ReviewKind, _ []core.Message) { fired <- k })
