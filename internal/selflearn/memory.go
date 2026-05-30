@@ -20,11 +20,12 @@ import (
 // entry bodies stays reliable.
 const memoryEntryDelimiter = "\n§\n"
 
-// memoryFileCharLimit bounds a single memory file. It matches the read-side
-// injection cap (system.AutoMemoryByteCap) so a file that fits the budget on
-// write also fits when injected — L1 must prune/replace rather than grow
-// unbounded.
-const memoryFileCharLimit = 25000
+// DefaultMemoryFileCharLimit is the fallback per-file character cap when the
+// constructor receives 0. It matches the read-side injection cap
+// (system.AutoMemoryByteCap = 25 KB) so a file that fits the budget on write
+// also fits when injected — the L1 store must prune/replace rather than grow
+// unbounded (see notes/active/l1-background-review.md §4.2 invariant).
+const DefaultMemoryFileCharLimit = 25000
 
 // MemoryStore is the project-partitioned, file-backed durable memory written by
 // the L1 reviewer fork and read back via system.LoadMemoryFiles. It lives under
@@ -38,16 +39,32 @@ const memoryFileCharLimit = 25000
 // concurrency is best-effort (atomic rename only) — flagged as an open question
 // for L2.
 type MemoryStore struct {
-	dir string
+	dir     string
+	maxFile int // per-file char cap; 0 ⇒ DefaultMemoryFileCharLimit
 
 	mu sync.Mutex
 }
 
-// NewMemoryStore returns the store for cwd's project partition. The directory is
-// created lazily on the first write.
+// NewMemoryStore returns the store for cwd's project partition with the
+// default 25 KB per-file cap. The directory is created lazily on the first
+// write.
 func NewMemoryStore(cwd string) *MemoryStore {
-	return &MemoryStore{dir: system.AutoMemoryDir(cwd)}
+	return NewMemoryStoreWithCap(cwd, DefaultMemoryFileCharLimit)
 }
+
+// NewMemoryStoreWithCap returns the store with a custom per-file char cap.
+// Pass maxFile = 0 to use DefaultMemoryFileCharLimit. The cap is enforced on
+// Add and Replace; writes that would overflow it are rejected so the
+// reviewer is forced to prune first (§4.2).
+func NewMemoryStoreWithCap(cwd string, maxFile int) *MemoryStore {
+	if maxFile <= 0 {
+		maxFile = DefaultMemoryFileCharLimit
+	}
+	return &MemoryStore{dir: system.AutoMemoryDir(cwd), maxFile: maxFile}
+}
+
+// MaxFileChars returns the per-file char cap this store enforces.
+func (s *MemoryStore) MaxFileChars() int { return s.maxFile }
 
 // Dir is the on-disk directory backing the store.
 func (s *MemoryStore) Dir() string { return s.dir }
@@ -91,9 +108,9 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 		return "Entry already present; nothing added.", nil
 	}
 	entries = append(entries, content)
-	if n := joinedLen(entries); n > memoryFileCharLimit {
+	if n := joinedLen(entries); n > s.maxFile {
 		return "", fmt.Errorf("entry would put %s at %d/%d chars; replace or remove entries first",
-			filepath.Base(path), n, memoryFileCharLimit)
+			filepath.Base(path), n, s.maxFile)
 	}
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
@@ -129,9 +146,9 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 		return "", err
 	}
 	entries[idx] = newContent
-	if n := joinedLen(entries); n > memoryFileCharLimit {
+	if n := joinedLen(entries); n > s.maxFile {
 		return "", fmt.Errorf("replacement would put %s at %d/%d chars; shorten it or remove other entries",
-			filepath.Base(path), n, memoryFileCharLimit)
+			filepath.Base(path), n, s.maxFile)
 	}
 	if err := writeEntries(path, entries); err != nil {
 		return "", err

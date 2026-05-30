@@ -142,7 +142,15 @@ func (r *Reviewer) Observe(result core.Result) {
 	}
 	r.mu.Unlock()
 
-	go r.run(kinds, result.Messages)
+	// Defensive snapshot copy: result.Messages aliases the main agent's live
+	// message slice. The main loop may mutate it (append, truncate-on-compact)
+	// concurrently with the background fork's read. Copy the slice header so
+	// the goroutine has a stable view; the elements themselves are immutable
+	// core.Message values.
+	snapshot := make([]core.Message, len(result.Messages))
+	copy(snapshot, result.Messages)
+
+	go r.run(kinds, snapshot)
 }
 
 func (r *Reviewer) run(kinds ReviewKind, snapshot []core.Message) {
