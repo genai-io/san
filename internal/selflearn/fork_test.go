@@ -140,7 +140,7 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 // already pointed at the temp dir by newTestStore).
 func readBackMemory(t *testing.T) (string, bool) {
 	t.Helper()
-	store := NewMemoryStore("/work/project-x")
+	store := NewMemoryStore("/work/project-x", 0)
 	entries := readEntries(store.Dir() + "/MEMORY.md")
 	if len(entries) == 0 {
 		return "", false

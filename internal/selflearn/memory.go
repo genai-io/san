@@ -39,61 +39,40 @@ const DefaultMemoryFileCharLimit = 25000
 // concurrency is best-effort (atomic rename only) — flagged as an open question
 // for L2.
 // MemoryWriteObserver is invoked after every successful Add / Replace /
-// Remove. Implementations must be cheap and goroutine-safe: the callback
-// fires from the reviewer fork's goroutine, holding no MemoryStore locks.
-// file is the basename being written (empty ⇒ MEMORY.md index). Used by the
-// UI layer to track the current target for the §"User-visible surface"
-// "evolving … memory · <topic>" status-bar line.
+// Remove. file is the basename being written ("" ⇒ MEMORY.md index). Used
+// by the UI layer to track the current target for the
+// §"User-visible surface" "evolving … memory · <topic>" status-bar line.
+//
+// Contract: SetWriteObserver MUST be called before the first write; the
+// reviewer fork is single-flight per session (§6 invariant #8) so we do
+// not guard the observer field with a lock.
 type MemoryWriteObserver func(file string)
 
 type MemoryStore struct {
-	dir       string
-	maxFile   int // per-file char cap; 0 ⇒ DefaultMemoryFileCharLimit
-	onWrite   MemoryWriteObserver
-	observeMu sync.RWMutex
+	dir     string
+	maxFile int // per-file char cap, always > 0 (constructor normalizes)
+	onWrite MemoryWriteObserver
 
 	mu sync.Mutex
 }
 
-// NewMemoryStore returns the store for cwd's project partition with the
-// default 25 KB per-file cap. The directory is created lazily on the first
-// write.
-func NewMemoryStore(cwd string) *MemoryStore {
-	return NewMemoryStoreWithCap(cwd, DefaultMemoryFileCharLimit)
-}
-
-// NewMemoryStoreWithCap returns the store with a custom per-file char cap.
-// Pass maxFile = 0 to use DefaultMemoryFileCharLimit. The cap is enforced on
-// Add and Replace; writes that would overflow it are rejected so the
-// reviewer is forced to prune first (§4.2).
-func NewMemoryStoreWithCap(cwd string, maxFile int) *MemoryStore {
+// NewMemoryStore returns the store for cwd's project partition. maxFile is
+// the per-file char cap; pass <= 0 for DefaultMemoryFileCharLimit. The
+// directory is created lazily on the first write.
+func NewMemoryStore(cwd string, maxFile int) *MemoryStore {
 	if maxFile <= 0 {
 		maxFile = DefaultMemoryFileCharLimit
 	}
 	return &MemoryStore{dir: system.AutoMemoryDir(cwd), maxFile: maxFile}
 }
 
-// MaxFileChars returns the per-file char cap this store enforces.
-func (s *MemoryStore) MaxFileChars() int { return s.maxFile }
+// SetWriteObserver registers the callback fired after each successful
+// write. Must be called before the first write (see type doc).
+func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) { s.onWrite = fn }
 
-// SetWriteObserver registers a callback invoked after every successful
-// write. Pass nil to clear. Safe to call concurrently with the writes
-// themselves.
-func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) {
-	s.observeMu.Lock()
-	s.onWrite = fn
-	s.observeMu.Unlock()
-}
-
-// fireWrite invokes the registered observer, holding observeMu only for the
-// pointer read. The callback runs unlocked so it can synchronize with its
-// own state without nesting locks under MemoryStore.mu.
 func (s *MemoryStore) fireWrite(file string) {
-	s.observeMu.RLock()
-	fn := s.onWrite
-	s.observeMu.RUnlock()
-	if fn != nil {
-		fn(file)
+	if s.onWrite != nil {
+		s.onWrite(file)
 	}
 }
 

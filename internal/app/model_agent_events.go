@@ -104,9 +104,11 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		m.services.Tracker.Reset()
 	}
 	m.services.Agent.SetPluginRoot("")
-	// Forward to L1 self-learning. No-op when disabled; gates on StopEndTurn
-	// internally so cancelled/interrupted turns are silently skipped.
-	m.forwardTurnToSelfLearn(result)
+	// Forward to L1 self-learning. No-op when disabled; the reviewer gates
+	// on StopEndTurn internally so cancelled/interrupted turns are skipped.
+	if r := m.services.SelfLearn; r != nil {
+		r.Observe(result)
+	}
 	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 

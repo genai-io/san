@@ -108,7 +108,7 @@ func (m SelfLearnMemory) MaxKBOr() int {
 func (s SelfLearnSettings) Validate() error {
 	if s.Memory.MaxKB < 0 || s.Memory.MaxKB > SelfLearnMaxMemoryKB {
 		return fmt.Errorf(
-			"selfLearn.memory.maxKB=%d out of range; must satisfy 0 < maxKB <= %d (§4.2 invariant)",
+			"selfLearn.memory.maxKB=%d out of range; must satisfy 0 <= maxKB <= %d (0 = default; §4.2 invariant)",
 			s.Memory.MaxKB, SelfLearnMaxMemoryKB,
 		)
 	}

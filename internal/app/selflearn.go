@@ -65,7 +65,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		return
 	}
 
-	memStore := selflearn.NewMemoryStoreWithCap(m.env.CWD, resolved.MemoryMaxChars)
+	memStore := selflearn.NewMemoryStore(m.env.CWD, resolved.MemoryMaxChars)
 	skillMgr := selflearn.NewSkillManager(m.env.CWD, resolved.Perms)
 
 	// The ReviewFunc closes over a getter for the *live* agent so a session
@@ -108,7 +108,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			}
 		}()
 
-		ag, ok := m.currentAgent()
+		sys, ok := m.currentSystem()
 		if !ok {
 			return // session ended between Observe and run; drop silently
 		}
@@ -117,7 +117,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 
 		fc := selflearn.ForkConfig{
 			LLM:    client,
-			System: ag.System(),
+			System: sys,
 			CWD:    m.env.CWD,
 			Memory: memStore,
 			Skills: skillMgr,
@@ -160,50 +160,18 @@ func (m *model) handleSelflearnTick() tea.Cmd {
 	return scheduleSelflearnTick()
 }
 
-// forwardTurnToSelfLearn hands the just-completed turn Result to the L1
-// Reviewer when one is configured. The Reviewer gates on StopEndTurn
-// internally; callers just unconditionally forward.
-func (m *model) forwardTurnToSelfLearn(result core.Result) {
-	if m.services.SelfLearn == nil {
-		return
-	}
-	m.services.SelfLearn.Observe(result)
-}
-
-// clearSelfLearn drops the Reviewer reference when the agent session ends.
-// Any in-flight review goroutine completes on its own (deadline-bounded via
-// DefaultForkDeadline); we just stop feeding new turns.
-func (m *model) clearSelfLearn() {
-	m.services.SelfLearn = nil
-}
-
-// currentAgent returns the live core.Agent or false if the session is
-// already torn down. The agent.Task does not expose its inner *agent
-// directly, so we route through System() — every agent.Task with an active
-// session has a non-nil System.
-func (m *model) currentAgent() (core.Agent, bool) {
-	if m.services.Agent == nil || !m.services.Agent.Active() {
+// currentSystem returns the live agent's System (used by the reviewer fork
+// for prefix-cache parity, §6 invariant #2) or false if the session is
+// already torn down. We surface only the one thing the ReviewFunc needs
+// — keeping the dependency surface narrow avoids the systemOnlyAgent shim
+// of an earlier iteration that lied about its capabilities.
+func (m *model) currentSystem() (core.System, bool) {
+	if !m.services.Agent.Active() {
 		return nil, false
 	}
 	sys := m.services.Agent.System()
-	if sys == nil {
-		return nil, false
-	}
-	// agent.Task.System() returns the *core.Agent*'s System; we surface a
-	// lightweight wrapper that exposes System() so the ReviewFunc above
-	// keeps the same shape it would have with a full *core.Agent handle.
-	return systemOnlyAgent{sys: sys}, true
+	return sys, sys != nil
 }
-
-// systemOnlyAgent is a minimal core.Agent shim used only by the ReviewFunc
-// to feed selflearn.ForkConfig{System: ag.System()}. Every other method
-// panics — the reviewer fork never touches them, so they are unreachable.
-type systemOnlyAgent struct {
-	core.Agent
-	sys core.System
-}
-
-func (s systemOnlyAgent) System() core.System { return s.sys }
 
 // isNothingToSave matches the model's exit token for a no-op review:
 // an empty string or any case/whitespace variant of "Nothing to save."

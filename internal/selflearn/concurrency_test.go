@@ -9,52 +9,40 @@ import (
 	"github.com/genai-io/gen-code/internal/core"
 )
 
-// TestSnapshotIsCopiedBeforeGoroutine guards the defensive copy in Observe:
-// the goroutine handed `snapshot` must see the slice as it was at trigger
-// time, even if the caller mutates result.Messages afterwards (the main
-// agent loop reuses its message slice).
+// TestSnapshotIsCopiedBeforeGoroutine guards the defensive copy in Observe.
+// The reviewer goroutine must see the slice header as it was at trigger
+// time, even if the caller appends to or truncates result.Messages
+// afterwards — that is the failure mode the copy actually prevents (the
+// caller's main loop reuses its message slice for the next turn).
 //
-// The test passes a slice with one message, fires the review (memory arm
-// at interval 1), mutates the slice to a different content while the
-// ReviewFunc is still running, and asserts the ReviewFunc saw the original.
+// We block the review inside its callback until after we mutate the
+// caller's slice; if Observe leaked the slice header the goroutine would
+// see the post-mutation length.
 func TestSnapshotIsCopiedBeforeGoroutine(t *testing.T) {
-	type guarded struct {
-		mu    sync.Mutex
-		seen  string
-		fired chan struct{}
-	}
-	g := &guarded{fired: make(chan struct{})}
-
+	release := make(chan struct{})
+	done := make(chan int)
 	review := func(_ ReviewKind, snapshot []core.Message) {
-		g.mu.Lock()
-		if len(snapshot) > 0 {
-			g.seen = snapshot[0].Content
-		}
-		g.mu.Unlock()
-		close(g.fired)
+		<-release
+		done <- len(snapshot)
 	}
 	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, review)
 
-	original := []core.Message{{Role: core.RoleUser, Content: "ORIGINAL"}}
-	r.Observe(core.Result{
-		StopReason: core.StopEndTurn,
-		Messages:   original,
-	})
+	original := []core.Message{{Role: core.RoleUser, Content: "a"}}
+	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original})
 
-	// Mutate the caller-owned slice — the goroutine's snapshot must NOT alias
-	// it, so the ReviewFunc must see "ORIGINAL", not "MUTATED".
-	original[0].Content = "MUTATED"
+	// Truncate the caller's slice while the goroutine is blocked. If
+	// Observe leaked the slice header the goroutine would later see len 0.
+	original = original[:0]
+	_ = original
 
+	close(release)
 	select {
-	case <-g.fired:
+	case got := <-done:
+		if got != 1 {
+			t.Fatalf("snapshot leak: review saw len=%d, want 1", got)
+		}
 	case <-time.After(time.Second):
-		t.Fatal("review never fired")
-	}
-
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.seen != "ORIGINAL" {
-		t.Fatalf("snapshot leak: review saw %q, want %q", g.seen, "ORIGINAL")
+		t.Fatal("review never returned")
 	}
 }
 

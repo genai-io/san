@@ -90,7 +90,8 @@ type SelfLearnUIState struct {
 func NewSelfLearnUIState() *SelfLearnUIState { return &SelfLearnUIState{} }
 
 // BeginReview transitions to the reviewing phase and resets per-pass
-// counters. Called from the ReviewFunc the moment the fork is about to run.
+// counters. Called from the ReviewFunc the moment the fork is about to
+// run, before any tool call has fired.
 func (s *SelfLearnUIState) BeginReview() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,8 +118,9 @@ func (s *SelfLearnUIState) Step(target string) {
 	}
 }
 
-// Complete transitions to the done phase. The current change count is
-// preserved so the "evolved · N changes" tail can show it.
+// Complete is called when the fork returns successfully. The change
+// counter is preserved through the done-hold so "evolved · N changes"
+// can show it.
 func (s *SelfLearnUIState) Complete() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,8 +129,7 @@ func (s *SelfLearnUIState) Complete() {
 	s.enteredAt = time.Now()
 }
 
-// Fail transitions to the failed phase, clearing the target so the
-// "evolving failed" label reads cleanly.
+// Fail is called when the fork errors or times out.
 func (s *SelfLearnUIState) Fail() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -189,10 +190,6 @@ type SelfLearnUISnapshot struct {
 	Frame   int
 	Changes int
 }
-
-// IsActive reports whether the snapshot represents a non-idle phase. Used
-// by the wire-up to decide whether to re-arm the tick.
-func (s SelfLearnUISnapshot) IsActive() bool { return s.Phase != selflearnIdle }
 
 // Render returns the status-bar segment for the snapshot. Empty for idle so
 // renderModeStatus can simply concatenate without a branch.

@@ -81,11 +81,10 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 				break
 			}
 		}
+		// Collect every match — len(starts) > 1 with !replaceAll is the
+		// ambiguity error rejected below.
 		if match {
 			starts = append(starts, i)
-			if !replaceAll {
-				// keep scanning to detect ambiguity
-			}
 		}
 	}
 	if len(starts) == 0 {

@@ -14,7 +14,7 @@ import (
 // fields itself.
 //
 // Build it once from setting.SelfLearnSettings at session start and pass
-// the pieces to NewMemoryStoreWithCap, NewSkillManager, and New.
+// the pieces to NewMemoryStore, NewSkillManager, and New.
 type Resolved struct {
 	Config         Config
 	Perms          ActionPermissions

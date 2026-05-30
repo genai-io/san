@@ -18,7 +18,7 @@ func newTestStore(t *testing.T) *MemoryStore {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // Windows
 	cwd := "/work/project-x"
-	store := NewMemoryStore(cwd)
+	store := NewMemoryStore(cwd, 0)
 	if got := store.Dir(); got != system.AutoMemoryDir(cwd) {
 		t.Fatalf("store dir = %q, want %q", got, system.AutoMemoryDir(cwd))
 	}

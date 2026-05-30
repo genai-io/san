@@ -336,8 +336,11 @@ var (
 // Render implements the popup interface.
 func (c *ConfigSelector) Render() string {
 	rows := c.rows()
-	var b strings.Builder
+	// Cache validation once — Render and the Save row both consult it; we
+	// don't want it to drift between branches at terminal redraw rate.
+	validationErr := c.snap.Validate()
 
+	var b strings.Builder
 	title := configHeaderStyle.Render(fmt.Sprintf("Self-Learning ▸ scope: %s (Tab to toggle)", c.scope))
 	b.WriteString(title)
 	b.WriteString("\n\n")
@@ -356,7 +359,7 @@ func (c *ConfigSelector) Render() string {
 				cursor = configCursorStyle.Render("▸")
 			}
 			label := "[ Save ]"
-			if err := c.snap.Validate(); err != nil {
+			if validationErr != nil {
 				label = configMutedStyle.Render(label)
 			} else {
 				label = configOKStyle.Render(label)
@@ -370,9 +373,9 @@ func (c *ConfigSelector) Render() string {
 		b.WriteString("\n")
 	}
 
-	if err := c.snap.Validate(); err != nil {
+	if validationErr != nil {
 		b.WriteString("\n")
-		b.WriteString(configErrorStyle.Render("⚠ " + err.Error()))
+		b.WriteString(configErrorStyle.Render("⚠ " + validationErr.Error()))
 		b.WriteString("\n")
 	}
 

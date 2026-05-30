@@ -51,9 +51,11 @@ func DefaultActionPermissions() ActionPermissions {
 
 // SkillWriteObserver is invoked after every successful create / patch /
 // edit / write_file / remove_file / delete. action is the §5.3 action name;
-// name is the affected skill. Used by the UI layer to track the current
-// target for the "evolving … <skill-name>" status-bar line. Implementations
-// must be cheap and goroutine-safe.
+// name is the affected skill.
+//
+// Contract: SetWriteObserver MUST be called before the first write; the
+// reviewer fork is single-flight per session (§6 invariant #8) so we do
+// not guard the observer field with a lock.
 type SkillWriteObserver func(action, name string)
 
 // SkillManager is the L1-only skill write surface. Skills live directly in
@@ -65,7 +67,6 @@ type SkillManager struct {
 	projectDir string
 	perms      ActionPermissions
 	onWrite    SkillWriteObserver
-	observeMu  sync.RWMutex
 
 	mu sync.Mutex
 }
@@ -84,24 +85,13 @@ func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
 // Perms returns the current action permissions (read-only snapshot).
 func (m *SkillManager) Perms() ActionPermissions { return m.perms }
 
-// SetWriteObserver registers a callback invoked after every successful
-// write. Pass nil to clear. Safe to call concurrently with the writes
-// themselves.
-func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) {
-	m.observeMu.Lock()
-	m.onWrite = fn
-	m.observeMu.Unlock()
-}
+// SetWriteObserver registers the callback fired after each successful
+// write. Must be called before the first write (see type doc).
+func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) { m.onWrite = fn }
 
-// fireWrite invokes the registered observer with the action / name pair.
-// The callback runs unlocked so it can synchronize with its own state
-// without nesting under SkillManager.mu.
 func (m *SkillManager) fireWrite(action, name string) {
-	m.observeMu.RLock()
-	fn := m.onWrite
-	m.observeMu.RUnlock()
-	if fn != nil {
-		fn(action, name)
+	if m.onWrite != nil {
+		m.onWrite(action, name)
 	}
 }
 
@@ -431,7 +421,7 @@ func (m *SkillManager) Delete(name string) (string, error) {
 // action entry points so the model sees a consistent shape on the
 // permission-veto path (§5.5).
 func errActionDenied(action, reason string) error {
-	return fmt.Errorf("skill_manage(%s) denied: %s (see selfLearn.skills permissions in §3.1)", action, reason)
+	return fmt.Errorf("skill_manage(%s) denied: %s (see selfLearn.skills permissions in §5.5)", action, reason)
 }
 
 // safeSupportFile validates a support-file path: <subdir>/<file>, where subdir
