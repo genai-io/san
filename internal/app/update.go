@@ -51,6 +51,7 @@ func (m *model) popups() []popup {
 		&m.userInput.Memory.Selector,
 		&m.userInput.Search,
 		&m.userInput.Identity,
+		&m.userInput.Config,
 	}
 }
 
@@ -81,6 +82,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		input.HandlePromptSuggestion(&m.userInput, m.conv.Stream.Active, m.userInput.Textarea.Value(), msg)
 		return m, nil
 	case kit.DismissedMsg, input.ToolToggleMsg:
+		return m, nil
+	case input.ConfigSavedMsg:
+		// Brief confirmation in the conversation flow. The settings have
+		// already been merged + persisted by the panel.
+		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
 		return m, nil
 	case input.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in

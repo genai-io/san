@@ -52,6 +52,7 @@ type Model struct {
 	Provider ProviderState
 	Tool     ToolSelector
 	Identity IdentitySelector
+	Config   ConfigSelector
 }
 
 type PendingImage struct {
@@ -129,6 +130,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 			}
 			return snap.Identity
 		}),
+		Config: NewConfigSelector(deps.Setting),
 	}
 }
 

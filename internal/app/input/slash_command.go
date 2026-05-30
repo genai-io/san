@@ -113,6 +113,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"loop":           (*SlashCommandController).handleLoopCommand,
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handleIdentityCommand,
+		"config":         (*SlashCommandController).handleConfigCommand,
 	}
 }
 
@@ -298,6 +299,16 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.Session.GetStore(), c.env.Cwd); err != nil {
 		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
 	}
+	return "", nil, nil
+}
+
+// handleConfigCommand opens the /config Self-Learning panel. Currently the
+// panel only hosts the L1 config; a multi-panel sidebar (Provider /
+// Permissions / Appearance / …) is planned and will be added by extending
+// ConfigSelector with sibling panels — the slash command stays /config
+// either way.
+func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Config.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
 }
 

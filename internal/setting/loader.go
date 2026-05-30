@@ -282,6 +282,35 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error 
 	return nil
 }
 
+// UpdateSelfLearnAt persists the L1 self-learning config at the requested
+// settings level (true = user-wide, false = project-local). The new value
+// is merged with whatever else lives in that settings file — only the
+// selfLearn block is rewritten. Returns Validate's error verbatim if the
+// new config is illegal (§3.1) so the caller can surface it inline before
+// touching disk.
+func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	loader := NewLoader()
+	settings := &Data{SelfLearn: cfg}
+
+	var err error
+	if userLevel {
+		err = loader.SaveToUser(settings)
+	} else {
+		err = loader.SaveToProject(settings)
+	}
+	if err != nil {
+		return err
+	}
+
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
 // GetDisabledTools returns the merged disabled tools map from loaded settings.
 // Returns a copy so callers cannot mutate the cached settings.
 func GetDisabledTools() map[string]bool {
