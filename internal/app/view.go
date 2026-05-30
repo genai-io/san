@@ -211,17 +211,18 @@ func (m model) renderModeStatus() string {
 		}
 	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
-		Mode:             conv.OperationMode(m.env.OperationMode),
-		InputTokens:      m.env.InputTokens,
-		OutputTokens:     m.env.OutputTokens,
-		InputLimit:       kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
-		ModelName:        modelName,
-		StatusMessage:    m.userInput.Provider.StatusMessage,
-		ConversationCost: m.env.ConversationCost,
-		Width:            m.env.Width,
-		ThinkingEffort:   thinkingEffort,
-		ShowThinking:     showThinking,
-		QueueCount:       m.userInput.Queue.Len(),
+		Mode:              conv.OperationMode(m.env.OperationMode),
+		InputTokens:       m.env.InputTokens,
+		OutputTokens:      m.env.OutputTokens,
+		InputLimit:        kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
+		ModelName:         modelName,
+		StatusMessage:     m.userInput.Provider.StatusMessage,
+		ConversationCost:  m.env.ConversationCost,
+		Width:             m.env.Width,
+		ThinkingEffort:    thinkingEffort,
+		ShowThinking:      showThinking,
+		QueueCount:        m.userInput.Queue.Len(),
+		SelfLearnEvolving: m.services.SelfLearnRunning != nil && m.services.SelfLearnRunning.Load(),
 	})
 }
 

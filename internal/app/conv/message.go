@@ -49,6 +49,12 @@ type OperationModeParams struct {
 	ThinkingEffort   string
 	ShowThinking     bool
 	QueueCount       int
+
+	// SelfLearnEvolving is true while an L1 review fork is in flight. Drives
+	// the bottom-left "evolving" indicator (see
+	// notes/active/l1-background-review.md §"User-visible surface"). Hidden
+	// when false — idle and disabled both produce the same status line.
+	SelfLearnEvolving bool
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -67,6 +73,10 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	if queueBadge := renderQueueBadge(params.QueueCount); queueBadge != "" {
 		leftParts = append(leftParts, queueBadge)
+	}
+
+	if params.SelfLearnEvolving {
+		leftParts = append(leftParts, renderSelfLearnIndicator())
 	}
 
 	left := strings.Join(leftParts, "  ")
@@ -661,6 +671,21 @@ func renderQueueBadge(count int) string {
 		return ""
 	}
 	return queueBadgeStyle.Render(fmt.Sprintf(" [%d queued]", count))
+}
+
+// selfLearnIndicatorStyle is the muted, italic style for the bottom-left
+// "evolving …" indicator while an L1 review is in flight. Same style family
+// as other ephemeral status pieces so the bar reads as a single unit.
+var selfLearnIndicatorStyle = lipgloss.NewStyle().
+	Foreground(kit.CurrentTheme.Muted).
+	Italic(true)
+
+// renderSelfLearnIndicator returns the compact "evolving …" text shown in
+// the status bar while a review fork is running. No emoji or braille —
+// just the gerund + ellipsis (echoes the project theme "self-evolving").
+// Hidden when the review is idle or disabled.
+func renderSelfLearnIndicator() string {
+	return selfLearnIndicatorStyle.Render("evolving …")
 }
 
 func truncateQueueContent(s string, maxLen int) string {

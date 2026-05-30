@@ -18,10 +18,13 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/genai-io/gen-code/internal/agent"
+	"github.com/genai-io/gen-code/internal/app/hub"
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
@@ -54,8 +57,17 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// The ReviewFunc closes over a getter for the *live* agent so a session
 	// rebuild between trigger time and fork time picks up the new System;
 	// the LLM client is rebuilt from params to keep the fork independent of
-	// the main agent's request cycle.
+	// the main agent's request cycle. It also drives the user-visible
+	// surface (§"User-visible surface"):
+	//   - Set/clear services.SelfLearnRunning so renderModeStatus can show
+	//     the "evolving" status-bar text while the fork is in flight.
+	//   - Publish a hub.Event with the completion summary so the main
+	//     event loop surfaces a notice + content block in the conversation
+	//     flow ("Nothing to save" stays silent).
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
+		m.services.SelfLearnRunning.Store(true)
+		defer m.services.SelfLearnRunning.Store(false)
+
 		ag, ok := m.currentAgent()
 		if !ok {
 			return // session ended between Observe and run; drop silently
@@ -76,16 +88,15 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 				zap.String("kinds", kinds.String()),
 				zap.Error(runErr),
 			)
+			m.publishSelfLearnFailure(kinds, runErr)
 			return
 		}
-		// Silent on "Nothing to save." per §6 invariant #7. Real summaries
-		// get logged for Phase 1; the user-visible MessageEvent surface
-		// lives in §"User-visible surface" (Phase 1.5).
 		if summary != "" {
 			log.Logger().Info("self-learning review",
 				zap.String("kinds", kinds.String()),
 				zap.String("summary", summary),
 			)
+			m.publishSelfLearnSummary(kinds, summary)
 		}
 	}
 
@@ -150,4 +161,45 @@ func countUserTurns(msgs []core.Message) int {
 		}
 	}
 	return n
+}
+
+// publishSelfLearnSummary surfaces the just-completed review's one-line
+// summary as a hub.Event targeted at "main", which the model loop routes
+// through onMainEvent → injectNotification to display in the conversation
+// flow. The recap block (§"User-visible surface") is the user's audit
+// trail of what L1 just changed. Silent on "Nothing to save" by virtue of
+// the caller's empty-summary check.
+func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, summary string) {
+	if m.agentEventHub == nil {
+		return
+	}
+	m.agentEventHub.Publish(hub.Event{
+		Type:    "selflearn.review.done",
+		Source:  "selflearn",
+		Target:  "main",
+		Subject: fmt.Sprintf("Self-improvement review (%s)", kinds.String()),
+		Data:    summary,
+	})
+}
+
+// publishSelfLearnFailure surfaces a best-effort failure notice. We do not
+// swallow review errors silently because they indicate something the user
+// may want to know (config issue, provider outage, hung fork). The message
+// stays terse — full details are in the log per the failure branch of the
+// ReviewFunc above.
+func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
+	if m.agentEventHub == nil {
+		return
+	}
+	msg := strings.TrimSpace(err.Error())
+	if msg == "" {
+		msg = "review failed (see log)"
+	}
+	m.agentEventHub.Publish(hub.Event{
+		Type:    "selflearn.review.failed",
+		Source:  "selflearn",
+		Target:  "main",
+		Subject: fmt.Sprintf("Self-improvement review failed (%s)", kinds.String()),
+		Data:    msg,
+	})
 }

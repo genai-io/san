@@ -1,6 +1,8 @@
 package app
 
 import (
+	"sync/atomic"
+
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/command"
 	"github.com/genai-io/gen-code/internal/cron"
@@ -46,6 +48,14 @@ type services struct {
 	// (see notes/active/l1-background-review.md §3.1 / §9). Nil ⇒ zero
 	// overhead: no goroutine, no counters, no extra model calls.
 	SelfLearn *selflearn.Reviewer
+
+	// SelfLearnRunning reflects whether a review fork is currently in flight.
+	// Drives the status-bar "evolving" indicator (§"User-visible surface").
+	// Set by the ReviewFunc on entry / cleared on exit; the value is safe to
+	// read from the render goroutine without locking. Held as a pointer so
+	// the surrounding services struct stays freely copy-able (the View()
+	// path takes the model by value through several helpers).
+	SelfLearnRunning *atomic.Bool
 }
 
 func newServices() services {
@@ -63,9 +73,10 @@ func newServices() services {
 		Cron:     cron.Default(),
 		MCP:      mcp.DefaultRegistry(),
 		Plugin:   plugin.Default(),
-		Agent:    agent.Default(),
-		Identity: identity.Default(),
-		Reminder: reminder.NewService(),
+		Agent:            agent.Default(),
+		Identity:         identity.Default(),
+		Reminder:         reminder.NewService(),
+		SelfLearnRunning: new(atomic.Bool),
 	}
 }
 
