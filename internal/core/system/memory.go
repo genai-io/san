@@ -5,11 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/session"
 	"go.uber.org/zap"
 )
 
@@ -35,7 +35,21 @@ func AutoMemoryDir(cwd string) string {
 	if err != nil {
 		return filepath.Join(cwd, ".gen", "memory")
 	}
-	return filepath.Join(homeDir, ".gen", "projects", session.EncodePath(cwd), "memory")
+	return filepath.Join(homeDir, ".gen", "projects", encodeProjectPath(cwd), "memory")
+}
+
+// encodeProjectPath mirrors internal/session.EncodePath: replaces path
+// separators with "-" so the cwd can stand alone as a subdirectory name.
+// Duplicated (5 lines) to keep core layer-pure rather than importing the
+// session feature package; the two functions must stay in lockstep so
+// memory and transcript stores resolve to the same project partition.
+func encodeProjectPath(path string) string {
+	path = strings.TrimRight(path, "/")
+	if runtime.GOOS == "windows" {
+		path = strings.ReplaceAll(path, ":", "-")
+		path = strings.ReplaceAll(path, "\\", "-")
+	}
+	return strings.ReplaceAll(path, "/", "-")
 }
 
 // AutoMemoryIndexPath is the auto-memory index file for cwd's project.

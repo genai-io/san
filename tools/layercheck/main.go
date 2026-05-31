@@ -48,6 +48,7 @@ var layerOf = map[string]string{
 	"internal/plugin":    "feature",
 	"internal/reminder":  "feature",
 	"internal/search":    "feature",
+	"internal/selflearn": "feature",
 	"internal/session":   "feature",
 	"internal/setting":   "feature",
 	"internal/skill":     "feature",

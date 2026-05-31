@@ -57,6 +57,13 @@ lint-layers:
 test:
 	go test ./...
 
+# ci runs everything the GitHub workflow runs, in the same order. Use
+# `make ci` before pushing to catch format / vet / layercheck / test
+# failures locally instead of round-tripping through Actions.
+ci: format-check build-all lint
+	go test ./internal/...
+	go test ./tests/integration/...
+
 clean:
 	rm -rf $(BINDIR)
 
