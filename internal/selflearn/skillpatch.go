@@ -73,7 +73,7 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 	}
 
 	var starts []int
-	for i := 0; i+w <= len(contentLines); i++ {
+	for i := 0; i+w <= len(contentLines); {
 		match := true
 		for j := 0; j < w; j++ {
 			if norm(contentLines[i+j]) != normOld[j] {
@@ -81,10 +81,16 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 				break
 			}
 		}
-		// Collect every match — len(starts) > 1 with !replaceAll is the
-		// ambiguity error rejected below.
+		// Collect non-overlapping matches only (mirrors strings.Count in the
+		// exact tier): advance past the whole window on a hit so a
+		// self-overlapping pattern can't be counted — and then double-applied
+		// by the backward replace below — twice. len(starts) > 1 with
+		// !replaceAll is the ambiguity error rejected below.
 		if match {
 			starts = append(starts, i)
+			i += w
+		} else {
+			i++
 		}
 	}
 	if len(starts) == 0 {

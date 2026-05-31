@@ -172,6 +172,15 @@ func (m *SkillManager) dirFor(level string) (string, error) {
 // resolve finds an existing skill's SKILL.md by name, project scope first
 // (higher priority), then user. Returns the path or an error if absent.
 func (m *SkillManager) resolve(name string) (string, error) {
+	// Validate before touching the filesystem: every action except create
+	// reaches the disk through here, and only create validated the name
+	// itself. Without this guard a name with a separator or ".." would be
+	// joined straight into a path (patch/edit/delete/write_file/remove_file
+	// all flow through resolve), escaping the skills directory. skillNameRe
+	// forbids both, doubling as the traversal guard its doc claims to be.
+	if !skillNameRe.MatchString(name) {
+		return "", fmt.Errorf("invalid skill name %q", name)
+	}
 	for _, dir := range []string{m.projectDir, m.userDir} {
 		p := filepath.Join(dir, name, "SKILL.md")
 		if _, err := os.Stat(p); err == nil {
@@ -489,13 +498,25 @@ func joinFrontmatter(fm, body string) string {
 	return "---\n" + fm + "\n---\n\n" + strings.TrimSpace(body) + "\n"
 }
 
-// yamlScalar quotes a description if it contains characters that would break a
-// bare YAML scalar.
+// yamlScalar renders a description as a YAML scalar that always round-trips.
+// A hand-rolled "quote only these chars" rule under-quotes values that open a
+// YAML indicator (e.g. "fix [bug"), producing frontmatter that parses as a
+// flow sequence — or fails to parse at all, which would make every later
+// parseSkill on that file error and leave the skill permanently un-editable.
+// Delegating to the YAML encoder guarantees a valid scalar for any input.
 func yamlScalar(s string) string {
-	if strings.ContainsAny(s, ":#\n\"'") {
+	out, err := yaml.Marshal(s)
+	if err != nil {
 		return strconv.Quote(s)
 	}
-	return s
+	scalar := strings.TrimRight(string(out), "\n")
+	// A multi-line value marshals to a block scalar, which cannot be inlined
+	// after "description: ". Fall back to a double-quoted single line (valid
+	// YAML, \n-escaped) for that case.
+	if strings.Contains(scalar, "\n") {
+		return strconv.Quote(s)
+	}
+	return scalar
 }
 
 // skillManageTool is the L1-only skill write surface.

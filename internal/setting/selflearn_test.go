@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestSelfLearnValidate exercises the three rejected boolean combinations and
+// TestSelfLearnValidate exercises the two rejected boolean combinations and
 // the maxKB invariant from notes/active/l1-background-review.md §3.1 / §4.2.
 // The all-zero "feature off" baseline and several legal combinations must
 // validate without error.
@@ -50,11 +50,11 @@ func TestSelfLearnValidate(t *testing.T) {
 			wantErr: "denyUpdate=true requires denyCreate=true",
 		},
 		{
-			name: "rejected: create + update allowed but delete denied",
+			name: "ok: create + update allowed but delete denied (no-auto-delete mode)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{DenyDelete: true},
+				Skills: SelfLearnSkills{Enabled: true, DenyDelete: true},
 			},
-			wantErr: "denyDelete=true requires denyCreate=true",
+			wantErr: "",
 		},
 		{
 			name: "rejected: advanced opt-in without update base",

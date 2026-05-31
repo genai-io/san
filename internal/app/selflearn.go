@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,6 +47,13 @@ const selfLearnDisableEnv = "GEN_DISABLE_SELF_LEARN"
 // reviewer fork uses the same values so its outbound HTTP request hits the
 // same prefix-cache key (§6 invariant #2).
 func (m *model) wireSelfLearn(params agent.BuildParams) {
+	// Tear down any prior wiring first. ensureAgentSession can re-enter here
+	// after an agent toggle, which calls Agent.Stop() directly (not
+	// StopAgentSession), so without this the previous reviewCancel would be
+	// overwritten un-called — leaking the context and leaving the old fork
+	// pinned for up to forkDeadline, plus a duplicate Reviewer.
+	m.teardownSelfLearn()
+
 	if m.services.Setting == nil {
 		return
 	}
@@ -71,6 +79,13 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	reviewCtx, reviewCancel := context.WithCancel(context.Background())
 	m.services.SelfLearnCancel = reviewCancel
 
+	// live gates the fork-goroutine write observers below. They capture this
+	// local (not m.services.SelfLearn) so they never race on a services field
+	// the UI goroutine mutates; teardownSelfLearn flips it false.
+	live := &atomic.Bool{}
+	live.Store(true)
+	m.services.SelfLearnLive = live
+
 	memStore := selflearn.NewMemoryStore(m.env.CWD, resolved.MemoryMaxChars)
 	skillMgr := selflearn.NewSkillManager(m.env.CWD, resolved.Perms)
 
@@ -88,11 +103,11 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// memory_write / skill_manage call. The action verbs feed both the
 	// live spinner-tail label and the post-pass recap block formatted by
 	// formatRecapBlock. Callbacks run on the fork's goroutine; they check
-	// SelfLearn != nil so a write that lands after StopAgentSession
-	// (which nils SelfLearn) is silently dropped instead of mutating UI
-	// state for a session the user already terminated.
+	// the captured `live` atomic so a write that lands after
+	// teardownSelfLearn (StopAgentSession or a session rebuild) is dropped
+	// without racing on a services field the UI goroutine mutates.
 	memStore.SetWriteObserver(func(action, file string) {
-		if m.services.SelfLearn == nil {
+		if !live.Load() {
 			return
 		}
 		m.services.SelfLearnUI.RecordAction(ReviewAction{
@@ -102,7 +117,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		})
 	})
 	skillMgr.SetWriteObserver(func(action, name string) {
-		if m.services.SelfLearn == nil {
+		if !live.Load() {
 			return
 		}
 		m.services.SelfLearnUI.RecordAction(ReviewAction{
@@ -167,6 +182,24 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	r := selflearn.New(resolved.Config, review)
 	r.SeedTurns(countUserTurns(m.conv.ConvertToProvider()))
 	m.services.SelfLearn = r
+}
+
+// teardownSelfLearn unwires the current L1 reviewer: it cancels the
+// session-scoped fork context, marks the wiring dead so a late write
+// observer stops touching UI state, and drops the Reviewer so OnTurnEnd no
+// longer feeds it. Safe to call when nothing is wired (all fields nil).
+// Invoked from StopAgentSession and at the top of wireSelfLearn so a
+// session rebuild never leaks the prior context or stacks a second reviewer.
+func (m *model) teardownSelfLearn() {
+	if cancel := m.services.SelfLearnCancel; cancel != nil {
+		cancel()
+	}
+	m.services.SelfLearnCancel = nil
+	if live := m.services.SelfLearnLive; live != nil {
+		live.Store(false)
+	}
+	m.services.SelfLearnLive = nil
+	m.services.SelfLearn = nil
 }
 
 // handleSelflearnTick advances the L1 indicator state (spinner frame +

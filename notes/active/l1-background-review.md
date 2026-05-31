@@ -177,13 +177,17 @@ The `denyX` encoding inverts the polarity so the zero value is the safe
 permissive default (Go idiom — "zero value should be sensible"). Every
 omitted field reads as "allow"; setting true is the explicit lockdown.
 
-**Startup validation** rejects three illegal combinations:
+**Startup validation** rejects two illegal combinations:
 
 | Rejected | Reason |
 |---|---|
 | `denyCreate=false, denyUpdate=true` | Created skills could never be refined → unfixable errors accumulate. |
-| `denyCreate=false, denyUpdate=false, denyDelete=true` | "Only-add, never-subtract" violates §4.1 / §5.1 retire policy. |
 | `allowUpdateUserCreated=true, denyUpdate=true` | Depends on the update permission; combination is meaningless. |
+
+`denyDelete=true` with create + update allowed is **permitted** — "create and
+refine my own skills but never auto-delete them" is a legitimate conservative
+config (delete is already restricted to agent-created skills, so opting out of
+it removes no safety).
 
 **Default off (opt-in).** L1 forks an extra model call per cadence and writes
 files automatically; ship opt-in, default-on later once trusted.

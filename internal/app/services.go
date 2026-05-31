@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/command"
@@ -54,6 +55,14 @@ type services struct {
 	// quit unblocks the fork immediately instead of waiting for the
 	// 5-minute deadline; never nil while SelfLearn is non-nil.
 	SelfLearnCancel context.CancelFunc
+
+	// SelfLearnLive is flipped to false when the current wiring is torn
+	// down (StopAgentSession or a session rebuild). The fork-goroutine
+	// write observers read it atomically to decide whether to still record
+	// into the UI state, so a write that lands after teardown is dropped
+	// without racing on the SelfLearn pointer. Allocated per wiring in
+	// wireSelfLearn; nil before the first wiring.
+	SelfLearnLive *atomic.Bool
 
 	// SelfLearnUI drives the four-phase status-bar surface from the design's
 	// §"User-visible surface". Always non-nil so the render path can take

@@ -84,8 +84,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case kit.DismissedMsg, input.ToolToggleMsg:
 		return m, nil
 	case input.ConfigSavedMsg:
-		// Brief confirmation in the conversation flow. The settings have
-		// already been merged + persisted by the panel.
+		// Refresh the in-memory settings handle so re-opening /config (and any
+		// in-session reader) sees the just-saved values rather than the stale
+		// pre-save snapshot. The panel already persisted to disk.
+		if m.services.Setting != nil {
+			if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+				log.Logger().Warn("reload settings after config save failed", zap.Error(err))
+			}
+		}
 		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
 		return m, nil
 	case input.SkillCycleMsg:

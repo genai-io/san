@@ -104,10 +104,15 @@ func (m SelfLearnMemory) MaxKBOr() int {
 	return m.MaxKB
 }
 
-// Validate enforces the cross-field invariants of §3.1: three illegal skill
+// Validate enforces the cross-field invariants of §3.1: two illegal skill
 // boolean combinations are rejected, and memory.maxKB must lie in [0, 25].
 // Returns nil when the configuration is acceptable (including the all-zero
 // "feature off" case).
+//
+// denyDelete is intentionally NOT constrained: "let the reviewer create and
+// refine its own skills but never auto-delete them" is a legitimate
+// conservative config. Delete is already restricted to agent-created skills,
+// so opting out of it removes no safety.
 func (s SelfLearnSettings) Validate() error {
 	if s.Memory.MaxKB < 0 || s.Memory.MaxKB > SelfLearnMaxMemoryKB {
 		return fmt.Errorf(
@@ -117,15 +122,9 @@ func (s SelfLearnSettings) Validate() error {
 	}
 	create := s.Skills.AllowCreate()
 	update := s.Skills.AllowUpdate()
-	deleteOK := s.Skills.AllowDelete()
 	if create && !update {
 		return fmt.Errorf(
 			"selfLearn.skills: denyUpdate=true requires denyCreate=true; otherwise created skills could never be refined",
-		)
-	}
-	if create && update && !deleteOK {
-		return fmt.Errorf(
-			"selfLearn.skills: denyDelete=true requires denyCreate=true; only-add-never-subtract violates the §4.1 retire policy",
 		)
 	}
 	if s.Skills.AllowUpdateUserCreated && !update {

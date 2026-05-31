@@ -284,11 +284,7 @@ func (m *model) StopAgentSession() {
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.
-	if cancel := m.services.SelfLearnCancel; cancel != nil {
-		cancel()
-	}
-	m.services.SelfLearnCancel = nil
-	m.services.SelfLearn = nil
+	m.teardownSelfLearn()
 }
 
 // ============================================================

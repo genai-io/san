@@ -30,6 +30,13 @@ func rejectEmbeddedDelimiter(content string) error {
 	if strings.Contains(content, memoryEntryDelimiter) {
 		return fmt.Errorf("content cannot contain the entry delimiter (a standalone § line); this would silently split into multiple entries on read")
 	}
+	// Even without the full delimiter, an entry whose first or last line is a
+	// bare "§" fuses with the join newlines into "\n§\n" when stored next to a
+	// neighbour, so the boundary moves on the next read (e.g. ["a\n§","b"]
+	// reads back as ["a","§\nb"]). Reject any bare-§ line for the same reason.
+	if slices.Contains(strings.Split(content, "\n"), "§") {
+		return fmt.Errorf("content cannot contain a standalone § line; it collides with the entry delimiter and would corrupt the store on read")
+	}
 	return nil
 }
 

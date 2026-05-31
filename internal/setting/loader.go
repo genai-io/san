@@ -293,15 +293,27 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
 		return err
 	}
 	loader := NewLoader()
-	settings := &Data{SelfLearn: cfg}
-
-	var err error
+	path := filepath.Join(loader.projectDir, "settings.json")
 	if userLevel {
-		err = loader.SaveToUser(settings)
-	} else {
-		err = loader.SaveToProject(settings)
+		path = filepath.Join(loader.userDir, "settings.json")
 	}
-	if err != nil {
+
+	// Read the existing settings for THIS file and replace only the
+	// selfLearn block. We deliberately do NOT route through
+	// SaveToUser/SaveToProject (which merge via mergeSelfLearn): that merge
+	// ORs the boolean fields, so reusing it here would OR the new config
+	// with the file's own previous value and a true→false toggle (e.g.
+	// disabling an arm from /config) could never be persisted. Replacing
+	// the block lets the off-toggle actually stick while leaving every
+	// other setting in the file untouched. (Cross-level layering still ORs
+	// on Load by design — disabling at a lower-priority level cannot
+	// override an enable at a higher-priority one.)
+	existing := NewData()
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, existing)
+	}
+	existing.SelfLearn = cfg
+	if err := writeJSONAtomic(path, existing); err != nil {
 		return err
 	}
 
