@@ -281,8 +281,13 @@ func (m *model) wireReminderProviders() {
 
 func (m *model) StopAgentSession() {
 	m.services.Agent.Stop()
-	// Stop feeding the L1 reviewer. Any in-flight review goroutine finishes
-	// on its own deadline (forkDeadline inside selflearn).
+	// Stop feeding the L1 reviewer AND cancel the session-scoped context
+	// so an in-flight fork unblocks immediately instead of holding tokens /
+	// HTTP for up to forkDeadline.
+	if cancel := m.services.SelfLearnCancel; cancel != nil {
+		cancel()
+	}
+	m.services.SelfLearnCancel = nil
 	m.services.SelfLearn = nil
 }
 

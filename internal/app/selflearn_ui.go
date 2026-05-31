@@ -127,15 +127,24 @@ func (s *SelfLearnUIState) RecordAction(act ReviewAction) {
 	}
 }
 
-// Complete is called when the fork returns successfully. The change
-// count is snapshotted into doneCount so the done-hold render survives
-// a subsequent DrainActions (which clears s.actions for the next pass).
+// Complete is called when the fork returns successfully. Must be called
+// BEFORE DrainActions so doneCount can capture len(s.actions) — otherwise
+// the done-hold render shows "evolved" without the count.
+//
+// When the pass produced no writes we skip the visible done-hold entirely
+// (straight to idle). This is the §6 invariant #7 "silent when nothing
+// changed" promise applied to the status bar surface: an empty pass
+// should leave the bar pixel-identical to a no-review session.
 func (s *SelfLearnUIState) Complete() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.phase = selflearnDone
 	s.target = ""
 	s.doneCount = len(s.actions)
+	if s.doneCount == 0 {
+		s.phase = selflearnIdle
+		return
+	}
+	s.phase = selflearnDone
 	s.enteredAt = time.Now()
 }
 

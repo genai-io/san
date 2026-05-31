@@ -18,6 +18,37 @@ func newConfigSelectorForTest() *ConfigSelector {
 	return &c
 }
 
+// TestConfigSelectorCursorSkipsHeaders guards against the nil-toggle panic:
+// the cursor must never land on a rowHeader / rowSpacer / rowAdvHint (their
+// toggle is nil and Space would crash). Enter() should pick the first
+// editable row; navigation should skip non-editable rows.
+func TestConfigSelectorCursorSkipsHeaders(t *testing.T) {
+	c := newConfigSelectorForTest()
+	rows := c.rows()
+
+	// Initial cursor must be on an editable row.
+	if !rows[c.cursor].editable {
+		t.Fatalf("initial cursor on non-editable row %d (%v)", c.cursor, rows[c.cursor].kind)
+	}
+
+	// Space must not panic regardless of which row is current.
+	c.HandleKeypress(tea.KeyMsg{Type: tea.KeySpace}) // toggle the first editable row
+
+	// Walking ↑↓ across the whole panel must never land on a non-editable row.
+	for range len(rows) * 2 {
+		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+		if !rows[c.cursor].editable {
+			t.Fatalf("down cursor landed on non-editable row %d (%v)", c.cursor, rows[c.cursor].kind)
+		}
+	}
+	for range len(rows) * 2 {
+		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyUp})
+		if !rows[c.cursor].editable {
+			t.Fatalf("up cursor landed on non-editable row %d (%v)", c.cursor, rows[c.cursor].kind)
+		}
+	}
+}
+
 // TestConfigSelectorIsActivated checks that Enter flips the panel on and
 // Esc flips it back off.
 func TestConfigSelectorIsActivated(t *testing.T) {
@@ -35,9 +66,8 @@ func TestConfigSelectorIsActivated(t *testing.T) {
 // flip the underlying field.
 func TestConfigSelectorTogglesBool(t *testing.T) {
 	c := newConfigSelectorForTest()
-	// Cursor starts at the "Memory" header — move down to "Enable
-	// memory-evolving" (next non-header row).
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+	// Cursor starts on the first editable row, which is "Enable
+	// memory-evolving" (the rowBool right after the Memory header).
 	if c.snap.Memory.Enabled {
 		t.Fatal("baseline: Memory.Enabled should be false")
 	}
@@ -56,10 +86,10 @@ func TestConfigSelectorTogglesBool(t *testing.T) {
 // the row's max on confirm.
 func TestConfigSelectorIntEditAndClamp(t *testing.T) {
 	c := newConfigSelectorForTest()
-	// Navigate to "Max size (KB)" — Memory header(0) → Enable(1) → cadence(2) → maxKB(3).
-	for range 3 {
-		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
-	}
+	// Cursor starts on Enable memory-evolving (the first editable row).
+	// Navigate to "Max size (KB)": Enable → cadence → maxKB = 2 Downs.
+	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
 	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter}) // enter edit mode
 	if !c.editing {
 		t.Fatal("Enter on int row should start editing")

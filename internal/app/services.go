@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/command"
 	"github.com/genai-io/gen-code/internal/cron"
@@ -46,6 +48,12 @@ type services struct {
 	// (see notes/active/l1-background-review.md §3.1 / §9). Nil ⇒ zero
 	// overhead: no goroutine, no counters, no extra model calls.
 	SelfLearn *selflearn.Reviewer
+
+	// SelfLearnCancel cancels the session-scoped context every in-flight
+	// reviewer fork inherits. Called from StopAgentSession so a /clear or
+	// quit unblocks the fork immediately instead of waiting for the
+	// 5-minute deadline; never nil while SelfLearn is non-nil.
+	SelfLearnCancel context.CancelFunc
 
 	// SelfLearnUI drives the four-phase status-bar surface from the design's
 	// §"User-visible surface". Always non-nil so the render path can take

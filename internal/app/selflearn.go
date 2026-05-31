@@ -65,6 +65,12 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		return
 	}
 
+	// Session-scoped review context. StopAgentSession's clearSelfLearn calls
+	// the cancel so an in-flight fork unblocks immediately on /clear / quit
+	// instead of waiting up to forkDeadline for its independent timeout.
+	reviewCtx, reviewCancel := context.WithCancel(context.Background())
+	m.services.SelfLearnCancel = reviewCancel
+
 	memStore := selflearn.NewMemoryStore(m.env.CWD, resolved.MemoryMaxChars)
 	skillMgr := selflearn.NewSkillManager(m.env.CWD, resolved.Perms)
 
@@ -99,29 +105,25 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	})
 
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
-		m.services.SelfLearnUI.BeginReview()
-		// Tell the main loop to start the spinner tick. Published before the
-		// fork runs so the indicator is visible from the first frame.
-		m.publishSelfLearnStarted(kinds)
-		var runErr error
-		defer func() {
-			if runErr != nil {
-				m.services.SelfLearnUI.Fail()
-			} else {
-				m.services.SelfLearnUI.Complete()
-			}
-		}()
-
+		// Validate session liveness BEFORE any UI state change. A teardown
+		// race must not produce a phantom "evolving → evolved" flash on a
+		// session the user just killed.
 		if !m.services.Agent.Active() {
-			return // session ended between Observe and run; drop silently
+			return
 		}
 		sys := m.services.Agent.System()
 		if sys == nil {
 			return
 		}
+
+		m.services.SelfLearnUI.BeginReview()
+		// Tell the main loop to start the spinner tick. Published after the
+		// liveness check so the indicator only appears for reviews that
+		// will actually run.
+		m.publishSelfLearnStarted(kinds)
+
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
-
 		fc := selflearn.ForkConfig{
 			LLM:    client,
 			System: sys,
@@ -129,8 +131,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Memory: memStore,
 			Skills: skillMgr,
 		}
-		_, runErr = selflearn.RunReview(context.Background(), fc, kinds, snapshot)
+		_, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		if runErr != nil {
+			m.services.SelfLearnUI.Fail()
 			log.Logger().Warn("self-learning review failed",
 				zap.String("kinds", kinds.String()),
 				zap.Error(runErr),
@@ -138,10 +141,10 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			m.publishSelfLearnFailure(kinds, runErr)
 			return
 		}
-		// Drain the action log AFTER Complete so the snapshot the status
-		// bar formats during the done-hold still has the change count.
-		// Empty log ⇒ no writes ⇒ silent (§6 invariant #7). The action
-		// log is authoritative; the model's text reply is not consulted.
+		// Complete BEFORE Drain so doneCount snapshots len(s.actions); a
+		// zero-write pass collapses straight to idle inside Complete (§6
+		// invariant #7), so we can still publish-suppress here.
+		m.services.SelfLearnUI.Complete()
 		actions := m.services.SelfLearnUI.DrainActions()
 		if len(actions) == 0 {
 			return

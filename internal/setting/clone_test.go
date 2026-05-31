@@ -44,3 +44,39 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 		t.Errorf("SelfLearn: got %+v, want %+v", dst.SelfLearn, src.SelfLearn)
 	}
 }
+
+// TestMergeSettingsPreservesSelfLearn guards the merger gap that left the
+// entire L1 feature unreachable from settings.json: mergeSettings used to
+// drop the SelfLearn field on every load and every save merge.
+func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
+	base := &Data{
+		SelfLearn: SelfLearnSettings{
+			Memory: SelfLearnMemory{Enabled: true, EveryTurns: 3, MaxKB: 15},
+			Skills: SelfLearnSkills{Enabled: false},
+		},
+	}
+	overlay := &Data{
+		SelfLearn: SelfLearnSettings{
+			Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, EveryToolIters: 7},
+		},
+	}
+	got := mergeSettings(base, overlay)
+
+	// Memory comes entirely from base since overlay didn't touch it.
+	if !got.SelfLearn.Memory.Enabled || got.SelfLearn.Memory.EveryTurns != 3 || got.SelfLearn.Memory.MaxKB != 15 {
+		t.Errorf("Memory: got %+v, want base passthrough", got.SelfLearn.Memory)
+	}
+	// Skills field-merges: overlay's Enabled+DenyCreate+EveryToolIters
+	// reach the result; base's missing fields stay zero.
+	if !got.SelfLearn.Skills.Enabled || !got.SelfLearn.Skills.DenyCreate || got.SelfLearn.Skills.EveryToolIters != 7 {
+		t.Errorf("Skills: got %+v, want merged overlay", got.SelfLearn.Skills)
+	}
+
+	// Symmetric: a base-only field survives an overlay that doesn't mention it.
+	baseOnly := &Data{SelfLearn: SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}}
+	emptyOverlay := &Data{}
+	got = mergeSettings(baseOnly, emptyOverlay)
+	if !got.SelfLearn.Memory.Enabled {
+		t.Errorf("base-only SelfLearn must survive empty overlay; got %+v", got.SelfLearn)
+	}
+}

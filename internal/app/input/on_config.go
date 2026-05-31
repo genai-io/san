@@ -54,16 +54,14 @@ func (c *ConfigSelector) Enter(width, height int) {
 	c.width = width
 	c.height = height
 	c.active = true
-	c.cursor = 0
 	c.editing = false
 	c.editingBuffer = ""
 	if c.settings == nil {
 		c.snap = setting.SelfLearnSettings{}
-		return
-	}
-	if data := c.settings.Snapshot(); data != nil {
+	} else if data := c.settings.Snapshot(); data != nil {
 		c.snap = data.SelfLearn
 	}
+	c.cursor = firstEditableRow(c.rows())
 }
 
 // IsActive implements the popup interface.
@@ -78,18 +76,21 @@ func (c *ConfigSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return c.handleEditingKey(msg)
 	}
 	rows := c.rows()
+	// First focusable row is the cursor's initial home; arrow keys skip
+	// non-editable rows entirely so the cursor can never land on a
+	// rowHeader/rowSpacer/rowAdvHint (where toggle/intGetter would be nil
+	// and Space/Enter would crash).
+	if c.cursor >= len(rows) {
+		c.cursor = firstEditableRow(rows)
+	}
 	switch msg.String() {
 	case "esc":
 		c.active = false
 		return nil
 	case "up", "k":
-		if c.cursor > 0 {
-			c.cursor--
-		}
+		c.cursor = prevEditableRow(rows, c.cursor)
 	case "down", "j":
-		if c.cursor+1 < len(rows) {
-			c.cursor++
-		}
+		c.cursor = nextEditableRow(rows, c.cursor)
 	case "tab":
 		// Toggle scope (user / project).
 		if c.scope == "user" {
@@ -98,13 +99,20 @@ func (c *ConfigSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 			c.scope = "user"
 		}
 	case " ":
-		// Space toggles bool rows.
-		rows[c.cursor].toggle(&c.snap)
+		// Space toggles bool rows; no-op on non-bool rows (the cursor
+		// shouldn't be on one anyway because of the skip-navigation above,
+		// but the explicit guard means a stale cursor index can never
+		// crash via a nil toggle).
+		if r := rows[c.cursor]; r.kind == rowBool && r.toggle != nil {
+			r.toggle(&c.snap)
+		}
 	case "enter":
 		row := rows[c.cursor]
 		switch row.kind {
 		case rowBool:
-			row.toggle(&c.snap)
+			if row.toggle != nil {
+				row.toggle(&c.snap)
+			}
 		case rowInt:
 			c.editing = true
 			c.editingBuffer = strconv.Itoa(row.intGetter(&c.snap))
@@ -159,6 +167,39 @@ func (c *ConfigSelector) handleEditingKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// firstEditableRow returns the first row index whose editable flag is set,
+// or 0 if no row is editable (defensive; rows() always has the Save row).
+func firstEditableRow(rows []configRow) int {
+	for i, r := range rows {
+		if r.editable {
+			return i
+		}
+	}
+	return 0
+}
+
+// nextEditableRow walks forward from cur until it finds an editable row,
+// staying at cur when no later row qualifies.
+func nextEditableRow(rows []configRow, cur int) int {
+	for i := cur + 1; i < len(rows); i++ {
+		if rows[i].editable {
+			return i
+		}
+	}
+	return cur
+}
+
+// prevEditableRow walks backward from cur until it finds an editable row,
+// staying at cur when no earlier row qualifies.
+func prevEditableRow(rows []configRow, cur int) int {
+	for i := cur - 1; i >= 0; i-- {
+		if rows[i].editable {
+			return i
+		}
+	}
+	return cur
 }
 
 // rowKind discriminates the editable field types: bool toggle, int with a

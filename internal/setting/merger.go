@@ -23,8 +23,38 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalesceBool(overlay.AllowBypass, base.AllowBypass)
 	result.Identity = coalesce(overlay.Identity, base.Identity)
+	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 
 	return result
+}
+
+// mergeSelfLearn does a field-level merge of the L1 configuration: integers
+// coalesce (non-zero wins), bools OR (deny-anywhere or enable-anywhere
+// wins, matching the safety bias of layered config). Without this the
+// entire selfLearn block is dropped on every Load and every save.
+func mergeSelfLearn(base, overlay SelfLearnSettings) SelfLearnSettings {
+	return SelfLearnSettings{
+		Memory: SelfLearnMemory{
+			Enabled:    overlay.Memory.Enabled || base.Memory.Enabled,
+			EveryTurns: coalesceInt(overlay.Memory.EveryTurns, base.Memory.EveryTurns),
+			MaxKB:      coalesceInt(overlay.Memory.MaxKB, base.Memory.MaxKB),
+		},
+		Skills: SelfLearnSkills{
+			Enabled:                overlay.Skills.Enabled || base.Skills.Enabled,
+			EveryToolIters:         coalesceInt(overlay.Skills.EveryToolIters, base.Skills.EveryToolIters),
+			DenyCreate:             overlay.Skills.DenyCreate || base.Skills.DenyCreate,
+			DenyUpdate:             overlay.Skills.DenyUpdate || base.Skills.DenyUpdate,
+			DenyDelete:             overlay.Skills.DenyDelete || base.Skills.DenyDelete,
+			AllowUpdateUserCreated: overlay.Skills.AllowUpdateUserCreated || base.Skills.AllowUpdateUserCreated,
+		},
+	}
+}
+
+func coalesceInt(a, b int) int {
+	if a != 0 {
+		return a
+	}
+	return b
 }
 
 func mergePermissions(base, overlay PermissionSettings) PermissionSettings {

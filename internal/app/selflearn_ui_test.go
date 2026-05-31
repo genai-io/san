@@ -152,6 +152,39 @@ func TestVerbMapping(t *testing.T) {
 	}
 }
 
+// TestCompleteSilentOnEmptyActions guards the §6 invariant #7 surface
+// promise: a successful review with zero writes must NOT linger in the
+// done-hold (no visible "evolved"); the state goes straight to idle so
+// the status bar is pixel-identical to a no-review session.
+func TestCompleteSilentOnEmptyActions(t *testing.T) {
+	s := NewSelfLearnUIState()
+	s.BeginReview()
+	// No RecordAction calls — pass produced no writes.
+	s.Complete()
+	if snap := s.Snapshot(); snap.Phase != selflearnIdle {
+		t.Fatalf("zero-write Complete should go straight to idle; got phase %v", snap.Phase)
+	}
+}
+
+// TestCompleteCapturesCountBeforeDrain guards the wire-up ordering:
+// Complete must capture doneCount = len(s.actions) BEFORE DrainActions
+// clears the slice. Otherwise the done-hold renders "evolved" without
+// the count.
+func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
+	s := NewSelfLearnUIState()
+	s.BeginReview()
+	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory"})
+	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
+	s.Complete()
+	if got := s.Snapshot().Changes; got != 2 {
+		t.Fatalf("post-Complete Changes: got %d, want 2", got)
+	}
+	_ = s.DrainActions() // wire-up runs Drain after Complete
+	if got := s.Snapshot().Changes; got != 2 {
+		t.Fatalf("post-Drain Changes during done-hold: got %d, want 2", got)
+	}
+}
+
 // TestMemoryTopicSuffixStrips checks the helper that produces the bit shown
 // after "memory" in the status line: empty when writing the index, " · X"
 // when writing a topic file.
