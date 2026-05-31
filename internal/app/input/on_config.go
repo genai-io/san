@@ -255,11 +255,13 @@ func (c *ConfigSelector) rows() []configRow {
 			intMax:    100,
 		},
 		{
-			kind:      rowInt,
-			label:     "Max size (KB)",
-			indent:    2,
-			editable:  true,
-			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Memory.MaxKB, setting.SelfLearnDefaultMemoryKB) },
+			kind:     rowInt,
+			label:    "Max size (KB)",
+			indent:   2,
+			editable: true,
+			intGetter: func(s *setting.SelfLearnSettings) int {
+				return defaultIfZero(s.Memory.MaxKB, setting.SelfLearnDefaultMemoryKB)
+			},
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
 			intMax:    setting.SelfLearnMaxMemoryKB,
