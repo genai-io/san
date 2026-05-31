@@ -20,6 +20,19 @@ import (
 // entry bodies stays reliable.
 const memoryEntryDelimiter = "\n§\n"
 
+// rejectEmbeddedDelimiter blocks any content that contains the entry
+// delimiter, which would otherwise split into multiple entries on read —
+// corrupting the store and providing a scan bypass: only the joined blob
+// passes through scanContent, but the post-split pieces are stored
+// independently and may carry payloads that survived only because of
+// surrounding-context masking.
+func rejectEmbeddedDelimiter(content string) error {
+	if strings.Contains(content, memoryEntryDelimiter) {
+		return fmt.Errorf("content cannot contain the entry delimiter (a standalone § line); this would silently split into multiple entries on read")
+	}
+	return nil
+}
+
 // DefaultMemoryFileCharLimit is the fallback per-file character cap when the
 // constructor receives 0. It matches the read-side injection cap
 // (system.AutoMemoryByteCap = 25 KB) so a file that fits the budget on write
@@ -68,6 +81,11 @@ func NewMemoryStore(cwd string, maxFile int) *MemoryStore {
 	return &MemoryStore{dir: system.AutoMemoryDir(cwd), maxFile: maxFile}
 }
 
+// MaxKB returns the per-file cap in kilobytes, rounded down. Used by the
+// review prompt so the model sees the actual configured cap rather than a
+// hardcoded string (the cap is configurable via memory.maxKB).
+func (s *MemoryStore) MaxKB() int { return s.maxFile / 1024 }
+
 // SetWriteObserver registers the callback fired after each successful
 // write. Must be called before the first write (see type doc).
 func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) { s.onWrite = fn }
@@ -107,6 +125,9 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 	if err := scanContent(content); err != nil {
 		return "", err
 	}
+	if err := rejectEmbeddedDelimiter(content); err != nil {
+		return "", err
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -143,6 +164,9 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 		return "", fmt.Errorf("content cannot be empty; use remove to delete an entry")
 	}
 	if err := scanContent(newContent); err != nil {
+		return "", err
+	}
+	if err := rejectEmbeddedDelimiter(newContent); err != nil {
 		return "", err
 	}
 

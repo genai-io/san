@@ -41,7 +41,7 @@ type ForkConfig struct {
 // so a hung provider call can't leave the goroutine pinned and the reviewer's
 // inFlight flag stuck (invariant #5 / #8).
 func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error) {
-	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Skills)
+	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Memory, fc.Skills)
 
 	ctx, cancel := context.WithTimeout(ctx, forkDeadline)
 	defer cancel()
@@ -75,7 +75,12 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
 	})
 
-	ag.SetMessages(snapshot)
+	// Defensive: if the parent's turn ended mid-tool-loop the snapshot may
+	// end with a user-role tool_result. Appending a fresh user-role prompt
+	// would put two consecutive user messages on the wire, which most
+	// providers reject as "messages must alternate". Trim trailing user
+	// messages so the review prompt is the only user turn at the tail.
+	ag.SetMessages(trimTrailingUserMessages(snapshot))
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	res, err := ag.ThinkAct(ctx)
 	if err != nil {
@@ -85,6 +90,18 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		return "", nil
 	}
 	return res.Content, nil
+}
+
+// trimTrailingUserMessages returns the slice with any trailing user-role
+// messages dropped. We do not mutate the caller's slice (the snapshot is
+// shared with the main agent) — instead we reslice so the caller's view
+// is unchanged.
+func trimTrailingUserMessages(msgs []core.Message) []core.Message {
+	end := len(msgs)
+	for end > 0 && msgs[end-1].Role == core.RoleUser {
+		end--
+	}
+	return msgs[:end]
 }
 
 // allowOnly builds a permission policy that allows exactly the tools in the

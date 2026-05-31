@@ -40,6 +40,32 @@ func (s *scriptedLLM) Infer(_ context.Context, req core.InferRequest) (<-chan co
 	return ch, nil
 }
 
+// TestTrimTrailingUserMessages guards against the "messages must alternate"
+// provider rejection: when the snapshot ends with a tool_result (RoleUser)
+// the fork's own UserMessage(prompt) would put two consecutive user
+// messages on the wire.
+func TestTrimTrailingUserMessages(t *testing.T) {
+	asst := core.Message{Role: core.RoleAssistant, Content: "ok"}
+	usr := core.Message{Role: core.RoleUser, Content: "tool result"}
+
+	// Snapshot ends with two trailing user messages → both dropped.
+	in := []core.Message{asst, usr, usr}
+	out := trimTrailingUserMessages(in)
+	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+		t.Fatalf("trailing user not trimmed: %+v", out)
+	}
+	// Snapshot already ends with assistant → unchanged.
+	in = []core.Message{usr, asst}
+	out = trimTrailingUserMessages(in)
+	if len(out) != 2 {
+		t.Fatalf("non-trailing user incorrectly trimmed: %+v", out)
+	}
+	// Empty input is safe.
+	if got := trimTrailingUserMessages(nil); got != nil {
+		t.Fatalf("nil input should return nil, got %v", got)
+	}
+}
+
 func TestAllowOnlyPolicy(t *testing.T) {
 	store := newTestStore(t)
 	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp", DefaultActionPermissions())))
@@ -62,7 +88,7 @@ func TestBuildReviewPromptSelectsArms(t *testing.T) {
 	mustAdd(t, store, "existing fact about the build")
 	mgr := NewSkillManager("/work/project-x", DefaultActionPermissions())
 
-	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", mgr)
+	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", store, mgr)
 	if !strings.Contains(memOnly, "existing fact about the build") {
 		t.Fatal("memory prompt should embed the current store")
 	}
@@ -70,12 +96,12 @@ func TestBuildReviewPromptSelectsArms(t *testing.T) {
 		t.Fatal("memory-only prompt should not include the skill section")
 	}
 
-	skillOnly := buildReviewPrompt(KindSkills, "/work/project-x", mgr)
+	skillOnly := buildReviewPrompt(KindSkills, "/work/project-x", store, mgr)
 	if !strings.Contains(skillOnly, "skill_manage tool") {
 		t.Fatal("skill prompt should include the skill section")
 	}
 
-	combined := buildReviewPrompt(KindMemory|KindSkills, "/work/project-x", mgr)
+	combined := buildReviewPrompt(KindMemory|KindSkills, "/work/project-x", store, mgr)
 	if !strings.Contains(combined, "memory_write tool") || !strings.Contains(combined, "skill_manage tool") {
 		t.Fatal("combined prompt should include both sections")
 	}

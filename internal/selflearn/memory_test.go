@@ -147,6 +147,20 @@ func TestMemoryRejectsTraversalAndNonMarkdown(t *testing.T) {
 	}
 }
 
+// TestMemoryRejectsEmbeddedDelimiter blocks the scan-bypass / store-corruption
+// vector where content contained the literal "\n§\n" delimiter and would
+// silently split into multiple entries on read.
+func TestMemoryRejectsEmbeddedDelimiter(t *testing.T) {
+	store := newTestStore(t)
+	poison := "harmless prefix\n§\nhidden second entry that bypassed the scan"
+	if _, err := store.Add("", poison); err == nil {
+		t.Fatal("content containing the entry delimiter should be rejected")
+	}
+	if _, err := store.Replace("", "anything", poison); err == nil {
+		t.Fatal("replace content containing the entry delimiter should be rejected")
+	}
+}
+
 func TestMemoryRejectsInjectionPayloads(t *testing.T) {
 	store := newTestStore(t)
 	cases := []string{

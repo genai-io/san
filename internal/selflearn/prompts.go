@@ -18,14 +18,14 @@ import (
 // dispatch — this is just steering.
 //
 // See notes/active/l1-background-review.md §3.
-func buildReviewPrompt(kinds ReviewKind, cwd string, skills *SkillManager) string {
+func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills *SkillManager) string {
 	var b strings.Builder
 
 	b.WriteString(reviewPreamble)
 
 	if kinds.Has(KindMemory) {
 		b.WriteString("\n\n")
-		b.WriteString(memorySection)
+		b.WriteString(memorySectionFor(memory))
 		b.WriteString("\n\nCurrent memory store (MEMORY.md):\n")
 		if mem, ok := system.LoadAutoMemory(cwd); ok {
 			b.WriteString("```\n")
@@ -135,16 +135,25 @@ func renderInventory(skills *SkillManager) string {
 // notification entirely.
 const reviewPreamble = `You are the self-learning reviewer for a coding agent. The conversation above is a just-completed turn. Reflect on it and capture only durable learnings using the write tools available to you. You are out-of-band: your writes affect future sessions, not the one above. Be conservative — "nothing to save" is a perfectly good outcome. Do not narrate to the user; do the work via tool calls.`
 
-const memorySection = `MEMORY (memory_write tool). Save durable facts that will matter in future sessions: user preferences and corrections, project conventions, environment/build/debug insights.
+// memorySectionFor returns the eviction-first memory steering with the
+// store's actual cap interpolated — the model needs to know the real
+// budget when the user has lowered memory.maxKB below the default.
+func memorySectionFor(mem *MemoryStore) string {
+	cap := 25
+	if mem != nil {
+		cap = mem.MaxKB()
+	}
+	return fmt.Sprintf(`MEMORY (memory_write tool). Save durable facts that will matter in future sessions: user preferences and corrections, project conventions, environment/build/debug insights.
 
 Eviction is part of the job, not an afterthought:
 
 1. First, scan the current store below and retire stale / superseded / merged-PR-specific entries via action=remove. A pass that only adds is a missed pruning opportunity.
 2. If an existing entry covers the same topic as your new learning, use action=replace to refresh it — never add a near-duplicate.
-3. The store has a hard 25 KB cap per file. When the index is near cap, you MUST prune another entry first before your new add will fit.
+3. The store has a hard %d KB cap per file. When the index is near cap, you MUST prune another entry first before your new add will fit.
 4. Only then, action=add for the genuinely new durable fact.
 
-Do NOT save: one-off task state, transient errors, or "what we did this session" narratives — those are not durable.`
+Do NOT save: one-off task state, transient errors, or "what we did this session" narratives — those are not durable.`, cap)
+}
 
 // reviewClosing tells the model how to signal completion. An empty reply or
 // the literal "Nothing to save." both cause the wire-up to suppress the

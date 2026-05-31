@@ -13,6 +13,8 @@ package selflearn
 import (
 	"sync"
 
+	"go.uber.org/zap"
+
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/log"
 )
@@ -173,7 +175,11 @@ func (r *Reviewer) Observe(result core.Result) {
 func (r *Reviewer) run(kinds ReviewKind, snapshot []core.Message) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Logger().Warn("selflearn: review panicked (recovered)")
+			log.Logger().Warn("selflearn: review panicked (recovered)",
+				zap.String("kinds", kinds.String()),
+				zap.Any("panic", rec),
+				zap.Stack("stack"),
+			)
 		}
 		r.mu.Lock()
 		r.inFlight = false
