@@ -87,9 +87,14 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// Wire per-write observers so the UI state picks up each successful
 	// memory_write / skill_manage call. The action verbs feed both the
 	// live spinner-tail label and the post-pass recap block formatted by
-	// formatRecapBlock. The callbacks run on the fork's goroutine;
-	// SelfLearnUIState handles its own mutex.
+	// formatRecapBlock. Callbacks run on the fork's goroutine; they check
+	// SelfLearn != nil so a write that lands after StopAgentSession
+	// (which nils SelfLearn) is silently dropped instead of mutating UI
+	// state for a session the user already terminated.
 	memStore.SetWriteObserver(func(action, file string) {
+		if m.services.SelfLearn == nil {
+			return
+		}
 		m.services.SelfLearnUI.RecordAction(ReviewAction{
 			Verb:   memoryVerb(action),
 			Kind:   "memory",
@@ -97,6 +102,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		})
 	})
 	skillMgr.SetWriteObserver(func(action, name string) {
+		if m.services.SelfLearn == nil {
+			return
+		}
 		m.services.SelfLearnUI.RecordAction(ReviewAction{
 			Verb:   skillVerb(action),
 			Kind:   "skill",
@@ -162,17 +170,19 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 }
 
 // handleSelflearnTick advances the L1 indicator state (spinner frame +
-// done/failed decay) and re-arms the next tick if the indicator is still
-// in a non-idle phase. Returns nil when the state is idle so the tick
-// loop quiesces cleanly.
+// done/failed decay) and schedules the next tick at the cadence Tick
+// returns: the spinner interval while reviewing, the remaining hold time
+// while done/failed (one deadline tick rather than polling every 100 ms).
+// Returns nil when the state is idle so the tick loop quiesces cleanly.
 func (m *model) handleSelflearnTick() tea.Cmd {
 	if m.services.SelfLearnUI == nil {
 		return nil
 	}
-	if !m.services.SelfLearnUI.Tick(time.Now()) {
+	delay, stillActive := m.services.SelfLearnUI.Tick(time.Now())
+	if !stillActive {
 		return nil
 	}
-	return scheduleSelflearnTick()
+	return tea.Tick(delay, func(time.Time) tea.Msg { return selflearnTickMsg{} })
 }
 
 // memoryTopicSuffix turns the file name reported by MemoryStore into the

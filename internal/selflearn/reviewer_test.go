@@ -136,6 +136,33 @@ func TestConcurrencyCapDropsAndRetries(t *testing.T) {
 	}
 }
 
+// TestSkillIterCounterCappedDuringInFlight guards against the post-release
+// burst: while a long review is in flight every Observe accumulates
+// ToolUses indefinitely; without a cap the counter ends up far above the
+// threshold and fires on every turn for many turns after the release.
+// The cap (2× the threshold) limits this to at most two immediate refires.
+func TestSkillIterCounterCappedDuringInFlight(t *testing.T) {
+	r := New(Config{Skills: Arm{Enabled: true, Interval: 5}}, func(ReviewKind, []core.Message) {
+		// don't drain — keep inFlight=true on the first trip
+	})
+	// First Observe trips and starts a review that never returns (the
+	// callback above is a no-op, but inFlight is cleared inside r.run's
+	// defer — let's instead drive accumulator-only Observes that drop).
+	r.mu.Lock()
+	r.inFlight = true // simulate a stuck in-flight review
+	r.mu.Unlock()
+
+	for range 50 {
+		r.Observe(endTurn(10)) // 500 cumulative tool-iters across 50 turns
+	}
+	r.mu.Lock()
+	got := r.itersSinceSkill
+	r.mu.Unlock()
+	if got > 2*r.skillEvery {
+		t.Fatalf("itersSinceSkill = %d, expected cap at 2×%d=%d", got, r.skillEvery, 2*r.skillEvery)
+	}
+}
+
 func TestSeedTurns(t *testing.T) {
 	fired := make(chan ReviewKind, 4)
 	r := New(Config{Memory: Arm{Enabled: true, Interval: 5}}, func(k ReviewKind, _ []core.Message) { fired <- k })

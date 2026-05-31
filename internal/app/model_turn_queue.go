@@ -133,11 +133,14 @@ func awaitMainEvent(ch <-chan hub.Event) tea.Cmd {
 func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
 	next := awaitMainEvent(m.mainEvents)
 	// Selflearn tick-start events are internal wake-ups for the spinner —
-	// they must never become user-visible notices. Drain immediately into a
-	// tick schedule regardless of stream state; the tick itself is cheap
-	// and the indicator should be visible from the first frame.
+	// they must never become user-visible notices. ArmTick prevents
+	// back-to-back reviews from stacking parallel tick chains that would
+	// multiply the spinner cadence.
 	if ev.Type == "selflearn.review.started" {
-		return tea.Batch(scheduleSelflearnTick(), next)
+		if m.services.SelfLearnUI != nil && m.services.SelfLearnUI.ArmTick() {
+			return tea.Batch(scheduleSelflearnTick(), next)
+		}
+		return next
 	}
 	if m.conv.Stream.Active {
 		m.pendingMainEvents = append(m.pendingMainEvents, ev)

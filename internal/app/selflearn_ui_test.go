@@ -39,11 +39,11 @@ func TestSelfLearnUIPhaseTransitions(t *testing.T) {
 	}
 
 	// Tick before hold expires → stays done.
-	if !s.Tick(time.Now()) {
+	if _, active := s.Tick(time.Now()); !active {
 		t.Fatal("done state should not decay before hold")
 	}
 	// Tick after hold expires → idle.
-	if s.Tick(time.Now().Add(selflearnDoneHoldDuration + time.Millisecond)) {
+	if _, active := s.Tick(time.Now().Add(selflearnDoneHoldDuration + time.Millisecond)); active {
 		t.Fatal("done state should decay after hold")
 	}
 	if snap := s.Snapshot(); snap.Phase != selflearnIdle {
@@ -61,11 +61,11 @@ func TestSelfLearnUIFailDecay(t *testing.T) {
 		t.Fatalf("fail render: %q", got)
 	}
 	// Done hold (2 s) would clear by now; failed (3 s) must still be active.
-	if !s.Tick(time.Now().Add(selflearnDoneHoldDuration + time.Millisecond)) {
+	if _, active := s.Tick(time.Now().Add(selflearnDoneHoldDuration + time.Millisecond)); !active {
 		t.Fatal("failed state must outlast the done-hold window")
 	}
 	// Past the failed hold, decays to idle.
-	if s.Tick(time.Now().Add(selflearnFailedHoldDuration + time.Millisecond)) {
+	if _, active := s.Tick(time.Now().Add(selflearnFailedHoldDuration + time.Millisecond)); active {
 		t.Fatal("failed state should decay after failed-hold")
 	}
 }
@@ -98,7 +98,7 @@ func TestSelfLearnUITickFrameAdvances(t *testing.T) {
 	s := NewSelfLearnUIState()
 	s.BeginReview()
 	frame0 := s.Snapshot().Frame
-	s.Tick(time.Now())
+	_, _ = s.Tick(time.Now())
 	frame1 := s.Snapshot().Frame
 	if frame1 == frame0 {
 		t.Fatalf("Tick should advance the spinner frame: %d → %d", frame0, frame1)

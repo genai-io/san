@@ -21,6 +21,7 @@ package app
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -83,6 +84,13 @@ type ReviewAction struct {
 type SelfLearnUIState struct {
 	mu sync.Mutex
 
+	// phaseAtomic mirrors phase as an int32 for lock-free reads on the
+	// render hot path: TUI repaint frequency × idle steady state would
+	// otherwise hammer the mutex for nothing. Writers (BeginReview,
+	// Complete, Fail, Tick decay) update this together with phase under
+	// the mutex; Snapshot returns the empty value when this reads idle.
+	phaseAtomic atomic.Int32
+
 	phase     selflearnPhase
 	target    string         // current target shown next to the spinner
 	frame     int            // braille frame index
@@ -90,6 +98,7 @@ type SelfLearnUIState struct {
 	doneCount int            // captures len(actions) at Complete so the done-hold render survives DrainActions
 	enteredAt time.Time      // for done/failed auto-decay
 	lastSwap  time.Time      // for target-swap debounce
+	tickArmed bool           // a tick chain is currently scheduled; prevents stacking back-to-back reviews
 }
 
 // NewSelfLearnUIState returns a fresh idle state.
@@ -102,6 +111,7 @@ func (s *SelfLearnUIState) BeginReview() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.phase = selflearnReviewing
+	s.phaseAtomic.Store(int32(selflearnReviewing))
 	s.target = ""
 	s.frame = 0
 	s.actions = nil
@@ -142,9 +152,11 @@ func (s *SelfLearnUIState) Complete() {
 	s.doneCount = len(s.actions)
 	if s.doneCount == 0 {
 		s.phase = selflearnIdle
+		s.phaseAtomic.Store(int32(selflearnIdle))
 		return
 	}
 	s.phase = selflearnDone
+	s.phaseAtomic.Store(int32(selflearnDone))
 	s.enteredAt = time.Now()
 }
 
@@ -153,42 +165,59 @@ func (s *SelfLearnUIState) Fail() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.phase = selflearnFailed
+	s.phaseAtomic.Store(int32(selflearnFailed))
 	s.target = ""
 	s.enteredAt = time.Now()
 }
 
 // Tick advances the spinner frame and decays done/failed phases that have
-// held longer than their hold duration. Returns true if the state is still
-// non-idle (so the caller can re-arm the tick) and false if it just
-// transitioned to idle (caller stops re-arming).
-func (s *SelfLearnUIState) Tick(now time.Time) (stillActive bool) {
+// held longer than their hold duration. Returns the delay for the next
+// scheduled tick (or 0 + false when no further tick is needed because the
+// state went idle).
+//
+// During reviewing the delay is the spinner cadence (selflearnTickInterval).
+// During done/failed the delay is the REMAINING hold time — schedule one
+// deadline tick instead of polling every 100 ms for 2-3 s of static label.
+func (s *SelfLearnUIState) Tick(now time.Time) (delay time.Duration, stillActive bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch s.phase {
 	case selflearnReviewing:
 		s.frame = (s.frame + 1) % len(kit.BrailleSpinnerFrames)
-		return true
+		return selflearnTickInterval, true
 	case selflearnDone:
-		if now.Sub(s.enteredAt) >= selflearnDoneHoldDuration {
+		remaining := selflearnDoneHoldDuration - now.Sub(s.enteredAt)
+		if remaining <= 0 {
 			s.phase = selflearnIdle
-			return false
+			s.phaseAtomic.Store(int32(selflearnIdle))
+			s.tickArmed = false
+			return 0, false
 		}
-		return true
+		return remaining, true
 	case selflearnFailed:
-		if now.Sub(s.enteredAt) >= selflearnFailedHoldDuration {
+		remaining := selflearnFailedHoldDuration - now.Sub(s.enteredAt)
+		if remaining <= 0 {
 			s.phase = selflearnIdle
-			return false
+			s.phaseAtomic.Store(int32(selflearnIdle))
+			s.tickArmed = false
+			return 0, false
 		}
-		return true
+		return remaining, true
 	default:
-		return false
+		s.phaseAtomic.Store(int32(selflearnIdle))
+		s.tickArmed = false
+		return 0, false
 	}
 }
 
-// Snapshot returns a consistent read of the state for the render path. The
-// returned value is copy-by-value so the render goroutine can use it
-// without locking.
+// Snapshot returns a consistent read of the state for the render path.
+// Fast-path: when the atomic phase reads idle (the steady state on every
+// TUI repaint), return the empty snapshot without touching the mutex.
+// Writers ensure phase + phaseAtomic transition together under the mutex.
 func (s *SelfLearnUIState) Snapshot() SelfLearnUISnapshot {
+	if selflearnPhase(s.phaseAtomic.Load()) == selflearnIdle {
+		return SelfLearnUISnapshot{}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return SelfLearnUISnapshot{
@@ -208,6 +237,29 @@ func (s *SelfLearnUIState) changesForRender() int {
 		return s.doneCount
 	}
 	return len(s.actions)
+}
+
+// ArmTick reserves the single tick chain. Returns true if the caller
+// should schedule a tick (no chain currently armed), false if one is
+// already running — preventing back-to-back review-started events from
+// stacking parallel tick chains that would multiply the spinner cadence.
+func (s *SelfLearnUIState) ArmTick() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tickArmed {
+		return false
+	}
+	s.tickArmed = true
+	return true
+}
+
+// disarmTick is called by the dispatcher when the tick chain decides to
+// stop (state has decayed to idle). Caller-side guard so the next
+// review-started event can rearm.
+func (s *SelfLearnUIState) disarmTick() {
+	s.mu.Lock()
+	s.tickArmed = false
+	s.mu.Unlock()
 }
 
 // DrainActions returns the action log of the current pass and clears it.

@@ -132,6 +132,14 @@ func (r *Reviewer) Observe(result core.Result) {
 	}
 	if r.skillEnabled {
 		r.itersSinceSkill += result.ToolUses
+		// Cap the accumulator at 2× the threshold so a long-running review
+		// (during which 50 turns each contributing tool calls keep stacking)
+		// produces at most two immediate refires once the review releases —
+		// not 50. Preserves the design's "fire again next clean turn" intent
+		// without the post-release burst.
+		if cap := 2 * r.skillEvery; r.itersSinceSkill > cap {
+			r.itersSinceSkill = cap
+		}
 	}
 
 	var kinds ReviewKind
