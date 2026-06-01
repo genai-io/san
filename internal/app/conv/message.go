@@ -378,7 +378,14 @@ func formatAssistantContent(params AssistantParams) string {
 	}
 
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
-		return assistantMsgStyle.Render(params.Content + "▌")
+		// Wrap at terminal width so long lines don't overflow and the
+		// height calculation (which counts \n-delimited lines) matches
+		// the actual visual line count.
+		wrapWidth := params.Width - 2 // account for "● " prefix
+		if wrapWidth < 20 {
+			wrapWidth = 20
+		}
+		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + "▌")
 	}
 
 	if params.Content == "" {

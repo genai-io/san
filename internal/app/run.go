@@ -42,7 +42,7 @@ func Run(opts setting.RunOptions) error {
 		})
 	}
 
-	finalModel, err := tea.NewProgram(m).Run()
+	finalModel, err := tea.NewProgram(m, tea.WithMouseCellMotion()).Run()
 	if err != nil {
 		return fmt.Errorf("failed to run TUI: %w", err)
 	}

@@ -2,6 +2,8 @@
 package conv
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/gen-code/internal/app/kit"
@@ -151,6 +153,8 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	rt.OnTurnBegin()
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
+	m.Stream.ScrollbackLen = 0
+	m.ContentOffset = 0 // auto-scroll to bottom on new turn
 	commitCmds := rt.CommitMessages()
 	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: ""})
 	cmds := append(commitCmds, m.Spinner.Tick)
@@ -174,13 +178,50 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	}
 	if chunk.Text != "" || chunk.Thinking != "" {
 		m.AppendToLast(chunk.Text, chunk.Thinking)
+		// Don't reset ContentOffset here — let the user scroll freely
+		// during streaming. It resets only at turn start (applyPreInfer).
 	}
+
+	// Commit newly streamed text to terminal scrollback so the user can
+	// scroll up to see earlier parts of a long response that have been
+	// truncated from the active view. Only commit at newline boundaries
+	// so partial-line chunks don't appear as narrow left-edge flicker.
+	var cmds []tea.Cmd
+	if len(m.Messages) > 0 {
+		last := m.Messages[len(m.Messages)-1]
+		if last.Role == core.RoleAssistant && len(last.Content) > m.Stream.ScrollbackLen {
+			delta := last.Content[m.Stream.ScrollbackLen:]
+			if lastNewline := strings.LastIndex(delta, "\n"); lastNewline >= 0 {
+				commit := delta[:lastNewline+1]
+				m.Stream.ScrollbackLen += len(commit)
+				cmds = append(cmds, tea.Println(strings.TrimRight(commit, "\n")))
+			}
+		}
+	}
+
 	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
 		m.Stream.Active = false
+		// Flush any remaining tail that hasn't hit a newline yet.
+		if len(m.Messages) > 0 {
+			last := m.Messages[len(m.Messages)-1]
+			if last.Role == core.RoleAssistant && len(last.Content) > m.Stream.ScrollbackLen {
+				tail := last.Content[m.Stream.ScrollbackLen:]
+				if tail != "" {
+					cmds = append(cmds, tea.Println(tail))
+				}
+				m.Stream.ScrollbackLen = len(last.Content)
+			}
+		}
 		commitCmds := rt.CommitMessages()
 		if len(commitCmds) > 0 {
-			return tea.Batch(commitCmds...)
+			cmds = append(cmds, commitCmds...)
 		}
+	}
+	if len(cmds) == 1 {
+		return cmds[0]
+	}
+	if len(cmds) > 0 {
+		return tea.Batch(cmds...)
 	}
 	return nil
 }

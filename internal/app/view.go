@@ -2,6 +2,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -45,39 +46,64 @@ func (m *model) View() string {
 // renderNormalView composes the standard layout: chat scrollback area,
 // turn-usage summary, queue preview, textarea + suggestions, and the
 // bottom status line.
+//
+// The chat section is height-limited so the bubbletea View() output never
+// exceeds the terminal height. When live content is taller than the
+// available space it is truncated silently from the top. The full,
+// untruncated content is committed to terminal scrollback at turn end
+// via CommitMessages / tea.Println, so the user can scroll up to see
+// everything once the response completes.
 func (m *model) renderNormalView(separator, trackerView string) string {
-	activeContent := conv.RenderActiveContent(m.messageRenderParams())
-	chatSection := m.renderChatSection(activeContent, trackerView)
+	// Build the bottom chrome first so we can measure how many lines it
+	// consumes and subtract from the terminal height.
+	bottomChrome := m.buildBottomChrome(separator)
+	bottomLines := strings.Count(bottomChrome, "\n")
 
-	var view strings.Builder
-	if chatSection != "" {
-		view.WriteString(chatSection)
+	maxContentHeight := 0
+	// Only truncate when there's room for at least one line of content.
+	if m.env.Height > bottomLines {
+		maxContentHeight = m.env.Height - bottomLines
 	}
+
+	// Render ALL messages (both committed and active) so the scrollable
+	// viewport has the full conversation to navigate. When at the bottom
+	// (ContentOffset == 0), the viewport shows the latest content.
+	allContent := conv.RenderMessageRange(m.messageRenderParams(), 0, len(m.conv.Messages), m.conv.Stream.Active)
+	chatSection := m.renderChatSection(allContent, trackerView, maxContentHeight)
+
+	return chatSection + bottomChrome
+}
+
+// buildBottomChrome renders everything below the chat section (turn usage,
+// separators, queue preview, input area, suggestions, status line) into a
+// single string so its line count can be measured.
+func (m *model) buildBottomChrome(separator string) string {
+	var b strings.Builder
 	if turnUsage := conv.RenderTurnUsageSummary(m.env.TurnInputTokens, m.env.TurnOutputTokens, m.env.Width); turnUsage != "" {
-		view.WriteString("\n")
-		view.WriteString(turnUsage)
+		b.WriteString("\n")
+		b.WriteString(turnUsage)
 	}
-	view.WriteString("\n")
-	view.WriteString(separator)
+	b.WriteString("\n")
+	b.WriteString(separator)
 	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
-		view.WriteString("\n")
-		view.WriteString(queuePreview)
+		b.WriteString("\n")
+		b.WriteString(queuePreview)
 	}
-	view.WriteString("\n")
-	view.WriteString(m.renderInputView())
+	b.WriteString("\n")
+	b.WriteString(m.renderInputView())
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
-		view.WriteString("\n")
-		view.WriteString(suggestions)
+		b.WriteString("\n")
+		b.WriteString(suggestions)
 	}
-	view.WriteString("\n")
-	view.WriteString(separator)
-	view.WriteString("\n")
+	b.WriteString("\n")
+	b.WriteString(separator)
+	b.WriteString("\n")
 	if statusLine := m.renderModeStatus(); statusLine != "" {
-		view.WriteString(statusLine)
+		b.WriteString(statusLine)
 	} else {
-		view.WriteString(" ")
+		b.WriteString(" ")
 	}
-	return view.String()
+	return b.String()
 }
 
 func (m *model) renderActivePopup() string {
@@ -113,7 +139,7 @@ func (m model) renderInputView() string {
 	return prompt + m.userInput.RenderTextarea()
 }
 
-func (m model) renderChatSection(activeContent, trackerView string) string {
+func (m model) renderChatSection(activeContent, trackerView string, maxHeight int) string {
 	var parts []string
 
 	if activeContent != "" {
@@ -139,7 +165,80 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 		parts = append(parts, compactView)
 	}
 
-	return strings.Join(parts, "\n")
+	result := strings.Join(parts, "\n")
+
+	// When the chat section is taller than the available terminal height,
+	// show a scrollable viewport into the content. When contentOffset is 0,
+	// the last maxHeight lines (latest content) are shown at the bottom.
+	// When the user scrolls up with the mouse wheel, contentOffset tracks
+	// how many lines they've scrolled up, and an earlier window of content
+	// is displayed with scroll indicators. Content is also committed to
+	// terminal scrollback during streaming and at turn end.
+	if maxHeight > 0 {
+		lines := strings.Split(result, "\n")
+		if len(lines) > maxHeight {
+			totalLines := len(lines)
+			offset := m.conv.ContentOffset
+
+			if offset == 0 {
+				// Normal view — show the latest content at the bottom.
+				// No indicators needed; content naturally scrolls as it grows.
+				startLine := totalLines - maxHeight
+				result = strings.Join(lines[startLine:], "\n")
+			} else {
+				// Scrolled up — show a window with scroll indicators.
+				// Reserve lines for indicators so the total fits within maxHeight.
+				roughStart := totalLines - maxHeight - offset
+				if roughStart < 0 {
+					roughStart = 0
+				}
+
+				avail := maxHeight - 1 // reserve for "↓ scroll down" indicator
+				if roughStart > 0 {
+					avail-- // reserve for "↑ more above" indicator
+				}
+				if avail < 1 {
+					avail = 1
+				}
+
+				// Clamp offset using actual available content lines.
+				maxOffset := totalLines - avail
+				if maxOffset < 0 {
+					maxOffset = 0
+				}
+				if offset > maxOffset {
+					offset = maxOffset
+					m.conv.ContentOffset = maxOffset
+				}
+
+				startLine := totalLines - avail - offset
+				endLine := totalLines - offset
+				if startLine < 0 {
+					startLine = 0
+					endLine = avail
+					if endLine > totalLines {
+						endLine = totalLines
+					}
+				}
+
+				needAbove := startLine > 0
+				visible := lines[startLine:endLine]
+
+				var sb strings.Builder
+				if needAbove {
+					sb.WriteString(conv.ThinkingStyle.Render(fmt.Sprintf("↑ %d more lines above", startLine)))
+					sb.WriteString("\n")
+				}
+				sb.WriteString(strings.Join(visible, "\n"))
+				sb.WriteString("\n")
+				sb.WriteString(conv.ThinkingStyle.Render(fmt.Sprintf("↓ %d lines below (wheel down to return)", offset)))
+
+				result = sb.String()
+			}
+		}
+	}
+
+	return result
 }
 
 func (m model) renderTrackerList() string {

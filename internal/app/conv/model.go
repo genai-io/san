@@ -14,6 +14,11 @@ type OutputModel struct {
 	TaskProgress map[int][]string
 	ProgressHub  *ProgressHub
 	ShowTasks    bool
+
+	// Scroll offset for mouse wheel navigation within the chat content area.
+	// 0 = at bottom (showing latest content). Positive values = lines scrolled
+	// up from the bottom.
+	ContentOffset int
 }
 
 type Model struct {
