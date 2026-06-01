@@ -96,53 +96,48 @@ LLM 接口是无状态的流式推理后端：
 ```go
 type LLM interface {
     Infer(ctx context.Context, req InferRequest) (<-chan Chunk, error)
+    InputLimit() int   // 该模型的输入上下文上限
 }
 ```
 
 ### InferRequest（推理请求）
+
+模型、最大输出 Token 等参数在创建客户端时（`ClientFactory.NewClient(model, maxTokens)`）即已确定，因此 `InferRequest` 本身只携带每次推理的输入：
 
 ```go
 type InferRequest struct {
     System   string       // 渲染后的系统提示
     Messages []Message    // 对话消息列表
     Tools    []ToolSchema // 可用工具 Schema
-    Config   InferConfig  // 推理参数
-}
-
-type InferConfig struct {
-    Model           string       // 模型名称
-    MaxTokens       int          // 最大输出 Token
-    Temperature     float64      // 温度参数
-    ThinkingEffort  int          // 思考深度（Claude）
-    ThinkingBudget  int          // 思考预算 Token
-    ThinkingEnabled bool         // 是否启用思考模式
 }
 ```
 
 ### InferResponse（推理响应）
 
+`InferResponse` 是一次推理完成后的汇总，仅在最终 `Chunk`（`Done=true`）中通过 `Chunk.Response` 携带：
+
 ```go
 type InferResponse struct {
-    Content        string       // 文本响应内容
-    ToolCalls      []ToolCall   // 工具调用列表
-    StopReason     StopReason   // 停止原因
-    Usage          Usage        // Token 使用统计
-    Thinking       string       // 思考过程（思考模式）
-}
-
-type Usage struct {
-    InputTokens  int
-    OutputTokens int
-    CacheTokens  int
+    Content           string     // 文本响应内容
+    Thinking          string     // 思考过程（思考模式）
+    ThinkingSignature string     // 思考签名（用于回放思考块）
+    ToolCalls         []ToolCall // 工具调用列表
+    StopReason        StopReason // 停止原因
+    TokensIn          int        // 输入 Token
+    TokensOut         int        // 输出 Token
+    CacheCreateTokens int        // 缓存写入 Token
+    CacheReadTokens   int        // 缓存读取 Token
 }
 
 type StopReason string
 const (
-    EndTurn      StopReason = "end_turn"
-    MaxTokens    StopReason = "max_tokens"
-    ToolUse      StopReason = "tool_use"
-    StopSequence StopReason = "stop_sequence"
-    Refusal      StopReason = "refusal"
+    StopEndTurn                    StopReason = "end_turn"
+    StopMaxTokens                  StopReason = "max_tokens"
+    StopToolUse                    StopReason = "tool_use"
+    StopMaxTurns                   StopReason = "max_turns"
+    StopCancelled                  StopReason = "cancelled"
+    StopHook                       StopReason = "stop_hook"
+    StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"
 )
 ```
 
@@ -150,11 +145,12 @@ const (
 
 ```go
 type Chunk struct {
-    Content   string     // 文本增量
-    Thinking  string     // 思考增量
-    ToolCalls []ToolCall // 工具调用（仅在 Delta 模式）
-    Done      bool       // 是否为最终块
-    Usage     Usage      // 最终块的 Token 使用统计
+    Text     string // 文本增量
+    Thinking string // 思考增量
+    Done     bool   // 是否为最终块
+
+    Response *InferResponse // 仅当 Done=true 时非 nil（汇总结果）
+    Err      error          // 流出错时非 nil
 }
 ```
 
@@ -219,23 +215,22 @@ type System interface {
 
 ```go
 type Section struct {
-    Name     string // 稳定标识符（跨突变不变）
-    Slot     int    // 渲染槽位
-    Content  string // 渲染后的内容
-    Caller   string // 触发变更的来源
-    Renderer func() string // 惰性渲染函数
+    Slot   Slot          // 渲染槽位（决定顺序）
+    Name   string        // 稳定标识符（跨突变不变）
+    Source Source        // 来源标签（仅用于调试）
+    Render func() string // 纯渲染函数；返回 "" 表示跳过
 }
 ```
 
 ### Slot（槽位顺序）
 
-系统提示词由多个 `Section` 组成，每个占用一个 `Slot`。槽位定义了渲染顺序，确保不同来源的提示片段有序组合。内置槽位包括：
+系统提示词由多个 `Section` 组成，每个占用一个 `Slot`。槽位定义了渲染顺序，确保不同来源的提示片段有序组合（[`internal/core/section.go`](../../internal/core/section.go)）。内置槽位按渲染顺序为：
 
-- `Identity` — 核心身份定义
-- `Procedures` — 操作程序
-- `Tools` — 工具使用指南
-- `Guardrails` — 安全护栏
-- 等等
+- `SlotIdentity` — 身份宪章（who-you-are，子 Agent / 自定义人格可替换）
+- `SlotProvider` — 提供商特有的注意事项
+- `SlotPolicy` — 安全契约（永不被覆盖）
+- `SlotGuidelines` — 工具使用、git、任务、提问等规范（按 Role 过滤）
+- `SlotEnvironment` — cwd、git、日期等易变信息
 
 ---
 

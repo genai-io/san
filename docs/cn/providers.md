@@ -8,22 +8,27 @@ Gen Code 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`
 
 ### Provider 接口
 
-定义在 [`internal/llm/types.go`](../../internal/llm/types.go)：
+定义在 [`internal/llm/types.go`](../../internal/llm/types.go)。每个提供商实现一个流式接口：
 
 ```go
 type Provider interface {
+    // 发起一次补全请求，返回流式块通道
+    Stream(ctx context.Context, opts CompletionOptions) <-chan StreamChunk
+    // 返回该提供商可用的模型列表（动态从 /models 拉取，而非硬编码目录）
+    ListModels(ctx context.Context) ([]ModelInfo, error)
+    // 提供商名称
     Name() string
-    Models() []Model
-    NewClient(cfg Config) (core.LLM, error)
 }
 ```
 
 ### 可选的 ThinkingEffortProvider
 
+暴露原生思考 / 推理力度的提供商额外实现此接口：
+
 ```go
 type ThinkingEffortProvider interface {
-    Provider
-    ThinkingEfforts() []ThinkingEffort  // 返回支持的思考级别
+    ThinkingEfforts(model string) []string      // 指定模型支持的思考级别
+    DefaultThinkingEffort(model string) string  // 默认思考级别
 }
 ```
 
@@ -45,16 +50,28 @@ import (
 )
 ```
 
-### ProviderStore
+### 注册 API：`llm.Register`
 
-全局提供商注册表：
+每个提供商包在 `init()` 中调用 `llm.Register`，把一份元数据和一个工厂函数登记到包级注册表（[`internal/llm/store.go`](../../internal/llm/store.go)、[`registry.go`](../../internal/llm/registry.go)）：
 
 ```go
-type ProviderStore interface {
-    Register(p Provider)
-    Get(name string) (Provider, bool)
-    List() []Provider
-    Default() Provider
+func Register(meta Meta, factory Factory)
+
+type Meta struct {
+    Provider    Name       // 提供商标识
+    AuthMethod  AuthMethod // 认证方式（API Key、OAuth 等）
+    EnvVars     []string   // 所需环境变量
+    DisplayName string
+}
+
+type Factory func(ctx context.Context) (Provider, error)
+```
+
+例如 DeepSeek（[`internal/llm/deepseek/apikey.go`](../../internal/llm/deepseek/apikey.go)）：
+
+```go
+func init() {
+    llm.Register(APIKeyMeta, NewAPIKeyClient)
 }
 ```
 
@@ -155,9 +172,9 @@ off → low → medium → high → maximum
 ### 8. DeepSeek
 
 - **包**：[`internal/llm/deepseek/`](../../internal/llm/deepseek/)
-- **API 变量**：`DASHSCOPE_API_KEY`（通过 Alibaba）或自有密钥
-- **特性**：兼容 OpenAI API 格式
-- **支持模型**：DeepSeek V3、DeepSeek R1
+- **API 变量**：`DEEPSEEK_API_KEY`（可选 `DEEPSEEK_BASE_URL`，默认 `https://api.deepseek.com`）
+- **特性**：兼容 OpenAI API 格式（复用 openai-go SDK），支持 `reasoning_effort` 推理力度
+- **支持模型**：DeepSeek V4 Flash、DeepSeek V4 Pro
 
 ---
 
@@ -168,35 +185,43 @@ off → low → medium → high → maximum
 ```go
 type LLM interface {
     Infer(ctx context.Context, req InferRequest) (<-chan Chunk, error)
+    InputLimit() int   // 该模型的输入上下文上限
 }
 ```
 
-### InferRequest 到提供商 API 的转换
+### Provider → core.LLM 的适配
 
-每个提供商的 `NewClient` 返回一个实现 `core.LLM` 的结构体。其 `Infer` 方法：
+提供商包实现的是上面的 `llm.Provider`（`Stream` 流式接口）。`internal/llm` 中的 `Client` 把"某个 `Provider` + 具体模型"适配为 Agent 实际使用的 `core.LLM`：统计每次调用的 Token、流式产出 `core.Chunk`、并应用重试与成本逻辑。其转换步骤：
 1. 将 `InferRequest.System` + `InferRequest.Messages` 转换为提供商的消息格式
 2. 将 `InferRequest.Tools` 转换为提供商的工具定义格式
 3. 调用提供商 SDK 发起流式请求
-4. 将提供商 SDK 的流式响应转换为 `<-chan Chunk`
+4. 将提供商 SDK 的流式响应转换为 `<-chan core.Chunk`
 
 ### ClientFactory
 
+`ClientFactory` 是一个**结构体**（不是函数类型），持有当前选中的提供商与模型，并按需创建客户端（[`internal/llm/service.go`](../../internal/llm/service.go)）：
+
 ```go
-type ClientFactory func(cfg Config) (core.LLM, error)
+type ClientFactory struct { /* 内部字段不导出 */ }
+
+func (s *ClientFactory) Provider() Provider
+func (s *ClientFactory) SetCurrentModel(info *CurrentModelInfo)
+func (s *ClientFactory) NewClient(model string, maxTokens int) *Client  // 为一次推理创建客户端
+func (s *ClientFactory) Store() *Store
 ```
 
-`ClientFactory` 是创建 LLM 客户端的工厂函数。每次 Agent 启动时创建新的 LLM 客户端（因模型切换、对话框恢复等原因）。
+每次 Agent 启动时通过 `NewClient(model, maxTokens)` 创建新的 `*Client`（因模型切换、会话恢复等原因）。
 
 ### 成本追踪
 
-实现在 [`internal/llm/cost.go`](../../internal/llm/cost.go)：
+实现在 [`internal/llm/money.go`](../../internal/llm/money.go)：
 - 每个模型有每百万 Token 的输入/输出价格
 - 从 API 响应中提取 Token 使用量
 - 计算并累积会话成本
 
 ### 日志记录
 
-实现在 [`internal/llm/log.go`](../../internal/llm/log.go)：
+实现在 [`internal/llm/logging.go`](../../internal/llm/logging.go)：
 - 记录每次推理请求和响应
 - 包含模型、Token 使用量、错误信息
 - 用于调试和审计
@@ -230,4 +255,3 @@ type ClientFactory func(cfg Config) (core.LLM, error)
 1. 新的 LLM 客户端使用新模型创建
 2. 现有 Agent 会话不受影响（保留历史消息）
 3. 下次推理使用新模型
-```

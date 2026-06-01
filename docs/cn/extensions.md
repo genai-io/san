@@ -138,25 +138,24 @@ argument-hint: <环境>
 | **Command** | 执行 Shell 命令 |
 | **HTTP** | 发送 HTTP 请求 |
 | **LLM** | 调用 LLM（用于提示检查等） |
-| **Agent** | 启动子 Agent 处理 |
 
 ### 触发事件
 
-钩子可以绑定到 Agent 生命周期的任意事件：
-- `PreInfer` — LLM 推理前
-- `PostInfer` — LLM 推理后
-- `PreTool` — 工具执行前
-- `PostTool` — 工具执行后
-- `OnTurn` — 轮次完成
-- `OnStart` / `OnStop` — Agent 启动/停止
-- 等等
+钩子绑定到 Claude Code 兼容的钩子事件（与 core 的 Agent 生命周期事件不同，定义在 [`internal/hook/types.go`](../../internal/hook/types.go)）：
+- `SessionStart` / `SessionEnd` — 会话开始/结束
+- `UserPromptSubmit` — 用户提交提示
+- `PreToolUse` / `PostToolUse` — 工具执行前/后
+- `Stop` — Agent 停止
+- `SubagentStart` / `SubagentStop` — 子 Agent 启动/停止
+- `PreCompact` / `PostCompact` — 上下文压缩前/后
+- `Notification`、`FileChanged`、`WorktreeCreate` 等
 
 ### 钩子引擎
 
 实现在 [`internal/hook/`](../../internal/hook/)：
 - **Matcher** — 将钩子与事件匹配
 - **Registry** — 管理钩子生命周期
-- **Executors** — 命令、HTTP、LLM、Agent 四种执行器
+- **Executors** — 命令、HTTP、LLM 三种执行器
 - **Store** — 持久化钩子状态
 
 ---

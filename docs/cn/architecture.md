@@ -50,7 +50,7 @@ import (
 | 文件 | 职责 |
 |------|------|
 | `model.go` | 根 Bubble Tea Model：组合子模型（用户输入、Hub 事件、系统触发器、对话、环境、服务） |
-| `services.go` | 服务注入结构体：包含 17 个领域单例 |
+| `services.go` | 服务注入结构体：包含 16 个领域单例 |
 | `run.go` | 统一入口：路由到打印模式或交互 TUI |
 | `model_lifecycle.go` | 构造、选项应用、关闭 |
 | `model_session.go` | 会话保存/加载、任务存储 |
@@ -78,7 +78,7 @@ import (
 | `tool/` | 内置工具注册表、Schema、适配器、执行、权限包装 |
 | `tool/fs/` | 文件系统工具：Read、Write、Edit、Bash、Glob、Grep |
 | `tool/web/` | Web 工具：WebFetch、WebSearch |
-| `tool/tasktools/` | 任务管理工具：TodoWrite、TaskStop |
+| `tool/tasktools/` | 任务跟踪工具：TaskCreate、TaskGet、TaskList、TaskUpdate |
 | `tool/perm/` | 权限模型和批准门控 |
 | `tool/registry/` | 工具注册表实现 |
 | `session/` | 会话元数据、路径管理、核心/转录本类型转换 |
@@ -196,7 +196,7 @@ TUI 基于 [Bubble Tea](https://github.com/charmbracelet/bubbletea) 框架，遵
 
 ## 服务注入
 
-`internal/app/services.go` 中的 `services` 结构体注入了 17 个领域单例：
+`internal/app/services.go` 中的 `services` 结构体注入了 16 个领域单例：
 
 ```go
 type services struct {

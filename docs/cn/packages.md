@@ -19,7 +19,7 @@ github.com/genai-io/gen-code/
 │   ├── app/                       # 应用外壳（Bubble Tea TUI）
 │   │   ├── run.go                 #   统一入口（打印/交互模式路由）
 │   │   ├── model.go               #   根 Bubble Tea Model
-│   │   ├── services.go            #   17 个领域服务注入
+│   │   ├── services.go            #   16 个领域服务注入
 │   │   ├── view.go                #   终端渲染（View）
 │   │   ├── init.go                #   基础设施初始化
 │   │   ├── env.go                 #   环境状态
@@ -41,18 +41,20 @@ github.com/genai-io/gen-code/
 │   │   │   ├── message.go         #       消息类型
 │   │   │   └── update.go          #       事件→渲染路由
 │   │   ├── input/                 #   输入处理
-│   │   │   ├── textarea.go        #       文本输入组件
-│   │   │   ├── selector.go        #       选择器组件
+│   │   │   ├── model.go           #       输入模型
+│   │   │   ├── on_textarea.go     #       文本输入处理
 │   │   │   ├── slash_command.go   #       斜杠命令控制器
-│   │   │   └── approval.go        #       权限批准桥接
+│   │   │   └── approval_flow.go   #       权限批准桥接
 │   │   ├── trigger/               #   系统触发器
-│   │   │   ├── cron.go            #       Cron 定时器
-│   │   │   └── async_hook.go      #       异步钩子轮询
+│   │   │   ├── file_watcher.go    #       文件监视器
+│   │   │   ├── model.go           #       触发器模型
+│   │   │   └── update.go          #       Cron / 异步钩子轮询
 │   │   ├── hub/                   #   事件总线
-│   │   │   └── hub.go             #       进程内 Pub/Sub
+│   │   │   ├── hub.go             #       进程内 Pub/Sub
+│   │   │   └── format.go          #       事件格式化
 │   │   └── kit/                   #   TUI 助手
-│   │       ├── style.go           #       样式常量
-│   │       └── dim.go             #       变暗效果
+│   │       ├── styles.go          #       样式常量
+│   │       └── theme.go           #       主题
 │   │
 │   ├── core/                      # 稳定契约（核心接口）
 │   │   ├── agent.go               #   Agent 接口、Config、Event、Result
@@ -65,16 +67,19 @@ github.com/genai-io/gen-code/
 │   │   └── digest.go              #   内容寻址摘要
 │   │
 │   ├── agent/                     # Agent 构建
-│   │   ├── session.go             #   会话对接受口、权限适配器
-│   │   └── lifecycle.go           #   生命周期处理器
+│   │   ├── build.go               #   Agent 构建/装配
+│   │   ├── session.go             #   会话对接、Inbox/Outbox
+│   │   ├── permission.go          #   权限适配器
+│   │   └── service.go             #   Agent 工厂（services.Agent）
 │   │
 │   ├── llm/                       # LLM 提供商
-│   │   ├── types.go               #   Provider 接口、ProviderStore
-│   │   ├── store.go               #   全局提供商注册表
-│   │   ├── registry.go            #   空白导入注册
-│   │   ├── factory.go             #   客户端工厂
-│   │   ├── cost.go                #   成本追踪
-│   │   ├── log.go                 #   请求/响应日志
+│   │   ├── types.go               #   Provider/Factory/Meta、ThinkingEffortProvider
+│   │   ├── store.go               #   提供商注册表 + providers.json 持久化
+│   │   ├── registry.go            #   提供商发现 / 动态模型列表
+│   │   ├── service.go             #   ClientFactory（当前提供商/模型句柄）
+│   │   ├── llm.go                 #   Client：Provider→core.LLM 适配
+│   │   ├── money.go               #   成本追踪
+│   │   ├── logging.go             #   请求/响应日志
 │   │   ├── anthropic/             #   Anthropic Claude 实现
 │   │   ├── openai/                #   OpenAI GPT/o-series 实现
 │   │   ├── google/                #   Google Gemini 实现
@@ -85,8 +90,10 @@ github.com/genai-io/gen-code/
 │   │   └── deepseek/              #   DeepSeek 实现
 │   │
 │   ├── tool/                      # 工具系统
-│   │   ├── schema_base.go         #   12 个内置工具 Schema
-│   │   ├── tool.go                #   工具注册/初始化
+│   │   ├── schema_base.go         #   基础工具 Schema（9 个）
+│   │   ├── schema_agent.go        #   Agent/SendMessage/Skill Schema
+│   │   ├── schema_task.go         #   任务/Cron/工作树 Schema
+│   │   ├── registry.go            #   工具注册/初始化
 │   │   ├── fs/                    #   文件系统工具实现
 │   │   │   ├── read.go            #       Read
 │   │   │   ├── write.go           #       Write
@@ -95,11 +102,13 @@ github.com/genai-io/gen-code/
 │   │   │   ├── glob.go            #       Glob
 │   │   │   └── grep.go            #       Grep
 │   │   ├── web/                   #   Web 工具实现
-│   │   │   ├── fetch.go           #       WebFetch
-│   │   │   └── search.go          #       WebSearch
-│   │   ├── tasktools/             #   任务管理工具
-│   │   │   ├── task_output.go     #       TaskOutput
-│   │   │   └── task_stop.go       #       TaskStop
+│   │   │   ├── webfetch.go        #       WebFetch
+│   │   │   └── websearch.go       #       WebSearch
+│   │   ├── tasktools/             #   任务跟踪工具
+│   │   │   ├── trackercreate.go   #       TaskCreate
+│   │   │   ├── trackerget.go      #       TaskGet
+│   │   │   ├── trackerlist.go     #       TaskList
+│   │   │   └── trackerupdate.go   #       TaskUpdate
 │   │   ├── agent/                 #   Agent 启动工具
 │   │   ├── skill/                 #   技能工具适配器
 │   │   ├── perm/                  #   权限模型和批准门控
@@ -108,47 +117,48 @@ github.com/genai-io/gen-code/
 │   │
 │   ├── session/                   # 会话管理
 │   │   ├── metadata.go            #   会话元数据
-│   │   ├── paths.go               #   路径管理
+│   │   ├── path.go                #   路径管理
 │   │   ├── convert.go             #   核心/转录本类型转换
 │   │   └── transcript/            #   转录本存储
-│   │       ├── record.go          #       记录类型
-│   │       ├── store.go           #       文件系统存储
-│   │       ├── projection.go      #       投影
-│   │       └── render.go          #       可渲染视图
+│   │       ├── records.go         #       记录类型
+│   │       ├── store.go           #       存储接口
+│   │       ├── fs_store.go        #       文件系统存储
+│   │       ├── projector.go       #       投影
+│   │       └── view.go            #       可渲染视图
 │   │
 │   ├── skill/                     # 技能管理
 │   │   ├── registry.go            #   技能注册表
 │   │   ├── loader.go              #   文件加载器
-│   │   ├── store.go               #   状态持久化
+│   │   ├── service.go             #   启用状态/服务
 │   │   └── types.go               #   技能类型定义
 │   │
 │   ├── subagent/                  # 子 Agent 管理
 │   │   ├── registry.go            #   子 Agent 注册表
 │   │   ├── loader.go              #   文件加载器
-│   │   ├── sandbox.go             #   沙箱隔离
-│   │   ├── exec.go                #   执行引擎
-│   │   └── signal.go              #   信号处理
+│   │   ├── executor.go            #   执行引擎
+│   │   ├── store.go               #   定义存储
+│   │   └── service.go             #   子 Agent 服务
 │   │
 │   ├── hook/                      # 钩子系统
 │   │   ├── engine.go              #   钩子引擎
 │   │   ├── matcher.go             #   事件匹配器
 │   │   ├── registry.go            #   钩子注册表
-│   │   ├── exec_command.go        #   命令执行器
-│   │   ├── exec_http.go           #   HTTP 执行器
-│   │   ├── exec_llm.go            #   LLM 执行器
-│   │   ├── exec_agent.go          #   Agent 执行器
+│   │   ├── executor.go            #   执行器基础
+│   │   ├── executors_command.go   #   命令执行器
+│   │   ├── executors_http.go      #   HTTP 执行器
+│   │   ├── executors_llm.go       #   LLM 执行器
 │   │   └── store.go               #   钩子状态存储
 │   │
 │   ├── plugin/                    # 插件管理
 │   │   ├── registry.go            #   插件注册表
 │   │   ├── loader.go              #   插件加载器
-│   │   ├── install.go             #   安装/卸载
+│   │   ├── installer.go           #   安装/卸载
 │   │   └── marketplace.go         #   市场集成
 │   │
 │   ├── command/                   # 斜杠命令
 │   │   ├── registry.go            #   命令注册表
 │   │   ├── builtin.go             #   内置命令
-│   │   └── loader.go              #   自定义命令加载
+│   │   └── service.go             #   命令服务/加载
 │   │
 │   ├── mcp/                       # MCP 客户端
 │   │   ├── client.go              #   MCP 客户端
@@ -157,18 +167,20 @@ github.com/genai-io/gen-code/
 │   │   └── hooks.go               #   钩子集成
 │   │
 │   ├── task/                      # 后台任务
-│   │   ├── bash.go                #   Bash 后台任务
-│   │   ├── agent.go               #   Agent 后台任务
-│   │   ├── output.go              #   输出持久化
+│   │   ├── bash_task.go           #   Bash 后台任务
+│   │   ├── agent_task.go          #   Agent 后台任务
+│   │   ├── output_store.go        #   输出持久化
+│   │   ├── manager.go             #   任务管理器
 │   │   ├── hooks.go               #   任务事件钩子
 │   │   └── tracker/               #   任务状态追踪
 │   │       ├── store.go           #       状态存储
 │   │       └── service.go         #       后台服务
 │   │
 │   ├── cron/                      # Cron 调度
+│   │   ├── cron.go                #   定时器/调度核心
+│   │   ├── loop.go                #   触发循环
 │   │   ├── service.go             #   调度服务
-│   │   ├── store.go               #   任务存储
-│   │   └── types.go               #   类型定义
+│   │   └── store.go               #   任务存储
 │   │
 │   ├── search/                    # Web 搜索后端
 │   │   ├── exa.go                 #   Exa 实现
@@ -178,20 +190,20 @@ github.com/genai-io/gen-code/
 │   │
 │   ├── setting/                   # 设置管理
 │   │   ├── settings.go            #   设置数据类型
-│   │   ├── loader.go              #   配置加载/合并
-│   │   ├── permissions.go         #   权限模式
-│   │   └── modes.go               #   操作模式
+│   │   ├── loader.go              #   配置加载
+│   │   ├── merger.go              #   配置合并
+│   │   └── permission.go          #   权限模式
 │   │
 │   ├── identity/                  # 身份/人格
 │   │   ├── registry.go            #   身份注册表
-│   │   ├── loader.go              #   模板加载
-│   │   └── paths.go               #   路径管理
+│   │   ├── template.go            #   模板加载
+│   │   └── path.go                #   路径管理
 │   │
 │   ├── inspector/                 # 会话检查器
 │   │   └── server.go              #   嵌入式 HTTP 服务器
 │   │
 │   ├── reminder/                  # 运行时提醒
-│   │   └── queue.go               #   提醒队列
+│   │   └── reminder.go            #   提醒队列
 │   │
 │   ├── worktree/                  # Git 工作树
 │   │   └── worktree.go            #   工作树操作
@@ -200,19 +212,22 @@ github.com/genai-io/gen-code/
 │   │   └── log.go                 #   Zap + Lumberjack
 │   │
 │   ├── secret/                    # 密钥管理
-│   │   └── secret.go              #   凭证助手
+│   │   └── store.go               #   凭证助手
 │   │
 │   ├── filecache/                 # 文件缓存
-│   │   └── cache.go               #   缓存/恢复
+│   │   ├── filecache.go           #   缓存
+│   │   └── restore.go             #   恢复
 │   │
 │   ├── markdown/                  # Markdown 解析
 │   │   └── frontmatter.go         #   前置元数据提取
 │   │
 │   ├── image/                     # 图片处理
-│   │   └── process.go             #   图片编解码
+│   │   ├── image.go               #   图片编解码
+│   │   └── clipboard.go           #   剪贴板图片
 │   │
 │   └── proc/                      # 进程管理
-│       └── proc.go                #   跨平台进程组
+│       ├── proc_unix.go           #   Unix 进程组/信号
+│       └── proc_windows.go        #   Windows 进程组
 │
 ├── docs/                          # 文档
 │   ├── architecture.md            #   架构总览
@@ -312,62 +327,65 @@ type Model struct {
 **服务注入**（`services.go`）：
 ```go
 type services struct {
-    Setting   setting.Service   // 设置和权限
-    LLM       llm.Service       // LLM 提供商
-    Tool      tool.Service      // 工具注册表
-    Hook      hook.Engine       // 钩子引擎
-    Session   session.Service   // 会话持久化
-    Skill     skill.Service     // 技能注册表
-    Subagent  subagent.Service  // 子 Agent
-    Command   command.Service   // 斜杠命令
-    Task      task.Service      // 后台任务
-    Tracker   tracker.Service   // 任务追踪
-    Cron      cron.Service      // 定时任务
-    MCP       mcp.Service       // MCP 客户端
-    Plugin    plugin.Service    // 插件注册表
-    Agent     agent.Service     // Agent 工厂
-    Identity  identity.Service  // 身份注册表
-    Reminder  reminder.Queue    // 提醒队列
+    Setting  *setting.Settings    // 设置和权限
+    LLM      *llm.ClientFactory   // LLM 提供商/模型句柄
+    Tool     *tool.Registry       // 工具注册表
+    Hook     *hook.Engine         // 钩子引擎
+    Session  *session.Setup       // 会话持久化
+    Skill    *skill.Registry      // 技能注册表
+    Subagent *subagent.Registry   // 子 Agent
+    Command  *command.Registry    // 斜杠命令
+    Task     *task.Tracker        // 后台任务
+    Tracker  tracker.Service      // 任务追踪
+    Cron     *cron.Scheduler      // 定时任务
+    MCP      *mcp.Registry        // MCP 客户端
+    Plugin   *plugin.Registry     // 插件注册表
+    Agent    *agent.Task          // Agent 工厂
+    Identity *identity.Registry   // 身份注册表
+    Reminder *reminder.Service    // 提醒队列
 }
 ```
 
 ### internal/agent — Agent 构建
 
-- **`session.go`**：Agent 会话对接，权限适配器，Inbox/Outbox 管理
-- **`lifecycle.go`**：生命周期处理器，任务完成通知
+- **`build.go`**：Agent 的构建与装配
+- **`session.go`**：会话对接，Inbox/Outbox 管理
+- **`permission.go`**：权限适配器
+- **`service.go`**：Agent 工厂（注入到 `services.Agent`）
 
 ### internal/llm — LLM 提供商系统
 
-- **`types.go`**：Provider 接口和 ProviderStore
-- **`store.go`**：全局提供商注册表
-- **`registry.go`**：通过空白导入的自动注册
-- **`factory.go`**：客户端工厂函数
-- **`cost.go`**：Token 成本计算
-- **`log.go`**：请求/响应日志
+- **`types.go`**：`Provider` / `Factory` / `Meta` 与 `ThinkingEffortProvider` 接口
+- **`store.go`**：提供商注册表 + `providers.json` 持久化
+- **`registry.go`**：提供商发现 / 动态模型列表
+- **`service.go`**：`ClientFactory`（当前提供商/模型句柄）
+- **`llm.go`**：`Client` —— 将 `Provider` 适配为 `core.LLM`
+- **`money.go`**：Token 成本计算
+- **`logging.go`**：请求/响应日志
 
 每个提供商实现包（`anthropic/`、`openai/` 等）包含：
-1. `init()` 函数：注册 Provider
-2. Provider 实现：返回模型列表、创建客户端
-3. Infer 实现：消息格式转换、流式响应处理
+1. `init()` 函数：通过 `llm.Register(Meta, Factory)` 注册
+2. Provider 实现：`Stream` 流式推理 + `ListModels` 模型列表
+3. 消息/工具格式转换、流式响应处理
 
 ### internal/tool — 工具系统
 
-- **`schema_base.go`**：12 个工具的 JSON Schema 定义（最大的源文件之一）
+- **`schema_base.go` / `schema_agent.go` / `schema_task.go`**：内置工具（约 21 个）的 JSON Schema 定义
 - **`fs/`**：文件系统工具实现，每个工具一个文件
 - **`web/`**：WebFetch 和 WebSearch 实现
-- **`tasktools/`**：任务管理工具
+- **`tasktools/`**：任务跟踪工具
 - **`perm/`**：权限门控，三种模式（ask/auto-accept/plan）
 - **`registry/`**：工具注册表，动态添加/移除
 
 ### internal/session — 会话持久化
 
 - **`metadata.go`**：会话元数据（ID、开始时间、模型、版本、工作区）
-- **`paths.go`**：会话文件路径管理（`~/.gen/projects/<project>/`）
+- **`path.go`**：会话文件路径管理（`~/.gen/projects/<project>/`）
 - **`convert.go`**：`core.Message` ↔ 转录本记录的转换
-- **`transcript/record.go`**：转录本记录类型
-- **`transcript/store.go`**：JSON 文件存储
-- **`transcript/projection.go`**：会话投影（子集时间范围等）
-- **`transcript/render.go`**：转换为可渲染视图
+- **`transcript/records.go`**：转录本记录类型
+- **`transcript/fs_store.go`**：文件系统存储
+- **`transcript/projector.go`**：会话投影（子集时间范围等）
+- **`transcript/view.go`**：转换为可渲染视图
 
 ---
 

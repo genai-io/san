@@ -1,6 +1,6 @@
 # 工具系统详解
 
-Gen Code 内置了一套完善的工具系统，Agent 通过调用这些工具与外部世界交互（读文件、执行命令、搜索网络等）。所有工具的 Schema 定义在 [`internal/tool/schema_base.go`](../../internal/tool/schema_base.go)。
+Gen Code 内置了一套完善的工具系统，Agent 通过调用这些工具与外部世界交互（读文件、执行命令、搜索网络等）。所有内置工具的 Schema 分布在 `internal/tool/` 下的三个文件：[`schema_base.go`](../../internal/tool/schema_base.go)（文件 / 系统 / Web 等基础工具）、[`schema_agent.go`](../../internal/tool/schema_agent.go)（Agent / Skill）、[`schema_task.go`](../../internal/tool/schema_task.go)（任务 / Cron / 工作树）。
 
 ---
 
@@ -21,7 +21,9 @@ type Tool interface {
 
 ---
 
-## 内置工具一览（12 个）
+## 内置工具一览
+
+内置工具共约 **21 个**，按 schema 文件分为三组：基础工具（9 个，`schema_base.go`）、Agent/Skill（3 个，`schema_agent.go`）、任务/Cron/工作树（9 个，`schema_task.go`）。下面详述最常用的基础工具与 Agent 工具，其余在文末"其余内置工具"表中列出。
 
 ### 1. Read（读取文件）
 
@@ -161,27 +163,7 @@ type Tool interface {
 
 ---
 
-### 10. TaskStop（停止后台任务）
-
-通过 ID 停止运行中的后台任务。
-
-**参数**：
-- `task_id`（string，必需）— 后台任务 ID
-
----
-
-### 11. TaskOutput（查看任务输出）
-
-获取已完成后台任务的结果。
-
-**参数**：
-- `task_id`（string，必需）— 任务 ID
-- `block`（boolean，可选）— 是否等待完成
-- `timeout`（integer，可选）— 等待超时（毫秒）
-
----
-
-### 12. Agent（启动子 Agent）
+### 10. Agent（启动子 Agent）
 
 启动一个新的子 Agent 处理复杂多步骤任务。
 
@@ -192,6 +174,26 @@ type Tool interface {
 - `model`（string，可选）— 模型覆盖
 - `isolation`（string，可选）— 隔离模式（worktree）
 - `run_in_background`（boolean，可选）— 后台运行
+
+---
+
+### 其余内置工具
+
+除上述 10 个外，还有以下内置工具（定义在 `schema_agent.go` / `schema_task.go`）：
+
+| 工具 | 说明 |
+|------|------|
+| `Skill` | 在主对话中执行某个技能（Skill） |
+| `SendMessage` | 向一个已存在的子 Agent 追加后续消息 |
+| `TaskCreate` | 创建任务以跟踪多步骤工作的进度 |
+| `TaskGet` | 按 ID 获取任务详情（描述、状态、依赖） |
+| `TaskUpdate` | 更新任务的状态、详情或依赖 |
+| `TaskList` | 列出所有任务及其状态与依赖 |
+| `CronCreate` | 按 cron 表达式调度一个定时提示 |
+| `CronDelete` | 按 ID 取消一个定时任务 |
+| `CronList` | 列出所有定时任务及其状态、下次触发时间 |
+| `EnterWorktree` | 将当前对话切入一个 Git 工作树（隔离实验） |
+| `ExitWorktree` | 退出工作树会话，回到原工作目录 |
 
 ---
 
@@ -262,8 +264,10 @@ Agent Loop
 
 ```
 internal/tool/
-├── schema_base.go       # 12 个内置工具的 Schema 定义
-├── tool.go              # 工具注册和初始化
+├── schema_base.go       # 基础工具 Schema（Read/Glob/Grep/Edit/Write/Bash/WebFetch/WebSearch/AskUserQuestion）
+├── schema_agent.go      # Agent / SendMessage / Skill 的 Schema
+├── schema_task.go       # 任务 / Cron / 工作树工具的 Schema
+├── registry.go          # 工具注册与初始化
 ├── agent/               # Agent 工具（子 Agent 启动）
 ├── fs/                  # 文件系统工具实现
 │   ├── read.go
@@ -273,11 +277,13 @@ internal/tool/
 │   ├── glob.go
 │   └── grep.go
 ├── web/                 # Web 工具实现
-│   ├── fetch.go
-│   └── search.go
-├── tasktools/           # 任务管理工具
-│   ├── task_output.go
-│   └── task_stop.go
+│   ├── webfetch.go
+│   └── websearch.go
+├── tasktools/           # 任务跟踪工具
+│   ├── trackercreate.go
+│   ├── trackerget.go
+│   ├── trackerlist.go
+│   └── trackerupdate.go
 ├── perm/                # 权限门控
 ├── mode/                # 执行模式
 ├── registry/            # 注册表实现

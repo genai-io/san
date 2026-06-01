@@ -35,7 +35,7 @@
 |------|------|
 | [architecture.md](architecture.md) | 架构总览：五层模型、运行时模型、设计原则 |
 | [core-interfaces.md](core-interfaces.md) | 核心接口详解：Agent、LLM、Tool、System、Message、Event |
-| [tools.md](tools.md) | 工具系统：12 个内置工具的 Schema 与实现 |
+| [tools.md](tools.md) | 工具系统：内置工具（约 21 个）的 Schema 与实现 |
 | [extensions.md](extensions.md) | 扩展模型：Skills、Plugins、MCP、Hooks、Commands、Subagents |
 | [data-flow.md](data-flow.md) | 数据流详解：输入→Agent→渲染的完整链路 |
 | [providers.md](providers.md) | LLM 提供商：注册机制、接口、各提供商特性 |
