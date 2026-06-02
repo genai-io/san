@@ -294,13 +294,15 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	// Value-first phrase: the value sits in the same column as the "[" of
-	// bool rows at the same indent so numbers and brackets line up.
-	line := p.cursorPad(i, row.indent) + selflearnValueStyle.Render(value)
+	// Label-first phrase: "Run every 10 user turns" reads as a sentence.
+	// The label sits one bracket-width past where a bool row's "[" goes,
+	// so labels align with bool-row labels at the same indent.
+	labelStart := contentCol(row.indent) + 4 // 4 = bracket width "[ ] "
+	leftPad := strings.Repeat(" ", labelStart-cursorWidth)
+	line := leftPad + p.cursorMark(i) + row.label + " " + selflearnValueStyle.Render(value)
 	if row.unit != "" {
 		line += " " + selflearnMutedStyle.Render(row.unit)
 	}
-	line += selflearnMutedStyle.Render("  -  ") + row.label
 	if row.footnote != nil {
 		fn := row.footnote(row.intGetter(&p.snap))
 		line += selflearnMutedStyle.Render("  ~  " + fn)
