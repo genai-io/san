@@ -288,21 +288,23 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap as a hand-built box
-// so the "gen --resume <id>" hint can ride on the bottom border:
+// formatRecapBlock renders the post-review recap as a lipgloss-bordered
+// card with the "gen --resume" hint as a separate line below — no more
+// hand-built width math, no footer crammed into the bottom border.
+// Layout:
 //
 //	╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
 //	┊  memory                                       ┊
 //	┊    · index — noted that lint runs via make ci ┊
 //	┊    · debugging — added 3 race-condition tips  ┊
+//	┊                                               ┊
 //	┊  skill                                        ┊
 //	┊    · go-testing — trimmed verbose examples    ┊
 //	┊    · python-typing — new skill, typing-hints  ┊
-//	╰┄ gen --resume demo.selflearn-review.123 ┄┄┄┄┄╯
+//	╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
+//	  ↪ gen --resume demo-session.selflearn-review.123
 //
-// Actions are grouped by Kind (preserving first-seen order); a bare
-// memory target renders as "index" so every row lines up. Empty
-// input ⇒ "" so the publish is skipped on no-write passes.
+// Empty input ⇒ "" so the publish is skipped on no-write passes.
 func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	if len(actions) == 0 {
 		return ""
@@ -322,77 +324,26 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 		}
 	}
 
-	// Pre-render each content line; widest determines the box width.
-	// A blank line between kind groups gives the eye a moment to rest
-	// so the two sections don't read as one long list.
-	var lines []string
+	var inner strings.Builder
 	for gi, g := range groups {
 		if gi > 0 {
-			lines = append(lines, "")
+			inner.WriteString("\n\n") // blank line between groups
 		}
-		lines = append(lines, recapKindStyle(g.kind).Render(g.kind))
+		inner.WriteString(recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
-			lines = append(lines, recapRowLine(a))
+			inner.WriteString("\n")
+			inner.WriteString(recapRowLine(a))
 		}
 	}
-	const gutter = 3 // 3-col side padding instead of 2 — adds visual breathing without spending a vertical row
-	contentWidth := 0
-	for _, ln := range lines {
-		if w := lipgloss.Width(ln); w > contentWidth {
-			contentWidth = w
-		}
-	}
-	// Footer needs to fit on the bottom border: "╰┄ <text> ┄╯".
-	// Layout is corner(1) + leadDash(1) + space(1) + footer + space(1) +
-	// trailDash(>=1) + corner(1) = footer + 6 minimum cells across the
-	// row. The top border is innerWidth + 2 cells, so the constraint is
-	// innerWidth >= footer + 4, i.e. contentWidth >= footer.
-	var footerText string
-	footerLen := 0
-	if sessionID != "" {
-		// "↪ " prefix turns the footer from a passive label into an
-		// affordance: it reads as "next action" rather than chrome.
-		footerText = selflearnRecapFooterStyle.Render("↪ gen --resume " + sessionID)
-		footerLen = lipgloss.Width(footerText)
-		if footerLen > contentWidth {
-			contentWidth = footerLen
-		}
-	}
-	innerWidth := contentWidth + 2*gutter
 
-	border := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"})
-	var b strings.Builder
-	// Top border: ╭┄┄…┄╮. No vertical padding rows inside — the
-	// horizontal gutter alone handles the breathing room and the
-	// card stays tight.
-	b.WriteString(border.Render("╭" + strings.Repeat("┄", innerWidth) + "╮"))
-	for _, ln := range lines {
-		pad := contentWidth - lipgloss.Width(ln)
-		b.WriteString("\n")
-		b.WriteString(border.Render("┊"))
-		b.WriteString(strings.Repeat(" ", gutter))
-		b.WriteString(ln)
-		b.WriteString(strings.Repeat(" ", pad))
-		b.WriteString(strings.Repeat(" ", gutter))
-		b.WriteString(border.Render("┊"))
+	out := selflearnRecapBoxStyle.Render(inner.String())
+	if sessionID != "" {
+		// "↪ " prefix flips the line from passive label to affordance.
+		// Indented to match the box's left padding so the arrow lines
+		// up under the first content column.
+		out += "\n  " + selflearnRecapFooterStyle.Render("↪ gen --resume "+sessionID)
 	}
-	// Bottom border: ╰┄ <footer> ┄…┄╯  (or ╰┄┄…┄╯ when no footer fits)
-	b.WriteString("\n")
-	if footerText != "" {
-		// Top span between corners = innerWidth.
-		// Bottom span between corners = lead(┄) + " " + footer + " " +
-		// trail(┄…) = 3 + footerLen + trailDashes.
-		// Equal → trailDashes = innerWidth - footerLen - 3.
-		trailDashes := max(innerWidth-footerLen-3, 1)
-		b.WriteString(border.Render("╰┄"))
-		b.WriteString(" ")
-		b.WriteString(footerText)
-		b.WriteString(" ")
-		b.WriteString(border.Render(strings.Repeat("┄", trailDashes) + "╯"))
-	} else {
-		b.WriteString(border.Render("╰" + strings.Repeat("┄", innerWidth) + "╯"))
-	}
-	return b.String()
+	return out
 }
 
 // recapRowLine formats one action row: " · <target>" optionally
@@ -444,10 +395,25 @@ var (
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
-	// Footer style for "gen --resume <id>" embedded on the bottom border.
-	// TextDim + Faint so the command reads as a quiet label baked into
-	// the chrome — kept upright (no italic) so the shell command is
-	// instantly copy-paste recognisable.
+	// Box style — lipgloss-managed dashed border, soft TextDim corners.
+	// Padding(0, 2) is the standard 2-col gutter inside the frame; the
+	// card stays compact because there are no vertical padding rows.
+	selflearnRecapBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.Border{
+			Top:         "┄",
+			Bottom:      "┄",
+			Left:        "┊",
+			Right:       "┊",
+			TopLeft:     "╭",
+			TopRight:    "╮",
+			BottomLeft:  "╰",
+			BottomRight: "╯",
+		}).
+		BorderForeground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
+		Padding(0, 2)
+	// Footer style for "↪ gen --resume <id>" on its own line below the
+	// box. TextDim + Faint so the command reads as a quiet hint, kept
+	// upright so the shell command stays copy-paste recognisable.
 	selflearnRecapFooterStyle = lipgloss.NewStyle().
 					Foreground(kit.CurrentTheme.TextDim).
 					Faint(true)
