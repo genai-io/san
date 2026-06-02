@@ -7,10 +7,6 @@ import (
 type StreamState struct {
 	Active       bool
 	BuildingTool string
-	// ScrollbackLen tracks how many runes of the active assistant
-	// message have been committed to terminal scrollback during
-	// streaming.  Incremental commits keep truncated content visible.
-	ScrollbackLen int
 }
 
 func (s *StreamState) Stop() {

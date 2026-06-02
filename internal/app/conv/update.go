@@ -2,8 +2,6 @@
 package conv
 
 import (
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/gen-code/internal/app/kit"
@@ -153,14 +151,9 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	rt.OnTurnBegin()
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
-	m.Stream.ScrollbackLen = 0
-	m.ContentOffset = 0 // auto-scroll to bottom on new turn
 	commitCmds := rt.CommitMessages()
 	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: ""})
 	cmds := append(commitCmds, m.Spinner.Tick)
-	if len(cmds) == 1 {
-		return cmds[0]
-	}
 	return tea.Batch(cmds...)
 }
 
@@ -178,57 +171,15 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	}
 	if chunk.Text != "" || chunk.Thinking != "" {
 		m.AppendToLast(chunk.Text, chunk.Thinking)
-		// Don't reset ContentOffset here — let the user scroll freely
-		// during streaming. It resets only at turn start (applyPreInfer).
 	}
-
-	// Commit newly streamed text to terminal scrollback at newline
-	// boundaries so the user can scroll up to see earlier parts of a long
-	// response that have been truncated from the active view.
-	var cmds []tea.Cmd
-	if cmd := commitStreamTail(m, false); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-
 	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
 		m.Stream.Active = false
-		// Flush any remaining tail that hasn't hit a newline yet.
-		if cmd := commitStreamTail(m, true); cmd != nil {
-			cmds = append(cmds, cmd)
+		commitCmds := rt.CommitMessages()
+		if len(commitCmds) > 0 {
+			return tea.Batch(commitCmds...)
 		}
-		cmds = append(cmds, rt.CommitMessages()...)
 	}
-	return tea.Batch(cmds...)
-}
-
-// commitStreamTail flushes newly streamed assistant text to terminal
-// scrollback and advances Stream.ScrollbackLen past whatever it commits.
-// When flush is false it commits only through the last newline (so a
-// partial trailing line doesn't appear as left-edge flicker); when true it
-// commits the entire remaining tail. Returns nil when there is nothing to
-// commit.
-func commitStreamTail(m *Model, flush bool) tea.Cmd {
-	if len(m.Messages) == 0 {
-		return nil
-	}
-	last := m.Messages[len(m.Messages)-1]
-	if last.Role != core.RoleAssistant || len(last.Content) <= m.Stream.ScrollbackLen {
-		return nil
-	}
-
-	delta := last.Content[m.Stream.ScrollbackLen:] // non-empty per the guard above
-	if flush {
-		m.Stream.ScrollbackLen = len(last.Content)
-		return tea.Println(delta)
-	}
-
-	lastNewline := strings.LastIndex(delta, "\n")
-	if lastNewline < 0 {
-		return nil
-	}
-	commit := delta[:lastNewline+1]
-	m.Stream.ScrollbackLen += len(commit)
-	return tea.Println(strings.TrimRight(commit, "\n"))
+	return nil
 }
 
 func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {

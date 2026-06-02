@@ -61,11 +61,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
 		return m, m.handleSubmit()
-	case tea.MouseMsg:
-		if cmd := m.handleMouseEvent(msg); cmd != nil {
-			return m, cmd
-		}
-		return m, nil
 	case tea.KeyMsg:
 		if c, ok := m.routeKeypress(msg); ok {
 			return m, c

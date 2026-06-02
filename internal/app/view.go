@@ -46,16 +46,16 @@ func (m *model) View() string {
 // turn-usage summary, queue preview, textarea + suggestions, and the
 // bottom status line.
 //
-// The chat section is height-limited so the bubbletea View() output never
-// exceeds the terminal height. When live content is taller than the
-// available space, conv.ScrollWindow shows a viewport into it (the latest
-// content by default, or an earlier window when the user has scrolled up).
-// The full, untruncated content is committed to terminal scrollback via
-// CommitMessages / tea.Println, so the user can scroll up to see everything
-// once the response completes.
+// Only the active (uncommitted) tail is rendered here; finished messages are
+// already in the terminal's native scrollback (committed via tea.Println, see
+// model_scrollback.go). The chat section is height-limited so the View()
+// output never exceeds the terminal height: when the live tail is taller than
+// the space above the input area, its last lines (the latest content) are
+// shown and earlier lines scroll off — the full message lands in native
+// scrollback at turn end, which the terminal scrolls back through natively.
 func (m *model) renderNormalView(separator, trackerView string) string {
 	// Build the bottom chrome first so we can measure how many lines it
-	// consumes and subtract from the terminal height.
+	// consumes and cap the chat section to the remaining terminal height.
 	bottomChrome := m.buildBottomChrome(separator)
 	bottomLines := strings.Count(bottomChrome, "\n")
 
@@ -65,19 +65,24 @@ func (m *model) renderNormalView(separator, trackerView string) string {
 		maxContentHeight = m.env.Height - bottomLines
 	}
 
-	// Render ALL messages (both committed and active) so the scrollable
-	// viewport has the full conversation to navigate.
-	allContent := conv.RenderMessageRange(m.messageRenderParams(), 0, len(m.conv.Messages), m.conv.Stream.Active)
-	chatSection := m.renderChatSection(allContent, trackerView)
+	activeContent := conv.RenderActiveContent(m.messageRenderParams())
+	chatSection := m.renderChatSection(activeContent, trackerView)
 
-	// Window the content to the available height. ScrollWindow is the single
-	// place scroll bounds are enforced: it returns the offset clamped to the
-	// valid range, which we store back as the canonical position so a
-	// wheel-up past the top can't accumulate an unbounded offset.
-	windowed, clamped := conv.ScrollWindow(strings.Split(chatSection, "\n"), m.conv.ContentOffset, maxContentHeight)
-	m.conv.ContentOffset = clamped
+	return tailLines(chatSection, maxContentHeight) + bottomChrome
+}
 
-	return windowed + bottomChrome
+// tailLines returns the last maxLines newline-delimited lines of s, keeping the
+// latest content visible when the live tail is taller than the available
+// height. s is returned unchanged when maxLines <= 0 or it already fits.
+func tailLines(s string, maxLines int) string {
+	if maxLines <= 0 {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return s
+	}
+	return strings.Join(lines[len(lines)-maxLines:], "\n")
 }
 
 // buildBottomChrome renders everything below the chat section (turn usage,
@@ -145,14 +150,14 @@ func (m model) renderInputView() string {
 	return prompt + m.userInput.RenderTextarea()
 }
 
-// renderChatSection assembles the full chat content (active messages, tracker,
-// transient spinners) into a single string. It is pure: height-limiting and
-// scroll windowing are applied by the caller via conv.ScrollWindow.
-func (m model) renderChatSection(content, trackerView string) string {
+// renderChatSection assembles the active chat content (uncommitted messages,
+// tracker, transient spinners) into a single string. Height-limiting is
+// applied by the caller (tailLines).
+func (m model) renderChatSection(activeContent, trackerView string) string {
 	var parts []string
 
-	if content != "" {
-		parts = append(parts, content)
+	if activeContent != "" {
+		parts = append(parts, activeContent)
 	}
 
 	if trackerView != "" {
