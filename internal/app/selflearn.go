@@ -392,10 +392,21 @@ var (
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
+	// Dashed border (quadruple-dash light) in a noticeably fainter
+	// shade than TextDim so the frame whispers rather than draws.
 	selflearnRecapBoxStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(kit.CurrentTheme.TextDim).
-				Padding(0, 2)
+				Border(lipgloss.Border{
+			Top:         "┈",
+			Bottom:      "┈",
+			Left:        "┊",
+			Right:       "┊",
+			TopLeft:     "╭",
+			TopRight:    "╮",
+			BottomLeft:  "╰",
+			BottomRight: "╯",
+		}).
+		BorderForeground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
+		Padding(0, 2)
 	// Footer line inside the box pointing at the sidechain transcript
 	// for the inspector to replay.
 	selflearnRecapFooterStyle = lipgloss.NewStyle().
