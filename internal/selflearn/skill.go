@@ -29,13 +29,10 @@ var skillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // supportSubdirs are the only places a skill_manage support file may be written.
 var supportSubdirs = map[string]struct{}{"references": {}, "templates": {}, "scripts": {}}
 
-// ActionPermissions controls what L1 may do via skill_manage. See
-// notes/active/l1-background-review.md §5.5.
-//
-// The first three flags restrict actions only on agent-created skills.
-// AllowUpdateUserCreated is the single advanced opt-in that extends
-// AllowUpdate to also patch user-created skills — create and delete on
-// user-created remain impossible at any setting.
+// ActionPermissions controls what L1 may do via skill_manage (§5.5).
+// The first three flags scope to agent-created skills. AllowUpdateUserCreated
+// extends AllowUpdate to user-created skills; create/delete on user-created
+// remain impossible at any setting.
 type ActionPermissions struct {
 	AllowCreate            bool
 	AllowUpdate            bool
@@ -49,13 +46,10 @@ func DefaultActionPermissions() ActionPermissions {
 	return ActionPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
 }
 
-// SkillWriteObserver is invoked after every successful create / patch /
-// edit / write_file / remove_file / delete. action is the §5.3 action name;
-// name is the affected skill.
-//
-// Contract: SetWriteObserver MUST be called before the first write; the
-// reviewer fork is single-flight per session (§6 invariant #8) so we do
-// not guard the observer field with a lock.
+// SkillWriteObserver fires after every successful write (create/patch/
+// edit/write_file/remove_file/delete; action is the §5.3 name).
+// SetWriteObserver must be called before the first write; the fork is
+// single-flight (§6 #8) so the field is lock-free.
 type SkillWriteObserver func(action, name string)
 
 // SkillManager is the L1-only skill write surface. Skills live directly in

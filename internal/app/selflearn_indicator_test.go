@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// TestSelfLearnUIPhaseTransitions covers the four-phase state machine
+// TestSelfLearnIndicatorPhaseTransitions covers the four-phase state machine
 // (idle → reviewing → done/failed → idle) and the per-phase render output.
-func TestSelfLearnUIPhaseTransitions(t *testing.T) {
-	s := NewSelfLearnUIState()
+func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
+	s := NewSelfLearnIndicator()
 
 	// Idle baseline.
 	if snap := s.Snapshot(); snap.Phase != selflearnIdle || snap.Render() != "" {
@@ -51,10 +51,10 @@ func TestSelfLearnUIPhaseTransitions(t *testing.T) {
 	}
 }
 
-// TestSelfLearnUIFailDecay checks the failed-phase render label and the
+// TestSelfLearnIndicatorFailDecay checks the failed-phase render label and the
 // longer hold window before fading back to idle.
-func TestSelfLearnUIFailDecay(t *testing.T) {
-	s := NewSelfLearnUIState()
+func TestSelfLearnIndicatorFailDecay(t *testing.T) {
+	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	s.Fail()
 	if got := s.Snapshot().Render(); got != "evolving failed" {
@@ -70,12 +70,12 @@ func TestSelfLearnUIFailDecay(t *testing.T) {
 	}
 }
 
-// TestSelfLearnUIStepDebouncesTarget ensures rapid-fire Step calls within
+// TestSelfLearnIndicatorStepDebouncesTarget ensures rapid-fire Step calls within
 // the debounce window keep the previously-displayed target, while the next
 // Step beyond the window swaps it. The change counter is unaffected — it
 // counts every successful write regardless of swap.
-func TestSelfLearnUIStepDebouncesTarget(t *testing.T) {
-	s := NewSelfLearnUIState()
+func TestSelfLearnIndicatorStepDebouncesTarget(t *testing.T) {
+	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "first"})
 	if got := s.Snapshot().Target; got != "first" {
@@ -92,10 +92,10 @@ func TestSelfLearnUIStepDebouncesTarget(t *testing.T) {
 	}
 }
 
-// TestSelfLearnUITickFrameAdvances checks the braille spinner cycles forward
+// TestSelfLearnIndicatorTickFrameAdvances checks the braille spinner cycles forward
 // on every tick during the reviewing phase.
-func TestSelfLearnUITickFrameAdvances(t *testing.T) {
-	s := NewSelfLearnUIState()
+func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
+	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	frame0 := s.Snapshot().Frame
 	_, _ = s.Tick(time.Now())
@@ -157,7 +157,7 @@ func TestVerbMapping(t *testing.T) {
 // done-hold (no visible "evolved"); the state goes straight to idle so
 // the status bar is pixel-identical to a no-review session.
 func TestCompleteSilentOnEmptyActions(t *testing.T) {
-	s := NewSelfLearnUIState()
+	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	// No RecordAction calls — pass produced no writes.
 	s.Complete()
@@ -171,7 +171,7 @@ func TestCompleteSilentOnEmptyActions(t *testing.T) {
 // clears the slice. Otherwise the done-hold renders "evolved" without
 // the count.
 func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
-	s := NewSelfLearnUIState()
+	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory"})
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})

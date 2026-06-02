@@ -50,13 +50,10 @@ type OperationModeParams struct {
 	ShowThinking     bool
 	QueueCount       int
 
-	// SelfLearnSegment is the rendered "evolving …" / "evolved · N changes"
-	// / "evolving failed" status-bar segment for the L1 reviewer. Empty
-	// when the reviewer is idle or disabled — and idle and disabled
-	// produce the same status line. The owning package computes the body
-	// from its UI-state snapshot so this layer stays string-only and the
-	// rendering style lives in one place.
-	SelfLearnSegment string
+	// SelfLearnStatus is the L1 reviewer's status-bar label
+	// ("evolving …", "evolved · N changes", "evolving failed"). Empty
+	// when idle or disabled.
+	SelfLearnStatus string
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -77,8 +74,8 @@ func RenderModeStatus(params OperationModeParams) string {
 		leftParts = append(leftParts, queueBadge)
 	}
 
-	if params.SelfLearnSegment != "" {
-		leftParts = append(leftParts, renderSelfLearnIndicator(params.SelfLearnSegment))
+	if params.SelfLearnStatus != "" {
+		leftParts = append(leftParts, renderSelfLearnIndicator(params.SelfLearnStatus))
 	}
 
 	left := strings.Join(leftParts, "  ")
@@ -682,13 +679,10 @@ var selfLearnIndicatorStyle = lipgloss.NewStyle().
 	Foreground(kit.CurrentTheme.Muted).
 	Italic(true)
 
-// renderSelfLearnIndicator wraps the caller-provided segment in the muted,
-// italic style so the L1 review status reads as a single visual unit with
-// the rest of the bar. The segment text itself ("evolving ⠋ go-testing" /
-// "evolved · 3 changes" / "evolving failed") comes from the UI-state
-// owner so the rendering style lives in one place.
-func renderSelfLearnIndicator(segment string) string {
-	return selfLearnIndicatorStyle.Render(segment)
+// renderSelfLearnIndicator wraps the caller's text in the muted-italic
+// status-bar style.
+func renderSelfLearnIndicator(text string) string {
+	return selfLearnIndicatorStyle.Render(text)
 }
 
 func truncateQueueContent(s string, maxLen int) string {

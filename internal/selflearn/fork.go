@@ -9,16 +9,13 @@ import (
 	"github.com/genai-io/gen-code/internal/tool/perm"
 )
 
-// forkMaxTurns caps the reviewer fork's inference rounds. A review is a
-// small bounded task (read the turn, write at most a few entries); the cap
-// stops a confused fork from looping.
+// forkMaxTurns caps the fork's inference rounds — a review is bounded
+// work, so this just stops a confused fork from looping.
 const forkMaxTurns = 16
 
-// forkDeadline is the wall-clock cap on a single review pass. The design's
-// invariant #5 is "best-effort" — if the fork hangs (slow provider, stuck
-// tool call), an indefinite block would leave inFlight=true and silently
-// disable all future reviews for the session (see Observe's drop path).
-// The deadline guarantees the goroutine returns and clears inFlight.
+// forkDeadline bounds a single pass. Without it a hung provider would
+// pin the goroutine with inFlight=true and silently disable all future
+// reviews for the session (§6 invariant #5).
 const forkDeadline = 5 * time.Minute
 
 // ForkConfig carries everything RunReview needs to fork a restricted reviewer
@@ -32,24 +29,19 @@ type ForkConfig struct {
 	Skills *SkillManager
 }
 
-// RunReview forks a restricted agent over the turn snapshot and runs the review
-// prompt selected by kinds. It returns the fork's final text (a one-line summary
-// of what it changed, or a "nothing to save" note). Best-effort: the caller runs
-// it on a background goroutine and never lets its error affect the user turn.
-//
-// The fork runs under a wall-clock deadline (forkDeadline)
-// so a hung provider call can't leave the goroutine pinned and the reviewer's
-// inFlight flag stuck (invariant #5 / #8).
+// RunReview forks a restricted agent over the snapshot, runs the kind-
+// selected review prompt, and returns the fork's final text (a one-line
+// summary, or "nothing to save"). Bounded by forkDeadline. Best-effort:
+// the caller must run it on a background goroutine.
 func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error) {
 	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Memory, fc.Skills)
 
 	ctx, cancel := context.WithTimeout(ctx, forkDeadline)
 	defer cancel()
 
-	// Fresh System that renders the parent's prompt verbatim (prefix-cache
-	// parity) without sharing the parent's System instance — core.NewAgent calls
-	// SetObserver on the System it is given, which would clobber the parent's
-	// telemetry observer if we passed the parent's System directly.
+	// Fresh System rendering the parent's prompt verbatim (prefix-cache
+	// parity). Can't share the parent's instance — NewAgent calls
+	// SetObserver on it, which would clobber the parent's telemetry hook.
 	parentPrompt := ""
 	if fc.System != nil {
 		parentPrompt = fc.System.Prompt()
@@ -75,11 +67,9 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
 	})
 
-	// Defensive: if the parent's turn ended mid-tool-loop the snapshot may
-	// end with a user-role tool_result. Appending a fresh user-role prompt
-	// would put two consecutive user messages on the wire, which most
-	// providers reject as "messages must alternate". Trim trailing user
-	// messages so the review prompt is the only user turn at the tail.
+	// Trim trailing user messages so the review prompt isn't the second
+	// consecutive user turn — most providers reject that as a role-order
+	// violation (the parent's turn may end with a user-role tool_result).
 	ag.SetMessages(trimTrailingUserMessages(snapshot))
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	res, err := ag.ThinkAct(ctx)
@@ -92,10 +82,8 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	return res.Content, nil
 }
 
-// trimTrailingUserMessages returns the slice with any trailing user-role
-// messages dropped. We do not mutate the caller's slice (the snapshot is
-// shared with the main agent) — instead we reslice so the caller's view
-// is unchanged.
+// trimTrailingUserMessages drops trailing user-role messages without
+// mutating the caller's slice (it's shared with the main agent).
 func trimTrailingUserMessages(msgs []core.Message) []core.Message {
 	end := len(msgs)
 	for end > 0 && msgs[end-1].Role == core.RoleUser {
@@ -104,10 +92,9 @@ func trimTrailingUserMessages(msgs []core.Message) []core.Message {
 	return msgs[:end]
 }
 
-// allowOnly builds a permission policy that allows exactly the tools in the
-// given registry and rejects everything else. The reviewer fork must never
-// prompt the TUI, so the policy is static and self-contained — there is no
-// interactive resolver and no escalation path.
+// allowOnly builds a static permission policy: tools in `allowed` pass,
+// everything else rejects. No interactive resolver — the fork must never
+// prompt the TUI.
 func allowOnly(allowed core.Tools) perm.PermissionFunc {
 	names := make(map[string]bool)
 	for _, t := range allowed.All() {

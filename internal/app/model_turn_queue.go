@@ -132,12 +132,11 @@ func awaitMainEvent(ch <-chan hub.Event) tea.Cmd {
 // is empty, so the next firing waits for the next publish.
 func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
 	next := awaitMainEvent(m.mainEvents)
-	// Selflearn tick-start events are internal wake-ups for the spinner —
-	// they must never become user-visible notices. ArmTick prevents
-	// back-to-back reviews from stacking parallel tick chains that would
-	// multiply the spinner cadence.
+	// Selflearn tick-start events are internal spinner wake-ups, not
+	// user-visible notices. TryStartTicker keeps back-to-back reviews
+	// from stacking parallel tick chains.
 	if ev.Type == "selflearn.review.started" {
-		if m.services.SelfLearnUI != nil && m.services.SelfLearnUI.ArmTick() {
+		if m.services.SelfLearnIndicator != nil && m.services.SelfLearnIndicator.TryStartTicker() {
 			return tea.Batch(scheduleSelflearnTick(), next)
 		}
 		return next

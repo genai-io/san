@@ -99,9 +99,9 @@ func TestRenderModeStatusShowsSelfLearnIndicatorWhenEvolving(t *testing.T) {
 		t.Fatalf("idle status must not show the L1 indicator: %q", idle)
 	}
 	running := RenderModeStatus(OperationModeParams{
-		ModelName:        "x",
-		Width:            80,
-		SelfLearnSegment: "evolving ⠋ go-testing",
+		ModelName:       "x",
+		Width:           80,
+		SelfLearnStatus: "evolving ⠋ go-testing",
 	})
 	if !strings.Contains(running, "evolving") || !strings.Contains(running, "go-testing") {
 		t.Fatalf("running status must show the L1 indicator with target: %q", running)

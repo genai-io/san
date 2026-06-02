@@ -14,60 +14,42 @@ import (
 	"github.com/genai-io/gen-code/internal/core/system"
 )
 
-// memoryEntryDelimiter separates entries inside a memory file. A standalone
-// "§" line lets entries span multiple lines without ambiguity (mirrors the
-// hermes memory tool). It is rare enough in prose that substring matching on
-// entry bodies stays reliable.
+// memoryEntryDelimiter separates entries inside a memory file. The
+// standalone "§" line lets entries span multiple lines without ambiguity
+// and is rare enough in prose to be safe for substring matching.
 const memoryEntryDelimiter = "\n§\n"
 
-// rejectEmbeddedDelimiter blocks any content that contains the entry
-// delimiter, which would otherwise split into multiple entries on read —
-// corrupting the store and providing a scan bypass: only the joined blob
-// passes through scanContent, but the post-split pieces are stored
-// independently and may carry payloads that survived only because of
-// surrounding-context masking.
+// rejectEmbeddedDelimiter blocks content whose delimiter would re-split
+// entries on read — both the full "\n§\n" and bare-§ lines, which fuse
+// with the join newlines into a delimiter when stored next to a
+// neighbour (e.g. ["a\n§","b"] reads back as ["a","§\nb"]). A re-split
+// store also bypasses the scanner, which only saw the joined blob.
 func rejectEmbeddedDelimiter(content string) error {
 	if strings.Contains(content, memoryEntryDelimiter) {
 		return fmt.Errorf("content cannot contain the entry delimiter (a standalone § line); this would silently split into multiple entries on read")
 	}
-	// Even without the full delimiter, an entry whose first or last line is a
-	// bare "§" fuses with the join newlines into "\n§\n" when stored next to a
-	// neighbour, so the boundary moves on the next read (e.g. ["a\n§","b"]
-	// reads back as ["a","§\nb"]). Reject any bare-§ line for the same reason.
 	if slices.Contains(strings.Split(content, "\n"), "§") {
 		return fmt.Errorf("content cannot contain a standalone § line; it collides with the entry delimiter and would corrupt the store on read")
 	}
 	return nil
 }
 
-// DefaultMemoryFileCharLimit is the fallback per-file character cap when the
-// constructor receives 0. It matches the read-side injection cap
-// (system.AutoMemoryByteCap = 25 KB) so a file that fits the budget on write
-// also fits when injected — the L1 store must prune/replace rather than grow
-// unbounded (see notes/active/l1-background-review.md §4.2 invariant).
+// DefaultMemoryFileCharLimit is the fallback per-file cap when the
+// constructor gets 0. Matches the injection cap (system.AutoMemoryByteCap)
+// so a file that fits on write also fits when read (§4.2).
 const DefaultMemoryFileCharLimit = 25000
 
-// MemoryStore is the project-partitioned, file-backed durable memory written by
-// the L1 reviewer fork and read back via system.LoadMemoryFiles. It lives under
-// ~/.gen/projects/<encoded-cwd>/memory/ — machine-local, out of the repo, and
-// isolated per project (see notes/active/l1-background-review.md §4).
+// MemoryStore is the project-partitioned durable memory written by the L1
+// fork and read back via system.LoadMemoryFiles. Lives under
+// ~/.gen/projects/<encoded-cwd>/memory/ — machine-local, out of the repo
+// (§4). Entries are delimited; add/replace/remove locate one by a unique
+// substring. Writes are atomic and re-read under the mutex.
+// Cross-process safety is best-effort (atomic rename only).
 //
-// Entries are delimited (memoryEntryDelimiter); add/replace/remove locate an
-// entry by a unique substring rather than by index or full text. Writes are
-// atomic (temp file + rename) and re-read from disk under the mutex before
-// mutating, so an in-flight write never clobbers a concurrent one. Cross-process
-// concurrency is best-effort (atomic rename only) — flagged as an open question
-// for L2.
-// MemoryWriteObserver is invoked after every successful Add / Replace /
-// Remove. action is the §4.1 tool action ("add" | "replace" | "remove");
-// file is the basename being written ("" ⇒ MEMORY.md index). Used by the
-// UI layer to track the current target for the §"User-visible surface"
-// "evolving … memory · <topic>" status-bar line and to build the recap
-// action log.
-//
-// Contract: SetWriteObserver MUST be called before the first write; the
-// reviewer fork is single-flight per session (§6 invariant #8) so we do
-// not guard the observer field with a lock.
+// MemoryWriteObserver fires after every successful write. action is the
+// tool action ("add"/"replace"/"remove"); file is the basename ("" ⇒
+// MEMORY.md). SetWriteObserver must be called before the first write;
+// the fork is single-flight (§6 #8) so the field is lock-free.
 type MemoryWriteObserver func(action, file string)
 
 type MemoryStore struct {

@@ -64,32 +64,32 @@ type services struct {
 	// wireSelfLearn; nil before the first wiring.
 	SelfLearnLive *atomic.Bool
 
-	// SelfLearnUI drives the four-phase status-bar surface from the design's
+	// SelfLearnIndicator drives the four-phase status-bar surface from the design's
 	// §"User-visible surface". Always non-nil so the render path can take
 	// Snapshot() without a nil check; the snapshot reports an idle phase
 	// when L1 is off or no review has run yet.
-	SelfLearnUI *SelfLearnUIState
+	SelfLearnIndicator *SelfLearnIndicator
 }
 
 func newServices() services {
 	return services{
-		Setting:     setting.Default(),
-		LLM:         llm.Default(),
-		Tool:        tool.Default(),
-		Hook:        hook.DefaultEngine(),
-		Session:     session.Default(),
-		Skill:       skill.Default(),
-		Subagent:    subagent.Default(),
-		Command:     command.Default(),
-		Task:        task.Default(),
-		Tracker:     tracker.Default(),
-		Cron:        cron.Default(),
-		MCP:         mcp.DefaultRegistry(),
-		Plugin:      plugin.Default(),
-		Agent:       agent.Default(),
-		Identity:    identity.Default(),
-		Reminder:    reminder.NewService(),
-		SelfLearnUI: NewSelfLearnUIState(),
+		Setting:            setting.Default(),
+		LLM:                llm.Default(),
+		Tool:               tool.Default(),
+		Hook:               hook.DefaultEngine(),
+		Session:            session.Default(),
+		Skill:              skill.Default(),
+		Subagent:           subagent.Default(),
+		Command:            command.Default(),
+		Task:               task.Default(),
+		Tracker:            tracker.Default(),
+		Cron:               cron.Default(),
+		MCP:                mcp.DefaultRegistry(),
+		Plugin:             plugin.Default(),
+		Agent:              agent.Default(),
+		Identity:           identity.Default(),
+		Reminder:           reminder.NewService(),
+		SelfLearnIndicator: NewSelfLearnIndicator(),
 	}
 }
 

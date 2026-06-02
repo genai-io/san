@@ -1,13 +1,11 @@
-// Package selflearn implements the self-learning loop. Layer 1 (this file's
-// Reviewer) is a per-turn background reviewer that, on cadence, forks a
-// restricted agent to capture durable memory and skill updates; Layer 2 (a
-// later Curator) will maintain the collection. See
-// notes/active/l1-background-review.md.
+// Package selflearn implements the self-learning loop. Layer 1 (Reviewer
+// in this file) is a per-turn background reviewer that, on cadence, forks
+// a restricted agent to capture durable memory and skill updates.
+// See notes/active/l1-background-review.md.
 //
-// This file holds the L1 trigger core — the two-signal cadence, StopEndTurn
-// gating, counter reset, and the ≤1-in-flight concurrency cap. The actual
-// fork+review is injected as a ReviewFunc so the trigger is testable without an
-// LLM; the fork lives alongside.
+// The trigger core (cadence, StopEndTurn gate, ≤1-in-flight cap) lives
+// here; the fork+review runs through an injected ReviewFunc so the
+// trigger stays unit-testable without an LLM.
 package selflearn
 
 import (
@@ -132,11 +130,8 @@ func (r *Reviewer) Observe(result core.Result) {
 	}
 	if r.skillEnabled {
 		r.itersSinceSkill += result.ToolUses
-		// Cap the accumulator at 2× the threshold so a long-running review
-		// (during which 50 turns each contributing tool calls keep stacking)
-		// produces at most two immediate refires once the review releases —
-		// not 50. Preserves the design's "fire again next clean turn" intent
-		// without the post-release burst.
+		// Cap at 2× threshold so a long-running review can't queue up 50
+		// refires from the tool calls that stacked during it.
 		if cap := 2 * r.skillEvery; r.itersSinceSkill > cap {
 			r.itersSinceSkill = cap
 		}
@@ -169,11 +164,9 @@ func (r *Reviewer) Observe(result core.Result) {
 	}
 	r.mu.Unlock()
 
-	// Defensive snapshot copy: result.Messages aliases the main agent's live
-	// message slice. The main loop may mutate it (append, truncate-on-compact)
-	// concurrently with the background fork's read. Copy the slice header so
-	// the goroutine has a stable view; the elements themselves are immutable
-	// core.Message values.
+	// Defensive copy: result.Messages aliases the main agent's live slice,
+	// which the main loop may mutate (append, compact-truncate) concurrently
+	// with the fork's read. Elements are immutable, so a header copy suffices.
 	snapshot := make([]core.Message, len(result.Messages))
 	copy(snapshot, result.Messages)
 

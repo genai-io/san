@@ -222,17 +222,15 @@ func (m model) renderModeStatus() string {
 		ThinkingEffort:   thinkingEffort,
 		ShowThinking:     showThinking,
 		QueueCount:       m.userInput.Queue.Len(),
-		SelfLearnSegment: m.selfLearnSegment(),
+		SelfLearnStatus:  m.selfLearnStatus(),
 	})
 }
 
-// selfLearnSegment returns the rendered L1 status-bar text (or "" when the
-// state is idle / unwired). The render style is applied by the conv layer.
-func (m model) selfLearnSegment() string {
-	if m.services.SelfLearnUI == nil {
+func (m model) selfLearnStatus() string {
+	if m.services.SelfLearnIndicator == nil {
 		return ""
 	}
-	return m.services.SelfLearnUI.Snapshot().Render()
+	return m.services.SelfLearnIndicator.Snapshot().Render()
 }
 
 func (m model) renderQueuePreview() string {
