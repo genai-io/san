@@ -51,7 +51,7 @@ func TestResolveSettingsRejectsInvalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error to propagate")
 	}
-	if !strings.Contains(err.Error(), "denyUpdate=true requires denyCreate=true") {
+	if !strings.Contains(err.Error(), `"Create new skills" needs "Update existing skills"`) {
 		t.Fatalf("error not from Validate: %v", err)
 	}
 }

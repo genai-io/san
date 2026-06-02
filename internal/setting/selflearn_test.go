@@ -47,7 +47,7 @@ func TestSelfLearnValidate(t *testing.T) {
 			cfg: SelfLearnSettings{
 				Skills: SelfLearnSkills{DenyUpdate: true},
 			},
-			wantErr: "denyUpdate=true requires denyCreate=true",
+			wantErr: `"Create new skills" needs "Update existing skills"`,
 		},
 		{
 			name: "ok: create + update allowed but delete denied (no-auto-delete mode)",
@@ -65,21 +65,21 @@ func TestSelfLearnValidate(t *testing.T) {
 					AllowUpdateUserCreated: true,
 				},
 			},
-			wantErr: "allowUpdateUserCreated=true requires denyUpdate=false",
+			wantErr: `"Update user-authored skills" needs "Update existing skills"`,
 		},
 		{
 			name: "rejected: maxKB above injection cap",
 			cfg: SelfLearnSettings{
 				Memory: SelfLearnMemory{MaxKB: 26},
 			},
-			wantErr: "out of range",
+			wantErr: "memory size must be between",
 		},
 		{
 			name: "rejected: maxKB negative",
 			cfg: SelfLearnSettings{
 				Memory: SelfLearnMemory{MaxKB: -5},
 			},
-			wantErr: "out of range",
+			wantErr: "memory size must be between",
 		},
 		{
 			name: "ok: maxKB at lower-than-default",

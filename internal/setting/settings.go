@@ -116,20 +116,20 @@ func (m SelfLearnMemory) MaxKBOr() int {
 func (s SelfLearnSettings) Validate() error {
 	if s.Memory.MaxKB < 0 || s.Memory.MaxKB > SelfLearnMaxMemoryKB {
 		return fmt.Errorf(
-			"selfLearn.memory.maxKB=%d out of range; must satisfy 0 <= maxKB <= %d (0 = default; §4.2 invariant)",
-			s.Memory.MaxKB, SelfLearnMaxMemoryKB,
+			"memory size must be between 1 and %d KB (got %d)",
+			SelfLearnMaxMemoryKB, s.Memory.MaxKB,
 		)
 	}
 	create := s.Skills.AllowCreate()
 	update := s.Skills.AllowUpdate()
 	if create && !update {
 		return fmt.Errorf(
-			"selfLearn.skills: denyUpdate=true requires denyCreate=true; otherwise created skills could never be refined",
+			"\"Create new skills\" needs \"Update existing skills\" — otherwise created skills could never be refined",
 		)
 	}
 	if s.Skills.AllowUpdateUserCreated && !update {
 		return fmt.Errorf(
-			"selfLearn.skills: allowUpdateUserCreated=true requires denyUpdate=false (the base update permission)",
+			"\"Update user-authored skills\" needs \"Update existing skills\" — the base update permission",
 		)
 	}
 	return nil

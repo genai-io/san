@@ -107,7 +107,7 @@ func TestConfigSelectorRenderShowsValidationError(t *testing.T) {
 	c, p := newTestPopup()
 	p.snap.Skills.DenyUpdate = true
 	out := c.Render()
-	if !strings.Contains(out, "denyUpdate=true requires denyCreate=true") {
+	if !strings.Contains(out, `"Create new skills" needs "Update existing skills"`) {
 		t.Fatalf("Render should surface the §3.1 error, got:\n%s", out)
 	}
 }
