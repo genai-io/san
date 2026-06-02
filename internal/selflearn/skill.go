@@ -21,6 +21,22 @@ import (
 // them). See notes/active/l1-background-review.md §5.2.
 const agentOrigin = "agent-created"
 
+// fireWrite invokes the observer if one is registered. Free function
+// (vs a method on SkillManager) so each call site reads as
+// "fire this notification" rather than "manager fires…".
+func fireWrite(observer SkillWriteObserver, action, name, note string) {
+	if observer != nil {
+		observer(action, name, note)
+	}
+}
+
+// str does a safe string type assertion on a tool-input map value:
+// non-string values (nil, numbers) return "".
+func str(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
 // skillNameRe enforces class-level kebab names and doubles as a traversal guard
 // (no separators, no dots). Session-specific names (PR numbers, error strings)
 // should be steered away by the prompt; this just keeps the on-disk name safe.
@@ -82,12 +98,6 @@ func (m *SkillManager) Perms() ActionPermissions { return m.perms }
 // SetWriteObserver registers the callback fired after each successful
 // write. Must be called before the first write (see type doc).
 func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) { m.onWrite = fn }
-
-func (m *SkillManager) fireWrite(action, name, note string) {
-	if m.onWrite != nil {
-		m.onWrite(action, name, note)
-	}
-}
 
 // SkillInfo is a one-line summary of an existing skill, used to brief the
 // reviewer so it prefers updating over creating and never re-derives a skill
@@ -294,7 +304,7 @@ func (m *SkillManager) Create(name, description, body, level, note string) (stri
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("create", name, note)
+	fireWrite(m.onWrite, "create", name, note)
 	return fmt.Sprintf("Created skill %q.", name), nil
 }
 
@@ -324,7 +334,7 @@ func (m *SkillManager) Edit(name, body, note string) (string, error) {
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, body)), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("edit", name, note)
+	fireWrite(m.onWrite, "edit", name, note)
 	return fmt.Sprintf("Rewrote skill %q.", name), nil
 }
 
@@ -355,7 +365,7 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool, not
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, patched)), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("patch", name, note)
+	fireWrite(m.onWrite, "patch", name, note)
 	return fmt.Sprintf("Patched skill %q.", name), nil
 }
 
@@ -390,7 +400,7 @@ func (m *SkillManager) WriteFile(name, file, content, note string) (string, erro
 	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("write_file", name, note)
+	fireWrite(m.onWrite, "write_file", name, note)
 	return fmt.Sprintf("Wrote %s to skill %q.", rel, name), nil
 }
 
@@ -418,7 +428,7 @@ func (m *SkillManager) RemoveFile(name, file, note string) (string, error) {
 		}
 		return "", err
 	}
-	m.fireWrite("remove_file", name, note)
+	fireWrite(m.onWrite, "remove_file", name, note)
 	return fmt.Sprintf("Removed %s from skill %q.", rel, name), nil
 }
 
@@ -439,7 +449,7 @@ func (m *SkillManager) Delete(name, note string) (string, error) {
 	if err := os.RemoveAll(filepath.Dir(p.path)); err != nil {
 		return "", err
 	}
-	m.fireWrite("delete", name, note)
+	fireWrite(m.onWrite, "delete", name, note)
 	return fmt.Sprintf("Deleted skill %q.", name), nil
 }
 

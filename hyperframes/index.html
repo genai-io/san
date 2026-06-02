@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<!--
+  Gen Code — HyperFrames-style product intro.
+
+  "Video as HTML": one index.html *is* the video. Inspired by HeyGen's
+  HyperFrames (devtang.com/2026/05/06/generate-video-from-hyperframes):
+    · data-* attributes drive timing  (here: data-start / data-dur on .scene)
+    · CSS drives appearance
+    · a tiny JS timeline drives animation (vanilla, no deps — works offline)
+
+  Open in a browser to watch. It auto-loops; click to pause/play, press R to restart.
+  Record to MP4 with any screen recorder, or headless:
+    ffmpeg over a Playwright/Chromium capture of this page at 1280x720.
+
+  Showcases three pillars: 多模型切换 · 多角色切换 · self-improvement.
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gen Code — multi-model · multi-persona · self-evolving</title>
+<style>
+  :root{
+    --bg0:#070b12; --bg1:#0b1620; --term:#0d1117; --line:#1c2430;
+    --fg:#cdd6e4; --dim:#7587a0; --dimmer:#46546b;
+    --teal:#2dd4bf; --teal-d:#0d9488; --amber:#fbbf24; --rose:#fb7185;
+    --sel:rgba(45,212,191,.13);
+    --mono:'SFMono-Regular',ui-monospace,'JetBrains Mono','Menlo','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#04070c;overflow:hidden;font-family:var(--mono)}
+  #fit{position:fixed;inset:0;display:grid;place-items:center}
+  .stage{
+    width:1280px;height:720px;position:relative;overflow:hidden;border-radius:18px;
+    background:radial-gradient(120% 90% at 80% -10%,#0f2b2a 0%,var(--bg1) 42%,var(--bg0) 100%);
+    box-shadow:0 40px 120px rgba(0,0,0,.6);transform-origin:center;
+  }
+  /* drifting aurora backdrop */
+  .stage::before{content:"";position:absolute;inset:-20%;z-index:0;
+    background:
+      radial-gradient(40% 40% at 18% 20%,rgba(13,148,136,.22),transparent 60%),
+      radial-gradient(35% 35% at 85% 80%,rgba(45,212,191,.14),transparent 60%),
+      radial-gradient(30% 30% at 60% 12%,rgba(251,191,36,.08),transparent 60%);
+    animation:drift 22s ease-in-out infinite alternate}
+  @keyframes drift{to{transform:translate3d(-30px,-22px,0) scale(1.06)}}
+  .grid{position:absolute;inset:0;z-index:0;opacity:.05;
+    background-image:linear-gradient(var(--teal) 1px,transparent 1px),linear-gradient(90deg,var(--teal) 1px,transparent 1px);
+    background-size:42px 42px;mask-image:radial-gradient(70% 70% at 50% 40%,#000,transparent)}
+
+  /* brand chip */
+  .brand{position:absolute;top:26px;right:34px;z-index:6;font-weight:600;letter-spacing:.5px;
+    color:var(--teal);font-size:18px;text-shadow:0 0 18px rgba(45,212,191,.5)}
+  .brand b{color:var(--amber);font-weight:600}
+
+  /* terminal window */
+  .term{position:absolute;z-index:4;left:96px;top:96px;width:1088px;height:486px;
+    background:linear-gradient(180deg,#0e141d,var(--term));border:1px solid var(--line);
+    border-radius:13px;box-shadow:0 24px 70px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.03);
+    overflow:hidden;display:flex;flex-direction:column}
+  .bar{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:8px;padding:0 14px;
+    background:#0b0f16;border-bottom:1px solid var(--line)}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .bar .title{flex:1;text-align:center;color:var(--dim);font-size:13px;letter-spacing:.3px}
+  .bar .pill{color:var(--teal);font-size:12px;border:1px solid rgba(45,212,191,.3);
+    border-radius:20px;padding:2px 9px;background:rgba(45,212,191,.06)}
+  .body{position:relative;flex:1;padding:24px 28px;font-size:18px;line-height:1.62;color:var(--fg)}
+
+  /* scenes stack */
+  .scene{position:absolute;inset:0;padding:26px 30px;opacity:0;pointer-events:none}
+  .scene.live{pointer-events:auto}
+
+  .dim{color:var(--dim)}.teal{color:var(--teal)}.amber{color:var(--amber)}.rose{color:var(--rose)}
+  .prompt{color:var(--teal-d)}
+  .cur{display:inline-block;width:10px;height:20px;vertical-align:-3px;margin-left:2px;
+    background:var(--teal);animation:blink 1s steps(1) infinite;box-shadow:0 0 10px var(--teal)}
+  @keyframes blink{50%{opacity:0}}
+  .reveal{opacity:0;transform:translateY(6px);transition:opacity .45s ease,transform .45s ease}
+  .reveal.in{opacity:1;transform:none}
+
+  /* boot splash */
+  .splash{height:100%;display:flex;flex-direction:column;justify-content:center;gap:14px;text-align:center}
+  .logo{font-size:74px;font-weight:700;letter-spacing:2px;color:#e8fffb;
+    text-shadow:0 0 30px rgba(45,212,191,.55);transition:opacity .6s ease,transform .6s cubic-bezier(.2,.8,.2,1)}
+  .logo .sp{color:var(--amber)}
+  .logo.reveal{transform:scale(.92)}.logo.reveal.in{transform:scale(1)}
+  .tag{font-size:22px;color:var(--fg)}
+  .sub{font-size:15px;color:var(--dim)}
+  .pillars{font-size:15px;color:var(--teal);letter-spacing:.4px}
+  .bootline{margin-top:8px;font-size:18px;color:var(--fg)}
+
+  /* command line */
+  .cmd{font-size:19px;margin-bottom:6px}
+  .out{font-size:17px}
+  .ok{color:var(--teal)} .arrow{color:var(--dim)}
+
+  /* picker overlay */
+  .picker{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(.96);
+    width:760px;background:#0b1118;border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);opacity:0;transition:opacity .35s ease,transform .35s ease;overflow:hidden}
+  .picker.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .tabs{display:flex;gap:4px;padding:10px 12px 0}
+  .tab{font-size:13px;padding:5px 14px;border-radius:7px 7px 0 0;color:var(--dim)}
+  .tab.on{color:#06231f;background:var(--teal);font-weight:600}
+  .search{display:flex;align-items:center;gap:8px;margin:8px 12px;padding:8px 12px;font-size:14px;
+    background:#070b11;border:1px solid var(--line);border-radius:8px;color:var(--dim)}
+  .search .cnt{margin-left:auto;color:var(--dim);font-size:12px}
+  .rows{padding:2px 8px 6px}
+  .row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;
+    border-left:2px solid transparent;font-size:15px}
+  .row .pchip{font-size:11px;color:var(--teal);border:1px solid rgba(45,212,191,.35);
+    border-radius:6px;padding:1px 7px;min-width:74px;text-align:center;background:rgba(45,212,191,.05)}
+  .row .name{color:var(--fg)} .row .meta{margin-left:auto;color:var(--dim);font-size:12px}
+  .row.sel{background:var(--sel);border-left-color:var(--teal)}
+  .row.sel .name{color:#eafff9}
+  .row .tick{color:var(--teal);width:14px}
+  /* two-line identity rows */
+  .irow{padding:7px 12px;border-radius:8px;border-left:2px solid transparent}
+  .irow .top{display:flex;align-items:center;gap:10px;font-size:15px}
+  .irow .nm{color:var(--fg)} .irow .badge{font-size:11px;color:var(--amber)}
+  .irow .desc{font-size:12.5px;color:var(--dim);padding-left:2px}
+  .irow.sel{background:var(--sel);border-left-color:var(--teal)}
+  .irow.sel .nm{color:#eafff9}
+  .hints{font-size:12px;color:var(--dim);padding:9px 14px;border-top:1px solid var(--line);background:#070b11}
+
+  /* self-learning recap card */
+  .statusbar{position:absolute;left:30px;bottom:22px;font-size:15px;color:var(--teal);
+    opacity:0;transition:opacity .4s ease}
+  .statusbar.in{opacity:1}
+  .recap{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) translateY(10px);
+    width:680px;background:#0b1118;border:1px solid rgba(45,212,191,.35);border-radius:12px;
+    box-shadow:0 26px 70px rgba(0,0,0,.6),0 0 50px rgba(45,212,191,.08);
+    opacity:0;transition:opacity .45s ease,transform .45s cubic-bezier(.2,.8,.2,1)}
+  .recap.in{opacity:1;transform:translate(-50%,-50%)}
+  .recap .head{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--line);
+    color:var(--teal);font-size:14px;letter-spacing:.3px}
+  .recap .head .sp{color:var(--amber)}
+  .recap .rcrow{display:flex;gap:11px;align-items:baseline;padding:7px 18px;font-size:15px}
+  .recap .rcrow .c{color:var(--teal)}
+  .recap .rcrow .t{color:var(--fg)} .recap .rcrow .where{margin-left:auto;color:var(--dim);font-size:12px}
+  .recap .foot{padding:10px 18px;border-top:1px solid var(--line);font-size:13px;color:var(--dim);background:#070b11}
+  .recap .foot .ok{color:var(--teal)}
+
+  /* outro */
+  .outro{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;text-align:center}
+  .outro .big{font-size:64px;font-weight:700;color:#e8fffb;letter-spacing:2px;text-shadow:0 0 30px rgba(45,212,191,.55)}
+  .outro .big .sp{color:var(--amber)}
+  .outro .cn{font-size:24px;color:var(--teal)}
+  .outro .en{font-size:15px;color:var(--dim);letter-spacing:1px}
+  .install{margin-top:10px;font-size:14px;color:var(--fg);background:#070b11;border:1px solid var(--line);
+    border-radius:9px;padding:11px 18px}
+  .install .p{color:var(--teal)}
+  .site{font-size:14px;color:var(--teal)}
+
+  /* lower-third caption */
+  .lower{position:absolute;left:96px;bottom:74px;z-index:5;opacity:0;
+    transition:opacity .5s ease,transform .5s ease;transform:translateY(8px)}
+  .scene.show-cap .lower{opacity:1;transform:none}
+  .lower .idx{display:inline-block;font-size:12px;color:#06231f;background:var(--teal);
+    border-radius:6px;padding:2px 8px;font-weight:700;vertical-align:2px}
+  .lower .cn{font-size:26px;color:#eafff9;margin:7px 0 2px;font-weight:600;text-shadow:0 2px 18px rgba(0,0,0,.6)}
+  .lower .en{font-size:14px;color:var(--dim)}
+
+  /* timeline */
+  .timeline{position:absolute;left:96px;right:96px;bottom:40px;z-index:6;height:4px;
+    background:rgba(255,255,255,.08);border-radius:3px}
+  .timeline .fill{height:100%;width:0;background:linear-gradient(90deg,var(--teal-d),var(--teal));
+    border-radius:3px;box-shadow:0 0 12px rgba(45,212,191,.6)}
+  .ticks{position:absolute;left:96px;right:96px;bottom:50px;z-index:6;display:flex;font-size:11px;color:var(--dim)}
+  .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+  .ticks span.on{color:var(--teal)}
+
+  .hud{position:absolute;left:34px;bottom:24px;z-index:7;font-size:12px;color:var(--dimmer)}
+  .hud kbd{border:1px solid #2a3645;border-radius:4px;padding:0 5px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div id="fit"><div class="stage" id="stage">
+  <div class="grid"></div>
+  <div class="brand">&lt; GEN <b>✦</b> /&gt;</div>
+
+  <div class="term">
+    <div class="bar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title">gen — ~/Workspace/app</span>
+      <span class="pill" id="barpill">opus-4.8 · ◇ think</span>
+    </div>
+    <div class="body">
+
+      <!-- ░░ BOOT ░░ -->
+      <section class="scene" data-start="0" data-dur="4.6" id="boot">
+        <div class="splash">
+          <div class="logo reveal" id="b-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
+          <div class="tag reveal" id="b-tag">Open-source AI coding assistant for the terminal</div>
+          <div class="sub reveal" id="b-sub">Built in Go · a single binary · five pluggable pillars</div>
+          <div class="pillars reveal" id="b-pil">LLMs · Search · Personas · Skills &amp; Extensions · Self-evolving</div>
+          <div class="bootline reveal" id="b-prompt"><span class="prompt">❭ </span><span class="cur"></span></div>
+        </div>
+      </section>
+
+      <!-- ░░ MULTI-MODEL ░░ -->
+      <section class="scene" data-start="4.6" data-dur="9.0" id="model">
+        <div class="cmd"><span class="prompt">❭ </span><span id="m-type"></span><span class="cur" id="m-cur"></span></div>
+        <div class="picker" id="m-pick">
+          <div class="tabs"><span class="tab on">Models</span><span class="tab">Providers</span></div>
+          <div class="search">⌕ <span>filter…</span><span class="cnt">8 / 31 models · fetched live from /models</span></div>
+          <div class="rows" id="m-rows">
+            <div class="row"><span class="pchip">Anthropic</span><span class="name">Claude Opus 4.8</span><span class="meta">1M ctx · ◆◆◆ think</span></div>
+            <div class="row"><span class="pchip">OpenAI</span><span class="name">GPT-5.1</span><span class="meta">400K ctx</span></div>
+            <div class="row"><span class="pchip">Google</span><span class="name">Gemini 3 Pro</span><span class="meta">2M ctx</span></div>
+            <div class="row"><span class="pchip">Moonshot</span><span class="name">Kimi K2</span><span class="meta">256K ctx</span></div>
+            <div class="row"><span class="pchip">Alibaba</span><span class="name">Qwen3-Max</span><span class="meta">256K ctx</span></div>
+            <div class="row"><span class="pchip">MiniMax</span><span class="name">MiniMax M2.7</span><span class="meta">200K ctx · ◆ think</span></div>
+            <div class="row"><span class="pchip">Z.ai</span><span class="name">GLM-4.6</span><span class="meta">200K ctx</span></div>
+            <div class="row"><span class="pchip">DeepSeek</span><span class="name">DeepSeek V4 Pro</span><span class="meta">128K ctx</span></div>
+          </div>
+          <div class="hints">↑/↓ navigate · ⏎ select · ⇥ Models / Providers · esc · saved to ~/.gen/providers.json</div>
+        </div>
+        <div id="m-confirm" style="margin-top:4px">
+          <div class="out reveal" id="m-c1"><span class="ok">✦</span> model <span class="arrow">→</span> <span class="teal">MiniMax M2.7</span> <span class="dim">(was Claude Opus 4.8)</span></div>
+          <div class="out reveal dim" id="m-c2">↳ saved to ~/.gen/providers.json · reconnecting… <span class="ok">ready</span></div>
+        </div>
+        <div class="lower"><span class="idx">01</span><div class="cn">多模型切换</div><div class="en">Swap the engine with one command — 8 providers, models fetched live</div></div>
+      </section>
+
+      <!-- ░░ MULTI-PERSONA ░░ -->
+      <section class="scene" data-start="13.6" data-dur="8.6" id="ident">
+        <div class="cmd"><span class="prompt">❭ </span><span id="i-type"></span><span class="cur" id="i-cur"></span></div>
+        <div class="picker" id="i-pick">
+          <div class="search">⌕ <span>Type to filter identities…</span><span class="cnt">4 / 4</span></div>
+          <div class="rows" id="i-rows">
+            <div class="irow"><div class="top"><span class="tick">✓</span><span class="nm">default</span><span class="badge">active · built-in</span></div><div class="desc">Built-in Gen Code persona — software-engineering generalist</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">ml-engineer</span><span class="badge">~/.gen/identities</span></div><div class="desc">ML engineering specialist (PyTorch, JAX) — rigor over hand-waving</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">security-auditor</span><span class="badge">.gen/identities</span></div><div class="desc">Threat-models every diff, flags unsafe patterns, cites CWEs</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">tech-writer</span><span class="badge">~/.gen/identities</span></div><div class="desc">Crisp docs, examples-first, no marketing fluff</div></div>
+          </div>
+          <div class="hints">↑/↓ navigate · ⏎ select · esc · scoped to user (~/.gen) or project (.gen), project wins</div>
+        </div>
+        <div id="i-confirm" style="margin-top:4px">
+          <div class="out reveal" id="i-c1"><span class="ok">✦</span> identity <span class="arrow">→</span> <span class="teal">ml-engineer</span></div>
+          <div class="out reveal dim" id="i-c2">↳ persona swapped — same agent, a new mind. Security &amp; git rules stay enforced.</div>
+        </div>
+        <div class="lower"><span class="idx">02</span><div class="cn">多角色切换</div><div class="en">One agent, many personas — Markdown identities scoped to user or project</div></div>
+      </section>
+
+      <!-- ░░ SELF-IMPROVEMENT ░░ -->
+      <section class="scene" data-start="22.2" data-dur="12.2" id="learn">
+        <div class="cmd"><span class="prompt">❭ </span><span id="l-type"></span><span class="cur" id="l-cur"></span></div>
+        <div class="out reveal dim" id="l-w1" style="margin-top:2px">● editing payments_test.go · isolating the retry race…</div>
+        <div class="out reveal" id="l-w2"><span class="ok">✓</span> patched flaky retry race <span class="dim">· 14 lines · 3.1s</span></div>
+
+        <div class="recap" id="l-recap">
+          <div class="head"><span class="sp">✦</span> self-learning · L1 background reviewer</div>
+          <div class="rcrow reveal" id="l-r1"><span class="c">✓</span><span class="t">added 3 race-condition entries</span><span class="where">→ memory / project</span></div>
+          <div class="rcrow reveal" id="l-r2"><span class="c">✓</span><span class="t">trimmed go-testing SKILL.md by 1.8 KB</span><span class="where">skillpatch</span></div>
+          <div class="rcrow reveal" id="l-r3"><span class="c">✓</span><span class="t">new skill · pg-migrations</span><span class="where">skill_manage</span></div>
+          <div class="foot reveal" id="l-rf"><span class="ok">✓</span> updated · project-partitioned memory — it grows more capable every session</div>
+        </div>
+
+        <div class="statusbar" id="l-status"><span id="sl-spin">⠋</span> <span id="sl-text">evolving · reviewing this session…</span></div>
+        <div class="lower"><span class="idx">03</span><div class="cn">Self-improvement · 自我进化</div><div class="en">Reviews each session in the background — writes memory, tunes skills, levels up</div></div>
+      </section>
+
+      <!-- ░░ OUTRO ░░ -->
+      <section class="scene" data-start="34.4" data-dur="5.2" id="outro">
+        <div class="outro">
+          <div class="big reveal" id="o-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
+          <div class="cn reveal" id="o-cn">多模型 · 多角色 · 自我进化</div>
+          <div class="en reveal" id="o-en">Multi-model   ·   Multi-persona   ·   Self-evolving</div>
+          <div class="install reveal" id="o-inst"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</div>
+          <div class="site reveal" id="o-site">genai-io.github.io/gen-code · ★ star it on GitHub</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="ticks" id="ticks"></div>
+  <div class="timeline"><div class="fill" id="fill"></div></div>
+  <div class="hud">click <kbd>⏯</kbd> pause · <kbd>R</kbd> restart</div>
+</div></div>
+
+<script>
+const BRAILLE = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"];
+const $ = id => document.getElementById(id);
+const scenes = [...document.querySelectorAll('.scene')].map(el=>({
+  el, start:+el.dataset.start, dur:+el.dataset.dur
+}));
+const TOTAL = Math.max(...scenes.map(s=>s.start+s.dur));
+const HOLD = 1.4; // pause on the outro before looping
+
+// ── scale stage to viewport ──────────────────────────────────────────────
+function fit(){
+  const s = Math.min(innerWidth/1280, innerHeight/720);
+  $('stage').style.transform = `scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+// ── timeline ticks ───────────────────────────────────────────────────────
+const TICKS = [
+  {t:0,    label:'boot'},
+  {t:4.6,  label:'多模型 · model'},
+  {t:13.6, label:'多角色 · persona'},
+  {t:22.2, label:'self-improve'},
+  {t:34.4, label:'outro'},
+];
+TICKS.forEach(tk=>{
+  const sp=document.createElement('span');
+  sp.textContent=tk.label; sp.style.left=(tk.t/TOTAL*100)+'%'; sp.dataset.t=tk.t;
+  $('ticks').appendChild(sp);
+});
+
+// ── helpers ──────────────────────────────────────────────────────────────
+function typeInto(el, full, lt, t0, t1){
+  if(lt<t0){ el.textContent=''; return; }
+  if(lt>=t1){ el.textContent=full; return; }
+  el.textContent = full.slice(0, Math.round(full.length*((lt-t0)/(t1-t0))));
+}
+function tog(el, on){ el.classList.toggle('in', on); }
+function sel(rows, idx){ rows.forEach((r,i)=>r.classList.toggle('sel', i===idx)); }
+
+const mRows = [...$('m-rows').children];
+const iRows = [...$('i-rows').children];
+
+// ── per-scene animation ──────────────────────────────────────────────────
+function boot(lt){
+  tog($('b-logo'),  lt>0.2);
+  tog($('b-tag'),   lt>0.9);
+  tog($('b-sub'),   lt>1.5);
+  tog($('b-pil'),   lt>2.1);
+  tog($('b-prompt'),lt>2.8);
+}
+function model(lt){
+  typeInto($('m-type'), '/model', lt, 0.2, 1.1);
+  const typed = lt>1.15;
+  $('m-cur').style.display = (lt>0.2 && lt<1.6)?'inline-block':'none';
+  const open = lt>1.5 && lt<5.4;
+  tog($('m-pick'), open);
+  // walk selection 0 → 5 (MiniMax), then hold
+  let idx = Math.min(5, Math.max(0, Math.floor((lt-1.8)/0.46)));
+  if(lt<1.8) idx=0;
+  sel(mRows, open?idx:-1);
+  // confirm after "enter"
+  const done = lt>5.5;
+  tog($('m-c1'), done);
+  tog($('m-c2'), lt>5.9);
+  if(done) $('barpill').textContent='minimax · M2.7 · ◆ think';
+}
+function ident(lt){
+  typeInto($('i-type'), '/identity', lt, 0.2, 1.2);
+  $('i-cur').style.display = (lt>0.2 && lt<1.7)?'inline-block':'none';
+  const open = lt>1.6 && lt<5.2;
+  tog($('i-pick'), open);
+  let idx = Math.min(1, Math.max(0, Math.floor((lt-2.0)/1.0)));
+  // start on default(0), settle on ml-engineer(1)
+  if(lt>3.0) idx=1;
+  sel(iRows, open?idx:-1);
+  const done = lt>5.3;
+  tog($('i-c1'), done);
+  tog($('i-c2'), lt>5.7);
+}
+function learn(lt){
+  typeInto($('l-type'), 'fix the flaky test in payments_test.go', lt, 0.2, 1.4);
+  $('l-cur').style.display = (lt>0.2 && lt<1.6)?'inline-block':'none';
+  tog($('l-w1'), lt>1.7);
+  tog($('l-w2'), lt>2.6);
+  // L1 reviewer wakes in the background
+  $('l-status').classList.toggle('in', lt>3.1 && lt<11.6);
+  if(lt>3.1){
+    $('sl-text').textContent = lt<5.4
+      ? 'evolving · reviewing this session…'
+      : (lt<8.4 ? 'evolving · writing memory · skill_manage…'
+                : '✓ leveled up · go-testing');
+    if(lt>8.4) $('sl-spin').textContent='✓';
+  }
+  // recap card
+  tog($('l-recap'), lt>5.0);
+  tog($('l-r1'), lt>5.4);
+  tog($('l-r2'), lt>6.0);
+  tog($('l-r3'), lt>6.6);
+  tog($('l-rf'), lt>7.4);
+}
+function outro(lt){
+  tog($('o-logo'), lt>0.2);
+  tog($('o-cn'),   lt>0.9);
+  tog($('o-en'),   lt>1.4);
+  tog($('o-inst'), lt>2.1);
+  tog($('o-site'), lt>2.8);
+}
+const RUN = {boot, model, ident, learn, outro};
+
+// ── main loop ────────────────────────────────────────────────────────────
+let base=null, paused=false, pausedAt=0, t=0;
+function frame(now){
+  if(base===null) base=now;
+  if(!paused) t = (now-base)/1000;
+  if(t > TOTAL+HOLD){ base=now; t=0; }
+
+  scenes.forEach(s=>{
+    const lt = t - s.start;
+    const on = lt>=0 && lt<s.dur;
+    let op=0;
+    if(on){
+      op = lt<0.45 ? lt/0.45 : (lt>s.dur-0.4 ? Math.max(0,(s.dur-lt)/0.4) : 1);
+    }
+    s.el.style.opacity = op;
+    s.el.style.transform = on ? `translateY(${(1-op)*8}px)` : '';
+    s.el.classList.toggle('live', on);
+    s.el.classList.toggle('show-cap', on && lt>0.6 && lt<s.dur-0.4);
+    if(on) RUN[s.el.id](lt);
+  });
+
+  // braille spinner (10fps) — used by the self-learning indicator
+  if($('learn').classList.contains('live')) {
+    const sp=$('sl-spin');
+    if(sp && sp.textContent!=='✓') sp.textContent = BRAILLE[Math.floor(t*10)%BRAILLE.length];
+  }
+
+  $('fill').style.width = (Math.min(t,TOTAL)/TOTAL*100)+'%';
+  document.querySelectorAll('.ticks span').forEach(sp=>{
+    sp.classList.toggle('on', t>=+sp.dataset.t-0.05);
+  });
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ── controls ─────────────────────────────────────────────────────────────
+$('stage').addEventListener('click', ()=>{
+  paused=!paused;
+  if(paused){ pausedAt=performance.now(); }
+  else if(base!==null){ base += performance.now()-pausedAt; }
+});
+addEventListener('keydown', e=>{
+  if(e.key==='r'||e.key==='R'){ base=null; t=0; paused=false; }
+  if(e.key===' '){ e.preventDefault(); $('stage').click(); }
+});
+</script>
+</body>
+</html>
