@@ -158,15 +158,13 @@ func (c *ConfigSelector) Render() string {
 	return lipgloss.Place(c.width, c.height-2, lipgloss.Center, lipgloss.Top, box)
 }
 
-// boxSize caps the popup dimensions: width uses most of the terminal
-// (capped at 120 chars so ultra-wide screens don't stretch the form to an
-// awkward length); height fits the typical content without stretching to
-// the full terminal.
+// boxSize sizes the popup the same way /plugin does: width fills the
+// terminal minus a 6-col margin, height fills it minus a 4-row margin.
+// No upper cap — the popup stretches with the terminal so the form
+// reads as a real overlay, not a narrow card.
 func (c *ConfigSelector) boxSize() (w, h int) {
-	w = max(70, c.width-6)
-	w = min(w, 120)
-	h = max(20, c.height-4)
-	h = min(h, 34)
+	w = max(60, c.width-6)
+	h = max(18, c.height-4)
 	return w, h
 }
 
