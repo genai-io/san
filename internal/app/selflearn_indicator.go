@@ -8,6 +8,7 @@ package app
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,11 +42,107 @@ const (
 )
 
 // ReviewAction is one row of the post-pass recap, built from actual
-// tool calls (not model narration).
+// tool calls (not model narration). Target is the bare identifier
+// (memory topic name, skill name) — the renderer adds the "memory · "
+// / "skill · " prefix at display time, so the kind+target are
+// formatted consistently across in-progress and done-summary lines.
 type ReviewAction struct {
-	Verb   string // "saved" | "replaced" | "removed" | "updated" | "extended" | "retired" | "created"
+	Verb   string // "saved" | "replaced" | "removed" | "updated" | "extended" | "retired" | "created" | "trimmed"
 	Kind   string // "memory" or "skill"
-	Target string // skill name, "memory", or "memory · <topic>"
+	Target string // skill name, memory topic, or "" for the memory index file
+}
+
+// actionLabel formats a single action's "kind · target" for the
+// spinner-tail display and the one-line done summary. The "memory"
+// kind elides the separator when the target is the index file.
+func actionLabel(a ReviewAction) string {
+	switch a.Kind {
+	case "skill":
+		if a.Target == "" {
+			return "skill"
+		}
+		return "skill · " + a.Target
+	case "memory":
+		if a.Target == "" {
+			return "memory"
+		}
+		return "memory · " + a.Target
+	default:
+		if a.Target == "" {
+			return a.Kind
+		}
+		return a.Kind + " · " + a.Target
+	}
+}
+
+// buildDoneSummary turns the per-pass action log into a one-line phrase
+// for the done-phase status bar. Rules:
+//   - 1 action: full "<verb> <kind · target>", e.g. "saved memory · debugging"
+//   - 2-3 distinct actions, fits ~60 chars: list them, comma-separated
+//   - otherwise: per-kind grouped counts, e.g. "saved 2 memory entries,
+//     updated 1 skill, created 1 skill"
+//
+// Falls back to "" when actions is empty; the caller's render path uses
+// the "N changes" plural form as a final backstop.
+func buildDoneSummary(actions []ReviewAction) string {
+	if len(actions) == 0 {
+		return ""
+	}
+	if len(actions) == 1 {
+		return actions[0].Verb + " " + actionLabel(actions[0])
+	}
+	if len(actions) <= 3 {
+		parts := make([]string, len(actions))
+		for i, a := range actions {
+			parts[i] = a.Verb + " " + actionLabel(a)
+		}
+		joined := strings.Join(parts, ", ")
+		if len([]rune(joined)) <= 60 {
+			return joined
+		}
+	}
+	// 4+ actions or too long for one line — group by (verb, kind) and
+	// emit "<verb> N <kind>(s)" phrases.
+	type key struct{ verb, kind string }
+	type group struct {
+		k     key
+		count int
+	}
+	var groups []group
+	idx := map[key]int{}
+	for _, a := range actions {
+		k := key{a.Verb, a.Kind}
+		if i, ok := idx[k]; ok {
+			groups[i].count++
+		} else {
+			idx[k] = len(groups)
+			groups = append(groups, group{k: k, count: 1})
+		}
+	}
+	parts := make([]string, len(groups))
+	for i, g := range groups {
+		parts[i] = fmt.Sprintf("%s %d %s", g.k.verb, g.count, pluralKind(g.k.kind, g.count))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// pluralKind returns the noun for a count of N items of the given kind.
+// memory → "memory entry"/"memory entries"; skill → "skill"/"skills".
+func pluralKind(kind string, n int) string {
+	switch kind {
+	case "memory":
+		if n == 1 {
+			return "memory entry"
+		}
+		return "memory entries"
+	case "skill":
+		if n == 1 {
+			return "skill"
+		}
+		return "skills"
+	default:
+		return kind
+	}
 }
 
 // SelfLearnIndicator is the live UI-side state for the L1 indicator. Held by
@@ -62,9 +159,10 @@ type SelfLearnIndicator struct {
 
 	phase         selflearnPhase
 	target        string         // current target shown next to the spinner
-	frame         int            // braille frame index
+	frame         int            // spinner frame index
 	actions       []ReviewAction // recap action log for the current pass
 	doneCount     int            // captures len(actions) at Complete so the done-hold render survives DrainActions
+	doneSummary   string         // one-line recap captured at Complete so the done phase reads "✓ updated go-testing" rather than "✓ 4 changes"
 	enteredAt     time.Time      // for done/failed auto-decay
 	lastSwap      time.Time      // for target-swap debounce
 	tickerRunning bool           // tick chain is live; prevents back-to-back reviews stacking parallel chains
@@ -83,6 +181,7 @@ func (s *SelfLearnIndicator) BeginReview() {
 	s.frame = 0
 	s.actions = nil
 	s.doneCount = 0
+	s.doneSummary = ""
 	s.enteredAt = time.Now()
 	s.lastSwap = time.Time{}
 }
@@ -96,15 +195,17 @@ func (s *SelfLearnIndicator) RecordAction(act ReviewAction) {
 	s.actions = append(s.actions, act)
 	now := time.Now()
 	if s.lastSwap.IsZero() || now.Sub(s.lastSwap) >= selflearnTargetDebounce {
-		s.target = act.Target
+		s.target = actionLabel(act)
 		s.lastSwap = now
 	}
 }
 
-// Complete is the success transition. Must run BEFORE DrainActions so
-// doneCount captures len(s.actions); a zero-write pass goes straight to
-// idle (§6 invariant #7 — silent when nothing changed).
-func (s *SelfLearnIndicator) Complete() {
+// Complete is the success transition. summary is the closing line the
+// reviewer LLM produced ("trimmed go-testing SKILL.md by 1.8KB"); empty
+// or too long → fall back to a templated phrase built from the action
+// log. Must run BEFORE DrainActions so doneCount captures len(actions);
+// a zero-write pass goes straight to idle (§6 invariant #7).
+func (s *SelfLearnIndicator) Complete(summary string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.target = ""
@@ -114,9 +215,30 @@ func (s *SelfLearnIndicator) Complete() {
 		s.phaseAtomic.Store(int32(selflearnIdle))
 		return
 	}
+	s.doneSummary = pickSummary(summary, s.actions)
 	s.phase = selflearnDone
 	s.phaseAtomic.Store(int32(selflearnDone))
 	s.enteredAt = time.Now()
+}
+
+// pickSummary returns the LLM-supplied line when it's present and short
+// enough for a status bar; otherwise falls back to the templated
+// action-log summary.
+func pickSummary(llmText string, actions []ReviewAction) string {
+	if s := firstLine(strings.TrimSpace(llmText)); s != "" && len([]rune(s)) <= 80 {
+		return s
+	}
+	return buildDoneSummary(actions)
+}
+
+// firstLine returns s up to the first newline, with trailing
+// whitespace and a trailing period trimmed (the prompt asks for "no
+// period" but we sanitize anyway).
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimRight(strings.TrimSpace(s), ".")
 }
 
 // Fail is called when the fork errors or times out.
@@ -177,6 +299,7 @@ func (s *SelfLearnIndicator) Snapshot() SelfLearnIndicatorSnapshot {
 		Target:  s.target,
 		Frame:   s.frame,
 		Changes: s.changesForRender(),
+		Summary: s.doneSummary,
 	}
 }
 
@@ -217,6 +340,7 @@ type SelfLearnIndicatorSnapshot struct {
 	Target  string
 	Frame   int
 	Changes int
+	Summary string // one-line recap shown during the done phase
 }
 
 // asciiSpinnerFrames is the classic four-frame ASCII spinner. We pick
@@ -237,6 +361,9 @@ func (s SelfLearnIndicatorSnapshot) Render() string {
 	case selflearnDone:
 		if s.Changes == 0 {
 			return ""
+		}
+		if s.Summary != "" {
+			return "✓ " + s.Summary
 		}
 		return fmt.Sprintf("✓ %d changes", s.Changes)
 	case selflearnFailed:

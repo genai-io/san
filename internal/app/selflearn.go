@@ -83,7 +83,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
 			Verb:   memoryVerb(action),
 			Kind:   "memory",
-			Target: "memory" + memoryTopicSuffix(file),
+			Target: memoryTopicName(file),
 		})
 	})
 	skillMgr.SetWriteObserver(func(action, name string) {
@@ -129,7 +129,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Skills:  skillMgr,
 			OnEvent: forkOnEvent,
 		}
-		_, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
+		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		if runErr != nil {
 			m.services.SelfLearn.Indicator.Fail()
 			log.Logger().Warn("self-learning review failed",
@@ -141,7 +141,10 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		// Complete BEFORE Drain so doneCount snapshots len(s.actions);
 		// zero-write pass collapses to idle inside Complete (§6 #7).
-		m.services.SelfLearn.Indicator.Complete()
+		// The reviewer's last line ("trimmed go-testing SKILL.md by
+		// 1.8KB") becomes the done-phase status tag; the action-log
+		// fallback covers a misbehaving / silent reviewer.
+		m.services.SelfLearn.Indicator.Complete(llmSummary)
 		actions := m.services.SelfLearn.Indicator.DrainActions()
 		if len(actions) == 0 {
 			return
@@ -188,14 +191,15 @@ func (m *model) handleSelflearnTick() tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg { return selflearnTickMsg{} })
 }
 
-// memoryTopicSuffix renders " · <topic>" after the "memory" label for
-// topic files; index/empty files return "".
-func memoryTopicSuffix(file string) string {
+// memoryTopicName returns the bare topic name (e.g. "debugging") for a
+// memory file, or "" for the index. The indicator renderer adds the
+// "memory" / "memory · " prefix at display time.
+func memoryTopicName(file string) string {
 	file = strings.TrimSuffix(file, ".md")
 	if file == "" || file == "MEMORY" || file == "memory" {
 		return ""
 	}
-	return " · " + file
+	return file
 }
 
 // countUserTurns counts user messages so the memory arm resumes on the
@@ -237,7 +241,7 @@ func formatRecapBlock(actions []ReviewAction) string {
 	b.WriteString(rule)
 	b.WriteString("\n")
 	for _, a := range actions {
-		fmt.Fprintf(&b, "  · %s %s   %s\n", a.Verb, a.Kind, a.Target)
+		fmt.Fprintf(&b, "  · %s %s\n", a.Verb, actionLabel(a))
 	}
 	b.WriteString(rule)
 	return b.String()

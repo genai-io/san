@@ -27,15 +27,15 @@ func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
 		t.Fatalf("reviewing render without target: %q", got)
 	}
 
-	// Complete → done with change count.
+	// Complete → done with LLM summary; the closing line lands verbatim.
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
-	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory · debugging"})
-	s.Complete()
+	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "debugging"})
+	s.Complete("trimmed go-testing by 1.8KB")
 	snap = s.Snapshot()
 	if snap.Phase != selflearnDone || snap.Changes != 2 {
 		t.Fatalf("done snap: %+v", snap)
 	}
-	if got := snap.Render(); got != "✓ 2 changes" {
+	if got := snap.Render(); got != "✓ trimmed go-testing by 1.8KB" {
 		t.Fatalf("done render: %q", got)
 	}
 
@@ -79,13 +79,13 @@ func TestSelfLearnIndicatorStepDebouncesTarget(t *testing.T) {
 	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "first"})
-	if got := s.Snapshot().Target; got != "first" {
+	if got := s.Snapshot().Target; got != "skill · first" {
 		t.Fatalf("initial target: %q", got)
 	}
 	// Immediate second RecordAction is inside the debounce window.
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "second"})
-	if got := s.Snapshot().Target; got != "first" {
-		t.Fatalf("debounced target should stay %q, got %q", "first", got)
+	if got := s.Snapshot().Target; got != "skill · first" {
+		t.Fatalf("debounced target should stay %q, got %q", "skill · first", got)
 	}
 	// But the change counter still moved.
 	if got := s.Snapshot().Changes; got != 2 {
@@ -116,14 +116,14 @@ func TestFormatRecapBlock(t *testing.T) {
 	}
 	got := formatRecapBlock([]ReviewAction{
 		{Verb: "updated", Kind: "skill", Target: "go-testing"},
-		{Verb: "saved", Kind: "memory", Target: "memory · debugging"},
+		{Verb: "saved", Kind: "memory", Target: "debugging"},
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"},
 	})
 	for _, want := range []string{
 		"─",
-		"· updated skill   go-testing",
-		"· saved memory   memory · debugging",
-		"· retired skill   outdated-thing",
+		"· updated skill · go-testing",
+		"· saved memory · debugging",
+		"· retired skill · outdated-thing",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)
@@ -161,7 +161,7 @@ func TestCompleteSilentOnEmptyActions(t *testing.T) {
 	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	// No RecordAction calls — pass produced no writes.
-	s.Complete()
+	s.Complete("")
 	if snap := s.Snapshot(); snap.Phase != selflearnIdle {
 		t.Fatalf("zero-write Complete should go straight to idle; got phase %v", snap.Phase)
 	}
@@ -176,7 +176,7 @@ func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
 	s.BeginReview()
 	s.RecordAction(ReviewAction{Verb: "saved", Kind: "memory", Target: "memory"})
 	s.RecordAction(ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"})
-	s.Complete()
+	s.Complete("")
 	if got := s.Snapshot().Changes; got != 2 {
 		t.Fatalf("post-Complete Changes: got %d, want 2", got)
 	}
@@ -186,20 +186,20 @@ func TestCompleteCapturesCountBeforeDrain(t *testing.T) {
 	}
 }
 
-// TestMemoryTopicSuffixStrips checks the helper that produces the bit shown
-// after "memory" in the status line: empty when writing the index, " · X"
-// when writing a topic file.
-func TestMemoryTopicSuffix(t *testing.T) {
+// TestMemoryTopicName checks the helper that strips the .md suffix and
+// returns the bare topic name (or "" for the index file). The indicator
+// renderer adds the "memory" / "memory · " prefix at display time.
+func TestMemoryTopicName(t *testing.T) {
 	cases := map[string]string{
 		"":             "",
 		"MEMORY.md":    "",
 		"memory.md":    "",
-		"debugging.md": " · debugging",
-		"perf.md":      " · perf",
+		"debugging.md": "debugging",
+		"perf.md":      "perf",
 	}
 	for in, want := range cases {
-		if got := memoryTopicSuffix(in); got != want {
-			t.Fatalf("memoryTopicSuffix(%q): got %q, want %q", in, got, want)
+		if got := memoryTopicName(in); got != want {
+			t.Fatalf("memoryTopicName(%q): got %q, want %q", in, got, want)
 		}
 	}
 }

@@ -155,7 +155,12 @@ Eviction is part of the job, not an afterthought:
 Do NOT save: one-off task state, transient errors, or "what we did this session" narratives — those are not durable.`, cap)
 }
 
-// reviewClosing tells the model how to signal completion. An empty reply or
-// the literal "Nothing to save." both cause the wire-up to suppress the
-// user-visible notice (§6 invariant #7).
-const reviewClosing = `When you have made the tool calls (or decided none are warranted), reply with the literal string "Nothing to save." if no writes occurred, or with an empty message if the action log already captured what you did. Do not write a free-form summary; the user-visible recap is assembled from your actual tool calls.`
+// reviewClosing tells the model how to signal completion. "Nothing to
+// save." suppresses the user-visible notice (§6 invariant #7); otherwise
+// the model writes one short line summarising what changed, which the
+// status bar surfaces as the post-review tag ("✓ <summary>").
+const reviewClosing = `When you have made the tool calls (or decided none are warranted), close with ONE short line:
+  - If no writes occurred, reply with the literal string "Nothing to save."
+  - Otherwise reply with a single sentence of at most 60 characters describing what you actually changed (the key target + the gist of the edit). Examples: "trimmed go-testing SKILL.md by 1.8KB", "saved debugging notes (3 entries)", "created python-typing skill". No bullet list, no quotes, no period — just the line.
+
+The line is shown verbatim in the status bar, so keep it concrete and brief.`
