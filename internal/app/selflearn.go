@@ -161,6 +161,40 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	m.services.SelfLearn.Reviewer = r
 }
 
+// runSelfLearnDemo drives the indicator through one scripted lifecycle
+// (reviewing → 3 actions → done) so a developer can eyeball the spinner /
+// target / done-summary in a real terminal without firing a live LLM
+// review. Returns immediately; the script runs on a background goroutine.
+func (m *model) runSelfLearnDemo() {
+	ind := m.services.SelfLearn.Indicator
+	if ind == nil {
+		return
+	}
+	const kinds = selflearn.KindMemory | selflearn.KindSkills
+	go func() {
+		ind.BeginReview()
+		m.publishSelfLearnStarted(kinds)
+
+		steps := []struct {
+			wait   time.Duration
+			action ReviewAction
+		}{
+			{800 * time.Millisecond, ReviewAction{Verb: "saved", Kind: "memory", Target: ""}},
+			{1200 * time.Millisecond, ReviewAction{Verb: "saved", Kind: "memory", Target: "debugging"}},
+			{1200 * time.Millisecond, ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"}},
+			{1200 * time.Millisecond, ReviewAction{Verb: "created", Kind: "skill", Target: "python-typing"}},
+		}
+		for _, s := range steps {
+			time.Sleep(s.wait)
+			ind.RecordAction(s.action)
+		}
+		time.Sleep(800 * time.Millisecond)
+		ind.Complete("trimmed go-testing SKILL.md by 1.8KB · saved 2 notes")
+		actions := ind.DrainActions()
+		m.publishSelfLearnSummary(kinds, actions)
+	}()
+}
+
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
 // session-scoped fork context, marks the wiring dead, and drops the
 // Reviewer. Idempotent. Called from StopAgentSession and the top of

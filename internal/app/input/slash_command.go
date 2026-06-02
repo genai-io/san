@@ -81,6 +81,7 @@ type SlashCommandEnv struct {
 	SpinnerTickCmd          func() tea.Cmd
 	ResetCronQueue          func()
 	ForkSession             func() (originalSessionID string, err error)
+	RunSelfLearnDemo        func()
 }
 
 type SlashCommandController struct {
@@ -114,6 +115,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handleIdentityCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
+		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
 }
 
@@ -310,6 +312,19 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Config.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
+}
+
+// handleSelflearnDemoCommand drives the L1 status-bar indicator through
+// its phases (reviewing → recording actions → done) without firing a
+// real review fork. Hidden from the slash-command catalog; meant for
+// developers checking the spinner / target / done-summary look in their
+// own terminal.
+func (c *SlashCommandController) handleSelflearnDemoCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	if c.env.RunSelfLearnDemo == nil {
+		return "self-learn indicator not wired", nil, nil
+	}
+	c.env.RunSelfLearnDemo()
+	return "self-learn indicator demo started (~6s) — watch the bottom status bar", nil, nil
 }
 
 func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
