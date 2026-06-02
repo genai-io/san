@@ -180,15 +180,15 @@ func (p *selfLearnPanel) renderScopeBar() string {
 // ── Row rendering ───────────────────────────────────────────────────────
 
 // Layout columns (in monospace cells). Every row aligns its label to
-// labelCol; values right-end at valueCol with the unit flowing past.
+// labelCol; int values sit right next to the label as a compact phrase
+// ("Run every 10 user turns"), not floated against the right edge.
 const (
 	// labelCol is where row labels start (after section indent, cursor, and
 	// bracket). Bool rows render "[ ] " in cols labelCol-4..labelCol-1; int
 	// rows pad an equivalent gutter so their label aligns with bool labels.
 	labelCol = 8
-	// valueCol is the right edge of the numeric value. Units render past it
-	// in muted style, all units stay left-aligned to the same column.
-	valueCol = 40
+	// labelValueGap is the spacing between label and value on int rows.
+	labelValueGap = 2
 	// bracketWidth covers "[ ] " or "[✓] " — same width either way.
 	bracketWidth = 4
 	// cursorWidth covers the "▸ " caret + space (or its blank twin).
@@ -227,14 +227,12 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	// column as bool labels — int rows replace the bracket with whitespace).
 	leftPad := strings.Repeat(" ", labelCol-cursorWidth-row.indent*2)
 	prefixStr := sectionLead(row.indent) + leftPad + p.cursorMark(i)
-	label := row.label
 
-	// Right-align the numeric value to valueCol; units flow past in muted style.
-	labelEnd := labelCol + visibleLen(label)
-	numPad := max(valueCol-labelEnd-visibleLen(value), 1)
-	line := prefixStr + label + strings.Repeat(" ", numPad) + selflearnValueStyle.Render(value)
+	// "label  value unit" as a compact phrase. The value sits next to the
+	// label (highlighted), unit follows in muted style — no large gap.
+	line := prefixStr + row.label + strings.Repeat(" ", labelValueGap) + selflearnValueStyle.Render(value)
 	if row.unit != "" {
-		line += "  " + selflearnMutedStyle.Render(row.unit)
+		line += " " + selflearnMutedStyle.Render(row.unit)
 	}
 
 	// Footnote tucked under the label column.
@@ -254,18 +252,6 @@ func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
 	// Save sits at labelCol so it lines up with the rows above.
 	leftPad := strings.Repeat(" ", labelCol-cursorWidth)
 	return leftPad + p.cursorMark(i) + style.Render("[ Save ]")
-}
-
-// visibleLen approximates the column width of s in a monospace cell. It
-// treats every rune as one column; full-width CJK runes (rare in this
-// panel — only the validation error path) overflow by a column or two,
-// which we accept rather than pulling in a runewidth dep.
-func visibleLen(s string) int {
-	n := 0
-	for range s {
-		n++
-	}
-	return n
 }
 
 // ── Row kinds and layout ────────────────────────────────────────────────
