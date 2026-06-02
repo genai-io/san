@@ -44,52 +44,58 @@ type services struct {
 	Identity *identity.Registry
 	Reminder *reminder.Service
 
-	// SelfLearn is the L1 background reviewer. It is non-nil only when the
-	// selfLearn settings have at least one arm enabled at session start
-	// (see notes/active/l1-background-review.md §3.1 / §9). Nil ⇒ zero
-	// overhead: no goroutine, no counters, no extra model calls.
-	SelfLearn *selflearn.Reviewer
+	// SelfLearn groups the L1 self-learning state. Reviewer / Cancel / Live
+	// are populated per wiring (zero when no arm is enabled — §3.1 zero-
+	// overhead guarantee). Indicator is allocated once at services
+	// construction and outlives wiring/teardown so the render path can
+	// always Snapshot() without a nil check.
+	SelfLearn SelfLearnServices
+}
 
-	// SelfLearnCancel cancels the session-scoped context every in-flight
-	// reviewer fork inherits. Called from StopAgentSession so a /clear or
-	// quit unblocks the fork immediately instead of waiting for the
-	// 5-minute deadline; never nil while SelfLearn is non-nil.
-	SelfLearnCancel context.CancelFunc
+// SelfLearnServices bundles the L1 fields that move together. See
+// notes/active/l1-background-review.md §9 step 4.
+type SelfLearnServices struct {
+	// Reviewer is the background L1 trigger. Non-nil only when an arm is
+	// enabled at session start; nil ⇒ zero overhead (no goroutine, no
+	// counters, no extra model calls).
+	Reviewer *selflearn.Reviewer
 
-	// SelfLearnLive is flipped to false when the current wiring is torn
-	// down (StopAgentSession or a session rebuild). The fork-goroutine
-	// write observers read it atomically to decide whether to still record
-	// into the UI state, so a write that lands after teardown is dropped
-	// without racing on the SelfLearn pointer. Allocated per wiring in
-	// wireSelfLearn; nil before the first wiring.
-	SelfLearnLive *atomic.Bool
+	// Cancel cancels the session-scoped context every in-flight fork
+	// inherits. Called from StopAgentSession so a /clear or quit unblocks
+	// the fork immediately instead of waiting for the forkDeadline; never
+	// nil while Reviewer is non-nil.
+	Cancel context.CancelFunc
 
-	// SelfLearnIndicator drives the four-phase status-bar surface from the design's
-	// §"User-visible surface". Always non-nil so the render path can take
-	// Snapshot() without a nil check; the snapshot reports an idle phase
-	// when L1 is off or no review has run yet.
-	SelfLearnIndicator *SelfLearnIndicator
+	// Live is flipped to false when the current wiring is torn down so a
+	// late write observer drops silently instead of racing on the Reviewer
+	// pointer. Allocated per wiring; nil before the first wiring.
+	Live *atomic.Bool
+
+	// Indicator drives the four-phase status-bar surface (§"User-visible
+	// surface"). Always non-nil; the snapshot reports an idle phase when
+	// L1 is off or no review has run yet.
+	Indicator *SelfLearnIndicator
 }
 
 func newServices() services {
 	return services{
-		Setting:            setting.Default(),
-		LLM:                llm.Default(),
-		Tool:               tool.Default(),
-		Hook:               hook.DefaultEngine(),
-		Session:            session.Default(),
-		Skill:              skill.Default(),
-		Subagent:           subagent.Default(),
-		Command:            command.Default(),
-		Task:               task.Default(),
-		Tracker:            tracker.Default(),
-		Cron:               cron.Default(),
-		MCP:                mcp.DefaultRegistry(),
-		Plugin:             plugin.Default(),
-		Agent:              agent.Default(),
-		Identity:           identity.Default(),
-		Reminder:           reminder.NewService(),
-		SelfLearnIndicator: NewSelfLearnIndicator(),
+		Setting:   setting.Default(),
+		LLM:       llm.Default(),
+		Tool:      tool.Default(),
+		Hook:      hook.DefaultEngine(),
+		Session:   session.Default(),
+		Skill:     skill.Default(),
+		Subagent:  subagent.Default(),
+		Command:   command.Default(),
+		Task:      task.Default(),
+		Tracker:   tracker.Default(),
+		Cron:      cron.Default(),
+		MCP:       mcp.DefaultRegistry(),
+		Plugin:    plugin.Default(),
+		Agent:     agent.Default(),
+		Identity:  identity.Default(),
+		Reminder:  reminder.NewService(),
+		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator()},
 	}
 }
 

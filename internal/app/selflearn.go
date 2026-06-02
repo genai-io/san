@@ -43,17 +43,17 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	}
 	// Env override wins: documented as the hard kill switch (§3.1).
 	if v := os.Getenv(selfLearnDisableEnv); v == "1" || strings.EqualFold(v, "true") {
-		m.services.SelfLearn = nil
+		m.services.SelfLearn.Reviewer = nil
 		return
 	}
 	snap := m.services.Setting.Snapshot()
-	runtime, err := selflearn.ResolveSettings(snap.SelfLearn)
+	cfg, err := selflearn.ResolveSettings(snap.SelfLearn)
 	if err != nil {
 		log.Logger().Warn("self-learning config rejected at startup", zap.Error(err))
 		return
 	}
-	if !runtime.Config.Enabled() {
-		m.services.SelfLearn = nil
+	if !cfg.Enabled() {
+		m.services.SelfLearn.Reviewer = nil
 		return
 	}
 
@@ -61,17 +61,17 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// the cancel so an in-flight fork unblocks immediately on /clear / quit
 	// instead of waiting up to forkDeadline for its independent timeout.
 	reviewCtx, reviewCancel := context.WithCancel(context.Background())
-	m.services.SelfLearnCancel = reviewCancel
+	m.services.SelfLearn.Cancel = reviewCancel
 
 	// live gates the fork-goroutine write observers below. They capture this
 	// local (not m.services.SelfLearn) so they never race on a services field
 	// the UI goroutine mutates; teardownSelfLearn flips it false.
 	live := &atomic.Bool{}
 	live.Store(true)
-	m.services.SelfLearnLive = live
+	m.services.SelfLearn.Live = live
 
-	memStore := selflearn.NewMemoryStore(m.env.CWD, runtime.MemoryMaxChars)
-	skillMgr := selflearn.NewSkillManager(m.env.CWD, runtime.Perms)
+	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars)
+	skillMgr := selflearn.NewSkillManager(m.env.CWD, cfg.Perms)
 
 	// Write observers feed the live spinner-tail and the post-pass recap.
 	// They run on the fork goroutine and check `live` so writes landing
@@ -80,7 +80,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		if !live.Load() {
 			return
 		}
-		m.services.SelfLearnIndicator.RecordAction(ReviewAction{
+		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
 			Verb:   memoryVerb(action),
 			Kind:   "memory",
 			Target: "memory" + memoryTopicSuffix(file),
@@ -90,7 +90,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		if !live.Load() {
 			return
 		}
-		m.services.SelfLearnIndicator.RecordAction(ReviewAction{
+		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
 			Verb:   skillVerb(action),
 			Kind:   "skill",
 			Target: name,
@@ -108,7 +108,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			return
 		}
 
-		m.services.SelfLearnIndicator.BeginReview()
+		m.services.SelfLearn.Indicator.BeginReview()
 		m.publishSelfLearnStarted(kinds)
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
@@ -122,7 +122,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		_, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		if runErr != nil {
-			m.services.SelfLearnIndicator.Fail()
+			m.services.SelfLearn.Indicator.Fail()
 			log.Logger().Warn("self-learning review failed",
 				zap.String("kinds", kinds.String()),
 				zap.Error(runErr),
@@ -132,8 +132,8 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		}
 		// Complete BEFORE Drain so doneCount snapshots len(s.actions);
 		// zero-write pass collapses to idle inside Complete (§6 #7).
-		m.services.SelfLearnIndicator.Complete()
-		actions := m.services.SelfLearnIndicator.DrainActions()
+		m.services.SelfLearn.Indicator.Complete()
+		actions := m.services.SelfLearn.Indicator.DrainActions()
 		if len(actions) == 0 {
 			return
 		}
@@ -144,9 +144,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		m.publishSelfLearnSummary(kinds, actions)
 	}
 
-	r := selflearn.New(runtime.Config, review)
+	r := selflearn.New(cfg, review)
 	r.SeedTurns(countUserTurns(m.conv.Messages))
-	m.services.SelfLearn = r
+	m.services.SelfLearn.Reviewer = r
 }
 
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
@@ -154,25 +154,25 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 // Reviewer. Idempotent. Called from StopAgentSession and the top of
 // wireSelfLearn so a rebuild never leaks the prior context.
 func (m *model) teardownSelfLearn() {
-	if cancel := m.services.SelfLearnCancel; cancel != nil {
+	if cancel := m.services.SelfLearn.Cancel; cancel != nil {
 		cancel()
 	}
-	m.services.SelfLearnCancel = nil
-	if live := m.services.SelfLearnLive; live != nil {
+	m.services.SelfLearn.Cancel = nil
+	if live := m.services.SelfLearn.Live; live != nil {
 		live.Store(false)
 	}
-	m.services.SelfLearnLive = nil
-	m.services.SelfLearn = nil
+	m.services.SelfLearn.Live = nil
+	m.services.SelfLearn.Reviewer = nil
 }
 
 // handleSelflearnTick advances the indicator and schedules the next tick
 // at the cadence Tick returns (spinner interval while reviewing; one
 // deadline tick during done/failed hold). Returns nil when idle.
 func (m *model) handleSelflearnTick() tea.Cmd {
-	if m.services.SelfLearnIndicator == nil {
+	if m.services.SelfLearn.Indicator == nil {
 		return nil
 	}
-	delay, stillActive := m.services.SelfLearnIndicator.Tick(time.Now())
+	delay, stillActive := m.services.SelfLearn.Indicator.Tick(time.Now())
 	if !stillActive {
 		return nil
 	}

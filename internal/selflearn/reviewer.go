@@ -30,16 +30,6 @@ type Arm struct {
 	Interval int
 }
 
-// Config controls the two independently-toggled review arms.
-type Config struct {
-	Memory Arm
-	Skills Arm
-}
-
-// Enabled reports whether any arm is on. When false the caller should not even
-// construct a Reviewer (zero overhead).
-func (c Config) Enabled() bool { return c.Memory.Enabled || c.Skills.Enabled }
-
 // ReviewKind is a bitmask of the arms that fired on a given turn.
 type ReviewKind uint8
 
@@ -89,8 +79,8 @@ type Reviewer struct {
 	inFlight         bool
 }
 
-// New builds a Reviewer from cfg. review is invoked (on its own goroutine) when
-// an arm's threshold is reached. Disabled arms never fire.
+// New builds a Reviewer from cfg's arm config. review is invoked (on its
+// own goroutine) when an arm's threshold is reached. Disabled arms never fire.
 func New(cfg Config, review ReviewFunc) *Reviewer {
 	return &Reviewer{
 		memEnabled:   cfg.Memory.Enabled,

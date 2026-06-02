@@ -136,7 +136,7 @@ func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
 	// user-visible notices. TryStartTicker keeps back-to-back reviews
 	// from stacking parallel tick chains.
 	if ev.Type == "selflearn.review.started" {
-		if m.services.SelfLearnIndicator != nil && m.services.SelfLearnIndicator.TryStartTicker() {
+		if m.services.SelfLearn.Indicator != nil && m.services.SelfLearn.Indicator.TryStartTicker() {
 			return tea.Batch(scheduleSelflearnTick(), next)
 		}
 		return next

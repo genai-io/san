@@ -227,10 +227,10 @@ func (m model) renderModeStatus() string {
 }
 
 func (m model) selfLearnStatus() string {
-	if m.services.SelfLearnIndicator == nil {
+	if m.services.SelfLearn.Indicator == nil {
 		return ""
 	}
-	return m.services.SelfLearnIndicator.Snapshot().Render()
+	return m.services.SelfLearn.Indicator.Snapshot().Render()
 }
 
 func (m model) renderQueuePreview() string {

@@ -8,7 +8,7 @@ import (
 )
 
 // TestResolveSettingsHappyPath confirms a sensible config converts cleanly
-// to a Runtime bundle and that defaults apply where fields are unset.
+// to a resolved Config and that defaults apply where fields are unset.
 func TestResolveSettingsHappyPath(t *testing.T) {
 	s := setting.SelfLearnSettings{
 		Memory: setting.SelfLearnMemory{Enabled: true, EveryTurns: 7}, // MaxKB unset → default
@@ -23,11 +23,11 @@ func TestResolveSettingsHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("happy path failed: %v", err)
 	}
-	if !r.Config.Memory.Enabled || r.Config.Memory.Interval != 7 {
-		t.Fatalf("memory arm: %+v", r.Config.Memory)
+	if !r.Memory.Enabled || r.Memory.Interval != 7 {
+		t.Fatalf("memory arm: %+v", r.Memory)
 	}
-	if !r.Config.Skills.Enabled || r.Config.Skills.Interval != 15 {
-		t.Fatalf("skill arm: %+v", r.Config.Skills)
+	if !r.Skills.Enabled || r.Skills.Interval != 15 {
+		t.Fatalf("skill arm: %+v", r.Skills)
 	}
 	wantPerms := ActionPermissions{
 		AllowCreate: true, AllowUpdate: true, AllowDelete: true,
