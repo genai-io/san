@@ -2,7 +2,6 @@
 package app
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -49,10 +48,11 @@ func (m *model) View() string {
 //
 // The chat section is height-limited so the bubbletea View() output never
 // exceeds the terminal height. When live content is taller than the
-// available space it is truncated silently from the top. The full,
-// untruncated content is committed to terminal scrollback at turn end
-// via CommitMessages / tea.Println, so the user can scroll up to see
-// everything once the response completes.
+// available space, conv.ScrollWindow shows a viewport into it (the latest
+// content by default, or an earlier window when the user has scrolled up).
+// The full, untruncated content is committed to terminal scrollback via
+// CommitMessages / tea.Println, so the user can scroll up to see everything
+// once the response completes.
 func (m *model) renderNormalView(separator, trackerView string) string {
 	// Build the bottom chrome first so we can measure how many lines it
 	// consumes and subtract from the terminal height.
@@ -66,12 +66,18 @@ func (m *model) renderNormalView(separator, trackerView string) string {
 	}
 
 	// Render ALL messages (both committed and active) so the scrollable
-	// viewport has the full conversation to navigate. When at the bottom
-	// (ContentOffset == 0), the viewport shows the latest content.
+	// viewport has the full conversation to navigate.
 	allContent := conv.RenderMessageRange(m.messageRenderParams(), 0, len(m.conv.Messages), m.conv.Stream.Active)
-	chatSection := m.renderChatSection(allContent, trackerView, maxContentHeight)
+	chatSection := m.renderChatSection(allContent, trackerView)
 
-	return chatSection + bottomChrome
+	// Window the content to the available height. ScrollWindow is the single
+	// place scroll bounds are enforced: it returns the offset clamped to the
+	// valid range, which we store back as the canonical position so a
+	// wheel-up past the top can't accumulate an unbounded offset.
+	windowed, clamped := conv.ScrollWindow(strings.Split(chatSection, "\n"), m.conv.ContentOffset, maxContentHeight)
+	m.conv.ContentOffset = clamped
+
+	return windowed + bottomChrome
 }
 
 // buildBottomChrome renders everything below the chat section (turn usage,
@@ -139,7 +145,10 @@ func (m model) renderInputView() string {
 	return prompt + m.userInput.RenderTextarea()
 }
 
-func (m model) renderChatSection(activeContent, trackerView string, maxHeight int) string {
+// renderChatSection assembles the full chat content (active messages, tracker,
+// transient spinners) into a single string. It is pure: height-limiting and
+// scroll windowing are applied by the caller via conv.ScrollWindow.
+func (m model) renderChatSection(activeContent, trackerView string) string {
 	var parts []string
 
 	if activeContent != "" {
@@ -165,80 +174,7 @@ func (m model) renderChatSection(activeContent, trackerView string, maxHeight in
 		parts = append(parts, compactView)
 	}
 
-	result := strings.Join(parts, "\n")
-
-	// When the chat section is taller than the available terminal height,
-	// show a scrollable viewport into the content. When contentOffset is 0,
-	// the last maxHeight lines (latest content) are shown at the bottom.
-	// When the user scrolls up with the mouse wheel, contentOffset tracks
-	// how many lines they've scrolled up, and an earlier window of content
-	// is displayed with scroll indicators. Content is also committed to
-	// terminal scrollback during streaming and at turn end.
-	if maxHeight > 0 {
-		lines := strings.Split(result, "\n")
-		if len(lines) > maxHeight {
-			totalLines := len(lines)
-			offset := m.conv.ContentOffset
-
-			if offset == 0 {
-				// Normal view — show the latest content at the bottom.
-				// No indicators needed; content naturally scrolls as it grows.
-				startLine := totalLines - maxHeight
-				result = strings.Join(lines[startLine:], "\n")
-			} else {
-				// Scrolled up — show a window with scroll indicators.
-				// Reserve lines for indicators so the total fits within maxHeight.
-				roughStart := totalLines - maxHeight - offset
-				if roughStart < 0 {
-					roughStart = 0
-				}
-
-				avail := maxHeight - 1 // reserve for "↓ scroll down" indicator
-				if roughStart > 0 {
-					avail-- // reserve for "↑ more above" indicator
-				}
-				if avail < 1 {
-					avail = 1
-				}
-
-				// Clamp offset using actual available content lines.
-				maxOffset := totalLines - avail
-				if maxOffset < 0 {
-					maxOffset = 0
-				}
-				if offset > maxOffset {
-					offset = maxOffset
-					m.conv.ContentOffset = maxOffset
-				}
-
-				startLine := totalLines - avail - offset
-				endLine := totalLines - offset
-				if startLine < 0 {
-					startLine = 0
-					endLine = avail
-					if endLine > totalLines {
-						endLine = totalLines
-					}
-				}
-
-				needAbove := startLine > 0
-				visible := lines[startLine:endLine]
-
-				var sb strings.Builder
-				if needAbove {
-					sb.WriteString(conv.ThinkingStyle.Render(fmt.Sprintf("↑ %d more lines above", startLine)))
-					sb.WriteString("\n")
-				}
-				sb.WriteString(strings.Join(visible, "\n"))
-				sb.WriteString("\n")
-				sb.WriteString(conv.ThinkingStyle.Render(fmt.Sprintf("↓ %d lines below (wheel down to return)", offset)))
-
-				result = sb.String()
-			}
-		}
-	}
-
-	return result
+	return strings.Join(parts, "\n")
 }
 
 func (m model) renderTrackerList() string {
