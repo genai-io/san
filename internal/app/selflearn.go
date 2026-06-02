@@ -439,11 +439,11 @@ var (
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
 	// Footer style for "gen --resume <id>" embedded on the bottom border.
-	// Italic + Faint so it reads as a label baked into the chrome, not
-	// another content row competing for attention.
+	// TextDim + Faint so the command reads as a quiet label baked into
+	// the chrome — kept upright (no italic) so the shell command is
+	// instantly copy-paste recognisable.
 	selflearnRecapFooterStyle = lipgloss.NewStyle().
 					Foreground(kit.CurrentTheme.TextDim).
-					Italic(true).
 					Faint(true)
 	// selflearnLiveStyle dresses the inline indicator row (the spinner
 	// + target line that lives above the prompt while a review runs).
