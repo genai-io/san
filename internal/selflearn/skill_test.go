@@ -147,7 +147,7 @@ func TestSkillPatchAndEdit(t *testing.T) {
 
 func TestSkillSupportFiles(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
-	if _, err := mgr.Create("with-refs", "", "Body.", "user", ""); err != nil {
+	if _, err := mgr.Create("with-refs", "skill with reference files", "Body.", "user", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := mgr.WriteFile("with-refs", "references/cheatsheet.md", "# Cheatsheet", ""); err != nil {
@@ -175,7 +175,7 @@ func TestSkillSupportFiles(t *testing.T) {
 func TestSkillProjectOverridesUser(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	// Same name at both scopes; resolve must prefer project.
-	if _, err := mgr.Create("dual", "", "user body", "user", ""); err != nil {
+	if _, err := mgr.Create("dual", "shadowed by project scope", "user body", "user", ""); err != nil {
 		t.Fatal(err)
 	}
 	projDir := filepath.Join(mgr.projectDir, "dual")
@@ -199,10 +199,11 @@ func TestSkillManageToolDispatch(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	tool := newSkillManageTool(mgr)
 	out, err := tool.Execute(context.Background(), map[string]any{
-		"action":  "create",
-		"name":    "tool-made",
-		"content": "Body from tool.",
-		"level":   "user",
+		"action":      "create",
+		"name":        "tool-made",
+		"description": "skill created via the tool dispatch path",
+		"content":     "Body from tool.",
+		"level":       "user",
 	})
 	if err != nil || !strings.Contains(out, "ok") {
 		t.Fatalf("create via tool: out=%q err=%v", out, err)

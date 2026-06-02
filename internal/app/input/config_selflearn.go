@@ -94,7 +94,10 @@ func (p *selfLearnPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 				return nil, false
 			}
 			scope := p.scope
-			return func() tea.Msg { return ConfigSavedMsg{Scope: scope} }, true
+			saved := p.snap
+			return func() tea.Msg {
+				return ConfigSavedMsg{Scope: scope, SavedSelfLearn: saved}
+			}, true
 		}
 	}
 	return nil, false

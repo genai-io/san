@@ -200,8 +200,9 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
 	// the live Agent + System for its fork. Builds nothing if both arms are
-	// off (§3.1 zero-overhead guarantee).
-	m.wireSelfLearn(params)
+	// off (§3.1 zero-overhead guarantee). pendingSend is forwarded so the
+	// reviewer's cadence seed skips the in-flight user turn.
+	m.wireSelfLearn(params, pendingSend)
 
 	cmds := []tea.Cmd{
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),

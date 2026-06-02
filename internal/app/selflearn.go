@@ -18,6 +18,7 @@ import (
 
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/app/hub"
+	"github.com/genai-io/gen-code/internal/app/input"
 	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/core/system"
@@ -42,8 +43,10 @@ const (
 // wireSelfLearn builds the L1 Reviewer for the running session when ≥1
 // arm is enabled. params is captured so the fork rebuilds an LLM client
 // with the same provider/model/max-tokens for prefix-cache parity
-// (§6 invariant #2).
-func (m *model) wireSelfLearn(params agent.BuildParams) {
+// (§6 invariant #2). pendingSend is the user content the caller is about
+// to deliver — it is already in m.conv.Messages but has NOT been Observed
+// yet, so SeedTurns must exclude it to keep the cadence beat honest.
+func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	// Tear down first — ensureAgentSession can re-enter via an agent
 	// toggle (which calls Agent.Stop directly, bypassing StopAgentSession)
 	// and would otherwise overwrite reviewCancel un-called, leaking the
@@ -148,11 +151,20 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		if runErr != nil {
 			m.services.SelfLearn.Indicator.Fail()
+			// Drain even on failure so a partial pass (e.g. two memory
+			// writes that succeeded before the LLM timed out) still
+			// reaches the recap — otherwise the user sees "review
+			// failed" with no record of what was actually persisted.
+			actions := m.services.SelfLearn.Indicator.DrainActions()
 			log.Logger().Warn("self-learning review failed",
 				zap.String("kinds", kinds.String()),
+				zap.Int("partial-changes", len(actions)),
 				zap.Error(runErr),
 			)
 			m.publishSelfLearnFailure(kinds, runErr)
+			if len(actions) > 0 {
+				m.publishSelfLearnSummary(kinds, actions, forkSessionID)
+			}
 			return
 		}
 		// Complete BEFORE Drain so doneCount snapshots len(s.actions);
@@ -174,7 +186,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	}
 
 	r := selflearn.New(cfg, review)
-	r.SeedTurns(countUserTurns(m.conv.Messages))
+	r.SeedTurns(countUserTurns(m.conv.Messages, pendingSend))
 	m.services.SelfLearn.Reviewer = r
 }
 
@@ -227,6 +239,38 @@ func (m *model) runSelfLearnDemo() {
 	}()
 }
 
+// notifySelfLearnOverride detects when a /config save was silently
+// overridden by the OTHER settings level (the merger ORs the Enabled
+// flags across user+project so disabling at one level cannot turn off an
+// arm that the other level enabled). Surfaces a notice so the user
+// learns about the override instead of seeing a "saved" confirmation
+// while the behavior stays unchanged.
+func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
+	if m.services.Setting == nil {
+		return
+	}
+	snap := m.services.Setting.Snapshot()
+	if snap == nil {
+		return
+	}
+	var arms []string
+	if msg.SavedSelfLearn.Memory.Enabled != snap.SelfLearn.Memory.Enabled {
+		arms = append(arms, "Memory")
+	}
+	if msg.SavedSelfLearn.Skills.Enabled != snap.SelfLearn.Skills.Enabled {
+		arms = append(arms, "Skills")
+	}
+	if len(arms) == 0 {
+		return
+	}
+	other := "project"
+	if msg.Scope == "project" {
+		other = "user"
+	}
+	m.conv.AddNotice("Note: " + strings.Join(arms, " and ") +
+		" enabled state is overridden by " + other + "-level settings")
+}
+
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
 // session-scoped fork context, marks the wiring dead, and drops the
 // Reviewer. Idempotent. Called from StopAgentSession and the top of
@@ -267,12 +311,23 @@ func memoryTopicName(file string) string {
 	return strings.TrimSuffix(file, ".md")
 }
 
-// countUserTurns counts user messages so the memory arm resumes on the
-// right cadence beat after session restore (§6 invariant #8).
-func countUserTurns(msgs []core.ChatMessage) int {
+// countUserTurns counts user messages already Observed by the reviewer
+// so the memory arm resumes on the right cadence beat after session
+// restore (§6 invariant #8). A trailing pendingSend match is excluded —
+// the submit path Appends the message before ensureAgentSession runs, so
+// without this guard the seed double-counts the in-flight turn that
+// Observe is about to increment.
+func countUserTurns(msgs []core.ChatMessage, pendingSend string) int {
+	end := len(msgs)
+	if pendingSend != "" && end > 0 {
+		last := msgs[end-1]
+		if last.Role == core.RoleUser && last.Content == pendingSend {
+			end--
+		}
+	}
 	n := 0
-	for _, msg := range msgs {
-		if msg.Role == core.RoleUser {
+	for i := 0; i < end; i++ {
+		if msgs[i].Role == core.RoleUser {
 			n++
 		}
 	}

@@ -76,11 +76,17 @@ type SkillManager struct {
 }
 
 // NewSkillManager returns the manager for cwd with the given action
-// permissions. The skill dirs are created lazily on first create.
+// permissions. The skill dirs are created lazily on first create. When
+// the user home directory is unavailable (sandboxed exec, unset HOME),
+// userDir is left empty and any user-scope write fails loudly via
+// dirFor — better than silently aliasing user-scope onto cwd/.gen/skills.
 func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
-	home, _ := os.UserHomeDir()
+	userDir := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		userDir = filepath.Join(home, ".gen", "skills")
+	}
 	return &SkillManager{
-		userDir:    filepath.Join(home, ".gen", "skills"),
+		userDir:    userDir,
 		projectDir: filepath.Join(cwd, ".gen", "skills"),
 		perms:      perms,
 	}
@@ -121,6 +127,9 @@ func (m *SkillManager) Inventory() []SkillInfo {
 		dir   string
 		level string
 	}{{m.projectDir, "project"}, {m.userDir, "user"}} {
+		if scope.dir == "" {
+			continue
+		}
 		entries, err := os.ReadDir(scope.dir)
 		if err != nil {
 			continue
@@ -159,6 +168,9 @@ func (m *SkillManager) Inventory() []SkillInfo {
 func (m *SkillManager) dirFor(level string) (string, error) {
 	switch strings.TrimSpace(level) {
 	case "", "user":
+		if m.userDir == "" {
+			return "", fmt.Errorf("user home directory unavailable; user-scope skills cannot be written")
+		}
 		return m.userDir, nil
 	case "project":
 		return m.projectDir, nil
@@ -180,6 +192,9 @@ func (m *SkillManager) resolve(name string) (string, error) {
 		return "", fmt.Errorf("invalid skill name %q", name)
 	}
 	for _, dir := range []string{m.projectDir, m.userDir} {
+		if dir == "" {
+			continue
+		}
 		p := filepath.Join(dir, name, "SKILL.md")
 		if _, err := os.Stat(p); err == nil {
 			return p, nil
@@ -270,6 +285,13 @@ func (m *SkillManager) Create(name, description, body, level, note string) (stri
 	body = strings.TrimSpace(body)
 	if body == "" {
 		return "", fmt.Errorf("skill content cannot be empty")
+	}
+	// Description is the line Inventory exposes to future reviewers for
+	// UPDATE/CREATE disambiguation (§5.1). An empty description silently
+	// degrades the "prefer update over create" policy to substring-on-name.
+	description = strings.TrimSpace(description)
+	if description == "" {
+		return "", fmt.Errorf("skill description cannot be empty")
 	}
 	// Skill bodies and descriptions are loaded into a future system prompt, so
 	// they carry the same stored-injection risk as memory entries.
@@ -490,9 +512,15 @@ func buildSkillMD(name, description, origin, body string) string {
 }
 
 // joinFrontmatter reattaches existing frontmatter (as returned by
-// ParseFrontmatterFile, newline-terminated per line) to a new body.
+// ParseFrontmatterFile, newline-terminated per line) to a new body. When
+// the input had no frontmatter at all (fm empty), the body is returned
+// alone — fabricating an empty `---\n\n---\n\n` block here would silently
+// mutate a user-authored SKILL.md into a different on-disk shape.
 func joinFrontmatter(fm, body string) string {
 	fm = strings.TrimRight(fm, "\n")
+	if fm == "" {
+		return strings.TrimSpace(body) + "\n"
+	}
 	return "---\n" + fm + "\n---\n\n" + strings.TrimSpace(body) + "\n"
 }
 

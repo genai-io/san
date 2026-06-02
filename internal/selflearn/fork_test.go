@@ -40,28 +40,43 @@ func (s *scriptedLLM) Infer(_ context.Context, req core.InferRequest) (<-chan co
 	return ch, nil
 }
 
-// TestTrimTrailingUserMessages guards against the "messages must alternate"
-// provider rejection: when the snapshot ends with a tool_result (RoleUser)
-// the fork's own UserMessage(prompt) would put two consecutive user
-// messages on the wire.
-func TestTrimTrailingUserMessages(t *testing.T) {
+// TestTrimTrailingPendingMessages guards against the "messages must
+// alternate" provider rejection: when the snapshot ends with a tool_result
+// (RoleTool) or any trailing user turn, the fork's own UserMessage(prompt)
+// would put two consecutive user-role messages on the wire.
+func TestTrimTrailingPendingMessages(t *testing.T) {
 	asst := core.Message{Role: core.RoleAssistant, Content: "ok"}
-	usr := core.Message{Role: core.RoleUser, Content: "tool result"}
+	usr := core.Message{Role: core.RoleUser, Content: "ask"}
+	toolResult := core.Message{Role: core.RoleTool, Content: "tool result"}
 
 	// Snapshot ends with two trailing user messages → both dropped.
 	in := []core.Message{asst, usr, usr}
-	out := trimTrailingUserMessages(in)
+	out := trimTrailingPendingMessages(in)
 	if len(out) != 1 || out[0].Role != core.RoleAssistant {
 		t.Fatalf("trailing user not trimmed: %+v", out)
 	}
+	// Snapshot ends with tool_result(s) → all dropped (provider encodes them
+	// as user role and the appended prompt would be the second user turn).
+	in = []core.Message{asst, toolResult, toolResult}
+	out = trimTrailingPendingMessages(in)
+	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+		t.Fatalf("trailing tool_result not trimmed: %+v", out)
+	}
+	// Snapshot ends with assistant after a trailing user-then-tool mix → all
+	// pending tail dropped down to the last assistant message.
+	in = []core.Message{asst, usr, toolResult, usr}
+	out = trimTrailingPendingMessages(in)
+	if len(out) != 1 || out[0].Role != core.RoleAssistant {
+		t.Fatalf("mixed trailing pending not trimmed: %+v", out)
+	}
 	// Snapshot already ends with assistant → unchanged.
 	in = []core.Message{usr, asst}
-	out = trimTrailingUserMessages(in)
+	out = trimTrailingPendingMessages(in)
 	if len(out) != 2 {
 		t.Fatalf("non-trailing user incorrectly trimmed: %+v", out)
 	}
 	// Empty input is safe.
-	if got := trimTrailingUserMessages(nil); got != nil {
+	if got := trimTrailingPendingMessages(nil); got != nil {
 		t.Fatalf("nil input should return nil, got %v", got)
 	}
 }

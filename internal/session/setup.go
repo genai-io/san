@@ -225,6 +225,10 @@ func (s *Setup) NewSidechainRecorder(agentID, provider, model string, maxTokens 
 		MaxTokens: maxTokens,
 		Cwd:       st.cwd,
 		ProjectID: st.projectID,
+		// Sidechain flag is what the inspector reads to keep fork messages
+		// out of the main thread; without it the L1 review would pollute
+		// the main chain.
+		Sidechain: true,
 	})
 }
 

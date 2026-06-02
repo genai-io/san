@@ -73,10 +73,11 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		OnEvent:   fc.OnEvent,
 	})
 
-	// Trim trailing user messages so the review prompt isn't the second
-	// consecutive user turn — most providers reject that as a role-order
-	// violation (the parent's turn may end with a user-role tool_result).
-	ag.SetMessages(trimTrailingUserMessages(snapshot))
+	// Trim trailing user/tool messages so the review prompt isn't the second
+	// consecutive user-role turn on the wire — most providers reject that as
+	// a role-order violation. RoleTool is included because tool_result is
+	// encoded as a user-role message by every provider we target.
+	ag.SetMessages(trimTrailingPendingMessages(snapshot))
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	res, err := ag.ThinkAct(ctx)
 	if err != nil {
@@ -88,11 +89,18 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	return res.Content, nil
 }
 
-// trimTrailingUserMessages drops trailing user-role messages without
-// mutating the caller's slice (it's shared with the main agent).
-func trimTrailingUserMessages(msgs []core.Message) []core.Message {
+// trimTrailingPendingMessages drops trailing messages that the provider
+// would render as user-role on the wire (RoleUser and RoleTool — provider
+// adapters encode tool_result as a user-role message). The fork's review
+// prompt is then safe to append as the next user turn. Does not mutate the
+// caller's slice (it's shared with the main agent).
+func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 	end := len(msgs)
-	for end > 0 && msgs[end-1].Role == core.RoleUser {
+	for end > 0 {
+		role := msgs[end-1].Role
+		if role != core.RoleUser && role != core.RoleTool {
+			break
+		}
 		end--
 	}
 	return msgs[:end]

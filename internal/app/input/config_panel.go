@@ -37,8 +37,14 @@ type Panel interface {
 }
 
 // ConfigSavedMsg is emitted on a successful Save so the app can show a
-// transient confirmation.
-type ConfigSavedMsg struct{ Scope string }
+// transient confirmation. SavedSelfLearn carries the snapshot that was
+// just written so the consumer can compare it against the post-Reload
+// effective state and detect cross-level overrides (settings merger ORs
+// Enabled across user+project).
+type ConfigSavedMsg struct {
+	Scope          string
+	SavedSelfLearn setting.SelfLearnSettings
+}
 
 // ConfigSelector is the /config popup. Today only Self-Learning is
 // registered; adding a sibling panel (Provider, Permissions, Appearance,
