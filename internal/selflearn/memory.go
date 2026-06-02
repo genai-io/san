@@ -48,9 +48,12 @@ const DefaultMemoryFileCharLimit = 25000
 //
 // MemoryWriteObserver fires after every successful write. action is the
 // tool action ("add"/"replace"/"remove"); file is the basename ("" ⇒
-// MEMORY.md). SetWriteObserver must be called before the first write;
-// the fork is single-flight (§6 #8) so the field is lock-free.
-type MemoryWriteObserver func(action, file string)
+// MEMORY.md); note is the LLM-supplied short description of WHAT was
+// changed (e.g. "added 3 entries about race conditions"). The note
+// reaches the recap row so the user sees what changed at a glance.
+// SetWriteObserver must be called before the first write; the fork is
+// single-flight (§6 #8) so the field is lock-free.
+type MemoryWriteObserver func(action, file, note string)
 
 type MemoryStore struct {
 	dir     string
@@ -79,9 +82,9 @@ func (s *MemoryStore) MaxKB() int { return s.maxFile / 1024 }
 // write. Must be called before the first write (see type doc).
 func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) { s.onWrite = fn }
 
-func (s *MemoryStore) fireWrite(action, file string) {
+func (s *MemoryStore) fireWrite(action, file, note string) {
 	if s.onWrite != nil {
-		s.onWrite(action, file)
+		s.onWrite(action, file, note)
 	}
 }
 
@@ -106,7 +109,7 @@ func (s *MemoryStore) resolveFile(name string) (string, error) {
 }
 
 // Add appends a new entry to file (default index). Exact duplicates are a no-op.
-func (s *MemoryStore) Add(file, content string) (string, error) {
+func (s *MemoryStore) Add(file, content, note string) (string, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return "", fmt.Errorf("content cannot be empty")
@@ -137,13 +140,13 @@ func (s *MemoryStore) Add(file, content string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("add", file)
+	s.fireWrite("add", file, note)
 	return "Entry added.", nil
 }
 
 // Replace swaps the single entry containing oldText for newContent. It errors if
 // oldText matches zero or multiple distinct entries.
-func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) {
+func (s *MemoryStore) Replace(file, oldText, newContent, note string) (string, error) {
 	oldText = strings.TrimSpace(oldText)
 	newContent = strings.TrimSpace(newContent)
 	if oldText == "" {
@@ -179,12 +182,12 @@ func (s *MemoryStore) Replace(file, oldText, newContent string) (string, error) 
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("replace", file)
+	s.fireWrite("replace", file, note)
 	return "Entry replaced.", nil
 }
 
 // Remove deletes the single entry containing oldText.
-func (s *MemoryStore) Remove(file, oldText string) (string, error) {
+func (s *MemoryStore) Remove(file, oldText, note string) (string, error) {
 	oldText = strings.TrimSpace(oldText)
 	if oldText == "" {
 		return "", fmt.Errorf("old_text cannot be empty")
@@ -206,7 +209,7 @@ func (s *MemoryStore) Remove(file, oldText string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("remove", file)
+	s.fireWrite("remove", file, note)
 	return "Entry removed.", nil
 }
 
@@ -335,8 +338,12 @@ func (t *memoryWriteTool) Schema() core.ToolSchema {
 					"type":        "string",
 					"description": "Target file name (bare, .md). Defaults to MEMORY.md.",
 				},
+				"note": map[string]any{
+					"type":        "string",
+					"description": "Required. One short clause (≤80 chars) describing what this single write changed — surfaced in the post-review recap. Examples: \"added 3 race-condition entries\", \"removed vague tooling note\".",
+				},
 			},
-			"required": []string{"action"},
+			"required": []string{"action", "note"},
 		},
 	}
 }
@@ -346,6 +353,7 @@ func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (stri
 	file := str(input["file"])
 	content := str(input["content"])
 	oldText := str(input["old_text"])
+	note := str(input["note"])
 
 	var (
 		msg string
@@ -353,11 +361,11 @@ func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (stri
 	)
 	switch action {
 	case "add":
-		msg, err = t.store.Add(file, content)
+		msg, err = t.store.Add(file, content, note)
 	case "replace":
-		msg, err = t.store.Replace(file, oldText, content)
+		msg, err = t.store.Replace(file, oldText, content, note)
 	case "remove":
-		msg, err = t.store.Remove(file, oldText)
+		msg, err = t.store.Remove(file, oldText, note)
 	default:
 		return "", fmt.Errorf("unknown action %q; use add, replace, or remove", action)
 	}

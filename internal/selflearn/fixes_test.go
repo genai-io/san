@@ -9,13 +9,13 @@ import "testing"
 func TestResolveRejectsTraversalNames(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	for _, bad := range []string{"../escape", "has/slash", "..", "foo/../bar", `a\b`} {
-		if _, err := mgr.Patch(bad, "x", "y", false); err == nil {
+		if _, err := mgr.Patch(bad, "x", "y", false, ""); err == nil {
 			t.Errorf("Patch(%q) should be rejected", bad)
 		}
-		if _, err := mgr.Delete(bad); err == nil {
+		if _, err := mgr.Delete(bad, ""); err == nil {
 			t.Errorf("Delete(%q) should be rejected", bad)
 		}
-		if _, err := mgr.WriteFile(bad, "references/x.md", "c"); err == nil {
+		if _, err := mgr.WriteFile(bad, "references/x.md", "c", ""); err == nil {
 			t.Errorf("WriteFile(%q) should be rejected", bad)
 		}
 	}
@@ -38,7 +38,7 @@ func TestCreateDescriptionRoundTrips(t *testing.T) {
 		{"plain", "plain text note"},
 	}
 	for _, tc := range cases {
-		if _, err := mgr.Create(tc.name, tc.desc, "body", "user"); err != nil {
+		if _, err := mgr.Create(tc.name, tc.desc, "body", "user", ""); err != nil {
 			t.Fatalf("Create(%q): %v", tc.desc, err)
 		}
 		if _, err := mgr.parseSkill(tc.name); err != nil {

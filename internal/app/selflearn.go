@@ -78,7 +78,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// Write observers feed the live spinner-tail and the post-pass recap.
 	// They run on the fork goroutine and check `live` so writes landing
 	// after teardown drop silently instead of racing on UI state.
-	memStore.SetWriteObserver(func(action, file string) {
+	memStore.SetWriteObserver(func(action, file, note string) {
 		if !live.Load() {
 			return
 		}
@@ -86,9 +86,10 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Verb:   memoryVerb(action),
 			Kind:   "memory",
 			Target: memoryTopicName(file),
+			Note:   note,
 		})
 	})
-	skillMgr.SetWriteObserver(func(action, name string) {
+	skillMgr.SetWriteObserver(func(action, name, note string) {
 		if !live.Load() {
 			return
 		}
@@ -96,6 +97,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 			Verb:   skillVerb(action),
 			Kind:   "skill",
 			Target: name,
+			Note:   note,
 		})
 	})
 
@@ -181,10 +183,22 @@ func (m *model) runSelfLearnDemo() {
 			wait   time.Duration
 			action ReviewAction
 		}{
-			{800 * time.Millisecond, ReviewAction{Verb: "saved", Kind: "memory", Target: ""}},
-			{1200 * time.Millisecond, ReviewAction{Verb: "saved", Kind: "memory", Target: "debugging"}},
-			{1200 * time.Millisecond, ReviewAction{Verb: "updated", Kind: "skill", Target: "go-testing"}},
-			{1200 * time.Millisecond, ReviewAction{Verb: "created", Kind: "skill", Target: "python-typing"}},
+			{800 * time.Millisecond, ReviewAction{
+				Verb: "saved", Kind: "memory", Target: "",
+				Note: "noted that lint runs via make ci, not go vet",
+			}},
+			{1200 * time.Millisecond, ReviewAction{
+				Verb: "saved", Kind: "memory", Target: "debugging",
+				Note: "added 3 race-condition repro tips",
+			}},
+			{1200 * time.Millisecond, ReviewAction{
+				Verb: "updated", Kind: "skill", Target: "go-testing",
+				Note: "trimmed verbose examples, kept the table-test snippet",
+			}},
+			{1200 * time.Millisecond, ReviewAction{
+				Verb: "created", Kind: "skill", Target: "python-typing",
+				Note: "new skill, typing-hints and Protocol patterns",
+			}},
 		}
 		for _, s := range steps {
 			time.Sleep(s.wait)
@@ -266,29 +280,39 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the per-action recap as italic dim lines
-// prefixed with a thinking icon — no header, no horizontal rules. Each
-// line: "💭 <verb> <kind · target>". Empty input ⇒ "" so callers can
-// skip the publish on a no-write pass.
+// formatRecapBlock renders the post-review recap as a small dialog
+// block: a 💬 header reading "Self-improvement", then one indented
+// italic-dim row per action carrying the kind · target and the LLM's
+// "what changed" note. Empty input ⇒ "" so callers can skip the
+// publish on a no-write pass — the recap never appears for silent
+// reviews (the user asked for it to stay out of the spotlight).
 func formatRecapBlock(actions []ReviewAction) string {
 	if len(actions) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	for i, a := range actions {
-		if i > 0 {
-			b.WriteString("\n")
+	b.WriteString(selflearnRecapHeaderStyle.Render("💬 Self-improvement"))
+	for _, a := range actions {
+		row := "  " + actionLabel(a)
+		if note := strings.TrimSpace(a.Note); note != "" {
+			row += ": " + note
 		}
-		b.WriteString(selflearnRecapStyle.Render("💭 " + a.Verb + " " + actionLabel(a)))
+		b.WriteString("\n")
+		b.WriteString(selflearnRecapRowStyle.Render(row))
 	}
 	return b.String()
 }
 
-// selflearnRecapStyle: italic + dim, matching the "background thought"
-// feel the user asked for.
-var selflearnRecapStyle = lipgloss.NewStyle().
-	Foreground(kit.CurrentTheme.TextDim).
-	Italic(true)
+// selflearnRecap*Style — italic + dim across the block so it reads as
+// a quiet background thought, never competing with the chat content.
+var (
+	selflearnRecapHeaderStyle = lipgloss.NewStyle().
+					Foreground(kit.CurrentTheme.TextDim).
+					Italic(true)
+	selflearnRecapRowStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextDim).
+				Italic(true)
+)
 
 // memoryVerb maps a memory_write action to the recap-line verb.
 func memoryVerb(action string) string {

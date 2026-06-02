@@ -75,7 +75,7 @@ func newTestSkillManagerWithPerms(t *testing.T, perms ActionPermissions) (*Skill
 
 func TestSkillCreateMarksAgentOrigin(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
-	if _, err := mgr.Create("go-table-tests", "table-driven test patterns", "Use t.Run subtests.", "user"); err != nil {
+	if _, err := mgr.Create("go-table-tests", "table-driven test patterns", "Use t.Run subtests.", "user", ""); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	p, err := mgr.parseSkill("go-table-tests")
@@ -87,7 +87,7 @@ func TestSkillCreateMarksAgentOrigin(t *testing.T) {
 		t.Fatalf("origin = %q, want %q", origin, agentOrigin)
 	}
 	// Duplicate create is rejected.
-	if _, err := mgr.Create("go-table-tests", "", "x", "user"); err == nil {
+	if _, err := mgr.Create("go-table-tests", "", "x", "user", ""); err == nil {
 		t.Fatal("duplicate create should error")
 	}
 }
@@ -95,7 +95,7 @@ func TestSkillCreateMarksAgentOrigin(t *testing.T) {
 func TestSkillCreateRejectsBadName(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	for _, bad := range []string{"Fix PR #123", "../escape", "has/slash", ""} {
-		if _, err := mgr.Create(bad, "", "body", "user"); err == nil {
+		if _, err := mgr.Create(bad, "", "body", "user", ""); err == nil {
 			t.Fatalf("name %q should be rejected", bad)
 		}
 	}
@@ -112,20 +112,20 @@ func TestSkillRefusesUserCreated(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(md), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.Patch("hand-written", "Original", "Hacked", false); err == nil {
+	if _, err := mgr.Patch("hand-written", "Original", "Hacked", false, ""); err == nil {
 		t.Fatal("patch of user-created skill must be refused")
 	}
-	if _, err := mgr.Delete("hand-written"); err == nil {
+	if _, err := mgr.Delete("hand-written", ""); err == nil {
 		t.Fatal("delete of user-created skill must be refused")
 	}
 }
 
 func TestSkillPatchAndEdit(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
-	if _, err := mgr.Create("go-errs", "error wrapping", "Wrap with %w always.", "user"); err != nil {
+	if _, err := mgr.Create("go-errs", "error wrapping", "Wrap with %w always.", "user", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.Patch("go-errs", "Wrap with %w always.", "Wrap with %w; add context.", false); err != nil {
+	if _, err := mgr.Patch("go-errs", "Wrap with %w always.", "Wrap with %w; add context.", false, ""); err != nil {
 		t.Fatalf("patch: %v", err)
 	}
 	_, body, _ := parseSkill(t, mgr, "go-errs")
@@ -133,7 +133,7 @@ func TestSkillPatchAndEdit(t *testing.T) {
 		t.Fatalf("patch not applied: %q", body)
 	}
 	// Edit preserves frontmatter (origin) while rewriting the body.
-	if _, err := mgr.Edit("go-errs", "Completely new body."); err != nil {
+	if _, err := mgr.Edit("go-errs", "Completely new body.", ""); err != nil {
 		t.Fatalf("edit: %v", err)
 	}
 	origin, body, _ := parseSkill(t, mgr, "go-errs")
@@ -147,10 +147,10 @@ func TestSkillPatchAndEdit(t *testing.T) {
 
 func TestSkillSupportFiles(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
-	if _, err := mgr.Create("with-refs", "", "Body.", "user"); err != nil {
+	if _, err := mgr.Create("with-refs", "", "Body.", "user", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := mgr.WriteFile("with-refs", "references/cheatsheet.md", "# Cheatsheet"); err != nil {
+	if _, err := mgr.WriteFile("with-refs", "references/cheatsheet.md", "# Cheatsheet", ""); err != nil {
 		t.Fatalf("write_file: %v", err)
 	}
 	ref := filepath.Join(mgr.userDir, "with-refs", "references", "cheatsheet.md")
@@ -158,13 +158,13 @@ func TestSkillSupportFiles(t *testing.T) {
 		t.Fatalf("support file missing: %v", err)
 	}
 	// Traversal / wrong subdir rejected.
-	if _, err := mgr.WriteFile("with-refs", "../evil.md", "x"); err == nil {
+	if _, err := mgr.WriteFile("with-refs", "../evil.md", "x", ""); err == nil {
 		t.Fatal("traversal support file should be rejected")
 	}
-	if _, err := mgr.WriteFile("with-refs", "secrets/x.md", "x"); err == nil {
+	if _, err := mgr.WriteFile("with-refs", "secrets/x.md", "x", ""); err == nil {
 		t.Fatal("non-whitelisted subdir should be rejected")
 	}
-	if _, err := mgr.RemoveFile("with-refs", "references/cheatsheet.md"); err != nil {
+	if _, err := mgr.RemoveFile("with-refs", "references/cheatsheet.md", ""); err != nil {
 		t.Fatalf("remove_file: %v", err)
 	}
 	if _, err := os.Stat(ref); !os.IsNotExist(err) {
@@ -175,7 +175,7 @@ func TestSkillSupportFiles(t *testing.T) {
 func TestSkillProjectOverridesUser(t *testing.T) {
 	mgr, _ := newTestSkillManager(t)
 	// Same name at both scopes; resolve must prefer project.
-	if _, err := mgr.Create("dual", "", "user body", "user"); err != nil {
+	if _, err := mgr.Create("dual", "", "user body", "user", ""); err != nil {
 		t.Fatal(err)
 	}
 	projDir := filepath.Join(mgr.projectDir, "dual")
@@ -221,25 +221,25 @@ func TestSkillRejectsInjectionContent(t *testing.T) {
 
 	// create: poisoned body.
 	mgr, _ := newTestSkillManager(t)
-	if _, err := mgr.Create("evil", "harmless desc", payload, "user"); err == nil {
+	if _, err := mgr.Create("evil", "harmless desc", payload, "user", ""); err == nil {
 		t.Fatal("create with injection body should be rejected")
 	}
 	// create: poisoned description.
-	if _, err := mgr.Create("evil", payload, "harmless body", "user"); err == nil {
+	if _, err := mgr.Create("evil", payload, "harmless body", "user", ""); err == nil {
 		t.Fatal("create with injection description should be rejected")
 	}
 
 	// Seed a clean skill, then verify mutating paths reject injection too.
-	if _, err := mgr.Create("notes", "team notes", "Original clean body.", "user"); err != nil {
+	if _, err := mgr.Create("notes", "team notes", "Original clean body.", "user", ""); err != nil {
 		t.Fatalf("seed create: %v", err)
 	}
-	if _, err := mgr.Edit("notes", payload); err == nil {
+	if _, err := mgr.Edit("notes", payload, ""); err == nil {
 		t.Fatal("edit with injection body should be rejected")
 	}
-	if _, err := mgr.Patch("notes", "Original clean body.", payload, false); err == nil {
+	if _, err := mgr.Patch("notes", "Original clean body.", payload, false, ""); err == nil {
 		t.Fatal("patch introducing injection should be rejected")
 	}
-	if _, err := mgr.WriteFile("notes", "references/doc.md", payload); err == nil {
+	if _, err := mgr.WriteFile("notes", "references/doc.md", payload, ""); err == nil {
 		t.Fatal("write_file with injection content should be rejected")
 	}
 
@@ -259,7 +259,7 @@ func TestSkillActionPermissions(t *testing.T) {
 		perms := DefaultActionPermissions()
 		perms.AllowCreate = false
 		mgr, _ := newTestSkillManagerWithPerms(t, perms)
-		_, err := mgr.Create("blocked", "x", "Body.", "user")
+		_, err := mgr.Create("blocked", "x", "Body.", "user", "")
 		if err == nil || !strings.Contains(err.Error(), "allowCreate=false") {
 			t.Fatalf("create should be denied with allowCreate=false; got err=%v", err)
 		}
@@ -271,7 +271,7 @@ func TestSkillActionPermissions(t *testing.T) {
 		// manager pointed at the same disk.
 		seedPerms := DefaultActionPermissions()
 		seedMgr, cwd := newTestSkillManagerWithPerms(t, seedPerms)
-		if _, err := seedMgr.Create("seeded", "x", "Original body.", "user"); err != nil {
+		if _, err := seedMgr.Create("seeded", "x", "Original body.", "user", ""); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 
@@ -282,10 +282,10 @@ func TestSkillActionPermissions(t *testing.T) {
 			name string
 			fn   func() (string, error)
 		}{
-			{"edit", func() (string, error) { return denyMgr.Edit("seeded", "New body.") }},
-			{"patch", func() (string, error) { return denyMgr.Patch("seeded", "Original", "Modified", false) }},
-			{"write_file", func() (string, error) { return denyMgr.WriteFile("seeded", "references/x.md", "note") }},
-			{"remove_file", func() (string, error) { return denyMgr.RemoveFile("seeded", "references/x.md") }},
+			{"edit", func() (string, error) { return denyMgr.Edit("seeded", "New body.", "") }},
+			{"patch", func() (string, error) { return denyMgr.Patch("seeded", "Original", "Modified", false, "") }},
+			{"write_file", func() (string, error) { return denyMgr.WriteFile("seeded", "references/x.md", "note", "") }},
+			{"remove_file", func() (string, error) { return denyMgr.RemoveFile("seeded", "references/x.md", "") }},
 		} {
 			if _, err := c.fn(); err == nil || !strings.Contains(err.Error(), "allowUpdate=false") {
 				t.Fatalf("%s should be denied with allowUpdate=false; got err=%v", c.name, err)
@@ -302,13 +302,13 @@ func TestSkillActionPermissions(t *testing.T) {
 	// allowDelete=false vetoes Delete.
 	t.Run("delete denied", func(t *testing.T) {
 		seedMgr, cwd := newTestSkillManagerWithPerms(t, DefaultActionPermissions())
-		if _, err := seedMgr.Create("doomed", "x", "Body.", "user"); err != nil {
+		if _, err := seedMgr.Create("doomed", "x", "Body.", "user", ""); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 		denyPerms := DefaultActionPermissions()
 		denyPerms.AllowDelete = false
 		denyMgr := NewSkillManager(cwd, denyPerms)
-		if _, err := denyMgr.Delete("doomed"); err == nil || !strings.Contains(err.Error(), "allowDelete=false") {
+		if _, err := denyMgr.Delete("doomed", ""); err == nil || !strings.Contains(err.Error(), "allowDelete=false") {
 			t.Fatalf("delete should be denied with allowDelete=false; got err=%v", err)
 		}
 		if _, err := seedMgr.resolve("doomed"); err != nil {
@@ -332,7 +332,7 @@ func TestSkillAllowUpdateUserCreated(t *testing.T) {
 	}
 
 	// Default perms (advanced opt-in OFF): Patch user-created is refused.
-	if _, err := mgr.Patch("human-authored", "Original", "Hacked", false); err == nil {
+	if _, err := mgr.Patch("human-authored", "Original", "Hacked", false, ""); err == nil {
 		t.Fatal("default perms must refuse patch on user-created")
 	}
 
@@ -340,20 +340,20 @@ func TestSkillAllowUpdateUserCreated(t *testing.T) {
 	perms := DefaultActionPermissions()
 	perms.AllowUpdateUserCreated = true
 	advMgr := NewSkillManager(cwd, perms)
-	if _, err := advMgr.Patch("human-authored", "Original user body.", "Refined user body.", false); err != nil {
+	if _, err := advMgr.Patch("human-authored", "Original user body.", "Refined user body.", false, ""); err != nil {
 		t.Fatalf("advanced opt-in should allow patch on user-created: %v", err)
 	}
 
 	// But Edit (full rewrite), Delete, and WriteFile remain forbidden even
 	// with the advanced opt-in — design invariant: only patch crosses the
 	// user-created boundary.
-	if _, err := advMgr.Edit("human-authored", "Wholesale rewrite."); err == nil {
+	if _, err := advMgr.Edit("human-authored", "Wholesale rewrite.", ""); err == nil {
 		t.Fatal("Edit on user-created must remain forbidden even with allowUpdateUserCreated=true")
 	}
-	if _, err := advMgr.Delete("human-authored"); err == nil {
+	if _, err := advMgr.Delete("human-authored", ""); err == nil {
 		t.Fatal("Delete on user-created must remain forbidden at any setting")
 	}
-	if _, err := advMgr.WriteFile("human-authored", "references/x.md", "note"); err == nil {
+	if _, err := advMgr.WriteFile("human-authored", "references/x.md", "note", ""); err == nil {
 		t.Fatal("WriteFile on user-created must remain forbidden even with allowUpdateUserCreated=true")
 	}
 }

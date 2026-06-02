@@ -106,23 +106,24 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 	}
 }
 
-// TestFormatRecapBlock locks the post-review recap shape: one italic
-// dim line per action, prefixed with the thinking icon. No header, no
-// horizontal rules. Empty input ⇒ "" so the wire-up's "skip publish on
-// no writes" branch keeps working.
+// TestFormatRecapBlock locks the post-review recap shape: a "💬
+// Self-improvement" header followed by one italic-dim row per action
+// carrying "<kind · target>: <note>". Empty input ⇒ "" so the wire-up's
+// "skip publish on no writes" branch keeps working.
 func TestFormatRecapBlock(t *testing.T) {
 	if got := formatRecapBlock(nil); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
 	}
 	got := formatRecapBlock([]ReviewAction{
-		{Verb: "updated", Kind: "skill", Target: "go-testing"},
-		{Verb: "saved", Kind: "memory", Target: "debugging"},
-		{Verb: "retired", Kind: "skill", Target: "outdated-thing"},
+		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
+		{Verb: "saved", Kind: "memory", Target: "debugging", Note: "added 3 entries"},
+		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
-		"💭 updated skill · go-testing",
-		"💭 saved memory · debugging",
-		"💭 retired skill · outdated-thing",
+		"💬 Self-improvement",
+		"skill · go-testing: trimmed examples",
+		"memory · debugging: added 3 entries",
+		"skill · outdated-thing", // note absent → no trailing ": "
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)

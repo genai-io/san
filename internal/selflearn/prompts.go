@@ -155,12 +155,19 @@ Eviction is part of the job, not an afterthought:
 Do NOT save: one-off task state, transient errors, or "what we did this session" narratives — those are not durable.`, cap)
 }
 
-// reviewClosing tells the model how to signal completion. "Nothing to
-// save." suppresses the user-visible notice (§6 invariant #7); otherwise
-// the model writes one short line summarising what changed, which the
-// status bar surfaces as the post-review tag ("✓ <summary>").
-const reviewClosing = `When you have made the tool calls (or decided none are warranted), close with ONE short line:
-  - If no writes occurred, reply with the literal string "Nothing to save."
-  - Otherwise reply with a single sentence of at most 60 characters describing what you actually changed (the key target + the gist of the edit). Examples: "trimmed go-testing SKILL.md by 1.8KB", "saved debugging notes (3 entries)", "created python-typing skill". No bullet list, no quotes, no period — just the line.
+// reviewClosing tells the model (a) to set a "note" parameter on every
+// memory_write / skill_manage call describing what THAT call changed —
+// the per-action recap rows show "<kind · target>: <note>" — and (b)
+// to close with one short overall summary line that the status bar
+// surfaces as "✓ <summary>". "Nothing to save." suppresses the
+// user-visible recap entirely (§6 invariant #7).
+const reviewClosing = `Per-call note (REQUIRED): every memory_write / skill_manage call MUST include a "note" parameter — one short clause (≤80 chars) describing what THAT specific call changed. Examples:
+  - memory_write: "added 3 race-condition repro tips", "removed vague tooling guidance", "replaced outdated build-cache note"
+  - skill_manage: "trimmed examples section by 1.8KB", "added type-hint cheatsheet to references/", "removed the generic intro paragraph"
+The note appears verbatim in the per-action recap row, so be concrete.
 
-The line is shown verbatim in the status bar, so keep it concrete and brief.`
+Closing line: after the tool calls (or after deciding none are warranted), reply with ONE short line:
+  - If no writes occurred, reply with the literal string "Nothing to save."
+  - Otherwise reply with a single sentence of at most 60 characters summarising the whole pass — the key target + the gist of the edit. Examples: "trimmed go-testing SKILL.md by 1.8KB", "saved debugging notes (3 entries)", "created python-typing skill". No bullet list, no quotes, no period — just the line.
+
+The closing line is shown verbatim in the status bar; the per-call notes are shown in the recap. Keep both concrete and brief.`

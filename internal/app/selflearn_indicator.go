@@ -46,10 +46,14 @@ const (
 // (memory topic name, skill name) — the renderer adds the "memory · "
 // / "skill · " prefix at display time, so the kind+target are
 // formatted consistently across in-progress and done-summary lines.
+// Note is the LLM-supplied short description of what THIS specific
+// write changed (e.g. "removed vague tooling guidance"). It surfaces
+// in the per-action recap row so the user sees what was done.
 type ReviewAction struct {
 	Verb   string // "saved" | "replaced" | "removed" | "updated" | "extended" | "retired" | "created" | "trimmed"
 	Kind   string // "memory" or "skill"
 	Target string // skill name, memory topic, or "" for the memory index file
+	Note   string // LLM-supplied "what changed" clause
 }
 
 // actionLabel formats a single action's "kind · target" for the

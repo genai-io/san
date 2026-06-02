@@ -50,7 +50,7 @@ func DefaultActionPermissions() ActionPermissions {
 // edit/write_file/remove_file/delete; action is the §5.3 name).
 // SetWriteObserver must be called before the first write; the fork is
 // single-flight (§6 #8) so the field is lock-free.
-type SkillWriteObserver func(action, name string)
+type SkillWriteObserver func(action, name, note string)
 
 // SkillManager is the L1-only skill write surface. Skills live directly in
 // gen-code's existing user/project scopes — ~/.gen/skills/<name>/ and
@@ -83,9 +83,9 @@ func (m *SkillManager) Perms() ActionPermissions { return m.perms }
 // write. Must be called before the first write (see type doc).
 func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) { m.onWrite = fn }
 
-func (m *SkillManager) fireWrite(action, name string) {
+func (m *SkillManager) fireWrite(action, name, note string) {
 	if m.onWrite != nil {
-		m.onWrite(action, name)
+		m.onWrite(action, name, note)
 	}
 }
 
@@ -256,7 +256,7 @@ func (m *SkillManager) requirePatchable(name string) (parsed, error) {
 	}
 }
 
-func (m *SkillManager) Create(name, description, body, level string) (string, error) {
+func (m *SkillManager) Create(name, description, body, level, note string) (string, error) {
 	if !m.perms.AllowCreate {
 		return "", errActionDenied("create", "allowCreate=false")
 	}
@@ -294,11 +294,11 @@ func (m *SkillManager) Create(name, description, body, level string) (string, er
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("create", name)
+	m.fireWrite("create", name, note)
 	return fmt.Sprintf("Created skill %q.", name), nil
 }
 
-func (m *SkillManager) Edit(name, body string) (string, error) {
+func (m *SkillManager) Edit(name, body, note string) (string, error) {
 	if !m.perms.AllowUpdate {
 		return "", errActionDenied("edit", "allowUpdate=false")
 	}
@@ -324,11 +324,11 @@ func (m *SkillManager) Edit(name, body string) (string, error) {
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, body)), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("edit", name)
+	m.fireWrite("edit", name, note)
 	return fmt.Sprintf("Rewrote skill %q.", name), nil
 }
 
-func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (string, error) {
+func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool, note string) (string, error) {
 	if !m.perms.AllowUpdate {
 		return "", errActionDenied("patch", "allowUpdate=false")
 	}
@@ -355,11 +355,11 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool) (st
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, patched)), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("patch", name)
+	m.fireWrite("patch", name, note)
 	return fmt.Sprintf("Patched skill %q.", name), nil
 }
 
-func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
+func (m *SkillManager) WriteFile(name, file, content, note string) (string, error) {
 	if !m.perms.AllowUpdate {
 		return "", errActionDenied("write_file", "allowUpdate=false")
 	}
@@ -390,11 +390,11 @@ func (m *SkillManager) WriteFile(name, file, content string) (string, error) {
 	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	m.fireWrite("write_file", name)
+	m.fireWrite("write_file", name, note)
 	return fmt.Sprintf("Wrote %s to skill %q.", rel, name), nil
 }
 
-func (m *SkillManager) RemoveFile(name, file string) (string, error) {
+func (m *SkillManager) RemoveFile(name, file, note string) (string, error) {
 	if !m.perms.AllowUpdate {
 		return "", errActionDenied("remove_file", "allowUpdate=false")
 	}
@@ -418,11 +418,11 @@ func (m *SkillManager) RemoveFile(name, file string) (string, error) {
 		}
 		return "", err
 	}
-	m.fireWrite("remove_file", name)
+	m.fireWrite("remove_file", name, note)
 	return fmt.Sprintf("Removed %s from skill %q.", rel, name), nil
 }
 
-func (m *SkillManager) Delete(name string) (string, error) {
+func (m *SkillManager) Delete(name, note string) (string, error) {
 	if !m.perms.AllowDelete {
 		return "", errActionDenied("delete", "allowDelete=false")
 	}
@@ -439,7 +439,7 @@ func (m *SkillManager) Delete(name string) (string, error) {
 	if err := os.RemoveAll(filepath.Dir(p.path)); err != nil {
 		return "", err
 	}
-	m.fireWrite("delete", name)
+	m.fireWrite("delete", name, note)
 	return fmt.Sprintf("Deleted skill %q.", name), nil
 }
 
@@ -551,8 +551,9 @@ func (t *skillManageTool) Schema() core.ToolSchema {
 				"new_text":    map[string]any{"type": "string", "description": "Replacement text (patch)."},
 				"replace_all": map[string]any{"type": "boolean", "description": "Replace every match (patch)."},
 				"file":        map[string]any{"type": "string", "description": "Support file as <references|templates|scripts>/<name>."},
+				"note":        map[string]any{"type": "string", "description": "Required. One short clause (≤80 chars) describing what this single change accomplished — surfaced in the post-review recap. Examples: \"trimmed examples section by 1.8KB\", \"removed vague tooling guidance\"."},
 			},
-			"required": []string{"action", "name"},
+			"required": []string{"action", "name", "note"},
 		},
 	}
 }
@@ -563,6 +564,7 @@ func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string,
 	if name == "" {
 		return "", fmt.Errorf("name is required")
 	}
+	note := str(in["note"])
 
 	var (
 		msg string
@@ -570,17 +572,17 @@ func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string,
 	)
 	switch action {
 	case "create":
-		msg, err = t.mgr.Create(name, str(in["description"]), str(in["content"]), str(in["level"]))
+		msg, err = t.mgr.Create(name, str(in["description"]), str(in["content"]), str(in["level"]), note)
 	case "patch":
-		msg, err = t.mgr.Patch(name, str(in["old_text"]), str(in["new_text"]), boolOf(in["replace_all"]))
+		msg, err = t.mgr.Patch(name, str(in["old_text"]), str(in["new_text"]), boolOf(in["replace_all"]), note)
 	case "edit":
-		msg, err = t.mgr.Edit(name, str(in["content"]))
+		msg, err = t.mgr.Edit(name, str(in["content"]), note)
 	case "write_file":
-		msg, err = t.mgr.WriteFile(name, str(in["file"]), str(in["content"]))
+		msg, err = t.mgr.WriteFile(name, str(in["file"]), str(in["content"]), note)
 	case "remove_file":
-		msg, err = t.mgr.RemoveFile(name, str(in["file"]))
+		msg, err = t.mgr.RemoveFile(name, str(in["file"]), note)
 	case "delete":
-		msg, err = t.mgr.Delete(name)
+		msg, err = t.mgr.Delete(name, note)
 	default:
 		return "", fmt.Errorf("unknown action %q", action)
 	}
