@@ -337,14 +337,18 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 			contentWidth = w
 		}
 	}
-	// Footer text (with its leading "┄ " and trailing " ") must fit too.
+	// Footer needs to fit on the bottom border: "╰┄ <text> ┄╯".
+	// Layout is corner(1) + leadDash(1) + space(1) + footer + space(1) +
+	// trailDash(>=1) + corner(1) = footer + 6 minimum cells across the
+	// row. The top border is innerWidth + 2 cells, so the constraint is
+	// innerWidth >= footer + 4, i.e. contentWidth >= footer.
 	var footerText string
-	footerWidth := 0
+	footerLen := 0
 	if sessionID != "" {
 		footerText = selflearnRecapFooterStyle.Render("gen --resume " + sessionID)
-		footerWidth = lipgloss.Width(footerText) + 4 // "┄ " + text + " ┄"
-		if min := footerWidth - 2*gutter; min > contentWidth {
-			contentWidth = min
+		footerLen = lipgloss.Width(footerText)
+		if footerLen > contentWidth {
+			contentWidth = footerLen
 		}
 	}
 	innerWidth := contentWidth + 2*gutter
@@ -366,7 +370,11 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	// Bottom border: ╰┄ <footer> ┄…┄╯  (or ╰┄┄…┄╯ when no footer fits)
 	b.WriteString("\n")
 	if footerText != "" {
-		trailDashes := max(innerWidth-(lipgloss.Width(footerText)+4), 1) // "┄ " + text + " ┄"
+		// Top span between corners = innerWidth.
+		// Bottom span between corners = lead(┄) + " " + footer + " " +
+		// trail(┄…) = 3 + footerLen + trailDashes.
+		// Equal → trailDashes = innerWidth - footerLen - 3.
+		trailDashes := max(innerWidth-footerLen-3, 1)
 		b.WriteString(border.Render("╰┄"))
 		b.WriteString(" ")
 		b.WriteString(footerText)

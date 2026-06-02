@@ -180,10 +180,12 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 	}
 
 	if live := m.renderSelfLearnLive(); live != "" {
-		if len(parts) > 0 {
-			live = "\n" + live
-		}
-		parts = append(parts, live)
+		// Surrounded by blank rows so the inline indicator reads as
+		// its own block — clearly separated from active content above
+		// (so it doesn't squish against an assistant turn) and the
+		// prompt below (the breathing room is what makes the row feel
+		// "live" rather than nailed to the input bar).
+		parts = append(parts, "", live, "")
 	}
 
 	return strings.Join(parts, "\n")
