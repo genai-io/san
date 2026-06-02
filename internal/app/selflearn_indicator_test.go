@@ -106,24 +106,30 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 	}
 }
 
-// TestFormatRecapBlock locks the post-review recap shape: a "💬
-// Self-improvement" header followed by one italic-dim row per action
-// carrying "<kind · target>: <note>". Empty input ⇒ "" so the wire-up's
-// "skip publish on no writes" branch keeps working.
+// TestFormatRecapBlock locks the post-review recap shape: a
+// "Self-improvement" header, then per-kind sub-headers ("memory",
+// "skill") with their action rows indented under them. Memory index
+// writes render as "index" so the column stays aligned. Empty input
+// ⇒ "" so the wire-up's "skip publish on no writes" branch keeps
+// working.
 func TestFormatRecapBlock(t *testing.T) {
 	if got := formatRecapBlock(nil); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
 	}
 	got := formatRecapBlock([]ReviewAction{
-		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
+		{Verb: "saved", Kind: "memory", Target: "", Note: "noted make ci"},
 		{Verb: "saved", Kind: "memory", Target: "debugging", Note: "added 3 entries"},
+		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
 		"Self-improvement",
-		"skill · go-testing: trimmed examples",
-		"memory · debugging: added 3 entries",
-		"skill · outdated-thing", // note absent → no trailing ": "
+		"  memory",                    // kind sub-header
+		"    · index — noted make ci", // index file → "index"
+		"    · debugging — added 3 entries",
+		"  skill",
+		"    · go-testing — trimmed examples",
+		"    · outdated-thing", // note absent → no trailing " — "
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)

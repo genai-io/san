@@ -280,35 +280,82 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap as a small dialog
-// block: a 💬 header reading "Self-improvement", then one indented
-// italic-dim row per action carrying the kind · target and the LLM's
-// "what changed" note. Empty input ⇒ "" so callers can skip the
-// publish on a no-write pass — the recap never appears for silent
-// reviews (the user asked for it to stay out of the spotlight).
+// formatRecapBlock renders the post-review recap as a three-level
+// italic-dim block so the hierarchy reads cleanly:
+//
+//	Self-improvement
+//	  memory
+//	    · index — noted lint runs via make ci, not go vet
+//	    · debugging — added 3 race-condition repro tips
+//	  skill
+//	    · go-testing — trimmed verbose examples
+//	    · python-typing — new skill, typing-hints
+//
+// Actions are grouped by Kind (preserving first-seen order); a bare
+// target in the memory group renders as "index" so the rows stay
+// aligned. Empty input ⇒ "" so callers can skip the publish on a
+// no-write pass — the dialog never appears for silent reviews.
 func formatRecapBlock(actions []ReviewAction) string {
 	if len(actions) == 0 {
 		return ""
 	}
+	// Group by Kind, preserving first-seen order.
+	type group struct {
+		kind string
+		rows []ReviewAction
+	}
+	var groups []group
+	idx := map[string]int{}
+	for _, a := range actions {
+		if i, ok := idx[a.Kind]; ok {
+			groups[i].rows = append(groups[i].rows, a)
+		} else {
+			idx[a.Kind] = len(groups)
+			groups = append(groups, group{kind: a.Kind, rows: []ReviewAction{a}})
+		}
+	}
+
 	var b strings.Builder
 	b.WriteString(selflearnRecapHeaderStyle.Render("Self-improvement"))
-	for _, a := range actions {
-		row := "  " + actionLabel(a)
-		if note := strings.TrimSpace(a.Note); note != "" {
-			row += ": " + note
-		}
+	for _, g := range groups {
 		b.WriteString("\n")
-		b.WriteString(selflearnRecapRowStyle.Render(row))
+		b.WriteString(selflearnRecapKindStyle.Render("  " + g.kind))
+		for _, a := range g.rows {
+			b.WriteString("\n")
+			b.WriteString(selflearnRecapRowStyle.Render(recapRow(a)))
+		}
 	}
 	return b.String()
 }
 
+// recapRow formats one action row inside a kind group, e.g.
+//
+//	"    · debugging — added 3 race-condition repro tips"
+//
+// Memory writes without a topic (the index file) render as "index" so
+// every row in the group lines up under the same column.
+func recapRow(a ReviewAction) string {
+	target := a.Target
+	if target == "" && a.Kind == "memory" {
+		target = "index"
+	}
+	row := "    · " + target
+	if note := strings.TrimSpace(a.Note); note != "" {
+		row += " — " + note
+	}
+	return row
+}
+
 // selflearnRecap*Style — italic + dim across the block so it reads as
 // a quiet background thought, never competing with the chat content.
+// Kind sub-headers carry no extra weight; the indent does the work.
 var (
 	selflearnRecapHeaderStyle = lipgloss.NewStyle().
 					Foreground(kit.CurrentTheme.TextDim).
 					Italic(true)
+	selflearnRecapKindStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextDim).
+				Italic(true)
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
