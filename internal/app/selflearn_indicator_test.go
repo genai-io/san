@@ -113,7 +113,7 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 // created actions get a "new ·" inline marker. Empty input ⇒ "" so
 // the wire-up's "skip publish on no writes" branch keeps working.
 func TestFormatRecapBlock(t *testing.T) {
-	if got := formatRecapBlock(nil); got != "" {
+	if got := formatRecapBlock(nil, ""); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
 	}
 	got := formatRecapBlock([]ReviewAction{
@@ -122,7 +122,7 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
 		{Verb: "created", Kind: "skill", Target: "python-typing", Note: "typing-hints"},
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
-	})
+	}, "sess-2026-06-02T12-34-56-abc1234")
 	for _, want := range []string{
 		"╭",                       // top-left rounded corner of the box
 		"╮",                       // top-right
@@ -135,6 +135,7 @@ func TestFormatRecapBlock(t *testing.T) {
 		"· go-testing — trimmed examples",
 		"· python-typing — typing-hints",
 		"· outdated-thing", // note absent → no trailing " — "
+		"gen --resume sess-2026-06-02T12-34-56-abc1234", // footer suggests resume
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)

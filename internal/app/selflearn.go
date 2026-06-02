@@ -117,13 +117,15 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
-		// Sidechain recorder: the fork's LLM calls land in the main
-		// session's transcript marked as sidechain so the inspector can
-		// surface them under the "selflearn-review" agent without
-		// interleaving them into the main conversation thread.
+		// Sidechain recorder: each L1 fork gets its OWN session ID
+		// (formatted "<parent>.selflearn-review.<unix>") so
+		// `gen --resume <fork-id>` replays exactly that review's LLM
+		// calls in isolation. The recap row surfaces this fork ID.
 		var forkOnEvent func(core.Event)
+		var forkSessionID string
 		if rec := m.services.Session.NewSidechainRecorder("selflearn-review", params.Provider.Name(), params.ModelID, params.MaxTokens); rec != nil {
 			forkOnEvent = rec.OnAgentEvent
+			forkSessionID = rec.SessionID()
 		}
 		fc := selflearn.ForkConfig{
 			LLM:     client,
@@ -156,8 +158,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		log.Logger().Info("self-learning review",
 			zap.String("kinds", kinds.String()),
 			zap.Int("changes", len(actions)),
+			zap.String("fork-session", forkSessionID),
 		)
-		m.publishSelfLearnSummary(kinds, actions)
+		m.publishSelfLearnSummary(kinds, actions, forkSessionID)
 	}
 
 	r := selflearn.New(cfg, review)
@@ -207,7 +210,10 @@ func (m *model) runSelfLearnDemo() {
 		time.Sleep(800 * time.Millisecond)
 		ind.Complete("trimmed go-testing SKILL.md by 1.8KB · saved 2 notes")
 		actions := ind.DrainActions()
-		m.publishSelfLearnSummary(kinds, actions)
+		// Demo: fabricate a plausible-looking fork session ID so the
+		// recap footer is identical in shape to the real path.
+		demoSessionID := fmt.Sprintf("demo-session.selflearn-review.%d", time.Now().Unix())
+		m.publishSelfLearnSummary(kinds, actions, demoSessionID)
 	}()
 }
 
@@ -267,7 +273,9 @@ func countUserTurns(msgs []core.ChatMessage) int {
 // publishSelfLearnSummary posts the post-pass recap into the conversation
 // flow. Recap goes in Subject (display-only Notice); routing it through
 // Data would re-submit it to the LLM and break the §6 out-of-band promise.
-func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []ReviewAction) {
+// forkSessionID points at the L1 fork's own session so the recap can
+// suggest "gen --resume <id>" for replay.
+func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []ReviewAction, forkSessionID string) {
 	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
@@ -276,14 +284,17 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 		Type:    "selflearn.review.done",
 		Source:  "selflearn",
 		Target:  "main",
-		Subject: formatRecapBlock(actions),
+		Subject: formatRecapBlock(actions, forkSessionID),
 	})
 }
 
 // formatRecapBlock renders the post-review recap inside a thin
 // rounded box so it reads as its own card, visually separated from
 // the chat thread. Markdown can't help here (the Notice renderer
-// emits raw text) so the frame is drawn inline via lipgloss.
+// emits raw text) so the frame is drawn inline via lipgloss. The
+// sessionID footer points at the main session whose sidechain
+// transcript captured this review fork — the user can paste it into
+// the inspector to replay the L1 LLM calls.
 //
 //	╭──────────────────────────────────────────────╮
 //	│  memory                                      │
@@ -292,12 +303,14 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 //	│  skill                                       │
 //	│    · go-testing — trimmed verbose examples   │
 //	│    · python-typing — new skill, typing-hints │
+//	│                                              │
+//	│  session · 2026-06-02T12:34:56-abc1234       │
 //	╰──────────────────────────────────────────────╯
 //
 // Actions are grouped by Kind (preserving first-seen order); a bare
 // memory target renders as "index" so every row lines up. Empty
 // input ⇒ "" so the publish is skipped on no-write passes.
-func formatRecapBlock(actions []ReviewAction) string {
+func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	if len(actions) == 0 {
 		return ""
 	}
@@ -327,6 +340,10 @@ func formatRecapBlock(actions []ReviewAction) string {
 			inner.WriteString("\n")
 			inner.WriteString(recapRowLine(a))
 		}
+	}
+	if sessionID != "" {
+		inner.WriteString("\n\n")
+		inner.WriteString(selflearnRecapFooterStyle.Render("gen --resume " + sessionID))
 	}
 	return selflearnRecapBoxStyle.Render(inner.String())
 }
@@ -379,6 +396,11 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(kit.CurrentTheme.TextDim).
 				Padding(0, 2)
+	// Footer line inside the box pointing at the sidechain transcript
+	// for the inspector to replay.
+	selflearnRecapFooterStyle = lipgloss.NewStyle().
+					Foreground(kit.CurrentTheme.TextDim).
+					Faint(true)
 )
 
 // memoryVerb maps a memory_write action to the recap-line verb.

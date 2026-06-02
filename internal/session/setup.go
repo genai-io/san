@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // defaultSetup is the package-level session setup, initialized by Initialize().
@@ -187,35 +188,43 @@ func loadLeafIfExists(st *Store, sessionID string) string {
 	return leaf
 }
 
-// NewSidechainRecorder returns a fresh Recorder bound to the current
-// session but flagged so its messages land as sidechain entries (the
-// inspector hides them from the main thread but can list them via
-// IncludeSidechain). Each fork should call this once and pass the result
-// as the fork agent's core.Config.OnEvent. The recorder is not cached
-// because there can be many concurrent forks of different kinds, each
-// wanting its own agentID.
+// NewSidechainRecorder returns a fresh Recorder bound to a NEW session
+// that is its own resumable transcript ("gen --resume <id>" replays
+// the fork in isolation), parented under the live main session via
+// agentID so the inspector can still associate them. Each fork should
+// call this once and pass the result as the fork agent's
+// core.Config.OnEvent. The recorder is not cached because there can be
+// many concurrent forks of different kinds.
+//
+// The fork session ID has the form
+//
+//	<main-session>.<agentID>.<unix-seconds>
+//
+// which keeps the parent-child relationship readable, lets multiple
+// forks of the same kind coexist (different timestamps), and stays a
+// valid SessionID for the resume path.
 //
 // Returns nil when the session store isn't ready — the L1 fork is
 // best-effort so a missing recorder is fine.
 func (s *Setup) NewSidechainRecorder(agentID, provider, model string, maxTokens int) *Recorder {
 	s.mu.RLock()
 	st := s.Store
-	sessionID := s.SessionID
+	parentSessionID := s.SessionID
 	s.mu.RUnlock()
 
-	if st == nil || st.transcriptStore == nil || sessionID == "" {
+	if st == nil || st.transcriptStore == nil || parentSessionID == "" {
 		return nil
 	}
+	forkSessionID := fmt.Sprintf("%s.%s.%d", parentSessionID, agentID, time.Now().Unix())
 	return NewRecorder(RecorderOptions{
 		FileStore: st.transcriptStore,
-		SessionID: sessionID,
+		SessionID: forkSessionID,
 		AgentID:   agentID,
 		Provider:  provider,
 		Model:     model,
 		MaxTokens: maxTokens,
 		Cwd:       st.cwd,
 		ProjectID: st.projectID,
-		Sidechain: true,
 	})
 }
 

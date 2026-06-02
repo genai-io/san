@@ -81,6 +81,16 @@ func NewRecorder(opts RecorderOptions) *Recorder {
 	}
 }
 
+// SessionID returns the session ID the Recorder writes to — useful
+// for surfacing the L1 fork's session in the post-review recap so a
+// user can "gen --resume <id>" to replay the review in isolation.
+func (r *Recorder) SessionID() string {
+	if r == nil {
+		return ""
+	}
+	return r.sessionID
+}
+
 // seedLastMessageID primes the parent pointer for the next message.appended
 // from a known leaf. Use after Continue/Resume so the first new turn chains
 // off the loaded history instead of starting a fresh root and orphaning
