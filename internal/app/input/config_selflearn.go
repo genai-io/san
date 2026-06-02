@@ -154,26 +154,32 @@ func (p *selfLearnPanel) Render(width int) string {
 	b.WriteString(p.renderScopeControl())
 	b.WriteString("\n\n")
 
-	rail := "" // current section's vertical rail prefix (already styled)
+	rail := ""             // current section's styled rail prefix
+	sectionEnabled := true // whether the current section is "on"
 	for i, row := range rows {
 		switch row.kind {
 		case rowSectionHeader:
-			if i > 0 {
-				b.WriteString("\n")
-			}
 			b.WriteString(p.renderSectionHeader(row, width))
 			rail = p.railFor(row)
+			sectionEnabled = row.enabledFn == nil || row.enabledFn(&p.snap)
 		case rowSubHeader:
 			indentPad := strings.Repeat(" ", contentCol(row.indent)-1)
-			b.WriteString(rail + indentPad + selflearnSubHeaderStyle.Render(row.label))
+			line := indentPad + selflearnSubHeaderStyle.Render(row.label)
+			b.WriteString(rail + p.maybeDim(sectionEnabled, line))
 		case rowSpacer:
-			b.WriteString(rail)
+			// Skip the rail on trailing spacers so the bar visibly closes
+			// at the last content row of the section.
+			if !p.isTrailingSpacer(rows, i) {
+				b.WriteString(rail)
+			}
 		case rowSave:
 			b.WriteString(p.renderSaveRow(i, validationErr))
 		case rowBool:
-			b.WriteString(p.withRail(rail, p.renderBoolRow(i, row, width)))
+			line := p.renderBoolRow(i, row, width)
+			b.WriteString(p.withRail(rail, p.maybeDim(sectionEnabled, line)))
 		case rowInt:
-			b.WriteString(p.withRail(rail, p.renderIntRow(i, row, width)))
+			line := p.renderIntRow(i, row, width)
+			b.WriteString(p.withRail(rail, p.maybeDim(sectionEnabled, line)))
 		}
 		b.WriteString("\n")
 	}
@@ -184,6 +190,31 @@ func (p *selfLearnPanel) Render(width int) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// maybeDim wraps the rendered row in Faint when the parent section is
+// off, so disabled-section children stop reading as "active".
+func (p *selfLearnPanel) maybeDim(enabled bool, line string) string {
+	if enabled {
+		return line
+	}
+	return selflearnFaintStyle.Render(line)
+}
+
+// isTrailingSpacer reports whether row i is a spacer with no further
+// content rows in the current section.
+func (p *selfLearnPanel) isTrailingSpacer(rows []configRow, i int) bool {
+	for j := i + 1; j < len(rows); j++ {
+		switch rows[j].kind {
+		case rowSpacer:
+			continue
+		case rowSectionHeader, rowSave:
+			return true
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // renderUnsaved is the right-aligned "● unsaved" tag; returns "" when clean.
@@ -246,11 +277,11 @@ func (p *selfLearnPanel) withRail(rail, row string) string {
 	return rail + row
 }
 
-// keycap renders a bracketed keycap label, e.g. "[ ↑↓ ]".
+// keycap renders a key label as a bg-filled pill so it doesn't read as
+// a checkbox. The fill is the kit's neutral search-input gray so the
+// keycap feels like a physical key cap, not a [ ] toggle.
 func keycap(s string) string {
-	return selflearnKeycapBracketStyle.Render("[ ") +
-		selflearnKeycapTextStyle.Render(s) +
-		selflearnKeycapBracketStyle.Render(" ]")
+	return selflearnKeycapStyle.Render(" " + s + " ")
 }
 
 // ── Row rendering ───────────────────────────────────────────────────────
@@ -537,9 +568,15 @@ var (
 	selflearnUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
 	selflearnUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 
-	// Keycap pill — "[ space ]" — bracket in muted, key in normal accent.
-	selflearnKeycapBracketStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	selflearnKeycapTextStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
+	// Keycap pill — neutral gray bg + bold text so it visibly diverges
+	// from "[ ]" checkboxes and reads as a physical key.
+	selflearnKeycapStyle = lipgloss.NewStyle().
+				Background(kit.SearchBg).
+				Foreground(kit.CurrentTheme.Text).
+				Bold(true)
+
+	// Faint wrapper for disabled-section children.
+	selflearnFaintStyle = lipgloss.NewStyle().Faint(true)
 
 	// Save button — filled accent pill when ready, muted pill when the
 	// snapshot fails validation.

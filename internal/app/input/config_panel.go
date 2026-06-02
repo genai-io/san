@@ -133,7 +133,9 @@ func (c *ConfigSelector) Render() string {
 		Height(boxHeight).
 		Padding(1, 2).
 		Render(b.String())
-	return lipgloss.Place(c.width, c.height-2, lipgloss.Center, lipgloss.Top, box)
+	// Left-align rather than center so the popup shares a left edge with
+	// the surrounding app chrome (no L-shaped hole on wide terminals).
+	return lipgloss.Place(c.width, c.height-2, lipgloss.Left, lipgloss.Top, box)
 }
 
 // boxSize caps the popup dimensions: width uses most of the terminal
