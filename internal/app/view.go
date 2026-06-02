@@ -54,10 +54,10 @@ func (m *model) View() string {
 // shown and earlier lines scroll off — the full message lands in native
 // scrollback at turn end, which the terminal scrolls back through natively.
 func (m *model) renderNormalView(separator, trackerView string) string {
-	// Build the bottom chrome first so we can measure how many lines it
-	// consumes and cap the chat section to the remaining terminal height.
-	bottomChrome := m.buildBottomChrome(separator)
-	bottomLines := strings.Count(bottomChrome, "\n")
+	// Render the footer first so we can measure how many lines it consumes
+	// and cap the chat section to the remaining terminal height.
+	footer := m.renderFooter(separator)
+	bottomLines := strings.Count(footer, "\n")
 
 	maxContentHeight := 0
 	// Only truncate when there's room for at least one line of content.
@@ -68,7 +68,7 @@ func (m *model) renderNormalView(separator, trackerView string) string {
 	activeContent := conv.RenderActiveContent(m.messageRenderParams())
 	chatSection := m.renderChatSection(activeContent, trackerView)
 
-	return tailLines(chatSection, maxContentHeight) + bottomChrome
+	return tailLines(chatSection, maxContentHeight) + footer
 }
 
 // tailLines returns the last maxLines newline-delimited lines of s, keeping the
@@ -85,10 +85,10 @@ func tailLines(s string, maxLines int) string {
 	return strings.Join(lines[len(lines)-maxLines:], "\n")
 }
 
-// buildBottomChrome renders everything below the chat section (turn usage,
+// renderFooter renders everything below the chat section (turn usage,
 // separators, queue preview, input area, suggestions, status line) into a
 // single string so its line count can be measured.
-func (m *model) buildBottomChrome(separator string) string {
+func (m *model) renderFooter(separator string) string {
 	var b strings.Builder
 	if turnUsage := conv.RenderTurnUsageSummary(m.env.TurnInputTokens, m.env.TurnOutputTokens, m.env.Width); turnUsage != "" {
 		b.WriteString("\n")
