@@ -392,14 +392,16 @@ var (
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
-	// Dashed border (quadruple-dash light) in a noticeably fainter
-	// shade than TextDim so the frame whispers rather than draws.
+	// Dashed border using triple-dash ("┄" / "┆") in a fainter shade
+	// than TextDim. Triple-dash tiles more evenly across cells than
+	// the quadruple-dash variants whose internal pattern misaligns
+	// at cell boundaries and reads jittery.
 	selflearnRecapBoxStyle = lipgloss.NewStyle().
 				Border(lipgloss.Border{
-			Top:         "┈",
-			Bottom:      "┈",
-			Left:        "┊",
-			Right:       "┊",
+			Top:         "┄",
+			Bottom:      "┄",
+			Left:        "┆",
+			Right:       "┆",
 			TopLeft:     "╭",
 			TopRight:    "╮",
 			BottomLeft:  "╰",
