@@ -335,7 +335,7 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 			lines = append(lines, recapRowLine(a))
 		}
 	}
-	const gutter = 2
+	const gutter = 3 // 3-col side padding instead of 2 — adds visual breathing without spending a vertical row
 	contentWidth := 0
 	for _, ln := range lines {
 		if w := lipgloss.Width(ln); w > contentWidth {

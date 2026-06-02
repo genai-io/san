@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/core/system"
+	"github.com/genai-io/gen-code/internal/tool"
 )
 
 // memoryEntryDelimiter separates entries inside a memory file. The
@@ -82,12 +83,6 @@ func (s *MemoryStore) MaxKB() int { return s.maxFile / 1024 }
 // write. Must be called before the first write (see type doc).
 func (s *MemoryStore) SetWriteObserver(fn MemoryWriteObserver) { s.onWrite = fn }
 
-func (s *MemoryStore) fireWrite(action, file, note string) {
-	if s.onWrite != nil {
-		s.onWrite(action, file, note)
-	}
-}
-
 // Dir is the on-disk directory backing the store.
 func (s *MemoryStore) Dir() string { return s.dir }
 
@@ -140,7 +135,9 @@ func (s *MemoryStore) Add(file, content, note string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("add", file, note)
+	if s.onWrite != nil {
+		s.onWrite("add", file, note)
+	}
 	return "Entry added.", nil
 }
 
@@ -182,7 +179,9 @@ func (s *MemoryStore) Replace(file, oldText, newContent, note string) (string, e
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("replace", file, note)
+	if s.onWrite != nil {
+		s.onWrite("replace", file, note)
+	}
 	return "Entry replaced.", nil
 }
 
@@ -209,7 +208,9 @@ func (s *MemoryStore) Remove(file, oldText, note string) (string, error) {
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}
-	s.fireWrite("remove", file, note)
+	if s.onWrite != nil {
+		s.onWrite("remove", file, note)
+	}
 	return "Entry removed.", nil
 }
 
@@ -349,11 +350,11 @@ func (t *memoryWriteTool) Schema() core.ToolSchema {
 }
 
 func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (string, error) {
-	action := strings.TrimSpace(str(input["action"]))
-	file := str(input["file"])
-	content := str(input["content"])
-	oldText := str(input["old_text"])
-	note := str(input["note"])
+	action := strings.TrimSpace(tool.GetString(input, "action"))
+	file := tool.GetString(input, "file")
+	content := tool.GetString(input, "content")
+	oldText := tool.GetString(input, "old_text")
+	note := tool.GetString(input, "note")
 
 	var (
 		msg string
@@ -374,9 +375,4 @@ func (t *memoryWriteTool) Execute(_ context.Context, input map[string]any) (stri
 	}
 	out, _ := json.Marshal(map[string]string{"status": "ok", "message": msg})
 	return string(out), nil
-}
-
-func str(v any) string {
-	s, _ := v.(string)
-	return s
 }
