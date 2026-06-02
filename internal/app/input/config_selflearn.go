@@ -514,7 +514,7 @@ var (
 	selflearnCursorStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	selflearnCheckStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 	selflearnValueStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Underline(true)
-	selflearnRuleStyle      = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+	selflearnRuleStyle      = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Faint(true)
 
 	// Vertical rail along the left of a section's content. Color reflects
 	// the section's enabled state — green when "on", muted when "off".
