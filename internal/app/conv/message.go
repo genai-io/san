@@ -206,8 +206,7 @@ func RenderTokenWarning(inputTokens, inputLimit int, compactSuppressed bool) str
 }
 
 var (
-	userMsgStyle      = lipgloss.NewStyle()
-	assistantMsgStyle = lipgloss.NewStyle()
+	userMsgStyle = lipgloss.NewStyle()
 
 	InputPromptStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Primary).
