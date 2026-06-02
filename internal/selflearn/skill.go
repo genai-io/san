@@ -373,9 +373,12 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool, not
 	if err != nil {
 		return "", err
 	}
-	// Scan the merged body so an injection assembled across patches is caught,
-	// while still allowing a patch that legitimately removes text.
-	if err := scanForThreats(patched); err != nil {
+	// Only block patches that INTRODUCE a new threat pattern; preserving a
+	// pattern already in the original (a legitimate injection-defense
+	// example, a quoted attacker payload, etc.) must not brick the skill.
+	// scanForThreats(patched) would have refused every later edit of such
+	// a skill, including ones removing the very text that tripped the scan.
+	if err := scanNewThreats(p.body, patched); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, patched)), 0o644); err != nil {

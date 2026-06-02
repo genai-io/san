@@ -22,6 +22,8 @@ func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills
 	var b strings.Builder
 
 	b.WriteString(reviewPreamble)
+	b.WriteString("\n\n")
+	b.WriteString(reviewToolScope)
 
 	if kinds.Has(KindMemory) {
 		b.WriteString("\n\n")
@@ -134,6 +136,14 @@ func renderInventory(skills *SkillManager) string {
 // — empty when nothing was saved — that lets the wire-up suppress the
 // notification entirely.
 const reviewPreamble = `You are the self-learning reviewer for a coding agent. The conversation above is a just-completed turn. Reflect on it and capture only durable learnings using the write tools available to you. You are out-of-band: your writes affect future sessions, not the one above. Be conservative — "nothing to save" is a perfectly good outcome. Do not narrate to the user; do the work via tool calls.`
+
+// reviewToolScope reins in the inherited system prompt: the fork keeps the
+// parent's system prompt verbatim for prefix-cache parity, but the parent
+// advertises Bash/Read/Edit/Write/Glob/Grep that the fork rejects via its
+// permission policy. Without this clarifier the reviewer LLM happily emits
+// e.g. `Read('./SKILL.md')` calls that burn turns getting rejected, and the
+// 5-minute deadline expires before any real write lands.
+const reviewToolScope = `Tool scope for this review: the ONLY tools available are memory_write and skill_manage. Disregard any other tool mentioned in the system prompt above (Bash, Read, Edit, Write, Glob, Grep, etc.) — those belong to the main coding agent, not to this review pass. Calls to them will be rejected and waste the review's wall-clock budget.`
 
 // memorySectionFor returns the eviction-first memory steering with the
 // store's actual cap interpolated — the model needs to know the real

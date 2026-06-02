@@ -115,8 +115,10 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	})
 
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
-		// Liveness check before any UI mutation — a teardown race must
+		// Liveness checks before any UI mutation — a teardown race must
 		// not flash "evolving → evolved" on a session the user just killed.
+		// Active() guards the macro window; the per-phase live.Load() checks
+		// below catch a teardown that lands AFTER Active() returned true.
 		if !m.services.Agent.Active() {
 			return
 		}
@@ -125,6 +127,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 			return
 		}
 
+		if !live.Load() {
+			return
+		}
 		m.services.SelfLearn.Indicator.BeginReview()
 		m.publishSelfLearnStarted(kinds)
 
@@ -149,6 +154,12 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 			OnEvent: forkOnEvent,
 		}
 		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
+		// Re-check live AFTER the RunReview return. This is the macro
+		// window — RunReview can sit on the LLM for up to forkDeadline
+		// and teardown is most likely to have landed by now.
+		if !live.Load() {
+			return
+		}
 		if runErr != nil {
 			m.services.SelfLearn.Indicator.Fail()
 			// Drain even on failure so a partial pass (e.g. two memory

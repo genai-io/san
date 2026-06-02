@@ -17,7 +17,13 @@ var threatPatterns = []struct {
 }{
 	{regexp.MustCompile(`(?i)ignore\s+(previous|all|above|prior)\s+instructions`), "prompt_injection"},
 	{regexp.MustCompile(`(?i)disregard\s+(your|all|any)\s+(instructions|rules|guidelines)`), "disregard_rules"},
-	{regexp.MustCompile(`(?i)you\s+are\s+now\s+`), "role_hijack"},
+	// role_hijack: only fire on classic role-assignment jailbreaks like
+	// "you are now an admin / root / unrestricted / in developer mode".
+	// The unanchored `(?i)you are now ` matched benign English (e.g.
+	// "you are now in the repo root, run make ci"), rejecting legitimate
+	// memory entries. The role keyword anchor keeps the spirit (catch
+	// classic prompt-injection role swaps) without the false positives.
+	{regexp.MustCompile(`(?i)you\s+are\s+now\s+(an?\s+|the\s+)?(admin|administrator|root|superuser|developer|operator|assistant|jailbroken|unrestricted|free\s+from|in\s+(debug|developer|admin|god|safe)\s+mode)`), "role_hijack"},
 	{regexp.MustCompile(`(?i)do\s+not\s+tell\s+the\s+user`), "deception_hide"},
 	{regexp.MustCompile(`(?i)system\s+prompt\s+override`), "sys_prompt_override"},
 	{regexp.MustCompile(`(?i)(curl|wget)\s+[^\n]*\$?\{?\w*(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|API)`), "exfil"},
@@ -65,4 +71,41 @@ func scanForThreats(content string) error {
 		}
 	}
 	return nil
+}
+
+// scanNewThreats fails only when candidate trips a threat pattern that
+// original did not. Used by Patch so a skill body that legitimately quotes
+// a threat-pattern substring (e.g. a defense-against-injection example)
+// remains patchable, while still blocking patches that introduce a NEW
+// payload. Invisible runes are still always rejected — they have no
+// legitimate use in a skill body and a patch must not be allowed to
+// smuggle them in regardless of what the original contained.
+func scanNewThreats(original, candidate string) error {
+	for _, r := range candidate {
+		if _, bad := invisibleRunes[r]; bad {
+			return fmt.Errorf("rejected: content contains an invisible unicode character (U+%04X)", r)
+		}
+	}
+	origMatches := matchedThreatIDs(original)
+	for _, p := range threatPatterns {
+		if !p.re.MatchString(candidate) {
+			continue
+		}
+		if origMatches[p.id] {
+			continue // already in original — patch isn't introducing it
+		}
+		return fmt.Errorf("rejected: patch introduces new threat pattern %q; this text is injected into the system prompt and must not carry injection/exfiltration payloads", p.id)
+	}
+	return nil
+}
+
+// matchedThreatIDs returns the set of threat-pattern IDs that match content.
+func matchedThreatIDs(content string) map[string]bool {
+	out := make(map[string]bool, len(threatPatterns))
+	for _, p := range threatPatterns {
+		if p.re.MatchString(content) {
+			out[p.id] = true
+		}
+	}
+	return out
 }
