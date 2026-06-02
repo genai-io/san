@@ -3,6 +3,30 @@
 All notable changes to Gen Code are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.19.2] - 2026-06-02
+
+### Added
+- Self-learning system: L1 background reviewer, project-partitioned memory store, skill_manage tool, action permission system, and runtime UI with braille progress spinner
+- /config Self-Learning panel with extensible layout, scope/value controls, and persistence
+- Skip `<system-reminder>` blocks during compaction and re-attach them after
+- Inspector: expandable active message chain rows
+- Landing page with GitHub Pages deploy, Getting Started page, and Chinese README
+
+### Changed
+- Rename compaction `BoundaryID` to `SummaryMessageID` across transcript and compact packages
+- Rename provider `IsBusy`→`IsConnecting` and spinner tick→`ProviderConnectingMsg`
+- Rename reminder helpers for clarity (`RefreshSystemReminders`→`RequeueSystemReminders`, etc.)
+- Tighten system-reminders guideline to two bullets
+- Simplify `waitForInput` with an `ingestBatch` helper
+- Self-learn refactors: invert permission polarity to deny-encoded defaults, structured recap from action log, dead export cleanup
+
+### Fixed
+- Self-learn: config persistence, lifecycle hardening, CI layer violations, security and correctness fixes
+- Compaction: use ≡ icon, show summary as system notice (not user turn), drop completed SESSION SUMMARY box, unify manual /compact in place, record summary + boundary in transcript, robust reminder stripping
+- Provider: single-flight connect/refresh, drop dead style branch, tidy list layout with animated refresh status
+- Windows: handle drive letter and backslash in session path encoding; make build compile by isolating Unix-only syscalls; handle-based kill with group-aware shutdowns
+- Drop unused `path/filepath` import in session package
+
 ## [v1.19.1] - 2026-05-23
 
 ### Fixed
