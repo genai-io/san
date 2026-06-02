@@ -106,12 +106,12 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 	}
 }
 
-// TestFormatRecapBlock locks the post-review recap shape: a
-// "Self-improvement" header, then per-kind sub-headers ("memory",
-// "skill") with their action rows indented under them. Memory index
-// writes render as "index" so the column stays aligned. Empty input
-// ⇒ "" so the wire-up's "skip publish on no writes" branch keeps
-// working.
+// TestFormatRecapBlock locks the post-review recap shape: per-kind
+// sub-headers ("memory", "skill") with their action rows indented
+// under them, no top "Self-improvement" header, no card frame. Memory
+// index writes render as "index" so the column stays aligned;
+// created actions get a "new ·" inline marker. Empty input ⇒ "" so
+// the wire-up's "skip publish on no writes" branch keeps working.
 func TestFormatRecapBlock(t *testing.T) {
 	if got := formatRecapBlock(nil); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
@@ -120,23 +120,26 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "saved", Kind: "memory", Target: "", Note: "noted make ci"},
 		{Verb: "saved", Kind: "memory", Target: "debugging", Note: "added 3 entries"},
 		{Verb: "updated", Kind: "skill", Target: "go-testing", Note: "trimmed examples"},
+		{Verb: "created", Kind: "skill", Target: "python-typing", Note: "typing-hints"},
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
-		"Self-improvement",
-		"  memory",                    // kind sub-header
-		"    · index — noted make ci", // index file → "index"
-		"    · debugging — added 3 entries",
-		"  skill",
-		"    · go-testing — trimmed examples",
-		"    · outdated-thing", // note absent → no trailing " — "
+		"memory",                  // kind sub-header
+		"· index — noted make ci", // memory index → "index"
+		"· debugging — added 3 entries",
+		"skill",
+		"· go-testing — trimmed examples",
+		"· python-typing",  // created action
+		"new ·",            // inline marker for created
+		"typing-hints",     // note after the marker
+		"· outdated-thing", // note absent → no trailing " — "
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "─") {
-		t.Fatalf("recap should no longer carry horizontal rules; got:\n%s", got)
+	if strings.Contains(got, "Self-improvement") {
+		t.Fatalf("recap should no longer carry the top header; got:\n%s", got)
 	}
 }
 

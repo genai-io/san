@@ -280,21 +280,23 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap as a three-level
-// italic-dim block so the hierarchy reads cleanly:
+// formatRecapBlock renders the post-review recap as a plain grouped
+// list — no card frame, no top summary header. Module names are
+// color-coded (memory blue, skill purple) so the eye can tell groups
+// apart at a glance; rows stay italic + TextDim and indent does the
+// hierarchy work. Newly-created skills get an inline "new ·" marker
+// before the note.
 //
-//	Self-improvement
-//	  memory
-//	    · index — noted lint runs via make ci, not go vet
-//	    · debugging — added 3 race-condition repro tips
-//	  skill
-//	    · go-testing — trimmed verbose examples
-//	    · python-typing — new skill, typing-hints
+//	memory
+//	  · index — noted lint runs via make ci, not go vet
+//	  · debugging — added 3 race-condition repro tips
+//	skill
+//	  · go-testing — trimmed verbose examples
+//	  · python-typing — new · typing-hints and Protocol patterns
 //
 // Actions are grouped by Kind (preserving first-seen order); a bare
-// target in the memory group renders as "index" so the rows stay
-// aligned. Empty input ⇒ "" so callers can skip the publish on a
-// no-write pass — the dialog never appears for silent reviews.
+// memory target renders as "index" so every row lines up. Empty
+// input ⇒ "" so the publish is skipped on no-write passes.
 func formatRecapBlock(actions []ReviewAction) string {
 	if len(actions) == 0 {
 		return ""
@@ -316,49 +318,74 @@ func formatRecapBlock(actions []ReviewAction) string {
 	}
 
 	var b strings.Builder
-	b.WriteString(selflearnRecapHeaderStyle.Render("Self-improvement"))
-	for _, g := range groups {
-		b.WriteString("\n")
-		b.WriteString(selflearnRecapKindStyle.Render("  " + g.kind))
+	for gi, g := range groups {
+		if gi > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
 			b.WriteString("\n")
-			b.WriteString(selflearnRecapRowStyle.Render(recapRow(a)))
+			b.WriteString(recapRowLine(a))
 		}
 	}
 	return b.String()
 }
 
-// recapRow formats one action row inside a kind group, e.g.
-//
-//	"    · debugging — added 3 race-condition repro tips"
-//
-// Memory writes without a topic (the index file) render as "index" so
-// every row in the group lines up under the same column.
-func recapRow(a ReviewAction) string {
+// recapRowLine formats one action row: "  · <target>" plus the optional
+// inline "new ·" marker on created actions, plus the LLM note.
+func recapRowLine(a ReviewAction) string {
 	target := a.Target
 	if target == "" && a.Kind == "memory" {
 		target = "index"
 	}
-	row := "    · " + target
-	if note := strings.TrimSpace(a.Note); note != "" {
-		row += " — " + note
+	row := selflearnRecapRowStyle.Render("  · " + target)
+	note := strings.TrimSpace(a.Note)
+	if a.Verb == "created" {
+		row += selflearnRecapRowStyle.Render(" — ") + selflearnRecapNewStyle.Render("new ·")
+		if note != "" {
+			row += selflearnRecapRowStyle.Render(" " + note)
+		}
+	} else if note != "" {
+		row += selflearnRecapRowStyle.Render(" — " + note)
 	}
 	return row
 }
 
-// selflearnRecap*Style — italic + dim across the block so it reads as
-// a quiet background thought, never competing with the chat content.
-// Kind sub-headers carry no extra weight; the indent does the work.
+// recapKindStyle returns the per-kind sub-header style: blue for
+// memory, purple for skill, dim for anything else.
+func recapKindStyle(kind string) lipgloss.Style {
+	switch kind {
+	case "memory":
+		return selflearnRecapMemoryStyle
+	case "skill":
+		return selflearnRecapSkillStyle
+	default:
+		return selflearnRecapKindStyle
+	}
+}
+
+// selflearnRecap*Style — kind sub-headers carry the only color in the
+// block (memory blue, skill purple) so the eye can group rows at a
+// glance; the rows themselves stay italic + TextDim so the block as a
+// whole still reads as a quiet background thought.
 var (
-	selflearnRecapHeaderStyle = lipgloss.NewStyle().
-					Foreground(kit.CurrentTheme.TextDim).
-					Italic(true)
 	selflearnRecapKindStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
+	selflearnRecapMemoryStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Dark: "#6BA4D6", Light: "#1F77B4"}).
+					Italic(true)
+	selflearnRecapSkillStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Dark: "#B68EE0", Light: "#7B2D8E"}).
+					Italic(true)
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
+	// "new ·" marker for created skills — accent green, bold, no italic
+	// so it pops slightly against the dim row text.
+	selflearnRecapNewStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Success).
+				Bold(true)
 )
 
 // memoryVerb maps a memory_write action to the recap-line verb.
