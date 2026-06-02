@@ -177,19 +177,19 @@ func (p *selfLearnPanel) renderScopeBar() string {
 
 // ── Row rendering ───────────────────────────────────────────────────────
 
-// Layout columns (in monospace cells). Every row aligns its label to
-// labelCol; int values sit right next to the label as a compact phrase
-// ("Run every 10 user turns"), not floated against the right edge.
+// Layout columns. Every row's "content" (bracket for bool, value for int)
+// starts at a column derived from its indent (indentStep cols per level);
+// the cursor caret sits cursorWidth cols before that. Section headers go
+// at indent 0 (col 0). Rows directly under a section: indent 1 (col 4).
+// Sub-sections under those: header at indent 1, rows at indent 2 (col 8).
 const (
-	// labelCol is where row labels start (after section indent, cursor, and
-	// bracket). Bool rows render "[ ] " in cols labelCol-4..labelCol-1; int
-	// rows pad an equivalent gutter so their label aligns with bool labels.
-	labelCol = 8
-	// bracketWidth covers "[ ] " or "[✓] " — same width either way.
-	bracketWidth = 4
-	// cursorWidth covers the "▸ " caret + space (or its blank twin).
+	indentStep  = 4
 	cursorWidth = 2
 )
+
+// contentCol returns the column where the row's leftmost rendered content
+// (bracket / value / save button) starts, for the given indent.
+func contentCol(indent int) int { return indent * indentStep }
 
 func (p *selfLearnPanel) cursorMark(i int) string {
 	if i == p.cursor {
@@ -198,10 +198,11 @@ func (p *selfLearnPanel) cursorMark(i int) string {
 	return strings.Repeat(" ", cursorWidth)
 }
 
-// sectionLead returns the indent prefix for a row inside a section. Section
-// headers themselves have indent 0; rows under a section use indent 1.
-func sectionLead(indent int) string {
-	return strings.Repeat(" ", indent*2)
+// cursorPad returns the leading whitespace + cursor caret so the next
+// glyph lands exactly at contentCol(indent).
+func (p *selfLearnPanel) cursorPad(i, indent int) string {
+	at := max(contentCol(indent)-cursorWidth, 0)
+	return strings.Repeat(" ", at) + p.cursorMark(i)
 }
 
 func (p *selfLearnPanel) renderBoolRow(i int, row configRow, _ int) string {
@@ -209,9 +210,7 @@ func (p *selfLearnPanel) renderBoolRow(i int, row configRow, _ int) string {
 	if row.boolGetter(&p.snap) {
 		mark = selflearnCheckStyle.Render("[✓]")
 	}
-	// Pad section + cursor + bracket so the label lands on labelCol.
-	leftPad := strings.Repeat(" ", labelCol-cursorWidth-bracketWidth-row.indent*2)
-	line := sectionLead(row.indent) + leftPad + p.cursorMark(i) + mark + " " + row.label
+	line := p.cursorPad(i, row.indent) + mark + " " + row.label
 	if row.advHint != "" {
 		line += "  " + selflearnHintStyle.Render(row.advHint)
 	}
@@ -223,12 +222,9 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	// Value-first format: "<value> <unit> · <label>  [~ <footnote>]".
-	// The value sits in the same column as the "[" of bool rows above it
-	// so the numbers and brackets read as one left edge.
-	prefixStr := sectionLead(row.indent) + p.cursorMark(i)
-
-	line := prefixStr + selflearnValueStyle.Render(value)
+	// Value-first phrase: the value sits in the same column as the "[" of
+	// bool rows at the same indent so numbers and brackets line up.
+	line := p.cursorPad(i, row.indent) + selflearnValueStyle.Render(value)
 	if row.unit != "" {
 		line += " " + selflearnMutedStyle.Render(row.unit)
 	}
@@ -245,9 +241,8 @@ func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
 	if validationErr != nil {
 		style = selflearnSaveDisabledStyle
 	}
-	// Save aligns with the "[ ]" of the bool rows above (indent=1 like a
-	// section row), so the button reads as part of the form column.
-	return sectionLead(1) + p.cursorMark(i) + style.Render("[ Save ]")
+	// Save aligns with indent-1 rows (the form's main column).
+	return p.cursorPad(i, 1) + style.Render("[ Save ]")
 }
 
 // ── Row kinds and layout ────────────────────────────────────────────────
@@ -341,11 +336,11 @@ func (p *selfLearnPanel) rows() []configRow {
 			intMax:    100,
 		},
 		{kind: rowSpacer},
-		{kind: rowSectionHeader, label: "Allowed actions (agent-created scope)"},
+		{kind: rowSubHeader, label: "Allowed actions (agent-created scope)", indent: 1},
 		{
 			kind:       rowBool,
 			label:      "Create new skills",
-			indent:     1,
+			indent:     2,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowCreate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyCreate = !s.Skills.DenyCreate },
@@ -353,7 +348,7 @@ func (p *selfLearnPanel) rows() []configRow {
 		{
 			kind:       rowBool,
 			label:      "Update existing skills",
-			indent:     1,
+			indent:     2,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyUpdate = !s.Skills.DenyUpdate },
@@ -361,17 +356,17 @@ func (p *selfLearnPanel) rows() []configRow {
 		{
 			kind:       rowBool,
 			label:      "Delete obsolete skills",
-			indent:     1,
+			indent:     2,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowDelete() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyDelete = !s.Skills.DenyDelete },
 		},
 		{kind: rowSpacer},
-		{kind: rowSectionHeader, label: "Advanced"},
+		{kind: rowSubHeader, label: "Advanced", indent: 1},
 		{
 			kind:       rowBool,
 			label:      "Update user-authored skills",
-			indent:     1,
+			indent:     2,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdateUserCreated },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.AllowUpdateUserCreated = !s.Skills.AllowUpdateUserCreated },
@@ -389,7 +384,7 @@ func defaultIfZero(v, def int) int {
 	return v
 }
 
-func prefix(indent int) string { return strings.Repeat("  ", indent) }
+func prefix(indent int) string { return strings.Repeat(" ", contentCol(indent)) }
 
 func firstEditableRow(rows []configRow) int {
 	for i, r := range rows {
