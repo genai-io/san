@@ -124,10 +124,12 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	}, "sess-2026-06-02T12-34-56-abc1234")
 	for _, want := range []string{
-		"╭",                       // top-left rounded corner of the box
+		"╭",                       // top-left rounded corner
 		"╮",                       // top-right
-		"╰",                       // bottom-left
+		"╰┄",                      // bottom-left rounded corner + lead dash
 		"╯",                       // bottom-right
+		"┊",                       // vertical sides
+		"┄",                       // dashed border
 		"memory",                  // kind sub-header
 		"· index — noted make ci", // memory index → "index"
 		"· debugging — added 3 entries",
@@ -135,7 +137,7 @@ func TestFormatRecapBlock(t *testing.T) {
 		"· go-testing — trimmed examples",
 		"· python-typing — typing-hints",
 		"· outdated-thing", // note absent → no trailing " — "
-		"gen --resume sess-2026-06-02T12-34-56-abc1234", // footer suggests resume
+		"gen --resume sess-2026-06-02T12-34-56-abc1234", // footer embedded on bottom border
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)

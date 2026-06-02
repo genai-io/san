@@ -288,24 +288,17 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap inside a thin
-// rounded box so it reads as its own card, visually separated from
-// the chat thread. Markdown can't help here (the Notice renderer
-// emits raw text) so the frame is drawn inline via lipgloss. The
-// sessionID footer points at the main session whose sidechain
-// transcript captured this review fork — the user can paste it into
-// the inspector to replay the L1 LLM calls.
+// formatRecapBlock renders the post-review recap as a hand-built box
+// so the "gen --resume <id>" hint can ride on the bottom border:
 //
-//	╭──────────────────────────────────────────────╮
-//	│  memory                                      │
-//	│    · index — noted that lint runs via make ci│
-//	│    · debugging — added 3 race-condition tips │
-//	│  skill                                       │
-//	│    · go-testing — trimmed verbose examples   │
-//	│    · python-typing — new skill, typing-hints │
-//	│                                              │
-//	│  session · 2026-06-02T12:34:56-abc1234       │
-//	╰──────────────────────────────────────────────╯
+//	╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮
+//	┊  memory                                       ┊
+//	┊    · index — noted that lint runs via make ci ┊
+//	┊    · debugging — added 3 race-condition tips  ┊
+//	┊  skill                                        ┊
+//	┊    · go-testing — trimmed verbose examples    ┊
+//	┊    · python-typing — new skill, typing-hints  ┊
+//	╰┄ gen --resume demo.selflearn-review.123 ┄┄┄┄┄╯
 //
 // Actions are grouped by Kind (preserving first-seen order); a bare
 // memory target renders as "index" so every row lines up. Empty
@@ -314,7 +307,6 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	if len(actions) == 0 {
 		return ""
 	}
-	// Group by Kind, preserving first-seen order.
 	type group struct {
 		kind string
 		rows []ReviewAction
@@ -330,22 +322,60 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 		}
 	}
 
-	var inner strings.Builder
-	for gi, g := range groups {
-		if gi > 0 {
-			inner.WriteString("\n")
-		}
-		inner.WriteString(recapKindStyle(g.kind).Render(g.kind))
+	// Pre-render each content line; widest determines the box width.
+	var lines []string
+	for _, g := range groups {
+		lines = append(lines, recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
-			inner.WriteString("\n")
-			inner.WriteString(recapRowLine(a))
+			lines = append(lines, recapRowLine(a))
 		}
 	}
-	if sessionID != "" {
-		inner.WriteString("\n\n")
-		inner.WriteString(selflearnRecapFooterStyle.Render("gen --resume " + sessionID))
+	const gutter = 2
+	contentWidth := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > contentWidth {
+			contentWidth = w
+		}
 	}
-	return selflearnRecapBoxStyle.Render(inner.String())
+	// Footer text (with its leading "┄ " and trailing " ") must fit too.
+	var footerText string
+	footerWidth := 0
+	if sessionID != "" {
+		footerText = selflearnRecapFooterStyle.Render("gen --resume " + sessionID)
+		footerWidth = lipgloss.Width(footerText) + 4 // "┄ " + text + " ┄"
+		if min := footerWidth - 2*gutter; min > contentWidth {
+			contentWidth = min
+		}
+	}
+	innerWidth := contentWidth + 2*gutter
+
+	border := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"})
+	var b strings.Builder
+	// Top border: ╭┄┄…┄╮
+	b.WriteString(border.Render("╭" + strings.Repeat("┄", innerWidth) + "╮"))
+	for _, ln := range lines {
+		pad := contentWidth - lipgloss.Width(ln)
+		b.WriteString("\n")
+		b.WriteString(border.Render("┊"))
+		b.WriteString(strings.Repeat(" ", gutter))
+		b.WriteString(ln)
+		b.WriteString(strings.Repeat(" ", pad))
+		b.WriteString(strings.Repeat(" ", gutter))
+		b.WriteString(border.Render("┊"))
+	}
+	// Bottom border: ╰┄ <footer> ┄…┄╯  (or ╰┄┄…┄╯ when no footer fits)
+	b.WriteString("\n")
+	if footerText != "" {
+		trailDashes := max(innerWidth-(lipgloss.Width(footerText)+4), 1) // "┄ " + text + " ┄"
+		b.WriteString(border.Render("╰┄"))
+		b.WriteString(" ")
+		b.WriteString(footerText)
+		b.WriteString(" ")
+		b.WriteString(border.Render(strings.Repeat("┄", trailDashes) + "╯"))
+	} else {
+		b.WriteString(border.Render("╰" + strings.Repeat("┄", innerWidth) + "╯"))
+	}
+	return b.String()
 }
 
 // recapRowLine formats one action row: "  · <target>" optionally
@@ -392,28 +422,18 @@ var (
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
-	// Dashed border using triple-dash ("┄" / "┆") in a fainter shade
-	// than TextDim. Triple-dash tiles more evenly across cells than
-	// the quadruple-dash variants whose internal pattern misaligns
-	// at cell boundaries and reads jittery.
-	selflearnRecapBoxStyle = lipgloss.NewStyle().
-				Border(lipgloss.Border{
-			Top:         "┄",
-			Bottom:      "┄",
-			Left:        "┆",
-			Right:       "┆",
-			TopLeft:     "╭",
-			TopRight:    "╮",
-			BottomLeft:  "╰",
-			BottomRight: "╯",
-		}).
-		BorderForeground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
-		Padding(0, 2)
-	// Footer line inside the box pointing at the sidechain transcript
-	// for the inspector to replay.
+	// Footer style for "gen --resume <id>" embedded on the bottom border.
+	// Italic + Faint so it reads as a label baked into the chrome, not
+	// another content row competing for attention.
 	selflearnRecapFooterStyle = lipgloss.NewStyle().
 					Foreground(kit.CurrentTheme.TextDim).
+					Italic(true).
 					Faint(true)
+	// selflearnLiveStyle dresses the inline indicator row (the spinner
+	// + target line that lives above the prompt while a review runs).
+	// Italic + TextDim so it sits softly in the chat flow without
+	// pulling focus from real messages.
+	selflearnLiveStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Italic(true)
 )
 
 // memoryVerb maps a memory_write action to the recap-line verb.
