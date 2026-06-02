@@ -106,10 +106,10 @@ func TestSelfLearnIndicatorTickFrameAdvances(t *testing.T) {
 	}
 }
 
-// TestFormatRecapBlock locks the §"User-visible surface" delimiter-bounded
-// recap shape: two horizontal rules + one "  · <verb> <kind>   <target>"
-// row per action. Empty input ⇒ "" so the wire-up's "skip publish on no
-// writes" branch keeps working.
+// TestFormatRecapBlock locks the post-review recap shape: one italic
+// dim line per action, prefixed with the thinking icon. No header, no
+// horizontal rules. Empty input ⇒ "" so the wire-up's "skip publish on
+// no writes" branch keeps working.
 func TestFormatRecapBlock(t *testing.T) {
 	if got := formatRecapBlock(nil); got != "" {
 		t.Fatalf("empty input should yield empty string; got %q", got)
@@ -120,14 +120,16 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"},
 	})
 	for _, want := range []string{
-		"─",
-		"· updated skill · go-testing",
-		"· saved memory · debugging",
-		"· retired skill · outdated-thing",
+		"💭 updated skill · go-testing",
+		"💭 saved memory · debugging",
+		"💭 retired skill · outdated-thing",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "─") {
+		t.Fatalf("recap should no longer carry horizontal rules; got:\n%s", got)
 	}
 }
 

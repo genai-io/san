@@ -13,10 +13,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/app/hub"
+	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
@@ -255,31 +257,38 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
-	header := fmt.Sprintf("Self-improvement review (%s)", kinds.String())
+	_ = kinds // header dropped; recap is self-evident
 	m.agentEventHub.Publish(hub.Event{
 		Type:    "selflearn.review.done",
 		Source:  "selflearn",
 		Target:  "main",
-		Subject: header + "\n" + formatRecapBlock(actions),
+		Subject: formatRecapBlock(actions),
 	})
 }
 
-// formatRecapBlock renders the delimited recap from the action log.
-// Empty input ⇒ "" so callers can skip the publish on a no-write pass.
+// formatRecapBlock renders the per-action recap as italic dim lines
+// prefixed with a thinking icon — no header, no horizontal rules. Each
+// line: "💭 <verb> <kind · target>". Empty input ⇒ "" so callers can
+// skip the publish on a no-write pass.
 func formatRecapBlock(actions []ReviewAction) string {
 	if len(actions) == 0 {
 		return ""
 	}
-	const rule = "─────────────────────────────────────────────────"
 	var b strings.Builder
-	b.WriteString(rule)
-	b.WriteString("\n")
-	for _, a := range actions {
-		fmt.Fprintf(&b, "  · %s %s\n", a.Verb, actionLabel(a))
+	for i, a := range actions {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(selflearnRecapStyle.Render("💭 " + a.Verb + " " + actionLabel(a)))
 	}
-	b.WriteString(rule)
 	return b.String()
 }
+
+// selflearnRecapStyle: italic + dim, matching the "background thought"
+// feel the user asked for.
+var selflearnRecapStyle = lipgloss.NewStyle().
+	Foreground(kit.CurrentTheme.TextDim).
+	Italic(true)
 
 // memoryVerb maps a memory_write action to the recap-line verb.
 func memoryVerb(action string) string {

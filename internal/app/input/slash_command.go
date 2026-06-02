@@ -321,10 +321,10 @@ func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string
 // own terminal.
 func (c *SlashCommandController) handleSelflearnDemoCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	if c.env.RunSelfLearnDemo == nil {
-		return "self-learn indicator not wired", nil, nil
+		return "", nil, nil
 	}
 	c.env.RunSelfLearnDemo()
-	return "self-learn indicator demo started (~6s) — watch the bottom status bar", nil, nil
+	return "", nil, nil
 }
 
 func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
