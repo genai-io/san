@@ -294,12 +294,12 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	// Label-first phrase: "Run every 10 user turns" reads as a sentence.
+	// Label-first phrase: "Run every (10) user turns" reads as a sentence.
 	// The label sits one bracket-width past where a bool row's "[" goes,
 	// so labels align with bool-row labels at the same indent.
 	labelStart := contentCol(row.indent) + 4 // 4 = bracket width "[ ] "
 	leftPad := strings.Repeat(" ", labelStart-cursorWidth)
-	line := leftPad + p.cursorMark(i) + row.label + " " + selflearnValueStyle.Render(value)
+	line := leftPad + p.cursorMark(i) + row.label + " " + valueChip(value)
 	if row.unit != "" {
 		line += " " + selflearnMutedStyle.Render(row.unit)
 	}
@@ -310,12 +310,20 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	return line
 }
 
+// valueChip wraps a numeric value in chip-style brackets so it reads as
+// an editable input: muted parens around an accent-bold value.
+func valueChip(value string) string {
+	return selflearnChipBracketStyle.Render("(") +
+		selflearnValueStyle.Render(value) +
+		selflearnChipBracketStyle.Render(")")
+}
+
 func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
-	style := selflearnSaveReadyStyle
+	style := selflearnSaveButtonStyle
 	if validationErr != nil {
-		style = selflearnSaveDisabledStyle
+		style = selflearnSaveButtonDisabledStyle
 	}
-	btn := style.Render("[ Save ]")
+	btn := style.Render("Save")
 	tail := selflearnMutedStyle.Render("  or " + keycap("esc") + selflearnMutedStyle.Render(" to discard"))
 	return p.cursorPad(i, 1) + btn + tail
 }
@@ -507,10 +515,17 @@ var (
 	selflearnRailOnStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
 	selflearnRailOffStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 
-	// Two-segment scope control: active in accent + bold + underline,
-	// inactive in muted text — no background fill.
-	selflearnScopeActiveStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true).Underline(true)
-	selflearnScopeIdleStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+	// Two-segment scope control: active is a filled pill (accent bg +
+	// background fg), inactive is a flat padded label so the two segments
+	// read as a real segmented control.
+	selflearnScopeActiveStyle = lipgloss.NewStyle().
+					Background(kit.CurrentTheme.Accent).
+					Foreground(kit.CurrentTheme.Background).
+					Bold(true).
+					Padding(0, 1)
+	selflearnScopeIdleStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextDim).
+				Padding(0, 1)
 
 	// "● unsaved" tag for the top-right corner of the panel body.
 	selflearnUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
@@ -520,6 +535,18 @@ var (
 	selflearnKeycapBracketStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	selflearnKeycapTextStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
 
-	selflearnSaveReadyStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
-	selflearnSaveDisabledStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	// Save button — filled accent pill when ready, muted pill when the
+	// snapshot fails validation.
+	selflearnSaveButtonStyle = lipgloss.NewStyle().
+					Background(kit.CurrentTheme.Success).
+					Foreground(kit.CurrentTheme.Background).
+					Bold(true).
+					Padding(0, 2)
+	selflearnSaveButtonDisabledStyle = lipgloss.NewStyle().
+						Background(kit.CurrentTheme.TextDim).
+						Foreground(kit.CurrentTheme.Background).
+						Padding(0, 2)
+
+	// Chip-style brackets for editable values: "(10)" with muted parens.
+	selflearnChipBracketStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 )
