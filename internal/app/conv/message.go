@@ -379,11 +379,9 @@ func formatAssistantContent(params AssistantParams) string {
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
 		// Wrap at terminal width so long lines don't overflow and the
 		// height calculation (which counts \n-delimited lines) matches
-		// the actual visual line count.
-		wrapWidth := params.Width - 2 // account for "● " prefix
-		if wrapWidth < 20 {
-			wrapWidth = 20
-		}
+		// the actual visual line count. Mirrors the thinking branch above:
+		// reserve 2 cols for the "● " prefix, floored at minWrapWidth.
+		wrapWidth := max(params.Width-2, minWrapWidth)
 		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + "▌")
 	}
 

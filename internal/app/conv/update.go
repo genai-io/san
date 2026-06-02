@@ -182,48 +182,53 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		// during streaming. It resets only at turn start (applyPreInfer).
 	}
 
-	// Commit newly streamed text to terminal scrollback so the user can
-	// scroll up to see earlier parts of a long response that have been
-	// truncated from the active view. Only commit at newline boundaries
-	// so partial-line chunks don't appear as narrow left-edge flicker.
+	// Commit newly streamed text to terminal scrollback at newline
+	// boundaries so the user can scroll up to see earlier parts of a long
+	// response that have been truncated from the active view.
 	var cmds []tea.Cmd
-	if len(m.Messages) > 0 {
-		last := m.Messages[len(m.Messages)-1]
-		if last.Role == core.RoleAssistant && len(last.Content) > m.Stream.ScrollbackLen {
-			delta := last.Content[m.Stream.ScrollbackLen:]
-			if lastNewline := strings.LastIndex(delta, "\n"); lastNewline >= 0 {
-				commit := delta[:lastNewline+1]
-				m.Stream.ScrollbackLen += len(commit)
-				cmds = append(cmds, tea.Println(strings.TrimRight(commit, "\n")))
-			}
-		}
+	if cmd := commitStreamTail(m, false); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 
 	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
 		m.Stream.Active = false
 		// Flush any remaining tail that hasn't hit a newline yet.
-		if len(m.Messages) > 0 {
-			last := m.Messages[len(m.Messages)-1]
-			if last.Role == core.RoleAssistant && len(last.Content) > m.Stream.ScrollbackLen {
-				tail := last.Content[m.Stream.ScrollbackLen:]
-				if tail != "" {
-					cmds = append(cmds, tea.Println(tail))
-				}
-				m.Stream.ScrollbackLen = len(last.Content)
-			}
+		if cmd := commitStreamTail(m, true); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
-		commitCmds := rt.CommitMessages()
-		if len(commitCmds) > 0 {
-			cmds = append(cmds, commitCmds...)
-		}
+		cmds = append(cmds, rt.CommitMessages()...)
 	}
-	if len(cmds) == 1 {
-		return cmds[0]
+	return tea.Batch(cmds...)
+}
+
+// commitStreamTail flushes newly streamed assistant text to terminal
+// scrollback and advances Stream.ScrollbackLen past whatever it commits.
+// When flush is false it commits only through the last newline (so a
+// partial trailing line doesn't appear as left-edge flicker); when true it
+// commits the entire remaining tail. Returns nil when there is nothing to
+// commit.
+func commitStreamTail(m *Model, flush bool) tea.Cmd {
+	if len(m.Messages) == 0 {
+		return nil
 	}
-	if len(cmds) > 0 {
-		return tea.Batch(cmds...)
+	last := m.Messages[len(m.Messages)-1]
+	if last.Role != core.RoleAssistant || len(last.Content) <= m.Stream.ScrollbackLen {
+		return nil
 	}
-	return nil
+
+	delta := last.Content[m.Stream.ScrollbackLen:] // non-empty per the guard above
+	if flush {
+		m.Stream.ScrollbackLen = len(last.Content)
+		return tea.Println(delta)
+	}
+
+	lastNewline := strings.LastIndex(delta, "\n")
+	if lastNewline < 0 {
+		return nil
+	}
+	commit := delta[:lastNewline+1]
+	m.Stream.ScrollbackLen += len(commit)
+	return tea.Println(strings.TrimRight(commit, "\n"))
 }
 
 func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {

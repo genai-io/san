@@ -40,25 +40,17 @@ func ScrollWindow(lines []string, offset, maxHeight int) (string, int) {
 	// Scrolled up. Clamp so the window never scrolls past the first line
 	// (at which point line 0 sits at the top of the window).
 	maxOffset := total - maxHeight + 1
-	if offset > maxOffset {
-		offset = maxOffset
-	}
+	offset = min(offset, maxOffset)
 
-	// Decide how many content rows fit. We always reserve one row for the
-	// "↓ below" indicator; if any content remains above the window we reserve
-	// a second row for the "↑ above" indicator. Deciding "above" from the
-	// tentative top (with avail = maxHeight-1) keeps the total at maxHeight —
-	// reserving on the final top index, not an off-by-one estimate.
-	avail := maxHeight - 1
-	top := total - offset - avail
-	if top > 0 {
-		avail--
-		top = total - offset - avail
-	}
-	if top < 0 {
-		top = 0
-	}
+	// Reserve one row for the "↓ below" indicator, plus a second for the
+	// "↑ above" indicator when any content remains above the window. Testing
+	// "above" against the one-indicator window keeps the total at maxHeight.
 	bottom := total - offset
+	contentRows := maxHeight - 1
+	if bottom-contentRows > 0 {
+		contentRows-- // room for the "↑ above" indicator
+	}
+	top := max(bottom-contentRows, 0)
 
 	var sb strings.Builder
 	if top > 0 {

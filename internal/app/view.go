@@ -148,11 +148,11 @@ func (m model) renderInputView() string {
 // renderChatSection assembles the full chat content (active messages, tracker,
 // transient spinners) into a single string. It is pure: height-limiting and
 // scroll windowing are applied by the caller via conv.ScrollWindow.
-func (m model) renderChatSection(activeContent, trackerView string) string {
+func (m model) renderChatSection(content, trackerView string) string {
 	var parts []string
 
-	if activeContent != "" {
-		parts = append(parts, activeContent)
+	if content != "" {
+		parts = append(parts, content)
 	}
 
 	if trackerView != "" {
