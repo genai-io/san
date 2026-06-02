@@ -13,6 +13,7 @@ import (
 
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/markdown"
+	"github.com/genai-io/gen-code/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,13 +29,6 @@ func fireWrite(observer SkillWriteObserver, action, name, note string) {
 	if observer != nil {
 		observer(action, name, note)
 	}
-}
-
-// str does a safe string type assertion on a tool-input map value:
-// non-string values (nil, numbers) return "".
-func str(v any) string {
-	s, _ := v.(string)
-	return s
 }
 
 // skillNameRe enforces class-level kebab names and doubles as a traversal guard
@@ -569,12 +563,12 @@ func (t *skillManageTool) Schema() core.ToolSchema {
 }
 
 func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string, error) {
-	action := strings.TrimSpace(str(in["action"]))
-	name := strings.TrimSpace(str(in["name"]))
+	action := strings.TrimSpace(tool.GetString(in, "action"))
+	name := strings.TrimSpace(tool.GetString(in, "name"))
 	if name == "" {
 		return "", fmt.Errorf("name is required")
 	}
-	note := str(in["note"])
+	note := tool.GetString(in, "note")
 
 	var (
 		msg string
@@ -582,15 +576,15 @@ func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string,
 	)
 	switch action {
 	case "create":
-		msg, err = t.mgr.Create(name, str(in["description"]), str(in["content"]), str(in["level"]), note)
+		msg, err = t.mgr.Create(name, tool.GetString(in, "description"), tool.GetString(in, "content"), tool.GetString(in, "level"), note)
 	case "patch":
-		msg, err = t.mgr.Patch(name, str(in["old_text"]), str(in["new_text"]), boolOf(in["replace_all"]), note)
+		msg, err = t.mgr.Patch(name, tool.GetString(in, "old_text"), tool.GetString(in, "new_text"), tool.GetBool(in, "replace_all"), note)
 	case "edit":
-		msg, err = t.mgr.Edit(name, str(in["content"]), note)
+		msg, err = t.mgr.Edit(name, tool.GetString(in, "content"), note)
 	case "write_file":
-		msg, err = t.mgr.WriteFile(name, str(in["file"]), str(in["content"]), note)
+		msg, err = t.mgr.WriteFile(name, tool.GetString(in, "file"), tool.GetString(in, "content"), note)
 	case "remove_file":
-		msg, err = t.mgr.RemoveFile(name, str(in["file"]), note)
+		msg, err = t.mgr.RemoveFile(name, tool.GetString(in, "file"), note)
 	case "delete":
 		msg, err = t.mgr.Delete(name, note)
 	default:
@@ -601,9 +595,4 @@ func (t *skillManageTool) Execute(_ context.Context, in map[string]any) (string,
 	}
 	out, _ := json.Marshal(map[string]string{"status": "ok", "message": msg})
 	return string(out), nil
-}
-
-func boolOf(v any) bool {
-	b, _ := v.(bool)
-	return b
 }

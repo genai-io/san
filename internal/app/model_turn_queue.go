@@ -135,7 +135,7 @@ func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
 	// Selflearn tick-start events are internal spinner wake-ups, not
 	// user-visible notices. TryStartTicker keeps back-to-back reviews
 	// from stacking parallel tick chains.
-	if ev.Type == "selflearn.review.started" {
+	if ev.Type == eventSelfLearnReviewStarted {
 		if m.services.SelfLearn.Indicator != nil && m.services.SelfLearn.Indicator.TryStartTicker() {
 			return tea.Batch(scheduleSelflearnTick(), next)
 		}

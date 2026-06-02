@@ -106,9 +106,6 @@ func (s *MemoryStore) resolveFile(name string) (string, error) {
 // Add appends a new entry to file (default index). Exact duplicates are a no-op.
 func (s *MemoryStore) Add(file, content, note string) (string, error) {
 	content = strings.TrimSpace(content)
-	if content == "" {
-		return "", fmt.Errorf("content cannot be empty")
-	}
 	if err := scanContent(content); err != nil {
 		return "", err
 	}
@@ -253,7 +250,7 @@ func readEntries(path string) []string {
 		return nil
 	}
 	var out []string
-	for _, e := range strings.Split(raw, memoryEntryDelimiter) {
+	for e := range strings.SplitSeq(raw, memoryEntryDelimiter) {
 		if t := strings.TrimSpace(e); t != "" {
 			out = append(out, t)
 		}

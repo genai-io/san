@@ -30,6 +30,15 @@ import (
 // Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY.
 const selfLearnDisableEnv = "GEN_DISABLE_SELF_LEARN"
 
+// L1 review lifecycle event types published on agentEventHub. "started" is
+// an internal spinner wake-up consumed by onMainEvent; "done"/"failed"
+// surface as user-visible notices.
+const (
+	eventSelfLearnReviewStarted = "selflearn.review.started"
+	eventSelfLearnReviewDone    = "selflearn.review.done"
+	eventSelfLearnReviewFailed  = "selflearn.review.failed"
+)
+
 // wireSelfLearn builds the L1 Reviewer for the running session when ≥1
 // arm is enabled. params is captured so the fork rebuilds an LLM client
 // with the same provider/model/max-tokens for prefix-cache parity
@@ -281,7 +290,7 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	}
 	_ = kinds // header dropped; recap is self-evident
 	m.agentEventHub.Publish(hub.Event{
-		Type:    "selflearn.review.done",
+		Type:    eventSelfLearnReviewDone,
 		Source:  "selflearn",
 		Target:  "main",
 		Subject: formatRecapBlock(actions, forkSessionID),
@@ -464,7 +473,7 @@ func (m *model) publishSelfLearnStarted(kinds selflearn.ReviewKind) {
 		return
 	}
 	m.agentEventHub.Publish(hub.Event{
-		Type:    "selflearn.review.started",
+		Type:    eventSelfLearnReviewStarted,
 		Source:  "selflearn",
 		Target:  "main",
 		Subject: kinds.String(),
@@ -483,7 +492,7 @@ func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
 		msg = "review failed (see log)"
 	}
 	m.agentEventHub.Publish(hub.Event{
-		Type:    "selflearn.review.failed",
+		Type:    eventSelfLearnReviewFailed,
 		Source:  "selflearn",
 		Target:  "main",
 		Subject: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg),

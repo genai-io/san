@@ -49,11 +49,6 @@ type OperationModeParams struct {
 	ThinkingEffort   string
 	ShowThinking     bool
 	QueueCount       int
-
-	// SelfLearnStatus is the L1 reviewer's status-bar label
-	// ("evolving …", "evolved · N changes", "evolving failed"). Empty
-	// when idle or disabled.
-	SelfLearnStatus string
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -72,10 +67,6 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	if queueBadge := renderQueueBadge(params.QueueCount); queueBadge != "" {
 		leftParts = append(leftParts, queueBadge)
-	}
-
-	if params.SelfLearnStatus != "" {
-		leftParts = append(leftParts, renderSelfLearnIndicator(params.SelfLearnStatus))
 	}
 
 	left := strings.Join(leftParts, "  ")
@@ -670,19 +661,6 @@ func renderQueueBadge(count int) string {
 		return ""
 	}
 	return queueBadgeStyle.Render(fmt.Sprintf(" [%d queued]", count))
-}
-
-// selfLearnIndicatorStyle is the muted, italic style for the bottom-left
-// "evolving …" indicator while an L1 review is in flight. Same style family
-// as other ephemeral status pieces so the bar reads as a single unit.
-var selfLearnIndicatorStyle = lipgloss.NewStyle().
-	Foreground(kit.CurrentTheme.Muted).
-	Italic(true)
-
-// renderSelfLearnIndicator wraps the caller's text in the muted-italic
-// status-bar style.
-func renderSelfLearnIndicator(text string) string {
-	return selfLearnIndicatorStyle.Render(text)
 }
 
 func truncateQueueContent(s string, maxLen int) string {
