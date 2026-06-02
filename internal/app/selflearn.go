@@ -323,8 +323,13 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	}
 
 	// Pre-render each content line; widest determines the box width.
+	// A blank line between kind groups gives the eye a moment to rest
+	// so the two sections don't read as one long list.
 	var lines []string
-	for _, g := range groups {
+	for gi, g := range groups {
+		if gi > 0 {
+			lines = append(lines, "")
+		}
 		lines = append(lines, recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
 			lines = append(lines, recapRowLine(a))
@@ -345,7 +350,9 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	var footerText string
 	footerLen := 0
 	if sessionID != "" {
-		footerText = selflearnRecapFooterStyle.Render("gen --resume " + sessionID)
+		// "↪ " prefix turns the footer from a passive label into an
+		// affordance: it reads as "next action" rather than chrome.
+		footerText = selflearnRecapFooterStyle.Render("↪ gen --resume " + sessionID)
 		footerLen = lipgloss.Width(footerText)
 		if footerLen > contentWidth {
 			contentWidth = footerLen
@@ -425,11 +432,14 @@ var (
 	selflearnRecapKindStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
+	// Memory blue / skill purple — desaturated ~15-20% vs the previous
+	// values so they blend with the overall muted/italic aesthetic
+	// instead of pulling focus from chat content.
 	selflearnRecapMemoryStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.AdaptiveColor{Dark: "#6BA4D6", Light: "#1F77B4"}).
+					Foreground(lipgloss.AdaptiveColor{Dark: "#82A0BA", Light: "#487192"}).
 					Italic(true)
 	selflearnRecapSkillStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.AdaptiveColor{Dark: "#B68EE0", Light: "#7B2D8E"}).
+					Foreground(lipgloss.AdaptiveColor{Dark: "#A89AC4", Light: "#745783"}).
 					Italic(true)
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
