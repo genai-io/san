@@ -22,8 +22,9 @@ func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
 	if snap.Phase != selflearnReviewing {
 		t.Fatalf("phase: got %v, want reviewing", snap.Phase)
 	}
-	if !strings.HasPrefix(snap.Render(), "evolving ") || strings.Contains(snap.Render(), "  ") {
-		t.Fatalf("reviewing render without target: %q", snap.Render())
+	// Reviewing render is just the spinner frame ("|", "/", "-", "\\").
+	if got := snap.Render(); len(got) != 1 || strings.ContainsAny(got, "evolvedfailedchanges") {
+		t.Fatalf("reviewing render without target: %q", got)
 	}
 
 	// Complete → done with change count.
@@ -34,7 +35,7 @@ func TestSelfLearnIndicatorPhaseTransitions(t *testing.T) {
 	if snap.Phase != selflearnDone || snap.Changes != 2 {
 		t.Fatalf("done snap: %+v", snap)
 	}
-	if got := snap.Render(); got != "evolved · 2 changes" {
+	if got := snap.Render(); got != "✓ 2 changes" {
 		t.Fatalf("done render: %q", got)
 	}
 
@@ -57,7 +58,7 @@ func TestSelfLearnIndicatorFailDecay(t *testing.T) {
 	s := NewSelfLearnIndicator()
 	s.BeginReview()
 	s.Fail()
-	if got := s.Snapshot().Render(); got != "evolving failed" {
+	if got := s.Snapshot().Render(); got != "× review failed" {
 		t.Fatalf("fail render: %q", got)
 	}
 	// Done hold (2 s) would clear by now; failed (3 s) must still be active.

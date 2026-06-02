@@ -13,8 +13,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/genai-io/gen-code/internal/app/kit"
 )
 
 // selflearnTickMsg advances the spinner frame and decays done/failed back
@@ -140,7 +138,7 @@ func (s *SelfLearnIndicator) Tick(now time.Time) (delay time.Duration, stillActi
 	defer s.mu.Unlock()
 	switch s.phase {
 	case selflearnReviewing:
-		s.frame = (s.frame + 1) % len(kit.BrailleSpinnerFrames)
+		s.frame = (s.frame + 1) % len(asciiSpinnerFrames)
 		return selflearnTickInterval, true
 	case selflearnDone:
 		return s.decayPhase(now, selflearnDoneHoldDuration)
@@ -221,22 +219,28 @@ type SelfLearnIndicatorSnapshot struct {
 	Changes int
 }
 
+// asciiSpinnerFrames is the classic four-frame ASCII spinner. We pick
+// this over the braille set so the status line stays terminal-portable
+// (some PTYs render braille glyphs as wide cells, which jitters the
+// width of the surrounding label).
+var asciiSpinnerFrames = []string{"|", "/", "-", `\`}
+
 // Render returns the status-bar label; "" for idle.
 func (s SelfLearnIndicatorSnapshot) Render() string {
 	switch s.Phase {
 	case selflearnReviewing:
-		spinner := kit.BrailleSpinnerFrames[s.Frame%len(kit.BrailleSpinnerFrames)]
+		spinner := asciiSpinnerFrames[s.Frame%len(asciiSpinnerFrames)]
 		if s.Target == "" {
-			return "evolving " + spinner
+			return spinner
 		}
-		return "evolving " + spinner + " " + s.Target
+		return spinner + " " + s.Target
 	case selflearnDone:
 		if s.Changes == 0 {
-			return "evolved"
+			return ""
 		}
-		return fmt.Sprintf("evolved · %d changes", s.Changes)
+		return fmt.Sprintf("✓ %d changes", s.Changes)
 	case selflearnFailed:
-		return "evolving failed"
+		return "× review failed"
 	default:
 		return ""
 	}
