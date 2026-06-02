@@ -147,8 +147,6 @@ func (p *selfLearnPanel) Render(width int) string {
 			b.WriteString(selflearnSubHeaderStyle.Render(prefix(row.indent) + row.label))
 		case rowSpacer:
 			b.WriteString(" ")
-		case rowAdvHint:
-			b.WriteString(selflearnHintStyle.Render(prefix(row.indent) + row.label))
 		case rowSave:
 			b.WriteString(p.renderSaveRow(i, validationErr))
 		case rowBool:
@@ -187,8 +185,6 @@ const (
 	// bracket). Bool rows render "[ ] " in cols labelCol-4..labelCol-1; int
 	// rows pad an equivalent gutter so their label aligns with bool labels.
 	labelCol = 8
-	// labelValueGap is the spacing between label and value on int rows.
-	labelValueGap = 2
 	// bracketWidth covers "[ ] " or "[✓] " — same width either way.
 	bracketWidth = 4
 	// cursorWidth covers the "▸ " caret + space (or its blank twin).
@@ -215,7 +211,11 @@ func (p *selfLearnPanel) renderBoolRow(i int, row configRow, _ int) string {
 	}
 	// Pad section + cursor + bracket so the label lands on labelCol.
 	leftPad := strings.Repeat(" ", labelCol-cursorWidth-bracketWidth-row.indent*2)
-	return sectionLead(row.indent) + leftPad + p.cursorMark(i) + mark + " " + row.label
+	line := sectionLead(row.indent) + leftPad + p.cursorMark(i) + mark + " " + row.label
+	if row.advHint != "" {
+		line += "  " + selflearnHintStyle.Render(row.advHint)
+	}
+	return line
 }
 
 func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
@@ -223,23 +223,19 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	// Pad section + cursor + gutter so the label lands on labelCol (same
-	// column as bool labels — int rows replace the bracket with whitespace).
-	leftPad := strings.Repeat(" ", labelCol-cursorWidth-row.indent*2)
-	prefixStr := sectionLead(row.indent) + leftPad + p.cursorMark(i)
+	// Value-first format: "<value> <unit> · <label>  [~ <footnote>]".
+	// The value sits in the same column as the "[" of bool rows above it
+	// so the numbers and brackets read as one left edge.
+	prefixStr := sectionLead(row.indent) + p.cursorMark(i)
 
-	// "label  value unit" as a compact phrase. The value sits next to the
-	// label (highlighted), unit follows in muted style — no large gap.
-	line := prefixStr + row.label + strings.Repeat(" ", labelValueGap) + selflearnValueStyle.Render(value)
+	line := prefixStr + selflearnValueStyle.Render(value)
 	if row.unit != "" {
 		line += " " + selflearnMutedStyle.Render(row.unit)
 	}
-
-	// Footnote tucked under the label column.
+	line += selflearnMutedStyle.Render("  -  ") + row.label
 	if row.footnote != nil {
-		footnoteLead := strings.Repeat(" ", labelCol)
-		eq := selflearnMutedStyle.Render(row.footnote(row.intGetter(&p.snap)))
-		line += "\n" + footnoteLead + eq
+		fn := row.footnote(row.intGetter(&p.snap))
+		line += selflearnMutedStyle.Render("  ~  " + fn)
 	}
 	return line
 }
@@ -249,9 +245,9 @@ func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
 	if validationErr != nil {
 		style = selflearnSaveDisabledStyle
 	}
-	// Save sits at labelCol so it lines up with the rows above.
-	leftPad := strings.Repeat(" ", labelCol-cursorWidth)
-	return leftPad + p.cursorMark(i) + style.Render("[ Save ]")
+	// Save aligns with the "[ ]" of the bool rows above (indent=1 like a
+	// section row), so the button reads as part of the form column.
+	return sectionLead(1) + p.cursorMark(i) + style.Render("[ Save ]")
 }
 
 // ── Row kinds and layout ────────────────────────────────────────────────
@@ -268,7 +264,6 @@ const (
 	rowSectionHeader // big section title (Memory / Skills)
 	rowSubHeader     // sub-section title (Allowed actions / Advanced)
 	rowSpacer        // blank line
-	rowAdvHint       // ⚠ hint under allowUpdateUserCreated
 )
 
 // configRow is one renderable row. Fields unused by the row's kind stay zero.
@@ -282,7 +277,8 @@ type configRow struct {
 	intMin     int
 	intMax     int
 	unit       string           // for rowInt — muted suffix after the value (e.g. "user turns", "KB")
-	footnote   func(int) string // for rowInt — optional muted line under the value
+	footnote   func(int) string // for rowInt — optional muted inline footnote after the label
+	advHint    string           // for rowBool — optional inline "⚠ …" hint after the label
 	editable   bool
 	indent     int
 }
@@ -302,7 +298,7 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:      rowInt,
 			label:     "Run every",
 			unit:      "user turns",
-			indent:    2,
+			indent:    1,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Memory.EveryTurns, 10) },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.EveryTurns = v },
@@ -313,14 +309,14 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:      rowInt,
 			label:     "Max size",
 			unit:      "KB",
-			indent:    2,
+			indent:    1,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.MaxKBOr() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
 			intMax:    setting.SelfLearnMaxMemoryKB,
 			footnote: func(v int) string {
-				return fmt.Sprintf("≈ %d EN words / %d 中文字 (UTF-8)", v*180, v*340)
+				return fmt.Sprintf("%d EN words / %d 中文字 (UTF-8)", v*180, v*340)
 			},
 		},
 		{kind: rowSpacer},
@@ -337,7 +333,7 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:      rowInt,
 			label:     "Run every",
 			unit:      "tool iterations",
-			indent:    2,
+			indent:    1,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Skills.EveryToolIters, 10) },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Skills.EveryToolIters = v },
@@ -379,8 +375,8 @@ func (p *selfLearnPanel) rows() []configRow {
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdateUserCreated },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.AllowUpdateUserCreated = !s.Skills.AllowUpdateUserCreated },
+			advHint:    "⚠ rewrites your authored skill files",
 		},
-		{kind: rowAdvHint, label: "⚠ rewrites your authored skill files", indent: 2},
 		{kind: rowSpacer},
 		{kind: rowSave, label: "Save", editable: true},
 	}
@@ -432,7 +428,7 @@ var (
 	selflearnErrorStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
 	selflearnCursorStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	selflearnCheckStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
-	selflearnValueStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
+	selflearnValueStyle     = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Underline(true)
 
 	selflearnScopeChipStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Background).
