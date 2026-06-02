@@ -356,11 +356,9 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	border := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"})
 	emptyRow := border.Render("┊") + strings.Repeat(" ", innerWidth) + border.Render("┊")
 	var b strings.Builder
-	// Top border: ╭┄┄…┄╮
+	// Top border: ╭┄┄…┄╮. First content row sits directly beneath the
+	// top edge — no top padding row, the gutter handles the breathing.
 	b.WriteString(border.Render("╭" + strings.Repeat("┄", innerWidth) + "╮"))
-	// Vertical padding row so content doesn't sit against the top edge.
-	b.WriteString("\n")
-	b.WriteString(emptyRow)
 	for _, ln := range lines {
 		pad := contentWidth - lipgloss.Width(ln)
 		b.WriteString("\n")
@@ -394,14 +392,16 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	return b.String()
 }
 
-// recapRowLine formats one action row: "  · <target>" optionally
-// followed by " — <note>".
+// recapRowLine formats one action row: " · <target>" optionally
+// followed by " — <note>". Single-space indent so the bullet sits
+// directly under the kind sub-header without dragging the column
+// further right.
 func recapRowLine(a ReviewAction) string {
 	target := a.Target
 	if target == "" && a.Kind == "memory" {
 		target = "index"
 	}
-	row := "  · " + target
+	row := " · " + target
 	if note := strings.TrimSpace(a.Note); note != "" {
 		row += " — " + note
 	}
