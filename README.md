@@ -22,7 +22,7 @@ Gen Code is a terminal coding assistant built around five pluggable pillars — 
 
 ### Open architecture
 
-- **LLM providers** — Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax, Z.ai (GLM); swap via `/model`.
+- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM); swap via `/model`.
 - **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.
 - **Personas** — Markdown identities scoped to user or project; swap via `/identity` ([details](docs/concepts/harness-channels.md#identity-custom-personas)).
 - **Skills & extensions** — Claude Code skills, plugins, and MCP servers run unmodified; sandboxed subagents; lifecycle hooks (shell, LLM, agent, HTTP); auto-loaded project memory.
@@ -101,7 +101,8 @@ Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user)
 | **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY` |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
-| **Alibaba** (Qwen, DeepSeek) | `DASHSCOPE_API_KEY` |
+| **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
+| **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
 | **MiniMax** | `MINIMAX_API_KEY` |
 | **Z.ai** (GLM) | `BIGMODEL_API_KEY` |
 | **Exa** search | _none_ (default) |
