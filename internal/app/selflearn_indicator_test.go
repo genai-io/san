@@ -120,7 +120,7 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
-		"💬 Self-improvement",
+		"Self-improvement",
 		"skill · go-testing: trimmed examples",
 		"memory · debugging: added 3 entries",
 		"skill · outdated-thing", // note absent → no trailing ": "

@@ -291,7 +291,7 @@ func formatRecapBlock(actions []ReviewAction) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(selflearnRecapHeaderStyle.Render("💬 Self-improvement"))
+	b.WriteString(selflearnRecapHeaderStyle.Render("Self-improvement"))
 	for _, a := range actions {
 		row := "  " + actionLabel(a)
 		if note := strings.TrimSpace(a.Note); note != "" {
