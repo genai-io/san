@@ -31,6 +31,9 @@ type Panel interface {
 	HandleKey(msg tea.KeyMsg) (tea.Cmd, bool)
 	Render(width int) string
 	HintLine() string
+	// Dirty reports whether the panel has unsaved edits. The shell uses
+	// this to pin a "● unsaved" tag to the top-right of the header.
+	Dirty() bool
 }
 
 // ConfigSavedMsg is emitted on a successful Save so the app can show a
@@ -135,7 +138,7 @@ func (c *ConfigSelector) Render() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(indent(c.renderHeader()))
+	b.WriteString(indent(c.renderHeader(innerWidth)))
 	b.WriteString("\n")
 	b.WriteString(rule)
 	b.WriteString("\n\n")
@@ -178,19 +181,56 @@ func (c *ConfigSelector) activePanel() Panel {
 	return c.panels[c.index]
 }
 
-// renderHeader returns the breadcrumb + tab pills. When only one panel is
-// registered, the breadcrumb already shows its title so we skip the pills.
-func (c *ConfigSelector) renderHeader() string {
-	bc := configBreadcrumbDimStyle.Render("/config")
+// renderHeader returns the breadcrumb (or tab pills, when multiple
+// panels are registered) with an optional "● unsaved" tag pinned to
+// the right edge of the header line.
+func (c *ConfigSelector) renderHeader(width int) string {
+	var left string
 	if len(c.panels) == 1 {
-		return bc + configBreadcrumbDimStyle.Render(" › ") +
+		left = configBreadcrumbDimStyle.Render("/config") +
+			configBreadcrumbDimStyle.Render(" › ") +
 			configBreadcrumbStyle.Render(c.panels[0].Title())
+	} else {
+		tabs := make([]kit.PanelTab, len(c.panels))
+		for i, p := range c.panels {
+			tabs[i] = kit.PanelTab{Name: p.Title(), Show: true}
+		}
+		return configBreadcrumbDimStyle.Render("/config") + "\n\n" +
+			kit.RenderPanelTabs(tabs, c.index)
 	}
-	tabs := make([]kit.PanelTab, len(c.panels))
-	for i, p := range c.panels {
-		tabs[i] = kit.PanelTab{Name: p.Title(), Show: true}
+
+	right := ""
+	if c.activePanel() != nil && c.activePanel().Dirty() {
+		right = configUnsavedDotStyle.Render("●") + " " +
+			configUnsavedTextStyle.Render("unsaved")
 	}
-	return bc + "\n\n" + kit.RenderPanelTabs(tabs, c.index)
+	if right == "" {
+		return left
+	}
+	gap := max(width-visibleWidth(left)-visibleWidth(right), 1)
+	return left + strings.Repeat(" ", gap) + right
+}
+
+// visibleWidth strips lipgloss ANSI escapes to count visible cells.
+func visibleWidth(s string) int {
+	// lipgloss styled strings have escape sequences "\x1b[...m"; for our
+	// purposes a rune count after stripping those gives a good enough
+	// width — the header content has no full-width CJK.
+	n := 0
+	inEsc := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			inEsc = true
+		case inEsc:
+			if r == 'm' || (r >= '@' && r <= '~') {
+				inEsc = false
+			}
+		default:
+			n++
+		}
+	}
+	return n
 }
 
 func (c *ConfigSelector) renderHint(panelHint string) string {
@@ -209,4 +249,6 @@ var (
 	configBreadcrumbDimStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	configBreadcrumbStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	configRuleStyle          = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+	configUnsavedDotStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
+	configUnsavedTextStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 )

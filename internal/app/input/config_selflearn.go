@@ -48,9 +48,9 @@ func (p *selfLearnPanel) Enter() {
 	p.cursor = firstEditableRow(p.rows())
 }
 
-// dirty reports whether the working snapshot diverges from the disk
-// baseline — drives the "● unsaved" indicator.
-func (p *selfLearnPanel) dirty() bool { return p.snap != p.baseline }
+// Dirty reports whether the working snapshot diverges from the disk
+// baseline — the shell uses it to pin the "● unsaved" indicator.
+func (p *selfLearnPanel) Dirty() bool { return p.snap != p.baseline }
 
 func (p *selfLearnPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if p.editing {
@@ -147,10 +147,6 @@ func (p *selfLearnPanel) Render(width int) string {
 	validationErr := p.snap.Validate()
 
 	var b strings.Builder
-	if dirty := p.renderUnsaved(width); dirty != "" {
-		b.WriteString(dirty)
-		b.WriteString("\n\n")
-	}
 	b.WriteString(p.renderScopeControl())
 	b.WriteString("\n\n")
 
@@ -215,17 +211,6 @@ func (p *selfLearnPanel) isTrailingSpacer(rows []configRow, i int) bool {
 		}
 	}
 	return true
-}
-
-// renderUnsaved is the right-aligned "● unsaved" tag; returns "" when clean.
-func (p *selfLearnPanel) renderUnsaved(width int) string {
-	if !p.dirty() {
-		return ""
-	}
-	tag := selflearnUnsavedDotStyle.Render("●") + " " +
-		selflearnUnsavedTextStyle.Render("unsaved")
-	pad := max(width-9, 0) // "● unsaved" = 9 visible cells
-	return strings.Repeat(" ", pad) + tag
 }
 
 // renderScopeControl is a two-segment selector with the active segment
@@ -564,10 +549,6 @@ var (
 	selflearnScopeIdleStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Padding(0, 1)
-
-	// "● unsaved" tag for the top-right corner of the panel body.
-	selflearnUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
-	selflearnUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 
 	// Keycap pill — neutral gray bg + bold text so it visibly diverges
 	// from "[ ]" checkboxes and reads as a physical key.
