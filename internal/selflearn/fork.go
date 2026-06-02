@@ -27,6 +27,11 @@ type ForkConfig struct {
 	CWD    string
 	Memory *MemoryStore
 	Skills *SkillManager
+	// OnEvent receives the fork agent's lifecycle events (PreInfer /
+	// PostInfer / OnAppend / …). Wire a sidechain recorder here to land
+	// the fork's LLM calls in the main session transcript so the
+	// inspector can replay them. nil = no recording (legacy behavior).
+	OnEvent func(core.Event)
 }
 
 // RunReview forks a restricted agent over the snapshot, runs the kind-
@@ -65,6 +70,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		CWD:       fc.CWD,
 		MaxTurns:  forkMaxTurns,
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
+		OnEvent:   fc.OnEvent,
 	})
 
 	// Trim trailing user messages so the review prompt isn't the second

@@ -187,6 +187,38 @@ func loadLeafIfExists(st *Store, sessionID string) string {
 	return leaf
 }
 
+// NewSidechainRecorder returns a fresh Recorder bound to the current
+// session but flagged so its messages land as sidechain entries (the
+// inspector hides them from the main thread but can list them via
+// IncludeSidechain). Each fork should call this once and pass the result
+// as the fork agent's core.Config.OnEvent. The recorder is not cached
+// because there can be many concurrent forks of different kinds, each
+// wanting its own agentID.
+//
+// Returns nil when the session store isn't ready — the L1 fork is
+// best-effort so a missing recorder is fine.
+func (s *Setup) NewSidechainRecorder(agentID, provider, model string, maxTokens int) *Recorder {
+	s.mu.RLock()
+	st := s.Store
+	sessionID := s.SessionID
+	s.mu.RUnlock()
+
+	if st == nil || st.transcriptStore == nil || sessionID == "" {
+		return nil
+	}
+	return NewRecorder(RecorderOptions{
+		FileStore: st.transcriptStore,
+		SessionID: sessionID,
+		AgentID:   agentID,
+		Provider:  provider,
+		Model:     model,
+		MaxTokens: maxTokens,
+		Cwd:       st.cwd,
+		ProjectID: st.projectID,
+		Sidechain: true,
+	})
+}
+
 // Recorder returns the cached main-session Recorder, or nil if NewRecorder
 // has not been called for the current session. Audit emit sites outside the
 // agent build path use this to surface events without holding their own

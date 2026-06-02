@@ -113,12 +113,21 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
+		// Sidechain recorder: the fork's LLM calls land in the main
+		// session's transcript marked as sidechain so the inspector can
+		// surface them under the "selflearn-review" agent without
+		// interleaving them into the main conversation thread.
+		var forkOnEvent func(core.Event)
+		if rec := m.services.Session.NewSidechainRecorder("selflearn-review", params.Provider.Name(), params.ModelID, params.MaxTokens); rec != nil {
+			forkOnEvent = rec.OnAgentEvent
+		}
 		fc := selflearn.ForkConfig{
-			LLM:    client,
-			System: sys,
-			CWD:    m.env.CWD,
-			Memory: memStore,
-			Skills: skillMgr,
+			LLM:     client,
+			System:  sys,
+			CWD:     m.env.CWD,
+			Memory:  memStore,
+			Skills:  skillMgr,
+			OnEvent: forkOnEvent,
 		}
 		_, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		if runErr != nil {

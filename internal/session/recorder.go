@@ -19,8 +19,10 @@ import (
 // that consumes it. One Recorder is bound to one (sessionID, agentID) pair;
 // OnAgentEvent is the core.Config.OnEvent callback.
 type Recorder struct {
-	fs        *transcript.FileStore
-	sessionID string
+	fs          *transcript.FileStore
+	sessionID   string
+	agentID     string
+	isSidechain bool
 
 	turn atomic.Int64
 
@@ -47,6 +49,11 @@ type RecorderOptions struct {
 	MaxTokens int
 	Cwd       string
 	ProjectID string
+	// Sidechain marks each message.appended that flows through this
+	// recorder as a sidechain entry — used for forked or subagent runs
+	// (e.g. the L1 self-learning review) so the inspector can filter
+	// them out of the main thread but still surface them on demand.
+	Sidechain bool
 }
 
 // NewRecorder writes session.started before returning so observer-driven
@@ -67,8 +74,10 @@ func NewRecorder(opts RecorderOptions) *Recorder {
 		})
 	}
 	return &Recorder{
-		fs:        opts.FileStore,
-		sessionID: opts.SessionID,
+		fs:          opts.FileStore,
+		sessionID:   opts.SessionID,
+		agentID:     opts.AgentID,
+		isSidechain: opts.Sidechain,
 	}
 }
 
@@ -196,12 +205,14 @@ func (r *Recorder) onAppend(ev core.Event) {
 	r.mu.Unlock()
 
 	err := r.fs.AppendMessage(context.Background(), transcript.AppendMessageCommand{
-		SessionID: r.sessionID,
-		MessageID: msg.ID,
-		ParentID:  parent,
-		Time:      time.Now(),
-		Role:      role,
-		Content:   content,
+		SessionID:   r.sessionID,
+		MessageID:   msg.ID,
+		ParentID:    parent,
+		Time:        time.Now(),
+		AgentID:     r.agentID,
+		IsSidechain: r.isSidechain,
+		Role:        role,
+		Content:     content,
 	})
 	if err != nil {
 		log.Logger().Warn("recorder: append message failed", zap.Error(err))
