@@ -124,7 +124,10 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
-		"─",                       // single horizontal rule above the block
+		"╭",                       // top-left rounded corner of the box
+		"╮",                       // top-right
+		"╰",                       // bottom-left
+		"╯",                       // bottom-right
 		"memory",                  // kind sub-header
 		"· index — noted make ci", // memory index → "index"
 		"· debugging — added 3 entries",
@@ -136,9 +139,6 @@ func TestFormatRecapBlock(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)
 		}
-	}
-	if strings.Contains(got, "│") {
-		t.Fatalf("recap should no longer carry per-row vertical rail; got:\n%s", got)
 	}
 	if strings.Contains(got, "**") {
 		t.Fatalf("recap should not contain raw markdown — Notices render plain; got:\n%s", got)

@@ -280,19 +280,19 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap as a grouped list
-// led by a single thin horizontal rule — the markdown "---" idiom —
-// so the block reads as separated from the chat above without
-// per-row chrome. Markdown can't help here (the Notice renderer
-// emits raw text) so the rule is drawn inline via lipgloss.
+// formatRecapBlock renders the post-review recap inside a thin
+// rounded box so it reads as its own card, visually separated from
+// the chat thread. Markdown can't help here (the Notice renderer
+// emits raw text) so the frame is drawn inline via lipgloss.
 //
-//	─────────────────────────────────────────
-//	memory
-//	  · index — noted that lint runs via make ci, not go vet
-//	  · debugging — added 3 race-condition repro tips
-//	skill
-//	  · go-testing — trimmed verbose examples
-//	  · python-typing — new skill, typing-hints and Protocol patterns
+//	╭──────────────────────────────────────────────╮
+//	│  memory                                      │
+//	│    · index — noted that lint runs via make ci│
+//	│    · debugging — added 3 race-condition tips │
+//	│  skill                                       │
+//	│    · go-testing — trimmed verbose examples   │
+//	│    · python-typing — new skill, typing-hints │
+//	╰──────────────────────────────────────────────╯
 //
 // Actions are grouped by Kind (preserving first-seen order); a bare
 // memory target renders as "index" so every row lines up. Empty
@@ -317,17 +317,18 @@ func formatRecapBlock(actions []ReviewAction) string {
 		}
 	}
 
-	var b strings.Builder
-	b.WriteString(selflearnRecapRuleStyle.Render(strings.Repeat("─", 50)))
-	for _, g := range groups {
-		b.WriteString("\n")
-		b.WriteString(recapKindStyle(g.kind).Render(g.kind))
+	var inner strings.Builder
+	for gi, g := range groups {
+		if gi > 0 {
+			inner.WriteString("\n")
+		}
+		inner.WriteString(recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
-			b.WriteString("\n")
-			b.WriteString(recapRowLine(a))
+			inner.WriteString("\n")
+			inner.WriteString(recapRowLine(a))
 		}
 	}
-	return b.String()
+	return selflearnRecapBoxStyle.Render(inner.String())
 }
 
 // recapRowLine formats one action row: "  · <target>" optionally
@@ -357,11 +358,10 @@ func recapKindStyle(kind string) lipgloss.Style {
 	}
 }
 
-// selflearnRecap*Style — kind sub-headers carry the only color in the
-// block (memory blue, skill purple) so the eye can group rows at a
-// glance; rows themselves stay italic + TextDim. A single dim
-// horizontal rule above the block separates it from the chat thread
-// without adding per-row chrome.
+// selflearnRecap*Style — the recap sits inside a thin rounded box
+// drawn in TextDim so the frame stays soft chrome. Inside, kind
+// sub-headers carry the only color (memory blue, skill purple) and
+// rows stay italic + TextDim.
 var (
 	selflearnRecapKindStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
@@ -375,7 +375,10 @@ var (
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
 				Italic(true)
-	selflearnRecapRuleStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Faint(true)
+	selflearnRecapBoxStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(kit.CurrentTheme.TextDim).
+				Padding(0, 2)
 )
 
 // memoryVerb maps a memory_write action to the recap-line verb.
