@@ -47,12 +47,12 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		return
 	}
 	snap := m.services.Setting.Snapshot()
-	resolved, err := selflearn.ResolveSettings(snap.SelfLearn)
+	runtime, err := selflearn.ResolveSettings(snap.SelfLearn)
 	if err != nil {
 		log.Logger().Warn("self-learning config rejected at startup", zap.Error(err))
 		return
 	}
-	if !resolved.Config.Enabled() {
+	if !runtime.Config.Enabled() {
 		m.services.SelfLearn = nil
 		return
 	}
@@ -70,8 +70,8 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 	live.Store(true)
 	m.services.SelfLearnLive = live
 
-	memStore := selflearn.NewMemoryStore(m.env.CWD, resolved.MemoryMaxChars)
-	skillMgr := selflearn.NewSkillManager(m.env.CWD, resolved.Perms)
+	memStore := selflearn.NewMemoryStore(m.env.CWD, runtime.MemoryMaxChars)
+	skillMgr := selflearn.NewSkillManager(m.env.CWD, runtime.Perms)
 
 	// Write observers feed the live spinner-tail and the post-pass recap.
 	// They run on the fork goroutine and check `live` so writes landing
@@ -144,8 +144,8 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		m.publishSelfLearnSummary(kinds, actions)
 	}
 
-	r := selflearn.New(resolved.Config, review)
-	r.SeedTurns(countUserTurns(m.conv.ConvertToProvider()))
+	r := selflearn.New(runtime.Config, review)
+	r.SeedTurns(countUserTurns(m.conv.Messages))
 	m.services.SelfLearn = r
 }
 
@@ -191,7 +191,7 @@ func memoryTopicSuffix(file string) string {
 
 // countUserTurns counts user messages so the memory arm resumes on the
 // right cadence beat after session restore (§6 invariant #8).
-func countUserTurns(msgs []core.Message) int {
+func countUserTurns(msgs []core.ChatMessage) int {
 	n := 0
 	for _, msg := range msgs {
 		if msg.Role == core.RoleUser {

@@ -202,7 +202,7 @@ func (s *MemoryStore) Remove(file, oldText string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	entries = append(entries[:idx], entries[idx+1:]...)
+	entries = slices.Delete(entries, idx, idx+1)
 	if err := writeEntries(path, entries); err != nil {
 		return "", err
 	}

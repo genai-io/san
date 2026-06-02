@@ -8,7 +8,7 @@ import (
 )
 
 // TestResolveSettingsHappyPath confirms a sensible config converts cleanly
-// to a Resolved bundle and that defaults apply where fields are unset.
+// to a Runtime bundle and that defaults apply where fields are unset.
 func TestResolveSettingsHappyPath(t *testing.T) {
 	s := setting.SelfLearnSettings{
 		Memory: setting.SelfLearnMemory{Enabled: true, EveryTurns: 7}, // MaxKB unset → default

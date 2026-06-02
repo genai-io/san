@@ -143,28 +143,27 @@ func (s *SelfLearnIndicator) Tick(now time.Time) (delay time.Duration, stillActi
 		s.frame = (s.frame + 1) % len(kit.BrailleSpinnerFrames)
 		return selflearnTickInterval, true
 	case selflearnDone:
-		remaining := selflearnDoneHoldDuration - now.Sub(s.enteredAt)
-		if remaining <= 0 {
-			s.phase = selflearnIdle
-			s.phaseAtomic.Store(int32(selflearnIdle))
-			s.tickerRunning = false
-			return 0, false
-		}
-		return remaining, true
+		return s.decayPhase(now, selflearnDoneHoldDuration)
 	case selflearnFailed:
-		remaining := selflearnFailedHoldDuration - now.Sub(s.enteredAt)
-		if remaining <= 0 {
-			s.phase = selflearnIdle
-			s.phaseAtomic.Store(int32(selflearnIdle))
-			s.tickerRunning = false
-			return 0, false
-		}
-		return remaining, true
+		return s.decayPhase(now, selflearnFailedHoldDuration)
 	default:
 		s.phaseAtomic.Store(int32(selflearnIdle))
 		s.tickerRunning = false
 		return 0, false
 	}
+}
+
+// decayPhase returns the remaining hold time, or transitions to idle and
+// returns (0, false) once the hold elapses. Callers hold s.mu.
+func (s *SelfLearnIndicator) decayPhase(now time.Time, hold time.Duration) (time.Duration, bool) {
+	remaining := hold - now.Sub(s.enteredAt)
+	if remaining > 0 {
+		return remaining, true
+	}
+	s.phase = selflearnIdle
+	s.phaseAtomic.Store(int32(selflearnIdle))
+	s.tickerRunning = false
+	return 0, false
 }
 
 // Snapshot reads the state for rendering. Idle fast-paths lock-free via

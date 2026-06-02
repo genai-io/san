@@ -260,7 +260,7 @@ func (c *ConfigSelector) rows() []configRow {
 			indent:   2,
 			editable: true,
 			intGetter: func(s *setting.SelfLearnSettings) int {
-				return defaultIfZero(s.Memory.MaxKB, setting.SelfLearnDefaultMemoryKB)
+				return s.Memory.MaxKBOr()
 			},
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
@@ -375,10 +375,7 @@ func (c *ConfigSelector) Render() string {
 		case rowAdvHint:
 			b.WriteString(configHintStyle.Render(prefix(row.indent) + "    " + row.label))
 		case rowSave:
-			cursor := " "
-			if i == c.cursor {
-				cursor = configCursorStyle.Render("▸")
-			}
+			cursor := c.renderCursor(i)
 			label := "[ Save ]"
 			if validationErr != nil {
 				label = configMutedStyle.Render(label)
@@ -407,11 +404,15 @@ func (c *ConfigSelector) Render() string {
 	return configBorderStyle.Render(b.String())
 }
 
-func (c *ConfigSelector) renderBoolRow(i int, row configRow) string {
-	cursor := " "
+func (c *ConfigSelector) renderCursor(i int) string {
 	if i == c.cursor {
-		cursor = configCursorStyle.Render("▸")
+		return configCursorStyle.Render("▸")
 	}
+	return " "
+}
+
+func (c *ConfigSelector) renderBoolRow(i int, row configRow) string {
+	cursor := c.renderCursor(i)
 	mark := "[ ]"
 	if row.boolGetter(&c.snap) {
 		mark = "[✓]"
@@ -421,10 +422,7 @@ func (c *ConfigSelector) renderBoolRow(i int, row configRow) string {
 }
 
 func (c *ConfigSelector) renderIntRow(i int, row configRow) string {
-	cursor := " "
-	if i == c.cursor {
-		cursor = configCursorStyle.Render("▸")
-	}
+	cursor := c.renderCursor(i)
 	value := strconv.Itoa(row.intGetter(&c.snap))
 	if c.editing && i == c.cursor {
 		value = c.editingBuffer + "_"
