@@ -205,30 +205,8 @@ func (c *ConfigSelector) renderHeader(width int) string {
 	if right == "" {
 		return left
 	}
-	gap := max(width-visibleWidth(left)-visibleWidth(right), 1)
+	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)
 	return left + strings.Repeat(" ", gap) + right
-}
-
-// visibleWidth strips lipgloss ANSI escapes to count visible cells.
-func visibleWidth(s string) int {
-	// lipgloss styled strings have escape sequences "\x1b[...m"; for our
-	// purposes a rune count after stripping those gives a good enough
-	// width — the header content has no full-width CJK.
-	n := 0
-	inEsc := false
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEsc = true
-		case inEsc:
-			if r == 'm' || (r >= '@' && r <= '~') {
-				inEsc = false
-			}
-		default:
-			n++
-		}
-	}
-	return n
 }
 
 func (c *ConfigSelector) renderHint(panelHint string) string {

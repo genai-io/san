@@ -57,26 +57,14 @@ type ReviewAction struct {
 }
 
 // actionLabel formats a single action's "kind · target" for the
-// spinner-tail display and the one-line done summary. The "memory"
-// kind elides the separator when the target is the index file.
+// spinner-tail display and the one-line done summary. The separator
+// is elided when the target is empty (memory index file, or a skill
+// recorded without a name).
 func actionLabel(a ReviewAction) string {
-	switch a.Kind {
-	case "skill":
-		if a.Target == "" {
-			return "skill"
-		}
-		return "skill · " + a.Target
-	case "memory":
-		if a.Target == "" {
-			return "memory"
-		}
-		return "memory · " + a.Target
-	default:
-		if a.Target == "" {
-			return a.Kind
-		}
-		return a.Kind + " · " + a.Target
+	if a.Target == "" {
+		return a.Kind
 	}
+	return a.Kind + " · " + a.Target
 }
 
 // buildDoneSummary turns the per-pass action log into a one-line phrase

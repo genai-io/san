@@ -9,6 +9,7 @@
 package selflearn
 
 import (
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -44,18 +45,17 @@ func (k ReviewKind) Has(x ReviewKind) bool { return k&x != 0 }
 // String renders the active arms as a stable, log-friendly label. Used by the
 // wire-up's review-summary log line.
 func (k ReviewKind) String() string {
-	switch k {
-	case 0:
-		return "none"
-	case KindMemory:
-		return "memory"
-	case KindSkills:
-		return "skill"
-	case KindMemory | KindSkills:
-		return "memory+skill"
-	default:
-		return "unknown"
+	var parts []string
+	if k.Has(KindMemory) {
+		parts = append(parts, "memory")
 	}
+	if k.Has(KindSkills) {
+		parts = append(parts, "skill")
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, "+")
 }
 
 // ReviewFunc performs the actual fork+review for the fired arms, given the
@@ -160,25 +160,23 @@ func (r *Reviewer) Observe(result core.Result) {
 	snapshot := make([]core.Message, len(result.Messages))
 	copy(snapshot, result.Messages)
 
-	go r.run(kinds, snapshot)
-}
-
-func (r *Reviewer) run(kinds ReviewKind, snapshot []core.Message) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			log.Logger().Warn("selflearn: review panicked (recovered)",
-				zap.String("kinds", kinds.String()),
-				zap.Any("panic", rec),
-				zap.Stack("stack"),
-			)
+	go func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Logger().Warn("selflearn: review panicked (recovered)",
+					zap.String("kinds", kinds.String()),
+					zap.Any("panic", rec),
+					zap.Stack("stack"),
+				)
+			}
+			r.mu.Lock()
+			r.inFlight = false
+			r.mu.Unlock()
+		}()
+		if r.review != nil {
+			r.review(kinds, snapshot)
 		}
-		r.mu.Lock()
-		r.inFlight = false
-		r.mu.Unlock()
 	}()
-	if r.review != nil {
-		r.review(kinds, snapshot)
-	}
 }
 
 func positiveOr(v, def int) int {

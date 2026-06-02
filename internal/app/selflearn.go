@@ -20,6 +20,7 @@ import (
 	"github.com/genai-io/gen-code/internal/app/hub"
 	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/gen-code/internal/core/system"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
 	"github.com/genai-io/gen-code/internal/selflearn"
@@ -251,11 +252,10 @@ func (m *model) handleSelflearnTick() tea.Cmd {
 // memory file, or "" for the index. The indicator renderer adds the
 // "memory" / "memory · " prefix at display time.
 func memoryTopicName(file string) string {
-	file = strings.TrimSuffix(file, ".md")
-	if file == "" || file == "MEMORY" || file == "memory" {
+	if file == "" || strings.EqualFold(file, system.AutoMemoryIndexName) {
 		return ""
 	}
-	return file
+	return strings.TrimSuffix(file, ".md")
 }
 
 // countUserTurns counts user messages so the memory arm resumes on the

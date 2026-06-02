@@ -86,9 +86,9 @@ type Skill struct {
 	Description  string   `yaml:"description"`
 	AllowedTools []string `yaml:"allowed-tools"`
 	ArgumentHint string   `yaml:"argument-hint"`
-	// Origin marks provenance. Absent/empty means "user-created" (the default);
-	// the self-learning L1 reviewer writes "agent-created" so the future L2
-	// curator manages only agent-owned skills and never the user's.
+	// Origin marks provenance. Absent/empty means "user-created" (the
+	// default); other producers may set a non-empty value to mark the
+	// source so downstream consumers can scope writes by provenance.
 	Origin string `yaml:"origin,omitempty"`
 
 	// Runtime fields
