@@ -179,58 +179,69 @@ func (p *selfLearnPanel) renderScopeBar() string {
 
 // ── Row rendering ───────────────────────────────────────────────────────
 
+// Layout columns (in monospace cells). Every row aligns its label to
+// labelCol; values right-end at valueCol with the unit flowing past.
 const (
-	// cursorCol holds the cursor caret; the rest of the body is right-padded
-	// from there so every row's content lines up no matter the cursor state.
-	cursorCol = "  " // 2 columns (caret + space)
-	checkCol  = "[ ]"
+	// labelCol is where row labels start (after section indent, cursor, and
+	// bracket). Bool rows render "[ ] " in cols labelCol-4..labelCol-1; int
+	// rows pad an equivalent gutter so their label aligns with bool labels.
+	labelCol = 8
+	// valueCol is the right edge of the numeric value. Units render past it
+	// in muted style, all units stay left-aligned to the same column.
+	valueCol = 40
+	// bracketWidth covers "[ ] " or "[✓] " — same width either way.
+	bracketWidth = 4
+	// cursorWidth covers the "▸ " caret + space (or its blank twin).
+	cursorWidth = 2
 )
 
 func (p *selfLearnPanel) cursorMark(i int) string {
 	if i == p.cursor {
 		return selflearnCursorStyle.Render("▸ ")
 	}
-	return cursorCol
+	return strings.Repeat(" ", cursorWidth)
+}
+
+// sectionLead returns the indent prefix for a row inside a section. Section
+// headers themselves have indent 0; rows under a section use indent 1.
+func sectionLead(indent int) string {
+	return strings.Repeat(" ", indent*2)
 }
 
 func (p *selfLearnPanel) renderBoolRow(i int, row configRow, _ int) string {
-	mark := checkCol
+	mark := "[ ]"
 	if row.boolGetter(&p.snap) {
 		mark = selflearnCheckStyle.Render("[✓]")
 	}
-	return prefix(row.indent) + p.cursorMark(i) + mark + " " + row.label
+	// Pad section + cursor + bracket so the label lands on labelCol.
+	leftPad := strings.Repeat(" ", labelCol-cursorWidth-bracketWidth-row.indent*2)
+	return sectionLead(row.indent) + leftPad + p.cursorMark(i) + mark + " " + row.label
 }
 
-func (p *selfLearnPanel) renderIntRow(i int, row configRow, width int) string {
+func (p *selfLearnPanel) renderIntRow(i int, row configRow, _ int) string {
 	value := strconv.Itoa(row.intGetter(&p.snap))
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	prefixStr := prefix(row.indent) + cursorCol // cursor goes inside indent
+	// Pad section + cursor + gutter so the label lands on labelCol (same
+	// column as bool labels — int rows replace the bracket with whitespace).
+	leftPad := strings.Repeat(" ", labelCol-cursorWidth-row.indent*2)
+	prefixStr := sectionLead(row.indent) + leftPad + p.cursorMark(i)
 	label := row.label
-	valueCell := selflearnValueStyle.Render(value)
-	unit := ""
+
+	// Right-align the numeric value to valueCol; units flow past in muted style.
+	labelEnd := labelCol + visibleLen(label)
+	numPad := max(valueCol-labelEnd-visibleLen(value), 1)
+	line := prefixStr + label + strings.Repeat(" ", numPad) + selflearnValueStyle.Render(value)
 	if row.unit != "" {
-		unit = " " + selflearnMutedStyle.Render(row.unit)
+		line += "  " + selflearnMutedStyle.Render(row.unit)
 	}
 
-	// Right-align value + unit. visibleLen counts plain runes; the styled
-	// bytes need to be measured before markup is applied.
-	leftLen := visibleLen(prefixStr) + visibleLen(label) + 1
-	rightLen := visibleLen(value)
-	if row.unit != "" {
-		rightLen += 1 + visibleLen(row.unit)
-	}
-	pad := max(width-leftLen-rightLen, 1)
-
-	cursorPrefix := prefix(row.indent) + p.cursorMark(i)
-	line := cursorPrefix + label + strings.Repeat(" ", pad) + valueCell + unit
-
-	// Footnote tucked under the label, in the same column.
+	// Footnote tucked under the label column.
 	if row.footnote != nil {
-		v := row.intGetter(&p.snap)
-		eq := selflearnMutedStyle.Render(row.footnote(v))
-		line += "\n" + prefixStr + eq
+		footnoteLead := strings.Repeat(" ", labelCol)
+		eq := selflearnMutedStyle.Render(row.footnote(row.intGetter(&p.snap)))
+		line += "\n" + footnoteLead + eq
 	}
 	return line
 }
@@ -240,7 +251,9 @@ func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
 	if validationErr != nil {
 		style = selflearnSaveDisabledStyle
 	}
-	return p.cursorMark(i) + style.Render("[ Save ]")
+	// Save sits at labelCol so it lines up with the rows above.
+	leftPad := strings.Repeat(" ", labelCol-cursorWidth)
+	return leftPad + p.cursorMark(i) + style.Render("[ Save ]")
 }
 
 // visibleLen approximates the column width of s in a monospace cell. It

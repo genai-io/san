@@ -137,13 +137,13 @@ func (c *ConfigSelector) Render() string {
 }
 
 // boxSize caps the popup dimensions: width holds the form within a
-// readable column (~80 chars of content), height fits the typical content
+// readable column (~90 chars of content), height fits the typical content
 // without stretching to the full terminal.
 func (c *ConfigSelector) boxSize() (w, h int) {
 	w = max(60, c.width-6)
-	w = min(w, 84)
-	h = max(18, c.height-4)
-	h = min(h, 32)
+	w = min(w, 92)
+	h = max(20, c.height-4)
+	h = min(h, 34)
 	return w, h
 }
 
