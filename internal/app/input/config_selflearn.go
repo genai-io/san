@@ -229,7 +229,8 @@ func (p *selfLearnPanel) renderUnsaved(width int) string {
 }
 
 // renderScopeControl is a two-segment selector with the active segment
-// in accent style.
+// as a filled pill. The "scope" label is dropped — the two visible
+// segments (user / project) are self-explanatory.
 func (p *selfLearnPanel) renderScopeControl() string {
 	seg := func(name string) string {
 		if p.scope == name {
@@ -237,8 +238,8 @@ func (p *selfLearnPanel) renderScopeControl() string {
 		}
 		return selflearnScopeIdleStyle.Render(name)
 	}
-	sep := selflearnMutedStyle.Render("  ·  ")
-	return selflearnMutedStyle.Render("scope  ") + seg("user") + sep + seg("project")
+	sep := selflearnMutedStyle.Render(" · ")
+	return seg("user") + sep + seg("project")
 }
 
 // renderSectionHeader prints "MEMORY ─────…" — label in caps, then a

@@ -113,29 +113,46 @@ func (c *ConfigSelector) Render() string {
 	}
 	p := c.activePanel()
 	boxWidth, boxHeight := c.boxSize()
-	innerWidth := boxWidth - 4 // Padding(1, 2)
+	gutter := 2                        // horizontal gutter on each side of body content
+	innerWidth := boxWidth - 2*gutter  // width body rows render to
+	pad := strings.Repeat(" ", gutter) // gutter prefix for non-rule lines
 
-	rule := configRuleStyle.Render(strings.Repeat("─", innerWidth))
+	// Top/bottom rules extend the full box width so they read as section
+	// chrome, not as content indented into the gutter.
+	rule := configRuleStyle.Render(strings.Repeat("─", boxWidth))
+
+	// indent indents every line of s by the gutter except blank lines
+	// (which stay blank so they don't carry trailing whitespace).
+	indent := func(s string) string {
+		lines := strings.Split(s, "\n")
+		for i, ln := range lines {
+			if ln == "" {
+				continue
+			}
+			lines[i] = pad + ln
+		}
+		return strings.Join(lines, "\n")
+	}
 
 	var b strings.Builder
-	b.WriteString(c.renderHeader())
+	b.WriteString(indent(c.renderHeader()))
 	b.WriteString("\n")
 	b.WriteString(rule)
 	b.WriteString("\n\n")
-	b.WriteString(p.Render(innerWidth))
+	b.WriteString(indent(p.Render(innerWidth)))
 	b.WriteString("\n")
 	b.WriteString(rule)
 	b.WriteString("\n")
-	b.WriteString(c.renderHint(p.HintLine()))
+	b.WriteString(indent(c.renderHint(p.HintLine())))
 
 	box := lipgloss.NewStyle().
 		Width(boxWidth).
 		Height(boxHeight).
-		Padding(1, 2).
+		Padding(1, 0). // vertical padding only — gutter is in-content
 		Render(b.String())
-	// Left-align rather than center so the popup shares a left edge with
-	// the surrounding app chrome (no L-shaped hole on wide terminals).
-	return lipgloss.Place(c.width, c.height-2, lipgloss.Left, lipgloss.Top, box)
+	// Center the popup so it sits balanced on a wide terminal instead of
+	// hugging the left edge.
+	return lipgloss.Place(c.width, c.height-2, lipgloss.Center, lipgloss.Top, box)
 }
 
 // boxSize caps the popup dimensions: width uses most of the terminal
