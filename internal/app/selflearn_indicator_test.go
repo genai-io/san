@@ -124,23 +124,24 @@ func TestFormatRecapBlock(t *testing.T) {
 		{Verb: "retired", Kind: "skill", Target: "outdated-thing"}, // no note
 	})
 	for _, want := range []string{
-		"**memory**", // bold markdown header
-		"**skill**",
-		"- `index` — noted make ci",       // memory index → `index`
-		"- `debugging` — added 3 entries", // bullet + code-span target
-		"- `go-testing` — trimmed examples",
-		"- `python-typing` — typing-hints",
-		"- `outdated-thing`", // note absent → no trailing " — "
+		"─",                       // single horizontal rule above the block
+		"memory",                  // kind sub-header
+		"· index — noted make ci", // memory index → "index"
+		"· debugging — added 3 entries",
+		"skill",
+		"· go-testing — trimmed examples",
+		"· python-typing — typing-hints",
+		"· outdated-thing", // note absent → no trailing " — "
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)
 		}
 	}
 	if strings.Contains(got, "│") {
-		t.Fatalf("recap should no longer carry the ANSI rail; got:\n%s", got)
+		t.Fatalf("recap should no longer carry per-row vertical rail; got:\n%s", got)
 	}
-	if strings.Contains(got, "\x1b") {
-		t.Fatalf("recap should be plain markdown, no ANSI escapes; got:\n%s", got)
+	if strings.Contains(got, "**") {
+		t.Fatalf("recap should not contain raw markdown — Notices render plain; got:\n%s", got)
 	}
 }
 

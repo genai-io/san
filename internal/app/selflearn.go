@@ -13,10 +13,12 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/gen-code/internal/agent"
 	"github.com/genai-io/gen-code/internal/app/hub"
+	"github.com/genai-io/gen-code/internal/app/kit"
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/llm"
 	"github.com/genai-io/gen-code/internal/log"
@@ -278,22 +280,22 @@ func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []Re
 	})
 }
 
-// formatRecapBlock renders the post-review recap as plain markdown so
-// the conversation's markdown renderer handles all visual styling
-// (bold kind sub-headers, code spans on targets, bullet list under
-// each group). No ANSI escapes are emitted — the markdown spec is
-// the contract.
+// formatRecapBlock renders the post-review recap as a grouped list
+// led by a single thin horizontal rule — the markdown "---" idiom —
+// so the block reads as separated from the chat above without
+// per-row chrome. Markdown can't help here (the Notice renderer
+// emits raw text) so the rule is drawn inline via lipgloss.
 //
-//	**memory**
-//	- `index` — noted that lint runs via make ci, not go vet
-//	- `debugging` — added 3 race-condition repro tips
-//
-//	**skill**
-//	- `go-testing` — trimmed verbose examples
-//	- `python-typing` — new skill, typing-hints and Protocol patterns
+//	─────────────────────────────────────────
+//	memory
+//	  · index — noted that lint runs via make ci, not go vet
+//	  · debugging — added 3 race-condition repro tips
+//	skill
+//	  · go-testing — trimmed verbose examples
+//	  · python-typing — new skill, typing-hints and Protocol patterns
 //
 // Actions are grouped by Kind (preserving first-seen order); a bare
-// memory target renders as `index` so every row lines up. Empty
+// memory target renders as "index" so every row lines up. Empty
 // input ⇒ "" so the publish is skipped on no-write passes.
 func formatRecapBlock(actions []ReviewAction) string {
 	if len(actions) == 0 {
@@ -316,11 +318,10 @@ func formatRecapBlock(actions []ReviewAction) string {
 	}
 
 	var b strings.Builder
-	for gi, g := range groups {
-		if gi > 0 {
-			b.WriteString("\n\n") // blank line between groups so markdown breaks the list
-		}
-		fmt.Fprintf(&b, "**%s**", g.kind)
+	b.WriteString(selflearnRecapRuleStyle.Render(strings.Repeat("─", 50)))
+	for _, g := range groups {
+		b.WriteString("\n")
+		b.WriteString(recapKindStyle(g.kind).Render(g.kind))
 		for _, a := range g.rows {
 			b.WriteString("\n")
 			b.WriteString(recapRowLine(a))
@@ -329,21 +330,53 @@ func formatRecapBlock(actions []ReviewAction) string {
 	return b.String()
 }
 
-// recapRowLine formats one action as a markdown bullet:
-// "- `<target>` — <note>". Memory writes against the index file
-// render as `index` so the column lines up. Rows without an LLM
-// note drop the em-dash entirely.
+// recapRowLine formats one action row: "  · <target>" optionally
+// followed by " — <note>".
 func recapRowLine(a ReviewAction) string {
 	target := a.Target
 	if target == "" && a.Kind == "memory" {
 		target = "index"
 	}
-	row := "- `" + target + "`"
+	row := "  · " + target
 	if note := strings.TrimSpace(a.Note); note != "" {
 		row += " — " + note
 	}
-	return row
+	return selflearnRecapRowStyle.Render(row)
 }
+
+// recapKindStyle returns the per-kind sub-header style: blue for
+// memory, purple for skill, dim for anything else.
+func recapKindStyle(kind string) lipgloss.Style {
+	switch kind {
+	case "memory":
+		return selflearnRecapMemoryStyle
+	case "skill":
+		return selflearnRecapSkillStyle
+	default:
+		return selflearnRecapKindStyle
+	}
+}
+
+// selflearnRecap*Style — kind sub-headers carry the only color in the
+// block (memory blue, skill purple) so the eye can group rows at a
+// glance; rows themselves stay italic + TextDim. A single dim
+// horizontal rule above the block separates it from the chat thread
+// without adding per-row chrome.
+var (
+	selflearnRecapKindStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextDim).
+				Italic(true)
+	selflearnRecapMemoryStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Dark: "#6BA4D6", Light: "#1F77B4"}).
+					Italic(true)
+	selflearnRecapSkillStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.AdaptiveColor{Dark: "#B68EE0", Light: "#7B2D8E"}).
+					Italic(true)
+	selflearnRecapRowStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.TextDim).
+				Italic(true)
+	selflearnRecapRuleStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Faint(true)
+)
 
 // memoryVerb maps a memory_write action to the recap-line verb.
 func memoryVerb(action string) string {
