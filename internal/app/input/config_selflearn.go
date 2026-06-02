@@ -219,13 +219,19 @@ func (p *selfLearnPanel) renderSectionHeader(row configRow, width int) string {
 		selflearnRuleStyle.Render(strings.Repeat("─", ruleLen))
 }
 
-// railFor returns the colored "│" used as the left edge of a section's
-// content — green when the section is enabled, muted when off.
+// railFor returns the left-edge rail for a section's content. The shape
+// AND color carry the on/off signal so the two states pop visually:
+//   - on:  "┃" — heavy vertical bar in accent green
+//   - off: "╎" — dashed light bar in muted text-dim
+//
+// This way the active section's rail clearly outweighs the section-
+// divider hairlines ("MEMORY ────"), making "which one is running" the
+// loudest signal on the panel.
 func (p *selfLearnPanel) railFor(row configRow) string {
 	if row.enabledFn != nil && row.enabledFn(&p.snap) {
-		return selflearnRailOnStyle.Render("│")
+		return selflearnRailOnStyle.Render("┃")
 	}
-	return selflearnRailOffStyle.Render("│")
+	return selflearnRailOffStyle.Render("╎")
 }
 
 // withRail prepends the section rail to a row, consuming its first
