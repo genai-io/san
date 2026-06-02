@@ -354,10 +354,10 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 	innerWidth := contentWidth + 2*gutter
 
 	border := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"})
-	emptyRow := border.Render("┊") + strings.Repeat(" ", innerWidth) + border.Render("┊")
 	var b strings.Builder
-	// Top border: ╭┄┄…┄╮. First content row sits directly beneath the
-	// top edge — no top padding row, the gutter handles the breathing.
+	// Top border: ╭┄┄…┄╮. No vertical padding rows inside — the
+	// horizontal gutter alone handles the breathing room and the
+	// card stays tight.
 	b.WriteString(border.Render("╭" + strings.Repeat("┄", innerWidth) + "╮"))
 	for _, ln := range lines {
 		pad := contentWidth - lipgloss.Width(ln)
@@ -369,10 +369,6 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 		b.WriteString(strings.Repeat(" ", gutter))
 		b.WriteString(border.Render("┊"))
 	}
-	// Vertical padding row so content doesn't sit against the bottom
-	// border (where the footer rides).
-	b.WriteString("\n")
-	b.WriteString(emptyRow)
 	// Bottom border: ╰┄ <footer> ┄…┄╯  (or ╰┄┄…┄╯ when no footer fits)
 	b.WriteString("\n")
 	if footerText != "" {
