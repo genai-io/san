@@ -117,7 +117,7 @@ func TestConfigSelectorRenderShowsValidationError(t *testing.T) {
 func TestConfigSelectorRenderShowsBreadcrumb(t *testing.T) {
 	c, _ := newTestPopup()
 	out := c.Render()
-	if !strings.Contains(out, "/config") || !strings.Contains(out, "Self-Learning") {
+	if !strings.Contains(out, "/config") || !strings.Contains(out, "self-learning") {
 		t.Fatalf("breadcrumb missing from render:\n%s", out)
 	}
 }

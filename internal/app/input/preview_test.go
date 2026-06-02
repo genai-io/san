@@ -20,7 +20,7 @@ func TestRenderPreview(t *testing.T) {
 	out := c.Render()
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
 	clean := ansi.ReplaceAllString(out, "")
-	if !strings.Contains(clean, "Self-Learning") {
+	if !strings.Contains(clean, "self-learning") {
 		t.Fatal("missing title")
 	}
 	if testing.Verbose() {
