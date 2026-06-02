@@ -103,28 +103,48 @@ func (c *ConfigSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 }
 
 // Render frames the active panel with breadcrumb + tab strip on top, the
-// panel body in a kit.Panel-sized box, and the combined hint line at the
-// bottom. Centered on screen via lipgloss.Place, matching /plugin.
+// panel body, and the combined hint line at the bottom. Centered on screen
+// via lipgloss.Place, matching /plugin — but with a capped width so form
+// rows don't sprawl across an ultra-wide terminal (values would otherwise
+// drift far from their labels).
 func (c *ConfigSelector) Render() string {
 	if !c.active || len(c.panels) == 0 {
 		return ""
 	}
 	p := c.activePanel()
-	pn := kit.Panel{Width: c.width, Height: c.height}
-	innerWidth := pn.ContentWidth() - 4 // panel adds Padding(1, 2)
+	boxWidth, boxHeight := c.boxSize()
+	innerWidth := boxWidth - 4 // Padding(1, 2)
+
+	rule := configRuleStyle.Render(strings.Repeat("─", innerWidth))
 
 	var b strings.Builder
 	b.WriteString(c.renderHeader())
 	b.WriteString("\n")
-	b.WriteString(pn.SeparatorLine())
+	b.WriteString(rule)
 	b.WriteString("\n\n")
 	b.WriteString(p.Render(innerWidth))
 	b.WriteString("\n")
-	b.WriteString(pn.SeparatorLine())
+	b.WriteString(rule)
 	b.WriteString("\n")
 	b.WriteString(c.renderHint(p.HintLine()))
 
-	return pn.Wrap(b.String())
+	box := lipgloss.NewStyle().
+		Width(boxWidth).
+		Height(boxHeight).
+		Padding(1, 2).
+		Render(b.String())
+	return lipgloss.Place(c.width, c.height-2, lipgloss.Center, lipgloss.Top, box)
+}
+
+// boxSize caps the popup dimensions: width holds the form within a
+// readable column (~80 chars of content), height fits the typical content
+// without stretching to the full terminal.
+func (c *ConfigSelector) boxSize() (w, h int) {
+	w = max(60, c.width-6)
+	w = min(w, 84)
+	h = max(18, c.height-4)
+	h = min(h, 32)
+	return w, h
 }
 
 // ActivePanel returns the currently focused panel; nil when none are
@@ -168,4 +188,5 @@ func (c *ConfigSelector) renderHint(panelHint string) string {
 var (
 	configBreadcrumbDimStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	configBreadcrumbStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
+	configRuleStyle          = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 )

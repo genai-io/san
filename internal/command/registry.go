@@ -45,6 +45,7 @@ func builtinCommands() []Info {
 		{Name: "think", Description: "Toggle provider-native thinking effort"},
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
 		{Name: "search", Description: "Select search engine for web search"},
+		{Name: "config", Description: "Configure self-learning and other settings"},
 	}
 }
 

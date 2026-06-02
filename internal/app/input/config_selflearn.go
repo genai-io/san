@@ -198,7 +198,7 @@ func (p *selfLearnPanel) renderBoolRow(i int, row configRow, _ int) string {
 	if row.boolGetter(&p.snap) {
 		mark = selflearnCheckStyle.Render("[✓]")
 	}
-	return p.cursorMark(i) + prefix(row.indent) + mark + " " + row.label
+	return prefix(row.indent) + p.cursorMark(i) + mark + " " + row.label
 }
 
 func (p *selfLearnPanel) renderIntRow(i int, row configRow, width int) string {
@@ -206,33 +206,41 @@ func (p *selfLearnPanel) renderIntRow(i int, row configRow, width int) string {
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}
-	label := prefix(row.indent) + row.label
+	prefixStr := prefix(row.indent) + cursorCol // cursor goes inside indent
+	label := row.label
 	valueCell := selflearnValueStyle.Render(value)
+	unit := ""
+	if row.unit != "" {
+		unit = " " + selflearnMutedStyle.Render(row.unit)
+	}
 
-	// Right-align the value cell. Compute the gap between label and value.
-	// width = inner panel width; cursor (2) + label + gap + value rendered.
-	leftLen := len(cursorCol) + visibleLen(label) + 1 // +1 trailing space before value
-	valueLen := visibleLen(value)
-	pad := max(width-leftLen-valueLen, 1)
-	line := p.cursorMark(i) + label + strings.Repeat(" ", pad) + valueCell
+	// Right-align value + unit. visibleLen counts plain runes; the styled
+	// bytes need to be measured before markup is applied.
+	leftLen := visibleLen(prefixStr) + visibleLen(label) + 1
+	rightLen := visibleLen(value)
+	if row.unit != "" {
+		rightLen += 1 + visibleLen(row.unit)
+	}
+	pad := max(width-leftLen-rightLen, 1)
 
-	// Tail equivalence for memory.maxKB — placed under the value, indented
-	// past the label column so it reads as a footnote.
-	if row.label == "Max size (KB)" {
+	cursorPrefix := prefix(row.indent) + p.cursorMark(i)
+	line := cursorPrefix + label + strings.Repeat(" ", pad) + valueCell + unit
+
+	// Footnote tucked under the label, in the same column.
+	if row.footnote != nil {
 		v := row.intGetter(&p.snap)
-		eq := selflearnMutedStyle.Render(fmt.Sprintf("≈ %d EN words / %d 中文字 (UTF-8)", v*180, v*340))
-		line += "\n" + cursorCol + prefix(row.indent+2) + eq
+		eq := selflearnMutedStyle.Render(row.footnote(v))
+		line += "\n" + prefixStr + eq
 	}
 	return line
 }
 
 func (p *selfLearnPanel) renderSaveRow(i int, validationErr error) string {
-	label := "Save"
 	style := selflearnSaveReadyStyle
 	if validationErr != nil {
 		style = selflearnSaveDisabledStyle
 	}
-	return p.cursorMark(i) + style.Render("[ "+label+" ]")
+	return p.cursorMark(i) + style.Render("[ Save ]")
 }
 
 // visibleLen approximates the column width of s in a monospace cell. It
@@ -274,6 +282,8 @@ type configRow struct {
 	intSetter  func(*setting.SelfLearnSettings, int)
 	intMin     int
 	intMax     int
+	unit       string           // for rowInt — muted suffix after the value (e.g. "user turns", "KB")
+	footnote   func(int) string // for rowInt — optional muted line under the value
 	editable   bool
 	indent     int
 }
@@ -291,7 +301,8 @@ func (p *selfLearnPanel) rows() []configRow {
 		},
 		{
 			kind:      rowInt,
-			label:     "Review cadence (user turns)",
+			label:     "Run every",
+			unit:      "user turns",
 			indent:    2,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Memory.EveryTurns, 10) },
@@ -301,13 +312,17 @@ func (p *selfLearnPanel) rows() []configRow {
 		},
 		{
 			kind:      rowInt,
-			label:     "Max size (KB)",
+			label:     "Max size",
+			unit:      "KB",
 			indent:    2,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.MaxKBOr() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
 			intMax:    setting.SelfLearnMaxMemoryKB,
+			footnote: func(v int) string {
+				return fmt.Sprintf("≈ %d EN words / %d 中文字 (UTF-8)", v*180, v*340)
+			},
 		},
 		{kind: rowSpacer},
 		{kind: rowSectionHeader, label: "Skills"},
@@ -321,7 +336,8 @@ func (p *selfLearnPanel) rows() []configRow {
 		},
 		{
 			kind:      rowInt,
-			label:     "Review cadence (tool iterations)",
+			label:     "Run every",
+			unit:      "tool iterations",
 			indent:    2,
 			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Skills.EveryToolIters, 10) },
@@ -330,11 +346,11 @@ func (p *selfLearnPanel) rows() []configRow {
 			intMax:    100,
 		},
 		{kind: rowSpacer},
-		{kind: rowSubHeader, label: "Allowed actions (agent-created scope)", indent: 1},
+		{kind: rowSectionHeader, label: "Allowed actions (agent-created scope)"},
 		{
 			kind:       rowBool,
 			label:      "Create new skills",
-			indent:     2,
+			indent:     1,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowCreate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyCreate = !s.Skills.DenyCreate },
@@ -342,7 +358,7 @@ func (p *selfLearnPanel) rows() []configRow {
 		{
 			kind:       rowBool,
 			label:      "Update existing skills",
-			indent:     2,
+			indent:     1,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyUpdate = !s.Skills.DenyUpdate },
@@ -350,24 +366,24 @@ func (p *selfLearnPanel) rows() []configRow {
 		{
 			kind:       rowBool,
 			label:      "Delete obsolete skills",
-			indent:     2,
+			indent:     1,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowDelete() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyDelete = !s.Skills.DenyDelete },
 		},
 		{kind: rowSpacer},
-		{kind: rowSubHeader, label: "Advanced", indent: 1},
+		{kind: rowSectionHeader, label: "Advanced"},
 		{
 			kind:       rowBool,
 			label:      "Update user-authored skills",
-			indent:     2,
+			indent:     1,
 			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdateUserCreated },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.AllowUpdateUserCreated = !s.Skills.AllowUpdateUserCreated },
 		},
-		{kind: rowAdvHint, label: "⚠ rewrites your authored skill files", indent: 3},
+		{kind: rowAdvHint, label: "⚠ rewrites your authored skill files", indent: 2},
 		{kind: rowSpacer},
-		{kind: rowSave, label: "Save", editable: true, indent: 1},
+		{kind: rowSave, label: "Save", editable: true},
 	}
 }
 

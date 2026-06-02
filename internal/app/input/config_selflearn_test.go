@@ -80,7 +80,7 @@ func TestSelfLearnPanelTogglesBool(t *testing.T) {
 // on commit.
 func TestSelfLearnPanelIntEditAndClamp(t *testing.T) {
 	c, p := newTestPopup()
-	// Cursor starts on Enable memory-evolving. Down twice to "Max size (KB)".
+	// Cursor starts on Enable memory-evolving. Down twice to "Max size".
 	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
 	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
 	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter}) // start edit
