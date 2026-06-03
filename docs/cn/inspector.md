@@ -26,7 +26,9 @@ gen inspector --no-open
 
 > **安全提示：** Inspector 仅绑定到 loopback 地址
 > （`127.0.0.1`、`::1`、`localhost`）。转录中包含模型看到的所有内容，包括
-> 工具输入中的密钥 —— 绑定到非 loopback 地址会被拒绝。
+> 工具输入中的密钥 —— 绑定到非 loopback 地址会被拒绝。此外，该 API 本身没有
+> 鉴权，应把绑定的端口视为可信：不要在多用户共享主机上运行 inspector，用完后
+> 请用 `Ctrl-C` 停止。
 
 ## 功能
 
@@ -36,15 +38,18 @@ gen inspector --no-open
 
 ### 时间线导航
 
-中间面板以时间线形式按时间顺序展示转录中的每条记录。每条记录都带有事件类型标签：
+中间面板以时间线形式按时间顺序展示转录中的每条记录。顶部的筛选芯片 ——
+`message`、`tool`、`system`、`inference`、`state`、`hook`、`permission`
+—— 可以显示或隐藏各类事件，方便聚焦关注的内容：
 
-- **用户消息** —— 用户输入或通过管道传入的文本
-- **模型响应** —— LLM 输出的文本和 thinking 内容
-- **工具调用** —— 模型发起的函数调用（参数和结果）
-- **系统事件** —— 会话开始、上下文压缩、错误
-- **Harness 状态** —— 系统 prompt 段、工具 schema、权限决策
-
-顶部的筛选芯片可以显示或隐藏特定事件类型，方便聚焦关注的内容。
+- **message** —— 用户输入、管道传入的文本，以及模型响应（文本和 thinking）
+- **tool** —— 模型发起的工具调用（参数和结果）
+- **system** —— 系统 prompt 段的变更
+- **inference** —— 发送给模型的每一次推理请求（"模型当时看到了什么"记录，
+  携带下文的完整性校验）
+- **state** —— 会话状态变更
+- **hook** —— hook 执行
+- **permission** —— 权限询问与决策
 
 ### 查看原始记录
 
@@ -55,11 +60,14 @@ gen inspector --no-open
 
 在任意记录处，可以打开**系统 Prompt 浮层**，查看该时刻的完整系统 prompt。
 包括 harness 注入的所有段：人设（persona）、技能、项目记忆
-（`GEN.md` / `CLAUDE.md`）、工具 schema 以及 MCP server prompt。
+（`GEN.md` / `CLAUDE.md`）以及 MCP server prompt。（工具 schema 不属于系统
+prompt —— 参见下文"状态回放"。）
 
 ### 状态回放
 
-**State** 标签页可以重建转录中任意时间点的模型完整上下文：
+选中任意记录即可重建该时间点模型的完整上下文，并在右侧详情面板中展示。对于
+`inference.requested` 记录会自动加载；对于其他记录，点击 **Show cumulative
+context at this record** 即可展开。重建出的状态包含：
 - **系统 prompt** —— 包含所有注入段的完整文本
 - **工具 schema** —— 每个可用工具的 JSON Schema 定义
 - **活跃消息链** —— 当前上下文中确切的消息序列（遵循压缩边界和
@@ -78,9 +86,10 @@ gen inspector --no-open
 
 ### 实时追踪
 
-当你另一个终端中有活跃的 gen code 会话时，inspector 可以通过 Server-Sent
-Events（SSE）实时追踪新记录。打开会话并打开 **Live** 开关 —— 新记录会在
-写入磁盘时实时出现在时间线中。
+当你在另一个终端中有活跃的 gen code 会话时，inspector 会通过 Server-Sent
+Events（SSE）实时追踪新记录。只需打开该会话 —— inspector 会自动订阅，新记录
+会在写入磁盘时实时出现在时间线中。流连接期间，顶部状态指示器会显示
+**recording**。
 
 ## UI 布局
 
@@ -88,9 +97,8 @@ Events（SSE）实时追踪新记录。打开会话并打开 **Live** 开关 —
 |------|---------|
 | **侧边栏**（左） | 会话列表：按日期排序的项目会话 |
 | **时间线**（中） | 带筛选芯片的事件记录流 |
-| **详情**（右） | 选中记录的原始 JSON |
+| **详情**（右） | 选中记录的原始 JSON；推理记录还会展示重建的上下文（系统 prompt + 工具 + 消息）|
 | **系统 Prompt 浮层** | 当前时间点的完整系统 prompt |
-| **State 标签页** | 重建的上下文：系统 prompt + 工具 + 消息 |
 
 ## 工作原理
 

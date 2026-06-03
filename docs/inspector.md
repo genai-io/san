@@ -29,7 +29,9 @@ gen inspector --no-open
 > **Security note:** The inspector binds to loopback addresses only
 > (`127.0.0.1`, `::1`, `localhost`). Transcripts contain everything the
 > model saw, including secrets in tool inputs — binding to a non-loopback
-> address is rejected.
+> address is rejected. The API itself is unauthenticated, so treat the
+> bound port as trusted: avoid running the inspector on a shared
+> multi-user host, and stop it (`Ctrl-C`) when you're done.
 
 ## What You Can Do
 
@@ -41,17 +43,19 @@ directory. Click any session to load its transcript.
 ### Navigate the Timeline
 
 The center panel displays every record in the transcript as a
-chronological timeline. Each record is tagged with its event type:
+chronological timeline. Filter chips at the top — `message`, `tool`,
+`system`, `inference`, `state`, `hook`, `permission` — let you show or
+hide each event type so you can focus on what matters:
 
-- **User messages** — text the user typed or piped in
-- **Model responses** — text and thinking output from the LLM
-- **Tool calls** — function calls the model made (arguments and results)
-- **System events** — session start, compaction, errors
-- **Harness state** — system prompt sections, tool schemas, permission
-  decisions
-
-Filter chips at the top let you show or hide specific event types so you
-can focus on what matters.
+- **message** — user input, piped text, and model responses (text and
+  thinking)
+- **tool** — tool calls the model made, with arguments and results
+- **system** — system-prompt section changes
+- **inference** — each request sent to the model (the "what did the model
+  see?" record; carries the integrity checks below)
+- **state** — session state changes
+- **hook** — hook executions
+- **permission** — permission prompts and decisions
 
 ### Inspect Raw Records
 
@@ -64,12 +68,16 @@ hidden fields.
 At any record, you can open the **System Prompt overlay** to see the
 full system prompt that was active at that moment. This includes all
 sections injected by the harness: personas, skills, project memory
-(`GEN.md` / `CLAUDE.md`), tool schemas, and MCP server prompts.
+(`GEN.md` / `CLAUDE.md`), and MCP server prompts. (Tool schemas are not
+part of the system prompt — see Replay State below for those.)
 
 ### Replay State
 
-The **State** tab reconstructs the model's complete context at any point
-in the transcript:
+Selecting a record reconstructs the model's complete context at that
+point and shows it in the detail pane (right). For `inference.requested`
+records it loads automatically; for any other record, click **Show
+cumulative context at this record** to expand it. The reconstructed state
+includes:
 - **System prompt** — full text with all injected sections
 - **Tool schemas** — JSON Schema definitions for every tool available
 - **Active message chain** — the exact messages in context (respecting
@@ -90,10 +98,11 @@ bugs, harness injection issues, or unexpected state drift.
 
 ### Live Tail
 
-When you have an active gen code session running in another terminal,
-the inspector can live-tail new records via Server-Sent Events (SSE).
-Open the session and toggle the **Live** switch — new records appear in
-the timeline as they are written to disk.
+When you have an active gen code session running in another terminal, the
+inspector live-tails new records via Server-Sent Events (SSE). Just open
+the session — the inspector subscribes automatically and new records
+appear in the timeline as they are written to disk. The status indicator
+in the header reads **recording** while the stream is connected.
 
 ## UI Layout
 
@@ -101,9 +110,8 @@ the timeline as they are written to disk.
 |------|---------------|
 | **Sidebar** (left) | Session list: project sessions sorted by date |
 | **Timeline** (center) | Chronological record stream with filter chips |
-| **Detail** (right) | Raw JSON for the selected record |
+| **Detail** (right) | Raw JSON for the selected record; for inference records, the reconstructed context (system + tools + messages) |
 | **System Prompt overlay** | Full system prompt at a given point in time |
-| **State tab** | Reconstructed context: system + tools + messages |
 
 ## How It Works
 
