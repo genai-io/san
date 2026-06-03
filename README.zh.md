@@ -14,6 +14,14 @@
   <p>
     <img src="assets/gen-code.png" alt="Gen Code" width="100%">
   </p>
+  <p>
+    <a href="https://genai-io.github.io/gen-code/intro.html" title="观看动态简介">
+      <img src="assets/intro-poster.png" alt="Gen Code —— 观看动态简介" width="100%">
+    </a>
+  </p>
+  <p>
+    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ 观看动态简介</b></a> —— 多模型 · 多人设 · 快速 · 自我进化
+  </p>
 </div>
 
 Gen Code 是一款终端 AI 编程助手，围绕五大可插拔能力构建 —— **模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现，单二进制分发 —— 面向各类专用 Agent 的统一运行时。
@@ -26,7 +34,7 @@ Gen Code 是一款终端 AI 编程助手，围绕五大可插拔能力构建 —
 - **搜索后端** —— Exa、Tavily、Brave、Serper；通过 `/search` 切换。
 - **Persona 人设** —— 以 Markdown 定义身份，可在用户或项目作用域生效；通过 `/identity` 切换（[详情](docs/concepts/harness-channels.md#identity-custom-personas)）。
 - **技能与扩展** —— Claude Code 的 skills、plugins、MCP servers 无需改动即可运行；沙箱化 subagent；生命周期 hooks（shell、LLM、agent、HTTP）；项目记忆自动加载。
-- **自我进化** *（进行中）* —— Agent 从你的使用过程中学习，随时间不断变强。
+- **自我进化** —— 每隔几轮对话，后台 reviewer 会把近期的工作提炼为持久记忆与可复用技能，让 Agent 随使用逐级升级。*（Level 1 已可用，更高等级仍在推进。）*
 
 ### 工程实现
 

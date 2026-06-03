@@ -14,6 +14,14 @@
   <p>
     <img src="assets/gen-code.png" alt="Gen Code" width="100%">
   </p>
+  <p>
+    <a href="https://genai-io.github.io/gen-code/intro.html" title="Watch the animated intro">
+      <img src="assets/intro-poster.png" alt="Gen Code — watch the animated intro" width="100%">
+    </a>
+  </p>
+  <p>
+    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ Watch the animated intro</b></a> — multi-model · multi-persona · fast · self-evolving
+  </p>
 </div>
 
 Gen Code is a terminal coding assistant built around five pluggable pillars — **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Built in Go and shipped as a single binary — a unified runtime for specialized agents.
@@ -26,7 +34,7 @@ Gen Code is a terminal coding assistant built around five pluggable pillars — 
 - **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.
 - **Personas** — Markdown identities scoped to user or project; swap via `/identity` ([details](docs/concepts/harness-channels.md#identity-custom-personas)).
 - **Skills & extensions** — Claude Code skills, plugins, and MCP servers run unmodified; sandboxed subagents; lifecycle hooks (shell, LLM, agent, HTTP); auto-loaded project memory.
-- **Self-evolving** *(in progress)* — the agent learns from your sessions and grows more capable over time.
+- **Self-evolving** — every few turns a background reviewer distills your recent work into durable memory and reusable skills, so the agent levels up as you work. *(Level 1 available; deeper levels on the way.)*
 
 ### Engineering
 
