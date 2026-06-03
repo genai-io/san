@@ -1,0 +1,160 @@
+name: PR freshness
+
+# When something lands on main, re-check every open PR against the new main and
+# leave a high-signal note only when an action is needed:
+#   - absorbed   : rebasing onto main drops all commits (change already merged, e.g. via another PR)
+#   - conflicting: rebasing onto main fails with conflicts
+# Anything else (clean / merely behind) stays quiet. This workflow only comments
+# and labels — it never pushes to or modifies any PR branch.
+#
+# Triggered on push:main so it runs in the base-repo context with a writable
+# token, which is what lets it comment on fork-based PRs (a pull_request trigger
+# from a fork gets a read-only token and could not).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Single PR number to check (blank = all open PRs)"
+        required: false
+        default: ""
+
+concurrency:
+  group: pr-freshness
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      INPUT_PR: ${{ github.event.inputs.pr }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check open PRs against main
+        run: |
+          set +e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true
+          git fetch -q origin main
+
+          # Ensure labels exist (idempotent).
+          gh label create superseded   --color 0E8A16 --description "Changes already on main; PR can be closed" --force >/dev/null 2>&1
+          gh label create needs-rebase --color D93F0B --description "Conflicts with main; rebase required"      --force >/dev/null 2>&1
+
+          # Comment bodies. printf keeps these immune to YAML/heredoc indentation.
+          # First line is the sticky marker used to find & update our own comment.
+          printf '%s\n' \
+            '<!-- pr-freshness-bot -->' \
+            '🟢 **These changes are already on `main`.**' \
+            '' \
+            'Rebasing this branch onto the latest `main` drops all of its commits (`patch contents already upstream`), so there is nothing left to merge. The same change has most likely landed through another PR.' \
+            '' \
+            'If that is expected, this PR can be closed. If you believe something is still missing, rebase and push — this note clears automatically.' \
+            > /tmp/absorbed.md
+
+          printf '%s\n' \
+            '<!-- pr-freshness-bot -->' \
+            '🟠 **This PR conflicts with the latest `main`.**' \
+            '' \
+            'A rebase onto `main` currently fails with conflicts. Please rebase and resolve them:' \
+            '' \
+            '```bash' \
+            'git fetch origin' \
+            'git rebase origin/main' \
+            '# resolve conflicts, then:' \
+            'git push --force-with-lease' \
+            '```' \
+            '' \
+            'This note clears automatically once the conflicts are resolved.' \
+            > /tmp/conflict.md
+
+          find_comment() {
+            gh api "repos/$REPO/issues/$1/comments" --paginate \
+              --jq '[.[] | select(.body | startswith("<!-- pr-freshness-bot -->")) | .id] | .[0]' 2>/dev/null
+          }
+          set_comment() { # $1 = PR number, $2 = body file
+            cid="$(find_comment "$1")"
+            if [ -n "$cid" ] && [ "$cid" != "null" ]; then
+              gh api --silent -X PATCH "repos/$REPO/issues/comments/$cid" -F body=@"$2"
+            else
+              gh api --silent -X POST  "repos/$REPO/issues/$1/comments"   -F body=@"$2"
+            fi
+          }
+          clear_comment() { # $1 = PR number
+            cid="$(find_comment "$1")"
+            if [ -n "$cid" ] && [ "$cid" != "null" ]; then
+              gh api --silent -X DELETE "repos/$REPO/issues/comments/$cid"
+            fi
+          }
+          add_label() { gh api --silent -X POST   "repos/$REPO/issues/$1/labels" -f "labels[]=$2" >/dev/null 2>&1; }
+          del_label() { gh api --silent -X DELETE "repos/$REPO/issues/$1/labels/$2"               >/dev/null 2>&1; }
+
+          # Collect target PRs (single PR via manual dispatch, otherwise all open non-draft PRs).
+          if [ -n "$INPUT_PR" ]; then
+            PRS=( "$INPUT_PR" )
+          else
+            mapfile -t PRS < <(gh pr list --state open --base main --limit 200 \
+              --json number,isDraft --jq '.[] | select(.isDraft | not) | .number')
+          fi
+
+          {
+            echo "## PR freshness"
+            echo
+            echo "| PR | Status |"
+            echo "|----|--------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for PR in "${PRS[@]}"; do
+            [ -z "$PR" ] && continue
+
+            if ! git fetch -q origin "pull/$PR/head"; then
+              echo "| #$PR | fetch-failed |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            git checkout -q --detach FETCH_HEAD
+
+            # Source of truth: simulate the rebase. Git's own "patch contents already
+            # upstream" logic is the most reliable way to detect an absorbed PR,
+            # including the case where main got the change via a squash merge.
+            verdict="ok"
+            if ! git rebase origin/main >/tmp/rebase.log 2>&1; then
+              git rebase --abort >/dev/null 2>&1
+              verdict="conflicting"
+            elif [ "$(git rev-list --count origin/main..HEAD)" = "0" ]; then
+              verdict="absorbed"
+            fi
+
+            case "$verdict" in
+              absorbed)
+                set_comment "$PR" /tmp/absorbed.md
+                add_label "$PR" superseded
+                del_label "$PR" needs-rebase
+                ;;
+              conflicting)
+                set_comment "$PR" /tmp/conflict.md
+                add_label "$PR" needs-rebase
+                del_label "$PR" superseded
+                ;;
+              *)
+                clear_comment "$PR"
+                del_label "$PR" superseded
+                del_label "$PR" needs-rebase
+                ;;
+            esac
+
+            echo "| #$PR | $verdict |" >> "$GITHUB_STEP_SUMMARY"
+            git checkout -q --detach origin/main
+          done
