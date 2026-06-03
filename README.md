@@ -34,6 +34,7 @@ Gen Code is a terminal coding assistant built around five pluggable pillars — 
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
+- **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`gen inspector`).
 
 
 ## Installation
@@ -76,6 +77,7 @@ gen "explain this function"    # one-shot
 cat main.go | gen "review"     # piped input
 gen --continue                 # resume latest session
 gen --resume                   # pick a past session
+gen inspector                  # open session transcript viewer
 ```
 
 | What | How |
@@ -167,6 +169,7 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 - [System Prompt](docs/concepts/harness-channels.md) — Slot model, identity, skill/agent injection
 - [Subagents](docs/packages/subagent.md) · [Skills](docs/packages/skill.md) · [Plugins](docs/packages/plugin.md) · [MCP](docs/packages/mcp.md)
 - [Hooks](docs/packages/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/task.md)
+- [Inspector](docs/inspector.md) — local web UI for transcript replay and debugging
 - Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
 
 ## Related Projects

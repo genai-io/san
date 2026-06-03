@@ -34,6 +34,7 @@ Gen Code 是一款终端 AI 编程助手，围绕五大可插拔能力构建 —
 - **事件驱动协同** —— 基于 pub/sub hub 的并行 subagent 执行（[架构说明](docs/packages/subagent.md)）。
 - **会话持久化** —— 自动保存、恢复、Fork 以及自动上下文压缩。
 - **Prompt 预测** —— 推测式地预生成可能的下一个 prompt 以降低延迟。
+- **会话检查器** —— 本地 Web UI，用于转录回放、系统 prompt 取证以及活跃会话的实时追踪（`gen inspector`）。
 
 
 ## 安装
@@ -76,6 +77,7 @@ gen "解释这个函数"             # 一次性运行
 cat main.go | gen "review"     # 管道输入
 gen --continue                 # 恢复最近的会话
 gen --resume                   # 选择历史会话恢复
+gen inspector                  # 打开会话转录查看器
 ```
 
 | 操作 | 命令 / 快捷键 |
@@ -167,6 +169,7 @@ commands/*.md      # Slash 命令
 - [系统 Prompt](docs/concepts/harness-channels.md) —— Slot 模型、identity、技能/agent 注入
 - [Subagents](docs/packages/subagent.md) · [Skills](docs/packages/skill.md) · [Plugins](docs/packages/plugin.md) · [MCP](docs/packages/mcp.md)
 - [Hooks](docs/packages/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/task.md)
+- [Inspector](docs/inspector.md) —— 本地 Web UI，用于转录回放与调试
 - 每个包的设计文档见 [`docs/packages/`](docs/packages/)，从[包索引](docs/packages/index.md)开始
 
 ## 相关项目

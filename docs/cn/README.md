@@ -40,6 +40,7 @@
 | [data-flow.md](data-flow.md) | 数据流详解：输入→Agent→渲染的完整链路 |
 | [providers.md](providers.md) | LLM 提供商：注册机制、接口、各提供商特性 |
 | [packages.md](packages.md) | 包结构详解：28 个核心包的职责与依赖关系 |
+| [inspector.md](inspector.md) | Inspector：会话转录查看器（`gen inspector`）|
 
 ## 技术栈
 

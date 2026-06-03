@@ -39,6 +39,7 @@ explanations here.
 ### Do something
 
 - `guides/explore-mode.md` — using the explore subagent.
+- `inspector.md` — session transcript viewer (`gen inspector`).
 - `operations/development.md` — build / test / lint / format.
 - `operations/testing.md` — test strategy and local commands.
 - `operations/release.md` — release process.
