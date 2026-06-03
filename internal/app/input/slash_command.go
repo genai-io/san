@@ -34,15 +34,19 @@ type slashCommandHandler func(*SlashCommandController, context.Context, string) 
 
 type SlashCommandEnv struct {
 	// UI state: the textarea, conversation render state, tool exec state,
-	// terminal dimensions, current working directory, and the input-token
-	// snapshot for context-percent displays.
-	Input        *Model
-	Conversation *conv.ConversationModel
-	Tool         *conv.ToolExecState
-	Width        int
-	Height       int
-	Cwd          string
-	InputTokens  int
+	// terminal dimensions, current working directory, and token/cost
+	// snapshots for display.
+	Input            *Model
+	Conversation     *conv.ConversationModel
+	Tool             *conv.ToolExecState
+	Width            int
+	Height           int
+	Cwd              string
+	InputTokens      int
+	OutputTokens     int
+	TurnInputTokens  int
+	TurnOutputTokens int
+	ConversationCost llm.Money
 
 	// Domain services. Commands read live state from these — never snapshot
 	// at deps construction time, since /something might mutate state that a
@@ -82,6 +86,7 @@ type SlashCommandEnv struct {
 	ResetCronQueue          func()
 	ForkSession             func() (originalSessionID string, err error)
 	RunSelfLearnDemo        func()
+	GetSystemPrompt         func() string
 }
 
 type SlashCommandController struct {
@@ -115,6 +120,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handleIdentityCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
+		"context":        (*SlashCommandController).handleContextCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
 }
@@ -634,6 +640,36 @@ func (c *SlashCommandController) handleTokenLimitCommand(_ context.Context, args
 		c.env.Input.Provider.FetchingLimits = true
 	}
 	return result, cmd, err
+}
+
+func (c *SlashCommandController) handleContextCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	msgCount := len(c.env.Conversation.Messages)
+	toolCount := 0
+	var skills []*skill.Skill
+	if c.env.Skill != nil {
+		skills = c.env.Skill.List()
+	}
+	if c.env.ToolSvc != nil {
+		toolCount = len(c.env.ToolSvc.List())
+	}
+	sysPrompt := ""
+	if c.env.GetSystemPrompt != nil {
+		sysPrompt = c.env.GetSystemPrompt()
+	}
+	result := FormatContextInfo(ContextDeps{
+		CurrentModel:     c.env.LLM.CurrentModel(),
+		Store:            c.env.LLM.Store(),
+		InputTokens:      c.env.InputTokens,
+		OutputTokens:     c.env.OutputTokens,
+		TurnInputTokens:  c.env.TurnInputTokens,
+		TurnOutputTokens: c.env.TurnOutputTokens,
+		ConversationCost: c.env.ConversationCost,
+		MessageCount:     msgCount,
+		ToolCount:        toolCount,
+		Skills:           skills,
+		SystemPrompt:     sysPrompt,
+	})
+	return result, nil, nil
 }
 
 func (c *SlashCommandController) handleCompactCommand(_ context.Context, args string) (string, tea.Cmd, error) {

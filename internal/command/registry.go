@@ -46,6 +46,7 @@ func builtinCommands() []Info {
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
 		{Name: "search", Description: "Select search engine for web search"},
 		{Name: "config", Description: "Configure self-learning and other settings"},
+		{Name: "context", Description: "Show context usage (tokens, limits, cost)"},
 		{Name: "quit", Description: "Exit the application (/exit also works)"},
 	}
 }

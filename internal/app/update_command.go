@@ -13,13 +13,17 @@ import (
 func (m *model) slashCommandEnv() input.SlashCommandEnv {
 	return input.SlashCommandEnv{
 		// UI state
-		Input:        &m.userInput,
-		Conversation: &m.conv.ConversationModel,
-		Tool:         &m.conv.Tool,
-		Width:        m.env.Width,
-		Height:       m.env.Height,
-		Cwd:          m.env.CWD,
-		InputTokens:  m.env.InputTokens,
+		Input:            &m.userInput,
+		Conversation:     &m.conv.ConversationModel,
+		Tool:             &m.conv.Tool,
+		Width:            m.env.Width,
+		Height:           m.env.Height,
+		Cwd:              m.env.CWD,
+		InputTokens:      m.env.InputTokens,
+		OutputTokens:     m.env.OutputTokens,
+		TurnInputTokens:  m.env.TurnInputTokens,
+		TurnOutputTokens: m.env.TurnOutputTokens,
+		ConversationCost: m.env.ConversationCost,
 
 		// Services
 		Setting: m.services.Setting,
@@ -54,6 +58,12 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ResetCronQueue:          m.ResetCronQueue,
 		ForkSession:             m.forkSession,
 		RunSelfLearnDemo:        m.runSelfLearnDemo,
+		GetSystemPrompt: func() string {
+			if sys := m.services.Agent.System(); sys != nil {
+				return sys.Prompt()
+			}
+			return ""
+		},
 	}
 }
 
