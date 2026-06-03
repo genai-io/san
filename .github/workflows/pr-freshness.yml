@@ -7,9 +7,16 @@ name: PR freshness
 # Anything else (clean / merely behind) stays quiet. This workflow only comments
 # and labels — it never pushes to or modifies any PR branch.
 #
-# Triggered on push:main so it runs in the base-repo context with a writable
-# token, which is what lets it comment on fork-based PRs (a pull_request trigger
-# from a fork gets a read-only token and could not).
+# NOTE ON SCOPE: the primary, recommended mechanism for "PRs must be current
+# before merge" is native GitHub — enable branch protection
+# "Require branches to be up to date before merging", or a merge queue. This
+# workflow exists only to cover the gap those do NOT handle: detecting a PR whose
+# change is *already on main* (superseded), which is what bit us in #81.
+#
+# The push:main trigger runs in the base-repo context with a writable token,
+# which is what lets it comment on fork-based PRs (a pull_request trigger from a
+# fork gets a read-only token and could not). All API writes go through
+# actions/github-script; git is used only to compute the rebase verdict.
 
 on:
   push:
@@ -35,14 +42,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
       INPUT_PR: ${{ github.event.inputs.pr }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check open PRs against main
+      - name: Compute rebase verdict per open PR
         run: |
           set +e
           git config user.name  "github-actions[bot]"
@@ -50,59 +56,6 @@ jobs:
           export GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true
           git fetch -q origin main
 
-          # Ensure labels exist (idempotent).
-          gh label create superseded   --color 0E8A16 --description "Changes already on main; PR can be closed" --force >/dev/null 2>&1
-          gh label create needs-rebase --color D93F0B --description "Conflicts with main; rebase required"      --force >/dev/null 2>&1
-
-          # Comment bodies. printf keeps these immune to YAML/heredoc indentation.
-          # First line is the sticky marker used to find & update our own comment.
-          printf '%s\n' \
-            '<!-- pr-freshness-bot -->' \
-            '🟢 **These changes are already on `main`.**' \
-            '' \
-            'Rebasing this branch onto the latest `main` drops all of its commits (`patch contents already upstream`), so there is nothing left to merge. The same change has most likely landed through another PR.' \
-            '' \
-            'If that is expected, this PR can be closed. If you believe something is still missing, rebase and push — this note clears automatically.' \
-            > /tmp/absorbed.md
-
-          printf '%s\n' \
-            '<!-- pr-freshness-bot -->' \
-            '🟠 **This PR conflicts with the latest `main`.**' \
-            '' \
-            'A rebase onto `main` currently fails with conflicts. Please rebase and resolve them:' \
-            '' \
-            '```bash' \
-            'git fetch origin' \
-            'git rebase origin/main' \
-            '# resolve conflicts, then:' \
-            'git push --force-with-lease' \
-            '```' \
-            '' \
-            'This note clears automatically once the conflicts are resolved.' \
-            > /tmp/conflict.md
-
-          find_comment() {
-            gh api "repos/$REPO/issues/$1/comments" --paginate \
-              --jq '[.[] | select(.body | startswith("<!-- pr-freshness-bot -->")) | .id] | .[0]' 2>/dev/null
-          }
-          set_comment() { # $1 = PR number, $2 = body file
-            cid="$(find_comment "$1")"
-            if [ -n "$cid" ] && [ "$cid" != "null" ]; then
-              gh api --silent -X PATCH "repos/$REPO/issues/comments/$cid" -F body=@"$2"
-            else
-              gh api --silent -X POST  "repos/$REPO/issues/$1/comments"   -F body=@"$2"
-            fi
-          }
-          clear_comment() { # $1 = PR number
-            cid="$(find_comment "$1")"
-            if [ -n "$cid" ] && [ "$cid" != "null" ]; then
-              gh api --silent -X DELETE "repos/$REPO/issues/comments/$cid"
-            fi
-          }
-          add_label() { gh api --silent -X POST   "repos/$REPO/issues/$1/labels" -f "labels[]=$2" >/dev/null 2>&1; }
-          del_label() { gh api --silent -X DELETE "repos/$REPO/issues/$1/labels/$2"               >/dev/null 2>&1; }
-
-          # Collect target PRs (single PR via manual dispatch, otherwise all open non-draft PRs).
           if [ -n "$INPUT_PR" ]; then
             PRS=( "$INPUT_PR" )
           else
@@ -113,13 +66,13 @@ jobs:
           {
             echo "## PR freshness"
             echo
-            echo "| PR | Status |"
-            echo "|----|--------|"
+            echo "| PR | Verdict |"
+            echo "|----|---------|"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          results="[]"
           for PR in "${PRS[@]}"; do
             [ -z "$PR" ] && continue
-
             if ! git fetch -q origin "pull/$PR/head"; then
               echo "| #$PR | fetch-failed |" >> "$GITHUB_STEP_SUMMARY"
               continue
@@ -136,25 +89,106 @@ jobs:
             elif [ "$(git rev-list --count origin/main..HEAD)" = "0" ]; then
               verdict="absorbed"
             fi
-
-            case "$verdict" in
-              absorbed)
-                set_comment "$PR" /tmp/absorbed.md
-                add_label "$PR" superseded
-                del_label "$PR" needs-rebase
-                ;;
-              conflicting)
-                set_comment "$PR" /tmp/conflict.md
-                add_label "$PR" needs-rebase
-                del_label "$PR" superseded
-                ;;
-              *)
-                clear_comment "$PR"
-                del_label "$PR" superseded
-                del_label "$PR" needs-rebase
-                ;;
-            esac
-
-            echo "| #$PR | $verdict |" >> "$GITHUB_STEP_SUMMARY"
             git checkout -q --detach origin/main
+
+            results="$(jq -c --argjson pr "$PR" --arg v "$verdict" '. + [{pr: $pr, verdict: $v}]' <<<"$results")"
+            echo "| #$PR | $verdict |" >> "$GITHUB_STEP_SUMMARY"
           done
+
+          printf '%s\n' "$results" > "$RUNNER_TEMP/verdicts.json"
+
+      - name: Comment & label PRs
+        uses: actions/github-script@v7
+        env:
+          VERDICTS_FILE: ${{ runner.temp }}/verdicts.json
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const results = JSON.parse(fs.readFileSync(process.env.VERDICTS_FILE, 'utf8'));
+
+            const MARKER = '<!-- pr-freshness-bot -->';
+            const LABELS = {
+              'superseded':   { color: '0E8A16', description: 'Changes already on main; PR can be closed' },
+              'needs-rebase': { color: 'D93F0B', description: 'Conflicts with main; rebase required' },
+            };
+            const BODY = {
+              absorbed: [
+                MARKER, '',
+                '🟢 **These changes are already on `main`.**', '',
+                'Rebasing this branch onto the latest `main` drops all of its commits (`patch contents already upstream`), so there is nothing left to merge. The same change has most likely landed through another PR.', '',
+                'If that is expected, this PR can be closed. If you believe something is still missing, rebase and push — this note clears automatically.',
+              ].join('\n'),
+              conflicting: [
+                MARKER, '',
+                '🟠 **This PR conflicts with the latest `main`.**', '',
+                'A rebase onto `main` currently fails with conflicts. Please rebase and resolve them:', '',
+                '```bash',
+                'git fetch origin',
+                'git rebase origin/main',
+                '# resolve conflicts, then:',
+                'git push --force-with-lease',
+                '```', '',
+                'This note clears automatically once the conflicts are resolved.',
+              ].join('\n'),
+            };
+
+            // Ensure our labels exist (idempotent).
+            for (const [name, def] of Object.entries(LABELS)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                await github.rest.issues.createLabel({ owner, repo, name, ...def });
+              }
+            }
+
+            async function findMarkerComment(issue_number) {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number, per_page: 100,
+              });
+              return comments.find((c) => c.body && c.body.startsWith(MARKER));
+            }
+            async function upsertComment(issue_number, body) {
+              const existing = await findMarkerComment(issue_number);
+              if (existing) {
+                if (existing.body !== body) {
+                  await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+                }
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body });
+              }
+            }
+            async function clearComment(issue_number) {
+              const existing = await findMarkerComment(issue_number);
+              if (existing) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+              }
+            }
+            async function addLabel(issue_number, name) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [name] });
+            }
+            async function removeLabel(issue_number, name) {
+              try {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number, name });
+              } catch (e) {
+                if (e.status !== 404) throw e; // label simply wasn't set
+              }
+            }
+
+            for (const { pr, verdict } of results) {
+              if (verdict === 'absorbed') {
+                await upsertComment(pr, BODY.absorbed);
+                await addLabel(pr, 'superseded');
+                await removeLabel(pr, 'needs-rebase');
+              } else if (verdict === 'conflicting') {
+                await upsertComment(pr, BODY.conflicting);
+                await addLabel(pr, 'needs-rebase');
+                await removeLabel(pr, 'superseded');
+              } else {
+                await clearComment(pr);
+                await removeLabel(pr, 'superseded');
+                await removeLabel(pr, 'needs-rebase');
+              }
+              core.info(`#${pr} => ${verdict}`);
+            }
