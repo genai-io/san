@@ -27,14 +27,14 @@ func ResolveSettings(s setting.SelfLearnSettings) (Config, error) {
 		return Config{}, fmt.Errorf("self-learning config invalid: %w", err)
 	}
 	return Config{
-		Memory: Arm{Enabled: s.Memory.Enabled, Interval: s.Memory.EveryTurns},
-		Skills: Arm{Enabled: s.Skills.Enabled, Interval: s.Skills.EveryToolIters},
+		Memory: Arm{Enabled: s.Memory.Enabled, Interval: s.Memory.ResolvedEveryTurns()},
+		Skills: Arm{Enabled: s.Skills.Enabled, Interval: s.Skills.ResolvedEveryToolIters()},
 		Perms: ActionPermissions{
 			AllowCreate:            s.Skills.AllowCreate(),
 			AllowUpdate:            s.Skills.AllowUpdate(),
 			AllowDelete:            s.Skills.AllowDelete(),
 			AllowUpdateUserCreated: s.Skills.AllowUpdateUserCreated,
 		},
-		MemoryMaxChars: s.Memory.MaxKBOr() * 1024,
+		MemoryMaxChars: s.Memory.ResolvedMaxKB() * 1024,
 	}, nil
 }

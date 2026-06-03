@@ -51,12 +51,21 @@ type SelfLearnSettings struct {
 // what the loader would have to truncate — see §4.2 invariant.
 const SelfLearnMaxMemoryKB = 25
 
+// SelfLearnDefaultEveryTurns and SelfLearnDefaultEveryToolIters are the
+// review-cadence defaults applied when the corresponding config field is
+// zero — the single source of truth shared by the runtime reviewer
+// (ResolveSettings) and the /config panel's default display.
+const (
+	SelfLearnDefaultEveryTurns     = 10
+	SelfLearnDefaultEveryToolIters = 10
+)
+
 // SelfLearnMemory controls memory-evolving: review every N user turns. MaxKB
 // is the on-disk cap per memory file; lower values force more aggressive
 // pruning. May not exceed SelfLearnMaxMemoryKB.
 type SelfLearnMemory struct {
 	Enabled    bool `json:"enabled,omitempty"`
-	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = default cadence (10)
+	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = SelfLearnDefaultEveryTurns
 	MaxKB      int  `json:"maxKB,omitempty"`      // 0 = SelfLearnMaxMemoryKB
 }
 
@@ -70,7 +79,7 @@ type SelfLearnMemory struct {
 // permissive default without any pointer-vs-nil ceremony.
 type SelfLearnSkills struct {
 	Enabled        bool `json:"enabled,omitempty"`
-	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = default (10)
+	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = SelfLearnDefaultEveryToolIters
 
 	// DenyCreate / DenyUpdate / DenyDelete gate the corresponding action on
 	// agent-created skills. Zero ⇒ allowed; set to true to disable that
@@ -93,12 +102,30 @@ func (s SelfLearnSkills) AllowCreate() bool { return !s.DenyCreate }
 func (s SelfLearnSkills) AllowUpdate() bool { return !s.DenyUpdate }
 func (s SelfLearnSkills) AllowDelete() bool { return !s.DenyDelete }
 
-// MaxKBOr returns the resolved MaxKB (default SelfLearnMaxMemoryKB if zero).
-func (m SelfLearnMemory) MaxKBOr() int {
+// ResolvedMaxKB returns the resolved MaxKB (default SelfLearnMaxMemoryKB if zero).
+func (m SelfLearnMemory) ResolvedMaxKB() int {
 	if m.MaxKB <= 0 {
 		return SelfLearnMaxMemoryKB
 	}
 	return m.MaxKB
+}
+
+// ResolvedEveryTurns returns the resolved memory review cadence in user turns
+// (default SelfLearnDefaultEveryTurns when the field is zero).
+func (m SelfLearnMemory) ResolvedEveryTurns() int {
+	if m.EveryTurns <= 0 {
+		return SelfLearnDefaultEveryTurns
+	}
+	return m.EveryTurns
+}
+
+// ResolvedEveryToolIters returns the resolved skill review cadence in tool
+// iterations (default SelfLearnDefaultEveryToolIters when the field is zero).
+func (s SelfLearnSkills) ResolvedEveryToolIters() int {
+	if s.EveryToolIters <= 0 {
+		return SelfLearnDefaultEveryToolIters
+	}
+	return s.EveryToolIters
 }
 
 // Validate enforces the cross-field invariants of §3.1: two illegal skill

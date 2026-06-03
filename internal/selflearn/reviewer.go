@@ -18,14 +18,8 @@ import (
 	"github.com/genai-io/gen-code/internal/log"
 )
 
-// Default cadences (overridable via config). Memory counts user turns; skills
-// count tool iterations within a turn.
-const (
-	DefaultMemoryEveryTurns    = 10
-	DefaultSkillEveryToolIters = 10
-)
-
-// Arm configures one review arm. Interval <= 0 falls back to the default.
+// Arm configures one review arm. ResolveSettings applies the cadence
+// default, so Interval is positive on a Config built the normal way.
 type Arm struct {
 	Enabled  bool
 	Interval int
@@ -85,8 +79,8 @@ func New(cfg Config, review ReviewFunc) *Reviewer {
 	return &Reviewer{
 		memEnabled:   cfg.Memory.Enabled,
 		skillEnabled: cfg.Skills.Enabled,
-		memEvery:     positiveOr(cfg.Memory.Interval, DefaultMemoryEveryTurns),
-		skillEvery:   positiveOr(cfg.Skills.Interval, DefaultSkillEveryToolIters),
+		memEvery:     cfg.Memory.Interval,
+		skillEvery:   cfg.Skills.Interval,
 		review:       review,
 	}
 }
@@ -177,11 +171,4 @@ func (r *Reviewer) Observe(result core.Result) {
 			r.review(kinds, snapshot)
 		}
 	}()
-}
-
-func positiveOr(v, def int) int {
-	if v > 0 {
-		return v
-	}
-	return def
 }

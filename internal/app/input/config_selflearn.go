@@ -411,7 +411,7 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Run every",
 			unit:      "user turns",
 			indent:    1,
-			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Memory.EveryTurns, 10) },
+			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.ResolvedEveryTurns() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.EveryTurns = v },
 			intMin:    1,
 			intMax:    100,
@@ -421,7 +421,7 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Max size",
 			unit:      "KB",
 			indent:    1,
-			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.MaxKBOr() },
+			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.ResolvedMaxKB() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
 			intMax:    setting.SelfLearnMaxMemoryKB,
@@ -443,7 +443,7 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Run every",
 			unit:      "tool iterations",
 			indent:    1,
-			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Skills.EveryToolIters, 10) },
+			intGetter: func(s *setting.SelfLearnSettings) int { return s.Skills.ResolvedEveryToolIters() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Skills.EveryToolIters = v },
 			intMin:    1,
 			intMax:    100,
@@ -484,13 +484,6 @@ func (p *selfLearnPanel) rows() []configRow {
 		{kind: rowSpacer},
 		{kind: rowSave, label: "Save"},
 	}
-}
-
-func defaultIfZero(v, def int) int {
-	if v <= 0 {
-		return def
-	}
-	return v
 }
 
 // findEditable walks rows from start in direction step (+1 forward,

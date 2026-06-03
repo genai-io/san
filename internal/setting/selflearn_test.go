@@ -118,13 +118,13 @@ func TestSelfLearnAllowAccessors(t *testing.T) {
 	}
 }
 
-// TestSelfLearnMemoryMaxKBOr confirms the default fallback for MaxKB when
+// TestSelfLearnMemoryResolvedMaxKB confirms the default fallback for MaxKB when
 // unset (zero) and identity for non-zero values.
-func TestSelfLearnMemoryMaxKBOr(t *testing.T) {
-	if got := (SelfLearnMemory{}).MaxKBOr(); got != SelfLearnMaxMemoryKB {
+func TestSelfLearnMemoryResolvedMaxKB(t *testing.T) {
+	if got := (SelfLearnMemory{}).ResolvedMaxKB(); got != SelfLearnMaxMemoryKB {
 		t.Fatalf("default MaxKB: got %d, want %d", got, SelfLearnMaxMemoryKB)
 	}
-	if got := (SelfLearnMemory{MaxKB: 10}).MaxKBOr(); got != 10 {
+	if got := (SelfLearnMemory{MaxKB: 10}).ResolvedMaxKB(); got != 10 {
 		t.Fatalf("explicit MaxKB: got %d, want 10", got)
 	}
 }
