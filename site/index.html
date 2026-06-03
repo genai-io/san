@@ -33,7 +33,6 @@
 <header class="hero">
   <div class="wrap">
     <h1>Gen Code — the AI agent<br>that <span class="grad">lives in your terminal</span></h1>
-    <p class="sub">An open-source AI coding assistant for the terminal — one Go binary, fully pluggable.</p>
 
     <div class="intro-embed">
       <iframe src="intro.html" title="Gen Code — animated intro" loading="lazy" allow="fullscreen"></iframe>
@@ -167,6 +166,17 @@
     });
   }
   document.getElementById('year').innerText = new Date().getFullYear();
+
+  // The intro is a fixed 1280x720 page embedded as an iframe; scale the whole
+  // iframe to the container width so the full animated stage is always shown.
+  (function () {
+    const box = document.querySelector('.intro-embed');
+    if (!box) return;
+    const frame = box.querySelector('iframe');
+    const scaleFrame = () => { frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')'; };
+    scaleFrame();
+    new ResizeObserver(scaleFrame).observe(box);
+  })();
 </script>
 </body>
 </html>

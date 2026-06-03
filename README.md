@@ -15,12 +15,7 @@
     <img src="assets/gen-code.png" alt="Gen Code" width="100%">
   </p>
   <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html" title="Watch the animated intro">
-      <img src="assets/intro-poster.png" alt="Gen Code — watch the animated intro" width="100%">
-    </a>
-  </p>
-  <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ Watch the animated intro</b></a> — multi-model · multi-persona · fast · self-evolving
+    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ Watch the animated intro</b></a>
   </p>
 </div>
 

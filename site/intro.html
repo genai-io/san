@@ -204,7 +204,7 @@
 </style>
 <script>
   (function(){ const p=new URLSearchParams(location.search);
-    document.documentElement.dataset.theme = p.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); })();
+    document.documentElement.dataset.theme = p.get('theme') || 'dark'; })();   // dark by default; ?theme=light forces light
 </script>
 </head>
 <body>
@@ -348,7 +348,7 @@ const params = new URLSearchParams(location.search);
 const SEEK = params.has('t') ? parseFloat(params.get('t')) : null;   // ?t=<sec> freezes the timeline (screenshots)
 
 const mq = matchMedia('(prefers-color-scheme: dark)');
-let manualTheme = false;
+let manualTheme = true;   // dark by default everywhere; ◐ / T toggles. ?theme=light forces light.
 function applyAuto(){ if(!manualTheme) root.dataset.theme = mq.matches ? 'dark' : 'light'; }
 mq.addEventListener('change', applyAuto);
 function toggleTheme(){ manualTheme = true; root.dataset.theme = root.dataset.theme==='dark' ? 'light' : 'dark'; }

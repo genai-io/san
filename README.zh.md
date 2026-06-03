@@ -15,12 +15,7 @@
     <img src="assets/gen-code.png" alt="Gen Code" width="100%">
   </p>
   <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html" title="观看动态简介">
-      <img src="assets/intro-poster.png" alt="Gen Code —— 观看动态简介" width="100%">
-    </a>
-  </p>
-  <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ 观看动态简介</b></a> —— 多模型 · 多人设 · 快速 · 自我进化
+    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ 观看动态简介</b></a>
   </p>
 </div>
 

@@ -93,13 +93,21 @@ nav .wrap { display: flex; align-items: center; justify-content: space-between; 
 
 /* Animated intro embedded in the hero (video-as-HTML, plays inline) */
 .intro-embed {
-  margin: 56px auto 0; max-width: 920px;
+  position: relative;
+  left: 50%; transform: translateX(-50%);   /* break out wider than the text column */
+  width: min(1100px, 92vw); margin: 56px 0 0;
   aspect-ratio: 1280 / 720; overflow: hidden;
   border-radius: 14px; border: 1px solid var(--border);
   box-shadow: 0 24px 50px -24px rgba(26,31,38,.25);
-  background: var(--bg-soft);
+  background: #0a0c10;
 }
-.intro-embed iframe { width: 100%; height: 100%; border: 0; display: block; }
+/* The intro is a fixed 1280x720 page; the page script scales the whole iframe
+   to the box width so the full animated stage is always shown (no clipping). */
+.intro-embed iframe {
+  position: absolute; top: 0; left: 0;
+  width: 1280px; height: 720px; border: 0;
+  transform-origin: top left;
+}
 .intro-cap { text-align: center; margin-top: 14px; font-size: 14px; color: var(--muted); }
 
 /* Sections */
