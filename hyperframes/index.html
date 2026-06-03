@@ -9,13 +9,12 @@
     · a tiny vanilla-JS timeline drives animation (no deps)
 
   Aesthetic: "refined technical editorial". One teal accent + a paper/ink
-  neutral ramp (no rainbow). Type pairing — Newsreader (serif italic) for
-  scene titles against IBM Plex Mono for the terminal. Film grain, vignette,
-  a single-hue glow. Light & dark, auto-follows the OS; toggle ◐ or press T.
+  neutral ramp. Newsreader (serif italic) titles against IBM Plex Mono.
+  Film grain, vignette, a single-hue glow. Light & dark, auto-follows OS,
+  toggle ◐ or press T. SPEED scales playback.
 
   Open in a browser. Auto-loops; click to pause/play, R restart, T theme.
-  Record to MP4 with any screen recorder or a Playwright/Chromium+ffmpeg
-  capture at 1280x720.
+  Record at 1280x720.
 
   Flow: boot → multi-model → multi-persona → fast interaction → self-improvement → outro.
 -->
@@ -33,7 +32,6 @@
     --serif:'Newsreader','Iowan Old Style','Georgia','Times New Roman',serif;
     --ease:cubic-bezier(.22,.9,.27,1);
   }
-  /* ── one accent (teal) + a neutral ramp, per theme ── */
   [data-theme="dark"]{
     --bg:#0a0c10; --glow:rgba(45,212,191,.11); --vignette:rgba(0,0,0,.5);
     --panel:#10131a; --panel-2:#0d1017; --panel-bar:#0b0e14; --inset:#090b10;
@@ -55,48 +53,37 @@
     --shadow:rgba(60,55,40,.16); --shadow-soft:rgba(60,55,40,.10);
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;background:var(--bg);overflow:hidden;font-family:var(--mono);
-    transition:background .4s ease}
+  html,body{height:100%;background:var(--bg);overflow:hidden;font-family:var(--mono);transition:background .4s ease}
   #fit{position:fixed;inset:0;display:grid;place-items:center;animation:fadeIn .9s ease both}
   @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  .stage{
-    width:1280px;height:720px;position:relative;overflow:hidden;border-radius:20px;
+  .stage{width:1280px;height:720px;position:relative;overflow:hidden;border-radius:20px;
     background:radial-gradient(125% 95% at 50% -18%, var(--glow), transparent 46%), var(--bg);
-    box-shadow:0 50px 130px var(--shadow);transform-origin:center;
-    transition:background .4s ease,box-shadow .4s ease;
-  }
-  /* atmosphere */
-  .vignette{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:20px;
-    box-shadow:inset 0 0 190px 26px var(--vignette)}
+    box-shadow:0 50px 130px var(--shadow);transform-origin:center;transition:background .4s ease,box-shadow .4s ease}
+  .vignette{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:20px;box-shadow:inset 0 0 190px 26px var(--vignette)}
   .grain{position:absolute;inset:-50%;z-index:9;pointer-events:none;opacity:.05;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
-  /* ── TOP: editorial header — kicker / serif title / desc ── */
-  .brand{position:absolute;top:30px;right:36px;z-index:6;font-weight:600;letter-spacing:.5px;
-    color:var(--accent);font-size:18px}
+  /* editorial header */
+  .brand{position:absolute;top:30px;right:36px;z-index:6;font-weight:600;letter-spacing:.5px;color:var(--accent);font-size:18px}
   .brand b{color:var(--accent)}
-  .caption{position:absolute;left:80px;top:26px;z-index:6;
-    opacity:0;transform:translateY(-8px);transition:opacity .55s var(--ease),transform .55s var(--ease)}
+  .caption{position:absolute;left:80px;top:26px;z-index:6;opacity:0;transform:translateY(-8px);
+    transition:opacity .55s var(--ease),transform .55s var(--ease)}
   .caption.show{opacity:1;transform:none}
-  .kicker{font-size:11.5px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;
-    color:var(--accent);margin-bottom:5px}
+  .kicker{font-size:11.5px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:5px}
   .ctitle{font-family:var(--serif);font-style:italic;font-size:35px;font-weight:500;line-height:1.05;
-    color:var(--accent);background:var(--title-grad);
-    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    color:var(--accent);background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .cdesc{font-size:14px;color:var(--dim);margin-top:7px;letter-spacing:.2px}
 
-  /* ── MIDDLE: terminal window ── */
+  /* terminal */
   .term{position:absolute;z-index:4;left:80px;top:112px;width:1120px;height:540px;
     background:var(--panel);border:1px solid var(--border);border-radius:14px;
     box-shadow:0 28px 70px var(--shadow-soft), inset 0 1px 0 var(--hairline);
-    overflow:hidden;display:flex;flex-direction:column;
-    transition:background .4s ease,border-color .4s ease}
+    overflow:hidden;display:flex;flex-direction:column;transition:background .4s ease,border-color .4s ease}
   .bar{height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;padding:0 15px;
     background:var(--panel-bar);border-bottom:1px solid var(--border)}
   .dot{width:11px;height:11px;border-radius:50%;background:var(--faint);opacity:.7}
   .bar .title{flex:1;text-align:center;color:var(--dim);font-size:13px;letter-spacing:.3px}
-  .bar .pill{color:var(--dim);font-size:12px;border:1px solid var(--border);
-    border-radius:20px;padding:2px 10px}
+  .bar .pill{color:var(--dim);font-size:12px;border:1px solid var(--border);border-radius:20px;padding:2px 10px}
   .bar .pill b{color:var(--accent);font-weight:500}
   .body{position:relative;flex:1;padding:24px 28px;font-size:18px;line-height:1.6;color:var(--fg);overflow:hidden}
 
@@ -105,16 +92,15 @@
 
   .dim{color:var(--dim)}.muted{color:var(--dim)}.accent{color:var(--accent)}
   .prompt{color:var(--accent)}
-  .cur{display:inline-block;width:9px;height:19px;vertical-align:-3px;margin-left:2px;
-    background:var(--accent);animation:blink 1.05s steps(1) infinite}
+  .cur{display:inline-block;width:9px;height:19px;vertical-align:-3px;margin-left:2px;background:var(--accent);animation:blink 1.05s steps(1) infinite}
   @keyframes blink{50%{opacity:0}}
   .reveal{opacity:0;transform:translateY(7px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
   .reveal.in{opacity:1;transform:none}
   .reveal.fast{transition:opacity .17s ease,transform .17s ease}
 
+  /* boot splash */
   .splash{height:100%;display:flex;flex-direction:column;justify-content:center;gap:13px;text-align:center}
-  .logo{font-size:70px;font-weight:600;letter-spacing:1px;color:var(--fg-strong);
-    transition:opacity .7s ease,transform .7s var(--ease)}
+  .logo{font-size:70px;font-weight:600;letter-spacing:1px;color:var(--fg-strong);transition:opacity .7s ease,transform .7s var(--ease)}
   .logo .sp{color:var(--accent)}
   .logo.reveal{transform:scale(.93)}.logo.reveal.in{transform:scale(1)}
   .tag{font-family:var(--serif);font-style:italic;font-size:25px;font-weight:500;color:var(--fg)}
@@ -123,9 +109,10 @@
   .bootline{margin-top:8px;font-size:18px;color:var(--fg)}
 
   .cmd{font-size:19px;margin-bottom:6px}
-  .out{font-size:17px}
+  .out{font-size:17px;line-height:1.55}
   .ok{color:var(--accent)} .arrow{color:var(--faint)}
 
+  /* picker overlay */
   .picker{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(.96);
     width:660px;background:var(--panel-2);border:1px solid var(--border);border-radius:12px;
     box-shadow:0 28px 70px var(--shadow);opacity:0;transition:opacity .3s ease,transform .3s var(--ease);overflow:hidden}
@@ -137,14 +124,11 @@
     background:var(--inset);border:1px solid var(--border);border-radius:8px;color:var(--dim)}
   .search .cnt{margin-left:auto;color:var(--faint);font-size:12px}
   .search #m-query{color:var(--fg)} .search #m-ph{color:var(--dim)}
-  .scur{display:inline-block;width:7px;height:15px;vertical-align:-2px;margin:0 1px;
-    background:var(--accent);animation:blink 1.05s steps(1) infinite}
+  .scur{display:inline-block;width:7px;height:15px;vertical-align:-2px;margin:0 1px;background:var(--accent);animation:blink 1.05s steps(1) infinite}
   .more{font-size:12px;color:var(--faint);padding:5px 14px 1px;text-align:center}
   .rows{padding:2px 8px 6px}
-  .row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;
-    border-left:2px solid transparent;font-size:15px}
-  .row .pchip{font-size:11px;color:var(--dim);border:1px solid var(--border);
-    border-radius:6px;padding:1px 7px;min-width:74px;text-align:center}
+  .row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;border-left:2px solid transparent;font-size:15px}
+  .row .pchip{font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:1px 7px;min-width:74px;text-align:center}
   .row .name{color:var(--fg)} .row .meta{margin-left:auto;color:var(--faint);font-size:12px}
   .row.sel{background:var(--accent-soft);border-left-color:var(--accent)}
   .row.sel .name{color:var(--fg-strong)} .row.sel .pchip{color:var(--accent);border-color:var(--accent)}
@@ -165,8 +149,7 @@
   .tool .diff{color:var(--dim);font-size:13px;margin-left:6px}
   .asst{font-size:17px;color:var(--fg);margin-top:10px}
   .donel{font-size:16px;margin-top:10px}
-  .speedchip{margin-left:12px;font-size:12px;color:var(--accent);background:var(--accent-soft);
-    border-radius:6px;padding:2px 9px}
+  .speedchip{margin-left:12px;font-size:12px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 9px}
   .zap{color:var(--accent);animation:zap .9s ease-in-out infinite}
   @keyframes zap{50%{opacity:.5}}
 
@@ -177,13 +160,12 @@
   .h-tool{font-size:14px;color:var(--dim);line-height:1.55}
   .h-tool .tn{display:inline-block;min-width:48px;color:var(--accent)}
   .h-done{font-size:14px;color:var(--dim);margin-top:4px}
-  .sl-live{font-size:16px;color:var(--dim);font-style:italic;margin-top:12px;
-    opacity:0;transition:opacity .3s ease}
+  .sl-live{font-size:16px;color:var(--dim);font-style:italic;margin-top:12px;opacity:0;transition:opacity .3s ease}
   .sl-live.in{opacity:1}
   .sl-live #sl-spin{font-style:normal;color:var(--accent)}
   .sl-live .ev{color:var(--accent)}
-  .recap{display:inline-block;border:1px dashed transparent;border-radius:10px;
-    padding:0 18px;margin-top:0;max-height:0;overflow:hidden;opacity:0;
+  .recap{display:inline-block;border:1px dashed transparent;border-radius:10px;padding:0 18px;margin-top:0;
+    max-height:0;overflow:hidden;opacity:0;
     transition:max-height .45s var(--ease),opacity .4s ease,padding .45s var(--ease),margin .45s var(--ease),border-color .4s ease}
   .recap.in{border-color:var(--border);padding:11px 18px;margin-top:12px;max-height:360px;opacity:1}
   .grp{opacity:0;transform:translateY(5px);transition:opacity .4s ease,transform .4s ease}
@@ -200,23 +182,18 @@
   .outro .big{font-size:62px;font-weight:600;color:var(--fg-strong);letter-spacing:1px}
   .outro .big .sp{color:var(--accent)}
   .outro .ln{font-family:var(--serif);font-style:italic;font-size:26px;font-weight:500;
-    color:var(--accent);background:var(--title-grad);
-    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    color:var(--accent);background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
   .outro .en{font-size:14px;color:var(--dim);letter-spacing:.4px}
-  .install{margin-top:10px;font-size:14px;color:var(--fg);background:var(--inset);border:1px solid var(--border);
-    border-radius:9px;padding:11px 18px}
+  .install{margin-top:10px;font-size:14px;color:var(--fg);background:var(--inset);border:1px solid var(--border);border-radius:9px;padding:11px 18px}
   .install .p{color:var(--accent)}
   .site{font-size:14px;color:var(--accent)}
 
-  /* progress bar (bottom) */
-  .ticks{position:absolute;left:80px;right:80px;bottom:44px;z-index:6;font-size:10.5px;
-    letter-spacing:.12em;text-transform:uppercase;color:var(--faint);height:14px}
+  /* progress bar */
+  .ticks{position:absolute;left:80px;right:80px;bottom:44px;z-index:6;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);height:14px}
   .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
   .ticks span.on{color:var(--accent)}
-  .timeline{position:absolute;left:80px;right:80px;bottom:34px;z-index:6;height:3px;
-    background:var(--border);border-radius:3px}
-  .timeline .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-strong),var(--accent));
-    border-radius:3px}
+  .timeline{position:absolute;left:80px;right:80px;bottom:34px;z-index:6;height:3px;background:var(--border);border-radius:3px}
+  .timeline .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-strong),var(--accent));border-radius:3px}
 
   .hud{position:absolute;left:36px;bottom:14px;z-index:7;font-size:11px;color:var(--faint)}
   .hud kbd{border:1px solid var(--border);border-radius:4px;padding:0 5px;color:var(--dim)}
@@ -226,16 +203,14 @@
   .theme-btn:hover{color:var(--accent);border-color:var(--accent);transform:rotate(180deg)}
 </style>
 <script>
-  // set theme before paint to avoid a flash; follows the OS by default
-  document.documentElement.dataset.theme =
-    matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  (function(){ const p=new URLSearchParams(location.search);
+    document.documentElement.dataset.theme = p.get('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); })();
 </script>
 </head>
 <body>
 <div id="fit"><div class="stage" id="stage">
   <div class="vignette"></div>
 
-  <!-- editorial header: kicker / serif title / desc -->
   <div class="brand">&lt; GEN <b>✦</b> /&gt;</div>
   <div class="caption" id="caption">
     <div class="kicker" id="cap-kicker">OPEN ARCHITECTURE</div>
@@ -243,12 +218,11 @@
     <div class="cdesc" id="cap-desc"></div>
   </div>
 
-  <!-- terminal -->
   <div class="term">
     <div class="bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="title">gen — ~/Workspace/app</span>
-      <span class="pill" id="barpill">opus-4.8 · ◇ think</span>
+      <span class="pill" id="barpill">openai · GPT-5.5 · ◇ think</span>
     </div>
     <div class="body">
 
@@ -258,7 +232,7 @@
           <div class="logo reveal" id="b-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
           <div class="tag reveal" id="b-tag">An open-source AI coding assistant for the terminal</div>
           <div class="sub reveal" id="b-sub">A unified runtime for specialized agents — shipped as a single, native Go binary</div>
-          <div class="pillars reveal" id="b-pil">Swappable LLMs · search backends · personas · skills &amp; extensions · a self-evolving agent</div>
+          <div class="pillars reveal" id="b-pil">Models · Search · Personas · Extensions · Evolution</div>
           <div class="bootline reveal" id="b-prompt"><span class="prompt">❭ </span><span class="cur"></span></div>
         </div>
       </section>
@@ -271,10 +245,10 @@
           <div class="search">⌕ <span id="m-ph">filter models…</span><span id="m-query"></span><span class="scur" id="m-scur"></span><span class="cnt" id="m-cnt">fetched live from /models</span></div>
           <div class="rows" id="m-rows">
             <div class="row" data-k="anthropic claude opus"><span class="pchip">Anthropic</span><span class="name">Claude Opus 4.8</span><span class="meta">1M ctx · ◆◆◆ think</span></div>
-            <div class="row" data-k="openai gpt"><span class="pchip">OpenAI</span><span class="name">GPT-5.1</span><span class="meta">400K ctx</span></div>
+            <div class="row" data-k="openai gpt 5.5 chatgpt"><span class="pchip">OpenAI</span><span class="name">GPT-5.5</span><span class="meta">400K ctx · ◆ think</span></div>
+            <div class="row" data-k="openai gpt 5.5 mini chatgpt"><span class="pchip">OpenAI</span><span class="name">GPT-5.5 mini</span><span class="meta">400K ctx</span></div>
             <div class="row" data-k="google gemini"><span class="pchip">Google</span><span class="name">Gemini 3 Pro</span><span class="meta">2M ctx</span></div>
             <div class="row" data-k="moonshot kimi"><span class="pchip">Moonshot</span><span class="name">Kimi K2</span><span class="meta">256K ctx</span></div>
-            <div class="row" data-k="alibaba qwen"><span class="pchip">Alibaba</span><span class="name">Qwen3-Max</span><span class="meta">256K ctx</span></div>
             <div class="row" data-k="zai z.ai glm zhipu"><span class="pchip">Z.ai</span><span class="name">GLM-4.6</span><span class="meta">200K ctx</span></div>
             <div class="row" data-k="deepseek v4 pro"><span class="pchip">DeepSeek</span><span class="name">DeepSeek V4 Pro</span><span class="meta">128K ctx · ◆ think</span></div>
             <div class="row" data-k="deepseek v4 flash"><span class="pchip">DeepSeek</span><span class="name">DeepSeek V4 Flash</span><span class="meta">128K ctx</span></div>
@@ -283,7 +257,7 @@
           <div class="hints">type to filter · ↑/↓ navigate · ⏎ select · esc · saved to ~/.gen/providers.json</div>
         </div>
         <div id="m-confirm" style="margin-top:4px">
-          <div class="out reveal" id="m-c1"><span class="ok">✦</span> model <span class="arrow">→</span> <span class="accent">DeepSeek V4 Pro</span> <span class="dim">(was Claude Opus 4.8)</span></div>
+          <div class="out reveal" id="m-c1"><span class="ok">✦</span> model <span class="arrow">→</span> <span class="accent">DeepSeek V4 Pro</span> <span class="dim">(was GPT-5.5)</span></div>
           <div class="out reveal dim" id="m-c2">↳ saved to ~/.gen/providers.json · reconnecting… <span class="ok">ready</span></div>
         </div>
       </section>
@@ -319,7 +293,7 @@
         <div class="donel reveal fast" id="x-done"><span class="ok">✓</span> done <span class="dim">· 1.8s · 142 tok/s · 5 tools</span><span class="speedchip"><span class="zap">⚡</span> native Go · single binary · instant start</span></div>
       </section>
 
-      <!-- ░░ SELF-IMPROVEMENT (reviews the interaction above) ░░ -->
+      <!-- ░░ SELF-IMPROVEMENT ░░ -->
       <section class="scene" data-start="28.4" data-dur="10.6" id="learn">
         <div class="hist" id="l-hist">
           <div class="h-cmd"><span class="prompt">❭ </span>add a /healthz endpoint and a test</div>
@@ -346,10 +320,10 @@
       </section>
 
       <!-- ░░ OUTRO ░░ -->
-      <section class="scene" data-start="39.0" data-dur="5.2" id="outro">
+      <section class="scene" data-start="39.0" data-dur="9.5" id="outro">
         <div class="outro">
           <div class="big reveal" id="o-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
-          <div class="ln reveal" id="o-cn">Multi-model · multi-persona · fast · self-evolving</div>
+          <div class="ln reveal" id="o-cn">Models · Search · Personas · Extensions · Evolution</div>
           <div class="en reveal" id="o-en">An open-source AI coding assistant for the terminal</div>
           <div class="install reveal" id="o-inst"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</div>
           <div class="site reveal" id="o-site">genai-io.github.io/gen-code · ★ star it on GitHub</div>
@@ -367,11 +341,12 @@
 </div></div>
 
 <script>
-const ASCII = ["|","/","-","\\"];            // real gen self-learn status spinner
+const ASCII = ["|","/","-","\\"];
 const $ = id => document.getElementById(id);
 const root = document.documentElement;
+const params = new URLSearchParams(location.search);
+const SEEK = params.has('t') ? parseFloat(params.get('t')) : null;   // ?t=<sec> freezes the timeline (screenshots)
 
-// ── theme: auto-follow OS, manual toggle overrides ──
 const mq = matchMedia('(prefers-color-scheme: dark)');
 let manualTheme = false;
 function applyAuto(){ if(!manualTheme) root.dataset.theme = mq.matches ? 'dark' : 'light'; }
@@ -379,17 +354,12 @@ mq.addEventListener('change', applyAuto);
 function toggleTheme(){ manualTheme = true; root.dataset.theme = root.dataset.theme==='dark' ? 'light' : 'dark'; }
 $('themeBtn').addEventListener('click', e=>{ e.stopPropagation(); toggleTheme(); });
 
-const scenes = [...document.querySelectorAll('.scene')].map(el=>({
-  el, id:el.id, start:+el.dataset.start, dur:+el.dataset.dur
-}));
+const scenes = [...document.querySelectorAll('.scene')].map(el=>({ el, id:el.id, start:+el.dataset.start, dur:+el.dataset.dur }));
 const TOTAL = Math.max(...scenes.map(s=>s.start+s.dur));
 const HOLD = 1.4;
-const SPEED = 0.75;   // master playback speed — <1 slower, >1 faster (titles linger longer at 0.75)
+const SPEED = 0.75;   // master playback speed — <1 slower, >1 faster
 
-function fit(){
-  const s = Math.min(innerWidth/1280, innerHeight/720);
-  $('stage').style.transform = `scale(${s})`;
-}
+function fit(){ $('stage').style.transform = `scale(${Math.min(innerWidth/1280, innerHeight/720)})`; }
 addEventListener('resize', fit); fit();
 
 const CAPS = {
@@ -400,129 +370,79 @@ const CAPS = {
 };
 
 const TICKS = [
-  {t:0,    label:'boot'},
-  {t:4.4,  label:'multi-model'},
-  {t:12.2, label:'multi-persona'},
-  {t:19.4, label:'fast'},
-  {t:28.4, label:'self-improve'},
-  {t:39.0, label:'outro'},
+  {t:0,label:'boot'},{t:4.4,label:'multi-model'},{t:12.2,label:'multi-persona'},
+  {t:19.4,label:'fast'},{t:28.4,label:'self-improve'},{t:39.0,label:'outro'},
 ];
-TICKS.forEach(tk=>{
-  const sp=document.createElement('span');
-  sp.textContent=tk.label; sp.style.left=(tk.t/TOTAL*100)+'%'; sp.dataset.t=tk.t;
-  $('ticks').appendChild(sp);
-});
+TICKS.forEach(tk=>{ const sp=document.createElement('span'); sp.textContent=tk.label; sp.style.left=(tk.t/TOTAL*100)+'%'; sp.dataset.t=tk.t; $('ticks').appendChild(sp); });
 
-function typeInto(el, full, lt, t0, t1){
-  if(lt<t0){ el.textContent=''; return; }
-  if(lt>=t1){ el.textContent=full; return; }
-  el.textContent = full.slice(0, Math.round(full.length*((lt-t0)/(t1-t0))));
-}
+function sub(full,lt,t0,t1){ if(lt<t0) return ''; if(lt>=t1) return full; return full.slice(0, Math.round(full.length*((lt-t0)/(t1-t0)))); }
+function typeInto(el,full,lt,t0,t1){ el.textContent = sub(full,lt,t0,t1); }
 const tog = (el,on) => el.classList.toggle('in', on);
 const sel = (rows,idx) => rows.forEach((r,i)=>r.classList.toggle('sel', i===idx));
 
 const mAllRows = [...$('m-rows').children];
 const iRows = [...$('i-rows').children];
-
-// filter the model list by query; no query → show the first 5 + a "more" hint
 function mFilter(q){
   q = q.trim().toLowerCase();
   const matches = [];
-  mAllRows.forEach((r,i)=>{
-    const vis = q ? r.dataset.k.includes(q) : i < 5;
-    r.style.display = vis ? 'flex' : 'none';
-    if(vis) matches.push(i);
-  });
-  $('m-more').style.display = q ? 'none' : 'block';
+  mAllRows.forEach((r,i)=>{ const vis = q ? r.dataset.k.includes(q) : i < 5; r.style.display = vis ? 'flex':'none'; if(vis) matches.push(i); });
+  $('m-more').style.display = q ? 'none':'block';
   return matches;
 }
 
 function boot(lt){
-  tog($('b-logo'),  lt>0.2);
-  tog($('b-tag'),   lt>0.9);
-  tog($('b-sub'),   lt>1.5);
-  tog($('b-pil'),   lt>2.1);
-  tog($('b-prompt'),lt>2.8);
+  $('barpill').textContent = 'openai · GPT-5.5 · ◇ think';   // default model before any switch
+  tog($('b-logo'),lt>0.2); tog($('b-tag'),lt>0.9); tog($('b-sub'),lt>1.5); tog($('b-pil'),lt>2.1); tog($('b-prompt'),lt>2.8);
 }
 function model(lt){
-  typeInto($('m-type'), '/model', lt, 0.2, 1.1);
-  $('m-cur').style.display = (lt>0.2 && lt<1.5)?'inline-block':'none';
-  const open = lt>1.4 && lt<5.0;
+  typeInto($('m-type'),'/model',lt,0.2,0.65);
+  $('m-cur').style.display = (lt>0.2 && lt<0.9)?'inline-block':'none';
+  const open = lt>0.85 && lt<3.6;
   tog($('m-pick'), open);
-
-  // with many models, type a query to narrow the list down to DeepSeek
-  let q = '';
-  if(lt>=2.9) q = 'deep';
-  else if(lt>2.0) q = 'deep'.slice(0, Math.round(4*((lt-2.0)/0.9)));
-  $('m-query').textContent = q;
-  $('m-ph').style.display = q ? 'none' : 'inline';
-  $('m-scur').style.display = (open && lt>1.7 && lt<3.4) ? 'inline-block' : 'none';
-
+  let q=''; if(lt>=1.9) q='deep'; else if(lt>1.3) q=sub('deep',lt,1.3,1.9);
+  $('m-query').textContent=q; $('m-ph').style.display=q?'none':'inline';
+  $('m-scur').style.display=(open && lt>1.0 && lt<2.1)?'inline-block':'none';
   const matches = open ? mFilter(q) : [];
-  $('m-cnt').textContent = q ? (matches.length + (matches.length===1?' result':' results')) : 'fetched live from /models';
+  $('m-cnt').textContent = q ? (matches.length+(matches.length===1?' result':' results')) : 'fetched live from /models';
   sel(mAllRows, (open && q.length>=3 && matches.length) ? matches[0] : -1);
-
-  const done = lt>5.1;
-  tog($('m-c1'), done);
-  tog($('m-c2'), lt>5.5);
-  if(done) $('barpill').innerHTML='deepseek · V4 Pro · <b>◇ think</b>';
+  tog($('m-c1'), lt>3.7); tog($('m-c2'), lt>4.1);
+  if(lt>3.7) $('barpill').innerHTML='deepseek · V4 Pro · <b>◆ think</b>';   // active model after the switch
 }
 function ident(lt){
-  typeInto($('i-type'), '/identity', lt, 0.2, 1.2);
-  $('i-cur').style.display = (lt>0.2 && lt<1.7)?'inline-block':'none';
-  const open = lt>1.6 && lt<5.0;
+  typeInto($('i-type'),'/identity',lt,0.2,0.75);
+  $('i-cur').style.display = (lt>0.2 && lt<1.0)?'inline-block':'none';
+  const open = lt>0.95 && lt<3.6;
   tog($('i-pick'), open);
-  sel(iRows, open ? (lt>3.0?1:0) : -1);
-  const done = lt>5.1;
-  tog($('i-c1'), done);
-  tog($('i-c2'), lt>5.5);
+  sel(iRows, open ? (lt>2.0?1:0) : -1);
+  tog($('i-c1'), lt>3.7); tog($('i-c2'), lt>4.1);
 }
 function interact(lt){
-  typeInto($('x-type'), 'add a /healthz endpoint and a test', lt, 0.2, 1.3);
-  $('x-cur').style.display = (lt>0.2 && lt<1.5)?'inline-block':'none';
-  tog($('x-t0'), lt>1.6);
-  tog($('x-t1'), lt>1.95);
-  tog($('x-t2'), lt>2.35);
-  tog($('x-t3'), lt>2.8);
-  tog($('x-t4'), lt>3.3);
-  $('x-trun').innerHTML = lt>3.9
-    ? '<span class="ok">✓ pass</span><span class="ms">0.4s</span>'
-    : '<span class="dim">…</span>';
-  tog($('x-asst'), lt>4.1);
-  typeInto($('x-stream'),
-    'Added GET /healthz → 200 {"status":"ok"}, covered by a table-driven test. All green.',
-    lt, 4.2, 6.4);
-  tog($('x-done'), lt>6.7);
+  typeInto($('x-type'),'add a /healthz endpoint and a test',lt,0.2,1.0);
+  $('x-cur').style.display = (lt>0.2 && lt<1.15)?'inline-block':'none';
+  tog($('x-t0'),lt>1.2); tog($('x-t1'),lt>1.5); tog($('x-t2'),lt>1.85); tog($('x-t3'),lt>2.25); tog($('x-t4'),lt>2.7);
+  $('x-trun').innerHTML = lt>3.3 ? '<span class="ok">✓ pass</span><span class="ms">0.4s</span>' : '<span class="dim">…</span>';
+  tog($('x-asst'), lt>3.6);
+  typeInto($('x-stream'), 'Added GET /healthz → 200 {"status":"ok"}, covered by a table-driven test. All green.', lt, 3.7, 5.4);
+  tog($('x-done'), lt>5.7);
 }
 function learn(lt){
   tog($('l-hist'), lt>0.3);
   const live = lt>1.0 && lt<4.2;
   tog($('l-live'), live);
-  if(live){
-    $('sl-spin').textContent = ASCII[Math.floor(lt*10)%4];
-    // "evolving" label is always shown; the target detail trails it once known
-    $('sl-target').textContent = lt<1.6 ? '' : (lt<2.8 ? ' · memory · index' : ' · skill · go-testing');
-  }
+  if(live){ $('sl-spin').textContent=ASCII[Math.floor(lt*10)%4]; $('sl-target').textContent = lt<1.6?'':(lt<2.8?' · memory · index':' · skill · go-testing'); }
   const show = lt>4.4;
-  tog($('l-recap'), show);
-  tog($('l-gm'), show);
-  tog($('l-gs'), show);
+  tog($('l-recap'),show); tog($('l-gm'),show); tog($('l-gs'),show);
   tog($('l-foot'), lt>4.9);
 }
 function outro(lt){
-  tog($('o-logo'), lt>0.2);
-  tog($('o-cn'),   lt>0.9);
-  tog($('o-en'),   lt>1.4);
-  tog($('o-inst'), lt>2.1);
-  tog($('o-site'), lt>2.8);
+  tog($('o-logo'),lt>0.2); tog($('o-cn'),lt>0.9); tog($('o-en'),lt>1.4); tog($('o-inst'),lt>2.1); tog($('o-site'),lt>2.8);
 }
 const RUN = {boot, model, ident, interact, learn, outro};
 
 let base=null, paused=false, pausedAt=0, t=0, curCap=null;
 function frame(now){
-  if(base===null) base=now;
-  if(!paused) t = (now-base)/1000 * SPEED;
-  if(t > TOTAL+HOLD){ base=now; t=0; }
+  if(SEEK!==null){ t = SEEK; }
+  else { if(base===null) base=now; if(!paused) t = (now-base)/1000 * SPEED; if(t > TOTAL+HOLD){ base=now; t=0; } }
 
   let act=null;
   scenes.forEach(s=>{
@@ -537,26 +457,17 @@ function frame(now){
   });
 
   const cap = act && CAPS[act.id];
-  if(cap && act.id!==curCap){
-    $('cap-kicker').textContent=cap.k; $('cap-title').textContent=cap.t; $('cap-desc').textContent=cap.d;
-    curCap=act.id;
-  }
+  if(cap && act.id!==curCap){ $('cap-kicker').textContent=cap.k; $('cap-title').textContent=cap.t; $('cap-desc').textContent=cap.d; curCap=act.id; }
   $('caption').classList.toggle('show', !!(cap && act.lt>0.5 && act.lt<act.dur-0.4));
 
   $('fill').style.width = (Math.min(t,TOTAL)/TOTAL*100)+'%';
-  document.querySelectorAll('.ticks span').forEach(sp=>{
-    sp.classList.toggle('on', t>=+sp.dataset.t-0.05);
-  });
+  document.querySelectorAll('.ticks span').forEach(sp=>{ sp.classList.toggle('on', t>=+sp.dataset.t-0.05); });
 
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-$('stage').addEventListener('click', ()=>{
-  paused=!paused;
-  if(paused) pausedAt=performance.now();
-  else if(base!==null) base += performance.now()-pausedAt;
-});
+$('stage').addEventListener('click', ()=>{ paused=!paused; if(paused) pausedAt=performance.now(); else if(base!==null) base += performance.now()-pausedAt; });
 addEventListener('keydown', e=>{
   if(e.key==='r'||e.key==='R'){ base=null; t=0; paused=false; }
   if(e.key==='t'||e.key==='T'){ toggleTheme(); }
