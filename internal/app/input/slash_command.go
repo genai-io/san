@@ -185,7 +185,7 @@ func (c SlashCommandController) executeBuiltinCommand(ctx context.Context, cmdNa
 }
 
 func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.Cmd, bool) {
-	if cmdName != "exit" {
+	if cmdName != "exit" && cmdName != "quit" {
 		return "", nil, false
 	}
 	c.env.StopAgentSession()

@@ -3,8 +3,9 @@ package input
 
 import "strings"
 
-// IsExitRequest reports whether `raw` is the case-insensitive "exit"
+// IsExitRequest reports whether `raw` is a case-insensitive "exit" or "quit"
 // shortcut, which quits the app instead of sending to the agent.
 func IsExitRequest(raw string) bool {
-	return strings.EqualFold(raw, "exit")
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	return raw == "exit" || raw == "quit"
 }
