@@ -71,12 +71,20 @@ func lineWindowReplace(content, oldText, newText string, replaceAll bool, norm f
 	for i, l := range oldLines {
 		normOld[i] = norm(l)
 	}
+	// Hoist norm() out of the inner window loop — a 500-line file with a
+	// 5-line pattern would otherwise normalize each content line up to 5
+	// times, and the cost is real when norm is collapseWS (regex pass per
+	// line). One pass over contentLines keeps the comparison cheap.
+	normContent := make([]string, len(contentLines))
+	for i, l := range contentLines {
+		normContent[i] = norm(l)
+	}
 
 	var starts []int
 	for i := 0; i+w <= len(contentLines); {
 		match := true
 		for j := 0; j < w; j++ {
-			if norm(contentLines[i+j]) != normOld[j] {
+			if normContent[i+j] != normOld[j] {
 				match = false
 				break
 			}

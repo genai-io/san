@@ -90,29 +90,25 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 
 	// Write observers feed the live spinner-tail and the post-pass recap.
 	// They run on the fork goroutine and check `live` so writes landing
-	// after teardown drop silently instead of racing on UI state.
-	memStore.SetWriteObserver(func(action, file, note string) {
-		if !live.Load() {
-			return
+	// after teardown drop silently instead of racing on UI state. The
+	// memory and skill paths are mechanically identical — same gate,
+	// same indicator hop — so they share one record helper.
+	record := func(kind string, verb func(string) string, target func(string) string) func(action, key, note string) {
+		return func(action, key, note string) {
+			if !live.Load() {
+				return
+			}
+			m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
+				Verb:   verb(action),
+				Kind:   kind,
+				Target: target(key),
+				Note:   note,
+			})
 		}
-		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
-			Verb:   memoryVerb(action),
-			Kind:   "memory",
-			Target: memoryTopicName(file),
-			Note:   note,
-		})
-	})
-	skillMgr.SetWriteObserver(func(action, name, note string) {
-		if !live.Load() {
-			return
-		}
-		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
-			Verb:   skillVerb(action),
-			Kind:   "skill",
-			Target: name,
-			Note:   note,
-		})
-	})
+	}
+	identity := func(s string) string { return s }
+	memStore.SetWriteObserver(record("memory", memoryVerb, memoryTopicName))
+	skillMgr.SetWriteObserver(record("skill", skillVerb, identity))
 
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
 		// Liveness checks before any UI mutation — a teardown race must
@@ -174,7 +170,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 			)
 			m.publishSelfLearnFailure(kinds, runErr)
 			if len(actions) > 0 {
-				m.publishSelfLearnSummary(kinds, actions, forkSessionID)
+				m.publishSelfLearnSummary(actions, forkSessionID)
 			}
 			return
 		}
@@ -193,7 +189,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 			zap.Int("changes", len(actions)),
 			zap.String("fork-session", forkSessionID),
 		)
-		m.publishSelfLearnSummary(kinds, actions, forkSessionID)
+		m.publishSelfLearnSummary(actions, forkSessionID)
 	}
 
 	r := selflearn.New(cfg, review)
@@ -246,7 +242,7 @@ func (m *model) runSelfLearnDemo() {
 		// Demo: fabricate a plausible-looking fork session ID so the
 		// recap footer is identical in shape to the real path.
 		demoSessionID := fmt.Sprintf("demo-session.selflearn-review.%d", time.Now().Unix())
-		m.publishSelfLearnSummary(kinds, actions, demoSessionID)
+		m.publishSelfLearnSummary(actions, demoSessionID)
 	}()
 }
 
@@ -350,11 +346,10 @@ func countUserTurns(msgs []core.ChatMessage, pendingSend string) int {
 // Data would re-submit it to the LLM and break the §6 out-of-band promise.
 // forkSessionID points at the L1 fork's own session so the recap can
 // suggest "gen --resume <id>" for replay.
-func (m *model) publishSelfLearnSummary(kinds selflearn.ReviewKind, actions []ReviewAction, forkSessionID string) {
+func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID string) {
 	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
-	_ = kinds // header dropped; recap is self-evident
 	m.agentEventHub.Publish(hub.Event{
 		Type:    eventSelfLearnReviewDone,
 		Source:  "selflearn",

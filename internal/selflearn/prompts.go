@@ -118,7 +118,7 @@ func renderInventory(skills *SkillManager) string {
 	var b strings.Builder
 	for _, s := range inv {
 		edit := "read-only (user-created)"
-		if s.Editable {
+		if s.Editable() {
 			edit = "editable (agent-created)"
 		}
 		desc := s.Description

@@ -45,7 +45,7 @@ func (p *selfLearnPanel) Enter() {
 		p.snap = data.SelfLearn
 	}
 	p.baseline = p.snap
-	p.cursor = firstEditableRow(p.rows())
+	p.cursor = findEditable(p.rows(), 0, +1, 0)
 }
 
 // Dirty reports whether the working snapshot diverges from the disk
@@ -58,13 +58,13 @@ func (p *selfLearnPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	}
 	rows := p.rows()
 	if p.cursor >= len(rows) {
-		p.cursor = firstEditableRow(rows)
+		p.cursor = findEditable(rows, 0, +1, 0)
 	}
 	switch msg.String() {
 	case "up", "k":
-		p.cursor = prevEditableRow(rows, p.cursor)
+		p.cursor = findEditable(rows, p.cursor-1, -1, p.cursor)
 	case "down", "j":
-		p.cursor = nextEditableRow(rows, p.cursor)
+		p.cursor = findEditable(rows, p.cursor+1, +1, p.cursor)
 	case "tab":
 		if p.scope == "user" {
 			p.scope = "project"
@@ -386,8 +386,14 @@ type configRow struct {
 	unit      string           // for rowInt — muted suffix after the value (e.g. "user turns", "KB")
 	footnote  func(int) string // for rowInt — optional muted inline footnote after the label
 	advHint   string           // for rowBool — optional inline "⚠ …" hint after the label
-	editable  bool
 	indent    int
+}
+
+// editable reports whether the row can hold the cursor. Derived from kind:
+// the three actionable kinds (toggle, edit-in-place, save) are editable;
+// section headers, sub-headers, and spacers are not.
+func (r configRow) editable() bool {
+	return r.kind == rowBool || r.kind == rowInt || r.kind == rowSave
 }
 
 func (p *selfLearnPanel) rows() []configRow {
@@ -397,7 +403,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Enable memory-evolving",
 			indent:     1,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Memory.Enabled },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Memory.Enabled = !s.Memory.Enabled },
 		},
@@ -406,7 +411,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Run every",
 			unit:      "user turns",
 			indent:    1,
-			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Memory.EveryTurns, 10) },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.EveryTurns = v },
 			intMin:    1,
@@ -417,7 +421,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Max size",
 			unit:      "KB",
 			indent:    1,
-			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return s.Memory.MaxKBOr() },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Memory.MaxKB = v },
 			intMin:    1,
@@ -432,7 +435,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Enable skill-evolving",
 			indent:     1,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.Enabled },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.Enabled = !s.Skills.Enabled },
 		},
@@ -441,7 +443,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			label:     "Run every",
 			unit:      "tool iterations",
 			indent:    1,
-			editable:  true,
 			intGetter: func(s *setting.SelfLearnSettings) int { return defaultIfZero(s.Skills.EveryToolIters, 10) },
 			intSetter: func(s *setting.SelfLearnSettings, v int) { s.Skills.EveryToolIters = v },
 			intMin:    1,
@@ -453,7 +454,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Create new skills",
 			indent:     2,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowCreate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyCreate = !s.Skills.DenyCreate },
 		},
@@ -461,7 +461,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Update existing skills",
 			indent:     2,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdate() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyUpdate = !s.Skills.DenyUpdate },
 		},
@@ -469,7 +468,6 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Delete obsolete skills",
 			indent:     2,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowDelete() },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.DenyDelete = !s.Skills.DenyDelete },
 		},
@@ -479,13 +477,12 @@ func (p *selfLearnPanel) rows() []configRow {
 			kind:       rowBool,
 			label:      "Update user-authored skills",
 			indent:     2,
-			editable:   true,
 			boolGetter: func(s *setting.SelfLearnSettings) bool { return s.Skills.AllowUpdateUserCreated },
 			toggle:     func(s *setting.SelfLearnSettings) { s.Skills.AllowUpdateUserCreated = !s.Skills.AllowUpdateUserCreated },
 			advHint:    "⚠ rewrites your authored skill files",
 		},
 		{kind: rowSpacer},
-		{kind: rowSave, label: "Save", editable: true},
+		{kind: rowSave, label: "Save"},
 	}
 }
 
@@ -496,31 +493,18 @@ func defaultIfZero(v, def int) int {
 	return v
 }
 
-func firstEditableRow(rows []configRow) int {
-	for i, r := range rows {
-		if r.editable {
+// findEditable walks rows from start in direction step (+1 forward,
+// −1 backward) until it hits an editable row. Returns fallback when
+// no editable row is found in that direction — start ≥ len(rows) for
+// the first-row lookup, the cursor itself for next/prev so navigation
+// past the last actionable row stays put.
+func findEditable(rows []configRow, start, step, fallback int) int {
+	for i := start; i >= 0 && i < len(rows); i += step {
+		if rows[i].editable() {
 			return i
 		}
 	}
-	return 0
-}
-
-func nextEditableRow(rows []configRow, cur int) int {
-	for i := cur + 1; i < len(rows); i++ {
-		if rows[i].editable {
-			return i
-		}
-	}
-	return cur
-}
-
-func prevEditableRow(rows []configRow, cur int) int {
-	for i := cur - 1; i >= 0; i-- {
-		if rows[i].editable {
-			return i
-		}
-	}
-	return cur
+	return fallback
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────

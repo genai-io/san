@@ -14,6 +14,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/genai-io/gen-code/internal/app/kit"
 )
 
 // selflearnTickMsg advances the spinner frame and decays done/failed back
@@ -252,7 +254,7 @@ func (s *SelfLearnIndicator) Tick(now time.Time) (delay time.Duration, stillActi
 	defer s.mu.Unlock()
 	switch s.phase {
 	case selflearnReviewing:
-		s.frame = (s.frame + 1) % len(asciiSpinnerFrames)
+		s.frame = (s.frame + 1) % len(kit.AsciiSpinnerFrames)
 		return selflearnTickInterval, true
 	case selflearnDone:
 		return s.decayPhase(now, selflearnDoneHoldDuration)
@@ -335,17 +337,11 @@ type SelfLearnIndicatorSnapshot struct {
 	Summary string // one-line recap shown during the done phase
 }
 
-// asciiSpinnerFrames is the classic four-frame ASCII spinner. We pick
-// this over the braille set so the status line stays terminal-portable
-// (some PTYs render braille glyphs as wide cells, which jitters the
-// width of the surrounding label).
-var asciiSpinnerFrames = []string{"|", "/", "-", `\`}
-
 // Render returns the status-bar label; "" for idle.
 func (s SelfLearnIndicatorSnapshot) Render() string {
 	switch s.Phase {
 	case selflearnReviewing:
-		spinner := asciiSpinnerFrames[s.Frame%len(asciiSpinnerFrames)]
+		spinner := kit.AsciiSpinnerFrames[s.Frame%len(kit.AsciiSpinnerFrames)]
 		if s.Target == "" {
 			return spinner
 		}

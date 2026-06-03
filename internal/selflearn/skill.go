@@ -22,15 +22,6 @@ import (
 // them). See notes/active/l1-background-review.md §5.2.
 const agentOrigin = "agent-created"
 
-// fireWrite invokes the observer if one is registered. Free function
-// (vs a method on SkillManager) so each call site reads as
-// "fire this notification" rather than "manager fires…".
-func fireWrite(observer SkillWriteObserver, action, name, note string) {
-	if observer != nil {
-		observer(action, name, note)
-	}
-}
-
 // skillNameRe enforces class-level kebab names and doubles as a traversal guard
 // (no separators, no dots). Session-specific names (PR numbers, error strings)
 // should be steered away by the prompt; this just keeps the on-disk name safe.
@@ -99,6 +90,13 @@ func (m *SkillManager) Perms() ActionPermissions { return m.perms }
 // write. Must be called before the first write (see type doc).
 func (m *SkillManager) SetWriteObserver(fn SkillWriteObserver) { m.onWrite = fn }
 
+// fireWrite invokes the write observer if one is registered.
+func (m *SkillManager) fireWrite(action, name, note string) {
+	if m.onWrite != nil {
+		m.onWrite(action, name, note)
+	}
+}
+
 // SkillInfo is a one-line summary of an existing skill, used to brief the
 // reviewer so it prefers updating over creating and never re-derives a skill
 // that already exists.
@@ -107,8 +105,12 @@ type SkillInfo struct {
 	Level       string // user | project
 	Origin      string // agent-created | user-created
 	Description string
-	Editable    bool // true only for agent-created skills
 }
+
+// Editable reports whether the reviewer may modify this skill at all (agent-
+// created). User-created stays read-only at the base level; patching them
+// requires the AllowUpdateUserCreated opt-in.
+func (i SkillInfo) Editable() bool { return i.Origin == agentOrigin }
 
 // Inventory lists existing skills across both scopes (project entries shadow
 // user entries of the same name, matching loader precedence).
@@ -158,7 +160,6 @@ func (m *SkillManager) Inventory() []SkillInfo {
 				Level:       scope.level,
 				Origin:      origin,
 				Description: meta.Description,
-				Editable:    origin == agentOrigin,
 			})
 		}
 	}
@@ -252,27 +253,22 @@ func (m *SkillManager) requireAgentOwned(name string) (parsed, error) {
 
 // requirePatchable parses name and returns it when L1 is allowed to patch
 // the body in place. Agent-created skills are always patchable (subject to
-// AllowUpdate); user-created skills are patchable only when
-// AllowUpdateUserCreated is set (§5.5 advanced opt-in).
+// AllowUpdate); anything else (user-created, missing/unrecognised origin)
+// is patchable only when AllowUpdateUserCreated is set (§5.5 advanced
+// opt-in) — treated as user-created since that is the conservative read
+// of any non-agent provenance.
 func (m *SkillManager) requirePatchable(name string) (parsed, error) {
 	p, err := m.parseSkill(name)
 	if err != nil {
 		return parsed{}, err
 	}
-	switch p.origin {
-	case agentOrigin:
+	if p.origin == agentOrigin || m.perms.AllowUpdateUserCreated {
 		return p, nil
-	case "", "user-created":
-		if m.perms.AllowUpdateUserCreated {
-			return p, nil
-		}
-		return parsed{}, fmt.Errorf(
-			"skill %q is user-created; set selfLearn.skills.allowUpdateUserCreated=true to allow patching",
-			name,
-		)
-	default:
-		return parsed{}, fmt.Errorf("skill %q has unknown origin %q", name, p.origin)
 	}
+	return parsed{}, fmt.Errorf(
+		"skill %q is user-created; set selfLearn.skills.allowUpdateUserCreated=true to allow patching",
+		name,
+	)
 }
 
 func (m *SkillManager) Create(name, description, body, level, note string) (string, error) {
@@ -320,7 +316,7 @@ func (m *SkillManager) Create(name, description, body, level, note string) (stri
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	fireWrite(m.onWrite, "create", name, note)
+	m.fireWrite("create", name, note)
 	return fmt.Sprintf("Created skill %q.", name), nil
 }
 
@@ -350,7 +346,7 @@ func (m *SkillManager) Edit(name, body, note string) (string, error) {
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, body)), 0o644); err != nil {
 		return "", err
 	}
-	fireWrite(m.onWrite, "edit", name, note)
+	m.fireWrite("edit", name, note)
 	return fmt.Sprintf("Rewrote skill %q.", name), nil
 }
 
@@ -384,7 +380,7 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool, not
 	if err := os.WriteFile(p.path, []byte(joinFrontmatter(p.fm, patched)), 0o644); err != nil {
 		return "", err
 	}
-	fireWrite(m.onWrite, "patch", name, note)
+	m.fireWrite("patch", name, note)
 	return fmt.Sprintf("Patched skill %q.", name), nil
 }
 
@@ -419,7 +415,7 @@ func (m *SkillManager) WriteFile(name, file, content, note string) (string, erro
 	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	fireWrite(m.onWrite, "write_file", name, note)
+	m.fireWrite("write_file", name, note)
 	return fmt.Sprintf("Wrote %s to skill %q.", rel, name), nil
 }
 
@@ -447,7 +443,7 @@ func (m *SkillManager) RemoveFile(name, file, note string) (string, error) {
 		}
 		return "", err
 	}
-	fireWrite(m.onWrite, "remove_file", name, note)
+	m.fireWrite("remove_file", name, note)
 	return fmt.Sprintf("Removed %s from skill %q.", rel, name), nil
 }
 
@@ -468,7 +464,7 @@ func (m *SkillManager) Delete(name, note string) (string, error) {
 	if err := os.RemoveAll(filepath.Dir(p.path)); err != nil {
 		return "", err
 	}
-	fireWrite(m.onWrite, "delete", name, note)
+	m.fireWrite("delete", name, note)
 	return fmt.Sprintf("Deleted skill %q.", name), nil
 }
 

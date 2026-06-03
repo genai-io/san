@@ -45,14 +45,11 @@ type SelfLearnSettings struct {
 	Skills SelfLearnSkills `json:"skills,omitempty"`
 }
 
-// SelfLearnMaxMemoryKB is the upper bound on memory.maxKB. It matches the
-// injection cap (autoMemoryByteCap = 25 KB) so the on-disk per-file cap can
-// never exceed what the loader would have to truncate — see §4.2 invariant.
+// SelfLearnMaxMemoryKB is the upper bound on memory.maxKB and the default
+// when the config field is zero. It matches the injection cap
+// (autoMemoryByteCap = 25 KB) so the on-disk per-file cap can never exceed
+// what the loader would have to truncate — see §4.2 invariant.
 const SelfLearnMaxMemoryKB = 25
-
-// SelfLearnDefaultMemoryKB is the default memory.maxKB when the config field
-// is zero (unset). Equal to SelfLearnMaxMemoryKB by design.
-const SelfLearnDefaultMemoryKB = 25
 
 // SelfLearnMemory controls memory-evolving: review every N user turns. MaxKB
 // is the on-disk cap per memory file; lower values force more aggressive
@@ -60,7 +57,7 @@ const SelfLearnDefaultMemoryKB = 25
 type SelfLearnMemory struct {
 	Enabled    bool `json:"enabled,omitempty"`
 	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = default cadence (10)
-	MaxKB      int  `json:"maxKB,omitempty"`      // 0 = SelfLearnDefaultMemoryKB
+	MaxKB      int  `json:"maxKB,omitempty"`      // 0 = SelfLearnMaxMemoryKB
 }
 
 // SelfLearnSkills controls skill-evolving: review when accumulated tool
@@ -96,10 +93,10 @@ func (s SelfLearnSkills) AllowCreate() bool { return !s.DenyCreate }
 func (s SelfLearnSkills) AllowUpdate() bool { return !s.DenyUpdate }
 func (s SelfLearnSkills) AllowDelete() bool { return !s.DenyDelete }
 
-// MaxKBOr returns the resolved MaxKB (default SelfLearnDefaultMemoryKB if zero).
+// MaxKBOr returns the resolved MaxKB (default SelfLearnMaxMemoryKB if zero).
 func (m SelfLearnMemory) MaxKBOr() int {
 	if m.MaxKB <= 0 {
-		return SelfLearnDefaultMemoryKB
+		return SelfLearnMaxMemoryKB
 	}
 	return m.MaxKB
 }

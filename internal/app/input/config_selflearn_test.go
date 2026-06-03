@@ -25,7 +25,7 @@ func TestSelfLearnPanelCursorSkipsHeaders(t *testing.T) {
 	c, p := newTestPopup()
 	rows := p.rows()
 
-	if !rows[p.cursor].editable {
+	if !rows[p.cursor].editable() {
 		t.Fatalf("initial cursor on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 	}
 
@@ -33,13 +33,13 @@ func TestSelfLearnPanelCursorSkipsHeaders(t *testing.T) {
 
 	for range len(rows) * 2 {
 		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
-		if !rows[p.cursor].editable {
+		if !rows[p.cursor].editable() {
 			t.Fatalf("down landed on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 		}
 	}
 	for range len(rows) * 2 {
 		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyUp})
-		if !rows[p.cursor].editable {
+		if !rows[p.cursor].editable() {
 			t.Fatalf("up landed on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 		}
 	}

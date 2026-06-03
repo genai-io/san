@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/gen-code/internal/core"
 	"github.com/genai-io/gen-code/internal/core/system"
+	"github.com/genai-io/gen-code/internal/setting"
 	"github.com/genai-io/gen-code/internal/tool"
 )
 
@@ -36,9 +37,9 @@ func rejectEmbeddedDelimiter(content string) error {
 }
 
 // DefaultMemoryFileCharLimit is the fallback per-file cap when the
-// constructor gets 0. Matches the injection cap (system.AutoMemoryByteCap)
-// so a file that fits on write also fits when read (§4.2).
-const DefaultMemoryFileCharLimit = 25000
+// constructor gets 0. Matches the injection cap so a file that fits on
+// write also fits when read (§4.2).
+const DefaultMemoryFileCharLimit = setting.SelfLearnMaxMemoryKB * 1024
 
 // MemoryStore is the project-partitioned durable memory written by the L1
 // fork and read back via system.LoadMemoryFiles. Lives under
@@ -234,8 +235,19 @@ func uniqueMatch(entries []string, sub string) (int, error) {
 	return first, nil
 }
 
+// joinedLen returns len(strings.Join(entries, memoryEntryDelimiter))
+// without allocating the joined string — Add/Replace call this on every
+// write just to check the cap, so doing real arithmetic keeps a
+// near-cap file from rebuilding a 25 KB string on each call.
 func joinedLen(entries []string) int {
-	return len(strings.Join(entries, memoryEntryDelimiter))
+	if len(entries) == 0 {
+		return 0
+	}
+	total := (len(entries) - 1) * len(memoryEntryDelimiter)
+	for _, e := range entries {
+		total += len(e)
+	}
+	return total
 }
 
 // readEntries parses a memory file into trimmed, non-empty entries. A missing or
