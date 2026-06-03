@@ -128,10 +128,11 @@ func (s *State) UpdateSuggestions(input string) {
 }
 
 const (
-	fileScanMaxResults     = 500
-	fileScanMaxDirsVisited = 2000
-	fileScanMaxDepth       = 6
-	fileSuggestionViewSize = 8
+	fileScanMaxResults        = 500
+	fileScanMaxDirsVisited    = 2000
+	fileScanMaxDepth          = 6
+	fileSuggestionViewSize    = 8
+	commandSuggestionViewSize = 8
 )
 
 func (s *State) updatefileSuggestions(query string) {
@@ -294,13 +295,15 @@ func (s *State) MoveDown() {
 }
 
 func (s *State) MovePageUp() {
-	s.selectedIdx = max(s.selectedIdx-fileSuggestionViewSize, 0)
+	pageSize := s.suggestionViewSize()
+	s.selectedIdx = max(s.selectedIdx-pageSize, 0)
 	s.clampViewStart()
 }
 
 func (s *State) MovePageDown() {
+	pageSize := s.suggestionViewSize()
 	maxIdx := s.maxSelectedIdx()
-	s.selectedIdx += fileSuggestionViewSize
+	s.selectedIdx += pageSize
 	if s.selectedIdx > maxIdx {
 		s.selectedIdx = maxIdx
 	}
@@ -328,16 +331,13 @@ func (s *State) maxSelectedIdx() int {
 }
 
 func (s *State) clampViewStart() {
-	if s.suggestionType != TypeFile {
-		s.viewStart = 0
-		return
-	}
-	total := len(s.fileSuggestions)
+	viewSize := s.suggestionViewSize()
+	total := s.totalSuggestions()
 	if total == 0 {
 		s.viewStart = 0
 		return
 	}
-	maxStart := max(total-fileSuggestionViewSize, 0)
+	maxStart := max(total-viewSize, 0)
 	if s.viewStart > maxStart {
 		s.viewStart = maxStart
 	}
@@ -346,9 +346,23 @@ func (s *State) clampViewStart() {
 	}
 	if s.selectedIdx < s.viewStart {
 		s.viewStart = s.selectedIdx
-	} else if s.selectedIdx >= s.viewStart+fileSuggestionViewSize {
-		s.viewStart = s.selectedIdx - fileSuggestionViewSize + 1
+	} else if s.selectedIdx >= s.viewStart+viewSize {
+		s.viewStart = s.selectedIdx - viewSize + 1
 	}
+}
+
+func (s *State) suggestionViewSize() int {
+	if s.suggestionType == TypeFile {
+		return fileSuggestionViewSize
+	}
+	return commandSuggestionViewSize
+}
+
+func (s *State) totalSuggestions() int {
+	if s.suggestionType == TypeFile {
+		return len(s.fileSuggestions)
+	}
+	return len(s.suggestions)
 }
 
 func (s *State) GetSelected() string {
@@ -446,29 +460,48 @@ func (s *State) renderfileSuggestions(width int) string {
 }
 
 func (s *State) renderCommandSuggestions(width int) string {
-	const maxItems = 5
-	items := s.suggestions
-	if len(items) > maxItems {
-		items = items[:maxItems]
+	total := len(s.suggestions)
+	viewSize := min(commandSuggestionViewSize, total)
+
+	start := s.viewStart
+	if start+viewSize > total {
+		start = total - viewSize
 	}
+	if start < 0 {
+		start = 0
+	}
+	end := min(start+viewSize, total)
+	items := s.suggestions[start:end]
 
 	boxWidth := max(width-2, 40)
 	contentWidth := max(boxWidth-2, 20)
 
 	var lines []string
+	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
+	header := "Commands:"
+	if total > viewSize {
+		header = fmt.Sprintf("Commands (%d/%d):", s.selectedIdx+1, total)
+	}
+	lines = append(lines, headerStyle.Render(header))
+
 	for i, cmd := range items {
 		cmdName := "/" + cmd.Name
 		maxDescLen := max(contentWidth-len(cmdName)-3, 10)
 		desc := truncateWithEllipsis(cmd.Description, maxDescLen)
 
-		line := fmt.Sprintf("%s - %s", cmdName, desc)
-
-		if i == s.selectedIdx {
+		if start+i == s.selectedIdx {
+			line := fmt.Sprintf("%s - %s", cmdName, desc)
 			lines = append(lines, selectedSuggestionStyle().Render(line))
 		} else {
 			lines = append(lines, commandNameStyle().Render(cmdName)+commandDescStyle().Render(" - "+desc))
 		}
 	}
+
+	hint := "Tab/Enter to select · Esc to cancel"
+	if total > viewSize {
+		hint = "↑/↓ scroll · Tab/Enter · Esc"
+	}
+	lines = append(lines, "", commandDescStyle().Render(hint))
 
 	content := strings.Join(lines, "\n")
 	return suggestionBoxStyle().Width(boxWidth).Render(content)

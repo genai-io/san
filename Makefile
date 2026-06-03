@@ -23,10 +23,7 @@ install-format-tools:
 	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 check-format-tools:
-	@command -v goimports >/dev/null || { \
-		echo "goimports is required. Install it with: make install-format-tools"; \
-		exit 1; \
-	}
+	@command -v goimports >/dev/null || go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 format: check-format-tools
 	@gofmt -w $(GOFILES)
