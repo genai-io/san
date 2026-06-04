@@ -20,6 +20,8 @@ Comparison between **GenCode v1.13.2** (Go) and **Claude Code v2.1.112** (Node.j
 
 GenCode ships as a single static binary with zero runtime dependencies. Claude Code requires Node.js and installs ~63 MB of npm packages.
 
+For what this small, dependency-free footprint enables — Raspberry Pi, edge nodes, minimal containers, air-gapped hosts — see [footprint.md](footprint.md).
+
 ---
 
 ## 2. Startup Time (`version`)

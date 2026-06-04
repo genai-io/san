@@ -1,6 +1,6 @@
 <div align="center">
   <h1>&lt; GEN ✦ /&gt;</h1>
-  <p><strong>Open-source AI coding assistant for the terminal</strong></p>
+  <p><strong>Open-source unified runtime for specialized AI agents — in the terminal</strong></p>
   <p>
     <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/gen-code/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Gen Code is a terminal coding assistant built around five pluggable pillars — **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Built in Go and shipped as a single binary — a unified runtime for specialized agents.
+Gen Code is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.
 
 ## Features
 
@@ -33,7 +33,7 @@ Gen Code is a terminal coding assistant built around five pluggable pillars — 
 
 ### Engineering
 
-- **Native performance** — Single Go binary; see [benchmark](#benchmark-gencode-vs-claude-code) for measured numbers.
+- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-gencode-vs-claude-code)).
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.

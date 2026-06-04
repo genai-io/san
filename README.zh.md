@@ -1,6 +1,6 @@
 <div align="center">
   <h1>&lt; GEN ✦ /&gt;</h1>
-  <p><strong>面向终端的开源 AI 编程助手</strong></p>
+  <p><strong>面向终端的开源「专用 Agent 统一运行时」</strong></p>
   <p>
     <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/gen-code/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-0d9488?style=flat-square" alt="官网"></a>
@@ -19,7 +19,7 @@
   </p>
 </div>
 
-Gen Code 是一款终端 AI 编程助手，围绕五大可插拔能力构建 —— **模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现，单二进制分发 —— 面向各类专用 Agent 的统一运行时。
+Gen Code 是面向终端的**专用 Agent 统一运行时**（Unified Specialized Agent Runtime）—— 不止于编程 —— 构建在五大可插拔能力之上：**模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现。
 
 ## 特性
 
@@ -33,7 +33,7 @@ Gen Code 是一款终端 AI 编程助手，围绕五大可插拔能力构建 —
 
 ### 工程实现
 
-- **原生性能** —— 单一 Go 二进制；实测数据见下方[基准测试](#基准测试gen-code-vs-claude-code)。
+- **随处运行** —— 单一约 12 MB 二进制，零运行时依赖（无需 Node.js、Python）。原生 Go：冷启动约 0.01s、基线内存约 32 MB，同一文件可在笔记本、边缘设备或 `scratch` 容器中直接运行（[体积](docs/operations/footprint.md) · [基准测试](#基准测试gen-code-vs-claude-code)）。
 - **事件驱动协同** —— 基于 pub/sub hub 的并行 subagent 执行（[架构说明](docs/packages/subagent.md)）。
 - **会话持久化** —— 自动保存、恢复、Fork 以及自动上下文压缩。
 - **Prompt 预测** —— 推测式地预生成可能的下一个 prompt 以降低延迟。

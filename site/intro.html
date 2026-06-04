@@ -16,7 +16,7 @@
   Open in a browser. Auto-loops; click to pause/play, R restart, T theme.
   Record at 1280x720.
 
-  Flow: boot → multi-model → multi-persona → fast interaction → self-improvement → outro.
+  Flow: boot → multi-model → multi-persona → fast interaction → self-improvement → deploy → outro.
 -->
 <html lang="en">
 <head>
@@ -75,10 +75,11 @@
   .cdesc{font-size:14px;color:var(--dim);margin-top:7px;letter-spacing:.2px}
 
   /* terminal */
-  .term{position:absolute;z-index:4;left:80px;top:112px;width:1120px;height:540px;
+  .term{position:absolute;z-index:4;left:80px;top:112px;width:1120px;height:540px;transform-origin:50% 0;
     background:var(--panel);border:1px solid var(--border);border-radius:14px;
     box-shadow:0 28px 70px var(--shadow-soft), inset 0 1px 0 var(--hairline);
-    overflow:hidden;display:flex;flex-direction:column;transition:background .4s ease,border-color .4s ease}
+    overflow:hidden;display:flex;flex-direction:column;transition:background .4s ease,border-color .4s ease,transform .6s var(--ease)}
+  .term.shrunk{transform:scale(.4)}
   .bar{height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;padding:0 15px;
     background:var(--panel-bar);border-bottom:1px solid var(--border)}
   .dot{width:11px;height:11px;border-radius:50%;background:var(--faint);opacity:.7}
@@ -188,6 +189,31 @@
   .install .p{color:var(--accent)}
   .site{font-size:14px;color:var(--accent)}
 
+  /* deploy / fan-out — terminal shrinks, devices pop out on the stage */
+  .dlayer{position:absolute;inset:0;z-index:5;opacity:0;pointer-events:none;transition:opacity .5s ease}
+  .dlayer.on{opacity:1}
+  .dlines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .dline{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 7;vector-effect:non-scaling-stroke;
+    opacity:0;transition:opacity .4s ease;animation:flow 1.05s linear infinite}
+  .dline.on{opacity:.5}
+  @keyframes flow{to{stroke-dashoffset:-24}}
+  .dgrid{position:absolute;left:0;right:0;top:430px;display:flex;justify-content:center;gap:20px}
+  .node{width:180px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 12px;
+    display:flex;flex-direction:column;align-items:center;gap:7px;box-shadow:0 16px 44px var(--shadow);
+    transition:border-color .35s ease,box-shadow .35s ease,opacity .4s var(--ease),transform .4s var(--ease)}
+  .node .nicon{color:var(--dim);line-height:0;transition:color .35s ease}
+  .node .nicon svg{width:30px;height:30px;display:block}
+  .node .nlabel{font-size:13px;color:var(--fg);letter-spacing:.2px}
+  .node .nrole{font-size:12px;color:var(--faint);transition:color .35s ease}
+  .node .nrole::before{content:'● ';color:var(--accent);opacity:0;transition:opacity .3s ease}
+  .node.run{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-soft),0 18px 48px var(--shadow);transform:translateY(-3px)}
+  .node.run .nicon{color:var(--accent)}
+  .node.run .nrole{color:var(--accent)}
+  .node.run .nrole::before{opacity:1;animation:zap 1.1s ease-in-out infinite}
+  .dfoot{position:absolute;left:0;right:0;bottom:84px;text-align:center;font-family:var(--serif);font-style:italic;
+    font-size:23px;font-weight:500;color:var(--accent);
+    background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+
   /* progress bar */
   .ticks{position:absolute;left:80px;right:80px;bottom:44px;z-index:6;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);height:14px}
   .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
@@ -218,7 +244,7 @@
     <div class="cdesc" id="cap-desc"></div>
   </div>
 
-  <div class="term">
+  <div class="term" id="term">
     <div class="bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="title">gen — ~/Workspace/app</span>
@@ -230,8 +256,8 @@
       <section class="scene" data-start="0" data-dur="4.4" id="boot">
         <div class="splash">
           <div class="logo reveal" id="b-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
-          <div class="tag reveal" id="b-tag">An open-source AI coding assistant for the terminal</div>
-          <div class="sub reveal" id="b-sub">A unified runtime for specialized agents — shipped as a single, native Go binary</div>
+          <div class="tag reveal" id="b-tag">An open-source unified agent runtime</div>
+          <div class="sub reveal" id="b-sub">Specialized agents, coding and beyond — shipped as a single, native Go binary</div>
           <div class="pillars reveal" id="b-pil">Models · Search · Personas · Extensions · Evolution</div>
           <div class="bootline reveal" id="b-prompt"><span class="prompt">❭ </span><span class="cur"></span></div>
         </div>
@@ -294,7 +320,7 @@
       </section>
 
       <!-- ░░ SELF-IMPROVEMENT ░░ -->
-      <section class="scene" data-start="28.4" data-dur="10.6" id="learn">
+      <section class="scene" data-start="28.4" data-dur="8.0" id="learn">
         <div class="hist" id="l-hist">
           <div class="h-cmd"><span class="prompt">❭ </span>add a /healthz endpoint and a test</div>
           <div class="h-tool">⏺ <span class="tn">read</span> internal/server/router.go</div>
@@ -319,18 +345,60 @@
         <div class="rc-foot reveal" id="l-foot">↪ gen --resume app.selflearn-review.1780412141</div>
       </section>
 
+      <!-- ░░ DEPLOY / FAN-OUT ░░ -->
+      <section class="scene" data-start="36.4" data-dur="8.0" id="deploy">
+        <div class="splash">
+          <div class="logo reveal" id="d-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
+          <div class="sub reveal" id="d-cap">one ~12 MB binary · zero deps</div>
+        </div>
+      </section>
+
       <!-- ░░ OUTRO ░░ -->
-      <section class="scene" data-start="39.0" data-dur="9.5" id="outro">
+      <section class="scene" data-start="44.4" data-dur="9.5" id="outro">
         <div class="outro">
           <div class="big reveal" id="o-logo">&lt; GEN <span class="sp">✦</span> /&gt;</div>
           <div class="ln reveal" id="o-cn">Models · Search · Personas · Extensions · Evolution</div>
-          <div class="en reveal" id="o-en">An open-source AI coding assistant for the terminal</div>
+          <div class="en reveal" id="o-en">One binary, many specialized agents — coding and beyond</div>
           <div class="install reveal" id="o-inst"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</div>
           <div class="site reveal" id="o-site">genai-io.github.io/gen-code · ★ star it on GitHub</div>
         </div>
       </section>
 
     </div>
+  </div>
+
+  <!-- deploy fan-out: device nodes on the stage, around the shrunk terminal -->
+  <div class="dlayer" id="dlayer">
+    <svg class="dlines" viewBox="0 0 1280 720" preserveAspectRatio="none">
+      <path class="dline" id="d-l1" d="M640 330 L240 425"/>
+      <path class="dline" id="d-l2" d="M640 330 L440 425"/>
+      <path class="dline" id="d-l3" d="M640 330 L640 425"/>
+      <path class="dline" id="d-l4" d="M640 330 L840 425"/>
+      <path class="dline" id="d-l5" d="M640 330 L1040 425"/>
+    </svg>
+    <div class="dgrid">
+      <div class="node reveal" id="d-n1">
+        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="5" width="16" height="10" rx="1"/><path d="M2.5 18.5h19l-1.2-2H3.7z"/></svg></div>
+        <div class="nlabel">laptop</div><div class="nrole">coding</div>
+      </div>
+      <div class="node reveal" id="d-n2">
+        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M8 6v12M12 6v12M16 6v12"/></svg></div>
+        <div class="nlabel">scratch container</div><div class="nrole">ci-runner</div>
+      </div>
+      <div class="node reveal" id="d-n3">
+        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="7" width="10" height="10" rx="1.2"/><path d="M10 7V4.2M14 7V4.2M10 19.8V17M14 19.8V17M7 10H4.2M7 14H4.2M19.8 10H17M19.8 14H17"/></svg></div>
+        <div class="nlabel">edge device</div><div class="nrole">log-triage</div>
+      </div>
+      <div class="node reveal" id="d-n4">
+        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 18h9.5a3.7 3.7 0 0 0 .4-7.4 5.2 5.2 0 0 0-10-1.4A3.6 3.6 0 0 0 7 18z"/></svg></div>
+        <div class="nlabel">cloud node</div><div class="nrole">api-review</div>
+      </div>
+      <div class="node reveal" id="d-n5">
+        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="5" r="2.3"/><circle cx="5" cy="18" r="2.3"/><circle cx="19" cy="18" r="2.3"/><path d="M10.5 6.8 6.5 16M13.5 6.8 17.5 16M7.3 18h9.4"/></svg></div>
+        <div class="nlabel">edge gateway</div><div class="nrole">automation</div>
+      </div>
+    </div>
+    <div class="dfoot reveal" id="d-foot">One runtime, shipped everywhere — a fleet of specialized agents</div>
   </div>
 
   <div class="ticks" id="ticks"></div>
@@ -357,7 +425,7 @@ $('themeBtn').addEventListener('click', e=>{ e.stopPropagation(); toggleTheme();
 const scenes = [...document.querySelectorAll('.scene')].map(el=>({ el, id:el.id, start:+el.dataset.start, dur:+el.dataset.dur }));
 const TOTAL = Math.max(...scenes.map(s=>s.start+s.dur));
 const HOLD = 1.4;
-const SPEED = 0.75;   // master playback speed — <1 slower, >1 faster
+const SPEED = 1.0;   // master playback speed — <1 slower, >1 faster
 
 function fit(){ $('stage').style.transform = `scale(${Math.min(innerWidth/1280, innerHeight/720)})`; }
 addEventListener('resize', fit); fit();
@@ -366,12 +434,13 @@ const CAPS = {
   model:   {k:'OPEN ARCHITECTURE', t:'Multi-model switching',   d:'Switch provider or model with one command — fetched live, never hard-coded'},
   ident:   {k:'OPEN ARCHITECTURE', t:'Multi-persona switching', d:'Same agent, many personas — Markdown identities scoped to user or project'},
   interact:{k:'NATIVE RUNTIME',    t:'Fast interaction',        d:'Native Go, single binary — read, edit, run the tests, stream back in seconds'},
-  learn:   {k:'SELF-EVOLVING',     t:'Self-improvement',        d:'A background reviewer studies each session — writing memory, tuning skills, leveling up'},
+  learn:   {k:'SELF-EVOLVING',     t:'Learns as you work',      d:'A background reviewer studies each session — writing memory, tuning skills, leveling up'},
+  deploy:  {k:'SMALL FOOTPRINT',   t:'Runs anywhere',           d:'One ~12 MB binary, zero deps — fan it out to edge devices, containers, and the cloud'},
 };
 
 const TICKS = [
   {t:0,label:'boot'},{t:4.4,label:'multi-model'},{t:12.2,label:'multi-persona'},
-  {t:19.4,label:'fast'},{t:28.4,label:'self-improve'},{t:39.0,label:'outro'},
+  {t:19.4,label:'fast'},{t:28.4,label:'self-evolve'},{t:36.4,label:'deploy'},{t:44.4,label:'outro'},
 ];
 TICKS.forEach(tk=>{ const sp=document.createElement('span'); sp.textContent=tk.label; sp.style.left=(tk.t/TOTAL*100)+'%'; sp.dataset.t=tk.t; $('ticks').appendChild(sp); });
 
@@ -391,6 +460,7 @@ function mFilter(q){
 }
 
 function boot(lt){
+  $('term').classList.remove('shrunk'); $('dlayer').classList.remove('on');   // reset deploy state on (re)start
   $('barpill').textContent = 'openai · GPT-5.5 · ◇ think';   // default model before any switch
   tog($('b-logo'),lt>0.2); tog($('b-tag'),lt>0.9); tog($('b-sub'),lt>1.5); tog($('b-pil'),lt>2.1); tog($('b-prompt'),lt>2.8);
 }
@@ -434,10 +504,21 @@ function learn(lt){
   tog($('l-recap'),show); tog($('l-gm'),show); tog($('l-gs'),show);
   tog($('l-foot'), lt>4.9);
 }
+function deploy(lt){
+  $('term').classList.toggle('shrunk', lt>0.35 && lt<7.5);   // the whole terminal shrinks into a hub
+  tog($('d-logo'), lt>0.4); tog($('d-cap'), lt>0.7);
+  $('dlayer').classList.toggle('on', lt>0.9 && lt<7.55);     // devices pop out around it, on the stage
+  const L=['d-l1','d-l2','d-l3','d-l4','d-l5'];
+  L.forEach((id,i)=>{ $(id).classList.toggle('on', lt > 1.2 + i*0.1); });    // fan-out beams light up
+  const N=['d-n1','d-n2','d-n3','d-n4','d-n5'];
+  N.forEach((id,i)=>{ tog($(id), lt > 1.35 + i*0.14); });     // nodes pop in, snappy stagger
+  N.forEach((id,i)=>{ $(id).classList.toggle('run', lt > 2.0 + i*0.16); });  // each boots its agent
+  tog($('d-foot'), lt>3.8);
+}
 function outro(lt){
   tog($('o-logo'),lt>0.2); tog($('o-cn'),lt>0.9); tog($('o-en'),lt>1.4); tog($('o-inst'),lt>2.1); tog($('o-site'),lt>2.8);
 }
-const RUN = {boot, model, ident, interact, learn, outro};
+const RUN = {boot, model, ident, interact, learn, deploy, outro};
 
 let base=null, paused=false, pausedAt=0, t=0, curCap=null;
 function frame(now){

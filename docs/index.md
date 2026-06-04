@@ -45,6 +45,7 @@ explanations here.
 - `operations/release.md` — release process.
 - `operations/troubleshooting.md` — common development issues.
 - `operations/benchmark.md` — reproduce the benchmark numbers.
+- `operations/footprint.md` — why the single small binary is so portable.
 
 ### Know why a decision was made
 
