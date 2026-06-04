@@ -20,6 +20,7 @@ const (
 	MinMax    Name = "minmax"
 	BigModel  Name = "bigmodel"
 	DeepSeek  Name = "deepseek"
+	Ollama    Name = "ollama"
 )
 
 // AuthMethod represents an authentication method for an LLM provider.

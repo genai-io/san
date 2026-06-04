@@ -110,6 +110,7 @@ Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user)
 | **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
 | **MiniMax** | `MINIMAX_API_KEY` |
 | **Z.ai** (GLM) | `BIGMODEL_API_KEY` |
+| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |

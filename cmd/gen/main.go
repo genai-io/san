@@ -23,6 +23,7 @@ import (
 	_ "github.com/genai-io/gen-code/internal/llm/google"
 	_ "github.com/genai-io/gen-code/internal/llm/minmax"
 	_ "github.com/genai-io/gen-code/internal/llm/moonshot"
+	_ "github.com/genai-io/gen-code/internal/llm/ollama"
 	_ "github.com/genai-io/gen-code/internal/llm/openai"
 )
 

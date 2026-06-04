@@ -7,7 +7,7 @@ layer: feature
 
 Provider registry, model store, and client factory for every LLM backend
 (Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax, Z.ai/GLM, DeepSeek,
-plus the generic openai-compat shim). Provider implementations live in
+Ollama, plus the generic openai-compat shim). Provider implementations live in
 `internal/llm/<name>/` subpackages.
 
 ## Purpose
@@ -58,7 +58,7 @@ func ResetDefaultClientFactory()          // test-only
   `~/.gen/providers.json`; tracks current model.
 - `stream/` — provider-side helpers for SSE parsing.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
-  `alibaba/`, `bigmodel/`, `minmax/`, `deepseek/`, `openaicompat/`.
+  `alibaba/`, `bigmodel/`, `minmax/`, `deepseek/`, `ollama/`, `openaicompat/`.
 
 ## Lifecycle
 
