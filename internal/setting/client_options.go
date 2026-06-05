@@ -27,6 +27,8 @@ func DefaultModel(providerName string, authMethod string) string {
 		return "glm-5.1"
 	case "deepseek":
 		return "deepseek-v4-flash"
+	case "sensenova":
+		return "sensenova-6.7-flash-lite"
 	default:
 		return "claude-sonnet-4-20250514"
 	}

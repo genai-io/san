@@ -20,6 +20,7 @@ const (
 	MinMax    Name = "minmax"
 	BigModel  Name = "bigmodel"
 	DeepSeek  Name = "deepseek"
+	SenseNova Name = "sensenova"
 	Ollama    Name = "ollama"
 )
 
