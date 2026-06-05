@@ -225,11 +225,14 @@ func configSourceFromFilePath(filePath string) string {
 	case "mcp.local.json":
 		return "local_settings"
 	case "mcp.json":
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			userPath := filepath.Join(confdir.Dir(homeDir), "mcp.json")
-			if cleanPath == filepath.Clean(userPath) {
-				return "user_settings"
+		// A user-level mcp.json lives at ~/.san/mcp.json (or the pre-rename
+		// ~/.gen/mcp.json). Check both before the project-settings fallthrough,
+		// since a project path <cwd>/.gen/mcp.json also contains "/.gen/".
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			for _, dir := range []string{confdir.Name, confdir.LegacyName} {
+				if cleanPath == filepath.Clean(filepath.Join(homeDir, dir, "mcp.json")) {
+					return "user_settings"
+				}
 			}
 		}
 		sep := string(filepath.Separator)
