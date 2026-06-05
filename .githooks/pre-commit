@@ -39,8 +39,9 @@ echo "$CLEAN_FILES" | xargs goimports -w
 # Re-stage the formatted files
 echo "$CLEAN_FILES" | xargs git add
 
-# Verify formatting
-unformatted=$(echo "$STAGED_GO_FILES" | xargs gofmt -l)
+# Verify the files we just formatted (not skipped ones, whose unstaged
+# changes would falsely block an otherwise-clean commit)
+unformatted=$(echo "$CLEAN_FILES" | xargs gofmt -l)
 if [ -n "$unformatted" ]; then
     echo "These files still aren't formatted — run: make format"
     echo "$unformatted"
