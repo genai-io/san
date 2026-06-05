@@ -39,15 +39,15 @@ type ThinkingEffortProvider interface {
 ```go
 // 在 cmd/san/main.go 中
 import (
-    _ "github.com/genai-io/san/internal/llm/anthropic"
-    _ "github.com/genai-io/san/internal/llm/openai"
-    _ "github.com/genai-io/san/internal/llm/google"
-    _ "github.com/genai-io/san/internal/llm/moonshot"
-    _ "github.com/genai-io/san/internal/llm/alibaba"
-    _ "github.com/genai-io/san/internal/llm/minmax"
-    _ "github.com/genai-io/san/internal/llm/mimo"
-    _ "github.com/genai-io/san/internal/llm/bigmodel"
-    _ "github.com/genai-io/san/internal/llm/deepseek"
+    _ "github.com/genai-io/san/v2/internal/llm/anthropic"
+    _ "github.com/genai-io/san/v2/internal/llm/openai"
+    _ "github.com/genai-io/san/v2/internal/llm/google"
+    _ "github.com/genai-io/san/v2/internal/llm/moonshot"
+    _ "github.com/genai-io/san/v2/internal/llm/alibaba"
+    _ "github.com/genai-io/san/v2/internal/llm/minmax"
+    _ "github.com/genai-io/san/v2/internal/llm/mimo"
+    _ "github.com/genai-io/san/v2/internal/llm/bigmodel"
+    _ "github.com/genai-io/san/v2/internal/llm/deepseek"
 )
 ```
 

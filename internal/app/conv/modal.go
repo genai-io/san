@@ -1,7 +1,7 @@
 package conv
 
 import (
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 type ModalState struct {

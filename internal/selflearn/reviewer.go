@@ -14,8 +14,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 // Arm configures one review arm. ResolveSettings applies the cadence

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // scriptedLLM returns a queued sequence of InferResponses, one per Infer call,

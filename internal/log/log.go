@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"

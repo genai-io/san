@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/session/transcript"
 )
 
 // One turn through PreInfer + PostInfer must produce one inference.requested

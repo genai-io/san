@@ -5,7 +5,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 // APIKeyMeta is the metadata for OpenAI via API Key

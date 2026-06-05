@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/setting"
+	"github.com/genai-io/san/v2/internal/subagent"
 )
 
 var agentRunOpts struct {

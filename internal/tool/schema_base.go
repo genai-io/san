@@ -1,6 +1,6 @@
 package tool
 
-import "github.com/genai-io/san/internal/core"
+import "github.com/genai-io/san/v2/internal/core"
 
 var readToolSchema = core.ToolSchema{
 	Name: "Read",

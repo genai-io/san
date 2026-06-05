@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 func (e *Engine) executeMatchedHook(ctx context.Context, hook matchedHook, input HookInput) HookOutcome {

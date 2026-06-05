@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 // IsIdentityFile reports whether path points at a loadable identity markdown

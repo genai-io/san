@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/san/internal/app/kit"
-	coremcp "github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	coremcp "github.com/genai-io/san/v2/internal/mcp"
 )
 
 // mcpStatusDisplay returns icon and label for an MCP server status.

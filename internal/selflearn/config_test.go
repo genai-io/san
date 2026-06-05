@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 // TestResolveSettingsHappyPath confirms a sensible config converts cleanly

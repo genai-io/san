@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // Registry manages tool registration and execution

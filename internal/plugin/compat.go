@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 const (

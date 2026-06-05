@@ -5,10 +5,10 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	streamutil "github.com/genai-io/san/internal/llm/stream"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
+	streamutil "github.com/genai-io/san/v2/internal/llm/stream"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 // ChatStreamConfig contains provider-specific knobs for OpenAI-compatible

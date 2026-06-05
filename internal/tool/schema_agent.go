@@ -3,7 +3,7 @@ package tool
 import (
 	"strings"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // agentToolSchema returns the Agent tool schema with the given directory body

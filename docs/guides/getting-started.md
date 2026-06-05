@@ -14,7 +14,7 @@ Alternatives:
 
 ```bash
 # via Go toolchain
-go install github.com/genai-io/san/cmd/san@latest
+go install github.com/genai-io/san/v2/cmd/san@latest
 
 # from source
 git clone https://github.com/genai-io/san.git

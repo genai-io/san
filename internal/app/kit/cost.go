@@ -3,7 +3,7 @@ package kit
 import (
 	"fmt"
 
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 func FormatMoney(m llm.Money) string {

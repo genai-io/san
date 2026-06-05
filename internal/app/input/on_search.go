@@ -10,11 +10,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/search"
-	"github.com/genai-io/san/internal/secret"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/search"
+	"github.com/genai-io/san/v2/internal/secret"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 type searchItem struct {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/v2/internal/core/system"
 )
 
 // newTestStore points the auto-memory store at a temp HOME so tests never touch

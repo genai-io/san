@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 var inlineImageTokenPattern = regexp.MustCompile(`\[Image #(\d+)\]`)

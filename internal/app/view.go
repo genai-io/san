@@ -6,11 +6,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/subagent"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/subagent"
+	"github.com/genai-io/san/v2/internal/task/tracker"
 )
 
 var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)

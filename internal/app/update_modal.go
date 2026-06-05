@@ -5,8 +5,8 @@ package app
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 func (m *model) cycleOperationMode() {

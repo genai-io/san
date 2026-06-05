@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	session "github.com/genai-io/san/internal/session"
-	taskTracker "github.com/genai-io/san/internal/task/tracker"
+	session "github.com/genai-io/san/v2/internal/session"
+	taskTracker "github.com/genai-io/san/v2/internal/task/tracker"
 )
 
 // newTestStore creates a Store using a temp directory instead of ~/.san/projects/.

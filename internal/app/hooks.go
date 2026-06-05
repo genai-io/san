@@ -9,10 +9,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/hook"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 func (m *model) firePostToolHook(tr core.ToolResult, sideEffect any) {

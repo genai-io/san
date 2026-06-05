@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/setting"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 // memoryEntryDelimiter separates entries inside a memory file. The

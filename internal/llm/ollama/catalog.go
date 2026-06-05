@@ -1,6 +1,6 @@
 package ollama
 
-import "github.com/genai-io/san/internal/llm"
+import "github.com/genai-io/san/v2/internal/llm"
 
 // pricing is not applicable for locally-hosted Ollama models.
 type pricing struct {

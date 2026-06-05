@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/genai-io/san/internal/task/tracker"
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // TrackerUpdateTool updates a task's status or details

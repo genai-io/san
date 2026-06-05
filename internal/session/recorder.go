@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/session/transcript"
 )
 
 // Recorder turns core.Agent lifecycle events into transcript records in

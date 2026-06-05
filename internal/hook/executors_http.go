@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 var envInterpolationPattern = regexp.MustCompile(`\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?`)

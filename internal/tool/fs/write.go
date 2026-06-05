@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 const (

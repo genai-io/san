@@ -3,7 +3,7 @@ package subagent
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // progressTools wraps core.Tools to call onExec before each tool execution.

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/session/transcript"
 )
 
 var appVersion string

@@ -25,10 +25,10 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/hub"
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/app/hub"
+	"github.com/genai-io/san/v2/internal/app/input"
+	"github.com/genai-io/san/v2/internal/app/trigger"
 )
 
 const defaultWidth = 80

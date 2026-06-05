@@ -32,9 +32,9 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 **LLM 提供商通过空白导入注册**（`init()` 函数自动注册）：
 ```go
 import (
-    _ "github.com/genai-io/san/internal/llm/anthropic"
-    _ "github.com/genai-io/san/internal/llm/openai"
-    _ "github.com/genai-io/san/internal/llm/google"
+    _ "github.com/genai-io/san/v2/internal/llm/anthropic"
+    _ "github.com/genai-io/san/v2/internal/llm/openai"
+    _ "github.com/genai-io/san/v2/internal/llm/google"
     // ... 其他提供商
 )
 ```

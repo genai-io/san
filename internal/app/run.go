@@ -8,13 +8,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/app/trigger"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/app/trigger"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/hook"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/setting"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 // Run routes to either print mode or interactive TUI.

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 func TestStateEmitsAndAccumulatesChunks(t *testing.T) {

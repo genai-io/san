@@ -11,8 +11,8 @@ import (
 	sdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 type captureStreamingTransport struct {

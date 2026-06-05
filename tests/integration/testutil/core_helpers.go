@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/perm"
 )
 
 // FakeLLM implements core.LLM for testing, returning queued responses.

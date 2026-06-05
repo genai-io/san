@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 const backgroundLaunchSuffix = "\n\nThe agent is working in the background. You will be notified automatically when it completes.\nBriefly tell the user what you launched and end your response. Do not generate any other text — agent results will arrive in a subsequent message."

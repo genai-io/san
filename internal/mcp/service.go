@@ -22,7 +22,7 @@ package mcp
 import (
 	"context"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // Tools lets a caller list and execute MCP tools across all connected

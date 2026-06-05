@@ -11,11 +11,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/app/hub"
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/app/trigger"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/app/hub"
+	"github.com/genai-io/san/v2/internal/app/input"
+	"github.com/genai-io/san/v2/internal/app/trigger"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 const maxEventsPerDrain = 8

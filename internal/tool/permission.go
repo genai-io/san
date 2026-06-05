@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/tool/perm"
 )
 
 // WithPermission wraps core.Tools with permission checking.

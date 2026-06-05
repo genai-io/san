@@ -9,11 +9,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/hook"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 // --- Message types ---

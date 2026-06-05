@@ -15,16 +15,16 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/hub"
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/selflearn"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/agent"
+	"github.com/genai-io/san/v2/internal/app/hub"
+	"github.com/genai-io/san/v2/internal/app/input"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/selflearn"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 // selfLearnDisableEnvSuffix is the env kill switch (§3.1) — mirrors Claude

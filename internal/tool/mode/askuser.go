@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // AskUserQuestionTool prompts the user for input

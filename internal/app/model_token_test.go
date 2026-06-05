@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/app/input"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/task/tracker"
 )
 
 func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/markdown"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/markdown"
 
 	"gopkg.in/yaml.v3"
 )

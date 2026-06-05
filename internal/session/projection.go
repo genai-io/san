@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/session/transcript"
 )
 
 func EntriesToNodes(entries []Entry, sessionID, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {

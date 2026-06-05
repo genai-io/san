@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/v2/internal/plugin"
 	"github.com/spf13/cobra"
 )
 

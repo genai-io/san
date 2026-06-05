@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/session/transcript"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/task/tracker"
 )
 
 type Store struct {

@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/mcp"
 	"github.com/spf13/cobra"
 )
 

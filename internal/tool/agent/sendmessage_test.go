@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/v2/internal/task"
 )
 
 func TestSendMessageTool_ResumesCompletedTask(t *testing.T) {

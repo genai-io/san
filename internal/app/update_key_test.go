@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 type testThinkingProvider struct {

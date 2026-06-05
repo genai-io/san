@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 //go:embed README.md.tmpl

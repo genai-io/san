@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	session "github.com/genai-io/san/internal/session"
+	session "github.com/genai-io/san/v2/internal/session"
 )
 
 // buildBinary compiles the san binary into a temp file and returns its path.

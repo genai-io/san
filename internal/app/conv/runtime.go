@@ -3,8 +3,8 @@ package conv
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 type AgentOutboxMsg struct {

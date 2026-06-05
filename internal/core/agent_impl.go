@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	glog "github.com/genai-io/san/internal/log"
+	glog "github.com/genai-io/san/v2/internal/log"
 )
 
 // agent is the default Agent implementation.

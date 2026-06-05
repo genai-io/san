@@ -3,7 +3,7 @@ package conv
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/v2/internal/agent"
 )
 
 // Re-export agent permission types for conv consumers.

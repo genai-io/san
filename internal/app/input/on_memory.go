@@ -12,10 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
 )
 
 // ── State ───────────────────────────────────────────────────────────────

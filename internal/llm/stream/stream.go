@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 // State tracks common streaming response state across provider implementations.

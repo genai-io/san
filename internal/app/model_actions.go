@@ -7,9 +7,9 @@ package app
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/app/input"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 // setActiveIdentity persists the user's identity choice and applies it

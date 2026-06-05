@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/core/system"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 // BuildParams contains all values needed to construct a core.Agent.

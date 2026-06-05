@@ -3,8 +3,8 @@ package input
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 // OverlayDeps holds all dependencies needed by overlay selector handlers.

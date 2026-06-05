@@ -3,7 +3,7 @@ package tracker
 import (
 	"strings"
 
-	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/v2/internal/task"
 )
 
 const (

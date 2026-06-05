@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 // connectResultFromCmd runs cmd (flattening a tea.Batch) and returns the first

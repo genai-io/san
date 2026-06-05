@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 func (m *model) CommitMessages() []tea.Cmd {

@@ -7,8 +7,8 @@ import (
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/secret"
 )
 
 var APIKeyMeta = llm.Meta{

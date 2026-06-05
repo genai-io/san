@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/v2/internal/core/system"
 )
 
 // buildReviewPrompt assembles the review instruction appended as the final user

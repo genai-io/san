@@ -62,7 +62,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 **通过 Go Install**
 
 ```bash
-go install github.com/genai-io/san/cmd/san@latest
+go install github.com/genai-io/san/v2/cmd/san@latest
 ```
 
 **从源码构建**

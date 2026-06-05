@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/v2/internal/task"
 )
 
 // Message is a notification delivered to an agent.

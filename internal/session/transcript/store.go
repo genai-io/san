@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/task/tracker"
 )
 
 type StartCommand struct {

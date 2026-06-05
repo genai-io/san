@@ -7,7 +7,7 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 func TestConvertMessagesConvertsRoleToolResultToToolMessage(t *testing.T) {

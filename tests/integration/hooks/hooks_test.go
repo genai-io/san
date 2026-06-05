@@ -5,8 +5,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/hook"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 func TestHooks_BlockToolCall(t *testing.T) {

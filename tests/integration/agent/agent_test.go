@@ -9,15 +9,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/subagent"
-	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/tool/perm"
-	_ "github.com/genai-io/san/internal/tool/registry"
-	"github.com/genai-io/san/tests/integration/testutil"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/hook"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/setting"
+	"github.com/genai-io/san/v2/internal/subagent"
+	"github.com/genai-io/san/v2/internal/task"
+	"github.com/genai-io/san/v2/internal/tool/perm"
+	_ "github.com/genai-io/san/v2/internal/tool/registry"
+	"github.com/genai-io/san/v2/tests/integration/testutil"
 )
 
 func TestAgent_GeneralExploreMode(t *testing.T) {

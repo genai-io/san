@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 func TestAskUserQuestionRejectsEmptyQuestions(t *testing.T) {

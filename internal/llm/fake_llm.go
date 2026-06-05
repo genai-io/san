@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // FakeLLM is a test double that returns predefined responses.

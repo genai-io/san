@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/mcp"
-	"github.com/genai-io/san/internal/mcp/transport"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/mcp"
+	"github.com/genai-io/san/v2/internal/mcp/transport"
 )
 
 // ---------------------------------------------------------------------------

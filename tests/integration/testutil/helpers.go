@@ -5,10 +5,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // ---------------------------------------------------------------------------

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/skill"
 )
 
 type stubSubagentSessionStore struct {

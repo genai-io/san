@@ -9,8 +9,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/openaicompat"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/llm/openaicompat"
 )
 
 // Client implements the Provider interface for Ollama using the OpenAI SDK.

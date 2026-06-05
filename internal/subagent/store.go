@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 // AgentStoreData is the JSON structure for agents.json

@@ -3,7 +3,7 @@ package selflearn
 import (
 	"fmt"
 
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 // Config is the resolved L1 configuration the app passes into NewMemoryStore,

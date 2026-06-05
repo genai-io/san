@@ -11,19 +11,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/command"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/cron"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/mcp"
-	"github.com/genai-io/san/internal/plugin"
-	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/skill"
-	"github.com/genai-io/san/internal/task/tracker"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/v2/internal/app/conv"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/command"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/cron"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/mcp"
+	"github.com/genai-io/san/v2/internal/plugin"
+	"github.com/genai-io/san/v2/internal/session"
+	"github.com/genai-io/san/v2/internal/setting"
+	"github.com/genai-io/san/v2/internal/skill"
+	"github.com/genai-io/san/v2/internal/task/tracker"
+	"github.com/genai-io/san/v2/internal/tool"
 )
 
 // NoProviderMsg is the canonical "no LLM provider" notice used by any

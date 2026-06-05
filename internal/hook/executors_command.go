@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/genai-io/san/internal/proc"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/proc"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, input HookInput) HookOutcome {

@@ -17,7 +17,7 @@ package session
 import (
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 // Options holds configuration for Initialize.

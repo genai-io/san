@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 func endTurn(toolUses int) core.Result {

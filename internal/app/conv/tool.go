@@ -7,11 +7,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/mcp"
-	coretool "github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/mcp"
+	coretool "github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // --- Tool state ---

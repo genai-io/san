@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/app/kit"
+	"github.com/genai-io/san/v2/internal/tool/perm"
 )
 
 const (

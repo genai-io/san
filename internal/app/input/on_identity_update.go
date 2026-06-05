@@ -3,8 +3,8 @@ package input
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/identity"
+	"github.com/genai-io/san/v2/internal/core"
+	"github.com/genai-io/san/v2/internal/identity"
 )
 
 // UpdateIdentity routes identity-selector messages to the configured

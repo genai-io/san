@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/v2/internal/task"
+	"github.com/genai-io/san/v2/internal/tool"
+	"github.com/genai-io/san/v2/internal/tool/perm"
+	"github.com/genai-io/san/v2/internal/tool/toolresult"
 )
 
 // SendMessageTool sends a follow-up message to an existing worker.

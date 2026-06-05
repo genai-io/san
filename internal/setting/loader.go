@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/log"
 )
 
 // Loader handles loading and merging settings from multiple sources.

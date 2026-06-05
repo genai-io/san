@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 type Store struct {

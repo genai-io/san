@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/filecache"
-	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/filecache"
+	"github.com/genai-io/san/v2/internal/llm"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 type env struct {

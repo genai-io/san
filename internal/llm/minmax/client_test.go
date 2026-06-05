@@ -8,7 +8,7 @@ import (
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/v2/internal/llm"
 )
 
 func TestListModelsReturnsStaticModels(t *testing.T) {

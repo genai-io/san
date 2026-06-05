@@ -11,9 +11,9 @@ import (
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 
-	"github.com/genai-io/san/internal/llm"
-	anthropicprovider "github.com/genai-io/san/internal/llm/anthropic"
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/v2/internal/llm"
+	anthropicprovider "github.com/genai-io/san/v2/internal/llm/anthropic"
+	"github.com/genai-io/san/v2/internal/secret"
 )
 
 const modelsURL = "https://platform.xiaomimimo.com/api/v1/models"

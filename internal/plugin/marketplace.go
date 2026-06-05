@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 // MarketplaceManager manages plugin marketplaces.

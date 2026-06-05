@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/san/internal/inspector/ui"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/v2/internal/inspector/ui"
+	"github.com/genai-io/san/v2/internal/session/transcript"
 )
 
 // replayCacheCapacity is the upper bound on cached replay states across all

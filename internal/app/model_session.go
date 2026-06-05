@@ -11,10 +11,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/session"
-	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/log"
+	"github.com/genai-io/san/v2/internal/session"
+	"github.com/genai-io/san/v2/internal/setting"
 )
 
 func (m *model) InitTaskStorage() {

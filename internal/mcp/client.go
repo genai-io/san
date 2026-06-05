@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/genai-io/san/internal/mcp/transport"
+	"github.com/genai-io/san/v2/internal/mcp/transport"
 )
 
 const (

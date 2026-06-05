@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/v2/internal/core"
 )
 
 // readImageFromClipboard reads an image from the clipboard.

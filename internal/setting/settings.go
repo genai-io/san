@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/v2/internal/confdir"
 )
 
 // Data represents the complete San configuration.

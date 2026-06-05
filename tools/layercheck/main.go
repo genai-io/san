@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-const repoModule = "github.com/genai-io/san"
+const repoModule = "github.com/genai-io/san/v2"
 
 // layerOf assigns each package path (relative to repoModule) to a layer.
 // Subpackages without an explicit entry inherit from their nearest ancestor.

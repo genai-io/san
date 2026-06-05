@@ -1,6 +1,6 @@
 package deepseek
 
-import "github.com/genai-io/san/internal/llm"
+import "github.com/genai-io/san/v2/internal/llm"
 
 type pricing struct {
 	inputPerMTokens      float64

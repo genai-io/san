@@ -16,9 +16,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/san/internal/confdir"
-	"github.com/genai-io/san/internal/inspector"
-	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/v2/internal/confdir"
+	"github.com/genai-io/san/v2/internal/inspector"
+	"github.com/genai-io/san/v2/internal/session"
 )
 
 var (

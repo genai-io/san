@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/genai-io/san/internal/secret"
+	"github.com/genai-io/san/v2/internal/secret"
 )
 
 // registryEntry holds a provider's metadata and factory

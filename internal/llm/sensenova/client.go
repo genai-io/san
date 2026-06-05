@@ -8,8 +8,8 @@ import (
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 
-	"github.com/genai-io/san/internal/llm"
-	anthropicprovider "github.com/genai-io/san/internal/llm/anthropic"
+	"github.com/genai-io/san/v2/internal/llm"
+	anthropicprovider "github.com/genai-io/san/v2/internal/llm/anthropic"
 )
 
 // Client wraps the Anthropic provider client for SenseNova's Messages API.
