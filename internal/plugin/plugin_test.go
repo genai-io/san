@@ -432,6 +432,100 @@ func TestInstaller_InstallAndUninstall_FromMarketplaceDirectory(t *testing.T) {
 	}
 }
 
+func TestFormatPluginRef(t *testing.T) {
+	if got := FormatPluginRef("git", "my-market"); got != "git@my-market" {
+		t.Fatalf("FormatPluginRef with marketplace = %q, want git@my-market", got)
+	}
+	if got := FormatPluginRef("git", ""); got != "git" {
+		t.Fatalf("FormatPluginRef without marketplace = %q, want git", got)
+	}
+	// Round-trips with ParsePluginRef.
+	if name, market := ParsePluginRef(FormatPluginRef("deploy", "local-market")); name != "deploy" || market != "local-market" {
+		t.Fatalf("round-trip = (%q, %q), want (deploy, local-market)", name, market)
+	}
+}
+
+// TestInstall_LoadsMarketplacesAndInstalls covers the package-level Install
+// helper, which both the plugin overlay and the /plugin install command call.
+// It must load known marketplaces itself before installing.
+func TestInstall_LoadsMarketplacesAndInstalls(t *testing.T) {
+	tmpHome := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	marketRoot := filepath.Join(t.TempDir(), "market")
+	pluginRoot := filepath.Join(marketRoot, "deploy")
+	writeTestPlugin(t, pluginRoot, "deploy", "1.2.3", "Deploy plugin", map[string]string{
+		"skills/deploy/SKILL.md": "---\nname: deploy\ndescription: Deploy skill\n---\nship it\n",
+	})
+
+	// Persist the marketplace to disk so the installer that Install() builds
+	// internally rediscovers it through LoadMarketplaces.
+	mgr := NewMarketplaceManager(cwd)
+	if err := mgr.AddDirectory("local-market", marketRoot); err != nil {
+		t.Fatalf("AddDirectory() error: %v", err)
+	}
+
+	registry := NewRegistry()
+	if err := Install(context.Background(), registry, cwd, "deploy@local-market", ScopeProject); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+
+	installPath := filepath.Join(cwd, ".san", "plugins", "deploy")
+	if _, err := os.Stat(installPath); err != nil {
+		t.Fatalf("expected installed plugin dir: %v", err)
+	}
+	if _, ok := registry.Get("deploy@local-market"); !ok {
+		t.Fatal("expected installed plugin registered")
+	}
+}
+
+func TestSyncOrPrune(t *testing.T) {
+	t.Run("prunes a broken github source when the local clone is gone", func(t *testing.T) {
+		tmp := t.TempDir()
+		t.Setenv("HOME", tmp)
+		m := NewMarketplaceManager(tmp)
+
+		if err := m.Add("ghost", MarketplaceEntry{
+			Source:          MarketplaceSourceInfo{Source: "github", Repo: "owner/repo"},
+			InstallLocation: filepath.Join(tmp, "ghost-clone"), // never created
+		}); err != nil {
+			t.Fatalf("Add() error: %v", err)
+		}
+
+		// A pre-cancelled context makes the git clone fail immediately with no
+		// network access, so the sync-failure path is deterministic.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if err := m.SyncOrPrune(ctx, "ghost"); err == nil {
+			t.Fatal("expected sync to fail")
+		}
+		if _, ok := m.Get("ghost"); ok {
+			t.Fatal("expected the broken github marketplace to be pruned")
+		}
+	})
+
+	t.Run("does not prune a non-github source on sync failure", func(t *testing.T) {
+		tmp := t.TempDir()
+		t.Setenv("HOME", tmp)
+		m := NewMarketplaceManager(tmp)
+
+		if err := m.Add("weird", MarketplaceEntry{
+			Source: MarketplaceSourceInfo{Source: "mystery"},
+		}); err != nil {
+			t.Fatalf("Add() error: %v", err)
+		}
+
+		if err := m.SyncOrPrune(context.Background(), "weird"); err == nil {
+			t.Fatal("expected an unsupported-source error")
+		}
+		if _, ok := m.Get("weird"); !ok {
+			t.Fatal("a non-github marketplace must not be pruned")
+		}
+	})
+}
+
 func TestRegistry_LoadScopeMergePrefersLocalOverProjectOverUser(t *testing.T) {
 	tmpHome := t.TempDir()
 	cwd := t.TempDir()
