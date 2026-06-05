@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveImports(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test")
+	tmpDir, err := os.MkdirTemp("", "san-test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -43,7 +43,7 @@ This was imported from another file.`
 }
 
 func TestResolveImportsCycle(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-cycle")
+	tmpDir, err := os.MkdirTemp("", "san-test-cycle")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestResolveImportsCycle(t *testing.T) {
 }
 
 func TestResolveImportsNotFound(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-notfound")
+	tmpDir, err := os.MkdirTemp("", "san-test-notfound")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestResolveImportsMaxDepth(t *testing.T) {
 }
 
 func TestLoadRulesDirectory(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-rules")
+	tmpDir, err := os.MkdirTemp("", "san-test-rules")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestFormatFileSize(t *testing.T) {
 }
 
 func TestResolveImportsNested(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-nested")
+	tmpDir, err := os.MkdirTemp("", "san-test-nested")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -237,7 +237,7 @@ Deepest content`
 }
 
 func TestResolveImportsRelativePath(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-relative")
+	tmpDir, err := os.MkdirTemp("", "san-test-relative")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -273,7 +273,7 @@ Nested content here`
 }
 
 func TestLoadMemoryFilesWithImports(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-memory-imports")
+	tmpDir, err := os.MkdirTemp("", "san-test-memory-imports")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -321,7 +321,7 @@ This was imported`
 }
 
 func TestFindMemoryFile(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-find")
+	tmpDir, err := os.MkdirTemp("", "san-test-find")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -365,7 +365,7 @@ func TestFindMemoryFile(t *testing.T) {
 }
 
 func TestLoadInstructions(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-instructions")
+	tmpDir, err := os.MkdirTemp("", "san-test-instructions")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestLoadMemoryFiles_PrefersGenPathsAndPreservesSectionOrder(t *testing.T) {
 }
 
 func TestMemory_ImportChain(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-import-chain")
+	tmpDir, err := os.MkdirTemp("", "san-test-import-chain")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -516,7 +516,7 @@ func TestMemory_ImportChain(t *testing.T) {
 }
 
 func TestMemory_MissingFile_NoError(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "gencode-test-missing-genmd")
+	tmpDir, err := os.MkdirTemp("", "san-test-missing-genmd")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}

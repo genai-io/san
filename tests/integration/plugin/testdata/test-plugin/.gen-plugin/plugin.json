@@ -4,7 +4,7 @@
   "description": "A test plugin for UI/UX comparison testing between Claude Code and San",
   "author": {
     "name": "San Test",
-    "email": "test@gencode.dev"
+    "email": "test@san.dev"
   },
   "homepage": "https://github.com/genai-io/san",
   "repository": "https://github.com/genai-io/san",
