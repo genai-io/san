@@ -1,189 +1,26 @@
 name: PR Commands
 
-# Handle slash commands in PR comments:
-#   /cc @user [@user ...]  – request review from the mentioned user(s)
-#   /hold [reason]          – add do-not-merge/hold label
-#   /unhold                 – remove do-not-merge/hold label
-#
-# Only PR comments are processed; issue comments are ignored. Commands are
-# case-insensitive and must appear at the start of a line.
+# Prow-style chat-ops for GitHub Actions, powered by jpmcb/prow-github-actions.
+# Commands: /cc /uncc /assign /unassign /approve /lgtm /hold
+#           /retitle /area /kind /priority /remove /close /reopen /lock /milestone
 
 on:
   issue_comment:
-    types: [created, edited]
+    types: [created]
 
 permissions:
   contents: read
   pull-requests: write
-  issues: write      # needed for adding/removing labels
-
-concurrency:
-  group: pr-commands-${{ github.event.issue_comment.id }}
-  cancel-in-progress: true
+  issues: write
 
 jobs:
   execute:
-    # Only run on PR comments (not plain issues) and skip bot comments.
-    if: |
-      github.event.issue.pull_request != null &&
-      github.event.comment.user.type != 'Bot'
+    # Only run on PR comments (not plain issues).
+    if: github.event.issue.pull_request != null
     runs-on: ubuntu-latest
     steps:
-      - name: Parse and execute commands
-        uses: actions/github-script@v7
+      # v2.0.0 — https://github.com/jpmcb/prow-github-actions
+      - uses: jpmcb/prow-github-actions@v2
         with:
-          script: |
-            const { owner, repo } = context.repo;
-            const prNumber = context.issue.number;
-            const commentId = context.payload.comment.id;
-            const commentBody = context.payload.comment.body;
-            const commentUser = context.payload.comment.user.login;
-
-            // ── helpers ──────────────────────────────────────────────
-
-            /** React to the comment. */
-            async function react(reaction) {
-              await github.rest.reactions.createForIssueComment({
-                owner, repo, comment_id: commentId, content: reaction,
-              });
-            }
-
-            /** Post a reply to the comment. */
-            async function reply(body) {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: prNumber, body,
-              });
-            }
-
-            /** Ensure a label exists (idempotent). */
-            async function ensureLabel(name, color, description) {
-              try {
-                await github.rest.issues.getLabel({ owner, repo, name });
-              } catch (e) {
-                if (e.status !== 404) throw e;
-                await github.rest.issues.createLabel({ owner, repo, name, color, description });
-              }
-            }
-
-            /** Parse @mentions from a string. Returns deduplicated usernames without @. */
-            function parseMentions(text) {
-              const matches = text.match(/@([a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38})/g);
-              if (!matches) return [];
-              return [...new Set(matches.map(m => m.slice(1)))];
-            }
-
-            // ── command parser ───────────────────────────────────────
-
-            /** Return all commands found in the comment, each with {cmd, args, line}. */
-            function parseCommands(body) {
-              const cmds = [];
-              const lines = body.split('\n');
-              for (const line of lines) {
-                const m = line.trim().match(/^\/(cc|hold|unhold)\b\s*(.*)/i);
-                if (m) {
-                  cmds.push({ cmd: m[1].toLowerCase(), args: m[2].trim(), line: line.trim() });
-                }
-              }
-              return cmds;
-            }
-
-            // ── command handlers ─────────────────────────────────────
-
-            async function handleCC(users) {
-              if (users.length === 0) {
-                await react('confused');
-                await reply(`@${commentUser} Usage: \`/cc @username [@username ...]\``);
-                return;
-              }
-
-              // Validate each user exists on GitHub.
-              const valid = [];
-              const invalid = [];
-              for (const u of users) {
-                try {
-                  await github.rest.users.getByUsername({ username: u });
-                  valid.push(u);
-                } catch (e) {
-                  if (e.status === 404) invalid.push(u);
-                  else throw e;
-                }
-              }
-
-              if (valid.length > 0) {
-                await github.rest.pulls.requestReviewers({
-                  owner, repo, pull_number: prNumber, reviewers: valid,
-                });
-              }
-
-              await react('+1');
-
-              const parts = [];
-              if (valid.length) parts.push(`✅ Requested review from ${valid.map(u => `@${u}`).join(', ')}.`);
-              if (invalid.length) parts.push(`⚠️ ${invalid.map(u => `@${u}`).join(', ')} — not a valid GitHub user.`);
-              await reply(parts.join('\n'));
-            }
-
-            async function handleHold(reason) {
-              await ensureLabel('do-not-merge/hold', 'D93F0B',
-                'This PR is on hold and should not be merged');
-
-              await github.rest.issues.addLabels({
-                owner, repo, issue_number: prNumber, labels: ['do-not-merge/hold'],
-              });
-
-              await react('+1');
-
-              const reasonText = reason ? `\n\n**Reason:** ${reason}` : '';
-              await reply(
-                `🔴 **Hold** requested by @${commentUser}. ` +
-                `This PR must not be merged until the hold is lifted.${reasonText}\n\n` +
-                `To lift the hold, comment \`/unhold\`.`
-              );
-            }
-
-            async function handleUnhold() {
-              try {
-                await github.rest.issues.removeLabel({
-                  owner, repo, issue_number: prNumber, name: 'do-not-merge/hold',
-                });
-              } catch (e) {
-                if (e.status !== 404) throw e;
-              }
-
-              await react('+1');
-              await reply(`🟢 Hold lifted by @${commentUser}.`);
-            }
-
-            // ── main ─────────────────────────────────────────────────
-
-            const commands = parseCommands(commentBody);
-            if (commands.length === 0) {
-              core.info('No commands found in comment.');
-              return;
-            }
-
-            core.info(`Found ${commands.length} command(s): ${JSON.stringify(commands)}`);
-
-            for (const { cmd, args } of commands) {
-              try {
-                switch (cmd) {
-                  case 'cc': {
-                    const mentioned = parseMentions(args);
-                    await handleCC(mentioned);
-                    break;
-                  }
-                  case 'hold':
-                    await handleHold(args || '');
-                    break;
-                  case 'unhold':
-                    await handleUnhold();
-                    break;
-                  default:
-                    core.warning(`Unknown command: /${cmd}`);
-                }
-              } catch (err) {
-                core.error(`Error handling /${cmd}: ${err.message}`);
-                await react('-1');
-                await reply(`❌ Error processing \`/${cmd}\`: ${err.message}`);
-              }
-            }
+          prow-commands: '/assign /unassign /approve /retitle /area /kind /priority /remove /lgtm /close /reopen /lock /milestone /hold /cc /uncc'
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
