@@ -60,9 +60,11 @@ test:
 
 # cover runs the unit tests with the race detector and writes an atomic
 # coverage profile (coverage.out) for upload to Codecov. covermode=atomic
-# is required when -race is enabled.
+# is required when -race is enabled. The race detector needs cgo, so override
+# the global CGO_ENABLED=0 here; this only affects the ephemeral test binaries,
+# not the statically linked release builds.
 cover:
-	go test -race -covermode=atomic -coverprofile=coverage.out ./internal/...
+	CGO_ENABLED=1 go test -race -covermode=atomic -coverprofile=coverage.out ./internal/...
 
 # ci runs everything the GitHub workflow runs, in the same order. Use
 # `make ci` before pushing to catch format / vet / layercheck / test
