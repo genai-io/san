@@ -3,6 +3,22 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v2.0.0] - 2026-06-05
+
+### Added
+- Ollama as LLM provider ([@zhiweiyin](https://github.com/zhiweiyin) in [#90](https://github.com/genai-io/san/pull/90))
+- Blank model selection via blank input in TUI ([@hchenxa](https://github.com/hchenxa) in [#85](https://github.com/genai-io/san/pull/85))
+- Inspector user guide in English and Chinese ([@ldpliu](https://github.com/ldpliu) in [#86](https://github.com/genai-io/san/pull/86))
+
+### Changed
+- **Breaking:** Rename project from gen-code/gen to san (三) ([@yanmxa](https://github.com/yanmxa) in [#96](https://github.com/genai-io/san/pull/96))
+- Website: reposition as unified agent runtime, highlight small footprint and deploy-anywhere ([@yanmxa](https://github.com/yanmxa) in [#93](https://github.com/genai-io/san/pull/93))
+- Rename internal turn counter to "steps", reserve "turn" for Think→Act cycle ([@yanmxa](https://github.com/yanmxa) in [#94](https://github.com/genai-io/san/pull/94))
+
+### Fixed
+- Clean up gen-code/gen legacy references in code, docs, and assets ([@yanmxa](https://github.com/yanmxa) in [#97](https://github.com/genai-io/san/pull/97))
+- Drop gen backward compatibility, finish rebrand touches ([@yanmxa](https://github.com/yanmxa) in [#98](https://github.com/genai-io/san/pull/98))
+
 ## [v1.19.3] - 2026-06-03
 
 ### Added
