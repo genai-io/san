@@ -12,7 +12,7 @@
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
   </p>
   <p>
-    <img src="assets/gen-code.png" alt="San" width="100%">
+    <img src="assets/san.png" alt="San" width="100%">
   </p>
   <p>
     <a href="https://genai-io.github.io/san/intro.html"><b>▶ Watch the animated intro</b></a>
