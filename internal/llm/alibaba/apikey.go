@@ -2,7 +2,6 @@ package alibaba
 
 import (
 	"context"
-	"os"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -22,7 +21,7 @@ var APIKeyMeta = llm.Meta{
 // NewAPIKeyClient creates a new Qwen client using API Key authentication.
 // The DashScope API is OpenAI-compatible, so we use the OpenAI SDK with a custom base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("DASHSCOPE_BASE_URL")
+	baseURL := secret.Resolve("DASHSCOPE_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	}

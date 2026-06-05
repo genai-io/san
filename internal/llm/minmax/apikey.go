@@ -2,7 +2,6 @@ package minmax
 
 import (
 	"context"
-	"os"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -21,11 +20,11 @@ var APIKeyMeta = llm.Meta{
 }
 
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("MINIMAX_BASE_URL")
+	baseURL := secret.Resolve("MINIMAX_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://api.minimaxi.com/anthropic"
 	}
-	openAIBaseURL := os.Getenv("MINIMAX_OPENAI_BASE_URL")
+	openAIBaseURL := secret.Resolve("MINIMAX_OPENAI_BASE_URL")
 	if openAIBaseURL == "" {
 		openAIBaseURL = "https://api.minimaxi.com/v1"
 	}

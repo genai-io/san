@@ -2,7 +2,6 @@ package bigmodel
 
 import (
 	"context"
-	"os"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -23,7 +22,7 @@ var APIKeyMeta = llm.Meta{
 // BigModel publishes an OpenAI-compatible endpoint, so we use the OpenAI SDK
 // with a custom base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("BIGMODEL_BASE_URL")
+	baseURL := secret.Resolve("BIGMODEL_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://open.bigmodel.cn/api/paas/v4"
 	}
