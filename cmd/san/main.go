@@ -25,6 +25,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/moonshot"
 	_ "github.com/genai-io/san/internal/llm/ollama"
 	_ "github.com/genai-io/san/internal/llm/openai"
+	_ "github.com/genai-io/san/internal/llm/sensenova"
 )
 
 var version = "2.0.1"
