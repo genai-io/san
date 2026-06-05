@@ -1,125 +1,125 @@
-// Package llm holds the connected LLM provider plus the registry of
-// available providers/models. Exposes *ClientFactory directly. *ClientFactory
-// wraps the package-level *Setup (mutable provider/model/store under
-// a mutex).
+// Package llm holds the connection to the active LLM provider plus the
+// registry of available providers/models. Default() returns the package-level
+// *Conn — the mutable provider/model/store handle, guarded by a single mutex.
 package llm
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
-// ClientFactory is the concrete handle callers hold. Methods are
-// mutex-protected views over the underlying *Setup.
-type ClientFactory struct {
-	setup *Setup
+// Conn is the handle to the active LLM: the connected Provider, the current
+// model, and the Store of available providers/models. Every accessor is
+// mutex-protected; the fields are unexported so all access goes through the
+// locked methods. Callers obtain the package-level singleton via Default().
+type Conn struct {
+	mu           sync.RWMutex
+	store        *Store
+	provider     Provider
+	currentModel *CurrentModelInfo
 }
+
+// defaultConn is the package-level singleton, populated by Initialize().
+var defaultConn = &Conn{}
 
 // Options holds configuration for Initialize.
 type Options struct{}
 
-// Initialize discovers and connects to the best available LLM provider,
-// then publishes the result as the package-level *ClientFactory.
+// Initialize discovers and connects to the best available LLM provider, then
+// records the provider/model/store on the package-level *Conn.
 func Initialize(opts Options) {
 	store, _ := NewStore()
 	if store == nil {
 		return
 	}
 
-	defaultSetup.mu.Lock()
-	defaultSetup.Store = store
-	defaultSetup.CurrentModel = store.GetCurrentModel()
-	defaultSetup.mu.Unlock()
+	defaultConn.mu.Lock()
+	defaultConn.store = store
+	defaultConn.currentModel = store.GetCurrentModel()
+	cm := defaultConn.currentModel
+	defaultConn.mu.Unlock()
 
 	ctx := context.Background()
 
-	defaultSetup.mu.RLock()
-	cm := defaultSetup.CurrentModel
-	defaultSetup.mu.RUnlock()
-
 	if cm != nil {
 		if p, err := GetProvider(ctx, cm.Provider, cm.AuthMethod); err == nil {
-			defaultSetup.mu.Lock()
-			defaultSetup.Provider = p
-			defaultSetup.mu.Unlock()
-			setSingleton()
+			defaultConn.SetProvider(p)
 			return
 		}
 	}
 
 	for providerName, conn := range store.GetConnections() {
 		if p, err := GetProvider(ctx, Name(providerName), conn.AuthMethod); err == nil {
-			defaultSetup.mu.Lock()
-			defaultSetup.Provider = p
-			defaultSetup.mu.Unlock()
-			setSingleton()
+			defaultConn.SetProvider(p)
 			return
 		}
 	}
-
-	setSingleton()
 }
 
-// Default returns the package-level *ClientFactory.
-func Default() *ClientFactory {
-	return defaultClientFactory
-}
+// Default returns the package-level *Conn.
+func Default() *Conn { return defaultConn }
 
-// SetDefaultClientFactory replaces the package-level *ClientFactory. Intended for
-// tests. A nil argument restores a fresh empty *ClientFactory.
-func SetDefaultClientFactory(s *ClientFactory) {
-	if s == nil {
-		defaultClientFactory = &ClientFactory{setup: &Setup{}}
+// SetDefaultConn replaces the package-level *Conn. Intended for tests. A nil
+// argument restores a fresh empty *Conn.
+func SetDefaultConn(c *Conn) {
+	if c == nil {
+		defaultConn = &Conn{}
 		return
 	}
-	defaultClientFactory = s
+	defaultConn = c
 }
 
-// ResetDefaultClientFactory restores a fresh empty *ClientFactory. Intended for
-// tests.
-func ResetDefaultClientFactory() {
-	defaultClientFactory = &ClientFactory{setup: &Setup{}}
+// ResetDefaultConn restores a fresh empty *Conn. Intended for tests.
+func ResetDefaultConn() { defaultConn = &Conn{} }
+
+// --- accessors (mutex-protected) ---
+
+func (c *Conn) Provider() Provider {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.provider
 }
 
-var defaultClientFactory = &ClientFactory{setup: defaultSetup}
-
-// --- methods (mutex-protected views over Setup) ---
-
-func (s *ClientFactory) Provider() Provider {
-	s.setup.mu.RLock()
-	defer s.setup.mu.RUnlock()
-	return s.setup.Provider
+func (c *Conn) SetProvider(p Provider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.provider = p
 }
 
-func (s *ClientFactory) SetProvider(p Provider) {
-	s.setup.mu.Lock()
-	defer s.setup.mu.Unlock()
-	s.setup.Provider = p
+// ModelID returns the current model ID, or empty string if none.
+func (c *Conn) ModelID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.currentModel != nil {
+		return c.currentModel.ModelID
+	}
+	return ""
 }
 
-func (s *ClientFactory) ModelID() string { return s.setup.ModelID() }
-
-func (s *ClientFactory) CurrentModel() *CurrentModelInfo {
-	s.setup.mu.RLock()
-	defer s.setup.mu.RUnlock()
-	return s.setup.CurrentModel
+func (c *Conn) CurrentModel() *CurrentModelInfo {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.currentModel
 }
 
-func (s *ClientFactory) SetCurrentModel(info *CurrentModelInfo) {
-	s.setup.mu.Lock()
-	defer s.setup.mu.Unlock()
-	s.setup.CurrentModel = info
+func (c *Conn) SetCurrentModel(info *CurrentModelInfo) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentModel = info
 }
 
-func (s *ClientFactory) Store() *Store {
-	s.setup.mu.RLock()
-	defer s.setup.mu.RUnlock()
-	return s.setup.Store
+func (c *Conn) Store() *Store {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.store
 }
 
-func (s *ClientFactory) NewClient(model string, maxTokens int) *Client {
-	p := s.Provider()
-	return NewClient(p, model, maxTokens)
+// NewClient builds a one-shot *Client for the active provider.
+func (c *Conn) NewClient(model string, maxTokens int) *Client {
+	return NewClient(c.Provider(), model, maxTokens)
 }
 
-func (s *ClientFactory) ListProviders() map[Name][]Info {
-	st := s.Store()
-	return GetProvidersWithStatus(st)
+// ListProviders reports every known provider with its connection status.
+func (c *Conn) ListProviders() map[Name][]Info {
+	return GetProvidersWithStatus(c.Store())
 }

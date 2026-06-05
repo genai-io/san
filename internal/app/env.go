@@ -55,7 +55,7 @@ type env struct {
 	store *llm.Store
 }
 
-func newEnv(llmSvc *llm.ClientFactory, cwd string, isGit bool) env {
+func newEnv(llmConn *llm.Conn, cwd string, isGit bool) env {
 	e := env{
 		CWD:   cwd,
 		IsGit: isGit,
@@ -63,11 +63,11 @@ func newEnv(llmSvc *llm.ClientFactory, cwd string, isGit bool) env {
 		OperationMode:      setting.ModeNormal,
 		SessionPermissions: setting.NewSessionPermissions(),
 
-		LLMProvider:  llmSvc.Provider(),
-		CurrentModel: llmSvc.CurrentModel(),
+		LLMProvider:  llmConn.Provider(),
+		CurrentModel: llmConn.CurrentModel(),
 
 		FileCache: filecache.New(),
-		store:     llmSvc.Store(),
+		store:     llmConn.Store(),
 	}
 	// Restore the user's prior per-model thinking-effort choice. Empty
 	// means "use provider default" — EffectiveThinkingEffort handles that.

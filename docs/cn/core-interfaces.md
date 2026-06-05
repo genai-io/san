@@ -102,7 +102,7 @@ type LLM interface {
 
 ### InferRequest（推理请求）
 
-模型、最大输出 Token 等参数在创建客户端时（`ClientFactory.NewClient(model, maxTokens)`）即已确定，因此 `InferRequest` 本身只携带每次推理的输入：
+模型、最大输出 Token 等参数在创建客户端时（`Conn.NewClient(model, maxTokens)`）即已确定，因此 `InferRequest` 本身只携带每次推理的输入：
 
 ```go
 type InferRequest struct {

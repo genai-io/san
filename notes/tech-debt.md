@@ -24,9 +24,10 @@ This file tracks structural follow-ups that are not tied to a single feature.
   ~~`task` (8 methods)~~ — `*task.Tracker` direct (renamed from
   `*Manager`; tracks background bash/subagent tasks).
   ~~`command` (7 methods)~~ — `*command.Registry` direct.
-  ~~`llm` (8 methods)~~ — `*llm.ClientFactory` direct (active
-  provider/model handle + `*Client` factory). Wraps `*Setup`
-  (Store + Provider + CurrentModel).
+  ~~`llm` (8 methods)~~ — `*llm.Conn` direct (active provider/model/Store
+  handle + `*Client` factory). Originally `*ClientFactory` wrapping a
+  separate `*Setup`; the two mirror types were merged into one `Conn`
+  (single mutex, unexported fields) — no wrapper remains.
   ~~`agent` (11 methods)~~ — `*agent.Task` direct (foreground agent
   task lifecycle).
   ~~`setting` (14 methods)~~ — `*setting.Settings` direct (live,

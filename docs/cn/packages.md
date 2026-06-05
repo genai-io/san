@@ -76,7 +76,7 @@ github.com/genai-io/san/
 │   │   ├── types.go               #   Provider/Factory/Meta、ThinkingEffortProvider
 │   │   ├── store.go               #   提供商注册表 + providers.json 持久化
 │   │   ├── registry.go            #   提供商发现 / 动态模型列表
-│   │   ├── service.go             #   ClientFactory（当前提供商/模型句柄）
+│   │   ├── service.go             #   Conn（活动 LLM 连接：提供商/模型/Store 句柄）
 │   │   ├── llm.go                 #   Client：Provider→core.LLM 适配
 │   │   ├── money.go               #   成本追踪
 │   │   ├── logging.go             #   请求/响应日志
@@ -328,7 +328,7 @@ type Model struct {
 ```go
 type services struct {
     Setting  *setting.Settings    // 设置和权限
-    LLM      *llm.ClientFactory   // LLM 提供商/模型句柄
+    LLM      *llm.Conn            // 活动 LLM 连接句柄
     Tool     *tool.Registry       // 工具注册表
     Hook     *hook.Engine         // 钩子引擎
     Session  *session.Setup       // 会话持久化
@@ -358,7 +358,7 @@ type services struct {
 - **`types.go`**：`Provider` / `Factory` / `Meta` 与 `ThinkingEffortProvider` 接口
 - **`store.go`**：提供商注册表 + `providers.json` 持久化
 - **`registry.go`**：提供商发现 / 动态模型列表
-- **`service.go`**：`ClientFactory`（当前提供商/模型句柄）
+- **`service.go`**：`Conn`（活动 LLM 连接：提供商/模型/Store 句柄）
 - **`llm.go`**：`Client` —— 将 `Provider` 适配为 `core.LLM`
 - **`money.go`**：Token 成本计算
 - **`logging.go`**：请求/响应日志
