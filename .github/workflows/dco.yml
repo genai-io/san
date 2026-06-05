@@ -16,12 +16,39 @@ jobs:
     runs-on: ubuntu-latest
     name: DCO Check
     steps:
-      - name: Get PR Commits
-        id: get-pr-commits
-        uses: tim-actions/get-pr-commits@198af03565609bb4ed924d1260247b4881f09e7d  # v1.3.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # tim-actions/get-pr-commits rejects the pull_request_target event
+      # ("Invalid event"), so we fetch the PR commits directly and verify each
+      # carries a Signed-off-by trailer matching its author. Read-only: no
+      # secrets beyond the read-scoped GITHUB_TOKEN and no untrusted checkout.
       - name: DCO Check
-        uses: tim-actions/dco@f2279e6e62d5a7d9115b0cb8e837b777b1b02e21  # v1.1.0
-        with:
-          commits: ${{ steps.get-pr-commits.outputs.commits }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          commits=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+            --jq '.[] | [.sha, .commit.author.email, (.commit.message | @base64)] | @tsv')
+          if [ -z "${commits}" ]; then
+            echo "::error::No commits found for PR #${PR_NUMBER}"
+            exit 1
+          fi
+
+          fail=0
+          while IFS=$'\t' read -r sha email msg_b64; do
+            [ -z "${sha}" ] && continue
+            if printf '%s' "${msg_b64}" | base64 -d \
+                 | grep -iE '^Signed-off-by:' | grep -qiF "<${email}>"; then
+              echo "ok: ${sha} signed off by <${email}>"
+            else
+              echo "::error::Commit ${sha} is missing a Signed-off-by trailer matching author <${email}>"
+              fail=1
+            fi
+          done <<< "${commits}"
+
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::DCO check failed. Sign off each commit with 'git commit -s' (Signed-off-by: Your Name <your@email>)."
+            exit 1
+          fi
+          echo "All commits are signed off."
