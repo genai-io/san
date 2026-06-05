@@ -12,17 +12,21 @@
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<nav>
+<nav id="nav">
   <div class="wrap">
-    <span class="logo">&lt; SAN <span class="spark">✦</span> /&gt;</span>
-    <div class="nav-links">
+    <span class="logo"><a href="#top">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <div class="nav-links" id="nav-links">
       <a href="#features">Features</a>
       <a href="#deploy">Deploy</a>
       <a href="#benchmark">Benchmark</a>
+      <span class="nav-sep" aria-hidden="true"></span>
       <a href="intro.html">Intro</a>
       <a href="getting-started.html">Get Started</a>
       <a href="docs.html">Docs</a>
@@ -31,70 +35,83 @@
   </div>
 </nav>
 
-<header class="hero">
+<header class="hero" id="top">
   <div class="wrap">
-    <h1>San — the unified agent<br>that <span class="grad">lives in your terminal</span></h1>
-    <p class="sub">One runtime, many agents — <strong>evolving as you work.</strong></p>
-
-    <div class="intro-embed">
-      <iframe src="intro.html" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
-    </div>
-    <p class="intro-cap"><a href="intro.html" target="_blank" rel="noopener">Watch full screen ↗</a></p>
-
-    <div class="badges">
-      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
-      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=5eead4" alt="Stars"></a>
-      <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
-      <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License">
+    <div class="hero-head">
+      <span class="kicker load-up d1">Open-source agent runtime · Apache-2.0</span>
+      <h1 class="load-up d2">San — the unified agent<br>that <span class="grad">lives in your terminal</span></h1>
+      <p class="sub load-up d3">One runtime, many agents — <strong>evolving as you work.</strong></p>
     </div>
 
-    <div class="install">
-      <div class="cmd">
-        <span class="prompt">$</span>
-        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-        <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+    <div class="screen-frame load-up d4">
+      <div class="intro-embed">
+        <iframe src="intro.html?theme=dark" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
       </div>
     </div>
+    <p class="intro-cap load-up d4"><a href="intro.html" target="_blank" rel="noopener">Watch full screen ↗</a></p>
 
-    <div class="hero-actions">
+    <div class="hero-actions load-up d5">
       <a class="btn btn-primary" href="getting-started.html">Get started →</a>
       <a class="btn btn-ghost" href="https://github.com/genai-io/san">View on GitHub</a>
+    </div>
+
+    <div class="install-bar load-up d6">
+      <span class="prompt">$</span>
+      <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
+      <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
+    </div>
+
+    <div class="badges load-up d6">
+      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488" alt="Release"></a>
+      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=14b8a6" alt="Stars"></a>
+      <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
+      <img src="https://img.shields.io/badge/license-Apache%202.0-0b7d72?style=flat-square" alt="License">
     </div>
   </div>
 </header>
 
 <section id="features">
   <div class="wrap">
-    <h2 class="section-title">Open by design</h2>
-    <p class="section-sub">Every layer is swappable at runtime. No lock-in.</p>
+    <div class="section-head">
+      <span class="kicker">Features</span>
+      <h2 class="section-title">Open <em>by design</em></h2>
+      <p class="section-sub">Every layer is swappable at runtime. No lock-in.</p>
+    </div>
     <div class="grid">
-      <div class="card">
-        <h3><span class="ico">🔌</span> Any LLM provider</h3>
-        <p>Seven providers, from Anthropic to Z.ai. Switch with <code>/model</code>.</p>
+      <div class="card reveal">
+        <span class="idx">01</span>
+        <h3><span class="ico">🔌</span> Multi-LLM providers</h3>
+        <p>Bring any LLM — from Anthropic to Z.ai. Switch with <code>/model</code>.</p>
       </div>
-      <div class="card">
+      <div class="card reveal">
+        <span class="idx">02</span>
         <h3><span class="ico">🔍</span> Pluggable search</h3>
         <p>Exa, Tavily, Brave, or Serper. Switch with <code>/search</code>.</p>
       </div>
-      <div class="card">
+      <div class="card reveal">
+        <span class="idx">03</span>
         <h3><span class="ico">🧩</span> Skills &amp; extensions</h3>
         <p>Skills, plugins, MCP servers, and subagents — Claude Code compatible, run unmodified.</p>
       </div>
-      <div class="card">
+      <div class="card reveal">
+        <span class="idx">04</span>
         <h3><span class="ico">🎭</span> Personas</h3>
         <p>Markdown-defined agent identities, scoped per user or project, plus lifecycle hooks.</p>
       </div>
-      <div class="card">
+      <div class="card reveal">
+        <span class="idx">05</span>
         <h3><span class="ico">⚡</span> Native performance</h3>
         <p>A single Go binary. 12 MB, ~0.01s startup, no runtime.</p>
       </div>
-      <div class="card">
+      <div class="card reveal">
+        <span class="idx">06</span>
         <h3><span class="ico">💾</span> Session persistence</h3>
         <p>Sessions auto-save, resume, and fork, with automatic context compaction.</p>
       </div>
-      <div class="card wide">
+      <div class="card wide reveal">
+        <span class="idx">07</span>
         <div>
-          <h3><span class="ico">✦</span> Self-evolving &nbsp;<span class="soon">Level 1 · live</span></h3>
+          <h3><span class="ico">✦</span> Self-evolving <span class="soon">Level 1 · live</span></h3>
           <p>Every few turns, a background reviewer distills your recent work into durable memory and reusable skills — so the agent levels up as you work, no manual tuning. Level 1 is live today; deeper levels are on the way.</p>
         </div>
         <div class="levels">
@@ -113,8 +130,11 @@
 
 <section id="deploy" style="background: var(--bg-soft);">
   <div class="wrap">
-    <h2 class="section-title">One binary. Runs anywhere.</h2>
-    <p class="section-sub">A single ~12&nbsp;MB binary, zero runtime dependencies — the same file runs unchanged on a laptop, a cloud node, or a 256&nbsp;MB edge device.</p>
+    <div class="section-head">
+      <span class="kicker">Deploy anywhere</span>
+      <h2 class="section-title">One binary. <em>Runs anywhere.</em></h2>
+      <p class="section-sub">A single ~12&nbsp;MB binary, zero runtime dependencies — the same file runs unchanged on a laptop, a cloud node, or a 256&nbsp;MB edge device.</p>
+    </div>
     <div class="deploy-targets">
       <span class="pill">💻 macOS &amp; Linux laptops</span>
       <span class="pill">☁️ Cloud nodes &amp; VMs</span>
@@ -129,9 +149,12 @@
 
 <section id="benchmark">
   <div class="wrap">
-    <h2 class="section-title">Faster &amp; leaner than Claude Code</h2>
-    <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>) on Apple Silicon, comparable feature set.</p>
-    <div class="bench-wrap">
+    <div class="section-head">
+      <span class="kicker">Benchmark</span>
+      <h2 class="section-title">Faster &amp; leaner than <em>Claude Code</em></h2>
+      <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>) on Apple Silicon, comparable feature set.</p>
+    </div>
+    <div class="bench-wrap reveal">
       <table>
         <thead>
           <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Advantage</th></tr>
@@ -152,7 +175,8 @@
 
 <section style="background: var(--bg-soft);">
   <div class="wrap">
-    <div class="cta-box">
+    <div class="cta-box reveal">
+      <span class="kicker" style="justify-content:center;">Get started</span>
       <h2>Try it in 30 seconds</h2>
       <p>Open source under Apache 2.0. Star the repo if it's useful — it genuinely helps.</p>
       <div class="hero-actions">
@@ -165,7 +189,7 @@
 
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> San · Apache 2.0</span>
+    <span class="brand">© <span id="year"></span> <span class="san">San 三</span> · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
       <a href="https://github.com/genai-io/san/tree/main/docs">Docs</a> ·
@@ -175,6 +199,7 @@
 </footer>
 
 <script>
+  // Copy install command
   function copyInstall(btn) {
     const text = document.getElementById('install-cmd').innerText;
     navigator.clipboard.writeText(text).then(() => {
@@ -184,6 +209,46 @@
     });
   }
   document.getElementById('year').innerText = new Date().getFullYear();
+
+  // Mobile nav toggle
+  function toggleNav(btn) {
+    const nav = document.getElementById('nav');
+    const open = nav.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open);
+  }
+  // Close the mobile menu after tapping a link
+  document.querySelectorAll('#nav-links a').forEach(a =>
+    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
+
+  // Nav gains a solid background once the page scrolls
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  // Scroll-triggered reveals
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach((el, i) => {
+    el.style.transitionDelay = (i % 6) * 60 + 'ms';
+    io.observe(el);
+  });
+
+  // Scroll-spy: highlight the active in-page nav link
+  const spyLinks = [...document.querySelectorAll('#nav-links a[href^="#"]')];
+  const sections = spyLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        spyLinks.forEach(l => l.classList.toggle('active',
+          l.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  sections.forEach(s => spy.observe(s));
 
   // The intro is a fixed 1280x720 page embedded as an iframe; scale the whole
   // iframe to the container width so the full animated stage is always shown.

@@ -15,12 +15,16 @@
 </head>
 <body>
 
-<nav>
+<nav id="nav">
   <div class="wrap">
     <span class="logo"><a href="index.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <div class="nav-links">
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <div class="nav-links" id="nav-links">
       <a href="index.html#features">Features</a>
+      <a href="index.html#deploy">Deploy</a>
       <a href="index.html#benchmark">Benchmark</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a href="intro.html">Intro</a>
       <a href="getting-started.html">Get Started</a>
       <a href="docs.html">Docs</a>
       <a class="nav-cta" href="https://github.com/genai-io/san">★ Star on GitHub</a>
@@ -125,6 +129,18 @@
 
 <script>
   document.getElementById('year').innerText = new Date().getFullYear();
+
+  function toggleNav(btn) {
+    const nav = document.getElementById('nav');
+    const open = nav.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open);
+  }
+  document.querySelectorAll('#nav-links a').forEach(a =>
+    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
 </script>
 </body>
 </html>
