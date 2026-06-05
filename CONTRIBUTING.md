@@ -39,13 +39,13 @@ following [`docs/packages/TEMPLATE.md`](docs/packages/TEMPLATE.md).
 ### Run Tests
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test ./...
+GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
 Transcript/session focused suites:
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test \
+GOCACHE=/private/tmp/san-go-build-cache go test \
   ./internal/session/... ./tests/integration/session/... ./tests/integration/cli/...
 ```
 

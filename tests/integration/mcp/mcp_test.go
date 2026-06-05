@@ -799,8 +799,8 @@ func requireNpx(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping real MCP server test in short mode")
 	}
-	if os.Getenv("GENCODE_RUN_REAL_MCP") != "1" {
-		t.Skip("set GENCODE_RUN_REAL_MCP=1 to run real MCP server tests")
+	if os.Getenv("SAN_RUN_REAL_MCP") != "1" {
+		t.Skip("set SAN_RUN_REAL_MCP=1 to run real MCP server tests")
 	}
 	// Check npx is available
 	if _, err := exec.LookPath("npx"); err != nil {
@@ -889,7 +889,7 @@ func TestRealMCP_Everything(t *testing.T) {
 	}
 
 	// --- Call echo tool ---
-	result, err := client.CallTool(ctx, "echo", map[string]any{"message": "hello from gencode"})
+	result, err := client.CallTool(ctx, "echo", map[string]any{"message": "hello from san"})
 	if err != nil {
 		t.Fatalf("CallTool(echo) error: %v", err)
 	}
@@ -899,7 +899,7 @@ func TestRealMCP_Everything(t *testing.T) {
 	if len(result.Content) == 0 {
 		t.Fatal("expected non-empty result from echo")
 	}
-	if !strings.Contains(result.Content[0].Text, "hello from gencode") {
+	if !strings.Contains(result.Content[0].Text, "hello from san") {
 		t.Errorf("echo should return our message, got: %q", result.Content[0].Text)
 	}
 
