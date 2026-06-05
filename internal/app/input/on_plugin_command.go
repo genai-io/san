@@ -414,7 +414,7 @@ func pluginHandleMarketplaceSync(ctx context.Context, cwd string, args []string)
 		return strings.TrimRight(sb.String(), "\n"), nil
 	}
 
-	if err := manager.Sync(ctx, target); err != nil {
+	if err := manager.SyncOrPrune(ctx, target); err != nil {
 		return fmt.Sprintf("Failed to sync marketplace '%s': %v", target, err), nil
 	}
 	return fmt.Sprintf("Synced marketplace '%s'.", target), nil

@@ -851,7 +851,7 @@ func (s *PluginSelector) syncMarketplace(id string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		if err := s.marketplaceManager.Sync(ctx, id); err != nil {
+		if err := s.marketplaceManager.SyncOrPrune(ctx, id); err != nil {
 			return PluginMarketplaceSyncResultMsg{ID: id, Success: false, Error: err}
 		}
 		return PluginMarketplaceSyncResultMsg{ID: id, Success: true}
@@ -923,12 +923,9 @@ func (s *PluginSelector) HandleMarketplaceSync(msg PluginMarketplaceSyncResultMs
 	s.isLoading = false
 	s.loadingMsg = ""
 	if !msg.Success {
+		// A broken GitHub source is pruned inside SyncOrPrune; here we just
+		// surface the failure and let the refresh reflect any pruning.
 		s.setError(fmt.Sprintf("Failed to sync %s: %v", msg.ID, msg.Error))
-		if entry, ok := s.marketplaceManager.Get(msg.ID); ok && entry.Source.Source == "github" {
-			if _, err := os.Stat(entry.InstallLocation); os.IsNotExist(err) {
-				_ = s.marketplaceManager.Remove(msg.ID)
-			}
-		}
 	} else {
 		s.setSuccess(fmt.Sprintf("Synced %s", msg.ID))
 	}

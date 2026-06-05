@@ -480,6 +480,52 @@ func TestInstall_LoadsMarketplacesAndInstalls(t *testing.T) {
 	}
 }
 
+func TestSyncOrPrune(t *testing.T) {
+	t.Run("prunes a broken github source when the local clone is gone", func(t *testing.T) {
+		tmp := t.TempDir()
+		t.Setenv("HOME", tmp)
+		m := NewMarketplaceManager(tmp)
+
+		if err := m.Add("ghost", MarketplaceEntry{
+			Source:          MarketplaceSourceInfo{Source: "github", Repo: "owner/repo"},
+			InstallLocation: filepath.Join(tmp, "ghost-clone"), // never created
+		}); err != nil {
+			t.Fatalf("Add() error: %v", err)
+		}
+
+		// A pre-cancelled context makes the git clone fail immediately with no
+		// network access, so the sync-failure path is deterministic.
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if err := m.SyncOrPrune(ctx, "ghost"); err == nil {
+			t.Fatal("expected sync to fail")
+		}
+		if _, ok := m.Get("ghost"); ok {
+			t.Fatal("expected the broken github marketplace to be pruned")
+		}
+	})
+
+	t.Run("does not prune a non-github source on sync failure", func(t *testing.T) {
+		tmp := t.TempDir()
+		t.Setenv("HOME", tmp)
+		m := NewMarketplaceManager(tmp)
+
+		if err := m.Add("weird", MarketplaceEntry{
+			Source: MarketplaceSourceInfo{Source: "mystery"},
+		}); err != nil {
+			t.Fatalf("Add() error: %v", err)
+		}
+
+		if err := m.SyncOrPrune(context.Background(), "weird"); err == nil {
+			t.Fatal("expected an unsupported-source error")
+		}
+		if _, ok := m.Get("weird"); !ok {
+			t.Fatal("a non-github marketplace must not be pruned")
+		}
+	})
+}
+
 func TestRegistry_LoadScopeMergePrefersLocalOverProjectOverUser(t *testing.T) {
 	tmpHome := t.TempDir()
 	cwd := t.TempDir()
