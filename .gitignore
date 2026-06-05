@@ -21,8 +21,8 @@ san_*
 vendor/
 
 # Local config
-.gen/*
-!.gen/skills/
+.san/*
+!.san/skills/
 .claude/
 .mcp.json
 CLAUDE.md

@@ -82,7 +82,7 @@ func Test_extractIntField(t *testing.T) {
 }
 
 func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
-	input := `{"command":"cd /Users/myan/Workspace/ideas/gencode && git describe --tags --abbrev=0 2>/dev/null"}`
+	input := `{"command":"cd /Users/myan/Workspace/ideas/san && git describe --tags --abbrev=0 2>/dev/null"}`
 	got := extractToolArgs(input)
 	if !strings.Contains(got, "git describe --tags --abbrev=0") {
 		t.Fatalf("extractToolArgs() = %q, want full command", got)
@@ -188,7 +188,7 @@ func TestRenderToolCallsUsesEightyPercentWidth(t *testing.T) {
 		ToolCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Bash",
-			Input: `{"command":"cd /Users/myan/Workspace/ideas/gencode && git describe --tags --abbrev=0 2>/dev/null"}`,
+			Input: `{"command":"cd /Users/myan/Workspace/ideas/san && git describe --tags --abbrev=0 2>/dev/null"}`,
 		}},
 		ResultMap: map[string]ToolResultData{},
 		Width:     100,
