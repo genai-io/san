@@ -21,6 +21,8 @@
 
 San 是面向终端的**专用 Agent 统一运行时**（Unified Specialized Agent Runtime）—— 不止于编程 —— 构建在五大可插拔能力之上：**模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现。
 
+<sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
+
 ## 特性
 
 ### 开放架构
