@@ -153,7 +153,7 @@ func (s *SkillSelector) EnterSelect(width, height int) error {
 	s.height = height
 	s.nav.Reset()
 	s.activeTab = s.firstNonEmptyTab()
-	s.applyFilters()
+	s.updateFilter()
 	return nil
 }
 
@@ -212,8 +212,8 @@ func (s *SkillSelector) Cancel() {
 	s.nav.Total = 0
 }
 
-// applyFilters rebuilds filteredSkills from the active tab + search query.
-func (s *SkillSelector) applyFilters() {
+// updateFilter rebuilds filteredSkills from the active tab + search query.
+func (s *SkillSelector) updateFilter() {
 	query := strings.ToLower(s.nav.Search)
 	s.filteredSkills = s.filteredSkills[:0]
 	for _, sk := range s.skills {
@@ -248,7 +248,7 @@ func (s *SkillSelector) cycleTab(delta int) {
 	n := len(tabs)
 	next := tabs[((idx+delta)%n+n)%n]
 	s.activeTab = next
-	s.applyFilters()
+	s.updateFilter()
 }
 
 func (s *SkillSelector) CycleState() tea.Cmd {
@@ -295,7 +295,7 @@ func (s *SkillSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 
 	searchChanged, consumed := s.nav.HandleKey(key)
 	if searchChanged {
-		s.applyFilters()
+		s.updateFilter()
 	}
 	if consumed {
 		return nil

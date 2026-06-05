@@ -126,7 +126,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 	s.height = height
 	s.nav.Reset()
 	s.activeTab = s.firstNonEmptyTab()
-	s.applyFilters()
+	s.updateFilter()
 	return nil
 }
 
@@ -197,8 +197,8 @@ func (s *AgentSelector) firstNonEmptyTab() agentTab {
 	return agentTabProject
 }
 
-// applyFilters rebuilds filteredAgents from the active tab + search query.
-func (s *AgentSelector) applyFilters() {
+// updateFilter rebuilds filteredAgents from the active tab + search query.
+func (s *AgentSelector) updateFilter() {
 	query := strings.ToLower(s.nav.Search)
 	s.filteredAgents = s.filteredAgents[:0]
 	for _, a := range s.agents {
@@ -253,7 +253,7 @@ func (s *AgentSelector) cycleTab(delta int) {
 	n := len(tabs)
 	next := tabs[((idx+delta)%n+n)%n]
 	s.activeTab = next
-	s.applyFilters()
+	s.updateFilter()
 }
 
 func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
@@ -269,7 +269,7 @@ func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	}
 	searchChanged, consumed := s.nav.HandleKey(key)
 	if searchChanged {
-		s.applyFilters()
+		s.updateFilter()
 	}
 	if consumed {
 		return nil

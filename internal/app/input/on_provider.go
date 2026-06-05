@@ -987,7 +987,7 @@ func (s *ProviderSelector) rebuildVisibleItems() {
 
 // rebuildModelsTab builds visible items for the Models tab.
 func (s *ProviderSelector) rebuildModelsTab() {
-	s.applyFilter()
+	s.updateFilter()
 
 	// Group filtered models by provider
 	providerModels := make(map[string][]providerModelItem)
@@ -1057,7 +1057,7 @@ func (s *ProviderSelector) rebuildProvidersTab() {
 	}
 }
 
-func (s *ProviderSelector) applyFilter() {
+func (s *ProviderSelector) updateFilter() {
 	if s.searchQuery == "" {
 		s.filteredModels = s.allModels
 		return
