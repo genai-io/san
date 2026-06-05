@@ -2,8 +2,7 @@
 // exported to child processes (Bash tool, hooks, MCP servers, etc.).
 //
 // Every SAN_* variable is also emitted as a CLAUDE_* alias (so Claude Code
-// plugins work unmodified) and as a legacy GEN_* alias (so consumers written
-// before the gen→san rename keep working).
+// plugins work unmodified).
 package setting
 
 import (
@@ -12,21 +11,19 @@ import (
 )
 
 const (
-	prefix       = "SAN_"
-	aliasPrefix  = "CLAUDE_" // Claude Code compatibility alias
-	legacyPrefix = "GEN_"    // pre-rename name, still emitted and read for back-compat
+	prefix      = "SAN_"
+	aliasPrefix = "CLAUDE_" // Claude Code compatibility alias
 )
 
 // aliasPrefixes are the extra prefixes emitted alongside the canonical SAN_
-// variant. CLAUDE_ keeps Claude Code plugins working; GEN_ keeps pre-rename
-// consumers working.
-var aliasPrefixes = []string{aliasPrefix, legacyPrefix}
+// variant. CLAUDE_ keeps Claude Code plugins working.
+var aliasPrefixes = []string{aliasPrefix}
 
 // EnvPair creates env entries for a single key=value, returning the canonical
-// SAN_ variant plus the CLAUDE_ and GEN_ aliases.
+// SAN_ variant plus the CLAUDE_ alias.
 //
 //	EnvPair("PROJECT_DIR", "/tmp") →
-//	  ["SAN_PROJECT_DIR=/tmp", "CLAUDE_PROJECT_DIR=/tmp", "GEN_PROJECT_DIR=/tmp"]
+//	  ["SAN_PROJECT_DIR=/tmp", "CLAUDE_PROJECT_DIR=/tmp"]
 func EnvPair(key, value string) []string {
 	out := make([]string, 0, 1+len(aliasPrefixes))
 	out = append(out, prefix+key+"="+value)
@@ -51,18 +48,13 @@ func EnvPairs(kvs ...string) []string {
 // EnvPairF is like EnvPair but with a formatted suffix on the key.
 //
 //	EnvPairF("PLUGIN_ROOT_%s", "CODEX", "/path") →
-//	  ["SAN_PLUGIN_ROOT_CODEX=/path", "CLAUDE_PLUGIN_ROOT_CODEX=/path", "GEN_PLUGIN_ROOT_CODEX=/path"]
+//	  ["SAN_PLUGIN_ROOT_CODEX=/path", "CLAUDE_PLUGIN_ROOT_CODEX=/path"]
 func EnvPairF(keyFmt, keyArg, value string) []string {
 	key := fmt.Sprintf(keyFmt, keyArg)
 	return EnvPair(key, value)
 }
 
-// Getenv reads the canonical SAN_<suffix> variable, falling back to the legacy
-// GEN_<suffix> when the SAN_ form is unset. Mirrors the aliasing EnvPair applies
-// to child-process environments.
+// Getenv reads the canonical SAN_<suffix> variable.
 func Getenv(suffix string) string {
-	if v, ok := os.LookupEnv(prefix + suffix); ok {
-		return v
-	}
-	return os.Getenv(legacyPrefix + suffix)
+	return os.Getenv(prefix + suffix)
 }

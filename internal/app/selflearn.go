@@ -28,8 +28,8 @@ import (
 )
 
 // selfLearnDisableEnvSuffix is the env kill switch (§3.1) — mirrors Claude
-// Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY. Read via setting.Getenv so both
-// SAN_DISABLE_SELF_LEARN and the legacy GEN_DISABLE_SELF_LEARN are honored.
+// Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY. Read via setting.Getenv as
+// SAN_DISABLE_SELF_LEARN.
 const selfLearnDisableEnvSuffix = "DISABLE_SELF_LEARN"
 
 // L1 review lifecycle event types published on agentEventHub. "started" is

@@ -97,7 +97,7 @@ func TestLoadAllSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a skill in the test directory
-	skillDir := filepath.Join(tmpDir, ".gen", "skills", "example-skill")
+	skillDir := filepath.Join(tmpDir, ".san", "skills", "example-skill")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestLoadSkillWithNamespace(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a namespaced skill
-	skillDir := filepath.Join(tmpDir, ".gen", "skills", "commit")
+	skillDir := filepath.Join(tmpDir, ".san", "skills", "commit")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestSkillRegistry(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a skill in the test directory
-	skillDir := filepath.Join(tmpDir, ".gen", "skills", "registry-test")
+	skillDir := filepath.Join(tmpDir, ".san", "skills", "registry-test")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +288,7 @@ func TestLoadPluginSkills(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a plugin cache directory with skills
-	pluginCacheDir := filepath.Join(tmpDir, ".gen", "plugins", "cache", "test-marketplace", "git", "1.0.0")
+	pluginCacheDir := filepath.Join(tmpDir, ".san", "plugins", "cache", "test-marketplace", "git", "1.0.0")
 	skillDir := filepath.Join(pluginCacheDir, "skills", "commit")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -308,7 +308,7 @@ Git commit instructions.
 	}
 
 	// Create installed_plugins.json
-	pluginsDir := filepath.Join(tmpDir, ".gen", "plugins")
+	pluginsDir := filepath.Join(tmpDir, ".san", "plugins")
 	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestPluginSkillExplicitNamespaceOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a plugin cache directory with skills
-	pluginCacheDir := filepath.Join(tmpDir, ".gen", "plugins", "cache", "test-marketplace", "my-plugin", "1.0.0")
+	pluginCacheDir := filepath.Join(tmpDir, ".san", "plugins", "cache", "test-marketplace", "my-plugin", "1.0.0")
 	skillDir := filepath.Join(pluginCacheDir, "skills", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -386,7 +386,7 @@ Review instructions.
 	}
 
 	// Create installed_plugins.json
-	pluginsDir := filepath.Join(tmpDir, ".gen", "plugins")
+	pluginsDir := filepath.Join(tmpDir, ".san", "plugins")
 	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -185,7 +185,7 @@ func FindPluginRootForPath(path string) string {
 //
 // Per plugin (always emitted):
 //
-//	SAN_PLUGIN_ROOT_<UPPER_NAME>=<path>   CLAUDE_PLUGIN_ROOT_<UPPER_NAME>=<path>   GEN_PLUGIN_ROOT_<UPPER_NAME>=<path>
+//	SAN_PLUGIN_ROOT_<UPPER_NAME>=<path>   CLAUDE_PLUGIN_ROOT_<UPPER_NAME>=<path>
 //
 // Unqualified alias (active plugin root) — sourced in priority order:
 //
@@ -195,7 +195,7 @@ func FindPluginRootForPath(path string) string {
 //
 //  3. The sole enabled plugin's path, if exactly one is enabled
 //
-//     SAN_PLUGIN_ROOT=<path>   CLAUDE_PLUGIN_ROOT=<path>   GEN_PLUGIN_ROOT=<path>
+//     SAN_PLUGIN_ROOT=<path>   CLAUDE_PLUGIN_ROOT=<path>
 func PluginEnv(ctx context.Context) []string {
 	enabled := defaultRegistry.GetEnabled()
 	if len(enabled) == 0 {

@@ -281,7 +281,7 @@ func createTestPluginMarketplace(t *testing.T) string {
 	t.Helper()
 
 	root := t.TempDir()
-	pluginDir := filepath.Join(root, "plugins", "codex", ".gen-plugin")
+	pluginDir := filepath.Join(root, "plugins", "codex", ".san-plugin")
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", pluginDir, err)
 	}

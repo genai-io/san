@@ -259,7 +259,7 @@ func (s *State) sortSuggestions() {
 }
 
 func shouldSkipDirectory(name string) bool {
-	if strings.HasPrefix(name, ".") && name != ".san" && name != ".gen" {
+	if strings.HasPrefix(name, ".") && name != ".san" {
 		return true
 	}
 

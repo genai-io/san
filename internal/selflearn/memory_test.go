@@ -11,7 +11,7 @@ import (
 )
 
 // newTestStore points the auto-memory store at a temp HOME so tests never touch
-// the real ~/.gen.
+// the real ~/.san.
 func newTestStore(t *testing.T) *MemoryStore {
 	t.Helper()
 	home := t.TempDir()

@@ -16,11 +16,11 @@ func TestConfigLoader_SaveAndLoad(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Create project dir
-	projectDir := filepath.Join(tmpDir, ".gen")
+	projectDir := filepath.Join(tmpDir, ".san")
 	os.MkdirAll(projectDir, 0o755)
 
 	loader := &ConfigLoader{
-		userDir:    filepath.Join(tmpDir, "user", ".gen"),
+		userDir:    filepath.Join(tmpDir, "user", ".san"),
 		projectDir: projectDir,
 	}
 
@@ -75,8 +75,8 @@ func TestConfigLoader_ScopePriority(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	userDir := filepath.Join(tmpDir, "user", ".gen")
-	projectDir := filepath.Join(tmpDir, "project", ".gen")
+	userDir := filepath.Join(tmpDir, "user", ".san")
+	projectDir := filepath.Join(tmpDir, "project", ".san")
 	os.MkdirAll(userDir, 0o755)
 	os.MkdirAll(projectDir, 0o755)
 

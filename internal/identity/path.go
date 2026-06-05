@@ -15,10 +15,9 @@ func IsIdentityFile(cwd, path string) bool {
 		return false
 	}
 	// Cheap substring guard before paying for filepath.Abs/UserHomeDir on
-	// every Write/Edit tool result. Accept both the current and pre-rename dir.
+	// every Write/Edit tool result.
 	slash := filepath.ToSlash(path)
-	if !strings.Contains(slash, "/"+confdir.Name+"/identities/") &&
-		!strings.Contains(slash, "/"+confdir.LegacyName+"/identities/") {
+	if !strings.Contains(slash, "/"+confdir.Name+"/identities/") {
 		return false
 	}
 	abs, err := filepath.Abs(path)
@@ -41,12 +40,9 @@ func identityDirs(cwd string) []string {
 	if cwd != "" {
 		roots = append(roots, cwd)
 	}
-	// Recognize identities under both the current (.san) and pre-rename (.gen)
-	// config dirs so an edit to either is classified correctly.
-	dirs := make([]string, 0, len(roots)*2)
+	dirs := make([]string, 0, len(roots))
 	for _, root := range roots {
 		dirs = append(dirs, filepath.Join(root, confdir.Name, "identities"))
-		dirs = append(dirs, filepath.Join(root, confdir.LegacyName, "identities"))
 	}
 	return dirs
 }

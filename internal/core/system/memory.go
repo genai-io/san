@@ -126,7 +126,6 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 	userDir := confdir.Dir(homeDir)
 	userSources := []string{
 		filepath.Join(userDir, "SAN.md"),
-		filepath.Join(userDir, "GEN.md"), // pre-rename fallback
 		filepath.Join(homeDir, ".claude", "CLAUDE.md"),
 	}
 	if f := loadMemoryFile(userSources, "global", seen); f != nil {
@@ -140,8 +139,6 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 	projectSources := []string{
 		filepath.Join(projectDir, "SAN.md"),
 		filepath.Join(cwd, "SAN.md"),
-		filepath.Join(projectDir, "GEN.md"), // pre-rename fallback
-		filepath.Join(cwd, "GEN.md"),
 		filepath.Join(cwd, ".claude", "CLAUDE.md"),
 		filepath.Join(cwd, "CLAUDE.md"),
 	}
@@ -154,7 +151,6 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 
 	localSources := []string{
 		filepath.Join(projectDir, "SAN.local.md"),
-		filepath.Join(projectDir, "GEN.local.md"), // pre-rename fallback
 	}
 	if f := loadMemoryFile(localSources, "local", seen); f != nil {
 		files = append(files, *f)
@@ -288,22 +284,18 @@ func GetAllMemoryPaths(cwd string) MemoryPaths {
 	return MemoryPaths{
 		Global: []string{
 			filepath.Join(confdir.Dir(homeDir), "SAN.md"),
-			filepath.Join(confdir.Dir(homeDir), "GEN.md"), // pre-rename fallback
 			filepath.Join(homeDir, ".claude", "CLAUDE.md"),
 		},
 		GlobalRules: filepath.Join(confdir.Dir(homeDir), "rules"),
 		Project: []string{
 			filepath.Join(confdir.Dir(cwd), "SAN.md"),
 			filepath.Join(cwd, "SAN.md"),
-			filepath.Join(confdir.Dir(cwd), "GEN.md"), // pre-rename fallback
-			filepath.Join(cwd, "GEN.md"),
 			filepath.Join(cwd, ".claude", "CLAUDE.md"),
 			filepath.Join(cwd, "CLAUDE.md"),
 		},
 		ProjectRules: filepath.Join(confdir.Dir(cwd), "rules"),
 		Local: []string{
 			filepath.Join(confdir.Dir(cwd), "SAN.local.md"),
-			filepath.Join(confdir.Dir(cwd), "GEN.local.md"), // pre-rename fallback
 		},
 	}
 }

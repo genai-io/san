@@ -25,14 +25,11 @@ var (
 	devEnabled bool   // Whether DEV_DIR is enabled
 )
 
-// debugEnabled reports whether debug logging is on via SAN_DEBUG=1 (or the
-// legacy GEN_DEBUG=1). Kept local because the log package is an infrastructure
-// leaf and cannot import internal/setting.
+// debugEnabled reports whether debug logging is on via SAN_DEBUG=1. Kept local
+// because the log package is an infrastructure leaf and cannot import
+// internal/setting.
 func debugEnabled() bool {
-	if v, ok := os.LookupEnv("SAN_DEBUG"); ok {
-		return v == "1"
-	}
-	return os.Getenv("GEN_DEBUG") == "1"
+	return os.Getenv("SAN_DEBUG") == "1"
 }
 
 // Init initializes the logger based on SAN_DEBUG env var

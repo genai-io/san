@@ -144,23 +144,19 @@ func TestGetAllMemoryPaths(t *testing.T) {
 	cwd := "/test/project"
 	paths := GetAllMemoryPaths(cwd)
 
-	// SAN.md (+ root), the pre-rename GEN.md (+ root), and CLAUDE.md (+ .claude).
-	if len(paths.Project) != 6 {
-		t.Errorf("Expected 6 project paths, got %d", len(paths.Project))
+	// SAN.md (+ root) and CLAUDE.md (+ .claude).
+	if len(paths.Project) != 4 {
+		t.Errorf("Expected 4 project paths, got %d", len(paths.Project))
 	}
 	if !strings.Contains(paths.Project[0], "SAN.md") {
 		t.Errorf("Expected SAN.md preferred first, got: %s", paths.Project[0])
 	}
 
-	// SAN.local.md preferred, with the pre-rename GEN.local.md as fallback.
-	if len(paths.Local) != 2 {
-		t.Errorf("Expected 2 local paths, got %d", len(paths.Local))
+	if len(paths.Local) != 1 {
+		t.Errorf("Expected 1 local path, got %d", len(paths.Local))
 	}
 	if !strings.Contains(paths.Local[0], "SAN.local.md") {
-		t.Errorf("Expected SAN.local.md preferred in local paths, got: %s", paths.Local[0])
-	}
-	if !strings.Contains(paths.Local[1], "GEN.local.md") {
-		t.Errorf("Expected GEN.local.md fallback in local paths, got: %s", paths.Local[1])
+		t.Errorf("Expected SAN.local.md in local paths, got: %s", paths.Local[0])
 	}
 
 	if !strings.Contains(paths.ProjectRules, "rules") {
@@ -279,22 +275,22 @@ func TestLoadMemoryFilesWithImports(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	genDir := filepath.Join(tmpDir, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpDir, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
 
-	genMdContent := `# Project Memory
+	sanMdContent := `# Project Memory
 @extra.md
 End of memory`
 
 	extraContent := `## Extra Content
 This was imported`
 
-	if err := os.WriteFile(filepath.Join(genDir, "GEN.md"), []byte(genMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write GEN.md: %v", err)
+	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte(sanMdContent), 0o644); err != nil {
+		t.Fatalf("Failed to write SAN.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(genDir, "extra.md"), []byte(extraContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sanDir, "extra.md"), []byte(extraContent), 0o644); err != nil {
 		t.Fatalf("Failed to write extra.md: %v", err)
 	}
 
@@ -302,14 +298,14 @@ This was imported`
 
 	var projectFile *MemoryFile
 	for i := range files {
-		if files[i].Level == "project" && strings.Contains(files[i].Path, "GEN.md") {
+		if files[i].Level == "project" && strings.Contains(files[i].Path, "SAN.md") {
 			projectFile = &files[i]
 			break
 		}
 	}
 
 	if projectFile == nil {
-		t.Fatal("Expected to find project GEN.md file")
+		t.Fatal("Expected to find project SAN.md file")
 	}
 
 	if !strings.Contains(projectFile.Content, "<!-- Imported: extra.md -->") {
@@ -371,66 +367,66 @@ func TestLoadInstructions(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	genDir := filepath.Join(tmpDir, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpDir, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(genDir, "GEN.md"), []byte("Project instructions here"), 0o644); err != nil {
-		t.Fatalf("Failed to write GEN.md: %v", err)
+	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte("Project instructions here"), 0o644); err != nil {
+		t.Fatalf("Failed to write SAN.md: %v", err)
 	}
 
-	if err := os.WriteFile(filepath.Join(genDir, "GEN.local.md"), []byte("Local instructions here"), 0o644); err != nil {
-		t.Fatalf("Failed to write GEN.local.md: %v", err)
+	if err := os.WriteFile(filepath.Join(sanDir, "SAN.local.md"), []byte("Local instructions here"), 0o644); err != nil {
+		t.Fatalf("Failed to write SAN.local.md: %v", err)
 	}
 
 	user, project := LoadInstructions(tmpDir)
 
 	if !strings.Contains(project, "Project instructions here") {
-		t.Errorf("project instructions should contain GEN.md content, got: %s", project)
+		t.Errorf("project instructions should contain SAN.md content, got: %s", project)
 	}
 	if !strings.Contains(project, "Local instructions here") {
-		t.Errorf("project instructions should contain GEN.local.md content, got: %s", project)
+		t.Errorf("project instructions should contain SAN.local.md content, got: %s", project)
 	}
 
 	_ = user
 }
 
-func TestLoadMemoryFiles_PrefersGenPathsAndPreservesSectionOrder(t *testing.T) {
+func TestLoadMemoryFiles_PrefersSanPathsAndPreservesSectionOrder(t *testing.T) {
 	tmpHome := t.TempDir()
 	tmpDir := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	userGenDir := filepath.Join(tmpHome, ".gen")
+	userSanDir := filepath.Join(tmpHome, ".san")
 	userClaudeDir := filepath.Join(tmpHome, ".claude")
-	projectGenDir := filepath.Join(tmpDir, ".gen")
+	projectSanDir := filepath.Join(tmpDir, ".san")
 	projectClaudeDir := filepath.Join(tmpDir, ".claude")
 
-	for _, dir := range []string{userGenDir, userClaudeDir, projectGenDir, projectClaudeDir, filepath.Join(userGenDir, "rules"), filepath.Join(projectGenDir, "rules")} {
+	for _, dir := range []string{userSanDir, userClaudeDir, projectSanDir, projectClaudeDir, filepath.Join(userSanDir, "rules"), filepath.Join(projectSanDir, "rules")} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s): %v", dir, err)
 		}
 	}
 
-	if err := os.WriteFile(filepath.Join(userGenDir, "GEN.md"), []byte("user gen"), 0o644); err != nil {
-		t.Fatalf("WriteFile(user GEN): %v", err)
+	if err := os.WriteFile(filepath.Join(userSanDir, "SAN.md"), []byte("user san"), 0o644); err != nil {
+		t.Fatalf("WriteFile(user SAN): %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(userClaudeDir, "CLAUDE.md"), []byte("user claude fallback"), 0o644); err != nil {
 		t.Fatalf("WriteFile(user CLAUDE): %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(userGenDir, "rules", "01-global.md"), []byte("global rule"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(userSanDir, "rules", "01-global.md"), []byte("global rule"), 0o644); err != nil {
 		t.Fatalf("WriteFile(global rule): %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectGenDir, "GEN.md"), []byte("project gen"), 0o644); err != nil {
-		t.Fatalf("WriteFile(project GEN): %v", err)
+	if err := os.WriteFile(filepath.Join(projectSanDir, "SAN.md"), []byte("project san"), 0o644); err != nil {
+		t.Fatalf("WriteFile(project SAN): %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(projectClaudeDir, "CLAUDE.md"), []byte("project claude fallback"), 0o644); err != nil {
 		t.Fatalf("WriteFile(project CLAUDE): %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectGenDir, "rules", "01-project.md"), []byte("project rule"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectSanDir, "rules", "01-project.md"), []byte("project rule"), 0o644); err != nil {
 		t.Fatalf("WriteFile(project rule): %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(projectGenDir, "GEN.local.md"), []byte("project local"), 0o644); err != nil {
-		t.Fatalf("WriteFile(local GEN): %v", err)
+	if err := os.WriteFile(filepath.Join(projectSanDir, "SAN.local.md"), []byte("project local"), 0o644); err != nil {
+		t.Fatalf("WriteFile(local SAN): %v", err)
 	}
 
 	files := LoadMemoryFiles(tmpDir)
@@ -438,26 +434,26 @@ func TestLoadMemoryFiles_PrefersGenPathsAndPreservesSectionOrder(t *testing.T) {
 		t.Fatalf("expected 5 memory files, got %d", len(files))
 	}
 
-	if files[0].Level != "global" || !strings.Contains(files[0].Path, filepath.Join(".gen", "GEN.md")) {
-		t.Fatalf("expected global GEN.md first, got level=%q path=%q", files[0].Level, files[0].Path)
+	if files[0].Level != "global" || !strings.Contains(files[0].Path, filepath.Join(".san", "SAN.md")) {
+		t.Fatalf("expected global SAN.md first, got level=%q path=%q", files[0].Level, files[0].Path)
 	}
 	if strings.Contains(files[0].Content, "user claude fallback") {
-		t.Fatal("expected user .gen/GEN.md to take precedence over ~/.claude/CLAUDE.md")
+		t.Fatal("expected user .san/SAN.md to take precedence over ~/.claude/CLAUDE.md")
 	}
 	if files[1].Level != "global" {
 		t.Fatalf("expected global rules second, got level=%q", files[1].Level)
 	}
-	if files[2].Level != "project" || !strings.Contains(files[2].Path, filepath.Join(".gen", "GEN.md")) {
-		t.Fatalf("expected project GEN.md third, got level=%q path=%q", files[2].Level, files[2].Path)
+	if files[2].Level != "project" || !strings.Contains(files[2].Path, filepath.Join(".san", "SAN.md")) {
+		t.Fatalf("expected project SAN.md third, got level=%q path=%q", files[2].Level, files[2].Path)
 	}
 	if strings.Contains(files[2].Content, "project claude fallback") {
-		t.Fatal("expected project .gen/GEN.md to take precedence over project CLAUDE.md")
+		t.Fatal("expected project .san/SAN.md to take precedence over project CLAUDE.md")
 	}
 	if files[3].Level != "project" {
 		t.Fatalf("expected project rules fourth, got level=%q", files[3].Level)
 	}
-	if files[4].Level != "local" || !strings.Contains(files[4].Path, "GEN.local.md") {
-		t.Fatalf("expected local GEN.local.md last, got level=%q path=%q", files[4].Level, files[4].Path)
+	if files[4].Level != "local" || !strings.Contains(files[4].Path, "SAN.local.md") {
+		t.Fatalf("expected local SAN.local.md last, got level=%q path=%q", files[4].Level, files[4].Path)
 	}
 }
 
@@ -468,22 +464,22 @@ func TestMemory_ImportChain(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	genDir := filepath.Join(tmpDir, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpDir, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
 
-	genMdContent := "# Root\n@a.md"
+	sanMdContent := "# Root\n@a.md"
 	aMdContent := "## Level A\n@b.md"
 	bMdContent := "### Level B\nFinal content from B"
 
-	if err := os.WriteFile(filepath.Join(genDir, "GEN.md"), []byte(genMdContent), 0o644); err != nil {
-		t.Fatalf("Failed to write GEN.md: %v", err)
+	if err := os.WriteFile(filepath.Join(sanDir, "SAN.md"), []byte(sanMdContent), 0o644); err != nil {
+		t.Fatalf("Failed to write SAN.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(genDir, "a.md"), []byte(aMdContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sanDir, "a.md"), []byte(aMdContent), 0o644); err != nil {
 		t.Fatalf("Failed to write a.md: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(genDir, "b.md"), []byte(bMdContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(sanDir, "b.md"), []byte(bMdContent), 0o644); err != nil {
 		t.Fatalf("Failed to write b.md: %v", err)
 	}
 
@@ -491,14 +487,14 @@ func TestMemory_ImportChain(t *testing.T) {
 
 	var projectFile *MemoryFile
 	for i := range files {
-		if files[i].Level == "project" && strings.Contains(files[i].Path, "GEN.md") {
+		if files[i].Level == "project" && strings.Contains(files[i].Path, "SAN.md") {
 			projectFile = &files[i]
 			break
 		}
 	}
 
 	if projectFile == nil {
-		t.Fatal("Expected to find project GEN.md file")
+		t.Fatal("Expected to find project SAN.md file")
 	}
 
 	if !strings.Contains(projectFile.Content, "Level A") {
@@ -516,7 +512,7 @@ func TestMemory_ImportChain(t *testing.T) {
 }
 
 func TestMemory_MissingFile_NoError(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "san-test-missing-genmd")
+	tmpDir, err := os.MkdirTemp("", "san-test-missing-sanmd")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
@@ -526,7 +522,7 @@ func TestMemory_MissingFile_NoError(t *testing.T) {
 
 	for _, f := range files {
 		if f.Level == "project" && strings.Contains(f.Path, tmpDir) {
-			t.Errorf("Did not expect a project memory file when GEN.md is absent, got: %s", f.Path)
+			t.Errorf("Did not expect a project memory file when SAN.md is absent, got: %s", f.Path)
 		}
 	}
 

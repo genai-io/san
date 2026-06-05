@@ -14,10 +14,6 @@ const (
 	// SanPluginDir is the directory containing plugin metadata for San
 	SanPluginDir = ".san-plugin"
 
-	// GenPluginDir is the pre-rename plugin metadata directory, still
-	// recognized for back-compat with plugins authored before the rename.
-	GenPluginDir = ".gen-plugin"
-
 	// ClaudePluginDir is the directory containing plugin metadata for Claude Code
 	ClaudePluginDir = ".claude-plugin"
 
@@ -26,8 +22,7 @@ const (
 )
 
 // LoadPlugin loads a plugin from a directory.
-// It looks for .san-plugin/plugin.json, .gen-plugin/plugin.json, or
-// .claude-plugin/plugin.json.
+// It looks for .san-plugin/plugin.json or .claude-plugin/plugin.json.
 func LoadPlugin(path string, scope Scope, source string) (*Plugin, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -66,10 +61,10 @@ func LoadPlugin(path string, scope Scope, source string) (*Plugin, error) {
 	return plugin, nil
 }
 
-// loadManifest loads the plugin manifest from .san-plugin, the legacy
-// .gen-plugin, or .claude-plugin (in that order of preference).
+// loadManifest loads the plugin manifest from .san-plugin or .claude-plugin
+// (in that order of preference).
 func loadManifest(pluginPath string) (*Manifest, error) {
-	for _, metaDir := range []string{SanPluginDir, GenPluginDir, ClaudePluginDir} {
+	for _, metaDir := range []string{SanPluginDir, ClaudePluginDir} {
 		path := filepath.Join(pluginPath, metaDir, ManifestFile)
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -122,8 +117,8 @@ func LoadPluginsFromDir(dir string, scope Scope, sourcePrefix string) ([]*Plugin
 
 		name := entry.Name()
 
-		// Skip hidden directories (except .claude*, .san*, and the legacy .gen*)
-		if strings.HasPrefix(name, ".") && !strings.HasPrefix(name, ".claude") && !strings.HasPrefix(name, ".san") && !strings.HasPrefix(name, ".gen") {
+		// Skip hidden directories (except .claude* and .san*)
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(name, ".claude") && !strings.HasPrefix(name, ".san") {
 			continue
 		}
 

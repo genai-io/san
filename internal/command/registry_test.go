@@ -240,7 +240,7 @@ func TestProjectCommandOverridesUser(t *testing.T) {
 	root := t.TempDir()
 
 	homeDir := filepath.Join(root, "home")
-	userCmds := filepath.Join(homeDir, ".gen", "commands")
+	userCmds := filepath.Join(homeDir, ".san", "commands")
 	if err := os.MkdirAll(userCmds, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestProjectCommandOverridesUser(t *testing.T) {
 	}
 
 	projectDir := filepath.Join(root, "project")
-	projectCmds := filepath.Join(projectDir, ".gen", "commands")
+	projectCmds := filepath.Join(projectDir, ".san", "commands")
 	if err := os.MkdirAll(projectCmds, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestIsCustomCommand_MatchesUserAndProjectCommands(t *testing.T) {
 
 	root := t.TempDir()
 	projectDir := filepath.Join(root, "project")
-	projectCmds := filepath.Join(projectDir, ".gen", "commands")
+	projectCmds := filepath.Join(projectDir, ".san", "commands")
 	if err := os.MkdirAll(projectCmds, 0o755); err != nil {
 		t.Fatal(err)
 	}

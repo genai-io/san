@@ -13,7 +13,7 @@ import (
 	taskTracker "github.com/genai-io/san/internal/task/tracker"
 )
 
-// newTestStore creates a Store using a temp directory instead of ~/.gen/projects/.
+// newTestStore creates a Store using a temp directory instead of ~/.san/projects/.
 func newTestStore(t *testing.T) *session.Store {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "sessions")

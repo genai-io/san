@@ -16,7 +16,7 @@ func TestExpandPluginRoot(t *testing.T) {
 		expected   string
 	}{
 		{
-			input:      "${GEN_PLUGIN_ROOT}/scripts/test.sh",
+			input:      "${SAN_PLUGIN_ROOT}/scripts/test.sh",
 			pluginPath: "/home/user/plugins/myplugin",
 			expected:   "/home/user/plugins/myplugin/scripts/test.sh",
 		},
@@ -87,8 +87,8 @@ func TestLoadPlugin(t *testing.T) {
 	// Create a temporary plugin directory
 	tmpDir := t.TempDir()
 
-	// Create .gen-plugin/plugin.json
-	pluginMetaDir := filepath.Join(tmpDir, ".gen-plugin")
+	// Create .san-plugin/plugin.json
+	pluginMetaDir := filepath.Join(tmpDir, ".san-plugin")
 	if err := os.MkdirAll(pluginMetaDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestRegistry(t *testing.T) {
 	// Create a test plugin
 	tmpDir := t.TempDir()
 
-	pluginMetaDir := filepath.Join(tmpDir, ".gen-plugin")
+	pluginMetaDir := filepath.Join(tmpDir, ".san-plugin")
 	if err := os.MkdirAll(pluginMetaDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -254,19 +254,19 @@ func TestRegistry_EnableDisable_PersistsScopedSettings(t *testing.T) {
 			name:         "user enable",
 			scope:        ScopeUser,
 			enable:       true,
-			settingsPath: filepath.Join(tmpHome, ".gen", "settings.json"),
+			settingsPath: filepath.Join(tmpHome, ".san", "settings.json"),
 		},
 		{
 			name:         "project disable",
 			scope:        ScopeProject,
 			enable:       false,
-			settingsPath: filepath.Join(tmpCwd, ".gen", "settings.json"),
+			settingsPath: filepath.Join(tmpCwd, ".san", "settings.json"),
 		},
 		{
 			name:         "local disable",
 			scope:        ScopeLocal,
 			enable:       false,
-			settingsPath: filepath.Join(tmpCwd, ".gen", "settings.local.json"),
+			settingsPath: filepath.Join(tmpCwd, ".san", "settings.local.json"),
 		},
 	}
 
@@ -343,7 +343,7 @@ func TestRegistry_EnableDisable_PersistsScopedSettings(t *testing.T) {
 func writeTestPlugin(t *testing.T, root, name, version, description string, extraFiles map[string]string) {
 	t.Helper()
 
-	metaDir := filepath.Join(root, ".gen-plugin")
+	metaDir := filepath.Join(root, ".san-plugin")
 	if err := os.MkdirAll(metaDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(plugin meta): %v", err)
 	}
@@ -437,9 +437,9 @@ func TestRegistry_LoadScopeMergePrefersLocalOverProjectOverUser(t *testing.T) {
 	cwd := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	writeTestPlugin(t, filepath.Join(tmpHome, ".gen", "plugins", "shared"), "shared", "1.0.0", "user plugin", nil)
-	writeTestPlugin(t, filepath.Join(cwd, ".gen", "plugins", "shared"), "shared", "1.0.0", "project plugin", nil)
-	writeTestPlugin(t, filepath.Join(cwd, ".gen", "plugins-local", "shared"), "shared", "1.0.0", "local plugin", nil)
+	writeTestPlugin(t, filepath.Join(tmpHome, ".san", "plugins", "shared"), "shared", "1.0.0", "user plugin", nil)
+	writeTestPlugin(t, filepath.Join(cwd, ".san", "plugins", "shared"), "shared", "1.0.0", "project plugin", nil)
+	writeTestPlugin(t, filepath.Join(cwd, ".san", "plugins-local", "shared"), "shared", "1.0.0", "local plugin", nil)
 
 	registry := NewRegistry()
 	if err := registry.Load(context.Background(), cwd); err != nil {
@@ -472,7 +472,7 @@ func TestPlugin_LSPLoading(t *testing.T) {
 }`,
 	})
 
-	manifestPath := filepath.Join(tmpDir, ".gen-plugin", "plugin.json")
+	manifestPath := filepath.Join(tmpDir, ".san-plugin", "plugin.json")
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatalf("ReadFile(manifest): %v", err)
@@ -514,7 +514,7 @@ func TestPlugin_LSPLoading(t *testing.T) {
 func TestValidatePlugin(t *testing.T) {
 	// Valid plugin
 	tmpDir := t.TempDir()
-	pluginMetaDir := filepath.Join(tmpDir, ".gen-plugin")
+	pluginMetaDir := filepath.Join(tmpDir, ".san-plugin")
 	os.MkdirAll(pluginMetaDir, 0o755)
 
 	manifest := Manifest{Name: "valid-plugin", Version: "1.0.0"}
@@ -533,7 +533,7 @@ func TestValidatePlugin(t *testing.T) {
 
 	// Invalid plugin (no name)
 	noNameDir := t.TempDir()
-	noNameMetaDir := filepath.Join(noNameDir, ".gen-plugin")
+	noNameMetaDir := filepath.Join(noNameDir, ".san-plugin")
 	os.MkdirAll(noNameMetaDir, 0o755)
 	noNameManifest := Manifest{Version: "1.0.0"} // Missing name
 	noNameJSON, _ := json.Marshal(noNameManifest)
@@ -554,7 +554,7 @@ func TestPlugin_Validate_InvalidManifest(t *testing.T) {
 		{
 			name: "missing_name",
 			manifestFn: func(dir string) error {
-				metaDir := filepath.Join(dir, ".gen-plugin")
+				metaDir := filepath.Join(dir, ".san-plugin")
 				os.MkdirAll(metaDir, 0o755)
 				m := Manifest{Version: "1.0.0"} // Name empty
 				data, _ := json.Marshal(m)
@@ -575,7 +575,7 @@ func TestPlugin_Validate_InvalidManifest(t *testing.T) {
 		{
 			name: "invalid_semver",
 			manifestFn: func(dir string) error {
-				metaDir := filepath.Join(dir, ".gen-plugin")
+				metaDir := filepath.Join(dir, ".san-plugin")
 				os.MkdirAll(metaDir, 0o755)
 				m := Manifest{Name: "my-plugin", Version: "not-semver"}
 				data, _ := json.Marshal(m)
@@ -587,7 +587,7 @@ func TestPlugin_Validate_InvalidManifest(t *testing.T) {
 		{
 			name: "valid_manifest",
 			manifestFn: func(dir string) error {
-				metaDir := filepath.Join(dir, ".gen-plugin")
+				metaDir := filepath.Join(dir, ".san-plugin")
 				os.MkdirAll(metaDir, 0o755)
 				m := Manifest{Name: "valid-plugin", Version: "1.2.3"}
 				data, _ := json.Marshal(m)
@@ -619,7 +619,7 @@ func TestLoadFromPath(t *testing.T) {
 	// Create a test plugin
 	tmpDir := t.TempDir()
 
-	pluginMetaDir := filepath.Join(tmpDir, ".gen-plugin")
+	pluginMetaDir := filepath.Join(tmpDir, ".san-plugin")
 	os.MkdirAll(pluginMetaDir, 0o755)
 
 	manifest := Manifest{Name: "path-test"}
@@ -660,7 +660,7 @@ func TestHooksConfigParsing(t *testing.T) {
 					"hooks": [
 						{
 							"type": "command",
-							"command": "${GEN_PLUGIN_ROOT}/scripts/format.sh",
+							"command": "${SAN_PLUGIN_ROOT}/scripts/format.sh",
 							"async": true
 						}
 					]
@@ -708,10 +708,10 @@ func TestMCPConfigParsing(t *testing.T) {
 	mcpJSON := `{
 		"mcpServers": {
 			"database": {
-				"command": "${GEN_PLUGIN_ROOT}/servers/db",
-				"args": ["--config", "${GEN_PLUGIN_ROOT}/config.json"],
+				"command": "${SAN_PLUGIN_ROOT}/servers/db",
+				"args": ["--config", "${SAN_PLUGIN_ROOT}/config.json"],
 				"env": {
-					"DB_PATH": "${GEN_PLUGIN_ROOT}/data"
+					"DB_PATH": "${SAN_PLUGIN_ROOT}/data"
 				}
 			}
 		}

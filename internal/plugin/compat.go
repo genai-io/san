@@ -15,8 +15,7 @@ const (
 )
 
 // LoadClaudePlugins loads plugins from Claude Code's plugin directories.
-// This is controlled by the SAN_LOAD_CLAUDE_PLUGINS environment variable
-// (the legacy GEN_LOAD_CLAUDE_PLUGINS is still honored).
+// This is controlled by the SAN_LOAD_CLAUDE_PLUGINS environment variable.
 func (r *Registry) LoadClaudePlugins(ctx context.Context) error {
 	if setting.Getenv("LOAD_CLAUDE_PLUGINS") != "true" {
 		return nil

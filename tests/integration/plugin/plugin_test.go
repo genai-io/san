@@ -128,8 +128,8 @@ func TestRegistryLoad_AppliesEnabledStateFromSettings(t *testing.T) {
 	tmpCwd := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	pluginDir := filepath.Join(tmpHome, ".gen", "plugins", "test-plugin")
-	manifestDir := filepath.Join(pluginDir, ".gen-plugin")
+	pluginDir := filepath.Join(tmpHome, ".san", "plugins", "test-plugin")
+	manifestDir := filepath.Join(pluginDir, ".san-plugin")
 	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(plugin manifest): %v", err)
 	}
@@ -145,7 +145,7 @@ func TestRegistryLoad_AppliesEnabledStateFromSettings(t *testing.T) {
 		t.Fatalf("WriteFile(manifest): %v", err)
 	}
 
-	settingsPath := filepath.Join(tmpHome, ".gen", "settings.json")
+	settingsPath := filepath.Join(tmpHome, ".san", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(settings): %v", err)
 	}
@@ -182,17 +182,17 @@ func TestClaudeCodeCompatibility(t *testing.T) {
 	}
 
 	// Check both manifests exist and are valid
-	genManifest := filepath.Join(testPluginDir, ".gen-plugin", "plugin.json")
+	sanManifest := filepath.Join(testPluginDir, ".san-plugin", "plugin.json")
 	claudeManifest := filepath.Join(testPluginDir, ".claude-plugin", "plugin.json")
 
 	// Load and compare manifests
-	var genData, claudeData map[string]any
+	var sanData, claudeData map[string]any
 
-	genContent, err := os.ReadFile(genManifest)
+	sanContent, err := os.ReadFile(sanManifest)
 	if err != nil {
 		t.Fatalf("Failed to read San manifest: %v", err)
 	}
-	if err := json.Unmarshal(genContent, &genData); err != nil {
+	if err := json.Unmarshal(sanContent, &sanData); err != nil {
 		t.Fatalf("Failed to parse San manifest: %v", err)
 	}
 
@@ -205,11 +205,11 @@ func TestClaudeCodeCompatibility(t *testing.T) {
 	}
 
 	// Verify they have the same core fields
-	if genData["name"] != claudeData["name"] {
-		t.Errorf("Name mismatch: San=%v, Claude=%v", genData["name"], claudeData["name"])
+	if sanData["name"] != claudeData["name"] {
+		t.Errorf("Name mismatch: San=%v, Claude=%v", sanData["name"], claudeData["name"])
 	}
-	if genData["version"] != claudeData["version"] {
-		t.Errorf("Version mismatch: San=%v, Claude=%v", genData["version"], claudeData["version"])
+	if sanData["version"] != claudeData["version"] {
+		t.Errorf("Version mismatch: San=%v, Claude=%v", sanData["version"], claudeData["version"])
 	}
 }
 

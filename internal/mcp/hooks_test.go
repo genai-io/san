@@ -23,17 +23,17 @@ func TestScopeConfigSource(t *testing.T) {
 }
 
 func TestConfigSourceFromFilePath(t *testing.T) {
-	if got := configSourceFromFilePath("/repo/.gen/mcp.local.json"); got != "local_settings" {
+	if got := configSourceFromFilePath("/repo/.san/mcp.local.json"); got != "local_settings" {
 		t.Fatalf("unexpected local source: %q", got)
 	}
-	if got := configSourceFromFilePath("/repo/.gen/mcp.json"); got != "project_settings" {
+	if got := configSourceFromFilePath("/repo/.san/mcp.json"); got != "project_settings" {
 		t.Fatalf("unexpected project source: %q", got)
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("UserHomeDir() error = %v", err)
 	}
-	userPath := filepath.Join(homeDir, ".gen", "mcp.json")
+	userPath := filepath.Join(homeDir, ".san", "mcp.json")
 	if got := configSourceFromFilePath(userPath); got != "user_settings" {
 		t.Fatalf("unexpected user source: %q", got)
 	}

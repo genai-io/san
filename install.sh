@@ -132,17 +132,16 @@ do_uninstall() {
         warn "Binary not found at $INSTALL_DIR/$BINARY"
     fi
 
-    # Ask about config (the new ~/.san and the pre-rename ~/.gen, if present)
-    for cfg in "$HOME/.san" "$HOME/.gen"; do
-        if [ -d "$cfg" ]; then
-            echo -n "Remove config directory ${cfg}? [y/N] "
-            read -r response
-            if [[ "$response" =~ ^[Yy]$ ]]; then
-                rm -rf "$cfg"
-                info "✓ Removed ${cfg}"
-            fi
+    # Ask about config (~/.san)
+    cfg="$HOME/.san"
+    if [ -d "$cfg" ]; then
+        echo -n "Remove config directory ${cfg}? [y/N] "
+        read -r response
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            rm -rf "$cfg"
+            info "✓ Removed ${cfg}"
         fi
-    done
+    fi
 
     info "✓ Uninstall complete"
 }
