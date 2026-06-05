@@ -29,7 +29,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/sensenova"
 )
 
-var version = "2.0.1"
+var version = "1.20.0"
 
 // cliOpts holds all CLI flag values in one place.
 var cliOpts struct {
