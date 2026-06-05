@@ -2,12 +2,12 @@ package anthropic
 
 import (
 	"context"
-	"os"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // VertexMeta is the metadata for Anthropic via Vertex AI
@@ -68,11 +68,11 @@ func (c *VertexClient) ListModels(ctx context.Context) ([]llm.ModelInfo, error) 
 
 // NewVertexClient creates a new Anthropic client using Vertex AI authentication
 func NewVertexClient(ctx context.Context) (llm.Provider, error) {
-	region := os.Getenv("CLOUD_ML_REGION")
+	region := secret.Resolve("CLOUD_ML_REGION")
 	if region == "" {
 		region = "us-east5"
 	}
-	projectID := os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")
+	projectID := secret.Resolve("ANTHROPIC_VERTEX_PROJECT_ID")
 
 	client := anthropic.NewClient(
 		vertex.WithGoogleAuth(ctx, region, projectID),

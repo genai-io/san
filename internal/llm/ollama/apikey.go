@@ -2,13 +2,13 @@ package ollama
 
 import (
 	"context"
-	"os"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // APIKeyMeta is the metadata for Ollama (keyless / local).
@@ -25,7 +25,7 @@ var APIKeyMeta = llm.Meta{
 // NewAPIKeyClient creates a new Ollama client. Ollama speaks the OpenAI
 // Chat Completions API, so we reuse the OpenAI SDK with a local base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("OLLAMA_BASE_URL")
+	baseURL := secret.Resolve("OLLAMA_BASE_URL")
 	if baseURL == "" {
 		baseURL = "http://localhost:11434/v1"
 	}
