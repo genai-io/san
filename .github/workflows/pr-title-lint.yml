@@ -16,7 +16,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: amannn/action-semantic-pull-request@v6
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -33,11 +33,11 @@ jobs:
             ci
             chore
             revert
-          # Require a scope (e.g. "feat(api): …").
+          # Scope is optional (e.g. "feat(api): …" or just "feat: …").
           requireScope: false
-          # Disallow uppercase-only subjects like "FIX BUG".
+          # Reject these scopes (e.g. block "feat(WIP): …").
           disallowScopes: |
             WIP
             wip
-          # Validate the subject line only (skip body).
+          # Lint the PR title only; don't also require a lone commit's message to match.
           validateSingleCommit: false
