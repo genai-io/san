@@ -48,7 +48,7 @@ type SlashCommandEnv struct {
 	// at deps construction time, since /something might mutate state that a
 	// later command reads (e.g. /disabled-tools then /tools).
 	Setting *setting.Settings
-	LLM     *llm.ClientFactory
+	LLM     *llm.Conn
 	Session *session.Setup
 	Skill   *skill.Registry
 	Plugin  *plugin.Registry

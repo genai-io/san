@@ -197,17 +197,17 @@ type LLM interface {
 3. 调用提供商 SDK 发起流式请求
 4. 将提供商 SDK 的流式响应转换为 `<-chan core.Chunk`
 
-### ClientFactory
+### Conn
 
-`ClientFactory` 是一个**结构体**（不是函数类型），持有当前选中的提供商与模型，并按需创建客户端（[`internal/llm/service.go`](../../internal/llm/service.go)）：
+`Conn` 是一个**结构体**，是当前活动 LLM 的句柄：持有已连接的提供商、当前模型与提供商/模型 Store，全部由同一把互斥锁保护，并按需创建客户端（[`internal/llm/service.go`](../../internal/llm/service.go)）：
 
 ```go
-type ClientFactory struct { /* 内部字段不导出 */ }
+type Conn struct { /* 内部字段不导出，每个访问器都加锁 */ }
 
-func (s *ClientFactory) Provider() Provider
-func (s *ClientFactory) SetCurrentModel(info *CurrentModelInfo)
-func (s *ClientFactory) NewClient(model string, maxTokens int) *Client  // 为一次推理创建客户端
-func (s *ClientFactory) Store() *Store
+func (c *Conn) Provider() Provider
+func (c *Conn) SetCurrentModel(info *CurrentModelInfo)
+func (c *Conn) NewClient(model string, maxTokens int) *Client  // 为一次推理创建客户端
+func (c *Conn) Store() *Store
 ```
 
 每次 Agent 启动时通过 `NewClient(model, maxTokens)` 创建新的 `*Client`（因模型切换、会话恢复等原因）。

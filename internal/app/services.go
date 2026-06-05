@@ -28,7 +28,7 @@ import (
 // struct instead of calling Default() package-level accessors directly.
 type services struct {
 	Setting  *setting.Settings
-	LLM      *llm.ClientFactory
+	LLM      *llm.Conn
 	Tool     *tool.Registry
 	Hook     *hook.Engine
 	Session  *session.Setup
