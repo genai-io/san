@@ -3,6 +3,10 @@ BINDIR := bin
 SRCDIR := ./cmd/san
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+
+# Disable cgo so binaries are statically linked, with no glibc version
+# dependency that would break on older distros.
+export CGO_ENABLED := 0
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)
 GOIMPORTS_VERSION := v0.43.0
 
