@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 var (
@@ -43,8 +45,8 @@ func Initialize(cwd string) {
 }
 
 // Registry holds the set of available identities loaded from disk plus the
-// virtual default. It is created with a cwd; both ~/.gen/identities/ and
-// <cwd>/.gen/identities/ are scanned.
+// virtual default. It is created with a cwd; both ~/.san/identities/ and
+// <cwd>/.san/identities/ are scanned.
 //
 // The Registry is read-only after construction. Activation is stored in
 // settings (the Identity field), not in the registry.
@@ -74,10 +76,10 @@ func (r *Registry) reload() {
 	items := []*Identity{DefaultIdentity()}
 
 	if home, err := os.UserHomeDir(); err == nil {
-		items = append(items, loadDir(filepath.Join(home, ".gen", "identities"), ScopeUser)...)
+		items = append(items, loadDir(filepath.Join(confdir.Dir(home), "identities"), ScopeUser)...)
 	}
 	if r.cwd != "" {
-		items = append(items, loadDir(filepath.Join(r.cwd, ".gen", "identities"), ScopeProject)...)
+		items = append(items, loadDir(filepath.Join(confdir.Dir(r.cwd), "identities"), ScopeProject)...)
 	}
 
 	// Project overrides user when names collide; keep highest-priority entry.

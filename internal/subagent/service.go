@@ -1,5 +1,5 @@
 // Package subagent owns the registry of agent type definitions (markdown
-// files under ~/.gen/agents/ and <project>/.gen/agents/) plus the
+// files under ~/.san/agents/ and <project>/.san/agents/) plus the
 // *Executor that spawns one of them as a background core.Agent for a
 // single invocation.
 //

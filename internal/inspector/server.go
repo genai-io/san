@@ -1,4 +1,4 @@
-// Package inspector serves the gen-code session transcripts to a local web
+// Package inspector serves the san session transcripts to a local web
 // UI. The inspector is read-only, single-process, localhost-only. It exposes
 // a small HTTP API that mirrors the JSONL on disk — the wire format IS the
 // file format — plus an SSE endpoint for live tail. UI assets are embedded
@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/inspector/ui"
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/inspector/ui"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // replayCacheCapacity is the upper bound on cached replay states across all
@@ -31,7 +31,7 @@ const replayCacheCapacity = 64
 
 // Server hosts the trace viewer for a single project directory.
 type Server struct {
-	projectDir string // .../.gen/projects/<encoded-cwd>
+	projectDir string // .../.san/projects/<encoded-cwd>
 	mux        *http.ServeMux
 	store      *transcript.FileStore // shared with the writer; reads use the index
 

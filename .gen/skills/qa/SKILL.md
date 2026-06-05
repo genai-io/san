@@ -1,7 +1,7 @@
 ---
 name: qa
 description: >-
-  Regression test a GenCode feature by number or name. Reads the feature doc from docs/features/,
+  Regression test a San feature by number or name. Reads the feature doc from docs/features/,
   runs automated Go tests and interactive tmux tests, then produces a pass/fail report.
   Use this skill when the user says "qa", "regression test", "test feature X", "verify feature",
   or references a feature number like "test 01", "qa 6-hooks", "regress 12".
@@ -16,7 +16,7 @@ argument-hint: "<feature> [--interactive] [--pane]"
 
 # QA — Feature Regression Testing
 
-Run automated and interactive regression tests for a GenCode feature based on its doc in `docs/features/`.
+Run automated and interactive regression tests for a San feature based on its doc in `docs/features/`.
 
 ## Arguments
 
@@ -126,8 +126,8 @@ Use **PASS**, **FAIL**, or **SKIP** for each item. Include failure details inlin
 
 ## Important notes
 
-- The binary path is `./bin/gen` (built by `make build`), not the installed `gen`.
+- The binary path is `./bin/san` (built by `make build`), not the installed `san`.
 - Interactive tests that require an LLM response need a configured provider. If no provider is set, mark those steps as SKIP with a note.
-- For interactive tests, use `Ctrl+C` (`C-c`) to exit `gen`, not `q` (which gets interpreted as user input).
+- For interactive tests, use `Ctrl+C` (`C-c`) to exit `san`, not `q` (which gets interpreted as user input).
 - Always clean up temp files and tmux sessions/panes after testing, even on failure.
 - If a test step times out (no expected output after the sleep), mark it FAIL and move on — don't hang.

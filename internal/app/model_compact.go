@@ -12,11 +12,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/filecache"
-	"github.com/genai-io/gen-code/internal/hook"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/filecache"
+	"github.com/genai-io/san/internal/hook"
 )
 
 func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {

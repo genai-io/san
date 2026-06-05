@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	coreplugin "github.com/genai-io/gen-code/internal/plugin"
+	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ func pluginHandleList(reg *coreplugin.Registry) (string, error) {
 	plugins := reg.List()
 
 	if len(plugins) == 0 {
-		return "No plugins installed.\n\nInstall with: gen plugin install <plugin>@<marketplace>", nil
+		return "No plugins installed.\n\nInstall with: san plugin install <plugin>@<marketplace>", nil
 	}
 
 	var sb strings.Builder

@@ -7,8 +7,8 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // APIKeyMeta is the metadata for BigModel (Zhipu / Z.ai — GLM series) via API Key.

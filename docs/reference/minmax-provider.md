@@ -61,14 +61,14 @@ Touch points:
 - `internal/llm/types.go`
 - `internal/app/input/on_provider.go`
 - `internal/setting/client_options.go`
-- `cmd/gen/main.go`
+- `cmd/san/main.go`
 
 Changes:
 
 - add `llm.MinMax Name = "minmax"`
 - add provider display label and ordering
 - add default model mapping
-- import the new provider package in `cmd/gen/main.go`
+- import the new provider package in `cmd/san/main.go`
 
 ### 2. Add `internal/llm/minmax`
 
@@ -250,7 +250,7 @@ If an OpenAI-compatible MiniMax provider is added later, it should be a separate
 - `internal/app/input/on_provider.go`
 - `internal/app/input/on_provider_test.go`
 - `internal/setting/client_options.go`
-- `cmd/gen/main.go`
+- `cmd/san/main.go`
 - `internal/llm/llm.go`
 - `internal/core/llm.go` if cache-token fields are surfaced to UI
 

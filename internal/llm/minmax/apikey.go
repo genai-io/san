@@ -9,8 +9,8 @@ import (
 	"github.com/openai/openai-go/v3"
 	openaioption "github.com/openai/openai-go/v3/option"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 var APIKeyMeta = llm.Meta{

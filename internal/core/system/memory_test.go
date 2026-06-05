@@ -144,15 +144,23 @@ func TestGetAllMemoryPaths(t *testing.T) {
 	cwd := "/test/project"
 	paths := GetAllMemoryPaths(cwd)
 
-	if len(paths.Project) != 4 {
-		t.Errorf("Expected 4 project paths, got %d", len(paths.Project))
+	// SAN.md (+ root), the pre-rename GEN.md (+ root), and CLAUDE.md (+ .claude).
+	if len(paths.Project) != 6 {
+		t.Errorf("Expected 6 project paths, got %d", len(paths.Project))
+	}
+	if !strings.Contains(paths.Project[0], "SAN.md") {
+		t.Errorf("Expected SAN.md preferred first, got: %s", paths.Project[0])
 	}
 
-	if len(paths.Local) != 1 {
-		t.Errorf("Expected 1 local path, got %d", len(paths.Local))
+	// SAN.local.md preferred, with the pre-rename GEN.local.md as fallback.
+	if len(paths.Local) != 2 {
+		t.Errorf("Expected 2 local paths, got %d", len(paths.Local))
 	}
-	if !strings.Contains(paths.Local[0], "GEN.local.md") {
-		t.Errorf("Expected GEN.local.md in local paths, got: %s", paths.Local[0])
+	if !strings.Contains(paths.Local[0], "SAN.local.md") {
+		t.Errorf("Expected SAN.local.md preferred in local paths, got: %s", paths.Local[0])
+	}
+	if !strings.Contains(paths.Local[1], "GEN.local.md") {
+		t.Errorf("Expected GEN.local.md fallback in local paths, got: %s", paths.Local[1])
 	}
 
 	if !strings.Contains(paths.ProjectRules, "rules") {

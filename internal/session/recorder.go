@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // Recorder turns core.Agent lifecycle events into transcript records in
@@ -83,7 +83,7 @@ func NewRecorder(opts RecorderOptions) *Recorder {
 
 // SessionID returns the session ID the Recorder writes to — useful
 // for surfacing the L1 fork's session in the post-review recap so a
-// user can "gen --resume <id>" to replay the review in isolation.
+// user can "san --resume <id>" to replay the review in isolation.
 func (r *Recorder) SessionID() string {
 	if r == nil {
 		return ""

@@ -12,15 +12,15 @@ and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 | Scope | Path |
 |---|---|
-| Project | `<project>/.gen/agents/<name>.md` |
-| User | `~/.gen/agents/<name>.md` |
+| Project | `<project>/.san/agents/<name>.md` |
+| User | `~/.san/agents/<name>.md` |
 | Claude-compat | `<project>/.claude/agents/<name>.md`, `~/.claude/agents/<name>.md` |
 
 Project overrides user overrides Claude-compat by `name`.
 
 ## Minimal Example
 
-`./.gen/agents/test-runner.md`:
+`./.san/agents/test-runner.md`:
 
 ```markdown
 ---
@@ -90,7 +90,7 @@ The foreground agent calls the `Agent` tool with:
 }
 ```
 
-Gen Code:
+San:
 
 1. Looks up `test-runner` in the subagent registry.
 2. Builds a `core.Agent` with the subagent's system prompt and tool subset.
@@ -100,7 +100,7 @@ Gen Code:
 ## Trying It
 
 1. Save the agent file.
-2. Restart `gen`.
+2. Restart `san`.
 3. Ask the foreground model something that should trigger spawning:
    "use the test-runner agent to check whether tests pass".
 4. Watch the task panel for the subagent's progress; the final result

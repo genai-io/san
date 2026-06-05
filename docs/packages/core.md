@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/core
+package: github.com/genai-io/san/internal/core
 layer: core
 ---
 

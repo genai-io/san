@@ -11,9 +11,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/markdown"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/markdown"
+	"github.com/genai-io/san/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,8 +55,8 @@ func DefaultActionPermissions() ActionPermissions {
 type SkillWriteObserver func(action, name, note string)
 
 // SkillManager is the L1-only skill write surface. Skills live directly in
-// gen-code's existing user/project scopes — ~/.gen/skills/<name>/ and
-// ./.gen/skills/<name>/ — distinguished by the origin frontmatter field, not a
+// san's existing user/project scopes — ~/.san/skills/<name>/ and
+// ./.san/skills/<name>/ — distinguished by the origin frontmatter field, not a
 // subdirectory.
 type SkillManager struct {
 	userDir    string
@@ -70,15 +71,15 @@ type SkillManager struct {
 // permissions. The skill dirs are created lazily on first create. When
 // the user home directory is unavailable (sandboxed exec, unset HOME),
 // userDir is left empty and any user-scope write fails loudly via
-// dirFor — better than silently aliasing user-scope onto cwd/.gen/skills.
+// dirFor — better than silently aliasing user-scope onto cwd/.san/skills.
 func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
 	userDir := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		userDir = filepath.Join(home, ".gen", "skills")
+		userDir = filepath.Join(confdir.Dir(home), "skills")
 	}
 	return &SkillManager{
 		userDir:    userDir,
-		projectDir: filepath.Join(cwd, ".gen", "skills"),
+		projectDir: filepath.Join(confdir.Dir(cwd), "skills"),
 		perms:      perms,
 	}
 }
@@ -117,8 +118,8 @@ func (i SkillInfo) Editable() bool { return i.Origin == agentOrigin }
 //
 // Why the disk scan instead of consulting skill.Registry: the registry is
 // initialized once at startup and only refreshed on
-// ReloadPluginBackedState. The L1 reviewer mutates ~/.gen/skills and
-// ./.gen/skills mid-session via skill_manage; a registry-backed Inventory
+// ReloadPluginBackedState. The L1 reviewer mutates ~/.san/skills and
+// ./.san/skills mid-session via skill_manage; a registry-backed Inventory
 // would not see skills the reviewer just created in earlier passes, which
 // would cause it to re-create duplicates. Reading the on-disk state
 // directly is the correct freshness for this caller.

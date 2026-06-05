@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // GrepTool searches for patterns in files using ripgrep.

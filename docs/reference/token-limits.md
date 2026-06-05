@@ -1,10 +1,10 @@
 # Token Limits
 
-Token limits help track context window usage and prevent exceeding model limits. GenCode supports both provider-supplied limits (from API) and user-configured limits.
+Token limits help track context window usage and prevent exceeding model limits. San supports both provider-supplied limits (from API) and user-configured limits.
 
 ## Storage
 
-Token limits are stored in `~/.gen/providers.json`:
+Token limits are stored in `~/.san/providers.json`:
 
 ```json
 {

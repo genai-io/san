@@ -9,14 +9,14 @@ package app
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/mcp"
-	"github.com/genai-io/gen-code/internal/session/transcript"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/tool/perm"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 func (m *model) approvalDeps() input.ApprovalFlowDeps {

@@ -7,13 +7,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	gozap "go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 type HookPermissionResultMsg struct {

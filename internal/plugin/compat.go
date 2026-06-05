@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 const (
 	// EnvLoadClaudePlugins controls whether to load Claude Code plugins.
-	EnvLoadClaudePlugins = "GEN_LOAD_CLAUDE_PLUGINS"
+	EnvLoadClaudePlugins = "SAN_LOAD_CLAUDE_PLUGINS"
 )
 
 // LoadClaudePlugins loads plugins from Claude Code's plugin directories.
-// This is controlled by the GEN_LOAD_CLAUDE_PLUGINS environment variable.
+// This is controlled by the SAN_LOAD_CLAUDE_PLUGINS environment variable
+// (the legacy GEN_LOAD_CLAUDE_PLUGINS is still honored).
 func (r *Registry) LoadClaudePlugins(ctx context.Context) error {
-	if os.Getenv(EnvLoadClaudePlugins) != "true" {
+	if setting.Getenv("LOAD_CLAUDE_PLUGINS") != "true" {
 		return nil
 	}
 

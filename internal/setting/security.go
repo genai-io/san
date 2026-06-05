@@ -90,7 +90,8 @@ var CommonAllowPatterns = []string{
 var sensitiveDirectories = []string{
 	".git",    // Git hooks can execute arbitrary code
 	".claude", // Claude Code configuration
-	".gen",    // GenCode configuration
+	".san",    // San configuration
+	".gen",    // San configuration (pre-rename, kept for back-compat)
 	".vscode", // VS Code extensions, launch configs
 	".idea",   // JetBrains IDE configs
 	".ssh",    // SSH keys and config

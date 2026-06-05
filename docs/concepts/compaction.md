@@ -1,6 +1,6 @@
 # Compaction
 
-When a conversation approaches the model's input limit, Gen Code **compacts**
+When a conversation approaches the model's input limit, San **compacts**
 it: an LLM summarizes the history, and that summary replaces the old turns so
 the conversation can keep going within the window.
 
@@ -152,7 +152,7 @@ reconstructed chain matches what the live agent actually sent.
 Reminder providers render from cached instructions
 (`env.CachedUserInstructions` / `CachedProjectInstructions`). On PostCompact the
 harness calls `refreshMemoryContext` to **re-read the memory files from disk
-before** re-emitting, so a `GEN.md`/`CLAUDE.md` edited mid-session re-injects
+before** re-emitting, so a `SAN.md`/`CLAUDE.md` edited mid-session re-injects
 its *latest* content rather than a stale cached copy. This is the key asymmetry
 with the system prompt: the prompt is reused from cache (it cannot have
 changed), but reminders are deliberately rebuilt.

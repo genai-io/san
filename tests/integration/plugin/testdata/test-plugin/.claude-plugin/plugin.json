@@ -1,13 +1,13 @@
 {
   "name": "test-plugin",
   "version": "1.0.0",
-  "description": "A test plugin for UI/UX comparison testing between Claude Code and GenCode",
+  "description": "A test plugin for UI/UX comparison testing between Claude Code and San",
   "author": {
-    "name": "GenCode Test",
+    "name": "San Test",
     "email": "test@gencode.dev"
   },
-  "homepage": "https://github.com/genai-io/gen-code",
-  "repository": "https://github.com/genai-io/gen-code",
+  "homepage": "https://github.com/genai-io/san",
+  "repository": "https://github.com/genai-io/san",
   "license": "MIT",
   "keywords": ["test", "comparison", "plugin"]
 }

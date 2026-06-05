@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // BuildParams contains all values needed to construct a core.Agent.
@@ -30,7 +30,7 @@ type BuildParams struct {
 	AgentDirectory func() string
 
 	// IdentityText, when non-empty, replaces the default identity slot with
-	// a user-defined persona. Sourced from ~/.gen/identities/<name>.md.
+	// a user-defined persona. Sourced from ~/.san/identities/<name>.md.
 	IdentityText string
 
 	DisabledTools map[string]bool

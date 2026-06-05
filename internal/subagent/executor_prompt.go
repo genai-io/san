@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.

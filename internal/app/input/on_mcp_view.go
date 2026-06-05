@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	coremcp "github.com/genai-io/gen-code/internal/mcp"
+	"github.com/genai-io/san/internal/app/kit"
+	coremcp "github.com/genai-io/san/internal/mcp"
 )
 
 // mcpStatusDisplay returns icon and label for an MCP server status.
@@ -92,7 +92,7 @@ func (s *MCPSelector) renderList() string {
 		if len(s.servers) == 0 {
 			sb.WriteString(kit.SelectorHintStyle().Render("  No MCP servers configured\n\n"))
 			sb.WriteString(kit.SelectorHintStyle().Render("  Add servers with:\n"))
-			sb.WriteString(kit.SelectorHintStyle().Render("    gen mcp add <name> -- <command>\n"))
+			sb.WriteString(kit.SelectorHintStyle().Render("    san mcp add <name> -- <command>\n"))
 		} else {
 			sb.WriteString(kit.SelectorHintStyle().Render("  No servers match the filter"))
 			sb.WriteString("\n")

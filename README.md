@@ -1,10 +1,10 @@
 <div align="center">
-  <h1>&lt; GEN ✦ /&gt;</h1>
+  <h1>&lt; SAN ✦ /&gt;</h1>
   <p><strong>Open-source unified runtime for specialized AI agents — in the terminal</strong></p>
   <p>
-    <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
-    <a href="https://genai-io.github.io/gen-code/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
-    <a href="https://genai-io.github.io/gen-code/getting-started.html"><img src="https://img.shields.io/badge/Getting%20Started-0d9488?style=flat-square" alt="Getting Started"></a>
+    <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
+    <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
+    <a href="https://genai-io.github.io/san/getting-started.html"><img src="https://img.shields.io/badge/Getting%20Started-0d9488?style=flat-square" alt="Getting Started"></a>
     <a href="docs/index.md"><img src="https://img.shields.io/badge/Docs-0d9488?style=flat-square" alt="Docs"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   </p>
@@ -12,14 +12,14 @@
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
   </p>
   <p>
-    <img src="assets/gen-code.png" alt="Gen Code" width="100%">
+    <img src="assets/gen-code.png" alt="San" width="100%">
   </p>
   <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ Watch the animated intro</b></a>
+    <a href="https://genai-io.github.io/san/intro.html"><b>▶ Watch the animated intro</b></a>
   </p>
 </div>
 
-Gen Code is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.
+San is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.
 
 ## Features
 
@@ -37,19 +37,19 @@ Gen Code is a terminal-native **unified runtime for specialized agents** — cod
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
-- **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`gen inspector`).
+- **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`san inspector`).
 
 
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
 
 Re-run to upgrade. To uninstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash -s uninstall
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
 ```
 
 <details>
@@ -58,16 +58,16 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh |
 **Go Install**
 
 ```bash
-go install github.com/genai-io/gen-code/cmd/gen@latest
+go install github.com/genai-io/san/cmd/san@latest
 ```
 
 **Build from Source**
 
 ```bash
-git clone https://github.com/genai-io/gen-code.git
-cd gen-code
-go build -o gen ./cmd/gen
-mkdir -p ~/.local/bin && mv gen ~/.local/bin/
+git clone https://github.com/genai-io/san.git
+cd san
+go build -o san ./cmd/san
+mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ```
 
 </details>
@@ -75,17 +75,17 @@ mkdir -p ~/.local/bin && mv gen ~/.local/bin/
 ## Usage
 
 ```bash
-gen                            # interactive
-gen "explain this function"    # one-shot
-cat main.go | gen "review"     # piped input
-gen --continue                 # resume latest session
-gen --resume                   # pick a past session
-gen inspector                  # open session transcript viewer
+san                            # interactive
+san "explain this function"    # one-shot
+cat main.go | san "review"     # piped input
+san --continue                 # resume latest session
+san --resume                   # pick a past session
+san inspector                  # open session transcript viewer
 ```
 
 | What | How |
 |---|---|
-| Pick / switch model | `/model` — saved to `~/.gen/providers.json` |
+| Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
 | All slash commands | `/help` (`/identity`, `/search`, `/skills`, `/agents`, `/mcp`, `/compact`, …) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept · plan) |
@@ -95,7 +95,7 @@ For API keys, set the matching env var (see Credentials below) or paste when pro
 
 ### Configuration
 
-Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user). A `GEN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
+Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user). A `SAN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
 
 <details>
 <summary><b>Credentials</b></summary>
@@ -121,7 +121,7 @@ Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user)
 <details>
 <summary><b>Directory layout</b></summary>
 
-User-level (`~/.gen/`):
+User-level (`~/.san/`):
 
 ```
 providers.json    # Provider connections and current model
@@ -135,7 +135,7 @@ plugins/          # Installed plugins
 projects/         # Session transcripts + indexes
 ```
 
-Project-level (`.gen/`):
+Project-level (`.san/`):
 
 ```
 settings.json      # Permissions, hooks, disabled tools
@@ -148,11 +148,11 @@ commands/*.md      # Slash commands
 
 </details>
 
-## Benchmark: Gen Code vs Claude Code
+## Benchmark: San vs Claude Code
 
 Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, same model (`claude-sonnet-4-6`):
 
-| Metric | Gen Code | Claude Code | Advantage |
+| Metric | San | Claude Code | Advantage |
 |--------|---------|-------------|-----------|
 | Download size | 12 MB | 63 MB (+ Node.js 112 MB) | **5x smaller** |
 | Disk footprint | 38 MB | 175 MB | **4.6x smaller** |

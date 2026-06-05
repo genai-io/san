@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/cron
+package: github.com/genai-io/san/internal/cron
 layer: feature
 ---
 

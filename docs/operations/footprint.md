@@ -1,6 +1,6 @@
 # Small Footprint & Portability
 
-Gen Code ships as **one self-contained binary**. There is no Node.js runtime,
+San ships as **one self-contained binary**. There is no Node.js runtime,
 no Python interpreter, no package manager, and no `node_modules` tree to
 install or keep in sync. You copy a single file, mark it executable, and run
 it — which is exactly what makes it portable enough for tiny, locked-down, and
@@ -12,7 +12,7 @@ raw measured numbers and methodology, see
 
 ## How small is it?
 
-| Dimension | Gen Code | Why it matters |
+| Dimension | San | Why it matters |
 |---|---|---|
 | Download (compressed `.tar.gz`) | **~12 MB** | Fits on metered, slow, or air-gapped links |
 | On-disk binary | **~40 MB** | One file, no surrounding directory tree |
@@ -23,12 +23,12 @@ raw measured numbers and methodology, see
 
 A typical Node.js-based assistant, by contrast, needs its own ~60 MB package
 *plus* a ~110 MB Node.js runtime on disk before it can do anything — and pays a
-heavier baseline in RAM and startup time. Gen Code carries its entire world
+heavier baseline in RAM and startup time. San carries its entire world
 inside the single executable.
 
 ## Why a single static binary
 
-Gen Code is compiled with Go. On Linux the released binaries are **statically
+San is compiled with Go. On Linux the released binaries are **statically
 linked** — running `file` on one reports `statically linked ... stripped`,
 meaning there are no external `.so` dependencies to resolve at load time. The
 result:
@@ -69,12 +69,12 @@ toolchain can't follow:
 
 ```bash
 # On a 64-bit Raspberry Pi OS / arm64 Linux box:
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash
-gen --version
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
+san --version
 ```
 
 The installer fetches the matching `linux/arm64` archive (~12 MB), unpacks the
-single `gen` binary, and puts it on your `PATH`. Nothing else is installed.
+single `san` binary, and puts it on your `PATH`. Nothing else is installed.
 
 ## Building for other targets
 
@@ -87,12 +87,12 @@ variables, with no C toolchain required:
 ```bash
 # Example: 32-bit ARM (older Pi / Pi Zero), fully static, stripped
 GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
-  go build -ldflags "-s -w" -o gen ./cmd/gen
+  go build -ldflags "-s -w" -o san ./cmd/san
 ```
 
 ## Summary
 
 Small is not just a vanity metric. A ~12 MB, zero-dependency, single-file binary
-is what lets Gen Code run on a Raspberry Pi, slip into a `scratch` container,
+is what lets San run on a Raspberry Pi, slip into a `scratch` container,
 land on an air-gapped host, and cold-start inside a CI step — all without first
 dragging along a Node.js or Python runtime. The footprint *is* the portability.

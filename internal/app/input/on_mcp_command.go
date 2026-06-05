@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	coremcp "github.com/genai-io/gen-code/internal/mcp"
+	coremcp "github.com/genai-io/san/internal/mcp"
 )
 
 // HandleMCPCommand dispatches /mcp subcommands.

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // memoryEntryDelimiter separates entries inside a memory file. The
@@ -43,7 +43,7 @@ const DefaultMemoryFileCharLimit = setting.SelfLearnMaxMemoryKB * 1024
 
 // MemoryStore is the project-partitioned durable memory written by the L1
 // fork and read back via system.LoadMemoryFiles. Lives under
-// ~/.gen/projects/<encoded-cwd>/memory/ — machine-local, out of the repo
+// ~/.san/projects/<encoded-cwd>/memory/ — machine-local, out of the repo
 // (§4). Entries are delimited; add/replace/remove locate one by a unique
 // substring. Writes are atomic and re-read under the mutex.
 // Cross-process safety is best-effort (atomic rename only).

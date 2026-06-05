@@ -3,7 +3,7 @@ package conv
 import (
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // RenderContext bundles everything per-message rendering needs to read.

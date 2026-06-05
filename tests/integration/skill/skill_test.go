@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/skill"
+	"github.com/genai-io/san/internal/skill"
 )
 
 // newTestRegistry creates a skill.Registry backed by temp stores for testing.

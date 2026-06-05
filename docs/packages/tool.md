@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/tool
+package: github.com/genai-io/san/internal/tool
 layer: feature
 ---
 

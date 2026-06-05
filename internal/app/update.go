@@ -18,11 +18,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/app/trigger"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/log"
 )
 
 // popup is a UI element that pops up over the input area and, while

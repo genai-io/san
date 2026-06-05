@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/secret"
 )
 
 func FuzzyMatch(str, pattern string) bool {

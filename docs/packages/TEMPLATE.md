@@ -7,7 +7,7 @@ and replace placeholders. Keep section order and headings exactly as below.
 
 ```yaml
 ---
-package: github.com/genai-io/gen-code/internal/<pkg>
+package: github.com/genai-io/san/internal/<pkg>
 layer: <cmd | app | feature | core | infrastructure>
 ---
 ```

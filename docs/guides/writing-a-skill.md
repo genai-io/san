@@ -2,7 +2,7 @@
 
 A skill is a markdown file the model can be made aware of, or that the
 user can invoke via a slash command. Skills are the simplest extension
-surface in Gen Code — one file, no install step.
+surface in San — one file, no install step.
 
 For the system-level design see [`packages/skill.md`](../packages/skill.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
@@ -11,8 +11,8 @@ and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 | Scope | Directory | When to use |
 |---|---|---|
-| Project | `<project>/.gen/skills/<name>/SKILL.md` | Skill tied to this project (lives in the repo). |
-| User | `~/.gen/skills/<name>/SKILL.md` | Personal skill shared across projects. |
+| Project | `<project>/.san/skills/<name>/SKILL.md` | Skill tied to this project (lives in the repo). |
+| User | `~/.san/skills/<name>/SKILL.md` | Personal skill shared across projects. |
 | Claude-compat | `<project>/.claude/skills/<name>/SKILL.md` or `~/.claude/skills/<name>/SKILL.md` | If you also use Claude Code. |
 
 Project scope wins over user; user wins over Claude-compat. The directory
@@ -20,7 +20,7 @@ name is the skill name.
 
 ## Minimal Example
 
-`./.gen/skills/release-notes/SKILL.md`:
+`./.san/skills/release-notes/SKILL.md`:
 
 ```markdown
 ---
@@ -52,14 +52,14 @@ You are drafting release notes for the version supplied as the argument.
 A skill directory may also contain:
 
 ```
-./.gen/skills/release-notes/
+./.san/skills/release-notes/
 ├── SKILL.md
 ├── scripts/             # Optional helper scripts the skill may invoke
 ├── references/          # Optional reference files inlined when active
 └── assets/              # Optional binary assets (images, fonts)
 ```
 
-Resources are lazy-loaded — Gen Code does not read them until the skill
+Resources are lazy-loaded — San does not read them until the skill
 is actually invoked.
 
 ## The Three Skill States
@@ -74,22 +74,22 @@ Each skill is in one of three states; cycle with `/skill`:
   `skills-directory` reminder so the model can invoke it on its own. |
 
 Default for newly discovered skills is `enable`. State is persisted in
-`~/.gen/skills.json` (user level) or `<project>/.gen/skills.json`
+`~/.san/skills.json` (user level) or `<project>/.san/skills.json`
 (project level).
 
 ## Trying It
 
 1. Save the SKILL.md as above.
-2. Run `gen` (or restart your session — skills are discovered at startup).
+2. Run `san` (or restart your session — skills are discovered at startup).
 3. Type `/skill` to see the new entry and cycle its state to `enable`
    or `active`.
 4. Invoke it directly: `/release-notes v1.18.0`.
 
 ## Sharing It
 
-- Commit `./.gen/skills/<name>/` into the project repo — collaborators
-  get it on next `gen` run.
-- For cross-project skills, put them under `~/.gen/skills/` and back
+- Commit `./.san/skills/<name>/` into the project repo — collaborators
+  get it on next `san` run.
+- For cross-project skills, put them under `~/.san/skills/` and back
   them up (the directory is just markdown).
 - To distribute as part of a bundle, see [Writing a plugin](writing-a-plugin.md).
 
@@ -102,7 +102,7 @@ Default for newly discovered skills is `enable`. State is persisted in
   `allowed-tools: [Read]` is set, the tool call will be denied — the
   skill won't say why.
 - **Project state shadows user state.** Toggling a skill at user level
-  has no effect if a `<project>/.gen/skills.json` entry exists for the
+  has no effect if a `<project>/.san/skills.json` entry exists for the
   same name.
 
 ## See Also

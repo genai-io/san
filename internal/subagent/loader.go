@@ -6,8 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/markdown"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/markdown"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -50,8 +51,8 @@ func ClearPluginAgentPaths() {
 // LoadCustomAgents loads custom agent definitions from standard locations.
 // Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
 // Search order (priority):
-//  1. .gen/agents/*.md (project level, preferred)
-//  2. ~/.gen/agents/*.md (user level, preferred)
+//  1. .san/agents/*.md (project level, preferred)
+//  2. ~/.san/agents/*.md (user level, preferred)
 //  3. .claude/agents/*.md (project level, Claude Code compatible)
 //  4. ~/.claude/agents/*.md (user level, Claude Code compatible)
 //  5. Plugin agent paths
@@ -60,8 +61,8 @@ func LoadCustomAgents(cwd string) {
 
 	// Define search paths in order of priority
 	searchPaths := []agentSearchPath{
-		{path: filepath.Join(cwd, ".gen", "agents")},
-		{path: filepath.Join(homeDir, ".gen", "agents")},
+		{path: filepath.Join(confdir.Dir(cwd), "agents")},
+		{path: filepath.Join(confdir.Dir(homeDir), "agents")},
 		{path: filepath.Join(cwd, ".claude", "agents")},
 		{path: filepath.Join(homeDir, ".claude", "agents")},
 	}
@@ -172,7 +173,7 @@ func parseAgentFile(filePath string) (*AgentConfig, error) {
 	if config.Source == "" {
 		homeDir, _ := os.UserHomeDir()
 		switch {
-		case strings.HasPrefix(filePath, filepath.Join(homeDir, ".gen", "agents")),
+		case strings.HasPrefix(filePath, filepath.Join(confdir.Dir(homeDir), "agents")),
 			strings.HasPrefix(filePath, filepath.Join(homeDir, ".claude", "agents")):
 			config.Source = "user"
 		default:

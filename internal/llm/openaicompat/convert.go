@@ -10,8 +10,8 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // ConvertMessages converts the internal message slice to OpenAI SDK format.
@@ -268,7 +268,7 @@ func ConvertTools(tools []llm.ToolSchema) []openai.ChatCompletionToolUnionParam 
 }
 
 // MapFinishReason normalizes OpenAI-style finish reasons to the canonical
-// GenCode stop reason strings used by all providers.
+// San stop reason strings used by all providers.
 //
 //	"stop"       → "end_turn"
 //	"tool_calls" → "tool_use"

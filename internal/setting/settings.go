@@ -1,11 +1,11 @@
-// Package config provides multi-level settings management for GenCode.
+// Package config provides multi-level settings management for San.
 // Data are loaded from multiple sources with the following priority (lowest to highest):
 //  1. ~/.claude/settings.json (Claude user level - compatibility)
-//  2. ~/.gen/settings.json (Gen user level)
+//  2. ~/.san/settings.json (San user level)
 //  3. .claude/settings.json (Claude project level - compatibility)
-//  4. .gen/settings.json (Gen project level)
+//  4. .san/settings.json (San project level)
 //  5. .claude/settings.local.json (Claude local level - compatibility)
-//  6. .gen/settings.local.json (Gen local level)
+//  6. .san/settings.local.json (San local level)
 //  7. Environment variables / CLI arguments
 //  8. managed-settings.json (system level - cannot be overridden)
 package setting
@@ -17,9 +17,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
-// Data represents the complete GenCode configuration.
+// Data represents the complete San configuration.
 type Data struct {
 	Permissions    PermissionSettings `json:"permissions,omitempty"`
 	Model          string             `json:"model,omitempty"`
@@ -30,8 +32,8 @@ type Data struct {
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
 	AllowBypass    *bool              `json:"allowBypass,omitempty"`
-	// Identity selects an active persona under ~/.gen/identities/<name>.md or
-	// .gen/identities/<name>.md. Empty = use built-in default identity.
+	// Identity selects an active persona under ~/.san/identities/<name>.md or
+	// .san/identities/<name>.md. Empty = use built-in default identity.
 	Identity string `json:"identity,omitempty"`
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
@@ -368,7 +370,7 @@ func InitForApp(cwd string) *Data {
 
 // mergeProviderPreferences reads external provider config files and merges
 // relevant preferences into Data. Currently reads searchProvider from
-// ~/.gen/providers.json (owned by the llm package) so that search config
+// ~/.san/providers.json (owned by the llm package) so that search config
 // is accessible via the unified Data struct.
 func mergeProviderPreferences(s *Data) {
 	if s.SearchProvider != "" {
@@ -378,7 +380,7 @@ func mergeProviderPreferences(s *Data) {
 	if err != nil {
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(homeDir, ".gen", "providers.json"))
+	data, err := os.ReadFile(filepath.Join(confdir.Dir(homeDir), "providers.json"))
 	if err != nil {
 		return
 	}

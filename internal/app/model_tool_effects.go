@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/task/tracker"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/tool"
 )
 
 func (m *model) applyToolSideEffects(toolName string, sideEffect any) {

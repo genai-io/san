@@ -1,4 +1,4 @@
-// Package skill provides skill management for GenCode.
+// Package skill provides skill management for San.
 // Skills are markdown-based prompts that can be invoked via slash commands
 // or proactively by the model when active.
 package skill
@@ -42,19 +42,19 @@ const (
 	// ScopeClaudeUser is ~/.claude/skills/ (lowest priority, Claude compatibility)
 	ScopeClaudeUser SkillScope = iota
 
-	// ScopeUserPlugin is ~/.gen/plugins/*/skills/ (User plugins)
+	// ScopeUserPlugin is ~/.san/plugins/*/skills/ (User plugins)
 	ScopeUserPlugin
 
-	// ScopeUser is ~/.gen/skills/ (GenCode user level)
+	// ScopeUser is ~/.san/skills/ (San user level)
 	ScopeUser
 
 	// ScopeClaudeProject is .claude/skills/ (Claude project compatibility)
 	ScopeClaudeProject
 
-	// ScopeProjectPlugin is .gen/plugins/*/skills/ (Project plugins)
+	// ScopeProjectPlugin is .san/plugins/*/skills/ (Project plugins)
 	ScopeProjectPlugin
 
-	// ScopeProject is .gen/skills/ (GenCode project level, highest priority)
+	// ScopeProject is .san/skills/ (San project level, highest priority)
 	ScopeProject
 )
 

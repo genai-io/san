@@ -7,8 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	coreskill "github.com/genai-io/gen-code/internal/skill"
+	"github.com/genai-io/san/internal/app/kit"
+	coreskill "github.com/genai-io/san/internal/skill"
 )
 
 type skillItem struct {

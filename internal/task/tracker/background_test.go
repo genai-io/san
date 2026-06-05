@@ -3,7 +3,7 @@ package tracker
 import (
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/task"
+	"github.com/genai-io/san/internal/task"
 )
 
 func metadataStr(metadata map[string]any, key string) string {

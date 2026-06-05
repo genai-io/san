@@ -5,7 +5,7 @@ A 5-minute path from install to first agent turn.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
 
 Re-run the same command to upgrade. To uninstall, append `-s uninstall`.
@@ -14,11 +14,11 @@ Alternatives:
 
 ```bash
 # via Go toolchain
-go install github.com/genai-io/gen-code/cmd/gen@latest
+go install github.com/genai-io/san/cmd/san@latest
 
 # from source
-git clone https://github.com/genai-io/gen-code.git
-cd gen-code && go build -o gen ./cmd/gen
+git clone https://github.com/genai-io/san.git
+cd san && go build -o san ./cmd/san
 ```
 
 The binary is a single ~12 MB Go executable; no Node, no runtime.
@@ -26,10 +26,10 @@ The binary is a single ~12 MB Go executable; no Node, no runtime.
 ## First Run
 
 ```bash
-gen
+san
 ```
 
-On first launch, Gen Code drops into the TUI. Type `/model` to connect a
+On first launch, San drops into the TUI. Type `/model` to connect a
 provider — you will be asked for an API key (or routed through Vertex AI
 for Anthropic). Supported providers and the env var each one reads:
 
@@ -44,7 +44,7 @@ for Anthropic). Supported providers and the env var each one reads:
 | Z.ai (GLM) | `BIGMODEL_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 
-You can also set them in `.env` or `~/.gen/providers.json`.
+You can also set them in `.env` or `~/.san/providers.json`.
 
 ## First Turn
 
@@ -54,7 +54,7 @@ Type a prompt and press `Enter`:
 > explain what this repo does
 ```
 
-Gen Code reads your project, plans, and acts. Tool calls (file reads,
+San reads your project, plans, and acts. Tool calls (file reads,
 edits, bash) trigger a permission prompt by default — press `Y` to
 approve once, `A` to approve-all for this session.
 
@@ -72,26 +72,26 @@ approve once, `A` to approve-all for this session.
 | List all slash commands | `/help` |
 | Switch model | `/model` |
 | Switch persona | `/identity` |
-| Save / resume session | `gen --continue`, `gen --resume` |
+| Save / resume session | `san --continue`, `san --resume` |
 
 ## One-Shot and Piped Modes
 
 ```bash
-gen "explain this function"          # one-shot, prints answer and exits
-cat main.go | gen "review"           # piped input
-gen --continue                       # resume the last session
+san "explain this function"          # one-shot, prints answer and exits
+cat main.go | san "review"           # piped input
+san --continue                       # resume the last session
 ```
 
 ## Where Configuration Lives
 
 | Scope | Path | What it holds |
 |---|---|---|
-| User | `~/.gen/providers.json` | Provider connections, current model |
-| User | `~/.gen/settings.json` | Permissions, hooks, env, identity, search provider |
-| User | `~/.gen/skills/` `~/.gen/agents/` `~/.gen/commands/` `~/.gen/plugins/` | Your personal extensions |
-| Project | `<project>/.gen/settings.json` | Per-project overrides |
-| Project | `<project>/.gen/{skills,agents,commands}/` | Project-scoped extensions |
-| Project | `<project>/GEN.md` or `CLAUDE.md` | Auto-loaded into the system prompt |
+| User | `~/.san/providers.json` | Provider connections, current model |
+| User | `~/.san/settings.json` | Permissions, hooks, env, identity, search provider |
+| User | `~/.san/skills/` `~/.san/agents/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
+| Project | `<project>/.san/settings.json` | Per-project overrides |
+| Project | `<project>/.san/{skills,agents,commands}/` | Project-scoped extensions |
+| Project | `<project>/SAN.md` or `CLAUDE.md` | Auto-loaded into the system prompt |
 
 See [`reference/configuration.md`](../reference/configuration.md) for the
 full schema.

@@ -3,8 +3,8 @@ package worktree
 import (
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestWorktreeHooksFire(t *testing.T) {

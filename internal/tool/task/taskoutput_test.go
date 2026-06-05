@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/task"
+	"github.com/genai-io/san/internal/task"
 )
 
 func TestTaskOutputTool_StillRunning(t *testing.T) {

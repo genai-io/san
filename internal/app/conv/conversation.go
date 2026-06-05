@@ -1,7 +1,7 @@
 package conv
 
 import (
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 type StreamState struct {

@@ -10,21 +10,21 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/gen-code/internal/app"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/session"
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/app"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 
 	// Import providers for registration
-	_ "github.com/genai-io/gen-code/internal/llm/alibaba"
-	_ "github.com/genai-io/gen-code/internal/llm/anthropic"
-	_ "github.com/genai-io/gen-code/internal/llm/bigmodel"
-	_ "github.com/genai-io/gen-code/internal/llm/deepseek"
-	_ "github.com/genai-io/gen-code/internal/llm/google"
-	_ "github.com/genai-io/gen-code/internal/llm/minmax"
-	_ "github.com/genai-io/gen-code/internal/llm/moonshot"
-	_ "github.com/genai-io/gen-code/internal/llm/ollama"
-	_ "github.com/genai-io/gen-code/internal/llm/openai"
+	_ "github.com/genai-io/san/internal/llm/alibaba"
+	_ "github.com/genai-io/san/internal/llm/anthropic"
+	_ "github.com/genai-io/san/internal/llm/bigmodel"
+	_ "github.com/genai-io/san/internal/llm/deepseek"
+	_ "github.com/genai-io/san/internal/llm/google"
+	_ "github.com/genai-io/san/internal/llm/minmax"
+	_ "github.com/genai-io/san/internal/llm/moonshot"
+	_ "github.com/genai-io/san/internal/llm/ollama"
+	_ "github.com/genai-io/san/internal/llm/openai"
 )
 
 var version = "1.19.3"
@@ -41,7 +41,7 @@ var cliOpts struct {
 func init() {
 	// Load .env file if it exists (silent fail if not found)
 	_ = godotenv.Load()
-	// Initialize logging (enabled via GEN_DEBUG=1)
+	// Initialize logging (enabled via SAN_DEBUG=1)
 	_ = log.Init()
 
 	// Set app version for session entries.
@@ -70,14 +70,14 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "gen [message]",
-	Short: "Gen - AI coding assistant for the terminal",
-	Long: `Gen is an open-source AI assistant for the terminal.
+	Use:   "san [message]",
+	Short: "San - AI coding assistant for the terminal",
+	Long: `San is an open-source AI assistant for the terminal.
 Extensible tools, customizable prompts, multi-provider support.
 
 Non-interactive mode:
-  gen -p "your prompt"     Print response and exit
-  echo "msg" | gen -p ""   Pipe stdin in print mode`,
+  san -p "your prompt"     Print response and exit
+  echo "msg" | san -p ""   Pipe stdin in print mode`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		printPrompt := cliOpts.print
@@ -126,14 +126,14 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("gen version %s\n", version)
+		fmt.Printf("san version %s\n", version)
 	},
 }
 
 var helpCmd = &cobra.Command{
 	Use:   "help",
 	Short: "Show help information",
-	Long:  "Display help information about Gen and its commands.",
+	Long:  "Display help information about San and its commands.",
 	Run: func(cmd *cobra.Command, args []string) {
 		printHelp()
 	},
@@ -141,27 +141,27 @@ var helpCmd = &cobra.Command{
 
 func printHelp() {
 	help := `
-Gen - AI coding assistant for the terminal
+San - AI coding assistant for the terminal
 
 Usage:
-  gen                        Start interactive chat mode
-  gen "message"              Interactive mode with initial prompt
-  gen -p "prompt"            Non-interactive print mode
-  gen [command]              Run a command
+  san                        Start interactive chat mode
+  san "message"              Interactive mode with initial prompt
+  san -p "prompt"            Non-interactive print mode
+  san [command]              Run a command
 
 Print Mode (non-interactive):
-  gen -p "your prompt"       Print response and exit
-  echo "data" | gen -p "analyze"  Pipe stdin with prompt
+  san -p "your prompt"       Print response and exit
+  echo "data" | san -p "analyze"  Pipe stdin with prompt
 
 Interactive Mode:
-  gen                        Start chat
-  gen "Explain this code"    Start chat with initial prompt
+  san                        Start chat
+  san "Explain this code"    Start chat with initial prompt
 
 Session:
-  gen -c, --continue         Resume the most recent session
-  gen -r, --resume           Select and resume a previous session
-  gen -r <session-id>        Resume a specific session by ID
-  gen --plugin-dir <path>    Load plugins from a specific directory
+  san -c, --continue         Resume the most recent session
+  san -r, --resume           Select and resume a previous session
+  san -r <session-id>        Resume a specific session by ID
+  san --plugin-dir <path>    Load plugins from a specific directory
 
 Commands:
   version      Print the version number
@@ -182,13 +182,13 @@ Slash Commands:
   /help        Show help
 
 Examples:
-  gen                        Start interactive chat
-  gen "Explain this code"    Interactive with initial prompt
-  gen -p "Explain this code" Print response and exit
-  gen -c                     Resume previous session
-  gen version                Show version
+  san                        Start interactive chat
+  san "Explain this code"    Interactive with initial prompt
+  san -p "Explain this code" Print response and exit
+  san -c                     Resume previous session
+  san version                Show version
 
-For more information, visit: https://github.com/genai-io/gen-code
+For more information, visit: https://github.com/genai-io/san
 `
 	fmt.Println(help)
 }

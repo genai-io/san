@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 func useTestTrackerStore(t *testing.T) *tracker.Store {

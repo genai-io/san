@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/session/transcript"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 type Store struct {
@@ -54,7 +55,7 @@ func NewStore(cwd string) (*Store, error) {
 	}
 
 	projectID := encodePath(cwd)
-	projectDir := filepath.Join(homeDir, ".gen", "projects", projectID)
+	projectDir := filepath.Join(confdir.Dir(homeDir), "projects", projectID)
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create project directory: %w", err)
 	}

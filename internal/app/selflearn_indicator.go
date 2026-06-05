@@ -15,7 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 // selflearnTickMsg advances the spinner frame and decays done/failed back

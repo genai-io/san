@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/subagent"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/subagent"
 )
 
 var agentRunOpts struct {
@@ -42,7 +42,7 @@ var agentRunCmd = &cobra.Command{
 	Long: `Run an agent in headless mode without TUI.
 
 Example:
-  gen agent run --type Explore --prompt "find main.go"`,
+  san agent run --type Explore --prompt "find main.go"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if agentRunOpts.agentType == "" {
 			return fmt.Errorf("--type is required")

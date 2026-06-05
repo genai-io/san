@@ -73,7 +73,7 @@ func TestCost_TokenLimitManualOverride_Persists(t *testing.T) {
 
 ```bash
 tmux new-session -d -s t_cost -x 220 -y 60
-tmux send-keys -t t_cost 'gen' Enter
+tmux send-keys -t t_cost 'san' Enter
 sleep 2
 
 # Test 1: Send a message and inspect the status bar

@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // AgentStoreData is the JSON structure for agents.json
@@ -31,18 +33,18 @@ func NewAgentStore(path string) *AgentStore {
 	return store
 }
 
-// NewUserAgentStore creates a store for user-level (~/.gen/agents.json)
+// NewUserAgentStore creates a store for user-level (~/.san/agents.json)
 func NewUserAgentStore() *AgentStore {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return &AgentStore{disabled: make(map[string]bool)}
 	}
-	return NewAgentStore(filepath.Join(home, ".gen", "agents.json"))
+	return NewAgentStore(filepath.Join(confdir.Dir(home), "agents.json"))
 }
 
-// NewProjectAgentStore creates a store for project-level (.gen/agents.json)
+// NewProjectAgentStore creates a store for project-level (.san/agents.json)
 func NewProjectAgentStore(cwd string) *AgentStore {
-	return NewAgentStore(filepath.Join(cwd, ".gen", "agents.json"))
+	return NewAgentStore(filepath.Join(confdir.Dir(cwd), "agents.json"))
 }
 
 // load reads disabled agents from disk

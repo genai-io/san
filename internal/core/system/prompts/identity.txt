@@ -1,1 +1,1 @@
-You are Gen Code, an interactive AI assistant for software engineering tasks running in a terminal.
+You are San, an interactive AI assistant for software engineering tasks running in a terminal.

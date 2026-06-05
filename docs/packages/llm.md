@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/llm
+package: github.com/genai-io/san/internal/llm
 layer: feature
 ---
 
@@ -55,14 +55,14 @@ func ResetDefaultClientFactory()          // test-only
   `core.LLM`, tracks per-call token counts, streams `core.Chunk`, applies
   retry/cost logic via `logging.go` and `money.go`.
 - `Store` (`store.go`) — persists user's provider connections under
-  `~/.gen/providers.json`; tracks current model.
+  `~/.san/providers.json`; tracks current model.
 - `stream/` — provider-side helpers for SSE parsing.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
   `alibaba/`, `bigmodel/`, `minmax/`, `deepseek/`, `ollama/`, `openaicompat/`.
 
 ## Lifecycle
 
-- Construction: `Initialize(Options{})` loads `~/.gen/providers.json`,
+- Construction: `Initialize(Options{})` loads `~/.san/providers.json`,
   picks the last-used provider (or the first connectable one), and stores
   it.
 - Switching: `/model` slash command calls `SetCurrentModel` + reload.

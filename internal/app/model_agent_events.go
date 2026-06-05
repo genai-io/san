@@ -13,12 +13,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/llm/deepseek"
-	"github.com/genai-io/gen-code/internal/llm/minmax"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/deepseek"
+	"github.com/genai-io/san/internal/llm/minmax"
+	"github.com/genai-io/san/internal/log"
 )
 
 func (m *model) OnTurnBegin() {

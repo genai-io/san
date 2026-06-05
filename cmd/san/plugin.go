@@ -6,14 +6,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/plugin"
+	"github.com/genai-io/san/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
 var pluginCmd = &cobra.Command{
 	Use:   "plugin",
 	Short: "Manage plugins",
-	Long: `Manage plugins for extending GenCode with skills, agents, hooks, and MCP servers.
+	Long: `Manage plugins for extending San with skills, agents, hooks, and MCP servers.
 
 Plugins bundle multiple components:
   - Skills: Custom skills invokable via slash commands
@@ -23,11 +23,11 @@ Plugins bundle multiple components:
   - LSP Servers: Language Server Protocol servers
 
 Configuration files:
-  ~/.gen/plugins/                  User-level plugins
-  ./.gen/plugins/                  Project-level plugins
-  ./.gen/plugins-local/            Local plugins (git-ignored)
-  ~/.gen/settings.json             Enabled plugins (user)
-  ./.gen/settings.json             Enabled plugins (project)`,
+  ~/.san/plugins/                  User-level plugins
+  ./.san/plugins/                  Project-level plugins
+  ./.san/plugins-local/            Local plugins (git-ignored)
+  ~/.san/settings.json             Enabled plugins (user)
+  ./.san/settings.json             Enabled plugins (project)`,
 }
 
 var pluginScope string
@@ -79,7 +79,7 @@ var pluginListCmd = &cobra.Command{
 		if len(plugins) == 0 {
 			fmt.Println("No plugins installed.")
 			fmt.Println("\nInstall a plugin with:")
-			fmt.Println("  gen plugin install <plugin>@<marketplace>")
+			fmt.Println("  san plugin install <plugin>@<marketplace>")
 			return nil
 		}
 
@@ -147,8 +147,8 @@ var pluginInstallCmd = &cobra.Command{
 	Long: `Install a plugin from a marketplace.
 
 Examples:
-  gen plugin install git@my-plugins
-  gen plugin install deployment-tools@enterprise-plugins --scope project`,
+  san plugin install git@my-plugins
+  san plugin install deployment-tools@enterprise-plugins --scope project`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()

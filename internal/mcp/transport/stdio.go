@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/proc"
+	"github.com/genai-io/san/internal/proc"
 )
 
 // STDIOConfig contains configuration for STDIO transport

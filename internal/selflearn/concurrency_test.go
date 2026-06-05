@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // TestSnapshotIsCopiedBeforeGoroutine guards the defensive copy in Observe.

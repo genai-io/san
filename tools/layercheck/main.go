@@ -24,13 +24,13 @@ import (
 	"strings"
 )
 
-const repoModule = "github.com/genai-io/gen-code"
+const repoModule = "github.com/genai-io/san"
 
 // layerOf assigns each package path (relative to repoModule) to a layer.
 // Subpackages without an explicit entry inherit from their nearest ancestor.
 // Keep this map in sync with docs/reference/package-map.md.
 var layerOf = map[string]string{
-	"cmd/gen": "cmd",
+	"cmd/san": "cmd",
 
 	"internal/app": "app",
 
@@ -57,6 +57,7 @@ var layerOf = map[string]string{
 	"internal/tool":      "feature",
 	"internal/worktree":  "feature",
 
+	"internal/confdir":   "infrastructure",
 	"internal/filecache": "infrastructure",
 	"internal/log":       "infrastructure",
 	"internal/markdown":  "infrastructure",

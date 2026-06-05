@@ -1,7 +1,7 @@
 # Binary
 bin/
-/gen
-gen_*
+/san
+san_*
 *.tar.gz
 
 # Environment

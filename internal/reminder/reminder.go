@@ -12,7 +12,7 @@
 //
 // Use the reminder package for content that is "session-level" or
 // "project-level" and may change during a session — skills directory, memory
-// files, one-time notices. Behavior that is true for every Gen Code session
+// files, one-time notices. Behavior that is true for every San session
 // (identity, policy, guidelines) belongs in the system prompt instead.
 package reminder
 
@@ -29,7 +29,7 @@ const (
 	ProviderMemoryProject   = "memory-project"
 	// ProviderMemoryAuto is the agent-written memory store maintained by the
 	// L1 reviewer (internal/selflearn). It is a distinct source from the
-	// user-authored GEN.md/CLAUDE.md so agent-written and user-authored
+	// user-authored SAN.md/CLAUDE.md so agent-written and user-authored
 	// instructions are never mixed in the prompt. See
 	// notes/active/l1-background-review.md §4.5.
 	ProviderMemoryAuto = "memory-auto"

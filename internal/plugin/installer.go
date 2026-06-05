@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // Installer handles plugin installation and management.
@@ -62,8 +64,8 @@ func (i *Installer) LoadMarketplaces() error {
 
 	// Also load legacy format for backward compatibility
 	paths := []string{
-		filepath.Join(homeDir, ".gen", "plugins", "known_marketplaces.json"),
-		filepath.Join(i.cwd, ".gen", "plugins", "known_marketplaces.json"),
+		filepath.Join(confdir.Dir(homeDir), "plugins", "known_marketplaces.json"),
+		filepath.Join(confdir.Dir(i.cwd), "plugins", "known_marketplaces.json"),
 	}
 
 	for _, path := range paths {
@@ -254,13 +256,13 @@ func (i *Installer) getInstallDir(scope Scope) string {
 
 	switch scope {
 	case ScopeUser:
-		return filepath.Join(homeDir, ".gen", "plugins", "cache")
+		return filepath.Join(confdir.Dir(homeDir), "plugins", "cache")
 	case ScopeProject:
-		return filepath.Join(i.cwd, ".gen", "plugins")
+		return filepath.Join(confdir.Dir(i.cwd), "plugins")
 	case ScopeLocal:
-		return filepath.Join(i.cwd, ".gen", "plugins-local")
+		return filepath.Join(confdir.Dir(i.cwd), "plugins-local")
 	default:
-		return filepath.Join(homeDir, ".gen", "plugins", "cache")
+		return filepath.Join(confdir.Dir(homeDir), "plugins", "cache")
 	}
 }
 
@@ -484,7 +486,7 @@ func (i *Installer) GetMarketplaces() []MarketplaceSource {
 // AddMarketplace adds a new marketplace source.
 func (i *Installer) AddMarketplace(source MarketplaceSource) error {
 	homeDir, _ := os.UserHomeDir()
-	path := filepath.Join(homeDir, ".gen", "plugins", "known_marketplaces.json")
+	path := filepath.Join(confdir.Dir(homeDir), "plugins", "known_marketplaces.json")
 
 	// Load existing
 	var km KnownMarketplaces

@@ -3,7 +3,7 @@ package tool
 import (
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // parentOnlyTools are tools that only the parent conversation can use.

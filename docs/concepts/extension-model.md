@@ -1,16 +1,16 @@
 # Extension Model
 
-Gen Code is built so users can extend it without touching Go. There are
+San is built so users can extend it without touching Go. There are
 **four extension primitives** plus a **plugin source** that packages them.
 Each primitive is a small markdown-or-process artifact the user puts in a
-known directory; Gen Code discovers it at startup and exposes it through a
+known directory; San discovers it at startup and exposes it through a
 runtime registry.
 
 | Primitive | What it is | Package | Where it lives |
 |---|---|---|---|
-| **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/skill.md) | `~/.gen/skills/<name>/SKILL.md` and project equivalents |
-| **Subagent** | A markdown-defined agent type with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/subagent.md) | `~/.gen/agents/<name>.md` and project equivalents |
-| **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/command.md) | `~/.gen/commands/<name>.md` and project equivalents |
+| **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
+| **Subagent** | A markdown-defined agent type with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
+| **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/command.md) | `~/.san/commands/<name>.md` and project equivalents |
 | **Hook** | A shell command, HTTP endpoint, LLM call, or in-process callback fired at a named event. | [`hook`](../packages/hook.md) | `settings.json` (`hooks` field) |
 
 Plus the inbound side:
@@ -25,7 +25,7 @@ A **plugin** is a *bundle* of any combination of the above. It is a single
 directory the user installs; the plugin contributes some skills, some
 agents, some commands, some MCP servers, some hooks, and optionally env
 vars. The four primitives can also live without a plugin — they exist
-standalone under `~/.gen/*` or `<project>/.gen/*`.
+standalone under `~/.san/*` or `<project>/.san/*`.
 
 So the right mental model:
 
@@ -40,7 +40,7 @@ So the right mental model:
               ▲        ▲       ▲      ▲
               │        │       │      │
        ┌──────┴────────┴───────┴──────┴─────────┐
-       │     ~/.gen/<surface>/  + project       │
+       │     ~/.san/<surface>/  + project       │
        │     (loose files, no plugin needed)    │
        └────────────────────────────────────────┘
 ```
@@ -55,13 +55,13 @@ etc.). The consumer doesn't import `plugin`.
 Each primitive resolves the same precedence chain:
 
 ```
-project (.gen/<surface>/)
+project (.san/<surface>/)
     overrides
-project plugins (.gen/plugins/*/...)
+project plugins (.san/plugins/*/...)
     overrides
-user (~/.gen/<surface>/)
+user (~/.san/<surface>/)
     overrides
-user plugins (~/.gen/plugins/*/...)
+user plugins (~/.san/plugins/*/...)
     overrides
 Claude-compat (~/.claude/<surface>/, .claude/<surface>/)
 ```

@@ -1,4 +1,4 @@
-module github.com/genai-io/gen-code
+module github.com/genai-io/san
 
 go 1.25.6
 

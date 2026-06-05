@@ -1,20 +1,20 @@
 ---
-package: github.com/genai-io/gen-code/internal/identity
+package: github.com/genai-io/san/internal/identity
 layer: feature
 ---
 
 # identity
 
-Loads user-defined persona markdown files (`~/.gen/identities/*.md`,
-`<project>/.gen/identities/*.md`) and exposes them through a `Registry`.
+Loads user-defined persona markdown files (`~/.san/identities/*.md`,
+`<project>/.san/identities/*.md`) and exposes them through a `Registry`.
 The TUI's `/identity` selector lists what's here; the active identity is
 written into the system prompt.
 
 ## Purpose
 
 An identity is the persona block of the system prompt: tone, expertise,
-default workflow conventions. Two scopes — user (`~/.gen/identities/`)
-and project (`<project>/.gen/identities/`, takes precedence) — plus a
+default workflow conventions. Two scopes — user (`~/.san/identities/`)
+and project (`<project>/.san/identities/`, takes precedence) — plus a
 built-in `default` identity rendered from `prompts/identity.txt`.
 
 ## Contract
@@ -84,7 +84,7 @@ should look like after their PR-3 refactor.
   ordering (default → project → user).
 - `identity.go` — `Identity` value type plus markdown frontmatter
   parsing.
-- `path.go` — `~/.gen/identities/` and `<project>/.gen/identities/`
+- `path.go` — `~/.san/identities/` and `<project>/.san/identities/`
   resolution.
 - `template.go` + `README.md.tmpl` — bootstrap a README when the
   user-level directory is created.

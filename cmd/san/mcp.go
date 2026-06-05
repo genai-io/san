@@ -7,23 +7,23 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/mcp"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/mcp"
 	"github.com/spf13/cobra"
 )
 
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Manage MCP (Model Context Protocol) servers",
-	Long: `Manage MCP servers for extending GenCode with external tools.
+	Long: `Manage MCP servers for extending San with external tools.
 
 MCP servers provide additional tools, resources, and prompts that can be used
 by the LLM during conversations.
 
 Configuration files are stored at:
-  ~/.gen/mcp.json           User-level (global)
-  ./.gen/mcp.json           Project-level (team shared)
-  ./.gen/mcp.local.json     Local-level (personal, git-ignored)`,
+  ~/.san/mcp.json           User-level (global)
+  ./.san/mcp.json           Project-level (team shared)
+  ./.san/mcp.local.json     Local-level (personal, git-ignored)`,
 }
 
 var (
@@ -57,18 +57,18 @@ var mcpAddCmd = &cobra.Command{
 	Long: `Add an MCP server configuration.
 
 For STDIO transport (default):
-  gen mcp add <name> -- <command> [args...]
+  san mcp add <name> -- <command> [args...]
 
 For HTTP transport:
-  gen mcp add --transport http <name> <url>
+  san mcp add --transport http <name> <url>
 
 For SSE transport:
-  gen mcp add --transport sse <name> <url>
+  san mcp add --transport sse <name> <url>
 
 Examples:
-  gen mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
-  gen mcp add github --transport http https://api.github.com/mcp
-  gen mcp add sentry --transport sse https://mcp.sentry.dev/mcp`,
+  san mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem .
+  san mcp add github --transport http https://api.github.com/mcp
+  san mcp add sentry --transport sse https://mcp.sentry.dev/mcp`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -87,7 +87,7 @@ Examples:
 				}
 			}
 			if dashIdx == -1 || dashIdx >= len(os.Args)-1 {
-				return fmt.Errorf("STDIO transport requires: gen mcp add <name> -- <command> [args...]")
+				return fmt.Errorf("STDIO transport requires: san mcp add <name> -- <command> [args...]")
 			}
 
 			cmdArgs := os.Args[dashIdx+1:]
@@ -98,7 +98,7 @@ Examples:
 
 		case mcp.TransportHTTP, mcp.TransportSSE:
 			if len(args) < 2 {
-				return fmt.Errorf("%s transport requires a URL: gen mcp add --transport %s <name> <url>", mcpTransport, mcpTransport)
+				return fmt.Errorf("%s transport requires a URL: san mcp add --transport %s <name> <url>", mcpTransport, mcpTransport)
 			}
 			config.URL = args[1]
 			config.Headers = mcp.ParseKeyValues(mcpHeaders, ":")
@@ -129,7 +129,7 @@ var mcpAddJSONCmd = &cobra.Command{
 	Long: `Add an MCP server using a JSON configuration.
 
 Example:
-  gen mcp add-json filesystem '{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}'`,
+  san mcp add-json filesystem '{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","."]}'`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
@@ -204,8 +204,8 @@ var mcpListCmd = &cobra.Command{
 		if len(configs) == 0 {
 			fmt.Println("No MCP servers configured.")
 			fmt.Println("\nAdd a server with:")
-			fmt.Println("  gen mcp add <name> -- <command> [args...]")
-			fmt.Println("  gen mcp add --transport http <name> <url>")
+			fmt.Println("  san mcp add <name> -- <command> [args...]")
+			fmt.Println("  san mcp add --transport http <name> <url>")
 			return nil
 		}
 

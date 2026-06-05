@@ -30,9 +30,9 @@ If no version is given, detect the current version and suggest the next one (see
 
 Read the current version and identify changes since the last tag:
 
-1. Read the code version from `cmd/gen/main.go`:
+1. Read the code version from `cmd/san/main.go`:
    ```bash
-   grep 'var version = ' cmd/gen/main.go
+   grep 'var version = ' cmd/san/main.go
    ```
 
 2. Get the latest git tag:
@@ -89,7 +89,7 @@ Write only the current version section in `CHANGELOG.md`. Do not pass the entire
 
 ### 3. Bump the version in source code
 
-Update the version string in `cmd/gen/main.go`:
+Update the version string in `cmd/san/main.go`:
 
 ```go
 var version = "<new_version>"
@@ -100,7 +100,7 @@ var version = "<new_version>"
 Stage the version bump and changelog update, then commit with sign-off:
 
 ```bash
-git add cmd/gen/main.go CHANGELOG.md
+git add cmd/san/main.go CHANGELOG.md
 git commit -s -m "chore: bump version to <new_version>"
 ```
 

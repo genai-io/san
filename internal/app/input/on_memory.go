@@ -12,9 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 )
 
 // ── State ───────────────────────────────────────────────────────────────
@@ -84,7 +85,7 @@ func (m *MemorySelector) EnterSelect(cwd string, width, height int) {
 			"Will be created on edit"),
 
 		m.buildMemoryItem("Project", "project", paths.Project, cwd,
-			"Checked in at .gen/GEN.md",
+			"Checked in at .san/SAN.md",
 			"Use /init to create"),
 
 		m.buildMemoryItem("Local", "local", paths.Local, cwd,
@@ -351,8 +352,8 @@ func handleInitProject(cwd string, isClaude bool) (string, error) {
 		targetDir = filepath.Join(cwd, ".claude")
 		fileName = "CLAUDE.md"
 	} else {
-		targetDir = filepath.Join(cwd, ".gen")
-		fileName = "GEN.md"
+		targetDir = confdir.Dir(cwd)
+		fileName = "SAN.md"
 	}
 	filePath := filepath.Join(targetDir, fileName)
 
@@ -371,8 +372,8 @@ func handleInitProject(cwd string, isClaude bool) (string, error) {
 }
 
 func handleInitLocal(cwd string) (string, error) {
-	targetDir := filepath.Join(cwd, ".gen")
-	filePath := filepath.Join(targetDir, "GEN.local.md")
+	targetDir := confdir.Dir(cwd)
+	filePath := filepath.Join(targetDir, "SAN.local.md")
 
 	if _, err := os.Stat(filePath); err == nil {
 		return fmt.Sprintf("File already exists: %s\nUse /memory edit local to modify it.", filePath), nil
@@ -385,7 +386,7 @@ func handleInitLocal(cwd string) (string, error) {
 		return "", fmt.Errorf("failed to write file %s: %w", filePath, err)
 	}
 
-	memoryAddToGitignore(cwd, "GEN.local.md")
+	memoryAddToGitignore(cwd, "SAN.local.md")
 
 	return fmt.Sprintf("Created %s (added to .gitignore)\n\nEdit with: /memory edit local", filePath), nil
 }
@@ -395,7 +396,7 @@ func handleInitRules(cwd string, isClaude bool) (string, error) {
 	if isClaude {
 		rulesDir = filepath.Join(cwd, ".claude", "rules")
 	} else {
-		rulesDir = filepath.Join(cwd, ".gen", "rules")
+		rulesDir = filepath.Join(confdir.Dir(cwd), "rules")
 	}
 
 	if _, err := os.Stat(rulesDir); err == nil {
@@ -640,7 +641,7 @@ func handleMemoryEdit(cwd, scope string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		memoryAddToGitignore(cwd, "GEN.local.md")
+		memoryAddToGitignore(cwd, "SAN.local.md")
 		return filePath, nil
 
 	default:
@@ -672,9 +673,9 @@ func ensureMemoryFile(searchPaths []string, template string) (string, error) {
 
 func getMemoryProjectTemplate(cwd string) string {
 	projectName := filepath.Base(cwd)
-	return fmt.Sprintf(`# GEN.md
+	return fmt.Sprintf(`# SAN.md
 
-This file provides guidance to GenCode when working with code in this repository.
+This file provides guidance to San when working with code in this repository.
 
 ## Project Overview
 
@@ -697,9 +698,9 @@ This file provides guidance to GenCode when working with code in this repository
 }
 
 func getMemoryGlobalTemplate() string {
-	return `# GEN.md
+	return `# SAN.md
 
-Global instructions for GenCode (applies to all projects).
+Global instructions for San (applies to all projects).
 
 ## Coding Preferences
 
@@ -712,7 +713,7 @@ Global instructions for GenCode (applies to all projects).
 }
 
 func getMemoryLocalTemplate() string {
-	return `# GEN.local.md
+	return `# SAN.local.md
 
 Local instructions for this project (not committed to git).
 
@@ -731,7 +732,7 @@ Use this file for:
 func getMemoryRulesTemplate() string {
 	return `# Example Rule
 
-This file defines specific rules for GenCode to follow.
+This file defines specific rules for San to follow.
 
 ## Guidelines
 
@@ -752,7 +753,7 @@ func CreateMemoryFile(filePath, level, cwd string) error {
 		return err
 	}
 	if level == "local" {
-		memoryAddToGitignore(cwd, "GEN.local.md")
+		memoryAddToGitignore(cwd, "SAN.local.md")
 	}
 	return nil
 }

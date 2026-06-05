@@ -1,12 +1,12 @@
 ---
-package: github.com/genai-io/gen-code/internal/setting
+package: github.com/genai-io/san/internal/setting
 layer: feature
 ---
 
 # setting
 
 Data loader, merger, and the central permission decision gate.
-Reads `~/.gen/settings.json` and `<project>/.gen/settings.json`, merges
+Reads `~/.san/settings.json` and `<project>/.san/settings.json`, merges
 project-over-user with documented precedence, and decides allow / deny /
 ask for every tool call.
 

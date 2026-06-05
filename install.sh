@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-REPO="genai-io/gen-code"
-BINARY="gen"
+REPO="genai-io/san"
+BINARY="san"
 INSTALL_DIR="${HOME}/.local/bin"
 
 # Colors
@@ -19,9 +19,9 @@ usage() {
     echo "Usage: $0 [install|upgrade|uninstall]"
     echo ""
     echo "Commands:"
-    echo "  install    Install gen (default)"
+    echo "  install    Install san (default)"
     echo "  upgrade    Upgrade to latest version"
-    echo "  uninstall  Remove gen and config"
+    echo "  uninstall  Remove san and config"
     exit 0
 }
 
@@ -54,7 +54,7 @@ get_latest_version() {
 
 get_download_url() {
     local version="$1"
-    local asset_name="gen_${OS}_${ARCH}.tar.gz"
+    local asset_name="san_${OS}_${ARCH}.tar.gz"
     local api_url="https://api.github.com/repos/${REPO}/releases/tags/v${version}"
 
     curl -fsSL "$api_url" | awk -v asset="$asset_name" '
@@ -87,25 +87,25 @@ do_install() {
         CURRENT=$("$BINARY" version 2>/dev/null | awk '{print $3}' || echo "unknown")
         CURRENT="$(normalize_version "$CURRENT")"
         if [ "$CURRENT" = "$VERSION" ]; then
-            info "✓ gen v${VERSION} is already installed"
+            info "✓ san v${VERSION} is already installed"
             return
         fi
-        info "Upgrading gen from v${CURRENT} to v${VERSION}..."
+        info "Upgrading san from v${CURRENT} to v${VERSION}..."
     else
-        info "Installing gen v${VERSION} for ${OS}/${ARCH}..."
+        info "Installing san v${VERSION} for ${OS}/${ARCH}..."
     fi
 
     # Download and extract
     DOWNLOAD_URL="$(get_download_url "$VERSION")"
-    [ -z "$DOWNLOAD_URL" ] && error "Release asset gen_${OS}_${ARCH}.tar.gz not found for v${VERSION}"
+    [ -z "$DOWNLOAD_URL" ] && error "Release asset san_${OS}_${ARCH}.tar.gz not found for v${VERSION}"
     TMP_DIR=$(mktemp -d)
     trap "rm -rf $TMP_DIR" EXIT
 
-    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/gen.tar.gz" || error "Download failed"
-    if ! tar -tzf "$TMP_DIR/gen.tar.gz" >/dev/null 2>&1; then
+    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/san.tar.gz" || error "Download failed"
+    if ! tar -tzf "$TMP_DIR/san.tar.gz" >/dev/null 2>&1; then
         error "Downloaded asset is not a valid tar.gz archive"
     fi
-    tar -xzf "$TMP_DIR/gen.tar.gz" -C "$TMP_DIR" || error "Extract failed"
+    tar -xzf "$TMP_DIR/san.tar.gz" -C "$TMP_DIR" || error "Extract failed"
 
     # Install
     mkdir -p "$INSTALL_DIR"
@@ -118,11 +118,11 @@ do_install() {
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
 
-    info "✓ gen v${VERSION} installed to $INSTALL_DIR/$BINARY"
+    info "✓ san v${VERSION} installed to $INSTALL_DIR/$BINARY"
 }
 
 do_uninstall() {
-    info "Uninstalling gen..."
+    info "Uninstalling san..."
     
     # Remove binary
     if [ -f "$INSTALL_DIR/$BINARY" ]; then
@@ -132,15 +132,17 @@ do_uninstall() {
         warn "Binary not found at $INSTALL_DIR/$BINARY"
     fi
 
-    # Ask about config
-    if [ -d "$HOME/.gen" ]; then
-        echo -n "Remove config directory ~/.gen? [y/N] "
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            rm -rf "$HOME/.gen"
-            info "✓ Removed ~/.gen"
+    # Ask about config (the new ~/.san and the pre-rename ~/.gen, if present)
+    for cfg in "$HOME/.san" "$HOME/.gen"; do
+        if [ -d "$cfg" ]; then
+            echo -n "Remove config directory ${cfg}? [y/N] "
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                rm -rf "$cfg"
+                info "✓ Removed ${cfg}"
+            fi
         fi
-    fi
+    done
 
     info "✓ Uninstall complete"
 }

@@ -1,6 +1,6 @@
 package tool
 
-import "github.com/genai-io/gen-code/internal/core"
+import "github.com/genai-io/san/internal/core"
 
 // trackerToolSchemas defines the schemas for task management tools.
 var trackerToolSchemas = []core.ToolSchema{
@@ -170,7 +170,7 @@ Jobs only fire while the REPL is idle. Returns a job ID for CronDelete.`,
 				},
 				"durable": map[string]any{
 					"type":        "boolean",
-					"description": "If true, job persists across sessions for this project (saved to .gen/scheduled_tasks.json). Default: false (session-only).",
+					"description": "If true, job persists across sessions for this project (saved to .san/scheduled_tasks.json). Default: false (session-only).",
 				},
 			},
 			"required": []string{"cron", "prompt"},

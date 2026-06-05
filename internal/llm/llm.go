@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // defaultMaxTokens is the fallback max output tokens when neither the caller

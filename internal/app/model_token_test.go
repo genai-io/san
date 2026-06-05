@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
@@ -43,8 +43,8 @@ func TestResumeCommandForSessionRequiresPersistedTranscript(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	if got := resumeCommandForSession("session-1", transcriptPath); got != "gen -r session-1" {
-		t.Fatalf("resumeCommandForSession() = %q, want gen -r session-1", got)
+	if got := resumeCommandForSession("session-1", transcriptPath); got != "san -r session-1" {
+		t.Fatalf("resumeCommandForSession() = %q, want san -r session-1", got)
 	}
 }
 

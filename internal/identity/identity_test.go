@@ -258,7 +258,7 @@ func TestEnsureUserDir_IsIdempotent(t *testing.T) {
 		t.Fatalf("EnsureUserDir first call: %v", err)
 	}
 
-	readme := filepath.Join(home, ".gen", "identities", "README.md")
+	readme := filepath.Join(home, ".san", "identities", "README.md")
 	first, err := os.ReadFile(readme)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)

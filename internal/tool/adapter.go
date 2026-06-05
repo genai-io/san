@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // sideEffects stores HookResponse values keyed by tool call ID.

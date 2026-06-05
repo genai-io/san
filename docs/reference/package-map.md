@@ -9,7 +9,7 @@ the assignment changes.
 
 | Path | Layer | Responsibility |
 | --- | --- | --- |
-| `cmd/gen` | `cmd` | Main CLI binary. Parses flags, initializes runtime, wires subcommands. |
+| `cmd/san` | `cmd` | Main CLI binary. Parses flags, initializes runtime, wires subcommands. |
 
 ## Application Shell
 

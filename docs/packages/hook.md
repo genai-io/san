@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/hook
+package: github.com/genai-io/san/internal/hook
 layer: feature
 ---
 
@@ -11,7 +11,7 @@ outcomes back into the calling code path.
 
 ## Purpose
 
-Hooks are how users extend Gen Code without writing Go: a shell command, an
+Hooks are how users extend San without writing Go: a shell command, an
 LLM prompt, an HTTP endpoint, or an in-memory callback runs at a named
 event. The engine resolves which hooks fire (matchers), runs them
 synchronously or asynchronously, and reduces their structured outputs into

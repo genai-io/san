@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

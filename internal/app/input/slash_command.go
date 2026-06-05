@@ -11,19 +11,19 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/command"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/cron"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/mcp"
-	"github.com/genai-io/gen-code/internal/plugin"
-	"github.com/genai-io/gen-code/internal/session"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/task/tracker"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // NoProviderMsg is the canonical "no LLM provider" notice used by any
@@ -291,7 +291,7 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 	}
 	c.env.InitTaskStorage()
 	c.env.ReconfigureAgentTool()
-	return fmt.Sprintf("Forked conversation. You are now in the fork.\nTo resume the original: gen -r %s", originalID), nil, nil
+	return fmt.Sprintf("Forked conversation. You are now in the fork.\nTo resume the original: san -r %s", originalID), nil, nil
 }
 
 func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string) (string, tea.Cmd, error) {

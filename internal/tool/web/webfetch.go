@@ -10,8 +10,8 @@ import (
 	"time"
 
 	md "github.com/JohannesKaufmann/html-to-markdown"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -87,7 +87,7 @@ func (t *WebFetchTool) Execute(ctx context.Context, params map[string]any, cwd s
 	}
 
 	// Set user agent
-	req.Header.Set("User-Agent", "GenCode/1.0")
+	req.Header.Set("User-Agent", "San/1.0")
 
 	// Execute request
 	resp, err := client.Do(req)

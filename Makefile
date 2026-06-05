@@ -1,6 +1,6 @@
-BINARY := gen
+BINARY := san
 BINDIR := bin
-SRCDIR := ./cmd/gen
+SRCDIR := ./cmd/san
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)

@@ -5,7 +5,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // APIKeyMeta is the metadata for Anthropic via API Key

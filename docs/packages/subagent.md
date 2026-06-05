@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/subagent
+package: github.com/genai-io/san/internal/subagent
 layer: feature
 ---
 
@@ -27,7 +27,7 @@ no producer-side role interface earns its keep — TEMPLATE Rule 3.
 
 | Caller | Methods used |
 |---|---|
-| `cmd/gen agent` | `Get` (CLI argument validation) |
+| `cmd/san agent` | `Get` (CLI argument validation) |
 | TUI view | `ListConfigs` (color enumeration) |
 | Agent build site | `PromptSection` (twice) |
 | TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `GetDisabledAt` for the `/agent` menu |
@@ -81,7 +81,7 @@ func ResetDefaultRegistry()           // test-only
 - `executor_prompt.go` / `executor_run.go` / `executor_session.go` —
   split executor concerns (prompt assembly, run loop, session attribution).
 - `loader.go` — reads markdown agent definitions from
-  `~/.gen/agents/`, `<project>/.gen/agents/`, plus plugin paths.
+  `~/.san/agents/`, `<project>/.san/agents/`, plus plugin paths.
 - `match.go` — name matching for the Agent tool's `agent_type` parameter.
 - `progress_tools.go` — pseudo-tools the subagent emits to surface
   progress to the parent agent.

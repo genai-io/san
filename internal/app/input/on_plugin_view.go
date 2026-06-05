@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 func (s *PluginSelector) Render() string {
@@ -203,7 +203,7 @@ func (s *PluginSelector) renderInstalledList(sb *strings.Builder) {
 		if len(s.installedFlatList) == 0 {
 			sb.WriteString(dimStyle.PaddingLeft(2).Render("No plugins installed"))
 			sb.WriteString("\n\n")
-			sb.WriteString(dimStyle.PaddingLeft(2).Render("Run: gen plugin install <name>@<marketplace>"))
+			sb.WriteString(dimStyle.PaddingLeft(2).Render("Run: san plugin install <name>@<marketplace>"))
 			sb.WriteString("\n")
 		} else {
 			sb.WriteString(dimStyle.PaddingLeft(2).Render("No plugins match the filter"))

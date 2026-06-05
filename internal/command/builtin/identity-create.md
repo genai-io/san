@@ -1,9 +1,9 @@
-The user wants to create a new identity (persona) for Gen Code.
+The user wants to create a new identity (persona) for San.
 
 Optional name hint from the user: $ARGUMENTS
 
 Steps:
-1. Read ~/.gen/identities/README.md for the format spec. If the file does
+1. Read ~/.san/identities/README.md for the format spec. If the file does
    not exist, the format is: frontmatter with `name` and `description`;
    body has sections for Tone / Output / Behavior / Scope / Code conventions.
 
@@ -18,7 +18,7 @@ Steps:
 3. Pick a kebab-case filename matching the persona ("rust-systems",
    "ml-engineer"). Confirm with AskUserQuestion if uncertain.
 
-4. Write to ~/.gen/identities/<name>.md with frontmatter (`name` matching
+4. Write to ~/.san/identities/<name>.md with frontmatter (`name` matching
    the filename + one-line `description`) and body sections (Tone, Output,
    Behavior, Scope, Code conventions).
 

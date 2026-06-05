@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // P1 regression: ConvertToEntries must preserve the ChatMessage.ID across

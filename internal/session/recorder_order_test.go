@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // TestRecorderWritesMessageBeforeInference confirms the "causes before

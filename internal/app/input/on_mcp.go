@@ -9,9 +9,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	coremcp "github.com/genai-io/gen-code/internal/mcp"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	coremcp "github.com/genai-io/san/internal/mcp"
 )
 
 // ── State ───────────────────────────────────────────────────────────

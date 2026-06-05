@@ -1,7 +1,7 @@
 # L1 — Background Review (per-turn self-learning)
 
-Layer 1 of the self-learning loop in [#46](https://github.com/genai-io/gen-code/issues/46).
-This is [#52](https://github.com/genai-io/gen-code/issues/52).
+Layer 1 of the self-learning loop in [#46](https://github.com/genai-io/san/issues/46).
+This is [#52](https://github.com/genai-io/san/issues/52).
 
 **Contents.** [§0 Overview](#0-what-l1-is-and-the-problems-it-solves) · [§1 Compare](#1-three-systems-compared) · [§2 Architecture](#2-architecture) · [§3 Trigger](#3-trigger--two-arms) · [§4 Memory](#4-memory-flow) · [§5 Skill](#5-skill-flow) · [§6 Fork & UI](#6-fork-mechanics--invariants) · [§7 Filesystem](#7-filesystem-layout) · [§8 L1 vs L2](#8-l1-vs-l2--where-grooming-lives) · [§9 Phasing](#9-phasing--next-steps) · [§10 Open questions](#10-open-questions)
 
@@ -17,11 +17,11 @@ to two stores:
 
 - **Auto-memory** — per-project durable facts (user preferences, project
   conventions, recurring context). Stored at
-  `~/.gen/projects/<project>/memory/`; injected into the system prompt of
+  `~/.san/projects/<project>/memory/`; injected into the system prompt of
   every future session.
 - **Skill library** — class-level techniques marked
   `origin: agent-created`, living alongside user-authored skills in
-  `~/.gen/skills/` (user-wide) and `./.gen/skills/` (project). Loaded the
+  `~/.san/skills/` (user-wide) and `./.san/skills/` (project). Loaded the
   same way user skills already are.
 
 The reviewer is **best-effort, out-of-band, eviction-first**: it never
@@ -37,7 +37,7 @@ session; failures never affect the user reply.
 | Skills get used but their mistakes never get fixed. Same mistake repeats across sessions. | Reviewer patches a skill the conversation just proved wrong, incomplete, or outdated (§5.1). |
 | Skills accumulate but never retire. Obsolete entries pile up and mislead later sessions. | Reviewer deletes a skill in the same pass that learned its replacement (§5.1). |
 | Non-trivial fixes, debug paths, and tool-usage patterns evaporate at session end. | Generalizable learnings captured as class-level skills; level (user vs project) chosen by reusability. |
-| `GEN.md` / `CLAUDE.md` only grows if the user hand-curates it. | A separate auto-memory store grows alongside, machine-local and project-partitioned (§4) — never mixed with the user-authored instructions. |
+| `SAN.md` / `CLAUDE.md` only grows if the user hand-curates it. | A separate auto-memory store grows alongside, machine-local and project-partitioned (§4) — never mixed with the user-authored instructions. |
 
 ### What L1 deliberately does not do
 
@@ -58,22 +58,22 @@ session; failures never affect the user reply.
 
 ## 1. Three systems compared
 
-| Axis | Hermes (`background_review.py`) | Claude Code (auto memory) | gen-code L1 (this doc) |
+| Axis | Hermes (`background_review.py`) | Claude Code (auto memory) | san L1 (this doc) |
 |---|---|---|---|
 | Where the write decision lives | **Out-of-band** fork | **In-band** main agent | **Out-of-band** (Hermes-aligned) |
 | When | After a clean turn | Mid-turn, on model judgment | After a clean turn |
 | Writes directly | yes (fork has memory + skill tools) | yes (main agent's own tool) | yes |
 | Trigger signals | turns (memory) + tool-iters (skill) | model judgment + explicit "remember this" | **turns + tool-iters** |
-| Memory scope | **global** `~/.hermes/MEMORY.md` + `USER.md` | **per-project** `~/.claude/projects/<repo>/memory/` (index + topic files) | **per-project** `~/.gen/projects/<project>/memory/` (Claude-Code-aligned) |
+| Memory scope | **global** `~/.hermes/MEMORY.md` + `USER.md` | **per-project** `~/.claude/projects/<repo>/memory/` (index + topic files) | **per-project** `~/.san/projects/<project>/memory/` (Claude-Code-aligned) |
 | Skill scope | global, with provenance flags | global, with provenance | **user + project**, `origin: agent-created` field |
 | Eviction policy | review prompt steers retire; L2 curator does deep grooming | in-band agent prunes stale entries to stay under index cap | review prompt steers **retire + replace before add**; on-disk cap ≡ inject cap (25 KB); L2 deferred for deep grooming |
 | Cache parity | inherits cached system prompt verbatim (≈26% cost cut measured) | n/a (no fork) | inherits verbatim |
 
 **Why this mix.** Hermes' out-of-band shape is the production-proven one (best
 turn responsiveness, dedicated reviewer prompt, no main-context bloat); Claude
-Code's per-project memory layout is the right home for gen-code's multi-repo
+Code's per-project memory layout is the right home for san's multi-repo
 users (worktrees of one repo share a store; different repos don't leak into
-each other). gen-code already has the **read/injection side** (memory loads
+each other). san already has the **read/injection side** (memory loads
 + `<system-reminder>` re-emit on PostCompact); L1 only adds the **write side**.
 
 ---
@@ -138,7 +138,7 @@ Counters live in the reviewer and **hydrate from history on session resume**
 ### 3.1 Configuration
 
 Settings live under `selfLearn` in `settings.json`, merged across user /
-project / local layers like other gen-code settings.
+project / local layers like other san settings.
 
 ```json
 {
@@ -192,7 +192,7 @@ it removes no safety).
 **Default off (opt-in).** L1 forks an extra model call per cadence and writes
 files automatically; ship opt-in, default-on later once trusted.
 
-**Env override.** `GEN_DISABLE_SELF_LEARN=1` disables everything regardless of
+**Env override.** `SAN_DISABLE_SELF_LEARN=1` disables everything regardless of
 config, mirroring Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
 
 ---
@@ -203,7 +203,7 @@ config, mirroring Claude Code's `CLAUDE_CODE_DISABLE_AUTO_MEMORY`.
 
 L1 is **not only allowed to remove — it is required to**. Claude Code's
 in-band agent keeps its index lean by pruning expired info before the cap
-forces a truncation; gen-code's out-of-band reviewer inherits that policy by
+forces a truncation; san's out-of-band reviewer inherits that policy by
 prompt. Every review pass scans the existing index first and retires stale,
 superseded, or merged-PR-specific entries **before** considering new
 additions. A pass that only adds is a missed pruning opportunity.
@@ -222,7 +222,7 @@ flowchart TD
     D -- yes --> R1[memory_write replace]
     D -- no --> N[memory_write add]
     P1 -. retry .-> S
-    R1 --> ALL[~/.gen/projects/&lt;project&gt;/memory/]
+    R1 --> ALL[~/.san/projects/&lt;project&gt;/memory/]
     N --> ALL
 ```
 
@@ -258,7 +258,7 @@ file the loader has to truncate.
 
 ```mermaid
 flowchart LR
-    subgraph store["~/.gen/projects/&lt;project&gt;/memory/"]
+    subgraph store["~/.san/projects/&lt;project&gt;/memory/"]
         IDX["MEMORY.md (index)<br/>≤25 KB hard cap<br/>injected at session start"]
         T1["debugging.md<br/>≤25 KB · read on demand"]
         T2["perf.md<br/>≤25 KB · read on demand"]
@@ -276,10 +276,10 @@ upward — handled by §10 / L2.
 
 ### 4.4 Store layout
 
-`~/.gen/projects/<project>/memory/MEMORY.md` is the index; long detail spills
+`~/.san/projects/<project>/memory/MEMORY.md` is the index; long detail spills
 into topic files (`debugging.md`, …) loaded on demand. `<project>` is the
 git-repo root path with `/` → `-` (Claude Code's encoding, e.g.
-`-Users-me-work-gen-code`), so worktrees of one repo share a store; fall back
+`-Users-me-work-san`), so worktrees of one repo share a store; fall back
 to cwd outside a repo. User-level + project-partitioned is **machine-local,
 out of the repo** — no commit/gitignore decision, no agent churn in git
 history.
@@ -289,12 +289,12 @@ history.
 | When | What happens |
 |---|---|
 | Session start | Read `MEMORY.md` index → inject as `<system-reminder source="memory-auto">` on first user message. Topic files are read on demand by file tools, not injected. |
-| PostCompact | Re-read from disk + re-emit reminders (same path as `GEN.md` / `CLAUDE.md`). |
+| PostCompact | Re-read from disk + re-emit reminders (same path as `SAN.md` / `CLAUDE.md`). |
 | cwd change | Re-read, because `<project>` changes. |
 
 This requires one small read-side change: extend `LoadMemoryFiles` with a new,
 **distinct "auto" source** so agent-written memory and user-authored
-`GEN.md` / `CLAUDE.md` never mix. Without this read side, L1 writes would
+`SAN.md` / `CLAUDE.md` never mix. Without this read side, L1 writes would
 never be injected.
 
 ### 4.6 Write→visibility lag (by design)
@@ -366,8 +366,8 @@ flowchart TD
     D -- yes --> U2[UPDATE · patch umbrella<br/>+/- references/templates/scripts]
     D -- no --> E{new class of task<br/>no skill covers?}
     E -- yes --> L{reusable across<br/>projects?}
-    L -- yes --> N1[CREATE · ~/.gen/skills/&lt;name&gt;/<br/>origin: agent-created]
-    L -- no --> N2[CREATE · ./.gen/skills/&lt;name&gt;/<br/>origin: agent-created]
+    L -- yes --> N1[CREATE · ~/.san/skills/&lt;name&gt;/<br/>origin: agent-created]
+    L -- no --> N2[CREATE · ./.san/skills/&lt;name&gt;/<br/>origin: agent-created]
     E -- no --> Z[Nothing to save]
 ```
 
@@ -391,14 +391,14 @@ fix/extend, or `skill_manage(write_file, …)` to add a `references/` /
 `templates/` / `scripts/` support file (plus a pointer line in `SKILL.md`).
 DELETE uses `skill_manage(delete, name)`. CREATE uses
 `skill_manage(create, name, content, level)` where the **level**
-(`~/.gen/skills/` user-wide vs `./.gen/skills/` project) follows the
+(`~/.san/skills/` user-wide vs `./.san/skills/` project) follows the
 diagram's *reusable across projects?* branch.
 
 ### 5.2 Provenance and L1 write scope
 
 **Provenance is a frontmatter field, not a directory.** Add
 `origin: agent-created` to `SKILL.md`; absent ⇒ `user-created`. The `Skill`
-struct grows one field (`Origin string`). Skills live directly in gen-code's
+struct grows one field (`Origin string`). Skills live directly in san's
 existing two scopes — no `agent-created/` subdir, no loader change.
 
 **Scope of L1 writes.** By default L1 creates / patches / **deletes** only
@@ -504,7 +504,7 @@ Eight invariants, each one cost Hermes a production bug:
 | Wire-up | `internal/agent/session.go::Task.Start` (start), `stopLocked` (tear down) |
 | Fork | `core.NewAgent` directly, restricted `core.Tools` |
 | System prompt | pass the parent's `system.System` verbatim |
-| Writes | `memory_write` → `~/.gen/projects/<project>/memory/`; `skill_manage` → `~/.gen/skills/<name>/` (user) or `./.gen/skills/<name>/` (project), with `origin: agent-created` |
+| Writes | `memory_write` → `~/.san/projects/<project>/memory/`; `skill_manage` → `~/.san/skills/<name>/` (user) or `./.san/skills/<name>/` (project), with `origin: agent-created` |
 | Provenance | add `Origin` to skill frontmatter struct (`internal/skill/types.go`); absent ⇒ `user-created` |
 | Injection read | memory: extend `LoadMemoryFiles` with a new "auto" source. Skills: no change (existing user/project loader covers it). |
 
@@ -566,16 +566,16 @@ the recap — two layers, distinct purposes.
 
 ```
 # Skills (existing scopes, distinguished by origin)
-~/.gen/skills/<name>/
+~/.san/skills/<name>/
 ├── SKILL.md            origin: agent-created | user-created
 ├── references/         session-specific detail, condensed knowledge banks
 ├── templates/          starter files meant to be copied
 └── scripts/            re-runnable actions (verification, fixtures)
 
-./.gen/skills/<name>/   project-level (same layout)
+./.san/skills/<name>/   project-level (same layout)
 
 # Memory (new "auto" source, machine-local, per-project)
-~/.gen/projects/<encoded-cwd>/memory/
+~/.san/projects/<encoded-cwd>/memory/
 ├── MEMORY.md           index, ≤25 KB on disk and injected (caps match)
 ├── debugging.md        topic file, read on demand
 └── ...
@@ -606,7 +606,7 @@ Its evaluation basis (usage telemetry + collection intrinsics) and trigger
 policy are out of scope here and tracked in a separate L2 issue.
 
 **L1-side implication worth flagging now:** L2's strongest signal will be
-**usage** (which skill was used when), which gen-code doesn't record today.
+**usage** (which skill was used when), which san doesn't record today.
 A light usage log can land with L1 or just before L2 — flagged so it isn't
 forgotten.
 
@@ -619,7 +619,7 @@ forgotten.
 
 Prereqs:
 - `skill_manage` tool with patch semantics.
-- A first-class memory writer to `~/.gen/projects/<project>/memory/`.
+- A first-class memory writer to `~/.san/projects/<project>/memory/`.
 - **Injection read side**: extend `LoadMemoryFiles` to load that store as a
   new, distinct "auto" source (§4) — without this, L1 writes are never injected.
 
@@ -629,7 +629,7 @@ Concrete steps:
    runs `ThinkAct`, surfaces one-line summary).
 2. `memory_write` + `skill_manage` tools; extend `LoadMemoryFiles` for the
    "auto" source.
-3. Review prompt templates (memory / skill / combined) rewritten for gen-code
+3. Review prompt templates (memory / skill / combined) rewritten for san
    terminology.
 4. Add the `selfLearn` settings section (§3.1); wire-up in `Task.Start` /
    `stopLocked` — start the reviewer only when ≥1 arm is enabled, pass enabled
@@ -648,10 +648,10 @@ Concrete steps:
 
 - **User-level auto-memory?** Hermes has `USER.md` (global) alongside
   `MEMORY.md`; Claude Code has user-level `~/.claude/CLAUDE.md` alongside
-  project `CLAUDE.md`. gen-code L1 currently writes only to project-partitioned
+  project `CLAUDE.md`. san L1 currently writes only to project-partitioned
   memory, so cross-project user persona ("I prefer terse output") would be
   re-learned per repo. Options: (a) accept and let the user curate
-  `~/.gen/GEN.md` by hand; (b) extend L1 to choose user vs project level,
+  `~/.san/SAN.md` by hand; (b) extend L1 to choose user vs project level,
   mirroring how skills already do. Recommend (b) once Phase 1 is stable.
 - **Topic-file count is unbounded.** Per-file cap (25 KB) bounds size but
   not count — the reviewer can keep creating new topics indefinitely. L1's
@@ -662,10 +662,10 @@ Concrete steps:
   the hard guarantee against drift comes from L2 using usage telemetry to
   retire what nobody invokes.
 - **Commit agent-created project skills?** They live in-repo at
-  `./.gen/skills/` mixed with user skills (distinguished by `origin`). Team
+  `./.san/skills/` mixed with user skills (distinguished by `origin`). Team
   choice whether to commit auto-generated ones; can be filtered by `origin`.
 - **Cache parity on non-Anthropic providers** — verify system-prompt
-  inheritance helps (or at least doesn't hurt) across gen-code's providers.
+  inheritance helps (or at least doesn't hurt) across san's providers.
 - **Usage telemetry** — whether to land the minimal usage log in this phase
   (for the future L2) or defer it entirely.
 
@@ -677,10 +677,10 @@ Concrete steps:
   triggers in `agent/conversation_loop.py` (memory `:387–394`, skill
   `:4046–4051`, guard `:4062`). L2 (for context): `agent/curator.py`.
 - Claude Code memory model: <https://code.claude.com/docs/en/memory>.
-- gen-code turn loop & outbox: `internal/core/agent_impl.go`.
-- gen-code injection side (built): `internal/reminder` providers, PostCompact re-emit.
+- san turn loop & outbox: `internal/core/agent_impl.go`.
+- san injection side (built): `internal/reminder` providers, PostCompact re-emit.
 - Session wire-up: `internal/agent/session.go` (`Task.Start`).
 - Permission model: `internal/agent/permission.go` (`PermissionBridge` —
   avoid), `internal/tool/perm` (static funcs L1 uses).
-- Parent issue: <https://github.com/genai-io/gen-code/issues/46>;
-  L1: <https://github.com/genai-io/gen-code/issues/52>.
+- Parent issue: <https://github.com/genai-io/san/issues/46>;
+  L1: <https://github.com/genai-io/san/issues/52>.

@@ -10,7 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/log"
 )
 
 // Loader handles loading and merging settings from multiple sources.
@@ -21,7 +22,7 @@ type Loader struct {
 	claudeCompat bool
 }
 
-// NewLoader creates a loader with default paths (~/.gen, .gen) and Claude compatibility enabled.
+// NewLoader creates a loader with default paths (~/.san, .san) and Claude compatibility enabled.
 func NewLoader() *Loader {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -29,11 +30,11 @@ func NewLoader() *Loader {
 	}
 	userDir := ""
 	if homeDir != "" {
-		userDir = filepath.Join(homeDir, ".gen")
+		userDir = confdir.Dir(homeDir)
 	}
 	return &Loader{
 		userDir:      userDir,
-		projectDir:   ".gen",
+		projectDir:   confdir.Dir("."),
 		projectRoot:  ".",
 		claudeCompat: true,
 	}
@@ -57,11 +58,11 @@ func NewLoaderForCwd(cwd string) *Loader {
 	}
 	userDir := ""
 	if homeDir != "" {
-		userDir = filepath.Join(homeDir, ".gen")
+		userDir = confdir.Dir(homeDir)
 	}
 	return &Loader{
 		userDir:      userDir,
-		projectDir:   filepath.Join(cwd, ".gen"),
+		projectDir:   confdir.Dir(cwd),
 		projectRoot:  cwd,
 		claudeCompat: true,
 	}
@@ -69,18 +70,18 @@ func NewLoaderForCwd(cwd string) *Loader {
 
 // Load loads and merges settings from all sources in priority order (lowest to highest):
 //  1. ~/.claude/settings.json
-//  2. ~/.gen/settings.json
+//  2. ~/.san/settings.json
 //  3. .claude/settings.json
-//  4. .gen/settings.json
+//  4. .san/settings.json
 //  5. .claude/settings.local.json
-//  6. .gen/settings.local.json
+//  6. .san/settings.local.json
 func (l *Loader) Load() (*Data, error) {
 	homeDir, _ := os.UserHomeDir()
 
-	// Two-phase loading: first load Claude-compat settings, then GenCode-native.
-	// For hooks, GenCode-native settings override Claude-compat settings per event
+	// Two-phase loading: first load Claude-compat settings, then San-native.
+	// For hooks, San-native settings override Claude-compat settings per event
 	// to prevent incompatible hooks (e.g., Claude Code's interactive protocol)
-	// from blocking GenCode's own hooks.
+	// from blocking San's own hooks.
 
 	type source struct {
 		path         string
@@ -103,7 +104,7 @@ func (l *Loader) Load() (*Data, error) {
 	}
 	sources = append(sources, source{filepath.Join(l.projectDir, "settings.local.json"), false})
 
-	// Collect hooks separately: Claude-compat hooks and GenCode-native hooks.
+	// Collect hooks separately: Claude-compat hooks and San-native hooks.
 	// For native hooks, higher-priority sources REPLACE lower-priority sources
 	// per event (project overrides user, local overrides project).
 	claudeHooks := make(map[string][]Hook)
@@ -128,7 +129,7 @@ func (l *Loader) Load() (*Data, error) {
 
 		// Accumulate hooks by source type.
 		// Native hooks: higher-priority sources replace lower-priority per event.
-		// This means project .gen/settings.json can set "PermissionRequest": []
+		// This means project .san/settings.json can set "PermissionRequest": []
 		// to disable user-level PermissionRequest hooks.
 		for event, hooks := range srcHooks {
 			if src.claudeCompat {
@@ -142,7 +143,7 @@ func (l *Loader) Load() (*Data, error) {
 	// Merge hooks: for each event, use native hooks if available, otherwise use Claude-compat hooks.
 	// PermissionRequest hooks are NEVER inherited from Claude-compat sources because
 	// Claude Code's interactive permission protocol (e.g., vibe-island-bridge) is
-	// incompatible with GenCode's TUI-based approval flow and can cause hangs.
+	// incompatible with San's TUI-based approval flow and can cause hangs.
 	merged := make(map[string][]Hook)
 	for event, hooks := range claudeHooks {
 		if event == "PermissionRequest" {
@@ -336,7 +337,7 @@ func GetDisabledTools() map[string]bool {
 }
 
 // GetDisabledToolsAt returns disabled tools from a single settings file (not merged).
-// userLevel=true reads from ~/.gen/settings.json; false reads from .gen/settings.json.
+// userLevel=true reads from ~/.san/settings.json; false reads from .san/settings.json.
 func GetDisabledToolsAt(userLevel bool) map[string]bool {
 	loader := NewLoader()
 	path := filepath.Join(loader.projectDir, "settings.json")
@@ -400,7 +401,7 @@ func LoadTheme() string {
 	return s.Theme
 }
 
-// SaveTheme persists the chosen theme to ~/.gen/settings.json.
+// SaveTheme persists the chosen theme to ~/.san/settings.json.
 func SaveTheme(t string) error {
 	if err := NewLoader().SaveToUser(&Data{Theme: t}); err != nil {
 		return err
@@ -411,7 +412,7 @@ func SaveTheme(t string) error {
 	return nil
 }
 
-// SaveIdentity persists the chosen identity name to ~/.gen/settings.json.
+// SaveIdentity persists the chosen identity name to ~/.san/settings.json.
 // An empty name clears the override so the built-in default is used.
 //
 // Bypasses mergeSettings (which preserves existing string fields when the

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/plugin"
+	"github.com/genai-io/san/internal/plugin"
 )
 
 var testPluginDir string
@@ -190,10 +190,10 @@ func TestClaudeCodeCompatibility(t *testing.T) {
 
 	genContent, err := os.ReadFile(genManifest)
 	if err != nil {
-		t.Fatalf("Failed to read GenCode manifest: %v", err)
+		t.Fatalf("Failed to read San manifest: %v", err)
 	}
 	if err := json.Unmarshal(genContent, &genData); err != nil {
-		t.Fatalf("Failed to parse GenCode manifest: %v", err)
+		t.Fatalf("Failed to parse San manifest: %v", err)
 	}
 
 	claudeContent, err := os.ReadFile(claudeManifest)
@@ -206,10 +206,10 @@ func TestClaudeCodeCompatibility(t *testing.T) {
 
 	// Verify they have the same core fields
 	if genData["name"] != claudeData["name"] {
-		t.Errorf("Name mismatch: GenCode=%v, Claude=%v", genData["name"], claudeData["name"])
+		t.Errorf("Name mismatch: San=%v, Claude=%v", genData["name"], claudeData["name"])
 	}
 	if genData["version"] != claudeData["version"] {
-		t.Errorf("Version mismatch: GenCode=%v, Claude=%v", genData["version"], claudeData["version"])
+		t.Errorf("Version mismatch: San=%v, Claude=%v", genData["version"], claudeData["version"])
 	}
 }
 

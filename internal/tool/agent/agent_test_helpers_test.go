@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/tool"
 )
 
 type stubSendMessageExecutor struct {

@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 type replayState struct {

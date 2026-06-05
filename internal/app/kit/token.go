@@ -3,8 +3,8 @@ package kit
 import (
 	"fmt"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // TokenLimitResultMsg is sent when a token limit fetch completes.

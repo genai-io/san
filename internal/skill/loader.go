@@ -6,7 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/markdown"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/markdown"
 
 	"gopkg.in/yaml.v3"
 )
@@ -55,15 +56,15 @@ func (l *loader) getSearchPaths() []searchPath {
 		scope: ScopeClaudeUser,
 	})
 
-	// 2. User plugins from ~/.gen/plugins/installed_plugins.json
+	// 2. User plugins from ~/.san/plugins/installed_plugins.json
 	paths = append(paths, l.getPluginPaths(
-		filepath.Join(homeDir, ".gen", "plugins"),
+		filepath.Join(confdir.Dir(homeDir), "plugins"),
 		ScopeUserPlugin,
 	)...)
 
-	// 3. ~/.gen/skills/ (User level)
+	// 3. ~/.san/skills/ (User level)
 	paths = append(paths, searchPath{
-		path:  filepath.Join(homeDir, ".gen", "skills"),
+		path:  filepath.Join(confdir.Dir(homeDir), "skills"),
 		scope: ScopeUser,
 	})
 
@@ -73,15 +74,15 @@ func (l *loader) getSearchPaths() []searchPath {
 		scope: ScopeClaudeProject,
 	})
 
-	// 5. Project plugins from .gen/plugins/installed_plugins.json
+	// 5. Project plugins from .san/plugins/installed_plugins.json
 	paths = append(paths, l.getPluginPaths(
-		filepath.Join(l.cwd, ".gen", "plugins"),
+		filepath.Join(confdir.Dir(l.cwd), "plugins"),
 		ScopeProjectPlugin,
 	)...)
 
-	// 6. .gen/skills/ (Project level - highest priority)
+	// 6. .san/skills/ (Project level - highest priority)
 	paths = append(paths, searchPath{
-		path:  filepath.Join(l.cwd, ".gen", "skills"),
+		path:  filepath.Join(confdir.Dir(l.cwd), "skills"),
 		scope: ScopeProject,
 	})
 

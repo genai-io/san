@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // TestApprovalModalDigitKeysFollowOptionOrder confirms the digit key dispatch

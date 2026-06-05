@@ -1,4 +1,4 @@
-// Package subagent provides subagent execution for GenCode.
+// Package subagent provides subagent execution for San.
 // Subagents are specialized LLM instances that can be spawned to handle
 // specific tasks with isolated contexts and tool restrictions.
 package subagent
@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 

@@ -1,14 +1,14 @@
 # Changelog
 
-All notable changes to Gen Code are documented here.
+All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [v1.19.3] - 2026-06-03
 
 ### Added
-- Scroll command suggestions in TUI ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/gen-code/commit/9dbb55a))
-- Quit/exit commands ([@hchenxa](https://github.com/hchenxa) in [#83](https://github.com/genai-io/gen-code/pull/83))
-- OWNERS file ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/gen-code/commit/9dbb55a))
+- Scroll command suggestions in TUI ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/san/commit/9dbb55a))
+- Quit/exit commands ([@hchenxa](https://github.com/hchenxa) in [#83](https://github.com/genai-io/san/pull/83))
+- OWNERS file ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/san/commit/9dbb55a))
 
 ## [v1.19.2] - 2026-06-02
 
@@ -155,7 +155,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Permission system with mode-based access control for agents and tools.
 - Subagent matching and routing logic.
-- Permission docs (`docs/claude-permission.md`, `docs/gen-permission.md`).
+- Permission docs (`docs/claude-permission.md`, `docs/san-permission.md`).
 
 ### Changed
 - Subagent executor / loader / registry refactored for type safety.

@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gen Code — Open-source unified agent runtime for the terminal</title>
-<meta name="description" content="Gen Code is a terminal-native unified runtime for specialized agents: a single Go binary, pluggable LLM providers, fully compatible with Claude Code skills, plugins, and MCP. 20x faster startup, 5x smaller than Claude Code.">
-<meta property="og:title" content="Gen Code — Unified agent runtime for the terminal">
+<title>San — Open-source unified agent runtime for the terminal</title>
+<meta name="description" content="San is a terminal-native unified runtime for specialized agents: a single Go binary, pluggable LLM providers, fully compatible with Claude Code skills, plugins, and MCP. 20x faster startup, 5x smaller than Claude Code.">
+<meta property="og:title" content="San — Unified agent runtime for the terminal">
 <meta property="og:description" content="Single Go binary. Pluggable LLM providers. Claude Code compatible. 20x faster startup.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://genai-io.github.io/gen-code/">
-<meta property="og:image" content="https://genai-io.github.io/gen-code/gen-code.png">
+<meta property="og:url" content="https://genai-io.github.io/san/">
+<meta property="og:image" content="https://genai-io.github.io/san/gen-code.png">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
 <link rel="stylesheet" href="style.css">
@@ -18,45 +18,46 @@
 
 <nav>
   <div class="wrap">
-    <span class="logo">&lt; GEN <span class="spark">✦</span> /&gt;</span>
+    <span class="logo">&lt; SAN <span class="spark">✦</span> /&gt;</span>
     <div class="nav-links">
       <a href="#features">Features</a>
       <a href="#benchmark">Benchmark</a>
       <a href="intro.html">Intro</a>
       <a href="getting-started.html">Get Started</a>
       <a href="docs.html">Docs</a>
-      <a class="nav-cta" href="https://github.com/genai-io/gen-code">★ Star on GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">★ Star on GitHub</a>
     </div>
   </div>
 </nav>
 
 <header class="hero">
   <div class="wrap">
-    <h1>Gen Code — the AI agent<br>that <span class="grad">lives in your terminal</span></h1>
+    <h1>San — the unified agent<br>that <span class="grad">lives in your terminal</span></h1>
+    <p class="sub">One runtime, many agents — <strong>evolving as you work.</strong></p>
 
     <div class="intro-embed">
-      <iframe src="intro.html" title="Gen Code — animated intro" loading="lazy" allow="fullscreen"></iframe>
+      <iframe src="intro.html" title="San — animated intro" loading="lazy" allow="fullscreen"></iframe>
     </div>
     <p class="intro-cap"><a href="intro.html" target="_blank" rel="noopener">Watch full screen ↗</a></p>
 
     <div class="badges">
-      <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
-      <a href="https://github.com/genai-io/gen-code/stargazers"><img src="https://img.shields.io/github/stars/genai-io/gen-code?style=flat-square&color=5eead4" alt="Stars"></a>
-      <a href="https://goreportcard.com/report/github.com/genai-io/gen-code"><img src="https://goreportcard.com/badge/github.com/genai-io/gen-code?style=flat-square" alt="Go Report Card"></a>
+      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
+      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=5eead4" alt="Stars"></a>
+      <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
       <img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License">
     </div>
 
     <div class="install">
       <div class="cmd">
         <span class="prompt">$</span>
-        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash</code>
+        <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
         <button class="copy-btn" onclick="copyInstall(this)">Copy</button>
       </div>
     </div>
 
     <div class="hero-actions">
       <a class="btn btn-primary" href="getting-started.html">Get started →</a>
-      <a class="btn btn-ghost" href="https://github.com/genai-io/gen-code">View on GitHub</a>
+      <a class="btn btn-ghost" href="https://github.com/genai-io/san">View on GitHub</a>
     </div>
   </div>
 </header>
@@ -116,7 +117,7 @@
     <div class="bench-wrap">
       <table>
         <thead>
-          <tr><th>Metric</th><th>Gen Code</th><th>Claude Code</th><th>Advantage</th></tr>
+          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Advantage</th></tr>
         </thead>
         <tbody>
           <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller</td></tr>
@@ -128,7 +129,7 @@
         </tbody>
       </table>
     </div>
-    <p class="bench-note">Go native compilation vs Node.js V8/JIT/GC overhead. <a href="https://github.com/genai-io/gen-code/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
+    <p class="bench-note">Go native compilation vs Node.js V8/JIT/GC overhead. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
   </div>
 </section>
 
@@ -138,7 +139,7 @@
       <h2>Try it in 30 seconds</h2>
       <p>Open source under Apache 2.0. Star the repo if it's useful — it genuinely helps.</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="https://github.com/genai-io/gen-code">★ Star on GitHub</a>
+        <a class="btn btn-primary" href="https://github.com/genai-io/san">★ Star on GitHub</a>
         <a class="btn btn-ghost" href="getting-started.html">Get started</a>
       </div>
     </div>
@@ -147,11 +148,11 @@
 
 <footer>
   <div class="wrap">
-    <span>© <span id="year"></span> Gen Code · Apache 2.0</span>
+    <span>© <span id="year"></span> San · Apache 2.0</span>
     <span>
-      <a href="https://github.com/genai-io/gen-code">GitHub</a> ·
-      <a href="https://github.com/genai-io/gen-code/tree/main/docs">Docs</a> ·
-      <a href="https://github.com/genai-io/gen-code/blob/main/CONTRIBUTING.md">Contributing</a>
+      <a href="https://github.com/genai-io/san">GitHub</a> ·
+      <a href="https://github.com/genai-io/san/tree/main/docs">Docs</a> ·
+      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">Contributing</a>
     </span>
   </div>
 </footer>

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // MarketplaceManager manages plugin marketplaces.
@@ -23,7 +25,7 @@ type MarketplaceManager struct {
 // NewMarketplaceManager creates a new marketplace manager.
 func NewMarketplaceManager(cwd string) *MarketplaceManager {
 	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".gen", "plugins")
+	configDir := filepath.Join(confdir.Dir(homeDir), "plugins")
 	return &MarketplaceManager{
 		cwd:             cwd,
 		marketplaces:    make(map[string]MarketplaceEntry),
@@ -349,8 +351,8 @@ func (m *MarketplaceManager) ListPlugins(marketplaceID string) ([]string, error)
 
 // isValidPlugin checks if a directory contains a valid plugin.
 func isValidPlugin(path string) bool {
-	// Check for .gen-plugin or .claude-plugin manifest
-	for _, metaDir := range []string{".gen-plugin", ".claude-plugin"} {
+	// Check for .san-plugin, .gen-plugin, or .claude-plugin manifest
+	for _, metaDir := range []string{SanPluginDir, GenPluginDir, ClaudePluginDir} {
 		manifestPath := filepath.Join(path, metaDir, "plugin.json")
 		if _, err := os.Stat(manifestPath); err == nil {
 			return true
@@ -373,8 +375,9 @@ func (m *MarketplaceManager) GetMarketplaceMetadata(marketplaceID string) (*Mark
 	}
 
 	searchPaths := []string{
-		filepath.Join(basePath, ".claude-plugin", "marketplace.json"),
-		filepath.Join(basePath, ".gen-plugin", "marketplace.json"),
+		filepath.Join(basePath, ClaudePluginDir, "marketplace.json"),
+		filepath.Join(basePath, SanPluginDir, "marketplace.json"),
+		filepath.Join(basePath, GenPluginDir, "marketplace.json"),
 		filepath.Join(basePath, "marketplace.json"),
 	}
 

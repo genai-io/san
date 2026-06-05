@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/input"
+	"github.com/genai-io/san/internal/app/input"
 )
 
 func (m *model) slashCommandEnv() input.SlashCommandEnv {

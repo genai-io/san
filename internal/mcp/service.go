@@ -7,7 +7,7 @@
 //   - Tools   — list MCP tool schemas, call one by name.
 //   - Servers — list configured MCP servers, connect/disconnect, look up config.
 //
-// Config editing (used by `gen mcp edit`) is exposed as the two free
+// Config editing (used by `san mcp edit`) is exposed as the two free
 // functions PrepareServerEdit / ApplyServerEdit. Full server-state
 // mutation (RemoveServer / SetDisabled / SetConnectError / …) is
 // available on the concrete *Registry — only the TUI /mcp selector
@@ -22,7 +22,7 @@ package mcp
 import (
 	"context"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // Tools lets a caller list and execute MCP tools across all connected

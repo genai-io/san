@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 // AgentConfigInfo holds display info for a single agent configuration.

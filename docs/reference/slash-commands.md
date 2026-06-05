@@ -18,7 +18,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/agents` | Manage agents |
 | `/tokenlimit` | View / set token budget |
 | `/compact` | Compress conversation history |
-| `/init` | Create GEN.md and config files |
+| `/init` | Create SAN.md and config files |
 | `/memory` | View / edit memory files |
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |
@@ -47,9 +47,9 @@ Covered:
 TestHandlerRegistryMatchesBuiltinCommands — all 20 commands registered
 TestExecuteCommandExit                    — /exit returns quit command
 TestExecuteCommandUnknown                 — unknown commands show error message
-TestHandleInitCommand                     — /init creates .gen/GEN.md file
-TestHandleInitCommand (local)             — /init local creates .gen/GEN.local.md
-TestHandleInitCommand (rules)             — /init rules creates .gen/rules directory
+TestHandleInitCommand                     — /init creates .san/SAN.md file
+TestHandleInitCommand (local)             — /init local creates .san/SAN.local.md
+TestHandleInitCommand (rules)             — /init rules creates .san/rules directory
 TestHandleMemoryList                      — /memory list formats output with sections
 TestExecuteCommandLoopSchedulesRecurringPrompt
                                          — /loop recurring path is registered and handled
@@ -107,7 +107,7 @@ func TestSlashSkills_TogglesState(t *testing.T) {
 
 ```bash
 tmux new-session -d -s t_cmds -x 220 -y 60
-tmux send-keys -t t_cmds 'gen' Enter
+tmux send-keys -t t_cmds 'san' Enter
 sleep 2
 
 # Test 1: /help
@@ -157,16 +157,16 @@ tmux capture-pane -t t_cmds -p
 
 # Test 8: /init — test in a fresh directory
 tmux send-keys -t t_cmds C-c
-tmux send-keys -t t_cmds 'mkdir -p /tmp/init_test && cd /tmp/init_test && gen' Enter
+tmux send-keys -t t_cmds 'mkdir -p /tmp/init_test && cd /tmp/init_test && san' Enter
 sleep 2
 tmux send-keys -t t_cmds '/init' Enter
 sleep 3
-ls /tmp/init_test/.gen/
-# Expected: GEN.md created under .gen/
+ls /tmp/init_test/.san/
+# Expected: SAN.md created under .san/
 
 # Test 9: Command suggestion dropdown
 tmux send-keys -t t_cmds C-c
-tmux send-keys -t t_cmds 'gen' Enter
+tmux send-keys -t t_cmds 'san' Enter
 sleep 2
 tmux send-keys -t t_cmds '/mod'
 sleep 1

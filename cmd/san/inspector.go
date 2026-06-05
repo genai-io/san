@@ -16,8 +16,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/genai-io/gen-code/internal/inspector"
-	"github.com/genai-io/gen-code/internal/session"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/inspector"
+	"github.com/genai-io/san/internal/session"
 )
 
 var (
@@ -35,7 +36,7 @@ var inspectorCmd = &cobra.Command{
 	Use:   "inspector",
 	Short: "Open the local inspector for this project's sessions",
 	Long: `Launch a localhost web server that visualizes session transcripts
-recorded under ~/.gen/projects/<encoded-cwd>/transcripts/. The inspector
+recorded under ~/.san/projects/<encoded-cwd>/transcripts/. The inspector
 is read-only and runs until Ctrl-C.
 
 By default the server binds 127.0.0.1 on a random port and opens the page
@@ -51,7 +52,7 @@ in your default browser. Use --no-open to skip the browser launch and
 		// Sanity: warn if no transcripts have been recorded yet but still serve.
 		txDir := filepath.Join(projectDir, "transcripts")
 		if _, err := os.Stat(txDir); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Note: no transcripts found at %s — start a gen session to populate it.\n", txDir)
+			fmt.Fprintf(os.Stderr, "Note: no transcripts found at %s — start a san session to populate it.\n", txDir)
 		}
 
 		// Refuse to bind to anything that isn't loopback — guards against a
@@ -78,7 +79,7 @@ in your default browser. Use --no-open to skip the browser launch and
 			_ = srv.Shutdown(shutCtx)
 		}()
 
-		fmt.Printf("gen inspector: serving %s\n  project: %s\n", url, projectDir)
+		fmt.Printf("san inspector: serving %s\n  project: %s\n", url, projectDir)
 		if !inspectorNoOpen {
 			openBrowser(url)
 		}
@@ -90,12 +91,12 @@ in your default browser. Use --no-open to skip the browser launch and
 	},
 }
 
-// projectDirFor returns ~/.gen/projects/<encoded-cwd>. Mirrors
+// projectDirFor returns ~/.san/projects/<encoded-cwd>. Mirrors
 // session.encodePath without importing internals.
 func projectDirFor(cwd string) string {
 	home, _ := os.UserHomeDir()
 	encoded := session.EncodePath(cwd)
-	return filepath.Join(home, ".gen", "projects", encoded)
+	return filepath.Join(confdir.Dir(home), "projects", encoded)
 }
 
 // requireLoopback rejects any bind address whose host isn't 127.0.0.1/::1.

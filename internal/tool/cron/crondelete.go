@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/gen-code/internal/cron"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // CronDeleteTool cancels a scheduled cron job.

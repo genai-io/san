@@ -1,6 +1,6 @@
 package tool
 
-import "github.com/genai-io/gen-code/internal/core"
+import "github.com/genai-io/san/internal/core"
 
 // Tool name constants used in runtime comparisons across the codebase.
 const (

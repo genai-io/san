@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // IsIdentityFile reports whether path points at a loadable identity markdown
@@ -13,8 +15,10 @@ func IsIdentityFile(cwd, path string) bool {
 		return false
 	}
 	// Cheap substring guard before paying for filepath.Abs/UserHomeDir on
-	// every Write/Edit tool result.
-	if !strings.Contains(filepath.ToSlash(path), "/.gen/identities/") {
+	// every Write/Edit tool result. Accept both the current and pre-rename dir.
+	slash := filepath.ToSlash(path)
+	if !strings.Contains(slash, "/"+confdir.Name+"/identities/") &&
+		!strings.Contains(slash, "/"+confdir.LegacyName+"/identities/") {
 		return false
 	}
 	abs, err := filepath.Abs(path)
@@ -30,12 +34,19 @@ func IsIdentityFile(cwd, path string) bool {
 }
 
 func identityDirs(cwd string) []string {
-	dirs := make([]string, 0, 2)
+	var roots []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, ".gen", "identities"))
+		roots = append(roots, home)
 	}
 	if cwd != "" {
-		dirs = append(dirs, filepath.Join(cwd, ".gen", "identities"))
+		roots = append(roots, cwd)
+	}
+	// Recognize identities under both the current (.san) and pre-rename (.gen)
+	// config dirs so an edit to either is classified correctly.
+	dirs := make([]string, 0, len(roots)*2)
+	for _, root := range roots {
+		dirs = append(dirs, filepath.Join(root, confdir.Name, "identities"))
+		dirs = append(dirs, filepath.Join(root, confdir.LegacyName, "identities"))
 	}
 	return dirs
 }

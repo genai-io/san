@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 const maxHistoryEntries = 500
@@ -13,10 +15,10 @@ const maxHistoryEntries = 500
 func historyFilePath(cwd string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(cwd, ".gen", "history")
+		return filepath.Join(confdir.Dir(cwd), "history")
 	}
 	encoded := strings.ReplaceAll(strings.TrimSuffix(cwd, "/"), "/", "-")
-	return filepath.Join(homeDir, ".gen", "projects", encoded, "history")
+	return filepath.Join(confdir.Dir(homeDir), "projects", encoded, "history")
 }
 
 func escapeEntry(entry string) string {

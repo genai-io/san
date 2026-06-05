@@ -6,10 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 const (
-	// GenPluginDir is the directory containing plugin metadata for GenCode
+	// SanPluginDir is the directory containing plugin metadata for San
+	SanPluginDir = ".san-plugin"
+
+	// GenPluginDir is the pre-rename plugin metadata directory, still
+	// recognized for back-compat with plugins authored before the rename.
 	GenPluginDir = ".gen-plugin"
 
 	// ClaudePluginDir is the directory containing plugin metadata for Claude Code
@@ -20,7 +26,8 @@ const (
 )
 
 // LoadPlugin loads a plugin from a directory.
-// It looks for either .gen-plugin/plugin.json or .claude-plugin/plugin.json.
+// It looks for .san-plugin/plugin.json, .gen-plugin/plugin.json, or
+// .claude-plugin/plugin.json.
 func LoadPlugin(path string, scope Scope, source string) (*Plugin, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -59,24 +66,18 @@ func LoadPlugin(path string, scope Scope, source string) (*Plugin, error) {
 	return plugin, nil
 }
 
-// loadManifest loads the plugin manifest from either .gen-plugin or .claude-plugin.
+// loadManifest loads the plugin manifest from .san-plugin, the legacy
+// .gen-plugin, or .claude-plugin (in that order of preference).
 func loadManifest(pluginPath string) (*Manifest, error) {
-	// Try GenCode manifest first
-	genPath := filepath.Join(pluginPath, GenPluginDir, ManifestFile)
-	if data, err := os.ReadFile(genPath); err == nil {
-		var manifest Manifest
-		if err := json.Unmarshal(data, &manifest); err != nil {
-			return nil, fmt.Errorf("invalid manifest %s: %w", genPath, err)
+	for _, metaDir := range []string{SanPluginDir, GenPluginDir, ClaudePluginDir} {
+		path := filepath.Join(pluginPath, metaDir, ManifestFile)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
 		}
-		return &manifest, nil
-	}
-
-	// Try Claude Code manifest
-	claudePath := filepath.Join(pluginPath, ClaudePluginDir, ManifestFile)
-	if data, err := os.ReadFile(claudePath); err == nil {
 		var manifest Manifest
 		if err := json.Unmarshal(data, &manifest); err != nil {
-			return nil, fmt.Errorf("invalid manifest %s: %w", claudePath, err)
+			return nil, fmt.Errorf("invalid manifest %s: %w", path, err)
 		}
 		return &manifest, nil
 	}
@@ -121,8 +122,8 @@ func LoadPluginsFromDir(dir string, scope Scope, sourcePrefix string) ([]*Plugin
 
 		name := entry.Name()
 
-		// Skip hidden directories (except .claude* and .gen*)
-		if strings.HasPrefix(name, ".") && !strings.HasPrefix(name, ".claude") && !strings.HasPrefix(name, ".gen") {
+		// Skip hidden directories (except .claude*, .san*, and the legacy .gen*)
+		if strings.HasPrefix(name, ".") && !strings.HasPrefix(name, ".claude") && !strings.HasPrefix(name, ".san") && !strings.HasPrefix(name, ".gen") {
 			continue
 		}
 
@@ -272,13 +273,13 @@ func GetPluginDirs(cwd string) map[Scope][]string {
 
 	return map[Scope][]string{
 		ScopeUser: {
-			filepath.Join(homeDir, ".gen", "plugins"),
+			filepath.Join(confdir.Dir(homeDir), "plugins"),
 		},
 		ScopeProject: {
-			filepath.Join(cwd, ".gen", "plugins"),
+			filepath.Join(confdir.Dir(cwd), "plugins"),
 		},
 		ScopeLocal: {
-			filepath.Join(cwd, ".gen", "plugins-local"),
+			filepath.Join(confdir.Dir(cwd), "plugins-local"),
 		},
 	}
 }

@@ -1,6 +1,6 @@
 # LLM 提供商详解
 
-Gen Code 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/gen/main.go`](../../cmd/gen/main.go) 中自动注册。
+San 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
 
 ---
 
@@ -37,16 +37,16 @@ type ThinkingEffortProvider interface {
 每个提供商实现包导出一个 `init()` 函数，在包被导入时自动注册：
 
 ```go
-// 在 cmd/gen/main.go 中
+// 在 cmd/san/main.go 中
 import (
-    _ "github.com/genai-io/gen-code/internal/llm/anthropic"
-    _ "github.com/genai-io/gen-code/internal/llm/openai"
-    _ "github.com/genai-io/gen-code/internal/llm/google"
-    _ "github.com/genai-io/gen-code/internal/llm/moonshot"
-    _ "github.com/genai-io/gen-code/internal/llm/alibaba"
-    _ "github.com/genai-io/gen-code/internal/llm/minmax"
-    _ "github.com/genai-io/gen-code/internal/llm/bigmodel"
-    _ "github.com/genai-io/gen-code/internal/llm/deepseek"
+    _ "github.com/genai-io/san/internal/llm/anthropic"
+    _ "github.com/genai-io/san/internal/llm/openai"
+    _ "github.com/genai-io/san/internal/llm/google"
+    _ "github.com/genai-io/san/internal/llm/moonshot"
+    _ "github.com/genai-io/san/internal/llm/alibaba"
+    _ "github.com/genai-io/san/internal/llm/minmax"
+    _ "github.com/genai-io/san/internal/llm/bigmodel"
+    _ "github.com/genai-io/san/internal/llm/deepseek"
 )
 ```
 
@@ -96,7 +96,7 @@ func init() {
 off → low → medium → high → maximum
 ```
 
-**配置示例**（`~/.gen/providers.json`）：
+**配置示例**（`~/.san/providers.json`）：
 ```json
 {
   "anthropic": {
@@ -230,7 +230,7 @@ func (s *ClientFactory) Store() *Store
 
 ## 搜索后端
 
-除了 LLM 提供商，Gen Code 也支持可插拔的搜索后端（用于 WebSearch 工具）：
+除了 LLM 提供商，San 也支持可插拔的搜索后端（用于 WebSearch 工具）：
 
 | 后端 | API 变量 | 说明 |
 |------|----------|------|

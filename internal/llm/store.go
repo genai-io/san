@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 const (
@@ -65,7 +67,7 @@ func NewStore() (*Store, error) {
 		return nil, err
 	}
 
-	configDir := filepath.Join(homeDir, ".gen")
+	configDir := confdir.Dir(homeDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return nil, err
 	}

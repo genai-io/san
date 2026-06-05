@@ -7,7 +7,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
 
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // VertexMeta is the metadata for Anthropic via Vertex AI

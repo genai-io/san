@@ -3,7 +3,7 @@ package anthropic
 import (
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/llm"
 )
 
 const (

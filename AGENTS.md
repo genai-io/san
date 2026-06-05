@@ -1,11 +1,11 @@
-# Gen Code Agent Guide
+# San Agent Guide
 
 This file is the short navigation map for agents and contributors. Keep durable
 knowledge in `docs/`; keep this file focused on where to look and what rules to
 follow before changing code.
 
 `AGENTS.md` is a static navigation aid for whoever opens the repository.
-`GEN.md` and `CLAUDE.md` at the project root are loaded into the running
+`SAN.md` and `CLAUDE.md` at the project root are loaded into the running
 agent's system prompt at startup — they belong to runtime context, not to
 this file. Do not mix the two.
 
@@ -21,7 +21,7 @@ this file. Do not mix the two.
 
 ## Repository Shape
 
-- `cmd/gen`: CLI entrypoint and command wiring.
+- `cmd/san`: CLI entrypoint and command wiring.
 - `internal/app`: Bubble Tea TUI shell, model composition, event routing.
 - `internal/core`: stable agent, message, tool, and system-prompt contracts.
 - `internal/agent`: agent construction and session-facing runtime setup.

@@ -53,7 +53,7 @@ func renderWelcome(info welcomeInfo) string {
 		dim     = lipgloss.NewStyle().Foreground(welcomeDim)
 	)
 
-	header := bracket.Render("< ") + brand.Render("GEN") + " " + star.Render("✦") + " " + bracket.Render("/>")
+	header := bracket.Render("< ") + brand.Render("SAN") + " " + star.Render("✦") + " " + bracket.Render("/>")
 
 	parts := []string{header}
 	if proj := projectName(info.CWD); proj != "" {
@@ -84,7 +84,7 @@ func projectName(p string) string {
 }
 
 func printWelcomePlain(info welcomeInfo) {
-	parts := []string{"< GEN ✦ />"}
+	parts := []string{"< SAN ✦ />"}
 	if proj := projectName(info.CWD); proj != "" {
 		parts = append(parts, proj)
 	}

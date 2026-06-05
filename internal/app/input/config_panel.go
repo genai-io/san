@@ -12,8 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Panel is one /config sub-panel.
