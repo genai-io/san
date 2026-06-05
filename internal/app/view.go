@@ -223,7 +223,7 @@ func (m model) renderTrackerList() string {
 }
 
 func (m model) renderModeStatus() string {
-	modelName := m.env.GetModelDisplayName()
+	modelName := m.env.GetModelID()
 	thinkingEffort := m.env.EffectiveThinkingEffort()
 	showThinking := true
 	if m.env.CurrentModel != nil && m.env.CurrentModel.Provider == llm.OpenAI && thinkingEffort != "" {

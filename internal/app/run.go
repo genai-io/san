@@ -37,7 +37,7 @@ func Run(opts setting.RunOptions) error {
 	// conversation immediately, so a splash would just be churn.
 	if len(m.conv.Messages) == 0 {
 		printWelcome(welcomeInfo{
-			Model: m.services.LLM.ModelID(),
+			Model: m.env.GetModelDisplayName(),
 			CWD:   m.env.CWD,
 		})
 	}

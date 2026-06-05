@@ -85,3 +85,53 @@ func TestStore_SetTokenLimitUpdatesCachedModelCopy(t *testing.T) {
 		t.Fatalf("expected previously returned cached slice to remain unchanged, got %#v", cachedBefore[0])
 	}
 }
+
+// When the same model ID is cached under multiple provider/auth keys — one with
+// a real display name and another that only echoes the raw ID — the display
+// name must be stable across renders. Returning the first map match would
+// flicker because Go randomizes map iteration order; we must deterministically
+// prefer the real display name.
+func TestStore_CachedModelDisplayNamePrefersRealNameAndIsStable(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	// alibaba echoes the raw ID as the display name; deepseek has a real one.
+	if err := store.CacheModels(Alibaba, AuthAPIKey, []ModelInfo{
+		{ID: "deepseek-v4-pro", Name: "deepseek-v4-pro", DisplayName: "deepseek-v4-pro"},
+	}); err != nil {
+		t.Fatalf("CacheModels(alibaba) error = %v", err)
+	}
+	if err := store.CacheModels(DeepSeek, AuthAPIKey, []ModelInfo{
+		{ID: "deepseek-v4-pro", Name: "DeepSeek V4 Pro", DisplayName: "DeepSeek V4 Pro"},
+	}); err != nil {
+		t.Fatalf("CacheModels(deepseek) error = %v", err)
+	}
+
+	// Call many times; with randomized map order an order-dependent
+	// implementation would return both values across iterations.
+	for i := range 100 {
+		if got := store.CachedModelDisplayName("deepseek-v4-pro"); got != "DeepSeek V4 Pro" {
+			t.Fatalf("CachedModelDisplayName() = %q, want %q (unstable/wrong on iteration %d)", got, "DeepSeek V4 Pro", i)
+		}
+	}
+
+	// A model that only ever echoes its ID still falls back to that ID.
+	if err := store.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{
+		{ID: "raw-only", Name: "raw-only", DisplayName: "raw-only"},
+	}); err != nil {
+		t.Fatalf("CacheModels(openai) error = %v", err)
+	}
+	if got := store.CachedModelDisplayName("raw-only"); got != "raw-only" {
+		t.Fatalf("CachedModelDisplayName(raw-only) = %q, want %q", got, "raw-only")
+	}
+
+	// An uncached ID returns "".
+	if got := store.CachedModelDisplayName("missing"); got != "" {
+		t.Fatalf("CachedModelDisplayName(missing) = %q, want empty", got)
+	}
+}
