@@ -16,9 +16,13 @@
   <p>
     <img src="assets/san.png" alt="San" width="100%">
   </p>
-  <p>
-    <a href="https://genai-io.github.io/san/intro.html"><b>▶ Watch the animated intro</b></a>
-  </p>
+  <details>
+    <summary><b>▶ Watch the animated intro</b></summary>
+    <p>
+      <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
+    </p>
+    <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality version ↗</a></sub>
+  </details>
 </div>
 
 San is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.

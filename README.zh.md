@@ -16,9 +16,13 @@
   <p>
     <img src="assets/san.png" alt="San" width="100%">
   </p>
-  <p>
-    <a href="https://genai-io.github.io/san/intro.html"><b>▶ 观看动态简介</b></a>
-  </p>
+  <details>
+    <summary><b>▶ 观看动态简介</b></summary>
+    <p>
+      <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San 动态简介" width="100%"></a>
+    </p>
+    <sub><a href="https://genai-io.github.io/san/intro.html">打开高清完整版 ↗</a></sub>
+  </details>
 </div>
 
 San 是面向终端的**专用 Agent 统一运行时**（Unified Specialized Agent Runtime）—— 不止于编程 —— 构建在五大可插拔能力之上：**模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现。
