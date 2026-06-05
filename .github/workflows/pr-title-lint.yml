@@ -1,0 +1,49 @@
+name: PR Title Lint
+
+# Enforce Conventional Commits format on PR titles.
+# See https://www.conventionalcommits.org/
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/semantic.json
+          sparse-checkout-cone-mode: false
+
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          # Allowed types (align with CONTRIBUTING.md).
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          # Require a scope (e.g. "feat(api): …").
+          requireScope: false
+          # Disallow uppercase-only subjects like "FIX BUG".
+          disallowScopes: |
+            WIP
+            wip
+          # Validate the subject line only (skip body).
+          validateSingleCommit: false
