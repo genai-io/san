@@ -167,6 +167,15 @@ td.adv { color: var(--green); font-weight: 600; }
   padding: 8px 16px; border-radius: 999px; font-size: 14px; color: var(--text);
 }
 
+/* Deploy-anywhere targets */
+.deploy-targets { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 40px; }
+.deploy-targets .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; }
+.deploy-targets .pill code {
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; color: var(--accent);
+}
+.section-sub code { font-family: var(--mono); font-size: 13px; background: var(--bg-soft); padding: 1px 6px; border-radius: 4px; color: var(--accent); }
+
 /* CTA */
 .cta-box {
   background: linear-gradient(120deg, rgba(94,234,212,.08), rgba(129,140,248,.08));

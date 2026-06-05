@@ -21,6 +21,7 @@
     <span class="logo">&lt; SAN <span class="spark">✦</span> /&gt;</span>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#deploy">Deploy</a>
       <a href="#benchmark">Benchmark</a>
       <a href="intro.html">Intro</a>
       <a href="getting-started.html">Get Started</a>
@@ -110,7 +111,23 @@
   </div>
 </section>
 
-<section id="benchmark" style="background: var(--bg-soft);">
+<section id="deploy" style="background: var(--bg-soft);">
+  <div class="wrap">
+    <h2 class="section-title">One binary. Runs anywhere.</h2>
+    <p class="section-sub">A single ~12&nbsp;MB binary, zero runtime dependencies — the same file runs unchanged on a laptop, a cloud node, or a 256&nbsp;MB edge device.</p>
+    <div class="deploy-targets">
+      <span class="pill">💻 macOS &amp; Linux laptops</span>
+      <span class="pill">☁️ Cloud nodes &amp; VMs</span>
+      <span class="pill">📟 ARM edge devices</span>
+      <span class="pill">🐳 <code>scratch</code> containers</span>
+      <span class="pill">⚙️ CI steps &amp; lifecycle hooks</span>
+      <span class="pill">🔒 Air-gapped &amp; locked-down hosts</span>
+    </div>
+    <p class="bench-note">No Node.js, no Python, no <code>node_modules</code>. <a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">Why small matters &amp; where it runs →</a></p>
+  </div>
+</section>
+
+<section id="benchmark">
   <div class="wrap">
     <h2 class="section-title">Faster &amp; leaner than Claude Code</h2>
     <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>) on Apple Silicon, comparable feature set.</p>
@@ -133,7 +150,7 @@
   </div>
 </section>
 
-<section>
+<section style="background: var(--bg-soft);">
   <div class="wrap">
     <div class="cta-box">
       <h2>Try it in 30 seconds</h2>
