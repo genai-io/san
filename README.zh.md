@@ -12,7 +12,7 @@
     <a href="README.md">English</a> · <strong>简体中文</strong>
   </p>
   <p>
-    <img src="assets/gen-code.png" alt="San" width="100%">
+    <img src="assets/san.png" alt="San" width="100%">
   </p>
   <p>
     <a href="https://genai-io.github.io/san/intro.html"><b>▶ 观看动态简介</b></a>
