@@ -90,7 +90,7 @@ func Init() error {
 		MessageKey:     "M",
 		StacktraceKey:  "",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeTime:     zapcore.TimeEncoderOfLayout("15:04:05"),
+		EncodeTime:     zapcore.RFC3339TimeEncoder,
 		EncodeDuration: zapcore.StringDurationEncoder,
 	}
 
