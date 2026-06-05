@@ -36,6 +36,11 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 		baseURL += "/v1"
 	}
 
+	// Update the secrets file
+	if store := secret.Default(); store != nil {
+		_ = store.Set("OLLAMA_BASE_URL", baseURL)
+	}
+
 	// Ollama ignores the Authorization header; "ollama" is a placeholder.
 	client := openai.NewClient(
 		option.WithAPIKey("ollama"),
