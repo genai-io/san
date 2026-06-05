@@ -20,6 +20,9 @@ san_*
 # Dependencies
 vendor/
 
+# Coverage
+coverage.out
+
 # Local config
 .san/*
 !.san/skills/

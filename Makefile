@@ -10,7 +10,7 @@ export CGO_ENABLED := 0
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)
 GOIMPORTS_VERSION := v0.43.0
 
-.PHONY: build build-all install clean release release-push test format format-check lint install-format-tools check-format-tools
+.PHONY: build build-all install clean release release-push test cover format format-check lint install-format-tools check-format-tools
 
 build: format
 	@mkdir -p $(BINDIR)
@@ -58,11 +58,17 @@ lint-layers:
 test:
 	go test ./...
 
+# cover runs the unit tests with the race detector and writes an atomic
+# coverage profile (coverage.out) for upload to Codecov. covermode=atomic
+# is required when -race is enabled.
+cover:
+	go test -race -covermode=atomic -coverprofile=coverage.out ./internal/...
+
 # ci runs everything the GitHub workflow runs, in the same order. Use
 # `make ci` before pushing to catch format / vet / layercheck / test
 # failures locally instead of round-tripping through Actions.
 ci: format-check build-all lint
-	go test ./internal/...
+	$(MAKE) cover
 	go test ./tests/integration/...
 
 clean:
