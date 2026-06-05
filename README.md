@@ -184,6 +184,25 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 - [Aider](https://github.com/paul-gauthier/aider) — AI pair programming in terminal
 - [Continue](https://github.com/continuedev/continue) — Open-source AI code assistant
 
+## Community
+
+Two ways in — WeChat for the Chinese community, Slack for everyone else:
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="50%">
+  <img src="assets/wechat.jpg" alt="WeChat official account 极客外传 QR code" width="200"><br>
+  <sub>关注公众号「极客外传」· 回复 <code>san</code> 或 <code>三</code> 入群</sub>
+</td>
+<td align="center" width="50%">
+  <img src="assets/slack.png" alt="San Slack QR code" width="200"><br>
+  <sub>Scan or <a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join our Slack</a></sub>
+</td>
+</tr>
+</table>
+</div>
+
 ## Contributing
 
 Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

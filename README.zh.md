@@ -184,6 +184,25 @@ commands/*.md      # Slash 命令
 - [Aider](https://github.com/paul-gauthier/aider) —— 终端中的 AI 结对编程
 - [Continue](https://github.com/continuedev/continue) —— 开源 AI 编程助手
 
+## 社区
+
+两个入口 —— 国内用微信，海外用 Slack，欢迎入群一起讨论：
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="50%">
+  <img src="assets/wechat.jpg" alt="极客外传公众号二维码" width="200"><br>
+  <sub>关注公众号「极客外传」· 回复 <code>san</code> 或 <code>三</code> 入群</sub>
+</td>
+<td align="center" width="50%">
+  <img src="assets/slack.png" alt="San Slack 二维码" width="200"><br>
+  <sub>扫码或<a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">点击加入 Slack</a></sub>
+</td>
+</tr>
+</table>
+</div>
+
 ## 贡献
 
 欢迎贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 中的指南。

@@ -371,6 +371,23 @@ td.adv { color: var(--green); font-weight: 600; }
 .cta-box p { color: var(--muted); margin-top: 12px; max-width: 520px; margin-left: auto; margin-right: auto; }
 .cta-box .hero-actions { justify-content: center; }
 
+/* ============================================================ COMMUNITY */
+.qr-row {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 22px; margin-top: 36px;
+}
+.qr-card {
+  flex: 0 1 280px; text-align: center;
+  background: var(--card); border: 1px solid var(--border-2); border-radius: 20px;
+  padding: 26px 24px 20px;
+}
+.qr-card img {
+  display: block; width: 200px; height: 200px; margin: 0 auto;
+  border-radius: 12px; background: #fff;
+}
+.qr-cap { margin-top: 14px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.qr-cap .mono { color: var(--text); }
+
 /* ============================================================ FOOTER */
 footer { border-top: 1px solid var(--border); padding: 40px 0; color: var(--muted); font-size: 13.5px; margin-top: 20px; }
 footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; align-items: center; }
