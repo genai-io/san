@@ -110,6 +110,28 @@ func ParsePluginRef(ref string) (name, marketplace string) {
 	return name, marketplace
 }
 
+// FormatPluginRef builds a plugin reference from a name and optional
+// marketplace. It is the inverse of ParsePluginRef: an empty marketplace
+// yields just the name, otherwise "name@marketplace".
+func FormatPluginRef(name, marketplace string) string {
+	if marketplace == "" {
+		return name
+	}
+	return name + "@" + marketplace
+}
+
+// Install wires a fresh installer to reg/cwd, loads known marketplaces, and
+// installs the plugin referenced by ref ("name@marketplace" or "name") into
+// scope. It bundles the marketplace-load step every caller needs so call sites
+// don't repeat the sequence; cancellation and timeout are the caller's via ctx.
+func Install(ctx context.Context, reg *Registry, cwd, ref string, scope Scope) error {
+	installer := NewInstaller(reg, cwd)
+	if err := installer.LoadMarketplaces(); err != nil {
+		return fmt.Errorf("load marketplaces: %w", err)
+	}
+	return installer.Install(ctx, ref, scope)
+}
+
 // Install installs a plugin from a reference.
 // Reference format: "plugin-name@marketplace" or "plugin-name" (uses default)
 func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error {

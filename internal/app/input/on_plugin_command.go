@@ -256,13 +256,8 @@ func pluginHandleInstall(reg *coreplugin.Registry, ctx context.Context, cwd stri
 		}
 	}
 
-	installer := coreplugin.NewInstaller(reg, cwd)
-	if err := installer.LoadMarketplaces(); err != nil {
-		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
-	}
-
 	ref := args[0]
-	if err := installer.Install(ctx, ref, scope); err != nil {
+	if err := coreplugin.Install(ctx, reg, cwd, ref, scope); err != nil {
 		return fmt.Sprintf("Failed to install plugin '%s': %v", ref, err), nil
 	}
 

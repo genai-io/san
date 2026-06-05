@@ -284,20 +284,10 @@ func pluginInstallCmd(reg *coreplugin.Registry, cwd string, msg PluginInstallMsg
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
-		installer := coreplugin.NewInstaller(reg, cwd)
-		if err := installer.LoadMarketplaces(); err != nil {
+		ref := coreplugin.FormatPluginRef(msg.PluginName, msg.Marketplace)
+		if err := coreplugin.Install(ctx, reg, cwd, ref, msg.Scope); err != nil {
 			return PluginInstallResultMsg{PluginName: msg.PluginName, Success: false, Error: err}
 		}
-
-		pluginRef := msg.PluginName
-		if msg.Marketplace != "" {
-			pluginRef = msg.PluginName + "@" + msg.Marketplace
-		}
-
-		if err := installer.Install(ctx, pluginRef, msg.Scope); err != nil {
-			return PluginInstallResultMsg{PluginName: msg.PluginName, Success: false, Error: err}
-		}
-
 		return PluginInstallResultMsg{PluginName: msg.PluginName, Success: true}
 	}
 }

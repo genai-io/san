@@ -432,6 +432,54 @@ func TestInstaller_InstallAndUninstall_FromMarketplaceDirectory(t *testing.T) {
 	}
 }
 
+func TestFormatPluginRef(t *testing.T) {
+	if got := FormatPluginRef("git", "my-market"); got != "git@my-market" {
+		t.Fatalf("FormatPluginRef with marketplace = %q, want git@my-market", got)
+	}
+	if got := FormatPluginRef("git", ""); got != "git" {
+		t.Fatalf("FormatPluginRef without marketplace = %q, want git", got)
+	}
+	// Round-trips with ParsePluginRef.
+	if name, market := ParsePluginRef(FormatPluginRef("deploy", "local-market")); name != "deploy" || market != "local-market" {
+		t.Fatalf("round-trip = (%q, %q), want (deploy, local-market)", name, market)
+	}
+}
+
+// TestInstall_LoadsMarketplacesAndInstalls covers the package-level Install
+// helper, which both the plugin overlay and the /plugin install command call.
+// It must load known marketplaces itself before installing.
+func TestInstall_LoadsMarketplacesAndInstalls(t *testing.T) {
+	tmpHome := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	marketRoot := filepath.Join(t.TempDir(), "market")
+	pluginRoot := filepath.Join(marketRoot, "deploy")
+	writeTestPlugin(t, pluginRoot, "deploy", "1.2.3", "Deploy plugin", map[string]string{
+		"skills/deploy/SKILL.md": "---\nname: deploy\ndescription: Deploy skill\n---\nship it\n",
+	})
+
+	// Persist the marketplace to disk so the installer that Install() builds
+	// internally rediscovers it through LoadMarketplaces.
+	mgr := NewMarketplaceManager(cwd)
+	if err := mgr.AddDirectory("local-market", marketRoot); err != nil {
+		t.Fatalf("AddDirectory() error: %v", err)
+	}
+
+	registry := NewRegistry()
+	if err := Install(context.Background(), registry, cwd, "deploy@local-market", ScopeProject); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+
+	installPath := filepath.Join(cwd, ".san", "plugins", "deploy")
+	if _, err := os.Stat(installPath); err != nil {
+		t.Fatalf("expected installed plugin dir: %v", err)
+	}
+	if _, ok := registry.Get("deploy@local-market"); !ok {
+		t.Fatal("expected installed plugin registered")
+	}
+}
+
 func TestRegistry_LoadScopeMergePrefersLocalOverProjectOverUser(t *testing.T) {
 	tmpHome := t.TempDir()
 	cwd := t.TempDir()
