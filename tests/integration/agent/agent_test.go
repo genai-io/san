@@ -65,8 +65,8 @@ func TestAgent_UnknownAgent(t *testing.T) {
 	}
 }
 
-func TestAgent_MaxTurnsRespected(t *testing.T) {
-	// LLM always returns tool calls to force hitting max turns
+func TestAgent_MaxStepsRespected(t *testing.T) {
+	// LLM always returns tool calls to force hitting max steps
 	responses := make([]llm.CompletionResponse, 105)
 	for i := range responses {
 		responses[i] = llm.CompletionResponse{
@@ -89,10 +89,10 @@ func TestAgent_MaxTurnsRespected(t *testing.T) {
 	}
 
 	if result.Success {
-		t.Error("expected failure (max turns)")
+		t.Error("expected failure (max steps)")
 	}
 	if !strings.Contains(result.Error, "100") {
-		t.Errorf("expected error message about 100 max turns, got %q", result.Error)
+		t.Errorf("expected error message about 100 max steps, got %q", result.Error)
 	}
 }
 
@@ -350,7 +350,7 @@ func TestAgent_OnProgressReceivesToolUpdates(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Model: fake-model",
-		"Mode: Explore · max 100 turns",
+		"Mode: Explore · max 100 steps",
 		"Thinking...",
 		"Read(README.md)",
 		"Usage: input=30 output=8",

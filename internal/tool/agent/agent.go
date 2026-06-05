@@ -154,7 +154,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		onQuestion = cb
 	}
 
-	maxTurns := tool.GetInt(params, "max_turns", 0)
+	maxSteps := tool.GetInt(params, "max_steps", 0)
 
 	// Check executor
 	if t.executor == nil {
@@ -170,7 +170,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Description: description,
 		Background:  runBackground,
 		Model:       model,
-		MaxTurns:    maxTurns,
+		MaxSteps:    maxSteps,
 		Mode:        mode,
 		ResumeID:    resumeID,
 		Isolation:   isolation,
@@ -241,7 +241,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d turns)", agentType, result.TurnCount),
+			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentType, result.StepCount),
 			Duration: duration,
 		},
 	}

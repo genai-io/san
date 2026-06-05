@@ -56,7 +56,7 @@ type Config struct {
     Color             string        // TUI 显示颜色
     CompactFunc       func(...)     // 对话压缩函数
     CWD               string        // 工作目录
-    MaxTurns          int           // 每周期最大 LLM 推理轮数
+    MaxSteps          int           // 每个 turn 内最大 LLM 推理步数
     MaxOutputRecovery int           // 截断输出最大重试次数
     InboxBuf          int           // 入站缓冲区大小（默认 16）
     OutboxBuf         int           // 出站缓冲区大小（默认 64），-1 表示无出站（子 Agent 路径）
@@ -134,7 +134,7 @@ const (
     StopEndTurn                    StopReason = "end_turn"
     StopMaxTokens                  StopReason = "max_tokens"
     StopToolUse                    StopReason = "tool_use"
-    StopMaxTurns                   StopReason = "max_turns"
+    StopMaxSteps                  StopReason = "max_steps"
     StopCancelled                  StopReason = "cancelled"
     StopHook                       StopReason = "stop_hook"
     StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"

@@ -469,13 +469,13 @@ Fresh `core.Agent` (`core.NewAgent`) in a goroutine, **not**
 `subagent.Executor` (which carries registry / hooks / session-persistence a
 silent reviewer must not). The fork inherits the parent's `system.System`
 verbatim, is seeded with `SetMessages(snapshot)` + a user message carrying
-the review prompt, then runs `ThinkAct` under `MaxTurns ≈ 16` and a context
+the review prompt, then runs `ThinkAct` under `MaxSteps ≈ 16` and a context
 deadline (≈ 5 min).
 
 Eight invariants, each one cost Hermes a production bug:
 
 1. **Run AFTER the user reply is delivered.** Gate on
-   `Result.StopReason == StopEndTurn` (skip cancelled / interrupted / max-turns).
+   `Result.StopReason == StopEndTurn` (skip cancelled / interrupted / max-steps).
 2. **Inherit the parent's cached system prompt byte-for-byte** for prefix-cache
    parity (≈26% cost cut on Sonnet 4.5 per Hermes).
 3. **Toolset whitelist at dispatch.** `tools[]` matches the parent (cache-key

@@ -24,7 +24,7 @@ type agent struct {
 	compactFunc       func(ctx context.Context, msgs []Message) (string, error)
 	llm               LLM
 	cwd               string
-	maxTurns          int
+	maxSteps          int
 	maxOutputRecovery int
 	inbox             chan Message
 	outbox            chan Event
@@ -295,13 +295,13 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 // ThinkAct runs one full inference-action cycle until end_turn.
 // Returns the result directly — the caller decides whether to emit TurnEvent.
 func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
-	var turns, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
+	var steps, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
 	var maxOutputRecoveryCount int
 
 	makeResult := func(content string, stop StopReason, detail string) *Result {
 		return &Result{
 			Content: content, Messages: a.snapshot(),
-			Turns: turns, ToolUses: toolUses, TokensIn: tokensIn, TokensOut: tokensOut,
+			Steps: steps, ToolUses: toolUses, TokensIn: tokensIn, TokensOut: tokensOut,
 			StopReason: stop, StopDetail: detail,
 		}
 	}
@@ -311,13 +311,13 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			return makeResult("", StopCancelled, ""), ctx.Err()
 		}
 
-		// Max turns guard
-		if a.maxTurns > 0 && turns >= a.maxTurns {
-			return makeResult("max turns reached", StopMaxTurns, ""), nil
+		// Max steps guard
+		if a.maxSteps > 0 && steps >= a.maxSteps {
+			return makeResult("max steps reached", StopMaxSteps, ""), nil
 		}
 
-		// Between turns: drain any new inbox messages (non-blocking)
-		if turns > 0 {
+		// Between steps: drain any new inbox messages (non-blocking)
+		if steps > 0 {
 			if _, err := a.drainInbox(ctx); err != nil {
 				return nil, err
 			}
@@ -351,7 +351,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			return nil, err
 		}
 
-		turns++
+		steps++
 		lastInputTokens = resp.TokensIn
 		lastPromptTextLen = currentPromptTextLen
 		tokensIn += resp.TokensIn

@@ -9,7 +9,7 @@ const (
 	StopEndTurn                    StopReason = "end_turn"
 	StopMaxTokens                  StopReason = "max_tokens"
 	StopToolUse                    StopReason = "tool_use"
-	StopMaxTurns                   StopReason = "max_turns"
+	StopMaxSteps                   StopReason = "max_steps"
 	StopCancelled                  StopReason = "cancelled"
 	StopHook                       StopReason = "stop_hook"
 	StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"

@@ -71,7 +71,7 @@ type AgentExecRequest struct {
 	Description string
 	Background  bool
 	Model       string
-	MaxTurns    int
+	MaxSteps    int
 	Mode        string
 	ResumeID    string
 	Isolation   string
@@ -87,7 +87,7 @@ type AgentExecResult struct {
 	Model       string
 	Success     bool
 	Content     string
-	TurnCount   int
+	StepCount   int
 	ToolUses    int
 	TotalTokens int
 	Duration    time.Duration

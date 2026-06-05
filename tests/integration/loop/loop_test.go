@@ -25,8 +25,8 @@ func TestAgent_SingleTurn_EndTurn(t *testing.T) {
 	if result.Content != "hello world" {
 		t.Errorf("expected content 'hello world', got %q", result.Content)
 	}
-	if result.Turns != 1 {
-		t.Errorf("expected 1 turn, got %d", result.Turns)
+	if result.Steps != 1 {
+		t.Errorf("expected 1 step, got %d", result.Steps)
 	}
 	if result.TokensIn == 0 {
 		t.Error("expected non-zero input tokens")
@@ -46,8 +46,8 @@ func TestAgent_MultiTurn_ToolUse(t *testing.T) {
 		t.Fatalf("RunAgent() error: %v", err)
 	}
 
-	if result.Turns != 2 {
-		t.Errorf("expected 2 turns, got %d", result.Turns)
+	if result.Steps != 2 {
+		t.Errorf("expected 2 steps, got %d", result.Steps)
 	}
 	if result.StopReason != core.StopEndTurn {
 		t.Errorf("expected 'end_turn', got %q", result.StopReason)
@@ -73,7 +73,7 @@ func TestAgent_MultiTurn_ToolUse(t *testing.T) {
 	}
 }
 
-func TestAgent_MaxTurns(t *testing.T) {
+func TestAgent_MaxSteps(t *testing.T) {
 	testutil.RegisterFakeTool(t, "AlwaysTool", "ok")
 
 	responses := make([]llm.CompletionResponse, 10)
@@ -81,15 +81,15 @@ func TestAgent_MaxTurns(t *testing.T) {
 		responses[i] = testutil.ToolCallResponse("AlwaysTool", "tc", `{}`)
 	}
 
-	ag, _ := testutil.NewTestAgentWithMaxTurns(t, 3, responses...)
+	ag, _ := testutil.NewTestAgentWithMaxSteps(t, 3, responses...)
 
 	result, err := testutil.RunAgent(context.Background(), ag, "go")
 	if err != nil {
 		t.Fatalf("RunAgent() error: %v", err)
 	}
 
-	if result.StopReason != core.StopMaxTurns {
-		t.Errorf("expected 'max_turns', got %q", result.StopReason)
+	if result.StopReason != core.StopMaxSteps {
+		t.Errorf("expected 'max_steps', got %q", result.StopReason)
 	}
 }
 
@@ -176,8 +176,8 @@ func TestAgent_TokenAccumulation(t *testing.T) {
 		t.Fatalf("RunAgent() error: %v", err)
 	}
 
-	if result.Turns != 3 {
-		t.Errorf("expected 3 turns, got %d", result.Turns)
+	if result.Steps != 3 {
+		t.Errorf("expected 3 steps, got %d", result.Steps)
 	}
 
 	// Each of the first 2 responses has 10+5 usage, third has 20+10

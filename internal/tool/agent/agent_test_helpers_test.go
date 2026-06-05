@@ -22,7 +22,7 @@ func (s *stubSendMessageExecutor) Run(ctx context.Context, req tool.AgentExecReq
 			Model:       "sonnet",
 			Success:     true,
 			Content:     "done",
-			TurnCount:   2,
+			StepCount:   2,
 			ToolUses:    1,
 			TotalTokens: 42,
 		}

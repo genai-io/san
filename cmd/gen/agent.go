@@ -18,14 +18,14 @@ var agentRunOpts struct {
 	agentType string
 	prompt    string
 	model     string
-	maxTurns  int
+	maxSteps  int
 }
 
 func init() {
 	agentRunCmd.Flags().StringVar(&agentRunOpts.agentType, "type", "", "Agent type to run")
 	agentRunCmd.Flags().StringVar(&agentRunOpts.prompt, "prompt", "", "Task prompt")
 	agentRunCmd.Flags().StringVar(&agentRunOpts.model, "model", "", "Model override")
-	agentRunCmd.Flags().IntVar(&agentRunOpts.maxTurns, "max-turns", 100, "Maximum conversation turns")
+	agentRunCmd.Flags().IntVar(&agentRunOpts.maxSteps, "max-steps", 100, "Maximum LLM inference steps")
 
 	agentCmd.AddCommand(agentRunCmd)
 	rootCmd.AddCommand(agentCmd)
@@ -119,7 +119,7 @@ func runHeadlessAgent() error {
 		Agent:    agentRunOpts.agentType,
 		Prompt:   agentRunOpts.prompt,
 		Model:    agentRunOpts.model,
-		MaxTurns: agentRunOpts.maxTurns,
+		MaxSteps: agentRunOpts.maxSteps,
 		OnProgress: func(msg string) {
 			fmt.Fprintln(os.Stderr, "·", msg)
 		},
@@ -133,7 +133,7 @@ func runHeadlessAgent() error {
 		fmt.Println(result.Content)
 	}
 
-	fmt.Printf("\n---\nDone: %d turns, %d tool uses (success=%t)\n", result.TurnCount, result.ToolUses, result.Success)
+	fmt.Printf("\n---\nDone: %d steps, %d tool uses (success=%t)\n", result.StepCount, result.ToolUses, result.Success)
 	if result.Error != "" {
 		fmt.Printf("Error: %s\n", result.Error)
 	}

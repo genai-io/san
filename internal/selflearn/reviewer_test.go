@@ -94,7 +94,7 @@ func TestSkipsNonEndTurn(t *testing.T) {
 	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(core.Result{StopReason: core.StopCancelled, ToolUses: 9})
-	r.Observe(core.Result{StopReason: core.StopMaxTurns})
+	r.Observe(core.Result{StopReason: core.StopMaxSteps})
 	assertNoFire(t, fired) // neither counted
 
 	r.Observe(endTurn(0)) // clean turn → fires

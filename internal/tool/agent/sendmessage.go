@@ -171,7 +171,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		Description: description,
 		Background:  tool.GetBool(normalized, "run_in_background"),
 		Model:       tool.GetString(normalized, "model"),
-		MaxTurns:    tool.GetInt(normalized, "max_turns", 0),
+		MaxSteps:    tool.GetInt(normalized, "max_steps", 0),
 		Mode:        tool.GetString(normalized, "mode"),
 		ResumeID:    target.agentID,
 		Isolation:   tool.GetString(normalized, "isolation"),
@@ -235,7 +235,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d turns)", target.agentType, result.TurnCount),
+			Subtitle: fmt.Sprintf("%s: done (%d steps)", target.agentType, result.StepCount),
 			Duration: duration,
 		},
 	}

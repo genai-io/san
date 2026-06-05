@@ -159,8 +159,8 @@ func parseAgentFile(filePath string) (*AgentConfig, error) {
 	if config.Model == "" {
 		config.Model = "inherit"
 	}
-	if config.MaxTurns <= 0 {
-		config.MaxTurns = defaultMaxTurns
+	if config.MaxSteps <= 0 {
+		config.MaxSteps = defaultMaxSteps
 	}
 	if config.PermissionMode == "" {
 		config.PermissionMode = PermissionDefault

@@ -67,7 +67,7 @@ For non-mutating investigation, run this agent with mode=explore. For implementa
 		Model:          "inherit",
 		PermissionMode: PermissionDefault,
 		AllowTools:     nil,
-		MaxTurns:       100,
+		MaxSteps:       100,
 		Source:         "built-in",
 	}
 
@@ -86,7 +86,7 @@ Use it to enforce naming conventions and replace hacks with clear, maintainable,
 		DenyTools: ToolNames("Agent", "SendMessage",
 			"EnterWorktree", "ExitWorktree",
 			"CronCreate", "CronDelete", "CronList"),
-		MaxTurns: 100,
+		MaxSteps: 100,
 		Source:   "built-in",
 	}
 
@@ -111,7 +111,7 @@ Returns a structured review with findings and recommendations.`,
 			{Name: "WebFetch"},
 			{Name: "WebSearch"},
 		},
-		MaxTurns: 100,
+		MaxSteps: 100,
 		Source:   "built-in",
 	}
 }

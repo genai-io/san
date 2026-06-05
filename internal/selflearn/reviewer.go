@@ -98,7 +98,7 @@ func (r *Reviewer) SeedTurns(priorUserTurns int) {
 }
 
 // Observe processes one completed turn. Only cleanly-ended turns count;
-// cancelled / interrupted / max-turns turns are skipped (never review work the
+// cancelled / interrupted / max-steps turns are skipped (never review work the
 // user abandoned). When an arm reaches its threshold it fires a review on a
 // background goroutine, at most one in flight per Reviewer — a trigger that
 // arrives while a prior review runs is dropped (and the counter NOT reset, so

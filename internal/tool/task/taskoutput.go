@@ -161,8 +161,8 @@ func formatStatusString(info task.TaskInfo) string {
 func formatTaskOutput(info task.TaskInfo, status string) string {
 	switch info.Type {
 	case task.TaskTypeAgent:
-		output := fmt.Sprintf("Agent: %s\nStatus: %s\nTurns: %d\nTokens: %d\n",
-			info.AgentName, status, info.TurnCount, info.TokenUsage)
+		output := fmt.Sprintf("Agent: %s\nStatus: %s\nSteps: %d\nTokens: %d\n",
+			info.AgentName, status, info.StepCount, info.TokenUsage)
 		if info.AgentType != "" {
 			output += fmt.Sprintf("AgentType: %s\n", info.AgentType)
 		}

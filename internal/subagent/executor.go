@@ -45,7 +45,7 @@ type SubagentSessionStore interface {
 type runConfig struct {
 	config      *AgentConfig
 	modelID     string
-	maxTurns    int
+	maxSteps    int
 	displayName string
 	brief       system.SubagentBrief // identity/charter for this run; immutable
 	permMode    PermissionMode
@@ -167,7 +167,7 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
-		agentTask.UpdateProgress(result.TurnCount, result.TokenUsage.TotalTokens)
+		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.TotalTokens)
 
 		if result.Success {
 			agentTask.Complete(nil)
@@ -208,18 +208,18 @@ func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
 
 	permMode := requestPermissionMode(config, req)
 
-	maxTurns := config.MaxTurns
-	if req.MaxTurns > maxTurns {
-		maxTurns = req.MaxTurns
+	maxSteps := config.MaxSteps
+	if req.MaxSteps > maxSteps {
+		maxSteps = req.MaxSteps
 	}
-	if maxTurns <= 0 {
-		maxTurns = defaultMaxTurns
+	if maxSteps <= 0 {
+		maxSteps = defaultMaxSteps
 	}
 
 	return &runConfig{
 		config:      config,
 		modelID:     e.resolveModelID(req.Model, config.Model),
-		maxTurns:    maxTurns,
+		maxSteps:    maxSteps,
 		displayName: displayName,
 		brief:       e.buildBrief(config, permMode),
 		permMode:    permMode,
@@ -306,7 +306,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 		Tools:     coreTools,
 		AgentType: rc.config.Name,
 		CWD:       agentCwd,
-		MaxTurns:  rc.maxTurns,
+		MaxSteps:  rc.maxSteps,
 		OutboxBuf: -1,
 		OnEvent:   onEvent,
 	})
@@ -346,11 +346,11 @@ func collectSubagentReminders(skills string) []string {
 	return nil
 }
 
-func interpretStopReason(result *core.Result, maxTurns int) (success bool, errMsg string) {
+func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
 	success = result.StopReason == core.StopEndTurn
 	switch result.StopReason {
-	case core.StopMaxTurns:
-		errMsg = fmt.Sprintf("reached maximum turns (%d)", maxTurns)
+	case core.StopMaxSteps:
+		errMsg = fmt.Sprintf("reached maximum steps (%d)", maxSteps)
 	case core.StopMaxOutputRecoveryExhausted:
 		errMsg = "output was repeatedly truncated and recovery was exhausted"
 	case core.StopHook:

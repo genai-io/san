@@ -67,7 +67,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 		Tools:  buildAllRegisteredTools(cwd),
 
 		CWD:      cwd,
-		MaxTurns: 100,
+		MaxSteps: 100,
 	}), fakeLLM
 }
 
@@ -99,12 +99,12 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 		System:   core.NewSystem(),
 		Tools:    tools,
 		CWD:      cwd,
-		MaxTurns: 100,
+		MaxSteps: 100,
 	}), fakeLLM
 }
 
-// NewTestAgentWithMaxTurns creates a core.Agent with a specific max turns limit.
-func NewTestAgentWithMaxTurns(t *testing.T, maxTurns int, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
+// NewTestAgentWithMaxSteps creates a core.Agent with a specific max steps limit.
+func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
 	t.Helper()
 	fakeLLM := &FakeLLM{Responses: responses}
 	cwd := t.TempDir()
@@ -115,7 +115,7 @@ func NewTestAgentWithMaxTurns(t *testing.T, maxTurns int, responses ...llm.Compl
 		Tools:  buildAllRegisteredTools(cwd),
 
 		CWD:      cwd,
-		MaxTurns: maxTurns,
+		MaxSteps: maxSteps,
 	}), fakeLLM
 }
 

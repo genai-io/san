@@ -80,6 +80,6 @@ type TaskInfo struct {
 	AgentType      string
 	AgentName      string
 	AgentSessionID string
-	TurnCount      int
+	StepCount      int
 	TokenUsage     int
 }

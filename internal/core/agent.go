@@ -73,7 +73,7 @@ type Agent interface {
 	//
 	//   Phase 3 — THINK + ACT (inference loop):
 	//     Loop: LLM inference → tool execution → LLM inference → ...
-	//     Between each turn, non-blocking drain of Inbox for new messages.
+	//     Between each step, non-blocking drain of Inbox for new messages.
 	//     Emit streaming chunks and tool results to Outbox.
 	//     Loop until LLM returns end_turn.
 	//     Then go back to Phase 1 (wait for next message).
@@ -99,7 +99,7 @@ type Agent interface {
 // Config holds construction parameters for an agent.
 //
 // Required fields: LLM, System, Tools. NewAgent panics if any is nil.
-// Optional fields: ID, CWD, MaxTurns, InboxBuf, OutboxBuf, CompactFunc.
+// Optional fields: ID, CWD, MaxSteps, InboxBuf, OutboxBuf, CompactFunc.
 //
 // Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
 // before passing them to NewAgent. See docs/gen-permission.md.
@@ -112,7 +112,7 @@ type Config struct {
 	Color             string                                                    // optional: display color for TUI (e.g. "#ff6600", "blue")
 	CompactFunc       func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	CWD               string
-	MaxTurns          int // max LLM inference rounds per cycle, 0 = unlimited
+	MaxSteps          int // max LLM inference steps per turn, 0 = unlimited
 	MaxOutputRecovery int // max retries on truncated output, 0 = use default (3)
 	InboxBuf          int // inbox channel buffer size, default 16
 	OutboxBuf         int // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
@@ -156,7 +156,7 @@ func NewAgent(cfg Config) Agent {
 		compactFunc:       cfg.CompactFunc,
 		llm:               cfg.LLM,
 		cwd:               cfg.CWD,
-		maxTurns:          cfg.MaxTurns,
+		maxSteps:          cfg.MaxSteps,
 		maxOutputRecovery: cfg.MaxOutputRecovery,
 		inbox:             make(chan Message, cfg.InboxBuf),
 		outbox:            outbox,
@@ -179,8 +179,8 @@ func NewAgent(cfg Config) Agent {
 type Result struct {
 	Content    string     // final text output of this turn
 	Messages   []Message  // full conversation history
-	Turns      int        // LLM inference rounds in this cycle
-	ToolUses   int        // tool calls in this cycle
+	Steps      int        // LLM inference steps in this turn
+	ToolUses   int        // tool calls in this turn
 	TokensIn   int        // input tokens consumed
 	TokensOut  int        // output tokens produced
 	StopReason StopReason // why the loop stopped

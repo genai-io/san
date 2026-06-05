@@ -19,7 +19,7 @@ type AgentTask struct {
 	EndTime     time.Time  // When the task ended (if completed)
 	SessionID   string     // Resumable session/agent ID
 	OutputFile  string     // Transcript/output path when available
-	TurnCount   int        // Number of conversation turns
+	StepCount   int        // Number of LLM inference steps
 	TokenUsage  int        // Total tokens consumed
 	Error       string     // Error message (if failed)
 
@@ -261,16 +261,16 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		AgentType:      t.AgentType,
 		AgentName:      t.AgentName,
 		AgentSessionID: t.SessionID,
-		TurnCount:      t.TurnCount,
+		StepCount:      t.StepCount,
 		TokenUsage:     t.TokenUsage,
 	}
 }
 
-// UpdateProgress updates the turn count and token usage
-func (t *AgentTask) UpdateProgress(turnCount, tokenUsage int) {
+// UpdateProgress updates the step count and token usage
+func (t *AgentTask) UpdateProgress(roundCount, tokenUsage int) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.TurnCount = turnCount
+	t.StepCount = roundCount
 	t.TokenUsage = tokenUsage
 }
 

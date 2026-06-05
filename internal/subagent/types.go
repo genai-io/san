@@ -305,7 +305,7 @@ type AgentConfig struct {
 
 	Skills       []string `yaml:"skills,omitempty" json:"skills,omitempty"`
 	SystemPrompt string   `yaml:"system-prompt,omitempty" json:"system_prompt,omitempty"`
-	MaxTurns     int      `yaml:"max-turns" json:"max_turns"`
+	MaxSteps     int      `yaml:"max-steps" json:"max_steps"`
 	Source       string   `yaml:"-" json:"source,omitempty"`
 	McpServers   []string `yaml:"mcp-servers,omitempty" json:"mcp_servers,omitempty"`
 	SourceFile   string   `yaml:"-" json:"-"`
@@ -336,7 +336,7 @@ type AgentRequest struct {
 	Description string
 	Background  bool
 	Model       string
-	MaxTurns    int
+	MaxSteps    int
 	Mode        string
 	ResumeID    string
 	LiveTaskID  string
@@ -355,7 +355,7 @@ type AgentResult struct {
 	Summary        string
 	TranscriptPath string
 	Messages       []core.Message
-	TurnCount      int
+	StepCount      int
 	ToolUses       int
 	TokenUsage     llm.TokenUsage
 	Duration       time.Duration
@@ -363,8 +363,8 @@ type AgentResult struct {
 	Error          string
 }
 
-// defaultMaxTurns is the default maximum number of conversation turns
-const defaultMaxTurns = 100
+// defaultMaxSteps is the default maximum number of LLM inference steps.
+const defaultMaxSteps = 100
 
 // modelAliases maps short model aliases to full Vertex AI model IDs.
 var modelAliases = map[string]string{
