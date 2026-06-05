@@ -33,7 +33,7 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ### Engineering
 
-- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-gencode-vs-claude-code)).
+- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.

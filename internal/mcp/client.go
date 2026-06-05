@@ -15,7 +15,7 @@ const (
 	ProtocolVersion = "2024-11-05"
 
 	// ClientName is the name of this MCP client
-	ClientName = "gencode"
+	ClientName = "san"
 
 	// ClientVersion is the version of this MCP client
 	ClientVersion = "1.0.0"

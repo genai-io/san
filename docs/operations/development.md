@@ -15,7 +15,7 @@ Some environments block writes to the default Go build cache. Use a writable
 cache when needed:
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test ./...
+GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
 ## Formatting

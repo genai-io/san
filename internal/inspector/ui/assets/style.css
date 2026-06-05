@@ -775,7 +775,7 @@ main.show-prompt.prompt-wide .prompt {
 
 /* Markdown rendering inside prompt body.
  *
- * Hierarchy matches gen-code's actual system-prompt structure:
+ * Hierarchy matches san's actual system-prompt structure:
  *
  *   h1.prompt-xml — top-level XML envelopes (<output>, <engineering>,
  *         <policy>, <guidelines name="...">, <environment>). The

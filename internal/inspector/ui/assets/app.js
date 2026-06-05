@@ -1124,7 +1124,7 @@ function emptyNote(text) {
 }
 
 // renderMarkdown — minimal, safe-by-construction CommonMark subset. Handles
-// the structures used in gen-code system prompts: headings, paragraphs, lists,
+// the structures used in san system prompts: headings, paragraphs, lists,
 // fenced code, inline code, blockquotes, bold/italic, links, hrules. Anything
 // it doesn't recognize is rendered as paragraph text. HTML is escaped before
 // inline tags are applied so untrusted content is safe.
@@ -1187,7 +1187,7 @@ function renderMarkdown(src) {
     }
 
     // XML-tagged block markers (<policy>, <guidelines name="tools">, …).
-    // gen-code system prompts use these as section dividers for structured
+    // san system prompts use these as section dividers for structured
     // / auxiliary content. Translate the opening tag into a styled header
     // and drop the matching closing tag; contents inside render as normal
     // markdown so the prose flow is preserved.

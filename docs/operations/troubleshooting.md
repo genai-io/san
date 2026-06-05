@@ -6,7 +6,7 @@ If `go test ./...` fails while writing the Go build or module cache, use a cache
 inside a writable directory:
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test ./...
+GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
 ## Missing goimports
