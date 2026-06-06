@@ -45,18 +45,19 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 	}
 
 	return &tool.AgentExecResult{
-		AgentID:     result.AgentID,
-		AgentName:   result.AgentName,
-		OutputFile:  result.TranscriptPath,
-		Model:       result.Model,
-		Success:     result.Success,
-		Content:     result.Content,
-		StepCount:   result.StepCount,
-		ToolUses:    result.ToolUses,
-		TotalTokens: result.TokenUsage.Total(),
-		Duration:    result.Duration,
-		Progress:    result.Progress,
-		Error:       result.Error,
+		AgentID:           result.AgentID,
+		AgentName:         result.AgentName,
+		OutputFile:        result.TranscriptPath,
+		Model:             result.Model,
+		Success:           result.Success,
+		Content:           result.Content,
+		StepCount:         result.StepCount,
+		ToolUses:          result.ToolUses,
+		TotalInputTokens:  result.TokenUsage.InputTokens,
+		TotalOutputTokens: result.TokenUsage.OutputTokens,
+		Duration:          result.Duration,
+		Progress:          result.Progress,
+		Error:             result.Error,
 	}, nil
 }
 

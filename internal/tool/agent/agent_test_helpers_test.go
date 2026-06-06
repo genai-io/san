@@ -17,14 +17,15 @@ func (s *stubSendMessageExecutor) Run(ctx context.Context, req tool.AgentExecReq
 	s.lastRun = req
 	if s.runResult == nil {
 		s.runResult = &tool.AgentExecResult{
-			AgentID:     "agent-resumed-2",
-			AgentName:   "Explore",
-			Model:       "sonnet",
-			Success:     true,
-			Content:     "done",
-			StepCount:   2,
-			ToolUses:    1,
-			TotalTokens: 42,
+			AgentID:           "agent-resumed-2",
+			AgentName:         "Explore",
+			Model:             "sonnet",
+			Success:           true,
+			Content:           "done",
+			StepCount:         2,
+			ToolUses:          1,
+			TotalInputTokens:  30,
+			TotalOutputTokens: 12,
 		}
 	}
 	return s.runResult, nil

@@ -262,10 +262,10 @@ func buildAgentHookResponse(result *tool.AgentExecResult, agentType, prompt stri
 		"status":            status,
 		"prompt":            prompt,
 		"totalDurationMs":   result.Duration.Milliseconds(),
-		"totalTokens":       result.TotalTokens,
 		"totalToolUseCount": result.ToolUses,
 		"usage": map[string]any{
-			"total_tokens": result.TotalTokens,
+			"total_input_tokens":  result.TotalInputTokens,
+			"total_output_tokens": result.TotalOutputTokens,
 		},
 	}
 }

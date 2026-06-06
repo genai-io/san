@@ -181,14 +181,6 @@ type Usage struct {
 	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
 }
 
-// Total returns InputTokens + OutputTokens — a coarse aggregate used only for
-// run summaries and progress display, never for billing (cost estimates use the
-// full per-bucket breakdown, cache counters included). Cache counters are not
-// added here, preserving the historical "total" semantics; note this can
-// undercount real prompt size on providers (e.g. Anthropic) whose InputTokens
-// excludes the cache-creation/read buckets.
-func (u Usage) Total() int { return u.InputTokens + u.OutputTokens }
-
 // --- Streaming Types ---
 
 // ChunkType represents the type of a stream chunk from a provider.

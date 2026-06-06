@@ -81,18 +81,19 @@ type AgentExecRequest struct {
 
 // AgentExecResult contains the result of agent execution.
 type AgentExecResult struct {
-	AgentID     string
-	AgentName   string
-	OutputFile  string
-	Model       string
-	Success     bool
-	Content     string
-	StepCount   int
-	ToolUses    int
-	TotalTokens int
-	Duration    time.Duration
-	Progress    []string
-	Error       string
+	AgentID           string
+	AgentName         string
+	OutputFile        string
+	Model             string
+	Success           bool
+	Content           string
+	StepCount         int
+	ToolUses          int
+	TotalInputTokens  int
+	TotalOutputTokens int
+	Duration          time.Duration
+	Progress          []string
+	Error             string
 }
 
 // AgentTaskInfo contains info about a background agent task.
