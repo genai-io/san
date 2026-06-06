@@ -210,9 +210,6 @@ type SessionPermissions struct {
 	// Set automatically when entering AutoAccept mode.
 	WorkingDirectories []string
 
-	// IsBypassAvailable controls whether BypassPermissions mode can be entered.
-	IsBypassAvailable bool
-
 	// ShouldAvoidPrompts is set for headless/async subagents that cannot
 	// show interactive dialogs. When true, ask → deny automatically.
 	ShouldAvoidPrompts bool
