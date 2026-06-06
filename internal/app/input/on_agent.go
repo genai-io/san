@@ -8,25 +8,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/tool"
 )
-
-// AgentConfigInfo holds display info for a single agent configuration.
-type AgentConfigInfo struct {
-	Name           string
-	Description    string
-	Color          string
-	Model          string
-	PermissionMode string
-	Tools          []string // nil = all tools
-	SourceFile     string
-	// Source indicates where the agent definition came from:
-	// "built-in", "user", "project", or "plugin". Empty defaults to project.
-	Source string
-}
 
 // AgentRegistry provides agent display and management for the selector UI.
 type AgentRegistry interface {
-	ListConfigs() []AgentConfigInfo
+	ListConfigs() []tool.AgentConfigInfo
 	GetDisabledAt(userLevel bool) map[string]bool
 	SetEnabled(name string, enabled bool, userLevel bool) error
 }

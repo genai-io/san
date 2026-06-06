@@ -105,12 +105,24 @@ func (a *ExecutorAdapter) GetAgentConfig(agentType string) (tool.AgentConfigInfo
 		return tool.AgentConfigInfo{}, false
 	}
 
+	return ToAgentConfigInfo(config), true
+}
+
+// ToAgentConfigInfo projects an agent definition into the display info shared by
+// the Agent tool and the TUI agent selector.
+func ToAgentConfigInfo(c *AgentConfig) tool.AgentConfigInfo {
+	var tools []string
+	if c.AllowTools != nil {
+		tools = c.AllowTools.DisplayNames()
+	}
 	return tool.AgentConfigInfo{
-		Name:           config.Name,
-		Description:    config.Description,
-		Color:          config.Color,
-		Model:          config.Model,
-		PermissionMode: string(config.PermissionMode),
-		Tools:          config.AllowTools.DisplayNames(),
-	}, true
+		Name:           c.Name,
+		Description:    c.Description,
+		Color:          c.Color,
+		Model:          c.Model,
+		PermissionMode: string(c.PermissionMode),
+		Tools:          tools,
+		SourceFile:     c.SourceFile,
+		Source:         c.Source,
+	}
 }

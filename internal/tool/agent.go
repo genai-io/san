@@ -103,12 +103,18 @@ type AgentTaskInfo struct {
 	OutputFile string
 }
 
-// AgentConfigInfo contains agent configuration for display.
+// AgentConfigInfo contains agent configuration for display. It is the single
+// projection of an agent definition, shared by the Agent tool (GetAgentConfig)
+// and the TUI agent selector.
 type AgentConfigInfo struct {
 	Name           string
 	Description    string
 	Color          string
 	Model          string
 	PermissionMode string
-	Tools          []string
+	Tools          []string // nil = all tools
+	SourceFile     string
+	// Source indicates where the agent definition came from:
+	// "built-in", "user", "project", or "plugin". Empty defaults to project.
+	Source string
 }

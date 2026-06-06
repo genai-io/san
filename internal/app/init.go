@@ -159,24 +159,11 @@ type agentRegistryAdapter struct {
 	reg *subagent.Registry
 }
 
-func (a *agentRegistryAdapter) ListConfigs() []input.AgentConfigInfo {
+func (a *agentRegistryAdapter) ListConfigs() []tool.AgentConfigInfo {
 	configs := a.reg.ListConfigs()
-	out := make([]input.AgentConfigInfo, len(configs))
+	out := make([]tool.AgentConfigInfo, len(configs))
 	for i, cfg := range configs {
-		var tools []string
-		if cfg.AllowTools != nil {
-			tools = cfg.AllowTools.DisplayNames()
-		}
-		out[i] = input.AgentConfigInfo{
-			Name:           cfg.Name,
-			Description:    cfg.Description,
-			Color:          cfg.Color,
-			Model:          cfg.Model,
-			PermissionMode: string(cfg.PermissionMode),
-			Tools:          tools,
-			SourceFile:     cfg.SourceFile,
-			Source:         cfg.Source,
-		}
+		out[i] = subagent.ToAgentConfigInfo(cfg)
 	}
 	return out
 }
