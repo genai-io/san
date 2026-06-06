@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/tool"
 )
 
 type stubSubagentSessionStore struct {
@@ -43,7 +44,7 @@ func (s *stubSubagentSessionStore) LoadSubagentMessages(agentID string) ([]core.
 func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(AgentRequest{
+	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
 		Agent:    "general-purpose",
 		Name:     "Scout",
 		Model:    "override-model",
@@ -74,7 +75,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(AgentRequest{
+	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
 		Agent:    "general-purpose",
 		MaxSteps: 20,
 	})
@@ -127,7 +128,7 @@ func TestShouldRetryWithParentModelOnlyForMissingDifferentModel(t *testing.T) {
 func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
-		req: AgentRequest{Agent: "general-purpose"},
+		req: tool.AgentExecRequest{Agent: "general-purpose"},
 		cfg: &runConfig{
 			displayName: "Scout",
 			modelID:     "test-model",

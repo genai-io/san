@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/tool"
 )
 
 var agentRunOpts struct {
@@ -115,7 +116,7 @@ func runHeadlessAgent() error {
 	fmt.Printf("Prompt: %s\n", agentRunOpts.prompt)
 	fmt.Println("---")
 
-	req := subagent.AgentRequest{
+	req := tool.AgentExecRequest{
 		Agent:    agentRunOpts.agentType,
 		Prompt:   agentRunOpts.prompt,
 		Model:    agentRunOpts.model,
