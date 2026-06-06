@@ -89,10 +89,14 @@ release: format
 	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_darwin_arm64 $(SRCDIR)
 	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_linux_amd64 $(SRCDIR)
 	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_linux_arm64 $(SRCDIR)
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_windows_amd64.exe $(SRCDIR)
+	GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_windows_arm64.exe $(SRCDIR)
 	cd $(BINDIR) && cp $(BINARY)_darwin_amd64 $(BINARY) && tar -czf $(BINARY)_darwin_amd64.tar.gz $(BINARY) && rm $(BINARY)
 	cd $(BINDIR) && cp $(BINARY)_darwin_arm64 $(BINARY) && tar -czf $(BINARY)_darwin_arm64.tar.gz $(BINARY) && rm $(BINARY)
 	cd $(BINDIR) && cp $(BINARY)_linux_amd64 $(BINARY) && tar -czf $(BINARY)_linux_amd64.tar.gz $(BINARY) && rm $(BINARY)
 	cd $(BINDIR) && cp $(BINARY)_linux_arm64 $(BINARY) && tar -czf $(BINARY)_linux_arm64.tar.gz $(BINARY) && rm $(BINARY)
+	cd $(BINDIR) && cp $(BINARY)_windows_amd64.exe $(BINARY).exe && zip $(BINARY)_windows_amd64.zip $(BINARY).exe && rm $(BINARY).exe
+	cd $(BINDIR) && cp $(BINARY)_windows_arm64.exe $(BINARY).exe && zip $(BINARY)_windows_arm64.zip $(BINARY).exe && rm $(BINARY).exe
 
 release-push:
 	@test -n "$(VERSION)" || { echo "VERSION is required, e.g. make release-push VERSION=v1.15.2"; exit 1; }
