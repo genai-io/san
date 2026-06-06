@@ -109,7 +109,6 @@ type Config struct {
 	System            System                                                    // required: system prompt layers
 	Tools             Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	AgentType         string                                                    // optional: agent type identifier for hook events
-	Color             string                                                    // optional: display color for TUI (e.g. "#ff6600", "blue")
 	CompactFunc       func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	CWD               string
 	MaxSteps          int // max LLM inference steps per turn, 0 = unlimited
@@ -150,7 +149,6 @@ func NewAgent(cfg Config) Agent {
 	a := &agent{
 		id:                cfg.ID,
 		agentType:         cfg.AgentType,
-		color:             cfg.Color,
 		system:            cfg.System,
 		tools:             cfg.Tools,
 		compactFunc:       cfg.CompactFunc,
