@@ -25,12 +25,12 @@ func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 		hookEngine = m.services.Hook
 	}
 	return conv.CompactRequest{
-		Ctx:        context.Background(),
-		Client:     m.buildLLMClient(),
-		Messages:   m.conv.ConvertToProvider(),
-		Focus:      focus,
-		HookEngine: hookEngine,
-		Trigger:    trigger,
+		Ctx:          context.Background(),
+		Client:       m.buildLLMClient(),
+		Messages:     m.conv.ConvertToProvider(),
+		SummaryFocus: focus,
+		HookEngine:   hookEngine,
+		Trigger:      trigger,
 	}
 }
 
