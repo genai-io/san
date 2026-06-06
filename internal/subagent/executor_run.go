@@ -40,8 +40,8 @@ func (r *preparedRun) recordUsage(resp *core.InferResponse) {
 	if r.req.OnProgress == nil || resp == nil {
 		return
 	}
-	r.inputTokens += resp.TokensIn
-	r.outputTokens += resp.TokensOut
+	r.inputTokens += resp.InputTokens
+	r.outputTokens += resp.OutputTokens
 	if r.inputTokens > 0 || r.outputTokens > 0 {
 		r.sendProgress(formatUsageProgress(r.inputTokens, r.outputTokens))
 	}
@@ -136,8 +136,8 @@ func (e *Executor) logRunCompletion(run *preparedRun, result *core.Result, succe
 		zap.String("agent", run.cfg.displayName),
 		zap.String("stopReason", string(result.StopReason)),
 		zap.Int("steps", result.Steps),
-		zap.Int("inputTokens", result.TokensIn),
-		zap.Int("outputTokens", result.TokensOut),
+		zap.Int("inputTokens", result.InputTokens),
+		zap.Int("outputTokens", result.OutputTokens),
 	}
 	if success {
 		log.Logger().Info("Agent completed", logFields...)
@@ -168,7 +168,7 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 		Messages:       result.Messages,
 		StepCount:      result.Steps,
 		ToolUses:       result.ToolUses,
-		TokenUsage:     llm.TokenUsage{InputTokens: result.TokensIn, OutputTokens: result.TokensOut, TotalTokens: result.TokensIn + result.TokensOut},
+		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:       time.Since(run.startedAt),
 		Progress:       append([]string(nil), run.progress...),
 		Error:          errMsg,
@@ -188,7 +188,7 @@ func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Resu
 		Messages:   result.Messages,
 		StepCount:  result.Steps,
 		ToolUses:   result.ToolUses,
-		TokenUsage: llm.TokenUsage{InputTokens: result.TokensIn, OutputTokens: result.TokensOut, TotalTokens: result.TokensIn + result.TokensOut},
+		TokenUsage: llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:   time.Since(run.startedAt),
 		Progress:   append([]string(nil), run.progress...),
 		Error:      "agent cancelled",

@@ -53,7 +53,7 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 		Content:     result.Content,
 		StepCount:   result.StepCount,
 		ToolUses:    result.ToolUses,
-		TotalTokens: result.TokenUsage.TotalTokens,
+		TotalTokens: result.TokenUsage.Total(),
 		Duration:    result.Duration,
 		Progress:    result.Progress,
 		Error:       result.Error,

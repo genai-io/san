@@ -167,7 +167,7 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
-		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.TotalTokens)
+		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Total())
 
 		if result.Success {
 			agentTask.Complete(nil)

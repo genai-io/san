@@ -301,7 +301,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	makeResult := func(content string, stop StopReason, detail string) *Result {
 		return &Result{
 			Content: content, Messages: a.snapshot(),
-			Steps: steps, ToolUses: toolUses, TokensIn: tokensIn, TokensOut: tokensOut,
+			Steps: steps, ToolUses: toolUses, InputTokens: tokensIn, OutputTokens: tokensOut,
 			StopReason: stop, StopDetail: detail,
 		}
 	}
@@ -352,10 +352,10 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 		}
 
 		steps++
-		lastInputTokens = resp.TokensIn
+		lastInputTokens = resp.InputTokens
 		lastPromptTextLen = currentPromptTextLen
-		tokensIn += resp.TokensIn
-		tokensOut += resp.TokensOut
+		tokensIn += resp.InputTokens
+		tokensOut += resp.OutputTokens
 
 		a.emit(ctx, PostInferEvent(a.id, resp))
 		a.append(Message{

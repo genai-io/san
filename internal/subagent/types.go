@@ -357,7 +357,7 @@ type AgentResult struct {
 	Messages       []core.Message
 	StepCount      int
 	ToolUses       int
-	TokenUsage     llm.TokenUsage
+	TokenUsage     llm.Usage
 	Duration       time.Duration
 	Progress       []string
 	Error          string

@@ -11,15 +11,6 @@ import (
 // nor the provider specifies a limit.
 const defaultMaxTokens = 8192
 
-// TokenUsage tracks token consumption for a conversation.
-type TokenUsage struct {
-	InputTokens              int
-	OutputTokens             int
-	CacheCreationInputTokens int
-	CacheReadInputTokens     int
-	TotalTokens              int
-}
-
 // Client adapts a Provider to core.LLM.
 //
 // It also provides streaming and completion methods for the loop/app layer,
@@ -33,7 +24,7 @@ type Client struct {
 	model          string
 	maxTokens      int
 	thinkingEffort string
-	tokens         TokenUsage
+	tokens         Usage
 }
 
 // NewClient wraps an existing provider as a core.LLM with streaming and
@@ -170,12 +161,11 @@ func (l *Client) AddUsage(usage Usage) {
 	l.tokens.OutputTokens += usage.OutputTokens
 	l.tokens.CacheCreationInputTokens += usage.CacheCreationInputTokens
 	l.tokens.CacheReadInputTokens += usage.CacheReadInputTokens
-	l.tokens.TotalTokens = l.tokens.InputTokens + l.tokens.OutputTokens
 	l.mu.Unlock()
 }
 
 // Tokens returns the accumulated token usage.
-func (l *Client) Tokens() TokenUsage {
+func (l *Client) Tokens() Usage {
 	l.mu.RLock()
 	t := l.tokens
 	l.mu.RUnlock()
@@ -350,14 +340,14 @@ func toInferResponse(r *CompletionResponse) *core.InferResponse {
 		return nil
 	}
 	return &core.InferResponse{
-		Content:           r.Content,
-		Thinking:          r.Thinking,
-		ThinkingSignature: r.ThinkingSignature,
-		ToolCalls:         r.ToolCalls,
-		StopReason:        core.StopReason(r.StopReason),
-		TokensIn:          r.Usage.InputTokens,
-		TokensOut:         r.Usage.OutputTokens,
-		CacheCreateTokens: r.Usage.CacheCreationInputTokens,
-		CacheReadTokens:   r.Usage.CacheReadInputTokens,
+		Content:                  r.Content,
+		Thinking:                 r.Thinking,
+		ThinkingSignature:        r.ThinkingSignature,
+		ToolCalls:                r.ToolCalls,
+		StopReason:               core.StopReason(r.StopReason),
+		InputTokens:              r.Usage.InputTokens,
+		OutputTokens:             r.Usage.OutputTokens,
+		CacheCreationInputTokens: r.Usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     r.Usage.CacheReadInputTokens,
 	}
 }

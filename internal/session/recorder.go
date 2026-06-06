@@ -376,10 +376,10 @@ func (r *Recorder) onPostInfer(ev core.Event) {
 			StopReason: string(resp.StopReason),
 			LatencyMs:  latencyMs,
 			Usage: &transcript.InferenceUsage{
-				InputTokens:       resp.TokensIn,
-				OutputTokens:      resp.TokensOut,
-				CacheCreateTokens: resp.CacheCreateTokens,
-				CacheReadTokens:   resp.CacheReadTokens,
+				InputTokens:              resp.InputTokens,
+				OutputTokens:             resp.OutputTokens,
+				CacheCreationInputTokens: resp.CacheCreationInputTokens,
+				CacheReadInputTokens:     resp.CacheReadInputTokens,
 			},
 		},
 	})

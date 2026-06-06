@@ -145,10 +145,10 @@ type InferenceRecord struct {
 }
 
 type InferenceUsage struct {
-	InputTokens       int `json:"inputTokens"`
-	OutputTokens      int `json:"outputTokens"`
-	CacheCreateTokens int `json:"cacheCreateTokens,omitempty"`
-	CacheReadTokens   int `json:"cacheReadTokens,omitempty"`
+	InputTokens              int `json:"inputTokens"`
+	OutputTokens             int `json:"outputTokens"`
+	CacheCreationInputTokens int `json:"cacheCreateTokens,omitempty"`
+	CacheReadInputTokens     int `json:"cacheReadTokens,omitempty"`
 }
 
 // SystemSectionRecord carries the payload for system.section.added /

@@ -33,12 +33,12 @@ func (f *FakeLLM) Infer(_ context.Context, _ core.InferRequest) (<-chan core.Chu
 		ch <- core.Chunk{
 			Done: true,
 			Response: &core.InferResponse{
-				Content:    resp.Content,
-				Thinking:   resp.Thinking,
-				ToolCalls:  legacyToCoreCalls(resp.ToolCalls),
-				StopReason: core.StopReason(resp.StopReason),
-				TokensIn:   resp.Usage.InputTokens,
-				TokensOut:  resp.Usage.OutputTokens,
+				Content:      resp.Content,
+				Thinking:     resp.Thinking,
+				ToolCalls:    legacyToCoreCalls(resp.ToolCalls),
+				StopReason:   core.StopReason(resp.StopReason),
+				InputTokens:  resp.Usage.InputTokens,
+				OutputTokens: resp.Usage.OutputTokens,
 			},
 		}
 	}()

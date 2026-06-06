@@ -24,15 +24,15 @@ type InferRequest struct {
 
 // InferResponse is the final aggregated response from one LLM call.
 type InferResponse struct {
-	Content           string     // text output
-	Thinking          string     // chain-of-thought (extended thinking)
-	ThinkingSignature string     // signature for replaying thinking blocks
-	ToolCalls         []ToolCall // tool execution requests
-	StopReason        StopReason
-	TokensIn          int
-	TokensOut         int
-	CacheCreateTokens int
-	CacheReadTokens   int
+	Content                  string     // text output
+	Thinking                 string     // chain-of-thought (extended thinking)
+	ThinkingSignature        string     // signature for replaying thinking blocks
+	ToolCalls                []ToolCall // tool execution requests
+	StopReason               StopReason
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
 }
 
 // Chunk is one piece of a streaming LLM response.
