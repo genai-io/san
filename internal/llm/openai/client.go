@@ -57,7 +57,7 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 		// Convert messages to Responses API input items
 		var inputItems responses.ResponseInputParam = make([]responses.ResponseInputItemUnionParam, 0, len(opts.Messages)+1)
 
-		for _, msg := range openaicompat.DropEmptyMessages(openaicompat.SanitizeToolMessages(opts.Messages)) {
+		for _, msg := range openaicompat.DropEmptyMessages(llm.SanitizeToolMessages(opts.Messages)) {
 			if msg.ToolResult != nil {
 				inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
 					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
