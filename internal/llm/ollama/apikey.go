@@ -25,7 +25,20 @@ var APIKeyMeta = llm.Meta{
 // NewAPIKeyClient creates a new Ollama client. Ollama speaks the OpenAI
 // Chat Completions API, so we reuse the OpenAI SDK with a local base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := secret.Resolve("OLLAMA_BASE_URL")
+	baseURL := secret.ResolveOsEnv("OLLAMA_BASE_URL")
+	if store := secret.Default(); store != nil {
+		storedURL := store.Get("OLLAMA_BASE_URL")
+		if baseURL != "" {
+			if baseURL != storedURL {
+				// Update the value in secrets file with OsEnv's
+				_ = store.Set("OLLAMA_BASE_URL", baseURL)
+			}
+		} else if storedURL != "" {
+			// Use the stored URL
+			baseURL = storedURL
+		}
+	}
+	// If not set, fall back to the default
 	if baseURL == "" {
 		baseURL = "http://localhost:11434/v1"
 	}
@@ -35,12 +48,6 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	if !strings.HasSuffix(baseURL, "/v1") {
 		baseURL += "/v1"
 	}
-
-	// Update the secrets file
-	if store := secret.Default(); store != nil {
-		_ = store.Set("OLLAMA_BASE_URL", baseURL)
-	}
-
 	// Ollama ignores the Authorization header; "ollama" is a placeholder.
 	client := openai.NewClient(
 		option.WithAPIKey("ollama"),
