@@ -45,18 +45,17 @@ const (
 // agent run loop exchange, append to history, and persist. It holds no
 // UI/display state — for the rendered TUI view-model, see ChatMessage.
 type Message struct {
-	ID                string         `json:"id,omitempty"`
-	Role              Role           `json:"role"`
-	Content           string         `json:"content,omitempty"`
-	DisplayContent    string         `json:"display_content,omitempty"`
-	Images            []Image        `json:"images,omitempty"`
-	Thinking          string         `json:"thinking,omitempty"`
-	ThinkingSignature string         `json:"thinking_signature,omitempty"`
-	ToolCalls         []ToolCall     `json:"tool_calls,omitempty"`
-	ToolResult        *ToolResult    `json:"tool_result,omitempty"`
-	From              string         `json:"from,omitempty"`
-	Signal            Signal         `json:"-"`
-	Meta              map[string]any `json:"meta,omitempty"`
+	ID                string      `json:"id,omitempty"`
+	Role              Role        `json:"role"`
+	Content           string      `json:"content,omitempty"`
+	DisplayContent    string      `json:"display_content,omitempty"`
+	Images            []Image     `json:"images,omitempty"`
+	Thinking          string      `json:"thinking,omitempty"`
+	ThinkingSignature string      `json:"thinking_signature,omitempty"`
+	ToolCalls         []ToolCall  `json:"tool_calls,omitempty"`
+	ToolResult        *ToolResult `json:"tool_result,omitempty"`
+	From              string      `json:"from,omitempty"`
+	Signal            Signal      `json:"-"`
 }
 
 // ChatMessage is the TUI view-model for one conversation entry: the same

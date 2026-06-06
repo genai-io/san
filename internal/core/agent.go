@@ -37,7 +37,7 @@ type Agent interface {
 
 	// Messages returns a snapshot of the conversation history.
 	// The returned slice is a shallow copy — do not mutate Message fields
-	// that contain maps, slices, or pointers (Meta, ToolCalls, ToolResult).
+	// that contain slices or pointers (Images, ToolCalls, ToolResult).
 	Messages() []Message
 
 	// SetMessages replaces the conversation history.
