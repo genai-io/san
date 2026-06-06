@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// NewMessageID returns a fresh short hex identifier for a ChatMessage.
+// NewMessageID returns a fresh short hex identifier for a Message.
 // 8 bytes (16 hex chars) — collision space is large enough for the
 // per-session message volume we ever see; brevity matters because the
 // ID appears in every transcript record's id field.
@@ -26,12 +26,9 @@ type Role string
 const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
-	RoleTool      Role = "tool_result"
+	RoleTool      Role = "tool_result" // a tool-result turn; "tool_result" is its wire value
 	RoleNotice    Role = "notice"
 )
-
-// RoleToolResult is an alias for RoleTool.
-const RoleToolResult = RoleTool
 
 // Signal represents control signals sent through channels.
 type Signal string
@@ -44,7 +41,9 @@ const (
 	SigCompact Signal = "compact"
 )
 
-// Message is the canonical message type used across the codebase.
+// Message is the wire/agent-chain message: the unit the LLM provider and the
+// agent run loop exchange, append to history, and persist. It holds no
+// UI/display state — for the rendered TUI view-model, see ChatMessage.
 type Message struct {
 	ID                string         `json:"id,omitempty"`
 	Role              Role           `json:"role"`
@@ -60,7 +59,14 @@ type Message struct {
 	Meta              map[string]any `json:"meta,omitempty"`
 }
 
-// ChatMessage represents a UI-layer chat message with display state.
+// ChatMessage is the TUI view-model for one conversation entry: the same
+// content as Message plus transient display state (the expand/collapse
+// toggles). The app layer renders ChatMessages and converts them back to
+// Message before sending to the provider — see
+// conv.ConversationModel.ConvertToProvider.
+//
+// The tool's name lives on ToolResult.ToolName (the single source of truth),
+// not on the ChatMessage itself.
 type ChatMessage struct {
 	// ID is a stable per-message identifier assigned once at construction.
 	// The session.Save path uses it to dedupe appends, so it must not change
@@ -74,11 +80,9 @@ type ChatMessage struct {
 	ThinkingSignature string
 	Images            []Image
 	ToolCalls         []ToolCall
-	ToolCallsExpanded bool
 	ToolResult        *ToolResult
-	ToolName          string
-	Expanded          bool
-	RenderedInline    bool
+	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
+	Expanded          bool // UI: the tool-result block is expanded
 }
 
 // Image represents an image attachment.

@@ -239,7 +239,6 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	result := rt.OnToolResult(tr)
 	m.Append(core.ChatMessage{
 		Role:       core.RoleUser,
-		ToolName:   tr.ToolName,
 		ToolResult: result,
 	})
 	return nil

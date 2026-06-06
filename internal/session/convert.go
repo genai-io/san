@@ -92,7 +92,6 @@ func ConvertFromEntries(entries []Entry) []core.ChatMessage {
 		}
 		if m.ToolResult != nil {
 			chatMsg.ToolResult = m.ToolResult
-			chatMsg.ToolName = m.ToolResult.ToolName
 		}
 		messages = append(messages, chatMsg)
 	}

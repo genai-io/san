@@ -47,7 +47,7 @@ func (m *model) AbortToolWithError(errorMsg string, retry bool) tea.Cmd {
 		return tea.Batch(m.CommitMessages()...)
 	}
 	tc := m.conv.Tool.PendingCalls[m.conv.Tool.CurrentIdx]
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolName: tc.Name, ToolResult: &core.ToolResult{ToolCallID: tc.ID, Content: errorMsg, IsError: true}})
+	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: errorMsg, IsError: true}})
 	m.cancelRemainingToolCalls(m.conv.Tool.CurrentIdx + 1)
 	m.conv.Tool.Reset()
 	m.conv.Stream.Stop()
