@@ -11,7 +11,6 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 
@@ -323,26 +322,6 @@ func (c *AgentConfig) GetSystemPrompt() string {
 		}
 	})
 	return c.SystemPrompt
-}
-
-// ProgressCallback is called when the agent makes progress
-type ProgressCallback func(msg string)
-
-// AgentRequest represents a request to spawn an agent
-type AgentRequest struct {
-	Agent       string
-	Name        string
-	Prompt      string
-	Description string
-	Background  bool
-	Model       string
-	MaxSteps    int
-	Mode        string
-	ResumeID    string
-	LiveTaskID  string
-	Isolation   string
-	OnProgress  ProgressCallback
-	OnQuestion  tool.AskQuestionFunc
 }
 
 // AgentResult contains the result of an agent execution

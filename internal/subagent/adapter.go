@@ -19,27 +19,11 @@ func NewExecutorAdapter(executor *Executor) *ExecutorAdapter {
 // Verify ExecutorAdapter implements tool.AgentExecutor
 var _ tool.AgentExecutor = (*ExecutorAdapter)(nil)
 
-// Run executes an agent and returns the result
+// Run executes an agent and projects the rich AgentResult down to the
+// tool-facing AgentExecResult (flattening token usage, dropping internal
+// fields the tool layer does not need).
 func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
-	agentReq := AgentRequest{
-		Agent:       req.Agent,
-		Name:        req.Name,
-		Prompt:      req.Prompt,
-		Description: req.Description,
-		Background:  req.Background,
-		Model:       req.Model,
-		MaxSteps:    req.MaxSteps,
-		Mode:        req.Mode,
-		ResumeID:    req.ResumeID,
-		Isolation:   req.Isolation,
-		OnQuestion:  req.OnQuestion,
-	}
-
-	if req.OnProgress != nil {
-		agentReq.OnProgress = ProgressCallback(req.OnProgress)
-	}
-
-	result, err := a.Executor.Run(ctx, agentReq)
+	result, err := a.Executor.Run(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -63,20 +47,9 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 
 // RunBackground executes an agent in background
 func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
-	agentReq := AgentRequest{
-		Agent:       req.Agent,
-		Name:        req.Name,
-		Prompt:      req.Prompt,
-		Description: req.Description,
-		Background:  true,
-		Model:       req.Model,
-		MaxSteps:    req.MaxSteps,
-		Mode:        req.Mode,
-		ResumeID:    req.ResumeID,
-		Isolation:   req.Isolation,
-	}
+	req.Background = true
 
-	agentTask, err := a.Executor.RunBackground(agentReq)
+	agentTask, err := a.Executor.RunBackground(req)
 	if err != nil {
 		return tool.AgentTaskInfo{}, err
 	}

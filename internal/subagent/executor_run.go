@@ -8,11 +8,12 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/tool"
 	"go.uber.org/zap"
 )
 
 type preparedRun struct {
-	req              AgentRequest
+	req              tool.AgentExecRequest
 	cfg              *runConfig
 	cwd              string
 	startedAt        time.Time
@@ -47,7 +48,7 @@ func (r *preparedRun) recordUsage(resp *core.InferResponse) {
 	}
 }
 
-func (e *Executor) prepareRun(req AgentRequest) (*preparedRun, error) {
+func (e *Executor) prepareRun(req tool.AgentExecRequest) (*preparedRun, error) {
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}

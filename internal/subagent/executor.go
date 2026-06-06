@@ -98,7 +98,7 @@ func (e *Executor) GetParentModelID() string {
 
 // Run executes an agent request and returns the result.
 // For background agents, this should be called in a goroutine.
-func (e *Executor) Run(ctx context.Context, req AgentRequest) (*AgentResult, error) {
+func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
 	run, err := e.prepareRun(req)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (e *Executor) Run(ctx context.Context, req AgentRequest) (*AgentResult, err
 }
 
 // RunBackground executes an agent in the background and returns the task.
-func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
+func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -143,7 +143,6 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 		cancel,
 	)
 	agentTask.SetIdentity(req.Agent, req.ResumeID)
-	req.LiveTaskID = agentTask.GetID()
 
 	task.Default().RegisterTask(agentTask)
 
@@ -179,14 +178,14 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 	return agentTask, nil
 }
 
-func (e *Executor) validateRequest(req AgentRequest) error {
+func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return fmt.Errorf("agent prompt cannot be empty")
 	}
 	return nil
 }
 
-func (e *Executor) prepareWorkspace(req AgentRequest) (string, func(), error) {
+func (e *Executor) prepareWorkspace(req tool.AgentExecRequest) (string, func(), error) {
 	if req.Isolation != "worktree" {
 		return e.cwd, func() {}, nil
 	}
@@ -198,7 +197,7 @@ func (e *Executor) prepareWorkspace(req AgentRequest) (string, func(), error) {
 	return result.Path, cleanup, nil
 }
 
-func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
+func (e *Executor) prepareRunConfig(req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -226,7 +225,7 @@ func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
 	}, nil
 }
 
-func (e *Executor) fireSubagentStart(req AgentRequest, agentHookID string) {
+func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID string) {
 	if e.hooks == nil {
 		return
 	}
@@ -314,7 +313,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	return ag, cleanup, nil
 }
 
-func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req AgentRequest) error {
+func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
 	// Resume from saved session
 	if req.ResumeID != "" {
 		if err := e.resumeFromSession(ag, ctx, req.ResumeID, req.Prompt); err != nil {
@@ -359,7 +358,7 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 	return success, errMsg
 }
 
-func (e *Executor) fireSubagentStop(req AgentRequest, agentHookID, agentSessionID, agentTranscriptPath, resultContent string) {
+func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agentSessionID, agentTranscriptPath, resultContent string) {
 	if e.hooks == nil {
 		return
 	}

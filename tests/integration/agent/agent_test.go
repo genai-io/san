@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	_ "github.com/genai-io/san/internal/tool/registry"
 	"github.com/genai-io/san/tests/integration/testutil"
@@ -31,7 +32,7 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
-	result, err := executor.Run(context.Background(), subagent.AgentRequest{
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:       "general-purpose",
 		Mode:        "explore",
 		Prompt:      "Find all Go files",
@@ -56,7 +57,7 @@ func TestAgent_UnknownAgent(t *testing.T) {
 	mp := &testutil.MockProvider{}
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 
-	_, err := executor.Run(context.Background(), subagent.AgentRequest{
+	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "NonExistent",
 		Prompt: "do something",
 	})
@@ -80,7 +81,7 @@ func TestAgent_MaxStepsRespected(t *testing.T) {
 		&testutil.MockProvider{Responses: responses},
 		t.TempDir(), "fake-model", nil,
 	)
-	result, err := executor.Run(context.Background(), subagent.AgentRequest{
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "general-purpose",
 		Prompt: "keep going",
 	})
@@ -121,7 +122,7 @@ func TestAgent_ModelResolution(t *testing.T) {
 					executor.GetParentModelID(), tt.parentModel)
 			}
 
-			_, err := executor.Run(context.Background(), subagent.AgentRequest{
+			_, err := executor.Run(context.Background(), tool.AgentExecRequest{
 				Agent:  "general-purpose",
 				Prompt: "test",
 				Model:  tt.reqModel,
@@ -179,7 +180,7 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
-	result, err := executor.Run(context.Background(), subagent.AgentRequest{
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "general-purpose",
 		Mode:   "explore",
 		Prompt: "try to write a file",
@@ -242,7 +243,7 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", engine)
-	_, err := executor.Run(context.Background(), subagent.AgentRequest{
+	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "general-purpose",
 		Prompt: "test hooks",
 	})
@@ -282,7 +283,7 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
-	agentTask, err := executor.RunBackground(subagent.AgentRequest{
+	agentTask, err := executor.RunBackground(tool.AgentExecRequest{
 		Agent:       "general-purpose",
 		Prompt:      "background task",
 		Description: "bg test",
@@ -333,7 +334,7 @@ func TestAgent_OnProgressReceivesToolUpdates(t *testing.T) {
 
 	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", nil)
 	var progress []string
-	result, err := executor.Run(context.Background(), subagent.AgentRequest{
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "general-purpose",
 		Mode:   "explore",
 		Prompt: "inspect the readme",
