@@ -12,16 +12,8 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
-)
-
-// OperationMode mirrors OperationMode to avoid importing setting in the render layer.
-type OperationMode int
-
-const (
-	ModeNormal OperationMode = iota
-	ModeAutoAccept
-	ModeBypassPermissions
 )
 
 const (
@@ -38,7 +30,7 @@ const (
 
 // OperationModeParams holds the parameters needed for rendering mode status.
 type OperationModeParams struct {
-	Mode             OperationMode
+	Mode             setting.OperationMode
 	InputTokens      int
 	OutputTokens     int
 	InputLimit       int
@@ -140,16 +132,16 @@ func compactStatusHint(percent float64) string {
 }
 
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept or bypass mode.
-func RenderOperationModeIndicator(mode OperationMode) string {
+func RenderOperationModeIndicator(mode setting.OperationMode) string {
 	var icon, label string
 	var color lipgloss.TerminalColor
 
 	switch mode {
-	case ModeAutoAccept:
+	case setting.ModeAutoAccept:
 		icon = "⏵⏵"
 		label = " accept edits on"
 		color = kit.CurrentTheme.Success
-	case ModeBypassPermissions:
+	case setting.ModeBypassPermissions:
 		icon = "⏵⏵"
 		label = " bypass permissions on"
 		color = kit.CurrentTheme.Error

@@ -236,7 +236,7 @@ func (m model) renderModeStatus() string {
 		}
 	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
-		Mode:             conv.OperationMode(m.env.OperationMode),
+		Mode:             m.env.OperationMode,
 		InputTokens:      m.env.InputTokens,
 		OutputTokens:     m.env.OutputTokens,
 		InputLimit:       kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
