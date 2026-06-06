@@ -24,10 +24,8 @@ jobs:
         run: make format-check
       - name: Build
         run: make build-all
-      - name: Unit tests
+      - name: Unit + integration tests (merged coverage)
         run: make cover
-      - name: Integration tests
-        run: go test -race ./tests/integration/...
       - name: Vet
         run: make lint
       - name: Upload coverage to Codecov
