@@ -51,7 +51,6 @@ type HookInput struct {
 	ToolUseID    string         `json:"tool_use_id,omitempty"`
 	ToolResponse any            `json:"tool_response,omitempty"`
 	Error        string         `json:"error,omitempty"`
-	IsInterrupt  bool           `json:"is_interrupt,omitempty"`
 	Event        string         `json:"event,omitempty"`
 
 	// PermissionRequest suggestions
