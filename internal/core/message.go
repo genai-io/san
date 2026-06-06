@@ -54,7 +54,6 @@ type Message struct {
 	ThinkingSignature string      `json:"thinking_signature,omitempty"`
 	ToolCalls         []ToolCall  `json:"tool_calls,omitempty"`
 	ToolResult        *ToolResult `json:"tool_result,omitempty"`
-	From              string      `json:"from,omitempty"`
 	Signal            Signal      `json:"-"`
 }
 

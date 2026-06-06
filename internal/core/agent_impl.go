@@ -283,7 +283,7 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 		a.applyCompaction(ctx, msg.Content, len(a.snapshot()), "manual")
 		return false
 	}
-	a.emit(ctx, MessageEvent(msg))
+	a.emit(ctx, MessageEvent(a.id, msg))
 	if msg.Signal == "" {
 		a.append(msg)
 		return true
@@ -358,7 +358,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 
 		a.emit(ctx, PostInferEvent(a.id, resp))
 		a.append(Message{
-			Role: RoleAssistant, From: a.id,
+			Role:    RoleAssistant,
 			Content: resp.Content, Thinking: resp.Thinking,
 			ThinkingSignature: resp.ThinkingSignature,
 			ToolCalls:         resp.ToolCalls,
@@ -374,7 +374,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 				return makeResult(resp.Content, StopMaxOutputRecoveryExhausted, ""), nil
 			}
 			maxOutputRecoveryCount++
-			a.append(Message{Role: RoleUser, From: "system", Content: TruncatedResumePrompt})
+			a.append(Message{Role: RoleUser, Content: TruncatedResumePrompt})
 			continue
 		}
 
@@ -762,7 +762,7 @@ func (a *agent) snapshot() []Message {
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	a.append(Message{
-		Role: RoleTool, From: tc.Name, Content: content,
+		Role: RoleTool, Content: content,
 		ToolResult: &ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError},
 	})
 }

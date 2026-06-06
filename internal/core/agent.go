@@ -296,7 +296,9 @@ func StopEvent(agentID string, err error) Event {
 	return Event{Type: OnStop, Source: agentID, Data: err}
 }
 func ChunkEvent(agentID string, c Chunk) Event { return Event{Type: OnChunk, Source: agentID, Data: c} }
-func MessageEvent(msg Message) Event           { return Event{Type: OnMessage, Source: msg.From, Data: msg} }
+func MessageEvent(agentID string, msg Message) Event {
+	return Event{Type: OnMessage, Source: agentID, Data: msg}
+}
 func AppendEvent(agentID string, msg Message) Event {
 	return Event{Type: OnAppend, Source: agentID, Data: msg}
 }
