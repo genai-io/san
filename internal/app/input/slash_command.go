@@ -650,10 +650,10 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 		return "Cannot compact while streaming.", nil, nil
 	}
 	c.env.Conversation.Compact.Active = true
-	c.env.Conversation.Compact.Focus = strings.TrimSpace(args)
+	c.env.Conversation.Compact.SummaryFocus = strings.TrimSpace(args)
 	c.env.Conversation.Compact.Phase = conv.PhaseSummarizing
 	c.env.Conversation.Compact.Count = len(c.env.Conversation.ConvertToProvider())
-	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(c.env.BuildCompactRequest(c.env.Conversation.Compact.Focus, "manual"))), nil
+	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(c.env.BuildCompactRequest(c.env.Conversation.Compact.SummaryFocus, "manual"))), nil
 }
 
 func lookupSkill(svc *skill.Registry, cmd string) (*skill.Skill, bool) {
