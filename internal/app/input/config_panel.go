@@ -46,9 +46,9 @@ type ConfigSavedMsg struct {
 	SavedSelfLearn setting.SelfLearnSettings
 }
 
-// ConfigSelector is the /config popup. Today only Self-Learning is
-// registered; adding a sibling panel (Provider, Permissions, Appearance,
-// …) is a one-liner in NewConfigSelector.
+// ConfigSelector is the /config popup. Self-Learning and Appearance are
+// registered today; adding a sibling panel (Provider, Permissions, …) is a
+// one-liner in NewConfigSelector.
 type ConfigSelector struct {
 	panels []Panel
 	index  int
@@ -62,7 +62,7 @@ type ConfigSelector struct {
 // preserved by the tab strip.
 func NewConfigSelector(settings *setting.Settings) ConfigSelector {
 	return ConfigSelector{
-		panels: []Panel{newSelfLearnPanel(settings)},
+		panels: []Panel{newSelfLearnPanel(settings), newAppearancePanel(settings)},
 	}
 }
 
@@ -83,8 +83,9 @@ func (c *ConfigSelector) Enter(width, height int) {
 func (c *ConfigSelector) IsActive() bool { return c.active }
 
 // HandleKeypress implements the popup interface. Esc dismisses the popup;
-// Ctrl-Tab cycles panels (when more than one is registered); everything
-// else delegates to the active panel.
+// ←/→ switch panels (when more than one is registered); everything else
+// delegates to the active panel. Panels reserve ↑/↓ for in-panel
+// navigation, so left/right stays free for the tab strip.
 func (c *ConfigSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	if !c.active {
 		return nil
@@ -93,12 +94,18 @@ func (c *ConfigSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	case "esc":
 		c.active = false
 		return nil
-	case "ctrl+tab":
+	case "left", "right":
+		// Only intercept when there's more than one panel; otherwise fall
+		// through so the active panel can handle left/right itself.
 		if len(c.panels) > 1 {
-			c.index = (c.index + 1) % len(c.panels)
+			step := 1
+			if msg.String() == "left" {
+				step = -1
+			}
+			c.index = (c.index + step + len(c.panels)) % len(c.panels)
 			c.panels[c.index].Enter()
+			return nil
 		}
-		return nil
 	}
 	p := c.activePanel()
 	if p == nil {
@@ -222,7 +229,7 @@ func (c *ConfigSelector) renderHint(panelHint string) string {
 	}
 	parts = append(parts, "esc cancel")
 	if len(c.panels) > 1 {
-		parts = append(parts, "ctrl-tab switch panel")
+		parts = append(parts, "←→ switch panel")
 	}
 	return kit.HintLine(parts...)
 }

@@ -102,6 +102,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.wireSelfLearn(m.buildAgentParams(), "")
 		}
 		return m, nil
+	case input.ThemeSavedMsg:
+		// The panel already applied (kit.InitTheme) and persisted the theme;
+		// refresh the in-memory handle so re-opening /config reflects it.
+		if m.services.Setting != nil {
+			if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+				log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
+			}
+		}
+		m.conv.AddNotice("Theme set to " + msg.Theme)
+		return m, nil
 	case input.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in
 		// <system-reminder>, which is only refreshed at SessionStart and
