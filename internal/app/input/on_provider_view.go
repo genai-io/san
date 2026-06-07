@@ -349,7 +349,7 @@ func (s *ProviderSelector) renderHints() string {
 	var parts []string
 	parts = append(parts, "↑/↓ navigate")
 	if s.activeTab == providerTabProviders {
-		parts = append(parts, "Enter connect/refresh")
+		parts = append(parts, "Ctrl+E edit", "Enter connect/refresh")
 	} else {
 		parts = append(parts, "Space mark · Enter confirm")
 	}

@@ -479,6 +479,9 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case tea.KeyRunes:
 		s.appendModelSearch(string(key.Runes))
 		return nil
+
+	case tea.KeyCtrlE:
+		return s.handleCredentialEdit()
 	}
 
 	// Vim navigation (only when search query is empty)
@@ -679,6 +682,78 @@ func (s *ProviderSelector) selectAuthMethod(item providerListItem) tea.Cmd {
 	}
 
 	return s.tryConnectOrPromptKey(*am, item.ProviderIdx, s.findAuthMethodIndex(item))
+}
+
+// handleCredentialEdit handles the 'e' key for editing credentials on connected providers.
+// For providers with a single auth method: activates API key input directly.
+// For providers with multiple auth methods: expands the provider first, then allows editing.
+func (s *ProviderSelector) handleCredentialEdit() tea.Cmd {
+	if s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
+		return nil
+	}
+
+	item := s.visibleItems[s.selectedIdx]
+
+	switch item.Kind {
+	case providerItemProvider:
+		return s.handleCredentialEditForProvider(item)
+	case providerItemAuthMethod:
+		return s.handleCredentialEditForAuthMethod(item)
+	default:
+		return nil
+	}
+}
+
+// handleCredentialEditForProvider handles credential edit for a provider row.
+func (s *ProviderSelector) handleCredentialEditForProvider(item providerListItem) tea.Cmd {
+	if item.Provider == nil {
+		return nil
+	}
+	p := item.Provider
+
+	// Single auth method: activate API key input directly
+	if len(p.AuthMethods) == 1 {
+		am := p.AuthMethods[0]
+		envVar := providerFirstEnvVar(am.EnvVars)
+		if envVar == "" {
+			return nil
+		}
+		s.apiKeyProviderIdx = item.ProviderIdx
+		s.apiKeyAuthIdx = 0
+		s.initAPIKeyInput(envVar)
+		return nil
+	}
+
+	// Multiple auth methods: expand if not already expanded
+	if len(p.AuthMethods) == 0 {
+		return nil
+	}
+
+	if s.expandedProviderIdx != item.ProviderIdx {
+		s.expandedProviderIdx = item.ProviderIdx
+		s.resetConnectionResult()
+		s.rebuildVisibleItems()
+	}
+
+	return nil
+}
+
+// handleCredentialEditForAuthMethod handles credential edit for an auth method row.
+func (s *ProviderSelector) handleCredentialEditForAuthMethod(item providerListItem) tea.Cmd {
+	if item.AuthMethod == nil {
+		return nil
+	}
+	am := item.AuthMethod
+
+	envVar := providerFirstEnvVar(am.EnvVars)
+	if envVar == "" {
+		return nil
+	}
+
+	s.apiKeyProviderIdx = item.ProviderIdx
+	s.apiKeyAuthIdx = s.findAuthMethodIndex(item)
+	s.initAPIKeyInput(envVar)
+	return nil
 }
 
 // tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
