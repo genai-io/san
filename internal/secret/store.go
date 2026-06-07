@@ -38,6 +38,15 @@ func Default() *Store {
 	return defaultStore
 }
 
+// ResetDefault discards the cached default store so the next Default() call
+// re-resolves it against the current HOME. Intended for tests that isolate the
+// secret store via t.Setenv("HOME", t.TempDir()); without it the sync.Once in
+// Default() would pin the path to the real ~/.san on first use.
+func ResetDefault() {
+	defaultStore = nil
+	defaultOnce = sync.Once{}
+}
+
 func (s *Store) load() error {
 	raw, err := os.ReadFile(s.path)
 	if err != nil {
