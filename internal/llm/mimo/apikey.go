@@ -2,7 +2,6 @@ package mimo
 
 import (
 	"context"
-	"os"
 
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -22,7 +21,7 @@ var APIKeyMeta = llm.Meta{
 // NewAPIKeyClient creates a new Mimo client using API Key authentication.
 // The Mimo API is Anthropic-compatible. Base URL is read from MIMO_BASE_URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("MIMO_BASE_URL")
+	baseURL := secret.Resolve("MIMO_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://api.xiaomimimo.com/anthropic"
 	}

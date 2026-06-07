@@ -743,6 +743,7 @@ var providerOrder = []llm.Name{
 	llm.Alibaba,
 	llm.BigModel,
 	llm.Ollama,
+	llm.Mimo,
 }
 
 // providerDisplayNames maps provider to human-readable name.
@@ -757,6 +758,7 @@ var providerDisplayNames = map[llm.Name]string{
 	llm.Alibaba:   "Alibaba",
 	llm.BigModel:  "Z.ai (GLM series)",
 	llm.Ollama:    "Ollama (Local)",
+	llm.Mimo:      "Xiaomi MiMo",
 }
 
 // Enter opens the unified model & provider kit.
