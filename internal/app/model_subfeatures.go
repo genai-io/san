@@ -7,6 +7,7 @@ package app
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
@@ -39,6 +40,30 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		SetCurrentModel: func(info *llm.CurrentModelInfo) {
 			m.env.CurrentModel = info
 			m.env.LoadThinkingEffortFromStore()
+		},
+		PrintWelcome: func(modelID string) tea.Cmd {
+			modelName := modelID
+			if m.services.LLM != nil {
+				if name := m.services.LLM.Store().CachedModelDisplayName(modelID); name != "" {
+					modelName = name
+				}
+			}
+			teal := lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
+			star := lipgloss.NewStyle().Foreground(welcomeStar)
+			dim := lipgloss.NewStyle().Foreground(welcomeDim)
+			line := teal.Render("< ") + teal.Render("SAN") + " " + star.Render("✦") + " " + teal.Render("/>")
+			if proj := projectName(m.env.CWD); proj != "" {
+				line += dim.Render("  ·  ") + dim.Render(proj)
+			}
+			line += dim.Render("  ·  ") + dim.Render(modelName)
+			// Overwrite the original welcome line in-place using ANSI cursor
+			// codes. The original printWelcome output is:
+			//   \n  (leading newline from renderWelcome)
+			//   <content>  (the styled welcome line)
+			//   \n  (trailing newline from fmt.Println)
+			// Move up 2 lines to the content line, clear it, rewrite, then
+			// position the cursor on the blank line below for the TUI.
+			return tea.Println("\033[2A\033[2K\r" + line + "\n")
 		},
 		ClearCachedInstructions: m.env.ClearCachedInstructions,
 		RefreshMemoryContext:    m.refreshMemoryContext,
