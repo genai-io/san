@@ -203,6 +203,11 @@ type ProviderSelector struct {
 	apiKeyProviderIdx int // index into allProviders
 	apiKeyAuthIdx     int // index into that provider's AuthMethods
 
+	// Inline confirm-remove prompt
+	confirmRemoveActive  bool
+	confirmRemoveEnvVar  string
+	confirmRemoveItemIdx int // index into visibleItems for the pending remove
+
 	// Models tab: search filter and the two flags that disambiguate keys
 	// whose meaning depends on what the user is doing.
 	searchQuery    string              // active filter text; "" means no filter
@@ -419,6 +424,11 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleAPIKeyInput(key)
 	}
 
+	// Route to confirm-remove if active
+	if s.confirmRemoveActive {
+		return s.handleConfirmRemove(key)
+	}
+
 	switch key.Type {
 	case tea.KeyTab:
 		if s.searchQuery == "" {
@@ -482,6 +492,9 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 
 	case tea.KeyCtrlE:
 		return s.handleCredentialEdit()
+
+	case tea.KeyCtrlD:
+		return s.handleCredentialRemove()
 	}
 
 	// Vim navigation (only when search query is empty)
@@ -753,6 +766,104 @@ func (s *ProviderSelector) handleCredentialEditForAuthMethod(item providerListIt
 	s.apiKeyProviderIdx = item.ProviderIdx
 	s.apiKeyAuthIdx = s.findAuthMethodIndex(item)
 	s.initAPIKeyInput(envVar)
+	return nil
+}
+
+// handleCredentialRemove handles Ctrl+D: shows a confirmation prompt before removing.
+func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
+	if s.activeTab != providerTabProviders {
+		return nil
+	}
+	if s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
+		return nil
+	}
+
+	item := s.visibleItems[s.selectedIdx]
+
+	var envVars []string
+	switch item.Kind {
+	case providerItemProvider:
+		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
+			return nil
+		}
+		envVars = item.Provider.AuthMethods[0].EnvVars
+	case providerItemAuthMethod:
+		if item.AuthMethod == nil {
+			return nil
+		}
+		envVars = item.AuthMethod.EnvVars
+	default:
+		return nil
+	}
+
+	envVar := providerFirstEnvVar(envVars)
+	if envVar == "" {
+		return nil
+	}
+
+	s.confirmRemoveActive = true
+	s.confirmRemoveEnvVar = envVar
+	s.confirmRemoveItemIdx = s.selectedIdx
+	return nil
+}
+
+// handleConfirmRemove handles keypresses while the confirm-remove prompt is active.
+func (s *ProviderSelector) handleConfirmRemove(key tea.KeyMsg) tea.Cmd {
+	s.confirmRemoveActive = false
+	switch key.String() {
+	case "y", "Y":
+		return s.executeCredentialRemove()
+	default:
+		return nil
+	}
+}
+
+// executeCredentialRemove performs the actual credential removal.
+func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
+	envVar := s.confirmRemoveEnvVar
+
+	// Resolve the provider and auth method from the item
+	item := s.visibleItems[s.confirmRemoveItemIdx]
+	var providerName llm.Name
+	var authMethod llm.AuthMethod
+	switch item.Kind {
+	case providerItemProvider:
+		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
+			return nil
+		}
+		providerName = item.Provider.AuthMethods[0].Provider
+		authMethod = item.Provider.AuthMethods[0].AuthMethod
+	case providerItemAuthMethod:
+		if item.AuthMethod == nil {
+			return nil
+		}
+		providerName = item.AuthMethod.Provider
+		authMethod = item.AuthMethod.AuthMethod
+	default:
+		return nil
+	}
+
+	// Remove from secret store and unset env var
+	if store := secret.Default(); store != nil {
+		_ = store.Delete(envVar)
+	}
+	os.Unsetenv(envVar)
+
+	// Disconnect provider and remove cached models from the llm store
+	if s.store != nil {
+		_ = s.store.Disconnect(providerName)
+		_ = s.store.RemoveCachedModels(providerName, authMethod)
+
+		// Clear current model if it belongs to the disconnected provider
+		if cur := s.store.GetCurrentModel(); cur != nil && cur.Provider == providerName {
+			_ = s.store.ClearCurrentModel()
+		}
+	}
+
+	// Reload provider data to reflect the removed credential
+	s.resetConnectionResult()
+	_, _ = s.loadProviderData()
+	s.rebuildVisibleItems()
 	return nil
 }
 

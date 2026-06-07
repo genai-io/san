@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 func TestHandleCredentialEditForSingleAuthMethod(t *testing.T) {
@@ -117,6 +118,8 @@ func TestHandleCredentialEditForMultipleAuthMethods(t *testing.T) {
 }
 
 func TestHandleCredentialEditUpdatesOnEnter(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+
 	m := NewProviderSelector()
 	m.active = true
 	m.activeTab = providerTabProviders
@@ -161,16 +164,6 @@ func TestHandleCredentialEditUpdatesOnEnter(t *testing.T) {
 
 	// Update the API key
 	m.apiKeyInput.SetValue("NEW_TEST_KEY")
-
-	// Save and restore env var to avoid leaking into other tests
-	origVal, _ := os.LookupEnv("OPENAI_API_KEY")
-	defer func() {
-		if origVal != "" {
-			os.Setenv("OPENAI_API_KEY", origVal)
-		} else {
-			os.Unsetenv("OPENAI_API_KEY")
-		}
-	}()
 
 	// Simulate Enter key to submit
 	cmd = m.handleAPIKeyInput(tea.KeyMsg{Type: tea.KeyEnter})
@@ -327,5 +320,399 @@ func TestEditCredentialFlowWithKeyboardShortcuts(t *testing.T) {
 	}
 	if m.apiKeyEnvVar != "OPENAI_API_KEY" {
 		t.Fatal("incorrect environment variable set for API key input")
+	}
+}
+
+func TestHandleCredentialRemoveSingleAuthMethod(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key-to-remove")
+	if store := secret.Default(); store != nil {
+		_ = store.Set("OPENAI_API_KEY", "test-key-to-remove")
+		t.Cleanup(func() { _ = store.Delete("OPENAI_API_KEY") })
+	}
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    "openai",
+			DisplayName: "OpenAI",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.OpenAI,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"OPENAI_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	// Select the provider
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	// First press: shows confirmation
+	cmd := m.handleCredentialRemove()
+	if cmd != nil {
+		t.Fatal("handleCredentialRemove should not return a command")
+	}
+	if !m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be true after Ctrl+D")
+	}
+	// Env var should still be set at this point
+	if os.Getenv("OPENAI_API_KEY") != "test-key-to-remove" {
+		t.Fatal("OPENAI_API_KEY should not be removed until confirmed")
+	}
+
+	// Confirm with 'y'
+	cmd = m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd != nil {
+		t.Fatal("handleConfirmRemove should not return a command")
+	}
+	if m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be false after confirm")
+	}
+
+	// Verify env var is unset
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		t.Fatal("OPENAI_API_KEY should be unset after confirm")
+	}
+
+	// Verify secret store is cleared
+	if store := secret.Default(); store != nil {
+		if store.Get("OPENAI_API_KEY") != "" {
+			t.Fatal("OPENAI_API_KEY should be removed from secret store")
+		}
+	}
+}
+
+func TestHandleCredentialRemoveCancel(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    "openai",
+			DisplayName: "OpenAI",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.OpenAI,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"OPENAI_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	// Show confirmation
+	m.handleCredentialRemove()
+	if !m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be true")
+	}
+
+	// Cancel with Esc
+	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be false after cancel")
+	}
+
+	// Env var should remain
+	if os.Getenv("OPENAI_API_KEY") != "test-key" {
+		t.Fatal("OPENAI_API_KEY should not be removed after cancel")
+	}
+}
+
+func TestHandleCredentialRemoveMultipleAuthMethods(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-ak-key")
+	t.Setenv("BEDROCK_API_KEY", "test-bk-key")
+	if store := secret.Default(); store != nil {
+		_ = store.Set("ANTHROPIC_API_KEY", "test-ak-key")
+		_ = store.Set("BEDROCK_API_KEY", "test-bk-key")
+		t.Cleanup(func() {
+			_ = store.Delete("ANTHROPIC_API_KEY")
+			_ = store.Delete("BEDROCK_API_KEY")
+		})
+	}
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    llm.Anthropic,
+			DisplayName: "Anthropic",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.Anthropic,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"ANTHROPIC_API_KEY"},
+				},
+				{
+					Provider:    llm.Anthropic,
+					AuthMethod:  llm.AuthBedrock,
+					DisplayName: "AWS Bedrock",
+					Status:      llm.StatusAvailable,
+					EnvVars:     []string{"BEDROCK_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	// Select the provider row — should not show confirmation (multiple auth methods)
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	cmd := m.handleCredentialRemove()
+	if cmd != nil {
+		t.Fatal("handleCredentialRemove should return nil for provider with multiple auth methods")
+	}
+	if m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be false for provider with multiple auth methods")
+	}
+
+	// Expand and select the specific auth method
+	m.expandedProviderIdx = 0
+	m.rebuildVisibleItems()
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemAuthMethod && item.AuthMethod != nil && item.AuthMethod.AuthMethod == llm.AuthAPIKey {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	// Show confirmation and confirm
+	m.handleCredentialRemove()
+	if !m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be true for auth method row")
+	}
+	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	if os.Getenv("ANTHROPIC_API_KEY") != "" {
+		t.Fatal("ANTHROPIC_API_KEY should be unset after confirm")
+	}
+	// BEDROCK should remain
+	if os.Getenv("BEDROCK_API_KEY") != "test-bk-key" {
+		t.Fatal("BEDROCK_API_KEY should not be affected")
+	}
+}
+
+func TestHandleCredentialRemoveKeyboardShortcut(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	if store := secret.Default(); store != nil {
+		_ = store.Set("OPENAI_API_KEY", "test-key")
+		t.Cleanup(func() { _ = store.Delete("OPENAI_API_KEY") })
+	}
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    "openai",
+			DisplayName: "OpenAI",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.OpenAI,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"OPENAI_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	// Select the provider
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	// Trigger remove with Ctrl+D (shows confirmation)
+	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if cmd != nil {
+		t.Fatal("handleCredentialRemove should not return a command")
+	}
+	if !m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be true after Ctrl+D")
+	}
+
+	// Confirm with 'y' via HandleKeypress
+	cmd = m.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	if cmd != nil {
+		t.Fatal("handleConfirmRemove should not return a command")
+	}
+
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		t.Fatal("OPENAI_API_KEY should be unset after confirm")
+	}
+}
+
+func TestHandleCredentialRemoveNonProvidersTab(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabModels
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    "openai",
+			DisplayName: "OpenAI",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.OpenAI,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"OPENAI_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	cmd := m.handleCredentialRemove()
+	if cmd != nil {
+		t.Fatal("handleCredentialRemove should return nil on non-providers tab")
+	}
+	if m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be false on non-providers tab")
+	}
+
+	// Env var should remain
+	if os.Getenv("OPENAI_API_KEY") != "test-key" {
+		t.Fatal("OPENAI_API_KEY should not be removed on non-providers tab")
+	}
+}
+
+func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("OPENAI_API_KEY", "test-key-to-remove")
+
+	if secretStore := secret.Default(); secretStore != nil {
+		_ = secretStore.Set("OPENAI_API_KEY", "test-key-to-remove")
+		t.Cleanup(func() { _ = secretStore.Delete("OPENAI_API_KEY") })
+	}
+
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	// Connect and cache models
+	if err := store.Connect(llm.OpenAI, llm.AuthAPIKey); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "gpt-4o", DisplayName: "GPT-4o"},
+	}); err != nil {
+		t.Fatalf("CacheModels() error = %v", err)
+	}
+	if err := store.SetCurrentModel("gpt-4o", llm.OpenAI, llm.AuthAPIKey); err != nil {
+		t.Fatalf("SetCurrentModel() error = %v", err)
+	}
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.store = store
+	m.allProviders = []providerProviderItem{
+		{
+			Provider:    "openai",
+			DisplayName: "OpenAI",
+			AuthMethods: []providerAuthMethodItem{
+				{
+					Provider:    llm.OpenAI,
+					AuthMethod:  llm.AuthAPIKey,
+					DisplayName: "API Key",
+					Status:      llm.StatusConnected,
+					EnvVars:     []string{"OPENAI_API_KEY"},
+				},
+			},
+		},
+	}
+	m.rebuildVisibleItems()
+
+	// Verify preconditions
+	if !store.IsConnected(llm.OpenAI, llm.AuthAPIKey) {
+		t.Fatal("expected OpenAI to be connected before remove")
+	}
+	if _, ok := store.GetCachedModels(llm.OpenAI, llm.AuthAPIKey); !ok {
+		t.Fatal("expected cached models before remove")
+	}
+	if cur := store.GetCurrentModel(); cur == nil || cur.Provider != llm.OpenAI {
+		t.Fatal("expected current model to be OpenAI before remove")
+	}
+
+	// Select the provider, show confirmation, and confirm
+	for i, item := range m.visibleItems {
+		if item.Kind == providerItemProvider {
+			m.selectedIdx = i
+			break
+		}
+	}
+
+	m.handleCredentialRemove()
+	if !m.confirmRemoveActive {
+		t.Fatal("confirmRemoveActive should be true")
+	}
+
+	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+
+	// Verify env var is unset
+	if os.Getenv("OPENAI_API_KEY") != "" {
+		t.Fatal("OPENAI_API_KEY should be unset after confirm")
+	}
+
+	// Verify connection is removed
+	if store.IsConnected(llm.OpenAI, llm.AuthAPIKey) {
+		t.Fatal("OpenAI should be disconnected after confirm")
+	}
+
+	// Verify cached models are removed
+	if _, ok := store.GetCachedModels(llm.OpenAI, llm.AuthAPIKey); ok {
+		t.Fatal("cached models should be removed after confirm")
+	}
+
+	// Verify current model is cleared
+	if cur := store.GetCurrentModel(); cur != nil {
+		t.Fatalf("current model should be cleared after confirm, got %v", cur)
 	}
 }
