@@ -10,6 +10,16 @@ import (
 	"github.com/genai-io/san/internal/secret"
 )
 
+// isolateSecretStore points the secret store at a throwaway HOME so tests never
+// read or write the developer's real ~/.san/secrets.json. secret.Default() is a
+// sync.Once singleton, so it must be reset around each test.
+func isolateSecretStore(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	secret.ResetDefault()
+	t.Cleanup(secret.ResetDefault)
+}
+
 func TestHandleCredentialEditForSingleAuthMethod(t *testing.T) {
 	m := NewProviderSelector()
 	m.active = true
@@ -118,6 +128,7 @@ func TestHandleCredentialEditForMultipleAuthMethods(t *testing.T) {
 }
 
 func TestHandleCredentialEditUpdatesOnEnter(t *testing.T) {
+	isolateSecretStore(t)
 	t.Setenv("OPENAI_API_KEY", "")
 
 	m := NewProviderSelector()
@@ -324,10 +335,10 @@ func TestEditCredentialFlowWithKeyboardShortcuts(t *testing.T) {
 }
 
 func TestHandleCredentialRemoveSingleAuthMethod(t *testing.T) {
+	isolateSecretStore(t)
 	t.Setenv("OPENAI_API_KEY", "test-key-to-remove")
 	if store := secret.Default(); store != nil {
 		_ = store.Set("OPENAI_API_KEY", "test-key-to-remove")
-		t.Cleanup(func() { _ = store.Delete("OPENAI_API_KEY") })
 	}
 
 	m := NewProviderSelector()
@@ -442,15 +453,12 @@ func TestHandleCredentialRemoveCancel(t *testing.T) {
 }
 
 func TestHandleCredentialRemoveMultipleAuthMethods(t *testing.T) {
+	isolateSecretStore(t)
 	t.Setenv("ANTHROPIC_API_KEY", "test-ak-key")
 	t.Setenv("BEDROCK_API_KEY", "test-bk-key")
 	if store := secret.Default(); store != nil {
 		_ = store.Set("ANTHROPIC_API_KEY", "test-ak-key")
 		_ = store.Set("BEDROCK_API_KEY", "test-bk-key")
-		t.Cleanup(func() {
-			_ = store.Delete("ANTHROPIC_API_KEY")
-			_ = store.Delete("BEDROCK_API_KEY")
-		})
 	}
 
 	m := NewProviderSelector()
@@ -523,10 +531,10 @@ func TestHandleCredentialRemoveMultipleAuthMethods(t *testing.T) {
 }
 
 func TestHandleCredentialRemoveKeyboardShortcut(t *testing.T) {
+	isolateSecretStore(t)
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	if store := secret.Default(); store != nil {
 		_ = store.Set("OPENAI_API_KEY", "test-key")
-		t.Cleanup(func() { _ = store.Delete("OPENAI_API_KEY") })
 	}
 
 	m := NewProviderSelector()
@@ -622,13 +630,11 @@ func TestHandleCredentialRemoveNonProvidersTab(t *testing.T) {
 }
 
 func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
+	isolateSecretStore(t)
 	t.Setenv("OPENAI_API_KEY", "test-key-to-remove")
 
 	if secretStore := secret.Default(); secretStore != nil {
 		_ = secretStore.Set("OPENAI_API_KEY", "test-key-to-remove")
-		t.Cleanup(func() { _ = secretStore.Delete("OPENAI_API_KEY") })
 	}
 
 	store, err := llm.NewStore()
