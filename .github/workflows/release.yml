@@ -53,5 +53,6 @@ jobs:
         with:
           files: |
             bin/san_*.tar.gz
+            bin/san_*.zip
             CHANGELOG.md
           body_path: release-notes.md
