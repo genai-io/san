@@ -74,6 +74,13 @@ func (s *Store) Get(key string) string {
 	return s.data[key]
 }
 
+func (s *Store) Delete(key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, key)
+	return s.save()
+}
+
 // ResolveEnv returns the value for an environment variable name,
 // checking os.Getenv first, then falling back to the stored value.
 func (s *Store) ResolveEnv(envVar string) string {

@@ -136,6 +136,12 @@ func (s *ProviderSelector) renderItemList(sb *strings.Builder) {
 			sb.WriteString(s.renderAPIKeyInput())
 			sb.WriteString("\n")
 		}
+
+		// Inline confirm-remove prompt (render below the relevant item)
+		if s.confirmRemoveActive && i == s.confirmRemoveItemIdx {
+			sb.WriteString(s.renderConfirmRemove())
+			sb.WriteString("\n")
+		}
 	}
 
 	if endIdx < len(s.visibleItems) {
@@ -339,17 +345,34 @@ func (s *ProviderSelector) renderAPIKeyInput() string {
 	return "      " + boxStyle.Render(inputView)
 }
 
+func (s *ProviderSelector) renderConfirmRemove() string {
+	warnStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
+	msg := warnStyle.Render("Remove "+s.confirmRemoveEnvVar+"?") +
+		kit.DimStyle().Render("  y/N")
+
+	inputBg := lipgloss.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+	boxStyle := lipgloss.NewStyle().
+		Background(inputBg).
+		Padding(0, 1)
+
+	return "      " + boxStyle.Render(msg)
+}
+
 // ── Footer hints ────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) renderHints() string {
 	if s.apiKeyActive {
 		return kit.DimStyle().Render("Paste API key · Enter confirm · Esc cancel")
 	}
+	if s.confirmRemoveActive {
+		return kit.DimStyle().Render("y confirm · any other key cancel")
+	}
 
 	var parts []string
 	parts = append(parts, "↑/↓ navigate")
 	if s.activeTab == providerTabProviders {
-		parts = append(parts, "Ctrl+E edit", "Enter connect/refresh")
+		parts = append(parts, "Ctrl+E edit", "Ctrl+D remove", "Enter connect/refresh")
 	} else {
 		parts = append(parts, "Space mark · Enter confirm")
 	}

@@ -184,6 +184,33 @@ func (s *Store) GetConnections() map[string]ConnectionInfo {
 	return result
 }
 
+// Disconnect removes the connection for a provider.
+func (s *Store) Disconnect(provider Name) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.data.Connections, string(provider))
+	return s.save()
+}
+
+// RemoveCachedModels removes cached models for a provider and auth method.
+func (s *Store) RemoveCachedModels(provider Name, authMethod AuthMethod) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.data.Models, makemodelCacheKey(provider, authMethod))
+	return s.save()
+}
+
+// ClearCurrentModel clears the current model selection.
+func (s *Store) ClearCurrentModel() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.data.Current = nil
+	return s.save()
+}
+
 // CacheModels saves model information for a provider.
 func (s *Store) CacheModels(provider Name, authMethod AuthMethod, models []ModelInfo) error {
 	s.mu.Lock()
