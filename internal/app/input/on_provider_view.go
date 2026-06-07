@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // Render renders the unified model & provider selector as a full-screen overlay.
@@ -351,7 +351,7 @@ func (s *ProviderSelector) renderHints() string {
 	if s.activeTab == providerTabProviders {
 		parts = append(parts, "Enter connect/refresh")
 	} else {
-		parts = append(parts, "Enter select")
+		parts = append(parts, "Space mark · Enter confirm")
 	}
 	parts = append(parts, "←/→/Tab switch", "Esc cancel")
 	return kit.DimStyle().Render(strings.Join(parts, " · "))

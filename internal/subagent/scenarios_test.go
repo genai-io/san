@@ -7,7 +7,7 @@ import (
 )
 
 // TestPermissionScenarios is a single table that walks every documented
-// scenario in docs/gen-permission.md against the actual subagent gate.
+// scenario in docs/concepts/permission-model.md against the actual subagent gate.
 // Run with `go test ./internal/subagent/ -run TestPermissionScenarios -v`
 // to see a human-readable truth table.
 func TestPermissionScenarios(t *testing.T) {

@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-// userSettingsFile returns the ~/.gen/settings.json path under a HOME that
+// userSettingsFile returns the ~/.san/settings.json path under a HOME that
 // the caller has already pointed at a temp dir.
 func userSettingsFile(home string) string {
-	return filepath.Join(home, ".gen", "settings.json")
+	return filepath.Join(home, ".san", "settings.json")
 }
 
 // TestUpdateSelfLearnAtPersistsDisable guards the regression where disabling

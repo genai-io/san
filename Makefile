@@ -1,12 +1,16 @@
-BINARY := gen
+BINARY := san
 BINDIR := bin
-SRCDIR := ./cmd/gen
+SRCDIR := ./cmd/san
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+
+# Disable cgo so binaries are statically linked, with no glibc version
+# dependency that would break on older distros.
+export CGO_ENABLED := 0
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)
 GOIMPORTS_VERSION := v0.43.0
 
-.PHONY: build build-all install clean release release-push test format format-check lint install-format-tools check-format-tools
+.PHONY: build build-all install clean release release-push test cover format format-check lint install-format-tools check-format-tools
 
 build: format
 	@mkdir -p $(BINDIR)
@@ -54,12 +58,27 @@ lint-layers:
 test:
 	go test ./...
 
+# cover runs the unit and integration tests with the race detector and writes a
+# single merged coverage profile (coverage.out) for upload to Codecov.
+# -coverpkg=./internal/... attributes coverage to the internal packages from
+# both suites, so end-to-end paths exercised only by the integration tests are
+# counted too (a plain `./internal/...` run drops ~6 points of real coverage).
+# covermode=atomic is required when -race is enabled. The race detector needs
+# cgo, so override the global CGO_ENABLED=0 here; this only affects the
+# ephemeral test binaries, not the statically linked release builds. -timeout
+# bounds a hung test to 2 minutes (no package legitimately runs that long) so a
+# deadlock fails fast instead of burning the 10-minute default.
+cover:
+	CGO_ENABLED=1 go test -race -covermode=atomic -timeout 120s \
+		-coverpkg=./internal/... -coverprofile=coverage.out \
+		./internal/... ./tests/integration/...
+
 # ci runs everything the GitHub workflow runs, in the same order. Use
 # `make ci` before pushing to catch format / vet / layercheck / test
-# failures locally instead of round-tripping through Actions.
+# failures locally instead of round-tripping through Actions. `cover` already
+# runs the integration tests (with coverage), so they need no separate step.
 ci: format-check build-all lint
-	go test ./internal/...
-	go test ./tests/integration/...
+	$(MAKE) cover
 
 clean:
 	rm -rf $(BINDIR)

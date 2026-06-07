@@ -15,11 +15,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // ── State ──────────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg Pro
 	})
 	ctx := context.Background()
 	providerRefreshConnection(deps, state, ctx, llm.Name(msg.ProviderName), msg.AuthMethod)
-	return nil
+	return deps.PrintWelcome(msg.ModelID)
 }
 
 func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.Name, authMethod llm.AuthMethod) {
@@ -203,9 +203,21 @@ type ProviderSelector struct {
 	apiKeyProviderIdx int // index into allProviders
 	apiKeyAuthIdx     int // index into that provider's AuthMethods
 
-	// Model search / filter
-	searchQuery    string
-	filteredModels []providerModelItem
+	// Models tab: search filter and the two flags that disambiguate keys
+	// whose meaning depends on what the user is doing.
+	searchQuery    string              // active filter text; "" means no filter
+	filteredModels []providerModelItem // allModels narrowed to searchQuery
+
+	// searchFocused routes Space: true while the search box has focus (the user
+	// is typing a query) so Space inserts a literal space; false while
+	// navigating the list so Space marks the highlighted model instead.
+	searchFocused bool
+
+	// modelMarked routes Enter: true once the user has explicitly marked a
+	// model with Space, so Enter confirms that mark regardless of cursor; false
+	// until then, so Enter acts on the highlighted row. (The active model is
+	// rendered [*] on open, but that display state is not a mark.)
+	modelMarked bool
 
 	// Provider connection result (shown inline)
 	lastConnectResult  string
@@ -325,6 +337,9 @@ func (s *ProviderSelector) MoveUp() {
 			break
 		}
 	}
+	if s.selectedIdx == 0 {
+		s.searchFocused = true
+	}
 	s.ensureVisible()
 }
 
@@ -335,6 +350,7 @@ func (s *ProviderSelector) MoveDown() {
 			break
 		}
 	}
+	s.searchFocused = false
 	s.ensureVisible()
 }
 
@@ -373,6 +389,7 @@ func (s *ProviderSelector) clearModelSearch() bool {
 		return false
 	}
 	s.searchQuery = ""
+	s.searchFocused = false
 	s.rebuildVisibleItems()
 	return true
 }
@@ -382,11 +399,17 @@ func (s *ProviderSelector) trimModelSearch() {
 		return
 	}
 	s.searchQuery = s.searchQuery[:len(s.searchQuery)-1]
+	if s.searchQuery == "" {
+		// Empty query means we're no longer typing in the search box, so Space
+		// returns to marking models rather than inserting a literal space.
+		s.searchFocused = false
+	}
 	s.rebuildVisibleItems()
 }
 
 func (s *ProviderSelector) appendModelSearch(text string) {
 	s.searchQuery += text
+	s.searchFocused = true
 	s.rebuildVisibleItems()
 }
 
@@ -447,6 +470,9 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case tea.KeySpace:
+		if s.activeTab == providerTabModels && !s.searchFocused {
+			return s.toggleModel()
+		}
 		s.appendModelSearch(" ")
 		return nil
 
@@ -511,6 +537,17 @@ func (s *ProviderSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 // ── Selection ──────────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) Select() tea.Cmd {
+	// On the Models tab: once the user has explicitly marked a model with
+	// Space, Enter confirms that marked model regardless of cursor position.
+	// Without an explicit mark, fall through to the highlighted row so that
+	// plain navigation + Enter and search + Enter still select what the cursor
+	// is on (the active model is shown [*] on open, but that is not a mark).
+	if s.activeTab == providerTabModels && s.modelMarked {
+		if cmd := s.selectMarkedModel(); cmd != nil {
+			return cmd
+		}
+	}
+
 	if s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
 		return nil
 	}
@@ -540,6 +577,60 @@ func (s *ProviderSelector) selectModel(m *providerModelItem) tea.Cmd {
 			AuthMethod:   m.AuthMethod,
 		}
 	}
+}
+
+// selectModelFromIDs is like selectModel but takes the model identity as strings
+// and constructs the message directly, without requiring a model pointer.
+func (s *ProviderSelector) selectModelFromIDs(id, provider string, auth llm.AuthMethod) tea.Cmd {
+	s.active = false
+	return func() tea.Msg {
+		return ProviderModelSelectedMsg{
+			ModelID:      id,
+			ProviderName: provider,
+			AuthMethod:   auth,
+		}
+	}
+}
+
+// selectMarkedModel confirms the model the user marked with Space (the one
+// rendered [*]). Used by Select() when an explicit mark exists, so the choice
+// does not depend on cursor position. Returns nil if nothing is marked.
+func (s *ProviderSelector) selectMarkedModel() tea.Cmd {
+	for _, m := range s.allModels {
+		if m.IsCurrent {
+			return s.selectModelFromIDs(m.ID, m.ProviderName, m.AuthMethod)
+		}
+	}
+	return nil
+}
+
+// toggleModel marks the currently highlighted model item (radio-style: marking
+// one clears the others). Unlike Select (Enter), it only updates the IsCurrent
+// flag visually and does NOT activate the model or close the overlay; the mark
+// is what a subsequent Enter confirms.
+func (s *ProviderSelector) toggleModel() tea.Cmd {
+	if s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
+		return nil
+	}
+	item := s.visibleItems[s.selectedIdx]
+	if item.Kind != providerItemModel || item.Model == nil {
+		return nil
+	}
+	m := item.Model
+	for i := range s.allModels {
+		s.allModels[i].IsCurrent = s.allModels[i].ID == m.ID && s.allModels[i].ProviderName == m.ProviderName
+	}
+	for i := range s.filteredModels {
+		s.filteredModels[i].IsCurrent = s.filteredModels[i].ID == m.ID && s.filteredModels[i].ProviderName == m.ProviderName
+	}
+	for i := range s.visibleItems {
+		if s.visibleItems[i].Kind == providerItemModel && s.visibleItems[i].Model != nil {
+			vi := s.visibleItems[i].Model
+			vi.IsCurrent = vi.ID == m.ID && vi.ProviderName == m.ProviderName
+		}
+	}
+	s.modelMarked = true
+	return nil
 }
 
 // selectProvider handles Enter on a provider row (Providers tab).
@@ -646,10 +737,13 @@ var providerOrder = []llm.Name{
 	llm.OpenAI,
 	llm.Google,
 	llm.DeepSeek,
+	llm.SenseNova,
 	llm.MinMax,
 	llm.Moonshot,
 	llm.Alibaba,
 	llm.BigModel,
+	llm.Ollama,
+	llm.Mimo,
 }
 
 // providerDisplayNames maps provider to human-readable name.
@@ -658,10 +752,13 @@ var providerDisplayNames = map[llm.Name]string{
 	llm.OpenAI:    "OpenAI",
 	llm.Google:    "Google",
 	llm.DeepSeek:  "DeepSeek",
+	llm.SenseNova: "SenseNova (商汤)",
 	llm.MinMax:    "MiniMax",
 	llm.Moonshot:  "Moonshot",
 	llm.Alibaba:   "Alibaba",
 	llm.BigModel:  "Z.ai (GLM series)",
+	llm.Ollama:    "Ollama (Local)",
+	llm.Mimo:      "Xiaomi MiMo",
 }
 
 // Enter opens the unified model & provider kit.
@@ -892,7 +989,7 @@ func (s *ProviderSelector) rebuildVisibleItems() {
 
 // rebuildModelsTab builds visible items for the Models tab.
 func (s *ProviderSelector) rebuildModelsTab() {
-	s.applyFilter()
+	s.updateFilter()
 
 	// Group filtered models by provider
 	providerModels := make(map[string][]providerModelItem)
@@ -962,7 +1059,7 @@ func (s *ProviderSelector) rebuildProvidersTab() {
 	}
 }
 
-func (s *ProviderSelector) applyFilter() {
+func (s *ProviderSelector) updateFilter() {
 	if s.searchQuery == "" {
 		s.filteredModels = s.allModels
 		return
@@ -1203,6 +1300,8 @@ func (s *ProviderSelector) resetModelSearch() {
 func (s *ProviderSelector) resetNavigation() {
 	s.selectedIdx = 0
 	s.scrollOffset = 0
+	s.searchFocused = false
+	s.modelMarked = false
 }
 
 // Cancel cancels the selector and clears transient state so the next open starts cleanly.

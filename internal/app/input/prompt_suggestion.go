@@ -5,10 +5,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/kit/suggest"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 )
 
 type PromptSuggestionMsg struct {

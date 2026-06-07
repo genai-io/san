@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const backgroundLaunchSuffix = "\n\nThe agent is working in the background. You will be notified automatically when it completes.\nBriefly tell the user what you launched and end your response. Do not generate any other text — agent results will arrive in a subsequent message."
@@ -154,7 +154,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		onQuestion = cb
 	}
 
-	maxTurns := tool.GetInt(params, "max_turns", 0)
+	maxSteps := tool.GetInt(params, "max_steps", 0)
 
 	// Check executor
 	if t.executor == nil {
@@ -170,7 +170,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Description: description,
 		Background:  runBackground,
 		Model:       model,
-		MaxTurns:    maxTurns,
+		MaxSteps:    maxSteps,
 		Mode:        mode,
 		ResumeID:    resumeID,
 		Isolation:   isolation,
@@ -241,7 +241,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d turns)", agentType, result.TurnCount),
+			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentType, result.StepCount),
 			Duration: duration,
 		},
 	}
@@ -262,10 +262,10 @@ func buildAgentHookResponse(result *tool.AgentExecResult, agentType, prompt stri
 		"status":            status,
 		"prompt":            prompt,
 		"totalDurationMs":   result.Duration.Milliseconds(),
-		"totalTokens":       result.TotalTokens,
 		"totalToolUseCount": result.ToolUses,
 		"usage": map[string]any{
-			"total_tokens": result.TotalTokens,
+			"total_input_tokens":  result.TotalInputTokens,
+			"total_output_tokens": result.TotalOutputTokens,
 		},
 	}
 }

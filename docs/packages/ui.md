@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/app
+package: github.com/genai-io/san/internal/app
 layer: app
 ---
 
@@ -68,7 +68,7 @@ sub-model.
 
 - **`services` snapshots 16 singletons via `Default()` at construction.**
   The whole codebase's singleton problem manifests here. The right shape
-  is for `cmd/gen` to construct each service explicitly and pass it in,
+  is for `cmd/san` to construct each service explicitly and pass it in,
   inverting the current pull-from-`Default()` model.
 - **Two `Default()` shapes coexist:** most services panic if not
   initialized; `Hook` uses `DefaultIfInit()` (nil-tolerant). Two contracts
@@ -124,7 +124,7 @@ Sub-model packages:
 
 ## Lifecycle
 
-- `cmd/gen` calls `app.Run()` which builds the `tea.Program`,
+- `cmd/san` calls `app.Run()` which builds the `tea.Program`,
   `newServices()` snapshots all `Default()` references, the root model is
   constructed, and `tea.Program.Run()` enters the MVU loop.
 - Per turn: user submits → input subpackage → `sendToAgent()` → agent

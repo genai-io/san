@@ -13,12 +13,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/llm/deepseek"
-	"github.com/genai-io/gen-code/internal/llm/minmax"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/deepseek"
+	"github.com/genai-io/san/internal/llm/mimo"
+	"github.com/genai-io/san/internal/llm/minmax"
+	"github.com/genai-io/san/internal/log"
 )
 
 func (m *model) OnTurnBegin() {
@@ -41,29 +42,39 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 
 	// Bottom-right context usage reflects the latest prompt/output, not a
 	// lifetime sum across the whole session.
-	m.env.InputTokens = resp.TokensIn
-	m.env.OutputTokens = resp.TokensOut
-	m.env.TurnInputTokens += resp.TokensIn
-	m.env.TurnOutputTokens += resp.TokensOut
+	m.env.InputTokens = resp.InputTokens
+	m.env.OutputTokens = resp.OutputTokens
+	m.env.TurnInputTokens += resp.InputTokens
+	m.env.TurnOutputTokens += resp.OutputTokens
 
 	if m.env.CurrentModel != nil {
 		switch m.env.CurrentModel.Provider {
 		case llm.MinMax:
 			cost, ok := minmax.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
-				InputTokens:              resp.TokensIn,
-				OutputTokens:             resp.TokensOut,
-				CacheCreationInputTokens: resp.CacheCreateTokens,
-				CacheReadInputTokens:     resp.CacheReadTokens,
+				InputTokens:              resp.InputTokens,
+				OutputTokens:             resp.OutputTokens,
+				CacheCreationInputTokens: resp.CacheCreationInputTokens,
+				CacheReadInputTokens:     resp.CacheReadInputTokens,
 			})
 			if ok {
 				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
 			}
 		case llm.DeepSeek:
 			cost, ok := deepseek.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
-				InputTokens:              resp.TokensIn,
-				OutputTokens:             resp.TokensOut,
-				CacheCreationInputTokens: resp.CacheCreateTokens,
-				CacheReadInputTokens:     resp.CacheReadTokens,
+				InputTokens:              resp.InputTokens,
+				OutputTokens:             resp.OutputTokens,
+				CacheCreationInputTokens: resp.CacheCreationInputTokens,
+				CacheReadInputTokens:     resp.CacheReadInputTokens,
+			})
+			if ok {
+				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
+			}
+		case llm.Mimo:
+			cost, ok := mimo.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
+				InputTokens:              resp.InputTokens,
+				OutputTokens:             resp.OutputTokens,
+				CacheCreationInputTokens: resp.CacheCreationInputTokens,
+				CacheReadInputTokens:     resp.CacheReadInputTokens,
 			})
 			if ok {
 				m.env.ConversationCost = m.env.ConversationCost.Add(cost)

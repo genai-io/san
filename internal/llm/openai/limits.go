@@ -13,7 +13,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/llm"
 )
 
 var openAIModelDocsBaseURL = "https://developers.openai.com/api/docs/models/"
@@ -79,7 +79,7 @@ func fetchOpenAIModelDocLimits(ctx context.Context, slug string) (modelTokenLimi
 	if err != nil {
 		return modelTokenLimits{}, err
 	}
-	req.Header.Set("User-Agent", "gencode-token-limit-fetcher")
+	req.Header.Set("User-Agent", "san-token-limit-fetcher")
 
 	resp, err := openAIModelDocsHTTPClient.Do(req)
 	if err != nil {

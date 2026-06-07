@@ -1,7 +1,7 @@
 package conv
 
 import (
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 type StreamState struct {
@@ -100,10 +100,10 @@ func (m *ConversationModel) AppendErrorToLast(err error) {
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string) {
 	for _, tc := range calls {
 		m.Append(core.ChatMessage{
-			Role:     core.RoleUser,
-			ToolName: tc.Name,
+			Role: core.RoleUser,
 			ToolResult: &core.ToolResult{
 				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
 				Content:    contentFn(tc),
 				IsError:    true,
 			},
@@ -242,9 +242,6 @@ func (m ConversationModel) ConvertToProviderFrom(startIdx int) []core.Message {
 
 		if msg.ToolResult != nil {
 			tr := *msg.ToolResult
-			if msg.ToolName != "" {
-				tr.ToolName = msg.ToolName
-			}
 			providerMsg.ToolResult = &tr
 		}
 

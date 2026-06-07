@@ -1,4 +1,4 @@
-// Package hook implements the event hooks system for GenCode.
+// Package hook implements the event hooks system for San.
 // Compatible with Claude Code hooks that execute shell commands on events.
 package hook
 
@@ -51,7 +51,6 @@ type HookInput struct {
 	ToolUseID    string         `json:"tool_use_id,omitempty"`
 	ToolResponse any            `json:"tool_response,omitempty"`
 	Error        string         `json:"error,omitempty"`
-	IsInterrupt  bool           `json:"is_interrupt,omitempty"`
 	Event        string         `json:"event,omitempty"`
 
 	// PermissionRequest suggestions
@@ -198,7 +197,7 @@ type FunctionHook struct {
 // --- Bidirectional prompt protocol types ---
 
 // PromptRequest is sent by a hook process via stdout to request user input.
-// The hook writes one JSON line per request; Claude Code / GenCode reads it,
+// The hook writes one JSON line per request; Claude Code / San reads it,
 // collects the answer, and writes a PromptResponse back to the hook's stdin.
 type PromptRequest struct {
 	Prompt  string         `json:"prompt"`            // request ID / discriminator

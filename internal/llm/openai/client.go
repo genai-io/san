@@ -12,11 +12,11 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/llm/openaicompat"
-	streamutil "github.com/genai-io/gen-code/internal/llm/stream"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/openaicompat"
+	streamutil "github.com/genai-io/san/internal/llm/stream"
+	"github.com/genai-io/san/internal/log"
 )
 
 // Client implements the Provider interface using the OpenAI SDK
@@ -57,7 +57,7 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 		// Convert messages to Responses API input items
 		var inputItems responses.ResponseInputParam = make([]responses.ResponseInputItemUnionParam, 0, len(opts.Messages)+1)
 
-		for _, msg := range openaicompat.DropEmptyMessages(openaicompat.SanitizeToolMessages(opts.Messages)) {
+		for _, msg := range openaicompat.DropEmptyMessages(llm.SanitizeToolMessages(opts.Messages)) {
 			if msg.ToolResult != nil {
 				inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
 					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{

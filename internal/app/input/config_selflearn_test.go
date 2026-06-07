@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // newTestPopup builds an isolated ConfigSelector + active panel for tests.
@@ -112,13 +112,17 @@ func TestConfigSelectorRenderShowsValidationError(t *testing.T) {
 	}
 }
 
-// TestConfigSelectorRenderShowsBreadcrumb confirms the new "/config ›
-// Self-Learning" breadcrumb makes it into the popup output.
-func TestConfigSelectorRenderShowsBreadcrumb(t *testing.T) {
+// TestConfigSelectorRenderShowsTabs confirms the "/config" header plus a tab
+// strip naming every registered panel makes it into the popup output. (With a
+// single panel the header is a breadcrumb instead; today two panels —
+// self-learning and appearance — are registered, so it renders tabs.)
+func TestConfigSelectorRenderShowsTabs(t *testing.T) {
 	c, _ := newTestPopup()
 	out := c.Render()
-	if !strings.Contains(out, "/config") || !strings.Contains(out, "self-learning") {
-		t.Fatalf("breadcrumb missing from render:\n%s", out)
+	for _, want := range []string{"/config", "self-learning", "appearance"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("header missing %q from render:\n%s", want, out)
+		}
 	}
 }
 

@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	session "github.com/genai-io/gen-code/internal/session"
+	session "github.com/genai-io/san/internal/session"
 )
 
-// buildBinary compiles the gen binary into a temp file and returns its path.
+// buildBinary compiles the san binary into a temp file and returns its path.
 // The binary is removed when the test completes.
 func buildBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "gen-test")
-	cmd := exec.Command("go", "build", "-o", bin, "./cmd/gen")
+	bin := filepath.Join(t.TempDir(), "san-test")
+	cmd := exec.Command("go", "build", "-o", bin, "./cmd/san")
 	cmd.Dir = projectRoot(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -50,7 +50,7 @@ func projectRoot(t *testing.T) string {
 	}
 }
 
-// TestVersionCommand verifies that "gen version" prints the version string
+// TestVersionCommand verifies that "san version" prints the version string
 // and exits cleanly without requiring any provider configuration.
 func TestVersionCommand(t *testing.T) {
 	bin := buildBinary(t)
@@ -58,21 +58,21 @@ func TestVersionCommand(t *testing.T) {
 	cmd := exec.Command(bin, "version")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("gen version exited with error: %v", err)
+		t.Fatalf("san version exited with error: %v", err)
 	}
 
 	output := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(output, "gen version ") {
-		t.Errorf("expected output to start with 'gen version ', got: %q", output)
+	if !strings.HasPrefix(output, "san version ") {
+		t.Errorf("expected output to start with 'san version ', got: %q", output)
 	}
 	// Version should not be empty after the prefix.
-	ver := strings.TrimPrefix(output, "gen version ")
+	ver := strings.TrimPrefix(output, "san version ")
 	if ver == "" {
 		t.Error("version string is empty")
 	}
 }
 
-// TestHelpCommand verifies that "gen help" exits cleanly and emits usage text
+// TestHelpCommand verifies that "san help" exits cleanly and emits usage text
 // without requiring any provider configuration.
 func TestHelpCommand(t *testing.T) {
 	bin := buildBinary(t)
@@ -80,11 +80,11 @@ func TestHelpCommand(t *testing.T) {
 	cmd := exec.Command(bin, "help")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("gen help exited with error: %v", err)
+		t.Fatalf("san help exited with error: %v", err)
 	}
 
 	output := string(out)
-	for _, expected := range []string{"-p", "--continue", "--resume", "gen -r <session-id>", "--plugin-dir", "version"} {
+	for _, expected := range []string{"-p", "--continue", "--resume", "san -r <session-id>", "--plugin-dir", "version"} {
 		if !strings.Contains(output, expected) {
 			t.Errorf("help output missing %q\nfull output:\n%s", expected, output)
 		}
@@ -99,7 +99,7 @@ func TestNonInteractivePrintMode(t *testing.T) {
 	bin := buildBinary(t)
 
 	// Use an isolated HOME directory so that no providers.json from
-	// ~/.gen/providers.json is picked up, and unset all API key env vars so
+	// ~/.san/providers.json is picked up, and unset all API key env vars so
 	// no provider can be initialised via environment.
 	isolatedHome := t.TempDir()
 	env := filteredEnv(

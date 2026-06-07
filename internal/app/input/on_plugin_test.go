@@ -9,8 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	coreplugin "github.com/genai-io/gen-code/internal/plugin"
+	"github.com/genai-io/san/internal/app/kit"
+	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
 func TestCancelClearsTransientPluginSelectorState(t *testing.T) {
@@ -281,7 +281,7 @@ func createTestPluginMarketplace(t *testing.T) string {
 	t.Helper()
 
 	root := t.TempDir()
-	pluginDir := filepath.Join(root, "plugins", "codex", ".gen-plugin")
+	pluginDir := filepath.Join(root, "plugins", "codex", ".san-plugin")
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", pluginDir, err)
 	}

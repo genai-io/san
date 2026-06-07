@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 func endTurn(toolUses int) core.Result {
@@ -30,6 +30,40 @@ func assertNoFire(t *testing.T, fired <-chan ReviewKind) {
 	case k := <-fired:
 		t.Fatalf("expected no review, but %v fired", k)
 	case <-time.After(80 * time.Millisecond):
+	}
+}
+
+// mustStart waits for a review goroutine to signal start, failing fast instead
+// of blocking forever (and tripping the 10-minute package timeout) if none does.
+func mustStart(t *testing.T, started <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected a review to start, none did")
+	}
+}
+
+// waitInFlightClear blocks until no review is in flight. inFlight is cleared in
+// the review goroutine's defer, *after* the callback returns — so synchronizing
+// on a callback side effect (e.g. the fired channel) does not imply it has been
+// cleared yet. Tests that fire a follow-up review must wait here first, or they
+// race the reset and the follow-up is dropped as "still in flight".
+func waitInFlightClear(t *testing.T, r *Reviewer) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	for {
+		r.mu.Lock()
+		inFlight := r.inFlight
+		r.mu.Unlock()
+		if !inFlight {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("review still in flight after 1s")
+		case <-time.After(time.Millisecond):
+		}
 	}
 }
 
@@ -94,7 +128,7 @@ func TestSkipsNonEndTurn(t *testing.T) {
 	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, func(k ReviewKind, _ []core.Message) { fired <- k })
 
 	r.Observe(core.Result{StopReason: core.StopCancelled, ToolUses: 9})
-	r.Observe(core.Result{StopReason: core.StopMaxTurns})
+	r.Observe(core.Result{StopReason: core.StopMaxSteps})
 	assertNoFire(t, fired) // neither counted
 
 	r.Observe(endTurn(0)) // clean turn → fires
@@ -114,7 +148,7 @@ func TestConcurrencyCapDropsAndRetries(t *testing.T) {
 	})
 
 	r.Observe(endTurn(0)) // fires review #1 (now in-flight, blocked)
-	<-started
+	mustStart(t, started)
 
 	r.Observe(endTurn(0)) // arrives while #1 in-flight → dropped, NOT reset
 	select {
@@ -127,10 +161,14 @@ func TestConcurrencyCapDropsAndRetries(t *testing.T) {
 	if k := waitFire(t, fired); !k.Has(KindMemory) {
 		t.Fatalf("want memory, got %v", k)
 	}
+	// waitFire synced on the fired channel, which the callback sends *before*
+	// returning; inFlight is only cleared afterwards. Wait for that so the
+	// retry below fires deterministically instead of racing the reset.
+	waitInFlightClear(t, r)
 
 	// The dropped trigger left the counter tripped: the next clean turn fires.
 	r.Observe(endTurn(0))
-	<-started
+	mustStart(t, started)
 	if k := waitFire(t, fired); !k.Has(KindMemory) {
 		t.Fatalf("retry: want memory, got %v", k)
 	}

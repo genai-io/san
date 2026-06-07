@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // PluginServer describes an MCP server contributed by a plugin.

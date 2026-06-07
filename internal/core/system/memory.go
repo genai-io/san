@@ -9,7 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/log"
 	"go.uber.org/zap"
 )
 
@@ -27,15 +28,15 @@ const (
 )
 
 // AutoMemoryDir is the project-partitioned directory backing the agent-written
-// auto-memory store: ~/.gen/projects/<encoded-cwd>/memory/. It shares the
+// auto-memory store: ~/.san/projects/<encoded-cwd>/memory/. It shares the
 // project partitioning used by the session transcript store, so worktrees and
 // subdirectories of one repo resolve to the same store.
 func AutoMemoryDir(cwd string) string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(cwd, ".gen", "memory")
+		return filepath.Join(confdir.Dir(cwd), "memory")
 	}
-	return filepath.Join(homeDir, ".gen", "projects", encodeProjectPath(cwd), "memory")
+	return filepath.Join(confdir.Dir(homeDir), "projects", encodeProjectPath(cwd), "memory")
 }
 
 // encodeProjectPath mirrors internal/session.EncodePath: replaces path
@@ -59,7 +60,7 @@ func AutoMemoryIndexPath(cwd string) string {
 
 // LoadAutoMemory reads the agent-written auto-memory index for cwd, capped at
 // autoMemoryByteCap. It is a distinct source from LoadMemoryFiles: agent-written
-// memory and user-authored GEN.md/CLAUDE.md instructions are injected as
+// memory and user-authored SAN.md/CLAUDE.md instructions are injected as
 // separate blocks and never mixed. Returns ("", false) when the store is empty
 // or absent. When the index exceeds the cap it is truncated on a line boundary
 // with a marker — topic files are read on demand and never injected.
@@ -122,20 +123,22 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 	homeDir, _ := os.UserHomeDir()
 	seen := make(map[string]bool)
 
+	userDir := confdir.Dir(homeDir)
 	userSources := []string{
-		filepath.Join(homeDir, ".gen", "GEN.md"),
+		filepath.Join(userDir, "SAN.md"),
 		filepath.Join(homeDir, ".claude", "CLAUDE.md"),
 	}
 	if f := loadMemoryFile(userSources, "global", seen); f != nil {
 		files = append(files, *f)
 	}
 
-	userRulesDir := filepath.Join(homeDir, ".gen", "rules")
+	userRulesDir := filepath.Join(userDir, "rules")
 	files = append(files, loadRulesDirectory(userRulesDir, "global", seen)...)
 
+	projectDir := confdir.Dir(cwd)
 	projectSources := []string{
-		filepath.Join(cwd, ".gen", "GEN.md"),
-		filepath.Join(cwd, "GEN.md"),
+		filepath.Join(projectDir, "SAN.md"),
+		filepath.Join(cwd, "SAN.md"),
 		filepath.Join(cwd, ".claude", "CLAUDE.md"),
 		filepath.Join(cwd, "CLAUDE.md"),
 	}
@@ -143,11 +146,11 @@ func LoadMemoryFiles(cwd string) []MemoryFile {
 		files = append(files, *f)
 	}
 
-	projectRulesDir := filepath.Join(cwd, ".gen", "rules")
+	projectRulesDir := filepath.Join(projectDir, "rules")
 	files = append(files, loadRulesDirectory(projectRulesDir, "project", seen)...)
 
 	localSources := []string{
-		filepath.Join(cwd, ".gen", "GEN.local.md"),
+		filepath.Join(projectDir, "SAN.local.md"),
 	}
 	if f := loadMemoryFile(localSources, "local", seen); f != nil {
 		files = append(files, *f)
@@ -280,19 +283,19 @@ func GetAllMemoryPaths(cwd string) MemoryPaths {
 	homeDir, _ := os.UserHomeDir()
 	return MemoryPaths{
 		Global: []string{
-			filepath.Join(homeDir, ".gen", "GEN.md"),
+			filepath.Join(confdir.Dir(homeDir), "SAN.md"),
 			filepath.Join(homeDir, ".claude", "CLAUDE.md"),
 		},
-		GlobalRules: filepath.Join(homeDir, ".gen", "rules"),
+		GlobalRules: filepath.Join(confdir.Dir(homeDir), "rules"),
 		Project: []string{
-			filepath.Join(cwd, ".gen", "GEN.md"),
-			filepath.Join(cwd, "GEN.md"),
+			filepath.Join(confdir.Dir(cwd), "SAN.md"),
+			filepath.Join(cwd, "SAN.md"),
 			filepath.Join(cwd, ".claude", "CLAUDE.md"),
 			filepath.Join(cwd, "CLAUDE.md"),
 		},
-		ProjectRules: filepath.Join(cwd, ".gen", "rules"),
+		ProjectRules: filepath.Join(confdir.Dir(cwd), "rules"),
 		Local: []string{
-			filepath.Join(cwd, ".gen", "GEN.local.md"),
+			filepath.Join(confdir.Dir(cwd), "SAN.local.md"),
 		},
 	}
 }

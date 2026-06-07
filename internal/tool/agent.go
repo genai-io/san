@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 const (
@@ -71,7 +71,7 @@ type AgentExecRequest struct {
 	Description string
 	Background  bool
 	Model       string
-	MaxTurns    int
+	MaxSteps    int
 	Mode        string
 	ResumeID    string
 	Isolation   string
@@ -81,18 +81,19 @@ type AgentExecRequest struct {
 
 // AgentExecResult contains the result of agent execution.
 type AgentExecResult struct {
-	AgentID     string
-	AgentName   string
-	OutputFile  string
-	Model       string
-	Success     bool
-	Content     string
-	TurnCount   int
-	ToolUses    int
-	TotalTokens int
-	Duration    time.Duration
-	Progress    []string
-	Error       string
+	AgentID           string
+	AgentName         string
+	OutputFile        string
+	Model             string
+	Success           bool
+	Content           string
+	StepCount         int
+	ToolUses          int
+	TotalInputTokens  int
+	TotalOutputTokens int
+	Duration          time.Duration
+	Progress          []string
+	Error             string
 }
 
 // AgentTaskInfo contains info about a background agent task.
@@ -102,12 +103,18 @@ type AgentTaskInfo struct {
 	OutputFile string
 }
 
-// AgentConfigInfo contains agent configuration for display.
+// AgentConfigInfo contains agent configuration for display. It is the single
+// projection of an agent definition, shared by the Agent tool (GetAgentConfig)
+// and the TUI agent selector.
 type AgentConfigInfo struct {
 	Name           string
 	Description    string
 	Color          string
 	Model          string
 	PermissionMode string
-	Tools          []string
+	Tools          []string // nil = all tools
+	SourceFile     string
+	// Source indicates where the agent definition came from:
+	// "built-in", "user", "project", or "plugin". Empty defaults to project.
+	Source string
 }

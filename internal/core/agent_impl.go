@@ -11,20 +11,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	glog "github.com/genai-io/gen-code/internal/log"
+	glog "github.com/genai-io/san/internal/log"
 )
 
 // agent is the default Agent implementation.
 type agent struct {
 	id                string
 	agentType         string
-	color             string
 	system            System
 	tools             Tools
 	compactFunc       func(ctx context.Context, msgs []Message) (string, error)
 	llm               LLM
 	cwd               string
-	maxTurns          int
+	maxSteps          int
 	maxOutputRecovery int
 	inbox             chan Message
 	outbox            chan Event
@@ -284,7 +283,7 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 		a.applyCompaction(ctx, msg.Content, len(a.snapshot()), "manual")
 		return false
 	}
-	a.emit(ctx, MessageEvent(msg))
+	a.emit(ctx, MessageEvent(a.id, msg))
 	if msg.Signal == "" {
 		a.append(msg)
 		return true
@@ -295,13 +294,13 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 // ThinkAct runs one full inference-action cycle until end_turn.
 // Returns the result directly — the caller decides whether to emit TurnEvent.
 func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
-	var turns, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
+	var steps, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
 	var maxOutputRecoveryCount int
 
 	makeResult := func(content string, stop StopReason, detail string) *Result {
 		return &Result{
 			Content: content, Messages: a.snapshot(),
-			Turns: turns, ToolUses: toolUses, TokensIn: tokensIn, TokensOut: tokensOut,
+			Steps: steps, ToolUses: toolUses, InputTokens: tokensIn, OutputTokens: tokensOut,
 			StopReason: stop, StopDetail: detail,
 		}
 	}
@@ -311,13 +310,13 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			return makeResult("", StopCancelled, ""), ctx.Err()
 		}
 
-		// Max turns guard
-		if a.maxTurns > 0 && turns >= a.maxTurns {
-			return makeResult("max turns reached", StopMaxTurns, ""), nil
+		// Max steps guard
+		if a.maxSteps > 0 && steps >= a.maxSteps {
+			return makeResult("max steps reached", StopMaxSteps, ""), nil
 		}
 
-		// Between turns: drain any new inbox messages (non-blocking)
-		if turns > 0 {
+		// Between steps: drain any new inbox messages (non-blocking)
+		if steps > 0 {
 			if _, err := a.drainInbox(ctx); err != nil {
 				return nil, err
 			}
@@ -351,15 +350,15 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			return nil, err
 		}
 
-		turns++
-		lastInputTokens = resp.TokensIn
+		steps++
+		lastInputTokens = resp.InputTokens
 		lastPromptTextLen = currentPromptTextLen
-		tokensIn += resp.TokensIn
-		tokensOut += resp.TokensOut
+		tokensIn += resp.InputTokens
+		tokensOut += resp.OutputTokens
 
 		a.emit(ctx, PostInferEvent(a.id, resp))
 		a.append(Message{
-			Role: RoleAssistant, From: a.id,
+			Role:    RoleAssistant,
 			Content: resp.Content, Thinking: resp.Thinking,
 			ThinkingSignature: resp.ThinkingSignature,
 			ToolCalls:         resp.ToolCalls,
@@ -375,7 +374,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 				return makeResult(resp.Content, StopMaxOutputRecoveryExhausted, ""), nil
 			}
 			maxOutputRecoveryCount++
-			a.append(Message{Role: RoleUser, From: "system", Content: TruncatedResumePrompt})
+			a.append(Message{Role: RoleUser, Content: TruncatedResumePrompt})
 			continue
 		}
 
@@ -409,7 +408,7 @@ func estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextL
 //  3. Record results — sequential, in original call order
 //
 // Permission checking is handled by the tool decorator (tool.WithPermission),
-// not by the agent. See docs/gen-permission.md.
+// not by the agent. See docs/concepts/permission-model.md.
 func (a *agent) execTools(ctx context.Context, calls []ToolCall) int {
 	var tasks []agentToolTask
 	for _, tc := range calls {
@@ -763,7 +762,7 @@ func (a *agent) snapshot() []Message {
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	a.append(Message{
-		Role: RoleTool, From: tc.Name, Content: content,
+		Role: RoleTool, Content: content,
 		ToolResult: &ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError},
 	})
 }

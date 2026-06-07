@@ -9,7 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/genai-io/gen-code/internal/markdown"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/markdown"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,7 +38,7 @@ func builtinCommands() []Info {
 		{Name: "identity", Description: "Switch active persona, or create/edit one (open selector, /identity create, /identity edit <name>)"},
 		{Name: "tokenlimit", Description: "View or set token limits for current model"},
 		{Name: "compact", Description: "Summarize conversation to reduce context size"},
-		{Name: "init", Description: "Initialize memory files (GEN.md, local, rules)"},
+		{Name: "init", Description: "Initialize memory files (SAN.md, local, rules)"},
 		{Name: "memory", Description: "View and manage memory files (list/show/edit) with @import support"},
 		{Name: "mcp", Description: "Manage MCP servers (add/edit/remove/connect/list)"},
 		{Name: "plugin", Description: "Manage plugins (list/install/marketplace/enable/disable/info)"},
@@ -76,14 +77,14 @@ func ParseCommand(input string) (cmd string, args string, isCmd bool) {
 type commandScope int
 
 const (
-	scopeUser          commandScope = iota // ~/.gen/commands/
-	scopeUserPlugin                        // ~/.gen/plugins/*/commands/
-	scopeProjectPlugin                     // .gen/plugins/*/commands/
-	scopeProject                           // .gen/commands/
+	scopeUser          commandScope = iota // ~/.san/commands/
+	scopeUserPlugin                        // ~/.san/plugins/*/commands/
+	scopeProjectPlugin                     // .san/plugins/*/commands/
+	scopeProject                           // .san/commands/
 )
 
 // CustomCommand represents a user-defined slash command from
-// ~/.gen/commands/, .gen/commands/, or a plugin's commands/ directory.
+// ~/.san/commands/, .san/commands/, or a plugin's commands/ directory.
 // Unlike active skills, custom commands are never injected into the system
 // prompt — they only execute when the user explicitly invokes /name.
 type CustomCommand struct {
@@ -274,17 +275,17 @@ func (s *Registry) loadAllCustomCommands() []CustomCommand {
 }
 
 // loadCustomCommandsFromDisk loads custom commands from all sources in priority order:
-// 1. ~/.gen/commands/        (user level, lowest priority)
-// 2. ~/.gen/plugins/*/commands/ (user-plugin)
-// 3. .gen/plugins/*/commands/   (project-plugin)
-// 4. .gen/commands/          (project level, highest priority)
+// 1. ~/.san/commands/        (user level, lowest priority)
+// 2. ~/.san/plugins/*/commands/ (user-plugin)
+// 3. .san/plugins/*/commands/   (project-plugin)
+// 4. .san/commands/          (project level, highest priority)
 // Higher-priority commands override lower-priority ones with the same full name.
 func (s *Registry) loadCustomCommandsFromDisk() []CustomCommand {
 	cmdMap := make(map[string]CustomCommand)
 
 	homeDir, _ := os.UserHomeDir()
 	if homeDir != "" {
-		userDir := filepath.Join(homeDir, ".gen", "commands")
+		userDir := filepath.Join(confdir.Dir(homeDir), "commands")
 		for _, pc := range loadCommandsFromDir(userDir, "", scopeUser) {
 			cmdMap[pc.FullName()] = pc
 		}
@@ -305,7 +306,7 @@ func (s *Registry) loadCustomCommandsFromDisk() []CustomCommand {
 	}
 
 	if s.cwd != "" {
-		projectDir := filepath.Join(s.cwd, ".gen", "commands")
+		projectDir := filepath.Join(confdir.Dir(s.cwd), "commands")
 		for _, pc := range loadCommandsFromDir(projectDir, "", scopeProject) {
 			cmdMap[pc.FullName()] = pc
 		}

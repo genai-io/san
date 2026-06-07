@@ -32,14 +32,14 @@ func WriteChunk(payload any) error
 ```
 
 - `log.Init()` runs once at app startup (from `internal/app/init.go`).
-  Output is suppressed by default; `GEN_DEBUG=1` enables zap with
+  Output is suppressed by default; `SAN_DEBUG=1` enables zap with
   `lumberjack` rotation.
 - `DEV_DIR` is read once at `Init` time; changing it later has no effect.
 - Code: `internal/log/`. No unit tests; behavior exercised end-to-end.
 
 ## `internal/secret`
 
-Filesystem-backed key/value store under `~/.gen/secrets.json` for API
+Filesystem-backed key/value store under `~/.san/secrets.json` for API
 keys and tokens.
 
 ```go
@@ -106,7 +106,7 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 - Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
   [`identity.md`](identity.md), [`command.md`](command.md). Every
   skill / agent / identity / command file is parsed through it on
-  `gen` startup.
+  `san` startup.
 - Code: `internal/markdown/`.
 
 ## See Also

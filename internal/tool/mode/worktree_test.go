@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/tool"
 )
 
 func runGitToolTest(t *testing.T, dir string, args ...string) {
@@ -24,7 +24,7 @@ func makeToolTestRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
 	runGitToolTest(t, repo, "init")
-	runGitToolTest(t, repo, "config", "user.name", "GenCode Tests")
+	runGitToolTest(t, repo, "config", "user.name", "San Tests")
 	runGitToolTest(t, repo, "config", "user.email", "tests@example.com")
 	filePath := filepath.Join(repo, "README.md")
 	if err := os.WriteFile(filePath, []byte("hello\n"), 0o644); err != nil {

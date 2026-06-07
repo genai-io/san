@@ -1,11 +1,11 @@
-# Gen Code Identities
+# San Identities
 
-Identities are markdown files that replace Gen Code's default persona.
+Identities are markdown files that replace San's default persona.
 
 ## Location
 
-- User-level: `~/.gen/identities/<name>.md`
-- Project-level: `.gen/identities/<name>.md` (overrides user-level on name conflict)
+- User-level: `~/.san/identities/<name>.md`
+- Project-level: `.san/identities/<name>.md` (overrides user-level on name conflict)
 
 ## File format
 
@@ -45,7 +45,7 @@ The frontmatter `name` must match the filename (without `.md`).
 ## Activation
 
 Run `/identity` to open the selector. Selecting an entry writes the
-identity name to `~/.gen/settings.json`:
+identity name to `~/.san/settings.json`:
 
 ```json
 { "identity": "ml-engineer" }

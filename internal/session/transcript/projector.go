@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 func Project(records []Record) (*Transcript, error) {

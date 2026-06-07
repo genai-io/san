@@ -1,0 +1,43 @@
+name: PR Title Lint
+
+# Enforce Conventional Commits format on PR titles.
+# See https://www.conventionalcommits.org/
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          # Allowed types (align with CONTRIBUTING.md).
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          # Scope is optional (e.g. "feat(api): …" or just "feat: …").
+          requireScope: false
+          # Reject these scopes (e.g. block "feat(WIP): …").
+          disallowScopes: |
+            WIP
+            wip
+          # Lint the PR title only; don't also require a lone commit's message to match.
+          validateSingleCommit: false

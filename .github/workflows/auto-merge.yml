@@ -1,0 +1,24 @@
+name: Auto Merge
+
+# Merge PRs that have the lgtm label and pass all required checks.
+# Runs on a cron schedule so branch-protection status checks have time to finish.
+
+on:
+  schedule:
+    # Every 30 minutes (avoids :00/:30).
+    - cron: '7,37 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jpmcb/prow-github-actions@c44ac3a57d67639e39e4a4988b52049ef45b80dd # v2.0.0
+        with:
+          jobs: lgtm
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          merge-method: squash

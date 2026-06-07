@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // connectResultFromCmd runs cmd (flattening a tea.Batch) and returns the first
@@ -197,6 +197,70 @@ func TestSelectModelReturnsSelectionMessage(t *testing.T) {
 	}
 	if m.active {
 		t.Fatal("model selection should close selector")
+	}
+}
+
+// TestSelectHighlightedModelWhenNoExplicitMark verifies Enter selects the
+// highlighted model even when another model is already the active one (rendered
+// [*] on open). Without this, navigate/search + Enter would re-select the
+// already-current model instead of the highlighted row.
+func TestSelectHighlightedModelWhenNoExplicitMark(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabModels
+	m.allModels = []providerModelItem{
+		{ID: "gpt-5", ProviderName: "openai", AuthMethod: llm.AuthAPIKey, IsCurrent: true},
+		{ID: "claude-opus", ProviderName: "anthropic", AuthMethod: llm.AuthAPIKey},
+	}
+	m.visibleItems = []providerListItem{
+		{Kind: providerItemModel, Model: &m.allModels[0]},
+		{Kind: providerItemModel, Model: &m.allModels[1]},
+	}
+	m.selectedIdx = 1 // highlight a model other than the active one
+
+	cmd := m.Select()
+	if cmd == nil {
+		t.Fatal("Select should return a command for the highlighted model")
+	}
+	selected, ok := cmd().(ProviderModelSelectedMsg)
+	if !ok {
+		t.Fatalf("selection returned %T, want ProviderModelSelectedMsg", cmd())
+	}
+	if selected.ModelID != "claude-opus" {
+		t.Fatalf("Enter selected %q, want highlighted model %q", selected.ModelID, "claude-opus")
+	}
+}
+
+// TestSelectConfirmsMarkedModelRegardlessOfCursor verifies that after marking a
+// model with Space, Enter confirms the marked model even if the cursor has
+// since moved to a different row.
+func TestSelectConfirmsMarkedModelRegardlessOfCursor(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabModels
+	m.allModels = []providerModelItem{
+		{ID: "gpt-5", ProviderName: "openai", AuthMethod: llm.AuthAPIKey, IsCurrent: true},
+		{ID: "claude-opus", ProviderName: "anthropic", AuthMethod: llm.AuthAPIKey},
+	}
+	m.visibleItems = []providerListItem{
+		{Kind: providerItemModel, Model: &m.allModels[0]},
+		{Kind: providerItemModel, Model: &m.allModels[1]},
+	}
+
+	m.selectedIdx = 1 // mark the second model with Space
+	m.toggleModel()
+	m.selectedIdx = 0 // then move the cursor back to the first model
+
+	cmd := m.Select()
+	if cmd == nil {
+		t.Fatal("Select should confirm the marked model")
+	}
+	selected, ok := cmd().(ProviderModelSelectedMsg)
+	if !ok {
+		t.Fatalf("selection returned %T, want ProviderModelSelectedMsg", cmd())
+	}
+	if selected.ModelID != "claude-opus" {
+		t.Fatalf("Enter confirmed %q, want marked model %q", selected.ModelID, "claude-opus")
 	}
 }
 

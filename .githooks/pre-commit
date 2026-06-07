@@ -1,0 +1,49 @@
+#!/bin/sh
+# Pre-commit hook: auto-format staged Go files
+
+# Get list of staged .go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$')
+
+if [ -z "$STAGED_GO_FILES" ]; then
+    exit 0
+fi
+
+# Only format files that have no unstaged changes
+UNSTAGED=$(git diff --name-only)
+CLEAN_FILES=""
+SKIPPED=""
+for f in $STAGED_GO_FILES; do
+    if printf '%s\n' "$UNSTAGED" | grep -Fxq "$f"; then
+        SKIPPED="$SKIPPED $f"
+    else
+        CLEAN_FILES="$CLEAN_FILES $f"
+    fi
+done
+
+if [ -n "$SKIPPED" ]; then
+    echo "Skipping files with unstaged changes (run 'make format' manually):"
+    echo "$SKIPPED"
+fi
+
+if [ -z "$CLEAN_FILES" ]; then
+    exit 0
+fi
+
+# Make sure goimports is installed (uses the version pinned in the Makefile)
+make check-format-tools
+
+# Format only the clean staged files
+echo "$CLEAN_FILES" | xargs gofmt -w
+echo "$CLEAN_FILES" | xargs goimports -w
+
+# Re-stage the formatted files
+echo "$CLEAN_FILES" | xargs git add
+
+# Verify the files we just formatted (not skipped ones, whose unstaged
+# changes would falsely block an otherwise-clean commit)
+unformatted=$(echo "$CLEAN_FILES" | xargs gofmt -l)
+if [ -n "$unformatted" ]; then
+    echo "These files still aren't formatted — run: make format"
+    echo "$unformatted"
+    exit 1
+fi

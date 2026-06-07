@@ -6,11 +6,11 @@
 package app
 
 import (
-	"github.com/genai-io/gen-code/internal/app/trigger"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/identity"
-	"github.com/genai-io/gen-code/internal/plugin"
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/identity"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/setting"
 )
 
 func (m *model) changeCwd(newCwd string) {

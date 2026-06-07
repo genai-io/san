@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 func TestBuildEnvironmentRendersFacts(t *testing.T) {
@@ -37,7 +37,7 @@ func TestBuildPromptCaching(t *testing.T) {
 }
 
 func TestBuildPromptOmitsMemory(t *testing.T) {
-	// Memory (CLAUDE.md / GEN.md) no longer lives in the system prompt — it
+	// Memory (CLAUDE.md / SAN.md) no longer lives in the system prompt — it
 	// rides on user messages as a <system-reminder> block via the harness's
 	// reminder service so memory edits don't invalidate the cache prefix.
 	sys := Build(core.ScopeMain,

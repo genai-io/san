@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/skill"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/tool"
 )
 
 type stubSubagentSessionStore struct {
@@ -43,11 +44,11 @@ func (s *stubSubagentSessionStore) LoadSubagentMessages(agentID string) ([]core.
 func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(AgentRequest{
+	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
 		Agent:    "general-purpose",
 		Name:     "Scout",
 		Model:    "override-model",
-		MaxTurns: 120,
+		MaxSteps: 120,
 		Mode:     string(PermissionAcceptEdits),
 	})
 	if err != nil {
@@ -60,8 +61,8 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	if rc.modelID != "override-model" {
 		t.Fatalf("expected model override, got %q", rc.modelID)
 	}
-	if rc.maxTurns != 120 {
-		t.Fatalf("expected max turns override, got %d", rc.maxTurns)
+	if rc.maxSteps != 120 {
+		t.Fatalf("expected max steps override, got %d", rc.maxSteps)
 	}
 	if rc.permMode != PermissionAcceptEdits {
 		t.Fatalf("expected permission mode override, got %q", rc.permMode)
@@ -71,19 +72,19 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	}
 }
 
-func TestPrepareRunConfigDoesNotLowerBuiltinMaxTurns(t *testing.T) {
+func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(AgentRequest{
+	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
 		Agent:    "general-purpose",
-		MaxTurns: 20,
+		MaxSteps: 20,
 	})
 	if err != nil {
 		t.Fatalf("prepareRunConfig() error: %v", err)
 	}
 
-	if rc.maxTurns != defaultMaxTurns {
-		t.Fatalf("expected low max turns override to be raised to %d, got %d", defaultMaxTurns, rc.maxTurns)
+	if rc.maxSteps != defaultMaxSteps {
+		t.Fatalf("expected low max steps override to be raised to %d, got %d", defaultMaxSteps, rc.maxSteps)
 	}
 }
 
@@ -127,7 +128,7 @@ func TestShouldRetryWithParentModelOnlyForMissingDifferentModel(t *testing.T) {
 func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
-		req: AgentRequest{Agent: "general-purpose"},
+		req: tool.AgentExecRequest{Agent: "general-purpose"},
 		cfg: &runConfig{
 			displayName: "Scout",
 			modelID:     "test-model",
@@ -139,7 +140,7 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	result := executor.buildCancelledAgentResult(run, &core.Result{
 		Content:    "partial",
 		Messages:   []core.Message{{Role: core.RoleAssistant, Content: "partial"}},
-		Turns:      2,
+		Steps:      2,
 		ToolUses:   1,
 		StopReason: core.StopCancelled,
 	})
@@ -450,8 +451,8 @@ func TestBuiltinAgentsDefaultTo100Turns(t *testing.T) {
 			if !ok {
 				t.Fatalf("agent %q not found", agentName)
 			}
-			if cfg.MaxTurns != defaultMaxTurns {
-				t.Fatalf("expected %q max turns to default to %d, got %d", agentName, defaultMaxTurns, cfg.MaxTurns)
+			if cfg.MaxSteps != defaultMaxSteps {
+				t.Fatalf("expected %q max steps to default to %d, got %d", agentName, defaultMaxSteps, cfg.MaxSteps)
 			}
 		})
 	}

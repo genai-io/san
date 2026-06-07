@@ -48,8 +48,8 @@ installed plugins; the directory name on disk does not have to match.
 
 | Scope | Path |
 |---|---|
-| User | `~/.gen/plugins/<name>/` |
-| Project | `<project>/.gen/plugins/<name>/` |
+| User | `~/.san/plugins/<name>/` |
+| Project | `<project>/.san/plugins/<name>/` |
 | Claude-compat | `~/.claude/plugins/<name>/`, `<project>/.claude/plugins/<name>/` |
 
 Project plugins override user plugins by `name`.
@@ -60,16 +60,16 @@ Three ways:
 
 ```bash
 # From a local directory
-gen plugin install ./my-plugin
+san plugin install ./my-plugin
 
 # From a git URL
-gen plugin install https://github.com/you/github-flow
+san plugin install https://github.com/you/github-flow
 
 # From the marketplace (if configured)
-gen plugin install github-flow
+san plugin install github-flow
 ```
 
-`gen plugin install` runs the installer in `internal/plugin/installer.go`,
+`san plugin install` runs the installer in `internal/plugin/installer.go`,
 which copies the directory under the chosen scope and runs validation.
 
 Inside the TUI, `/plugin` opens the plugin manager — install, enable,
@@ -81,8 +81,8 @@ Plugins are enabled per scope. Disabling a plugin removes its
 contributions (skills / agents / commands / MCP / hooks) without
 deleting files. Re-enable to restore.
 
-State is persisted in `~/.gen/plugins.json` and
-`<project>/.gen/plugins.json`.
+State is persisted in `~/.san/plugins.json` and
+`<project>/.san/plugins.json`.
 
 ## Contributions Push, Not Pull
 
@@ -136,7 +136,7 @@ Greet the user warmly in their preferred style.
 Install + use:
 
 ```bash
-gen plugin install ./my-plugin
+san plugin install ./my-plugin
 # in the TUI:
 /plugin              # confirm "demo" is enabled
 /say-hello           # invoke the skill
@@ -159,7 +159,7 @@ A marketplace is a JSON file (locally or hosted) describing plugins:
 }
 ```
 
-Configure marketplace URLs in `~/.gen/settings.json`:
+Configure marketplace URLs in `~/.san/settings.json`:
 
 ```json
 {
@@ -167,13 +167,13 @@ Configure marketplace URLs in `~/.gen/settings.json`:
 }
 ```
 
-`gen plugin search` and `gen plugin install <name>` then resolve through
+`san plugin search` and `san plugin install <name>` then resolve through
 the marketplace.
 
 ## Common Pitfalls
 
 - **Forgot `pluginspec.json`.** Plugin is silently skipped at load time.
-  Check `~/.gen/logs/` for the warning.
+  Check `~/.san/logs/` for the warning.
 - **Skill name collisions across plugins.** Disambiguate with `namespace:`
   in the SKILL.md frontmatter (e.g. `namespace: github`, then invoked as
   `/github:create-pr`).

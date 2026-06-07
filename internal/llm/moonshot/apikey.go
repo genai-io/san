@@ -2,13 +2,12 @@ package moonshot
 
 import (
 	"context"
-	"os"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // APIKeyMeta is the metadata for Moonshot via API Key
@@ -22,7 +21,7 @@ var APIKeyMeta = llm.Meta{
 // NewAPIKeyClient creates a new Moonshot client using API Key authentication.
 // The Moonshot API is OpenAI-compatible, so we use the OpenAI SDK with a custom base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("MOONSHOT_BASE_URL")
+	baseURL := secret.Resolve("MOONSHOT_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://api.moonshot.cn/v1"
 	}

@@ -7,18 +7,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/mcp"
-	"github.com/genai-io/gen-code/internal/reminder"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
-	"github.com/genai-io/gen-code/internal/worktree"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/worktree"
 	"go.uber.org/zap"
 )
 
@@ -45,7 +45,7 @@ type SubagentSessionStore interface {
 type runConfig struct {
 	config      *AgentConfig
 	modelID     string
-	maxTurns    int
+	maxSteps    int
 	displayName string
 	brief       system.SubagentBrief // identity/charter for this run; immutable
 	permMode    PermissionMode
@@ -98,7 +98,7 @@ func (e *Executor) GetParentModelID() string {
 
 // Run executes an agent request and returns the result.
 // For background agents, this should be called in a goroutine.
-func (e *Executor) Run(ctx context.Context, req AgentRequest) (*AgentResult, error) {
+func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
 	run, err := e.prepareRun(req)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (e *Executor) Run(ctx context.Context, req AgentRequest) (*AgentResult, err
 }
 
 // RunBackground executes an agent in the background and returns the task.
-func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
+func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -143,7 +143,6 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 		cancel,
 	)
 	agentTask.SetIdentity(req.Agent, req.ResumeID)
-	req.LiveTaskID = agentTask.GetID()
 
 	task.Default().RegisterTask(agentTask)
 
@@ -167,7 +166,7 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
-		agentTask.UpdateProgress(result.TurnCount, result.TokenUsage.TotalTokens)
+		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
 
 		if result.Success {
 			agentTask.Complete(nil)
@@ -179,14 +178,14 @@ func (e *Executor) RunBackground(req AgentRequest) (*task.AgentTask, error) {
 	return agentTask, nil
 }
 
-func (e *Executor) validateRequest(req AgentRequest) error {
+func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	if strings.TrimSpace(req.Prompt) == "" {
 		return fmt.Errorf("agent prompt cannot be empty")
 	}
 	return nil
 }
 
-func (e *Executor) prepareWorkspace(req AgentRequest) (string, func(), error) {
+func (e *Executor) prepareWorkspace(req tool.AgentExecRequest) (string, func(), error) {
 	if req.Isolation != "worktree" {
 		return e.cwd, func() {}, nil
 	}
@@ -198,7 +197,7 @@ func (e *Executor) prepareWorkspace(req AgentRequest) (string, func(), error) {
 	return result.Path, cleanup, nil
 }
 
-func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
+func (e *Executor) prepareRunConfig(req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -208,25 +207,25 @@ func (e *Executor) prepareRunConfig(req AgentRequest) (*runConfig, error) {
 
 	permMode := requestPermissionMode(config, req)
 
-	maxTurns := config.MaxTurns
-	if req.MaxTurns > maxTurns {
-		maxTurns = req.MaxTurns
+	maxSteps := config.MaxSteps
+	if req.MaxSteps > maxSteps {
+		maxSteps = req.MaxSteps
 	}
-	if maxTurns <= 0 {
-		maxTurns = defaultMaxTurns
+	if maxSteps <= 0 {
+		maxSteps = defaultMaxSteps
 	}
 
 	return &runConfig{
 		config:      config,
 		modelID:     e.resolveModelID(req.Model, config.Model),
-		maxTurns:    maxTurns,
+		maxSteps:    maxSteps,
 		displayName: displayName,
 		brief:       e.buildBrief(config, permMode),
 		permMode:    permMode,
 	}, nil
 }
 
-func (e *Executor) fireSubagentStart(req AgentRequest, agentHookID string) {
+func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID string) {
 	if e.hooks == nil {
 		return
 	}
@@ -306,7 +305,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 		Tools:     coreTools,
 		AgentType: rc.config.Name,
 		CWD:       agentCwd,
-		MaxTurns:  rc.maxTurns,
+		MaxSteps:  rc.maxSteps,
 		OutboxBuf: -1,
 		OnEvent:   onEvent,
 	})
@@ -314,7 +313,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	return ag, cleanup, nil
 }
 
-func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req AgentRequest) error {
+func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
 	// Resume from saved session
 	if req.ResumeID != "" {
 		if err := e.resumeFromSession(ag, ctx, req.ResumeID, req.Prompt); err != nil {
@@ -346,11 +345,11 @@ func collectSubagentReminders(skills string) []string {
 	return nil
 }
 
-func interpretStopReason(result *core.Result, maxTurns int) (success bool, errMsg string) {
+func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
 	success = result.StopReason == core.StopEndTurn
 	switch result.StopReason {
-	case core.StopMaxTurns:
-		errMsg = fmt.Sprintf("reached maximum turns (%d)", maxTurns)
+	case core.StopMaxSteps:
+		errMsg = fmt.Sprintf("reached maximum steps (%d)", maxSteps)
 	case core.StopMaxOutputRecoveryExhausted:
 		errMsg = "output was repeatedly truncated and recovery was exhausted"
 	case core.StopHook:
@@ -359,7 +358,7 @@ func interpretStopReason(result *core.Result, maxTurns int) (success bool, errMs
 	return success, errMsg
 }
 
-func (e *Executor) fireSubagentStop(req AgentRequest, agentHookID, agentSessionID, agentTranscriptPath, resultContent string) {
+func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agentSessionID, agentTranscriptPath, resultContent string) {
 	if e.hooks == nil {
 		return
 	}
@@ -435,7 +434,7 @@ func (e *Executor) capabilityPrompts(config *AgentConfig) (skillsPrompt string, 
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
-// matches docs/gen-permission.md: deny_tools, bypass-immune, allow_tools,
+// matches docs/concepts/permission-model.md: deny_tools, bypass-immune, allow_tools,
 // mode default, with Prompt collapsing to Deny because subagents cannot ask.
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
 	checker := modeChecker(mode)

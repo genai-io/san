@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/worktree
+package: github.com/genai-io/san/internal/worktree
 layer: feature
 ---
 

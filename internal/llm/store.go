@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 const (
@@ -65,7 +67,7 @@ func NewStore() (*Store, error) {
 		return nil, err
 	}
 
-	configDir := filepath.Join(homeDir, ".gen")
+	configDir := confdir.Dir(homeDir)
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -245,6 +247,40 @@ func (s *Store) GetAllCachedModelsIncludeExpired() map[string][]ModelInfo {
 		}
 	}
 	return result
+}
+
+// CachedModelDisplayName returns the display name for a model ID found in any
+// cached provider list, ignoring TTL. Returns "" if the ID isn't cached.
+//
+// The same model can be cached under several provider/auth keys (e.g. a model
+// offered both directly and via an aggregator). One provider may list a real
+// display name ("DeepSeek V4 Pro") while another only echoes the raw ID
+// ("deepseek-v4-pro"). Returning whichever entry we hit first would make the
+// status bar flicker between the two, because Go randomizes map iteration
+// order between renders. So we prefer a real display name — one that differs
+// from the ID — and only fall back to the raw name/ID when no real name
+// exists. Scans in place without allocating, since it runs on every render.
+func (s *Store) CachedModelDisplayName(id string) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	raw := "" // the raw ID echoed back as a name; used only if no real name is found
+	for _, cache := range s.data.Models {
+		for _, m := range cache.Models {
+			if m.ID != id {
+				continue
+			}
+			name := m.DisplayName
+			if name == "" {
+				name = m.Name
+			}
+			if name != "" && name != id {
+				return name // a real, human-readable display name
+			}
+			raw = name // keep scanning in case another provider has a real name
+		}
+	}
+	return raw
 }
 
 // SetCurrentModel sets the current model with provider info

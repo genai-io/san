@@ -208,7 +208,7 @@ model: opus                  # inherit | sonnet | opus | haiku
 mode: explore                # explore | acceptEdits | default | bypassPermissions
 allow_tools: [Read, Glob]    # Schema filter
 deny_tools: [Agent]          # Always wins
-max-turns: 100
+max-steps: 100
 color: blue                  # UI display color
 when-to-use: "When to use this agent"
 skills: []                   # Additional skills to load

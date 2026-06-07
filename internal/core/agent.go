@@ -37,7 +37,7 @@ type Agent interface {
 
 	// Messages returns a snapshot of the conversation history.
 	// The returned slice is a shallow copy — do not mutate Message fields
-	// that contain maps, slices, or pointers (Meta, ToolCalls, ToolResult).
+	// that contain slices or pointers (Images, ToolCalls, ToolResult).
 	Messages() []Message
 
 	// SetMessages replaces the conversation history.
@@ -73,7 +73,7 @@ type Agent interface {
 	//
 	//   Phase 3 — THINK + ACT (inference loop):
 	//     Loop: LLM inference → tool execution → LLM inference → ...
-	//     Between each turn, non-blocking drain of Inbox for new messages.
+	//     Between each step, non-blocking drain of Inbox for new messages.
 	//     Emit streaming chunks and tool results to Outbox.
 	//     Loop until LLM returns end_turn.
 	//     Then go back to Phase 1 (wait for next message).
@@ -99,20 +99,19 @@ type Agent interface {
 // Config holds construction parameters for an agent.
 //
 // Required fields: LLM, System, Tools. NewAgent panics if any is nil.
-// Optional fields: ID, CWD, MaxTurns, InboxBuf, OutboxBuf, CompactFunc.
+// Optional fields: ID, CWD, MaxSteps, InboxBuf, OutboxBuf, CompactFunc.
 //
 // Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
-// before passing them to NewAgent. See docs/gen-permission.md.
+// before passing them to NewAgent. See docs/concepts/permission-model.md.
 type Config struct {
 	ID                string
 	LLM               LLM                                                       // required: inference backend
 	System            System                                                    // required: system prompt layers
 	Tools             Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
 	AgentType         string                                                    // optional: agent type identifier for hook events
-	Color             string                                                    // optional: display color for TUI (e.g. "#ff6600", "blue")
 	CompactFunc       func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	CWD               string
-	MaxTurns          int // max LLM inference rounds per cycle, 0 = unlimited
+	MaxSteps          int // max LLM inference steps per turn, 0 = unlimited
 	MaxOutputRecovery int // max retries on truncated output, 0 = use default (3)
 	InboxBuf          int // inbox channel buffer size, default 16
 	OutboxBuf         int // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
@@ -150,13 +149,12 @@ func NewAgent(cfg Config) Agent {
 	a := &agent{
 		id:                cfg.ID,
 		agentType:         cfg.AgentType,
-		color:             cfg.Color,
 		system:            cfg.System,
 		tools:             cfg.Tools,
 		compactFunc:       cfg.CompactFunc,
 		llm:               cfg.LLM,
 		cwd:               cfg.CWD,
-		maxTurns:          cfg.MaxTurns,
+		maxSteps:          cfg.MaxSteps,
 		maxOutputRecovery: cfg.MaxOutputRecovery,
 		inbox:             make(chan Message, cfg.InboxBuf),
 		outbox:            outbox,
@@ -177,14 +175,14 @@ func NewAgent(cfg Config) Agent {
 // Result represents the outcome of one completed turn (end_turn).
 // Emitted to Outbox as Event{Type: OnTurn, Data: result}.
 type Result struct {
-	Content    string     // final text output of this turn
-	Messages   []Message  // full conversation history
-	Turns      int        // LLM inference rounds in this cycle
-	ToolUses   int        // tool calls in this cycle
-	TokensIn   int        // input tokens consumed
-	TokensOut  int        // output tokens produced
-	StopReason StopReason // why the loop stopped
-	StopDetail string     // human-readable detail (e.g. hook block reason)
+	Content      string     // final text output of this turn
+	Messages     []Message  // full conversation history
+	Steps        int        // LLM inference steps in this turn
+	ToolUses     int        // tool calls in this turn
+	InputTokens  int        // input tokens consumed
+	OutputTokens int        // output tokens produced
+	StopReason   StopReason // why the loop stopped
+	StopDetail   string     // human-readable detail (e.g. hook block reason)
 }
 
 // EventType identifies an agent lifecycle event.
@@ -298,7 +296,9 @@ func StopEvent(agentID string, err error) Event {
 	return Event{Type: OnStop, Source: agentID, Data: err}
 }
 func ChunkEvent(agentID string, c Chunk) Event { return Event{Type: OnChunk, Source: agentID, Data: c} }
-func MessageEvent(msg Message) Event           { return Event{Type: OnMessage, Source: msg.From, Data: msg} }
+func MessageEvent(agentID string, msg Message) Event {
+	return Event{Type: OnMessage, Source: agentID, Data: msg}
+}
 func AppendEvent(agentID string, msg Message) Event {
 	return Event{Type: OnAppend, Source: agentID, Data: msg}
 }

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // Regression: NewRecorder must write session.started before returning, so

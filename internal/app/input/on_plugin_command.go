@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	coreplugin "github.com/genai-io/gen-code/internal/plugin"
+	coreplugin "github.com/genai-io/san/internal/plugin"
 )
 
 // ── Commands ─────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ func pluginHandleList(reg *coreplugin.Registry) (string, error) {
 	plugins := reg.List()
 
 	if len(plugins) == 0 {
-		return "No plugins installed.\n\nInstall with: gen plugin install <plugin>@<marketplace>", nil
+		return "No plugins installed.\n\nInstall with: san plugin install <plugin>@<marketplace>", nil
 	}
 
 	var sb strings.Builder
@@ -256,13 +256,8 @@ func pluginHandleInstall(reg *coreplugin.Registry, ctx context.Context, cwd stri
 		}
 	}
 
-	installer := coreplugin.NewInstaller(reg, cwd)
-	if err := installer.LoadMarketplaces(); err != nil {
-		return fmt.Sprintf("Failed to load marketplaces: %v", err), nil
-	}
-
 	ref := args[0]
-	if err := installer.Install(ctx, ref, scope); err != nil {
+	if err := coreplugin.Install(ctx, reg, cwd, ref, scope); err != nil {
 		return fmt.Sprintf("Failed to install plugin '%s': %v", ref, err), nil
 	}
 
@@ -419,7 +414,7 @@ func pluginHandleMarketplaceSync(ctx context.Context, cwd string, args []string)
 		return strings.TrimRight(sb.String(), "\n"), nil
 	}
 
-	if err := manager.Sync(ctx, target); err != nil {
+	if err := manager.SyncOrPrune(ctx, target); err != nil {
 		return fmt.Sprintf("Failed to sync marketplace '%s': %v", target, err), nil
 	}
 	return fmt.Sprintf("Synced marketplace '%s'.", target), nil

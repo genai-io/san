@@ -1,7 +1,7 @@
 package subagent
 
 import (
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Matches reports whether any rule in the list matches the call. Bash

@@ -1,6 +1,6 @@
 # 核心接口详解
 
-Gen Code 的所有核心抽象定义在 [`internal/core/`](../../internal/core/) 包中。这些是纯接口，不包含实现，遵循 Go 的"定义接口于消费方"最佳实践。
+San 的所有核心抽象定义在 [`internal/core/`](../../internal/core/) 包中。这些是纯接口，不包含实现，遵循 Go 的"定义接口于消费方"最佳实践。
 
 ---
 
@@ -56,7 +56,7 @@ type Config struct {
     Color             string        // TUI 显示颜色
     CompactFunc       func(...)     // 对话压缩函数
     CWD               string        // 工作目录
-    MaxTurns          int           // 每周期最大 LLM 推理轮数
+    MaxSteps          int           // 每个 turn 内最大 LLM 推理步数
     MaxOutputRecovery int           // 截断输出最大重试次数
     InboxBuf          int           // 入站缓冲区大小（默认 16）
     OutboxBuf         int           // 出站缓冲区大小（默认 64），-1 表示无出站（子 Agent 路径）
@@ -102,7 +102,7 @@ type LLM interface {
 
 ### InferRequest（推理请求）
 
-模型、最大输出 Token 等参数在创建客户端时（`ClientFactory.NewClient(model, maxTokens)`）即已确定，因此 `InferRequest` 本身只携带每次推理的输入：
+模型、最大输出 Token 等参数在创建客户端时（`Conn.NewClient(model, maxTokens)`）即已确定，因此 `InferRequest` 本身只携带每次推理的输入：
 
 ```go
 type InferRequest struct {
@@ -134,7 +134,7 @@ const (
     StopEndTurn                    StopReason = "end_turn"
     StopMaxTokens                  StopReason = "max_tokens"
     StopToolUse                    StopReason = "tool_use"
-    StopMaxTurns                   StopReason = "max_turns"
+    StopMaxSteps                  StopReason = "max_steps"
     StopCancelled                  StopReason = "cancelled"
     StopHook                       StopReason = "stop_hook"
     StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"

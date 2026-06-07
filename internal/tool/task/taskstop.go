@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -94,8 +94,8 @@ func (t *TaskStopTool) Execute(ctx context.Context, params map[string]any, cwd s
 		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nType: bash\nPID: %d\nStatus: %s",
 			taskID, info.PID, finalInfo.Status)
 	case task.TaskTypeAgent:
-		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nType: agent\nAgent: %s\nTurns: %d\nStatus: %s",
-			taskID, info.AgentName, info.TurnCount, finalInfo.Status)
+		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nType: agent\nAgent: %s\nSteps: %d\nStatus: %s",
+			taskID, info.AgentName, info.StepCount, finalInfo.Status)
 	default:
 		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nStatus: %s",
 			taskID, finalInfo.Status)

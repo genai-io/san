@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/log"
 )
 
 // The methods below satisfy the log package's requestLoggable and

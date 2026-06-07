@@ -19,7 +19,7 @@ Closes #
 <!-- How did you verify this? Commands run, cases covered. -->
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test ./...
+GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
 ## Checklist

@@ -6,15 +6,15 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/app/kit/history"
-	"github.com/genai-io/gen-code/internal/app/kit/suggest"
-	"github.com/genai-io/gen-code/internal/core"
-	coreidentity "github.com/genai-io/gen-code/internal/identity"
-	coremcp "github.com/genai-io/gen-code/internal/mcp"
-	coreplugin "github.com/genai-io/gen-code/internal/plugin"
-	coresetting "github.com/genai-io/gen-code/internal/setting"
-	coreskill "github.com/genai-io/gen-code/internal/skill"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit/history"
+	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/core"
+	coreidentity "github.com/genai-io/san/internal/identity"
+	coremcp "github.com/genai-io/san/internal/mcp"
+	coreplugin "github.com/genai-io/san/internal/plugin"
+	coresetting "github.com/genai-io/san/internal/setting"
+	coreskill "github.com/genai-io/san/internal/skill"
 )
 
 type PastedChunk struct {

@@ -1,4 +1,4 @@
-// Package subagent provides subagent execution for GenCode.
+// Package subagent provides subagent execution for San.
 // Subagents are specialized LLM instances that can be spawned to handle
 // specific tasks with isolated contexts and tool restrictions.
 package subagent
@@ -9,14 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 	"gopkg.in/yaml.v3"
 )
 
 // PermissionMode controls the default permission policy for an agent.
-// See docs/gen-permission.md for the full pipeline.
+// See docs/concepts/permission-model.md for the full pipeline.
 type PermissionMode string
 
 const (
@@ -58,7 +57,7 @@ func NormalizePermissionMode(s string) PermissionMode {
 
 // ToolRule is a single allow/deny entry. Pattern follows the unified
 // "Tool(pattern)" glob syntax shared with settings.permissions — see
-// docs/gen-permission.md.
+// docs/concepts/permission-model.md.
 type ToolRule struct {
 	Name    string `yaml:"name" json:"name"`
 	Pattern string `yaml:"pattern,omitempty" json:"pattern,omitempty"`
@@ -155,7 +154,7 @@ func (t ToolList) HasPattern(name string) bool {
 	return false
 }
 
-// UnmarshalYAML accepts every form documented in docs/gen-permission.md:
+// UnmarshalYAML accepts every form documented in docs/concepts/permission-model.md:
 //   - string list:    "Read, Write, Bash"        (comma-separated)
 //   - sequence:       [Read, Write, Bash(git diff*)]
 //   - sequence map:   [{name: Bash, pattern: "git diff*"}]
@@ -305,7 +304,7 @@ type AgentConfig struct {
 
 	Skills       []string `yaml:"skills,omitempty" json:"skills,omitempty"`
 	SystemPrompt string   `yaml:"system-prompt,omitempty" json:"system_prompt,omitempty"`
-	MaxTurns     int      `yaml:"max-turns" json:"max_turns"`
+	MaxSteps     int      `yaml:"max-steps" json:"max_steps"`
 	Source       string   `yaml:"-" json:"source,omitempty"`
 	McpServers   []string `yaml:"mcp-servers,omitempty" json:"mcp_servers,omitempty"`
 	SourceFile   string   `yaml:"-" json:"-"`
@@ -325,26 +324,6 @@ func (c *AgentConfig) GetSystemPrompt() string {
 	return c.SystemPrompt
 }
 
-// ProgressCallback is called when the agent makes progress
-type ProgressCallback func(msg string)
-
-// AgentRequest represents a request to spawn an agent
-type AgentRequest struct {
-	Agent       string
-	Name        string
-	Prompt      string
-	Description string
-	Background  bool
-	Model       string
-	MaxTurns    int
-	Mode        string
-	ResumeID    string
-	LiveTaskID  string
-	Isolation   string
-	OnProgress  ProgressCallback
-	OnQuestion  tool.AskQuestionFunc
-}
-
 // AgentResult contains the result of an agent execution
 type AgentResult struct {
 	AgentID        string
@@ -355,16 +334,16 @@ type AgentResult struct {
 	Summary        string
 	TranscriptPath string
 	Messages       []core.Message
-	TurnCount      int
+	StepCount      int
 	ToolUses       int
-	TokenUsage     llm.TokenUsage
+	TokenUsage     llm.Usage
 	Duration       time.Duration
 	Progress       []string
 	Error          string
 }
 
-// defaultMaxTurns is the default maximum number of conversation turns
-const defaultMaxTurns = 100
+// defaultMaxSteps is the default maximum number of LLM inference steps.
+const defaultMaxSteps = 100
 
 // modelAliases maps short model aliases to full Vertex AI model IDs.
 var modelAliases = map[string]string{

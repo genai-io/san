@@ -1,4 +1,4 @@
-// Package identity manages user-defined personas that override Gen Code's
+// Package identity manages user-defined personas that override San's
 // default system-prompt identity.
 //
 // An identity is a markdown file with frontmatter:
@@ -11,10 +11,10 @@
 //	You are an ML engineer ...
 //
 // Identities live under:
-//   - ~/.gen/identities/<name>.md  (user level)
-//   - .gen/identities/<name>.md    (project level — overrides user)
+//   - ~/.san/identities/<name>.md  (user level)
+//   - .san/identities/<name>.md    (project level — overrides user)
 //
-// The "default" identity is virtual: it represents Gen Code's built-in
+// The "default" identity is virtual: it represents San's built-in
 // prompts/identity.txt and has no file.
 package identity
 
@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/markdown"
+	"github.com/genai-io/san/internal/markdown"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,8 +36,8 @@ type Scope int
 
 const (
 	ScopeBuiltin Scope = iota // virtual default identity
-	ScopeUser                 // ~/.gen/identities/
-	ScopeProject              // .gen/identities/  (overrides user)
+	ScopeUser                 // ~/.san/identities/
+	ScopeProject              // .san/identities/  (overrides user)
 )
 
 // Identity is one persona definition.
@@ -58,7 +58,7 @@ func (i Identity) IsBuiltin() bool { return i.Scope == ScopeBuiltin }
 func DefaultIdentity() *Identity {
 	return &Identity{
 		Name:        DefaultName,
-		Description: "Built-in Gen Code persona — software engineering generalist",
+		Description: "Built-in San persona — software engineering generalist",
 		Scope:       ScopeBuiltin,
 	}
 }

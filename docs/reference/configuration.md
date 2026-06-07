@@ -9,11 +9,11 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 | Priority | File |
 |----------|------|
 | 1 | `~/.claude/settings.json` (Claude user compat) |
-| 2 | `~/.gen/settings.json` (GenCode user) |
+| 2 | `~/.san/settings.json` (San user) |
 | 3 | `./.claude/settings.json` (Claude project compat) |
-| 4 | `./.gen/settings.json` (GenCode project) |
+| 4 | `./.san/settings.json` (San project) |
 | 5 | `./.claude/settings.local.json` |
-| 6 | `./.gen/settings.local.json` |
+| 6 | `./.san/settings.local.json` |
 | 7 | CLI arguments / environment variables |
 | 8 | `managed-settings.json` (read-only system policy) |
 
@@ -141,21 +141,21 @@ func TestConfig_EnabledPlugins_ActivatesPlugin(t *testing.T) {
 ## Interactive Tests (tmux)
 
 ```bash
-mkdir -p /tmp/cfg_test/.gen
+mkdir -p /tmp/cfg_test/.san
 
 # User-level env var (backup existing)
-cp ~/.gen/settings.json ~/.gen/settings.json.bak 2>/dev/null || true
-cat > ~/.gen/settings.json << 'EOF'
+cp ~/.san/settings.json ~/.san/settings.json.bak 2>/dev/null || true
+cat > ~/.san/settings.json << 'EOF'
 {"env": {"SCOPE": "user"}}
 EOF
 
 # Project-level overrides it + disables a tool
-cat > /tmp/cfg_test/.gen/settings.json << 'EOF'
+cat > /tmp/cfg_test/.san/settings.json << 'EOF'
 {"env": {"SCOPE": "project"}, "disabledTools": {"WebSearch": true}}
 EOF
 
 tmux new-session -d -s t_cfg -x 220 -y 60
-tmux send-keys -t t_cfg 'cd /tmp/cfg_test && gen' Enter
+tmux send-keys -t t_cfg 'cd /tmp/cfg_test && san' Enter
 sleep 2
 
 # Test 1: Verify env override (project wins over user)
@@ -172,10 +172,10 @@ tmux capture-pane -t t_cfg -p
 
 # Test 3: Local settings override project
 tmux send-keys -t t_cfg C-c
-cat > /tmp/cfg_test/.gen/settings.local.json << 'EOF'
+cat > /tmp/cfg_test/.san/settings.local.json << 'EOF'
 {"env": {"SCOPE": "local"}}
 EOF
-tmux send-keys -t t_cfg 'cd /tmp/cfg_test && gen' Enter
+tmux send-keys -t t_cfg 'cd /tmp/cfg_test && san' Enter
 sleep 2
 tmux send-keys -t t_cfg 'run: echo $SCOPE' Enter
 sleep 5
@@ -184,10 +184,10 @@ tmux capture-pane -t t_cfg -p
 
 # Test 4: Allow rule auto-approves
 tmux send-keys -t t_cfg C-c
-cat > /tmp/cfg_test/.gen/settings.json << 'EOF'
+cat > /tmp/cfg_test/.san/settings.json << 'EOF'
 {"permissions": {"allow": ["Bash(echo*)"]}}
 EOF
-tmux send-keys -t t_cfg 'cd /tmp/cfg_test && gen' Enter
+tmux send-keys -t t_cfg 'cd /tmp/cfg_test && san' Enter
 sleep 2
 tmux send-keys -t t_cfg 'run: echo auto-approved' Enter
 sleep 5
@@ -196,10 +196,10 @@ tmux capture-pane -t t_cfg -p
 
 # Test 5: Deny rule blocks
 tmux send-keys -t t_cfg C-c
-cat > /tmp/cfg_test/.gen/settings.json << 'EOF'
+cat > /tmp/cfg_test/.san/settings.json << 'EOF'
 {"permissions": {"deny": ["Bash(rm*)"]}}
 EOF
-tmux send-keys -t t_cfg 'cd /tmp/cfg_test && gen' Enter
+tmux send-keys -t t_cfg 'cd /tmp/cfg_test && san' Enter
 sleep 2
 tmux send-keys -t t_cfg 'run: rm -f /tmp/test' Enter
 sleep 5
@@ -208,7 +208,7 @@ tmux capture-pane -t t_cfg -p
 
 # Test 6: Hooks from config
 tmux send-keys -t t_cfg C-c
-cat > /tmp/cfg_test/.gen/settings.json << 'EOF'
+cat > /tmp/cfg_test/.san/settings.json << 'EOF'
 {
   "hooks": {
     "SessionStart": [{
@@ -217,13 +217,13 @@ cat > /tmp/cfg_test/.gen/settings.json << 'EOF'
   }
 }
 EOF
-tmux send-keys -t t_cfg 'cd /tmp/cfg_test && gen' Enter
+tmux send-keys -t t_cfg 'cd /tmp/cfg_test && san' Enter
 sleep 3
 cat /tmp/cfg_hook.txt
 # Expected: "cfg-hook"
 
 tmux send-keys -t t_cfg C-c
 tmux kill-session -t t_cfg
-mv ~/.gen/settings.json.bak ~/.gen/settings.json 2>/dev/null || true
+mv ~/.san/settings.json.bak ~/.san/settings.json 2>/dev/null || true
 rm -rf /tmp/cfg_test /tmp/cfg_hook.txt
 ```

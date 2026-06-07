@@ -8,26 +8,27 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/agent"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/app/kit/suggest"
-	"github.com/genai-io/gen-code/internal/command"
-	"github.com/genai-io/gen-code/internal/cron"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/identity"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/mcp"
-	"github.com/genai-io/gen-code/internal/plugin"
-	"github.com/genai-io/gen-code/internal/session"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/subagent"
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/task/tracker"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/fs"
-	_ "github.com/genai-io/gen-code/internal/tool/registry"
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/identity"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/fs"
+	_ "github.com/genai-io/san/internal/tool/registry"
 )
 
 var appCwd string
@@ -48,7 +49,7 @@ func initInfrastructure() error {
 	task.Initialize(task.Options{})
 	tracker.Initialize(tracker.Options{})
 	cron.Initialize(cron.Options{
-		StoragePath: filepath.Join(appCwd, ".gen", "scheduled_tasks.json"),
+		StoragePath: filepath.Join(confdir.Dir(appCwd), "scheduled_tasks.json"),
 	})
 	if err := cron.Default().LoadDurable(); err != nil {
 		return fmt.Errorf("failed to load scheduled tasks: %w", err)
@@ -158,24 +159,11 @@ type agentRegistryAdapter struct {
 	reg *subagent.Registry
 }
 
-func (a *agentRegistryAdapter) ListConfigs() []input.AgentConfigInfo {
+func (a *agentRegistryAdapter) ListConfigs() []tool.AgentConfigInfo {
 	configs := a.reg.ListConfigs()
-	out := make([]input.AgentConfigInfo, len(configs))
+	out := make([]tool.AgentConfigInfo, len(configs))
 	for i, cfg := range configs {
-		var tools []string
-		if cfg.AllowTools != nil {
-			tools = cfg.AllowTools.DisplayNames()
-		}
-		out[i] = input.AgentConfigInfo{
-			Name:           cfg.Name,
-			Description:    cfg.Description,
-			Color:          cfg.Color,
-			Model:          cfg.Model,
-			PermissionMode: string(cfg.PermissionMode),
-			Tools:          tools,
-			SourceFile:     cfg.SourceFile,
-			Source:         cfg.Source,
-		}
+		out[i] = subagent.ToAgentConfigInfo(cfg)
 	}
 	return out
 }

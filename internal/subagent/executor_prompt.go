@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
@@ -148,14 +149,14 @@ func formatAgentProgress(params map[string]any) string {
 	return fmt.Sprintf("Agent - %s: %s", agentType, desc)
 }
 
-func displayNameFor(config *AgentConfig, req AgentRequest) string {
+func displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
 	if req.Name != "" {
 		return req.Name
 	}
 	return displayAgentName(config.Name, requestPermissionMode(config, req))
 }
 
-func requestPermissionMode(config *AgentConfig, req AgentRequest) PermissionMode {
+func requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
 	if req.Mode != "" {
 		return NormalizePermissionMode(req.Mode)
 	}

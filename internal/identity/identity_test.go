@@ -171,9 +171,9 @@ func TestRegistry_ProjectOverridesUser(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	writeIdentityFile(t, filepath.Join(home, ".gen", "identities"), "ml.md",
+	writeIdentityFile(t, filepath.Join(home, ".san", "identities"), "ml.md",
 		"---\nname: ml\ndescription: user-level ml\n---\n\nuser body\n")
-	writeIdentityFile(t, filepath.Join(cwd, ".gen", "identities"), "ml.md",
+	writeIdentityFile(t, filepath.Join(cwd, ".san", "identities"), "ml.md",
 		"---\nname: ml\ndescription: project-level ml\n---\n\nproject body\n")
 
 	r := NewRegistry(cwd)
@@ -229,8 +229,8 @@ func TestIsIdentityFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	userIdentity := filepath.Join(home, ".gen", "identities", "ml.md")
-	projectIdentity := filepath.Join(cwd, ".gen", "identities", "go.md")
+	userIdentity := filepath.Join(home, ".san", "identities", "ml.md")
+	projectIdentity := filepath.Join(cwd, ".san", "identities", "go.md")
 
 	for _, path := range []string{userIdentity, projectIdentity} {
 		if !IsIdentityFile(cwd, path) {
@@ -239,9 +239,9 @@ func TestIsIdentityFile(t *testing.T) {
 	}
 
 	for _, path := range []string{
-		filepath.Join(home, ".gen", "identities", "README.md"),
-		filepath.Join(home, ".gen", "other", "ml.md"),
-		filepath.Join(cwd, ".gen", "identities", "notes.txt"),
+		filepath.Join(home, ".san", "identities", "README.md"),
+		filepath.Join(home, ".san", "other", "ml.md"),
+		filepath.Join(cwd, ".san", "identities", "notes.txt"),
 		filepath.Join(cwd, "identity.md"),
 	} {
 		if IsIdentityFile(cwd, path) {
@@ -258,7 +258,7 @@ func TestEnsureUserDir_IsIdempotent(t *testing.T) {
 		t.Fatalf("EnsureUserDir first call: %v", err)
 	}
 
-	readme := filepath.Join(home, ".gen", "identities", "README.md")
+	readme := filepath.Join(home, ".san", "identities", "README.md")
 	first, err := os.ReadFile(readme)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)

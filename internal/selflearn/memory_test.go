@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core/system"
+	"github.com/genai-io/san/internal/core/system"
 )
 
 // newTestStore points the auto-memory store at a temp HOME so tests never touch
-// the real ~/.gen.
+// the real ~/.san.
 func newTestStore(t *testing.T) *MemoryStore {
 	t.Helper()
 	home := t.TempDir()

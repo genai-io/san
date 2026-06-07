@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/skill
+package: github.com/genai-io/san/internal/skill
 layer: feature
 ---
 
@@ -17,8 +17,8 @@ made aware of (`active`), made invocable via slash command (`enabled`), or
 hidden (`disabled`). This package:
 
 1. Discovers skills across six scopes
-   (`~/.claude/skills/`, `~/.gen/plugins/*/skills/`, `~/.gen/skills/`,
-   `.claude/skills/`, `.gen/plugins/*/skills/`, `.gen/skills/`) with
+   (`~/.claude/skills/`, `~/.san/plugins/*/skills/`, `~/.san/skills/`,
+   `.claude/skills/`, `.san/plugins/*/skills/`, `.san/skills/`) with
    project overriding user overriding Claude-compat.
 2. Persists per-skill state in user / project state stores.
 3. Renders the active-skills block consumed by the `skills-directory`

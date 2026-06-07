@@ -318,7 +318,7 @@ func TestFileStoreWritesExpectedEventShapes(t *testing.T) {
 			Turn:       1,
 			StopReason: "end_turn",
 			LatencyMs:  1234,
-			Usage:      &InferenceUsage{InputTokens: 100, OutputTokens: 20, CacheReadTokens: 10},
+			Usage:      &InferenceUsage{InputTokens: 100, OutputTokens: 20, CacheReadInputTokens: 10},
 		},
 	}); err != nil {
 		t.Fatalf("AppendInference(response): %v", err)

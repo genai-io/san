@@ -6,8 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/identity"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/identity"
 )
 
 // IdentitySelector is the /identity overlay. Read-only — selects the

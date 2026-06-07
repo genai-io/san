@@ -6,19 +6,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 const (
 	// EnvPluginRoot is the variable for plugin root directory
-	EnvPluginRoot = "GEN_PLUGIN_ROOT"
+	EnvPluginRoot = "SAN_PLUGIN_ROOT"
 
 	// EnvClaudePluginRoot is Claude Code's plugin root variable
 	EnvClaudePluginRoot = "CLAUDE_PLUGIN_ROOT"
 )
 
-// ExpandPluginRoot replaces ${GEN_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}
-// variables in the given string with the actual plugin path.
+// ExpandPluginRoot replaces ${SAN_PLUGIN_ROOT} (and the ${CLAUDE_PLUGIN_ROOT}
+// alias) in the given string with the actual plugin path.
 func ExpandPluginRoot(s string, pluginPath string) string {
 	s = strings.ReplaceAll(s, "${"+EnvPluginRoot+"}", pluginPath)
 	s = strings.ReplaceAll(s, "${"+EnvClaudePluginRoot+"}", pluginPath)

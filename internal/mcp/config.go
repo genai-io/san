@@ -5,20 +5,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // ConfigLoader handles loading MCP configuration from multiple sources
 type ConfigLoader struct {
-	userDir    string // ~/.gen
-	projectDir string // ./.gen or cwd
+	userDir    string // ~/.san
+	projectDir string // ./.san or cwd
 }
 
 // NewConfigLoader creates a new configuration loader
 func NewConfigLoader(cwd string) *ConfigLoader {
 	homeDir, _ := os.UserHomeDir()
 	return &ConfigLoader{
-		userDir:    filepath.Join(homeDir, ".gen"),
-		projectDir: filepath.Join(cwd, ".gen"),
+		userDir:    confdir.Dir(homeDir),
+		projectDir: confdir.Dir(cwd),
 	}
 }
 
@@ -27,16 +29,16 @@ func NewConfigLoader(cwd string) *ConfigLoader {
 // This avoids touching the real home directory in tests.
 func NewConfigLoaderForTest(baseDir string) *ConfigLoader {
 	return &ConfigLoader{
-		userDir:    filepath.Join(baseDir, "user", ".gen"),
-		projectDir: filepath.Join(baseDir, "project", ".gen"),
+		userDir:    confdir.Dir(filepath.Join(baseDir, "user")),
+		projectDir: confdir.Dir(filepath.Join(baseDir, "project")),
 	}
 }
 
 // LoadAll loads and merges MCP configurations from all sources.
 // Priority (lowest to highest):
-//  1. ~/.gen/mcp.json (user scope)
-//  2. ./.gen/mcp.json (project scope)
-//  3. ./.gen/mcp.local.json (local scope)
+//  1. ~/.san/mcp.json (user scope)
+//  2. ./.san/mcp.json (project scope)
+//  3. ./.san/mcp.local.json (local scope)
 func (l *ConfigLoader) LoadAll() (map[string]ServerConfig, error) {
 	servers := make(map[string]ServerConfig)
 
@@ -223,14 +225,16 @@ func configSourceFromFilePath(filePath string) string {
 	case "mcp.local.json":
 		return "local_settings"
 	case "mcp.json":
-		homeDir, err := os.UserHomeDir()
-		if err == nil {
-			userPath := filepath.Join(homeDir, ".gen", "mcp.json")
-			if cleanPath == filepath.Clean(userPath) {
+		// A user-level mcp.json lives at ~/.san/mcp.json. Check it before the
+		// project-settings fallthrough, since a project path <cwd>/.san/mcp.json
+		// also contains "/.san/".
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			if cleanPath == filepath.Clean(filepath.Join(homeDir, confdir.Name, "mcp.json")) {
 				return "user_settings"
 			}
 		}
-		if strings.Contains(cleanPath, string(filepath.Separator)+".gen"+string(filepath.Separator)) {
+		sep := string(filepath.Separator)
+		if strings.Contains(cleanPath, sep+confdir.Name+sep) {
 			return "project_settings"
 		}
 		return "user_settings"

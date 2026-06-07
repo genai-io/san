@@ -1,31 +1,8 @@
-# Gen Code 代码详解（中文文档）
+# San 代码详解（中文文档）
 
-## 项目概述
+本目录是 **San** 的中文「代码详解」文档集，面向贡献者与想深入源码的读者，逐层讲解架构、核心接口、工具系统与扩展机制。
 
-**Gen Code** 是一个开源的终端 AI 编程助手，使用 Go 语言编写。它是 [Claude Code](https://claude.ai/code) 的 Go 重写版本，编译为单一二进制文件，跨平台运行。项目定位是更快、更轻量的 Claude Code 替代品：下载体积缩小 5 倍，启动速度快 20 倍，内存占用减少 6 倍，实际任务执行快 4-8 倍。
-
-### 核心特性
-
-- **多 LLM 提供商**：支持 Anthropic Claude、OpenAI GPT/o-series、Google Gemini、Moonshot/Kimi、阿里云 DashScope（Qwen/DeepSeek）、MiniMax、Z.ai/智谱 GLM、DeepSeek
-- **可插拔搜索后端**：Exa、Tavily、Brave、Serper
-- **可定制身份/人格**：通过 Markdown 定义的自定义系统提示词
-- **六大扩展机制**：Skills、Plugins、MCP Server、Hooks、Slash Commands、Subagents
-- **会话持久化**：自动保存、恢复、分叉、上下文自动压缩
-- **事件驱动架构**：基于 Bubble Tea TUI 框架的 MVU 循环
-- **发布/订阅事件总线**：支持并行子 Agent 执行
-
-### 性能对比
-
-与 Claude Code v2.1.112 对比（Apple Silicon, 同模型 `claude-sonnet-4-6`）：
-
-| 指标 | Gen Code | Claude Code | 优势 |
-|------|---------|-------------|------|
-| 下载体积 | 12 MB | 63 MB (+ Node.js 112 MB) | **5x 更小** |
-| 磁盘占用 | 38 MB | 175 MB | **4.6x 更小** |
-| 启动时间 | ~0.01s | ~0.20s | **20x 更快** |
-| 启动内存 | ~32 MB | ~189 MB | **5.8x 更少** |
-| 简单任务 | ~2.4s / 39 MB | ~10.4s / 286 MB | **4.3x 更快** |
-| 工具调用任务 | ~3.3s / 39 MB | ~26.0s / 285 MB | **7.9x 更快** |
+> 产品概述、安装、用法与性能对比请见根目录的 [README.zh.md](../../README.zh.md)。
 
 ---
 
@@ -40,6 +17,7 @@
 | [data-flow.md](data-flow.md) | 数据流详解：输入→Agent→渲染的完整链路 |
 | [providers.md](providers.md) | LLM 提供商：注册机制、接口、各提供商特性 |
 | [packages.md](packages.md) | 包结构详解：28 个核心包的职责与依赖关系 |
+| [inspector.md](inspector.md) | Inspector：会话转录查看器（`san inspector`）|
 
 ## 技术栈
 
@@ -58,19 +36,19 @@
 
 ```bash
 # 安装
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 
 # 构建
-git clone https://github.com/genai-io/gen-code.git
-cd gen-code
+git clone https://github.com/genai-io/san.git
+cd san
 make build
 
 # 运行
-gen                            # 交互模式
-gen "解释一下这个函数"           # 带初始提示的交互模式
-gen -p "你的问题"               # 非交互打印模式
-gen -c                         # 恢复最近的会话
-gen -r                         # 选择并恢复历史会话
+san                            # 交互模式
+san "解释一下这个函数"           # 带初始提示的交互模式
+san -p "你的问题"               # 非交互打印模式
+san -c                         # 恢复最近的会话
+san -r                         # 选择并恢复历史会话
 ```
 
 ## 许可证

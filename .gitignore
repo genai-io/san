@@ -1,7 +1,7 @@
 # Binary
 bin/
-/gen
-gen_*
+/san
+san_*
 *.tar.gz
 
 # Environment
@@ -20,9 +20,12 @@ gen_*
 # Dependencies
 vendor/
 
+# Coverage
+coverage.out
+
 # Local config
-.gen/*
-!.gen/skills/
+.san/*
+!.san/skills/
 .claude/
 .mcp.json
 CLAUDE.md

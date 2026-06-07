@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // NewRegistry creates an empty skill registry.
@@ -21,8 +23,8 @@ func NewRegistry() *Registry {
 type Registry struct {
 	mu           sync.RWMutex
 	skills       map[string]*Skill
-	userStore    *Store // User-level store (~/.gen/skills.json)
-	projectStore *Store // Project-level store (.gen/skills.json)
+	userStore    *Store // User-level store (~/.san/skills.json)
+	projectStore *Store // Project-level store (.san/skills.json)
 	cwd          string // Current working directory for project store
 
 	// onStateChange fires every time a skill transitions between states.
@@ -68,18 +70,18 @@ func NewStore(path string) (*Store, error) {
 	return store, nil
 }
 
-// NewUserStore creates a store for user-level settings (~/.gen/skills.json).
+// NewUserStore creates a store for user-level settings (~/.san/skills.json).
 func NewUserStore() (*Store, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	return NewStore(filepath.Join(homeDir, ".gen", "skills.json"))
+	return NewStore(filepath.Join(confdir.Dir(homeDir), "skills.json"))
 }
 
-// NewProjectStore creates a store for project-level settings (.gen/skills.json).
+// NewProjectStore creates a store for project-level settings (.san/skills.json).
 func NewProjectStore(cwd string) (*Store, error) {
-	return NewStore(filepath.Join(cwd, ".gen", "skills.json"))
+	return NewStore(filepath.Join(confdir.Dir(cwd), "skills.json"))
 }
 
 // load reads persisted states from disk.
@@ -236,7 +238,7 @@ func (r *Registry) GetActive() []*Skill {
 
 // SetState sets the state for a skill and persists it to the specified level.
 // The name should be the full name (namespace:name or just name).
-// If userLevel is true, saves to ~/.gen/skills.json, otherwise to .gen/skills.json.
+// If userLevel is true, saves to ~/.san/skills.json, otherwise to .san/skills.json.
 func (r *Registry) SetState(name string, state SkillState, userLevel bool) error {
 	r.mu.Lock()
 	skill, ok := r.skills[name]

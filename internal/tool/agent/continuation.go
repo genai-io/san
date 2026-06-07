@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 type continuedAgentTarget struct {
@@ -74,8 +74,8 @@ func formatForegroundAgentResult(agentType string, result *tool.AgentExecResult,
 	}
 
 	var outputBuilder strings.Builder
-	fmt.Fprintf(&outputBuilder, "Agent: %s\nModel: %s\nTurns: %d\nToolUses: %d\nTokens: %d\nDuration: %s\n",
-		displayName, result.Model, result.TurnCount, result.ToolUses, result.TotalTokens, toolresult.FormatDuration(agentDuration))
+	fmt.Fprintf(&outputBuilder, "Agent: %s\nModel: %s\nSteps: %d\nToolUses: %d\nTokens: in=%d out=%d\nDuration: %s\n",
+		displayName, result.Model, result.StepCount, result.ToolUses, result.TotalInputTokens, result.TotalOutputTokens, toolresult.FormatDuration(agentDuration))
 	if result.AgentID != "" {
 		fmt.Fprintf(&outputBuilder, "AgentID: %s\n", result.AgentID)
 	}

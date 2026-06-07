@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/agent
+package: github.com/genai-io/san/internal/agent
 layer: feature
 ---
 

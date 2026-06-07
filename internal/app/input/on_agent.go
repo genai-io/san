@@ -7,26 +7,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/tool"
 )
-
-// AgentConfigInfo holds display info for a single agent configuration.
-type AgentConfigInfo struct {
-	Name           string
-	Description    string
-	Color          string
-	Model          string
-	PermissionMode string
-	Tools          []string // nil = all tools
-	SourceFile     string
-	// Source indicates where the agent definition came from:
-	// "built-in", "user", "project", or "plugin". Empty defaults to project.
-	Source string
-}
 
 // AgentRegistry provides agent display and management for the selector UI.
 type AgentRegistry interface {
-	ListConfigs() []AgentConfigInfo
+	ListConfigs() []tool.AgentConfigInfo
 	GetDisabledAt(userLevel bool) map[string]bool
 	SetEnabled(name string, enabled bool, userLevel bool) error
 }
@@ -126,7 +113,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 	s.height = height
 	s.nav.Reset()
 	s.activeTab = s.firstNonEmptyTab()
-	s.applyFilters()
+	s.updateFilter()
 	return nil
 }
 
@@ -197,8 +184,8 @@ func (s *AgentSelector) firstNonEmptyTab() agentTab {
 	return agentTabProject
 }
 
-// applyFilters rebuilds filteredAgents from the active tab + search query.
-func (s *AgentSelector) applyFilters() {
+// updateFilter rebuilds filteredAgents from the active tab + search query.
+func (s *AgentSelector) updateFilter() {
 	query := strings.ToLower(s.nav.Search)
 	s.filteredAgents = s.filteredAgents[:0]
 	for _, a := range s.agents {
@@ -253,7 +240,7 @@ func (s *AgentSelector) cycleTab(delta int) {
 	n := len(tabs)
 	next := tabs[((idx+delta)%n+n)%n]
 	s.activeTab = next
-	s.applyFilters()
+	s.updateFilter()
 }
 
 func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
@@ -269,7 +256,7 @@ func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	}
 	searchChanged, consumed := s.nav.HandleKey(key)
 	if searchChanged {
-		s.applyFilters()
+		s.updateFilter()
 	}
 	if consumed {
 		return nil

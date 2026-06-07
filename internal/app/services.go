@@ -4,23 +4,23 @@ import (
 	"context"
 	"sync/atomic"
 
-	"github.com/genai-io/gen-code/internal/agent"
-	"github.com/genai-io/gen-code/internal/command"
-	"github.com/genai-io/gen-code/internal/cron"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/identity"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/mcp"
-	"github.com/genai-io/gen-code/internal/plugin"
-	"github.com/genai-io/gen-code/internal/reminder"
-	"github.com/genai-io/gen-code/internal/selflearn"
-	"github.com/genai-io/gen-code/internal/session"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/subagent"
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/task/tracker"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/command"
+	"github.com/genai-io/san/internal/cron"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/identity"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/selflearn"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // services holds references to domain service singletons, injected into
@@ -28,7 +28,7 @@ import (
 // struct instead of calling Default() package-level accessors directly.
 type services struct {
 	Setting  *setting.Settings
-	LLM      *llm.ClientFactory
+	LLM      *llm.Conn
 	Tool     *tool.Registry
 	Hook     *hook.Engine
 	Session  *session.Setup

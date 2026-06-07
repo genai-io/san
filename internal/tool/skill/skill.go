@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/skill"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (

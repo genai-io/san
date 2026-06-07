@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {

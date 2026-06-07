@@ -10,9 +10,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
 )
 
 // handleSubmit is the Enter handler. Reads the textarea; if a turn is

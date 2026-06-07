@@ -1,7 +1,42 @@
 # Changelog
 
-All notable changes to Gen Code are documented here.
+All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [v1.20.0] - 2026-06-06
+
+### Added
+- Xiaomi MiMo LLM provider ([@zhfeng](https://github.com/zhfeng) in [#106](https://github.com/genai-io/san/pull/106))
+- SenseNova (商汤日日新) LLM provider ([@wangke19](https://github.com/wangke19) in [#115](https://github.com/genai-io/san/pull/115))
+- Ollama as LLM provider ([@zhiweiyin](https://github.com/zhiweiyin) in [#90](https://github.com/genai-io/san/pull/90))
+- Blank model selection via blank input in TUI ([@hchenxa](https://github.com/hchenxa) in [#85](https://github.com/genai-io/san/pull/85))
+- Inspector user guide in English and Chinese ([@ldpliu](https://github.com/ldpliu) in [#86](https://github.com/genai-io/san/pull/86))
+- WeChat 公众号 and Slack QR codes in the community section ([@yanmxa](https://github.com/yanmxa) in [#104](https://github.com/genai-io/san/pull/104))
+
+### Changed
+- **Breaking:** Rename project from gen-code/gen to san (三) ([@yanmxa](https://github.com/yanmxa) in [#96](https://github.com/genai-io/san/pull/96))
+- Website: reposition as a unified agent runtime; editorial-terminal landing fused with the animated intro ([@yanmxa](https://github.com/yanmxa) in [#93](https://github.com/genai-io/san/pull/93), [#100](https://github.com/genai-io/san/pull/100))
+- Rename the in-turn loop counter to "steps", reserve "turn" for the Think→Act cycle ([@yanmxa](https://github.com/yanmxa) in [#94](https://github.com/genai-io/san/pull/94))
+- Merge LLM ClientFactory + Setup into a single Conn handle ([@yanmxa](https://github.com/yanmxa) in [#116](https://github.com/genai-io/san/pull/116))
+- Move plugin install + marketplace-sync orchestration into internal/plugin ([@yanmxa](https://github.com/yanmxa) in [#125](https://github.com/genai-io/san/pull/125))
+- Unify selector list-filter method to updateFilter ([@yanmxa](https://github.com/yanmxa) in [#124](https://github.com/genai-io/san/pull/124))
+- Display timestamps in a more readable format ([@lonicerae](https://github.com/lonicerae) in [#117](https://github.com/genai-io/san/pull/117))
+- Report test coverage to Codecov; add Go Report Card and Codecov badges ([@yanmxa](https://github.com/yanmxa) in [#128](https://github.com/genai-io/san/pull/128))
+- Harden CI: PR commands, title lint, stale bot, and dependabot ([@ldpliu](https://github.com/ldpliu) in [#103](https://github.com/genai-io/san/pull/103))
+
+### Fixed
+- Banner shows model display name, status bar shows model ID ([@yanmxa](https://github.com/yanmxa) in [#101](https://github.com/genai-io/san/pull/101))
+- Persist provider base URLs and Vertex region/project across sessions ([@yanmxa](https://github.com/yanmxa) in [#107](https://github.com/genai-io/san/pull/107))
+- Disable cgo for static builds to support older glibc ([@yanmxa](https://github.com/yanmxa) in [#109](https://github.com/genai-io/san/pull/109))
+- Clean up gen-code/gen legacy references in code, docs, and assets ([@yanmxa](https://github.com/yanmxa) in [#97](https://github.com/genai-io/san/pull/97))
+- Drop gen backward compatibility, finish rebrand touches ([@yanmxa](https://github.com/yanmxa) in [#98](https://github.com/genai-io/san/pull/98))
+
+## [v1.19.3] - 2026-06-03
+
+### Added
+- Scroll command suggestions in TUI ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/san/commit/9dbb55a))
+- Quit/exit commands ([@hchenxa](https://github.com/hchenxa) in [#83](https://github.com/genai-io/san/pull/83))
+- OWNERS file ([@hchenxa](https://github.com/hchenxa) in [9dbb55a](https://github.com/genai-io/san/commit/9dbb55a))
 
 ## [v1.19.2] - 2026-06-02
 
@@ -148,7 +183,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Permission system with mode-based access control for agents and tools.
 - Subagent matching and routing logic.
-- Permission docs (`docs/claude-permission.md`, `docs/gen-permission.md`).
+- Permission docs (`docs/claude-permission.md`, `docs/san-permission.md`).
 
 ### Changed
 - Subagent executor / loader / registry refactored for type safety.

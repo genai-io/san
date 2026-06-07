@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/search
+package: github.com/genai-io/san/internal/search
 layer: feature
 ---
 

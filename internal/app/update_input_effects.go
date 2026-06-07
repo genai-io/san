@@ -7,9 +7,9 @@ package app
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/image"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/image"
 )
 
 // InterruptReminder is enqueued on the reminder service when the user

@@ -137,7 +137,7 @@ func TestFormatRecapBlock(t *testing.T) {
 		"· go-testing — trimmed examples",
 		"· python-typing — typing-hints",
 		"· outdated-thing", // note absent → no trailing " — "
-		"↪ gen --resume sess-2026-06-02T12-34-56-abc1234", // footer line below the box
+		"↪ san --resume sess-2026-06-02T12-34-56-abc1234", // footer line below the box
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("recap missing %q; got:\n%s", want, got)

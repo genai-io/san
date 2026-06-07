@@ -1,12 +1,12 @@
 # Harness Channels
 
-Gen Code delivers context to the model through **three distinct channels**,
+San delivers context to the model through **three distinct channels**,
 each with different cache, lifecycle, and stability properties:
 
 | Channel | What lives there | Cache-friendly? | Mutable mid-session? |
 |---|---|---|---|
 | **System prompt** | Identity, output style, engineering defaults, provider quirks, policy, guidelines, environment footer. Slot-sectioned. | Yes — invariant per session unless a section mutates. | Yes (Use/Drop), but expensive (cache miss). |
-| **`<system-reminder>` blocks** | Session-level / project-level dynamic content: **active-skills directory**, GEN.md/CLAUDE.md memory, one-time notices. Attached below the next user message. | Yes — once attached, the user message is immutable. | No (re-emitted as new attachments, never mutated). |
+| **`<system-reminder>` blocks** | Session-level / project-level dynamic content: **active-skills directory**, SAN.md/CLAUDE.md memory, one-time notices. Attached below the next user message. | Yes — once attached, the user message is immutable. | No (re-emitted as new attachments, never mutated). |
 | **User messages** | The actual prompt the user typed. | Yes — already cached. | No. |
 
 > The active-skills list (what skills the model is currently aware of) used
@@ -75,8 +75,8 @@ harness has standard providers:
 | Provider ID | Source | Re-emit triggers |
 |---|---|---|
 | `skills-directory` | active skills (and the "use Skill tool to invoke" preamble) | session start, PostCompact, skill enable/disable/activate |
-| `memory-user` | `~/.gen/GEN.md` and `~/.claude/CLAUDE.md` | session start, PostCompact, file change |
-| `memory-project` | `<project>/GEN.md` and `<project>/CLAUDE.md` | session start, PostCompact, file change, cwd change |
+| `memory-user` | `~/.san/SAN.md` and `~/.claude/CLAUDE.md` | session start, PostCompact, file change |
+| `memory-project` | `<project>/SAN.md` and `<project>/CLAUDE.md` | session start, PostCompact, file change, cwd change |
 
 Each provider has a stable ID; re-emitting from the same ID **drops the
 previous queued entry**, so toggling a skill three times in a row
@@ -104,15 +104,15 @@ tags back to the user.
 
 Implementation: [`packages/reminder.md`](../packages/reminder.md).
 
-## Memory: GEN.md / CLAUDE.md
+## Memory: SAN.md / CLAUDE.md
 
 Two memory tiers:
 
-- **User memory**: `~/.gen/GEN.md` (Gen Code) and `~/.claude/CLAUDE.md`
+- **User memory**: `~/.san/SAN.md` (San) and `~/.claude/CLAUDE.md`
   (Claude Code compat). Loaded once per session, attached as
   `memory-user` reminder.
-- **Project memory**: `<project>/GEN.md`, `<project>/CLAUDE.md`, plus
-  recursively-loaded `<dir>/GEN.md` upwards from the start path.
+- **Project memory**: `<project>/SAN.md`, `<project>/CLAUDE.md`, plus
+  recursively-loaded `<dir>/SAN.md` upwards from the start path.
   Attached as `memory-project` reminder.
 
 Memory is **never** in the system prompt — that would invalidate the

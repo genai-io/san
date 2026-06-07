@@ -7,7 +7,7 @@
 package system
 
 import (
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // Option configures a System during Build. Options are applied in order;

@@ -1,4 +1,4 @@
-/* gen/inspector — forensic lab journal
+/* san/inspector — forensic lab journal
  *
  * A reading-room aesthetic for a debugging tool: this is for staring at for
  * an hour while you reconstruct what the model saw. Calm dark warm surface,
@@ -775,7 +775,7 @@ main.show-prompt.prompt-wide .prompt {
 
 /* Markdown rendering inside prompt body.
  *
- * Hierarchy matches gen-code's actual system-prompt structure:
+ * Hierarchy matches san's actual system-prompt structure:
  *
  *   h1.prompt-xml — top-level XML envelopes (<output>, <engineering>,
  *         <policy>, <guidelines name="...">, <environment>). The

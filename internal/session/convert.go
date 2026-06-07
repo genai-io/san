@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 func ConvertToEntries(messages []core.ChatMessage) []Entry {
@@ -92,7 +92,6 @@ func ConvertFromEntries(entries []Entry) []core.ChatMessage {
 		}
 		if m.ToolResult != nil {
 			chatMsg.ToolResult = m.ToolResult
-			chatMsg.ToolName = m.ToolResult.ToolName
 		}
 		messages = append(messages, chatMsg)
 	}

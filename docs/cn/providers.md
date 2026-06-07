@@ -1,6 +1,6 @@
 # LLM 提供商详解
 
-Gen Code 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/gen/main.go`](../../cmd/gen/main.go) 中自动注册。
+San 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
 
 ---
 
@@ -37,16 +37,17 @@ type ThinkingEffortProvider interface {
 每个提供商实现包导出一个 `init()` 函数，在包被导入时自动注册：
 
 ```go
-// 在 cmd/gen/main.go 中
+// 在 cmd/san/main.go 中
 import (
-    _ "github.com/genai-io/gen-code/internal/llm/anthropic"
-    _ "github.com/genai-io/gen-code/internal/llm/openai"
-    _ "github.com/genai-io/gen-code/internal/llm/google"
-    _ "github.com/genai-io/gen-code/internal/llm/moonshot"
-    _ "github.com/genai-io/gen-code/internal/llm/alibaba"
-    _ "github.com/genai-io/gen-code/internal/llm/minmax"
-    _ "github.com/genai-io/gen-code/internal/llm/bigmodel"
-    _ "github.com/genai-io/gen-code/internal/llm/deepseek"
+    _ "github.com/genai-io/san/internal/llm/anthropic"
+    _ "github.com/genai-io/san/internal/llm/openai"
+    _ "github.com/genai-io/san/internal/llm/google"
+    _ "github.com/genai-io/san/internal/llm/moonshot"
+    _ "github.com/genai-io/san/internal/llm/alibaba"
+    _ "github.com/genai-io/san/internal/llm/minmax"
+    _ "github.com/genai-io/san/internal/llm/mimo"
+    _ "github.com/genai-io/san/internal/llm/bigmodel"
+    _ "github.com/genai-io/san/internal/llm/deepseek"
 )
 ```
 
@@ -96,7 +97,7 @@ func init() {
 off → low → medium → high → maximum
 ```
 
-**配置示例**（`~/.gen/providers.json`）：
+**配置示例**（`~/.san/providers.json`）：
 ```json
 {
   "anthropic": {
@@ -161,6 +162,18 @@ off → low → medium → high → maximum
 
 ---
 
+### 6.5 MiMo（小米）
+
+- **包**：[`internal/llm/mimo/`](../../internal/llm/mimo/)
+- **API 变量**：`MIMO_API_KEY`（可选 `MIMO_BASE_URL`，默认 `https://api.xiaomimimo.com/anthropic`）
+- **支持模型**：MiMo V2.5 Pro、MiMo V2.5、MiMo V2 Pro、MiMo V2 Flash、MiMo V2 Omni
+- **特性**：
+  - 兼容 Anthropic API 格式（复用 anthropic provider 的流式逻辑）
+  - 模型列表通过平台 API 获取，失败时回退到静态目录
+  - 支持成本估算
+
+---
+
 ### 7. Z.ai / BigModel（智谱 GLM）
 
 - **包**：[`internal/llm/bigmodel/`](../../internal/llm/bigmodel/)
@@ -197,17 +210,17 @@ type LLM interface {
 3. 调用提供商 SDK 发起流式请求
 4. 将提供商 SDK 的流式响应转换为 `<-chan core.Chunk`
 
-### ClientFactory
+### Conn
 
-`ClientFactory` 是一个**结构体**（不是函数类型），持有当前选中的提供商与模型，并按需创建客户端（[`internal/llm/service.go`](../../internal/llm/service.go)）：
+`Conn` 是一个**结构体**，是当前活动 LLM 的句柄：持有已连接的提供商、当前模型与提供商/模型 Store，全部由同一把互斥锁保护，并按需创建客户端（[`internal/llm/service.go`](../../internal/llm/service.go)）：
 
 ```go
-type ClientFactory struct { /* 内部字段不导出 */ }
+type Conn struct { /* 内部字段不导出，每个访问器都加锁 */ }
 
-func (s *ClientFactory) Provider() Provider
-func (s *ClientFactory) SetCurrentModel(info *CurrentModelInfo)
-func (s *ClientFactory) NewClient(model string, maxTokens int) *Client  // 为一次推理创建客户端
-func (s *ClientFactory) Store() *Store
+func (c *Conn) Provider() Provider
+func (c *Conn) SetCurrentModel(info *CurrentModelInfo)
+func (c *Conn) NewClient(model string, maxTokens int) *Client  // 为一次推理创建客户端
+func (c *Conn) Store() *Store
 ```
 
 每次 Agent 启动时通过 `NewClient(model, maxTokens)` 创建新的 `*Client`（因模型切换、会话恢复等原因）。
@@ -230,7 +243,7 @@ func (s *ClientFactory) Store() *Store
 
 ## 搜索后端
 
-除了 LLM 提供商，Gen Code 也支持可插拔的搜索后端（用于 WebSearch 工具）：
+除了 LLM 提供商，San 也支持可插拔的搜索后端（用于 WebSearch 工具）：
 
 | 后端 | API 变量 | 说明 |
 |------|----------|------|

@@ -7,7 +7,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,20 +15,22 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/agent"
-	"github.com/genai-io/gen-code/internal/app/hub"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/selflearn"
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/hub"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/selflearn"
+	"github.com/genai-io/san/internal/setting"
 )
 
-// selfLearnDisableEnv is the env kill switch (§3.1) — mirrors Claude
-// Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY.
-const selfLearnDisableEnv = "GEN_DISABLE_SELF_LEARN"
+// selfLearnDisableEnvSuffix is the env kill switch (§3.1) — mirrors Claude
+// Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY. Read via setting.Getenv as
+// SAN_DISABLE_SELF_LEARN.
+const selfLearnDisableEnvSuffix = "DISABLE_SELF_LEARN"
 
 // L1 review lifecycle event types published on agentEventHub. "started" is
 // an internal spinner wake-up consumed by onMainEvent; "done"/"failed"
@@ -57,7 +58,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 		return
 	}
 	// Env override wins: documented as the hard kill switch (§3.1).
-	if v := os.Getenv(selfLearnDisableEnv); v == "1" || strings.EqualFold(v, "true") {
+	if v := setting.Getenv(selfLearnDisableEnvSuffix); v == "1" || strings.EqualFold(v, "true") {
 		m.services.SelfLearn.Reviewer = nil
 		return
 	}
@@ -133,7 +134,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 		client.SetThinkingEffort(params.ThinkingEffort)
 		// Sidechain recorder: each L1 fork gets its OWN session ID
 		// (formatted "<parent>.selflearn-review.<unix>") so
-		// `gen --resume <fork-id>` replays exactly that review's LLM
+		// `san --resume <fork-id>` replays exactly that review's LLM
 		// calls in isolation. The recap row surfaces this fork ID.
 		var forkOnEvent func(core.Event)
 		var forkSessionID string
@@ -345,7 +346,7 @@ func countUserTurns(msgs []core.ChatMessage, pendingSend string) int {
 // flow. Recap goes in Subject (display-only Notice); routing it through
 // Data would re-submit it to the LLM and break the §6 out-of-band promise.
 // forkSessionID points at the L1 fork's own session so the recap can
-// suggest "gen --resume <id>" for replay.
+// suggest "san --resume <id>" for replay.
 func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID string) {
 	if m.agentEventHub == nil || len(actions) == 0 {
 		return
@@ -359,7 +360,7 @@ func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID st
 }
 
 // formatRecapBlock renders the post-review recap as a lipgloss-bordered
-// card with the "gen --resume" hint as a separate line below — no more
+// card with the "san --resume" hint as a separate line below — no more
 // hand-built width math, no footer crammed into the bottom border.
 // Layout:
 //
@@ -372,7 +373,7 @@ func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID st
 //	┊    · go-testing — trimmed verbose examples    ┊
 //	┊    · python-typing — new skill, typing-hints  ┊
 //	╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯
-//	  ↪ gen --resume demo-session.selflearn-review.123
+//	  ↪ san --resume demo-session.selflearn-review.123
 //
 // Empty input ⇒ "" so the publish is skipped on no-write passes.
 func formatRecapBlock(actions []ReviewAction, sessionID string) string {
@@ -411,7 +412,7 @@ func formatRecapBlock(actions []ReviewAction, sessionID string) string {
 		// "↪ " prefix flips the line from passive label to affordance.
 		// Indented to match the box's left padding so the arrow lines
 		// up under the first content column.
-		out += "\n  " + selflearnRecapFooterStyle.Render("↪ gen --resume "+sessionID)
+		out += "\n  " + selflearnRecapFooterStyle.Render("↪ san --resume "+sessionID)
 	}
 	return out
 }
@@ -481,7 +482,7 @@ var (
 		}).
 		BorderForeground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
 		Padding(0, 2)
-	// Footer style for "↪ gen --resume <id>" on its own line below the
+	// Footer style for "↪ san --resume <id>" on its own line below the
 	// box. TextDim + Faint so the command reads as a quiet hint, kept
 	// upright so the shell command stays copy-paste recognisable.
 	selflearnRecapFooterStyle = lipgloss.NewStyle().

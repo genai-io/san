@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // IsIdentityFile reports whether path points at a loadable identity markdown
@@ -14,7 +16,8 @@ func IsIdentityFile(cwd, path string) bool {
 	}
 	// Cheap substring guard before paying for filepath.Abs/UserHomeDir on
 	// every Write/Edit tool result.
-	if !strings.Contains(filepath.ToSlash(path), "/.gen/identities/") {
+	slash := filepath.ToSlash(path)
+	if !strings.Contains(slash, "/"+confdir.Name+"/identities/") {
 		return false
 	}
 	abs, err := filepath.Abs(path)
@@ -30,12 +33,16 @@ func IsIdentityFile(cwd, path string) bool {
 }
 
 func identityDirs(cwd string) []string {
-	dirs := make([]string, 0, 2)
+	var roots []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, ".gen", "identities"))
+		roots = append(roots, home)
 	}
 	if cwd != "" {
-		dirs = append(dirs, filepath.Join(cwd, ".gen", "identities"))
+		roots = append(roots, cwd)
+	}
+	dirs := make([]string, 0, len(roots))
+	for _, root := range roots {
+		dirs = append(dirs, filepath.Join(root, confdir.Name, "identities"))
 	}
 	return dirs
 }

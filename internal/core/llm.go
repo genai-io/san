@@ -9,7 +9,7 @@ const (
 	StopEndTurn                    StopReason = "end_turn"
 	StopMaxTokens                  StopReason = "max_tokens"
 	StopToolUse                    StopReason = "tool_use"
-	StopMaxTurns                   StopReason = "max_turns"
+	StopMaxSteps                   StopReason = "max_steps"
 	StopCancelled                  StopReason = "cancelled"
 	StopHook                       StopReason = "stop_hook"
 	StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"
@@ -24,15 +24,15 @@ type InferRequest struct {
 
 // InferResponse is the final aggregated response from one LLM call.
 type InferResponse struct {
-	Content           string     // text output
-	Thinking          string     // chain-of-thought (extended thinking)
-	ThinkingSignature string     // signature for replaying thinking blocks
-	ToolCalls         []ToolCall // tool execution requests
-	StopReason        StopReason
-	TokensIn          int
-	TokensOut         int
-	CacheCreateTokens int
-	CacheReadTokens   int
+	Content                  string     // text output
+	Thinking                 string     // chain-of-thought (extended thinking)
+	ThinkingSignature        string     // signature for replaying thinking blocks
+	ToolCalls                []ToolCall // tool execution requests
+	StopReason               StopReason
+	InputTokens              int
+	OutputTokens             int
+	CacheCreationInputTokens int
+	CacheReadInputTokens     int
 }
 
 // Chunk is one piece of a streaming LLM response.

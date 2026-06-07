@@ -9,7 +9,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 type Type int
@@ -259,7 +259,7 @@ func (s *State) sortSuggestions() {
 }
 
 func shouldSkipDirectory(name string) bool {
-	if strings.HasPrefix(name, ".") && name != ".gen" {
+	if strings.HasPrefix(name, ".") && name != ".san" {
 		return true
 	}
 

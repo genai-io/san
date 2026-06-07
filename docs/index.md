@@ -1,6 +1,6 @@
 # Documentation Index
 
-This directory is the durable knowledge base for Gen Code. Keep `README.md`
+This directory is the durable knowledge base for San. Keep `README.md`
 concise, use `AGENTS.md` as the short navigation map, and put lasting
 explanations here.
 
@@ -39,11 +39,13 @@ explanations here.
 ### Do something
 
 - `guides/explore-mode.md` — using the explore subagent.
+- `inspector.md` — session transcript viewer (`san inspector`).
 - `operations/development.md` — build / test / lint / format.
 - `operations/testing.md` — test strategy and local commands.
 - `operations/release.md` — release process.
 - `operations/troubleshooting.md` — common development issues.
 - `operations/benchmark.md` — reproduce the benchmark numbers.
+- `operations/footprint.md` — why the single small binary is so portable.
 
 ### Know why a decision was made
 

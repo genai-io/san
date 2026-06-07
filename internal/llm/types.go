@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // Name represents a provider name
@@ -20,6 +20,9 @@ const (
 	MinMax    Name = "minmax"
 	BigModel  Name = "bigmodel"
 	DeepSeek  Name = "deepseek"
+	SenseNova Name = "sensenova"
+	Ollama    Name = "ollama"
+	Mimo      Name = "mimo"
 )
 
 // AuthMethod represents an authentication method for an LLM provider.
@@ -168,7 +171,9 @@ func (r CompletionResponse) LogToolCallSummary(escaper func(string) string) stri
 	return sb.String()
 }
 
-// Usage contains token usage information.
+// Usage contains token usage information. Field names use the project's domain
+// vocabulary (InputTokens/CacheCreationInputTokens/…); the json tags preserve each
+// provider's wire format (e.g. Anthropic's cache_creation_input_tokens).
 type Usage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`

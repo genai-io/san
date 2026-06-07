@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/cron"
+	"github.com/genai-io/san/internal/cron"
 )
 
 // Deps holds the app-level state and callbacks needed to process Source 3 input.

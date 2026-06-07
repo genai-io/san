@@ -14,16 +14,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/proc"
-	"github.com/genai-io/gen-code/internal/task"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
 	IconBash      = "$"
-	cwdFileEnvVar = "GENCODE_CWD_FILE"
+	cwdFileEnvVar = "SAN_CWD_FILE"
 )
 
 // BashTool executes shell commands
@@ -350,7 +350,7 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 }
 
 func prepareCwdTracking(command string) (string, string, func()) {
-	tmp, err := os.CreateTemp("", "gencode-cwd-*")
+	tmp, err := os.CreateTemp("", "san-cwd-*")
 	if err != nil {
 		return command, "", func() {}
 	}

@@ -11,8 +11,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/llm"
 )
 
 const ctrlODoubleTapWindow = 300 * time.Millisecond

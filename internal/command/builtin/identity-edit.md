@@ -2,8 +2,8 @@ The user wants to edit an identity. Target: $ARGUMENTS
 
 Steps:
 1. Resolve the target file. The argument may be:
-   - a bare name ("ml-engineer") → look in ~/.gen/identities/<name>.md
-     first, then .gen/identities/<name>.md
+   - a bare name ("ml-engineer") → look in ~/.san/identities/<name>.md
+     first, then .san/identities/<name>.md
    - a full absolute path → use directly
    If neither exists, tell the user and stop.
 

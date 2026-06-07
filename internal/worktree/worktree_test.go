@@ -23,7 +23,7 @@ func makeRepo(t *testing.T) string {
 	t.Helper()
 	repo := t.TempDir()
 	runGit(t, repo, "init")
-	runGit(t, repo, "config", "user.name", "GenCode Tests")
+	runGit(t, repo, "config", "user.name", "San Tests")
 	runGit(t, repo, "config", "user.email", "tests@example.com")
 
 	readme := filepath.Join(repo, "README.md")
@@ -114,7 +114,7 @@ func TestHasUnmergedCommits(t *testing.T) {
 		t.Fatal("expected fresh worktree to have no unmerged commits")
 	}
 
-	runGit(t, result.Path, "config", "user.name", "GenCode Tests")
+	runGit(t, result.Path, "config", "user.name", "San Tests")
 	runGit(t, result.Path, "config", "user.email", "tests@example.com")
 	filePath := filepath.Join(result.Path, "feature.txt")
 	if err := os.WriteFile(filePath, []byte("feature\n"), 0o644); err != nil {

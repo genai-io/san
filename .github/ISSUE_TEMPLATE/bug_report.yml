@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with Gen Code
+description: Report a problem with San
 labels: ["bug"]
 body:
   - type: markdown
@@ -12,7 +12,7 @@ body:
       options:
         - label: I searched existing issues and didn't find a duplicate
           required: true
-        - label: This is a functional bug, not a security vulnerability (those must go through [SECURITY.md](https://github.com/genai-io/gen-code/blob/main/SECURITY.md))
+        - label: This is a functional bug, not a security vulnerability (those must go through [SECURITY.md](https://github.com/genai-io/san/blob/main/SECURITY.md))
           required: true
   - type: textarea
     id: what-happened
@@ -27,7 +27,7 @@ body:
       label: Steps to reproduce
       description: Minimal steps to reproduce the behavior.
       placeholder: |
-        1. Run `gen ...`
+        1. Run `san ...`
         2. Type `/...`
         3. See error
     validations:
@@ -36,9 +36,9 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Run `gen --version` and fill in the rest.
+      description: Run `san --version` and fill in the rest.
       value: |
-        - Gen Code version:
+        - San version:
         - OS / arch:
         - Go version (if building from source):
         - Provider / model:
@@ -49,7 +49,7 @@ body:
     attributes:
       label: Logs
       description: |
-        Relevant output. Run with `GEN_DEBUG=1` and attach `~/.gen/debug.log` if useful.
+        Relevant output. Run with `SAN_DEBUG=1` and attach `~/.san/debug.log` if useful.
         ⚠️ **Redact API keys, tokens, and any other secrets** before pasting — this issue is public.
       render: shell
     validations:

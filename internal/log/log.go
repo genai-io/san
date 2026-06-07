@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/genai-io/san/internal/confdir"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -24,7 +25,14 @@ var (
 	devEnabled bool   // Whether DEV_DIR is enabled
 )
 
-// Init initializes the logger based on GEN_DEBUG env var
+// debugEnabled reports whether debug logging is on via SAN_DEBUG=1. Kept local
+// because the log package is an infrastructure leaf and cannot import
+// internal/setting.
+func debugEnabled() bool {
+	return os.Getenv("SAN_DEBUG") == "1"
+}
+
+// Init initializes the logger based on SAN_DEBUG env var
 func Init() error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -34,7 +42,7 @@ func Init() error {
 	}
 	initialized = true
 
-	// Initialize DEV_DIR for JSON debug output (independent of GEN_DEBUG)
+	// Initialize DEV_DIR for JSON debug output (independent of SAN_DEBUG)
 	if dir := os.Getenv("DEV_DIR"); dir != "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("failed to create DEV_DIR: %w", err)
@@ -43,7 +51,7 @@ func Init() error {
 		devEnabled = true
 	}
 
-	if os.Getenv("GEN_DEBUG") != "1" {
+	if !debugEnabled() {
 		logger = zap.NewNop()
 		return nil
 	}
@@ -57,7 +65,7 @@ func Init() error {
 	}
 
 	// Create log directory
-	logDir := filepath.Join(homeDir, ".gen")
+	logDir := confdir.Dir(homeDir)
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
 		return err
 	}
@@ -82,7 +90,7 @@ func Init() error {
 		MessageKey:     "M",
 		StacktraceKey:  "",
 		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeTime:     zapcore.TimeEncoderOfLayout("15:04:05"),
+		EncodeTime:     zapcore.RFC3339TimeEncoder,
 		EncodeDuration: zapcore.StringDurationEncoder,
 	}
 

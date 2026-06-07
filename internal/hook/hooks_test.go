@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -76,7 +76,7 @@ func Test_getMatchValue(t *testing.T) {
 		{TaskCreated, HookInput{TaskSubject: "Explore"}, "Explore"},
 		{TaskCompleted, HookInput{TaskSubject: "Plan"}, "Plan"},
 		{ConfigChange, HookInput{Source: "user_settings"}, "user_settings"},
-		{InstructionsLoaded, HookInput{FilePath: "/tmp/GEN.md"}, "/tmp/GEN.md"},
+		{InstructionsLoaded, HookInput{FilePath: "/tmp/SAN.md"}, "/tmp/SAN.md"},
 		{CwdChanged, HookInput{NewCwd: "/tmp/worktree"}, "/tmp/worktree"},
 		{FileChanged, HookInput{FilePath: "/tmp/file.txt"}, "/tmp/file.txt"},
 		{PreCompact, HookInput{Trigger: "auto"}, "auto"},
@@ -441,7 +441,7 @@ func TestEngineEnvironmentVariables(t *testing.T) {
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "env.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-echo "{\"systemMessage\":\"GEN=$GEN_PROJECT_DIR CLAUDE=$CLAUDE_PROJECT_DIR\"}"
+echo "{\"systemMessage\":\"SAN=$SAN_PROJECT_DIR CLAUDE=$CLAUDE_PROJECT_DIR\"}"
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -456,7 +456,7 @@ echo "{\"systemMessage\":\"GEN=$GEN_PROJECT_DIR CLAUDE=$CLAUDE_PROJECT_DIR\"}"
 
 	outcome := engine.Execute(context.Background(), Stop, HookInput{})
 
-	expected := "GEN=" + tmpDir + " CLAUDE=" + tmpDir
+	expected := "SAN=" + tmpDir + " CLAUDE=" + tmpDir
 	if outcome.AdditionalContext != expected {
 		t.Errorf("Expected context=%q, got %q", expected, outcome.AdditionalContext)
 	}

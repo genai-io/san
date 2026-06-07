@@ -189,7 +189,7 @@ func loadLeafIfExists(st *Store, sessionID string) string {
 }
 
 // NewSidechainRecorder returns a fresh Recorder bound to a NEW session
-// that is its own resumable transcript ("gen --resume <id>" replays
+// that is its own resumable transcript ("san --resume <id>" replays
 // the fork in isolation), parented under the live main session via
 // agentID so the inspector can still associate them. Each fork should
 // call this once and pass the result as the fork agent's

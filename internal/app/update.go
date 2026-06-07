@@ -18,11 +18,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/app/trigger"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/log"
 )
 
 // popup is a UI element that pops up over the input area and, while
@@ -101,6 +101,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.services.Agent != nil && m.services.Agent.Active() {
 			m.wireSelfLearn(m.buildAgentParams(), "")
 		}
+		return m, nil
+	case input.ThemeSavedMsg:
+		// The panel already applied (kit.InitTheme) and persisted the theme;
+		// refresh the in-memory handle so re-opening /config reflects it.
+		if m.services.Setting != nil {
+			if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+				log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
+			}
+		}
+		m.conv.AddNotice("Theme set to " + msg.Theme)
 		return m, nil
 	case input.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in

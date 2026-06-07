@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // Embedded prompt templates. Layout:
@@ -23,7 +23,7 @@ import (
 //
 // Format the LLM sees, top to bottom:
 //
-//	You are Gen Code, …                              (identity, raw preamble)
+//	You are San, …                              (identity, raw preamble)
 //	<output> … </output>                             (how you talk to the user)
 //	<engineering> … </engineering>                   (how you work on code)
 //	<policy> … </policy>                             (safety, never overridden)
@@ -279,7 +279,7 @@ func WithSubagentIdentity(b SubagentBrief) Option {
 
 func renderSubagentIdentity(b SubagentBrief) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "You are a %s subagent operating inside Gen Code.\n", b.AgentName)
+	fmt.Fprintf(&sb, "You are a %s subagent operating inside San.\n", b.AgentName)
 	if b.Description != "" {
 		fmt.Fprintf(&sb, "Role: %s\n", b.Description)
 	}

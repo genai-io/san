@@ -14,11 +14,11 @@ import (
 
 	"google.golang.org/genai"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	streamutil "github.com/genai-io/gen-code/internal/llm/stream"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	streamutil "github.com/genai-io/san/internal/llm/stream"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // Client implements the Provider interface using the Google GenAI SDK
@@ -52,7 +52,7 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 		// Strip orphan function_call / function_response pairs left by a
 		// mid-stream cancel. Gemini rejects requests where a function_call
 		// is not followed by a matching function_response.
-		sanitized := sanitizeToolMessages(opts.Messages)
+		sanitized := llm.SanitizeToolMessages(opts.Messages)
 
 		// Convert messages to Google format
 		contents := make([]*genai.Content, 0, len(sanitized))
@@ -355,68 +355,6 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	}
 
 	return NewClient(client, "google:api_key"), nil
-}
-
-// sanitizeToolMessages drops orphan function_call / function_response pairs.
-// Mirrors openaicompat.SanitizeToolMessages and anthropic.sanitizeToolResults:
-// Gemini's API rejects requests where an assistant function_call is not
-// followed by a matching function_response (the user-initiated cancel path
-// can leave such orphans in agent.messages).
-func sanitizeToolMessages(msgs []core.Message) []core.Message {
-	result := make([]core.Message, 0, len(msgs))
-
-	for i := 0; i < len(msgs); i++ {
-		msg := msgs[i]
-
-		if msg.ToolResult != nil {
-			// Tool results are only valid immediately after their assistant call.
-			continue
-		}
-
-		if msg.Role != core.RoleAssistant || len(msg.ToolCalls) == 0 {
-			result = append(result, msg)
-			continue
-		}
-
-		j := i + 1
-		var followingResults []core.Message
-		for j < len(msgs) && msgs[j].ToolResult != nil {
-			followingResults = append(followingResults, msgs[j])
-			j++
-		}
-
-		resultIDs := make(map[string]bool, len(followingResults))
-		for _, r := range followingResults {
-			resultIDs[r.ToolResult.ToolCallID] = true
-		}
-
-		filteredCalls := make([]core.ToolCall, 0, len(msg.ToolCalls))
-		callIDs := make(map[string]bool, len(msg.ToolCalls))
-		for _, tc := range msg.ToolCalls {
-			if resultIDs[tc.ID] {
-				filteredCalls = append(filteredCalls, tc)
-				callIDs[tc.ID] = true
-			}
-		}
-
-		msg.ToolCalls = filteredCalls
-		if len(msg.ToolCalls) > 0 || msg.Content != "" {
-			result = append(result, msg)
-		}
-
-		seenResults := make(map[string]bool, len(followingResults))
-		for _, r := range followingResults {
-			id := r.ToolResult.ToolCallID
-			if callIDs[id] && !seenResults[id] {
-				result = append(result, r)
-				seenResults[id] = true
-			}
-		}
-
-		i = j - 1
-	}
-
-	return result
 }
 
 func googleThinkingBudget(effort string) *int32 {

@@ -15,7 +15,7 @@ const (
 )
 
 // Checker decides whether a tool call is permitted.
-// Implementations correspond 1:1 to the modes in docs/gen-permission.md
+// Implementations correspond 1:1 to the modes in docs/concepts/permission-model.md
 // and are used as step 7 ("mode default") of the unified pipeline.
 type Checker interface {
 	Check(name string, params map[string]any) Decision

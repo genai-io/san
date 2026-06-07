@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/task"
+	"github.com/genai-io/san/internal/task"
 )
 
 func TestTaskOutputTool_StillRunning(t *testing.T) {
@@ -38,8 +38,8 @@ func TestTaskOutputTool_StillRunning(t *testing.T) {
 		t.Errorf("Expected 'still running' in output, got: %s", result.Output)
 	}
 
-	if !strings.Contains(result.Output, "Turns: 5") {
-		t.Errorf("Expected 'Turns: 5' in output, got: %s", result.Output)
+	if !strings.Contains(result.Output, "Steps: 5") {
+		t.Errorf("Expected 'Steps: 5' in output, got: %s", result.Output)
 	}
 
 	if !strings.Contains(result.Output, "Options:") {
@@ -87,8 +87,8 @@ func TestTaskOutputTool_Completed(t *testing.T) {
 		t.Errorf("Expected 'completed' in output, got: %s", result.Output)
 	}
 
-	if !strings.Contains(result.Output, "Turns: 10") {
-		t.Errorf("Expected 'Turns: 10' in output, got: %s", result.Output)
+	if !strings.Contains(result.Output, "Steps: 10") {
+		t.Errorf("Expected 'Steps: 10' in output, got: %s", result.Output)
 	}
 
 	if !strings.Contains(result.Output, "AgentID: agent-session-456") {

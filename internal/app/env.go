@@ -7,10 +7,10 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/filecache"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/filecache"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type env struct {
@@ -55,7 +55,7 @@ type env struct {
 	store *llm.Store
 }
 
-func newEnv(llmSvc *llm.ClientFactory, cwd string, isGit bool) env {
+func newEnv(llmConn *llm.Conn, cwd string, isGit bool) env {
 	e := env{
 		CWD:   cwd,
 		IsGit: isGit,
@@ -63,11 +63,11 @@ func newEnv(llmSvc *llm.ClientFactory, cwd string, isGit bool) env {
 		OperationMode:      setting.ModeNormal,
 		SessionPermissions: setting.NewSessionPermissions(),
 
-		LLMProvider:  llmSvc.Provider(),
-		CurrentModel: llmSvc.CurrentModel(),
+		LLMProvider:  llmConn.Provider(),
+		CurrentModel: llmConn.CurrentModel(),
 
 		FileCache: filecache.New(),
-		store:     llmSvc.Store(),
+		store:     llmConn.Store(),
 	}
 	// Restore the user's prior per-model thinking-effort choice. Empty
 	// means "use provider default" — EffectiveThinkingEffort handles that.
@@ -110,6 +110,20 @@ func (m *env) GetModelID() string {
 		return m.CurrentModel.ModelID
 	}
 	return "claude-sonnet-4-20250514"
+}
+
+// GetModelDisplayName returns a human-readable display name for the current
+// model by looking it up in the store's cached model list. Falls back to the
+// raw model ID if no display name is found.
+func (m *env) GetModelDisplayName() string {
+	id := m.GetModelID()
+	if m.store == nil {
+		return id
+	}
+	if name := m.store.CachedModelDisplayName(id); name != "" {
+		return name
+	}
+	return id
 }
 
 func (m *env) EffectiveThinkingEffort() string {

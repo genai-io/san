@@ -3,7 +3,7 @@ package conv
 import (
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // RenderContext bundles everything per-message rendering needs to read.
@@ -97,7 +97,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage) inlinedToolResults {
 				p.resultsForAssistant[i] = results
 			}
 			results[callID] = ToolResultData{
-				ToolName: next.ToolName,
+				ToolName: next.ToolResult.ToolName,
 				Content:  next.ToolResult.Content,
 				Error:    next.ToolResult.Content,
 				IsError:  next.ToolResult.IsError,
@@ -150,7 +150,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		switch {
 		case msg.ToolResult != nil:
 			sb.WriteString(RenderToolResultInline(ToolResultData{
-				ToolName: msg.ToolName,
+				ToolName: msg.ToolResult.ToolName,
 				Content:  msg.ToolResult.Content,
 				Error:    msg.ToolResult.Content,
 				IsError:  msg.ToolResult.IsError,

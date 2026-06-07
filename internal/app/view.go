@@ -6,11 +6,11 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/subagent"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
@@ -236,7 +236,7 @@ func (m model) renderModeStatus() string {
 		}
 	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
-		Mode:             conv.OperationMode(m.env.OperationMode),
+		Mode:             m.env.OperationMode,
 		InputTokens:      m.env.InputTokens,
 		OutputTokens:     m.env.OutputTokens,
 		InputLimit:       kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),

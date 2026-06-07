@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // Registry manages all loaded plugins.
@@ -94,11 +96,11 @@ func (r *Registry) loadEnabledPlugins(cwd string) (map[string]bool, error) {
 	// Load from each settings file in priority order
 	settingsFiles := []string{
 		filepath.Join(homeDir, ".claude", "settings.json"),
-		filepath.Join(homeDir, ".gen", "settings.json"),
+		filepath.Join(confdir.Dir(homeDir), "settings.json"),
 		filepath.Join(cwd, ".claude", "settings.json"),
-		filepath.Join(cwd, ".gen", "settings.json"),
+		filepath.Join(confdir.Dir(cwd), "settings.json"),
 		filepath.Join(cwd, ".claude", "settings.local.json"),
-		filepath.Join(cwd, ".gen", "settings.local.json"),
+		filepath.Join(confdir.Dir(cwd), "settings.local.json"),
 	}
 
 	for _, f := range settingsFiles {
@@ -215,13 +217,13 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	var settingsPath string
 	switch scope {
 	case ScopeUser:
-		settingsPath = filepath.Join(homeDir, ".gen", "settings.json")
+		settingsPath = filepath.Join(confdir.Dir(homeDir), "settings.json")
 	case ScopeProject:
-		settingsPath = filepath.Join(r.cwd, ".gen", "settings.json")
+		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.json")
 	case ScopeLocal:
-		settingsPath = filepath.Join(r.cwd, ".gen", "settings.local.json")
+		settingsPath = filepath.Join(confdir.Dir(r.cwd), "settings.local.json")
 	default:
-		settingsPath = filepath.Join(homeDir, ".gen", "settings.json")
+		settingsPath = filepath.Join(confdir.Dir(homeDir), "settings.json")
 	}
 
 	// Ensure directory exists

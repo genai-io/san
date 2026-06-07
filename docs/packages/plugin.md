@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/plugin
+package: github.com/genai-io/san/internal/plugin
 layer: feature
 ---
 
@@ -13,7 +13,7 @@ contributions to the consuming feature packages.
 
 ## Purpose
 
-Gen Code's "everything else" extension surface. Plugins are how a user
+San's "everything else" extension surface. Plugins are how a user
 installs a bundle of skills + agents + commands + MCP servers + hooks in
 one shot. This package handles install/uninstall, marketplace lookup,
 load order, and the cross-cutting callbacks that let `skill`, `subagent`,
@@ -83,7 +83,7 @@ func ResetDefaultRegistry()           // test-only
 
 - `Registry` (`registry.go`) — `Plugin` map keyed by name, enable state
   per scope (user / project).
-- `loader.go` — discovers `.gen/plugins/`, `~/.gen/plugins/`,
+- `loader.go` — discovers `.san/plugins/`, `~/.san/plugins/`,
   `.claude/plugins/`, `~/.claude/plugins/`.
 - `installer.go` — install/uninstall logic, dependency check, version
   pin (~13 KB).

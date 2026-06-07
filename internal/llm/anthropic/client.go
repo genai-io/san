@@ -11,10 +11,10 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	streamutil "github.com/genai-io/gen-code/internal/llm/stream"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	streamutil "github.com/genai-io/san/internal/llm/stream"
+	"github.com/genai-io/san/internal/log"
 )
 
 // validToolIDPattern matches the Claude API requirement for tool_use IDs.

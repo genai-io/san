@@ -1,10 +1,12 @@
 <div align="center">
-  <h1>&lt; GEN ✦ /&gt;</h1>
-  <p><strong>Open-source AI coding assistant for the terminal</strong></p>
+  <h1>&lt; SAN ✦ /&gt;</h1>
+  <p><strong>Open-source unified runtime for specialized AI agents — in the terminal</strong></p>
   <p>
-    <a href="https://github.com/genai-io/gen-code/releases"><img src="https://img.shields.io/github/v/release/genai-io/gen-code?style=flat-square" alt="Release"></a>
-    <a href="https://genai-io.github.io/gen-code/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
-    <a href="https://genai-io.github.io/gen-code/getting-started.html"><img src="https://img.shields.io/badge/Getting%20Started-0d9488?style=flat-square" alt="Getting Started"></a>
+    <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
+    <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
+    <a href="https://codecov.io/gh/genai-io/san"><img src="https://img.shields.io/codecov/c/github/genai-io/san?style=flat-square" alt="Coverage"></a>
+    <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
+    <a href="https://genai-io.github.io/san/getting-started.html"><img src="https://img.shields.io/badge/Getting%20Started-0d9488?style=flat-square" alt="Getting Started"></a>
     <a href="docs/index.md"><img src="https://img.shields.io/badge/Docs-0d9488?style=flat-square" alt="Docs"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   </p>
@@ -12,14 +14,20 @@
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
   </p>
   <p>
-    <img src="assets/gen-code.png" alt="Gen Code" width="100%">
+    <img src="assets/san.png" alt="San" width="100%">
   </p>
-  <p>
-    <a href="https://genai-io.github.io/gen-code/intro.html"><b>▶ Watch the animated intro</b></a>
-  </p>
+  <details>
+    <summary><b>▶ Watch the animated intro</b></summary>
+    <p>
+      <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
+    </p>
+    <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality version ↗</a></sub>
+  </details>
 </div>
 
-Gen Code is a terminal coding assistant built around five pluggable pillars — **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Built in Go and shipped as a single binary — a unified runtime for specialized agents.
+San is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.
+
+<sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
 ## Features
 
@@ -33,22 +41,23 @@ Gen Code is a terminal coding assistant built around five pluggable pillars — 
 
 ### Engineering
 
-- **Native performance** — Single Go binary; see [benchmark](#benchmark-gencode-vs-claude-code) for measured numbers.
+- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
+- **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`san inspector`).
 
 
 ## Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
 
 Re-run to upgrade. To uninstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh | bash -s uninstall
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
 ```
 
 <details>
@@ -57,16 +66,16 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/gen-code/main/install.sh |
 **Go Install**
 
 ```bash
-go install github.com/genai-io/gen-code/cmd/gen@latest
+go install github.com/genai-io/san/cmd/san@latest
 ```
 
 **Build from Source**
 
 ```bash
-git clone https://github.com/genai-io/gen-code.git
-cd gen-code
-go build -o gen ./cmd/gen
-mkdir -p ~/.local/bin && mv gen ~/.local/bin/
+git clone https://github.com/genai-io/san.git
+cd san
+go build -o san ./cmd/san
+mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ```
 
 </details>
@@ -74,16 +83,17 @@ mkdir -p ~/.local/bin && mv gen ~/.local/bin/
 ## Usage
 
 ```bash
-gen                            # interactive
-gen "explain this function"    # one-shot
-cat main.go | gen "review"     # piped input
-gen --continue                 # resume latest session
-gen --resume                   # pick a past session
+san                            # interactive
+san "explain this function"    # one-shot
+cat main.go | san "review"     # piped input
+san --continue                 # resume latest session
+san --resume                   # pick a past session
+san inspector                  # open session transcript viewer
 ```
 
 | What | How |
 |---|---|
-| Pick / switch model | `/model` — saved to `~/.gen/providers.json` |
+| Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
 | All slash commands | `/help` (`/identity`, `/search`, `/skills`, `/agents`, `/mcp`, `/compact`, …) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept · plan) |
@@ -93,7 +103,7 @@ For API keys, set the matching env var (see Credentials below) or paste when pro
 
 ### Configuration
 
-Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user). A `GEN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
+Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user). A `SAN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
 
 <details>
 <summary><b>Credentials</b></summary>
@@ -108,6 +118,7 @@ Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user)
 | **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
 | **MiniMax** | `MINIMAX_API_KEY` |
 | **Z.ai** (GLM) | `BIGMODEL_API_KEY` |
+| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |
@@ -118,7 +129,7 @@ Config lives in `~/.gen/` (user) and `<project>/.gen/` (project, overrides user)
 <details>
 <summary><b>Directory layout</b></summary>
 
-User-level (`~/.gen/`):
+User-level (`~/.san/`):
 
 ```
 providers.json    # Provider connections and current model
@@ -132,7 +143,7 @@ plugins/          # Installed plugins
 projects/         # Session transcripts + indexes
 ```
 
-Project-level (`.gen/`):
+Project-level (`.san/`):
 
 ```
 settings.json      # Permissions, hooks, disabled tools
@@ -145,11 +156,11 @@ commands/*.md      # Slash commands
 
 </details>
 
-## Benchmark: Gen Code vs Claude Code
+## Benchmark: San vs Claude Code
 
 Compared with [Claude Code](https://claude.ai/code) v2.1.112 on Apple Silicon, same model (`claude-sonnet-4-6`):
 
-| Metric | Gen Code | Claude Code | Advantage |
+| Metric | San | Claude Code | Advantage |
 |--------|---------|-------------|-----------|
 | Download size | 12 MB | 63 MB (+ Node.js 112 MB) | **5x smaller** |
 | Disk footprint | 38 MB | 175 MB | **4.6x smaller** |
@@ -170,6 +181,7 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 - [System Prompt](docs/concepts/harness-channels.md) — Slot model, identity, skill/agent injection
 - [Subagents](docs/packages/subagent.md) · [Skills](docs/packages/skill.md) · [Plugins](docs/packages/plugin.md) · [MCP](docs/packages/mcp.md)
 - [Hooks](docs/packages/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/task.md)
+- [Inspector](docs/inspector.md) — local web UI for transcript replay and debugging
 - Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
 
 ## Related Projects
@@ -177,6 +189,25 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 - [Claude Code](https://claude.ai/code) — Anthropic's AI coding assistant
 - [Aider](https://github.com/paul-gauthier/aider) — AI pair programming in terminal
 - [Continue](https://github.com/continuedev/continue) — Open-source AI code assistant
+
+## Community
+
+Two ways in — WeChat for the Chinese community, Slack for everyone else:
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="50%">
+  <img src="assets/wechat.jpg" alt="WeChat official account 极客外传 QR code" width="200"><br>
+  <sub>关注公众号「极客外传」· 回复 <code>san</code> 或 <code>三</code> 入群</sub>
+</td>
+<td align="center" width="50%">
+  <img src="assets/slack.png" alt="San Slack QR code" width="200"><br>
+  <sub>Scan or <a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join our Slack</a></sub>
+</td>
+</tr>
+</table>
+</div>
 
 ## Contributing
 

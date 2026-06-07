@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 // MarketplaceManager manages plugin marketplaces.
@@ -23,7 +25,7 @@ type MarketplaceManager struct {
 // NewMarketplaceManager creates a new marketplace manager.
 func NewMarketplaceManager(cwd string) *MarketplaceManager {
 	homeDir, _ := os.UserHomeDir()
-	configDir := filepath.Join(homeDir, ".gen", "plugins")
+	configDir := filepath.Join(confdir.Dir(homeDir), "plugins")
 	return &MarketplaceManager{
 		cwd:             cwd,
 		marketplaces:    make(map[string]MarketplaceEntry),
@@ -259,6 +261,27 @@ func (m *MarketplaceManager) syncGitHub(ctx context.Context, id string, entry Ma
 	return m.Save()
 }
 
+// SyncOrPrune syncs the marketplace and self-heals a broken GitHub source: if
+// the sync fails and the marketplace's local clone no longer exists on disk,
+// the now-unusable entry is removed. It returns the sync error (if any)
+// regardless of whether a prune happened, so callers still surface the failure.
+// Pruning is best-effort; a failure to remove is ignored.
+//
+// Bulk SyncAll and install-time syncs intentionally stay on plain Sync — they
+// should not silently remove marketplaces out from under a wider operation.
+func (m *MarketplaceManager) SyncOrPrune(ctx context.Context, id string) error {
+	err := m.Sync(ctx, id)
+	if err == nil {
+		return nil
+	}
+	if entry, ok := m.Get(id); ok && entry.Source.Source == "github" {
+		if _, statErr := os.Stat(entry.InstallLocation); os.IsNotExist(statErr) {
+			_ = m.Remove(id)
+		}
+	}
+	return err
+}
+
 // SyncAll synchronizes all marketplaces.
 func (m *MarketplaceManager) SyncAll(ctx context.Context) []error {
 	var errors []error
@@ -349,8 +372,8 @@ func (m *MarketplaceManager) ListPlugins(marketplaceID string) ([]string, error)
 
 // isValidPlugin checks if a directory contains a valid plugin.
 func isValidPlugin(path string) bool {
-	// Check for .gen-plugin or .claude-plugin manifest
-	for _, metaDir := range []string{".gen-plugin", ".claude-plugin"} {
+	// Check for .san-plugin or .claude-plugin manifest
+	for _, metaDir := range []string{SanPluginDir, ClaudePluginDir} {
 		manifestPath := filepath.Join(path, metaDir, "plugin.json")
 		if _, err := os.Stat(manifestPath); err == nil {
 			return true
@@ -373,8 +396,8 @@ func (m *MarketplaceManager) GetMarketplaceMetadata(marketplaceID string) (*Mark
 	}
 
 	searchPaths := []string{
-		filepath.Join(basePath, ".claude-plugin", "marketplace.json"),
-		filepath.Join(basePath, ".gen-plugin", "marketplace.json"),
+		filepath.Join(basePath, ClaudePluginDir, "marketplace.json"),
+		filepath.Join(basePath, SanPluginDir, "marketplace.json"),
 		filepath.Join(basePath, "marketplace.json"),
 	}
 

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/session/transcript"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // TestRecorderWritesMessageBeforeInference confirms the "causes before
@@ -44,7 +44,7 @@ func TestRecorderWritesMessageBeforeInference(t *testing.T) {
 
 	// Assistant reply appends after PostInfer.
 	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &core.InferResponse{
-		StopReason: core.StopEndTurn, TokensIn: 10, TokensOut: 5,
+		StopReason: core.StopEndTurn, InputTokens: 10, OutputTokens: 5,
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: core.RoleAssistant, Content: "hi"}
 	rec.OnAgentEvent(core.Event{Type: core.OnAppend, Source: "main", Data: assistantMsg})

@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/task
+package: github.com/genai-io/san/internal/task
 layer: feature
 ---
 

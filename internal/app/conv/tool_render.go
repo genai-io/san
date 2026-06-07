@@ -9,9 +9,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 var (
@@ -485,7 +485,7 @@ func renderTaskOutputResultInline(data ToolResultData) string {
 
 	agentName := extractField(content, "Agent: ", "")
 	status := extractField(content, "Status: ", "")
-	turns := extractIntField(content, "Turns: ")
+	steps := extractIntField(content, "Steps: ")
 
 	var info []string
 	if agentName != "" {
@@ -495,8 +495,8 @@ func renderTaskOutputResultInline(data ToolResultData) string {
 	if status != "" {
 		info = append(info, status)
 	}
-	if turns > 0 {
-		info = append(info, fmt.Sprintf("%d turns", turns))
+	if steps > 0 {
+		info = append(info, fmt.Sprintf("%d steps", steps))
 	}
 
 	summaryText := "completed"

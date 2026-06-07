@@ -1,6 +1,6 @@
 # 工具系统详解
 
-Gen Code 内置了一套完善的工具系统，Agent 通过调用这些工具与外部世界交互（读文件、执行命令、搜索网络等）。所有内置工具的 Schema 分布在 `internal/tool/` 下的三个文件：[`schema_base.go`](../../internal/tool/schema_base.go)（文件 / 系统 / Web 等基础工具）、[`schema_agent.go`](../../internal/tool/schema_agent.go)（Agent / Skill）、[`schema_task.go`](../../internal/tool/schema_task.go)（任务 / Cron / 工作树）。
+San 内置了一套完善的工具系统，Agent 通过调用这些工具与外部世界交互（读文件、执行命令、搜索网络等）。所有内置工具的 Schema 分布在 `internal/tool/` 下的三个文件：[`schema_base.go`](../../internal/tool/schema_base.go)（文件 / 系统 / Web 等基础工具）、[`schema_agent.go`](../../internal/tool/schema_agent.go)（Agent / Skill）、[`schema_task.go`](../../internal/tool/schema_task.go)（任务 / Cron / 工作树）。
 
 ---
 

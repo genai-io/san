@@ -8,13 +8,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/app/trigger"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/setting"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // Run routes to either print mode or interactive TUI.
@@ -37,7 +37,7 @@ func Run(opts setting.RunOptions) error {
 	// conversation immediately, so a splash would just be churn.
 	if len(m.conv.Messages) == 0 {
 		printWelcome(welcomeInfo{
-			Model: m.services.LLM.ModelID(),
+			Model: m.env.GetModelDisplayName(),
 			CWD:   m.env.CWD,
 		})
 	}
@@ -115,7 +115,7 @@ func resumeCommandForSession(sessionID, transcriptPath string) string {
 	if _, err := os.Stat(transcriptPath); err != nil {
 		return ""
 	}
-	return "gen -r " + sessionID
+	return "san -r " + sessionID
 }
 
 func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason string) string {
@@ -144,7 +144,7 @@ func runPrint(userMessage string) error {
 	if current != nil {
 		p, err := llm.GetProvider(ctx, current.Provider, current.AuthMethod)
 		if err != nil {
-			return fmt.Errorf("provider %s (%s) not available: %w. Run 'gen' and use /model to connect",
+			return fmt.Errorf("provider %s (%s) not available: %w. Run 'san' and use /model to connect",
 				current.Provider, current.AuthMethod, err)
 		}
 		llmProvider = p
@@ -161,7 +161,7 @@ func runPrint(userMessage string) error {
 	}
 
 	if llmProvider == nil {
-		return fmt.Errorf("no provider connected. Run 'gen' and use /model to connect")
+		return fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
 	}
 
 	completionOpts := llm.CompletionOptions{

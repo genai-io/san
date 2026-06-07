@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/genai-io/san/internal/confdir"
 )
 
 type Store struct {
@@ -25,7 +27,7 @@ func Default() *Store {
 		if err != nil {
 			return
 		}
-		configDir := filepath.Join(homeDir, ".gen")
+		configDir := confdir.Dir(homeDir)
 		_ = os.MkdirAll(configDir, 0o755)
 		defaultStore = &Store{
 			path: filepath.Join(configDir, "secrets.json"),

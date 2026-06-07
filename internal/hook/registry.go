@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type matchedHook struct {

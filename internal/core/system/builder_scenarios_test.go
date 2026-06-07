@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 var update = flag.Bool("update", false, "update golden files in testdata/")

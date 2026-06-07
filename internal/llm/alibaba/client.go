@@ -11,9 +11,9 @@ import (
 
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/llm/openaicompat"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/openaicompat"
 )
 
 // Client implements the Provider interface for Qwen using the OpenAI SDK.

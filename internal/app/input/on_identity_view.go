@@ -5,8 +5,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/identity"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/identity"
 )
 
 // Render draws the spacious /model-style overlay for the identity selector.

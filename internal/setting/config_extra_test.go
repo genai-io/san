@@ -20,11 +20,11 @@ func TestConfig_LocalOverridesProject(t *testing.T) {
 		"env": {"SCOPE": "project"},
 		"theme": "project-theme"
 	}`
-	if err := os.MkdirAll(filepath.Join(tmpProject, ".gen"), 0o755); err != nil {
-		t.Fatalf("Failed to create project .gen dir: %v", err)
+	if err := os.MkdirAll(filepath.Join(tmpProject, ".san"), 0o755); err != nil {
+		t.Fatalf("Failed to create project .san dir: %v", err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(tmpProject, ".gen", "settings.json"),
+		filepath.Join(tmpProject, ".san", "settings.json"),
 		[]byte(projectSettings), 0o644,
 	); err != nil {
 		t.Fatalf("Failed to write settings.json: %v", err)
@@ -37,13 +37,13 @@ func TestConfig_LocalOverridesProject(t *testing.T) {
 		"theme": "local-theme"
 	}`
 	if err := os.WriteFile(
-		filepath.Join(tmpProject, ".gen", "settings.local.json"),
+		filepath.Join(tmpProject, ".san", "settings.local.json"),
 		[]byte(localSettings), 0o644,
 	); err != nil {
 		t.Fatalf("Failed to write settings.local.json: %v", err)
 	}
 
-	loader := NewLoaderWithOptions(tmpUser, filepath.Join(tmpProject, ".gen"), false)
+	loader := NewLoaderWithOptions(tmpUser, filepath.Join(tmpProject, ".san"), false)
 	settings, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -71,14 +71,14 @@ func TestConfig_LocalOverridesProject(t *testing.T) {
 func TestConfig_LocalOverridesProject_MergesNotReplaces(t *testing.T) {
 	tmpUser := t.TempDir()
 	tmpProject := t.TempDir()
-	genDir := filepath.Join(tmpProject, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpProject, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
 
 	// settings.json defines two env vars
 	if err := os.WriteFile(
-		filepath.Join(genDir, "settings.json"),
+		filepath.Join(sanDir, "settings.json"),
 		[]byte(`{"env": {"VAR_A": "from-project", "VAR_B": "from-project"}}`),
 		0o644,
 	); err != nil {
@@ -87,14 +87,14 @@ func TestConfig_LocalOverridesProject_MergesNotReplaces(t *testing.T) {
 
 	// settings.local.json overrides only VAR_A
 	if err := os.WriteFile(
-		filepath.Join(genDir, "settings.local.json"),
+		filepath.Join(sanDir, "settings.local.json"),
 		[]byte(`{"env": {"VAR_A": "from-local"}}`),
 		0o644,
 	); err != nil {
 		t.Fatalf("Failed to write settings.local.json: %v", err)
 	}
 
-	loader := NewLoaderWithOptions(tmpUser, genDir, false)
+	loader := NewLoaderWithOptions(tmpUser, sanDir, false)
 	settings, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -118,9 +118,9 @@ func TestConfig_LocalOverridesProject_MergesNotReplaces(t *testing.T) {
 func TestConfig_Env_InjectedIntoBashEnvironment(t *testing.T) {
 	tmpUser := t.TempDir()
 	tmpProject := t.TempDir()
-	genDir := filepath.Join(tmpProject, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpProject, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
 
 	// Write settings with env vars
@@ -131,13 +131,13 @@ func TestConfig_Env_InjectedIntoBashEnvironment(t *testing.T) {
 		}
 	}`
 	if err := os.WriteFile(
-		filepath.Join(genDir, "settings.json"),
+		filepath.Join(sanDir, "settings.json"),
 		[]byte(settingsJSON), 0o644,
 	); err != nil {
 		t.Fatalf("Failed to write settings.json: %v", err)
 	}
 
-	loader := NewLoaderWithOptions(tmpUser, genDir, false)
+	loader := NewLoaderWithOptions(tmpUser, sanDir, false)
 	settings, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -184,9 +184,9 @@ func TestConfig_DisabledTools_HiddenFromModel(t *testing.T) {
 	// from settings.json is correctly loaded.
 	tmpUser := t.TempDir()
 	tmpProject := t.TempDir()
-	genDir := filepath.Join(tmpProject, ".gen")
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create .gen dir: %v", err)
+	sanDir := filepath.Join(tmpProject, ".san")
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create .san dir: %v", err)
 	}
 
 	settingsJSON := `{
@@ -196,13 +196,13 @@ func TestConfig_DisabledTools_HiddenFromModel(t *testing.T) {
 		}
 	}`
 	if err := os.WriteFile(
-		filepath.Join(genDir, "settings.json"),
+		filepath.Join(sanDir, "settings.json"),
 		[]byte(settingsJSON), 0o644,
 	); err != nil {
 		t.Fatalf("Failed to write settings.json: %v", err)
 	}
 
-	loader := NewLoaderWithOptions(tmpUser, genDir, false)
+	loader := NewLoaderWithOptions(tmpUser, sanDir, false)
 	settings, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)
@@ -276,13 +276,13 @@ func TestConfig_DisabledTools_HiddenFromModel(t *testing.T) {
 func TestConfig_UserLevelOverriddenByProject(t *testing.T) {
 	tmpUser := t.TempDir()
 	tmpProject := t.TempDir()
-	genDir := filepath.Join(tmpProject, ".gen")
+	sanDir := filepath.Join(tmpProject, ".san")
 
 	if err := os.MkdirAll(tmpUser, 0o755); err != nil {
 		t.Fatalf("Failed to create user dir: %v", err)
 	}
-	if err := os.MkdirAll(genDir, 0o755); err != nil {
-		t.Fatalf("Failed to create project .gen dir: %v", err)
+	if err := os.MkdirAll(sanDir, 0o755); err != nil {
+		t.Fatalf("Failed to create project .san dir: %v", err)
 	}
 
 	// User-level: sets model and env var
@@ -296,14 +296,14 @@ func TestConfig_UserLevelOverriddenByProject(t *testing.T) {
 
 	// Project-level: overrides model and env var
 	if err := os.WriteFile(
-		filepath.Join(genDir, "settings.json"),
+		filepath.Join(sanDir, "settings.json"),
 		[]byte(`{"model": "project-model", "env": {"FROM": "project"}}`),
 		0o644,
 	); err != nil {
 		t.Fatalf("Failed to write project settings.json: %v", err)
 	}
 
-	loader := NewLoaderWithOptions(tmpUser, genDir, false)
+	loader := NewLoaderWithOptions(tmpUser, sanDir, false)
 	settings, err := loader.Load()
 	if err != nil {
 		t.Fatalf("Load() failed: %v", err)

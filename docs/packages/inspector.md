@@ -1,17 +1,17 @@
 ---
-package: github.com/genai-io/gen-code/internal/inspector
+package: github.com/genai-io/san/internal/inspector
 layer: feature
 ---
 
 # inspector
 
 Local web UI for replaying session transcripts. Reads the JSONL files
-under `~/.gen/projects/<cwd-hash>/<session-id>.jsonl` and exposes a
+under `~/.san/projects/<cwd-hash>/<session-id>.jsonl` and exposes a
 small HTTP API + SSE live-tail to an embedded single-page UI.
 
 ## Purpose
 
-When the user runs `gen inspector`, this package serves a localhost-only
+When the user runs `san inspector`, this package serves a localhost-only
 viewer over the project's transcripts. It is **read-only**, single-process,
 and intended for debugging an agent run after the fact or watching one
 live. The wire format is the JSONL on disk — the inspector adds no
@@ -79,5 +79,6 @@ internal/inspector/server_test.go    — HTTP routes, SSE dedup across
 ## See Also
 
 - Code: `internal/inspector/`, `internal/inspector/ui/`
+- User guide: [`docs/inspector.md`](../inspector.md)
 - Source data: [`packages/session.md`](session.md) (`session/transcript`)
 - Layer: `feature`

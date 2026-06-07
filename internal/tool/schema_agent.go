@@ -3,7 +3,7 @@ package tool
 import (
 	"strings"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // agentToolSchema returns the Agent tool schema with the given directory body
@@ -66,9 +66,9 @@ var agentToolParameters = map[string]any{
 			"description": "Optional model override. If omitted, inherits from parent conversation.",
 			"enum":        []string{"sonnet", "opus", "haiku"},
 		},
-		"max_turns": map[string]any{
+		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of conversation turns for the agent. Built-in agents default to 100 and lower values are raised to 100.",
+			"description": "Maximum number of LLM inference steps for the agent. Built-in agents default to 100 and lower values are raised to 100.",
 		},
 		"resume": map[string]any{
 			"type":        "string",
@@ -136,9 +136,9 @@ Notes:
 				"description": "Optional model override. If omitted, inherits from parent conversation.",
 				"enum":        []string{"sonnet", "opus", "haiku"},
 			},
-			"max_turns": map[string]any{
+			"max_steps": map[string]any{
 				"type":        "number",
-				"description": "Maximum number of conversation turns for the resumed run. Built-in agents default to 100 and lower values are raised to 100.",
+				"description": "Maximum number of LLM inference steps for the resumed run. Built-in agents default to 100 and lower values are raised to 100.",
 			},
 			"mode": map[string]any{
 				"type":        "string",

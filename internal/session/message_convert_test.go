@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
+	"github.com/genai-io/san/internal/core"
 )
 
 // A user message that contains harness-injected <system-reminder> blocks must

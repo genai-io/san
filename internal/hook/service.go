@@ -20,7 +20,7 @@ package hook
 import (
 	"context"
 
-	"github.com/genai-io/gen-code/internal/setting"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Handler is what callers depend on to fire hooks at application

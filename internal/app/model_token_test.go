@@ -5,17 +5,17 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/app/conv"
-	"github.com/genai-io/gen-code/internal/app/input"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/task/tracker"
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/task/tracker"
 )
 
 func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
 	m := &model{}
 	m.OnTurnBegin()
 
-	m.OnTokenUsage(&core.InferResponse{TokensIn: 1200, TokensOut: 80})
+	m.OnTokenUsage(&core.InferResponse{InputTokens: 1200, OutputTokens: 80})
 	if m.env.InputTokens != 1200 || m.env.OutputTokens != 80 {
 		t.Fatalf("first token update = in:%d out:%d, want in:1200 out:80", m.env.InputTokens, m.env.OutputTokens)
 	}
@@ -23,7 +23,7 @@ func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
 		t.Fatalf("first turn totals = in:%d out:%d, want in:1200 out:80", m.env.TurnInputTokens, m.env.TurnOutputTokens)
 	}
 
-	m.OnTokenUsage(&core.InferResponse{TokensIn: 400, TokensOut: 25})
+	m.OnTokenUsage(&core.InferResponse{InputTokens: 400, OutputTokens: 25})
 	if m.env.InputTokens != 400 || m.env.OutputTokens != 25 {
 		t.Fatalf("latest token update = in:%d out:%d, want in:400 out:25", m.env.InputTokens, m.env.OutputTokens)
 	}
@@ -43,8 +43,8 @@ func TestResumeCommandForSessionRequiresPersistedTranscript(t *testing.T) {
 		t.Fatalf("write transcript: %v", err)
 	}
 
-	if got := resumeCommandForSession("session-1", transcriptPath); got != "gen -r session-1" {
-		t.Fatalf("resumeCommandForSession() = %q, want gen -r session-1", got)
+	if got := resumeCommandForSession("session-1", transcriptPath); got != "san -r session-1" {
+		t.Fatalf("resumeCommandForSession() = %q, want san -r session-1", got)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestOnTokenUsageClearsCompactedStatusOnNextInfer(t *testing.T) {
 	m := &model{}
 	m.userInput.Provider.StatusMessage = "compacted"
 
-	m.OnTokenUsage(&core.InferResponse{TokensIn: 400, TokensOut: 25})
+	m.OnTokenUsage(&core.InferResponse{InputTokens: 400, OutputTokens: 25})
 
 	if m.userInput.Provider.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want compacted badge cleared on next infer", m.userInput.Provider.StatusMessage)

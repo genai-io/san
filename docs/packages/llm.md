@@ -1,13 +1,13 @@
 ---
-package: github.com/genai-io/gen-code/internal/llm
+package: github.com/genai-io/san/internal/llm
 layer: feature
 ---
 
 # llm
 
-Provider registry, model store, and client factory for every LLM backend
+Provider registry, model store, and active-connection handle for every LLM backend
 (Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax, Z.ai/GLM, DeepSeek,
-plus the generic openai-compat shim). Provider implementations live in
+Ollama, plus the generic openai-compat shim). Provider implementations live in
 `internal/llm/<name>/` subpackages.
 
 ## Purpose
@@ -20,49 +20,52 @@ streaming details for each call.
 
 ## Contract
 
-Active LLM provider/model handle and `*Client` factory. Wraps the package-level *Setup (Store + Provider + CurrentModel) under a mutex. The package exposes `*ClientFactory` directly — no Service interface.
+`*Conn` is the handle to the active LLM: the connected Provider, the current
+model, and the Store of available providers/models — all under one mutex. The
+package exposes `*Conn` directly — no Service interface, no wrapper type.
 
 ```go
 package llm
 
-// ClientFactory is the opaque handle. Type exported; fields unexported.
-type ClientFactory struct { /* internal fields */ }
+// Conn is the opaque handle. Type exported; fields unexported (every
+// accessor is mutex-protected).
+type Conn struct { /* internal fields */ }
 
-func (s *ClientFactory) Provider() Provider
-func (s *ClientFactory) SetProvider(p Provider)
-func (s *ClientFactory) ModelID() string
-func (s *ClientFactory) CurrentModel() *CurrentModelInfo
-func (s *ClientFactory) SetCurrentModel(info *CurrentModelInfo)
-func (s *ClientFactory) NewClient(model string, maxTokens int) *Client
-func (s *ClientFactory) Store() *Store
-func (s *ClientFactory) ListProviders() map[Name][]Info
+func (c *Conn) Provider() Provider
+func (c *Conn) SetProvider(p Provider)
+func (c *Conn) ModelID() string
+func (c *Conn) CurrentModel() *CurrentModelInfo
+func (c *Conn) SetCurrentModel(info *CurrentModelInfo)
+func (c *Conn) NewClient(model string, maxTokens int) *Client
+func (c *Conn) Store() *Store
+func (c *Conn) ListProviders() map[Name][]Info
 
 // Package-level access
 func Initialize(opts Options)
-func Default() *ClientFactory
-func SetDefaultClientFactory(s *ClientFactory)  // test-only
-func ResetDefaultClientFactory()          // test-only
+func Default() *Conn
+func SetDefaultConn(c *Conn)  // test-only
+func ResetDefaultConn()       // test-only
 ```
 
 
 ## Internals
 
-- `service` (`service.go`) — singleton implementation wrapping a `Setup`
-  struct (mutex + current Provider/Model + Store).
+- `Conn` (`service.go`) — the package-level singleton: one mutex guarding the
+  current Provider/Model + Store.
 - `Provider` registry (`registry.go`) — discovery, dynamic model list
   fetching (per memory: prefer `/models` over hardcoded catalogs).
 - `Client` (consolidated `Infer` path) — adapts a `Provider` + model into
   `core.LLM`, tracks per-call token counts, streams `core.Chunk`, applies
   retry/cost logic via `logging.go` and `money.go`.
 - `Store` (`store.go`) — persists user's provider connections under
-  `~/.gen/providers.json`; tracks current model.
+  `~/.san/providers.json`; tracks current model.
 - `stream/` — provider-side helpers for SSE parsing.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
-  `alibaba/`, `bigmodel/`, `minmax/`, `deepseek/`, `openaicompat/`.
+  `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `openaicompat/`.
 
 ## Lifecycle
 
-- Construction: `Initialize(Options{})` loads `~/.gen/providers.json`,
+- Construction: `Initialize(Options{})` loads `~/.san/providers.json`,
   picks the last-used provider (or the first connectable one), and stores
   it.
 - Switching: `/model` slash command calls `SetCurrentModel` + reload.

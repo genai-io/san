@@ -1,21 +1,21 @@
-// Package plugin provides plugin management for GenCode.
+// Package plugin provides plugin management for San.
 // Plugins bundle skills, agents, hooks, MCP servers, and LSP servers into
 // installable and shareable units. Compatible with Claude Code plugin format.
 package plugin
 
-import "github.com/genai-io/gen-code/internal/setting"
+import "github.com/genai-io/san/internal/setting"
 
 // Scope represents where a plugin is installed.
 type Scope string
 
 const (
-	// ScopeUser is ~/.gen/plugins/ (personal plugins, default)
+	// ScopeUser is ~/.san/plugins/ (personal plugins, default)
 	ScopeUser Scope = "user"
 
-	// ScopeProject is .gen/plugins/ (team plugins, git-tracked)
+	// ScopeProject is .san/plugins/ (team plugins, git-tracked)
 	ScopeProject Scope = "project"
 
-	// ScopeLocal is .gen/plugins-local/ (local plugins, gitignored)
+	// ScopeLocal is .san/plugins-local/ (local plugins, gitignored)
 	ScopeLocal Scope = "local"
 
 	// ScopeManaged is managed plugins (read-only, system-level)

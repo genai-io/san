@@ -2,7 +2,7 @@
 
 ## 五层架构模型
 
-Gen Code 采用严格的**五层架构**，依赖方向只能从上层指向下层：
+San 采用严格的**五层架构**，依赖方向只能从上层指向下层：
 
 ```
 cmd  →  app  →  feature  →  core  →  infrastructure
@@ -12,7 +12,7 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 
 ### 第 1 层：cmd（命令行入口）
 
-- **位置**：[`cmd/gen/`](../../cmd/gen/)
+- **位置**：[`cmd/san/`](../../cmd/san/)
 - **职责**：CLI 入口点，标志解析，子命令注册
 - **核心文件**：
   - `main.go` — 使用 Cobra 构建 CLI，注册子命令和全局标志
@@ -32,9 +32,9 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 **LLM 提供商通过空白导入注册**（`init()` 函数自动注册）：
 ```go
 import (
-    _ "github.com/genai-io/gen-code/internal/llm/anthropic"
-    _ "github.com/genai-io/gen-code/internal/llm/openai"
-    _ "github.com/genai-io/gen-code/internal/llm/google"
+    _ "github.com/genai-io/san/internal/llm/anthropic"
+    _ "github.com/genai-io/san/internal/llm/openai"
+    _ "github.com/genai-io/san/internal/llm/google"
     // ... 其他提供商
 )
 ```
@@ -123,7 +123,7 @@ import (
 
 ## 运行时模型
 
-Gen Code 的运行时是一个**事件驱动的 Agent 循环**，运行在 Bubble Tea TUI 框架内。
+San 的运行时是一个**事件驱动的 Agent 循环**，运行在 Bubble Tea TUI 框架内。
 
 ### 三个输入源
 
@@ -223,7 +223,7 @@ type services struct {
 
 ## 配置目录布局
 
-用户级（`~/.gen/`）：
+用户级（`~/.san/`）：
 ```
 providers.json    # 提供商连接和当前模型
 settings.json     # 权限、钩子、环境、身份
@@ -236,7 +236,7 @@ plugins/          # 已安装的插件
 projects/         # 会话转录本 + 索引
 ```
 
-项目级（`.gen/`）：
+项目级（`.san/`）：
 ```
 settings.json      # 权限、钩子、禁用的工具
 mcp.json           # MCP 服务器定义

@@ -1,5 +1,5 @@
 ---
-package: github.com/genai-io/gen-code/internal/command
+package: github.com/genai-io/san/internal/command
 layer: feature
 ---
 
@@ -51,8 +51,8 @@ func ResetDefaultRegistry()          // test-only
   - **Built-ins** registered from `builtin/` subpackage at init.
   - **Dynamic** — `DynamicProviders` callbacks returning `Info` slices
     (used by skill/agent slash-command surfaces).
-  - **Custom** — markdown files under `~/.gen/commands/` and
-    `<project>/.gen/commands/`, plus plugin-scoped paths returned by
+  - **Custom** — markdown files under `~/.san/commands/` and
+    `<project>/.san/commands/`, plus plugin-scoped paths returned by
     `PluginCommandPaths`.
 - `Info` carries name, description, namespace, source path.
 

@@ -1,17 +1,28 @@
-# Contributing to GenCode
+# Contributing to San
 
 Thanks for your interest in contributing! This guide will help you get started.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/genai-io/gen-code.git
-cd gen-code
-go build -o gen ./cmd/gen
-./gen
+git clone https://github.com/genai-io/san.git
+cd san
+git config core.hooksPath .githooks
+go build -o san ./cmd/san
+./san
 ```
 
 ## Development
+
+### Git Hooks
+
+The repo ships a pre-commit hook in `.githooks/` that auto-formats
+staged Go files. The `git config core.hooksPath .githooks` step above
+activates it. Without it, CI will reject unformatted code.
+
+The hook only formats files that have no unstaged changes, so partial
+stages (`git add -p`) are safe. Files with mixed staged/unstaged
+changes are skipped — format those manually with `make format`.
 
 ### Prerequisites
 
@@ -21,7 +32,7 @@ go build -o gen ./cmd/gen
 ### Project Structure
 
 ```
-cmd/               # Binary entrypoints (cmd/gen)
+cmd/               # Binary entrypoints (cmd/san)
 docs/              # Documentation (architecture.md + packages/ + concepts/ + reference/ + guides/ + operations/)
 internal/          # All Go code; see docs/reference/package-map.md for the full table
 tools/             # Developer tooling (layercheck, …)
@@ -39,13 +50,13 @@ following [`docs/packages/TEMPLATE.md`](docs/packages/TEMPLATE.md).
 ### Run Tests
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test ./...
+GOCACHE=/private/tmp/san-go-build-cache go test ./...
 ```
 
 Transcript/session focused suites:
 
 ```bash
-GOCACHE=/private/tmp/gencode-go-build-cache go test \
+GOCACHE=/private/tmp/san-go-build-cache go test \
   ./internal/session/... ./tests/integration/session/... ./tests/integration/cli/...
 ```
 
@@ -55,23 +66,23 @@ documented in [`docs/packages/session.md`](docs/packages/session.md).
 ### Debug Mode
 
 ```bash
-GEN_DEBUG=1 ./gen
-# Logs written to ~/.gen/debug.log
+SAN_DEBUG=1 ./san
+# Logs written to ~/.san/debug.log
 ```
 
 ## How to Contribute
 
 ### Report Bugs
 
-Use the [Bug report](https://github.com/genai-io/gen-code/issues/new?template=bug_report.yml)
+Use the [Bug report](https://github.com/genai-io/san/issues/new?template=bug_report.yml)
 template. For security vulnerabilities, follow [SECURITY.md](SECURITY.md) instead —
 do not open a public issue.
 
 ### Suggest Features
 
-Use the [Feature request](https://github.com/genai-io/gen-code/issues/new?template=feature_request.yml)
+Use the [Feature request](https://github.com/genai-io/san/issues/new?template=feature_request.yml)
 template. For open-ended ideas, start a
-[discussion](https://github.com/genai-io/gen-code/discussions) first.
+[discussion](https://github.com/genai-io/san/discussions) first.
 
 ### Submit Code
 
@@ -117,4 +128,4 @@ See our [security policy](SECURITY.md) for private reporting instructions.
 
 ## Questions?
 
-Start a [discussion](https://github.com/genai-io/gen-code/discussions). We're happy to help!
+Start a [discussion](https://github.com/genai-io/san/discussions). We're happy to help!

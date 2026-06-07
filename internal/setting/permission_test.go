@@ -401,7 +401,7 @@ func Test_isSensitivePath(t *testing.T) {
 		// Sensitive directories
 		{"git directory", "/repo/.git/hooks/pre-commit", false},
 		{"claude config", "/repo/.claude/settings.json", false},
-		{"gen config", "/repo/.gen/settings.json", false},
+		{"san config", "/repo/.san/settings.json", false},
 		{"vscode settings", "/repo/.vscode/settings.json", false},
 		{"idea settings", "/repo/.idea/workspace.xml", false},
 		{"ssh directory", "/home/user/.ssh/authorized_keys", false},

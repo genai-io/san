@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/genai-io/gen-code/internal/mcp/transport"
+	"github.com/genai-io/san/internal/mcp/transport"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 	ProtocolVersion = "2024-11-05"
 
 	// ClientName is the name of this MCP client
-	ClientName = "gencode"
+	ClientName = "san"
 
 	// ClientVersion is the version of this MCP client
 	ClientVersion = "1.0.0"

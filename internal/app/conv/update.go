@@ -4,10 +4,10 @@ package conv
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/tool"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // Update routes all output-path messages: agent outbox, permission bridge,
@@ -239,7 +239,6 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	result := rt.OnToolResult(tr)
 	m.Append(core.ChatMessage{
 		Role:       core.RoleUser,
-		ToolName:   tr.ToolName,
 		ToolResult: result,
 	})
 	return nil

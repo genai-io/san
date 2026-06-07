@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/log"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/tool"
 	"go.uber.org/zap"
 )
 
 type preparedRun struct {
-	req              AgentRequest
+	req              tool.AgentExecRequest
 	cfg              *runConfig
 	cwd              string
 	startedAt        time.Time
@@ -40,14 +41,14 @@ func (r *preparedRun) recordUsage(resp *core.InferResponse) {
 	if r.req.OnProgress == nil || resp == nil {
 		return
 	}
-	r.inputTokens += resp.TokensIn
-	r.outputTokens += resp.TokensOut
+	r.inputTokens += resp.InputTokens
+	r.outputTokens += resp.OutputTokens
 	if r.inputTokens > 0 || r.outputTokens > 0 {
 		r.sendProgress(formatUsageProgress(r.inputTokens, r.outputTokens))
 	}
 }
 
-func (e *Executor) prepareRun(req AgentRequest) (*preparedRun, error) {
+func (e *Executor) prepareRun(req tool.AgentExecRequest) (*preparedRun, error) {
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}
@@ -83,7 +84,7 @@ func (e *Executor) logRunStart(run *preparedRun) {
 	log.Logger().Info("Starting agent execution",
 		zap.String("agent", run.cfg.displayName),
 		zap.String("description", run.req.Description),
-		zap.Int("maxTurns", run.cfg.maxTurns),
+		zap.Int("maxSteps", run.cfg.maxSteps),
 	)
 }
 
@@ -92,7 +93,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	if run.req.OnProgress != nil {
 		modelMsg := fmt.Sprintf("Model: %s", run.cfg.modelID)
 		run.sendProgress(modelMsg)
-		startMsg := fmt.Sprintf("Mode: %s · max %d turns", displayPermissionMode(run.cfg.permMode), run.cfg.maxTurns)
+		startMsg := fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps)
 		run.sendProgress(startMsg)
 		onToolExec = func(name string, params map[string]any) {
 			msg := formatToolProgress(name, params)
@@ -135,9 +136,9 @@ func (e *Executor) logRunCompletion(run *preparedRun, result *core.Result, succe
 	logFields := []zap.Field{
 		zap.String("agent", run.cfg.displayName),
 		zap.String("stopReason", string(result.StopReason)),
-		zap.Int("turns", result.Turns),
-		zap.Int("inputTokens", result.TokensIn),
-		zap.Int("outputTokens", result.TokensOut),
+		zap.Int("steps", result.Steps),
+		zap.Int("inputTokens", result.InputTokens),
+		zap.Int("outputTokens", result.OutputTokens),
 	}
 	if success {
 		log.Logger().Info("Agent completed", logFields...)
@@ -147,7 +148,7 @@ func (e *Executor) logRunCompletion(run *preparedRun, result *core.Result, succe
 }
 
 func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *AgentResult {
-	success, errMsg := interpretStopReason(result, run.cfg.maxTurns)
+	success, errMsg := interpretStopReason(result, run.cfg.maxSteps)
 	e.logRunCompletion(run, result, success)
 
 	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
@@ -166,9 +167,9 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 		Success:        success,
 		Content:        result.Content,
 		Messages:       result.Messages,
-		TurnCount:      result.Turns,
+		StepCount:      result.Steps,
 		ToolUses:       result.ToolUses,
-		TokenUsage:     llm.TokenUsage{InputTokens: result.TokensIn, OutputTokens: result.TokensOut, TotalTokens: result.TokensIn + result.TokensOut},
+		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:       time.Since(run.startedAt),
 		Progress:       append([]string(nil), run.progress...),
 		Error:          errMsg,
@@ -186,9 +187,9 @@ func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Resu
 		Success:    false,
 		Content:    result.Content,
 		Messages:   result.Messages,
-		TurnCount:  result.Turns,
+		StepCount:  result.Steps,
 		ToolUses:   result.ToolUses,
-		TokenUsage: llm.TokenUsage{InputTokens: result.TokensIn, OutputTokens: result.TokensOut, TotalTokens: result.TokensIn + result.TokensOut},
+		TokenUsage: llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:   time.Since(run.startedAt),
 		Progress:   append([]string(nil), run.progress...),
 		Error:      "agent cancelled",

@@ -11,8 +11,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/gen-code/internal/log"
-	"github.com/genai-io/gen-code/internal/session"
+	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 )
 
 func (m *model) InitTaskStorage() {
@@ -160,9 +162,9 @@ func (m *model) initTaskStorage(sessionID string) {
 		return
 	}
 
-	taskListID := os.Getenv("GEN_TASK_LIST_ID")
+	taskListID := setting.Getenv("TASK_LIST_ID")
 	if taskListID != "" {
-		dir := filepath.Join(homeDir, ".gen", "tasks", taskListID)
+		dir := filepath.Join(confdir.Dir(homeDir), "tasks", taskListID)
 		m.services.Tracker.SetStorageDir(dir)
 		_ = m.services.Task.SetOutputDir(filepath.Join(dir, "outputs"))
 		return
@@ -171,7 +173,7 @@ func (m *model) initTaskStorage(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	dir := filepath.Join(homeDir, ".gen", "tasks", sessionID)
+	dir := filepath.Join(confdir.Dir(homeDir), "tasks", sessionID)
 	m.services.Tracker.SetStorageDir(dir)
 	_ = m.services.Task.SetOutputDir(filepath.Join(dir, "outputs"))
 }

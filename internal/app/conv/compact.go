@@ -9,11 +9,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/genai-io/gen-code/internal/app/kit"
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/core/system"
-	"github.com/genai-io/gen-code/internal/hook"
-	"github.com/genai-io/gen-code/internal/llm"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
 )
 
 // --- Message types ---
@@ -32,7 +32,7 @@ const PhaseSummarizing = "Summarizing conversation history"
 
 type CompactState struct {
 	Active            bool
-	Focus             string
+	SummaryFocus      string
 	LastResult        string
 	LastError         bool
 	Phase             string
@@ -42,7 +42,7 @@ type CompactState struct {
 
 func (c *CompactState) Reset() {
 	c.Active = false
-	c.Focus = ""
+	c.SummaryFocus = ""
 	c.LastResult = ""
 	c.LastError = false
 	c.Phase = ""
@@ -57,7 +57,7 @@ func (c *CompactState) ClearResult() {
 
 func (c *CompactState) Complete(result string, isError bool) {
 	c.Active = false
-	c.Focus = ""
+	c.SummaryFocus = ""
 	c.LastResult = result
 	c.LastError = isError
 	c.Phase = ""
@@ -121,22 +121,22 @@ func RenderCompactStatus(_ int, spinnerView string, state CompactState) string {
 
 // CompactRequest holds all parameters needed to perform a conversation compaction.
 type CompactRequest struct {
-	Ctx        context.Context
-	Client     *llm.Client
-	Messages   []core.Message
-	Focus      string
-	HookEngine hook.Handler
-	Trigger    string
+	Ctx          context.Context
+	Client       *llm.Client
+	Messages     []core.Message
+	SummaryFocus string
+	HookEngine   hook.Handler
+	Trigger      string
 }
 
 func CompactCmd(req CompactRequest) tea.Cmd {
 	return func() tea.Msg {
 		ctx := req.Ctx
-		focus := req.Focus
+		focus := req.SummaryFocus
 		if req.HookEngine != nil {
 			outcome := req.HookEngine.Execute(ctx, hook.PreCompact, hook.HookInput{
 				Trigger:            req.Trigger,
-				CustomInstructions: req.Focus,
+				CustomInstructions: req.SummaryFocus,
 			})
 			if outcome.AdditionalContext != "" {
 				if focus != "" {

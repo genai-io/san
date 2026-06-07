@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 // FakeLLM implements core.LLM for testing, returning queued responses.
@@ -33,12 +33,12 @@ func (f *FakeLLM) Infer(_ context.Context, _ core.InferRequest) (<-chan core.Chu
 		ch <- core.Chunk{
 			Done: true,
 			Response: &core.InferResponse{
-				Content:    resp.Content,
-				Thinking:   resp.Thinking,
-				ToolCalls:  legacyToCoreCalls(resp.ToolCalls),
-				StopReason: core.StopReason(resp.StopReason),
-				TokensIn:   resp.Usage.InputTokens,
-				TokensOut:  resp.Usage.OutputTokens,
+				Content:      resp.Content,
+				Thinking:     resp.Thinking,
+				ToolCalls:    legacyToCoreCalls(resp.ToolCalls),
+				StopReason:   core.StopReason(resp.StopReason),
+				InputTokens:  resp.Usage.InputTokens,
+				OutputTokens: resp.Usage.OutputTokens,
 			},
 		}
 	}()
@@ -67,7 +67,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 		Tools:  buildAllRegisteredTools(cwd),
 
 		CWD:      cwd,
-		MaxTurns: 100,
+		MaxSteps: 100,
 	}), fakeLLM
 }
 
@@ -99,12 +99,12 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 		System:   core.NewSystem(),
 		Tools:    tools,
 		CWD:      cwd,
-		MaxTurns: 100,
+		MaxSteps: 100,
 	}), fakeLLM
 }
 
-// NewTestAgentWithMaxTurns creates a core.Agent with a specific max turns limit.
-func NewTestAgentWithMaxTurns(t *testing.T, maxTurns int, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
+// NewTestAgentWithMaxSteps creates a core.Agent with a specific max steps limit.
+func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
 	t.Helper()
 	fakeLLM := &FakeLLM{Responses: responses}
 	cwd := t.TempDir()
@@ -115,7 +115,7 @@ func NewTestAgentWithMaxTurns(t *testing.T, maxTurns int, responses ...llm.Compl
 		Tools:  buildAllRegisteredTools(cwd),
 
 		CWD:      cwd,
-		MaxTurns: maxTurns,
+		MaxSteps: maxSteps,
 	}), fakeLLM
 }
 

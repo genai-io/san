@@ -134,7 +134,7 @@ func Test_checkASTSecurity(t *testing.T) {
 		{"cd git separated", "cd /tmp; git clone url", false},
 		{"cd git tag create", "cd /tmp/repo && git tag v1.2.3", false},
 		{"cd git branch create", "cd /tmp/repo && git branch release", false},
-		{"cd git remote add", "cd /tmp/repo && git remote add origin git@github.com:genai-io/gen-code.git", false},
+		{"cd git remote add", "cd /tmp/repo && git remote add origin git@github.com:genai-io/san.git", false},
 
 		// Dangerous: redirect to sensitive path
 		{"redirect to etc", "echo bad > /etc/passwd", false},

@@ -2,13 +2,12 @@ package bigmodel
 
 import (
 	"context"
-	"os"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	"github.com/genai-io/gen-code/internal/secret"
+	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // APIKeyMeta is the metadata for BigModel (Zhipu / Z.ai — GLM series) via API Key.
@@ -23,7 +22,7 @@ var APIKeyMeta = llm.Meta{
 // BigModel publishes an OpenAI-compatible endpoint, so we use the OpenAI SDK
 // with a custom base URL.
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	baseURL := os.Getenv("BIGMODEL_BASE_URL")
+	baseURL := secret.Resolve("BIGMODEL_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://open.bigmodel.cn/api/paas/v4"
 	}

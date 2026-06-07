@@ -2,7 +2,7 @@
 
 ## Goal
 
-Integrate MiniMax into `gencode` as a first-class LLM provider with:
+Integrate MiniMax into `san` as a first-class LLM provider with:
 
 - runtime provider selection through `/provider` and `/model`
 - stable streaming, thinking, and tool-call support
@@ -16,12 +16,12 @@ Use **MiniMax Anthropic-compatible API** as the primary integration path.
 Why:
 
 1. MiniMax's own docs recommend the Anthropic-compatible path for text models.
-2. `gencode` already has a mature Anthropic provider with:
+2. `san` already has a mature Anthropic provider with:
    - thinking block streaming
    - tool use / tool result round-trip
    - prompt-cache usage fields
    - stable tool ID sanitization
-3. The existing OpenAI-compatible path in `gencode` currently expects reasoning in `reasoning_content`, while MiniMax documents `reasoning_details` or inline `<think>` content. That path needs extra compatibility work.
+3. The existing OpenAI-compatible path in `san` currently expects reasoning in `reasoning_content`, while MiniMax documents `reasoning_details` or inline `<think>` content. That path needs extra compatibility work.
 
 ## Proposed Shape
 
@@ -61,14 +61,14 @@ Touch points:
 - `internal/llm/types.go`
 - `internal/app/input/on_provider.go`
 - `internal/setting/client_options.go`
-- `cmd/gen/main.go`
+- `cmd/san/main.go`
 
 Changes:
 
 - add `llm.MinMax Name = "minmax"`
 - add provider display label and ordering
 - add default model mapping
-- import the new provider package in `cmd/gen/main.go`
+- import the new provider package in `cmd/san/main.go`
 
 ### 2. Add `internal/llm/minmax`
 
@@ -109,7 +109,7 @@ MiniMax docs currently show:
 - **context window** for supported text models: `204,800`
 - **OpenAI-compatible `max_completion_tokens` upper bound** on the documented chat endpoint: `2048`
 
-That means `gencode` should **not** assume output limit equals context window.
+That means `san` should **not** assume output limit equals context window.
 
 ### Safe initial limits
 
@@ -120,7 +120,7 @@ Set static model limits to:
 
 Reason:
 
-- `gencode` falls back to `8192` output tokens when a provider does not specify a limit
+- `san` falls back to `8192` output tokens when a provider does not specify a limit
 - this project now intentionally keeps MiniMax's default output limit at `8192`
 
 If runtime verification shows MiniMax's Anthropic-compatible endpoint needs a smaller bound, reduce the static limit then.
@@ -129,7 +129,7 @@ If runtime verification shows MiniMax's Anthropic-compatible endpoint needs a sm
 
 ### What already works well
 
-`gencode` already has usage fields that align with MiniMax's Anthropic-compatible docs:
+`san` already has usage fields that align with MiniMax's Anthropic-compatible docs:
 
 - `input_tokens`
 - `output_tokens`
@@ -190,7 +190,7 @@ MiniMax Anthropic-compatible docs are slightly inconsistent:
 
 Practical design:
 
-- keep `gencode`'s existing Anthropic thinking path enabled
+- keep `san`'s existing Anthropic thinking path enabled
 - treat missing thinking blocks as acceptable behavior
 - do not make correctness depend on thinking being returned
 
@@ -206,17 +206,17 @@ MiniMax documents prompt caching on the Anthropic-compatible path and returns:
 - `cache_creation_input_tokens`
 - `cache_read_input_tokens`
 
-`gencode` already marks the system prompt as ephemeral in the Anthropic provider path, so MiniMax can benefit from this with little or no additional protocol work.
+`san` already marks the system prompt as ephemeral in the Anthropic provider path, so MiniMax can benefit from this with little or no additional protocol work.
 
 This is another reason to prefer Anthropic-compatible integration over OpenAI-compatible integration.
 
 ## Why Not OpenAI-Compatible First
 
-OpenAI-compatible MiniMax is still a valid fallback, but it is a worse first integration for `gencode`.
+OpenAI-compatible MiniMax is still a valid fallback, but it is a worse first integration for `san`.
 
 Problems to solve there:
 
-1. MiniMax documents `reasoning_split=True` and `reasoning_details`, but `gencode`'s OpenAI-compatible layer extracts `reasoning_content`.
+1. MiniMax documents `reasoning_split=True` and `reasoning_details`, but `san`'s OpenAI-compatible layer extracts `reasoning_content`.
 2. MiniMax requires preserving the full assistant message during tool-calling, including thought content or separated reasoning data.
 3. Prompt-cache usage is documented on the Anthropic-compatible path, not the OpenAI-compatible path.
 
@@ -250,7 +250,7 @@ If an OpenAI-compatible MiniMax provider is added later, it should be a separate
 - `internal/app/input/on_provider.go`
 - `internal/app/input/on_provider_test.go`
 - `internal/setting/client_options.go`
-- `cmd/gen/main.go`
+- `cmd/san/main.go`
 - `internal/llm/llm.go`
 - `internal/core/llm.go` if cache-token fields are surfaced to UI
 

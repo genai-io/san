@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/genai-io/gen-code/internal/core"
-	"github.com/genai-io/gen-code/internal/tool"
-	"github.com/genai-io/gen-code/internal/tool/perm"
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// forkMaxTurns caps the fork's inference rounds — a review is bounded
+// forkMaxSteps caps the fork's inference steps — a review is bounded
 // work, so this just stops a confused fork from looping.
-const forkMaxTurns = 16
+const forkMaxSteps = 16
 
 // forkDeadline bounds a single pass. Without it a hung provider would
 // pin the goroutine with inFlight=true and silently disable all future
@@ -68,7 +68,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		Tools:     restricted,
 		AgentType: "selflearn-review",
 		CWD:       fc.CWD,
-		MaxTurns:  forkMaxTurns,
+		MaxSteps:  forkMaxSteps,
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct
 		OnEvent:   fc.OnEvent,
 	})

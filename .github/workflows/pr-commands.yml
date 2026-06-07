@@ -1,0 +1,26 @@
+name: PR Commands
+
+# Prow-style chat-ops for GitHub Actions, powered by jpmcb/prow-github-actions.
+# Commands: /cc /uncc /assign /unassign /approve /lgtm /hold
+#           /retitle /area /kind /priority /remove /close /reopen /lock /milestone
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  execute:
+    # Only run on PR comments (not plain issues).
+    if: github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    steps:
+      # https://github.com/jpmcb/prow-github-actions
+      - uses: jpmcb/prow-github-actions@c44ac3a57d67639e39e4a4988b52049ef45b80dd # v2.0.0
+        with:
+          prow-commands: '/assign /unassign /approve /retitle /area /kind /priority /remove /lgtm /close /reopen /lock /milestone /hold /cc /uncc'
+          github-token: '${{ secrets.GITHUB_TOKEN }}'

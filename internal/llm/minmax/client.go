@@ -9,8 +9,8 @@ import (
 	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/openai/openai-go/v3"
 
-	"github.com/genai-io/gen-code/internal/llm"
-	anthropicprovider "github.com/genai-io/gen-code/internal/llm/anthropic"
+	"github.com/genai-io/san/internal/llm"
+	anthropicprovider "github.com/genai-io/san/internal/llm/anthropic"
 )
 
 type Client struct {

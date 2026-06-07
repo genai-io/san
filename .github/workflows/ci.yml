@@ -6,23 +6,32 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: '1.25.6'
+          cache: true
       - name: Install format tools
         run: make install-format-tools
       - name: Format check
         run: make format-check
       - name: Build
         run: make build-all
-      - name: Unit tests
-        run: go test ./internal/...
-      - name: Integration tests
-        run: go test ./tests/integration/...
+      - name: Unit + integration tests (merged coverage)
+        run: make cover
       - name: Vet
         run: make lint
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6
+        with:
+          files: ./coverage.out
+          slug: genai-io/san
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
