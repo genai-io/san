@@ -52,7 +52,7 @@ func TestAppearancePanelEnterSavesAndEmits(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	p := newAppearancePanel(nil)
-	p.Enter() // baseline "auto" (index 2)
+	p.Enter()                                // baseline "auto" (index 2)
 	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // auto → light
 	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // light → dark
 
