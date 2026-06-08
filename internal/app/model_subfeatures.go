@@ -39,6 +39,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		},
 		SetCurrentModel: func(info *llm.CurrentModelInfo) {
 			m.env.CurrentModel = info
+			llm.Default().SetCurrentModel(info)
 			m.env.LoadThinkingEffortFromStore()
 		},
 		PrintWelcome: func(modelID string) tea.Cmd {
@@ -55,7 +56,9 @@ func (m *model) overlayDeps() input.OverlayDeps {
 			if proj := projectName(m.env.CWD); proj != "" {
 				line += dim.Render("  ·  ") + dim.Render(proj)
 			}
-			line += dim.Render("  ·  ") + dim.Render(modelName)
+			if modelName != "" {
+				line += dim.Render("  ·  ") + dim.Render(modelName)
+			}
 			// Overwrite the original welcome line in-place using ANSI cursor
 			// codes. The original printWelcome output is:
 			//   \n  (leading newline from renderWelcome)

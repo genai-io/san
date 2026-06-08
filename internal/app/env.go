@@ -109,7 +109,7 @@ func (m *env) GetModelID() string {
 	if m.CurrentModel != nil {
 		return m.CurrentModel.ModelID
 	}
-	return "claude-sonnet-4-20250514"
+	return ""
 }
 
 // GetModelDisplayName returns a human-readable display name for the current
@@ -117,6 +117,9 @@ func (m *env) GetModelID() string {
 // raw model ID if no display name is found.
 func (m *env) GetModelDisplayName() string {
 	id := m.GetModelID()
+	if id == "" {
+		return "no model selected"
+	}
 	if m.store == nil {
 		return id
 	}
