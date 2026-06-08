@@ -223,7 +223,7 @@ func (m model) renderTrackerList() string {
 }
 
 func (m model) renderModeStatus() string {
-	modelName := m.env.GetModelID()
+	modelName := m.env.GetModelDisplayName()
 	thinkingEffort := m.env.EffectiveThinkingEffort()
 	showThinking := true
 	if m.env.CurrentModel != nil && m.env.CurrentModel.Provider == llm.OpenAI && thinkingEffort != "" {
@@ -286,7 +286,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		// Per-tick UI state
 		SpinnerView:  m.conv.Spinner.View(),
 		Blink:        m.conv.Blink,
-		ModelName:    m.env.GetModelID(),
+		ModelName:    m.env.GetModelDisplayName(),
 		InputTokens:  m.env.InputTokens,
 		OutputTokens: m.env.OutputTokens,
 

@@ -857,6 +857,12 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 		// Clear current model if it belongs to the disconnected provider
 		if cur := s.store.GetCurrentModel(); cur != nil && cur.Provider == providerName {
 			_ = s.store.ClearCurrentModel()
+			llm.Default().SetCurrentModel(nil)
+		}
+
+		// If no connections remain, clear the runtime provider too
+		if len(s.store.GetConnections()) == 0 {
+			llm.Default().SetProvider(nil)
 		}
 	}
 
