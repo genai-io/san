@@ -63,6 +63,18 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 <details>
 <summary><b>Other methods</b></summary>
 
+**Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
+```
+
+Re-run to upgrade. To uninstall:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1))) uninstall
+```
+
 **Go Install**
 
 ```bash
