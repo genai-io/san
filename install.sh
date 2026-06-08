@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 REPO="genai-io/san"
 BINARY="san"
@@ -67,9 +67,9 @@ get_download_url() {
             line=$0
             sub(/^.*"browser_download_url":[[:space:]]*"/, "", line)
             sub(/".*$/, "", line)
-            if (line != "") {
+            if (line != "" && !printed) {
                 print line
-                exit
+                printed=1
             }
         }
     '
@@ -101,7 +101,7 @@ do_install() {
     TMP_DIR=$(mktemp -d)
     trap "rm -rf $TMP_DIR" EXIT
 
-    curl -fsSL "$DOWNLOAD_URL" -o "$TMP_DIR/san.tar.gz" || error "Download failed"
+    curl -fL --progress-bar "$DOWNLOAD_URL" -o "$TMP_DIR/san.tar.gz" || error "Download failed"
     if ! tar -tzf "$TMP_DIR/san.tar.gz" >/dev/null 2>&1; then
         error "Downloaded asset is not a valid tar.gz archive"
     fi
@@ -109,11 +109,17 @@ do_install() {
 
     # Install
     mkdir -p "$INSTALL_DIR"
+    # Show warning first
+    EXISTING_BIN=$(command -v "$BINARY" || true)
+    if [ -n "$EXISTING_BIN" ] && [ "$EXISTING_BIN" != "$INSTALL_DIR/$BINARY" ]; then
+        warn "Found existing installation at $EXISTING_BIN."
+        warn "This script will install to $INSTALL_DIR/$BINARY instead."
+    fi
     mv "$TMP_DIR/$BINARY" "$INSTALL_DIR/"
     chmod +x "$INSTALL_DIR/$BINARY"
 
     # Hint if not in PATH
-    if ! echo "$PATH" | tr ':' '\n' | grep -qx "$INSTALL_DIR"; then
+    if ! echo "$PATH" | tr ':' '\n' | grep -qxF "$INSTALL_DIR"; then
         warn "Add $INSTALL_DIR to your PATH:"
         warn "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     fi
@@ -123,11 +129,15 @@ do_install() {
 
 do_uninstall() {
     info "Uninstalling san..."
-    
+
     # Remove binary
     if [ -f "$INSTALL_DIR/$BINARY" ]; then
-        rm "$INSTALL_DIR/$BINARY"
-        info "✓ Removed $INSTALL_DIR/$BINARY"
+        echo -n "Remove binary "$INSTALL_DIR/$BINARY" [y/N] "
+        read -r response < /dev/tty
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            rm "$INSTALL_DIR/$BINARY"
+            info "✓ Removed $INSTALL_DIR/$BINARY"
+        fi
     else
         warn "Binary not found at $INSTALL_DIR/$BINARY"
     fi
@@ -136,10 +146,10 @@ do_uninstall() {
     cfg="$HOME/.san"
     if [ -d "$cfg" ]; then
         echo -n "Remove config directory ${cfg}? [y/N] "
-        read -r response
+        read -r response < /dev/tty
         if [[ "$response" =~ ^[Yy]$ ]]; then
             rm -rf "$cfg"
-            info "✓ Removed ${cfg}"
+            info "✓ Removed config directory ${cfg}"
         fi
     fi
 
