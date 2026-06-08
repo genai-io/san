@@ -109,11 +109,3 @@ func Resolve(envVar string) string {
 	}
 	return ""
 }
-
-// As a wrapper to merely read the values of environment variables.
-func ResolveOsEnv(envVar string) string {
-	if v := os.Getenv(envVar); v != "" {
-		return v
-	}
-	return ""
-}
