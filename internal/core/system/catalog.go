@@ -13,35 +13,30 @@ import (
 
 // Embedded prompt templates. Layout:
 //
-//	prompts/identity.txt              — one-line persona preamble
-//	prompts/output.txt                — communication shape (Tone, Updates, Behavior)
-//	prompts/engineering.txt           — engineering defaults (Restraint, Code conventions, Error handling)
-//	prompts/policy.txt                — safety contract (never overridden)
+//	prompts/identity.txt              — one-line persona preamble (the "identity" part)
+//	prompts/output.txt                — communication style (Tone / Updates / Behavior)
+//	prompts/engineering.txt           — engineering defaults (Restraint / Conventions / Errors)
+//	prompts/policy.txt                — safety contract
 //	prompts/compact.txt               — conversation compactor prompt
 //	prompts/guidelines/{tools,system-reminders,git,questions,tasks}.txt
 //	prompts/providers/<name>.txt      — provider-specific quirks (optional)
 //
-// Format the LLM sees, top to bottom:
+// These compose into four parts, top to bottom:
 //
-//	You are San, …                              (identity, raw preamble)
-//	<output> … </output>                             (how you talk to the user)
-//	<engineering> … </engineering>                   (how you work on code)
-//	<policy> … </policy>                             (safety, never overridden)
-//	<guidelines name="tool-usage"> … </guidelines>
-//	<guidelines name="system-reminders"> … </guidelines> (how to treat <system-reminder>)
-//	<guidelines name="task-workflow"> … </guidelines>
-//	<guidelines name="when-to-ask"> … </guidelines>
-//	<guidelines name="git-safety"> … </guidelines>   (only when isGit)
-//	<environment> … </environment>
+//	You are San, …                    (identity, raw preamble)
+//	<behavior> … </behavior>          (output + engineering — main agent only)
+//	<rules> … </rules>                (policy + guidelines + provider, scope-aware)
+//	<environment> … </environment>    (volatile footer)
 //
-// Everything after the preamble lives inside a named XML envelope so the
-// model can address each block as a structured unit. Identity is bare
-// because Anthropic's standard preamble shape starts with "You are X".
+// Identity is bare because Anthropic's standard preamble shape starts with
+// "You are X". The other parts live in a named XML envelope so the model can
+// address each as a structured unit, and so a persona can replace a whole
+// part by dropping in one file (system/<part>.md).
 //
 //go:embed prompts/*.txt prompts/guidelines/*.txt
 var promptFS embed.FS
 
-// init-time read of every static template. Keeps Build() allocation-free.
+// init-time read of every static template. Keeps Build() allocation-light.
 var (
 	cachedIdentity    = loadEmbed("prompts/identity.txt")
 	cachedOutput      = loadEmbed("prompts/output.txt")
@@ -74,32 +69,6 @@ func loadEmbedOptional(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
-}
-
-// applyDefaults registers the always-on sections for a Scope.
-// Options passed to Build can override identity by Name.
-func applyDefaults(sys core.System, scope core.Scope) {
-	const caller = "system:init"
-	sys.Use(defaultIdentity(), caller)
-	if scope == core.ScopeMain {
-		// Output (Tone / Updates / Behavior) and Engineering (Restraint /
-		// Code conventions / Error handling) are main-agent only.
-		// Subagents get their own charter via WithSubagentIdentity and
-		// shouldn't inherit the main agent's communication style or
-		// engineering defaults.
-		sys.Use(output(), caller)
-		sys.Use(engineering(), caller)
-	}
-	sys.Use(policy(), caller)
-	sys.Use(guidelines("tool-usage", cachedTools), caller)
-	// How to treat harness-injected <system-reminder> content. Applies to
-	// both scopes — subagents also receive reminders (the skills directory).
-	sys.Use(guidelines("system-reminders", cachedReminders), caller)
-	if scope == core.ScopeMain {
-		// Task tracking + interactive questions are main-agent behaviors.
-		sys.Use(guidelines("task-workflow", cachedTasks), caller)
-		sys.Use(guidelines("when-to-ask", cachedQuestions), caller)
-	}
 }
 
 // XML envelope
@@ -137,116 +106,108 @@ func sortedKeys(m map[string]string) []string {
 	return ks
 }
 
-// Default sections (auto-applied)
+// Part: identity (slot 0)
 
-func defaultIdentity() core.Section {
-	// Identity is rendered raw (no XML envelope) so the model sees a clean
-	// "You are X" opening, matching Anthropic's standard preamble shape.
+// identitySection renders the "who you are" preamble. A non-empty override
+// (a persona or user-defined identity) replaces the built-in default. Rendered
+// raw (no XML envelope) to match Anthropic's standard "You are X" preamble.
+func identitySection(override string) core.Section {
+	body := strings.TrimSpace(override)
+	source := core.Predefined
+	if body == "" {
+		body = cachedIdentity
+	} else {
+		source = core.FromFile
+	}
 	return core.Section{
-		Slot: core.SlotIdentity, Name: "identity", Source: core.Predefined,
-		Render: func() string { return cachedIdentity },
+		Slot: core.SlotIdentity, Name: "identity", Source: source,
+		Render: func() string { return body },
 	}
 }
 
-func policy() core.Section {
-	return core.Section{
-		Slot: core.SlotPolicy, Name: "policy", Source: core.Predefined,
-		Render: func() string { return wrap("policy", nil, cachedPolicy) },
-	}
-}
+// Part: behavior (slot 1)
 
-// output sits at SlotIdentity (after the identity preamble via insertion
-// order). Covers "how you talk to the user" — tone, when/how to give
-// updates, conversational behavior (truth, no sycophancy, exploratory
-// mode). Communication conduct, not engineering conduct.
-func output() core.Section {
+// behaviorSection renders how the agent communicates and works — the merge of
+// the communication style (Tone / Updates / Behavior) and the engineering
+// defaults (Restraint / Code conventions / Error handling). Main-agent only;
+// subagents carry their working style in their charter.
+func behaviorSection() core.Section {
 	return core.Section{
-		Slot: core.SlotIdentity, Name: "output", Source: core.Predefined,
-		Render: func() string { return wrap("output", nil, cachedOutput) },
-	}
-}
-
-// engineering sits at SlotIdentity after output. Covers "how you work on
-// code" — restraint (don't over-engineer), code conventions, error-
-// handling methodology. Kept separate from <output> so the model can
-// activate the right cluster for the situation: dialogue vs coding.
-func engineering() core.Section {
-	return core.Section{
-		Slot: core.SlotIdentity, Name: "engineering", Source: core.Predefined,
-		Render: func() string { return wrap("engineering", nil, cachedEngineering) },
-	}
-}
-
-func guidelines(name, body string) core.Section {
-	return core.Section{
-		Slot: core.SlotGuidelines, Name: "guidelines-" + name, Source: core.Predefined,
+		Slot: core.SlotBehavior, Name: "behavior", Source: core.Predefined,
 		Render: func() string {
-			return wrap("guidelines", map[string]string{"name": name}, body)
+			return wrap("behavior", nil, cachedOutput+"\n\n"+cachedEngineering)
 		},
 	}
 }
 
-// Options
+// Part: rules (slot 2)
 
-// WithIdentity replaces the default identity section, e.g. a user-defined
-// "ML engineer" persona. Pass an empty string to keep the default.
-func WithIdentity(text string) Option {
-	return func(sys core.System, _ core.Scope) {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return
-		}
-		sys.Use(identitySection(text), "system:init")
+// rulesSection renders the safety contract plus the operational protocols
+// (tools and system-reminders always; task tracking and interactive questions
+// for the main agent), with git safety folded in when isGit and any provider
+// quirks appended last. Subagents get the safety + tool subset.
+func rulesSection(scope core.Scope, isGit bool, provider string) core.Section {
+	return core.Section{
+		Slot: core.SlotRules, Name: "rules", Source: core.Predefined,
+		Render: func() string {
+			return wrap("rules", nil, assembleRules(scope, isGit, provider))
+		},
 	}
 }
 
-// SwapIdentity replaces the identity slot on an already-built system.
-// Empty text reverts to the built-in default. Visible on the next sys.Prompt().
-func SwapIdentity(sys core.System, text string) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		sys.Use(defaultIdentity(), "command:identity")
-		return
+func assembleRules(scope core.Scope, isGit bool, provider string) string {
+	blocks := []string{
+		headed("Safety", cachedPolicy),
+		headed("Tools", cachedTools),
+		headed("System reminders", cachedReminders),
 	}
+	if scope == core.ScopeMain {
+		// Task tracking + interactive questions are main-agent behaviors.
+		blocks = append(blocks,
+			headed("Task tracking", cachedTasks),
+			headed("Asking the user", cachedQuestions),
+		)
+	}
+	if isGit {
+		blocks = append(blocks, headed("Git safety", cachedGit))
+	}
+	if provider != "" {
+		if quirks := loadEmbedOptional("prompts/providers/" + provider + ".txt"); quirks != "" {
+			blocks = append(blocks, headed("Provider notes", quirks))
+		}
+	}
+	return strings.Join(blocks, "\n\n")
+}
+
+// headed prefixes a rules sub-block with a markdown heading so the merged
+// <rules> envelope stays legible once several blocks are concatenated.
+func headed(title, body string) string {
+	return "## " + title + "\n\n" + strings.TrimSpace(body)
+}
+
+// Options
+
+// WithIdentity replaces the default identity with a persona/user-defined one,
+// e.g. an "ML engineer" charter. An empty string keeps the default.
+func WithIdentity(text string) Option {
+	return func(cfg *buildConfig) { cfg.identity = strings.TrimSpace(text) }
+}
+
+// SwapIdentity replaces the identity part on an already-built system. Empty
+// text reverts to the built-in default. Visible on the next sys.Prompt().
+func SwapIdentity(sys core.System, text string) {
 	sys.Use(identitySection(text), "command:identity")
 }
 
-// identitySection builds the slot-0 identity Section for a user-defined persona.
-func identitySection(text string) core.Section {
-	return core.Section{
-		Slot: core.SlotIdentity, Name: "identity", Source: core.FromFile,
-		Render: func() string { return text },
-	}
-}
-
-// WithProvider injects provider-specific quirks if a matching template exists
-// at prompts/providers/<name>.txt. Missing files are silently skipped.
+// WithProvider folds provider-specific quirks (prompts/providers/<name>.txt,
+// optional) into the rules part. An empty or unmatched name is a no-op.
 func WithProvider(name string) Option {
-	return func(sys core.System, _ core.Scope) {
-		if name == "" {
-			return
-		}
-		body := loadEmbedOptional("prompts/providers/" + name + ".txt")
-		if body == "" {
-			return
-		}
-		sys.Use(core.Section{
-			Slot: core.SlotProvider, Name: "provider", Source: core.Predefined,
-			Render: func() string {
-				return wrap("provider", map[string]string{"name": name}, body)
-			},
-		}, "system:init")
-	}
+	return func(cfg *buildConfig) { cfg.provider = name }
 }
 
-// WithGitGuidelines toggles the git safety guidelines. Off by default.
+// WithGitGuidelines includes the git-safety rules. Off by default.
 func WithGitGuidelines(isGit bool) Option {
-	return func(sys core.System, _ core.Scope) {
-		if !isGit {
-			return
-		}
-		sys.Use(guidelines("git-safety", cachedGit), "system:init")
-	}
+	return func(cfg *buildConfig) { cfg.isGit = isGit }
 }
 
 // Subagent identity (Scope == ScopeSubagent)
@@ -269,11 +230,13 @@ type SubagentBrief struct {
 // Mode and tool constraints are folded in here, so subagents have no separate
 // "assignment" section to consult — identity carries the whole job.
 func WithSubagentIdentity(b SubagentBrief) Option {
-	return func(sys core.System, _ core.Scope) {
-		sys.Use(core.Section{
-			Slot: core.SlotIdentity, Name: "identity", Source: core.Injected,
-			Render: func() string { return renderSubagentIdentity(b) },
-		}, "subagent:init")
+	return func(cfg *buildConfig) { brief := b; cfg.subagent = &brief }
+}
+
+func subagentIdentitySection(b SubagentBrief) core.Section {
+	return core.Section{
+		Slot: core.SlotIdentity, Name: "identity", Source: core.Injected,
+		Render: func() string { return renderSubagentIdentity(b) },
 	}
 }
 
@@ -317,7 +280,7 @@ func modeDescription(mode string) string {
 	}
 }
 
-// Environment (volatile, sits at the end of the prompt)
+// Part: environment (slot 3, volatile)
 
 // Environment is the small, frequently-changing footer: cwd, git, platform,
 // model, today's date. Placed last so the cache prefix above it survives
@@ -331,11 +294,16 @@ type Environment struct {
 // WithEnvironment registers the environment section. Callers should refresh
 // it via sys.Refresh("environment") when cwd changes mid-session.
 func WithEnvironment(env Environment) Option {
-	return func(sys core.System, _ core.Scope) {
-		sys.Use(core.Section{
-			Slot: core.SlotEnvironment, Name: "environment", Source: core.Dynamic,
-			Render: func() string { return renderEnvironment(env) },
-		}, "system:init")
+	return func(cfg *buildConfig) {
+		e := env
+		cfg.env = &e
+	}
+}
+
+func environmentSection(env Environment) core.Section {
+	return core.Section{
+		Slot: core.SlotEnvironment, Name: "environment", Source: core.Dynamic,
+		Render: func() string { return renderEnvironment(env) },
 	}
 }
 

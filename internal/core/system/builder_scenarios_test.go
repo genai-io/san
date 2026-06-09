@@ -143,11 +143,11 @@ func TestScenarioMinimal_NoGitGuidelines(t *testing.T) {
 	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/project"}))
 	prompt := sys.Prompt()
 
-	if strings.Contains(prompt, `<guidelines name="git-safety">`) {
-		t.Error("non-git scenario should NOT contain git safety guidelines")
+	if strings.Contains(prompt, "## Git safety") {
+		t.Error("non-git scenario should NOT contain git safety rules")
 	}
-	if !strings.Contains(prompt, `<guidelines name="tool-usage">`) {
-		t.Error("should always contain core tool guidelines")
+	if !strings.Contains(prompt, "## Tools") {
+		t.Error("should always contain core tool rules")
 	}
 	if strings.Contains(prompt, "<memory") {
 		t.Error("should NOT contain memory when empty")
@@ -179,8 +179,8 @@ func TestScenarioMainSession_HasAllSections(t *testing.T) {
 			//   - <memory> rides on user messages as <system-reminder>
 			//   - <skills> rides on user messages as <system-reminder>
 			//   - agent directory lives in the Agent tool's description
-			{"core guidelines", `<guidelines name="tool-usage">`},
-			{"git guidelines", `<guidelines name="git-safety">`},
+			{"core tool rules", "## Tools"},
+			{"git rules", "## Git safety"},
 			{"question guidelines", "AskUserQuestion"},
 			{"task guidelines", "TaskCreate"},
 		}
