@@ -2,6 +2,8 @@
 package conv
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -151,6 +153,8 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	rt.OnTurnBegin()
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
+	m.Stream.ScrollbackLen = 0
+	m.Stream.ThinkingCommitted = false
 	commitCmds := rt.CommitMessages()
 	m.Append(core.ChatMessage{Role: core.RoleAssistant, Content: ""})
 	cmds := append(commitCmds, m.Spinner.Tick)
@@ -172,14 +176,105 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	if chunk.Text != "" || chunk.Thinking != "" {
 		m.AppendToLast(chunk.Text, chunk.Thinking)
 	}
+
+	// Commit newly streamed text to terminal scrollback at newline
+	// boundaries so the user can scroll up to see earlier parts of a long
+	// response that have been truncated from the active view. Both thinking
+	// and content text are committed as plain text — the View() area shows
+	// the live formatted tail. When the stream finishes we advance
+	// CommittedCount so CommitMessages does not re-print the same message
+	// (which would duplicate output).
+	var cmds []tea.Cmd
+	if cmd := commitStreamTail(m, false); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+
 	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
 		m.Stream.Active = false
+		// Flush any remaining tail that hasn't hit a newline yet.
+		if cmd := commitStreamTail(m, true); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		// commitStreamTail already flushed the full text to scrollback.
+		// Skip CommitMessages for this message to avoid duplicating it.
+		m.CommittedCount = len(m.Messages)
 		commitCmds := rt.CommitMessages()
 		if len(commitCmds) > 0 {
-			return tea.Batch(commitCmds...)
+			cmds = append(cmds, commitCmds...)
 		}
 	}
-	return nil
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+// commitStreamTail flushes newly streamed assistant text (thinking and
+// content) to terminal scrollback and advances Stream.ScrollbackLen past
+// whatever it commits.  Thinking text is committed on the first call
+// (ScrollbackLen == 0).  When flush is false it commits content only
+// through the last newline (so a partial trailing line doesn't appear as
+// left-edge flicker); when true it commits the entire remaining tail.
+// Returns nil when there is nothing to commit.
+func commitStreamTail(m *Model, flush bool) tea.Cmd {
+	if len(m.Messages) == 0 {
+		return nil
+	}
+	last := m.Messages[len(m.Messages)-1]
+	if last.Role != core.RoleAssistant {
+		return nil
+	}
+
+	var cmds []tea.Cmd
+
+	// Commit thinking text once — it arrives incrementally but we
+	// only want the final version in scrollback. Commit it when
+	// content first appears (meaning thinking is done) and only once.
+	if len(last.Thinking) > 0 && !m.Stream.ThinkingCommitted && len(last.Content) > 0 {
+		cmds = append(cmds, tea.Println(last.Thinking))
+		m.Stream.ThinkingCommitted = true
+	}
+
+	if len(last.Content) <= m.Stream.ScrollbackLen {
+		return pickCmd(cmds)
+	}
+
+	delta := last.Content[m.Stream.ScrollbackLen:]
+	if flush {
+		m.Stream.ScrollbackLen = len(last.Content)
+		// Flush thinking if it hasn't been committed yet (edge case:
+		// content never triggered the thinking commit above).
+		if len(last.Thinking) > 0 && !m.Stream.ThinkingCommitted {
+			cmds = append(cmds, tea.Println(last.Thinking))
+			m.Stream.ThinkingCommitted = true
+		}
+		// Render through markdown so headings, bold, tables, etc.
+		// appear styled in scrollback instead of raw syntax.
+		cmds = append(cmds, tea.Println(renderMarkdownContent(m.MDRenderer, delta)))
+		return pickCmd(cmds)
+	}
+
+	lastNewline := strings.LastIndex(delta, "\n")
+	if lastNewline < 0 {
+		return pickCmd(cmds)
+	}
+	commit := delta[:lastNewline+1]
+	m.Stream.ScrollbackLen += len(commit)
+	rendered := renderMarkdownContent(m.MDRenderer, strings.TrimRight(commit, "\n"))
+	cmds = append(cmds, tea.Println(rendered))
+	return pickCmd(cmds)
+}
+
+// pickCmd returns the single command, a batch, or nil.
+func pickCmd(cmds []tea.Cmd) tea.Cmd {
+	switch len(cmds) {
+	case 0:
+		return nil
+	case 1:
+		return cmds[0]
+	default:
+		return tea.Batch(cmds...)
+	}
 }
 
 func applyPostInfer(rt Runtime, m *Model, ev core.Event) tea.Cmd {

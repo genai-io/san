@@ -297,6 +297,9 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Modal interlock
 		InteractivePromptActive: m.conv.Modal.Question != nil && m.conv.Modal.Question.IsActive(),
+
+		// Incremental scrollback commit
+		ScrollbackLen: m.conv.Stream.ScrollbackLen,
 	}
 }
 

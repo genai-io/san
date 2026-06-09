@@ -44,6 +44,14 @@ type RenderContext struct {
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
 	InteractivePromptActive bool
+
+	// ── Incremental scrollback commit ────────────────────────────
+	// ScrollbackLen tracks bytes of the last assistant message that
+	// have already been committed to terminal scrollback. When > 0
+	// and the last message is streaming, RenderMessageAt renders
+	// only the uncommitted portion so the live View() area stays
+	// small and cursor movement does not trigger terminal auto-scroll.
+	ScrollbackLen int
 }
 
 // inlinedToolResults precomputes which ToolResult messages should be
@@ -167,6 +175,15 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	case core.RoleNotice:
 		sb.WriteString(RenderSystemMessage(msg.Content))
 	case core.RoleAssistant:
+		// When scrollback has already committed part of this streaming
+		// message, only render the uncommitted tail so the live View()
+		// stays small and cursor movement doesn't trigger auto-scroll.
+		// Also clear thinking once content has started — the thinking
+		// phase is over and re-rendering it clutters the live view.
+		if isStreaming && p.ScrollbackLen > 0 && p.ScrollbackLen < len(msg.Content) {
+			msg.Content = msg.Content[p.ScrollbackLen:]
+			msg.Thinking = ""
+		}
 		sb.WriteString(renderAssistantWithTools(p, msg, idx, isStreaming))
 	}
 

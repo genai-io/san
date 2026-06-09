@@ -5,13 +5,17 @@ import (
 )
 
 type StreamState struct {
-	Active       bool
-	BuildingTool string
+	Active            bool
+	BuildingTool      string
+	ScrollbackLen     int  // bytes of last assistant message already committed to scrollback
+	ThinkingCommitted bool // whether thinking text has been committed to scrollback
 }
 
 func (s *StreamState) Stop() {
 	s.Active = false
 	s.BuildingTool = ""
+	s.ScrollbackLen = 0
+	s.ThinkingCommitted = false
 }
 
 type ConversationModel struct {
