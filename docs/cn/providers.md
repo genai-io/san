@@ -1,6 +1,6 @@
 # LLM 提供商详解
 
-San 支持 8 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
+San 支持 10 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
 
 ---
 
@@ -48,6 +48,8 @@ import (
     _ "github.com/genai-io/san/internal/llm/mimo"
     _ "github.com/genai-io/san/internal/llm/bigmodel"
     _ "github.com/genai-io/san/internal/llm/deepseek"
+    _ "github.com/genai-io/san/internal/llm/ollama"
+    _ "github.com/genai-io/san/internal/llm/sensenova"
 )
 ```
 
@@ -188,6 +190,28 @@ off → low → medium → high → maximum
 - **API 变量**：`DEEPSEEK_API_KEY`（可选 `DEEPSEEK_BASE_URL`，默认 `https://api.deepseek.com`）
 - **特性**：兼容 OpenAI API 格式（复用 openai-go SDK），支持 `reasoning_effort` 推理力度
 - **支持模型**：DeepSeek V4 Flash、DeepSeek V4 Pro
+
+---
+
+### 9. Ollama（本地模型）
+
+- **包**：[`internal/llm/ollama/`](../../internal/llm/ollama/)
+- **API 变量**：`OLLAMA_BASE_URL`（默认 `http://localhost:11434/v1`，无需 API Key）
+- **特性**：
+  - 本地运行开源模型，数据不出本机
+  - 兼容 OpenAI API 格式
+  - 支持任何 Ollama 兼容模型（Llama、Mistral、Qwen 等）
+
+---
+
+### 10. SenseNova（商汤日日新）
+
+- **包**：[`internal/llm/sensenova/`](../../internal/llm/sensenova/)
+- **API 变量**：`SENSENOVA_API_KEY`（可选 `SENSENOVA_BASE_URL`）
+- **特性**：
+  - 兼容 Anthropic Messages API 格式
+  - 使用静态模型目录，无需动态拉取模型列表
+  - 支持 Bearer Token 认证
 
 ---
 

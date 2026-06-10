@@ -44,6 +44,8 @@ for Anthropic). Supported providers and the env var each one reads:
 | MiMo | `MIMO_API_KEY` |
 | Z.ai (GLM) | `BIGMODEL_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
+| Ollama (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
+| SenseNova | `SENSENOVA_API_KEY` |
 
 You can also set them in `.env` or `~/.san/providers.json`.
 
