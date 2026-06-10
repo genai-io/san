@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — 2026-06-05.
+Accepted — 2026-06-05. Amended 2026-06-08 (moved to `genai-io/sdk-go`).
 
 ## Context
 
@@ -23,26 +23,45 @@ layer (`Agent`, `LLM`, `Tool`, `Tools`, `System`, `Message`, `Event`). The LLM
 provider layer (`internal/llm`) also has a well-defined `Provider` interface with
 nine backends. These contracts are mature enough to expose as a supported public API.
 
+The initial proposal placed SDK packages inside `genai-io/san/pkg/`. After
+[discussion](https://github.com/genai-io/san/pull/120#issuecomment-4644774244),
+the decision was revised to host them in the existing `genai-io/sdk-go` repo:
+
+1. **Separation of concerns**: `san` is the agent itself; the SDK is a
+   consumer-facing library. Independent versioning, dependency management,
+   and release cycles.
+2. **The repo already exists**: `genai-io/sdk-go` was created with the
+   description "Go SDK providing LLM client tools" — it is the natural home
+   for this work.
+3. **Broader audience**: SDK consumers should not need to pull the entire
+   `san` codebase just to use the LLM client or agent SDK.
+
 ## Decision
 
-### 1. Create two public SDK packages under `pkg/`
+### 1. Create two public SDK packages in `genai-io/sdk-go`
 
 ```
-pkg/
-├── llm/           # LLM Client SDK — direct model access
-│   ├── client.go      # Client: wraps Provider, implements core.LLM
-│   ├── provider.go    # Provider interface + registry (re-export from internal/llm)
-│   ├── options.go     # CompletionOptions, streaming config
-│   └── models.go      # ModelInfo, ListModels
-└── san/           # San Agent SDK — full agent lifecycle
-    ├── agent.go       # Agent: construction, config, run, think-act
-    ├── events.go      # Event stream types for external consumers
-    └── options.go     # AgentOptions (functional options pattern)
+sdk-go/
+├── pkg/
+│   ├── llm/           # LLM Client SDK — direct model access
+│   │   ├── client.go      # Client: wraps Provider, implements core.LLM
+│   │   ├── provider.go    # Provider interface + registry
+│   │   ├── options.go     # CompletionOptions, streaming config
+│   │   └── models.go      # ModelInfo, ListModels
+│   └── san/           # San Agent SDK — full agent lifecycle
+│       ├── agent.go       # Agent: construction, config, run, think-act
+│       ├── events.go      # Event stream types for external consumers
+│       └── options.go     # AgentOptions (functional options pattern)
+└── docs/
+    └── design/
+        └── decisions/
+            └── 0002-sdk-architecture.md  # this document
 ```
 
-**Rule:** SDK packages are thin public facades. They export types and functions
-that delegate to `internal/` packages. No business logic lives in `pkg/` — only
-type adaptation, ergonomic constructors, and documentation.
+**Rule:** SDK packages are thin public facades. They import from `genai-io/san`
+(`internal/llm`, `internal/agent`, `internal/core`) and re-export the stable
+subset. No business logic lives in `pkg/` — only type adaptation, ergonomic
+constructors, and documentation.
 
 ### 2. LLM Client SDK (`pkg/llm`)
 
@@ -52,7 +71,7 @@ without depending on the full agent runtime.
 **Public API surface:**
 
 ```go
-// pkg/llm — import "github.com/genai-io/san/pkg/llm"
+// pkg/llm — import "github.com/genai-io/sdk-go/pkg/llm"
 
 // ---- Provider ----
 
@@ -87,7 +106,7 @@ func (c *Client) Infer(ctx context.Context, req InferRequest) (<-chan Chunk, err
 // Convenience method for non-streaming use cases.
 func (c *Client) Complete(ctx context.Context, req InferRequest) (*InferResponse, error)
 
-// ---- Types (re-exported from core / llm) ----
+// ---- Types (re-exported from san's internal packages) ----
 
 type CompletionOptions struct { Model, SystemPrompt string; Messages []Message; ... }
 type InferRequest struct { System string; Messages []Message; Tools []ToolSchema }
@@ -103,7 +122,7 @@ type ToolCall struct { ... }
 **Usage example:**
 
 ```go
-import "github.com/genai-io/san/pkg/llm"
+import "github.com/genai-io/sdk-go/pkg/llm"
 
 func main() {
     provider, _ := llm.NewProvider(ctx, "anthropic", "api_key")
@@ -127,7 +146,7 @@ agent loop that powers the `san` CLI, but programmatically embeddable.
 **Public API surface:**
 
 ```go
-// pkg/san — import "github.com/genai-io/san/pkg/san"
+// pkg/san — import "github.com/genai-io/sdk-go/pkg/san"
 
 // ---- Agent ----
 
@@ -195,8 +214,8 @@ func (e Event) Error() (error, bool)
 
 ```go
 import (
-    "github.com/genai-io/san/pkg/san"
-    "github.com/genai-io/san/pkg/llm"
+    "github.com/genai-io/sdk-go/pkg/san"
+    "github.com/genai-io/sdk-go/pkg/llm"
 )
 
 func main() {
@@ -235,28 +254,39 @@ func main() {
 
 ### 4. Dependency direction
 
+`sdk-go` depends on `san` for the internal implementation packages. External
+consumers import only `sdk-go`:
+
 ```
-External repo
+External consumer
      │
-     ├── github.com/genai-io/san/pkg/san   (Agent SDK)
+     ├── github.com/genai-io/sdk-go/pkg/san   (Agent SDK)
      │       │
-     │       └── github.com/genai-io/san/pkg/llm   (LLM Client SDK)
+     │       └── github.com/genai-io/sdk-go/pkg/llm   (LLM Client SDK)
      │               │
-     │               └── internal/llm   (provider implementations)
+     │               └── github.com/genai-io/san/internal/llm   (provider implementations)
      │                       │
-     │                       └── internal/core  (stable contracts)
+     │                       └── github.com/genai-io/san/internal/core  (stable contracts)
      │
-     └── github.com/genai-io/san/pkg/llm   (LLM SDK — also usable standalone)
+     └── github.com/genai-io/sdk-go/pkg/llm   (LLM SDK — also usable standalone)
 ```
 
-- `pkg/llm` depends on `internal/llm` and `internal/core`.
-- `pkg/san` depends on `pkg/llm`, `internal/agent`, `internal/core`.
+- `sdk-go/pkg/llm` depends on `san/internal/llm` and `san/internal/core`.
+- `sdk-go/pkg/san` depends on `sdk-go/pkg/llm`, `san/internal/agent`, `san/internal/core`.
 - Both SDKs can be imported independently — use `pkg/llm` without `pkg/san` if
   you only need model access.
+- External consumers only need `go get github.com/genai-io/sdk-go`; the `san`
+  dependency is transitive.
 
-### 5. What stays in `internal/`
+**Future extraction option:** If the transitive `san` dependency proves too
+heavy, shared contracts (`core.LLM`, `core.Agent`, `core.Message`, etc.) can
+be extracted into `sdk-go` as canonical definitions, with `san` then depending
+on `sdk-go`. This inverts the current direction but requires more upfront work
+and is deferred until needed.
 
-All implementation details remain internal:
+### 5. What stays in `internal/` (san repo)
+
+All implementation details remain in `genai-io/san`:
 
 - `internal/llm/{anthropic,openai,google,...}` — per-provider adapters
 - `internal/agent` — agent loop implementation
@@ -265,21 +295,30 @@ All implementation details remain internal:
 - `internal/app` — TUI shell (not relevant to SDK users)
 - `internal/hook`, `internal/mcp`, `internal/plugin`, `internal/skill`, etc.
 
-The SDK packages are **facades**, not rewrites. They import from `internal/` and
-re-export the stable subset.
+The SDK packages are **facades**, not rewrites. They import from `san/internal/`
+and re-export the stable subset.
 
 ### 6. Go module
 
-No new Go module. The SDKs are subdirectories of the existing
-`github.com/genai-io/san` module:
+The SDKs live in the existing `genai-io/sdk-go` module:
 
 ```
-github.com/genai-io/san           # root module (go.mod at repo root)
-├── pkg/llm/                      # import "github.com/genai-io/san/pkg/llm"
-└── pkg/san/                      # import "github.com/genai-io/san/pkg/san"
+github.com/genai-io/sdk-go           # root module (go.mod at repo root)
+├── pkg/llm/                         # import "github.com/genai-io/sdk-go/pkg/llm"
+└── pkg/san/                         # import "github.com/genai-io/sdk-go/pkg/san"
 ```
 
-External repos add a single `go get github.com/genai-io/san` to get both SDKs.
+`sdk-go/go.mod` declares a dependency on `github.com/genai-io/san`:
+
+```
+module github.com/genai-io/sdk-go
+
+go 1.24
+
+require github.com/genai-io/san v0.X.Y
+```
+
+External repos add a single `go get github.com/genai-io/sdk-go` to get both SDKs.
 
 ## Consequences
 
@@ -292,75 +331,92 @@ External repos add a single `go get github.com/genai-io/san` to get both SDKs.
   then graduate to `pkg/san` (full agent with tool loop) as their needs grow.
 - **Thin facade, low maintenance.** SDK packages are ~200–400 lines each —
   mostly type aliases, constructor functions, and doc comments. The real logic
-  stays in `internal/` where it can evolve without breaking SDK consumers
+  stays in `san/internal/` where it can evolve without breaking SDK consumers
   (as long as the public types remain stable).
-- **Dogfooding.** The `cmd/san` CLI itself can migrate to use `pkg/san`,
+- **Dogfooding.** The `cmd/san` CLI itself can migrate to use `sdk-go/pkg/san`,
   proving the SDK is real and keeping it from rotting.
-- **No new module boundary.** Single `go.mod` means no multi-module versioning
-  complexity. SDK consumers get the same version as the CLI.
+- **Independent versioning.** `sdk-go` and `san` have separate release cycles.
+  A breaking change in `san/internal/` does not force a major bump of `sdk-go`
+  unless the public API surface changes. Conversely, SDK improvements
+  (ergonomics, docs, examples) can ship without a `san` release.
+- **Smaller consumer surface.** Consumers import `sdk-go` — a lightweight module
+  with clear public packages — rather than the full `san` module with its
+  sprawling `internal/` tree. The intent is clear: "I'm using the SDK."
 
 ### Negative / costs
 
 - **Public API commitment.** Once `pkg/` packages are imported by external repos,
   breaking changes require major version bumps or deprecation cycles. The current
-  `internal/` types (e.g., `core.Message`, `core.ToolSchema`) become part of the
-  public contract. We must be deliberate about which types we re-export.
-- **Internal ↔ pkg coupling.** SDK packages import `internal/`, which means
-  we cannot move SDKs to a separate module without first extracting the shared
-  contracts. This is acceptable for now — the single-module approach is simpler
-  and extraction can happen later if needed.
+  `san/internal/` types (e.g., `core.Message`, `core.ToolSchema`) become part of
+  the public contract. We must be deliberate about which types we re-export.
+- **Cross-repo coordination.** Changes that span `sdk-go` and `san` (e.g.,
+  adding a new provider, changing `core.LLM` interface) require coordinated PRs
+  across two repos. CI must verify compatibility.
+- **Transitive dependency.** Consumers of `sdk-go` still pull in `san` as a
+  transitive dependency. This is acceptable for now; extraction of shared
+  contracts into `sdk-go` (inverting the dependency) can be done later if
+  the `san` dependency proves too heavy.
 - **Godoc/surface area.** The exported API must be documented to the same
   standard as the internal packages. Public docs are a commitment.
-- **Versioning pressure.** The root module version (currently unpinned; `v0.0.0`
-  in practice) must adopt semver. `v0.x.y` allows breaking changes; `v1.0.0`
-  locks the public API.
+- **Versioning pressure.** `sdk-go` must adopt semver from day one. `v0.x.y`
+  allows breaking changes; `v1.0.0` locks the public API.
 
 ### Migration path for `cmd/san`
 
-Once `pkg/san` is stable, `cmd/san/main.go` can be refactored to use it:
+Once `sdk-go/pkg/san` is stable, `cmd/san/main.go` can be refactored to use it:
 
 ```
 Before:
   cmd/san → internal/app → internal/agent → internal/llm → internal/core
 
 After:
-  cmd/san → internal/app → pkg/san → pkg/llm → internal/llm → internal/core
+  cmd/san → internal/app → sdk-go/pkg/san → sdk-go/pkg/llm → internal/llm → internal/core
 ```
 
 This is a non-breaking internal refactor that proves the SDK works for the
-primary use case (CLI agent) before external consumers depend on it.
+primary use case (CLI agent) before external consumers depend on it. The `san`
+repo gains a dependency on `sdk-go`, which is appropriate since `cmd/san`
+consumes the same SDK that external users will consume.
 
 ## Implementation Plan
 
-### Phase 1: LLM Client SDK (`pkg/llm`) — ~2 days
+### Phase 0: Transfer ADR & issues (~0.5 days)
 
-1. Create `pkg/llm/` directory.
+1. Transfer this ADR doc to `genai-io/sdk-go` under `docs/design/decisions/`.
+2. Transfer related issues (e.g., #123 on provider client abstraction) to `sdk-go`.
+3. Set up `sdk-go/go.mod` with a dependency on `genai-io/san`.
+4. Update this ADR in `san` to note the transfer and point to `sdk-go`.
+
+### Phase 1: LLM Client SDK in `sdk-go/pkg/llm` — ~2 days
+
+1. Create `pkg/llm/` directory in `sdk-go`.
 2. Define public types: `Provider`, `Client`, `CompletionOptions`,
    `InferRequest`, `InferResponse`, `Chunk`, `StreamChunk`, `ModelInfo`,
    `Message`, `ToolSchema`, `ToolCall`.
-3. Implement `NewProvider()` — thin wrapper around `internal/llm` registry.
-4. Implement `Client` — thin wrapper around `internal/llm.Client`.
+3. Implement `NewProvider()` — thin wrapper around `san/internal/llm` registry.
+4. Implement `Client` — thin wrapper around `san/internal/llm.Client`.
 5. Write godoc examples.
 6. Add tests that exercise all nine providers with mock backends.
 
-### Phase 2: San Agent SDK (`pkg/san`) — ~3 days
+### Phase 2: San Agent SDK in `sdk-go/pkg/san` — ~3 days
 
-1. Create `pkg/san/` directory.
+1. Create `pkg/san/` directory in `sdk-go`.
 2. Define public types: `Agent`, `Event`, `Result`, `AgentOption`.
-3. Implement `New()` — thin wrapper around `internal/agent` construction.
+3. Implement `New()` — thin wrapper around `san/internal/agent` construction.
 4. Implement `Run()`, `ThinkAct()`, `Inbox()`, `Events()`.
 5. Write godoc examples (standalone agent, agent with tools).
 6. Add integration tests with a mock LLM.
 
 ### Phase 3: Dogfood & Polish — ~2 days
 
-1. Refactor `cmd/san` to use `pkg/san` for agent construction.
-2. Update `docs/packages/` with `pkg-llm.md` and `pkg-san.md`.
-3. Update `reference/package-map.md` to include `pkg/` packages.
-4. Write a migration guide for early adopters.
+1. Refactor `cmd/san` to use `sdk-go/pkg/san` for agent construction.
+2. Add `docs/packages/pkg-llm.md` and `docs/packages/pkg-san.md` in `sdk-go`.
+3. Write a migration guide for early adopters.
 
 ## References
 
+- [PR #120 discussion](https://github.com/genai-io/san/pull/120) — decision to move to `sdk-go`.
+- [genai-io/sdk-go](https://github.com/genai-io/sdk-go) — target repo for SDK packages.
 - [`docs/architecture.md`](../../architecture.md) — system-level architecture overview.
 - [`internal/core/agent.go`](../../../internal/core/agent.go) — `Agent` interface contract.
 - [`internal/core/llm.go`](../../../internal/core/llm.go) — `LLM` interface contract.
