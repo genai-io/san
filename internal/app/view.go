@@ -274,10 +274,11 @@ func (m model) messageRenderParams() conv.RenderContext {
 		InlinedResults: conv.PrecomputeInlinedResults(m.conv.Messages),
 
 		// Streaming + tool execution
-		StreamActive: m.conv.Stream.Active,
-		BuildingTool: m.conv.Stream.BuildingTool,
-		PendingCalls: m.conv.Tool.PendingCalls,
-		CurrentIdx:   m.conv.Tool.CurrentIdx,
+		StreamActive:  m.conv.Stream.Active,
+		BuildingTool:  m.conv.Stream.BuildingTool,
+		ScrollbackLen: m.conv.Stream.ScrollbackLen,
+		PendingCalls:  m.conv.Tool.PendingCalls,
+		CurrentIdx:    m.conv.Tool.CurrentIdx,
 
 		// Renderer env
 		Width:      m.env.Width,

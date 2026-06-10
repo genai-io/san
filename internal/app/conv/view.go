@@ -21,10 +21,11 @@ type RenderContext struct {
 	InlinedResults inlinedToolResults
 
 	// ── Streaming + in-flight tool execution ────────────────────
-	StreamActive bool
-	BuildingTool string
-	PendingCalls []core.ToolCall
-	CurrentIdx   int
+	StreamActive  bool
+	BuildingTool  string
+	ScrollbackLen int // bytes of last assistant message already in terminal scrollback
+	PendingCalls  []core.ToolCall
+	CurrentIdx    int
 
 	// ── Renderer / terminal env ─────────────────────────────────
 	Width      int
@@ -167,13 +168,20 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 	case core.RoleNotice:
 		sb.WriteString(RenderSystemMessage(msg.Content))
 	case core.RoleAssistant:
-		// Clear thinking once content has started — the thinking
-		// phase is over and re-rendering it clutters the live view.
-		// The full message is always rendered (not truncated by
-		// ScrollbackLen) so the View height stays stable and the
-		// input area doesn't jump. tailLines clips if it's too tall.
-		if isStreaming && len(msg.Content) > 0 {
-			msg.Thinking = ""
+		if isStreaming {
+			// Trim the portion already committed to terminal scrollback
+			// so it doesn't appear twice (once in scrollback, once in
+			// the live View area). The live tail stays short, which also
+			// reduces cursor movement from re-rendering and makes it
+			// easier to maintain a scrolled-up position.
+			if p.ScrollbackLen > 0 && p.ScrollbackLen < len(msg.Content) {
+				msg.Content = msg.Content[p.ScrollbackLen:]
+			}
+			// Clear thinking once content has started — the thinking
+			// phase is over and re-rendering it clutters the live view.
+			if len(msg.Content) > 0 {
+				msg.Thinking = ""
+			}
 		}
 		sb.WriteString(renderAssistantWithTools(p, msg, idx, isStreaming))
 	}
