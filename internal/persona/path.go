@@ -33,16 +33,12 @@ func IsPersonaFile(cwd, path string) bool {
 }
 
 func personaRoots(cwd string) []string {
-	var roots []string
+	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		roots = append(roots, home)
+		dirs = append(dirs, filepath.Join(home, confdir.Name, "personas"))
 	}
 	if cwd != "" {
-		roots = append(roots, cwd)
-	}
-	dirs := make([]string, 0, len(roots))
-	for _, root := range roots {
-		dirs = append(dirs, filepath.Join(root, confdir.Name, "personas"))
+		dirs = append(dirs, filepath.Join(cwd, confdir.Name, "personas"))
 	}
 	return dirs
 }
