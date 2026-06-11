@@ -11,43 +11,43 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// Embedded prompt templates. Layout:
+// Embedded prompt templates. One file per system-prompt part, mirroring the
+// four-part structure — a persona overrides a part by dropping in the same-
+// named file under its system/ directory:
 //
-//	prompts/identity.txt              — one-line persona preamble (the "identity" part)
-//	prompts/output.txt                — communication style (Tone / Updates / Behavior)
-//	prompts/engineering.txt           — engineering defaults (Restraint / Conventions / Errors)
-//	prompts/policy.txt                — safety contract
-//	prompts/compact.txt               — conversation compactor prompt
-//	prompts/guidelines/{tools,system-reminders,git,questions,tasks}.txt
-//	prompts/providers/<name>.txt      — provider-specific quirks (optional)
+//	prompts/identity.txt              — who you are (the "identity" part)
+//	prompts/behavior.txt              — how you work: style + engineering (the "behavior" part)
+//	prompts/rules.txt                 — safety + tools + system reminders (the "rules" core)
+//	prompts/rules-main.txt            — rules for the main agent only (task tracking, asking the user)
+//	prompts/rules-git.txt             — rules added only in a git repo (git safety)
+//	prompts/compact.txt               — conversation compactor prompt (standalone)
+//	prompts/providers/<name>.txt      — provider-specific quirks (optional, appended to rules)
 //
 // These compose into four parts, top to bottom:
 //
 //	You are San, …                    (identity, raw preamble)
-//	<behavior> … </behavior>          (output + engineering — main agent only)
-//	<rules> … </rules>                (policy + guidelines + provider, scope-aware)
+//	<behavior> … </behavior>          (main agent only)
+//	<rules> … </rules>                (core + main-only + git, scope-aware)
 //	<environment> … </environment>    (volatile footer)
 //
 // Identity is bare because Anthropic's standard preamble shape starts with
 // "You are X". The other parts live in a named XML envelope so the model can
 // address each as a structured unit, and so a persona can replace a whole
-// part by dropping in one file (system/<part>.md).
+// part by dropping in one file (system/<part>.md). The rules part is split
+// across three files only because two of its blocks are conditional (main-
+// agent-only, git-only); they render into a single <rules> envelope.
 //
-//go:embed prompts/*.txt prompts/guidelines/*.txt
+//go:embed prompts/*.txt
 var promptFS embed.FS
 
 // init-time read of every static template. Keeps Build() allocation-light.
 var (
-	cachedIdentity    = loadEmbed("prompts/identity.txt")
-	cachedOutput      = loadEmbed("prompts/output.txt")
-	cachedEngineering = loadEmbed("prompts/engineering.txt")
-	cachedPolicy      = loadEmbed("prompts/policy.txt")
-	cachedCompact     = loadEmbed("prompts/compact.txt")
-	cachedTools       = loadEmbed("prompts/guidelines/tools.txt")
-	cachedGit         = loadEmbed("prompts/guidelines/git.txt")
-	cachedQuestions   = loadEmbed("prompts/guidelines/questions.txt")
-	cachedTasks       = loadEmbed("prompts/guidelines/tasks.txt")
-	cachedReminders   = loadEmbed("prompts/guidelines/system-reminders.txt")
+	cachedIdentity  = loadEmbed("prompts/identity.txt")
+	cachedBehavior  = loadEmbed("prompts/behavior.txt")
+	cachedRules     = loadEmbed("prompts/rules.txt")
+	cachedRulesMain = loadEmbed("prompts/rules-main.txt")
+	cachedRulesGit  = loadEmbed("prompts/rules-git.txt")
+	cachedCompact   = loadEmbed("prompts/compact.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -134,9 +134,7 @@ func identitySection(override string) core.Section {
 func behaviorSection() core.Section {
 	return core.Section{
 		Slot: core.SlotBehavior, Name: "behavior", Source: core.Predefined,
-		Render: func() string {
-			return wrap("behavior", nil, cachedOutput+"\n\n"+cachedEngineering)
-		},
+		Render: func() string { return wrap("behavior", nil, cachedBehavior) },
 	}
 }
 
@@ -156,33 +154,22 @@ func rulesSection(scope core.Scope, isGit bool, provider string) core.Section {
 }
 
 func assembleRules(scope core.Scope, isGit bool, provider string) string {
-	blocks := []string{
-		headed("Safety", cachedPolicy),
-		headed("Tools", cachedTools),
-		headed("System reminders", cachedReminders),
-	}
+	// Each file already carries its own "## " headings, so the merged
+	// <rules> envelope reads as one structured block.
+	blocks := []string{cachedRules}
 	if scope == core.ScopeMain {
-		// Task tracking + interactive questions are main-agent behaviors.
-		blocks = append(blocks,
-			headed("Task tracking", cachedTasks),
-			headed("Asking the user", cachedQuestions),
-		)
+		// Task tracking + asking the user are main-agent behaviors.
+		blocks = append(blocks, cachedRulesMain)
 	}
 	if isGit {
-		blocks = append(blocks, headed("Git safety", cachedGit))
+		blocks = append(blocks, cachedRulesGit)
 	}
 	if provider != "" {
 		if quirks := loadEmbedOptional("prompts/providers/" + provider + ".txt"); quirks != "" {
-			blocks = append(blocks, headed("Provider notes", quirks))
+			blocks = append(blocks, quirks)
 		}
 	}
 	return strings.Join(blocks, "\n\n")
-}
-
-// headed prefixes a rules sub-block with a markdown heading so the merged
-// <rules> envelope stays legible once several blocks are concatenated.
-func headed(title, body string) string {
-	return "## " + title + "\n\n" + strings.TrimSpace(body)
 }
 
 // Options

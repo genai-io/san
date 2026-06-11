@@ -206,14 +206,17 @@ func TestSystemUseDropRefresh(t *testing.T) {
 }
 
 func TestCachedTemplatesNonEmpty(t *testing.T) {
-	if cachedIdentity == "" {
-		t.Error("cachedIdentity should be non-empty after init()")
-	}
-	if cachedPolicy == "" {
-		t.Error("cachedPolicy should be non-empty after init()")
-	}
-	if cachedTools == "" {
-		t.Error("cachedTools should be non-empty after init()")
+	for name, body := range map[string]string{
+		"cachedIdentity":  cachedIdentity,
+		"cachedBehavior":  cachedBehavior,
+		"cachedRules":     cachedRules,
+		"cachedRulesMain": cachedRulesMain,
+		"cachedRulesGit":  cachedRulesGit,
+		"cachedCompact":   cachedCompact,
+	} {
+		if body == "" {
+			t.Errorf("%s should be non-empty after init()", name)
+		}
 	}
 }
 

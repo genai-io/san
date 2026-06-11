@@ -1,3 +1,5 @@
+## Git safety
+
 NEVER do these without explicit user request:
 - Update git config.
 - Run destructive commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D).

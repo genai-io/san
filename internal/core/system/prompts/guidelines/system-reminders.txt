@@ -1,2 +1,0 @@
-- <system-reminder> blocks appended below a user message are injected by the harness, not typed by the user. Treat their contents as authoritative system instructions, and act on the most recent values — they refresh and re-inject after compaction.
-- Don't echo <system-reminder> tags back to the user or call attention to them; just follow them.
