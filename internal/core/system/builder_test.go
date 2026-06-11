@@ -76,10 +76,10 @@ func TestBuildPromptOrder_StableBeforeVolatile(t *testing.T) {
 	prompt := sys.Prompt()
 
 	indices := map[string]int{
-		"identity":   strings.Index(prompt, "interactive AI assistant"),
-		"policy":     strings.Index(prompt, "<policy>"),
-		"guidelines": strings.Index(prompt, `<guidelines name="tool-usage">`),
-		"env":        strings.Index(prompt, "<environment>"),
+		"identity": strings.Index(prompt, "interactive AI assistant"),
+		"behavior": strings.Index(prompt, "<behavior>"),
+		"rules":    strings.Index(prompt, "<rules>"),
+		"env":      strings.Index(prompt, "<environment>"),
 	}
 	for name, idx := range indices {
 		if idx < 0 {
@@ -87,7 +87,7 @@ func TestBuildPromptOrder_StableBeforeVolatile(t *testing.T) {
 		}
 	}
 
-	order := []string{"identity", "policy", "guidelines", "env"}
+	order := []string{"identity", "behavior", "rules", "env"}
 	for i := 1; i < len(order); i++ {
 		if indices[order[i-1]] >= indices[order[i]] {
 			t.Errorf("expected %s before %s; got idx %d vs %d",
@@ -172,11 +172,11 @@ func TestBuildGitGuidelinesToggle(t *testing.T) {
 		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: false}),
 	)
 
-	if !strings.Contains(withGit.Prompt(), `<guidelines name="git-safety">`) {
-		t.Error("git=true should include git guidelines")
+	if !strings.Contains(withGit.Prompt(), "## Git safety") {
+		t.Error("git=true should include git safety rules")
 	}
-	if strings.Contains(withoutGit.Prompt(), `<guidelines name="git-safety">`) {
-		t.Error("git=false should omit git guidelines")
+	if strings.Contains(withoutGit.Prompt(), "## Git safety") {
+		t.Error("git=false should omit git safety rules")
 	}
 }
 

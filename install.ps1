@@ -122,8 +122,13 @@ function Invoke-Install {
 function Invoke-Uninstall {
     Info "Uninstalling san..."
     if (Test-Path $ExePath) {
-        Remove-Item -Path $ExePath -Force
-        Info "[OK] Removed $ExePath"
+        $response = Read-Host "Remove binary '$ExePath'? [y/N]"
+        if ($response -match '^[Yy]$') {
+            Remove-Item -Path $ExePath -Force
+            Info "[OK] Removed $ExePath"
+        } else {
+            Info "Skipped binary removal."
+        }
     } else {
         Warn "Binary not found at $ExePath"
     }

@@ -10,10 +10,9 @@ package core
 type Slot uint8
 
 const (
-	SlotIdentity    Slot = iota // who-you-are charter (replaceable for subagent / custom persona)
-	SlotProvider                // provider-specific quirks
-	SlotPolicy                  // safety contract — never overridden
-	SlotGuidelines              // tool usage, git, tasks, questions (filtered by Role)
+	SlotIdentity    Slot = iota // who you are (replaceable per persona / subagent charter)
+	SlotBehavior                // how you communicate and work (style + engineering)
+	SlotRules                   // safety contract + tool / task / git protocols
 	SlotEnvironment             // cwd, git, date — VOLATILE, only changes at day rollover
 )
 
