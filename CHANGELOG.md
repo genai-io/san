@@ -3,6 +3,37 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.1] - 2026-06-11
+
+### Added
+- Volcengine Ark LLM provider ([@zhfeng](https://github.com/zhfeng) in [#178](https://github.com/genai-io/san/pull/178))
+- Windows PowerShell installer and zip release artifacts ([@yanmxa](https://github.com/yanmxa) in [#159](https://github.com/genai-io/san/pull/159))
+- Appearance panel to switch color theme in TUI ([@yanmxa](https://github.com/yanmxa) in [#149](https://github.com/genai-io/san/pull/149))
+- Ctrl+D to remove API key with confirmation ([@zhfeng](https://github.com/zhfeng) in [#158](https://github.com/genai-io/san/pull/158))
+- Ctrl+E to edit API key in place ([@laisongls](https://github.com/laisongls) in [#154](https://github.com/genai-io/san/pull/154))
+- Windows builds in release artifacts ([@zhfeng](https://github.com/zhfeng) in [#148](https://github.com/genai-io/san/pull/148))
+- Persona system design documentation ([@yanmxa](https://github.com/yanmxa) in [#144](https://github.com/genai-io/san/pull/144))
+
+### Changed
+- Simplify system prompt to four-part structure ([@yanmxa](https://github.com/yanmxa) in [#171](https://github.com/genai-io/san/pull/171))
+- Derive provider list from LLM registry instead of embedded catalog ([@zhfeng](https://github.com/zhfeng) in [#151](https://github.com/genai-io/san/pull/151))
+- Unify and deduplicate message, agent, and tool types across the codebase ([@yanmxa](https://github.com/yanmxa) in [#132](https://github.com/genai-io/san/pull/132), [#138](https://github.com/genai-io/san/pull/138), [#139](https://github.com/genai-io/san/pull/139), [#141](https://github.com/genai-io/san/pull/141))
+- Remove dead fields: `Config.Color`, `Message.Meta`, `HookInput.IsInterrupt`, `SessionPermissions.IsBypassAvailable` ([@yanmxa](https://github.com/yanmxa) in [#140](https://github.com/genai-io/san/pull/140), [#137](https://github.com/genai-io/san/pull/137), [#146](https://github.com/genai-io/san/pull/146), [#142](https://github.com/genai-io/san/pull/142))
+- Unify token-usage naming; report agent input/output separately ([@yanmxa](https://github.com/yanmxa) in [#136](https://github.com/genai-io/san/pull/136))
+- Rename compaction `Focus` to `SummaryFocus` ([@yanmxa](https://github.com/yanmxa) in [#143](https://github.com/genai-io/san/pull/143))
+- Drop `Message.From`, pass agent ID to `MessageEvent` explicitly ([@yanmxa](https://github.com/yanmxa) in [#147](https://github.com/genai-io/san/pull/147))
+- Update provider documentation ([@wangke19](https://github.com/wangke19) in [#174](https://github.com/genai-io/san/pull/174))
+
+### Fixed
+- Sync install.ps1 logic with install.sh ([@lonicerae](https://github.com/lonicerae) in [cd8f81d](https://github.com/genai-io/san/commit/cd8f81d))
+- Install script hardening ([@lonicerae](https://github.com/lonicerae) in [#162](https://github.com/genai-io/san/pull/162))
+- Clear runtime model/provider state on credential removal ([@skeeey](https://github.com/skeeey) in [#161](https://github.com/genai-io/san/pull/161))
+- Persist OLLAMA_BASE_URL across sessions ([@lonicerae](https://github.com/lonicerae) in [#122](https://github.com/genai-io/san/pull/122))
+- Add Mimo provider to UI list and resolve base URL from secrets ([@zhfeng](https://github.com/zhfeng) in [#150](https://github.com/genai-io/san/pull/150))
+- Update welcome header model name on model switch ([@zhfeng](https://github.com/zhfeng) in [#153](https://github.com/genai-io/san/pull/153))
+- Skip pages deploy workflow in forked repos ([@zhfeng](https://github.com/zhfeng) in [#145](https://github.com/genai-io/san/pull/145))
+- Fix flaky concurrency-cap retry test hang ([@yanmxa](https://github.com/yanmxa) in [#135](https://github.com/genai-io/san/pull/135))
+
 ## [v1.20.0] - 2026-06-06
 
 ### Added
