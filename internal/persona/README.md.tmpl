@@ -1,0 +1,35 @@
+# Personas
+
+A persona is a switchable bundle of a system prompt, a skill set, and a config
+overlay. Switch with `/persona <name>` (or `/persona` to open a picker).
+
+Each persona is a directory under `~/.san/personas/<name>/` (user level) or
+`.san/personas/<name>/` inside a project (project overrides user):
+
+    <name>/
+      system/
+        identity.md    # optional — who you are
+        behavior.md    # optional — how you communicate and work
+        rules.md       # optional — safety + tool/task/git rules
+      skills/
+        <skill>/SKILL.md   # optional — skills bundled with this persona
+      settings.json    # optional — description, skill states, config overlay
+
+Every file is optional. Provide only the parts you want to change; anything you
+omit falls back to San's built-in default. The smallest useful persona is a
+single `system/identity.md`.
+
+## settings.json
+
+    {
+      "description": "ML research specialist (PyTorch/JAX)",
+      "skills": { "lit-review": "active", "deep-research": "disable" },
+      "disabledTools": { "WebSearch": false },
+      "permissions": { "allow": ["Bash(pytest:*)"] }
+    }
+
+`skills` maps a skill name to `active` / `enable` / `disable`, applied in memory
+while the persona is selected. The rest is a settings overlay applied on top of
+your user and project settings while the persona is active.
+
+The `default` persona is built in and has no directory.
