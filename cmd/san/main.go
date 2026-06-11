@@ -27,6 +27,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/ollama"
 	_ "github.com/genai-io/san/internal/llm/openai"
 	_ "github.com/genai-io/san/internal/llm/sensenova"
+	_ "github.com/genai-io/san/internal/llm/volcengine"
 )
 
 var version = "1.20.0"

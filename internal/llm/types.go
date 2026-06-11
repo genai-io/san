@@ -12,17 +12,18 @@ import (
 type Name string
 
 const (
-	Anthropic Name = "anthropic"
-	OpenAI    Name = "openai"
-	Google    Name = "google"
-	Moonshot  Name = "moonshot"
-	Alibaba   Name = "alibaba"
-	MinMax    Name = "minmax"
-	BigModel  Name = "bigmodel"
-	DeepSeek  Name = "deepseek"
-	SenseNova Name = "sensenova"
-	Ollama    Name = "ollama"
-	Mimo      Name = "mimo"
+	Anthropic  Name = "anthropic"
+	OpenAI     Name = "openai"
+	Google     Name = "google"
+	Moonshot   Name = "moonshot"
+	Alibaba    Name = "alibaba"
+	MinMax     Name = "minmax"
+	BigModel   Name = "bigmodel"
+	DeepSeek   Name = "deepseek"
+	SenseNova  Name = "sensenova"
+	Ollama     Name = "ollama"
+	Mimo       Name = "mimo"
+	Volcengine Name = "volcengine"
 )
 
 // AuthMethod represents an authentication method for an LLM provider.

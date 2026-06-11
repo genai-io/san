@@ -1,6 +1,6 @@
 # LLM 提供商详解
 
-San 支持 10 个 LLM 提供商，通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
+San 支持 11 个云端 LLM 提供商（另有 Ollama 本地提供商），通过空白导入（blank import）在 [`cmd/san/main.go`](../../cmd/san/main.go) 中自动注册。
 
 ---
 
@@ -50,6 +50,7 @@ import (
     _ "github.com/genai-io/san/internal/llm/deepseek"
     _ "github.com/genai-io/san/internal/llm/ollama"
     _ "github.com/genai-io/san/internal/llm/sensenova"
+    _ "github.com/genai-io/san/internal/llm/volcengine"
 )
 ```
 
@@ -211,6 +212,17 @@ off → low → medium → high → maximum
 - **特性**：
   - 兼容 Anthropic Messages API 格式
   - 使用静态模型目录，无需动态拉取模型列表
+  - 支持 Bearer Token 认证
+
+---
+
+### 11. Volcengine Ark（火山引擎方舟）
+
+- **包**：[`internal/llm/volcengine/`](../../internal/llm/volcengine/)
+- **API 变量**：`VOLCENGINE_API_KEY`（可选 `VOLCENGINE_BASE_URL`，默认 `https://ark.cn-beijing.volces.com/api/coding`；可选 `VOLCENGINE_MODEL` 作为模型列表回退）
+- **特性**：
+  - 兼容 Anthropic Messages API 格式（复用 anthropic provider 的流式逻辑）
+  - 优先从兼容的 `/v1/models` 获取模型列表，失败时回退到 `VOLCENGINE_MODEL`
   - 支持 Bearer Token 认证
 
 ---
