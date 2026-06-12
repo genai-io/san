@@ -15,6 +15,16 @@ import (
 // Option configures a buildConfig during Build. Options are applied in order.
 type Option func(*buildConfig)
 
+// Persona holds the prompt-part overrides a persona supplies — identity,
+// behavior, and rules. An empty field means "keep San's built-in default for
+// that part". This is the system layer's view of a persona (just the prompt
+// bodies); the full on-disk bundle lives in internal/persona.Persona.
+type Persona struct {
+	Identity string
+	Behavior string
+	Rules    string
+}
+
 // buildConfig accumulates everything Build needs to render the prompt parts.
 // Options populate it; Build then constructs each part once from the resolved
 // values.
@@ -23,7 +33,7 @@ type buildConfig struct {
 	isGit    bool
 	provider string
 	env      *Environment   // volatile footer; nil when not supplied
-	identity string         // persona/user identity override; "" = built-in default
+	persona  Persona        // per-part overrides; empty fields use the default
 	subagent *SubagentBrief // non-nil for a subagent charter
 }
 
@@ -46,18 +56,18 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	if cfg.subagent != nil {
 		sys.Use(subagentIdentitySection(*cfg.subagent), caller)
 	} else {
-		sys.Use(identitySection(cfg.identity), caller)
+		sys.Use(identitySection(cfg.persona.Identity), caller)
 	}
 
 	// Behavior (slot 1): communication style + engineering defaults. Main
 	// agent only — subagents carry their working style in their charter.
 	if scope == core.ScopeMain {
-		sys.Use(behaviorSection(), caller)
+		sys.Use(behaviorSection(cfg.persona.Behavior), caller)
 	}
 
 	// Rules (slot 2): safety contract + tool/task/git protocols, scope-aware,
 	// with git folded in when isGit and any provider quirks appended.
-	sys.Use(rulesSection(scope, cfg.isGit, cfg.provider), caller)
+	sys.Use(rulesSection(scope, cfg.isGit, cfg.provider, cfg.persona.Rules), caller)
 
 	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {

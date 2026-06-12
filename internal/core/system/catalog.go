@@ -131,10 +131,21 @@ func identitySection(override string) core.Section {
 // the communication style (Tone / Updates / Behavior) and the engineering
 // defaults (Restraint / Code conventions / Error handling). Main-agent only;
 // subagents carry their working style in their charter.
-func behaviorSection() core.Section {
+func behaviorSection(override string) core.Section {
+	override = strings.TrimSpace(override)
+	source := core.Predefined
+	if override != "" {
+		source = core.FromFile
+	}
 	return core.Section{
-		Slot: core.SlotBehavior, Name: "behavior", Source: core.Predefined,
-		Render: func() string { return wrap("behavior", nil, cachedBehavior) },
+		Slot: core.SlotBehavior, Name: "behavior", Source: source,
+		Render: func() string {
+			body := override
+			if body == "" {
+				body = cachedBehavior
+			}
+			return wrap("behavior", nil, body)
+		},
 	}
 }
 
@@ -144,11 +155,20 @@ func behaviorSection() core.Section {
 // (tools and system-reminders always; task tracking and interactive questions
 // for the main agent), with git safety folded in when isGit and any provider
 // quirks appended last. Subagents get the safety + tool subset.
-func rulesSection(scope core.Scope, isGit bool, provider string) core.Section {
+func rulesSection(scope core.Scope, isGit bool, provider, override string) core.Section {
+	override = strings.TrimSpace(override)
+	source := core.Predefined
+	if override != "" {
+		source = core.FromFile
+	}
 	return core.Section{
-		Slot: core.SlotRules, Name: "rules", Source: core.Predefined,
+		Slot: core.SlotRules, Name: "rules", Source: source,
 		Render: func() string {
-			return wrap("rules", nil, assembleRules(scope, isGit, provider))
+			body := override
+			if body == "" {
+				body = assembleRules(scope, isGit, provider)
+			}
+			return wrap("rules", nil, body)
 		},
 	}
 }
@@ -177,13 +197,32 @@ func assembleRules(scope core.Scope, isGit bool, provider string) string {
 // WithIdentity replaces the default identity with a persona/user-defined one,
 // e.g. an "ML engineer" charter. An empty string keeps the default.
 func WithIdentity(text string) Option {
-	return func(cfg *buildConfig) { cfg.identity = strings.TrimSpace(text) }
+	return func(cfg *buildConfig) { cfg.persona.Identity = strings.TrimSpace(text) }
+}
+
+// WithPersona overrides any of the identity / behavior / rules parts at build
+// time from a persona. Empty fields keep San's built-in default for that part.
+// Applied wholesale, so pass every part the persona provides.
+func WithPersona(p Persona) Option {
+	return func(cfg *buildConfig) { cfg.persona = p }
 }
 
 // SwapIdentity replaces the identity part on an already-built system. Empty
 // text reverts to the built-in default. Visible on the next sys.Prompt().
 func SwapIdentity(sys core.System, text string) {
 	sys.Use(identitySection(text), "command:identity")
+}
+
+// SwapPersona replaces the identity / behavior / rules parts on an already-built
+// main-agent system — e.g. a mid-session persona switch. Empty fields revert
+// that part to the built-in default. isGit and provider are the current
+// environment facts needed to rebuild a reverted rules part. Visible on the
+// next sys.Prompt().
+func SwapPersona(sys core.System, p Persona, isGit bool, provider string) {
+	const caller = "command:persona"
+	sys.Use(identitySection(p.Identity), caller)
+	sys.Use(behaviorSection(p.Behavior), caller)
+	sys.Use(rulesSection(core.ScopeMain, isGit, provider, p.Rules), caller)
 }
 
 // WithProvider folds provider-specific quirks (prompts/providers/<name>.txt,
