@@ -47,11 +47,18 @@
         <div class="num">1</div>
         <div class="step-body">
           <h3>Install</h3>
-          <p>One command on macOS or Linux. Re-run anytime to upgrade.</p>
+          <p>One command. Re-run anytime to upgrade.</p>
+          <p style="margin-top:14px;"><b>macOS / Linux</b></p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
             <button class="copy-btn" onclick="copyEl('install-cmd', this)">Copy</button>
+          </div>
+          <p style="margin-top:14px;"><b>Windows (PowerShell)</b></p>
+          <div class="cmd">
+            <span class="prompt">&gt;</span>
+            <code id="install-cmd-win">irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex</code>
+            <button class="copy-btn" onclick="copyEl('install-cmd-win', this)">Copy</button>
           </div>
           <p style="margin-top:14px;">Prefer Go? <code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
         </div>

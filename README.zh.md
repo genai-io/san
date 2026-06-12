@@ -52,18 +52,11 @@ San 是面向终端的**专用 Agent 统一运行时**（Unified Specialized Age
 
 ## 安装
 
+**macOS / Linux**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
-
-升级直接重新执行同样的命令。卸载：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
-```
-
-<details>
-<summary><b>其他安装方式</b></summary>
 
 **Windows (PowerShell)**
 
@@ -71,9 +64,20 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-升级直接重新执行同样的命令。卸载：
+升级直接重新执行同样的命令。
+
+<details>
+<summary><b>其他方式</b></summary>
+
+**卸载**
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
+```
 
 ```powershell
+# Windows (PowerShell)
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1))) uninstall
 ```
 

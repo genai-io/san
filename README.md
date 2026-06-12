@@ -52,18 +52,11 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ## Installation
 
+**macOS / Linux**
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 ```
-
-Re-run to upgrade. To uninstall:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
-```
-
-<details>
-<summary><b>Other methods</b></summary>
 
 **Windows (PowerShell)**
 
@@ -71,9 +64,20 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-Re-run to upgrade. To uninstall:
+Re-run to upgrade.
+
+<details>
+<summary><b>Other methods</b></summary>
+
+**Uninstall**
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash -s uninstall
+```
 
 ```powershell
+# Windows (PowerShell)
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1))) uninstall
 ```
 
