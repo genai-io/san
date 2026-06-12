@@ -28,10 +28,3 @@ jobs:
         run: make cover
       - name: Vet
         run: make lint
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6
-        with:
-          files: ./coverage.out
-          slug: genai-io/san
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false

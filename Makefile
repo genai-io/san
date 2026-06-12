@@ -59,7 +59,7 @@ test:
 	go test ./...
 
 # cover runs the unit and integration tests with the race detector and writes a
-# single merged coverage profile (coverage.out) for upload to Codecov.
+# single merged coverage profile (coverage.out).
 # -coverpkg=./internal/... attributes coverage to the internal packages from
 # both suites, so end-to-end paths exercised only by the integration tests are
 # counted too (a plain `./internal/...` run drops ~6 points of real coverage).
