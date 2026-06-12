@@ -169,6 +169,7 @@ type HookOutcome struct {
 	AdditionalContext  string
 	UpdatedInput       map[string]any
 	PermissionAllow    bool               // Hook explicitly granted permission (allow path)
+	PermissionReason   string             // Reason attached to the hook permission decision
 	ForceAsk           bool               // Hook explicitly requests permission prompt (PreToolUse "ask")
 	UpdatedPermissions []PermissionUpdate // Structured permission changes from hook (PermissionRequest only)
 	HookSource         string             // Which hook made the decision (for logging)

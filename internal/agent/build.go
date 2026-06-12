@@ -7,6 +7,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -37,6 +38,7 @@ type BuildParams struct {
 	MCPTools      []core.Tool
 
 	PermissionDecider PermDecisionFunc
+	HookEngine        hook.Handler
 	InteractionFunc   tool.InteractionFunc
 	ToolProgress      func(toolCallID string, msg string)
 
@@ -112,7 +114,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 		ID:          "main",
 		LLM:         client,
 		System:      sys,
-		Tools:       tool.WithPermission(tools, pb.PermissionFunc()),
+		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pb),
 		CompactFunc: compactFunc,
 		CWD:         p.CWD,
 		OnEvent:     p.OnEvent,

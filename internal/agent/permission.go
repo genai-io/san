@@ -59,35 +59,49 @@ func NewPermissionBridge(decideFn PermDecisionFunc) *PermissionBridge {
 
 func (pb *PermissionBridge) PermissionFunc() perm.PermissionFunc {
 	return func(ctx context.Context, name string, input map[string]any) (bool, string) {
-		decision := pb.decideFn(name, input)
+		return pb.Check(ctx, name, input, false, "")
+	}
+}
 
-		switch decision.Decision {
-		case perm.Permit:
-			return true, decision.Reason
-		case perm.Reject:
-			return false, decision.Reason
-		}
+func (pb *PermissionBridge) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
+	decision := pb.decideFn(name, input)
+	if forcePrompt {
+		decision = PermDecisionResult{Decision: perm.Prompt, Reason: reason, ToolName: name, Description: reason}
+	}
 
-		req := &PermBridgeRequest{
-			RequestID:   decision.RequestID,
-			ToolName:    decision.ToolName,
-			Description: decision.Description,
-			Input:       input,
-			Response:    make(chan PermBridgeResponse, 1),
-		}
+	switch decision.Decision {
+	case perm.Permit:
+		return true, decision.Reason
+	case perm.Reject:
+		return false, decision.Reason
+	}
 
-		select {
-		case pb.requests <- req:
-		case <-ctx.Done():
-			return false, "cancelled"
-		}
+	if decision.ToolName == "" {
+		decision.ToolName = name
+	}
+	if decision.Description == "" {
+		decision.Description = decision.Reason
+	}
 
-		select {
-		case <-ctx.Done():
-			return false, "cancelled"
-		case resp := <-req.Response:
-			return resp.Allow, resp.Reason
-		}
+	req := &PermBridgeRequest{
+		RequestID:   decision.RequestID,
+		ToolName:    decision.ToolName,
+		Description: decision.Description,
+		Input:       input,
+		Response:    make(chan PermBridgeResponse, 1),
+	}
+
+	select {
+	case pb.requests <- req:
+	case <-ctx.Done():
+		return false, "cancelled"
+	}
+
+	select {
+	case <-ctx.Done():
+		return false, "cancelled"
+	case resp := <-req.Response:
+		return resp.Allow, resp.Reason
 	}
 }
 

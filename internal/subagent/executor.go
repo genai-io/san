@@ -52,7 +52,7 @@ type runConfig struct {
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
-// inheritance; hookEngine, when non-nil, fires PreToolUse hooks during runs.
+// inheritance; hookEngine, when non-nil, fires subagent lifecycle hooks.
 func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hookEngine hook.Handler) *Executor {
 	return &Executor{
 		provider:      llmProvider,

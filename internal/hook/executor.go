@@ -193,9 +193,11 @@ func (e *Engine) applySpecificOutput(outcome HookOutcome, hso *HookSpecificOutpu
 		outcome.BlockReason = hso.PermissionDecisionReason
 	case "allow":
 		outcome.PermissionAllow = true
+		outcome.PermissionReason = hso.PermissionDecisionReason
 		outcome.HookSource = "PreToolUse"
 	case "ask":
 		outcome.ForceAsk = true
+		outcome.PermissionReason = hso.PermissionDecisionReason
 	}
 
 	if hso.UpdatedInput != nil {
