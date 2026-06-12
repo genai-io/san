@@ -31,6 +31,12 @@ type Registry struct {
 	// Used by the session recorder to emit skill.state.changed records.
 	// Called with the read lock NOT held — recorder may do I/O.
 	onStateChange func(name, previous, current, caller string)
+
+	// personaSkills records the skills the active persona loaded into the
+	// registry (each with the global skill its name displaced, if any), so
+	// ClearPersona removes exactly them and restores the shadowed ones without
+	// touching skills.json. nil when no persona skills are loaded.
+	personaSkills []personaSkill
 }
 
 // StateChangeObserver is the callback shape SetStateChangeObserver registers.

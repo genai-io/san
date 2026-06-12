@@ -56,6 +56,10 @@ const (
 
 	// ScopeProject is .san/skills/ (San project level, highest priority)
 	ScopeProject
+
+	// ScopePersona is the selected persona's skills/ — loaded in-memory at the
+	// highest priority and never persisted to skills.json.
+	ScopePersona
 )
 
 // String returns the display name for the scope.
@@ -73,6 +77,8 @@ func (s SkillScope) String() string {
 		return "project-plugin"
 	case ScopeProject:
 		return "project"
+	case ScopePersona:
+		return "persona"
 	default:
 		return "unknown"
 	}
