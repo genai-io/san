@@ -23,9 +23,29 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalesceBool(overlay.AllowBypass, base.AllowBypass)
 	result.Identity = coalesce(overlay.Identity, base.Identity)
+	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 
 	return result
+}
+
+// ApplyPersonaOverlay merges a persona's settings.json overlay on top of the
+// resolved base settings, as the highest file-level layer. Maps merge per key
+// (a persona can even re-enable a tool a lower layer disabled, via
+// "disabledTools": {"X": false}); permission allow/deny/ask are deduplicated
+// unions, so a persona can tighten but never loosen them. A nil overlay
+// returns base unchanged.
+//
+// The overlay's own Persona/Identity selectors are ignored: a persona cannot
+// re-select the active persona (which would be circular) or flip the identity.
+func ApplyPersonaOverlay(base, overlay *Data) *Data {
+	if overlay == nil {
+		return base
+	}
+	ov := overlay.Clone()
+	ov.Persona = ""
+	ov.Identity = ""
+	return mergeSettings(base, ov)
 }
 
 // mergeSelfLearn does a field-level merge of the L1 configuration: integers

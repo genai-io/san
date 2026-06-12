@@ -14,6 +14,7 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 		SearchProvider: "exa",
 		AllowBypass:    &yes,
 		Identity:       "go-reviewer",
+		Persona:        "ml-researcher",
 		SelfLearn: SelfLearnSettings{
 			Memory: SelfLearnMemory{Enabled: true, EveryTurns: 7, MaxKB: 15},
 			Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, AllowUpdateUserCreated: true},
@@ -36,6 +37,9 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 	}
 	if dst.Identity != src.Identity {
 		t.Errorf("Identity: got %q, want %q", dst.Identity, src.Identity)
+	}
+	if dst.Persona != src.Persona {
+		t.Errorf("Persona: got %q, want %q", dst.Persona, src.Persona)
 	}
 	// SelfLearn is value-typed; the whole struct (incl. nested Memory /
 	// Skills) must survive. Skipping this row caused /config to silently
