@@ -32,7 +32,7 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ### Open architecture
 
-- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Ollama (local); swap via `/model`.
+- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local); swap via `/model`.
 - **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.
 - **Personas** — Markdown identities scoped to user or project; swap via `/identity` ([details](docs/concepts/harness-channels.md#identity-custom-personas)).
 - **Skills & extensions** — Claude Code skills, plugins, and MCP servers run unmodified; sandboxed subagents; lifecycle hooks (shell, LLM, agent, HTTP); auto-loaded project memory.
@@ -40,9 +40,12 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ### Engineering
 
-- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
+- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
+- **Permission system** — Mode-based access control: ask (default), auto-accept, and plan mode. Toggle with `Shift+Tab`. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
 - **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
-- **Session persistence** — Auto-save, resume, fork, and automatic context compaction.
+- **Session persistence** — Auto-save, resume (`--continue`, `--resume`), fork (`/fork`), and automatic context compaction (`/compact`).
+- **Cost tracking** — Per-message and per-session token cost tracking across all providers.
+- **Theme & appearance** — Switch color themes in TUI via the `/config` Appearance panel; "auto" theme matches your terminal.
 - **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
 - **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`san inspector`).
 
@@ -94,20 +97,42 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ## Usage
 
 ```bash
-san                            # interactive
-san "explain this function"    # one-shot
-cat main.go | san "review"     # piped input
-san --continue                 # resume latest session
-san --resume                   # pick a past session
-san inspector                  # open session transcript viewer
+san                              # interactive
+san "explain this function"      # one-shot
+san -p "do something"            # non-interactive print mode (no TUI)
+echo "data" | san -p "analyze"   # piped input in print mode
+san --continue                   # resume latest session
+san --resume                     # pick a past session
+san --resume <session-id>        # resume specific session by ID
+san --plugin-dir <path>          # load plugins from a specific directory
+
+# Subcommands
+san inspector                    # open session transcript viewer
+san agent run --type Explore --prompt "find main.go"  # run a headless agent
+san plugin list                  # list installed plugins
+san plugin install <ref>         # install a plugin
+san plugin enable <name>         # enable a plugin
+san plugin disable <name>        # disable a plugin
+san plugin uninstall <name>      # uninstall a plugin
+san mcp add <name> -- <cmd>      # add an MCP server (stdio)
+san mcp add --transport http <name> <url>  # add an MCP server (HTTP/SSE)
+san mcp list                     # list MCP servers
+san mcp get <name>               # get MCP server details
+san mcp edit <name>              # edit MCP server config in $EDITOR
+san mcp remove <name>            # remove an MCP server
 ```
 
 | What | How |
 |---|---|
 | Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| All slash commands | `/help` (`/identity`, `/search`, `/skills`, `/agents`, `/mcp`, `/compact`, …) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept · plan) |
+| Search / identity / memory | `/search` · `/identity` · `/memory` |
+| Skills / agents / tools | `/skills` · `/agents` · `/tools` |
+| Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
+| Session / loop / misc | `/fork` · `/compact` · `/loop` · `/glob` · `/init` · `/clear` |
+| All slash commands | `/help` |
+| Send · newline · stop | `Enter` · `Alt+Enter` · `Esc` |
 | Expand tool · cancel · exit | `Ctrl+O` · `Ctrl+C` · `Ctrl+D` |
 
 For API keys, set the matching env var (see Credentials below) or paste when prompted on first launch. Full walkthrough: [`docs/guides/getting-started.md`](docs/guides/getting-started.md).
@@ -132,6 +157,7 @@ Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user)
 | **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **SenseNova** | `SENSENOVA_API_KEY` |
 | **Mimo** | `MIMO_API_KEY` |
+| **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |
@@ -159,12 +185,15 @@ projects/         # Session transcripts + indexes
 Project-level (`.san/`):
 
 ```
-settings.json      # Permissions, hooks, disabled tools
-mcp.json           # MCP server definitions
-identities/*.md    # Project-scoped personas (override user-level)
-agents/*.md        # Subagent definitions
-skills/*/SKILL.md  # Skills
-commands/*.md      # Slash commands
+settings.json       # Permissions, hooks, disabled tools
+mcp.json            # MCP server definitions (team shared)
+mcp.local.json      # MCP server definitions (personal, git-ignored)
+identities/*.md     # Project-scoped personas (override user-level)
+agents/*.md         # Subagent definitions
+skills/*/SKILL.md   # Skills
+commands/*.md       # Slash commands
+plugins/            # Project-level plugins
+plugins-local/      # Local plugins (git-ignored)
 ```
 
 </details>
