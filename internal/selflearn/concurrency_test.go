@@ -55,8 +55,13 @@ func TestSnapshotIsCopiedBeforeGoroutine(t *testing.T) {
 func TestConcurrentObserveIsRaceFree(t *testing.T) {
 	var fired atomic.Int64
 	hold := make(chan struct{})
+	fireSignal := make(chan struct{}, 1)
 	review := func(_ ReviewKind, _ []core.Message) {
 		fired.Add(1)
+		select {
+		case fireSignal <- struct{}{}: // announce the first fire
+		default:
+		}
 		<-hold // block until the test releases — keeps inFlight=true
 	}
 	r := New(Config{
@@ -76,11 +81,21 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	close(hold) // release the one in-flight review
 
-	// We do not assert an exact fire count — the point is that -race finds
-	// no races. But there should have been at least one fire (the first
-	// trigger always wins) and at most goroutines*perG (loose upper bound).
+	// The review that wins the in-flight slot runs in its own goroutine (see
+	// Reviewer.Observe), so wait for it to actually fire before reading the
+	// counter — otherwise this races the async review under load and can
+	// observe 0. The first trigger always wins, so a fire is guaranteed.
+	select {
+	case <-fireSignal:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected at least one review to fire")
+	}
+	close(hold) // release the in-flight review
+
+	// We do not assert an exact fire count — the point is that -race finds no
+	// races. At least one fired (waited for above); the upper bound is a loose
+	// sanity check.
 	got := fired.Load()
 	if got < 1 || got > int64(goroutines*perG) {
 		t.Fatalf("fire count %d outside plausible bounds [1, %d]", got, goroutines*perG)
