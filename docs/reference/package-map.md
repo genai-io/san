@@ -61,6 +61,7 @@ Configuration and supporting capabilities:
 | --- | --- | --- |
 | `internal/setting` | `feature` | Settings loading, merge, permissions, operation mode, workdir, env. |
 | `internal/identity` | `feature` | Identity/persona registry, template, paths. |
+| `internal/persona` | `feature` | Persona registry (system-prompt parts, skills, settings overlay), template, paths. |
 | `internal/search` | `feature` | Search provider implementations and factory. |
 | `internal/inspector` | `feature` | Transcript inspector server, replay, stream, embedded UI. |
 | `internal/worktree` | `feature` | Worktree operations and hook integration. |

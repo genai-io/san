@@ -19,6 +19,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -88,6 +89,7 @@ func initExtensions(cwd string) {
 	}
 	skill.Initialize(skill.Options{CWD: cwd})
 	identity.Initialize(cwd)
+	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
 		DynamicProviders:   []func() []command.Info{skillCommandInfos},

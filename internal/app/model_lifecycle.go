@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
@@ -39,6 +40,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.configureAsyncHookCallback()
 	m.ensureMemoryContextLoaded()
 	m.ReconfigureAgentTool()
+	m.applyPersonaSkills()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
 	if err := m.applyRunOptions(opts); err != nil {
@@ -113,6 +115,7 @@ func (m *model) ReloadPluginBackedState() error {
 	subagent.Initialize(subagent.Options{CWD: m.env.CWD, PluginAgentPaths: pluginAgentPaths})
 	mcp.Initialize(mcp.Options{CWD: m.env.CWD, PluginServers: pluginMCPServers})
 	setting.Initialize(setting.Options{CWD: m.env.CWD})
+	persona.Initialize(m.env.CWD)
 
 	m.services.refreshAfterReload()
 	m.userInput.Identity.SetRegistry(m.services.Identity)
@@ -122,6 +125,7 @@ func (m *model) ReloadPluginBackedState() error {
 	}
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
+	m.applyPersonaSkills()
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for SessionStart/PostCompact.

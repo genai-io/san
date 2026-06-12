@@ -29,9 +29,10 @@ type BuildParams struct {
 	// recursive spawning).
 	AgentDirectory func() string
 
-	// IdentityText, when non-empty, replaces the default identity slot with
-	// a user-defined persona. Sourced from ~/.san/identities/<name>.md.
-	IdentityText string
+	// Persona overrides the system-prompt parts (identity / behavior / rules)
+	// from the active persona — or just the Identity part from a user identity
+	// when no persona is selected. Empty fields keep San's built-in defaults.
+	Persona system.Persona
 
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
@@ -55,7 +56,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 
 	sys := system.Build(core.ScopeMain,
 		system.WithProvider(client.Name()),
-		system.WithIdentity(p.IdentityText),
+		system.WithPersona(p.Persona),
 		system.WithGitGuidelines(p.IsGit),
 		system.WithEnvironment(system.Environment{
 			Cwd:     p.CWD,

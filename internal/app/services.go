@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/identity"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/selflearn"
@@ -42,6 +43,7 @@ type services struct {
 	Plugin   *plugin.Registry
 	Agent    *agent.Task
 	Identity *identity.Registry
+	Persona  *persona.Registry
 	Reminder *reminder.Service
 
 	// SelfLearn groups the L1 self-learning state. Reviewer / Cancel / Live
@@ -94,6 +96,7 @@ func newServices() services {
 		Plugin:    plugin.Default(),
 		Agent:     agent.Default(),
 		Identity:  identity.Default(),
+		Persona:   persona.Default(),
 		Reminder:  reminder.NewService(),
 		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator()},
 	}
@@ -110,4 +113,5 @@ func (s *services) refreshAfterReload() {
 	s.Subagent = subagent.Default()
 	s.MCP = mcp.DefaultRegistry()
 	s.Identity = identity.Default()
+	s.Persona = persona.Default()
 }

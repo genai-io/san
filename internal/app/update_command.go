@@ -32,6 +32,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		Tracker: m.services.Tracker,
 		Cron:    m.services.Cron,
 		ToolSvc: m.services.Tool,
+		Persona: m.services.Persona,
 
 		// Env callbacks
 		GetThinkingEffort: func() string { return m.env.EffectiveThinkingEffort() },
@@ -54,6 +55,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ResetCronQueue:          m.ResetCronQueue,
 		ForkSession:             m.forkSession,
 		RunSelfLearnDemo:        m.runSelfLearnDemo,
+		SetActivePersona:        m.setActivePersona,
 	}
 }
 

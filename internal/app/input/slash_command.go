@@ -18,6 +18,7 @@ import (
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -57,6 +58,7 @@ type SlashCommandEnv struct {
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
 	Command *command.Registry
+	Persona *persona.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and
 	// can't be imported here without a cycle, so its reads/writes are
@@ -82,6 +84,7 @@ type SlashCommandEnv struct {
 	ResetCronQueue          func()
 	ForkSession             func() (originalSessionID string, err error)
 	RunSelfLearnDemo        func()
+	SetActivePersona        func(name string) error
 }
 
 type SlashCommandController struct {
@@ -114,9 +117,57 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"loop":           (*SlashCommandController).handleLoopCommand,
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handleIdentityCommand,
+		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
+}
+
+// handlePersonaCommand switches the active persona. Bare /persona lists the
+// available personas; /persona <name> switches to one ("default" or empty
+// clears the override back to San's built-ins).
+func (c *SlashCommandController) handlePersonaCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	name := strings.TrimSpace(args)
+	if name == "" {
+		return c.personaList(), nil, nil
+	}
+	if c.env.SetActivePersona == nil {
+		return "Persona switching is unavailable.", nil, nil
+	}
+	if err := c.env.SetActivePersona(name); err != nil {
+		return "Failed to switch persona: " + err.Error(), nil, nil
+	}
+	if name == persona.DefaultName {
+		return "Persona cleared (built-in default).", nil, nil
+	}
+	return "Persona set to: " + name, nil, nil
+}
+
+// personaList renders the available personas, marking the active one.
+func (c *SlashCommandController) personaList() string {
+	if c.env.Persona == nil {
+		return "No personas available."
+	}
+	active := ""
+	if c.env.Setting != nil {
+		if snap := c.env.Setting.Snapshot(); snap != nil {
+			active = snap.Persona
+		}
+	}
+	var b strings.Builder
+	b.WriteString("Available personas (use /persona <name>):\n")
+	for _, p := range c.env.Persona.List() {
+		marker := "  "
+		if p.Name == active || (active == "" && p.IsBuiltin()) {
+			marker = "● "
+		}
+		b.WriteString(marker + p.Name)
+		if p.Description != "" {
+			b.WriteString(" — " + p.Description)
+		}
+		b.WriteByte('\n')
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 func (c SlashCommandController) Execute(ctx context.Context, inputText string) (string, tea.Cmd, bool) {

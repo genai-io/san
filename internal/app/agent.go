@@ -20,6 +20,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/setting"
@@ -55,6 +56,54 @@ func (m *model) activeIdentityBody() string {
 			zap.String("identity", snap.Identity))
 	}
 	return body
+}
+
+// activePersona returns the currently-selected persona, or nil for the
+// built-in default (no settings.persona, or it doesn't resolve). A configured
+// name that doesn't resolve logs a warning and falls back to the default.
+func (m *model) activePersona() *persona.Persona {
+	if m.services.Setting == nil || m.services.Persona == nil {
+		return nil
+	}
+	snap := m.services.Setting.Snapshot()
+	if snap == nil || snap.Persona == "" || snap.Persona == persona.DefaultName {
+		return nil
+	}
+	p, ok := m.services.Persona.Get(snap.Persona)
+	if !ok || p.IsBuiltin() {
+		log.Logger().Warn("configured persona not found; using built-in default",
+			zap.String("persona", snap.Persona))
+		return nil
+	}
+	return p
+}
+
+// personaPrompt resolves the system.Persona (prompt-part overrides) to build
+// with. The active persona supplies all three parts; with no persona selected,
+// only the identity part is set (from the active identity, preserving /identity).
+func (m *model) personaPrompt() system.Persona {
+	if p := m.activePersona(); p != nil {
+		return system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
+	}
+	return system.Persona{Identity: m.activeIdentityBody()}
+}
+
+// applyPersonaSkills loads the active persona's bundled skills into the skill
+// registry (in-memory, active by default), or clears them when no persona is
+// selected. The skills-directory reminder picks the set up on its next emit.
+func (m *model) applyPersonaSkills() {
+	if m.services.Skill == nil {
+		return
+	}
+	if p := m.activePersona(); p != nil {
+		var states map[string]string
+		if p.Settings != nil {
+			states = p.Settings.Skills
+		}
+		m.services.Skill.LoadPersona(p.SkillDirs, states)
+		return
+	}
+	m.services.Skill.ClearPersona()
 }
 
 func (m *model) buildAgentParams() agent.BuildParams {
@@ -109,7 +158,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		IsGit:   m.env.IsGit,
 
 		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
-		IdentityText:   m.activeIdentityBody(),
+		Persona:        m.personaPrompt(),
 
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,
