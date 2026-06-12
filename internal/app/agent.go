@@ -113,6 +113,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,
+		HookEngine:    m.services.Hook,
 
 		InteractionFunc: func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
 			return m.conv.ProgressHub.Ask(ctx, 0, req)

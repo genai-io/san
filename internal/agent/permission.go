@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -68,26 +69,42 @@ func (pb *PermissionBridge) PermissionFunc() perm.PermissionFunc {
 			return false, decision.Reason
 		}
 
-		req := &PermBridgeRequest{
+		return pb.prompt(ctx, &PermBridgeRequest{
 			RequestID:   decision.RequestID,
 			ToolName:    decision.ToolName,
 			Description: decision.Description,
 			Input:       input,
-			Response:    make(chan PermBridgeResponse, 1),
-		}
+		})
+	}
+}
 
-		select {
-		case pb.requests <- req:
-		case <-ctx.Done():
-			return false, "cancelled"
-		}
+// ForcePromptFunc returns a prompt that asks the user directly, skipping
+// the configured decider. Used when a PreToolUse hook answers "ask": the
+// hook's reason becomes the prompt description.
+func (pb *PermissionBridge) ForcePromptFunc() tool.ForcePromptFunc {
+	return func(ctx context.Context, name string, input map[string]any, reason string) (bool, string) {
+		return pb.prompt(ctx, &PermBridgeRequest{
+			ToolName:    name,
+			Description: reason,
+			Input:       input,
+		})
+	}
+}
 
-		select {
-		case <-ctx.Done():
-			return false, "cancelled"
-		case resp := <-req.Response:
-			return resp.Allow, resp.Reason
-		}
+func (pb *PermissionBridge) prompt(ctx context.Context, req *PermBridgeRequest) (bool, string) {
+	req.Response = make(chan PermBridgeResponse, 1)
+
+	select {
+	case pb.requests <- req:
+	case <-ctx.Done():
+		return false, "cancelled"
+	}
+
+	select {
+	case <-ctx.Done():
+		return false, "cancelled"
+	case resp := <-req.Response:
+		return resp.Allow, resp.Reason
 	}
 }
 
