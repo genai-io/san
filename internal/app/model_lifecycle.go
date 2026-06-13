@@ -41,6 +41,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.ensureMemoryContextLoaded()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
 	if err := m.applyRunOptions(opts); err != nil {
@@ -124,6 +125,7 @@ func (m *model) ReloadPluginBackedState() error {
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for SessionStart/PostCompact.

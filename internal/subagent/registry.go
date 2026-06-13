@@ -10,9 +10,10 @@ import (
 type Registry struct {
 	mu           sync.RWMutex
 	agents       map[string]*AgentConfig
-	userStore    *AgentStore // User-level enabled/disabled states
-	projectStore *AgentStore // Project-level enabled/disabled states
-	cwd          string      // Current working directory
+	userStore    *AgentStore     // User-level enabled/disabled states
+	projectStore *AgentStore     // Project-level enabled/disabled states
+	personaAllow map[string]bool // active persona's visible-agent allow-list (nil = no restriction)
+	cwd          string          // Current working directory
 }
 
 // NewRegistry creates a new agent registry
@@ -136,6 +137,12 @@ func (r *Registry) IsEnabled(name string) bool {
 
 	lowerName := strings.ToLower(name)
 
+	// The active persona's allow-list restricts the visible set: an agent not
+	// on it is treated as disabled while that persona is selected.
+	if r.personaAllow != nil && !r.personaAllow[lowerName] {
+		return false
+	}
+
 	// Check project store first (higher priority)
 	if r.projectStore != nil && r.projectStore.IsDisabled(lowerName) {
 		return false
@@ -187,8 +194,41 @@ func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
 	return make(map[string]bool)
 }
 
+// LoadPersona restricts the visible agent set to an allow-list while a persona
+// is active: only the named agents are spawnable and shown in the agents
+// directory. An empty/blank list clears the restriction (all agents visible).
+// In-memory only — never written to the user/project enable-disable stores, so
+// it composes with them and disappears when the persona is cleared.
+func (r *Registry) LoadPersona(allow []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	m := make(map[string]bool, len(allow))
+	for _, n := range allow {
+		if n = strings.ToLower(strings.TrimSpace(n)); n != "" {
+			m[n] = true
+		}
+	}
+	if len(m) == 0 {
+		r.personaAllow = nil
+		return
+	}
+	r.personaAllow = m
+}
+
+// ClearPersona removes any persona allow-list, making all agents visible again
+// (subject to the user/project enable-disable stores).
+func (r *Registry) ClearPersona() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.personaAllow = nil
+}
+
 // isDisabledInternal checks if an agent is disabled (must be called with lock held)
 func (r *Registry) isDisabledInternal(name string) bool {
+	if r.personaAllow != nil && !r.personaAllow[name] {
+		return true
+	}
 	if r.projectStore != nil && r.projectStore.IsDisabled(name) {
 		return true
 	}
