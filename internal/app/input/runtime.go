@@ -25,7 +25,6 @@ type OverlayDeps struct {
 	ReloadPluginState       func() error
 	LoadSession             func(string) error
 	SetActivePersona        func(name string) error
-	CreatePersona           func(name string) (tea.Cmd, error)
-	EditPersona             func(name string) tea.Cmd
+	OpenPersona             func(name string) tea.Cmd
 	DeletePersona           func(name string) error
 }

@@ -1,13 +1,14 @@
 // Imperative user-driven model actions that don't fit a single sub-feature:
 // switching the active persona with a hot-patch of the running agent's prompt
-// parts and skills, plus editing and deleting personas from the picker.
+// parts and skills, plus opening and deleting personas from the picker.
 package app
 
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
+	"runtime"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -72,10 +73,11 @@ func (m *model) setActivePersona(name string) error {
 	return nil
 }
 
-// editPersona opens the named persona's files in $EDITOR — the identity prompt
-// if present, else settings.json, else the directory. The built-in default has
-// no files to edit.
-func (m *model) editPersona(name string) tea.Cmd {
+// openPersona opens the named persona's files for editing with the OS default
+// handler — no $EDITOR / terminal editor required, and it doesn't take over the
+// TUI. Opens the identity prompt if present, else settings.json, else the
+// directory. The built-in default has no files to open.
+func (m *model) openPersona(name string) tea.Cmd {
 	if m.services.Persona == nil {
 		return nil
 	}
@@ -83,15 +85,38 @@ func (m *model) editPersona(name string) tea.Cmd {
 	if !ok || p.IsBuiltin() || p.Dir == "" {
 		return nil
 	}
-	target := p.Dir
+	target, isFile := p.Dir, false
 	for _, rel := range []string{filepath.Join("system", "identity.md"), "settings.json"} {
 		cand := filepath.Join(p.Dir, rel)
 		if info, err := os.Stat(cand); err == nil && !info.IsDir() {
-			target = cand
+			target, isFile = cand, true
 			break
 		}
 	}
-	return m.StartExternalEditor(target)
+	return func() tea.Msg {
+		_ = openInOS(target, isFile)
+		return nil
+	}
+}
+
+// openInOS launches the OS default handler for path without blocking the TUI:
+// macOS `open` (`-t` = default text editor for files), Linux `xdg-open`,
+// Windows `start`.
+func openInOS(path string, isFile bool) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		if isFile {
+			cmd = exec.Command("open", "-t", path)
+		} else {
+			cmd = exec.Command("open", path)
+		}
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", path)
+	default:
+		cmd = exec.Command("xdg-open", path)
+	}
+	return cmd.Start()
 }
 
 // deletePersona removes a user/project persona's directory. If it was the
@@ -119,61 +144,4 @@ func (m *model) deletePersona(name string) error {
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
 	return nil
-}
-
-// createPersona scaffolds a new user-scope persona (system/identity.md +
-// settings.json), switches to it, and opens the prompt in $EDITOR.
-func (m *model) createPersona(name string) (tea.Cmd, error) {
-	name = sanitizePersonaName(name)
-	if name == "" {
-		return nil, fmt.Errorf("invalid persona name")
-	}
-	if name == persona.DefaultName {
-		return nil, fmt.Errorf("%q is reserved", name)
-	}
-	if m.services.Persona == nil {
-		return nil, fmt.Errorf("persona registry unavailable")
-	}
-	if _, exists := m.services.Persona.Get(name); exists {
-		return nil, fmt.Errorf("persona %q already exists", name)
-	}
-
-	root, err := persona.UserDir()
-	if err != nil {
-		return nil, err
-	}
-	dir := filepath.Join(root, name)
-	if err := os.MkdirAll(filepath.Join(dir, "system"), 0o755); err != nil {
-		return nil, err
-	}
-	identity := filepath.Join(dir, "system", "identity.md")
-	if err := os.WriteFile(identity, []byte("You are "+name+".\n"), 0o644); err != nil {
-		return nil, err
-	}
-	_ = os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{\n  \"description\": \"\"\n}\n"), 0o644)
-
-	m.services.Persona.Reload()
-	_ = m.setActivePersona(name)
-	return m.StartExternalEditor(identity), nil
-}
-
-// sanitizePersonaName reduces a free-form name to a safe kebab-case directory
-// name (lowercase letters, digits, single dashes; trimmed).
-func sanitizePersonaName(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	prevDash := false
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-			prevDash = false
-		case r == '-' || r == '_' || r == ' ':
-			if b.Len() > 0 && !prevDash {
-				b.WriteByte('-')
-				prevDash = true
-			}
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }

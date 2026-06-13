@@ -109,7 +109,7 @@ func TestPersonaSelector_DeleteFlowEmitsMsg(t *testing.T) {
 	}
 }
 
-func TestPersonaSelector_EditEmitsMsg(t *testing.T) {
+func TestPersonaSelector_OpenEmitsMsg(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	writeUserPersona(t, home, "tester")
@@ -119,51 +119,15 @@ func TestPersonaSelector_EditEmitsMsg(t *testing.T) {
 	if !selectByName(&s, "tester") {
 		t.Fatal("tester persona should be listed")
 	}
-	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlE})
+	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlO})
 	if cmd == nil {
-		t.Fatal("Ctrl+E should emit an edit message")
+		t.Fatal("Ctrl+O should emit an open message")
 	}
-	if msg, ok := cmd().(PersonaEditMsg); !ok || msg.Name != "tester" {
-		t.Fatalf("got %#v, want PersonaEditMsg{tester}", cmd())
-	}
-}
-
-func TestPersonaSelector_NewFlowEmitsCreateMsg(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	s := NewPersonaSelector(persona.NewRegistry(""), nil)
-	_ = s.EnterSelect(80, 24)
-
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlA})
-	if !s.newActive {
-		t.Fatal("Ctrl+A should open the new-persona name input")
-	}
-	for _, r := range "my-new" {
-		s.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-	}
-	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter})
-	if cmd == nil {
-		t.Fatal("Enter should emit a create message")
-	}
-	msg, ok := cmd().(PersonaCreateMsg)
-	if !ok || msg.Name != "my-new" {
-		t.Fatalf("got %#v, want PersonaCreateMsg{my-new}", cmd())
+	if msg, ok := cmd().(PersonaOpenMsg); !ok || msg.Name != "tester" {
+		t.Fatalf("got %#v, want PersonaOpenMsg{tester}", cmd())
 	}
 	if s.IsActive() {
-		t.Error("picker should close after submitting a new name")
-	}
-}
-
-func TestPersonaSelector_NewInputEscReturnsToList(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	s := NewPersonaSelector(persona.NewRegistry(""), nil)
-	_ = s.EnterSelect(80, 24)
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlA})
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
-	if s.newActive {
-		t.Error("Esc should leave the new-input mode")
-	}
-	if !s.IsActive() {
-		t.Error("Esc from new-input should return to the list, not close the picker")
+		t.Error("picker should close after opening")
 	}
 }
 
@@ -174,8 +138,8 @@ func TestPersonaSelector_NoActionsOnBuiltin(t *testing.T) {
 	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD}); cmd != nil || s.confirmDelete {
 		t.Error("Ctrl+D on the built-in default should be a no-op")
 	}
-	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlE}); cmd != nil {
-		t.Error("Ctrl+E on the built-in default should be a no-op")
+	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlO}); cmd != nil {
+		t.Error("Ctrl+O on the built-in default should be a no-op")
 	}
 }
 
