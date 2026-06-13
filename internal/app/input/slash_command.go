@@ -58,7 +58,6 @@ type SlashCommandEnv struct {
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
 	Command *command.Registry
-	Persona *persona.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and
 	// can't be imported here without a cycle, so its reads/writes are
@@ -123,13 +122,16 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 	}
 }
 
-// handlePersonaCommand switches the active persona. Bare /persona lists the
-// available personas; /persona <name> switches to one ("default" or empty
+// handlePersonaCommand switches the active persona. Bare /persona opens the
+// interactive picker; /persona <name> switches directly ("default" or empty
 // clears the override back to San's built-ins).
 func (c *SlashCommandController) handlePersonaCommand(_ context.Context, args string) (string, tea.Cmd, error) {
 	name := strings.TrimSpace(args)
 	if name == "" {
-		return c.personaList(), nil, nil
+		if err := c.env.Input.Persona.EnterSelect(c.env.Width, c.env.Height); err != nil {
+			return "", nil, err
+		}
+		return "", nil, nil
 	}
 	if c.env.SetActivePersona == nil {
 		return "Persona switching is unavailable.", nil, nil
@@ -141,33 +143,6 @@ func (c *SlashCommandController) handlePersonaCommand(_ context.Context, args st
 		return "Persona cleared (built-in default).", nil, nil
 	}
 	return "Persona set to: " + name, nil, nil
-}
-
-// personaList renders the available personas, marking the active one.
-func (c *SlashCommandController) personaList() string {
-	if c.env.Persona == nil {
-		return "No personas available."
-	}
-	active := ""
-	if c.env.Setting != nil {
-		if snap := c.env.Setting.Snapshot(); snap != nil {
-			active = snap.Persona
-		}
-	}
-	var b strings.Builder
-	b.WriteString("Available personas (use /persona <name>):\n")
-	for _, p := range c.env.Persona.List() {
-		marker := "  "
-		if p.Name == active || (active == "" && p.IsBuiltin()) {
-			marker = "● "
-		}
-		b.WriteString(marker + p.Name)
-		if p.Description != "" {
-			b.WriteString(" — " + p.Description)
-		}
-		b.WriteByte('\n')
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func (c SlashCommandController) Execute(ctx context.Context, inputText string) (string, tea.Cmd, bool) {

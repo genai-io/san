@@ -24,4 +24,5 @@ type OverlayDeps struct {
 	FireFileChanged         func(path, tool string)
 	ReloadPluginState       func() error
 	LoadSession             func(string) error
+	SetActivePersona        func(name string) error
 }

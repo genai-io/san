@@ -44,11 +44,18 @@ func TestHandlePersonaCommand_Unavailable(t *testing.T) {
 	}
 }
 
-func TestHandlePersonaCommand_ListsDefault(t *testing.T) {
+func TestHandlePersonaCommand_OpensPicker(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	c := NewSlashCommandController(SlashCommandEnv{Persona: persona.NewRegistry("")})
-	out, _, _ := c.handlePersonaCommand(context.Background(), "")
-	if !strings.Contains(out, persona.DefaultName) {
-		t.Errorf("bare /persona should list the built-in default; got %q", out)
+	m := &Model{Persona: NewPersonaSelector(persona.NewRegistry(""), nil)}
+	c := NewSlashCommandController(SlashCommandEnv{Input: m, Width: 80, Height: 24})
+	out, _, err := c.handlePersonaCommand(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "" {
+		t.Errorf("bare /persona opens the picker, no text; got %q", out)
+	}
+	if !m.Persona.IsActive() {
+		t.Error("bare /persona should activate the persona selector")
 	}
 }

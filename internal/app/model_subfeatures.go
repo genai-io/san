@@ -73,6 +73,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		FireFileChanged:         m.fireFileChanged,
 		ReloadPluginState:       m.ReloadPluginBackedState,
 		LoadSession:             m.loadSessionByID,
+		SetActivePersona:        m.setActivePersona,
 	}
 }
 

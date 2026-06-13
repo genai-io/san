@@ -58,13 +58,14 @@ func newBaseModel() model {
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
-			AgentRegistry:  &agentRegistryAdapter{svc.Subagent},
-			SkillRegistry:  svc.Skill,
-			MCPRegistry:    svc.MCP,
-			PluginRegistry: svc.Plugin,
-			Setting:        svc.Setting,
-			LoadDisabled:   svc.Setting.GetDisabledToolsAt,
-			UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
+			AgentRegistry:   &agentRegistryAdapter{svc.Subagent},
+			PersonaRegistry: svc.Persona,
+			SkillRegistry:   svc.Skill,
+			MCPRegistry:     svc.MCP,
+			PluginRegistry:  svc.Plugin,
+			Setting:         svc.Setting,
+			LoadDisabled:    svc.Setting.GetDisabledToolsAt,
+			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
 		}),
 		conv:          conv.NewModel(defaultWidth),
 		agentEventHub: hub.New(),

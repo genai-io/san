@@ -45,6 +45,7 @@ func (m *model) popups() []popup {
 		&m.userInput.Tool,
 		&m.userInput.Skill.Selector,
 		&m.userInput.Agent,
+		&m.userInput.Persona,
 		&m.userInput.MCP.Selector,
 		&m.userInput.Plugin,
 		&m.userInput.Session.Selector,

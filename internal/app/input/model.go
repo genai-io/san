@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
 	coremcp "github.com/genai-io/san/internal/mcp"
+	corepersona "github.com/genai-io/san/internal/persona"
 	coreplugin "github.com/genai-io/san/internal/plugin"
 	coresetting "github.com/genai-io/san/internal/setting"
 	coreskill "github.com/genai-io/san/internal/skill"
@@ -42,6 +43,7 @@ type Model struct {
 	// Selectors / overlays
 	Approval ApprovalModel
 	Agent    AgentSelector
+	Persona  PersonaSelector
 	Search   SearchSelector
 	Skill    SkillState
 	Session  SessionState
@@ -89,13 +91,14 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
-	AgentRegistry  AgentRegistry
-	SkillRegistry  *coreskill.Registry
-	MCPRegistry    *coremcp.Registry
-	PluginRegistry *coreplugin.Registry
-	Setting        *coresetting.Settings
-	LoadDisabled   func(userLevel bool) map[string]bool
-	UpdateDisabled func(disabled map[string]bool, userLevel bool) error
+	AgentRegistry   AgentRegistry
+	PersonaRegistry *corepersona.Registry
+	SkillRegistry   *coreskill.Registry
+	MCPRegistry     *coremcp.Registry
+	PluginRegistry  *coreplugin.Registry
+	Setting         *coresetting.Settings
+	LoadDisabled    func(userLevel bool) map[string]bool
+	UpdateDisabled  func(disabled map[string]bool, userLevel bool) error
 }
 
 func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
@@ -109,6 +112,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 
 		Approval: NewApproval(),
 		Agent:    NewAgentSelector(deps.AgentRegistry),
+		Persona:  NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
 		Search:   NewSearchSelector(deps.Setting),
 		Skill:    SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
 		Session:  SessionState{Selector: NewSessionSelector()},
