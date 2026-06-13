@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -21,14 +20,14 @@ import (
 
 // Run routes to either print mode or interactive TUI.
 func Run(opts setting.RunOptions) error {
-	if opts.Print != "" {
-		return runPrint(opts.Print)
-	}
-
 	if opts.Persona != "" {
 		if err := validatePersona(opts.Persona); err != nil {
 			return err
 		}
+	}
+
+	if opts.Print != "" {
+		return runPrint(opts.Print)
 	}
 
 	if userQuit, err := kit.ResolveTheme(setting.LoadTheme(), setting.SaveTheme); userQuit || err != nil {
@@ -195,27 +194,10 @@ func runPrint(userMessage string) error {
 	return nil
 }
 
-// validatePersona checks that the named persona exists on disk before the TUI
-// starts. It initializes the persona registry early (idempotent) and returns a
-// descriptive error listing available personas when the name is not found.
+// validatePersona ensures the named persona exists on disk, early in startup,
+// before either print or interactive mode proceeds.
 func validatePersona(name string) error {
 	cwd, _ := os.Getwd()
 	persona.Initialize(cwd)
-	r := persona.Default()
-
-	p, ok := r.Get(name)
-	if !ok || p.IsBuiltin() {
-		available := r.List()
-		names := make([]string, 0, len(available))
-		for _, p := range available {
-			if !p.IsBuiltin() {
-				names = append(names, p.Name)
-			}
-		}
-		if len(names) > 0 {
-			return fmt.Errorf("persona %q not found; available: %s", name, strings.Join(names, ", "))
-		}
-		return fmt.Errorf("persona %q not found; no personas are configured. Create one under .san/personas/<name>/", name)
-	}
-	return nil
+	return persona.Default().Validate(name)
 }

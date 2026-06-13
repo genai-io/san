@@ -531,6 +531,38 @@ func TestCLI_NonexistentPersona(t *testing.T) {
 	}
 }
 
+func TestCLI_NonexistentPersonaWithPrint(t *testing.T) {
+	bin := buildBinary(t)
+
+	isolatedHome := t.TempDir()
+	isolatedCwd := t.TempDir()
+
+	env := filteredEnv(
+		"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+		"MOONSHOT_API_KEY", "ALIBABA_API_KEY", "BIGMODEL_API_KEY",
+		"HOME",
+	)
+	env = append(env, "HOME="+isolatedHome)
+
+	// --persona nonexistent with -p: validation must happen before print mode,
+	// so this should fail with a persona-not-found error, not a provider error.
+	cmd := exec.Command(bin, "--persona", "nonexistent", "-p", "hello")
+	cmd.Env = env
+	cmd.Dir = isolatedCwd
+	out, err := cmd.CombinedOutput()
+
+	if err == nil {
+		t.Fatalf("expected non-zero exit for nonexistent persona with -p")
+	}
+	output := string(out)
+	if !strings.Contains(strings.ToLower(output), "not found") {
+		t.Errorf("error should say persona not found, got: %q", output)
+	}
+	if strings.Contains(strings.ToLower(output), "no provider") {
+		t.Errorf("--persona validation should happen before print mode; got provider error: %q", output)
+	}
+}
+
 func TestCLI_PersonaFlagAccepted(t *testing.T) {
 	bin := buildBinary(t)
 

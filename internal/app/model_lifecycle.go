@@ -7,7 +7,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/hub"
@@ -94,19 +93,8 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 
 	if opts.Persona != "" {
 		if m.services.Persona != nil {
-			p, ok := m.services.Persona.Get(opts.Persona)
-			if !ok || p.IsBuiltin() {
-				available := m.services.Persona.List()
-				names := make([]string, 0, len(available))
-				for _, p := range available {
-					if !p.IsBuiltin() {
-						names = append(names, p.Name)
-					}
-				}
-				if len(names) > 0 {
-					return fmt.Errorf("persona %q not found; available: %s", opts.Persona, strings.Join(names, ", "))
-				}
-				return fmt.Errorf("persona %q not found; no personas are configured. Create one under .san/personas/<name>/", opts.Persona)
+			if err := m.services.Persona.Validate(opts.Persona); err != nil {
+				return err
 			}
 		}
 		if err := m.setActivePersona(opts.Persona); err != nil {

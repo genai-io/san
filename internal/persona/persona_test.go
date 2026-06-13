@@ -3,6 +3,7 @@ package persona
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -216,6 +217,55 @@ func TestIsPersonaFile(t *testing.T) {
 		if IsPersonaFile(cwd, p) {
 			t.Errorf("IsPersonaFile(%q) = true, want false", p)
 		}
+	}
+}
+
+func TestRegistry_Validate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	writeFile(t, filepath.Join(home, ".san", "personas", "ml", "settings.json"), `{"description":"ml"}`)
+
+	r := NewRegistry("")
+
+	// Valid persona should return nil.
+	if err := r.Validate("ml"); err != nil {
+		t.Errorf("Validate(ml) = %v, want nil", err)
+	}
+
+	// Nonexistent persona should return an error listing available ones.
+	err := r.Validate("nonexistent")
+	if err == nil {
+		t.Error("Validate(nonexistent) = nil, want error")
+	}
+	if err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "not found") {
+			t.Errorf("error should say 'not found', got: %q", msg)
+		}
+		if !strings.Contains(msg, "ml") {
+			t.Errorf("error should list available personas, got: %q", msg)
+		}
+	}
+
+	// "default" (builtin) should be rejected.
+	if err := r.Validate("default"); err == nil {
+		t.Error("Validate(default) = nil, want error because default is builtin")
+	}
+}
+
+func TestRegistry_Validate_NoPersonasConfigured(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// No personas on disk — only the builtin default exists.
+	r := NewRegistry("")
+	err := r.Validate("anything")
+	if err == nil {
+		t.Error("Validate should fail when no personas are configured")
+	}
+	if !strings.Contains(err.Error(), "no personas are configured") {
+		t.Errorf("error should mention no personas, got: %q", err.Error())
 	}
 }
 
