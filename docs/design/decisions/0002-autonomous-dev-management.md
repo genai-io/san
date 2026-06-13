@@ -19,9 +19,8 @@ Humans stop writing code and only state what they want.
 ## Core Model
 
 Under the existing Org (`genai-io`), create a **new, separate Repo**
-for storing various **organizations**. Each organization is a directory
-containing a set of Personas. Currently there is one organization —
-the `san` org that manages the San project.
+`san-team` for storing the San development team's Personas.
+Each team is a collection of Personas that collaborate on a specific project.
 
 Each Persona follows the
 [`persona-system.md`](../../notes/active/persona-system.md) design spec.
@@ -29,49 +28,48 @@ Each Persona follows the
 ```
 genai-io（Org, existing）
 ├── san              ← San source repo (existing, the managed project)
-└── workspaces       ← New repo (stores organizations, each with Personas)
-    └── san/         ← San project management org (current only; future: devops/, etc.)
-        ├── leader/
-        │   ├── system/
-        │   │   ├── identity.md
-        │   │   ├── behavior.md
-        │   │   └── rules.md
-        │   ├── skills/
-        │   │   └── ...
-        │   └── settings.json
-        ├── engineering/
-        │   ├── system/
-        │   │   ├── identity.md
-        │   │   ├── behavior.md
-        │   │   └── rules.md
-        │   ├── skills/
-        │   │   └── ...
-        │   └── settings.json
-        ├── qe/
-        │   ├── system/
-        │   │   ├── identity.md
-        │   │   ├── behavior.md
-        │   │   └── rules.md
-        │   ├── skills/
-        │   │   └── ...
-        │   └── settings.json
-        └── release/
-            ├── system/
-            │   ├── identity.md
-            │   ├── behavior.md
-            │   └── rules.md
-            ├── skills/
-            │   └── ...
-            └── settings.json
+└── san-team         ← New repo (San development team Personas)
+    ├── leader/
+    │   ├── system/
+    │   │   ├── identity.md
+    │   │   ├── behavior.md
+    │   │   └── rules.md
+    │   ├── skills/
+    │   │   └── ...
+    │   └── settings.json
+    ├── dev/
+    │   ├── system/
+    │   │   ├── identity.md
+    │   │   ├── behavior.md
+    │   │   └── rules.md
+    │   ├── skills/
+    │   │   └── ...
+    │   └── settings.json
+    ├── qe/
+    │   ├── system/
+    │   │   ├── identity.md
+    │   │   ├── behavior.md
+    │   │   └── rules.md
+    │   ├── skills/
+    │   │   └── ...
+    │   └── settings.json
+    └── release/
+        ├── system/
+        │   ├── identity.md
+        │   ├── behavior.md
+        │   └── rules.md
+        ├── skills/
+        │   └── ...
+        └── settings.json
 ```
 
-- **`workspaces`**: New repo. A generic container for organizations of
-  different purposes. Currently has one org `san` (managing the San
-  project); future orgs could be `devops`
-  (doing DevOps) etc.
-- **Organization**: A subdirectory under `workspaces`, containing a set
-  of Personas that collaborate toward a specific goal. The `san` org's
-  goal is managing the San project's issues, features, bugs, and releases.
+- **`san-team`**: New repo containing the San project's development team.
+  Personas live directly under the repo root. If other projects need
+  similar autonomous management, they can create their own team repos
+  (e.g., `devops-team`).
+- **Team**: A collection of Personas in the `san-team` repo that
+  collaborate toward a specific goal — managing the San project's issues,
+  features, bugs, and releases.
 - **Persona directory**: Each Persona follows the persona spec's three-layer
   structure:
   1. `system/` — system prompt split into `identity` (who), `behavior` (how),
@@ -85,16 +83,16 @@ Each Persona runs as an **independent San instance**:
 
 ```bash
 # Start Leader Persona (admin interaction entry point)
-san start --persona leader --org san
+san start --persona leader --team san-team
 
-# Start Engineering Persona (waits for coding tasks)
-san start --persona engineering --org san
+# Start Dev Persona (waits for coding tasks)
+san start --persona dev --team san-team
 
 # Start QE Persona (waits for verification tasks)
-san start --persona qe --org san
+san start --persona qe --team san-team
 
 # Start Release Persona (waits for release tasks)
-san start --persona release --org san
+san start --persona release --team san-team
 ```
 
 The `--persona` flag tells San to load a specific Persona directory's
@@ -103,7 +101,7 @@ need for mid-session `/persona` switching.
 
 Multiple Persona instances can run simultaneously in different
 terminals, containers, or machines. They coordinate through a shared
-work queue (`<org>/state/queue.jsonl`).
+work queue (`san-team/state/queue.jsonl`).
 
 ## Workflow
 
@@ -117,7 +115,7 @@ Admin (human)
     │  "Build user authentication"  or  "Fix all P0 bugs"
     ▼
 ┌──────────────────────────────────────────────────────┐
-│ Leader Persona (san start --persona leader --org san)│
+│ Leader Persona (san start --persona leader --team san-team)│
 │                                                      │
 │ 1. Understand intent                                │
 │ 2. Draw architecture & state diagrams               │
@@ -128,16 +126,16 @@ Admin (human)
           ┌────────┼────────┐
           ▼        ▼        ▼
     ┌──────────┐ ┌──────┐ ┌─────────┐
-    │Engineering│ │  QE  │ │ Release │
+    │Dev│ │  QE  │ │ Release │
     │ san start│ │san start│ │san start│
     │ --persona│ │--persona│ │--persona│
-    │engineering│ │  qe    │ │ release │
+    │dev│ │  qe    │ │ release │
     └──────────┘ └──────┘ └─────────┘
 ```
 
 ### Leader Persona — Single Entry Point
 
-Started via `san start --persona leader --org san`.
+Started via `san start --persona leader --team san-team`.
 The admin's only interface. Leader handles:
 
 1. **Understand intent**: new feature? bug fix? refactor?
@@ -155,19 +153,19 @@ Leader dispatches a coding task:
 
 Leader:
   1. After analysis, determines Task-3 is a coding task
-  2. Writes Task-3 to queue (marked role: engineering)
-  3. Engineering San instance polls queue, finds Task-3 matching its role
-  4. Engineering claims Task-3, starts implementation
+  2. Writes Task-3 to queue (marked role: dev)
+  3. Dev San instance polls queue, finds Task-3 matching its role
+  4. Dev claims Task-3, starts implementation
   5. On completion, updates queue status to done with PR link
   6. Leader polls queue, sees Task-3 done, proceeds to next step
 ```
 
-### Engineering Persona — Implementation
+### Dev Persona — Implementation
 
-Started via `san start --persona engineering --org san`.
+Started via `san start --persona dev --team san-team`.
 Continuously polls the queue for coding tasks:
 
-1. Claims Tasks from queue with role `engineering`
+1. Claims Tasks from queue with role `dev`
 2. Reads San's design docs and existing code
 3. Implements following the layered architecture conventions
 4. Writes tests
@@ -177,10 +175,10 @@ Continuously polls the queue for coding tasks:
 
 ### QE Persona — Verification
 
-Started via `san start --persona qe --org san`.
+Started via `san start --persona qe --team san-team`.
 Continuously polls the queue for verification tasks:
 
-1. Claims Tasks from queue with role `qe` (corresponding to Engineering done)
+1. Claims Tasks from queue with role `qe` (corresponding to Dev done)
 2. Checks out the PR branch
 3. Runs full test suite + lint + layer check
 4. Uses `verify` skill to confirm correctness
@@ -191,7 +189,7 @@ Can also verify designs before implementation starts.
 
 ### Release Persona — Shipping
 
-Started via `san start --persona release --org san`:
+Started via `san start --persona release --team san-team`:
 
 1. Claims Tasks from queue with role `release` (after all QE verified)
 2. Generates CHANGELOG
@@ -203,17 +201,17 @@ Started via `san start --persona release --org san`:
 ### Shared Work Queue
 
 The queue is the sole communication mechanism between Personas, stored
-at `<workspaces>/san/state/queue.jsonl` (JSONL append-only log).
+at `san-team/state/queue.jsonl` (JSONL append-only log).
 
 ```
 type WorkItem struct {
     ID          string       // unique identifier
-    Role        string       // engineering / qe / release
+    Role        string       // dev / qe / release
     Title       string       // task title
     Description string       // task description (filled by Leader)
     Status      ItemStatus   // pending → claimed → done → verified
     AssignedTo  string       // claiming Persona name
-    PR          string       // PR link (filled by Engineering)
+    PR          string       // PR link (filled by Dev)
     Result      string       // result notes (filled by QE/Release)
     CreatedAt   time.Time
     UpdatedAt   time.Time
@@ -230,12 +228,12 @@ pending ──→ claimed ──→ done ──→ verified
 
 ## Persona Configuration Examples
 
-Each Persona is a persona directory. Using Engineering as an example:
+Each Persona is a persona directory. Using Dev as an example:
 
 ### system/identity.md（Who am I?）
 
 ```markdown
-You are the Engineering agent for the San project.
+You are the Dev agent for the San project.
 Your job is to claim coding tasks from the shared queue and implement them.
 You are an expert Go developer familiar with San's five-layer package architecture.
 ```
@@ -284,7 +282,7 @@ You are an expert Go developer familiar with San's five-layer package architectu
 
 ```json
 {
-  "description": "San project Engineering Persona — implements code and submits PRs",
+  "description": "San project Dev Persona — implements code and submits PRs",
   "model": "claude-sonnet-4-6",
   "maxSteps": 80,
   "skills": {
@@ -381,10 +379,10 @@ After admin confirmation, Leader writes Tasks to the shared queue:
 
 ```
 Queue writes:
-  Task 1: { role: engineering, title: "Define User model and UserStore interface" }
-  Task 2: { role: engineering, title: "Implement UserStore" }
-  Task 3: { role: engineering, title: "Implement JWT token generation & verification" }
-  Task 4: { role: engineering, title: "Implement login API handler" }
+  Task 1: { role: dev, title: "Define User model and UserStore interface" }
+  Task 2: { role: dev, title: "Implement UserStore" }
+  Task 3: { role: dev, title: "Implement JWT token generation & verification" }
+  Task 4: { role: dev, title: "Implement login API handler" }
   Task 5: { role: qe, title: "Verify full auth functionality" }
   Task 6: { role: release, title: "Ship v1.2.0" }
 ```
@@ -392,7 +390,7 @@ Queue writes:
 ### 3. Personas claim and execute
 
 ```
-Engineering San instance polls queue:
+Dev San instance polls queue:
   Claims Task 1 → implements → marks done
   Claims Task 2 → implements → marks done
   Claims Task 3 → implements → marks done
@@ -419,10 +417,10 @@ Admin tells Leader: **"Scan and fix all P0 bugs"**
 Leader:
   1. Pulls all P0 bug issues from San repo via GhCLI
   2. Analyzes each, writes to queue:
-     - { role: engineering, title: "Fix #100 nil pointer in auth.go" }
-     - { role: engineering, title: "Fix #102 timeout in db query" }
+     - { role: dev, title: "Fix #100 nil pointer in auth.go" }
+     - { role: dev, title: "Fix #102 timeout in db query" }
 
-Engineering San instance:
+Dev San instance:
   Claims "#100" → analyzes root cause → fix → PR → marks done
   Claims "#102" → analyzes root cause → fix → PR → marks done
 
@@ -447,16 +445,16 @@ Each Persona follows the persona spec defined in
 folder containing `system/` (split into identity/behavior/rules/environment),
 `skills/`, and `settings.json`. Missing parts fall back to San's built-in defaults.
 
-### 2. Personas stored in a separate `workspaces` repo
+### 2. Personas stored in a separate `san-team` repo
 
 Persona definitions live in a dedicated repo, separate from the San source:
 - Independent version history for Persona configs
-- Different access permissions for the workspaces repo
-- One org can contain multiple Personas to manage multiple target repos (future)
+- Different access permissions for the san-team repo
+- Team Personas can manage multiple target repos (future)
 
 ### 3. Leader is the single entry point
 
-The admin never talks directly to Engineering/QE/Release:
+The admin never talks directly to Dev/QE/Release:
 - Simple mental model: one conversation partner
 - Leader has global visibility to prioritize and handle conflicts
 - Other Personas focus only on their queue tasks, don't need global context
@@ -464,7 +462,7 @@ The admin never talks directly to Engineering/QE/Release:
 ### 4. Each Persona is an independent San instance
 
 Instead of nested sub-agent calls via the Agent tool, each Persona runs
-as an independent San process (`san start --persona <name> --org <org>`):
+as an independent San process (`san start --persona <name> --team <team>`):
 - Process-level isolation: each Persona has its own context, tools, permissions
 - Can be deployed on different machines/containers, independently scaled
 - Coordination through the shared work queue (file-based), no IPC needed
@@ -475,18 +473,18 @@ as an independent San process (`san start --persona <name> --org <org>`):
 
 Leader draws mermaid diagrams before writing any code:
 - Admin confirms understanding (avoids building the wrong thing)
-- Engineering Persona gets a clear reference (diagrams ship with Task descriptions)
+- Dev Persona gets a clear reference (diagrams ship with Task descriptions)
 - QE Persona gets a verification checklist
 
 ### 6. Persona Self-Evolution
 
 Every Persona continuously learns and self-improves during the project.
 Evolution is persisted by updating the Persona's configuration in the
-`workspaces` repo.
+`san-team` repo.
 
 **Learning sources:**
 - After each Task, Persona writes a retrospective: what worked, what to improve
-- Failure patterns found by QE feed back to Engineering, updating `behavior.md` or `rules.md`
+- Failure patterns found by QE feed back to Dev, updating `behavior.md` or `rules.md`
 - Leader observes Persona performance and periodically tunes configurations
 
 **Evolution targets:**
@@ -494,7 +492,7 @@ Evolution is persisted by updating the Persona's configuration in the
 | Element | Method | Example |
 |---|---|---|
 | Skills | Discover useful skills → update `skills` in `settings.json` | QE finds `bug-hunt` effective → sets to `active` |
-| Permissions | Permission gap found → Leader evaluates → update `permissions.allow` | Engineering needs a new tool → Leader approves and adds |
+| Permissions | Permission gap found → Leader evaluates → update `permissions.allow` | Dev needs a new tool → Leader approves and adds |
 | Rules | Learn from failures → update `system/rules.md` | Repeated QE rejections due to missing tests → strengthen test rules |
 | Workflow | Find efficiency bottleneck → update `system/behavior.md` | "Read design docs first" proves more efficient → codify as behavior |
 
@@ -503,7 +501,7 @@ Evolution is persisted by updating the Persona's configuration in the
 Task complete → Persona writes retrospective → identifies improvements
   → Persona proposes change to Leader
   → Leader approves
-  → Update Persona config in workspaces repo (via PR)
+  → Update Persona config in san-team repo (via PR)
   → Next startup auto-loads new config
 ```
 
@@ -524,17 +522,16 @@ Task complete → Persona writes retrospective → identifies improvements
 
 ## Implementation Plan
 
-### Phase 1 — Create `workspaces` repo + San org
+### Phase 1 — Create `san-team` repo
 
-- Create `workspaces` repo under `genai-io` Org
-- Create `san/` org directory
-- Write four Persona directories (leader/engineering/qe/release)
+- Create `san-team` repo under `genai-io` Org
+- Write four Persona directories (leader/dev/qe/release)
 - Each with `system/{identity,behavior,rules}.md` + `skills/` + `settings.json`
 
 ### Phase 2 — `san start --persona` feature
 
-- San CLI adds `--persona` and `--org` flags
-- On startup, load the specified Persona config from the org directory
+- San CLI adds `--persona` and `--team` flags
+- On startup, load the specified Persona config from the team directory
 - Load system/ files as the system prompt
 - Load skills/ as active skills
 - Apply settings.json permissions and model config
@@ -550,7 +547,7 @@ Task complete → Persona writes retrospective → identifies improvements
 ### Phase 4 — End-to-end workflows
 
 - Leader: design doc → break down → write to queue
-- Engineering Persona: poll → claim → implement → commit → update queue
+- Dev Persona: poll → claim → implement → commit → update queue
 - QE Persona: poll → claim → verify → update queue
 - Release Persona: poll → claim → ship → update queue
 - Leader: monitor queue status → report to admin
@@ -559,7 +556,7 @@ Task complete → Persona writes retrospective → identifies improvements
 
 - Cron-triggered bug scanning → auto-write to queue
 - Auto-trigger Leader task breakdown on design doc merge
-- Progress dashboard (CLI: `san org status`)
+- Progress dashboard (CLI: `san team status`)
 - Persona instance health monitoring
 
 ## Reference Skills
@@ -577,7 +574,7 @@ directly adopt them or use them as design references.
 | `/dev` (6-phase SOP) | [hnaymyh123-henry/claude-dev-skill](https://github.com/hnaymyh123-henry/claude-dev-skill) | 112 | Tech Lead mode: PRD alignment → architecture → parallel dev → QA → CR + merge |
 | `project-manager` | [gendosu/agent-skills](https://github.com/gendosu/agent-skills) | 0 | Task organization and project management |
 
-### Engineering Persona
+### Dev Persona
 
 | Skill | Source | Stars | Purpose |
 |---|---|---|---|
@@ -611,7 +608,7 @@ directly adopt them or use them as design references.
 
 ## Additional Decisions
 
-1. **Parallel Engineering instances**: Each Engineering San instance
+1. **Parallel Dev instances**: Each Dev San instance
    works in its own git worktree and submits PRs independently. If
    multiple PRs touch the same file, GitHub's merge conflict mechanism
    handles it. When Leader detects a conflict, it creates a new fix task.
@@ -619,7 +616,7 @@ directly adopt them or use them as design references.
    before merging — no automatic merge. After QE passes, Leader notifies the
    admin to approve; the admin just clicks approve.
 3. **Failure retry strategy**: The Leader decides the max retry count per Task
-   (default 3). When Engineering exhausts retries and still fails QE, Leader
+   (default 3). When Dev exhausts retries and still fails QE, Leader
    marks the Task as `failed`, records the reason, and notifies the admin.
 4. **Crash recovery**: All failure scenarios (Persona crash, Leader crash,
    queue file corruption, etc.) must be handled gracefully and reported to
@@ -628,8 +625,8 @@ directly adopt them or use them as design references.
      detects the reversion and notifies the admin
    - Leader crash: admin restarts Leader, which replays the queue to restore context
    - Queue file corruption: recover the last good snapshot from Git history
-5. **Future `workspaces` org layout**: Beyond `san/`, what infrastructure
-   will future orgs like `devops/` need?
+5. **Future team repos**: Beyond `san-team`, what infrastructure
+   will teams like `devops-team` need?
 
 ## References
 
