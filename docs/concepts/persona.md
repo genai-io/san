@@ -2,39 +2,30 @@
 
 A **persona** is a single on-disk folder that bundles everything that makes San
 behave a certain way — its system prompt, its skills, and its config overrides —
-so the user can switch the whole bundle in one command, mid-session, without
+so you can switch the whole bundle with one command, mid-session, without
 restarting.
 
-This unifies two concepts that are independent today (`identity` and `skill`),
-and simplifies the system prompt down to a few replaceable parts.
+Personas are San's single mechanism for "who San is": they unify the system
+prompt and the active skill set behind one switch, and reduce the system prompt
+to a few replaceable parts.
 
-**Contents.** [§0 Motivation](#0-motivation) · [§1 Concept](#1-concept-one-folder-one-persona) · [§2 First principles: the system prompt](#2-first-principles-the-system-prompt) · [§3 On-disk layout](#3-on-disk-layout) · [§4 settings.json overlay](#4-settingsjson-the-config-overlay) · [§5 Switch flow](#5-switch-flow) · [§6 Relationship to identity & skills](#6-relationship-to-identity--skills) · [§7 Current architecture](#7-current-architecture-what-we-build-on) · [§8 Decisions](#8-decisions-locked) · [§9 Phasing](#9-phasing) · [§10 Open questions](#10-open-questions)
+**Contents.** [§1 Concept](#1-concept-one-folder-one-persona) · [§2 The system prompt](#2-the-system-prompt-four-parts) · [§3 On-disk layout](#3-on-disk-layout) · [§4 settings.json overlay](#4-settingsjson-the-config-overlay) · [§5 Switch flow](#5-switch-flow) · [§6 Relationship to skills](#6-relationship-to-skills) · [§7 Design decisions](#7-design-decisions) · [§8 Future directions](#8-future-directions)
 
 ---
 
-## 0. Motivation
+## Why personas
 
-Today, "who San is" is split across two unrelated mechanisms, and the system
-prompt's customizable surface is scattered:
+A useful working mode is rarely *just* a prompt or *just* a skill set. A
+"research assistant" wants both a research-flavored prompt **and** a research
+skill set, plus the right tools and permissions. Before personas these lived in
+separate places with separate switches and no link between them, and skill
+activation was global — turning a skill on for one task leaked into every other
+context.
 
-| Concept | Where it lives | How you switch it | What it covers |
-|---|---|---|---|
-| `identity` | `~/.san/identities/<name>.md` (single file) | `/identity` | only the "You are X" preamble |
-| `skill` | `.san/skills/<name>/SKILL.md` (global) | `/skills`, cycled one-by-one, state in `skills.json` | global on/off, unrelated to identity |
-
-Problems:
-
-- **No bundling.** A "research assistant" persona means *both* a research-flavored
-  prompt *and* a research skill set — but those are configured in two places with
-  two commands and no link between them.
-- **Scattered prompt surface.** The system prompt is assembled from ~10 embedded
-  files across 5 slots; there is no simple "here is the prompt, swap it" unit.
-- **Skills are global.** Activating a skill for one task pollutes the global state
-  for every other context.
-
-**Goal:** one persona = one folder. Switching it swaps the system prompt, the
-active skill set, and the config overlay (tools / permissions) as a unit — reusing
-the hot-patch machinery San already has, so the session never restarts.
+A persona bundles all of it into one folder and one switch: selecting it swaps
+the system prompt, the active skill set, and the config overlay (tools /
+permissions) as a unit, reusing the hot-patch machinery San already has so the
+session never restarts.
 
 ---
 
@@ -66,7 +57,7 @@ voice ships a single `system/identity.md`; everything else uses San's defaults.
 
 ---
 
-## 2. First principles: the system prompt
+## 2. The system prompt: four parts
 
 A system prompt only ever answers four questions:
 
@@ -100,44 +91,26 @@ personas/<selected>/system/<P>.md exists?
 ```
 
 `environment` is the one exception: it is *computed facts*, not prose, so it is
-always built-in. (A persona may ship an optional `system/context.md` to *append*
-static context, but it does not replace the live environment block.)
+always built-in and cannot be replaced.
 
-### Slot simplification
+Each prose part's built-in default is composed from the embedded prompt files
+under `internal/core/system/prompts/`:
 
-```
-            Today (5 slots + 3 sub-sections)            Proposed (4 slots)
-┌──────────────────────────────────────────┐   ┌────────────────────────────────────┐
-│ SlotIdentity   ── identity                │   │ SlotIdentity     ← system/identity.md │
-│                ── output                   │ → │ SlotBehavior     ← system/behavior.md │  output + engineering
-│                ── engineering              │   │ SlotRules        ← system/rules.md    │  policy + guidelines (+ provider)
-│ SlotProvider   ── provider                │   │ SlotEnvironment  (computed footer)    │
-│ SlotPolicy     ── policy                  │   └────────────────────────────────────┘
-│ SlotGuidelines ── tools/tasks/questions/… │
-│ SlotEnvironment ── cwd/date               │
-└──────────────────────────────────────────┘
-```
-
-Mapping from today's embedded files (`internal/core/system/prompts/`):
-
-| New part | Built-in default sourced from | Scope rules preserved |
+| Part | Built-in default sourced from | Scope rules |
 |---|---|---|
 | `identity` | `identity.txt` | — |
 | `behavior` | `output.txt` + `engineering.txt` | main-only (subagents carry their own charter) |
 | `rules` | `policy.txt` + `guidelines/{tools,system-reminders,tasks,questions,git}.txt` + provider quirks | `tasks`/`questions` main-only; `git` only when `isGit`; `policy`+`tools`+`system-reminders` always |
 | `environment` | computed (`renderEnvironment`) | — |
 
-The default `rules` renderer stays scope-aware and git-conditional (exactly as the
-separate guidelines sections are today); merging them into one part changes the
-*override granularity*, not the *default content*.
+The default `rules` renderer stays scope-aware and git-conditional; a persona
+that overrides `rules.md` replaces that whole part.
 
 ### Why `behavior` and `rules` (naming)
 
 `behavior` = what the persona does of its own accord (style, working habits);
-`rules` = constraints imposed on it (safety, protocols). The two earlier
-candidate names (`conduct`, `guidelines`) both read as "rules of behavior" and
-blurred this self-vs-imposed distinction. `identity / behavior / rules /
-environment` reads as *who / how / what-rules / where*.
+`rules` = constraints imposed on it (safety, protocols). `identity / behavior /
+rules / environment` reads as *who / how / what-rules / where*.
 
 ### Safety note: why "all parts replaceable" is safe
 
@@ -159,7 +132,7 @@ the hard floor stays in the permission layer and in `managed-settings.json`.
 ## 3. On-disk layout
 
 Personas are scanned from two roots, project overriding user on name collision —
-mirroring how `identity` and `skill` already resolve scope:
+mirroring how skills already resolve scope:
 
 ```
 ~/.san/personas/<name>/      ← user level
@@ -213,12 +186,12 @@ as the **highest file-level overlay** through the existing merger.
 
 ### Where it sits in the precedence chain
 
-The existing load order (lowest → highest, see `internal/setting/settings.go`):
+The load order (lowest → highest, see `internal/setting/settings.go`):
 
 ```
 ~/.claude → ~/.san → .claude → .san → *.local.json → [PERSONA] → env/CLI → managed
                                                           ▲
-                                          new overlay: overrides all config files,
+                                          persona overlay: overrides all config files,
                                           below explicit CLI args and managed (immutable)
 ```
 
@@ -226,7 +199,7 @@ The existing load order (lowest → highest, see `internal/setting/settings.go`)
 
 | Field | Merge | What a persona can do |
 |---|---|---|
-| `skills` (new) | per-key override | **full override**: listed skills take the persona's state; unlisted keep the lower layer |
+| `skills` | per-key override | **full override**: listed skills take the persona's state; unlisted keep the lower layer |
 | `disabledTools` | per-key override (`mergeMaps`) | **full override**: can disable, and can re-enable a tool a lower layer disabled (`false`) |
 | `permissions.defaultMode` | `coalesce` | persona wins if set |
 | `permissions.allow/deny/ask` | union (`mergeStringSlices`) | **add only** — can tighten with new `deny`; **cannot remove** a lower-layer rule |
@@ -235,6 +208,10 @@ The existing load order (lowest → highest, see `internal/setting/settings.go`)
 The one asymmetry is deliberate and safety-biased: **a persona can tighten
 permissions but not loosen them.** It cannot silently remove a project-level
 `deny`. (`managed-settings.json` remains above personas and is never overridable.)
+
+The overlay also ignores any `persona` selector inside a persona's own
+`settings.json` — a persona cannot re-select the active persona, which would be
+circular.
 
 ---
 
@@ -260,14 +237,14 @@ rebuild.
 
 | Dimension | When it takes effect | Mechanism |
 |---|---|---|
-| system prompt | immediate | `SwapPersona(sys)` → replaces parts by name (reuses `SwapIdentity` pattern) |
+| system prompt | immediate | `SwapPersona(sys)` → replaces parts by name |
 | skills (in-memory) | immediate | registry overlay + `RequeueSystemReminders()` |
 | tools / permissions | next agent rebuild | recomputed overlay read at the next `buildAgent` |
 
 The UI tells the user which parts went live and which await a rebuild, so a
 config change never looks like it "did nothing".
 
-### The four supporting flows
+### The supporting flows
 
 **Discovery & load** — on startup, cwd change, or switch:
 ```
@@ -281,9 +258,9 @@ persona.Registry.Reload(cwd)
 **Startup resolution** — pick the active persona and build:
 ```
 settings.persona (project > user; empty = default)
-  → BuildParams{ PersonaFiles, PersonaSkills, overlay settings }
+  → BuildParams{ persona parts, persona skills, overlay settings }
   → system.Build(ScopeMain, WithPersona(p), …)
-  → skill.Registry.LoadPersonaSkills(p)   (in-memory active)
+  → skill.Registry.LoadPersona(p)   (in-memory active)
 ```
 
 **Inference assembly** — what the model sees each turn:
@@ -296,52 +273,27 @@ prefix — switching skills never invalidates the cached system prompt.
 
 ---
 
-## 6. Relationship to identity & skills
+## 6. Relationship to skills
 
-**Persona absorbs identity.** An `identity` becomes a degenerate persona: only a
-`system/identity.md`, no skills, no overlay. Concretely:
+Skills are **reused, not replaced**. A persona's `skills/` directory is loaded by
+the existing skill loader. The only addition is an **in-memory active overlay**
+that the persona owns: selecting a persona marks its skills `active`; deselecting
+clears them. Persona skill state is **not** written to `skills.json`, so it never
+collides with the user's global skill toggles.
 
-- `internal/persona/` takes over the dual-root scan that `internal/identity/` does today.
-- `settings.identity` → `settings.persona` (the old field is still read for back-compat).
-- Existing `~/.san/identities/*.md` single files are recognized as skill-less personas
-  — no user migration required.
-- `/identity` stays as a deprecated alias for `/persona` for a release or two.
-
-**Skills are reused, not replaced.** The persona `skills/` directory is loaded by
-the existing skill loader. The only addition is an **in-memory active overlay** that
-the persona owns (per the decision in §8): selecting a persona marks its skills
-`active`; deselecting clears them. Persona skill state is **not** written to
-`skills.json`, so it never collides with the user's global skill toggles.
+Personas replaced the former standalone `identity` mechanism (a single "You are
+X" file). An identity is just a degenerate persona — only a `system/identity.md`,
+no skills, no overlay — so nothing was lost in the merge. `/identity` remains as a
+plain alias of `/persona`.
 
 ---
 
-## 7. Current architecture (what we build on)
-
-This design is **additive** — it reuses existing extension points and does not
-touch the agent run loop, the LLM interface, or session persistence.
-
-| Area | File / symbol | Reused for |
-|---|---|---|
-| System prompt build | `internal/core/system/builder.go` `Build(scope, opts…)` | add `WithPersona` option |
-| Slots & sections | `internal/core/section.go`, `internal/core/system/catalog.go` | reduce to 4 parts |
-| Prompt render/cache | `internal/core/system_impl.go` `Use/Drop/Refresh/Prompt` | per-part hot-swap |
-| Hot-swap identity | `internal/app/model_actions.go` `setActiveIdentity` → `system.SwapIdentity` | generalize to `SwapPersona` |
-| Active resolution | `internal/app/agent.go` `activeIdentityBody` | → `activePersona` |
-| Build params | `internal/agent/build.go` `BuildParams.IdentityText` | → persona parts |
-| Identity registry | `internal/identity/registry.go` (dual-root scan) | template for `internal/persona/` |
-| Skill registry | `internal/skill/registry.go` `GetActive`, `SetState`, `GetSkillsSection` | persona skill overlay |
-| Skills reminder | `internal/app/agent.go` `ProviderSkillsDirectory`, `RequeueSystemReminders()` | re-render on switch |
-| Settings + merge | `internal/setting/settings.go` `Data`, `internal/setting/merger.go` `mergeSettings` | persona overlay layer |
-| Slash command | `internal/command/registry.go`, `internal/app/input/slash_command.go` `handleIdentityCommand` | `/persona` + selector |
-
----
-
-## 8. Decisions (locked)
+## 7. Design decisions
 
 | # | Decision | Choice | Rationale |
 |---|---|---|---|
-| D1 | Directory & skills subdir | `~/.san/personas/` + `.san/personas/`, subdir `skills/` (no dot) | consistent with `.san/skills`, `.san/identities`; reuses skill loader's `<scope>/skills/` scan |
-| D2 | Persona vs identity/skills | persona **absorbs** identity | one concept, one command; "simplify" |
+| D1 | Directory & skills subdir | `~/.san/personas/` + `.san/personas/`, subdir `skills/` (no dot) | consistent with `.san/skills`; reuses the skill loader's `<scope>/skills/` scan |
+| D2 | One "who San is" mechanism | persona, not a separate identity feature | one concept, one command |
 | D3 | Persona skill state | in-memory, persona-lifetime (not `skills.json`) | clean switch; no pollution of global toggles |
 | D4 | System prompt parts | 4: `identity` / `behavior` / `rules` / `environment` | first-principles who/how/what-rules/where |
 | D5 | Part override | every prose part replaceable by file; missing file → default | uniform, no special cases |
@@ -352,42 +304,15 @@ touch the agent run loop, the LLM interface, or session persistence.
 
 ---
 
-## 9. Phasing
+## 8. Future directions
 
-Ordered so each step is independently shippable and the early steps carry no
-behavior change.
+Not yet supported; natural extensions if a need appears:
 
-1. **Simplify the system prompt to 4 parts.** Reduce the `Slot` enum; merge
-   `output`+`engineering` → `behavior`, `policy`+`guidelines`(+provider) → `rules`
-   (scope-aware, git-conditional). Each prose part renders through a pure
-   constructor taking an optional override body. Default output stays equivalent;
-   update golden tests.
-2. **`internal/persona/` package.** Dual-root scan; `Persona` struct (name, dir,
-   resolved `system/*.md`, skill dirs, `settings.json`); `Registry` mirroring
-   `internal/identity`.
-3. **Wire the prompt override.** `WithPersona` build option + `SwapPersona`
-   hot-patch, per-part file-or-default.
-4. **`settings.json` overlay.** Persona layer in the merge chain; `skills` map +
-   `Data` reuse.
-5. **Persona-scoped skills.** `LoadPersonaSkills` / `ClearPersonaSkills`
-   (in-memory active); reuse the skills-directory reminder.
-6. **`/persona` command + hot-switch.** Selector (mirror `/identity`);
-   `setActivePersona` doing the §5 five-step switch; reconfigure the subagent
-   executor.
-7. **Absorb identity (clean break).** `/identity` becomes a `/persona` alias;
-   delete the identity selector, `internal/identity`, and all
-   `settings.identity` / `identities/` back-compat.
-
----
-
-## 10. Open questions
-
-- **Optional `system/context.md`** for appended static context — include in v1 or
-  defer? (Leaning defer; environment is enough to start.)
-- **Subagent personas.** Should a subagent be able to run *as* a persona, or do
-  subagents keep their own charter mechanism? (Current plan: charter unchanged;
-  personas are a main-agent concept.)
+- **Optional `system/context.md`** for appended static context (distinct from the
+  live, computed `environment` block).
+- **Subagent personas** — let a subagent run *as* a persona. Today subagents keep
+  their own charter mechanism; personas are a main-agent concept.
 - **`permissions.replace` escape hatch** to let a persona fully take over
-  permissions (D8 is add-only). Deferred unless a real need appears.
+  permissions (D8 is add-only).
 - **Plugin-provided personas** — personas shipped inside a plugin, like plugin
-  skills. Natural extension; not in the initial scope.
+  skills.
