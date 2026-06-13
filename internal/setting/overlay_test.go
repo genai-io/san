@@ -17,7 +17,6 @@ func TestApplyPersonaOverlay_OverridesAndTightens(t *testing.T) {
 	}
 	overlay := &Data{
 		Persona:       "should-be-ignored",
-		Identity:      "should-be-ignored",
 		Model:         "claude-opus-4-8",
 		DisabledTools: map[string]bool{"WebSearch": false, "HeavyTool": true},
 		Permissions: PermissionSettings{
@@ -31,9 +30,6 @@ func TestApplyPersonaOverlay_OverridesAndTightens(t *testing.T) {
 	// The active-persona selector is NOT changed by the overlay (no re-select).
 	if got.Persona != "ml-researcher" {
 		t.Errorf("Persona = %q, want ml-researcher (overlay must not re-select)", got.Persona)
-	}
-	if got.Identity != "" {
-		t.Errorf("Identity = %q, want empty (overlay identity ignored)", got.Identity)
 	}
 	// Scalars: overlay wins.
 	if got.Model != "claude-opus-4-8" {

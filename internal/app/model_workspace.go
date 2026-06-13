@@ -1,7 +1,7 @@
 // Reactions to workspace changes: cwd switch (Bash `cd`, EnterWorktree,
 // ExitWorktree), file-change notifications fed to hooks, project-context
-// reload when cwd changes, persona reload when the user edits a persona or
-// identity file, and FileWatcher setup off the SessionStart hook outcome.
+// reload when cwd changes, persona reload when the user edits a persona file,
+// and FileWatcher setup off the SessionStart hook outcome.
 package app
 
 import (

@@ -186,7 +186,6 @@ func TestIsPersonaFile(t *testing.T) {
 		filepath.Join(home, ".san", "personas", "ml", "system", "identity.md"),
 		filepath.Join(cwd, ".san", "personas", "go", "settings.json"),
 		filepath.Join(cwd, ".san", "personas", "go", "skills", "x", "SKILL.md"),
-		filepath.Join(home, ".san", "identities", "ml.md"), // legacy identity file (absorbed)
 	}
 	for _, p := range inside {
 		if !IsPersonaFile(cwd, p) {
@@ -195,6 +194,7 @@ func TestIsPersonaFile(t *testing.T) {
 	}
 
 	outside := []string{
+		filepath.Join(home, ".san", "identities", "ml.md"),    // identities are no longer loaded
 		filepath.Join(cwd, "personas", "go", "settings.json"), // not under .san
 		"",
 	}

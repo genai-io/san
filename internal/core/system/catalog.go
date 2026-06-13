@@ -109,8 +109,8 @@ func sortedKeys(m map[string]string) []string {
 // Part: identity (slot 0)
 
 // identitySection renders the "who you are" preamble. A non-empty override
-// (a persona or user-defined identity) replaces the built-in default. Rendered
-// raw (no XML envelope) to match Anthropic's standard "You are X" preamble.
+// (a persona's identity part) replaces the built-in default. Rendered raw
+// (no XML envelope) to match Anthropic's standard "You are X" preamble.
 func identitySection(override string) core.Section {
 	body := strings.TrimSpace(override)
 	source := core.Predefined
@@ -193,12 +193,6 @@ func assembleRules(scope core.Scope, isGit bool, provider string) string {
 }
 
 // Options
-
-// WithIdentity replaces the default identity with a persona/user-defined one,
-// e.g. an "ML engineer" charter. An empty string keeps the default.
-func WithIdentity(text string) Option {
-	return func(cfg *buildConfig) { cfg.persona.Identity = strings.TrimSpace(text) }
-}
 
 // WithPersona overrides any of the identity / behavior / rules parts at build
 // time from a persona. Empty fields keep San's built-in default for that part.

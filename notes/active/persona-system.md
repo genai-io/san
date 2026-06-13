@@ -374,8 +374,9 @@ behavior change.
 6. **`/persona` command + hot-switch.** Selector (mirror `/identity`);
    `setActivePersona` doing the §5 five-step switch; reconfigure the subagent
    executor.
-7. **Absorb identity (compat).** `settings.identity` → `settings.persona`; treat
-   existing identity files as skill-less personas; `/identity` alias.
+7. **Absorb identity (clean break).** `/identity` becomes a `/persona` alias;
+   delete the identity selector, `internal/identity`, and all
+   `settings.identity` / `identities/` back-compat.
 
 ---
 

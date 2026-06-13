@@ -52,7 +52,7 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	sys := core.NewSystem()
 	const caller = "system:init"
 
-	// Identity (slot 0): subagent charter, persona/user override, or default.
+	// Identity (slot 0): subagent charter, persona override, or default.
 	if cfg.subagent != nil {
 		sys.Use(subagentIdentitySection(*cfg.subagent), caller)
 	} else {

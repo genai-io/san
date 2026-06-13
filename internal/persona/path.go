@@ -8,22 +8,19 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
-// IsPersonaFile reports whether path points at a file that affects the persona
-// registry: anything under a user/project personas/ or identities/ directory
-// (personas absorb the legacy single-file identities). Used to trigger a
-// registry reload when such a file is edited.
+// IsPersonaFile reports whether path points inside a user- or project-level
+// persona directory (any file under <root>/.san/personas/<name>/). Used to
+// trigger a registry reload when a persona file is edited.
 func IsPersonaFile(cwd, path string) bool {
 	if path == "" {
 		return false
 	}
 	// Cheap substring guard before paying for filepath.Abs/UserHomeDir.
 	slash := filepath.ToSlash(path)
-	for _, sub := range []string{"personas", "identities"} {
-		if strings.Contains(slash, "/"+confdir.Name+"/"+sub+"/") && withinAny(path, scopeDirs(cwd, sub)) {
-			return true
-		}
+	if !strings.Contains(slash, "/"+confdir.Name+"/personas/") {
+		return false
 	}
-	return false
+	return withinAny(path, scopeDirs(cwd, "personas"))
 }
 
 // scopeDirs returns the user- and project-level <sub> directories.

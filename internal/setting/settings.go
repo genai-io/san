@@ -32,9 +32,6 @@ type Data struct {
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
 	AllowBypass    *bool              `json:"allowBypass,omitempty"`
-	// Identity selects an active persona under ~/.san/identities/<name>.md or
-	// .san/identities/<name>.md. Empty = use built-in default identity.
-	Identity string `json:"identity,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -407,7 +404,6 @@ func (s *Data) Clone() *Data {
 	dst.Model = s.Model
 	dst.Theme = s.Theme
 	dst.SearchProvider = s.SearchProvider
-	dst.Identity = s.Identity
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
 	if s.AllowBypass != nil {

@@ -18,7 +18,7 @@
 //	model_turn_queue.go    inbox drain + prompt injection at turn end +
 //	                       stop-hook gate before persistence
 //	model_deps.go          deps builders for sub-features
-//	model_actions.go       identity switch + slash command dispatch
+//	model_actions.go       persona switch (hot-patch prompt parts + skills)
 package app
 
 import (

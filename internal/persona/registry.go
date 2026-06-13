@@ -82,21 +82,6 @@ func (r *Registry) reload() {
 	}
 	byName := dedupeByScope(items)
 
-	// Legacy single-file identities fill in any name a persona directory has
-	// not already claimed — personas absorb the older identity files.
-	var legacy []*Persona
-	if home, err := os.UserHomeDir(); err == nil {
-		legacy = append(legacy, loadIdentities(filepath.Join(confdir.Dir(home), "identities"), ScopeUser)...)
-	}
-	if r.cwd != "" {
-		legacy = append(legacy, loadIdentities(filepath.Join(confdir.Dir(r.cwd), "identities"), ScopeProject)...)
-	}
-	for name, p := range dedupeByScope(legacy) {
-		if _, taken := byName[name]; !taken {
-			byName[name] = p
-		}
-	}
-
 	final := make([]*Persona, 0, len(byName))
 	for _, it := range byName {
 		final = append(final, it)

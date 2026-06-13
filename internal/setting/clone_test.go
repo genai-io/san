@@ -2,10 +2,10 @@ package setting
 
 import "testing"
 
-// TestClonePreservesAllScalarFields guards against the Clone() drift that
-// caused identity to silently revert to default at startup: every scalar
-// field on Data must round-trip through Clone. New fields should be
-// added here at the same time they are added to Clone().
+// TestClonePreservesAllScalarFields guards against Clone() drift that would
+// silently revert a setting to its default at startup: every scalar field on
+// Data must round-trip through Clone. New fields should be added here at the
+// same time they are added to Clone().
 func TestClonePreservesAllScalarFields(t *testing.T) {
 	yes := true
 	src := &Data{
@@ -13,7 +13,6 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 		Theme:          "dark",
 		SearchProvider: "exa",
 		AllowBypass:    &yes,
-		Identity:       "go-reviewer",
 		Persona:        "ml-researcher",
 		SelfLearn: SelfLearnSettings{
 			Memory: SelfLearnMemory{Enabled: true, EveryTurns: 7, MaxKB: 15},
@@ -34,9 +33,6 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 	}
 	if dst.AllowBypass == nil || *dst.AllowBypass != *src.AllowBypass {
 		t.Errorf("AllowBypass: got %v, want %v", dst.AllowBypass, src.AllowBypass)
-	}
-	if dst.Identity != src.Identity {
-		t.Errorf("Identity: got %q, want %q", dst.Identity, src.Identity)
 	}
 	if dst.Persona != src.Persona {
 		t.Errorf("Persona: got %q, want %q", dst.Persona, src.Persona)

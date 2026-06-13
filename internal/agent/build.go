@@ -30,8 +30,7 @@ type BuildParams struct {
 	AgentDirectory func() string
 
 	// Persona overrides the system-prompt parts (identity / behavior / rules)
-	// from the active persona — or just the Identity part from a user identity
-	// when no persona is selected. Empty fields keep San's built-in defaults.
+	// from the active persona. Empty fields keep San's built-in defaults.
 	Persona system.Persona
 
 	DisabledTools map[string]bool

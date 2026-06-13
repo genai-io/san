@@ -104,9 +104,8 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 
 - Stateless, concurrent-safe (each call opens its own file).
 - Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
-  [`identity.md`](identity.md), [`command.md`](command.md). Every
-  skill / agent / identity / command file is parsed through it on
-  `san` startup.
+  `persona`, [`command.md`](command.md). Every skill / agent /
+  persona / command file is parsed through it on `san` startup.
 - Code: `internal/markdown/`.
 
 ## See Also
