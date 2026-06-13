@@ -1,9 +1,15 @@
 // Imperative user-driven model actions that don't fit a single sub-feature:
 // switching the active persona with a hot-patch of the running agent's prompt
-// parts and skills.
+// parts and skills, plus editing and deleting personas from the picker.
 package app
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
@@ -56,5 +62,54 @@ func (m *model) setActivePersona(name string) error {
 		}
 	}
 	m.ReconfigureAgentTool()
+	return nil
+}
+
+// editPersona opens the named persona's files in $EDITOR — the identity prompt
+// if present, else settings.json, else the directory. The built-in default has
+// no files to edit.
+func (m *model) editPersona(name string) tea.Cmd {
+	if m.services.Persona == nil {
+		return nil
+	}
+	p, ok := m.services.Persona.Get(name)
+	if !ok || p.IsBuiltin() || p.Dir == "" {
+		return nil
+	}
+	target := p.Dir
+	for _, rel := range []string{filepath.Join("system", "identity.md"), "settings.json"} {
+		cand := filepath.Join(p.Dir, rel)
+		if info, err := os.Stat(cand); err == nil && !info.IsDir() {
+			target = cand
+			break
+		}
+	}
+	return m.StartExternalEditor(target)
+}
+
+// deletePersona removes a user/project persona's directory. If it was the
+// active persona, the selection falls back to the built-in default first so the
+// session never points at a directory that's about to disappear. The built-in
+// default cannot be deleted.
+func (m *model) deletePersona(name string) error {
+	if m.services.Persona == nil {
+		return fmt.Errorf("persona registry unavailable")
+	}
+	p, ok := m.services.Persona.Get(name)
+	if !ok || p.IsBuiltin() || p.Dir == "" {
+		return fmt.Errorf("cannot delete %q", name)
+	}
+
+	if m.services.Setting != nil {
+		if snap := m.services.Setting.Snapshot(); snap != nil && snap.Persona == name {
+			_ = m.setActivePersona(persona.DefaultName)
+		}
+	}
+	if err := os.RemoveAll(p.Dir); err != nil {
+		return err
+	}
+	m.services.Persona.Reload()
+	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 	return nil
 }

@@ -18,24 +18,37 @@ type personaItem struct {
 	Description string
 	Scope       string // "built-in" / "user" / "project"
 	IsCurrent   bool
+	Builtin     bool
 }
 
-// PersonaSelectedMsg is emitted when the user picks a persona in the selector;
-// the app applies it (persist + hot-patch) via OverlayDeps.SetActivePersona.
+// PersonaSelectedMsg is emitted when the user picks a persona to switch to; the
+// app applies it (persist + hot-patch) via OverlayDeps.SetActivePersona.
 type PersonaSelectedMsg struct {
 	Name string
 }
 
+// PersonaEditMsg asks the app to open the named persona's files in $EDITOR.
+type PersonaEditMsg struct {
+	Name string
+}
+
+// PersonaDeleteMsg asks the app to delete the named persona's directory.
+type PersonaDeleteMsg struct {
+	Name string
+}
+
 // PersonaSelector is the interactive /persona picker — a single-select list of
-// the available personas that switches the active one on Enter.
+// the available personas. Enter switches; Ctrl+E edits; Ctrl+D deletes (with a
+// confirm); Esc cancels.
 type PersonaSelector struct {
-	active      bool
-	items       []personaItem
-	selectedIdx int
-	width       int
-	height      int
-	registry    *persona.Registry
-	settingSvc  *setting.Settings
+	active        bool
+	confirmDelete bool
+	items         []personaItem
+	selectedIdx   int
+	width         int
+	height        int
+	registry      *persona.Registry
+	settingSvc    *setting.Settings
 }
 
 func NewPersonaSelector(reg *persona.Registry, settingSvc *setting.Settings) PersonaSelector {
@@ -75,10 +88,12 @@ func (s *PersonaSelector) EnterSelect(width, height int) error {
 			Description: p.Description,
 			Scope:       personaScopeLabel(p),
 			IsCurrent:   p.Name == current,
+			Builtin:     p.IsBuiltin(),
 		})
 	}
 
 	s.active = true
+	s.confirmDelete = false
 	s.selectedIdx = 0
 	s.width = width
 	s.height = height
@@ -95,6 +110,7 @@ func (s *PersonaSelector) IsActive() bool { return s.active }
 
 func (s *PersonaSelector) Cancel() {
 	s.active = false
+	s.confirmDelete = false
 	s.items = nil
 	s.selectedIdx = 0
 }
@@ -107,7 +123,28 @@ func (s *PersonaSelector) Select() tea.Cmd {
 	return func() tea.Msg { return PersonaSelectedMsg{Name: name} }
 }
 
+func (s *PersonaSelector) selected() (personaItem, bool) {
+	if s.selectedIdx < 0 || s.selectedIdx >= len(s.items) {
+		return personaItem{}, false
+	}
+	return s.items[s.selectedIdx], true
+}
+
 func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
+	// Delete confirmation: only "y" confirms; anything else backs out.
+	if s.confirmDelete {
+		if key.String() == "y" || key.String() == "Y" {
+			it, ok := s.selected()
+			s.Cancel()
+			if ok {
+				return func() tea.Msg { return PersonaDeleteMsg{Name: it.Name} }
+			}
+			return nil
+		}
+		s.confirmDelete = false
+		return nil
+	}
+
 	switch key.Type {
 	case tea.KeyUp, tea.KeyCtrlP:
 		if s.selectedIdx > 0 {
@@ -121,6 +158,17 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	case tea.KeyEnter:
 		return s.Select()
+	case tea.KeyCtrlE:
+		if it, ok := s.selected(); ok && !it.Builtin {
+			s.Cancel()
+			return func() tea.Msg { return PersonaEditMsg{Name: it.Name} }
+		}
+		return nil
+	case tea.KeyCtrlD:
+		if it, ok := s.selected(); ok && !it.Builtin {
+			s.confirmDelete = true
+		}
+		return nil
 	case tea.KeyEsc:
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
@@ -181,7 +229,12 @@ func (s *PersonaSelector) Render() string {
 	sb.WriteString("\n")
 	sb.WriteString(s.sepLine())
 	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Esc cancel"))
+	if it, ok := s.selected(); s.confirmDelete && ok {
+		warn := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
+		sb.WriteString(warn.Render("Delete persona '" + it.Name + "' from disk?  y = yes · any other key = no"))
+	} else {
+		sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Ctrl+E edit · Ctrl+D delete · Esc cancel"))
+	}
 
 	content := sb.String()
 	box := lipgloss.NewStyle().
@@ -244,7 +297,8 @@ func (s *PersonaSelector) sepLine() string {
 
 // --- Persona Runtime ---
 
-// UpdatePersona applies a picked persona via the app callback and shows status.
+// UpdatePersona applies persona picker actions (switch / edit / delete) via the
+// app callbacks on OverlayDeps and shows a status line.
 func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case PersonaSelectedMsg:
@@ -260,6 +314,22 @@ func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.C
 			status = "Persona: default (built-in San)"
 		}
 		token := deps.State.Provider.SetStatusMessage(status)
+		return kit.StatusTimer(3*time.Second, token), true
+
+	case PersonaEditMsg:
+		if deps.EditPersona != nil {
+			return deps.EditPersona(msg.Name), true
+		}
+		return nil, true
+
+	case PersonaDeleteMsg:
+		if deps.DeletePersona != nil {
+			if err := deps.DeletePersona(msg.Name); err != nil {
+				token := deps.State.Provider.SetStatusMessage("Delete failed: " + err.Error())
+				return kit.StatusTimer(4*time.Second, token), true
+			}
+		}
+		token := deps.State.Provider.SetStatusMessage("Deleted persona: " + msg.Name)
 		return kit.StatusTimer(3*time.Second, token), true
 	}
 	return nil, false

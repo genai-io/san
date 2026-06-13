@@ -1,12 +1,36 @@
 package input
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/genai-io/san/internal/persona"
 )
+
+// writeUserPersona scaffolds a minimal user-scope persona under $HOME for tests.
+func writeUserPersona(t *testing.T, home, name string) {
+	t.Helper()
+	dir := filepath.Join(home, ".san", "personas", name, "system")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "identity.md"), []byte("You are "+name+"."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func selectByName(s *PersonaSelector, name string) bool {
+	for i, it := range s.items {
+		if it.Name == name {
+			s.selectedIdx = i
+			return true
+		}
+	}
+	return false
+}
 
 func TestPersonaSelector_EnterMarksCurrentAndSelects(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
@@ -46,6 +70,73 @@ func TestPersonaSelector_EscCancels(t *testing.T) {
 	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
 	if s.IsActive() {
 		t.Error("Esc should cancel the selector")
+	}
+}
+
+func TestPersonaSelector_DeleteFlowEmitsMsg(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeUserPersona(t, home, "tester")
+
+	s := NewPersonaSelector(persona.NewRegistry(""), nil)
+	_ = s.EnterSelect(80, 24)
+	if !selectByName(&s, "tester") {
+		t.Fatal("tester persona should be listed")
+	}
+
+	// Ctrl+D only arms the confirm; the delete fires on "y".
+	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
+	if !s.confirmDelete {
+		t.Fatal("Ctrl+D should arm the delete confirmation")
+	}
+	// A non-y key backs out without deleting.
+	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	if s.confirmDelete {
+		t.Fatal("a non-y key should cancel the confirmation")
+	}
+
+	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
+	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if cmd == nil {
+		t.Fatal("y should fire the delete")
+	}
+	msg, ok := cmd().(PersonaDeleteMsg)
+	if !ok || msg.Name != "tester" {
+		t.Fatalf("got %#v, want PersonaDeleteMsg{tester}", cmd())
+	}
+	if s.IsActive() {
+		t.Error("picker should close after confirming delete")
+	}
+}
+
+func TestPersonaSelector_EditEmitsMsg(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeUserPersona(t, home, "tester")
+
+	s := NewPersonaSelector(persona.NewRegistry(""), nil)
+	_ = s.EnterSelect(80, 24)
+	if !selectByName(&s, "tester") {
+		t.Fatal("tester persona should be listed")
+	}
+	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlE})
+	if cmd == nil {
+		t.Fatal("Ctrl+E should emit an edit message")
+	}
+	if msg, ok := cmd().(PersonaEditMsg); !ok || msg.Name != "tester" {
+		t.Fatalf("got %#v, want PersonaEditMsg{tester}", cmd())
+	}
+}
+
+func TestPersonaSelector_NoActionsOnBuiltin(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	s := NewPersonaSelector(persona.NewRegistry(""), nil) // only the built-in default
+	_ = s.EnterSelect(80, 24)
+	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD}); cmd != nil || s.confirmDelete {
+		t.Error("Ctrl+D on the built-in default should be a no-op")
+	}
+	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlE}); cmd != nil {
+		t.Error("Ctrl+E on the built-in default should be a no-op")
 	}
 }
 
