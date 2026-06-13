@@ -1,4 +1,4 @@
-# Feature 4: Slash Commands (20 Commands)
+# Feature 4: Slash Commands (21 Commands)
 
 ## Overview
 
@@ -7,6 +7,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | Command | Function |
 |---------|----------|
 | `/model` | Select model and manage provider connections |
+| `/persona` | Switch the active persona (alias: `/identity`) |
 | `/clear` | Clear chat history |
 | `/fork` | Fork the current session |
 | `/resume` | Resume a previous session |

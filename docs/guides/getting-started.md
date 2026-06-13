@@ -74,7 +74,7 @@ approve once, `A` to approve-all for this session.
 | Exit | `Ctrl+D` or `/exit` |
 | List all slash commands | `/help` |
 | Switch model | `/model` |
-| Switch persona | `/identity` |
+| Switch persona | `/persona` |
 | Save / resume session | `san --continue`, `san --resume` |
 
 ## One-Shot and Piped Modes
@@ -90,7 +90,7 @@ san --continue                       # resume the last session
 | Scope | Path | What it holds |
 |---|---|---|
 | User | `~/.san/providers.json` | Provider connections, current model |
-| User | `~/.san/settings.json` | Permissions, hooks, env, identity, search provider |
+| User | `~/.san/settings.json` | Permissions, hooks, env, persona, search provider |
 | User | `~/.san/skills/` `~/.san/agents/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
 | Project | `<project>/.san/settings.json` | Per-project overrides |
 | Project | `<project>/.san/{skills,agents,commands}/` | Project-scoped extensions |
