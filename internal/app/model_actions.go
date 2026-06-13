@@ -40,6 +40,7 @@ func (m *model) setActivePersona(name string) error {
 	// Skills (immediate): swap the in-memory persona skill set, then re-emit
 	// the skills-directory reminder so the model sees it on the next turn.
 	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 	if m.services.Reminder != nil {
 		m.services.Reminder.RequeueSystemReminders()
 	}

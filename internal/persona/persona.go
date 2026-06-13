@@ -10,7 +10,7 @@
 //	    rules.md      (optional) overrides the rules part
 //	  skills/
 //	    <skill>/SKILL.md   persona-scoped skills
-//	  settings.json   (optional) description + skill states + config overlay
+//	  settings.json   (optional) description + skill states + agent allow-list + config overlay
 //
 // Personas live under:
 //   - ~/.san/personas/<name>/   (user level)

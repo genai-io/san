@@ -53,6 +53,7 @@ func (m *model) reloadPersonasIfChanged(filePath string) {
 	}
 	m.services.Persona.Reload()
 	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 	m.ReconfigureAgentTool()
 }
 

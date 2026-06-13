@@ -50,6 +50,20 @@ func TestParseDir_LoadsParts(t *testing.T) {
 	}
 }
 
+func TestParseDir_ParsesAgentAllowList(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "p")
+	writeFile(t, filepath.Join(dir, "settings.json"),
+		`{"description":"x","agents":["explorer","code-reviewer"]}`)
+	p, ok := parseDir(dir)
+	if !ok {
+		t.Fatal("expected persona to load")
+	}
+	if p.Settings == nil || len(p.Settings.Agents) != 2 ||
+		p.Settings.Agents[0] != "explorer" || p.Settings.Agents[1] != "code-reviewer" {
+		t.Errorf("agents allow-list not parsed: %+v", p.Settings)
+	}
+}
+
 func TestParseDir_SkipsEmptyDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "empty")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
