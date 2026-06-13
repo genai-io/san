@@ -24,7 +24,23 @@ Create a new release with a structured changelog and author attribution.
 
 If no version is given, detect the current version and suggest the next one (see Step 1).
 
+## Constraints
+
+- Only **patch** (`x.y.Z`) or **minor** (`x.Y.0`) bumps. Never bump major — the
+  module path has no `/vN` suffix, so a major bump would violate Go v2+ rules.
+- All version tags use the `v` prefix (e.g. `v1.20.0`).
+
 ## Workflow
+
+### 0. Pull from upstream
+
+Always pull the latest upstream codebase first:
+
+```bash
+git pull upstream main --rebase
+```
+
+If there are merge conflicts, resolve them before proceeding.
 
 ### 1. Detect current version and suggest the next
 
@@ -95,6 +111,20 @@ Add a new `CHANGELOG.md` section for the target version. Keep older sections in 
 
 Use the commit log from Step 1 as source material. Group entries under `Added`, `Changed`, or `Fixed` based on conventional commit prefixes.
 
+**Contributor attribution:** Every changelog entry must include the author's GitHub handle and a link to the PR or commit, matching the existing format:
+
+```markdown
+- Description of change ([@username](https://github.com/username) in [#NNN](https://github.com/genai-io/san/pull/NNN))
+```
+
+For direct commits without a PR, use the commit hash:
+
+```markdown
+- Description of change ([@username](https://github.com/username) in [abcdef1](https://github.com/genai-io/san/commit/abcdef1))
+```
+
+**Exclude:** OWNERS updates, dependabot bumps, and other purely administrative chore commits. Do not list them in the changelog.
+
 Write only the current version section in `CHANGELOG.md`. Do not pass the entire file as manual release notes later; the GitHub Actions workflow extracts the current version section automatically.
 
 ### 3. Bump the version in source code
@@ -105,7 +135,7 @@ Update the version string in `cmd/san/main.go`:
 var version = "<new_version>"
 ```
 
-### 4. Commit, tag, and push
+### 4. Commit and push
 
 Stage the version bump and changelog update, then commit with sign-off:
 
@@ -114,13 +144,52 @@ git add cmd/san/main.go CHANGELOG.md
 git commit -s -m "chore: bump version to <new_version>"
 ```
 
-Push the release using the Makefile helper:
+**If the canonical repo is `upstream` and its `main` is protected**, pushing
+directly will fail. Use this PR-based path instead:
+
+a. Push the commit to the fork (`origin`):
+   ```bash
+   git push origin main
+   ```
+
+b. Create a PR from fork `main` to upstream `main`:
+   ```bash
+   gh pr create --base main --head <fork-owner>:main \
+     --title "chore: bump version to <new_version>" \
+     --body "Bump code version..."
+   ```
+
+c. Wait for required CI checks (DCO, test, lint) to pass on the PR.
+
+d. **Check DCO.** If the DCO check fails on upstream commits that lack a
+   sign-off (common after rebasing onto upstream), add sign-offs to all PR
+   commits:
+   ```bash
+   git rebase --signoff upstream/main
+   git push --force-with-lease origin main
+   ```
+
+e. Merge the PR (this repo requires squash-merge):
+   ```bash
+   gh pr merge <number> --squash --subject "chore: bump version to <new_version>"
+   ```
+
+f. Pull the merged result, tag, and push the tag to upstream:
+   ```bash
+   git fetch upstream && git checkout main && git reset --hard upstream/main
+   git tag v<new_version>
+   git push upstream v<new_version>
+   ```
+
+**If pushing directly to upstream is allowed**, use the Makefile helper:
 
 ```bash
 make release-push VERSION=v<new_version>
 ```
 
-This target validates that the working tree is clean, the tag does not already exist, and `CHANGELOG.md` contains the matching section before it pushes `main` and the tag.
+This target validates that the working tree is clean, the tag does not already
+exist, and `CHANGELOG.md` contains the matching section before it pushes `main`
+and the tag.
 
 The tag push triggers the GitHub Actions release workflow (`.github/workflows/release.yml`) which builds binaries, creates the GitHub release, and uses only the current changelog section as release notes.
 
