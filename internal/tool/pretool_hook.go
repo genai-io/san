@@ -84,7 +84,7 @@ func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (s
 			if reason == "" {
 				reason = "blocked by PreToolUse hook"
 			}
-			return "", fmt.Errorf("%s", reason)
+			return "", fmt.Errorf("blocked: %s", reason)
 		}
 		if outcome.UpdatedInput != nil {
 			input = outcome.UpdatedInput
@@ -94,7 +94,9 @@ func (pt *preToolHookTool) Execute(ctx context.Context, input map[string]any) (s
 		permissionReason = outcome.PermissionReason
 	}
 
-	if pt.check != nil && !allowByHook {
+	// A hook "ask" always reaches the user, even if another hook also
+	// answered "allow": prompting is the safe resolution of the conflict.
+	if pt.check != nil && (!allowByHook || forceAsk) {
 		if allow, reason := pt.check.Check(ctx, pt.inner.Name(), input, forceAsk, permissionReason); !allow {
 			return "", fmt.Errorf("blocked: %s", reason)
 		}

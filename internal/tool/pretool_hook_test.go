@@ -109,7 +109,23 @@ func TestPreToolUseContinueFalseBlocksWithSystemMessage(t *testing.T) {
 	tools := WithPreToolUseHooks(core.NewTools(inner), hooks)
 
 	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
-	if err == nil || err.Error() != "stop here" {
+	if err == nil || err.Error() != "blocked: stop here" {
 		t.Fatalf("Execute returned error %v", err)
+	}
+}
+
+func TestPreToolUseAskWinsOverAllow(t *testing.T) {
+	inner := &captureCoreTool{}
+	// Two hooks disagree: one allows, one asks. The user must still be prompted.
+	hooks := &fakeHookHandler{outcome: hook.HookOutcome{PermissionAllow: true, ForceAsk: true, PermissionReason: "double-check"}}
+	checker := &fakePreToolPermissionChecker{allow: true}
+	tools := WithPreToolUseAndPermission(core.NewTools(inner), hooks, checker)
+
+	_, err := tools.Get("Bash").Execute(context.Background(), map[string]any{"command": "git status"})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !checker.called || !checker.forcePrompt {
+		t.Fatalf("expected a forced prompt despite allow; called=%v forcePrompt=%v", checker.called, checker.forcePrompt)
 	}
 }

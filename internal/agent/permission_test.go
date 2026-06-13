@@ -8,7 +8,9 @@ import (
 )
 
 func TestPermissionBridgeForcedPromptUsesHookReason(t *testing.T) {
+	deciderCalled := false
 	bridge := NewPermissionBridge(func(name string, args map[string]any) PermDecisionResult {
+		deciderCalled = true
 		return PermDecisionResult{Decision: perm.Permit, Reason: "allowed by settings"}
 	})
 	defer bridge.Close()
@@ -37,5 +39,8 @@ func TestPermissionBridgeForcedPromptUsesHookReason(t *testing.T) {
 	got := <-result
 	if !got.allow || got.reason != "approved" {
 		t.Fatalf("unexpected permission result: %#v", got)
+	}
+	if deciderCalled {
+		t.Fatal("decider must be skipped when a hook forces a prompt (avoids a spurious audit record)")
 	}
 }

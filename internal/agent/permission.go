@@ -64,10 +64,14 @@ func (pb *PermissionBridge) PermissionFunc() perm.PermissionFunc {
 }
 
 func (pb *PermissionBridge) Check(ctx context.Context, name string, input map[string]any, forcePrompt bool, reason string) (bool, string) {
-	decision := pb.decideFn(name, input)
+	// When a hook forces a prompt we skip decideFn entirely: its result is
+	// discarded anyway, and calling it would emit a misleading "decided"
+	// audit record for a call that actually goes to the user.
 	if forcePrompt {
-		decision = PermDecisionResult{Decision: perm.Prompt, Reason: reason, ToolName: name, Description: reason}
+		return pb.prompt(ctx, &PermBridgeRequest{ToolName: name, Description: reason, Input: input})
 	}
+
+	decision := pb.decideFn(name, input)
 
 	switch decision.Decision {
 	case perm.Permit:
@@ -83,13 +87,18 @@ func (pb *PermissionBridge) Check(ctx context.Context, name string, input map[st
 		decision.Description = decision.Reason
 	}
 
-	req := &PermBridgeRequest{
+	return pb.prompt(ctx, &PermBridgeRequest{
 		RequestID:   decision.RequestID,
 		ToolName:    decision.ToolName,
 		Description: decision.Description,
 		Input:       input,
-		Response:    make(chan PermBridgeResponse, 1),
-	}
+	})
+}
+
+// prompt sends a permission request to the resolver (TUI) and blocks until
+// it responds or ctx is cancelled.
+func (pb *PermissionBridge) prompt(ctx context.Context, req *PermBridgeRequest) (bool, string) {
+	req.Response = make(chan PermBridgeResponse, 1)
 
 	select {
 	case pb.requests <- req:
