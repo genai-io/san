@@ -21,6 +21,10 @@ build-all: format
 
 install: build
 	@mkdir -p $(HOME)/.local/bin
+	@# Remove the old binary first so cp writes a fresh inode. Overwriting in
+	@# place reuses the inode, whose cached code signature macOS (AMFI) then
+	@# rejects on the new bytes ("code signature invalid") → SIGKILL on launch.
+	@rm -f $(HOME)/.local/bin/$(BINARY)
 	cp $(BINDIR)/$(BINARY) $(HOME)/.local/bin/
 
 install-format-tools:
