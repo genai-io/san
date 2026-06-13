@@ -72,22 +72,31 @@ func (r *Registry) Reload() {
 }
 
 func (r *Registry) reload() {
+	// Real persona directories are authoritative.
 	items := []*Persona{DefaultPersona()}
-
 	if home, err := os.UserHomeDir(); err == nil {
 		items = append(items, loadDir(filepath.Join(confdir.Dir(home), "personas"), ScopeUser)...)
 	}
 	if r.cwd != "" {
 		items = append(items, loadDir(filepath.Join(confdir.Dir(r.cwd), "personas"), ScopeProject)...)
 	}
+	byName := dedupeByScope(items)
 
-	// Project overrides user when names collide; keep the highest-priority entry.
-	byName := make(map[string]*Persona, len(items))
-	for _, it := range items {
-		if existing, ok := byName[it.Name]; !ok || it.Scope > existing.Scope {
-			byName[it.Name] = it
+	// Legacy single-file identities fill in any name a persona directory has
+	// not already claimed — personas absorb the older identity files.
+	var legacy []*Persona
+	if home, err := os.UserHomeDir(); err == nil {
+		legacy = append(legacy, loadIdentities(filepath.Join(confdir.Dir(home), "identities"), ScopeUser)...)
+	}
+	if r.cwd != "" {
+		legacy = append(legacy, loadIdentities(filepath.Join(confdir.Dir(r.cwd), "identities"), ScopeProject)...)
+	}
+	for name, p := range dedupeByScope(legacy) {
+		if _, taken := byName[name]; !taken {
+			byName[name] = p
 		}
 	}
+
 	final := make([]*Persona, 0, len(byName))
 	for _, it := range byName {
 		final = append(final, it)
@@ -96,6 +105,18 @@ func (r *Registry) reload() {
 
 	r.personas = final
 	r.byName = byName
+}
+
+// dedupeByScope keeps the highest-scope entry per name (project > user >
+// builtin) — project overrides user when names collide.
+func dedupeByScope(items []*Persona) map[string]*Persona {
+	byName := make(map[string]*Persona, len(items))
+	for _, it := range items {
+		if existing, ok := byName[it.Name]; !ok || it.Scope > existing.Scope {
+			byName[it.Name] = it
+		}
+	}
+	return byName
 }
 
 // List returns all personas in display order (default first).

@@ -116,7 +116,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"think":          (*SlashCommandController).handleThinkCommand,
 		"loop":           (*SlashCommandController).handleLoopCommand,
 		"search":         (*SlashCommandController).handleSearchCommand,
-		"identity":       (*SlashCommandController).handleIdentityCommand,
+		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
@@ -383,48 +383,6 @@ func (c *SlashCommandController) handleSearchCommand(_ context.Context, _ string
 		return "", nil, err
 	}
 	return "", nil, nil
-}
-
-// handleIdentityCommand dispatches:
-//   - /identity            → open selector
-//   - /identity create [hint] → inject create workflow as PendingInstructions
-//   - /identity edit <name>   → inject edit workflow with target
-//
-// Subcommands reuse the same skill-invocation pipeline as user-defined
-// commands — the workflow body lives in internal/command/builtin/.
-func (c *SlashCommandController) handleIdentityCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
-	sub, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
-	rest = strings.TrimSpace(rest)
-	switch sub {
-	case "":
-		_, err := c.env.Input.Identity.Enter(ctx, c.env.Width, c.env.Height)
-		return "", nil, err
-	case "create":
-		c.injectIdentityWorkflow("create", rest)
-		return "", c.env.HandleSkillInvocation(), nil
-	case "edit":
-		if rest == "" {
-			return "Usage: /identity edit <name>", nil, nil
-		}
-		c.injectIdentityWorkflow("edit", rest)
-		return "", c.env.HandleSkillInvocation(), nil
-	default:
-		return "Usage: /identity [create | edit <name>]", nil, nil
-	}
-}
-
-// injectIdentityWorkflow loads an embedded workflow template, substitutes
-// $ARGUMENTS, and primes the skill invocation pipeline so the next user
-// submit prepends the workflow as hidden instructions.
-func (c *SlashCommandController) injectIdentityWorkflow(sub, args string) {
-	body := command.BuiltinWorkflow("identity-" + sub)
-	if body == "" {
-		return
-	}
-	body = strings.ReplaceAll(body, "$ARGUMENTS", args)
-	name := "identity " + sub
-	c.env.Input.Skill.SetPending(name, command.WrapInvocation(name, body))
-	c.env.Input.Skill.PendingArgs = formatSlashInvocation(name, args)
 }
 
 func (c *SlashCommandController) handleModelCommand(ctx context.Context, _ string) (string, tea.Cmd, error) {

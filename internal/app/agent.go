@@ -59,20 +59,29 @@ func (m *model) activeIdentityBody() string {
 }
 
 // activePersona returns the currently-selected persona, or nil for the
-// built-in default (no settings.persona, or it doesn't resolve). A configured
-// name that doesn't resolve logs a warning and falls back to the default.
+// built-in default. settings.persona wins; it falls back to the legacy
+// settings.identity so an existing identity selection keeps working as a
+// (skill-less) persona — the persona registry loads identity files too. A
+// configured name that doesn't resolve logs a warning and falls back.
 func (m *model) activePersona() *persona.Persona {
 	if m.services.Setting == nil || m.services.Persona == nil {
 		return nil
 	}
 	snap := m.services.Setting.Snapshot()
-	if snap == nil || snap.Persona == "" || snap.Persona == persona.DefaultName {
+	if snap == nil {
 		return nil
 	}
-	p, ok := m.services.Persona.Get(snap.Persona)
+	name := snap.Persona
+	if name == "" {
+		name = snap.Identity // back-compat: a legacy identity is a persona
+	}
+	if name == "" || name == persona.DefaultName {
+		return nil
+	}
+	p, ok := m.services.Persona.Get(name)
 	if !ok || p.IsBuiltin() {
 		log.Logger().Warn("configured persona not found; using built-in default",
-			zap.String("persona", snap.Persona))
+			zap.String("persona", name))
 		return nil
 	}
 	return p
