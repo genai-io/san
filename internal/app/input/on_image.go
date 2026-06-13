@@ -17,23 +17,23 @@ func (m *Model) HandleImageSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.Images.Selection = ImageSelection{}
 			return nil, false
 		}
-		switch msg.Type {
-		case tea.KeyLeft:
+		switch msg.String() {
+		case "left":
 			if m.Images.Selection.CursorAbsPos == match.End {
 				m.SetCursorIndex(match.Start)
 			}
 			m.Images.Selection = ImageSelection{}
 			return nil, true
-		case tea.KeyRight:
+		case "right":
 			if m.Images.Selection.CursorAbsPos == match.Start {
 				m.SetCursorIndex(match.End)
 			}
 			m.Images.Selection = ImageSelection{}
 			return nil, true
-		case tea.KeyBackspace, tea.KeyDelete, tea.KeyCtrlX:
+		case "backspace", "delete", "ctrl+x":
 			m.RemoveImageToken(match, match.Start)
 			return nil, true
-		case tea.KeyEsc:
+		case "esc":
 			m.Images.Selection = ImageSelection{}
 			return nil, true
 		}
@@ -43,8 +43,8 @@ func (m *Model) HandleImageSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	}
 
 	cursor := m.CursorIndex()
-	switch msg.Type {
-	case tea.KeyLeft:
+	switch msg.String() {
+	case "left":
 		if match, ok := m.MatchAdjacentToCursor(cursor, false); ok {
 			m.Images.Selection = ImageSelection{
 				Active:       true,
@@ -53,7 +53,7 @@ func (m *Model) HandleImageSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}
 			return nil, true
 		}
-	case tea.KeyRight:
+	case "right":
 		if match, ok := m.MatchAdjacentToCursor(cursor, true); ok {
 			m.Images.Selection = ImageSelection{
 				Active:       true,
@@ -62,12 +62,12 @@ func (m *Model) HandleImageSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			}
 			return nil, true
 		}
-	case tea.KeyBackspace, tea.KeyCtrlX:
+	case "backspace", "ctrl+x":
 		if match, ok := m.MatchAdjacentToCursor(cursor, false); ok {
 			m.RemoveImageToken(match, match.Start)
 			return nil, true
 		}
-	case tea.KeyDelete:
+	case "delete":
 		if match, ok := m.MatchAdjacentToCursor(cursor, true); ok {
 			m.RemoveImageToken(match, match.Start)
 			return nil, true

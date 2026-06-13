@@ -146,44 +146,29 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch key.String() {
+	case "up", "ctrl+p", "k":
 		if s.selectedIdx > 0 {
 			s.selectedIdx--
 		}
-		return nil
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n", "j":
 		if s.selectedIdx < len(s.items)-1 {
 			s.selectedIdx++
 		}
-		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return s.Select()
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		if it, ok := s.selected(); ok && !it.Builtin {
 			s.Cancel()
 			return func() tea.Msg { return PersonaOpenMsg{Name: it.Name} }
 		}
-		return nil
-	case tea.KeyCtrlD:
+	case "ctrl+d":
 		if it, ok := s.selected(); ok && !it.Builtin {
 			s.confirmDelete = true
 		}
-		return nil
-	case tea.KeyEsc:
+	case "esc":
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
-	}
-
-	switch key.String() {
-	case "j":
-		if s.selectedIdx < len(s.items)-1 {
-			s.selectedIdx++
-		}
-	case "k":
-		if s.selectedIdx > 0 {
-			s.selectedIdx--
-		}
 	}
 	return nil
 }

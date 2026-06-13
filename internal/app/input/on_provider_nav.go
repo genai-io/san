@@ -110,43 +110,43 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleConfirmRemove(key)
 	}
 
-	switch key.Type {
-	case tea.KeyTab:
+	switch key.String() {
+	case "tab":
 		if s.searchQuery == "" {
 			s.NextTab()
 		}
 		return nil
 
-	case tea.KeyShiftTab:
+	case "shift+tab":
 		if s.searchQuery == "" {
 			s.PrevTab()
 		}
 		return nil
 
-	case tea.KeyUp, tea.KeyCtrlP:
+	case "up", "ctrl+p":
 		s.MoveUp()
 		return nil
 
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		s.MoveDown()
 		return nil
 
-	case tea.KeyEnter:
+	case "enter":
 		return s.Select()
 
-	case tea.KeyRight:
+	case "right":
 		if s.searchQuery == "" {
 			s.NextTab()
 		}
 		return nil
 
-	case tea.KeyLeft:
+	case "left":
 		if s.searchQuery == "" && !s.GoBack() {
 			s.PrevTab()
 		}
 		return nil
 
-	case tea.KeyEsc:
+	case "esc":
 		if s.clearModelSearch() {
 			return nil
 		}
@@ -156,41 +156,49 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
 
-	case tea.KeyBackspace:
+	case "backspace":
 		s.trimModelSearch()
 		return nil
 
-	case tea.KeySpace:
+	case " ":
 		if s.activeTab == providerTabModels && !s.searchFocused {
 			return s.toggleModel()
 		}
 		s.appendModelSearch(" ")
 		return nil
 
-	case tea.KeyRunes:
-		s.appendModelSearch(string(key.Runes))
-		return nil
-
-	case tea.KeyCtrlE:
+	case "ctrl+e":
 		return s.handleCredentialEdit()
 
-	case tea.KeyCtrlD:
+	case "ctrl+d":
 		return s.handleCredentialRemove()
-	}
 
-	// Vim navigation (only when search query is empty)
-	if s.searchQuery == "" {
-		switch key.String() {
-		case "j":
-			s.MoveDown()
-		case "k":
-			s.MoveUp()
-		case "l":
-			s.NextTab()
-		case "h":
-			if !s.GoBack() {
-				s.PrevTab()
+	default:
+		// Typed text capture (KeyRunes -> v2 msg.Text).
+		if key.Type == tea.KeyRunes {
+			// Vim navigation takes priority while the model search is empty
+			// (mirrors every other selector); otherwise the rune is search
+			// input. l/h switch tabs since this selector is tabbed.
+			if s.searchQuery == "" {
+				switch key.String() {
+				case "j":
+					s.MoveDown()
+					return nil
+				case "k":
+					s.MoveUp()
+					return nil
+				case "l":
+					s.NextTab()
+					return nil
+				case "h":
+					if !s.GoBack() {
+						s.PrevTab()
+					}
+					return nil
+				}
 			}
+			s.appendModelSearch(string(key.Runes))
+			return nil
 		}
 	}
 

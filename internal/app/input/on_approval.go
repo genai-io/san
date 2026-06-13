@@ -119,23 +119,23 @@ func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalRespon
 	}
 	options := buildApprovalOptionRows(p.request)
 
-	switch msg.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch msg.String() {
+	case "up", "ctrl+p":
 		if p.selectedIdx > 0 {
 			p.selectedIdx--
 		}
 		return nil, nil
 
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		if p.selectedIdx < len(options)-1 {
 			p.selectedIdx++
 		}
 		return nil, nil
 
-	case tea.KeyEnter:
+	case "enter":
 		return p.respondAt(options, p.selectedIdx)
 
-	case tea.KeyShiftTab:
+	case "shift+tab":
 		// shift+tab is the accelerator for "Yes, allow all this session".
 		// Look it up by AllowAll instead of hardcoding the index so the
 		// accelerator survives reordering.
@@ -146,7 +146,7 @@ func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalRespon
 		}
 		return nil, nil
 
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		if p.diffPreview != nil {
 			p.diffPreview.toggleExpand()
 		}
@@ -155,7 +155,7 @@ func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalRespon
 		}
 		return nil, nil
 
-	case tea.KeyEsc, tea.KeyCtrlC:
+	case "esc", "ctrl+c":
 		// Esc/Ctrl+C maps to whichever option carries no approval — the
 		// modal must always offer one such row (a "No" or equivalent).
 		for i, opt := range options {

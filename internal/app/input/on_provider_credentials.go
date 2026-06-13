@@ -13,8 +13,8 @@ import (
 )
 
 func (s *ProviderSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyEnter:
+	switch key.String() {
+	case "enter":
 		value := strings.TrimSpace(s.apiKeyInput.Value())
 		if value == "" {
 			return nil
@@ -35,7 +35,7 @@ func (s *ProviderSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 
-	case tea.KeyEsc:
+	case "esc":
 		s.apiKeyActive = false
 		return nil
 

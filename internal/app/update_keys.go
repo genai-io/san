@@ -55,8 +55,8 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 // recognized shortcut, (nil, false) to let the rune fall through to
 // updateTextarea as plain text input.
 func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
-	switch msg.Type {
-	case tea.KeyTab, tea.KeyRight:
+	switch msg.String() {
+	case "tab", "right":
 		if m.userInput.PromptSuggestion.Text != "" && m.userInput.Textarea.Value() == "" {
 			m.userInput.Textarea.SetValue(m.userInput.PromptSuggestion.Text)
 			m.userInput.Textarea.CursorEnd()
@@ -64,7 +64,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 
-	case tea.KeyShiftTab:
+	case "shift+tab":
 		if !m.conv.Stream.Active && !m.userInput.Approval.IsActive() &&
 			!m.conv.Modal.Question.IsActive() &&
 			!m.userInput.Provider.Selector.IsActive() && !m.userInput.Suggestions.IsVisible() {
@@ -72,35 +72,33 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 
-	case tea.KeyCtrlT:
+	case "ctrl+t":
 		return m.cycleThinkingEffort(), true
 
-	case tea.KeyRunes:
-		if msg.Alt && len(msg.Runes) == 1 && (msg.Runes[0] == 't' || msg.Runes[0] == 'T') {
-			m.conv.ShowTasks = !m.conv.ShowTasks
-			return nil, true
-		}
+	case "alt+t", "alt+T":
+		m.conv.ShowTasks = !m.conv.ShowTasks
+		return nil, true
 
-	case tea.KeyCtrlO:
+	case "ctrl+o":
 		return m.handleCtrlO(), true
 
-	case tea.KeyCtrlE:
+	case "ctrl+e":
 		return m.expandCollapseAll(), true
 
-	case tea.KeyCtrlX:
+	case "ctrl+x":
 		return nil, false
 
-	case tea.KeyCtrlU:
+	case "ctrl+u":
 		if m.userInput.Queue.Len() > 0 {
 			m.userInput.Queue.Clear()
 			return nil, true
 		}
 		return nil, false
 
-	case tea.KeyCtrlV, tea.KeyCtrlY:
+	case "ctrl+v", "ctrl+y":
 		return m.pasteImageFromClipboard()
 
-	case tea.KeyCtrlC:
+	case "ctrl+c":
 		if m.userInput.Textarea.Value() != "" {
 			m.userInput.Reset()
 			m.userInput.History.Index = -1
@@ -119,17 +117,17 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		_, cmd, _ := m.executeCommand(context.Background(), "/clear")
 		return cmd, true
 
-	case tea.KeyCtrlD:
+	case "ctrl+d":
 		if m.userInput.Textarea.Value() != "" {
 			return nil, false
 		}
 		return m.QuitWithCancel()
 
-	case tea.KeyCtrlL:
+	case "ctrl+l":
 		_, cmd, _ := m.executeCommand(context.Background(), "/clear")
 		return cmd, true
 
-	case tea.KeyEsc:
+	case "esc":
 		if m.userInput.PromptSuggestion.Text != "" {
 			m.userInput.PromptSuggestion.Clear()
 			return nil, true
@@ -143,7 +141,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case tea.KeyUp:
+	case "up":
 		if m.userInput.Textarea.Line() == 0 {
 			if m.userInput.Queue.Len() > 0 {
 				m.userInput.EnterQueueSelection()
@@ -153,7 +151,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 
-	case tea.KeyDown:
+	case "down":
 		lines := strings.Count(m.userInput.Textarea.Value(), "\n")
 		if m.userInput.Textarea.Line() == lines {
 			if m.userInput.Queue.Len() > 0 {
@@ -164,13 +162,13 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 
-	case tea.KeyEnter:
-		if msg.Alt {
-			m.userInput.Textarea.InsertString("\n")
-			m.userInput.UpdateHeight()
-			return nil, true
-		}
+	case "enter":
 		return m.handleSubmit(), true
+
+	case "alt+enter":
+		m.userInput.Textarea.InsertString("\n")
+		m.userInput.UpdateHeight()
+		return nil, true
 	}
 
 	return nil, false

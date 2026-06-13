@@ -122,8 +122,8 @@ func (m *Model) HandleQueueSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	m.SaveCurrentQueueEdit()
 
-	switch msg.Type {
-	case tea.KeyUp:
+	switch msg.String() {
+	case "up":
 		if m.Queue.SelectIdx > 0 {
 			m.Queue.SelectIdx--
 			m.LoadQueueItemIntoTextarea()
@@ -133,7 +133,7 @@ func (m *Model) HandleQueueSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case tea.KeyDown:
+	case "down":
 		qLen := m.Queue.Len()
 		if m.Queue.SelectIdx >= qLen-1 {
 			m.ExitQueueSelection()
@@ -144,11 +144,11 @@ func (m *Model) HandleQueueSelectKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case tea.KeyEnter, tea.KeyEsc:
+	case "enter", "esc":
 		m.ExitQueueSelection()
 		return nil, true
 
-	case tea.KeyCtrlC:
+	case "ctrl+c":
 		m.DeleteCurrentQueueItem()
 		return nil, true
 	}

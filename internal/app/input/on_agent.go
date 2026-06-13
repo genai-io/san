@@ -244,14 +244,14 @@ func (s *AgentSelector) cycleTab(delta int) {
 }
 
 func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyTab, tea.KeyRight:
+	switch key.String() {
+	case "tab", "right":
 		s.cycleTab(+1)
 		return nil
-	case tea.KeyShiftTab, tea.KeyLeft:
+	case "shift+tab", "left":
 		s.cycleTab(-1)
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return s.Toggle()
 	}
 	searchChanged, consumed := s.nav.HandleKey(key)
@@ -261,7 +261,7 @@ func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	if consumed {
 		return nil
 	}
-	if key.Type == tea.KeyEsc {
+	if key.String() == "esc" {
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
 	}

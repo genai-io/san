@@ -111,7 +111,7 @@ type MCPRemoveMsg struct {
 	ServerName string
 }
 
-// MCPAddServerMsg is sent when the user presses "n" to add a new server
+// MCPAddServerMsg is sent when the user presses ctrl+a to add a new server
 type MCPAddServerMsg struct{}
 
 // MCPEditServerMsg is sent when the user chooses to edit a server's config
@@ -573,7 +573,7 @@ func StartMCPEditor(filePath string) tea.Cmd {
 func (s *MCPSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	// Only allow escape while connecting
 	if s.connecting {
-		if key.Type == tea.KeyEsc {
+		if key.String() == "esc" {
 			s.Cancel()
 			return func() tea.Msg { return kit.DismissedMsg{} }
 		}
@@ -591,27 +591,26 @@ func (s *MCPSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 
 // handleDetailKeypress handles keypresses in the detail view
 func (s *MCPSelector) handleDetailKeypress(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch key.String() {
+	case "up", "ctrl+p":
 		s.MoveUp()
 		return nil
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		s.MoveDown()
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return s.executeAction()
-	case tea.KeyEsc, tea.KeyLeft:
+	case "esc", "left":
 		s.goBack()
 		return nil
-	case tea.KeyRunes:
-		switch key.String() {
-		case "k":
-			s.MoveUp()
-		case "j":
-			s.MoveDown()
-		case "h":
-			s.goBack()
-		}
+	case "k":
+		s.MoveUp()
+		return nil
+	case "j":
+		s.MoveDown()
+		return nil
+	case "h":
+		s.goBack()
 		return nil
 	}
 	return nil
@@ -619,58 +618,42 @@ func (s *MCPSelector) handleDetailKeypress(key tea.KeyMsg) tea.Cmd {
 
 // handleListKeypress handles keypresses in the list view
 func (s *MCPSelector) handleListKeypress(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
-		s.MoveUp()
-		return nil
-	case tea.KeyDown, tea.KeyCtrlJ:
-		s.MoveDown()
-		return nil
-	case tea.KeyCtrlN:
+	// Selector-specific action keys. ctrl+n is intentionally NOT add-server
+	// here: it is unified to "move down" across all selectors via ListNav, so
+	// add lives on ctrl+a.
+	switch key.String() {
+	case "ctrl+a":
 		s.Cancel()
 		return func() tea.Msg { return MCPAddServerMsg{} }
-	case tea.KeyCtrlD:
+	case "ctrl+d":
 		if len(s.filteredServers) > 0 && s.nav.Selected < len(s.filteredServers) {
 			name := s.filteredServers[s.nav.Selected].Name
 			return func() tea.Msg { return MCPRemoveMsg{ServerName: name} }
 		}
 		return nil
-	case tea.KeyEnter, tea.KeyRight:
+	case "enter", "right":
 		s.enterDetail()
 		return nil
-	case tea.KeyEsc:
-		if s.nav.Search != "" {
-			s.nav.Search = ""
+	}
+
+	// vim 'l' opens detail when not searching (j/k are handled by ListNav).
+	if s.nav.Search == "" && key.String() == "l" {
+		s.enterDetail()
+		return nil
+	}
+
+	// Shared core: up/down, ctrl+p/ctrl+n, j/k, esc-clears-search, backspace,
+	// and type-to-search — identical to every other list selector.
+	if searchChanged, consumed := s.nav.HandleKey(key); consumed {
+		if searchChanged {
 			s.updateFilter()
-			return nil
 		}
+		return nil
+	}
+
+	if key.String() == "esc" {
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
-	case tea.KeyBackspace:
-		if len(s.nav.Search) > 0 {
-			s.nav.Search = s.nav.Search[:len(s.nav.Search)-1]
-			s.updateFilter()
-		}
-		return nil
-	case tea.KeyRunes:
-		r := key.String()
-		// vim navigation when not searching
-		if s.nav.Search == "" {
-			switch r {
-			case "j":
-				s.MoveDown()
-				return nil
-			case "k":
-				s.MoveUp()
-				return nil
-			case "l":
-				s.enterDetail()
-				return nil
-			}
-		}
-		s.nav.Search += r
-		s.updateFilter()
-		return nil
 	}
 	return nil
 }

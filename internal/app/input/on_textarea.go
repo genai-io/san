@@ -455,26 +455,26 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	if !m.Suggestions.IsVisible() {
 		return nil, false
 	}
-	switch msg.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch msg.String() {
+	case "up", "ctrl+p":
 		m.Suggestions.MoveUp()
 		return nil, true
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		m.Suggestions.MoveDown()
 		return nil, true
-	case tea.KeyPgUp:
+	case "pgup":
 		m.Suggestions.MovePageUp()
 		return nil, true
-	case tea.KeyPgDown:
+	case "pgdown":
 		m.Suggestions.MovePageDown()
 		return nil, true
-	case tea.KeyHome:
+	case "home":
 		m.Suggestions.MoveToTop()
 		return nil, true
-	case tea.KeyEnd:
+	case "end":
 		m.Suggestions.MoveToEnd()
 		return nil, true
-	case tea.KeyTab, tea.KeyEnter:
+	case "tab", "enter":
 		if selected := m.Suggestions.GetSelected(); selected != "" {
 			if m.Suggestions.GetSuggestionType() == suggest.TypeFile {
 				currentValue := m.Textarea.Value()
@@ -490,7 +490,7 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.Suggestions.Hide()
 		}
 		return nil, true
-	case tea.KeyEsc:
+	case "esc":
 		m.Suggestions.Hide()
 		return nil, true
 	}

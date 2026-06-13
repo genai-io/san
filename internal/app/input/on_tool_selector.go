@@ -159,7 +159,7 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 
 // HandleKeypress handles a keypress and returns a command if needed.
 func (s *ToolSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	if key.Type == tea.KeyTab {
+	if key.String() == "tab" {
 		if s.saveLevel == kit.SaveLevelProject {
 			s.saveLevel = kit.SaveLevelUser
 		} else {
@@ -169,7 +169,7 @@ func (s *ToolSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	if key.Type == tea.KeyEnter {
+	if key.String() == "enter" {
 		return s.Toggle()
 	}
 
@@ -181,7 +181,7 @@ func (s *ToolSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	if key.Type == tea.KeyEsc {
+	if key.String() == "esc" {
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
 	}

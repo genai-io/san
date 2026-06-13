@@ -135,35 +135,18 @@ func (m *MemorySelector) Cancel() {
 func (m *MemorySelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	keyStr := key.String()
 
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
-		if m.selectedIdx > 0 {
-			m.selectedIdx--
-		}
-		return nil
-	case tea.KeyDown, tea.KeyCtrlN:
-		if m.selectedIdx < len(m.items)-1 {
-			m.selectedIdx++
-		}
-		return nil
-	case tea.KeyEnter, tea.KeyRight:
-		return m.selectMemoryItem()
-	case tea.KeyEsc, tea.KeyLeft:
-		return m.cancelMemoryWithMsg()
-	}
-
 	switch keyStr {
-	case "j":
-		if m.selectedIdx < len(m.items)-1 {
-			m.selectedIdx++
-		}
-	case "k":
+	case "up", "ctrl+p", "k":
 		if m.selectedIdx > 0 {
 			m.selectedIdx--
 		}
-	case "l":
+	case "down", "ctrl+n", "j":
+		if m.selectedIdx < len(m.items)-1 {
+			m.selectedIdx++
+		}
+	case "enter", "right", "l":
 		return m.selectMemoryItem()
-	case "h":
+	case "esc", "left", "h":
 		return m.cancelMemoryWithMsg()
 	case "1", "2", "3":
 		idx := int(keyStr[0] - '1')

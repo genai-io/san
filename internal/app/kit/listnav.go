@@ -74,40 +74,43 @@ func (n *ListNav) VisibleRange() (start, end int) {
 // Esc with an empty search returns consumed=false so callers can handle dismiss.
 // Enter and other action keys are NOT handled — callers implement those.
 func (n *ListNav) HandleKey(key tea.KeyMsg) (searchChanged, consumed bool) {
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch key.String() {
+	case "up", "ctrl+p":
 		n.MoveUp()
 		return false, true
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n":
 		n.MoveDown()
 		return false, true
-	case tea.KeyEsc:
+	case "esc":
 		if n.Search != "" {
 			n.Search = ""
 			return true, true
 		}
 		return false, false
-	case tea.KeyBackspace:
+	case "backspace":
 		if len(n.Search) > 0 {
 			runes := []rune(n.Search)
 			n.Search = string(runes[:len(runes)-1])
 			return true, true
 		}
 		return false, true
-	case tea.KeyRunes:
-		// Vim-style navigation takes priority when search is empty.
-		if n.Search == "" {
-			switch key.String() {
-			case "j":
-				n.MoveDown()
-				return false, true
-			case "k":
-				n.MoveUp()
-				return false, true
+	default:
+		// Typed text capture (KeyRunes -> v2 msg.Text). Vim-style navigation
+		// takes priority when search is empty.
+		if key.Type == tea.KeyRunes {
+			if n.Search == "" {
+				switch key.String() {
+				case "j":
+					n.MoveDown()
+					return false, true
+				case "k":
+					n.MoveUp()
+					return false, true
+				}
 			}
+			n.Search += string(key.Runes)
+			return true, true
 		}
-		n.Search += string(key.Runes)
-		return true, true
 	}
 	return false, false
 }

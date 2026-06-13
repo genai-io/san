@@ -141,34 +141,21 @@ func (s *SearchSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleAPIKeyInput(key)
 	}
 
-	switch key.Type {
-	case tea.KeyUp, tea.KeyCtrlP:
+	switch key.String() {
+	case "up", "ctrl+p", "k":
 		if s.selectedIdx > 0 {
 			s.selectedIdx--
 		}
-		return nil
-	case tea.KeyDown, tea.KeyCtrlN:
+	case "down", "ctrl+n", "j":
 		if s.selectedIdx < len(s.items)-1 {
 			s.selectedIdx++
 		}
-		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return s.Select()
-	case tea.KeyEsc:
+	case "esc":
 		s.Cancel()
 		return func() tea.Msg {
 			return kit.DismissedMsg{}
-		}
-	}
-
-	switch key.String() {
-	case "j":
-		if s.selectedIdx < len(s.items)-1 {
-			s.selectedIdx++
-		}
-	case "k":
-		if s.selectedIdx > 0 {
-			s.selectedIdx--
 		}
 	case "e":
 		s.openAPIKeyInput()
@@ -195,8 +182,8 @@ func (s *SearchSelector) openAPIKeyInput() {
 }
 
 func (s *SearchSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyEnter:
+	switch key.String() {
+	case "enter":
 		value := strings.TrimSpace(s.apiKeyInput.Value())
 		if value == "" {
 			return nil
@@ -215,7 +202,7 @@ func (s *SearchSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 		}
 		s.apiKeyActive = false
 		return s.Select()
-	case tea.KeyEsc:
+	case "esc":
 		s.apiKeyActive = false
 		return nil
 	default:

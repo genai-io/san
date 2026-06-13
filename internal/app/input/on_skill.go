@@ -282,14 +282,14 @@ func (s *SkillSelector) CycleState() tea.Cmd {
 }
 
 func (s *SkillSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	switch key.Type {
-	case tea.KeyTab, tea.KeyRight:
+	switch key.String() {
+	case "tab", "right":
 		s.cycleTab(+1)
 		return nil
-	case tea.KeyShiftTab, tea.KeyLeft:
+	case "shift+tab", "left":
 		s.cycleTab(-1)
 		return nil
-	case tea.KeyEnter:
+	case "enter":
 		return s.CycleState()
 	}
 
@@ -301,7 +301,7 @@ func (s *SkillSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
-	if key.Type == tea.KeyEsc {
+	if key.String() == "esc" {
 		s.Cancel()
 		return func() tea.Msg { return kit.DismissedMsg{} }
 	}
