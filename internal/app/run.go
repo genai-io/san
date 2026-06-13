@@ -13,12 +13,19 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
 
 // Run routes to either print mode or interactive TUI.
 func Run(opts setting.RunOptions) error {
+	if opts.Persona != "" {
+		if err := validatePersona(opts.Persona); err != nil {
+			return err
+		}
+	}
+
 	if opts.Print != "" {
 		return runPrint(opts.Print)
 	}
@@ -185,4 +192,12 @@ func runPrint(userMessage string) error {
 	}
 
 	return nil
+}
+
+// validatePersona ensures the named persona exists on disk, early in startup,
+// before either print or interactive mode proceeds.
+func validatePersona(name string) error {
+	cwd, _ := os.Getwd()
+	persona.Initialize(cwd)
+	return persona.Default().Validate(name)
 }

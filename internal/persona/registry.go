@@ -1,6 +1,7 @@
 package persona
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,26 @@ func (r *Registry) Get(name string) (*Persona, bool) {
 	defer r.mu.RUnlock()
 	p, ok := r.byName[name]
 	return p, ok
+}
+
+// Validate checks that name refers to a real (non-builtin) persona. It returns
+// an error listing available personas when the name is not found.
+func (r *Registry) Validate(name string) error {
+	p, ok := r.Get(name)
+	if !ok || p.IsBuiltin() {
+		available := r.List()
+		names := make([]string, 0, len(available))
+		for _, p := range available {
+			if !p.IsBuiltin() {
+				names = append(names, p.Name)
+			}
+		}
+		if len(names) > 0 {
+			return fmt.Errorf("persona %q not found; available: %s", name, strings.Join(names, ", "))
+		}
+		return fmt.Errorf("persona %q not found; no personas are configured. Create one under .san/personas/<name>/", name)
+	}
+	return nil
 }
 
 // loadDir scans a single personas root, treating each subdirectory as a

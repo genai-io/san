@@ -91,6 +91,17 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 		m.env.InitialPrompt = opts.Prompt
 	}
 
+	if opts.Persona != "" {
+		if m.services.Persona != nil {
+			if err := m.services.Persona.Validate(opts.Persona); err != nil {
+				return err
+			}
+		}
+		if err := m.setActivePersona(opts.Persona); err != nil {
+			return err
+		}
+	}
+
 	if opts.Continue {
 		if err := m.applyContinueOption(); err != nil {
 			return err

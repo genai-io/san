@@ -39,6 +39,7 @@ var cliOpts struct {
 	resume bool   // --resume
 
 	pluginDir string
+	persona   string // --persona: persona name to activate on startup
 }
 
 func init() {
@@ -55,6 +56,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&cliOpts.cont, "continue", "c", false, "Resume the most recent session")
 	rootCmd.Flags().BoolVarP(&cliOpts.resume, "resume", "r", false, "Select and resume a previous session")
 	rootCmd.PersistentFlags().StringVar(&cliOpts.pluginDir, "plugin-dir", "", "Load plugins from a specific directory")
+	rootCmd.Flags().StringVar(&cliOpts.persona, "persona", "", "Activate a persona on startup")
 
 	// Register subcommands
 	rootCmd.AddCommand(versionCmd)
@@ -101,6 +103,7 @@ Non-interactive mode:
 			Print:     printPrompt,
 			Prompt:    prompt,
 			PluginDir: cliOpts.pluginDir,
+			Persona:   cliOpts.persona,
 			Continue:  cliOpts.cont,
 			Resume:    cliOpts.resume,
 			ResumeID:  resumeID,
@@ -165,6 +168,7 @@ Session:
   san -r, --resume           Select and resume a previous session
   san -r <session-id>        Resume a specific session by ID
   san --plugin-dir <path>    Load plugins from a specific directory
+  san --persona <name>       Activate a persona on startup
 
 Commands:
   version      Print the version number
