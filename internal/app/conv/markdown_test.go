@@ -351,6 +351,31 @@ func TestMDRenderer_Table(t *testing.T) {
 	}
 }
 
+func Test_isAllTableLines(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"header only", "| Name | Value |\n", true},
+		{"header + separator", "| Name | Value |\n|------|-------|\n", true},
+		{"full table", "| Name |\n|---|\n| val |\n", true},
+		{"table + trailing blank", "| Name |\n|---|\n| val |\n\n", true},
+		{"non-table text", "Hello world\n", false},
+		{"table then paragraph", "| Name |\n|---|\nParagraph\n", false},
+		{"empty string", "", false},
+		{"just blank lines", "\n\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isAllTableLines(tt.input)
+			if got != tt.want {
+				t.Errorf("isAllTableLines(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMDRenderer_TableWithLinks(t *testing.T) {
 	r := NewMDRenderer(80)
 

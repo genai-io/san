@@ -259,6 +259,17 @@ func commitStreamTail(m *Model, flush bool) tea.Cmd {
 		return pickCmd(cmds)
 	}
 	commit := delta[:lastNewline+1]
+
+	// If every non-empty line in the commit looks like a table row the
+	// table may still be incomplete. Skip so the lines stay in the live
+	// View area and renderMarkdownContent can process the full block once
+	// a non-table line marks its end — or the final flush. Blank lines
+	// after a table signal the block is complete (avoids an infinite
+	// skip loop).
+	if isAllTableLines(strings.TrimRight(commit, "\n")) && !strings.HasSuffix(commit, "\n\n") {
+		return pickCmd(cmds)
+	}
+
 	m.Stream.ScrollbackLen += len(commit)
 	rendered := renderMarkdownContent(m.MDRenderer, strings.TrimRight(commit, "\n"))
 	cmds = append(cmds, tea.Println(rendered))

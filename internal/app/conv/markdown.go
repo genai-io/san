@@ -157,6 +157,25 @@ func isTableLine(line string) bool {
 	return strings.HasPrefix(trimmed, "|") && strings.Contains(trimmed[1:], "|")
 }
 
+// isAllTableLines reports whether every non-empty line in s looks like a
+// markdown table row.  Returns false when s is empty or contains only
+// whitespace.
+func isAllTableLines(s string) bool {
+	lines := strings.Split(s, "\n")
+	found := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		found = true
+		if !isTableLine(trimmed) {
+			return false
+		}
+	}
+	return found
+}
+
 // findTableEnd finds the end index (exclusive) of consecutive table lines.
 func findTableEnd(lines []string, start int) int {
 	i := start
