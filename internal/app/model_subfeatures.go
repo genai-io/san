@@ -74,6 +74,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		ReloadPluginState:       m.ReloadPluginBackedState,
 		LoadSession:             m.loadSessionByID,
 		SetActivePersona:        m.setActivePersona,
+		CreatePersona:           m.createPersona,
 		EditPersona:             m.editPersona,
 		DeletePersona:           m.deletePersona,
 	}

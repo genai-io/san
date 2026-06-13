@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -37,12 +38,19 @@ type PersonaDeleteMsg struct {
 	Name string
 }
 
+// PersonaCreateMsg asks the app to scaffold a new persona and open it.
+type PersonaCreateMsg struct {
+	Name string
+}
+
 // PersonaSelector is the interactive /persona picker — a single-select list of
-// the available personas. Enter switches; Ctrl+E edits; Ctrl+D deletes (with a
-// confirm); Esc cancels.
+// the available personas. Enter switches; Ctrl+A new; Ctrl+E edit; Ctrl+D
+// delete (with a confirm); Esc cancels.
 type PersonaSelector struct {
 	active        bool
 	confirmDelete bool
+	newActive     bool
+	newInput      textinput.Model
 	items         []personaItem
 	selectedIdx   int
 	width         int
@@ -94,6 +102,7 @@ func (s *PersonaSelector) EnterSelect(width, height int) error {
 
 	s.active = true
 	s.confirmDelete = false
+	s.newActive = false
 	s.selectedIdx = 0
 	s.width = width
 	s.height = height
@@ -111,6 +120,7 @@ func (s *PersonaSelector) IsActive() bool { return s.active }
 func (s *PersonaSelector) Cancel() {
 	s.active = false
 	s.confirmDelete = false
+	s.newActive = false
 	s.items = nil
 	s.selectedIdx = 0
 }
@@ -130,7 +140,40 @@ func (s *PersonaSelector) selected() (personaItem, bool) {
 	return s.items[s.selectedIdx], true
 }
 
+func (s *PersonaSelector) openNewInput() {
+	s.newActive = true
+	ti := textinput.New()
+	ti.Placeholder = "my-persona"
+	ti.CharLimit = 64
+	ti.Focus()
+	s.newInput = ti
+}
+
+func (s *PersonaSelector) handleNewInput(key tea.KeyMsg) tea.Cmd {
+	switch key.Type {
+	case tea.KeyEnter:
+		name := strings.TrimSpace(s.newInput.Value())
+		if name == "" {
+			return nil
+		}
+		s.Cancel()
+		return func() tea.Msg { return PersonaCreateMsg{Name: name} }
+	case tea.KeyEsc:
+		s.newActive = false
+		s.newInput.Blur()
+		return nil
+	default:
+		s.newInput, _ = s.newInput.Update(key)
+		return nil
+	}
+}
+
 func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
+	// New-persona name entry takes over all keys until Enter/Esc.
+	if s.newActive {
+		return s.handleNewInput(key)
+	}
+
 	// Delete confirmation: only "y" confirms; anything else backs out.
 	if s.confirmDelete {
 		if key.String() == "y" || key.String() == "Y" {
@@ -158,6 +201,9 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return nil
 	case tea.KeyEnter:
 		return s.Select()
+	case tea.KeyCtrlA:
+		s.openNewInput()
+		return nil
 	case tea.KeyCtrlE:
 		if it, ok := s.selected(); ok && !it.Builtin {
 			s.Cancel()
@@ -229,11 +275,20 @@ func (s *PersonaSelector) Render() string {
 	sb.WriteString("\n")
 	sb.WriteString(s.sepLine())
 	sb.WriteString("\n")
-	if it, ok := s.selected(); s.confirmDelete && ok {
-		warn := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
-		sb.WriteString(warn.Render("Delete persona '" + it.Name + "' from disk?  y = yes · any other key = no"))
-	} else {
-		sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Ctrl+E edit · Ctrl+D delete · Esc cancel"))
+	switch {
+	case s.newActive:
+		label := dimStyle.Render("New persona name: ")
+		inputBg := lipgloss.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+		box := lipgloss.NewStyle().Background(inputBg).Padding(0, 1).Render(label + s.newInput.View())
+		sb.WriteString(box + "\n")
+		sb.WriteString(dimStyle.Render("Enter create · Esc cancel"))
+	case s.confirmDelete:
+		if it, ok := s.selected(); ok {
+			warn := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
+			sb.WriteString(warn.Render("Delete persona '" + it.Name + "' from disk?  y = yes · any other key = no"))
+		}
+	default:
+		sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Ctrl+A new · Ctrl+E edit · Ctrl+D delete · Esc cancel"))
 	}
 
 	content := sb.String()
@@ -297,8 +352,8 @@ func (s *PersonaSelector) sepLine() string {
 
 // --- Persona Runtime ---
 
-// UpdatePersona applies persona picker actions (switch / edit / delete) via the
-// app callbacks on OverlayDeps and shows a status line.
+// UpdatePersona applies persona picker actions (switch / new / edit / delete)
+// via the app callbacks on OverlayDeps and shows a status line.
 func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case PersonaSelectedMsg:
@@ -315,6 +370,17 @@ func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.C
 		}
 		token := deps.State.Provider.SetStatusMessage(status)
 		return kit.StatusTimer(3*time.Second, token), true
+
+	case PersonaCreateMsg:
+		if deps.CreatePersona != nil {
+			cmd, err := deps.CreatePersona(msg.Name)
+			if err != nil {
+				token := deps.State.Provider.SetStatusMessage("Create failed: " + err.Error())
+				return kit.StatusTimer(4*time.Second, token), true
+			}
+			return cmd, true
+		}
+		return nil, true
 
 	case PersonaEditMsg:
 		if deps.EditPersona != nil {

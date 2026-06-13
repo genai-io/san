@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -112,4 +113,61 @@ func (m *model) deletePersona(name string) error {
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
 	return nil
+}
+
+// createPersona scaffolds a new user-scope persona (system/identity.md +
+// settings.json), switches to it, and opens the prompt in $EDITOR.
+func (m *model) createPersona(name string) (tea.Cmd, error) {
+	name = sanitizePersonaName(name)
+	if name == "" {
+		return nil, fmt.Errorf("invalid persona name")
+	}
+	if name == persona.DefaultName {
+		return nil, fmt.Errorf("%q is reserved", name)
+	}
+	if m.services.Persona == nil {
+		return nil, fmt.Errorf("persona registry unavailable")
+	}
+	if _, exists := m.services.Persona.Get(name); exists {
+		return nil, fmt.Errorf("persona %q already exists", name)
+	}
+
+	root, err := persona.UserDir()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(filepath.Join(dir, "system"), 0o755); err != nil {
+		return nil, err
+	}
+	identity := filepath.Join(dir, "system", "identity.md")
+	if err := os.WriteFile(identity, []byte("You are "+name+".\n"), 0o644); err != nil {
+		return nil, err
+	}
+	_ = os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{\n  \"description\": \"\"\n}\n"), 0o644)
+
+	m.services.Persona.Reload()
+	_ = m.setActivePersona(name)
+	return m.StartExternalEditor(identity), nil
+}
+
+// sanitizePersonaName reduces a free-form name to a safe kebab-case directory
+// name (lowercase letters, digits, single dashes; trimmed).
+func sanitizePersonaName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		case r == '-' || r == '_' || r == ' ':
+			if b.Len() > 0 && !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
 }

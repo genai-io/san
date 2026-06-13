@@ -11,14 +11,22 @@ import (
 //go:embed README.md.tmpl
 var readmeTemplate string
 
+// UserDir returns the user-level personas root (~/.san/personas).
+func UserDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(confdir.Dir(home), "personas"), nil
+}
+
 // EnsureUserDir creates ~/.san/personas/ and writes README.md if missing.
 // Idempotent: an existing README is not overwritten.
 func EnsureUserDir() error {
-	home, err := os.UserHomeDir()
+	dir, err := UserDir()
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(confdir.Dir(home), "personas")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
