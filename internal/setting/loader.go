@@ -353,6 +353,27 @@ func GetDisabledToolsAt(userLevel bool) map[string]bool {
 	return result
 }
 
+// PersonaAt returns the persona pinned in a single settings file (not merged).
+// userLevel=true reads ~/.san/settings.json; false reads <cwd>/.san/settings.json.
+func PersonaAt(cwd string, userLevel bool) string {
+	loader := NewLoader()
+	if cwd != "" {
+		loader = NewLoaderForCwd(cwd)
+	}
+	dir := loader.projectDir
+	if userLevel {
+		dir = loader.userDir
+	}
+	if dir == "" {
+		return ""
+	}
+	s, err := loader.LoadFile(filepath.Join(dir, "settings.json"))
+	if err != nil || s == nil {
+		return ""
+	}
+	return s.Persona
+}
+
 // AddAllowRuleAt appends a permission allow rule to project settings rooted at
 // the provided cwd.
 func AddAllowRuleAt(toolName string, args map[string]any, cwd string) error {

@@ -28,14 +28,20 @@ func (m *model) setActivePersona(name string) error {
 			return nil
 		}
 	}
-	// Save the selection at the scope where the persona lives: a project
-	// persona persists in .san/settings.json (the choice stays with the project
-	// and doesn't leak to others); user/builtin personas persist user-level.
+	// Persist the selection at a scope that actually wins the merge. Project
+	// scope overrides user scope, so write project scope when the project
+	// already pins a persona — otherwise that pin would shadow a user-scope
+	// write and the switch would silently do nothing (e.g. switching away from
+	// a project persona to the built-in default) — or when the target is itself
+	// a project persona. Otherwise persist user-level.
 	userLevel := true
 	if m.services.Persona != nil {
 		if p, ok := m.services.Persona.Get(name); ok && p.Scope == persona.ScopeProject {
 			userLevel = false
 		}
+	}
+	if setting.PersonaAt(m.env.CWD, false) != "" {
+		userLevel = false
 	}
 	if err := setting.SavePersonaAt(m.env.CWD, name, userLevel); err != nil {
 		return err
