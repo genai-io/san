@@ -3,6 +3,25 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.2] - 2026-06-13
+
+### Added
+- Persona system: switchable bundles of custom prompt parts (identity/behavior/rules), bundled skills, settings overlay, and a subagent allow-list. `/persona <name>` switches directly; bare `/persona` opens an interactive picker (Enter to switch, Ctrl+O to open files, Ctrl+D to delete). `/identity` is now a `/persona` alias. ([@yanmxa](https://github.com/yanmxa) in [f4947cf](https://github.com/genai-io/san/commit/f4947cf), [9ff746f](https://github.com/genai-io/san/commit/9ff746f), [317c9fd](https://github.com/genai-io/san/commit/317c9fd), [5f0cf63](https://github.com/genai-io/san/commit/5f0cf63), [33ebb6f](https://github.com/genai-io/san/commit/33ebb6f), [cc2fa45](https://github.com/genai-io/san/commit/cc2fa45), [befb2fa](https://github.com/genai-io/san/commit/befb2fa), [ef9b407](https://github.com/genai-io/san/commit/ef9b407), [ac90b90](https://github.com/genai-io/san/commit/ac90b90), [f262ed3](https://github.com/genai-io/san/commit/f262ed3)))
+- PreToolUse hook: run hooks in the main-session tool path before permission checks and execution ([@zhfeng](https://github.com/zhfeng) in [cdaee75](https://github.com/genai-io/san/commit/cdaee75))
+
+### Changed
+- Split monolithic `on_provider.go` into convention-named siblings by concern (select, credentials, connect, nav, data, types) ([@yanmxa](https://github.com/yanmxa) in [9e239ca](https://github.com/genai-io/san/commit/9e239ca))
+- Merge prompt template files to mirror the four system-prompt parts ([@yanmxa](https://github.com/yanmxa) in [a2cbaec](https://github.com/genai-io/san/commit/a2cbaec))
+- Tune system-prompt content: align security stance, deduplicate reversibility rules, rename "Behavior" to "Honesty" ([@yanmxa](https://github.com/yanmxa) in [4be9d29](https://github.com/genai-io/san/commit/4be9d29))
+- Drop legacy identity back-compat and remove dead identity selector / `internal/identity` package ([@yanmxa](https://github.com/yanmxa) in [029e021](https://github.com/genai-io/san/commit/029e021), [6bbdc21](https://github.com/genai-io/san/commit/6bbdc21))
+- Split installation instructions by platform in README and site ([@yanmxa](https://github.com/yanmxa) in [80a452f](https://github.com/genai-io/san/commit/80a452f))
+- Move persona design note from active notes into `docs/concepts` ([@yanmxa](https://github.com/yanmxa) in [0901aa9](https://github.com/genai-io/san/commit/0901aa9))
+
+### Fixed
+- PreToolUse permission edge cases: skip decider when hook forces a prompt, let "ask" reach the user, consistent "blocked:" error prefix ([@yanmxa](https://github.com/yanmxa) in [c73525e](https://github.com/genai-io/san/commit/c73525e))
+- `make install` replaces the binary via a fresh inode to fix macOS AMFI code-signature cache rejection ([@yanmxa](https://github.com/yanmxa) in [6bf0277](https://github.com/genai-io/san/commit/6bf0277))
+- Persona switch persists at the correct scope when a project-pinned persona is active ([@yanmxa](https://github.com/yanmxa) in [99473ab](https://github.com/genai-io/san/commit/99473ab))
+
 ## [v1.20.1] - 2026-06-11
 
 ### Added
