@@ -8,39 +8,47 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
-// IsPersonaFile reports whether path points inside a user- or project-level
-// persona directory (any file under <root>/.san/personas/<name>/). Used to
-// trigger a registry reload when a persona file is edited.
+// IsPersonaFile reports whether path points at a file that affects the persona
+// registry: anything under a user/project personas/ or identities/ directory
+// (personas absorb the legacy single-file identities). Used to trigger a
+// registry reload when such a file is edited.
 func IsPersonaFile(cwd, path string) bool {
 	if path == "" {
 		return false
 	}
 	// Cheap substring guard before paying for filepath.Abs/UserHomeDir.
 	slash := filepath.ToSlash(path)
-	if !strings.Contains(slash, "/"+confdir.Name+"/personas/") {
-		return false
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-	for _, dir := range personaRoots(cwd) {
-		if isWithinDir(abs, dir) {
+	for _, sub := range []string{"personas", "identities"} {
+		if strings.Contains(slash, "/"+confdir.Name+"/"+sub+"/") && withinAny(path, scopeDirs(cwd, sub)) {
 			return true
 		}
 	}
 	return false
 }
 
-func personaRoots(cwd string) []string {
-	var dirs []string
+// scopeDirs returns the user- and project-level <sub> directories.
+func scopeDirs(cwd, sub string) []string {
+	var out []string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, confdir.Name, "personas"))
+		out = append(out, filepath.Join(home, confdir.Name, sub))
 	}
 	if cwd != "" {
-		dirs = append(dirs, filepath.Join(cwd, confdir.Name, "personas"))
+		out = append(out, filepath.Join(cwd, confdir.Name, sub))
 	}
-	return dirs
+	return out
+}
+
+func withinAny(path string, roots []string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	for _, dir := range roots {
+		if isWithinDir(abs, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 func isWithinDir(path, dir string) bool {

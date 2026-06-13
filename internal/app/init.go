@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/identity"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
@@ -88,7 +87,6 @@ func initExtensions(cwd string) {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
 	skill.Initialize(skill.Options{CWD: cwd})
-	identity.Initialize(cwd)
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,

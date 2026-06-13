@@ -16,7 +16,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/identity"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
@@ -32,31 +31,6 @@ import (
 // ============================================================
 // Build params from model state
 // ============================================================
-
-// activeIdentityBody returns the markdown body of the currently-active
-// identity, or "" to mean "use the built-in default". Resolution order:
-//  1. settings.identity (user or project level, project wins)
-//  2. registry lookup by name
-//  3. body field of that Identity
-//
-// A configured name that does not resolve logs a warning and falls back to
-// the built-in default — that way a typo or stale value surfaces in the log
-// instead of silently degrading the persona.
-func (m *model) activeIdentityBody() string {
-	if m.services.Setting == nil || m.services.Identity == nil {
-		return ""
-	}
-	snap := m.services.Setting.Snapshot()
-	if snap == nil {
-		return ""
-	}
-	body := m.services.Identity.Active(snap.Identity)
-	if body == "" && snap.Identity != "" && snap.Identity != identity.DefaultName {
-		log.Logger().Warn("configured identity not found; falling back to default",
-			zap.String("identity", snap.Identity))
-	}
-	return body
-}
 
 // activePersona returns the currently-selected persona, or nil for the
 // built-in default. settings.persona wins; it falls back to the legacy
@@ -88,13 +62,13 @@ func (m *model) activePersona() *persona.Persona {
 }
 
 // personaPrompt resolves the system.Persona (prompt-part overrides) to build
-// with. The active persona supplies all three parts; with no persona selected,
-// only the identity part is set (from the active identity, preserving /identity).
+// with — the active persona's three parts, or empty (the built-in default)
+// when no persona is selected.
 func (m *model) personaPrompt() system.Persona {
 	if p := m.activePersona(); p != nil {
 		return system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
 	}
-	return system.Persona{Identity: m.activeIdentityBody()}
+	return system.Persona{}
 }
 
 // applyPersonaSkills loads the active persona's bundled skills into the skill

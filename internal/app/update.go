@@ -50,7 +50,6 @@ func (m *model) popups() []popup {
 		&m.userInput.Session.Selector,
 		&m.userInput.Memory.Selector,
 		&m.userInput.Search,
-		&m.userInput.Identity,
 		&m.userInput.Config,
 	}
 }

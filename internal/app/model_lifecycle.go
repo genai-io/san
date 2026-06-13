@@ -57,14 +57,13 @@ func newBaseModel() model {
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
-			AgentRegistry:    &agentRegistryAdapter{svc.Subagent},
-			SkillRegistry:    svc.Skill,
-			MCPRegistry:      svc.MCP,
-			PluginRegistry:   svc.Plugin,
-			IdentityRegistry: svc.Identity,
-			Setting:          svc.Setting,
-			LoadDisabled:     svc.Setting.GetDisabledToolsAt,
-			UpdateDisabled:   svc.Setting.UpdateDisabledToolsAt,
+			AgentRegistry:  &agentRegistryAdapter{svc.Subagent},
+			SkillRegistry:  svc.Skill,
+			MCPRegistry:    svc.MCP,
+			PluginRegistry: svc.Plugin,
+			Setting:        svc.Setting,
+			LoadDisabled:   svc.Setting.GetDisabledToolsAt,
+			UpdateDisabled: svc.Setting.UpdateDisabledToolsAt,
 		}),
 		conv:          conv.NewModel(defaultWidth),
 		agentEventHub: hub.New(),
@@ -118,7 +117,6 @@ func (m *model) ReloadPluginBackedState() error {
 	persona.Initialize(m.env.CWD)
 
 	m.services.refreshAfterReload()
-	m.userInput.Identity.SetRegistry(m.services.Identity)
 
 	if m.services.Hook != nil {
 		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())

@@ -8,7 +8,6 @@ import (
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/cron"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/identity"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
@@ -42,7 +41,6 @@ type services struct {
 	MCP      *mcp.Registry
 	Plugin   *plugin.Registry
 	Agent    *agent.Task
-	Identity *identity.Registry
 	Persona  *persona.Registry
 	Reminder *reminder.Service
 
@@ -95,7 +93,6 @@ func newServices() services {
 		MCP:       mcp.DefaultRegistry(),
 		Plugin:    plugin.Default(),
 		Agent:     agent.Default(),
-		Identity:  identity.Default(),
 		Persona:   persona.Default(),
 		Reminder:  reminder.NewService(),
 		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator()},
@@ -112,6 +109,5 @@ func (s *services) refreshAfterReload() {
 	s.Command = command.Default()
 	s.Subagent = subagent.Default()
 	s.MCP = mcp.DefaultRegistry()
-	s.Identity = identity.Default()
 	s.Persona = persona.Default()
 }

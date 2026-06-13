@@ -1,14 +1,13 @@
 // Reactions to workspace changes: cwd switch (Bash `cd`, EnterWorktree,
 // ExitWorktree), file-change notifications fed to hooks, project-context
-// reload when cwd changes, identity-file reload when the user edits one of
-// their identity .md files, and FileWatcher setup off the SessionStart hook
-// outcome.
+// reload when cwd changes, persona reload when the user edits a persona or
+// identity file, and FileWatcher setup off the SessionStart hook outcome.
 package app
 
 import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/identity"
+	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -42,19 +41,18 @@ func (m *model) ReloadProjectContext(cwd string) {
 	initExtensions(cwd)
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.refreshAfterReload()
-	m.userInput.Identity.SetRegistry(m.services.Identity)
 	if m.services.Hook != nil {
 		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	}
 	m.syncSettingsToHookEngine()
 }
 
-func (m *model) reloadIdentitiesIfChanged(filePath string) {
-	if !identity.IsIdentityFile(m.env.CWD, filePath) || m.services.Identity == nil {
+func (m *model) reloadPersonasIfChanged(filePath string) {
+	if m.services.Persona == nil || !persona.IsPersonaFile(m.env.CWD, filePath) {
 		return
 	}
-	m.services.Identity.Reload()
-	m.userInput.Identity.SetRegistry(m.services.Identity)
+	m.services.Persona.Reload()
+	m.applyPersonaSkills()
 	m.ReconfigureAgentTool()
 }
 

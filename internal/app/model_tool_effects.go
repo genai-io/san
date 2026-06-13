@@ -36,7 +36,7 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 	case "Write", "Edit":
 		if filePath := kit.MapString(resp, "filePath"); filePath != "" {
 			m.fireFileChanged(filePath, toolName)
-			m.reloadIdentitiesIfChanged(filePath)
+			m.reloadPersonasIfChanged(filePath)
 			if m.env.FileCache != nil {
 				m.env.FileCache.Touch(filePath)
 			}

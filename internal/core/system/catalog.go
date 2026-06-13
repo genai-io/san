@@ -207,12 +207,6 @@ func WithPersona(p Persona) Option {
 	return func(cfg *buildConfig) { cfg.persona = p }
 }
 
-// SwapIdentity replaces the identity part on an already-built system. Empty
-// text reverts to the built-in default. Visible on the next sys.Prompt().
-func SwapIdentity(sys core.System, text string) {
-	sys.Use(identitySection(text), "command:identity")
-}
-
 // SwapPersona replaces the identity / behavior / rules parts on an already-built
 // main-agent system — e.g. a mid-session persona switch. Empty fields revert
 // that part to the built-in default. isGit and provider are the current

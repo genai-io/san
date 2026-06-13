@@ -412,39 +412,10 @@ func SaveTheme(t string) error {
 	return nil
 }
 
-// SaveIdentity persists the chosen identity name to ~/.san/settings.json.
-// An empty name clears the override so the built-in default is used.
-//
-// Bypasses mergeSettings (which preserves existing string fields when the
-// overlay is empty) so we can actually clear the value on disk.
-func SaveIdentity(name string) error {
-	loader := NewLoader()
-	if loader.userDir == "" {
-		return os.ErrNotExist
-	}
-	path := filepath.Join(loader.userDir, "settings.json")
-
-	existing := NewData()
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, existing)
-	}
-	existing.Identity = name
-
-	if err := writeJSONAtomic(path, existing); err != nil {
-		return err
-	}
-
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
-}
-
 // SavePersonaAt persists the chosen persona name at the given scope: the
 // project file (.san/settings.json under cwd) when userLevel is false, or the
 // user file (~/.san/settings.json) when true. An empty name clears the field.
-// Like SaveIdentity it bypasses mergeSettings so an empty value can actually
-// clear the value on disk.
+// It bypasses mergeSettings so an empty value can actually clear it on disk.
 //
 // Scope matters: a project-scoped persona should save project-level so the
 // selection lives with the persona (and doesn't leak to other projects, where

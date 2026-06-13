@@ -24,12 +24,4 @@ type OverlayDeps struct {
 	FireFileChanged         func(path, tool string)
 	ReloadPluginState       func() error
 	LoadSession             func(string) error
-
-	// SetActiveIdentity persists settings.identity (empty = default) and
-	// triggers an agent rebuild so the new persona takes effect.
-	SetActiveIdentity func(name string) error
-	// DispatchSlashCommand runs a slash command as if the user typed it.
-	// Used by selector hotkeys (Shift+N, Shift+E) to delegate to the
-	// existing /identity create | edit handlers.
-	DispatchSlashCommand func(cmd string) tea.Cmd
 }
