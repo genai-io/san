@@ -292,17 +292,17 @@
       <section class="scene" data-start="12.2" data-dur="7.2" id="ident">
         <div class="cmd"><span class="prompt">❭ </span><span id="i-type"></span><span class="cur" id="i-cur"></span></div>
         <div class="picker" id="i-pick">
-          <div class="search">⌕ <span>Type to filter identities…</span><span class="cnt">user · project scope</span></div>
+          <div class="search">⌕ <span>Type to filter personas…</span><span class="cnt">user · project scope</span></div>
           <div class="rows" id="i-rows">
             <div class="irow"><div class="top"><span class="tick">✓</span><span class="nm">default</span><span class="badge">active · built-in</span></div><div class="desc">Built-in San persona — software-engineering generalist</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">ml-engineer</span><span class="badge">~/.san/identities</span></div><div class="desc">ML engineering specialist (PyTorch, JAX) — rigor over hand-waving</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">security-auditor</span><span class="badge">.san/identities</span></div><div class="desc">Threat-models every diff, flags unsafe patterns, cites CWEs</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">tech-writer</span><span class="badge">~/.san/identities</span></div><div class="desc">Crisp docs, examples-first, no marketing fluff</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">ml-engineer</span><span class="badge">~/.san/personas</span></div><div class="desc">ML engineering specialist (PyTorch, JAX) — rigor over hand-waving</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">security-auditor</span><span class="badge">.san/personas</span></div><div class="desc">Threat-models every diff, flags unsafe patterns, cites CWEs</div></div>
+            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">tech-writer</span><span class="badge">~/.san/personas</span></div><div class="desc">Crisp docs, examples-first, no marketing fluff</div></div>
           </div>
           <div class="hints">↑/↓ navigate · ⏎ select · esc · scoped to user (~/.san) or project (.san), project wins</div>
         </div>
         <div id="i-confirm" style="margin-top:4px">
-          <div class="out reveal" id="i-c1"><span class="ok">✦</span> identity <span class="arrow">→</span> <span class="accent">ml-engineer</span></div>
+          <div class="out reveal" id="i-c1"><span class="ok">✦</span> persona <span class="arrow">→</span> <span class="accent">ml-engineer</span></div>
           <div class="out reveal dim" id="i-c2">↳ persona swapped — same agent, a new mind. Security &amp; git rules stay enforced.</div>
         </div>
       </section>
@@ -432,7 +432,7 @@ addEventListener('resize', fit); fit();
 
 const CAPS = {
   model:   {k:'OPEN ARCHITECTURE', t:'Multi-model switching',   d:'Switch provider or model with one command — fetched live, never hard-coded'},
-  ident:   {k:'OPEN ARCHITECTURE', t:'Multi-persona switching', d:'Same agent, many personas — Markdown identities scoped to user or project'},
+  ident:   {k:'OPEN ARCHITECTURE', t:'Multi-persona switching', d:'Same agent, many personas — Markdown bundles scoped to user or project'},
   interact:{k:'NATIVE RUNTIME',    t:'Fast interaction',        d:'Native Go, single binary — read, edit, run the tests, stream back in seconds'},
   learn:   {k:'SELF-EVOLVING',     t:'Learns as you work',      d:'A background reviewer studies each session — writing memory, tuning skills, leveling up'},
   deploy:  {k:'SMALL FOOTPRINT',   t:'Runs anywhere',           d:'One ~12 MB binary, zero deps — fan it out to edge devices, containers, and the cloud'},
@@ -479,7 +479,7 @@ function model(lt){
   if(lt>3.7) $('barpill').innerHTML='deepseek · V4 Pro · <b>◆ think</b>';   // active model after the switch
 }
 function ident(lt){
-  typeInto($('i-type'),'/identity',lt,0.2,0.75);
+  typeInto($('i-type'),'/persona',lt,0.2,0.75);
   $('i-cur').style.display = (lt>0.2 && lt<1.0)?'inline-block':'none';
   const open = lt>0.95 && lt<3.6;
   tog($('i-pick'), open);
