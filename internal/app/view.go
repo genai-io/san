@@ -12,7 +12,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
@@ -322,7 +322,7 @@ func buildAgentColors(configs []*subagent.AgentConfig) map[string]string {
 	return colors
 }
 
-func buildTaskOwnerMap(tasks []*tracker.Task) map[string]string {
+func buildTaskOwnerMap(tasks []*todo.Task) map[string]string {
 	if len(tasks) == 0 {
 		return nil
 	}

@@ -7,7 +7,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 type StartCommand struct {
@@ -115,7 +115,7 @@ func PatchTitle(title string) PatchOp       { return mustPatch(PatchPathTitle, t
 func PatchLastPrompt(prompt string) PatchOp { return mustPatch(PatchPathLastPrompt, prompt) }
 func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag) }
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
-func PatchTasks(tasks []tracker.Task) PatchOp {
+func PatchTasks(tasks []todo.Task) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }
 func PatchWorktree(worktree *WorktreeState) PatchOp { return mustPatch(PatchPathWorktree, worktree) }

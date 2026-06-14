@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func Project(records []Record) (*Transcript, error) {
@@ -145,7 +145,7 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 			}
 			state.Mode = v
 		case PatchPathTasks:
-			var tasks []tracker.Task
+			var tasks []todo.Task
 			if err := json.Unmarshal(op.Value, &tasks); err != nil {
 				return fmt.Errorf("patch %s: %w", op.Path, err)
 			}

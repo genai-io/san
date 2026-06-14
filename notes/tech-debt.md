@@ -21,15 +21,15 @@ This file tracks structural follow-ups that are not tied to a single feature.
   ~~`tool` (6 methods)~~ — `*tool.Registry` direct.
   ~~`cron` (10 methods)~~ — `*cron.Scheduler` direct (renamed from
   `*Store`; methods schedule, persistence is a detail).
-  ~~`task` (8 methods)~~ — `*task.Tracker` direct (renamed from
-  `*Manager`; tracks background bash/subagent tasks).
+  ~~`task` (8 methods)~~ — `*task.Manager` direct (tracks background
+  bash/subagent tasks).
   ~~`command` (7 methods)~~ — `*command.Registry` direct.
   ~~`llm` (8 methods)~~ — `*llm.Conn` direct (active provider/model/Store
   handle + `*Client` factory). Originally `*ClientFactory` wrapping a
   separate `*Setup`; the two mirror types were merged into one `Conn`
   (single mutex, unexported fields) — no wrapper remains.
-  ~~`agent` (11 methods)~~ — `*agent.Task` direct (foreground agent
-  task lifecycle).
+  ~~`agent` (11 methods)~~ — `*agent.Session` direct (foreground agent
+  session lifecycle).
   ~~`setting` (14 methods)~~ — `*setting.Settings` direct (live,
   mutex-protected handle over `*setting.Data`; also the permission
   decision gate).

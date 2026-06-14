@@ -25,7 +25,7 @@ import (
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	_ "github.com/genai-io/san/internal/tool/registry"
@@ -47,7 +47,7 @@ func initInfrastructure() error {
 	tool.Initialize(tool.Options{})
 	agent.Initialize(agent.Options{})
 	task.Initialize(task.Options{})
-	tracker.Initialize(tracker.Options{})
+	todo.Initialize(todo.Options{})
 	cron.Initialize(cron.Options{
 		StoragePath: filepath.Join(confdir.Dir(appCwd), "scheduled_tasks.json"),
 	})

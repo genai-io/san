@@ -8,7 +8,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
@@ -102,7 +102,7 @@ func TestOnAgentMessageIsNoOpForUserEcho(t *testing.T) {
 	m := &model{
 		userInput: input.Model{Queue: input.NewQueue()},
 		conv:      conv.NewModel(80),
-		services:  services{Tracker: tracker.NewStore()},
+		services:  services{Tracker: todo.NewStore()},
 	}
 
 	_ = m.OnAgentMessage(core.UserMessage("anything", nil))

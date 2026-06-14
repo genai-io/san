@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func TestTranscriptTypesCarryProjectedState(t *testing.T) {
@@ -95,12 +95,12 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 	}
 
 	taskTime := now.Add(2 * time.Minute)
-	tasks := []tracker.Task{{
+	tasks := []todo.Task{{
 		ID:              "1",
 		Subject:         "Refactor",
 		Description:     "Move projection helpers",
 		ActiveForm:      "Refactoring",
-		Status:          tracker.StatusInProgress,
+		Status:          todo.StatusInProgress,
 		Owner:           "main",
 		Blocks:          []string{"2"},
 		BlockedBy:       []string{"3"},

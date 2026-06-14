@@ -40,7 +40,7 @@ Agent, persistence, and orchestration:
 | `internal/session` | `feature` | Session metadata, transcript persistence, resume, projection, message conversion. |
 | `internal/session/transcript` | `feature` | Transcript records, filesystem store, projection, renderable views. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
-| `internal/task/tracker` | `feature` | Task tracker state and background tracker service. |
+| `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |
 

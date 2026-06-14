@@ -8,7 +8,7 @@ import (
 )
 
 func TestManager_CreateAndGet(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -32,7 +32,7 @@ func TestManager_CreateAndGet(t *testing.T) {
 }
 
 func TestManager_GetNotFound(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	_, ok := m.Get("nonexistent")
 	if ok {
@@ -41,7 +41,7 @@ func TestManager_GetNotFound(t *testing.T) {
 }
 
 func TestManager_List(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -60,7 +60,7 @@ func TestManager_List(t *testing.T) {
 }
 
 func TestManager_ListRunning(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -84,7 +84,7 @@ func TestManager_ListRunning(t *testing.T) {
 }
 
 func TestManager_Remove(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -104,7 +104,7 @@ func TestManager_Remove(t *testing.T) {
 }
 
 func TestManager_Cleanup(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -131,7 +131,7 @@ func TestManager_Cleanup(t *testing.T) {
 }
 
 func TestManager_CleanupKeepsRecent(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -152,7 +152,7 @@ func TestManager_CleanupKeepsRecent(t *testing.T) {
 }
 
 func TestManager_CleanupKeepsRunning(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -172,7 +172,7 @@ func TestManager_CleanupKeepsRunning(t *testing.T) {
 }
 
 func TestManager_GenerateUniqueIDs(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -192,7 +192,7 @@ func TestManager_GenerateUniqueIDs(t *testing.T) {
 }
 
 func TestManager_RegisterTask(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -214,7 +214,7 @@ func TestManager_RegisterTask(t *testing.T) {
 }
 
 func TestManager_GetBashTask(t *testing.T) {
-	m := NewTracker()
+	m := NewManager()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

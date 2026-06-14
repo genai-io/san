@@ -11,7 +11,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session/transcript"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 type Store struct {
@@ -32,7 +32,7 @@ type Store struct {
 type Snapshot struct {
 	Metadata SessionMetadata
 	Entries  []Entry
-	Tasks    []tracker.Task
+	Tasks    []todo.Task
 
 	// OmitMessageWrites skips the per-entry AppendMessage loop in Save. Used
 	// by the main TUI path where the agent's Recorder already persists every

@@ -16,7 +16,7 @@ import (
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func newModel(opts setting.RunOptions) (*model, error) {
@@ -190,7 +190,7 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 		},
 		onCompleted: func(info task.TaskInfo) {
 			fireHook(hook.TaskCompleted, info)
-			tracker.CompleteWorker(trackerSvc, info)
+			todo.CompleteWorker(trackerSvc, info)
 
 			subject := hub.TaskSubject(info)
 			msg, ok := hub.TaskMessage(info, subject)

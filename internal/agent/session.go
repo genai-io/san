@@ -9,7 +9,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-type Task struct {
+type Session struct {
 	mu                 sync.RWMutex
 	agent              core.Agent
 	permBridge         *PermissionBridge
@@ -18,7 +18,7 @@ type Task struct {
 	pluginRoot         string // see SetPluginRoot
 }
 
-func (s *Task) Start(params BuildParams, messages []core.Message) error {
+func (s *Session) Start(params BuildParams, messages []core.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -44,13 +44,13 @@ func (s *Task) Start(params BuildParams, messages []core.Message) error {
 	return nil
 }
 
-func (s *Task) Stop() {
+func (s *Session) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stopLocked()
 }
 
-func (s *Task) stopLocked() {
+func (s *Session) stopLocked() {
 	if s.agent == nil {
 		return
 	}
@@ -68,13 +68,13 @@ func (s *Task) stopLocked() {
 	s.pluginRoot = ""
 }
 
-func (s *Task) Active() bool {
+func (s *Session) Active() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.agent != nil
 }
 
-func (s *Task) Send(content string, images []core.Image) {
+func (s *Session) Send(content string, images []core.Image) {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()
@@ -90,7 +90,7 @@ func (s *Task) Send(content string, images []core.Image) {
 // and a compaction boundary and emits CompactEvent. Returns false when there is
 // no active agent to compact. Safe because the agent applies it at a phase
 // boundary on its own goroutine.
-func (s *Task) Compact(summary string) bool {
+func (s *Session) Compact(summary string) bool {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()
@@ -120,7 +120,7 @@ const interruptDrainTimeout = 250 * time.Millisecond
 // fresh one). The clear runs AFTER the agent quiesces so an in-flight
 // PermissionFunc can't repopulate pendingPermRequest via PollPermBridge
 // → SetPendingPermission between the clear and the cancel.
-func (s *Task) InterruptTurn() {
+func (s *Session) InterruptTurn() {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()
@@ -139,7 +139,7 @@ func (s *Task) InterruptTurn() {
 	s.mu.Unlock()
 }
 
-func (s *Task) Outbox() <-chan core.Event {
+func (s *Session) Outbox() <-chan core.Event {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.agent == nil {
@@ -148,25 +148,25 @@ func (s *Task) Outbox() <-chan core.Event {
 	return s.agent.Outbox()
 }
 
-func (s *Task) PermissionBridge() *PermissionBridge {
+func (s *Session) PermissionBridge() *PermissionBridge {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.permBridge
 }
 
-func (s *Task) PendingPermission() *PermBridgeRequest {
+func (s *Session) PendingPermission() *PermBridgeRequest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pendingPermRequest
 }
 
-func (s *Task) SetPendingPermission(req *PermBridgeRequest) {
+func (s *Session) SetPendingPermission(req *PermBridgeRequest) {
 	s.mu.Lock()
 	s.pendingPermRequest = req
 	s.mu.Unlock()
 }
 
-func (s *Task) System() core.System {
+func (s *Session) System() core.System {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.agent == nil {
@@ -179,7 +179,7 @@ func (s *Task) System() core.System {
 // flow calls this when the user invokes a /plugin-skill so subprocesses
 // spawned during the turn see PLUGIN_ROOT pointing at that plugin.
 // Pass "" to clear (typically done at turn end).
-func (s *Task) SetPluginRoot(path string) {
+func (s *Session) SetPluginRoot(path string) {
 	s.mu.Lock()
 	s.pluginRoot = path
 	s.mu.Unlock()
@@ -187,7 +187,7 @@ func (s *Task) SetPluginRoot(path string) {
 
 // PluginRoot returns the plugin scope for the current turn, or "" if
 // no plugin scope is active.
-func (s *Task) PluginRoot() string {
+func (s *Session) PluginRoot() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pluginRoot

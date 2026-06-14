@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -24,8 +24,8 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 	}
 
 	// Handle deletion separately
-	if status := tool.GetString(params, "status"); status == tracker.StatusDeleted {
-		if err := tracker.Default().Delete(taskID); err != nil {
+	if status := tool.GetString(params, "status"); status == todo.StatusDeleted {
+		if err := todo.Default().Delete(taskID); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
 		return toolresult.ToolResult{
@@ -48,7 +48,7 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 		return toolresult.NewErrorResult(t.Name(), "no updates specified")
 	}
 
-	if err := tracker.Default().Update(taskID, opts...); err != nil {
+	if err := todo.Default().Update(taskID, opts...); err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
@@ -69,14 +69,14 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 }
 
 // buildUpdateOptions extracts update options from params, returns options, status change, and error
-func buildUpdateOptions(params map[string]any) ([]tracker.UpdateOption, string, error) {
-	var opts []tracker.UpdateOption
+func buildUpdateOptions(params map[string]any) ([]todo.UpdateOption, string, error) {
+	var opts []todo.UpdateOption
 	var statusChange string
 
 	if status := tool.GetString(params, "status"); status != "" {
 		switch status {
-		case tracker.StatusPending, tracker.StatusInProgress, tracker.StatusCompleted:
-			opts = append(opts, tracker.WithStatus(status))
+		case todo.StatusPending, todo.StatusInProgress, todo.StatusCompleted:
+			opts = append(opts, todo.WithStatus(status))
 			statusChange = status
 		default:
 			return nil, "", fmt.Errorf("invalid status: %s (must be pending, in_progress, completed, or deleted)", status)
@@ -84,25 +84,25 @@ func buildUpdateOptions(params map[string]any) ([]tracker.UpdateOption, string, 
 	}
 
 	if subject := tool.GetString(params, "subject"); subject != "" {
-		opts = append(opts, tracker.WithSubject(subject))
+		opts = append(opts, todo.WithSubject(subject))
 	}
 	if description := tool.GetString(params, "description"); description != "" {
-		opts = append(opts, tracker.WithDescription(description))
+		opts = append(opts, todo.WithDescription(description))
 	}
 	if activeForm := tool.GetString(params, "activeForm"); activeForm != "" {
-		opts = append(opts, tracker.WithActiveForm(activeForm))
+		opts = append(opts, todo.WithActiveForm(activeForm))
 	}
 	if owner := tool.GetString(params, "owner"); owner != "" {
-		opts = append(opts, tracker.WithOwner(owner))
+		opts = append(opts, todo.WithOwner(owner))
 	}
 	if metadata, ok := params["metadata"].(map[string]any); ok {
-		opts = append(opts, tracker.WithMetadata(metadata))
+		opts = append(opts, todo.WithMetadata(metadata))
 	}
 	if ids := parseStringSlice(params["addBlocks"]); len(ids) > 0 {
-		opts = append(opts, tracker.WithAddBlocks(ids))
+		opts = append(opts, todo.WithAddBlocks(ids))
 	}
 	if ids := parseStringSlice(params["addBlockedBy"]); len(ids) > 0 {
-		opts = append(opts, tracker.WithAddBlockedBy(ids))
+		opts = append(opts, todo.WithAddBlockedBy(ids))
 	}
 
 	return opts, statusChange, nil

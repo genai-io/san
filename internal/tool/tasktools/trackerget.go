@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -24,13 +24,13 @@ func (t *TrackerGetTool) Execute(ctx context.Context, params map[string]any, cwd
 	}
 
 	// Reload from disk to pick up changes from other processes
-	tracker.Default().ReloadFromDisk()
+	todo.Default().ReloadFromDisk()
 
-	task, ok := tracker.Default().Get(taskID)
+	task, ok := todo.Default().Get(taskID)
 	if !ok {
 		// Fallback: background agent tasks use hex IDs from the task manager,
 		// stored as "background_task_id" metadata in tracker entries.
-		task = tracker.Default().FindByMetadata("background_task_id", taskID)
+		task = todo.Default().FindByMetadata("background_task_id", taskID)
 		if task == nil {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %s not found", taskID))
 		}
@@ -51,7 +51,7 @@ func (t *TrackerGetTool) Execute(ctx context.Context, params map[string]any, cwd
 	if len(task.Blocks) > 0 {
 		fmt.Fprintf(&sb, "Blocks: %s\n", strings.Join(task.Blocks, ", "))
 	}
-	if openBlockers := tracker.Default().OpenBlockers(task.ID); len(openBlockers) > 0 {
+	if openBlockers := todo.Default().OpenBlockers(task.ID); len(openBlockers) > 0 {
 		fmt.Fprintf(&sb, "Blocked by (open): %s\n", strings.Join(openBlockers, ", "))
 	}
 
