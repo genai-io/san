@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,22 +11,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// installedPluginsData represents the installed_plugins.json structure.
-type installedPluginsData struct {
-	Version int                        `json:"version"`
-	Plugins map[string][]pluginInstall `json:"plugins"`
-}
-
-// pluginInstall represents a single plugin installation.
-type pluginInstall struct {
-	Scope       string `json:"scope"`       // "user" or "project"
-	InstallPath string `json:"installPath"` // Full path to plugin
-	Version     string `json:"version"`
-}
-
 // Loader handles loading skills from multiple directories.
 type loader struct {
 	cwd string // Current working directory for project-level skills
+	// pluginSkillPaths, when set, supplies the skill directories contributed
+	// by enabled plugins (injected by the app from the plugin registry). nil
+	// in contexts that don't load plugin skills (e.g. persona, tests).
+	pluginSkillPaths func() []PluginSkillPath
 }
 
 // searchPath represents a skill search location with optional namespace.
@@ -45,9 +35,14 @@ func newLoader(cwd string) *loader {
 }
 
 // getSearchPaths returns skill directories in priority order (lowest to highest).
-// Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
+// Plugin skills are injected by the app from the plugin registry (only enabled
+// plugins), keeping discovery consistent with commands and subagents instead of
+// re-parsing installed_plugins.json here.
 func (l *loader) getSearchPaths() []searchPath {
 	homeDir, _ := os.UserHomeDir()
+
+	userPlugins, projectPlugins := l.pluginPaths()
+
 	var paths []searchPath
 
 	// 1. ~/.claude/skills/ (Claude user compat - lowest priority)
@@ -56,11 +51,8 @@ func (l *loader) getSearchPaths() []searchPath {
 		scope: ScopeClaudeUser,
 	})
 
-	// 2. User plugins from ~/.san/plugins/installed_plugins.json
-	paths = append(paths, l.getPluginPaths(
-		filepath.Join(confdir.Dir(homeDir), "plugins"),
-		ScopeUserPlugin,
-	)...)
+	// 2. User-scope plugin skills
+	paths = append(paths, userPlugins...)
 
 	// 3. ~/.san/skills/ (User level)
 	paths = append(paths, searchPath{
@@ -74,11 +66,8 @@ func (l *loader) getSearchPaths() []searchPath {
 		scope: ScopeClaudeProject,
 	})
 
-	// 5. Project plugins from .san/plugins/installed_plugins.json
-	paths = append(paths, l.getPluginPaths(
-		filepath.Join(confdir.Dir(l.cwd), "plugins"),
-		ScopeProjectPlugin,
-	)...)
+	// 5. Project-scope plugin skills
+	paths = append(paths, projectPlugins...)
 
 	// 6. .san/skills/ (Project level - highest priority)
 	paths = append(paths, searchPath{
@@ -89,50 +78,21 @@ func (l *loader) getSearchPaths() []searchPath {
 	return paths
 }
 
-// getPluginPaths discovers plugin skill directories from installed_plugins.json.
-// Plugin skills inherit namespace from their plugin name (before @).
-func (l *loader) getPluginPaths(pluginsDir string, scope SkillScope) []searchPath {
-	var paths []searchPath
-
-	// Read installed_plugins.json
-	configPath := filepath.Join(pluginsDir, "installed_plugins.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return paths // File doesn't exist
+// pluginPaths splits the injected plugin skill directories into user- and
+// project-scope buckets. Each directory contains a SKILL.md and inherits the
+// plugin name as its default namespace. Returns nil/nil when no callback is set.
+func (l *loader) pluginPaths() (user, project []searchPath) {
+	if l.pluginSkillPaths == nil {
+		return nil, nil
 	}
-
-	var config installedPluginsData
-	if err := json.Unmarshal(data, &config); err != nil {
-		return paths // Invalid JSON
-	}
-
-	// Process each installed plugin
-	for pluginKey, installs := range config.Plugins {
-		if len(installs) == 0 {
-			continue
-		}
-
-		// Use the first (most recent) installation
-		install := installs[0]
-
-		// Extract plugin name from key (format: "plugin-name@marketplace")
-		pluginName := pluginKey
-		if idx := strings.Index(pluginKey, "@"); idx > 0 {
-			pluginName = pluginKey[:idx]
-		}
-
-		// Check if skills directory exists in the install path
-		skillsDir := filepath.Join(install.InstallPath, "skills")
-		if _, err := os.Stat(skillsDir); err == nil {
-			paths = append(paths, searchPath{
-				path:      skillsDir,
-				scope:     scope,
-				namespace: pluginName, // Plugin name becomes default namespace
-			})
+	for _, p := range l.pluginSkillPaths() {
+		if p.IsProject {
+			project = append(project, searchPath{path: p.Path, scope: ScopeProjectPlugin, namespace: p.Namespace})
+		} else {
+			user = append(user, searchPath{path: p.Path, scope: ScopeUserPlugin, namespace: p.Namespace})
 		}
 	}
-
-	return paths
+	return user, project
 }
 
 // loadAll loads all skills from all directories.

@@ -9,9 +9,17 @@
 // hold *Registry as an opaque handle and call its methods.
 package skill
 
+// PluginSkillPath describes a skill directory provided by a plugin.
+type PluginSkillPath struct {
+	Path      string
+	Namespace string
+	IsProject bool // true for project-scope, false for user-scope
+}
+
 // Options holds all dependencies for initialization.
 type Options struct {
-	CWD string
+	CWD              string
+	PluginSkillPaths func() []PluginSkillPath // injected plugin callback
 }
 
 // Initialize loads skills from all sources, applies persisted states,
@@ -19,6 +27,7 @@ type Options struct {
 func Initialize(opts Options) {
 	cwd := opts.CWD
 	loader := newLoader(cwd)
+	loader.pluginSkillPaths = opts.PluginSkillPaths
 
 	skills, _ := loader.loadAll()
 	userStore, _ := NewUserStore()

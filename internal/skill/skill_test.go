@@ -1,7 +1,6 @@
 package skill
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -284,17 +283,13 @@ func containsHelper(s, substr string) bool {
 }
 
 func TestLoadPluginSkills(t *testing.T) {
-	// Create temporary directories for plugin skills
 	tmpDir := t.TempDir()
 
-	// Create a plugin cache directory with skills
-	pluginCacheDir := filepath.Join(tmpDir, ".san", "plugins", "cache", "test-marketplace", "git", "1.0.0")
-	skillDir := filepath.Join(pluginCacheDir, "skills", "commit")
+	// A plugin contributes one skill directory containing a SKILL.md.
+	skillDir := filepath.Join(tmpDir, "git-plugin", "skills", "commit")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	skillPath := filepath.Join(skillDir, "SKILL.md")
 	skillContent := `---
 name: commit
 description: Create git commits
@@ -303,37 +298,17 @@ argument-hint: "[message]"
 
 Git commit instructions.
 `
-	if err := os.WriteFile(skillPath, []byte(skillContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create installed_plugins.json
-	pluginsDir := filepath.Join(tmpDir, ".san", "plugins")
-	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	installedPlugins := installedPluginsData{
-		Version: 2,
-		Plugins: map[string][]pluginInstall{
-			"git@test-marketplace": {
-				{
-					Scope:       "user",
-					InstallPath: pluginCacheDir,
-					Version:     "1.0.0",
-				},
-			},
-		},
-	}
-
-	configData, _ := json.MarshalIndent(installedPlugins, "", "  ")
-	if err := os.WriteFile(filepath.Join(pluginsDir, "installed_plugins.json"), configData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create loader with the temp directory as project root
+	// The app injects enabled-plugin skill directories; here a project-scope
+	// plugin named "git" contributes the commit skill.
 	loader := &loader{
 		cwd: tmpDir,
+		pluginSkillPaths: func() []PluginSkillPath {
+			return []PluginSkillPath{{Path: skillDir, Namespace: "git", IsProject: true}}
+		},
 	}
 
 	skills, err := loader.loadAll()
@@ -362,17 +337,12 @@ Git commit instructions.
 }
 
 func TestPluginSkillExplicitNamespaceOverride(t *testing.T) {
-	// Create temporary directories for plugin skills
 	tmpDir := t.TempDir()
 
-	// Create a plugin cache directory with skills
-	pluginCacheDir := filepath.Join(tmpDir, ".san", "plugins", "cache", "test-marketplace", "my-plugin", "1.0.0")
-	skillDir := filepath.Join(pluginCacheDir, "skills", "review")
+	skillDir := filepath.Join(tmpDir, "my-plugin", "skills", "review")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	skillPath := filepath.Join(skillDir, "SKILL.md")
 	skillContent := `---
 name: review
 namespace: code
@@ -381,37 +351,17 @@ description: Code review skill
 
 Review instructions.
 `
-	if err := os.WriteFile(skillPath, []byte(skillContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create installed_plugins.json
-	pluginsDir := filepath.Join(tmpDir, ".san", "plugins")
-	if err := os.MkdirAll(pluginsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	installedPlugins := installedPluginsData{
-		Version: 2,
-		Plugins: map[string][]pluginInstall{
-			"my-plugin@test-marketplace": {
-				{
-					Scope:       "user",
-					InstallPath: pluginCacheDir,
-					Version:     "1.0.0",
-				},
-			},
-		},
-	}
-
-	configData, _ := json.MarshalIndent(installedPlugins, "", "  ")
-	if err := os.WriteFile(filepath.Join(pluginsDir, "installed_plugins.json"), configData, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create loader with the temp directory as project root
+	// Plugin "my-plugin" contributes the skill, but the skill's frontmatter
+	// declares an explicit namespace "code" that must win.
 	loader := &loader{
 		cwd: tmpDir,
+		pluginSkillPaths: func() []PluginSkillPath {
+			return []PluginSkillPath{{Path: skillDir, Namespace: "my-plugin", IsProject: true}}
+		},
 	}
 
 	skills, err := loader.loadAll()
