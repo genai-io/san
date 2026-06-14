@@ -40,14 +40,14 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ### Engineering
 
-- **Runs anywhere** — A single ~12 MB binary with zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline, and the same file runs unchanged on a laptop, an edge device, or in a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permission system** — Mode-based access control: ask (default), auto-accept, and plan mode. Toggle with `Shift+Tab`. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
-- **Event-driven coordination** — Parallel subagent execution via a pub/sub hub ([architecture](docs/packages/subagent.md)).
+- **Runs anywhere** — A single ~12 MB binary, zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline; the same file runs unchanged on a laptop, an edge device, or a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
+- **Permission system** — Mode-based access control: ask (default) and auto-accept, toggled with `Shift+Tab`. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
+- **Event-driven coordination** — Parallel subagents via a pub/sub hub ([architecture](docs/packages/subagent.md)).
 - **Session persistence** — Auto-save, resume (`--continue`, `--resume`), fork (`/fork`), and automatic context compaction (`/compact`).
-- **Cost tracking** — Per-message and per-session token cost tracking across all providers.
-- **Theme & appearance** — Switch color themes in TUI via the `/config` Appearance panel; "auto" theme matches your terminal.
-- **Prompt prediction** — Speculative completion of likely next prompts to reduce latency.
-- **Session inspector** — Local web UI for transcript replay, system prompt forensics, and live-tail of active sessions (`san inspector`).
+- **Cost tracking** — Per-message and per-session token costs across all providers.
+- **Theme & appearance** — Switch TUI color themes via the `/config` Appearance panel; "auto" matches your terminal.
+- **Prompt prediction** — Speculative completion of likely next prompts to cut latency.
+- **Session inspector** — Local web UI for transcript replay, system-prompt forensics, and live-tail of active sessions (`san inspector`).
 
 
 ## Installation
@@ -130,7 +130,7 @@ san mcp remove <name>            # remove an MCP server
 |---|---|
 | Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| Toggle permission mode | `Shift+Tab` (ask · auto-accept · plan) |
+| Toggle permission mode | `Shift+Tab` (ask · auto-accept) |
 | Search / identity / memory | `/search` · `/identity` · `/memory` |
 | Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
@@ -153,15 +153,15 @@ Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user)
 | **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
 | **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY` |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
-| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
 | **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
+| **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
 | **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
 | **MiniMax** | `MINIMAX_API_KEY` |
 | **Z.ai** (GLM) | `BIGMODEL_API_KEY` |
-| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **SenseNova** | `SENSENOVA_API_KEY` |
 | **Mimo** | `MIMO_API_KEY` |
 | **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
+| **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |
