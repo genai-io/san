@@ -133,6 +133,6 @@ internal/mcp/hooks_test.go                — lifecycle hook emission.
 - Code: `internal/mcp/`, `internal/mcp/transport/`
 - Tools: [`packages/tool.md`](tool.md) (MCP tools register here via `core_adapter`)
 - Plugins: [`packages/plugin.md`](plugin.md) (plugins can ship MCP servers)
-- Reference: [`reference/configuration.md`](../reference/configuration.md)
-- Concepts: [`concepts/extension-model.md`](../concepts/extension-model.md)
+- Reference: [`reference/configuration.md`](../../reference/configuration.md)
+- Concepts: [`concepts/extension-model.md`](../../concepts/extension-model.md)
 - Layer: `feature`

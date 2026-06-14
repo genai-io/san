@@ -13,7 +13,7 @@ Ollama, SenseNova, Volcengine Ark, plus the generic openai-compat shim). Provide
 ## Purpose
 
 The agent loop talks to LLMs through `core.LLM` (see
-[`packages/core.md`](core.md)). This package owns the *machinery around*
+[`packages/core.md`](../3-core/core.md)). This package owns the *machinery around*
 that contract — discovering providers, persisting the user's chosen
 provider/model, switching between them at runtime, and tracking cost and
 streaming details for each call.
@@ -83,6 +83,6 @@ internal/llm/fake_llm.go        — test double consumed by other packages.
 ## See Also
 
 - Code: `internal/llm/`
-- Primitive: [`packages/core.md`](core.md) (`LLM` interface)
+- Primitive: [`packages/core.md`](../3-core/core.md) (`LLM` interface)
 - Cost tracking surfaced via [`packages/session.md`](session.md) recorder.
 - Layer: `feature`

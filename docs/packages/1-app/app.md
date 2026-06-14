@@ -153,8 +153,8 @@ internal/app/input/on_textarea_test.go         — textarea behavior.
 ## See Also
 
 - Code: `internal/app/`
-- End-to-end data flow (keystroke → agent → render): [`concepts/data-flow.md`](../concepts/data-flow.md)
-- Rendering pipeline (View(), Markdown, tool blocks): [`concepts/rendering.md`](../concepts/rendering.md)
-- Underlying primitive: [`packages/core.md`](core.md) (`Agent` interface)
-- Foreground session wrapper: [`packages/agent.md`](agent.md)
+- End-to-end data flow (keystroke → agent → render): [`concepts/data-flow.md`](../../concepts/data-flow.md)
+- Rendering pipeline (View(), Markdown, tool blocks): [`concepts/rendering.md`](../../concepts/rendering.md)
+- Underlying primitive: [`packages/core.md`](../3-core/core.md) (`Agent` interface)
+- Foreground session wrapper: [`packages/agent.md`](../2-feature/agent.md)
 - Layer: `app` — top of the stack, may import any feature package.

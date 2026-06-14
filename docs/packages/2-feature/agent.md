@@ -12,7 +12,7 @@ TUI-facing send/permission/outbox plumbing for the single foreground agent.
 
 `internal/app` runs exactly one foreground agent session at a time. This
 package is the seam between that TUI shell and the underlying agent loop in
-[`packages/core.md`](core.md). The shell starts a session, hands user input
+[`packages/core.md`](../3-core/core.md). The shell starts a session, hands user input
 to it, observes its outbox, and routes permission requests back to the user.
 
 Subagents (parallel background agents) are owned separately by
@@ -85,8 +85,8 @@ worth adding (logged in `notes/tech-debt.md`).
 ## See Also
 
 - Code: `internal/agent/`
-- Underlying primitive: [`packages/core.md`](core.md) (the `Agent`
+- Underlying primitive: [`packages/core.md`](../3-core/core.md) (the `Agent`
   interface and the inbox/outbox event model)
 - Background agents: [`packages/subagent.md`](subagent.md)
-- Permission model: [`concepts/permission-model.md`](../concepts/permission-model.md)
-- Layer: `feature` (see [`reference/dependency-rules.md`](../reference/dependency-rules.md))
+- Permission model: [`concepts/permission-model.md`](../../concepts/permission-model.md)
+- Layer: `feature` (see [`reference/dependency-rules.md`](../../reference/dependency-rules.md))

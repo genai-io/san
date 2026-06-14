@@ -99,5 +99,5 @@ internal/search/tavily_test.go   — Tavily request/response.
 
 - Code: `internal/search/`
 - Tool consumers: [`packages/tool.md`](tool.md) (WebFetch / WebSearch)
-- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md) (`/search`)
+- Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md) (`/search`)
 - Layer: `feature`

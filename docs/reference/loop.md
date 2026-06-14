@@ -66,7 +66,7 @@ Current scope:
 ## Related Features
 
 - Slash command dispatch: [`slash-commands.md`](slash-commands.md)
-- Cron store and scheduler internals: [`packages/cron.md`](../packages/cron.md)
+- Cron store and scheduler internals: [`packages/cron.md`](../packages/2-feature/cron.md)
 
 ## Automated Tests
 

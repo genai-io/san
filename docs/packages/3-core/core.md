@@ -145,6 +145,6 @@ internal/core/message_test.go       — message value equality and copying.
 ## See Also
 
 - Code: `internal/core/`
-- Consumer: [`packages/agent.md`](agent.md) (`internal/agent` wraps `core.Agent`)
-- Subsystem implementations: [`packages/tool.md`](tool.md), [`packages/llm.md`](llm.md), [`packages/subagent.md`](subagent.md)
-- Layer: `core` (see [`reference/dependency-rules.md`](../reference/dependency-rules.md))
+- Consumer: [`packages/agent.md`](../2-feature/agent.md) (`internal/agent` wraps `core.Agent`)
+- Subsystem implementations: [`packages/tool.md`](../2-feature/tool.md), [`packages/llm.md`](../2-feature/llm.md), [`packages/subagent.md`](../2-feature/subagent.md)
+- Layer: `core` (see [`reference/dependency-rules.md`](../../reference/dependency-rules.md))

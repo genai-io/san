@@ -79,6 +79,6 @@ internal/inspector/server_test.go    — HTTP routes, SSE dedup across
 ## See Also
 
 - Code: `internal/inspector/`, `internal/inspector/ui/`
-- User guide: [`docs/inspector.md`](../inspector.md)
+- User guide: [`docs/inspector.md`](../../inspector.md)
 - Source data: [`packages/session.md`](session.md) (`session/transcript`)
 - Layer: `feature`

@@ -8,7 +8,7 @@ layer: feature
 Loads markdown-defined skills from user / project / plugin scopes, tracks
 their enable state, and renders the active-skills directory that the
 harness attaches to user messages via the `skills-directory` reminder
-(see [`concepts/harness-channels.md`](../concepts/harness-channels.md)).
+(see [`concepts/harness-channels.md`](../../concepts/harness-channels.md)).
 
 ## Purpose
 
@@ -25,7 +25,7 @@ hidden (`disabled`). This package:
    reminder provider in `internal/app`.
 
 For the broader extension model see
-[`concepts/extension-model.md`](../concepts/extension-model.md). A
+[`concepts/extension-model.md`](../../concepts/extension-model.md). A
 how-to-author-a-skill guide is tracked in `notes/tech-debt.md`.
 
 ## Contract
@@ -118,6 +118,6 @@ internal/skill/lazy_loading_test.go     — verifies content stays on disk
 ## See Also
 
 - Code: `internal/skill/`
-- Concepts: [`concepts/extension-model.md`](../concepts/extension-model.md), [`concepts/harness-channels.md`](../concepts/harness-channels.md)
+- Concepts: [`concepts/extension-model.md`](../../concepts/extension-model.md), [`concepts/harness-channels.md`](../../concepts/harness-channels.md)
 - Related: [`packages/command.md`](command.md) (slash-command surface), [`packages/plugin.md`](plugin.md) (plugin-scoped skills), [`packages/reminder.md`](reminder.md) (the channel that delivers `PromptSection`)
-- Layer: `feature` (see [`reference/dependency-rules.md`](../reference/dependency-rules.md))
+- Layer: `feature` (see [`reference/dependency-rules.md`](../../reference/dependency-rules.md))

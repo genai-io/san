@@ -64,7 +64,7 @@ and the agent directory are intentionally **not** slots — they ride on
 the reminder channel (skills, memory) or on tool schemas (agent
 directory) instead.
 
-See [`packages/core.md`](../packages/core.md) for the `Section` and
+See [`packages/core.md`](../packages/3-core/core.md) for the `Section` and
 `System` types.
 
 ## Reminders
@@ -102,7 +102,7 @@ directory). It also tells the model to act on the most recent reminder
 values (they refresh and re-inject after compaction) and not to echo the
 tags back to the user.
 
-Implementation: [`packages/reminder.md`](../packages/reminder.md).
+Implementation: [`packages/reminder.md`](../packages/2-feature/reminder.md).
 
 ## Memory: SAN.md / CLAUDE.md
 
@@ -157,10 +157,10 @@ For the full mechanism — the common pipeline, auto-compact vs. manual
 
 - [`concepts/extension-model.md`](extension-model.md) — skills (one
   reminder source) and how plugins contribute to it.
-- [`packages/core.md`](../packages/core.md) — `System`, `Section`, slot
+- [`packages/core.md`](../packages/3-core/core.md) — `System`, `Section`, slot
   layout.
-- [`packages/reminder.md`](../packages/reminder.md) — runtime API.
+- [`packages/reminder.md`](../packages/2-feature/reminder.md) — runtime API.
 - [`concepts/compaction.md`](compaction.md) — the full compaction mechanism
   (channels, auto vs. manual, transcript boundary).
-- [`packages/session.md`](../packages/session.md) — how compaction
+- [`packages/session.md`](../packages/2-feature/session.md) — how compaction
   records flow into the transcript.

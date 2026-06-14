@@ -74,7 +74,7 @@ the auto-deny in subagent mode). The hook can:
   session).
 - Rewrite the tool args (e.g. canonicalize a path).
 
-See [`packages/hook.md`](../packages/hook.md) for the request/response
+See [`packages/hook.md`](../packages/2-feature/hook.md) for the request/response
 shape, and `PermissionUpdate` in `internal/hook/types.go` for the
 mutation payload.
 
@@ -88,5 +88,5 @@ mutation payload.
 
 ## See Also
 
-- Packages: [`setting`](../packages/setting.md), [`tool`](../packages/tool.md), [`agent`](../packages/agent.md), [`subagent`](../packages/subagent.md), [`hook`](../packages/hook.md)
+- Packages: [`setting`](../packages/2-feature/setting.md), [`tool`](../packages/2-feature/tool.md), [`agent`](../packages/2-feature/agent.md), [`subagent`](../packages/2-feature/subagent.md), [`hook`](../packages/2-feature/hook.md)
 - Compatibility note for Claude Code rule files: [`reference/claude-permission-compat.md`](../reference/claude-permission-compat.md)

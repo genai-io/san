@@ -211,5 +211,5 @@ Current usage: 150K tokens (75.0%)
 
 ## See Also
 
-- [`packages/subagent.md`](../packages/subagent.md) — Auto-fetch agent for token limits
-- [`packages/mcp.md`](../packages/mcp.md) — MCP tool responses contribute to token usage
+- [`packages/subagent.md`](../packages/2-feature/subagent.md) — Auto-fetch agent for token limits
+- [`packages/mcp.md`](../packages/2-feature/mcp.md) — MCP tool responses contribute to token usage

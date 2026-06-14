@@ -92,7 +92,7 @@ internal/setting/workdir_test.go         — cwd resolution.
 ## See Also
 
 - Code: `internal/setting/`
-- Reference: [`reference/configuration.md`](../reference/configuration.md)
-- Concepts: [`concepts/permission-model.md`](../concepts/permission-model.md)
+- Reference: [`reference/configuration.md`](../../reference/configuration.md)
+- Concepts: [`concepts/permission-model.md`](../../concepts/permission-model.md)
 - Permission consumers: [`packages/tool.md`](tool.md), [`packages/hook.md`](hook.md)
 - Layer: `feature`

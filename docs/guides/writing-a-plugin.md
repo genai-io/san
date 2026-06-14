@@ -4,7 +4,7 @@ A plugin is a single directory that bundles any combination of skills,
 subagents, slash commands, MCP servers, hooks, and env vars. Plugins are
 the distribution unit: one git repo, one tarball, one `pluginspec.json`.
 
-For the system-level design see [`packages/plugin.md`](../packages/plugin.md)
+For the system-level design see [`packages/plugin.md`](../packages/2-feature/plugin.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 ## Directory Layout
@@ -184,7 +184,7 @@ the marketplace.
 
 ## See Also
 
-- [`packages/plugin.md`](../packages/plugin.md) — loader, installer,
+- [`packages/plugin.md`](../packages/2-feature/plugin.md) — loader, installer,
   marketplace internals.
 - [`writing-a-skill.md`](writing-a-skill.md), [`writing-a-subagent.md`](writing-a-subagent.md).
 - [`concepts/extension-model.md`](../concepts/extension-model.md) — how

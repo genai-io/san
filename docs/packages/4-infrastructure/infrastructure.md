@@ -9,7 +9,7 @@ import any other `internal/*` package; none own business logic.
 Documented together because each surface is small and the role is the
 same.
 
-Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../reference/dependency-rules.md)).
+Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../../reference/dependency-rules.md)).
 
 ## `internal/log`
 
@@ -57,7 +57,7 @@ func (s *Store) Keys() []string
 - File permissions are 0600 on create. Plain JSON, not encrypted — the
   threat model is local multi-user isolation, not at-rest secrecy.
 - Each `Set` re-serializes the whole file (atomic write).
-- Consumer: [`packages/llm.md`](llm.md) for provider API keys.
+- Consumer: [`packages/llm.md`](../2-feature/llm.md) for provider API keys.
 - Code: `internal/secret/`.
 
 ## `internal/filecache`
@@ -83,7 +83,7 @@ func Build(c *Cache) string  // see restore.go; cap 5 files / 5,000 lines per fi
 - `Touch` is goroutine-safe (mutex).
 - Consumers: `internal/tool/fs/` (touch on Read/Write/Edit),
   `internal/app/conv/compact.go` (build on compaction). See also
-  [`../concepts/harness-channels.md`](../concepts/harness-channels.md).
+  [`../concepts/harness-channels.md`](../../concepts/harness-channels.md).
 - Code: `internal/filecache/`.
 
 ## `internal/markdown`
@@ -103,12 +103,12 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
 ```
 
 - Stateless, concurrent-safe (each call opens its own file).
-- Consumers: [`skill.md`](skill.md), [`subagent.md`](subagent.md),
-  `persona`, [`command.md`](command.md). Every skill / agent /
+- Consumers: [`skill.md`](../2-feature/skill.md), [`subagent.md`](../2-feature/subagent.md),
+  `persona`, [`command.md`](../2-feature/command.md). Every skill / agent /
   persona / command file is parsed through it on `san` startup.
 - Code: `internal/markdown/`.
 
 ## See Also
 
-- Layer: [`../reference/dependency-rules.md`](../reference/dependency-rules.md)
-- Package map: [`../reference/package-map.md`](../reference/package-map.md)
+- Layer: [`../reference/dependency-rules.md`](../../reference/dependency-rules.md)
+- Package map: [`../reference/package-map.md`](../../reference/package-map.md)

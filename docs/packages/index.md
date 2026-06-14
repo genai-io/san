@@ -1,51 +1,79 @@
 # Packages
 
-One document per Go package under `internal/` that has non-trivial behavior.
-Filename matches the package name with no suffix (`hook.md`, not
-`hook-engine.md` or `hooks.md`). Subpackages with their own design surface
-get a directory: `packages/<pkg>/<sub>.md`.
+One document per Go package under `internal/` (plus the `cmd` entrypoint) that
+has non-trivial behavior. Pages are grouped into **rank-numbered layer folders**
+so the directory listing mirrors the dependency stack, top → bottom:
 
-Every page in this directory must follow [`TEMPLATE.md`](TEMPLATE.md). The
-template is enforced by review and (later) a doc linter.
+```
+packages/
+├── 0-cmd/             rank 0  entrypoint / wiring
+├── 1-app/             rank 1  Bubble Tea TUI
+├── 2-feature/         rank 2  domain capabilities
+├── 3-core/            rank 3  shared contracts
+└── 4-infrastructure/  rank 4  stateless helpers
+```
 
-## Layer Index
+A higher layer may import a lower one; never the reverse (enforced by
+`tools/layercheck`). See [`../reference/dependency-rules.md`](../reference/dependency-rules.md)
+and [`../reference/package-map.md`](../reference/package-map.md) for the
+authoritative layer assignment.
 
-Use [`../reference/package-map.md`](../reference/package-map.md) for the
-authoritative layer assignment of each package. The pages here explain how
-each package works internally and what contract it exposes upward.
+Filenames match the package name with no suffix (`hook.md`, not `hooks.md`).
+Translations sit **beside** the source with a `.zh.md` suffix (`hook.zh.md`), so
+the layer structure is expressed once and a missing or stale translation is
+visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.md).
 
-## Pages
+## 0 · cmd
 
-| Package | Layer | One-liner |
-|---|---|---|
-| [`agent`](agent.md) | feature | Main agent session lifecycle (Start/Stop/Send/Outbox + permission bridge). |
-| [`command`](command.md) | feature | Slash command registry (builtin + dynamic + custom + plugin-scoped). |
-| [`core`](core.md) | core | Agent primitive, `System`, `Tools`, `LLM`, `Message` — the stable contracts every feature shares. |
-| [`cron`](cron.md) | feature | Cron expressions and one-shot scheduling for `/loop` and `/schedule`. |
-| [`hook`](hook.md) | feature | Pre/post hook engine with command / HTTP / LLM / function executors. |
-| [`inspector`](inspector.md) | feature | Local web UI for transcript replay; SSE live-tail. |
-| [`llm`](llm.md) | feature | Provider registry, model store, `Client` factory implementing `core.LLM`. |
-| [`mcp`](mcp.md) | feature | MCP client + transport + `Caller` for external tool servers. |
-| [`plugin`](plugin.md) | feature | Plugin loader / installer / marketplace; pushes contributions to other feature packages. |
-| [`infrastructure`](infrastructure.md) | infrastructure | `log` / `secret` / `filecache` / `markdown` — stateless helpers documented together. |
-| [`reminder`](reminder.md) | feature | `<system-reminder>` queue with provider re-emission; reference shape for what packages should look like post-refactor. |
-| [`search`](search.md) | feature | Pluggable web search backends behind a small `Provider` interface. |
-| [`session`](session.md) | feature | Transcript persistence, resume, fork, projection. |
-| [`setting`](setting.md) | feature | Settings loader + central permission decision gate. |
-| [`skill`](skill.md) | feature | Skill loader, state store, active-skills block consumed by the `skills-directory` reminder. |
-| [`subagent`](subagent.md) | feature | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
-| [`task`](task.md) | feature | Background task manager (bash and agent tasks). |
-| [`tool`](tool.md) | feature | Tool registry, schemas, permission gate, side-effect store. |
-| [`ui`](ui.md) | app | Bubble Tea TUI shell, MVU loop, sub-model decomposition. *Seed page; rewrite to TEMPLATE pending.* |
-| [`worktree`](worktree.md) | feature | Thin wrapper over `git worktree add/remove` for subagent isolation. |
+| Package | One-liner |
+|---|---|
+| [`cmd`](0-cmd/cmd.md) | Entrypoint: flag parsing, dependency wiring, provider blank-imports. |
+
+## 1 · app
+
+| Package | One-liner |
+|---|---|
+| [`app`](1-app/app.md) | Bubble Tea TUI shell, MVU loop, sub-model decomposition. *Seed page; rewrite to TEMPLATE pending.* |
+
+## 2 · feature
+
+| Package | One-liner |
+|---|---|
+| [`agent`](2-feature/agent.md) | Main agent session lifecycle (Start/Stop/Send/Outbox + permission bridge). |
+| [`command`](2-feature/command.md) | Slash command registry (builtin + dynamic + custom + plugin-scoped). |
+| [`cron`](2-feature/cron.md) | Cron expressions and one-shot scheduling for `/loop` and `/schedule`. |
+| [`hook`](2-feature/hook.md) | Pre/post hook engine with command / HTTP / LLM / function executors. |
+| [`inspector`](2-feature/inspector.md) | Local web UI for transcript replay; SSE live-tail. |
+| [`llm`](2-feature/llm.md) | Provider registry, model store, `Client` factory implementing `core.LLM`. |
+| [`mcp`](2-feature/mcp.md) | MCP client + transport + `Caller` for external tool servers. |
+| [`plugin`](2-feature/plugin.md) | Plugin loader / installer / marketplace; pushes contributions to other feature packages. |
+| [`reminder`](2-feature/reminder.md) | `<system-reminder>` queue with provider re-emission. |
+| [`search`](2-feature/search.md) | Pluggable web search backends behind a small `Provider` interface. |
+| [`session`](2-feature/session.md) | Transcript persistence, resume, fork, projection. |
+| [`setting`](2-feature/setting.md) | Settings loader + central permission decision gate. |
+| [`skill`](2-feature/skill.md) | Skill loader, state store, active-skills block consumed by the `skills-directory` reminder. |
+| [`subagent`](2-feature/subagent.md) | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
+| [`task`](2-feature/task.md) | Background task manager (bash and agent tasks). |
+| [`tool`](2-feature/tool.md) | Tool registry, schemas, permission gate, side-effect store. |
+| [`worktree`](2-feature/worktree.md) | Thin wrapper over `git worktree add/remove` for subagent isolation. |
+
+## 3 · core
+
+| Package | One-liner |
+|---|---|
+| [`core`](3-core/core.md) | Agent primitive, `System`, `Tools`, `LLM`, `Message` — the stable contracts every feature shares. |
+
+## 4 · infrastructure
+
+| Package | One-liner |
+|---|---|
+| [`infrastructure`](4-infrastructure/infrastructure.md) | `log` / `secret` / `filecache` / `markdown` — stateless helpers documented together. |
 
 ## Reference-Shape Pages
 
-Two packages here are model citizens for what `feature` packages should
-look like after the PR-3 refactor — minimal interface, concrete return
-types, no kitchen-sink `Service`:
+Model citizens for what `feature` packages should look like — minimal interface,
+concrete return types, no kitchen-sink `Service`:
 
-- [`reminder.md`](reminder.md) — concrete `*Service` struct, small 2-method `Provider` interface.
-- [`search.md`](search.md) — pure consumer-defined `Provider`, no singleton.
-- [`worktree.md`](worktree.md) — two functions, no types.
-
+- [`reminder`](2-feature/reminder.md) — concrete `*Service` struct, small 2-method `Provider` interface.
+- [`search`](2-feature/search.md) — pure consumer-defined `Provider`, no singleton.
+- [`worktree`](2-feature/worktree.md) — two functions, no types.

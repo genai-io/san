@@ -71,5 +71,5 @@ internal/cron/loop_test.go    — tick semantics.
 ## See Also
 
 - Code: `internal/cron/`
-- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md) (`/loop`, `/schedule`)
+- Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md) (`/loop`, `/schedule`)
 - Layer: `feature`

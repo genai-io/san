@@ -172,6 +172,6 @@ changed), but reminders are deliberately rebuilt.
 
 - [`concepts/harness-channels.md`](harness-channels.md) — the system-prompt /
   reminder / message channels compaction operates on.
-- [`packages/reminder.md`](../packages/reminder.md) — reminder providers and
+- [`packages/reminder.md`](../packages/2-feature/reminder.md) — reminder providers and
   re-emission.
-- [`packages/session.md`](../packages/session.md) — transcript records and replay.
+- [`packages/session.md`](../packages/2-feature/session.md) — transcript records and replay.

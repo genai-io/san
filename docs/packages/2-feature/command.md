@@ -75,5 +75,5 @@ internal/command/registry_test.go    — name lookup, fuzzy matching,
 
 - Code: `internal/command/`
 - Related: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md) (dynamic providers), [`packages/plugin.md`](plugin.md)
-- Reference: [`reference/slash-commands.md`](../reference/slash-commands.md)
+- Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md)
 - Layer: `feature`

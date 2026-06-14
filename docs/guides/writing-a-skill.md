@@ -4,7 +4,7 @@ A skill is a markdown file the model can be made aware of, or that the
 user can invoke via a slash command. Skills are the simplest extension
 surface in San — one file, no install step.
 
-For the system-level design see [`packages/skill.md`](../packages/skill.md)
+For the system-level design see [`packages/skill.md`](../packages/2-feature/skill.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 ## Where to Put It
@@ -107,7 +107,7 @@ Default for newly discovered skills is `enable`. State is persisted in
 
 ## See Also
 
-- [`packages/skill.md`](../packages/skill.md) — skill loader internals.
+- [`packages/skill.md`](../packages/2-feature/skill.md) — skill loader internals.
 - [`concepts/extension-model.md`](../concepts/extension-model.md) — how
   skills relate to subagents, slash commands, plugins.
 - [`writing-a-plugin.md`](writing-a-plugin.md) — bundle multiple skills.

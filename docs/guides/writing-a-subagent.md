@@ -5,7 +5,7 @@ subset + permission mode that the foreground agent can spawn via the
 `Agent` tool. Subagents run in parallel and report results back through
 the tool result.
 
-For the system-level design see [`packages/subagent.md`](../packages/subagent.md)
+For the system-level design see [`packages/subagent.md`](../packages/2-feature/subagent.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 ## Where to Put It
@@ -119,9 +119,9 @@ San:
 
 ## See Also
 
-- [`packages/subagent.md`](../packages/subagent.md) — registry +
+- [`packages/subagent.md`](../packages/2-feature/subagent.md) — registry +
   executor design.
-- [`packages/agent.md`](../packages/agent.md) — foreground agent
+- [`packages/agent.md`](../packages/2-feature/agent.md) — foreground agent
   lifecycle.
 - [`concepts/extension-model.md`](../concepts/extension-model.md).
 - [`concepts/permission-model.md`](../concepts/permission-model.md).

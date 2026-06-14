@@ -111,5 +111,5 @@ internal/plugin/plugin_test.go      — large suite covering load /
 
 - Code: `internal/plugin/`
 - Consumers: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md), [`packages/command.md`](command.md), [`packages/mcp.md`](mcp.md), [`packages/hook.md`](hook.md), [`packages/setting.md`](setting.md)
-- Concepts: [`concepts/extension-model.md`](../concepts/extension-model.md)
+- Concepts: [`concepts/extension-model.md`](../../concepts/extension-model.md)
 - Layer: `feature`

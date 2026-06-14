@@ -8,16 +8,16 @@ runtime registry.
 
 | Primitive | What it is | Package | Where it lives |
 |---|---|---|---|
-| **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
-| **Subagent** | A markdown-defined agent type with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
-| **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/command.md) | `~/.san/commands/<name>.md` and project equivalents |
-| **Hook** | A shell command, HTTP endpoint, LLM call, or in-process callback fired at a named event. | [`hook`](../packages/hook.md) | `settings.json` (`hooks` field) |
+| **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/2-feature/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
+| **Subagent** | A markdown-defined agent type with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/2-feature/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
+| **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/2-feature/command.md) | `~/.san/commands/<name>.md` and project equivalents |
+| **Hook** | A shell command, HTTP endpoint, LLM call, or in-process callback fired at a named event. | [`hook`](../packages/2-feature/hook.md) | `settings.json` (`hooks` field) |
 
 Plus the inbound side:
 
 | Primitive | What it is | Package |
 |---|---|---|
-| **Tool** | A capability the agent calls. Built-in or contributed by MCP. | [`tool`](../packages/tool.md), [`mcp`](../packages/mcp.md) |
+| **Tool** | A capability the agent calls. Built-in or contributed by MCP. | [`tool`](../packages/2-feature/tool.md), [`mcp`](../packages/2-feature/mcp.md) |
 
 ## Plugin is a Source, Not a Primitive
 
@@ -45,7 +45,7 @@ So the right mental model:
        └────────────────────────────────────────┘
 ```
 
-[`plugin`](../packages/plugin.md) discovers plugins and **pushes** the
+[`plugin`](../packages/2-feature/plugin.md) discovers plugins and **pushes** the
 per-primitive contributions to each consuming package at startup via
 callbacks (see `Options.PluginSkillPaths`, `Options.PluginAgentPaths`,
 etc.). The consumer doesn't import `plugin`.
@@ -88,8 +88,8 @@ The body of the file becomes the prompt / instruction content.
 ```
 
 Exact frontmatter fields vary by primitive — see the per-package docs:
-[`skill`](../packages/skill.md), [`subagent`](../packages/subagent.md),
-[`command`](../packages/command.md).
+[`skill`](../packages/2-feature/skill.md), [`subagent`](../packages/2-feature/subagent.md),
+[`command`](../packages/2-feature/command.md).
 
 ## See Also
 
@@ -97,5 +97,5 @@ Exact frontmatter fields vary by primitive — see the per-package docs:
   reminder content reaches the model.
 - [`concepts/permission-model.md`](permission-model.md) — how a
   subagent's `allowed-tools` interacts with the permission gate.
-- [`packages/plugin.md`](../packages/plugin.md) — install / marketplace /
+- [`packages/plugin.md`](../packages/2-feature/plugin.md) — install / marketplace /
   enable mechanics.
