@@ -29,7 +29,7 @@ var agentRunCmd = &cobra.Command{
 	Long: `Run an agent in headless mode without TUI.
 
 Example:
-  san agent run --type Explore --prompt "find main.go"`,
+  san agent run --type general-purpose --prompt "find main.go"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return app.RunAgent(agentRunOpts)
 	},
