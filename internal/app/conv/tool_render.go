@@ -937,7 +937,7 @@ func agentColorForInput(input string, colors map[string]string) string {
 }
 
 // agentBlinkTicks is the number of spinner ticks per ● / ○ swap.
-// One spinner tick is ~360ms (see newSpinner in model.go), so 2 ticks
+// One spinner tick is ~360ms (see newFrameClock in model.go), so 2 ticks
 // gives the familiar ~720ms blink.
 const agentBlinkTicks = 2
 

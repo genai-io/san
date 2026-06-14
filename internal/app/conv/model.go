@@ -26,7 +26,7 @@ func NewModel(width int) Model {
 	return Model{
 		ConversationModel: NewConversation(),
 		OutputModel: OutputModel{
-			Spinner:     newSpinner(),
+			Spinner:     newFrameClock(),
 			MDRenderer:  NewMDRenderer(width),
 			ProgressHub: hub,
 			ShowTasks:   true,
@@ -71,7 +71,7 @@ func (c FrameClock) Tick() tea.Msg { return c.spinner.Tick() }
 // Frame is the monotonic real-frame count that drives liveness animations.
 func (c FrameClock) Frame() int { return c.frame }
 
-func newSpinner() FrameClock {
+func newFrameClock() FrameClock {
 	sp := spinner.New()
 	// 4-pt → 6-pt → 8-pt → 6-pt stars read as a rotating sparkle while
 	// the model is thinking / streaming.
