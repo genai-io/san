@@ -24,7 +24,7 @@ func TestTaskLifecycleHandler(t *testing.T) {
 	SetLifecycleHandler(observer)
 	defer SetLifecycleHandler(nil)
 
-	mgr := NewTracker()
+	mgr := NewManager()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
