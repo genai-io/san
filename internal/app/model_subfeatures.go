@@ -44,10 +44,8 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		},
 		PrintWelcome: func(modelID string) tea.Cmd {
 			modelName := modelID
-			if m.services.LLM != nil {
-				if name := m.services.LLM.Store().CachedModelDisplayName(modelID); name != "" {
-					modelName = name
-				}
+			if name := m.services.LLM.Store().CachedModelDisplayName(modelID); name != "" {
+				modelName = name
 			}
 			teal := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
 			star := lipgloss.NewStyle().Foreground(welcomeStar)

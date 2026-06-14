@@ -24,10 +24,8 @@ import (
 // overlay (disabled tools, permissions) takes effect on the next agent
 // rebuild. Empty name = no persona (built-in defaults).
 func (m *model) setActivePersona(name string) error {
-	if m.services.Setting != nil {
-		if snap := m.services.Setting.Snapshot(); snap != nil && snap.Persona == name {
-			return nil
-		}
+	if snap := m.services.Setting.Snapshot(); snap != nil && snap.Persona == name {
+		return nil
 	}
 	// Persist the selection at a scope that actually wins the merge. Project
 	// scope overrides user scope, so write project scope when the project
@@ -36,10 +34,8 @@ func (m *model) setActivePersona(name string) error {
 	// a project persona to the built-in default) — or when the target is itself
 	// a project persona. Otherwise persist user-level.
 	userLevel := true
-	if m.services.Persona != nil {
-		if p, ok := m.services.Persona.Get(name); ok && p.Scope == persona.ScopeProject {
-			userLevel = false
-		}
+	if p, ok := m.services.Persona.Get(name); ok && p.Scope == persona.ScopeProject {
+		userLevel = false
 	}
 	if setting.PersonaAt(m.env.CWD, false) != "" {
 		userLevel = false
@@ -47,27 +43,21 @@ func (m *model) setActivePersona(name string) error {
 	if err := setting.SavePersonaAt(m.env.CWD, name, userLevel); err != nil {
 		return err
 	}
-	if m.services.Setting != nil {
-		_ = m.services.Setting.Reload(m.env.CWD)
-	}
+	_ = m.services.Setting.Reload(m.env.CWD)
 
 	// Skills (immediate): swap the in-memory persona skill set, then re-emit
 	// the skills-directory reminder so the model sees it on the next turn.
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
-	if m.services.Reminder != nil {
-		m.services.Reminder.RequeueSystemReminders()
-	}
+	m.services.Reminder.RequeueSystemReminders()
 
 	// Prompt (immediate): hot-patch the running main agent's parts.
-	if m.services.Agent != nil {
-		if sys := m.services.Agent.System(); sys != nil {
-			provider := ""
-			if m.env.LLMProvider != nil {
-				provider = m.env.LLMProvider.Name()
-			}
-			system.SwapPersona(sys, m.personaPrompt(), m.env.IsGit, provider)
+	if sys := m.services.Agent.System(); sys != nil {
+		provider := ""
+		if m.env.LLMProvider != nil {
+			provider = m.env.LLMProvider.Name()
 		}
+		system.SwapPersona(sys, m.personaPrompt(), m.env.IsGit, provider)
 	}
 	m.ReconfigureAgentTool()
 	return nil
@@ -78,9 +68,6 @@ func (m *model) setActivePersona(name string) error {
 // TUI. Opens the identity prompt if present, else settings.json, else the
 // directory. The built-in default has no files to open.
 func (m *model) openPersona(name string) tea.Cmd {
-	if m.services.Persona == nil {
-		return nil
-	}
 	p, ok := m.services.Persona.Get(name)
 	if !ok || p.IsBuiltin() || p.Dir == "" {
 		return nil
@@ -124,18 +111,13 @@ func openInOS(path string, isFile bool) error {
 // session never points at a directory that's about to disappear. The built-in
 // default cannot be deleted.
 func (m *model) deletePersona(name string) error {
-	if m.services.Persona == nil {
-		return fmt.Errorf("persona registry unavailable")
-	}
 	p, ok := m.services.Persona.Get(name)
 	if !ok || p.IsBuiltin() || p.Dir == "" {
 		return fmt.Errorf("cannot delete %q", name)
 	}
 
-	if m.services.Setting != nil {
-		if snap := m.services.Setting.Snapshot(); snap != nil && snap.Persona == name {
-			_ = m.setActivePersona(persona.DefaultName)
-		}
+	if snap := m.services.Setting.Snapshot(); snap != nil && snap.Persona == name {
+		_ = m.setActivePersona(persona.DefaultName)
 	}
 	if err := os.RemoveAll(p.Dir); err != nil {
 		return err

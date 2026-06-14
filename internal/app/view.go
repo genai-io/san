@@ -235,10 +235,8 @@ func (m model) renderModeStatus() string {
 		modelName += " (" + thinkingEffort + ")"
 		showThinking = false
 	}
-	if m.services.Hook != nil {
-		if status := m.services.Hook.CurrentStatusMessage(); status != "" {
-			modelName = status
-		}
+	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
+		modelName = status
 	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:             m.env.OperationMode,
@@ -306,9 +304,6 @@ func (m model) messageRenderParams() conv.RenderContext {
 }
 
 func (m model) agentColors() map[string]string {
-	if m.services.Subagent == nil {
-		return nil
-	}
 	return buildAgentColors(m.services.Subagent.ListConfigs())
 }
 

@@ -20,16 +20,12 @@ import (
 )
 
 func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
-	var hookEngine *hook.Engine
-	if m.services.Hook != nil {
-		hookEngine = m.services.Hook
-	}
 	return conv.CompactRequest{
 		Ctx:          context.Background(),
 		Client:       m.buildLLMClient(),
 		Messages:     m.conv.ConvertToProvider(),
 		SummaryFocus: focus,
-		HookEngine:   hookEngine,
+		HookEngine:   m.services.Hook,
 		Trigger:      trigger,
 	}
 }
@@ -66,28 +62,24 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 	if trigger == "manual" {
 		m.conv.Compact.Complete(fmt.Sprintf("Condensed %d earlier messages.", info.OriginalCount), false)
 	}
-	if m.services.Hook != nil {
-		m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: trigger})
-	}
+	m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: trigger})
 
 	// Compaction summarized away the system-reminder content that rode on the
 	// old user messages. Re-read memory from disk (a provider renders from the
 	// cached instructions, so an edited memory file would otherwise re-inject
 	// stale content), drop now-irrelevant one-time notices, and re-emit the
 	// providers so skills/memory reattach to the next user turn.
-	if m.services.Reminder != nil {
-		m.refreshMemoryContext(m.env.CWD, "post_compact")
-		m.services.Reminder.DiscardPendingNotices()
-		m.services.Reminder.RequeueSystemReminders()
+	m.refreshMemoryContext(m.env.CWD, "post_compact")
+	m.services.Reminder.DiscardPendingNotices()
+	m.services.Reminder.RequeueSystemReminders()
 
-		// Manual /compact restores recently-accessed files as a one-time notice
-		// so they ride on the next user turn. Enqueued AFTER DiscardPendingNotices
-		// so it survives. Auto-compaction happens mid-task and skips this.
-		if trigger == "manual" && m.env.FileCache != nil {
-			if restored, _ := m.env.FileCache.RestoreRecent(); len(restored) > 0 {
-				m.services.Reminder.Enqueue(filecache.FormatRestoredFiles(restored))
-				m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", len(restored)))
-			}
+	// Manual /compact restores recently-accessed files as a one-time notice
+	// so they ride on the next user turn. Enqueued AFTER DiscardPendingNotices
+	// so it survives. Auto-compaction happens mid-task and skips this.
+	if trigger == "manual" && m.env.FileCache != nil {
+		if restored, _ := m.env.FileCache.RestoreRecent(); len(restored) > 0 {
+			m.services.Reminder.Enqueue(filecache.FormatRestoredFiles(restored))
+			m.conv.AddNotice(fmt.Sprintf("Restored %d recently accessed file(s) for context.", len(restored)))
 		}
 	}
 

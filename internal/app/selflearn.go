@@ -54,9 +54,6 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	// context and pinning the old fork for up to forkDeadline.
 	m.teardownSelfLearn()
 
-	if m.services.Setting == nil {
-		return
-	}
 	// Env override wins: documented as the hard kill switch (§3.1).
 	if v := setting.Getenv(selfLearnDisableEnvSuffix); v == "1" || strings.EqualFold(v, "true") {
 		m.services.SelfLearn.Reviewer = nil
@@ -254,9 +251,6 @@ func (m *model) runSelfLearnDemo() {
 // learns about the override instead of seeing a "saved" confirmation
 // while the behavior stays unchanged.
 func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
-	if m.services.Setting == nil {
-		return
-	}
 	snap := m.services.Setting.Snapshot()
 	if snap == nil {
 		return

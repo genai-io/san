@@ -31,11 +31,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.agentEventHub.Register("main", func(e hub.Event) { m.mainEvents <- e })
 
 	// Wire task completion: closure captures hub + hooks + tracker directly.
-	var hookEngine *hook.Engine
-	if m.services.Hook != nil {
-		hookEngine = m.services.Hook
-	}
-	m.wireTaskLifecycle(hookEngine)
+	m.wireTaskLifecycle(m.services.Hook)
 
 	m.configureAsyncHookCallback()
 	m.ensureMemoryContextLoaded()
@@ -92,10 +88,8 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 	}
 
 	if opts.Persona != "" {
-		if m.services.Persona != nil {
-			if err := m.services.Persona.Validate(opts.Persona); err != nil {
-				return err
-			}
+		if err := m.services.Persona.Validate(opts.Persona); err != nil {
+			return err
 		}
 		if err := m.setActivePersona(opts.Persona); err != nil {
 			return err
@@ -131,9 +125,7 @@ func (m *model) ReloadPluginBackedState() error {
 
 	m.services.refreshAfterReload()
 
-	if m.services.Hook != nil {
-		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
-	}
+	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
@@ -141,9 +133,7 @@ func (m *model) ReloadPluginBackedState() error {
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for SessionStart/PostCompact.
-	if m.services.Reminder != nil {
-		m.services.Reminder.RequeueSystemReminders()
-	}
+	m.services.Reminder.RequeueSystemReminders()
 
 	return nil
 }
@@ -236,12 +226,10 @@ func (f taskLifecycleFunc) TaskCreated(info task.TaskInfo)   { f.onCreated(info)
 func (f taskLifecycleFunc) TaskCompleted(info task.TaskInfo) { f.onCompleted(info) }
 
 func (m *model) FireSessionEnd(reason string) {
-	if m.services.Hook != nil {
-		m.services.Hook.Execute(context.Background(), hook.SessionEnd, hook.HookInput{
-			Reason: reason,
-		})
-		m.services.Hook.ClearSessionHooks()
-	}
+	m.services.Hook.Execute(context.Background(), hook.SessionEnd, hook.HookInput{
+		Reason: reason,
+	})
+	m.services.Hook.ClearSessionHooks()
 	if m.systemInput.FileWatcher != nil {
 		m.systemInput.FileWatcher.Stop()
 	}

@@ -24,14 +24,12 @@ func (m *model) changeCwd(newCwd string) {
 	m.refreshMemoryContext(newCwd, "cwd_changed")
 	m.ReloadProjectContext(newCwd)
 	m.ReconfigureAgentTool()
-	if m.services.Hook != nil {
-		m.services.Hook.SetCwd(newCwd)
-		m.services.Hook.ExecuteAsync(hook.CwdChanged, hook.HookInput{OldCwd: oldCwd, NewCwd: newCwd})
-	}
+	m.services.Hook.SetCwd(newCwd)
+	m.services.Hook.ExecuteAsync(hook.CwdChanged, hook.HookInput{OldCwd: oldCwd, NewCwd: newCwd})
 }
 
 func (m *model) fireFileChanged(filePath, source string) {
-	if m.services.Hook == nil || filePath == "" {
+	if filePath == "" {
 		return
 	}
 	m.services.Hook.ExecuteAsync(hook.FileChanged, hook.HookInput{FilePath: filePath, Source: source, Event: "change"})
@@ -41,14 +39,12 @@ func (m *model) ReloadProjectContext(cwd string) {
 	initExtensions(cwd)
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.refreshAfterReload()
-	if m.services.Hook != nil {
-		plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
-	}
+	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()
 }
 
 func (m *model) reloadPersonasIfChanged(filePath string) {
-	if m.services.Persona == nil || !persona.IsPersonaFile(m.env.CWD, filePath) {
+	if !persona.IsPersonaFile(m.env.CWD, filePath) {
 		return
 	}
 	m.services.Persona.Reload()
