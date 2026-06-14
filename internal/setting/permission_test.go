@@ -2,6 +2,8 @@ package setting
 
 import (
 	"testing"
+
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
 func TestMatchRule(t *testing.T) {
@@ -127,7 +129,7 @@ func TestCheckPermission(t *testing.T) {
 		toolName string
 		args     map[string]any
 		session  *SessionPermissions
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		// Allow rules
 		{
@@ -135,28 +137,28 @@ func TestCheckPermission(t *testing.T) {
 			"Bash",
 			map[string]any{"command": "git status"},
 			nil,
-			Allow,
+			perm.Permit,
 		},
 		{
 			"git subcommand allowed after cd when both subcommands are allowed",
 			"Bash",
 			map[string]any{"command": "cd /path/to/repo && git status"},
 			nil,
-			Allow,
+			perm.Permit,
 		},
 		{
 			"npm command allowed",
 			"Bash",
 			map[string]any{"command": "npm install"},
 			nil,
-			Allow,
+			perm.Permit,
 		},
 		{
 			"read go file allowed",
 			"Read",
 			map[string]any{"file_path": "/path/to/file.go"},
 			nil,
-			Allow,
+			perm.Permit,
 		},
 
 		// Deny rules
@@ -165,14 +167,14 @@ func TestCheckPermission(t *testing.T) {
 			"Read",
 			map[string]any{"file_path": "/path/to/.env"},
 			nil,
-			Deny,
+			perm.Reject,
 		},
 		{
 			"read .env.local denied",
 			"Read",
 			map[string]any{"file_path": "/path/to/.env.local"},
 			nil,
-			Deny,
+			perm.Reject,
 		},
 
 		// Ask rules
@@ -181,7 +183,7 @@ func TestCheckPermission(t *testing.T) {
 			"Bash",
 			map[string]any{"command": "rm -rf /tmp/test"},
 			nil,
-			Ask,
+			perm.Prompt,
 		},
 
 		// Default behavior - read-only allowed
@@ -190,7 +192,7 @@ func TestCheckPermission(t *testing.T) {
 			"Glob",
 			map[string]any{"pattern": "*.txt"},
 			nil,
-			Allow,
+			perm.Permit,
 		},
 
 		// Default behavior - write needs ask
@@ -199,7 +201,7 @@ func TestCheckPermission(t *testing.T) {
 			"Edit",
 			map[string]any{"file_path": "/path/to/file.txt"},
 			nil,
-			Ask,
+			perm.Prompt,
 		},
 
 		// Session permissions
@@ -208,7 +210,7 @@ func TestCheckPermission(t *testing.T) {
 			"Edit",
 			map[string]any{"file_path": "/path/to/file.txt"},
 			&SessionPermissions{AllowAllEdits: true},
-			Allow,
+			perm.Permit,
 		},
 	}
 
@@ -232,14 +234,14 @@ func TestBashAllowRulesRequireEverySubcommand(t *testing.T) {
 	got := settings.CheckPermission("Bash", map[string]any{
 		"command": "git status && git log --oneline",
 	}, nil)
-	if got != Allow {
+	if got != perm.Permit {
 		t.Fatalf("two covered git commands = %v, want Allow", got)
 	}
 
 	got = settings.CheckPermission("Bash", map[string]any{
 		"command": "git status && npm test",
 	}, nil)
-	if got != Ask {
+	if got != perm.Prompt {
 		t.Fatalf("partially covered compound command = %v, want Ask", got)
 	}
 
@@ -247,7 +249,7 @@ func TestBashAllowRulesRequireEverySubcommand(t *testing.T) {
 	got = settings.CheckPermission("Bash", map[string]any{
 		"command": "git status && npm test",
 	}, nil)
-	if got != Allow {
+	if got != perm.Permit {
 		t.Fatalf("fully covered compound command = %v, want Allow", got)
 	}
 }
@@ -331,19 +333,19 @@ func TestDenyRulesPriorityOverSession(t *testing.T) {
 		name     string
 		toolName string
 		args     map[string]any
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		{
 			"deny rule blocks even with session allow",
 			"Read",
 			map[string]any{"file_path": "/path/to/.env"},
-			Deny,
+			perm.Reject,
 		},
 		{
 			"normal bash allowed with session",
 			"Bash",
 			map[string]any{"command": "ls -la"},
-			Allow,
+			perm.Permit,
 		},
 	}
 
@@ -372,13 +374,13 @@ func TestDestructiveCommandsRequireConfirmation(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
-		want    PermissionBehavior
+		want    perm.Decision
 	}{
-		{"rm -rf requires ask", "rm -rf /tmp/test", Ask},
-		{"git reset --hard requires ask", "git reset --hard HEAD", Ask},
-		{"git push --force requires ask", "git push --force", Ask},
-		{"normal git allowed", "git status", Allow},
-		{"normal ls allowed", "ls -la", Allow},
+		{"rm -rf requires ask", "rm -rf /tmp/test", perm.Prompt},
+		{"git reset --hard requires ask", "git reset --hard HEAD", perm.Prompt},
+		{"git push --force requires ask", "git push --force", perm.Prompt},
+		{"normal git allowed", "git status", perm.Permit},
+		{"normal ls allowed", "ls -la", perm.Permit},
 	}
 
 	for _, tt := range tests {
@@ -449,31 +451,31 @@ func TestSensitivePathsBypassImmune(t *testing.T) {
 		name     string
 		toolName string
 		args     map[string]any
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		{
 			"edit .git/hooks blocked even with AllowAllEdits",
 			"Edit",
 			map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"edit .claude/settings blocked even with allow rule",
 			"Edit",
 			map[string]any{"file_path": "/repo/.claude/settings.json"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"write .bashrc blocked even with AllowAllWrites",
 			"Write",
 			map[string]any{"file_path": "/home/user/.bashrc"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"edit normal file allowed with session",
 			"Edit",
 			map[string]any{"file_path": "/repo/internal/main.go"},
-			Allow,
+			perm.Permit,
 		},
 	}
 
@@ -550,12 +552,12 @@ func TestBashSecurityBypassImmune(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
-		want    PermissionBehavior
+		want    perm.Decision
 	}{
-		{"zmodload blocked", "zmodload zsh/system", Ask},
-		{"proc environ blocked", "cat /proc/self/environ", Ask},
-		{"IFS injection blocked", "IFS=/ cat /etc/passwd", Ask},
-		{"normal ls allowed", "ls -la", Allow},
+		{"zmodload blocked", "zmodload zsh/system", perm.Prompt},
+		{"proc environ blocked", "cat /proc/self/environ", perm.Prompt},
+		{"IFS injection blocked", "IFS=/ cat /etc/passwd", perm.Prompt},
+		{"normal ls allowed", "ls -la", perm.Permit},
 	}
 
 	for _, tt := range tests {
@@ -581,33 +583,33 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		name       string
 		toolName   string
 		args       map[string]any
-		wantResult PermissionBehavior
+		wantResult perm.Decision
 		wantReason string
 	}{
 		{
 			"deny rule includes pattern",
 			"Read", map[string]any{"file_path": "/repo/.env"},
-			Deny, "deny rule: Read(**/.env)",
+			perm.Reject, "deny rule: Read(**/.env)",
 		},
 		{
 			"allow rule includes pattern",
 			"Bash", map[string]any{"command": "git status"},
-			Allow, "allow rule: Bash(git:*)",
+			perm.Permit, "allow rule: Bash(git:*)",
 		},
 		{
 			"allow rule does not cover every chained bash subcommand",
 			"Bash", map[string]any{"command": "cd /repo && git describe --tags --abbrev=0"},
-			Ask, "mode: default requires confirmation",
+			perm.Prompt, "mode: default requires confirmation",
 		},
 		{
 			"sensitive path has reason",
 			"Edit", map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
-			Ask, "bypass-immune: .git/ directory",
+			perm.Prompt, "bypass-immune: .git/ directory",
 		},
 		{
 			"destructive has reason",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			Ask, "bypass-immune: destructive command",
+			perm.Prompt, "bypass-immune: destructive command",
 		},
 	}
 
@@ -637,8 +639,8 @@ func TestCheckPermissionWithReason_WorkingDirectoryConstraint(t *testing.T) {
 		"file_path": "/etc/passwd",
 	}, session)
 
-	if d.Behavior != Ask {
-		t.Fatalf("behavior = %v, want %v", d.Behavior, Ask)
+	if d.Behavior != perm.Prompt {
+		t.Fatalf("behavior = %v, want %v", d.Behavior, perm.Prompt)
 	}
 	if d.Reason != "outside working directory" {
 		t.Fatalf("reason = %q, want %q", d.Reason, "outside working directory")
@@ -689,32 +691,32 @@ func TestBypassPermissionsMode(t *testing.T) {
 		name     string
 		toolName string
 		args     map[string]any
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		{
 			"bypass allows normal edit",
 			"Edit", map[string]any{"file_path": "/repo/main.go"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"bypass allows bash",
 			"Bash", map[string]any{"command": "curl http://example.com"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"bypass-immune: .git still asks",
 			"Edit", map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"bypass-immune: destructive still asks",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"bypass-immune: zsh dangerous still asks",
 			"Bash", map[string]any{"command": "zmodload zsh/system"},
-			Ask,
+			perm.Prompt,
 		},
 	}
 
@@ -740,27 +742,27 @@ func TestDontAskMode(t *testing.T) {
 		name     string
 		toolName string
 		args     map[string]any
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		{
 			"dontAsk: read-only still allowed",
 			"Read", map[string]any{"file_path": "/repo/main.go"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"dontAsk: edit auto-denied",
 			"Edit", map[string]any{"file_path": "/repo/main.go"},
-			Deny,
+			perm.Reject,
 		},
 		{
 			"dontAsk: bash auto-denied",
 			"Bash", map[string]any{"command": "echo hello"},
-			Deny,
+			perm.Reject,
 		},
 		{
 			"dontAsk: safe tools still allowed",
 			"TaskCreate", map[string]any{},
-			Allow,
+			perm.Permit,
 		},
 	}
 
@@ -782,10 +784,10 @@ func TestAcceptEditsModeAllowsEditsButPromptsBash(t *testing.T) {
 		AllowedPatterns: make(map[string]bool),
 	}
 
-	if got := settings.CheckPermission("Edit", map[string]any{"file_path": "/repo/main.go"}, session); got != Allow {
+	if got := settings.CheckPermission("Edit", map[string]any{"file_path": "/repo/main.go"}, session); got != perm.Permit {
 		t.Fatalf("acceptEdits Edit = %v, want Allow", got)
 	}
-	if got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session); got != Ask {
+	if got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session); got != perm.Prompt {
 		t.Fatalf("acceptEdits Bash = %v, want Ask", got)
 	}
 }
@@ -799,12 +801,12 @@ func TestHeadlessCoercesAskToDeny(t *testing.T) {
 	}
 
 	got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session)
-	if got != Deny {
+	if got != perm.Reject {
 		t.Fatalf("headless Bash = %v, want Deny", got)
 	}
 
 	got = settings.CheckPermission("Read", map[string]any{"file_path": "/repo/main.go"}, session)
-	if got != Allow {
+	if got != perm.Permit {
 		t.Fatalf("headless Read = %v, want Allow", got)
 	}
 }
@@ -823,7 +825,7 @@ func TestDenyRuleBlocksBypass(t *testing.T) {
 
 	// Even bypass mode cannot override deny rules
 	got := settings.CheckPermission("Read", map[string]any{"file_path": "/repo/.env"}, session)
-	if got != Deny {
+	if got != perm.Reject {
 		t.Errorf("deny rule in bypass mode = %v, want Deny", got)
 	}
 }
@@ -842,42 +844,42 @@ func TestWorkingDirectoryConstraint(t *testing.T) {
 		name     string
 		toolName string
 		args     map[string]any
-		want     PermissionBehavior
+		want     perm.Decision
 	}{
 		{
 			"edit inside cwd allowed",
 			"Edit", map[string]any{"file_path": "/home/user/project/src/main.go"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"edit outside cwd prompts",
 			"Edit", map[string]any{"file_path": "/etc/passwd"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"write inside cwd allowed",
 			"Write", map[string]any{"file_path": "/home/user/project/new.go"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"write outside cwd prompts",
 			"Write", map[string]any{"file_path": "/tmp/evil.sh"},
-			Ask,
+			perm.Prompt,
 		},
 		{
 			"read not constrained",
 			"Read", map[string]any{"file_path": "/etc/hosts"},
-			Allow,
+			perm.Permit,
 		},
 		{
 			"bash not constrained by workdir",
 			"Bash", map[string]any{"command": "ls /etc"},
-			Ask, // Bash still asks because AllowAllBash is not set
+			perm.Prompt, // Bash still asks because AllowAllBash is not set
 		},
 		{
 			"prefix attack blocked",
 			"Edit", map[string]any{"file_path": "/home/user/project-evil/file.go"},
-			Ask,
+			perm.Prompt,
 		},
 	}
 
@@ -906,7 +908,7 @@ func TestSafeToolAllowlist(t *testing.T) {
 	for _, tool := range allSafeTools {
 		t.Run(tool, func(t *testing.T) {
 			got := settings.CheckPermission(tool, nil, nil)
-			if got != Allow {
+			if got != perm.Permit {
 				t.Errorf("safe tool %q = %v, want Allow", tool, got)
 			}
 		})

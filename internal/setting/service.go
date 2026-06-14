@@ -7,7 +7,11 @@
 // views.
 package setting
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/genai-io/san/internal/tool/perm"
+)
 
 // Options holds configuration for Initialize.
 type Options struct {
@@ -140,11 +144,11 @@ func (s *Settings) Hooks() map[string][]Hook {
 	return s.data.Hooks
 }
 
-func (s *Settings) CheckPermission(toolName string, args map[string]any, session *SessionPermissions) PermissionBehavior {
+func (s *Settings) CheckPermission(toolName string, args map[string]any, session *SessionPermissions) perm.Decision {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
-		return Ask
+		return perm.Prompt
 	}
 	return s.data.CheckPermission(toolName, args, session)
 }
@@ -153,7 +157,7 @@ func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.data == nil {
-		return decide(Ask, "default: no settings loaded")
+		return decide(perm.Prompt, "default: no settings loaded")
 	}
 	return s.data.HasPermissionToUseTool(toolName, args, session)
 }

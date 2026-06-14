@@ -10,28 +10,16 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// PermissionBehavior is the outcome of a permission check. It aliases
-// perm.Decision so the gate, the agent runtime, and subagents all speak a
-// single decision type. Allow/Deny/Ask are kept as thin synonyms for
-// perm.Permit/Reject/Prompt while the permission engine is being unified.
-type PermissionBehavior = perm.Decision
-
-const (
-	Allow = perm.Permit // automatically allowed
-	Deny  = perm.Reject // automatically denied
-	Ask   = perm.Prompt // requires user confirmation (prompt)
-)
-
-// PermissionDecision carries a permission behavior together with the reason
+// PermissionDecision carries a permission decision together with the reason
 // for the decision, enabling callers to log or display why access was
 // granted, denied, or requires confirmation.
 type PermissionDecision struct {
-	Behavior PermissionBehavior
+	Behavior perm.Decision
 	Reason   string // e.g. "deny rule: Read(**/.env)", "bypass-immune: .git/ directory"
 }
 
 // decide is a shorthand for building a PermissionDecision.
-func decide(b PermissionBehavior, reason string) PermissionDecision {
+func decide(b perm.Decision, reason string) PermissionDecision {
 	return PermissionDecision{Behavior: b, Reason: reason}
 }
 
@@ -58,40 +46,40 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	// ── Step 1: Deny rules ──
 	for _, pattern := range s.Permissions.Deny {
 		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return decide(Deny, "deny rule: "+pattern)
+			return decide(perm.Reject, "deny rule: "+pattern)
 		}
 	}
 
 	// ── Step 2: Bypass-immune safety checks ──
 	if reason := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
-		return coerceAsk(decide(Ask, reason), session)
+		return coerceAsk(decide(perm.Prompt, reason), session)
 	}
 
 	// ── Step 3: BypassPermissions mode ──
 	if session != nil && session.Mode == ModeBypassPermissions {
-		return decide(Allow, "mode: bypass permissions")
+		return decide(perm.Permit, "mode: bypass permissions")
 	}
 
 	// ── Step 4: Session permissions ──
 	if session != nil {
 		if session.IsToolAllowed(toolName) {
-			return decide(Allow, "session: allow all "+toolName)
+			return decide(perm.Permit, "session: allow all "+toolName)
 		}
 		if pattern, ok := MatchAllowList(toolName, args, slices.Collect(maps.Keys(session.AllowedPatterns))); ok {
-			return decide(Allow, "session pattern: "+pattern)
+			return decide(perm.Permit, "session pattern: "+pattern)
 		}
 	}
 
 	// ── Step 5: Ask rules ──
 	for _, pattern := range s.Permissions.Ask {
 		if MatchesToolPattern(toolName, args, rule, pattern) {
-			return coerceAsk(decide(Ask, "ask rule: "+pattern), session)
+			return coerceAsk(decide(perm.Prompt, "ask rule: "+pattern), session)
 		}
 	}
 
 	// ── Step 6: Allow rules ──
 	if pattern, ok := MatchAllowList(toolName, args, s.Permissions.Allow); ok {
-		return decide(Allow, "allow rule: "+pattern)
+		return decide(perm.Permit, "allow rule: "+pattern)
 	}
 
 	// ── Step 7/8: Mode default + headless coercion ──
@@ -121,23 +109,23 @@ func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, se
 // shares this one mode table instead of carrying its own (perm.Checker).
 func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 	if perm.IsSafeTool(toolName) {
-		return decide(Allow, "mode: safe tool")
+		return decide(perm.Permit, "mode: safe tool")
 	}
 
 	switch mode {
 	case ModeBypassPermissions:
-		return decide(Allow, "mode: bypass permissions")
+		return decide(perm.Permit, "mode: bypass permissions")
 	case ModeAutoAccept:
 		if perm.IsEditTool(toolName) {
-			return decide(Allow, "mode: accept edits")
+			return decide(perm.Permit, "mode: accept edits")
 		}
-		return decide(Ask, "mode: accept edits requires confirmation")
+		return decide(perm.Prompt, "mode: accept edits requires confirmation")
 	case ModeReadOnly:
-		return decide(Deny, "mode: read-only")
+		return decide(perm.Reject, "mode: read-only")
 	case ModeDontAsk:
-		return decide(Deny, "mode: don't ask (auto-deny)")
+		return decide(perm.Reject, "mode: don't ask (auto-deny)")
 	default: // ModeNormal
-		return decide(Ask, "mode: default requires confirmation")
+		return decide(perm.Prompt, "mode: default requires confirmation")
 	}
 }
 
@@ -150,14 +138,14 @@ func modeDefaultDecision(toolName string, session *SessionPermissions) Permissio
 }
 
 func coerceAsk(decision PermissionDecision, session *SessionPermissions) PermissionDecision {
-	if decision.Behavior != Ask || session == nil {
+	if decision.Behavior != perm.Prompt || session == nil {
 		return decision
 	}
 	if session.Mode == ModeDontAsk {
-		return decide(Deny, "mode: don't ask (auto-deny): "+decision.Reason)
+		return decide(perm.Reject, "mode: don't ask (auto-deny): "+decision.Reason)
 	}
 	if session.ShouldAvoidPrompts {
-		return decide(Deny, "headless: "+decision.Reason)
+		return decide(perm.Reject, "headless: "+decision.Reason)
 	}
 	return decision
 }
@@ -185,7 +173,7 @@ func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *S
 }
 
 // CheckPermission is a convenience wrapper returning just the behavior.
-func (s *Data) CheckPermission(toolName string, args map[string]any, session *SessionPermissions) PermissionBehavior {
+func (s *Data) CheckPermission(toolName string, args map[string]any, session *SessionPermissions) perm.Decision {
 	return s.HasPermissionToUseTool(toolName, args, session).Behavior
 }
 
