@@ -57,7 +57,7 @@ var CurrentTheme = Theme{
 	Muted:     AdaptiveColor{Dark: "#7B8696", Light: "#6B7280"},
 	Accent:    AdaptiveColor{Dark: "#9DB5D4", Light: "#64748B"},
 	Primary:   AdaptiveColor{Dark: "#D0DFEF", Light: "#475569"},
-	AI:        AdaptiveColor{Dark: "#8AB4F8", Light: "#2563EB"},
+	AI:        AdaptiveColor{Dark: "#B0C4E0", Light: "#64748B"},
 	Separator: AdaptiveColor{Dark: "#4E6580", Light: "#CBD5E1"},
 
 	Focus: AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"},

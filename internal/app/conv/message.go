@@ -210,8 +210,11 @@ var (
 				Foreground(kit.CurrentTheme.Focus).
 				Bold(true)
 
+	// The assistant bullet leads with weight, not hue: the strongest neutral
+	// (near-black on light, near-white on dark) plus bold. The conversation
+	// body stays monochrome — teal is reserved for the user's "❭" marker.
 	aiPromptStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.AI).
+			Foreground(kit.CurrentTheme.TextBright).
 			Bold(true)
 
 	// Footer rules are a faint hairline so they frame the input without
