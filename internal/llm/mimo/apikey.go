@@ -37,4 +37,5 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 func init() {
 	llm.RegisterProviderDisplay(llm.Mimo, llm.ProviderDisplay{Name: "Xiaomi MiMo", Order: 110})
 	llm.Register(APIKeyMeta, NewAPIKeyClient)
+	llm.RegisterCostEstimator(llm.Mimo, EstimateCost)
 }

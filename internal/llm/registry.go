@@ -20,12 +20,14 @@ type Registry struct {
 	mu              sync.RWMutex
 	entries         map[string]registryEntry // key: "provider:authMethod"
 	providerDisplay map[Name]ProviderDisplay // provider-level UI presentation
+	costEstimators  map[Name]CostEstimator   // per-provider turn-cost pricing
 }
 
 // globalRegistry is the default registry instance
 var globalRegistry = &Registry{
 	entries:         make(map[string]registryEntry),
 	providerDisplay: make(map[Name]ProviderDisplay),
+	costEstimators:  make(map[Name]CostEstimator),
 }
 
 // Register registers a provider with its metadata and factory

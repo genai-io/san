@@ -37,4 +37,5 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 func init() {
 	llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek", Order: 40})
 	llm.Register(APIKeyMeta, NewAPIKeyClient)
+	llm.RegisterCostEstimator(llm.DeepSeek, EstimateCost)
 }

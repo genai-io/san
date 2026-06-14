@@ -16,9 +16,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/deepseek"
-	"github.com/genai-io/san/internal/llm/mimo"
-	"github.com/genai-io/san/internal/llm/minmax"
 	"github.com/genai-io/san/internal/log"
 )
 
@@ -48,37 +45,14 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 	m.env.TurnOutputTokens += resp.OutputTokens
 
 	if m.env.CurrentModel != nil {
-		switch m.env.CurrentModel.Provider {
-		case llm.MinMax:
-			cost, ok := minmax.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
-				InputTokens:              resp.InputTokens,
-				OutputTokens:             resp.OutputTokens,
-				CacheCreationInputTokens: resp.CacheCreationInputTokens,
-				CacheReadInputTokens:     resp.CacheReadInputTokens,
-			})
-			if ok {
-				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
-			}
-		case llm.DeepSeek:
-			cost, ok := deepseek.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
-				InputTokens:              resp.InputTokens,
-				OutputTokens:             resp.OutputTokens,
-				CacheCreationInputTokens: resp.CacheCreationInputTokens,
-				CacheReadInputTokens:     resp.CacheReadInputTokens,
-			})
-			if ok {
-				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
-			}
-		case llm.Mimo:
-			cost, ok := mimo.EstimateCost(m.env.CurrentModel.ModelID, llm.Usage{
-				InputTokens:              resp.InputTokens,
-				OutputTokens:             resp.OutputTokens,
-				CacheCreationInputTokens: resp.CacheCreationInputTokens,
-				CacheReadInputTokens:     resp.CacheReadInputTokens,
-			})
-			if ok {
-				m.env.ConversationCost = m.env.ConversationCost.Add(cost)
-			}
+		usage := llm.Usage{
+			InputTokens:              resp.InputTokens,
+			OutputTokens:             resp.OutputTokens,
+			CacheCreationInputTokens: resp.CacheCreationInputTokens,
+			CacheReadInputTokens:     resp.CacheReadInputTokens,
+		}
+		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.ModelID, usage); ok {
+			m.env.ConversationCost = m.env.ConversationCost.Add(cost)
 		}
 	}
 }

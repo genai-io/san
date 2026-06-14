@@ -44,4 +44,5 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 func init() {
 	llm.RegisterProviderDisplay(llm.MinMax, llm.ProviderDisplay{Name: "MiniMax", Order: 60})
 	llm.Register(APIKeyMeta, NewAPIKeyClient)
+	llm.RegisterCostEstimator(llm.MinMax, EstimateCost)
 }
