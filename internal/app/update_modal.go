@@ -10,13 +10,11 @@ import (
 )
 
 func (m *model) cycleOperationMode() {
-	allowBypass := m.services.Setting != nil && m.services.Setting.AllowBypass()
+	allowBypass := m.services.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
 	m.env.ApplyModePermissions(m.env.CWD)
 
-	if m.services.Hook != nil {
-		m.services.Hook.SetPermissionMode(m.env.OperationModeName())
-	}
+	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
 }
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {

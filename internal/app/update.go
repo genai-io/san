@@ -113,10 +113,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Refresh the in-memory settings handle so re-opening /config (and any
 		// in-session reader) sees the just-saved values rather than the stale
 		// pre-save snapshot. The panel already persisted to disk.
-		if m.services.Setting != nil {
-			if err := m.services.Setting.Reload(m.env.CWD); err != nil {
-				log.Logger().Warn("reload settings after config save failed", zap.Error(err))
-			}
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
 		m.notifySelfLearnOverride(msg)
@@ -124,17 +122,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// effect on the running session instead of silently waiting for
 		// the next agent restart. Wire only when the agent is already
 		// active; an inactive session will wire on the first user turn.
-		if m.services.Agent != nil && m.services.Agent.Active() {
+		if m.services.Agent.Active() {
 			m.wireSelfLearn(m.buildAgentParams(), "")
 		}
 		return m, nil
 	case input.ThemeSavedMsg:
 		// The panel already applied (kit.InitTheme) and persisted the theme;
 		// refresh the in-memory handle so re-opening /config reflects it.
-		if m.services.Setting != nil {
-			if err := m.services.Setting.Reload(m.env.CWD); err != nil {
-				log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
-			}
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Theme set to " + msg.Theme)
 		return m, nil
@@ -143,9 +139,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// <system-reminder>, which is only refreshed at SessionStart and
 		// PostCompact. Without this nudge the LLM sees stale state until
 		// one of those fires.
-		if m.services.Reminder != nil {
-			m.services.Reminder.RequeueSystemReminders()
-		}
+		m.services.Reminder.RequeueSystemReminders()
 		return m, nil
 	case input.AgentToggleMsg:
 		// Why stop on toggle: the agents directory lives in the Agent tool's
@@ -155,7 +149,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// orphan in-flight tool calls and the partial assistant turn —
 		// leave the toggle pending; ensureAgentSession will see the updated
 		// store the next time it actually rebuilds.
-		if m.services.Agent != nil && m.services.Agent.Active() && !m.conv.Stream.Active {
+		if m.services.Agent.Active() && !m.conv.Stream.Active {
 			m.services.Agent.Stop()
 		}
 		return m, nil

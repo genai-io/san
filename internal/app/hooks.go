@@ -16,9 +16,6 @@ import (
 )
 
 func (m *model) firePostToolHook(tr core.ToolResult, sideEffect any) {
-	if m.services.Hook == nil {
-		return
-	}
 	eventType := hook.PostToolUse
 	if tr.IsError {
 		eventType = hook.PostToolUseFailure
@@ -39,9 +36,6 @@ func (m *model) firePostToolHook(tr core.ToolResult, sideEffect any) {
 }
 
 func (m *model) fireStopFailureHook(lastAssistantContent string, err error) {
-	if m.services.Hook == nil {
-		return
-	}
 	m.services.Hook.ExecuteAsync(hook.StopFailure, hook.HookInput{
 		LastAssistantMessage: lastAssistantContent,
 		Error:                err.Error(),
@@ -50,9 +44,6 @@ func (m *model) fireStopFailureHook(lastAssistantContent string, err error) {
 }
 
 func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
-	if m.services.Hook == nil {
-		return hook.HookOutcome{}
-	}
 	m.services.Hook.ExecuteAsync(hook.Setup, hook.HookInput{
 		Trigger: "init",
 	})
@@ -63,9 +54,7 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	// Enqueue session-level reminders (skills directory, memory, etc.) so
 	// they ride on the first user message of this session. The system-prompt
 	// cache prefix stays untouched.
-	if m.services.Reminder != nil {
-		m.services.Reminder.RequeueSystemReminders()
-	}
+	m.services.Reminder.RequeueSystemReminders()
 	return m.services.Hook.Execute(ctx, hook.SessionStart, hook.HookInput{
 		Source: source,
 		Model:  m.env.GetModelID(),
@@ -80,11 +69,6 @@ type stopHookResultMsg struct {
 
 func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 	hookEngine := m.services.Hook
-	if hookEngine == nil {
-		return func() tea.Msg {
-			return stopHookResultMsg{Result: result}
-		}
-	}
 
 	lastContent := core.LastAssistantChatContent(m.conv.Messages)
 	hasStopHooks := hookEngine.HasHooks(hook.Stop)
@@ -112,14 +96,11 @@ func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 }
 
 func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, string) {
-	if m.services.Hook == nil {
-		return false, ""
-	}
 	outcome := m.services.Hook.Execute(ctx, hook.UserPromptSubmit, hook.HookInput{Prompt: prompt})
 	// UserPromptSubmit hooks may return additionalContext to inject into the
 	// next turn. Enqueue as a <system-reminder> so it rides on the user
 	// message that's about to go out (which is the same prompt being checked).
-	if outcome.AdditionalContext != "" && m.services.Reminder != nil {
+	if outcome.AdditionalContext != "" {
 		m.services.Reminder.Enqueue(outcome.AdditionalContext)
 	}
 	return outcome.ShouldBlock, outcome.BlockReason
@@ -127,9 +108,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
-	if m.services.Hook != nil {
-		m.services.Hook.SetLLMCompleter(buildHookCompleter(p), m.env.GetModelID())
-	}
+	m.services.Hook.SetLLMCompleter(buildHookCompleter(p), m.env.GetModelID())
 }
 
 func (m *model) refreshMemoryContext(cwd, loadReason string) {
@@ -142,22 +121,18 @@ func (m *model) refreshMemoryContext(cwd, loadReason string) {
 		case "project", "local":
 			projectParts = append(projectParts, f.Content)
 		}
-		if m.services.Hook != nil {
-			m.services.Hook.ExecuteAsync(hook.InstructionsLoaded, hook.HookInput{
-				FilePath:   f.Path,
-				MemoryType: memoryTypeForLevel(f.Level),
-				LoadReason: loadReason,
-			})
-		}
+		m.services.Hook.ExecuteAsync(hook.InstructionsLoaded, hook.HookInput{
+			FilePath:   f.Path,
+			MemoryType: memoryTypeForLevel(f.Level),
+			LoadReason: loadReason,
+		})
 	}
 	m.env.CachedUserInstructions = joinSections(userParts)
 	m.env.CachedProjectInstructions = joinSections(projectParts)
 }
 
 func (m *model) syncSettingsToHookEngine() {
-	if m.services.Hook != nil && m.services.Setting != nil {
-		m.services.Hook.SetSettings(m.services.Setting.Snapshot())
-	}
+	m.services.Hook.SetSettings(m.services.Setting.Snapshot())
 }
 
 func memoryTypeForLevel(level string) string {

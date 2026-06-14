@@ -12,7 +12,6 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/setting"
@@ -20,14 +19,10 @@ import (
 )
 
 func (m *model) approvalDeps() input.ApprovalFlowDeps {
-	var hookEngine *hook.Engine
-	if m.services.Hook != nil {
-		hookEngine = m.services.Hook
-	}
 	return input.ApprovalFlowDeps{
 		Actions:            m,
 		Input:              &m.userInput,
-		HookEngine:         hookEngine,
+		HookEngine:         m.services.Hook,
 		Settings:           m.services.Setting.Snapshot(),
 		SessionPermissions: m.env.SessionPermissions,
 		SetOperationMode:   func(mode setting.OperationMode) { m.env.OperationMode = mode },

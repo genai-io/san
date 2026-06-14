@@ -73,7 +73,7 @@ func initModel(opts setting.RunOptions) (*model, error) {
 }
 
 func (m *model) configureAsyncHookCallback() {
-	if m.services.Hook == nil || m.systemInput.AsyncHookQueue == nil {
+	if m.systemInput.AsyncHookQueue == nil {
 		return
 	}
 	queue := m.systemInput.AsyncHookQueue
@@ -98,7 +98,7 @@ func (m *model) fireStartupHooks() {
 	// <system-reminder>, not appended as a standalone user message. This
 	// keeps SessionStart context out of the visible chat and lets it
 	// re-emerge after PostCompact alongside other harness reminders.
-	if outcome.AdditionalContext != "" && m.services.Reminder != nil {
+	if outcome.AdditionalContext != "" {
 		m.services.Reminder.Enqueue(outcome.AdditionalContext)
 	}
 }

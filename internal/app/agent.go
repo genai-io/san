@@ -36,9 +36,6 @@ import (
 // built-in default (no settings.persona, or it doesn't resolve). A configured
 // name that doesn't resolve logs a warning and falls back to the default.
 func (m *model) activePersona() *persona.Persona {
-	if m.services.Setting == nil || m.services.Persona == nil {
-		return nil
-	}
 	snap := m.services.Setting.Snapshot()
 	if snap == nil || snap.Persona == "" || snap.Persona == persona.DefaultName {
 		return nil
@@ -66,9 +63,6 @@ func (m *model) personaPrompt() system.Persona {
 // registry (in-memory, active by default), or clears them when no persona is
 // selected. The skills-directory reminder picks the set up on its next emit.
 func (m *model) applyPersonaSkills() {
-	if m.services.Skill == nil {
-		return
-	}
 	if p := m.activePersona(); p != nil {
 		var states map[string]string
 		if p.Settings != nil {
@@ -84,9 +78,6 @@ func (m *model) applyPersonaSkills() {
 // `agents` allow-list (empty/none = all visible), or clears the restriction
 // when no persona is selected. In-memory, mirroring applyPersonaSkills.
 func (m *model) applyPersonaAgents() {
-	if m.services.Subagent == nil {
-		return
-	}
 	if p := m.activePersona(); p != nil && p.Settings != nil && len(p.Settings.Agents) > 0 {
 		m.services.Subagent.LoadPersona(p.Settings.Agents)
 		return
@@ -95,43 +86,32 @@ func (m *model) applyPersonaAgents() {
 }
 
 func (m *model) buildAgentParams() agent.BuildParams {
-	var mcpTools []core.Tool
-	if m.services.MCP != nil {
-		schemas := m.services.MCP.GetToolSchemas()
-		mcpTools = mcp.AsCoreTools(schemas, mcp.NewCaller(m.services.MCP))
-	}
+	schemas := m.services.MCP.GetToolSchemas()
+	mcpTools := mcp.AsCoreTools(schemas, mcp.NewCaller(m.services.MCP))
 
 	maxTokens := kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	var onEvent func(core.Event)
 	rec := m.services.Session.NewRecorder("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
 	if rec != nil {
 		onEvent = rec.OnAgentEvent
-		if m.services.Hook != nil {
-			if eng := m.services.Hook; eng != nil {
-				eng.SetAuditCallback(func(a hook.HookFiredAudit) {
-					rec.RecordHook(transcript.HookRecord{
-						Event:     a.Event,
-						Source:    a.Source,
-						Matcher:   a.Matcher,
-						Outcome:   a.Outcome,
-						Reason:    a.Reason,
-						LatencyMs: a.Duration.Milliseconds(),
-					})
-				})
-			}
-		}
-		if m.services.Skill != nil {
-			if reg := m.services.Skill; reg != nil {
-				reg.SetStateChangeObserver(func(name, previous, current, caller string) {
-					rec.RecordSkillState(transcript.SkillRecord{
-						Name:     name,
-						Previous: previous,
-						Current:  current,
-						Caller:   caller,
-					})
-				})
-			}
-		}
+		m.services.Hook.SetAuditCallback(func(a hook.HookFiredAudit) {
+			rec.RecordHook(transcript.HookRecord{
+				Event:     a.Event,
+				Source:    a.Source,
+				Matcher:   a.Matcher,
+				Outcome:   a.Outcome,
+				Reason:    a.Reason,
+				LatencyMs: a.Duration.Milliseconds(),
+			})
+		})
+		m.services.Skill.SetStateChangeObserver(func(name, previous, current, caller string) {
+			rec.RecordSkillState(transcript.SkillRecord{
+				Name:     name,
+				Previous: previous,
+				Current:  current,
+				Caller:   caller,
+			})
+		})
 	}
 
 	return agent.BuildParams{
@@ -269,9 +249,6 @@ func (m *model) sendToAgent(content string, images []core.Image) tea.Cmd {
 // channel to deliver session/project context (skills, memory, one-time notices)
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(content string) string {
-	if m.services.Reminder == nil {
-		return content
-	}
 	pending := m.services.Reminder.Drain()
 	if len(pending) == 0 {
 		return content
@@ -285,17 +262,10 @@ func (m *model) attachPendingReminders(content string) string {
 // — that way settings reload and skill toggles surface in the next emission
 // without ever mutating the cached system prompt.
 func (m *model) wireReminderProviders() {
-	if m.services.Reminder == nil {
-		return
-	}
-
 	// Skill.PromptSection already produces a self-introduced body
 	// ("Use the Skill tool to invoke these capabilities: ...") so it goes
 	// inside <system-reminder> verbatim, matching Claude Code's shape.
 	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderSkillsDirectory, func() string {
-		if m.services.Skill == nil {
-			return ""
-		}
 		return m.services.Skill.PromptSection()
 	}))
 	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderMemoryUser, func() string {
@@ -424,19 +394,13 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	m.ensureMemoryContextLoaded()
 
-	var hookEngine *hook.Engine
-	if m.services.Hook != nil {
-		hookEngine = m.services.Hook
-	}
-	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), hookEngine)
+	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}
 	executor.SetContext(m.env.IsGit)
 	executor.SetCapabilities(m.services.Skill.PromptSection(), m.services.Subagent.PromptSection())
-	if m.services.MCP != nil {
-		executor.SetMCP(m.services.MCP, m.services.MCP)
-	}
+	executor.SetMCP(m.services.MCP, m.services.MCP)
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }

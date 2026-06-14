@@ -62,9 +62,7 @@ func (m *model) PersistSession() error {
 	m.services.Session.SetID(sess.Metadata.ID)
 	m.initTaskStorage(m.services.Session.ID())
 
-	if m.services.Hook != nil {
-		m.services.Hook.SetTranscriptPath(m.services.Session.GetStore().SessionPath(sess.Metadata.ID))
-	}
+	m.services.Hook.SetTranscriptPath(m.services.Session.GetStore().SessionPath(sess.Metadata.ID))
 	m.ReconfigureAgentTool()
 
 	return nil
