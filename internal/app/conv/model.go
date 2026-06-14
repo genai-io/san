@@ -8,7 +8,10 @@ import (
 )
 
 type OutputModel struct {
-	Spinner      spinner.Model
+	Spinner spinner.Model
+	// Blink counts real spinner frames (~one per 360ms; see app.Update), not
+	// animation cycles. Liveness animations divide it by their own cadence —
+	// agentBlinkTicks, trackerPulseTicks — to derive their phase.
 	Blink        int
 	MDRenderer   *MDRenderer
 	TaskProgress map[int][]string

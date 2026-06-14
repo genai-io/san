@@ -47,10 +47,8 @@ func (m *model) overlayDeps() input.OverlayDeps {
 			if name := m.services.LLM.Store().CachedModelDisplayName(modelID); name != "" {
 				modelName = name
 			}
-			teal := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
-			star := lipgloss.NewStyle().Foreground(welcomeStar)
 			dim := lipgloss.NewStyle().Foreground(welcomeDim)
-			line := teal.Render("< ") + teal.Render("SAN") + " " + star.Render("✦") + " " + teal.Render("/>")
+			line := brandMark()
 			if proj := projectName(m.env.CWD); proj != "" {
 				line += dim.Render("  ·  ") + dim.Render(proj)
 			}

@@ -497,7 +497,7 @@ func (s *State) renderCommandSuggestions(width int) string {
 	for i, cmd := range items {
 		cmdName := "/" + cmd.Name
 		pad := strings.Repeat(" ", max(0, nameWidth-len([]rune(cmdName))))
-		desc := truncateWithEllipsis(cmd.Description, maxDescLen)
+		desc := kit.TruncateText(cmd.Description, maxDescLen)
 
 		if start+i == s.selectedIdx {
 			bar := kit.FocusBarStyle().Render(kit.FocusBar)
@@ -520,17 +520,6 @@ func (s *State) renderCommandSuggestions(width int) string {
 
 func clampInt(value, minVal, maxVal int) int {
 	return max(minVal, min(value, maxVal))
-}
-
-func truncateWithEllipsis(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return string(runes[:maxLen])
-	}
-	return string(runes[:maxLen-1]) + "…"
 }
 
 func truncateFromLeft(s string, maxLen int) string {

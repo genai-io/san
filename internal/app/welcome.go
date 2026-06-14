@@ -54,7 +54,7 @@ func brandMark() string {
 		star  = lipgloss.NewStyle().Foreground(welcomeStar)
 		brand = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
 	)
-	return brand.Render("< ") + brand.Render("SAN") + " " + star.Render("✦") + " " + brand.Render("/>")
+	return brand.Render("< SAN") + " " + star.Render("✦") + " " + brand.Render("/>")
 }
 
 func renderWelcome(info welcomeInfo) string {

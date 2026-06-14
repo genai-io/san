@@ -34,8 +34,7 @@ func (m *model) View() tea.View {
 // viewString renders the UI to a styled string; View wraps it in a tea.View.
 func (m *model) viewString() string {
 	if !m.env.Ready {
-		dim := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-		return "\n  " + brandMark() + dim.Render("  ·  Loading…")
+		return "\n  " + brandMark() + ghostTextStyle.Render("  ·  Loading…")
 	}
 
 	ov, hasOverlay := m.activeOverlay()

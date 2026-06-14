@@ -65,7 +65,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	// full cadence is deterministic: advancing Blink across one period must show
 	// both the solid (●) and dim (◌) phases.
 	var hasSolid, hasDim bool
-	for blink := range 4 * agentBlinkTicks {
+	for blink := range 4 * trackerPulseTicks {
 		frame := stripANSI(renderTask(task, 80, 2, nil, blink))
 		if strings.Contains(frame, "●") {
 			hasSolid = true

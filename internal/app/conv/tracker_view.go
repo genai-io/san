@@ -13,6 +13,12 @@ import (
 
 const maxVisibleTasks = 8
 
+// trackerPulseTicks is the number of spinner frames per ●/◌ swap of an
+// in-progress task. At ~360ms per frame this gives a ~1.1s breathe — calmer
+// than the agent icon's faster blink (cf. agentBlinkTicks in tool_render.go),
+// suiting the tracker's quieter role.
+const trackerPulseTicks = 3
+
 // TrackerListParams holds the parameters for rendering a tracker list.
 type TrackerListParams struct {
 	Tasks        []*tracker.Task
@@ -99,14 +105,14 @@ func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []str
 		if t.ActiveForm != "" {
 			displayText = kit.TruncateText(t.ActiveForm, maxTextLen)
 		}
-		// Pulse on the shared tick cadence (same as the agent ●/○ blink), so the
-		// animation is smooth and driven by the render loop rather than the wall
-		// clock — which only sampled on redraws and so flickered irregularly.
+		// Pulse on the shared frame tick (now a true ~360ms clock; see Blink in
+		// app.Update) rather than the wall clock, which only sampled on redraws
+		// and so flickered irregularly.
 		activeIcon := "●"
 		activeStyle := trackerInProgressStyle
-		if (blink/agentBlinkTicks)%2 == 1 {
+		if (blink/trackerPulseTicks)%2 == 1 {
 			activeIcon = "◌"
-			activeStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+			activeStyle = mutedStyle
 		}
 		detail := ""
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
