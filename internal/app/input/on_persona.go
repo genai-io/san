@@ -45,7 +45,7 @@ type PersonaSelector struct {
 	active        bool
 	confirmDelete bool
 	items         []personaItem
-	selectedIdx   int
+	nav           kit.ListNav
 	width         int
 	height        int
 	registry      *persona.Registry
@@ -95,15 +95,18 @@ func (s *PersonaSelector) EnterSelect(width, height int) error {
 
 	s.active = true
 	s.confirmDelete = false
-	s.selectedIdx = 0
 	s.width = width
 	s.height = height
+	s.nav.Reset()
+	s.nav.Total = len(s.items)
+	s.nav.MaxVisible = s.bodyHeight()
 	for i, it := range s.items {
 		if it.IsCurrent {
-			s.selectedIdx = i
+			s.nav.Selected = i
 			break
 		}
 	}
+	s.nav.EnsureVisible()
 	return nil
 }
 
@@ -113,22 +116,22 @@ func (s *PersonaSelector) Cancel() {
 	s.active = false
 	s.confirmDelete = false
 	s.items = nil
-	s.selectedIdx = 0
+	s.nav.Reset()
 }
 
 func (s *PersonaSelector) Select() tea.Cmd {
-	if s.selectedIdx >= len(s.items) {
+	if s.nav.Selected >= len(s.items) {
 		return nil
 	}
-	name := s.items[s.selectedIdx].Name
+	name := s.items[s.nav.Selected].Name
 	return func() tea.Msg { return PersonaSelectedMsg{Name: name} }
 }
 
 func (s *PersonaSelector) selected() (personaItem, bool) {
-	if s.selectedIdx < 0 || s.selectedIdx >= len(s.items) {
+	if s.nav.Selected < 0 || s.nav.Selected >= len(s.items) {
 		return personaItem{}, false
 	}
-	return s.items[s.selectedIdx], true
+	return s.items[s.nav.Selected], true
 }
 
 func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
@@ -148,13 +151,9 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 
 	switch key.String() {
 	case "up", "ctrl+p", "k":
-		if s.selectedIdx > 0 {
-			s.selectedIdx--
-		}
+		s.nav.MoveUp()
 	case "down", "ctrl+n", "j":
-		if s.selectedIdx < len(s.items)-1 {
-			s.selectedIdx++
-		}
+		s.nav.MoveDown()
 	case "enter":
 		return s.Select()
 	case "ctrl+o":
@@ -189,9 +188,12 @@ func (s *PersonaSelector) Render() string {
 	const nameCol = 22
 	metaMax := max(16, s.contentWidth()-nameCol-12)
 
+	startIdx, endIdx := s.nav.VisibleRange()
+
 	var body strings.Builder
-	for i, item := range s.items {
-		isSelected := i == s.selectedIdx
+	for i := startIdx; i < endIdx; i++ {
+		item := s.items[i]
+		isSelected := i == s.nav.Selected
 
 		marker := "[ ]"
 		markerStyle := kit.SelectorStatusNone()
@@ -258,18 +260,6 @@ func (s *PersonaSelector) renderViewport(content string) string {
 		return ""
 	}
 	view := lines
-	if len(view) > visible {
-		// Keep the selected row in view.
-		start := 0
-		if s.selectedIdx >= visible {
-			start = s.selectedIdx - visible + 1
-		}
-		end := start + visible
-		if end > len(view) {
-			end = len(view)
-		}
-		view = view[start:end]
-	}
 	for len(view) < visible {
 		view = append(view, "")
 	}

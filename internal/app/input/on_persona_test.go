@@ -25,7 +25,7 @@ func writeUserPersona(t *testing.T, home, name string) {
 func selectByName(s *PersonaSelector, name string) bool {
 	for i, it := range s.items {
 		if it.Name == name {
-			s.selectedIdx = i
+			s.nav.Selected = i
 			return true
 		}
 	}
@@ -46,8 +46,8 @@ func TestPersonaSelector_EnterMarksCurrentAndSelects(t *testing.T) {
 		t.Fatal("expected at least the default persona")
 	}
 	// No settings.persona → current resolves to the built-in default, preselected.
-	if !s.items[s.selectedIdx].IsCurrent || s.items[s.selectedIdx].Name != persona.DefaultName {
-		t.Errorf("initial selection = %+v, want the current default", s.items[s.selectedIdx])
+	if !s.items[s.nav.Selected].IsCurrent || s.items[s.nav.Selected].Name != persona.DefaultName {
+		t.Errorf("initial selection = %+v, want the current default", s.items[s.nav.Selected])
 	}
 
 	cmd := s.Select()

@@ -30,13 +30,13 @@ type SearchSelectedMsg struct {
 }
 
 type SearchSelector struct {
-	active      bool
-	items       []searchItem
-	selectedIdx int
-	width       int
-	height      int
-	store       *llm.Store
-	settingSvc  *setting.Settings
+	active     bool
+	items      []searchItem
+	nav        kit.ListNav
+	width      int
+	height     int
+	store      *llm.Store
+	settingSvc *setting.Settings
 
 	apiKeyActive bool
 	apiKeyEnvVar string
@@ -83,14 +83,15 @@ func (s *SearchSelector) Enter(store *llm.Store, width, height int) error {
 	}
 
 	s.active = true
-	s.selectedIdx = 0
 	s.width = width
 	s.height = height
 	s.store = store
 
+	s.nav.Reset()
+	s.nav.Total = len(s.items)
 	for i, item := range s.items {
 		if item.IsCurrent {
-			s.selectedIdx = i
+			s.nav.Selected = i
 			break
 		}
 	}
@@ -105,16 +106,16 @@ func (s *SearchSelector) IsActive() bool {
 func (s *SearchSelector) Cancel() {
 	s.active = false
 	s.items = nil
-	s.selectedIdx = 0
+	s.nav.Reset()
 	s.store = nil
 }
 
 func (s *SearchSelector) Select() tea.Cmd {
-	if s.selectedIdx >= len(s.items) {
+	if s.nav.Selected >= len(s.items) {
 		return nil
 	}
 
-	selected := s.items[s.selectedIdx]
+	selected := s.items[s.nav.Selected]
 	if !selected.Available {
 		s.openAPIKeyInput()
 		return nil
@@ -143,13 +144,9 @@ func (s *SearchSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 
 	switch key.String() {
 	case "up", "ctrl+p", "k":
-		if s.selectedIdx > 0 {
-			s.selectedIdx--
-		}
+		s.nav.MoveUp()
 	case "down", "ctrl+n", "j":
-		if s.selectedIdx < len(s.items)-1 {
-			s.selectedIdx++
-		}
+		s.nav.MoveDown()
 	case "enter":
 		return s.Select()
 	case "esc":
@@ -165,7 +162,7 @@ func (s *SearchSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 }
 
 func (s *SearchSelector) selectedHasEnvVars() bool {
-	return s.selectedIdx < len(s.items) && len(s.items[s.selectedIdx].EnvVars) > 0
+	return s.nav.Selected < len(s.items) && len(s.items[s.nav.Selected].EnvVars) > 0
 }
 
 func (s *SearchSelector) openAPIKeyInput() {
@@ -173,7 +170,7 @@ func (s *SearchSelector) openAPIKeyInput() {
 		return
 	}
 	s.apiKeyActive = true
-	s.apiKeyEnvVar = s.items[s.selectedIdx].EnvVars[0]
+	s.apiKeyEnvVar = s.items[s.nav.Selected].EnvVars[0]
 	ti := textinput.New()
 	ti.Placeholder = s.apiKeyEnvVar
 	ti.EchoMode = textinput.EchoPassword
@@ -236,7 +233,7 @@ func (s *SearchSelector) Render() string {
 	var body strings.Builder
 	const nameCol = 20
 	for i, item := range s.items {
-		isSelected := i == s.selectedIdx
+		isSelected := i == s.nav.Selected
 
 		marker := "[ ]"
 		markerStyle := kit.SelectorStatusNone()
