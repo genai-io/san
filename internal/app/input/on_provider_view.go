@@ -191,14 +191,14 @@ func (s *ProviderSelector) renderSearchBox() string {
 	if s.activeTab == providerTabModels && s.searchQuery != "" {
 		totalModels := len(s.allModels)
 		filteredCount := len(s.filteredModels)
-		text = fmt.Sprintf(" 🔍 %s▏ (%d/%d)", s.searchQuery, filteredCount, totalModels)
+		text = fmt.Sprintf(" %s▏ (%d/%d)", s.searchQuery, filteredCount, totalModels)
 	} else if s.searchQuery != "" {
-		text = " 🔍 " + s.searchQuery + "▏"
+		text = " " + s.searchQuery + "▏"
 	} else {
 		if s.activeTab == providerTabProviders {
-			text = " 🔍 Type to filter providers..."
+			text = " Type to filter providers..."
 		} else {
-			text = " 🔍 Type to filter models..."
+			text = " Type to filter models..."
 		}
 	}
 

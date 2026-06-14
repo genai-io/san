@@ -262,10 +262,9 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 }
 
 func (s *SessionSelector) renderSession(sess *session.SessionMetadata, isSelected bool, sb *strings.Builder, boxWidth int) {
-	titleStyle, indent := kit.SelectorItemStyle(), "  "
-	if isSelected {
-		titleStyle, indent = kit.SelectorSelectedStyle(), "> "
-	}
+	// Both states reserve a 2-col left gutter (blank, or the FocusBar) so the
+	// title column lines up whether or not the row is focused.
+	const indent = "  "
 
 	displayTitle := sess.Title
 	if len([]rune(displayTitle)) < session.MinSubstantiveLength {
@@ -287,7 +286,7 @@ func (s *SessionSelector) renderSession(sess *session.SessionMetadata, isSelecte
 		gap = 2
 	}
 	padding := strings.Repeat(" ", gap)
-	sb.WriteString(titleStyle.Render(fmt.Sprintf("%s%s%s%s", indent, title, padding, metadata)) + "\n")
+	sb.WriteString(kit.RenderSelectableRow(fmt.Sprintf("%s%s%s", title, padding, metadata), isSelected) + "\n")
 
 	if lastMsg := s.getLastMessage(sess); lastMsg != "" {
 		previewStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
@@ -306,10 +305,10 @@ func (s *SessionSelector) Render() string {
 	title := fmt.Sprintf("Resume Session - %s (%d/%d)", filepath.Base(s.cwd), len(s.filtered), len(s.sessions))
 	sb.WriteString(kit.SelectorTitleStyle().Render(title) + "\n")
 
-	searchLine := "🔍 Type to filter..."
+	searchLine := "Type to filter..."
 	searchStyle := kit.SelectorHintStyle()
 	if s.nav.Search != "" {
-		searchLine = "> " + s.nav.Search + "_"
+		searchLine = s.nav.Search + "▏"
 		searchStyle = kit.SelectorBreadcrumbStyle()
 	}
 	sb.WriteString(searchStyle.Render(searchLine) + "\n\n")

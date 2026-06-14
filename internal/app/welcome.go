@@ -16,11 +16,10 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// Three-hue palette: teal for the brand mark, star blue for the ✦ accent
-// inside the logo, dim gray for everything else. Each token has Dark and
-// Light variants so contrast holds either way.
+// Three-hue palette: teal for the brand mark (the shared Focus accent, so the
+// splash and the live UI's focus affordances are the same color), star blue
+// for the ✦ accent inside the logo, dim gray for everything else.
 var (
-	welcomeTeal = kit.AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"}
 	welcomeStar = kit.AdaptiveColor{Dark: "#7FD4FF", Light: "#0284C7"}
 	welcomeDim  = kit.AdaptiveColor{Dark: "#65707A", Light: "#9CA3AF"}
 )
@@ -50,8 +49,8 @@ func welcomeUseColor() bool {
 func renderWelcome(info welcomeInfo) string {
 	var (
 		star    = lipgloss.NewStyle().Foreground(welcomeStar)
-		brand   = lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
-		bracket = lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
+		brand   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
+		bracket = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
 		dim     = lipgloss.NewStyle().Foreground(welcomeDim)
 	)
 

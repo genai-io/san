@@ -229,7 +229,9 @@ func approvalQuestionStyle() lipgloss.Style {
 }
 
 func approvalSelectedStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
+	// Neutral bright+bold for the focused option; the teal FocusBar carries the
+	// "selected" signal. Green is reserved for genuine success/confirm states.
+	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextBright).Bold(true)
 }
 
 func approvalUnselectedStyle() lipgloss.Style {
@@ -390,7 +392,8 @@ func (p *ApprovalModel) renderMenu() string {
 	options := buildApprovalOptionRows(p.request)
 	for i, opt := range options {
 		if i == p.selectedIdx {
-			sb.WriteString(approvalSelectedStyle().Render(fmt.Sprintf(" ❯ %d. %s", i+1, opt.Label)))
+			bar := kit.FocusBarStyle().Render(kit.FocusBar)
+			sb.WriteString(" " + bar + " " + approvalSelectedStyle().Render(fmt.Sprintf("%d. %s", i+1, opt.Label)))
 		} else {
 			sb.WriteString(approvalUnselectedStyle().Render(fmt.Sprintf("   %d. %s", i+1, opt.Label)))
 		}

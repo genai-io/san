@@ -444,18 +444,7 @@ func (s *SkillSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		// separator. Width(...) right-pads each row to the full inner content
 		// area so the right edge also matches the separator line.
 		rowWidth := max(20, panel.ContentWidth()-4)
-		if i == s.nav.Selected {
-			sb.WriteString(lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.TextBright).
-				Bold(true).
-				Width(rowWidth).
-				Render("> " + line))
-		} else {
-			sb.WriteString(lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Text).
-				Width(rowWidth).
-				Render("  " + line))
-		}
+		sb.WriteString(kit.RenderPanelRow(line, i == s.nav.Selected, rowWidth))
 		sb.WriteString("\n")
 
 		// Argument hint sub-line aligned under the skill name (4 cols in:

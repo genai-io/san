@@ -122,11 +122,7 @@ func (s *MCPSelector) renderList() string {
 				descStyle.Render(details),
 			)
 
-			if i == s.nav.Selected {
-				sb.WriteString(kit.SelectorSelectedStyle().Render("> " + line))
-			} else {
-				sb.WriteString(kit.SelectorItemStyle().Render("  " + line))
-			}
+			sb.WriteString(kit.RenderSelectableRow(line, i == s.nav.Selected))
 			sb.WriteString("\n")
 		}
 
@@ -214,11 +210,7 @@ func (s *MCPSelector) renderDetail() string {
 	sb.WriteString(labelStyle.Render("  Actions:"))
 	sb.WriteString("\n")
 	for i, action := range s.actions {
-		if i == s.actionIdx {
-			sb.WriteString(kit.SelectorSelectedStyle().Render("> " + action.Label))
-		} else {
-			sb.WriteString(kit.SelectorItemStyle().Render("  " + action.Label))
-		}
+		sb.WriteString(kit.RenderSelectableRow(action.Label, i == s.actionIdx))
 		sb.WriteString("\n")
 	}
 

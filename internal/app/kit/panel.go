@@ -129,11 +129,11 @@ func RenderSearchBox(opts SearchBoxOpts) string {
 	var text string
 	switch {
 	case opts.Query == "":
-		text = " 🔍 " + opts.Placeholder
+		text = " " + opts.Placeholder
 	case opts.Total > 0:
-		text = fmt.Sprintf(" 🔍 %s▏ (%d/%d)", opts.Query, opts.Filtered, opts.Total)
+		text = fmt.Sprintf(" %s▏ (%d/%d)", opts.Query, opts.Filtered, opts.Total)
 	default:
-		text = " 🔍 " + opts.Query + "▏"
+		text = " " + opts.Query + "▏"
 	}
 
 	textFg := CurrentTheme.TextDim

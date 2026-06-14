@@ -49,7 +49,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 					modelName = name
 				}
 			}
-			teal := lipgloss.NewStyle().Foreground(welcomeTeal).Bold(true)
+			teal := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
 			star := lipgloss.NewStyle().Foreground(welcomeStar)
 			dim := lipgloss.NewStyle().Foreground(welcomeDim)
 			line := teal.Render("< ") + teal.Render("SAN") + " " + star.Render("✦") + " " + teal.Render("/>")

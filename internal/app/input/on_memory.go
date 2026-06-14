@@ -217,11 +217,7 @@ func (m *MemorySelector) Render() string {
 			kit.SelectorHintStyle().Render(item.Description+sizeStr),
 		)
 
-		if i == m.selectedIdx {
-			sb.WriteString(kit.SelectorSelectedStyle().Render(fmt.Sprintf("❯ %s %s", numKey, line)))
-		} else {
-			sb.WriteString(kit.SelectorItemStyle().Render(fmt.Sprintf("  %s %s", numKey, line)))
-		}
+		sb.WriteString(kit.RenderSelectableRow(numKey+" "+line, i == m.selectedIdx))
 		sb.WriteString("\n")
 
 		if !item.Exists && i == m.selectedIdx {

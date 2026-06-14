@@ -6,6 +6,33 @@ import (
 
 // Selector styles — lazy functions to pick up the current theme at render time.
 
+// FocusBar is the thin vertical accent drawn to the left of a focused row.
+// It is the one consistent selection affordance across every list surface
+// (selectors, slash suggestions, approval, questions) — replacing the old mix
+// of ">", "❯", and bare bold text.
+const FocusBar = "▎"
+
+// FocusBarStyle colors the FocusBar in the brand accent.
+func FocusBarStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(CurrentTheme.Focus)
+}
+
+// SelectorSelectedLabelStyle styles the label of a focused row: bright + bold,
+// with no padding so it composes after a separately-colored FocusBar.
+func SelectorSelectedLabelStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(CurrentTheme.TextBright).
+		Bold(true)
+}
+
+// SelectorItemLabelStyle is the unselected row label without the PaddingLeft
+// that SelectorItemStyle carries — used by the width-padded panel rows that
+// manage their own indent.
+func SelectorItemLabelStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(CurrentTheme.Text)
+}
+
 func SelectorBorderStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -70,11 +97,13 @@ func DimStyle() lipgloss.Style {
 		Foreground(CurrentTheme.TextDim)
 }
 
-// TabActiveBg is the background color for active tabs in tabbed panels.
-var TabActiveBg = AdaptiveColor{Dark: "#4F6D9B", Light: "#3B6FC0"}
+// TabActiveBg is the background of the active tab pill — the brand teal, so
+// "active tab" and the selected-row FocusBar share one accent.
+var TabActiveBg = AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"}
 
-// TabActiveFg is the foreground color for active tabs in tabbed panels.
-var TabActiveFg = AdaptiveColor{Dark: "#FFFFFF", Light: "#FFFFFF"}
+// TabActiveFg is the active-tab text: dark ink on the bright dark-mode teal,
+// white on the deeper light-mode teal, so contrast holds either way.
+var TabActiveFg = AdaptiveColor{Dark: "#18181B", Light: "#FFFFFF"}
 
 // SearchBg is the background color for search/filter input boxes.
 var SearchBg = AdaptiveColor{Dark: "#27272A", Light: "#E4E4E7"}

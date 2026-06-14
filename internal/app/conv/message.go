@@ -201,7 +201,7 @@ var (
 	userMsgStyle = lipgloss.NewStyle()
 
 	InputPromptStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Primary).
+				Foreground(kit.CurrentTheme.Focus).
 				Bold(true)
 
 	aiPromptStyle = lipgloss.NewStyle().

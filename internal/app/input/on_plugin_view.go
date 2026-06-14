@@ -107,15 +107,15 @@ func (s *PluginSelector) renderSearchBox(sb *strings.Builder) {
 	var text string
 	if s.searchQuery != "" {
 		pos, total := s.getItemCount()
-		text = fmt.Sprintf(" 🔍 %s▏ (%d/%d)", s.searchQuery, pos, total)
+		text = fmt.Sprintf(" %s▏ (%d/%d)", s.searchQuery, pos, total)
 	} else {
 		switch s.activeTab {
 		case pluginTabDiscover:
-			text = " 🔍 Type to filter plugins..."
+			text = " Type to filter plugins..."
 		case pluginTabInstalled:
-			text = " 🔍 Type to filter installed..."
+			text = " Type to filter installed..."
 		case pluginTabMarketplaces:
-			text = " 🔍 Type to filter marketplaces..."
+			text = " Type to filter marketplaces..."
 		}
 	}
 

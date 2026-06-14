@@ -202,11 +202,10 @@ func (s *ToolSelector) Render() string {
 	sb.WriteString(kit.SelectorTitleStyle().Render(title))
 	sb.WriteString("\n")
 
-	searchPrompt := "🔍 "
 	if s.nav.Search == "" {
-		sb.WriteString(kit.SelectorHintStyle().Render(searchPrompt + "Type to filter..."))
+		sb.WriteString(kit.SelectorHintStyle().Render("Type to filter..."))
 	} else {
-		sb.WriteString(kit.SelectorBreadcrumbStyle().Render(searchPrompt + s.nav.Search + "▏"))
+		sb.WriteString(kit.SelectorBreadcrumbStyle().Render(s.nav.Search + "▏"))
 	}
 	sb.WriteString("\n\n")
 
@@ -252,11 +251,7 @@ func (s *ToolSelector) Render() string {
 				descStyle.Render(desc),
 			)
 
-			if i == s.nav.Selected {
-				sb.WriteString(kit.SelectorSelectedStyle().Render("> " + line))
-			} else {
-				sb.WriteString(kit.SelectorItemStyle().Render("  " + line))
-			}
+			sb.WriteString(kit.RenderSelectableRow(line, i == s.nav.Selected))
 			sb.WriteString("\n")
 		}
 

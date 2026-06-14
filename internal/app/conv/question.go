@@ -336,7 +336,9 @@ func getQuestionTextStyle() lipgloss.Style {
 }
 
 func getQuestionSelectedStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
+	// Neutral bright+bold; the teal FocusBar is the selection signal. Green
+	// stays reserved for success/confirm semantics.
+	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextBright).Bold(true)
 }
 
 func getQuestionUnselectedStyle() lipgloss.Style {
@@ -353,7 +355,7 @@ func getQuestionFooterStyle() lipgloss.Style {
 
 func getQuestionTabActiveStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.TextBright).
+		Foreground(kit.CurrentTheme.Focus).
 		Bold(true).
 		Underline(true)
 }
@@ -443,20 +445,12 @@ func (p *QuestionPrompt) Render() string {
 			prefix = "( )"
 		}
 
-		cursor := "   "
+		optBody := fmt.Sprintf("%s %d. %s", prefix, i+1, opt.Label)
 		if isHighlighted {
-			cursor = " \u276F "
-		}
-
-		var optStyle lipgloss.Style
-		if isHighlighted {
-			optStyle = getQuestionSelectedStyle()
+			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(optBody))
 		} else {
-			optStyle = getQuestionUnselectedStyle()
+			sb.WriteString(getQuestionUnselectedStyle().Render("   " + optBody))
 		}
-
-		optLine := fmt.Sprintf("%s%s %d. %s", cursor, prefix, i+1, opt.Label)
-		sb.WriteString(optStyle.Render(optLine))
 
 		if i == customIdx {
 			desc := opt.Description
@@ -475,22 +469,17 @@ func (p *QuestionPrompt) Render() string {
 	if customIdx == len(currentQ.Options) {
 		isOtherHighlighted := curOption == customIdx
 
-		otherCursor := "   "
-		if isOtherHighlighted {
-			otherCursor = " \u276F "
-		}
-
-		otherStyle := getQuestionUnselectedStyle()
-		if isOtherHighlighted {
-			otherStyle = getQuestionSelectedStyle()
-		}
-
 		otherPrefix := "( )"
 		if isMulti {
 			otherPrefix = "[ ]"
 		}
 
-		sb.WriteString(otherStyle.Render(fmt.Sprintf("%s%s %d. Other", otherCursor, otherPrefix, customIdx+1)))
+		otherBody := fmt.Sprintf("%s %d. Other", otherPrefix, customIdx+1)
+		if isOtherHighlighted {
+			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(otherBody))
+		} else {
+			sb.WriteString(getQuestionUnselectedStyle().Render("   " + otherBody))
+		}
 		sb.WriteString(" - ")
 		sb.WriteString(getQuestionDescStyle().Render("Type custom response"))
 		sb.WriteString("\n")

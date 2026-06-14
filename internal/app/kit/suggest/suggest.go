@@ -425,27 +425,26 @@ func (s *State) renderfileSuggestions(width int) string {
 	boxWidth := clampInt(width*60/100, 40, 60)
 
 	var lines []string
-	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
-	header := "@ Import file:"
+	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
+	header := "Import file"
 	if total > viewSize {
-		header = fmt.Sprintf("@ Import file (%d/%d):", s.selectedIdx+1, total)
+		header = fmt.Sprintf("Import file  %d/%d", s.selectedIdx+1, total)
 	}
-	lines = append(lines, headerStyle.Render(header))
+	lines = append(lines, headerStyle.Render(header), "")
 
-	maxPathLen := boxWidth - 10
+	maxPathLen := boxWidth - 8
 	for i, file := range items {
-		icon := "📄"
+		suffix := ""
 		if file.IsDir {
-			icon = "📁"
+			suffix = "/"
 		}
-
-		displayPath := truncateFromLeft(file.DisplayName, maxPathLen)
-		line := fmt.Sprintf("%s %s", icon, displayPath)
+		displayPath := truncateFromLeft(file.DisplayName, maxPathLen) + suffix
 
 		if start+i == s.selectedIdx {
-			lines = append(lines, selectedSuggestionStyle().Render("> "+line))
+			bar := kit.FocusBarStyle().Render(kit.FocusBar)
+			lines = append(lines, bar+" "+selectedSuggestionStyle().Render(displayPath))
 		} else {
-			lines = append(lines, normalSuggestionStyle().Render("  "+line))
+			lines = append(lines, "  "+normalSuggestionStyle().Render(displayPath))
 		}
 	}
 
@@ -477,23 +476,35 @@ func (s *State) renderCommandSuggestions(width int) string {
 	contentWidth := max(boxWidth-2, 20)
 
 	var lines []string
-	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Primary).Bold(true)
-	header := "Commands:"
+	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
+	header := "Commands"
 	if total > viewSize {
-		header = fmt.Sprintf("Commands (%d/%d):", s.selectedIdx+1, total)
+		header = fmt.Sprintf("Commands  %d/%d", s.selectedIdx+1, total)
 	}
-	lines = append(lines, headerStyle.Render(header))
+	lines = append(lines, headerStyle.Render(header), "")
 
+	// Align descriptions into a column: pad every command name to the widest
+	// one visible, then a 2-space gutter, so the descriptions read as a list.
+	nameWidth := 0
+	for _, cmd := range items {
+		if w := len([]rune(cmd.Name)) + 1; w > nameWidth { // +1 for the leading "/"
+			nameWidth = w
+		}
+	}
+	// Budget: 2 (bar/indent prefix) + nameWidth + 2 (gutter) + desc, with 2
+	// cols of right margin so the focused row never wraps.
+	maxDescLen := max(contentWidth-nameWidth-6, 10)
 	for i, cmd := range items {
 		cmdName := "/" + cmd.Name
-		maxDescLen := max(contentWidth-len(cmdName)-3, 10)
+		pad := strings.Repeat(" ", max(0, nameWidth-len([]rune(cmdName))))
 		desc := truncateWithEllipsis(cmd.Description, maxDescLen)
 
 		if start+i == s.selectedIdx {
-			line := fmt.Sprintf("%s - %s", cmdName, desc)
-			lines = append(lines, selectedSuggestionStyle().Render(line))
+			bar := kit.FocusBarStyle().Render(kit.FocusBar)
+			lines = append(lines, bar+" "+selectedSuggestionStyle().Render(cmdName+pad+"  "+desc))
 		} else {
-			lines = append(lines, commandNameStyle().Render(cmdName)+commandDescStyle().Render(" - "+desc))
+			row := commandNameStyle().Render(cmdName) + commandDescStyle().Render(pad+"  "+desc)
+			lines = append(lines, "  "+row)
 		}
 	}
 

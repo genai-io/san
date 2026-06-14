@@ -67,12 +67,25 @@ func ShortenPathForProject(path, cwd string) string {
 	return ShortenPath(path)
 }
 
-// RenderSelectableRow renders a row with "> " or "  " prefix.
+// RenderSelectableRow renders a list row, prefixing the focused one with the
+// teal FocusBar (the label aligns at the same column as unselected rows).
 func RenderSelectableRow(line string, isSelected bool) string {
 	if isSelected {
-		return SelectorSelectedStyle().Render("> " + line)
+		return "  " + FocusBarStyle().Render(FocusBar) + " " + SelectorSelectedLabelStyle().Render(line)
 	}
 	return SelectorItemStyle().Render("  " + line)
+}
+
+// RenderPanelRow is RenderSelectableRow for the expansive full-screen panels
+// (skills, agents): both variants right-pad to width so the row edges line up
+// with the panel separators, and the focused row gets the teal FocusBar.
+func RenderPanelRow(line string, isSelected bool, width int) string {
+	if isSelected {
+		bar := FocusBarStyle().Render(FocusBar)
+		label := SelectorSelectedLabelStyle().Width(max(1, width-1)).Render(" " + line)
+		return bar + label
+	}
+	return SelectorItemLabelStyle().Width(width).Render("  " + line)
 }
 
 // alignedRowMinGap is the minimum spacing kept between the name and info
