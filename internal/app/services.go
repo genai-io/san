@@ -40,7 +40,7 @@ type services struct {
 	Cron     *cron.Scheduler
 	MCP      *mcp.Registry
 	Plugin   *plugin.Registry
-	Agent    *agent.Task
+	Agent    *agent.Session
 	Persona  *persona.Registry
 	Reminder *reminder.Service
 
