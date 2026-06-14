@@ -164,7 +164,7 @@ func RenderThinkingIndicator(effort string) string {
 	if effort == "" || effort == "off" || effort == "none" {
 		return ""
 	}
-	style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
+	style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	hint := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (ctrl+t to cycle)")
 	return "  " + style.Render("✦ "+effort) + hint
 }
@@ -361,9 +361,9 @@ func RenderAssistantMessage(params AssistantParams) string {
 				lines = append(lines, ThinkingStyle.Render(line))
 			}
 		}
-		// The ✦ reasoning glyph carries the same Accent tint as the status-bar
-		// thinking indicator; the wrapped text stays muted.
-		thinkingIcon := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Render("✦ ")
+		// Reasoning is secondary activity: the ✦ glyph and its text both stay
+		// muted, matching the status-bar thinking indicator — no hue.
+		thinkingIcon := ThinkingStyle.Render("✦ ")
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, thinkingIcon, strings.Join(lines, "\n")) + "\n\n")
 	}
 
