@@ -7,8 +7,8 @@ subagents.
 
 This page is the system-level overview. For per-package design see
 [`packages/`](packages/). For dependency rules and package-layer assignments
-see [`reference/dependency-rules.md`](reference/dependency-rules.md) and
-[`reference/package-map.md`](reference/package-map.md).
+see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
+[`reference/package-map.md`](../reference/package-map.md).
 
 ## Primitives
 
@@ -19,7 +19,7 @@ see [`reference/dependency-rules.md`](reference/dependency-rules.md) and
    `internal/tool` and gated by `internal/setting` permissions.
 3. **Extensions** — skill, plugin, MCP server, hook, slash command, subagent.
    Four extension primitives; *plugin* is one *source* among many — see
-   [`concepts/extension-model.md`](concepts/extension-model.md).
+   [`concepts/extension-model.md`](extension-model.md).
 4. **Sessions** — transcript persistence, resume, fork, projection
    (`internal/session`). Replayable in the inspector
    (`internal/inspector`).
@@ -62,12 +62,12 @@ events that mutate the TUI model.
 
 The detailed walkthrough (sub-model conventions, runtime adapters, cmd
 chains, directory structure of `internal/app/`) lives in
-[`packages/ui.md`](packages/1-app/app.md). For the step-by-step trace from a
+[`packages/ui.md`](../packages/1-app/app.md). For the step-by-step trace from a
 keystroke (or cron fire, or hub event) through the agent and back to
-the terminal, see [`concepts/data-flow.md`](concepts/data-flow.md).
+the terminal, see [`concepts/data-flow.md`](data-flow.md).
 For how rendered output is composed (View() layout, Markdown pipeline,
 tool blocks, scrollback vs repaint zone), see
-[`concepts/rendering.md`](concepts/rendering.md).
+[`concepts/rendering.md`](rendering.md).
 
 ## Layer Model
 
@@ -86,8 +86,8 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | `infrastructure` | `internal/{log,secret,filecache,markdown,image}` |
 
 Full membership list and allowed-edge rules live in
-[`reference/dependency-rules.md`](reference/dependency-rules.md) and
-[`reference/package-map.md`](reference/package-map.md). Both files are the
+[`reference/dependency-rules.md`](../reference/dependency-rules.md) and
+[`reference/package-map.md`](../reference/package-map.md). Both files are the
 source of truth — update them together when a package moves or a new package
 is added.
 
@@ -109,8 +109,8 @@ flow, or extension behavior, update the corresponding document in the same
 pull request.
 
 - Adding or moving a top-level package: update
-  [`reference/package-map.md`](reference/package-map.md) and
-  [`reference/dependency-rules.md`](reference/dependency-rules.md).
+  [`reference/package-map.md`](../reference/package-map.md) and
+  [`reference/dependency-rules.md`](../reference/dependency-rules.md).
 - Changing a package's public interface: update
   [`packages/<name>.md`](packages/) Contract section.
 - Adding a new cross-cutting concept: write a

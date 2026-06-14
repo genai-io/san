@@ -148,7 +148,7 @@ directly for scripting:
 
 ## See Also
 
-- [Package design doc](packages/2-feature/inspector.md) — internals and contracts
-- [Session transcripts](packages/2-feature/session.md) — the JSONL format on disk
-- [Compaction](concepts/compaction.md) — how context window compaction
+- [Package design doc](../packages/2-feature/inspector.md) — internals and contracts
+- [Session transcripts](../packages/2-feature/session.md) — the JSONL format on disk
+- [Compaction](../concepts/compaction.md) — how context window compaction
   interacts with transcript replay

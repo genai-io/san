@@ -115,7 +115,7 @@ Full road map in `notes/tech-debt.md`.
 
 ## References
 
-- [`docs/architecture.md`](../../architecture.md) — the new
+- [`docs/architecture.md`](../../concepts/architecture.md) — the new
   system-level overview.
 - [`docs/packages/TEMPLATE.md`](../../packages/TEMPLATE.md) — the
   binding template for new package pages.

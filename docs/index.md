@@ -8,24 +8,23 @@ explanations here.
 
 - `../README.md` — product overview, installation, usage.
 - `../AGENTS.md` — short agent and contributor navigation guide.
-- `architecture.md` — system-level overview and primitives.
-- `packages/index.md` — per-package design pages.
-- `concepts/index.md` — cross-cutting concept pages.
-- `operations/development.md` — local development workflow.
+- `concepts/architecture.md` — system-level overview and primitives.
+- `packages/index.md` — per-package design pages (grouped by layer).
+- `concepts/index.md` · `guides/index.md` · `reference/index.md` ·
+  `operations/index.md` — each category's own index.
 
 ## By Reader Goal
 
-### Understand the system
-
-- `architecture.md` — primitives, runtime model, layer model.
-- `packages/` — one page per Go package; each has a Contract section with
-  the package's public Go interface.
-- `concepts/` — cross-cutting concepts that span multiple packages
-  (data flow, rendering, extension model, harness channels,
-  permission model).
+- `concepts/architecture.md` — primitives, runtime model, layer model.
+- `concepts/index.md` — cross-cutting concepts that span multiple packages
+  (data flow, rendering, extension model, harness channels, permission
+  model).
+- `packages/index.md` — one page per Go package, grouped by layer; each has
+  a Contract section with the package's public Go interface.
 
 ### Look up a fact
 
+- `reference/index.md` — full reference index. Common lookups:
 - `reference/slash-commands.md` — all slash commands.
 - `reference/configuration.md` — config files and field reference.
 - `reference/dependency-rules.md` — layer / import rules.
@@ -36,16 +35,10 @@ explanations here.
   `reference/cli-startup.md`, `reference/loop.md`,
   `reference/file-naming.md`, `reference/minmax-provider.md`.
 
-### Do something
-
-- `guides/explore-mode.md` — using the explore subagent.
-- `inspector.md` — session transcript viewer (`san inspector`).
-- `operations/development.md` — build / test / lint / format.
-- `operations/testing.md` — test strategy and local commands.
-- `operations/release.md` — release process.
-- `operations/troubleshooting.md` — common development issues.
-- `operations/benchmark.md` — reproduce the benchmark numbers.
-- `operations/footprint.md` — why the single small binary is so portable.
+- `guides/index.md` — task how-tos: getting started, the inspector, explore
+  mode, and writing skills / subagents / plugins.
+- `operations/index.md` — build, test, release, troubleshoot, benchmark, and
+  the small-footprint rationale.
 
 ### Know why a decision was made
 
