@@ -226,13 +226,17 @@ var (
 			Foreground(kit.CurrentTheme.TextDim).
 			PaddingLeft(2)
 
-	// Tool plumbing (the "● Tool(args)" call line and its "⎿ … → size"
-	// result) renders one step dimmer than the assistant's prose, so the eye
-	// lands on the answer and tool activity recedes into a supporting layer.
+	// The tool call line stays readable — the action and its target (the file
+	// being edited, the command being run) matter, and the live spinner rides
+	// this line while the call is in flight.
 	toolCallStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.TextDim)
+			Foreground(kit.CurrentTheme.Text)
 
-	toolResultStyle = toolCallStyle
+	// Only the "⎿ … → size" result trailer recedes: it's secondary metadata,
+	// dimmed to the same supporting tone as the expanded body so the eye lands
+	// on the assistant's prose and the actions, not the bookkeeping.
+	toolResultStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.TextDim)
 
 	toolResultExpandedStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
