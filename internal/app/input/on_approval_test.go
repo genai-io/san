@@ -31,7 +31,7 @@ func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		model.active = true
-		_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
+		_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
 		if resp == nil {
 			t.Fatalf("digit %q produced no response", string(tc.key))
 		}
@@ -77,7 +77,7 @@ func TestApprovalModalShiftTabFindsAllowAllByFlag(t *testing.T) {
 		active:  true,
 		request: &perm.PermissionRequest{ToolName: "Skill"},
 	}
-	_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if resp == nil {
 		t.Fatal("ShiftTab produced no response")
 	}
@@ -94,7 +94,7 @@ func TestApprovalModalEscFindsRejectByFlag(t *testing.T) {
 		active:  true,
 		request: &perm.PermissionRequest{ToolName: "Bash"},
 	}
-	_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if resp == nil {
 		t.Fatal("Esc produced no response")
 	}

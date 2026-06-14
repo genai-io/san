@@ -111,9 +111,22 @@ type ApprovalResponseMsg struct {
 	Request  *perm.PermissionRequest
 }
 
-// HandleKeypress handles keyboard input for the permission prompt.
-// Returns (cmd, response): cmd for UI updates, response when user makes a decision.
-func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalResponseMsg) {
+// HandleKeypress consumes a keypress while the modal is open. When the user
+// makes a decision it emits the ApprovalResponseMsg as a command, so the root
+// model handles the result in Update like any other message. That keeps the
+// modal a uniform overlayPanel rather than a special case in the key router.
+func (p *ApprovalModel) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
+	cmd, resp := p.handleKeypress(msg)
+	if resp == nil {
+		return cmd
+	}
+	out := *resp
+	return tea.Batch(cmd, func() tea.Msg { return out })
+}
+
+// handleKeypress advances modal state for a keypress, returning a response
+// once the user has made a decision.
+func (p *ApprovalModel) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *ApprovalResponseMsg) {
 	if !p.active {
 		return nil, nil
 	}

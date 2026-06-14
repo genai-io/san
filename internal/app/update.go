@@ -25,23 +25,28 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// popup is a UI element that pops up over the input area and, while
-// active, consumes keypresses before the textarea sees them. Includes
-// the slash-command pickers (/model, /tools, /skills, ...) but not the
-// question / approval modals — those are checked separately in
-// tryActivePopup before the picker list.
-type popup interface {
+// overlayPanel is a UI element that, while active, takes over both the
+// keyboard (consuming keypresses before the textarea sees them) and the
+// screen. It covers the slash-command pickers (/model, /tools, /skills, ...)
+// and the two docked modals (Question, Approval).
+//
+// overlayPanels is the single source of truth for which panel is in front,
+// so key routing (routeKeypress) and rendering (viewString) can never
+// disagree about who owns the foreground.
+type overlayPanel interface {
 	IsActive() bool
 	HandleKeypress(tea.KeyMsg) tea.Cmd
 	Render() string
 }
 
-// popups lists every slash-command picker that may be active. Order
-// only matters at most one of them is active at a time; the first one
-// reporting IsActive() wins the keypress.
-func (m *model) popups() []popup {
-	return []popup{
-		&m.userInput.Provider.Selector,
+// overlayPanels lists every panel that may be in front, in keyboard-priority
+// order: the docked modals win over the slash-command pickers. At most one is
+// active at a time; activeOverlay returns the first that reports IsActive().
+func (m *model) overlayPanels() []overlayPanel {
+	return []overlayPanel{
+		m.conv.Modal.Question, // docked modals (rendered between separators)
+		&m.userInput.Approval,
+		&m.userInput.Provider.Selector, // fullscreen slash-command pickers
 		&m.userInput.Tool,
 		&m.userInput.Skill.Selector,
 		&m.userInput.Agent,
@@ -53,6 +58,16 @@ func (m *model) popups() []popup {
 		&m.userInput.Search,
 		&m.userInput.Config,
 	}
+}
+
+// activeOverlay returns the foreground panel, if any.
+func (m *model) activeOverlay() (overlayPanel, bool) {
+	for _, ov := range m.overlayPanels() {
+		if ov.IsActive() {
+			return ov, true
+		}
+	}
+	return nil, false
 }
 
 type initialPromptMsg string
@@ -149,6 +164,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("async session persist failed", zap.Error(msg.err))
 		}
 		return m, nil
+	case conv.QuestionResponseMsg:
+		return m, m.handleQuestionResponse(msg)
+	case input.ApprovalResponseMsg:
+		return m, m.handlePermBridgeDecision(permissionDecision{
+			Approved: msg.Approved, AllowAll: msg.AllowAll, Persist: msg.Persist, Request: msg.Request,
+		})
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
 	case mainEventMsg:

@@ -1,7 +1,8 @@
-// Keyboard handling: routes a tea.KeyMsg first to any active modal, then
-// to image/suggestion/queue overlays, then to the textarea-level shortcuts
-// (Ctrl+C/D/L/E/O, Tab, Enter, etc.). Also owns the Ctrl+O double-tap
-// detection and the per-keystroke thinking-effort cycle.
+// Keyboard handling: routes a tea.KeyMsg first to the active overlay (modal
+// or slash-command picker, via activeOverlay), then to image/suggestion/queue
+// overlays, then to the textarea-level shortcuts (Ctrl+C/D/L/E/O, Tab, Enter,
+// etc.). Also owns the Ctrl+O double-tap detection and the per-keystroke
+// thinking-effort cycle.
 package app
 
 import (
@@ -22,7 +23,7 @@ type ctrlOSingleTickMsg struct{}
 // routeKeypress is the priority dispatcher for tea.KeyMsg. A keypress
 // flows through these layers in order; the first one that claims it wins:
 //
-//  1. tryActivePopup           — any open modal or slash-command picker
+//  1. activeOverlay            — any open modal or slash-command picker
 //  2. HandleImageSelectKey     — image picker overlay inside textarea
 //  3. HandleSuggestionKey      — prompt-suggestion overlay inside textarea
 //  4. HandleQueueSelectKey     — queue-navigation mode inside textarea
@@ -32,8 +33,8 @@ type ctrlOSingleTickMsg struct{}
 // means "let the textarea consume it as text" — that's handled in
 // updateTextarea, not here.
 func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
-	if active, cmd := m.tryActivePopup(msg); active {
-		return cmd, true
+	if ov, ok := m.activeOverlay(); ok {
+		return ov.HandleKeypress(msg), true
 	}
 
 	if c, ok := m.userInput.HandleImageSelectKey(msg); ok {
@@ -189,37 +190,6 @@ func (m *model) cycleThinkingEffort() tea.Cmd {
 	}
 	token := m.userInput.Provider.SetStatusMessage(status)
 	return kit.StatusTimer(3*time.Second, token)
-}
-
-// tryActivePopup hands the keypress to whichever popup is currently
-// visible — the question modal, the approval modal, or one of the
-// slash-command pickers (provider, tools, skills, ...). At most one
-// popup is active at a time. Returns (true, cmd) if a popup consumed
-// the key.
-func (m *model) tryActivePopup(msg tea.KeyMsg) (bool, tea.Cmd) {
-	if m.conv.Modal.Question.IsActive() {
-		cmd, resp := m.conv.Modal.Question.HandleKeypress(msg)
-		if resp != nil {
-			return true, tea.Batch(cmd, m.handleQuestionResponse(*resp))
-		}
-		return true, cmd
-	}
-	if m.userInput.Approval.IsActive() {
-		cmd, resp := m.userInput.Approval.HandleKeypress(msg)
-		if resp != nil {
-			return true, tea.Batch(cmd, m.handlePermBridgeDecision(permissionDecision{
-				Approved: resp.Approved, AllowAll: resp.AllowAll, Persist: resp.Persist, Request: resp.Request,
-			}))
-		}
-		return true, cmd
-	}
-	for _, s := range m.popups() {
-		if s.IsActive() {
-			return true, s.HandleKeypress(msg)
-		}
-	}
-
-	return false, nil
 }
 
 func (m *model) handleCtrlO() tea.Cmd {

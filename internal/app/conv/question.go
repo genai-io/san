@@ -88,8 +88,23 @@ func customOptionIndex(q tool.Question) int {
 	return len(q.Options)
 }
 
-// HandleKeypress handles keyboard input for the question prompt.
-func (p *QuestionPrompt) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionResponseMsg) {
+// HandleKeypress consumes a keypress while the prompt is open. When the user
+// finishes (answers or cancels) it emits the QuestionResponseMsg as a command,
+// so the root model handles the result in Update like any other message. That
+// keeps the modal a uniform overlayPanel rather than a special case in the key
+// router.
+func (p *QuestionPrompt) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
+	cmd, resp := p.handleKeypress(msg)
+	if resp == nil {
+		return cmd
+	}
+	out := *resp
+	return tea.Batch(cmd, func() tea.Msg { return out })
+}
+
+// handleKeypress advances prompt state for a keypress, returning a response
+// once the user has answered or cancelled.
+func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionResponseMsg) {
 	if !p.active || p.request == nil {
 		return nil, nil
 	}

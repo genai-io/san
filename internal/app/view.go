@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
@@ -19,9 +20,13 @@ var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 // View dispatches to one of four layouts, top-down:
 //
 //  1. Loading splash (env not ready yet)
-//  2. Active popup (slash-command picker / etc.) — fullscreen
-//  3. Active modal (Question / Approval) — wrapped between separators
+//  2. Active fullscreen overlay (slash-command picker / etc.)
+//  3. Active docked modal (Question / Approval) — wrapped between separators
 //  4. Normal mode — chat section + status + input strip
+//
+// The active overlay (cases 2 & 3) comes from activeOverlay — the same
+// source the key router uses — so the panel that owns the keyboard is always
+// the one drawn on screen.
 func (m *model) View() tea.View {
 	return tea.NewView(m.viewString())
 }
@@ -31,21 +36,35 @@ func (m *model) viewString() string {
 	if !m.env.Ready {
 		return "\n  Loading..."
 	}
-	if popupView := m.renderActivePopup(); popupView != "" {
-		return popupView
+
+	ov, hasOverlay := m.activeOverlay()
+	if hasOverlay && !isDockedModal(ov) {
+		return ov.Render() // fullscreen slash-command picker
 	}
 
 	separator := conv.SeparatorStyle.Render(strings.Repeat("─", m.env.Width))
 	trackerView := m.renderTrackerList()
-	trackerPrefix := ""
-	if trackerView != "" {
-		trackerPrefix = "\n" + strings.TrimSuffix(trackerView, "\n") + "\n"
-	}
 
-	if modalView := m.renderActiveModal(separator, trackerPrefix); modalView != "" {
-		return modalView
+	if hasOverlay { // docked modal (Question / Approval)
+		trackerPrefix := ""
+		if trackerView != "" {
+			trackerPrefix = "\n" + strings.TrimSuffix(trackerView, "\n") + "\n"
+		}
+		return separatorWrapped(trackerPrefix, separator, ov.Render())
 	}
 	return m.renderNormalView(separator, trackerView)
+}
+
+// isDockedModal reports whether the active overlay docks above the input area
+// — rendered between separators with the task tracker still visible — rather
+// than taking over the full screen like the slash-command pickers do. Only
+// the Question and Approval modals dock.
+func isDockedModal(ov overlayPanel) bool {
+	switch ov.(type) {
+	case *conv.QuestionPrompt, *input.ApprovalModel:
+		return true
+	}
+	return false
 }
 
 // renderNormalView composes the standard layout: chat scrollback area,
@@ -121,26 +140,6 @@ func (m *model) renderFooter(separator string) string {
 		b.WriteString(" ")
 	}
 	return b.String()
-}
-
-func (m *model) renderActivePopup() string {
-	for _, s := range m.popups() {
-		if s.IsActive() {
-			return s.Render()
-		}
-	}
-	return ""
-}
-
-func (m *model) renderActiveModal(separator, trackerPrefix string) string {
-	switch {
-	case m.userInput.Approval.IsActive():
-		return separatorWrapped(trackerPrefix, separator, m.userInput.Approval.Render())
-	case m.conv.Modal.Question.IsActive():
-		return separatorWrapped(trackerPrefix, separator, m.conv.Modal.Question.Render())
-	default:
-		return ""
-	}
 }
 
 func separatorWrapped(trackerPrefix, separator, content string) string {
