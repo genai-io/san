@@ -22,7 +22,7 @@ type OverlayDeps struct {
 	ClearCachedInstructions func()
 	RefreshMemoryContext    func(cwd, reason string)
 	FireFileChanged         func(path, tool string)
-	ReloadPluginState       func() error
+	ReloadAfterPluginChange func() error
 	LoadSession             func(string) error
 	SetActivePersona        func(name string) error
 	OpenPersona             func(name string) tea.Cmd

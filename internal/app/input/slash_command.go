@@ -72,7 +72,7 @@ type SlashCommandEnv struct {
 	SubmitToAgent           func(content string, images []core.Image) tea.Cmd
 	HandleSkillInvocation   func() tea.Cmd
 	StartExternalEditor     func(path string) tea.Cmd
-	ReloadPluginBackedState func() error
+	ReloadAfterPluginChange func() error
 	PersistSession          func() error
 	InitTaskStorage         func()
 	ReconfigureAgentTool    func()
@@ -415,7 +415,7 @@ func (c *SlashCommandController) handleReloadPluginsCommand(ctx context.Context,
 		return "", nil, fmt.Errorf("failed to reload plugin registry: %w", err)
 	}
 	_ = c.env.Plugin.LoadClaudePlugins(ctx)
-	if err := c.env.ReloadPluginBackedState(); err != nil {
+	if err := c.env.ReloadAfterPluginChange(); err != nil {
 		return "", nil, err
 	}
 	return "Reloaded plugins and refreshed plugin-backed skills, agents, MCP servers, and hooks.", nil, nil

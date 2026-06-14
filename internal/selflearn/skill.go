@@ -118,7 +118,7 @@ func (i SkillInfo) Editable() bool { return i.Origin == agentOrigin }
 //
 // Why the disk scan instead of consulting skill.Registry: the registry is
 // initialized once at startup and only refreshed on
-// ReloadPluginBackedState. The L1 reviewer mutates ~/.san/skills and
+// ReloadAfterPluginChange. The L1 reviewer mutates ~/.san/skills and
 // ./.san/skills mid-session via skill_manage; a registry-backed Inventory
 // would not see skills the reviewer just created in earlier passes, which
 // would cause it to re-create duplicates. Reading the on-disk state

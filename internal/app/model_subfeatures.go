@@ -67,7 +67,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		ClearCachedInstructions: m.env.ClearCachedInstructions,
 		RefreshMemoryContext:    m.refreshMemoryContext,
 		FireFileChanged:         m.fireFileChanged,
-		ReloadPluginState:       m.ReloadPluginBackedState,
+		ReloadAfterPluginChange: m.ReloadAfterPluginChange,
 		LoadSession:             m.loadSessionByID,
 		SetActivePersona:        m.setActivePersona,
 		OpenPersona:             m.openPersona,

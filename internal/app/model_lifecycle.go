@@ -1,5 +1,5 @@
 // Model lifecycle: construction (newModel/newBaseModel), startup-time
-// option application (--continue / --resume / --plugin-dir), plugin-backed
+// option application (--continue / --resume / --plugin-dir), plugin-change
 // state reload, memory-context priming, task lifecycle wiring, and
 // SessionEnd shutdown.
 package app
@@ -12,14 +12,9 @@ import (
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
-	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/mcp"
-	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
-	"github.com/genai-io/san/internal/skill"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/task/tracker"
 )
@@ -78,7 +73,7 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 		if err := m.services.Plugin.LoadFromPath(ctx, opts.PluginDir); err != nil {
 			return fmt.Errorf("failed to load plugins from %s: %w", opts.PluginDir, err)
 		}
-		if err := m.ReloadPluginBackedState(); err != nil {
+		if err := m.ReloadAfterPluginChange(); err != nil {
 			return err
 		}
 	}
@@ -111,19 +106,15 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 	return nil
 }
 
-func (m *model) ReloadPluginBackedState() error {
-	skill.Initialize(skill.Options{CWD: m.env.CWD})
-	command.Initialize(command.Options{
-		CWD:                m.env.CWD,
-		DynamicProviders:   []func() []command.Info{skillCommandInfos},
-		PluginCommandPaths: pluginCommandPaths,
-	})
-	subagent.Initialize(subagent.Options{CWD: m.env.CWD, PluginAgentPaths: pluginAgentPaths})
-	mcp.Initialize(mcp.Options{CWD: m.env.CWD, PluginServers: pluginMCPServers})
-	setting.Initialize(setting.Options{CWD: m.env.CWD})
-	persona.Initialize(m.env.CWD)
-
-	m.services.refreshAfterReload()
+// ReloadAfterPluginChange rebuilds the state that plugins contribute to after
+// the active plugin set changes — a --plugin-dir load at startup, or a /plugin
+// install / uninstall mid-session. It reloads the project's feature services,
+// re-merges plugin hooks, and re-wires the agent tool, persona, and reminders
+// so the running session reflects the new set.
+func (m *model) ReloadAfterPluginChange() error {
+	// Plugins were just loaded by the caller; rebuild the project's feature
+	// services (not the plugins themselves) and re-point at them.
+	m.reloadProjectServices(m.env.CWD)
 
 	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()

@@ -9,7 +9,6 @@ import (
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/plugin"
-	"github.com/genai-io/san/internal/setting"
 )
 
 func (m *model) changeCwd(newCwd string) {
@@ -36,9 +35,10 @@ func (m *model) fireFileChanged(filePath, source string) {
 }
 
 func (m *model) ReloadProjectContext(cwd string) {
-	initExtensions(cwd)
-	setting.Initialize(setting.Options{CWD: cwd})
-	m.services.refreshAfterReload()
+	// cwd changed: discover the new project's plugins, then rebuild the project
+	// feature services that depend on them and re-point at them.
+	discoverPlugins(cwd)
+	m.reloadProjectServices(cwd)
 	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()
 }

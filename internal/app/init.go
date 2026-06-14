@@ -101,6 +101,51 @@ func initExtensions(cwd string) {
 	}
 }
 
+// discoverPlugins scans the working directory for plugins. Run on a cwd change
+// so the new project's plugins (and their command / agent / MCP / hook
+// contributions) replace the previous project's before reloadProjectServices
+// rebuilds the project's feature services.
+func discoverPlugins(cwd string) {
+	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
+		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
+	}
+}
+
+// reloadProjectServices rebuilds the feature singletons that depend on the
+// current project — its config dirs plus the active plugins' contributions —
+// and re-points the services struct at the fresh instances. Both halves live
+// here so the Initialize set and the Default()-regrab set cannot drift. The
+// six: settings, skills, commands, subagents, MCP servers, personas. Plugins
+// themselves are not rebuilt here — discoverPlugins does that on a cwd change,
+// and a plugin load (--plugin-dir or /plugin install) has already done it.
+func (m *model) reloadProjectServices(cwd string) {
+	setting.Initialize(setting.Options{CWD: cwd})
+	m.services.Setting = setting.Default()
+
+	skill.Initialize(skill.Options{CWD: cwd})
+	m.services.Skill = skill.Default()
+
+	command.Initialize(command.Options{
+		CWD:                cwd,
+		DynamicProviders:   []func() []command.Info{skillCommandInfos},
+		PluginCommandPaths: pluginCommandPaths,
+	})
+	m.services.Command = command.Default()
+
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
+	}
+	m.services.Subagent = subagent.Default()
+
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
+		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
+	}
+	m.services.MCP = mcp.DefaultRegistry()
+
+	persona.Initialize(cwd)
+	m.services.Persona = persona.Default()
+}
+
 func pluginCommandPaths() []command.PluginCommandPath {
 	pPaths := plugin.GetPluginCommandPaths()
 	paths := make([]command.PluginCommandPath, len(pPaths))

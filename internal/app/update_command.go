@@ -43,7 +43,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		SubmitToAgent:           m.SubmitToAgent,
 		HandleSkillInvocation:   m.HandleSkillInvocation,
 		StartExternalEditor:     m.StartExternalEditor,
-		ReloadPluginBackedState: m.ReloadPluginBackedState,
+		ReloadAfterPluginChange: m.ReloadAfterPluginChange,
 		PersistSession:          m.PersistSession,
 		InitTaskStorage:         m.InitTaskStorage,
 		ReconfigureAgentTool:    m.ReconfigureAgentTool,

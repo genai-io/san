@@ -98,16 +98,3 @@ func newServices() services {
 		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator()},
 	}
 }
-
-// refreshAfterReload re-snapshots the 5 services whose singletons are replaced
-// by Initialize() calls in ReloadPluginBackedState. The remaining services
-// (LLM, Hook, Session, Tool, Task, Tracker, Cron, Plugin)
-// are stable — their singletons are created once at startup and never replaced.
-func (s *services) refreshAfterReload() {
-	s.Setting = setting.Default()
-	s.Skill = skill.Default()
-	s.Command = command.Default()
-	s.Subagent = subagent.Default()
-	s.MCP = mcp.DefaultRegistry()
-	s.Persona = persona.Default()
-}
