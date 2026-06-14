@@ -206,7 +206,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 	case PluginUninstallMsg:
 		uninstalled := state.HandleUninstall(msg.PluginName)
 		if uninstalled {
-			_ = deps.ReloadPluginState()
+			_ = deps.ReloadAfterPluginChange()
 		}
 		return nil, true
 
@@ -216,7 +216,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 	case PluginInstallResultMsg:
 		state.HandleInstallResult(msg)
 		if msg.Success {
-			_ = deps.ReloadPluginState()
+			_ = deps.ReloadAfterPluginChange()
 		}
 		return nil, true
 
