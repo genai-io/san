@@ -10,7 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/session/transcript"
@@ -18,10 +18,10 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-func (m *model) approvalDeps() input.ApprovalFlowDeps {
-	return input.ApprovalFlowDeps{
+func (m *model) approvalDeps() selector.ApprovalFlowDeps {
+	return selector.ApprovalFlowDeps{
 		Actions:            m,
-		Input:              &m.userInput,
+		Approval:           &m.userInput.Approval,
 		HookEngine:         m.services.Hook,
 		Settings:           m.services.Setting.Snapshot(),
 		SessionPermissions: m.env.SessionPermissions,

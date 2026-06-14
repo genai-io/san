@@ -11,8 +11,8 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -322,7 +322,7 @@ func (m *model) OnPermBridgeRequest(req *conv.PermBridgeRequest) tea.Cmd {
 			Tool:           req.ToolName,
 			Input:          marshalPermInput(req.Input),
 			Detail:         permDetail(permReq),
-			OptionsOffered: input.BuildApprovalOptions(permReq),
+			OptionsOffered: selector.BuildApprovalOptions(permReq),
 			Source:         transcript.PermissionSourceAsk,
 			Mode:           m.env.SessionMode(),
 		})

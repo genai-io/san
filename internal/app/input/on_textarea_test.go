@@ -3,11 +3,12 @@ package input
 import (
 	"testing"
 
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
 )
 
 func TestUpdateHeightUsesExplicitAndWrappedLines(t *testing.T) {
-	m := New("", 10, nil, SelectorDeps{})
+	m := New("", 10, nil, selector.Registries{})
 	m.Textarea.SetValue("first\nsecond")
 	m.UpdateHeight()
 	if got := m.Textarea.Height(); got != 2 {
@@ -75,7 +76,7 @@ func Test_imageRefPattern(t *testing.T) {
 }
 
 func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, selector.Registries{})
 	first := m.AddPendingImage(core.Image{FileName: "a.png"})
 	second := m.AddPendingImage(core.Image{FileName: "b.png"})
 
@@ -102,7 +103,7 @@ func TestPendingImageMatchesAndExtractInlineImages(t *testing.T) {
 }
 
 func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, selector.Registries{})
 	label := m.AddPendingImage(core.Image{FileName: "a.png"})
 
 	raw := "  " + label + " hi"
@@ -118,7 +119,7 @@ func TestExtractInlineImagesUsesSubmittedBufferOffsets(t *testing.T) {
 }
 
 func TestRemoveImageToken(t *testing.T) {
-	m := New("", 80, nil, SelectorDeps{})
+	m := New("", 80, nil, selector.Registries{})
 	label := m.AddPendingImage(core.Image{FileName: "clip.png"})
 	m.Textarea.SetValue("hello " + label + " world")
 

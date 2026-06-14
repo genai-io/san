@@ -9,12 +9,8 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/kit/history"
 	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
-	coremcp "github.com/genai-io/san/internal/mcp"
-	corepersona "github.com/genai-io/san/internal/persona"
-	coreplugin "github.com/genai-io/san/internal/plugin"
-	coresetting "github.com/genai-io/san/internal/setting"
-	coreskill "github.com/genai-io/san/internal/skill"
 )
 
 type PastedChunk struct {
@@ -40,19 +36,11 @@ type Model struct {
 	PastedChunks     []PastedChunk
 	Queue            Queue
 
-	// Selectors / overlays
-	Approval ApprovalModel
-	Agent    AgentSelector
-	Persona  PersonaSelector
-	Search   SearchSelector
-	Skill    SkillState
-	Session  SessionState
-	Memory   MemoryState
-	MCP      MCPState
-	Plugin   PluginSelector
-	Provider ProviderState
-	Tool     ToolSelector
-	Config   ConfigSelector
+	// selector.State is embedded so the modal selectors read as flat fields
+	// (m.MCP, m.Skill.Selector, …) — the same shape they had before being
+	// extracted — while the aggregate type stays in the selector package so
+	// its update handlers never import input.
+	selector.State
 }
 
 type PendingImage struct {
@@ -90,18 +78,7 @@ func (img *ImageState) RemoveAt(idx int) {
 	}
 }
 
-type SelectorDeps struct {
-	AgentRegistry   AgentRegistry
-	PersonaRegistry *corepersona.Registry
-	SkillRegistry   *coreskill.Registry
-	MCPRegistry     *coremcp.Registry
-	PluginRegistry  *coreplugin.Registry
-	Setting         *coresetting.Settings
-	LoadDisabled    func(userLevel bool) map[string]bool
-	UpdateDisabled  func(disabled map[string]bool, userLevel bool) error
-}
-
-func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
+func New(cwd string, width int, matchFunc suggest.Matcher, deps selector.Registries) Model {
 	suggestions := suggest.NewState(matchFunc)
 	suggestions.SetCwd(cwd)
 	return Model{
@@ -109,19 +86,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		History:     HistoryNav{Items: history.Load(cwd), Index: -1},
 		Suggestions: suggestions,
 		Queue:       NewQueue(),
-
-		Approval: NewApproval(),
-		Agent:    NewAgentSelector(deps.AgentRegistry),
-		Persona:  NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
-		Search:   NewSearchSelector(deps.Setting),
-		Skill:    SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
-		Session:  SessionState{Selector: NewSessionSelector()},
-		Memory:   MemoryState{Selector: NewMemorySelector()},
-		MCP:      MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
-		Plugin:   NewPluginSelector(deps.PluginRegistry),
-		Provider: ProviderState{Selector: NewProviderSelector()},
-		Tool:     NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
-		Config:   NewConfigSelector(deps.Setting),
+		State:       selector.NewState(deps),
 	}
 }
 

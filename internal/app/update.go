@@ -21,6 +21,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
 )
@@ -104,11 +105,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.env.CurrentModel = m.services.LLM.CurrentModel()
 		m.env.LLMProvider = m.services.LLM.Provider()
 		if prevModel != nil && m.env.CurrentModel == nil {
-			return m, m.overlayDeps().PrintWelcome(m.env.GetModelDisplayName())
+			return m, m.selectorDeps().PrintWelcome(m.env.GetModelDisplayName())
 		}
 		return m, nil
-	case input.ToolToggleMsg:
-	case input.ConfigSavedMsg:
+	case selector.ToolToggleMsg:
+	case selector.ConfigSavedMsg:
 		// Refresh the in-memory settings handle so re-opening /config (and any
 		// in-session reader) sees the just-saved values rather than the stale
 		// pre-save snapshot. The panel already persisted to disk.
@@ -125,7 +126,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.wireSelfLearn(m.buildAgentParams(), "")
 		}
 		return m, nil
-	case input.ThemeSavedMsg:
+	case selector.ThemeSavedMsg:
 		// The panel already applied (kit.InitTheme) and persisted the theme;
 		// refresh the in-memory handle so re-opening /config reflects it.
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
@@ -133,14 +134,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Theme set to " + msg.Theme)
 		return m, nil
-	case input.SkillCycleMsg:
+	case selector.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in
 		// <system-reminder>, which is only refreshed at SessionStart and
 		// PostCompact. Without this nudge the LLM sees stale state until
 		// one of those fires.
 		m.services.Reminder.RequeueSystemReminders()
 		return m, nil
-	case input.AgentToggleMsg:
+	case selector.AgentToggleMsg:
 		// Why stop on toggle: the agents directory lives in the Agent tool's
 		// description, which is frozen at agent build time. Stopping forces
 		// ensureAgentSession to rebuild on the next user turn with the new
@@ -159,7 +160,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
-	case input.ApprovalResponseMsg:
+	case selector.ApprovalResponseMsg:
 		return m, m.handlePermBridgeDecision(permissionDecision{
 			Approved: msg.Approved, AllowAll: msg.AllowAll, Persist: msg.Persist, Request: msg.Request,
 		})
@@ -186,13 +187,13 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 	if cmd, ok := conv.Update(m, &m.conv, msg); ok {
 		return cmd, true
 	}
-	if cmd, ok := input.UpdateApproval(m.approvalDeps(), msg); ok {
+	if cmd, ok := selector.UpdateApproval(m.approvalDeps(), msg); ok {
 		return cmd, true
 	}
 	if cmd, ok := m.updateMode(msg); ok {
 		return cmd, true
 	}
-	if cmd, ok := input.Update(m.overlayDeps(), msg); ok {
+	if cmd, ok := selector.Update(m.selectorDeps(), msg); ok {
 		return cmd, true
 	}
 	if cmd, ok := trigger.Update(m.triggerDeps(), &m.systemInput, msg); ok {

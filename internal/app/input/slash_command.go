@@ -13,6 +13,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/cron"
@@ -369,12 +370,12 @@ func (c *SlashCommandController) handleModelCommand(ctx context.Context, _ strin
 }
 
 func (c *SlashCommandController) handleInitCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	result, err := HandleInitCommand(c.env.Cwd, args)
+	result, err := selector.HandleInitCommand(c.env.Cwd, args)
 	return result, nil, err
 }
 
 func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	result, editPath, err := HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Cwd, c.env.Width, c.env.Height, args)
+	result, editPath, err := selector.HandleMemoryCommand(&c.env.Input.Memory.Selector, c.env.Cwd, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err
 	}
@@ -386,7 +387,7 @@ func (c *SlashCommandController) handleMemoryCommand(_ context.Context, args str
 }
 
 func (c *SlashCommandController) handleMCPCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
-	result, editInfo, err := HandleMCPCommand(ctx, &c.env.Input.MCP.Selector, c.env.Width, c.env.Height, args)
+	result, editInfo, err := selector.HandleMCPCommand(ctx, &c.env.Input.MCP.Selector, c.env.Width, c.env.Height, args)
 	if err != nil {
 		return "", nil, err
 	}
@@ -394,7 +395,7 @@ func (c *SlashCommandController) handleMCPCommand(ctx context.Context, args stri
 		c.env.Input.MCP.EditingFile = editInfo.TempFile
 		c.env.Input.MCP.EditingServer = editInfo.ServerName
 		c.env.Input.MCP.EditingScope = editInfo.Scope
-		return result, StartMCPEditor(editInfo.TempFile), nil
+		return result, selector.StartMCPEditor(editInfo.TempFile), nil
 	}
 	if c.env.Input.MCP.Selector.IsActive() {
 		return result, c.env.Input.MCP.Selector.AutoReconnect(), nil
@@ -403,7 +404,7 @@ func (c *SlashCommandController) handleMCPCommand(ctx context.Context, args stri
 }
 
 func (c *SlashCommandController) handlePluginCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
-	result, err := HandlePluginCommand(ctx, &c.env.Input.Plugin, c.env.Cwd, c.env.Width, c.env.Height, args)
+	result, err := selector.HandlePluginCommand(ctx, &c.env.Input.Plugin, c.env.Cwd, c.env.Width, c.env.Height, args)
 	return result, nil, err
 }
 

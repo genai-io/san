@@ -3,6 +3,7 @@ package input
 import (
 	"testing"
 
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
 )
 
@@ -97,7 +98,7 @@ func TestQueueAdjustSelectionAfterRemove(t *testing.T) {
 }
 
 func TestDeleteCurrentQueueItemRemovesSelected(t *testing.T) {
-	m := New("", 10, nil, SelectorDeps{})
+	m := New("", 10, nil, selector.Registries{})
 	m.Queue.Enqueue("first", nil)
 	m.Queue.Enqueue("second", nil)
 	m.Queue.SelectIdx = 0
@@ -114,7 +115,7 @@ func TestDeleteCurrentQueueItemRemovesSelected(t *testing.T) {
 }
 
 func TestSaveCurrentQueueEditWritesBack(t *testing.T) {
-	m := New("", 10, nil, SelectorDeps{})
+	m := New("", 10, nil, selector.Registries{})
 	m.Queue.Enqueue("original", nil)
 	m.Queue.SelectIdx = 0
 	m.Textarea.SetValue("edited")

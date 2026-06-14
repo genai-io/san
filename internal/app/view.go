@@ -8,8 +8,8 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task/tracker"
@@ -61,7 +61,7 @@ func (m *model) viewString() string {
 // the Question and Approval modals dock.
 func isDockedModal(ov overlayPanel) bool {
 	switch ov.(type) {
-	case *conv.QuestionPrompt, *input.ApprovalModel:
+	case *conv.QuestionPrompt, *selector.ApprovalModel:
 		return true
 	}
 	return false

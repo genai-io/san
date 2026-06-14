@@ -11,6 +11,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -25,11 +26,12 @@ func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
 	}
 }
 
-func (m *model) overlayDeps() input.OverlayDeps {
-	return input.OverlayDeps{
-		State:             &m.userInput,
+func (m *model) selectorDeps() selector.Runtime {
+	return selector.Runtime{
+		State:             &m.userInput.State,
 		Conv:              &m.conv.ConversationModel,
 		Cwd:               m.env.CWD,
+		SetInput:          func(s string) { m.userInput.Textarea.SetValue(s) },
 		CommitMessages:    m.CommitMessages,
 		CommitAllMessages: m.commitAllMessages,
 		SwitchProvider: func(p llm.Provider) {
@@ -91,7 +93,7 @@ func (m *model) triggerDeps() trigger.Deps {
 
 func (m *model) StartExternalEditor(path string) tea.Cmd {
 	return kit.StartExternalEditor(path, func(err error) tea.Msg {
-		return input.MemoryEditorFinishedMsg{Err: err}
+		return selector.MemoryEditorFinishedMsg{Err: err}
 	})
 }
 

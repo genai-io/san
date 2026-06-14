@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/persona"
 )
 
@@ -46,7 +47,7 @@ func TestHandlePersonaCommand_Unavailable(t *testing.T) {
 
 func TestHandlePersonaCommand_OpensPicker(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	m := &Model{Persona: NewPersonaSelector(persona.NewRegistry(""), nil)}
+	m := &Model{State: selector.State{Persona: selector.NewPersona(persona.NewRegistry(""), nil)}}
 	c := NewSlashCommandController(SlashCommandEnv{Input: m, Width: 80, Height: 24})
 	out, _, err := c.handlePersonaCommand(context.Background(), "")
 	if err != nil {

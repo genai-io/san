@@ -28,6 +28,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/app/trigger"
 )
 
@@ -46,8 +47,8 @@ type model struct {
 }
 
 var (
-	_ conv.Runtime          = (*model)(nil)
-	_ input.ApprovalRuntime = (*model)(nil)
+	_ conv.Runtime             = (*model)(nil)
+	_ selector.ApprovalRuntime = (*model)(nil)
 )
 
 func (m *model) Init() tea.Cmd {

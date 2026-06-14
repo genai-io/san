@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/plugin"
@@ -48,7 +49,7 @@ func newBaseModel() model {
 		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
 	}
 	return model{
-		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
+		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), selector.Registries{
 			AgentRegistry:   &agentRegistryAdapter{svc.Subagent},
 			PersonaRegistry: svc.Persona,
 			SkillRegistry:   svc.Skill,

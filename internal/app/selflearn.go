@@ -17,8 +17,8 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/hub"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/app/selector"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
@@ -250,7 +250,7 @@ func (m *model) runSelfLearnDemo() {
 // arm that the other level enabled). Surfaces a notice so the user
 // learns about the override instead of seeing a "saved" confirmation
 // while the behavior stays unchanged.
-func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
+func (m *model) notifySelfLearnOverride(msg selector.ConfigSavedMsg) {
 	snap := m.services.Setting.Snapshot()
 	if snap == nil {
 		return
