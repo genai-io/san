@@ -1,9 +1,6 @@
 package perm
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
 // Decision represents a permission decision.
 type Decision int
@@ -14,69 +11,19 @@ const (
 	Prompt
 )
 
-// Checker decides whether a tool call is permitted.
-// Implementations correspond 1:1 to the modes in docs/concepts/permission-model.md
-// and are used as step 7 ("mode default") of the unified pipeline.
-type Checker interface {
-	Check(name string, params map[string]any) Decision
-}
-
-// Default is the policy for `default` mode: safe tools auto-allowed,
-// everything else prompts the user.
-func Default() Checker { return defaultChecker{} }
-
-// AcceptEdits is the policy for `acceptEdits` (and currently `auto`) mode:
-// safe + edit tools auto-allowed, everything else prompts.
-func AcceptEdits() Checker { return acceptEditsChecker{} }
-
-// ReadOnly is the policy for `explore` mode: safe tools auto-allowed,
-// everything else explicitly rejected (no prompt — used in subagents
-// where "read-only intent" must be visible to the model).
-func ReadOnly() Checker { return readOnlyChecker{} }
-
-// PermitAll is the policy for `bypassPermissions` mode: everything
-// auto-allowed. Bypass-immune checks (sensitive paths, destructive
-// commands) are enforced upstream and are not affected by this checker.
-func PermitAll() Checker { return permitAllChecker{} }
-
-// DenyAll is the policy that rejects every tool call. Used as a fallback
-// when no checker is configured.
-func DenyAll() Checker { return denyAllChecker{} }
-
-type denyAllChecker struct{}
-
-func (denyAllChecker) Check(_ string, _ map[string]any) Decision { return Reject }
-
-type defaultChecker struct{}
-
-func (defaultChecker) Check(name string, _ map[string]any) Decision {
-	if IsSafeTool(name) {
-		return Permit
+// String renders the decision for logs and audit records.
+func (d Decision) String() string {
+	switch d {
+	case Permit:
+		return "permit"
+	case Reject:
+		return "reject"
+	case Prompt:
+		return "prompt"
+	default:
+		return "unknown"
 	}
-	return Prompt
 }
-
-type acceptEditsChecker struct{}
-
-func (acceptEditsChecker) Check(name string, _ map[string]any) Decision {
-	if IsSafeTool(name) || IsEditTool(name) {
-		return Permit
-	}
-	return Prompt
-}
-
-type readOnlyChecker struct{}
-
-func (readOnlyChecker) Check(name string, _ map[string]any) Decision {
-	if IsSafeTool(name) {
-		return Permit
-	}
-	return Reject
-}
-
-type permitAllChecker struct{}
-
-func (permitAllChecker) Check(_ string, _ map[string]any) Decision { return Permit }
 
 // IsEditTool reports whether the tool mutates files (vs. shell exec or
 // other side effects). Used to gate `acceptEdits`-mode auto-approval.
@@ -131,19 +78,3 @@ func IsSafeTool(name string) bool {
 // PermissionFunc gates tool execution. Called with the tool name and
 // parsed input. May block (e.g., to wait for TUI approval).
 type PermissionFunc func(ctx context.Context, name string, input map[string]any) (allow bool, reason string)
-
-// AsPermissionFunc converts a Checker into a PermissionFunc.
-// `Reject` becomes (false, reason); `Permit` and `Prompt` both become
-// (true, ""). Use this only when the caller will not handle Prompt
-// downstream — otherwise compose the Checker into a custom function.
-func AsPermissionFunc(c Checker) PermissionFunc {
-	if c == nil {
-		return nil
-	}
-	return func(_ context.Context, name string, input map[string]any) (bool, string) {
-		if c.Check(name, input) == Reject {
-			return false, fmt.Sprintf("tool %s is not permitted in this mode", name)
-		}
-		return true, ""
-	}
-}

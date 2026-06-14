@@ -6,61 +6,21 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/genai-io/san/internal/tool/perm"
 )
 
-// safeTools is the allowlist of tools that skip permission checks.
-// This is a local copy to avoid importing the higher-layer tool package.
-// IMPORTANT: keep in sync with perm.safeTools (tool/perm/decision.go).
-var safeTools = map[string]bool{
-	"Read": true, "Glob": true, "Grep": true,
-	"WebFetch": true, "WebSearch": true, "LSP": true,
-	"TaskCreate": true, "TaskGet": true, "TaskList": true, "TaskUpdate": true,
-	"AskUserQuestion": true,
-	"CronList":        true,
-}
-
-func isEditTool(name string) bool {
-	switch name {
-	case "Edit", "Write", "NotebookEdit":
-		return true
-	default:
-		return false
-	}
-}
-
-// PermissionBehavior represents the outcome of a permission check.
-type PermissionBehavior int
+// PermissionBehavior is the outcome of a permission check. It aliases
+// perm.Decision so the gate, the agent runtime, and subagents all speak a
+// single decision type. Allow/Deny/Ask are kept as thin synonyms for
+// perm.Permit/Reject/Prompt while the permission engine is being unified.
+type PermissionBehavior = perm.Decision
 
 const (
-	// Allow means the action is automatically allowed.
-	Allow PermissionBehavior = iota
-
-	// Deny means the action is automatically denied.
-	Deny
-
-	// Ask means the action requires user confirmation.
-	Ask
-
-	// Passthrough means the tool has no opinion — defer to mode/default logic.
-	// This is used when a tool's custom checkPermissions returns no decision.
-	Passthrough
+	Allow = perm.Permit // automatically allowed
+	Deny  = perm.Reject // automatically denied
+	Ask   = perm.Prompt // requires user confirmation (prompt)
 )
-
-// String returns a human-readable representation of the permission behavior.
-func (p PermissionBehavior) String() string {
-	switch p {
-	case Allow:
-		return "allow"
-	case Deny:
-		return "deny"
-	case Ask:
-		return "ask"
-	case Passthrough:
-		return "passthrough"
-	default:
-		return "unknown"
-	}
-}
 
 // PermissionDecision carries a permission behavior together with the reason
 // for the decision, enabling callers to log or display why access was
@@ -155,27 +115,38 @@ func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, se
 	return ""
 }
 
-func modeDefaultDecision(toolName string, session *SessionPermissions) PermissionDecision {
-	if safeTools[toolName] {
+// ModeDefault is step 7 of the permission pipeline: the decision for a tool
+// when no deny/ask/allow rule matched, decided by the mode alone. Safe tools are
+// always permitted; the rest depends on the mode. Exported so the subagent gate
+// shares this one mode table instead of carrying its own (perm.Checker).
+func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
+	if perm.IsSafeTool(toolName) {
 		return decide(Allow, "mode: safe tool")
 	}
 
+	switch mode {
+	case ModeBypassPermissions:
+		return decide(Allow, "mode: bypass permissions")
+	case ModeAutoAccept:
+		if perm.IsEditTool(toolName) {
+			return decide(Allow, "mode: accept edits")
+		}
+		return decide(Ask, "mode: accept edits requires confirmation")
+	case ModeReadOnly:
+		return decide(Deny, "mode: read-only")
+	case ModeDontAsk:
+		return decide(Deny, "mode: don't ask (auto-deny)")
+	default: // ModeNormal
+		return decide(Ask, "mode: default requires confirmation")
+	}
+}
+
+func modeDefaultDecision(toolName string, session *SessionPermissions) PermissionDecision {
 	mode := ModeNormal
 	if session != nil {
 		mode = session.Mode
 	}
-
-	switch mode {
-	case ModeAutoAccept:
-		if isEditTool(toolName) {
-			return decide(Allow, "mode: accept edits")
-		}
-		return decide(Ask, "mode: accept edits requires confirmation")
-	case ModeDontAsk:
-		return decide(Deny, "mode: don't ask (auto-deny)")
-	default:
-		return decide(Ask, "mode: default requires confirmation")
-	}
+	return ModeDefault(toolName, mode)
 }
 
 func coerceAsk(decision PermissionDecision, session *SessionPermissions) PermissionDecision {

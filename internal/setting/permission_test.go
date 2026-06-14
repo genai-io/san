@@ -894,8 +894,8 @@ func TestWorkingDirectoryConstraint(t *testing.T) {
 func TestSafeToolAllowlist(t *testing.T) {
 	settings := &Data{}
 
-	// All safe tools, including read-only ones.
-	// Keep in sync with perm.safeTools (tool/perm/decision.go).
+	// All safe tools, including read-only ones. The canonical allowlist lives
+	// in perm.IsSafeTool (tool/perm); this asserts the gate honors it.
 	allSafeTools := []string{
 		"Read", "Glob", "Grep", "WebFetch", "WebSearch", "LSP",
 		"TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
@@ -910,21 +910,6 @@ func TestSafeToolAllowlist(t *testing.T) {
 				t.Errorf("safe tool %q = %v, want Allow", tool, got)
 			}
 		})
-	}
-
-	// Verify the test list matches the actual safeTools map.
-	if len(allSafeTools) != len(safeTools) {
-		t.Errorf("test lists %d safe tools but safeTools map has %d entries — update the test", len(allSafeTools), len(safeTools))
-	}
-}
-
-func TestPassthroughBehavior(t *testing.T) {
-	// Passthrough should be convertible and distinct from Ask
-	if Passthrough == Ask {
-		t.Error("Passthrough should be distinct from Ask")
-	}
-	if Passthrough.String() != "passthrough" {
-		t.Errorf("Passthrough.String() = %q, want %q", Passthrough.String(), "passthrough")
 	}
 }
 

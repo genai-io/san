@@ -276,6 +276,7 @@ const (
 	ModeAutoAccept                      // auto-approve edits/writes
 	ModeBypassPermissions               // allow all (bypass-immune checks still apply)
 	ModeDontAsk                         // convert ask → deny (never prompt)
+	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
@@ -291,6 +292,8 @@ func (m OperationMode) String() string {
 		return "bypass permissions"
 	case ModeDontAsk:
 		return "don't ask"
+	case ModeReadOnly:
+		return "read-only"
 	default:
 		return "normal"
 	}

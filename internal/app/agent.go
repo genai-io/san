@@ -144,18 +144,18 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			mode := m.env.SessionMode()
 			input := marshalPermInput(args)
 			switch decision.Behavior {
-			case setting.Allow:
+			case perm.Permit:
 				rec.RecordPermissionDecided(transcript.PermissionRecord{
 					Tool: name, Input: input, Decision: permDecisionFor(true), Source: transcript.PermissionSourceConfig,
 					Reason: decision.Reason, Mode: mode,
 				})
-				return agent.PermDecisionResult{Decision: perm.Permit, Reason: decision.Reason}
-			case setting.Deny:
+				return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
+			case perm.Reject:
 				rec.RecordPermissionDecided(transcript.PermissionRecord{
 					Tool: name, Input: input, Decision: permDecisionFor(false), Source: transcript.PermissionSourceConfig,
 					Reason: decision.Reason, Mode: mode,
 				})
-				return agent.PermDecisionResult{Decision: perm.Reject, Reason: decision.Reason}
+				return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
 			default:
 				return agent.PermDecisionResult{
 					Decision:    perm.Prompt,

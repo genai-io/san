@@ -398,19 +398,22 @@ func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
 	return strings.Contains(msg, "model_not_found") || strings.Contains(msg, "model not found") || strings.Contains(msg, "model_not_exist")
 }
 
-// modeChecker returns the perm.Checker for the mode. dontAsk falls back to
-// default since the headless coercion is automatic for subagents; auto is
-// aliased to acceptEdits until the safety classifier ships.
-func modeChecker(mode PermissionMode) perm.Checker {
+// operationMode maps a subagent PermissionMode to the setting.OperationMode that
+// drives the shared mode-default table (setting.ModeDefault). dontAsk folds to a
+// read-only-style denial since subagents never prompt; auto aliases to
+// acceptEdits until the safety classifier ships.
+func operationMode(mode PermissionMode) setting.OperationMode {
 	switch NormalizePermissionMode(string(mode)) {
 	case PermissionExplore:
-		return perm.ReadOnly()
+		return setting.ModeReadOnly
 	case PermissionAcceptEdits, PermissionAuto:
-		return perm.AcceptEdits()
+		return setting.ModeAutoAccept
 	case PermissionBypass:
-		return perm.PermitAll()
+		return setting.ModeBypassPermissions
+	case PermissionDontAsk:
+		return setting.ModeDontAsk
 	default:
-		return perm.Default()
+		return setting.ModeNormal
 	}
 }
 
@@ -437,7 +440,7 @@ func (e *Executor) capabilityPrompts(config *AgentConfig) (skillsPrompt string, 
 // matches docs/concepts/permission-model.md: deny_tools, bypass-immune, allow_tools,
 // mode default, with Prompt collapsing to Deny because subagents cannot ask.
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
-	checker := modeChecker(mode)
+	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)
 
 	return func(_ context.Context, name string, input map[string]any) (bool, string) {
@@ -455,12 +458,12 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if allowRules.HasName(name) {
 			return false, fmt.Sprintf("tool %s call is outside the allow_tools constraint", name)
 		}
-		switch checker.Check(name, input) {
+		switch setting.ModeDefault(name, opMode).Behavior {
 		case perm.Permit:
 			return true, ""
 		case perm.Reject:
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
-		default:
+		default: // perm.Prompt — subagents cannot ask
 			return false, fmt.Sprintf("tool %s would require approval; subagent in %s mode denies it", name, display)
 		}
 	}

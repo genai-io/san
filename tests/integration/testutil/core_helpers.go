@@ -10,6 +10,29 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
+// PermitAllPermission allows every tool call. Replaces the former
+// perm.AsPermissionFunc(perm.PermitAll()) test fixture.
+func PermitAllPermission() perm.PermissionFunc {
+	return func(context.Context, string, map[string]any) (bool, string) { return true, "" }
+}
+
+// ReadOnlyPermission allows safe (read-only) tools and denies the rest.
+func ReadOnlyPermission() perm.PermissionFunc {
+	return func(_ context.Context, name string, _ map[string]any) (bool, string) {
+		if perm.IsSafeTool(name) {
+			return true, ""
+		}
+		return false, "read-only mode: " + name + " not permitted"
+	}
+}
+
+// DenyAllPermission denies every tool call (including safe tools).
+func DenyAllPermission() perm.PermissionFunc {
+	return func(_ context.Context, name string, _ map[string]any) (bool, string) {
+		return false, name + " denied"
+	}
+}
+
 // FakeLLM implements core.LLM for testing, returning queued responses.
 type FakeLLM struct {
 	Responses []llm.CompletionResponse

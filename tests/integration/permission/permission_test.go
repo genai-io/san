@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
 func TestPermission_PermitAll_AllowsWrite(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Write", "written successfully")
 
-	ag, _ := testutil.NewTestAgentWithPermission(t, perm.AsPermissionFunc(perm.PermitAll()),
+	ag, _ := testutil.NewTestAgentWithPermission(t, testutil.PermitAllPermission(),
 		testutil.ToolCallResponse("Write", "tc1", `{"file_path": "/tmp/test"}`),
 		testutil.EndTurnResponse("done"),
 	)
@@ -35,7 +34,7 @@ func TestPermission_PermitAll_AllowsWrite(t *testing.T) {
 func TestPermission_ReadOnly_BlocksWrite(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Write", "should not execute")
 
-	ag, _ := testutil.NewTestAgentWithPermission(t, perm.AsPermissionFunc(perm.ReadOnly()),
+	ag, _ := testutil.NewTestAgentWithPermission(t, testutil.ReadOnlyPermission(),
 		testutil.ToolCallResponse("Write", "tc1", `{"file_path": "/tmp/test"}`),
 		testutil.EndTurnResponse("ok"),
 	)
@@ -60,7 +59,7 @@ func TestPermission_ReadOnly_BlocksWrite(t *testing.T) {
 func TestPermission_ReadOnly_AllowsRead(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Read", "file contents")
 
-	ag, _ := testutil.NewTestAgentWithPermission(t, perm.AsPermissionFunc(perm.ReadOnly()),
+	ag, _ := testutil.NewTestAgentWithPermission(t, testutil.ReadOnlyPermission(),
 		testutil.ToolCallResponse("Read", "tc1", `{"file_path": "/tmp/test"}`),
 		testutil.EndTurnResponse("done"),
 	)
@@ -80,7 +79,7 @@ func TestPermission_ReadOnly_AllowsRead(t *testing.T) {
 func TestPermission_DenyAll_BlocksNonSafeTools(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Bash", "should not execute")
 
-	ag, _ := testutil.NewTestAgentWithPermission(t, perm.AsPermissionFunc(perm.DenyAll()),
+	ag, _ := testutil.NewTestAgentWithPermission(t, testutil.DenyAllPermission(),
 		testutil.ToolCallResponse("Bash", "tc1", `{"command":"echo hi"}`),
 		testutil.EndTurnResponse("done"),
 	)
@@ -105,7 +104,7 @@ func TestPermission_DenyAll_BlocksNonSafeTools(t *testing.T) {
 func TestPermission_SafeToolGoesThroughPermission(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Read", "file contents")
 
-	ag, _ := testutil.NewTestAgentWithPermission(t, perm.AsPermissionFunc(perm.DenyAll()),
+	ag, _ := testutil.NewTestAgentWithPermission(t, testutil.DenyAllPermission(),
 		testutil.ToolCallResponse("Read", "tc1", `{}`),
 		testutil.EndTurnResponse("done"),
 	)

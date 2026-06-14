@@ -139,11 +139,9 @@ func TestAgent_ModelResolution(t *testing.T) {
 // Explore mode uses a read-only permission checker, so it
 // should reject Write/Edit calls.
 func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
-	checker := perm.ReadOnly()
-
 	writeTools := []string{"Write", "Edit", "NotebookEdit", "Bash"}
 	for _, tool := range writeTools {
-		decision := checker.Check(tool, nil)
+		decision := setting.ModeDefault(tool, setting.ModeReadOnly).Behavior
 		if decision != perm.Reject {
 			t.Errorf("tool %q: expected Reject in explore mode, got %v", tool, decision)
 		}
@@ -151,7 +149,7 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 
 	readTools := []string{"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
 	for _, tool := range readTools {
-		decision := checker.Check(tool, nil)
+		decision := setting.ModeDefault(tool, setting.ModeReadOnly).Behavior
 		if decision != perm.Permit {
 			t.Errorf("tool %q: expected Permit in explore mode, got %v", tool, decision)
 		}
