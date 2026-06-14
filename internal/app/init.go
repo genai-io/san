@@ -86,7 +86,7 @@ func initExtensions(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
 	}
-	skill.Initialize(skill.Options{CWD: cwd})
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
@@ -122,7 +122,7 @@ func (m *model) reloadProjectServices(cwd string) {
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.Setting = setting.Default()
 
-	skill.Initialize(skill.Options{CWD: cwd})
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
 	m.services.Skill = skill.Default()
 
 	command.Initialize(command.Options{
@@ -166,6 +166,19 @@ func pluginAgentPaths() []subagent.PluginAgentPath {
 		paths[i] = subagent.PluginAgentPath{
 			Path:      p.Path,
 			Namespace: p.Namespace,
+		}
+	}
+	return paths
+}
+
+func pluginSkillPaths() []skill.PluginSkillPath {
+	pPaths := plugin.GetPluginSkillPaths()
+	paths := make([]skill.PluginSkillPath, len(pPaths))
+	for i, p := range pPaths {
+		paths[i] = skill.PluginSkillPath{
+			Path:      p.Path,
+			Namespace: p.Namespace,
+			IsProject: p.Scope == plugin.ScopeProject || p.Scope == plugin.ScopeLocal,
 		}
 	}
 	return paths
