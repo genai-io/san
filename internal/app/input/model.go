@@ -40,19 +40,32 @@ type Model struct {
 	PastedChunks     []PastedChunk
 	Queue            Queue
 
-	// Selectors / overlays
+	// Overlay modals. Each field is a full-screen overlay the input area can
+	// hand control to. Two shapes, by convention:
+	//
+	//	XxxSelector — a self-contained list picker (cursor + render only).
+	//	XxxState    — a selector wrapped with ambient state the app/runtime
+	//	              needs around it: a pending invocation, an in-flight
+	//	              external-editor handoff, or a status line. The picker
+	//	              itself is always the embedded .Selector field.
+	//
+	// Approval is the odd one out: a permission confirm dialog, not a picker.
 	Approval ApprovalModel
-	Agent    AgentSelector
-	Persona  PersonaSelector
-	Search   SearchSelector
-	Skill    SkillState
-	Session  SessionState
-	Memory   MemoryState
-	MCP      MCPState
-	Plugin   PluginSelector
-	Provider ProviderState
-	Tool     ToolSelector
-	Config   ConfigSelector
+
+	// Self-contained selectors.
+	Agent   AgentSelector
+	Persona PersonaSelector
+	Search  SearchSelector
+	Plugin  PluginSelector
+	Tool    ToolSelector
+	Config  ConfigSelector
+
+	// Selectors carrying ambient state (the picker is the .Selector field).
+	Skill    SkillState    // + pending skill invocation
+	Session  SessionState  // + pending-open flag
+	Memory   MemoryState   // + in-flight editor file
+	MCP      MCPState      // + in-flight editor file/server/scope
+	Provider ProviderState // + fetching / status-line state
 }
 
 type PendingImage struct {
