@@ -31,18 +31,18 @@ func CalculateToolBoxWidth(screenWidth int) int {
 	return max(60, boxWidth)
 }
 
-// TruncateText shortens text to maxLen with ellipsis if needed.
-// Returns the original text if maxLen <= 0 or if text fits within maxLen.
-// Uses rune-based slicing to avoid breaking multi-byte characters.
+// TruncateText shortens text to maxLen with a single-glyph ellipsis (…) if
+// needed. Returns the original text if maxLen <= 0 or if text fits within
+// maxLen. Uses rune-based slicing to avoid breaking multi-byte characters.
 func TruncateText(text string, maxLen int) string {
 	runes := []rune(text)
 	if maxLen <= 0 || len(runes) <= maxLen {
 		return text
 	}
-	if maxLen <= 3 {
+	if maxLen <= 1 {
 		return string(runes[:maxLen])
 	}
-	return string(runes[:maxLen-3]) + "..."
+	return string(runes[:maxLen-1]) + "…"
 }
 
 func ShortenPath(path string) string {

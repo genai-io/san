@@ -21,6 +21,10 @@ type TrackerListParams struct {
 	Width        int
 	SpinnerView  string
 	Blockers     func(taskID string) []string
+	// Blink is the shared tick counter that drives every liveness animation,
+	// so the in-progress pulse advances on the same cadence as the spinner and
+	// agent icons instead of jittering off the wall clock.
+	Blink int
 }
 
 // RenderTrackerList renders a compact task list above the input area.
@@ -67,14 +71,14 @@ func RenderTrackerList(params TrackerListParams) string {
 		if rendered >= maxVisibleTasks && t.Status != tracker.StatusInProgress {
 			continue
 		}
-		sb.WriteString(renderTask(t, params.Width, idWidth, params.Blockers))
+		sb.WriteString(renderTask(t, params.Width, idWidth, params.Blockers, params.Blink))
 		rendered++
 	}
 
 	return sb.String()
 }
 
-func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []string) string {
+func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []string, blink int) string {
 	indent := "  "
 	idTag := fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
 	maxTextLen := max(width-len(indent)-idWidth-8, 12)
@@ -95,9 +99,12 @@ func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []str
 		if t.ActiveForm != "" {
 			displayText = kit.TruncateText(t.ActiveForm, maxTextLen)
 		}
+		// Pulse on the shared tick cadence (same as the agent ●/○ blink), so the
+		// animation is smooth and driven by the render loop rather than the wall
+		// clock — which only sampled on redraws and so flickered irregularly.
 		activeIcon := "●"
 		activeStyle := trackerInProgressStyle
-		if time.Now().UnixNano()/500000000%2 == 0 {
+		if (blink/agentBlinkTicks)%2 == 1 {
 			activeIcon = "◌"
 			activeStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 		}

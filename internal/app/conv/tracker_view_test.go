@@ -3,7 +3,6 @@ package conv
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/genai-io/san/internal/task/tracker"
 )
@@ -62,19 +61,18 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	task := &tracker.Task{ID: "1", Subject: "Fix auth module", Status: tracker.StatusInProgress}
 
+	// The pulse is driven by the shared Blink tick, not the wall clock, so a
+	// full cadence is deterministic: advancing Blink across one period must show
+	// both the solid (●) and dim (◌) phases.
 	var hasSolid, hasDim bool
-	for i := 0; i < 10; i++ {
-		frame := stripANSI(renderTask(task, 80, 2, nil))
+	for blink := range 4 * agentBlinkTicks {
+		frame := stripANSI(renderTask(task, 80, 2, nil, blink))
 		if strings.Contains(frame, "●") {
 			hasSolid = true
 		}
 		if strings.Contains(frame, "◌") {
 			hasDim = true
 		}
-		if hasSolid && hasDim {
-			break
-		}
-		time.Sleep(300 * time.Millisecond)
 	}
 
 	if !hasSolid {

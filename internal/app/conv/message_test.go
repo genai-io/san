@@ -198,7 +198,7 @@ func TestRenderToolCallsUsesEightyPercentWidth(t *testing.T) {
 	if !strings.Contains(rendered, "git describe --tags --abbrev") {
 		t.Fatalf("RenderToolCalls() = %q, want wider command preview", rendered)
 	}
-	if !strings.Contains(rendered, "...") {
+	if !strings.Contains(rendered, "…") {
 		t.Fatalf("RenderToolCalls() = %q, want truncation at 80%% width", rendered)
 	}
 }

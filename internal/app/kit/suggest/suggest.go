@@ -527,10 +527,10 @@ func truncateWithEllipsis(s string, maxLen int) string {
 	if len(runes) <= maxLen {
 		return s
 	}
-	if maxLen <= 3 {
+	if maxLen <= 1 {
 		return string(runes[:maxLen])
 	}
-	return string(runes[:maxLen-3]) + "..."
+	return string(runes[:maxLen-1]) + "…"
 }
 
 func truncateFromLeft(s string, maxLen int) string {
@@ -538,8 +538,8 @@ func truncateFromLeft(s string, maxLen int) string {
 	if len(runes) <= maxLen {
 		return s
 	}
-	if maxLen <= 3 {
+	if maxLen <= 1 {
 		return string(runes[len(runes)-maxLen:])
 	}
-	return "..." + string(runes[len(runes)-maxLen+3:])
+	return "…" + string(runes[len(runes)-maxLen+1:])
 }
