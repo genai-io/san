@@ -1,4 +1,4 @@
-# Feature 18: Cost / Token Tracking
+# Cost / Token Tracking
 
 ## Overview
 

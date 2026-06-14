@@ -1,4 +1,4 @@
-# Feature 4: Slash Commands (21 Commands)
+# Slash Commands
 
 ## Overview
 
@@ -34,7 +34,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Selector commands (`/model`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/think` cycles through levels and updates the status bar indicator.
-- `/loop` has a dedicated feature document: see [Feature 21](./loop.md).
+- `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
 
 ## Automated Tests
 
