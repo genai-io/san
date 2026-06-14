@@ -36,24 +36,43 @@ func Initialize(opts Options) {
 	defaultConn.mu.Lock()
 	defaultConn.store = store
 	defaultConn.currentModel = store.GetCurrentModel()
-	cm := defaultConn.currentModel
 	defaultConn.mu.Unlock()
 
-	ctx := context.Background()
+	if resolved, ok := ResolveProvider(context.Background(), store); ok {
+		defaultConn.SetProvider(resolved.Provider)
+	}
+}
 
-	if cm != nil {
+// ResolvedProvider is a connected provider plus the identity used to reach it.
+// ModelID carries the saved current model when one is set, and is empty when
+// resolution fell back to a connection without a saved model — in that case the
+// caller picks a model (see setting.DefaultModel).
+type ResolvedProvider struct {
+	Provider   Provider
+	ModelID    string
+	AuthMethod AuthMethod
+}
+
+// ResolveProvider connects to the best available provider recorded in the
+// store: the saved current model's provider first, then any other connected
+// provider. It reports ok=false when no provider can be connected. This is the
+// single resolution order shared by Initialize (interactive startup) and the
+// one-shot print / headless entry points, so they can never drift apart.
+func ResolveProvider(ctx context.Context, store *Store) (ResolvedProvider, bool) {
+	if store == nil {
+		return ResolvedProvider{}, false
+	}
+	if cm := store.GetCurrentModel(); cm != nil {
 		if p, err := GetProvider(ctx, cm.Provider, cm.AuthMethod); err == nil {
-			defaultConn.SetProvider(p)
-			return
+			return ResolvedProvider{Provider: p, ModelID: cm.ModelID, AuthMethod: cm.AuthMethod}, true
 		}
 	}
-
 	for providerName, conn := range store.GetConnections() {
 		if p, err := GetProvider(ctx, Name(providerName), conn.AuthMethod); err == nil {
-			defaultConn.SetProvider(p)
-			return
+			return ResolvedProvider{Provider: p, AuthMethod: conn.AuthMethod}, true
 		}
 	}
+	return ResolvedProvider{}, false
 }
 
 // Default returns the package-level *Conn.

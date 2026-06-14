@@ -139,36 +139,9 @@ func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason stri
 func runPrint(userMessage string) error {
 	ctx := context.Background()
 
-	store, err := llm.NewStore()
+	llmProvider, modelID, err := resolveProvider(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to load store: %w", err)
-	}
-
-	var llmProvider llm.Provider
-	var modelID string
-
-	current := store.GetCurrentModel()
-	if current != nil {
-		p, err := llm.GetProvider(ctx, current.Provider, current.AuthMethod)
-		if err != nil {
-			return fmt.Errorf("provider %s (%s) not available: %w. Run 'san' and use /model to connect",
-				current.Provider, current.AuthMethod, err)
-		}
-		llmProvider = p
-		modelID = current.ModelID
-	} else {
-		for providerName, conn := range store.GetConnections() {
-			p, err := llm.GetProvider(ctx, llm.Name(providerName), conn.AuthMethod)
-			if err == nil {
-				llmProvider = p
-				modelID = setting.DefaultModel(providerName, string(conn.AuthMethod))
-				break
-			}
-		}
-	}
-
-	if llmProvider == nil {
-		return fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
+		return err
 	}
 
 	completionOpts := llm.CompletionOptions{
@@ -192,6 +165,27 @@ func runPrint(userMessage string) error {
 	}
 
 	return nil
+}
+
+// resolveProvider connects to the best available provider for a one-shot,
+// non-interactive run (print mode, headless agent) and returns it with a
+// concrete model id. It shares llm.ResolveProvider's resolution order with the
+// interactive startup path; when resolution falls back to a connection without
+// a saved current model, it fills that provider's default model id.
+func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
+	store, err := llm.NewStore()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to load store: %w", err)
+	}
+	resolved, ok := llm.ResolveProvider(ctx, store)
+	if !ok {
+		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
+	}
+	modelID := resolved.ModelID
+	if modelID == "" {
+		modelID = setting.DefaultModel(resolved.Provider.Name(), string(resolved.AuthMethod))
+	}
+	return resolved.Provider, modelID, nil
 }
 
 // validatePersona ensures the named persona exists on disk, early in startup,
