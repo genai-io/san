@@ -78,30 +78,36 @@ func renderModelWithTokens(modelName, statusMessage string, inputTokens, inputLi
 		return ""
 	}
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	parts := []string{modelName}
+	sep := muted.Render(" · ")
+
+	parts := []string{muted.Render(modelName)}
 	if statusMessage != "" {
-		parts = append(parts, statusMessage)
+		parts = append(parts, muted.Render(statusMessage))
 	}
 
-	if inputTokens == 0 {
-		if !conversationCost.IsZero() {
-			parts = append(parts, kit.FormatMoney(conversationCost))
-		}
-		return muted.Render(strings.Join(parts, " · "))
-	}
-
-	if inputLimit > 0 {
+	if inputTokens > 0 && inputLimit > 0 {
 		pct := float64(inputTokens) / float64(inputLimit) * 100
 		ctxSegment := fmt.Sprintf("%s/%s (%.0f%%)", kit.FormatTokenCount(inputTokens), kit.FormatTokenCount(inputLimit), pct)
 		if hint := compactStatusHint(pct); hint != "" {
 			ctxSegment += " · " + hint
 		}
-		parts = append(parts, ctxSegment)
+		// Tint the context budget as it nears auto-compact so it's glanceable;
+		// below the threshold it stays muted like the rest of the line.
+		ctxStyle := muted
+		switch {
+		case pct >= autoCompactThreshold:
+			ctxStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		case pct >= 85:
+			ctxStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
+		}
+		parts = append(parts, ctxStyle.Render(ctxSegment))
 	}
+
 	if !conversationCost.IsZero() {
-		parts = append(parts, kit.FormatMoney(conversationCost))
+		parts = append(parts, muted.Render(kit.FormatMoney(conversationCost)))
 	}
-	return muted.Render(strings.Join(parts, " · "))
+
+	return strings.Join(parts, sep)
 }
 
 func RenderTurnUsageSummary(inputTokens, outputTokens, width int) string {
@@ -208,8 +214,10 @@ var (
 			Foreground(kit.CurrentTheme.AI).
 			Bold(true)
 
+	// Footer rules are a faint hairline so they frame the input without
+	// drawing ink — softer than the bluish Separator used between messages.
 	SeparatorStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Separator)
+			Foreground(kit.AdaptiveColor{Dark: "#3F3F46", Light: "#E4E4E7"})
 
 	ThinkingStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Muted)
@@ -218,8 +226,11 @@ var (
 			Foreground(kit.CurrentTheme.TextDim).
 			PaddingLeft(2)
 
+	// Tool plumbing (the "● Tool(args)" call line and its "⎿ … → size"
+	// result) renders one step dimmer than the assistant's prose, so the eye
+	// lands on the answer and tool activity recedes into a supporting layer.
 	toolCallStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Text)
+			Foreground(kit.CurrentTheme.TextDim)
 
 	toolResultStyle = toolCallStyle
 
@@ -343,7 +354,9 @@ func RenderAssistantMessage(params AssistantParams) string {
 				lines = append(lines, ThinkingStyle.Render(line))
 			}
 		}
-		thinkingIcon := ThinkingStyle.Render("✦ ")
+		// The ✦ reasoning glyph carries the same Accent tint as the status-bar
+		// thinking indicator; the wrapped text stays muted.
+		thinkingIcon := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Render("✦ ")
 		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, thinkingIcon, strings.Join(lines, "\n")) + "\n\n")
 	}
 
@@ -624,9 +637,10 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 		}
 
 		if isSelected {
-			badge := queueSelectedBadgeStyle.Render(fmt.Sprintf("▸ %d.", i+1))
+			bar := kit.FocusBarStyle().Render(kit.FocusBar)
+			num := queueSelectedBadgeStyle.Render(fmt.Sprintf("%d.", i+1))
 			preview := queueSelectedContentStyle.Render(content)
-			fmt.Fprintf(&sb, " %s %s\n", badge, preview)
+			fmt.Fprintf(&sb, " %s %s %s\n", bar, num, preview)
 		} else {
 			badge := queueBadgeStyle.Render(fmt.Sprintf("  %d.", i+1))
 			preview := queueContentStyle.Render(content)

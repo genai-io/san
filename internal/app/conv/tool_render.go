@@ -119,8 +119,15 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	sizeInfo := formatToolResultSize(toolName, data.Content)
 	icon := toolResultIcon(data.IsError)
 
+	// Errors break out of the dim plumbing tone into the error color so a
+	// failed call is visible at a glance; successes stay muted.
+	summaryStyle := toolResultStyle
+	if data.IsError {
+		summaryStyle = errorStyle
+	}
+
 	var sb strings.Builder
-	summary := toolResultStyle.Render(fmt.Sprintf("  %s  %s → %s", icon, toolName, sizeInfo))
+	summary := summaryStyle.Render(fmt.Sprintf("  %s  %s → %s", icon, toolName, sizeInfo))
 	sb.WriteString(summary + "\n")
 
 	if data.Expanded || data.IsError {
