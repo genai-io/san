@@ -1,4 +1,4 @@
-# Feature 21: Loop Scheduling Command
+# Loop Scheduling Command
 
 ## Overview
 

@@ -1,4 +1,4 @@
-# Feature 22: Explore Mode
+# Explore Mode
 
 ## Overview
 
@@ -36,7 +36,7 @@ This feature exists to document the contract that was previously split across th
 
 ## Relationship To Other Features
 
-- [Feature 10](./agents.md) defines the generic agent system and custom agent format.
+- [Writing a Subagent](writing-a-subagent.md) covers the generic agent system and custom agent format.
 - `explore` is the investigative permission boundary used by subagents.
 
 ## Automated Tests

@@ -1,4 +1,4 @@
-# Feature 20: Configuration System
+# Configuration System
 
 ## Overview
 

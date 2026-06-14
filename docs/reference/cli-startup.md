@@ -1,4 +1,4 @@
-# Feature 1: CLI Entry & Startup Modes
+# CLI Entry & Startup Modes
 
 ## Overview
 
