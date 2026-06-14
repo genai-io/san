@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -19,9 +19,9 @@ func (t *TrackerListTool) Icon() string        { return "📋" }
 
 func (t *TrackerListTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	// Reload from disk to pick up changes from other processes
-	tracker.Default().ReloadFromDisk()
+	todo.Default().ReloadFromDisk()
 
-	tasks := tracker.Default().List()
+	tasks := todo.Default().List()
 
 	if len(tasks) == 0 {
 		return toolresult.ToolResult{
@@ -41,7 +41,7 @@ func (t *TrackerListTool) Execute(ctx context.Context, params map[string]any, cw
 	var sb strings.Builder
 	completed := 0
 	for _, task := range tasks {
-		if task.Status == tracker.StatusCompleted {
+		if task.Status == todo.StatusCompleted {
 			completed++
 		}
 		line := fmt.Sprintf("#%s [%s]", task.ID, task.Status)
@@ -65,14 +65,14 @@ func (t *TrackerListTool) Execute(ctx context.Context, params map[string]any, cw
 }
 
 // TaskIcon returns the status icon for a task.
-func TaskIcon(task *tracker.Task) string {
+func TaskIcon(task *todo.Task) string {
 	switch task.Status {
-	case tracker.StatusCompleted:
+	case todo.StatusCompleted:
 		return "✓"
-	case tracker.StatusInProgress:
+	case todo.StatusInProgress:
 		return "⠋"
 	default:
-		if tracker.Default().IsBlocked(task.ID) {
+		if todo.Default().IsBlocked(task.ID) {
 			return "▸"
 		}
 		return "☐"

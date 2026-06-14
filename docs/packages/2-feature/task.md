@@ -77,6 +77,6 @@ internal/task/hooks_test.go          — lifecycle hook emission.
 
 ## See Also
 
-- Code: `internal/task/`, `internal/task/tracker/`
+- Code: `internal/task/`, `internal/todo/`
 - Spawning surface: [`packages/tool.md`](tool.md) (Bash/Agent tools), [`packages/subagent.md`](subagent.md)
 - Layer: `feature`

@@ -5,17 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
-func useTestTrackerStore(t *testing.T) *tracker.Store {
+func useTestTrackerStore(t *testing.T) *todo.Store {
 	t.Helper()
-	store := tracker.NewStore()
+	store := todo.NewStore()
 	if err := store.SetStorageDir(t.TempDir()); err != nil {
 		t.Fatalf("SetStorageDir(): %v", err)
 	}
-	tracker.SetDefault(store)
-	t.Cleanup(func() { tracker.SetDefault(store) })
+	todo.SetDefault(store)
+	t.Cleanup(func() { todo.SetDefault(store) })
 	return store
 }
 
@@ -24,7 +24,7 @@ func TestTrackerGetTool_ShowsOwnerAndOpenBlockers(t *testing.T) {
 
 	blocker := store.Create("Blocker", "finish first", "blocking", nil)
 	blocked := store.Create("Blocked", "waits on blocker", "waiting", nil)
-	if err := store.Update(blocked.ID, tracker.WithOwner("Explore"), tracker.WithAddBlockedBy([]string{blocker.ID})); err != nil {
+	if err := store.Update(blocked.ID, todo.WithOwner("Explore"), todo.WithAddBlockedBy([]string{blocker.ID})); err != nil {
 		t.Fatalf("Update(blocked): %v", err)
 	}
 
@@ -51,7 +51,7 @@ func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 
 	result := (&TrackerUpdateTool{}).Execute(context.Background(), map[string]any{
 		"taskId":       task.ID,
-		"status":       tracker.StatusInProgress,
+		"status":       todo.StatusInProgress,
 		"owner":        "Plan",
 		"description":  "write more tests",
 		"addBlockedBy": `["` + blocker.ID + `"]`,
@@ -60,7 +60,7 @@ func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
-	if result.Metadata.Subtitle != "#"+task.ID+" "+tracker.StatusInProgress {
+	if result.Metadata.Subtitle != "#"+task.ID+" "+todo.StatusInProgress {
 		t.Fatalf("unexpected subtitle %q", result.Metadata.Subtitle)
 	}
 
@@ -68,8 +68,8 @@ func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 	if !ok {
 		t.Fatal("expected updated task to exist")
 	}
-	if updated.Status != tracker.StatusInProgress {
-		t.Fatalf("status = %q, want %q", updated.Status, tracker.StatusInProgress)
+	if updated.Status != todo.StatusInProgress {
+		t.Fatalf("status = %q, want %q", updated.Status, todo.StatusInProgress)
 	}
 	if updated.Owner != "Plan" {
 		t.Fatalf("owner = %q, want %q", updated.Owner, "Plan")

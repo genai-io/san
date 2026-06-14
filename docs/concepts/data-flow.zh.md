@@ -160,7 +160,7 @@ routeKeypress → handleTextareaShortcut
    SubmitToAgent
         ├─ provider 连上了吗？     是
         ├─ ensureAgentSession()    必要时启动 agent goroutine
-        ├─ sendToAgent ───────────► agent.Task 的 inbox channel
+        ├─ sendToAgent ───────────► agent.Session 的 inbox channel
         │                           （Go channel，非阻塞推入）
         │
         └─ 返回 ContinueOutbox cmd  （见 Path D）

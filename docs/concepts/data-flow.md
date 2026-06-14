@@ -168,7 +168,7 @@ routeKeypress → handleTextareaShortcut
    SubmitToAgent
         ├─ provider connected?    yes
         ├─ ensureAgentSession()    starts agent goroutine if needed
-        ├─ sendToAgent ───────────► agent.Task inbox channel
+        ├─ sendToAgent ───────────► agent.Session inbox channel
         │                           (a Go channel; non-blocking push)
         │
         └─ returns ContinueOutbox cmd  (see Path D)

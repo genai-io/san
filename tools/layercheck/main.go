@@ -55,6 +55,7 @@ var layerOf = map[string]string{
 	"internal/skill":     "feature",
 	"internal/subagent":  "feature",
 	"internal/task":      "feature",
+	"internal/todo":      "feature",
 	"internal/tool":      "feature",
 	"internal/worktree":  "feature",
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/skill"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -112,7 +112,7 @@ func formatTaskToolProgress(toolName string, params map[string]any) string {
 			return ""
 		}
 		subject := ""
-		if t, ok := tracker.Default().Get(taskID); ok {
+		if t, ok := todo.Default().Get(taskID); ok {
 			subject = t.Subject
 		}
 		if subject != "" {

@@ -19,7 +19,7 @@ import (
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -36,7 +36,7 @@ type services struct {
 	Subagent *subagent.Registry
 	Command  *command.Registry
 	Task     *task.Manager
-	Tracker  tracker.Service
+	Tracker  todo.Service
 	Cron     *cron.Scheduler
 	MCP      *mcp.Registry
 	Plugin   *plugin.Registry
@@ -88,7 +88,7 @@ func newServices() services {
 		Subagent:  subagent.Default(),
 		Command:   command.Default(),
 		Task:      task.Default(),
-		Tracker:   tracker.Default(),
+		Tracker:   todo.Default(),
 		Cron:      cron.Default(),
 		MCP:       mcp.DefaultRegistry(),
 		Plugin:    plugin.Default(),

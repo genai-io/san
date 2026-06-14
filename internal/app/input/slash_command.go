@@ -23,7 +23,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -54,7 +54,7 @@ type SlashCommandEnv struct {
 	Skill   *skill.Registry
 	Plugin  *plugin.Registry
 	MCP     *mcp.Registry
-	Tracker tracker.Service
+	Tracker todo.Service
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
 	Command *command.Registry

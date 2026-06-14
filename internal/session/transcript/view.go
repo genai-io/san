@@ -3,7 +3,7 @@ package transcript
 import (
 	"time"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 type MetadataView struct {
@@ -53,10 +53,10 @@ func MetadataFromListItem(item ListItem, cwd string) MetadataView {
 	}
 }
 
-func TrackerTasksFromView(tasks []TrackerTaskView) []tracker.Task {
-	out := make([]tracker.Task, 0, len(tasks))
+func TrackerTasksFromView(tasks []TrackerTaskView) []todo.Task {
+	out := make([]todo.Task, 0, len(tasks))
 	for _, task := range tasks {
-		out = append(out, tracker.Task{
+		out = append(out, todo.Task{
 			ID:              task.ID,
 			Subject:         task.Subject,
 			Description:     task.Description,
@@ -73,7 +73,7 @@ func TrackerTasksFromView(tasks []TrackerTaskView) []tracker.Task {
 	return out
 }
 
-func TrackerTaskViewsFromTasks(tasks []tracker.Task) []TrackerTaskView {
+func TrackerTaskViewsFromTasks(tasks []todo.Task) []TrackerTaskView {
 	out := make([]TrackerTaskView, 0, len(tasks))
 	for _, task := range tasks {
 		out = append(out, TrackerTaskView{

@@ -10,7 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -58,7 +58,7 @@ func (m *model) trackAgentLaunch(toolName string, resp map[string]any) {
 	if !ok {
 		return
 	}
-	launch := tracker.BackgroundTaskLaunch{
+	launch := todo.BackgroundTaskLaunch{
 		TaskID:      kit.MapString(bg, "taskId"),
 		AgentName:   kit.MapString(bg, "agentName"),
 		AgentType:   kit.MapString(bg, "agentType"),
@@ -67,7 +67,7 @@ func (m *model) trackAgentLaunch(toolName string, resp map[string]any) {
 	if launch.TaskID == "" {
 		return
 	}
-	tracker.TrackWorker(m.services.Tracker, launch)
+	todo.TrackWorker(m.services.Tracker, launch)
 }
 
 func (m *model) persistOverflow(result *core.ToolResult) {

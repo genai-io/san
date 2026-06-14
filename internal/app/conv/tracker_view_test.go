@@ -4,38 +4,38 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
-	tracker.Initialize(tracker.Options{})
-	t.Cleanup(func() { tracker.Default().Reset() })
+	todo.Initialize(todo.Options{})
+	t.Cleanup(func() { todo.Default().Reset() })
 
-	inProgress := tracker.Default().Create("Fix auth module", "", "", map[string]any{
+	inProgress := todo.Default().Create("Fix auth module", "", "", map[string]any{
 		"background_task_id":       "bg-1",
 		"background_status_detail": "running",
 	})
-	_ = tracker.Default().Update(inProgress.ID, tracker.WithStatus(tracker.StatusInProgress))
+	_ = todo.Default().Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
 
-	failed := tracker.Default().Create("Fix payment module", "", "", map[string]any{
+	failed := todo.Default().Create("Fix payment module", "", "", map[string]any{
 		"background_task_id":       "bg-2",
 		"background_status_detail": "failed",
 	})
-	_ = tracker.Default().Update(failed.ID, tracker.WithStatus(tracker.StatusCompleted))
+	_ = todo.Default().Update(failed.ID, todo.WithStatus(todo.StatusCompleted))
 
-	completed := tracker.Default().Create("Ship feature", "", "", nil)
-	_ = tracker.Default().Update(completed.ID, tracker.WithStatus(tracker.StatusCompleted))
+	completed := todo.Default().Create("Ship feature", "", "", nil)
+	_ = todo.Default().Update(completed.ID, todo.WithStatus(todo.StatusCompleted))
 
-	pending := tracker.Default().Create("Write tests", "", "", nil)
-	_ = tracker.Default().Update(pending.ID, tracker.WithStatus(tracker.StatusPending))
+	pending := todo.Default().Create("Write tests", "", "", nil)
+	_ = todo.Default().Update(pending.ID, todo.WithStatus(todo.StatusPending))
 
 	view := RenderTrackerList(TrackerListParams{
-		Tasks:        tracker.Default().List(),
+		Tasks:        todo.Default().List(),
 		AllDone:      false,
 		StreamActive: true,
 		Width:        120,
 		SpinnerView:  "•",
-		Blockers:     tracker.Default().OpenBlockers,
+		Blockers:     todo.Default().OpenBlockers,
 	})
 	plain := stripANSI(view)
 
@@ -59,7 +59,7 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 }
 
 func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
-	task := &tracker.Task{ID: "1", Subject: "Fix auth module", Status: tracker.StatusInProgress}
+	task := &todo.Task{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
 	// The pulse is driven by the shared Blink tick, not the wall clock, so a
 	// full cadence is deterministic: advancing Blink across one period must show

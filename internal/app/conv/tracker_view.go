@@ -8,7 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 const maxVisibleTasks = 8
@@ -21,7 +21,7 @@ const trackerPulseTicks = 3
 
 // TrackerListParams holds the parameters for rendering a tracker list.
 type TrackerListParams struct {
-	Tasks        []*tracker.Task
+	Tasks        []*todo.Task
 	AllDone      bool
 	StreamActive bool
 	Width        int
@@ -58,11 +58,11 @@ func RenderTrackerList(params TrackerListParams) string {
 
 	idWidth := taskIDWidth(params.Tasks)
 
-	sorted := make([]*tracker.Task, 0, len(params.Tasks))
-	var active []*tracker.Task
-	var rest []*tracker.Task
+	sorted := make([]*todo.Task, 0, len(params.Tasks))
+	var active []*todo.Task
+	var rest []*todo.Task
 	for _, t := range params.Tasks {
-		if t.Status == tracker.StatusInProgress {
+		if t.Status == todo.StatusInProgress {
 			active = append(active, t)
 		} else {
 			rest = append(rest, t)
@@ -73,7 +73,7 @@ func RenderTrackerList(params TrackerListParams) string {
 
 	rendered := 0
 	for _, t := range sorted {
-		if rendered >= maxVisibleTasks && t.Status != tracker.StatusInProgress {
+		if rendered >= maxVisibleTasks && t.Status != todo.StatusInProgress {
 			continue
 		}
 		sb.WriteString(renderTask(t, params.Width, idWidth, params.Blockers, params.Blink))
@@ -83,7 +83,7 @@ func RenderTrackerList(params TrackerListParams) string {
 	return sb.String()
 }
 
-func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []string, blink int) string {
+func renderTask(t *todo.Task, width, idWidth int, blockers func(string) []string, blink int) string {
 	indent := "  "
 	idTag := fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
 	maxTextLen := max(width-len(indent)-idWidth-8, 12)
@@ -92,14 +92,14 @@ func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []str
 	statusDetail := kit.MapString(t.Metadata, "background_status_detail")
 
 	switch t.Status {
-	case tracker.StatusCompleted:
+	case todo.StatusCompleted:
 		if statusDetail == "failed" || statusDetail == "killed" {
 			failedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
 			return renderTaskLine(indent, failedStyle.Render("!"), idTag, subject, mutedStyle.Render("["+statusDetail+"]"))
 		}
 		return renderTaskLine(indent, trackerCompletedStyle.Render("●"), idTag, subject, "")
 
-	case tracker.StatusInProgress:
+	case todo.StatusInProgress:
 		displayText := subject
 		if t.ActiveForm != "" {
 			displayText = kit.TruncateText(t.ActiveForm, maxTextLen)
@@ -150,16 +150,16 @@ type taskStatusCounts struct {
 	failed int
 }
 
-func countTaskStatuses(tasks []*tracker.Task) taskStatusCounts {
+func countTaskStatuses(tasks []*todo.Task) taskStatusCounts {
 	var counts taskStatusCounts
 	for _, t := range tasks {
 		statusDetail := kit.MapString(t.Metadata, "background_status_detail")
 		switch {
-		case t.Status == tracker.StatusCompleted && (statusDetail == "failed" || statusDetail == "killed"):
+		case t.Status == todo.StatusCompleted && (statusDetail == "failed" || statusDetail == "killed"):
 			counts.failed++
-		case t.Status == tracker.StatusCompleted:
+		case t.Status == todo.StatusCompleted:
 			counts.done++
-		case t.Status == tracker.StatusInProgress:
+		case t.Status == todo.StatusInProgress:
 			counts.active++
 		default:
 			counts.todo++
@@ -168,7 +168,7 @@ func countTaskStatuses(tasks []*tracker.Task) taskStatusCounts {
 	return counts
 }
 
-func taskIDWidth(tasks []*tracker.Task) int {
+func taskIDWidth(tasks []*todo.Task) int {
 	width := 2
 	for _, t := range tasks {
 		if n := len("#" + t.ID); n > width {

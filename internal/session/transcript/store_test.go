@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 )
 
 func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 13, 0, 0, 0, time.UTC)
-	task := tracker.Task{
+	task := todo.Task{
 		ID:              "1",
 		Subject:         "Refactor",
-		Status:          tracker.StatusInProgress,
+		Status:          todo.StatusInProgress,
 		CreatedAt:       taskTime,
 		UpdatedAt:       taskTime,
 		StatusChangedAt: taskTime,
@@ -36,8 +36,8 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 		}
 	}
 
-	taskPatch := PatchTasks([]tracker.Task{task})
-	var decodedTasks []tracker.Task
+	taskPatch := PatchTasks([]todo.Task{task})
+	var decodedTasks []todo.Task
 	if err := json.Unmarshal(taskPatch.Value, &decodedTasks); err != nil {
 		t.Fatalf("Unmarshal(task patch): %v", err)
 	}

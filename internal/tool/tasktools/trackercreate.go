@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/genai-io/san/internal/task/tracker"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -30,11 +30,11 @@ func (t *TrackerCreateTool) Execute(ctx context.Context, params map[string]any, 
 	activeForm := tool.GetString(params, "activeForm")
 	metadata, _ := params["metadata"].(map[string]any)
 
-	task := tracker.Default().Create(subject, description, activeForm, metadata)
+	task := todo.Default().Create(subject, description, activeForm, metadata)
 
 	// Set dependencies if provided
 	if ids := parseStringSlice(params["addBlockedBy"]); len(ids) > 0 {
-		tracker.Default().Update(task.ID, tracker.WithAddBlockedBy(ids))
+		todo.Default().Update(task.ID, todo.WithAddBlockedBy(ids))
 	}
 
 	return toolresult.ToolResult{
