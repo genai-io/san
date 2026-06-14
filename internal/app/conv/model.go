@@ -4,15 +4,12 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
 type OutputModel struct {
-	Spinner spinner.Model
-	// Blink counts real spinner frames (~one per 360ms; see app.Update), not
-	// animation cycles. Liveness animations divide it by their own cadence —
-	// agentBlinkTicks, trackerPulseTicks — to derive their phase.
-	Blink        int
+	Spinner      FrameClock
 	MDRenderer   *MDRenderer
 	TaskProgress map[int][]string
 	ProgressHub  *ProgressHub
@@ -41,7 +38,40 @@ func (m *OutputModel) ResizeMDRenderer(width int) {
 	m.MDRenderer = NewMDRenderer(width)
 }
 
-func newSpinner() spinner.Model {
+// FrameClock wraps the animation spinner together with a monotonic frame
+// counter. The spinner's own frame index is unexported and wraps at the frame
+// count, so liveness animations can't read it; Frame advances once per real
+// frame the spinner consumes, and animations divide it by their own cadence —
+// agentBlinkTicks, trackerPulseTicks — to derive their phase.
+type FrameClock struct {
+	spinner spinner.Model
+	frame   int
+}
+
+// Update advances the spinner and, on a real frame tick, the frame counter.
+// Several code paths schedule Tick, so duplicate tick loops deliver extra
+// TickMsgs; the spinner rejects those with a nil cmd (only a frame-advancing
+// tick returns one). Counting just the frames it actually consumed keeps the
+// clock at the true ~360ms frame rate instead of inflating it.
+func (c FrameClock) Update(msg tea.Msg) (FrameClock, tea.Cmd) {
+	var cmd tea.Cmd
+	c.spinner, cmd = c.spinner.Update(msg)
+	if cmd != nil {
+		c.frame++
+	}
+	return c, cmd
+}
+
+// View renders the current spinner frame.
+func (c FrameClock) View() string { return c.spinner.View() }
+
+// Tick advances the spinner one frame; use the method value (c.Tick) as a tea.Cmd.
+func (c FrameClock) Tick() tea.Msg { return c.spinner.Tick() }
+
+// Frame is the monotonic real-frame count that drives liveness animations.
+func (c FrameClock) Frame() int { return c.frame }
+
+func newSpinner() FrameClock {
 	sp := spinner.New()
 	// 4-pt → 6-pt → 8-pt → 6-pt stars read as a rotating sparkle while
 	// the model is thinking / streaming.
@@ -50,5 +80,5 @@ func newSpinner() spinner.Model {
 		FPS:    360 * time.Millisecond,
 	}
 	sp.Style = lipgloss.NewStyle()
-	return sp
+	return FrameClock{spinner: sp}
 }

@@ -224,7 +224,7 @@ func (m model) renderTrackerList() string {
 		Width:        m.env.Width,
 		SpinnerView:  m.conv.Spinner.View(),
 		Blockers:     m.services.Tracker.OpenBlockers,
-		Blink:        m.conv.Blink,
+		Blink:        m.conv.Spinner.Frame(),
 	})
 }
 
@@ -289,7 +289,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Per-tick UI state
 		SpinnerView:  m.conv.Spinner.View(),
-		Blink:        m.conv.Blink,
+		Blink:        m.conv.Spinner.Frame(),
 		ModelName:    m.env.GetModelDisplayName(),
 		InputTokens:  m.env.InputTokens,
 		OutputTokens: m.env.OutputTokens,

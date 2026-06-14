@@ -27,7 +27,7 @@ type TrackerListParams struct {
 	Width        int
 	SpinnerView  string
 	Blockers     func(taskID string) []string
-	// Blink is the shared frame-tick counter (see OutputModel.Blink) that
+	// Blink is the shared frame-tick counter (see FrameClock.Frame) that
 	// drives the in-progress pulse via trackerPulseTicks.
 	Blink int
 }
@@ -104,9 +104,9 @@ func renderTask(t *tracker.Task, width, idWidth int, blockers func(string) []str
 		if t.ActiveForm != "" {
 			displayText = kit.TruncateText(t.ActiveForm, maxTextLen)
 		}
-		// Pulse on the shared frame tick (now a true ~360ms clock; see Blink in
-		// app.Update) rather than the wall clock, which only sampled on redraws
-		// and so flickered irregularly.
+		// Pulse on the shared frame tick (a true ~360ms clock; see FrameClock)
+		// rather than the wall clock, which only sampled on redraws and so
+		// flickered irregularly.
 		activeIcon := "●"
 		activeStyle := trackerInProgressStyle
 		if (blink/trackerPulseTicks)%2 == 1 {

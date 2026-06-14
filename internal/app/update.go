@@ -87,15 +87,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.needsSpinner() {
 			var cmd tea.Cmd
 			m.conv.Spinner, cmd = m.conv.Spinner.Update(msg)
-			// Advance Blink only on a real frame tick. Several code paths each
-			// schedule Spinner.Tick, so duplicate tick loops deliver extra
-			// TickMsgs; the spinner rejects those with a nil cmd (only a
-			// frame-advancing tick returns one). Counting the rejects inflated
-			// Blink well past the 360ms frame rate and made the ●/◌ pulse and the
-			// agent ●/○ blink flicker too fast.
-			if cmd != nil {
-				m.conv.Blink++
-			}
 			return m, cmd
 		}
 		return m, nil
