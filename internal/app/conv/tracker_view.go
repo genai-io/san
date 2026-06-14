@@ -27,9 +27,8 @@ type TrackerListParams struct {
 	Width        int
 	SpinnerView  string
 	Blockers     func(taskID string) []string
-	// Blink is the shared tick counter that drives every liveness animation,
-	// so the in-progress pulse advances on the same cadence as the spinner and
-	// agent icons instead of jittering off the wall clock.
+	// Blink is the shared frame-tick counter (see OutputModel.Blink) that
+	// drives the in-progress pulse via trackerPulseTicks.
 	Blink int
 }
 
