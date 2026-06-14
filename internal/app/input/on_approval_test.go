@@ -3,7 +3,7 @@ package input
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -31,7 +31,7 @@ func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		model.active = true
-		_, resp := model.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{tc.key}})
+		_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
 		if resp == nil {
 			t.Fatalf("digit %q produced no response", string(tc.key))
 		}
@@ -54,7 +54,7 @@ func TestApprovalModalArrowBoundsFollowOptionCount(t *testing.T) {
 
 	// Walk down past the end — should clamp at len-1, not crash, not exceed.
 	for i := 0; i < len(options)+3; i++ {
-		model.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+		model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	if model.selectedIdx != len(options)-1 {
 		t.Errorf("after %d downs: selectedIdx=%d, want %d (clamp at last)",
@@ -63,7 +63,7 @@ func TestApprovalModalArrowBoundsFollowOptionCount(t *testing.T) {
 
 	// Walk up past the start — should clamp at 0.
 	for i := 0; i < len(options)+3; i++ {
-		model.HandleKeypress(tea.KeyMsg{Type: tea.KeyUp})
+		model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
 	}
 	if model.selectedIdx != 0 {
 		t.Errorf("after walking up: selectedIdx=%d, want 0", model.selectedIdx)
@@ -77,7 +77,7 @@ func TestApprovalModalShiftTabFindsAllowAllByFlag(t *testing.T) {
 		active:  true,
 		request: &perm.PermissionRequest{ToolName: "Skill"},
 	}
-	_, resp := model.HandleKeypress(tea.KeyMsg{Type: tea.KeyShiftTab})
+	_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if resp == nil {
 		t.Fatal("ShiftTab produced no response")
 	}
@@ -94,7 +94,7 @@ func TestApprovalModalEscFindsRejectByFlag(t *testing.T) {
 		active:  true,
 		request: &perm.PermissionRequest{ToolName: "Bash"},
 	}
-	_, resp := model.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	_, resp := model.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if resp == nil {
 		t.Fatal("Esc produced no response")
 	}

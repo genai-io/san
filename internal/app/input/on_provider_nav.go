@@ -2,7 +2,7 @@
 package input
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 )
@@ -160,7 +160,7 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		s.trimModelSearch()
 		return nil
 
-	case " ":
+	case "space":
 		if s.activeTab == providerTabModels && !s.searchFocused {
 			return s.toggleModel()
 		}
@@ -174,11 +174,10 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleCredentialRemove()
 
 	default:
-		// Typed text capture (KeyRunes -> v2 msg.Text).
-		if key.Type == tea.KeyRunes {
-			// Vim navigation takes priority while the model search is empty
-			// (mirrors every other selector); otherwise the rune is search
-			// input. l/h switch tabs since this selector is tabbed.
+		// Typed text capture. Vim navigation takes priority while the model
+		// search is empty (mirrors every other selector); otherwise the
+		// printable rune is search input. l/h switch tabs since this is tabbed.
+		if text := key.Key().Text; text != "" {
 			if s.searchQuery == "" {
 				switch key.String() {
 				case "j":
@@ -197,7 +196,7 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 					return nil
 				}
 			}
-			s.appendModelSearch(string(key.Runes))
+			s.appendModelSearch(text)
 			return nil
 		}
 	}

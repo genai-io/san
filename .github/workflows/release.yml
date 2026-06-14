@@ -19,7 +19,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.25.6'
+          go-version: '1.25.8'
 
       - name: Install format tools
         run: make install-format-tools

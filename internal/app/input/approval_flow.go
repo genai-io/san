@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	gozap "go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"

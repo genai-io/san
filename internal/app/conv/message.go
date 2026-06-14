@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
@@ -134,22 +134,22 @@ func compactStatusHint(percent float64) string {
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept or bypass mode.
 func RenderOperationModeIndicator(mode setting.OperationMode) string {
 	var icon, label string
-	var color lipgloss.TerminalColor
+	var clr kit.AdaptiveColor
 
 	switch mode {
 	case setting.ModeAutoAccept:
 		icon = "⏵⏵"
 		label = " accept edits on"
-		color = kit.CurrentTheme.Success
+		clr = kit.CurrentTheme.Success
 	case setting.ModeBypassPermissions:
 		icon = "⏵⏵"
 		label = " bypass permissions on"
-		color = kit.CurrentTheme.Error
+		clr = kit.CurrentTheme.Error
 	default:
 		return ""
 	}
 
-	style := lipgloss.NewStyle().Foreground(color)
+	style := lipgloss.NewStyle().Foreground(clr)
 	hint := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (shift+tab to cycle)")
 	return "  " + style.Render(icon+label) + hint
 }

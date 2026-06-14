@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
 )
@@ -42,7 +42,7 @@ func TestCtrlTCyclesThinkingEffort(t *testing.T) {
 	}
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "test-model", Provider: llm.OpenAI}
 
-	cmd, handled := m.handleTextareaShortcut(tea.KeyMsg{Type: tea.KeyCtrlT})
+	cmd, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if !handled {
 		t.Fatal("Ctrl+T was not handled")
 	}
@@ -63,11 +63,7 @@ func TestCtrlTCyclesThinkingEffort(t *testing.T) {
 func TestAltTTogglesTaskPanel(t *testing.T) {
 	m := &model{}
 
-	_, handled := m.handleTextareaShortcut(tea.KeyMsg{
-		Type:  tea.KeyRunes,
-		Runes: []rune{'t'},
-		Alt:   true,
-	})
+	_, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 't', Mod: tea.ModAlt})
 	if !handled {
 		t.Fatal("Alt+T was not handled")
 	}

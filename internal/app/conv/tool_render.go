@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
@@ -900,7 +900,7 @@ func agentStyle(color string) lipgloss.Style {
 	return toolCallStyle.Foreground(agentColor(color))
 }
 
-func agentColor(color string) lipgloss.AdaptiveColor {
+func agentColor(color string) kit.AdaptiveColor {
 	switch strings.ToLower(strings.TrimSpace(color)) {
 	case "blue":
 		return kit.CurrentTheme.Primary
@@ -916,7 +916,7 @@ func agentColor(color string) lipgloss.AdaptiveColor {
 		return kit.CurrentTheme.Success
 	default:
 		if strings.HasPrefix(color, "#") {
-			return lipgloss.AdaptiveColor{Dark: color, Light: color}
+			return kit.AdaptiveColor{Dark: color, Light: color}
 		}
 		return kit.CurrentTheme.Success
 	}

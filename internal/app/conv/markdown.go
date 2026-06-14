@@ -9,11 +9,11 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/ansi"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"charm.land/glamour/v2"
+	"charm.land/glamour/v2/ansi"
+	"charm.land/glamour/v2/styles"
+	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 
 	"github.com/genai-io/san/internal/app/kit"
 )
@@ -57,7 +57,11 @@ func buildGlamourRenderer(width int, dark bool) *glamour.TermRenderer {
 		glamour.WithChromaFormatter("terminal256"),
 	)
 	if err != nil {
-		r, _ = glamour.NewTermRenderer(glamour.WithAutoStyle())
+		fallback := styles.DarkStyle
+		if !dark {
+			fallback = styles.LightStyle
+		}
+		r, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(fallback))
 	}
 	return r
 }
@@ -326,7 +330,7 @@ func renderInlineMarkdown(text string) string {
 
 // adaptiveColorHex resolves an AdaptiveColor to its hex string based on the
 // current terminal background. Used for glamour StyleConfig which requires *string.
-func adaptiveColorHex(c lipgloss.AdaptiveColor) string {
+func adaptiveColorHex(c kit.AdaptiveColor) string {
 	if kit.IsDarkBackground() {
 		return c.Dark
 	}

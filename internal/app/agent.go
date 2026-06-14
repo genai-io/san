@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"

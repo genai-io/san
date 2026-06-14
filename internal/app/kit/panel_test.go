@@ -3,6 +3,8 @@ package kit
 import (
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // TestRenderPanelTabsCount confirms a tab's count is rendered only when it is
@@ -13,7 +15,7 @@ func TestRenderPanelTabsCount(t *testing.T) {
 		{Name: "withcount", Count: 7, Show: true},
 		{Name: "nocount", Count: 0, Show: true},
 	}
-	out := RenderPanelTabs(tabs, 0)
+	out := ansi.Strip(RenderPanelTabs(tabs, 0))
 
 	if !strings.Contains(out, "withcount 7") {
 		t.Fatalf("a tab with a positive count should render it, got:\n%q", out)

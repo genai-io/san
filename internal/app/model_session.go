@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/confdir"

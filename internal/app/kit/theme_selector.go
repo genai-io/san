@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type themeSelectedMsg struct {
@@ -47,7 +47,7 @@ func newThemeSelector() themeSelectorModel { return themeSelectorModel{} }
 func (m themeSelectorModel) Init() tea.Cmd { return nil }
 
 func (m themeSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := msg.(tea.KeyMsg)
+	key, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
 	}
@@ -61,7 +61,7 @@ func (m themeSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(themeChoices)-1 {
 			m.cursor++
 		}
-	case "enter", " ":
+	case "enter", "space":
 		return m, func() tea.Msg { return themeSelectedMsg{Theme: themeChoices[m.cursor].value} }
 	case "ctrl+c", "q":
 		return m, tea.Quit
@@ -69,7 +69,7 @@ func (m themeSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m themeSelectorModel) View() string {
+func (m themeSelectorModel) View() tea.View {
 	var s strings.Builder
 	fmt.Fprintf(&s, "%s\n\n", themeTitleStyle().Render("Choose a color theme"))
 
@@ -84,7 +84,7 @@ func (m themeSelectorModel) View() string {
 	}
 
 	s.WriteString(themeHintStyle().Render("\n↑/↓ to move · enter to confirm · q to quit"))
-	return s.String()
+	return tea.NewView(s.String())
 }
 
 type themeCapture struct {
@@ -104,7 +104,7 @@ func (c themeCapture) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return c, cmd
 }
 
-func (c themeCapture) View() string { return c.inner.View() }
+func (c themeCapture) View() tea.View { return c.inner.View() }
 
 // RunThemeSelector opens the theme selector and returns the chosen theme ("light", "dark", or "auto").
 // Returns an empty string if the user quit without selecting.

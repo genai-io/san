@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestRenderPreview prints the panel without ANSI codes so the layout
@@ -16,9 +16,9 @@ func TestRenderPreview(t *testing.T) {
 	c.Enter(80, 40)
 	// Toggle Memory's enable so the preview shows the heavy rail (┃) for
 	// the enabled section next to the dashed rail (╎) for the disabled one.
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeySpace})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeySpace})
 	for range 3 {
-		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+		c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
 	}
 	out := c.Render()
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)

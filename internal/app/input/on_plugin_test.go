@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	coreplugin "github.com/genai-io/san/internal/plugin"
@@ -75,7 +75,7 @@ func TestHandleListEscClearsSearchBeforeDismiss(t *testing.T) {
 	m.searchQuery = "alp"
 	m.filteredItems = []any{m.installedFlatList[0]}
 
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	if cmd != nil {
 		t.Fatal("Esc with active search should only clear search")
@@ -95,7 +95,7 @@ func TestHandleListEscDismissesSelector(t *testing.T) {
 	m := NewPluginSelector(coreplugin.NewRegistry())
 	m.active = true
 
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if cmd == nil {
 		t.Fatal("Esc should return dismiss command when no search is active")
 	}

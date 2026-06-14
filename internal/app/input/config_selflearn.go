@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/setting"
@@ -71,7 +71,7 @@ func (p *selfLearnPanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		} else {
 			p.scope = "user"
 		}
-	case " ":
+	case "space":
 		if r := rows[p.cursor]; r.kind == rowBool && r.toggle != nil {
 			r.toggle(&p.snap)
 		}
@@ -126,11 +126,8 @@ func (p *selfLearnPanel) handleEditingKey(msg tea.KeyMsg) tea.Cmd {
 			p.editingBuffer = p.editingBuffer[:n-1]
 		}
 	default:
-		if len(msg.Runes) == 1 {
-			r := msg.Runes[0]
-			if r >= '0' && r <= '9' && len(p.editingBuffer) < 4 {
-				p.editingBuffer += string(r)
-			}
+		if t := msg.Key().Text; len(t) == 1 && t[0] >= '0' && t[0] <= '9' && len(p.editingBuffer) < 4 {
+			p.editingBuffer += t
 		}
 	}
 	return nil

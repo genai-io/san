@@ -1,6 +1,6 @@
 package kit
 
-import tea "github.com/charmbracelet/bubbletea"
+import tea "charm.land/bubbletea/v2"
 
 // ListNav manages cursor position, scroll offset, and search state for
 // list-based selectors. Embed it in selector Models to eliminate the
@@ -95,9 +95,9 @@ func (n *ListNav) HandleKey(key tea.KeyMsg) (searchChanged, consumed bool) {
 		}
 		return false, true
 	default:
-		// Typed text capture (KeyRunes -> v2 msg.Text). Vim-style navigation
-		// takes priority when search is empty.
-		if key.Type == tea.KeyRunes {
+		// Typed text capture. Vim-style navigation takes priority when the
+		// search is empty; otherwise the printable character is search input.
+		if text := key.Key().Text; text != "" {
 			if n.Search == "" {
 				switch key.String() {
 				case "j":
@@ -108,7 +108,7 @@ func (n *ListNav) HandleKey(key tea.KeyMsg) (searchChanged, consumed bool) {
 					return false, true
 				}
 			}
-			n.Search += string(key.Runes)
+			n.Search += text
 			return true, true
 		}
 	}

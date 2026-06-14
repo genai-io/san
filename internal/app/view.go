@@ -4,7 +4,8 @@ package app
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
@@ -21,7 +22,12 @@ var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 //  2. Active popup (slash-command picker / etc.) — fullscreen
 //  3. Active modal (Question / Approval) — wrapped between separators
 //  4. Normal mode — chat section + status + input strip
-func (m *model) View() string {
+func (m *model) View() tea.View {
+	return tea.NewView(m.viewString())
+}
+
+// viewString renders the UI to a styled string; View wraps it in a tea.View.
+func (m *model) viewString() string {
 	if !m.env.Ready {
 		return "\n  Loading..."
 	}

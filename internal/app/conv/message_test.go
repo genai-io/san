@@ -221,7 +221,7 @@ func TestRenderToolCallsShowsRunningStateForPendingBash(t *testing.T) {
 		Width:       100,
 	}
 
-	rendered := RenderToolCalls(params)
+	rendered := stripANSI(RenderToolCalls(params))
 	if !strings.Contains(rendered, "⋯ Bash(find /Users/myan -name test)") {
 		t.Fatalf("RenderToolCalls() = %q, want spinner on the main tool line", rendered)
 	}
@@ -248,7 +248,7 @@ func TestRenderActiveContentShowsRunningStateForPendingWebFetch(t *testing.T) {
 	}
 	params.InlinedResults = PrecomputeInlinedResults(params.Messages)
 
-	rendered := RenderActiveContent(params)
+	rendered := stripANSI(RenderActiveContent(params))
 	if !strings.Contains(rendered, "⋯ WebFetch(https://github.com/features/copilot/plans)") {
 		t.Fatalf("RenderActiveContent() = %q, want pending WebFetch spinner", rendered)
 	}
@@ -271,7 +271,7 @@ func TestRenderToolCallsShowsCompletedIconForResultEvenWhenPending(t *testing.T)
 		},
 	}
 
-	rendered := RenderToolCalls(params)
+	rendered := stripANSI(RenderToolCalls(params))
 	if !strings.Contains(rendered, "● WebFetch(https://github.com/features/copilot/plans)") {
 		t.Fatalf("RenderToolCalls() = %q, want completed WebFetch icon", rendered)
 	}
@@ -299,7 +299,7 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 		Width:       100,
 	}
 
-	rendered := RenderToolCalls(params)
+	rendered := stripANSI(RenderToolCalls(params))
 	want := agentIcon(params.Blink) + " Agent - Explorer: HA code structure"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want a single visible gap before explicit agent label", rendered)

@@ -14,8 +14,8 @@
 package app
 
 import (
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
@@ -62,7 +62,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
 		return m, m.handleSubmit()
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if c, ok := m.routeKeypress(msg); ok {
 			return m, c
 		}

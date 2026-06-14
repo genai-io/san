@@ -1,7 +1,7 @@
 package kit
 
 import (
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Selector styles — lazy functions to pick up the current theme at render time.
@@ -71,10 +71,10 @@ func DimStyle() lipgloss.Style {
 }
 
 // TabActiveBg is the background color for active tabs in tabbed panels.
-var TabActiveBg = lipgloss.AdaptiveColor{Dark: "#4F6D9B", Light: "#3B6FC0"}
+var TabActiveBg = AdaptiveColor{Dark: "#4F6D9B", Light: "#3B6FC0"}
 
 // TabActiveFg is the foreground color for active tabs in tabbed panels.
-var TabActiveFg = lipgloss.AdaptiveColor{Dark: "#FFFFFF", Light: "#FFFFFF"}
+var TabActiveFg = AdaptiveColor{Dark: "#FFFFFF", Light: "#FFFFFF"}
 
 // SearchBg is the background color for search/filter input boxes.
-var SearchBg = lipgloss.AdaptiveColor{Dark: "#27272A", Light: "#E4E4E7"}
+var SearchBg = AdaptiveColor{Dark: "#27272A", Light: "#E4E4E7"}

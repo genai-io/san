@@ -7,7 +7,7 @@
 package input
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Update routes Source 1 overlay messages to the appropriate handler.

@@ -3,7 +3,7 @@ package kit
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestListNav_MoveUpDown(t *testing.T) {
@@ -92,19 +92,19 @@ func TestListNav_HandleKey_Navigation(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10}
 
 	// Arrow down
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyDown})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})
 	if changed || !consumed || n.Selected != 1 {
 		t.Fatalf("Down: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
 	}
 
 	// Arrow up
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyUp})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp})
 	if changed || !consumed || n.Selected != 0 {
 		t.Fatalf("Up: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
 	}
 
 	// Ctrl+N
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyCtrlN})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
 	if changed || !consumed || n.Selected != 1 {
 		t.Fatalf("CtrlN: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
 	}
@@ -114,7 +114,7 @@ func TestListNav_HandleKey_VimKeysWhenSearchEmpty(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10}
 
 	// j navigates when search is empty
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if changed || !consumed || n.Selected != 1 {
 		t.Fatalf("j: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
 	}
@@ -123,7 +123,7 @@ func TestListNav_HandleKey_VimKeysWhenSearchEmpty(t *testing.T) {
 	}
 
 	// k navigates when search is empty
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	if changed || !consumed || n.Selected != 0 {
 		t.Fatalf("k: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
 	}
@@ -133,7 +133,7 @@ func TestListNav_HandleKey_VimKeysAddToSearchWhenNonEmpty(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10, Search: "te"}
 
 	// j adds to search when search is non-empty
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if !changed || !consumed {
 		t.Fatalf("j with search: changed=%v consumed=%v", changed, consumed)
 	}
@@ -146,19 +146,19 @@ func TestListNav_HandleKey_SearchRunes(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10}
 
 	// Non j/k runes start search
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	if !changed || !consumed || n.Search != "a" {
 		t.Fatalf("a: changed=%v consumed=%v search=%q", changed, consumed, n.Search)
 	}
 
 	// Backspace removes from search
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if !changed || !consumed || n.Search != "" {
 		t.Fatalf("backspace: changed=%v consumed=%v search=%q", changed, consumed, n.Search)
 	}
 
 	// Backspace on empty search is consumed but doesn't change search
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if changed || !consumed {
 		t.Fatalf("backspace empty: changed=%v consumed=%v", changed, consumed)
 	}
@@ -167,7 +167,7 @@ func TestListNav_HandleKey_SearchRunes(t *testing.T) {
 func TestListNav_HandleKey_BackspaceIsRuneSafe(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10, Search: "模型"}
 
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	if !changed || !consumed {
 		t.Fatalf("backspace: changed=%v consumed=%v", changed, consumed)
 	}
@@ -180,13 +180,13 @@ func TestListNav_HandleKey_EscClearsSearchFirst(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10, Search: "test"}
 
 	// Esc clears search
-	changed, consumed := n.HandleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if !changed || !consumed || n.Search != "" {
 		t.Fatalf("esc with search: changed=%v consumed=%v search=%q", changed, consumed, n.Search)
 	}
 
 	// Esc with empty search is not consumed (caller handles dismiss)
-	changed, consumed = n.HandleKey(tea.KeyMsg{Type: tea.KeyEsc})
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if changed || consumed {
 		t.Fatalf("esc empty: changed=%v consumed=%v", changed, consumed)
 	}

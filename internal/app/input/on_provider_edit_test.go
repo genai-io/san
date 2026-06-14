@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/secret"
@@ -177,7 +177,7 @@ func TestHandleCredentialEditUpdatesOnEnter(t *testing.T) {
 	m.apiKeyInput.SetValue("NEW_TEST_KEY")
 
 	// Simulate Enter key to submit
-	cmd = m.handleAPIKeyInput(tea.KeyMsg{Type: tea.KeyEnter})
+	cmd = m.handleAPIKeyInput(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("handleAPIKeyInput should return a command after Enter")
 	}
@@ -285,7 +285,7 @@ func TestEditAuthMethodPreservesOtherConnections(t *testing.T) {
 	}
 
 	// Cancel the edit and verify state
-	m.handleAPIKeyInput(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleAPIKeyInput(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.apiKeyActive {
 		t.Fatal("API key input should be canceled after Esc")
 	}
@@ -321,7 +321,7 @@ func TestEditCredentialFlowWithKeyboardShortcuts(t *testing.T) {
 	}
 
 	// Trigger edit with Ctrl+E
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlE})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 	if cmd != nil {
 		t.Fatal("handleCredentialEdit should not return a command for single auth method")
 	}
@@ -383,7 +383,7 @@ func TestHandleCredentialRemoveSingleAuthMethod(t *testing.T) {
 	}
 
 	// Confirm with 'y'
-	cmd = m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	cmd = m.handleConfirmRemove(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if cmd != nil {
 		t.Fatal("handleConfirmRemove should not return a command")
 	}
@@ -441,7 +441,7 @@ func TestHandleCredentialRemoveCancel(t *testing.T) {
 	}
 
 	// Cancel with Esc
-	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleConfirmRemove(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if m.confirmRemoveActive {
 		t.Fatal("confirmRemoveActive should be false after cancel")
 	}
@@ -519,7 +519,7 @@ func TestHandleCredentialRemoveMultipleAuthMethods(t *testing.T) {
 	if !m.confirmRemoveActive {
 		t.Fatal("confirmRemoveActive should be true for auth method row")
 	}
-	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m.handleConfirmRemove(tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	if os.Getenv("ANTHROPIC_API_KEY") != "" {
 		t.Fatal("ANTHROPIC_API_KEY should be unset after confirm")
@@ -566,7 +566,7 @@ func TestHandleCredentialRemoveKeyboardShortcut(t *testing.T) {
 	}
 
 	// Trigger remove with Ctrl+D (shows confirmation)
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if cmd != nil {
 		t.Fatal("handleCredentialRemove should not return a command")
 	}
@@ -575,7 +575,7 @@ func TestHandleCredentialRemoveKeyboardShortcut(t *testing.T) {
 	}
 
 	// Confirm with 'y' via HandleKeypress
-	cmd = m.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	cmd = m.HandleKeypress(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if cmd != nil {
 		t.Fatal("handleConfirmRemove should not return a command")
 	}
@@ -700,7 +700,7 @@ func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
 		t.Fatal("confirmRemoveActive should be true")
 	}
 
-	m.handleConfirmRemove(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	m.handleConfirmRemove(tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Verify env var is unset
 	if os.Getenv("OPENAI_API_KEY") != "" {

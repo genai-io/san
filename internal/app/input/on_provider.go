@@ -16,7 +16,7 @@ package input
 import (
 	"context"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/kit"

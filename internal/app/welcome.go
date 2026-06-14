@@ -10,17 +10,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"golang.org/x/term"
+
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 // Three-hue palette: teal for the brand mark, star blue for the ✦ accent
 // inside the logo, dim gray for everything else. Each token has Dark and
 // Light variants so contrast holds either way.
 var (
-	welcomeTeal = lipgloss.AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"}
-	welcomeStar = lipgloss.AdaptiveColor{Dark: "#7FD4FF", Light: "#0284C7"}
-	welcomeDim  = lipgloss.AdaptiveColor{Dark: "#65707A", Light: "#9CA3AF"}
+	welcomeTeal = kit.AdaptiveColor{Dark: "#46E8C0", Light: "#0D9488"}
+	welcomeStar = kit.AdaptiveColor{Dark: "#7FD4FF", Light: "#0284C7"}
+	welcomeDim  = kit.AdaptiveColor{Dark: "#65707A", Light: "#9CA3AF"}
 )
 
 type welcomeInfo struct {

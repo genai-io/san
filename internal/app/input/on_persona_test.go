@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/persona"
 )
@@ -67,7 +67,7 @@ func TestPersonaSelector_EscCancels(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	s := NewPersonaSelector(persona.NewRegistry(""), nil)
 	_ = s.EnterSelect(80, 24)
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	s.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if s.IsActive() {
 		t.Error("Esc should cancel the selector")
 	}
@@ -85,18 +85,18 @@ func TestPersonaSelector_DeleteFlowEmitsMsg(t *testing.T) {
 	}
 
 	// Ctrl+D only arms the confirm; the delete fires on "y".
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
 	if !s.confirmDelete {
 		t.Fatal("Ctrl+D should arm the delete confirmation")
 	}
 	// A non-y key backs out without deleting.
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	if s.confirmDelete {
 		t.Fatal("a non-y key should cancel the confirmation")
 	}
 
-	s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD})
-	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	s.HandleKeypress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl})
+	cmd := s.HandleKeypress(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if cmd == nil {
 		t.Fatal("y should fire the delete")
 	}
@@ -119,7 +119,7 @@ func TestPersonaSelector_OpenEmitsMsg(t *testing.T) {
 	if !selectByName(&s, "tester") {
 		t.Fatal("tester persona should be listed")
 	}
-	cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlO})
+	cmd := s.HandleKeypress(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("Ctrl+O should emit an open message")
 	}
@@ -135,10 +135,10 @@ func TestPersonaSelector_NoActionsOnBuiltin(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	s := NewPersonaSelector(persona.NewRegistry(""), nil) // only the built-in default
 	_ = s.EnterSelect(80, 24)
-	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlD}); cmd != nil || s.confirmDelete {
+	if cmd := s.HandleKeypress(tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}); cmd != nil || s.confirmDelete {
 		t.Error("Ctrl+D on the built-in default should be a no-op")
 	}
-	if cmd := s.HandleKeypress(tea.KeyMsg{Type: tea.KeyCtrlO}); cmd != nil {
+	if cmd := s.HandleKeypress(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}); cmd != nil {
 		t.Error("Ctrl+O on the built-in default should be a no-op")
 	}
 }

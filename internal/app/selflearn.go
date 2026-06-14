@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
@@ -458,10 +458,10 @@ var (
 	// values so they blend with the overall muted/italic aesthetic
 	// instead of pulling focus from chat content.
 	selflearnRecapMemoryStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.AdaptiveColor{Dark: "#82A0BA", Light: "#487192"}).
+					Foreground(kit.AdaptiveColor{Dark: "#82A0BA", Light: "#487192"}).
 					Italic(true)
 	selflearnRecapSkillStyle = lipgloss.NewStyle().
-					Foreground(lipgloss.AdaptiveColor{Dark: "#A89AC4", Light: "#745783"}).
+					Foreground(kit.AdaptiveColor{Dark: "#A89AC4", Light: "#745783"}).
 					Italic(true)
 	selflearnRecapRowStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.TextDim).
@@ -480,7 +480,7 @@ var (
 			BottomLeft:  "╰",
 			BottomRight: "╯",
 		}).
-		BorderForeground(lipgloss.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
+		BorderForeground(kit.AdaptiveColor{Dark: "#4A4A52", Light: "#C8C8CC"}).
 		Padding(0, 2)
 	// Footer style for "↪ san --resume <id>" on its own line below the
 	// box. TextDim + Faint so the command reads as a quiet hint, kept

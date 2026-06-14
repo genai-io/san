@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	coreplugin "github.com/genai-io/san/internal/plugin"
@@ -321,16 +321,9 @@ func (s *PluginSelector) handleAddMarketplaceKeypress(key tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	default:
-		// Typed text capture (KeyRunes -> v2 msg.Text).
-		if key.Type == tea.KeyRunes {
-			input := key.String()
-			if s.addMarketplaceInput == "" {
-				input = strings.TrimPrefix(input, "[")
-			}
-			input = strings.TrimSuffix(input, "]")
-			if input != "" {
-				s.addMarketplaceInput += input
-			}
+		// Typed text capture: append printable characters to the input.
+		if text := key.Key().Text; text != "" {
+			s.addMarketplaceInput += text
 		}
 		return nil
 	}
@@ -426,9 +419,9 @@ func (s *PluginSelector) handleListKeypress(key tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	default:
-		// Typed text capture (KeyRunes -> v2 msg.Text).
-		if key.Type == tea.KeyRunes {
-			return s.handleListRuneKey(key.String())
+		// Typed text capture (printable runes drive vim keys / search).
+		if text := key.Key().Text; text != "" {
+			return s.handleListRuneKey(text)
 		}
 	}
 	return nil

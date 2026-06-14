@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
@@ -30,7 +30,7 @@ func NewQuestionPrompt() *QuestionPrompt {
 	ti := textinput.New()
 	ti.Placeholder = "Type your answer..."
 	ti.CharLimit = 200
-	ti.Width = 50
+	ti.SetWidth(50)
 
 	return &QuestionPrompt{
 		selectedOption: make(map[int]int),
@@ -151,7 +151,7 @@ func (p *QuestionPrompt) HandleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 		}
 		return nil, nil
 
-	case " ":
+	case "space":
 		if curOption == customIdx {
 			p.showingCustom = true
 			p.customInput.Focus()

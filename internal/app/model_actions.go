@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/persona"

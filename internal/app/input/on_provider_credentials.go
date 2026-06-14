@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/secret"
@@ -245,7 +245,7 @@ func (s *ProviderSelector) initAPIKeyInput(envVar string) {
 	ti.Placeholder = envVar
 	ti.Focus()
 	ti.CharLimit = 256
-	ti.Width = 40
+	ti.SetWidth(40)
 	ti.EchoMode = textinput.EchoPassword
 	s.apiKeyInput = ti
 	s.apiKeyActive = true

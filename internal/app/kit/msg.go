@@ -3,7 +3,7 @@ package kit
 import (
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // DismissedMsg is sent when any selector or overlay is dismissed without selection.

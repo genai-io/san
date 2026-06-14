@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestIndexOfTheme(t *testing.T) {
@@ -33,11 +33,11 @@ func TestAppearancePanelDirty(t *testing.T) {
 	if p.Dirty() {
 		t.Fatalf("fresh panel parked on the saved theme should not be dirty")
 	}
-	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // auto → light
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp}) // auto → light
 	if !p.Dirty() {
 		t.Fatalf("after moving off the baseline the panel should be dirty")
 	}
-	p.HandleKey(tea.KeyMsg{Type: tea.KeyDown}) // light → auto
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // light → auto
 	if p.Dirty() {
 		t.Fatalf("back on the baseline the panel should not be dirty")
 	}
@@ -52,11 +52,11 @@ func TestAppearancePanelEnterSavesAndEmits(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 
 	p := newAppearancePanel(nil)
-	p.Enter()                                // baseline "auto" (index 2)
-	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // auto → light
-	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // light → dark
+	p.Enter()                                     // baseline "auto" (index 2)
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp}) // auto → light
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp}) // light → dark
 
-	cmd, done := p.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !done {
 		t.Fatalf("enter should dismiss the popup (done=true)")
 	}
@@ -103,10 +103,10 @@ func TestAppearancePanelEnterSaveFailureSurfacesError(t *testing.T) {
 	}
 
 	p := newAppearancePanel(nil)
-	p.Enter()                                // baseline "auto"
-	p.HandleKey(tea.KeyMsg{Type: tea.KeyUp}) // → light
+	p.Enter()                                     // baseline "auto"
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyUp}) // → light
 
-	cmd, done := p.HandleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if done {
 		t.Fatalf("a failed save should keep the popup open (done=false)")
 	}
@@ -132,15 +132,15 @@ func TestConfigSelectorArrowSwitchesPanels(t *testing.T) {
 	if got := c.ActivePanel().Title(); got != "self-learning" {
 		t.Fatalf("default panel = %q, want self-learning", got)
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyRight})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
 	if got := c.ActivePanel().Title(); got != "appearance" {
 		t.Fatalf("after right = %q, want appearance", got)
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyRight}) // wrap
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight}) // wrap
 	if got := c.ActivePanel().Title(); got != "self-learning" {
 		t.Fatalf("after right wrap = %q, want self-learning", got)
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyLeft}) // wrap back
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyLeft}) // wrap back
 	if got := c.ActivePanel().Title(); got != "appearance" {
 		t.Fatalf("after left wrap = %q, want appearance", got)
 	}

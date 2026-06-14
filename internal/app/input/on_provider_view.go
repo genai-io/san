@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
 )
@@ -336,7 +336,7 @@ func (s *ProviderSelector) renderAPIKeyInput() string {
 	label := kit.DimStyle().Render(s.apiKeyEnvVar + ": ")
 	inputView := label + s.apiKeyInput.View()
 
-	inputBg := lipgloss.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+	inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
 	boxStyle := lipgloss.NewStyle().
 		Background(inputBg).
 		Padding(0, 1)
@@ -347,11 +347,11 @@ func (s *ProviderSelector) renderAPIKeyInput() string {
 
 func (s *ProviderSelector) renderConfirmRemove() string {
 	warnStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
+		Foreground(kit.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
 	msg := warnStyle.Render("Remove "+s.confirmRemoveEnvVar+"?") +
 		kit.DimStyle().Render("  y/N")
 
-	inputBg := lipgloss.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+	inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
 	boxStyle := lipgloss.NewStyle().
 		Background(inputBg).
 		Padding(0, 1)

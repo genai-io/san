@@ -4,7 +4,7 @@ import (
 	"os"
 	"os/exec"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // StartExternalEditor launches the user's preferred editor for the given file.

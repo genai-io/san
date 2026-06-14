@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/setting"
 )
@@ -29,16 +29,16 @@ func TestSelfLearnPanelCursorSkipsHeaders(t *testing.T) {
 		t.Fatalf("initial cursor on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 	}
 
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeySpace}) // toggle the first editable row
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeySpace}) // toggle the first editable row
 
 	for range len(rows) * 2 {
-		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
+		c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
 		if !rows[p.cursor].editable() {
 			t.Fatalf("down landed on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 		}
 	}
 	for range len(rows) * 2 {
-		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyUp})
+		c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
 		if !rows[p.cursor].editable() {
 			t.Fatalf("up landed on non-editable row %d (%v)", p.cursor, rows[p.cursor].kind)
 		}
@@ -52,7 +52,7 @@ func TestConfigSelectorActivatesAndDismisses(t *testing.T) {
 	if !c.IsActive() {
 		t.Fatal("Enter should activate the popup")
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if c.IsActive() {
 		t.Fatal("Esc should deactivate")
 	}
@@ -65,11 +65,11 @@ func TestSelfLearnPanelTogglesBool(t *testing.T) {
 	if p.snap.Memory.Enabled {
 		t.Fatal("baseline: Memory.Enabled should be false")
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeySpace})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeySpace})
 	if !p.snap.Memory.Enabled {
 		t.Fatal("space should toggle Memory.Enabled true")
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if p.snap.Memory.Enabled {
 		t.Fatal("enter should toggle Memory.Enabled false")
 	}
@@ -81,18 +81,18 @@ func TestSelfLearnPanelTogglesBool(t *testing.T) {
 func TestSelfLearnPanelIntEditAndClamp(t *testing.T) {
 	c, p := newTestPopup()
 	// Cursor starts on Enable memory-evolving. Down twice to "Max size".
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyDown})
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter}) // start edit
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) // start edit
 	if !p.editing {
 		t.Fatal("Enter on int row should start editing")
 	}
 	for range 4 {
-		c.HandleKeypress(tea.KeyMsg{Type: tea.KeyBackspace})
+		c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	}
-	c.HandleKeypress(tea.KeyMsg{Runes: []rune{'9'}})
-	c.HandleKeypress(tea.KeyMsg{Runes: []rune{'9'}})
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyEnter}) // commit
+	c.HandleKeypress(tea.KeyPressMsg{Code: '9', Text: "9"})
+	c.HandleKeypress(tea.KeyPressMsg{Code: '9', Text: "9"})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter}) // commit
 	if p.editing {
 		t.Fatal("Enter should commit and exit edit mode")
 	}
@@ -132,11 +132,11 @@ func TestSelfLearnPanelTabFlipsScope(t *testing.T) {
 	if p.scope != "user" {
 		t.Fatalf("default scope: got %q, want user", p.scope)
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyTab})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
 	if p.scope != "project" {
 		t.Fatalf("after tab: got %q", p.scope)
 	}
-	c.HandleKeypress(tea.KeyMsg{Type: tea.KeyTab})
+	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
 	if p.scope != "user" {
 		t.Fatalf("after second tab: got %q", p.scope)
 	}

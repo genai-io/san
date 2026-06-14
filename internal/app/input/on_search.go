@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
@@ -258,7 +258,7 @@ func (s *SearchSelector) Render() string {
 
 		if s.apiKeyActive && isSelected {
 			label := dimStyle.Render(s.apiKeyEnvVar + ": ")
-			inputBg := lipgloss.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+			inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
 			boxStyle := lipgloss.NewStyle().Background(inputBg).Padding(0, 1)
 			body.WriteString("      " + boxStyle.Render(label+s.apiKeyInput.View()))
 			body.WriteString("\n")

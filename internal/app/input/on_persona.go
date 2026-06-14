@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/persona"
@@ -216,7 +216,7 @@ func (s *PersonaSelector) Render() string {
 	sb.WriteString(s.sepLine())
 	sb.WriteString("\n")
 	if it, ok := s.selected(); s.confirmDelete && ok {
-		warn := lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
+		warn := lipgloss.NewStyle().Foreground(kit.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
 		sb.WriteString(warn.Render("Delete persona '" + it.Name + "' from disk?  y = yes · any other key = no"))
 	} else {
 		sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Ctrl+O open · Ctrl+D delete · Esc cancel"))

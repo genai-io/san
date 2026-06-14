@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
@@ -140,7 +140,7 @@ func TestHandleKeypressEscClearsModelSearchBeforeDismiss(t *testing.T) {
 	m.searchQuery = "gpt"
 	m.rebuildVisibleItems()
 
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	if cmd != nil {
 		t.Fatal("expected first Esc with active search to only clear search")
@@ -157,7 +157,7 @@ func TestHandleKeypressEscDismissesAfterSearchCleared(t *testing.T) {
 	m := NewProviderSelector()
 	m.active = true
 
-	cmd := m.HandleKeypress(tea.KeyMsg{Type: tea.KeyEsc})
+	cmd := m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if cmd == nil {
 		t.Fatal("expected dismiss command on Esc")
 	}
@@ -445,7 +445,7 @@ func TestTabSwitchesBetweenTabs(t *testing.T) {
 	m.rebuildVisibleItems()
 
 	// Press Tab to switch to Providers tab
-	m.HandleKeypress(tea.KeyMsg{Type: tea.KeyTab})
+	m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.activeTab != providerTabProviders {
 		t.Fatal("Tab should switch to Providers tab")
 	}
@@ -463,7 +463,7 @@ func TestTabSwitchesBetweenTabs(t *testing.T) {
 	}
 
 	// Press Tab again to go back to Models
-	m.HandleKeypress(tea.KeyMsg{Type: tea.KeyTab})
+	m.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.activeTab != providerTabModels {
 		t.Fatal("Tab should switch back to Models tab")
 	}

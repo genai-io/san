@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit/history"
 	"github.com/genai-io/san/internal/app/kit/suggest"
@@ -116,15 +116,15 @@ func (m *Model) SetCursorIndex(target int) {
 		return
 	}
 
-	keyType := tea.KeyRight
+	code := tea.KeyRight
 	steps := target - current
 	if target < current {
-		keyType = tea.KeyLeft
+		code = tea.KeyLeft
 		steps = current - target
 	}
 
 	for i := 0; i < steps; i++ {
-		m.stepCursor(keyType)
+		m.stepCursor(code)
 	}
 }
 
@@ -221,9 +221,9 @@ func (m *Model) ExtractInlineImages(input string) (string, []core.Image) {
 	return strings.TrimSpace(sb.String()), images
 }
 
-func (m *Model) stepCursor(keyType tea.KeyType) {
+func (m *Model) stepCursor(code rune) {
 	var cmd tea.Cmd
-	m.Textarea, cmd = m.Textarea.Update(tea.KeyMsg{Type: keyType})
+	m.Textarea, cmd = m.Textarea.Update(tea.KeyPressMsg{Code: code})
 	_ = cmd
 }
 
@@ -399,10 +399,7 @@ func (m *Model) HandleTextareaUpdate(msg tea.Msg) (tea.Cmd, bool) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
-	isPaste := false
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		isPaste = keyMsg.Paste
-	}
+	_, isPaste := msg.(tea.PasteMsg)
 
 	prevValue := m.Textarea.Value()
 	m.Textarea, cmd = m.Textarea.Update(msg)
