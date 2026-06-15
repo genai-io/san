@@ -63,6 +63,7 @@ func (m *MarketplaceManager) Load() error {
 	var v2 map[string]MarketplaceEntry
 	if err := json.Unmarshal(data, &v2); err == nil && len(v2) > 0 {
 		m.marketplaces = v2
+		m.healInstallLocations()
 		return nil
 	}
 
@@ -83,7 +84,36 @@ func (m *MarketplaceManager) Load() error {
 		}
 	}
 
+	m.healInstallLocations()
 	return nil
+}
+
+// healInstallLocations repairs github marketplaces whose recorded
+// InstallLocation is empty or stale (e.g. carried over from an older config
+// dir whose path no longer exists) by pointing them at the canonical clone
+// path. Run once at load so path lookups stay a plain field read rather than
+// a stat on every call.
+func (m *MarketplaceManager) healInstallLocations() {
+	for id, entry := range m.marketplaces {
+		if entry.Source.Source != "github" {
+			continue
+		}
+		canonical := filepath.Join(m.marketplacesDir, id)
+		if entry.InstallLocation == canonical {
+			continue
+		}
+		if entry.InstallLocation == "" {
+			entry.InstallLocation = canonical
+			m.marketplaces[id] = entry
+			continue
+		}
+		if _, err := os.Stat(entry.InstallLocation); err != nil {
+			if _, err := os.Stat(canonical); err == nil {
+				entry.InstallLocation = canonical
+				m.marketplaces[id] = entry
+			}
+		}
+	}
 }
 
 // Save saves marketplace configurations to known_marketplaces.json.
@@ -324,21 +354,12 @@ func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (strin
 
 	switch entry.Source.Source {
 	case "github":
-		// Prefer the recorded clone path, but fall back to the canonical
-		// location when it's empty or stale (e.g. a config carried over from
-		// an older config dir whose path no longer exists).
-		loc := entry.InstallLocation
-		if loc == "" {
-			return filepath.Join(m.marketplacesDir, marketplaceID), nil
+		// InstallLocation is normalized at load (see healInstallLocations);
+		// fall back to the canonical path only if it was never recorded.
+		if entry.InstallLocation != "" {
+			return entry.InstallLocation, nil
 		}
-		if _, err := os.Stat(loc); err != nil {
-			if canonical := filepath.Join(m.marketplacesDir, marketplaceID); canonical != loc {
-				if _, err := os.Stat(canonical); err == nil {
-					return canonical, nil
-				}
-			}
-		}
-		return loc, nil
+		return filepath.Join(m.marketplacesDir, marketplaceID), nil
 	case "directory":
 		return entry.Source.Path, nil
 	default:
@@ -378,6 +399,17 @@ func (m *MarketplaceManager) MarketplacePlugins(marketplaceID string) ([]Marketp
 	return plugins, nil
 }
 
+// safeRelPath cleans a relative path and rejects absolute paths or any that
+// escape their base via "..". The returned path is safe to filepath.Join onto
+// a trusted base. Used to confine plugin sources to the directory they name.
+func safeRelPath(p string) (string, error) {
+	clean := filepath.Clean(p)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", fmt.Errorf("invalid path: %s", p)
+	}
+	return clean, nil
+}
+
 // ResolveLocalPluginPath returns the on-disk path of a plugin whose content
 // lives inside the marketplace repo: a declared relative "path" source, or —
 // as a fallback — a vendored subdirectory found by name.
@@ -387,9 +419,9 @@ func (m *MarketplaceManager) ResolveLocalPluginPath(marketplaceID, name string, 
 		if err != nil {
 			return "", err
 		}
-		clean := filepath.Clean(src.Path)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
-			return "", fmt.Errorf("invalid plugin path: %s", src.Path)
+		clean, err := safeRelPath(src.Path)
+		if err != nil {
+			return "", err
 		}
 		full := filepath.Join(base, clean)
 		if _, err := os.Stat(full); err == nil {

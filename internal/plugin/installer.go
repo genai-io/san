@@ -166,14 +166,13 @@ func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error 
 	// that; otherwise the content sits inside the marketplace repo.
 	psrc, declared := i.resolvePluginSource(marketplace, name)
 	var srcPath string
-	cleanup := func() {}
 	if declared && psrc.External() {
-		path, c, err := fetchExternalPlugin(ctx, psrc)
+		path, cleanup, err := fetchExternalPlugin(ctx, psrc)
 		if err != nil {
 			return fmt.Errorf("failed to fetch plugin %s: %w", name, err)
 		}
-		srcPath, cleanup = path, c
 		defer cleanup()
+		srcPath = path
 	} else {
 		path, err := i.marketplaceManager.ResolveLocalPluginPath(marketplace, name, psrc)
 		if err != nil {
@@ -318,14 +317,13 @@ func (i *Installer) findMarketplaceFor(name string) string {
 // returns the directory holding the plugin root (the repo, or a subdirectory of
 // it for git-subdir sources), along with a cleanup func the caller must defer.
 func fetchExternalPlugin(ctx context.Context, src PluginSource) (string, func(), error) {
-	noop := func() {}
 	if src.Type == SourceNPM {
-		return "", noop, fmt.Errorf("npm plugin sources are not supported yet")
+		return "", nil, fmt.Errorf("npm plugin sources are not supported yet")
 	}
 
 	tmp, err := os.MkdirTemp("", "san-plugin-*")
 	if err != nil {
-		return "", noop, err
+		return "", nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(tmp) }
 
@@ -336,21 +334,21 @@ func fetchExternalPlugin(ctx context.Context, src PluginSource) (string, func(),
 	url = normalizeGitURL(url)
 	if url == "" {
 		cleanup()
-		return "", noop, fmt.Errorf("plugin source has no repository URL")
+		return "", nil, fmt.Errorf("plugin source has no repository URL")
 	}
 
 	if err := cloneRepo(ctx, url, src.Ref, src.SHA, tmp); err != nil {
 		cleanup()
-		return "", noop, err
+		return "", nil, err
 	}
 	_ = os.RemoveAll(filepath.Join(tmp, ".git"))
 
 	root := tmp
 	if src.Type == SourceGitSubdir && src.Path != "" {
-		clean := filepath.Clean(src.Path)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		clean, err := safeRelPath(src.Path)
+		if err != nil {
 			cleanup()
-			return "", noop, fmt.Errorf("invalid subdir path: %s", src.Path)
+			return "", nil, err
 		}
 		root = filepath.Join(tmp, clean)
 	}
