@@ -114,17 +114,16 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleConfirmRemove(key)
 	}
 
+	// Navigation is arrow-driven and works regardless of the search query:
+	// ↑/↓ (and ctrl+p/ctrl+n) move the list, ←/→ (and tab/shift+tab) switch
+	// tabs. Switching tabs clears the query (switchTab).
 	switch key.String() {
-	case "tab":
-		if s.searchQuery == "" {
-			s.NextTab()
-		}
+	case "tab", "right":
+		s.NextTab()
 		return nil
 
 	case "shift+tab":
-		if s.searchQuery == "" {
-			s.PrevTab()
-		}
+		s.PrevTab()
 		return nil
 
 	case "up", "ctrl+p":
@@ -138,14 +137,8 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "enter":
 		return s.Select()
 
-	case "right":
-		if s.searchQuery == "" {
-			s.NextTab()
-		}
-		return nil
-
 	case "left":
-		if s.searchQuery == "" && !s.GoBack() {
+		if !s.GoBack() {
 			s.PrevTab()
 		}
 		return nil
@@ -178,28 +171,11 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleCredentialRemove()
 
 	default:
-		// Typed text capture. Vim navigation takes priority while the model
-		// search is empty (mirrors every other selector); otherwise the
-		// printable rune is search input. l/h switch tabs since this is tabbed.
+		// Typed text capture: every printable rune is search input. Navigation
+		// is arrows + ctrl+p/ctrl+n; tabs are tab/shift+tab and left/right — no
+		// bare-letter vim keys — so a query can start with any character
+		// (e.g. "kimi", "haiku", "llama").
 		if text := key.Key().Text; text != "" {
-			if s.searchQuery == "" {
-				switch key.String() {
-				case "j":
-					s.MoveDown()
-					return nil
-				case "k":
-					s.MoveUp()
-					return nil
-				case "l":
-					s.NextTab()
-					return nil
-				case "h":
-					if !s.GoBack() {
-						s.PrevTab()
-					}
-					return nil
-				}
-			}
 			s.appendModelSearch(text)
 			return nil
 		}

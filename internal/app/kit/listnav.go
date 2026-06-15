@@ -95,19 +95,10 @@ func (n *ListNav) HandleKey(key tea.KeyMsg) (searchChanged, consumed bool) {
 		}
 		return false, true
 	default:
-		// Typed text capture. Vim-style navigation takes priority when the
-		// search is empty; otherwise the printable character is search input.
+		// Typed text capture: every printable rune is search input. Navigation
+		// is arrows + ctrl+p/ctrl+n only — no bare-letter vim keys — so a query
+		// can start with any character (e.g. "kimi").
 		if text := key.Key().Text; text != "" {
-			if n.Search == "" {
-				switch key.String() {
-				case "j":
-					n.MoveDown()
-					return false, true
-				case "k":
-					n.MoveUp()
-					return false, true
-				}
-			}
 			n.Search += text
 			return true, true
 		}
