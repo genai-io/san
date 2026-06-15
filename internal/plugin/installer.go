@@ -153,18 +153,22 @@ func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error 
 		return fmt.Errorf("could not find plugin: %s", name)
 	}
 
-	// Ensure a GitHub marketplace's repo (and its marketplace.json) is present
-	// locally before we read the plugin's declared source.
-	if i.marketplaces[marketplace].Type == "github" {
+	// Resolve the plugin's declared source from the local marketplace.json.
+	// Only refresh a GitHub marketplace from the network when its manifest
+	// isn't available yet: installing shouldn't force a re-sync, and a
+	// transient pull failure shouldn't block installing a plugin that lives in
+	// its own repo.
+	psrc, declared := i.resolvePluginSource(marketplace, name)
+	if !declared && i.marketplaces[marketplace].Type == "github" {
 		if err := i.marketplaceManager.Sync(ctx, marketplace); err != nil {
 			return fmt.Errorf("failed to sync marketplace %s: %w", marketplace, err)
 		}
+		psrc, declared = i.resolvePluginSource(marketplace, name)
 	}
 
 	// Locate the plugin's content. Following Claude Code's model, a marketplace
 	// may merely declare a plugin whose content lives in its own repo — fetch
 	// that; otherwise the content sits inside the marketplace repo.
-	psrc, declared := i.resolvePluginSource(marketplace, name)
 	var srcPath string
 	if declared && psrc.External() {
 		path, cleanup, err := fetchExternalPlugin(ctx, psrc)

@@ -300,10 +300,9 @@ func (s *PluginSelector) renderDiscoverList(sb *strings.Builder) {
 		sb.WriteString("\n")
 
 		if p.Description != "" {
+			// Use the full available width (indent is PaddingLeft(6)) so wide
+			// terminals show more of the description instead of padding empty space.
 			maxDescLen := cw - 8
-			if maxDescLen > 100 {
-				maxDescLen = 100
-			}
 			if maxDescLen > 20 {
 				desc := kit.TruncateText(p.Description, maxDescLen)
 				sb.WriteString(dimStyle.PaddingLeft(6).Render(desc))
@@ -696,9 +695,14 @@ func (s *PluginSelector) renderActions(sb *strings.Builder) {
 		Foreground(kit.CurrentTheme.Text).
 		PaddingLeft(2)
 
+	spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 	for i, action := range s.actions {
 		if i == s.actionIdx {
 			sb.WriteString(accentStyle.Render("❯ " + action.Label))
+			// The action being executed carries the spinner inline, on its row.
+			if s.isLoading {
+				sb.WriteString(spinnerStyle.Render("   " + s.spinnerFrame() + " " + s.loadingMsg))
+			}
 		} else {
 			sb.WriteString(normalStyle.Render("  " + action.Label))
 		}
@@ -708,14 +712,23 @@ func (s *PluginSelector) renderActions(sb *strings.Builder) {
 
 // ── Footer ────────────────────────────────────────────────────────────────
 
-var pluginSpinnerFrames = [4]string{"◐", "◓", "◑", "◒"}
+var pluginSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// spinnerFrame returns the current spinner glyph for the loading animation.
+func (s *PluginSelector) spinnerFrame() string {
+	return pluginSpinnerFrames[s.loadingFrame%len(pluginSpinnerFrames)]
+}
 
 func (s *PluginSelector) renderFooter(sb *strings.Builder, hint string) {
+	// In action views the spinner rides inline on the active action row (see
+	// renderActions), so the footer only carries it for list-style views.
+	inActionView := s.level == pluginLevelDetail || s.level == pluginLevelInstallOptions
 	if s.isLoading {
-		spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
-		frame := pluginSpinnerFrames[s.loadingFrame%len(pluginSpinnerFrames)]
-		sb.WriteString(spinnerStyle.Render("  " + frame + " " + s.loadingMsg))
-		sb.WriteString("\n")
+		if !inActionView {
+			spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
+			sb.WriteString(spinnerStyle.Render("  " + s.spinnerFrame() + " " + s.loadingMsg))
+			sb.WriteString("\n")
+		}
 	} else if s.lastMessage != "" {
 		if s.isError {
 			sb.WriteString(kit.SelectorStatusError().Render("  ⚠ " + s.lastMessage))
