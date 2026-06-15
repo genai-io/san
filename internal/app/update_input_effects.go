@@ -68,7 +68,7 @@ func (m *model) cancelRemainingToolCalls(startIdx int) {
 }
 
 func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
-	imgData, err := image.ReadImageToProviderData()
+	imgData, err := image.ReadClipboard()
 	if err != nil {
 		m.conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: "Image paste error: " + err.Error()})
 		return tea.Batch(m.CommitMessages()...), true

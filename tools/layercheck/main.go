@@ -41,7 +41,7 @@ var layerOf = map[string]string{
 	"internal/cron":      "feature",
 	"internal/hook":      "feature",
 	"internal/identity":  "feature",
-	"internal/image":     "feature", // touches core.Image; pure infra extraction tracked in notes/tech-debt.md
+	"internal/image":     "feature", // image loader; produces core.Image, so it sits above core (not infrastructure)
 	"internal/inspector": "feature",
 	"internal/llm":       "feature",
 	"internal/mcp":       "feature",
