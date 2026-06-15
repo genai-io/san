@@ -212,7 +212,10 @@ func (s *PluginSelector) renderInstalledList(sb *strings.Builder) {
 		return
 	}
 
-	visible := max(4, s.bodyHeight())
+	// Two lines per item (name row + indented description), like the Discover
+	// list, so a long description wraps onto its own bounded line instead of
+	// running to the right edge.
+	visible := max(2, s.bodyHeight()/2)
 	endIdx := min(s.scrollOffset+visible, len(s.filteredItems))
 	cw := s.contentWidth()
 
@@ -233,20 +236,16 @@ func (s *PluginSelector) renderInstalledList(sb *strings.Builder) {
 		if p.Marketplace != "" {
 			nameStr += dimStyle.Render(" · " + p.Marketplace)
 		}
-
-		line := fmt.Sprintf("%s %s", iconStyle.Render(icon), nameStr)
+		sb.WriteString(kit.RenderSelectableRow(fmt.Sprintf("%s %s", iconStyle.Render(icon), nameStr), i == s.selectedIdx))
+		sb.WriteString("\n")
 
 		if p.Description != "" {
-			// 4 = PaddingLeft(2) + cursor(2) from RenderSelectableRow; 3 = " · " separator
-			maxDescLen := cw - lipgloss.Width(line) - 4 - 3
+			maxDescLen := cw - 8
 			if maxDescLen > 20 {
-				desc := kit.TruncateText(p.Description, maxDescLen)
-				line += dimStyle.Render(" · " + desc)
+				sb.WriteString(dimStyle.PaddingLeft(6).Render(kit.TruncateText(p.Description, maxDescLen)))
+				sb.WriteString("\n")
 			}
 		}
-
-		sb.WriteString(kit.RenderSelectableRow(line, i == s.selectedIdx))
-		sb.WriteString("\n")
 	}
 
 	if endIdx < len(s.filteredItems) {
@@ -695,18 +694,34 @@ func (s *PluginSelector) renderActions(sb *strings.Builder) {
 		Foreground(kit.CurrentTheme.Text).
 		PaddingLeft(2)
 
-	spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 	for i, action := range s.actions {
 		if i == s.actionIdx {
+			// The active action carries its own status inline: the spinner while
+			// the op runs, then the ✓/⚠ result — so feedback stays on this row
+			// rather than dropping to the footer.
 			sb.WriteString(accentStyle.Render("❯ " + action.Label))
-			// The action being executed carries the spinner inline, on its row.
-			if s.isLoading {
-				sb.WriteString(spinnerStyle.Render("   " + s.spinnerFrame() + " " + s.loadingMsg))
-			}
+			sb.WriteString(s.inlineActionStatus())
 		} else {
 			sb.WriteString(normalStyle.Render("  " + action.Label))
 		}
 		sb.WriteString("\n")
+	}
+}
+
+// inlineActionStatus returns the trailing status for the active action row: the
+// spinner during a loading op, the ✓/⚠ result after one, or "" when idle.
+func (s *PluginSelector) inlineActionStatus() string {
+	switch {
+	case s.isLoading:
+		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).
+			Render("   " + s.spinnerFrame() + " " + s.loadingMsg)
+	case s.lastMessage == "":
+		return ""
+	case s.isError:
+		return kit.SelectorStatusError().Render("   ⚠ " + s.lastMessage)
+	default:
+		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).
+			Render("   ✓ " + s.lastMessage)
 	}
 }
 
@@ -720,23 +735,24 @@ func (s *PluginSelector) spinnerFrame() string {
 }
 
 func (s *PluginSelector) renderFooter(sb *strings.Builder, hint string) {
-	// In action views the spinner rides inline on the active action row (see
-	// renderActions), so the footer only carries it for list-style views.
+	// Action views carry the spinner and ✓/⚠ result inline on the active action
+	// row (see renderActions / inlineActionStatus); the footer shows them only
+	// for list-style views, which have no action row.
 	inActionView := s.level == pluginLevelDetail || s.level == pluginLevelInstallOptions
-	if s.isLoading {
-		if !inActionView {
+	if !inActionView {
+		if s.isLoading {
 			spinnerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 			sb.WriteString(spinnerStyle.Render("  " + s.spinnerFrame() + " " + s.loadingMsg))
 			sb.WriteString("\n")
+		} else if s.lastMessage != "" {
+			if s.isError {
+				sb.WriteString(kit.SelectorStatusError().Render("  ⚠ " + s.lastMessage))
+			} else {
+				successStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
+				sb.WriteString(successStyle.Render("  ✓ " + s.lastMessage))
+			}
+			sb.WriteString("\n")
 		}
-	} else if s.lastMessage != "" {
-		if s.isError {
-			sb.WriteString(kit.SelectorStatusError().Render("  ⚠ " + s.lastMessage))
-		} else {
-			successStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
-			sb.WriteString(successStyle.Render("  ✓ " + s.lastMessage))
-		}
-		sb.WriteString("\n")
 	}
 	sb.WriteString(kit.DimStyle().Render(hint))
 }

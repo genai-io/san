@@ -631,6 +631,7 @@ func (s *PluginSelector) ensureVisible() {
 // enterDetail enters the detail view for the selected item.
 func (s *PluginSelector) enterDetail() {
 	s.parentIdx = s.selectedIdx
+	s.clearMessage() // a fresh action view shouldn't show a prior op's result
 
 	switch s.activeTab {
 	case pluginTabInstalled:

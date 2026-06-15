@@ -74,6 +74,14 @@ func (r *Registry) Load(ctx context.Context, cwd string) error {
 			continue
 		}
 		for _, p := range plugins {
+			// A project/local install copies the plugin into a scope dir, so the
+			// scope scan above already loaded it under a bare name. Drop that
+			// duplicate — this entry carries the real "name@marketplace" source.
+			for k, existing := range r.plugins {
+				if existing.Path == p.Path {
+					delete(r.plugins, k)
+				}
+			}
 			key := p.FullName()
 			if enabled, ok := enabledPlugins[key]; ok {
 				p.Enabled = enabled
