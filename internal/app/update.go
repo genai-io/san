@@ -120,12 +120,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the Providers tab) clears the store's CurrentModel and updates
 		// llm.Default — but the per-turn env fields would stay stale until
 		// the next explicit model selection without this refresh.
-		prevModel := m.env.CurrentModel
 		m.env.CurrentModel = m.services.LLM.CurrentModel()
 		m.env.LLMProvider = m.services.LLM.Provider()
-		if prevModel != nil && m.env.CurrentModel == nil {
-			return m, m.overlayDeps().PrintWelcome(m.env.GetModelDisplayName())
-		}
 		return m, nil
 	case input.ToolToggleMsg:
 	case input.ConfigSavedMsg:

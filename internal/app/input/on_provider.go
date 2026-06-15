@@ -282,7 +282,7 @@ func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg Pro
 	})
 	ctx := context.Background()
 	providerRefreshConnection(deps, state, ctx, llm.Name(msg.ProviderName), msg.AuthMethod)
-	return deps.PrintWelcome(msg.ModelID)
+	return tea.Batch(deps.CommitMessages()...)
 }
 
 func providerRefreshConnection(deps OverlayDeps, state *ProviderState, ctx context.Context, providerName llm.Name, authMethod llm.AuthMethod) {

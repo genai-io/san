@@ -7,7 +7,6 @@ package app
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
@@ -42,28 +41,9 @@ func (m *model) overlayDeps() input.OverlayDeps {
 			llm.Default().SetCurrentModel(info)
 			m.env.LoadThinkingEffortFromStore()
 		},
-		PrintWelcome: func(modelID string) tea.Cmd {
-			modelName := modelID
-			if name := m.services.LLM.Store().CachedModelDisplayName(modelID); name != "" {
-				modelName = name
-			}
-			dim := lipgloss.NewStyle().Foreground(welcomeDim)
-			line := brandMark()
-			if proj := projectName(m.env.CWD); proj != "" {
-				line += dim.Render("  ·  ") + dim.Render(proj)
-			}
-			if modelName != "" {
-				line += dim.Render("  ·  ") + dim.Render(modelName)
-			}
-			// Overwrite the original welcome line in-place using ANSI cursor
-			// codes. The original printWelcome output is:
-			//   \n  (leading newline from renderWelcome)
-			//   <content>  (the styled welcome line)
-			//   \n  (trailing newline from fmt.Println)
-			// Move up 2 lines to the content line, clear it, rewrite, then
-			// position the cursor on the blank line below for the TUI.
-			return tea.Println("\033[2A\033[2K\r" + line + "\n")
-		},
+		// No welcome reprint on model switch: the live status line already
+		// shows the current model, and the startup brand line is a one-time
+		// splash (re-emitting it duplicated the banner / leaked blank lines).
 		ClearCachedInstructions: m.env.ClearCachedInstructions,
 		RefreshMemoryContext:    m.refreshMemoryContext,
 		FireFileChanged:         m.fireFileChanged,
