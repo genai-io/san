@@ -41,6 +41,7 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 
 	m.conv.Clear()
 	m.env.ResetContextDisplay()
+	m.env.Compressions++
 	token := m.userInput.Provider.SetStatusMessage("compacted")
 	// The summary is injected as a user message — the model reads it (Content),
 	// and it persists + seeds resume — but the UI renders it as a single system

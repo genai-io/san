@@ -91,50 +91,93 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 
 func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:        "gpt-test",
-		InputTokens:      1234,
-		OutputTokens:     56,
-		InputLimit:       10000,
-		ConversationCost: llm.Money{Amount: 0.1234, Currency: llm.CurrencyCNY},
-		Width:            100,
+		ModelName:        "claude-sonnet-4-6",
+		InputTokens:      142000,
+		InputLimit:       200000,
+		ConversationCost: llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD},
+		Width:            120,
 	})
-
-	for _, want := range []string{"gpt-test", "1.2k/10.0k (12%)", "¥0.123"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("RenderModeStatus() = %q, want %q", rendered, want)
-		}
+	visible := stripANSI(rendered)
+	if !strings.Contains(visible, "claude-sonnet-4-6") {
+		t.Fatalf("RenderModeStatus() = %q, want model name", visible)
 	}
-	for _, unwanted := range []string{"↑1.2k", "↓56"} {
-		if strings.Contains(rendered, unwanted) {
-			t.Fatalf("RenderModeStatus() = %q, should not contain per-turn usage %q", rendered, unwanted)
-		}
+	if !strings.Contains(visible, "[") || !strings.Contains(visible, "] 71%") {
+		t.Fatalf("RenderModeStatus() = %q, want bar with percent", visible)
 	}
-	if !strings.Contains(rendered, " · ") {
-		t.Fatalf("RenderModeStatus() = %q, want segmented display", rendered)
+	// Cost segment must still render.
+	if !strings.Contains(visible, "$0.04") {
+		t.Fatalf("RenderModeStatus() = %q, want cost segment", visible)
+	}
+	// Old per-call percent format must NOT appear anymore.
+	if strings.Contains(visible, "(71%)") {
+		t.Fatalf("RenderModeStatus() = %q, should not contain old (NN%%) format", visible)
 	}
 }
 
 func TestRenderModeStatusKeepsContextDisplayOnRightOnly(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:      "kimi-k2.6",
-		InputTokens:    301800,
-		InputLimit:     262100,
-		ThinkingEffort: "think+",
-		ShowThinking:   true,
-		Width:          120,
+		ModelName:   "claude-sonnet-4-6",
+		InputTokens: 190000,
+		InputLimit:  200000,
+		Width:       120,
 	})
+	visible := stripANSI(rendered)
+	if !strings.Contains(visible, "claude-sonnet-4-6") {
+		t.Fatalf("want model name in %q", visible)
+	}
+	// Bar should appear exactly once: fail if EITHER count is wrong.
+	if strings.Count(visible, "] ") != 1 || strings.Count(visible, "%") != 1 {
+		t.Fatalf("want unified context display (single bar + percent) in %q", visible)
+	}
+	if !strings.Contains(visible, "compact at") && !strings.Contains(visible, "auto-compact") {
+		t.Fatalf("want auto-compact hint in %q", visible)
+	}
+}
 
-	if !strings.Contains(rendered, "kimi-k2.6") {
-		t.Fatalf("RenderModeStatus() = %q, want model name", rendered)
+func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
+	rendered := RenderModeStatus(OperationModeParams{
+		ModelName:    "claude-sonnet-4-6",
+		InputTokens:  1000,
+		InputLimit:   200000,
+		Compressions: 3,
+		Width:        120,
+	})
+	visible := stripANSI(rendered)
+	if !strings.Contains(visible, "🗜️ 3") {
+		t.Fatalf("want '🗜️ 3' badge in %q", visible)
 	}
-	if !strings.Contains(rendered, "301.8k/262.1k (115%)") {
-		t.Fatalf("RenderModeStatus() = %q, want unified context display on the right", rendered)
+}
+
+func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
+	rendered := RenderModeStatus(OperationModeParams{
+		ModelName:    "claude-sonnet-4-6",
+		InputTokens:  1000,
+		InputLimit:   200000,
+		Compressions: 0,
+		Width:        120,
+	})
+	visible := stripANSI(rendered)
+	if strings.Contains(visible, "🗜️") {
+		t.Fatalf("badge should be hidden when zero; got %q", visible)
 	}
-	if !strings.Contains(rendered, "auto-compact") {
-		t.Fatalf("RenderModeStatus() = %q, want auto-compact hint", rendered)
+}
+
+func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
+	// When InputLimit == 0 (limit unknown), the bar must still render with
+	// a placeholder so the gap stays visible and actionable, instead of
+	// silently hiding the entire context segment.
+	rendered := RenderModeStatus(OperationModeParams{
+		ModelName:   "some-model",
+		InputTokens: 5000,
+		InputLimit:  0,
+		Width:       120,
+	})
+	visible := stripANSI(rendered)
+	if !strings.Contains(visible, "[----------]") {
+		t.Errorf("want placeholder bar [----------] when limit unknown; got %q", visible)
 	}
-	if strings.Count(rendered, "115%") != 1 {
-		t.Fatalf("RenderModeStatus() = %q, should only show context percentage once", rendered)
+	if !strings.Contains(visible, "--") {
+		t.Errorf("want '--' percent label when limit unknown; got %q", visible)
 	}
 }
 

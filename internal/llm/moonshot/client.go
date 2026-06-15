@@ -79,14 +79,19 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	for _, m := range page.Data {
 		id := m.ID
 		info := llm.ModelInfo{ID: id, Name: id, DisplayName: id}
-		// Extract context_length from raw JSON (Moonshot extension field)
+		// Moonshot's API returns max_output_tokens but not context_length;
+		// input limits are derived from the model ID via staticInputLimit.
 		if raw := m.RawJSON(); raw != "" {
 			var extra struct {
-				ContextLength int `json:"context_length"`
+				MaxOutputTokens int `json:"max_output_tokens"`
 			}
-			if err := json.Unmarshal([]byte(raw), &extra); err == nil && extra.ContextLength > 0 {
-				info.InputTokenLimit = extra.ContextLength
+			if err := json.Unmarshal([]byte(raw), &extra); err == nil && extra.MaxOutputTokens > 0 {
+				info.OutputTokenLimit = extra.MaxOutputTokens
 			}
+		}
+		info.InputTokenLimit = staticInputLimit(id)
+		if info.OutputTokenLimit == 0 {
+			info.OutputTokenLimit = staticOutputLimit(id)
 		}
 		models = append(models, info)
 	}

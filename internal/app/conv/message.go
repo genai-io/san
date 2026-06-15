@@ -37,6 +37,7 @@ type OperationModeParams struct {
 	ModelName        string
 	StatusMessage    string
 	ConversationCost llm.Money
+	Compressions     int // NEW — session compact count, drives the badge
 	Width            int
 	ThinkingEffort   string
 	ShowThinking     bool
@@ -63,7 +64,13 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	left := strings.Join(leftParts, "  ")
 
-	right := renderModelWithTokens(params.ModelName, params.StatusMessage, params.InputTokens, params.InputLimit, params.ConversationCost)
+	right := renderModelWithTokens(
+		params.ModelName, params.StatusMessage,
+		params.InputTokens, params.InputLimit,
+		params.ConversationCost,
+		params.Compressions,
+		params.Width,
+	)
 	if right == "" || params.Width <= 0 {
 		return left
 	}
@@ -72,41 +79,82 @@ func RenderModeStatus(params OperationModeParams) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// renderModelWithTokens renders the model name with token usage on the right side.
-func renderModelWithTokens(modelName, statusMessage string, inputTokens, inputLimit int, conversationCost llm.Money) string {
+// renderModelWithTokens composes the right-side cluster of the status
+// bar: model name, context label, bar, optional compressions badge,
+// optional cost. The actual rendering lives in status_bar.go; this
+// function preserves the existing call shape from RenderModeStatus.
+func renderModelWithTokens(
+	modelName, statusMessage string,
+	inputTokens, inputLimit int,
+	conversationCost llm.Money,
+	compressions int,
+	width int,
+) string {
 	if modelName == "" {
 		return ""
 	}
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	sep := muted.Render(" · ")
 
-	parts := []string{muted.Render(modelName)}
-	if statusMessage != "" {
-		parts = append(parts, muted.Render(statusMessage))
-	}
-
-	if inputTokens > 0 && inputLimit > 0 {
-		pct := float64(inputTokens) / float64(inputLimit) * 100
-		ctxSegment := fmt.Sprintf("%s/%s (%.0f%%)", kit.FormatTokenCount(inputTokens), kit.FormatTokenCount(inputLimit), pct)
-		if hint := compactStatusHint(pct); hint != "" {
-			ctxSegment += " · " + hint
+	// Always render the label + bar — RenderContext{Label,Bar} emit a
+	// dim placeholder ("ctx X/--" / "[----------] --") when the limit
+	// is unknown, so the gap stays visible instead of silently hiding.
+	labelText := RenderContextLabel(inputTokens, inputLimit)
+	barText := RenderContextBar(inputTokens, inputLimit)
+	if inputLimit > 0 {
+		if hint := compactStatusHint(float64(inputTokens) / float64(inputLimit) * 100); hint != "" {
+			barText += sep + muted.Render(hint)
 		}
-		// Tint the context budget as it nears auto-compact so it's glanceable;
-		// below the threshold it stays muted like the rest of the line.
-		ctxStyle := muted
-		switch {
-		case pct >= autoCompactThreshold:
-			ctxStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-		case pct >= 85:
-			ctxStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
-		}
-		parts = append(parts, ctxStyle.Render(ctxSegment))
 	}
-
+	badgeText := RenderCompressionsBadge(compressions)
+	costText := ""
 	if !conversationCost.IsZero() {
-		parts = append(parts, muted.Render(kit.FormatMoney(conversationCost)))
+		costText = muted.Render(kit.FormatMoney(conversationCost))
 	}
 
+	segments := []statusSegment{
+		{render: func() string { return muted.Render(modelName) }, width: lipgloss.Width(modelName), priority: 1},
+	}
+	if statusMessage != "" {
+		segments = append(segments, statusSegment{
+			render:   func() string { return muted.Render(statusMessage) },
+			width:    lipgloss.Width(statusMessage),
+			priority: 2,
+		})
+	}
+	if labelText != "" {
+		segments = append(segments, statusSegment{
+			render:   func() string { return labelText },
+			width:    lipgloss.Width(labelText),
+			priority: 3,
+		})
+		segments = append(segments, statusSegment{
+			render:   func() string { return barText },
+			width:    lipgloss.Width(barText),
+			priority: 4,
+		})
+	}
+	if badgeText != "" {
+		segments = append(segments, statusSegment{
+			render:   func() string { return badgeText },
+			width:    lipgloss.Width(badgeText),
+			priority: 5,
+		})
+	}
+	if costText != "" {
+		segments = append(segments, statusSegment{
+			render:   func() string { return costText },
+			width:    lipgloss.Width(costText),
+			priority: 6,
+		})
+	}
+
+	// AllocateStatusSegments joins survivors with segmentSep (a sentinel);
+	// split on it and rejoin with the visual separator to match the
+	// existing aesthetic. The sentinel guarantees segments containing the
+	// visual separator substring stay intact.
+	allocated := AllocateStatusSegments(segments, width)
+	parts := strings.Split(allocated, segmentSep)
 	return strings.Join(parts, sep)
 }
 
@@ -128,10 +176,10 @@ func RenderTurnUsageSummary(inputTokens, outputTokens, width int) string {
 
 func compactStatusHint(percent float64) string {
 	switch {
-	case percent >= autoCompactThreshold:
+	case percent >= pctCritical:
 		return "auto-compact"
-	case percent >= 85:
-		return fmt.Sprintf("compact at %d%%", autoCompactThreshold)
+	case percent > pctWarn:
+		return fmt.Sprintf("compact at %d%%", int(pctCritical))
 	default:
 		return ""
 	}

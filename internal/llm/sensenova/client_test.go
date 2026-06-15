@@ -3,14 +3,13 @@ package sensenova
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
-	anthropicsdk "github.com/anthropics/anthropic-sdk-go"
-	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -19,29 +18,38 @@ import (
 // --- Unit tests ---
 
 func TestName(t *testing.T) {
-	c := NewClient(anthropicsdk.NewClient(), "sensenova:api_key")
+	c := NewClient(openai.NewClient(), "sensenova:api_key")
 	if got := c.Name(); got != "sensenova:api_key" {
 		t.Fatalf("Name() = %q, want %q", got, "sensenova:api_key")
 	}
 }
 
 func TestListModelsReturnsStaticCatalog(t *testing.T) {
-	c := NewClient(anthropicsdk.NewClient(), "sensenova:api_key")
+	c := NewClient(openai.NewClient(), "sensenova:api_key")
 	models, err := c.ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels() error = %v", err)
 	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(models))
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
 	}
 	if models[0].ID != "sensenova-6.7-flash-lite" {
 		t.Fatalf("expected sensenova-6.7-flash-lite, got %q", models[0].ID)
 	}
-	if models[0].InputTokenLimit != 128000 {
-		t.Fatalf("expected input limit 128000, got %d", models[0].InputTokenLimit)
+	if models[0].InputTokenLimit != 256000 {
+		t.Fatalf("expected input limit 256000, got %d", models[0].InputTokenLimit)
 	}
 	if models[0].OutputTokenLimit != 65536 {
 		t.Fatalf("expected output limit 65536, got %d", models[0].OutputTokenLimit)
+	}
+	if models[1].ID != "deepseek-v4-flash" {
+		t.Fatalf("expected deepseek-v4-flash, got %q", models[1].ID)
+	}
+	if models[1].InputTokenLimit != 1_000_000 {
+		t.Fatalf("expected input limit 1000000, got %d", models[1].InputTokenLimit)
+	}
+	if models[1].OutputTokenLimit != 384000 {
+		t.Fatalf("expected output limit 384000, got %d", models[1].OutputTokenLimit)
 	}
 }
 
@@ -62,11 +70,14 @@ func TestCatalogModel(t *testing.T) {
 
 func TestStaticModels(t *testing.T) {
 	models := StaticModels()
-	if len(models) != 1 {
-		t.Fatalf("expected 1 static model, got %d", len(models))
+	if len(models) != 2 {
+		t.Fatalf("expected 2 static models, got %d", len(models))
 	}
 	if models[0].ID != "sensenova-6.7-flash-lite" {
 		t.Fatalf("expected sensenova-6.7-flash-lite, got %q", models[0].ID)
+	}
+	if models[1].ID != "deepseek-v4-flash" {
+		t.Fatalf("expected deepseek-v4-flash, got %q", models[1].ID)
 	}
 }
 
@@ -92,64 +103,43 @@ func TestProviderImplementsInterface(t *testing.T) {
 	var _ llm.Provider = (*Client)(nil)
 }
 
-// --- Integration tests with mocked SenseNova server ---
+// --- Integration tests with mocked OpenAI-compatible server ---
 
-// senseNovaServer returns an httptest.Server that mimics the SenseNova
-// Anthropic-compatible Messages API.
-func senseNovaServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v1/messages":
-			handleMessagesEndpoint(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
+type sseTransport struct {
+	body   []byte
+	auth   string
+	stream string
 }
 
-func handleMessagesEndpoint(w http.ResponseWriter, r *http.Request) {
-	// Verify Bearer auth
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "Forbidden"}})
-		return
+func (t *sseTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.auth = req.Header.Get("Authorization")
+	if req.Body != nil {
+		t.body, _ = io.ReadAll(req.Body)
 	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.WriteHeader(http.StatusOK)
-
-	// Send a minimal Anthropic-compatible SSE streaming response
-	events := []string{
-		`event: message_start
-data: {"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","content":[],"model":"sensenova-6.7-flash-lite","usage":{"input_tokens":10,"output_tokens":0}}}`,
-		`event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
-		`event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello!"}}`,
-		`event: content_block_stop
-data: {"type":"content_block_stop","index":0}`,
-		`event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}`,
-		`event: message_stop
-data: {"type":"message_stop"}`,
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(t.stream)),
 	}
-	for _, event := range events {
-		fmt.Fprintf(w, "%s\n\n", event)
-	}
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
+	return resp, nil
 }
+
+// OpenAI-style SSE: deltas followed by a final chunk with usage and [DONE].
+const openAIStreamFixture = `data: {"id":"1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello!"},"finish_reason":null}]}
+
+data: {"id":"1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}
+
+data: [DONE]
+
+`
 
 func TestStreamIntegration(t *testing.T) {
-	server := senseNovaServer(t)
-	defer server.Close()
-
-	client := anthropicsdk.NewClient(
-		anthropicoption.WithAuthToken("test-key"),
-		anthropicoption.WithBaseURL(server.URL),
+	transport := &sseTransport{stream: openAIStreamFixture}
+	client := openai.NewClient(
+		option.WithAPIKey("test-key"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
 	)
 	c := NewClient(client, "sensenova:api_key")
 
@@ -161,6 +151,7 @@ func TestStreamIntegration(t *testing.T) {
 	var text string
 	var gotDone bool
 	var gotError error
+	var inputTokens, outputTokens int
 	for chunk := range ch {
 		switch chunk.Type {
 		case llm.ChunkTypeText:
@@ -168,12 +159,8 @@ func TestStreamIntegration(t *testing.T) {
 		case llm.ChunkTypeDone:
 			gotDone = true
 			if chunk.Response != nil {
-				if chunk.Response.StopReason != "end_turn" {
-					t.Errorf("stop_reason = %q, want end_turn", chunk.Response.StopReason)
-				}
-				if chunk.Response.Usage.OutputTokens != 5 {
-					t.Errorf("output_tokens = %d, want 5", chunk.Response.Usage.OutputTokens)
-				}
+				inputTokens = chunk.Response.Usage.InputTokens
+				outputTokens = chunk.Response.Usage.OutputTokens
 			}
 		case llm.ChunkTypeError:
 			gotError = chunk.Error
@@ -189,21 +176,20 @@ func TestStreamIntegration(t *testing.T) {
 	if text != "Hello!" {
 		t.Fatalf("text = %q, want %q", text, "Hello!")
 	}
+	if inputTokens != 12 {
+		t.Errorf("input_tokens = %d, want 12", inputTokens)
+	}
+	if outputTokens != 3 {
+		t.Errorf("output_tokens = %d, want 3", outputTokens)
+	}
 }
 
 func TestStreamSendsBearerAuth(t *testing.T) {
-	var receivedAuth string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: [DONE]\n\n")
-	}))
-	defer server.Close()
-
-	client := anthropicsdk.NewClient(
-		anthropicoption.WithAuthToken("test-bearer-key"),
-		anthropicoption.WithBaseURL(server.URL),
+	transport := &sseTransport{stream: "data: [DONE]\n\n"}
+	client := openai.NewClient(
+		option.WithAPIKey("test-bearer-key"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
 	)
 	c := NewClient(client, "sensenova:api_key")
 
@@ -214,7 +200,39 @@ func TestStreamSendsBearerAuth(t *testing.T) {
 	for range ch {
 	}
 
-	if receivedAuth != "Bearer test-bearer-key" {
-		t.Fatalf("Authorization header = %q, want %q", receivedAuth, "Bearer test-bearer-key")
+	if transport.auth != "Bearer test-bearer-key" {
+		t.Fatalf("Authorization header = %q, want %q", transport.auth, "Bearer test-bearer-key")
+	}
+}
+
+func TestStreamSendsIncludeUsage(t *testing.T) {
+	transport := &sseTransport{stream: "data: [DONE]\n\n"}
+	client := openai.NewClient(
+		option.WithAPIKey("test"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
+	)
+	c := NewClient(client, "sensenova:api_key")
+
+	ch := c.Stream(context.Background(), llm.CompletionOptions{
+		Model:    "sensenova-6.7-flash-lite",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	})
+	for range ch {
+	}
+
+	if len(transport.body) == 0 {
+		t.Fatal("no request body captured")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(transport.body, &payload); err != nil {
+		t.Fatalf("invalid json body: %v", err)
+	}
+	streamOpts, ok := payload["stream_options"].(map[string]any)
+	if !ok {
+		t.Fatal("stream_options missing from request body")
+	}
+	if streamOpts["include_usage"] != true {
+		t.Errorf("stream_options.include_usage = %v, want true", streamOpts["include_usage"])
 	}
 }

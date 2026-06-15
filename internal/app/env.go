@@ -39,6 +39,10 @@ type env struct {
 	turnUsageActive  bool
 	ConversationCost llm.Money
 	ThinkingEffort   string
+	// Compressions counts auto + manual compacts this session. Survives
+	// ResetContextDisplay (called per-compact); zeroed only by ResetTokens
+	// (called on /reset, /new).
+	Compressions int
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	OperationMode      setting.OperationMode
@@ -240,4 +244,5 @@ func (m *env) ResetTokens() {
 	m.TurnInputTokens = 0
 	m.TurnOutputTokens = 0
 	m.turnUsageActive = false
+	m.Compressions = 0
 }

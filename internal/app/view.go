@@ -247,6 +247,7 @@ func (m model) renderModeStatus() string {
 		ModelName:        modelName,
 		StatusMessage:    m.userInput.Provider.StatusMessage,
 		ConversationCost: m.env.ConversationCost,
+		Compressions:     m.env.Compressions,
 		Width:            m.env.Width,
 		ThinkingEffort:   thinkingEffort,
 		ShowThinking:     showThinking,

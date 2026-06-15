@@ -252,8 +252,12 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 			case "message_delta":
 				msgDelta := event.AsMessageDelta()
 				state.Response.StopReason = string(msgDelta.Delta.StopReason)
-				state.UpdateUsage(0, int(msgDelta.Usage.OutputTokens))
-				state.UpdateCacheUsage(0, int(msgDelta.Usage.CacheReadInputTokens))
+				// Anthropic populates only OutputTokens here; some Anthropic-compatible
+				// providers (e.g. SenseNova) emit InputTokens in message_delta rather
+				// than message_start. UpdateUsage is a no-op when the value is 0, so
+				// passing both is safe for either shape.
+				state.UpdateUsage(int(msgDelta.Usage.InputTokens), int(msgDelta.Usage.OutputTokens))
+				state.UpdateCacheUsage(int(msgDelta.Usage.CacheCreationInputTokens), int(msgDelta.Usage.CacheReadInputTokens))
 
 			case "message_start":
 				msgStart := event.AsMessageStart()

@@ -7,8 +7,15 @@ var catalog = []llm.ModelInfo{
 		ID:               "sensenova-6.7-flash-lite",
 		Name:             "SenseNova 6.7 Flash Lite",
 		DisplayName:      "SenseNova 6.7 Flash Lite",
-		InputTokenLimit:  128000,
+		InputTokenLimit:  256000,
 		OutputTokenLimit: 65536,
+	},
+	{
+		ID:               "deepseek-v4-flash",
+		Name:             "DeepSeek V4 Flash (via SenseNova)",
+		DisplayName:      "DeepSeek V4 Flash",
+		InputTokenLimit:  1_000_000,
+		OutputTokenLimit: 384000,
 	},
 }
 

@@ -204,6 +204,55 @@ func TestBigModelListModelsReturnsAPIResults(t *testing.T) {
 	}
 }
 
+func TestBigModelListModelsFallsBackToStaticLimit(t *testing.T) {
+	// Real BigModel API omits context_length — verify the static fallback
+	// kicks in so the status bar can render.
+	transport := &modelsTransport{
+		body: `{
+			"object": "list",
+			"data": [
+				{"id": "glm-4.7", "object": "model"},
+				{"id": "glm-5.2", "object": "model"}
+			]
+		}`,
+	}
+	c := newTestClient(transport)
+
+	models, err := c.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	byID := map[string]int{}
+	for _, m := range models {
+		byID[m.ID] = m.InputTokenLimit
+	}
+	if byID["glm-4.7"] != 256_000 {
+		t.Errorf("glm-4.7 limit = %d, want 256000 (static fallback)", byID["glm-4.7"])
+	}
+	if byID["glm-5.2"] != 1_000_000 {
+		t.Errorf("glm-5.2 limit = %d, want 1000000 (static fallback)", byID["glm-5.2"])
+	}
+}
+
+func TestStaticInputLimit(t *testing.T) {
+	cases := []struct {
+		model string
+		want  int
+	}{
+		{"glm-5.2", 1_000_000},
+		{"glm-5.2-flash", 1_000_000},
+		{"glm-5.1", 256_000},
+		{"glm-4.7", 256_000},
+		{"glm-4-long", 256_000},
+		{"glm-4.7-flash", 256_000},
+	}
+	for _, c := range cases {
+		if got := staticInputLimit(c.model); got != c.want {
+			t.Errorf("staticInputLimit(%q) = %d, want %d", c.model, got, c.want)
+		}
+	}
+}
+
 func TestBigModelListModelsReturnsErrorOnAPIFailure(t *testing.T) {
 	c := newTestClient(&modelsErrorTransport{})
 

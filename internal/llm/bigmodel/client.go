@@ -117,6 +117,9 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 				info.InputTokenLimit = extra.ContextLength
 			}
 		}
+		if info.InputTokenLimit == 0 {
+			info.InputTokenLimit = staticInputLimit(id)
+		}
 		models = append(models, info)
 	}
 
