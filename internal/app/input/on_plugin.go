@@ -134,16 +134,13 @@ type PluginSelector struct {
 	installer          *coreplugin.Installer
 }
 
-// Plugin messages
+// Plugin intent messages — each requests one async mutating operation. They
+// bridge from keybindings / executeAction into UpdatePlugin, where deps (cwd,
+// reload) and the spinner live.
 type PluginEnableMsg struct{ PluginName string }
 type PluginDisableMsg struct{ PluginName string }
-
-type PluginToggleResultMsg struct {
-	PluginName string
-	Enable     bool
-	Success    bool
-	Error      error
-}
+type PluginUninstallMsg struct{ PluginName string }
+type PluginMarketplaceRemoveMsg struct{ ID string }
 
 type PluginInstallMsg struct {
 	PluginName  string
@@ -151,20 +148,15 @@ type PluginInstallMsg struct {
 	Scope       coreplugin.Scope
 }
 
-type PluginUninstallMsg struct{ PluginName string }
-
-type PluginInstallResultMsg struct {
-	PluginName string
-	Success    bool
-	Error      error
-}
-
-type PluginMarketplaceRemoveMsg struct{ ID string }
-
-type PluginMarketplaceSyncResultMsg struct {
-	ID      string
-	Success bool
-	Error   error
+// pluginOpResultMsg is the unified outcome of every async mutating operation
+// (install / sync / remove / uninstall / enable / disable). One spinner path,
+// one result handler — see runPluginOp and the pluginOpResultMsg case.
+type pluginOpResultMsg struct {
+	okMsg  string // success status, e.g. "Installed foo"
+	errCtx string // failure verb + subject, e.g. "install foo"
+	err    error
+	pop    bool // goBack() on success (leave the detail / options view)
+	reload bool // ReloadAfterPluginChange() on success
 }
 
 // NewPluginSelector creates a new PluginSelector
@@ -192,40 +184,64 @@ func (s *PluginSelector) IsActive() bool {
 func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case PluginEnableMsg:
-		tick := state.beginLoading(fmt.Sprintf("Enabling %s...", msg.PluginName))
-		return tea.Batch(pluginToggleCmd(state.registry, msg.PluginName, true), tick), true
+		reg, name := state.registry, msg.PluginName
+		return tea.Batch(
+			state.beginLoading("Enabling "+name+"..."),
+			runPluginOp(pluginOpResultMsg{okMsg: "Enabled " + name, errCtx: "enable " + name},
+				func() error { return reg.Enable(name, coreplugin.ScopeUser) }),
+		), true
 
 	case PluginDisableMsg:
-		tick := state.beginLoading(fmt.Sprintf("Disabling %s...", msg.PluginName))
-		return tea.Batch(pluginToggleCmd(state.registry, msg.PluginName, false), tick), true
-
-	case PluginToggleResultMsg:
-		state.HandleToggleResult(msg)
-		return nil, true
-
-	case PluginUninstallMsg:
-		uninstalled := state.HandleUninstall(msg.PluginName)
-		if uninstalled {
-			_ = deps.ReloadAfterPluginChange()
-		}
-		return nil, true
+		reg, name := state.registry, msg.PluginName
+		return tea.Batch(
+			state.beginLoading("Disabling "+name+"..."),
+			runPluginOp(pluginOpResultMsg{okMsg: "Disabled " + name, errCtx: "disable " + name},
+				func() error { return reg.Disable(name, coreplugin.ScopeUser) }),
+		), true
 
 	case PluginInstallMsg:
-		return tea.Batch(pluginInstallCmd(state.registry, deps.Cwd, msg), state.startLoadingTick()), true
+		reg, cwd := state.registry, deps.Cwd
+		name, market, scope := msg.PluginName, msg.Marketplace, msg.Scope
+		return tea.Batch(
+			state.beginLoading("Installing "+name+"..."),
+			runPluginOp(pluginOpResultMsg{okMsg: "Installed " + name, errCtx: "install " + name, pop: true, reload: true},
+				func() error {
+					ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+					defer cancel()
+					return coreplugin.Install(ctx, reg, cwd, coreplugin.FormatPluginRef(name, market), scope)
+				}),
+		), true
 
-	case PluginInstallResultMsg:
-		state.HandleInstallResult(msg)
-		if msg.Success {
-			_ = deps.ReloadAfterPluginChange()
-		}
-		return nil, true
+	case PluginUninstallMsg:
+		inst, name := state.installer, msg.PluginName
+		return tea.Batch(
+			state.beginLoading("Uninstalling "+name+"..."),
+			runPluginOp(pluginOpResultMsg{okMsg: "Uninstalled " + name, errCtx: "uninstall " + name, pop: true, reload: true},
+				func() error { return inst.Uninstall(name, coreplugin.ScopeUser) }),
+		), true
 
 	case PluginMarketplaceRemoveMsg:
-		state.HandleMarketplaceRemove(msg.ID)
-		return nil, true
+		mgr, id := state.marketplaceManager, msg.ID
+		return tea.Batch(
+			state.beginLoading("Removing "+id+"..."),
+			runPluginOp(pluginOpResultMsg{okMsg: "Removed " + id, errCtx: "remove " + id, pop: true},
+				func() error { return mgr.Remove(id) }),
+		), true
 
-	case PluginMarketplaceSyncResultMsg:
-		state.HandleMarketplaceSync(msg)
+	case pluginOpResultMsg:
+		state.endLoading()
+		if msg.err != nil {
+			state.setError(fmt.Sprintf("Failed to %s: %v", msg.errCtx, msg.err))
+		} else {
+			state.setSuccess(msg.okMsg)
+			if msg.pop {
+				state.goBack()
+			}
+		}
+		state.refreshAfterOp()
+		if msg.err == nil && msg.reload {
+			_ = deps.ReloadAfterPluginChange()
+		}
 		return nil, true
 
 	case pluginLoadingTickMsg:
@@ -265,30 +281,20 @@ func (s *PluginSelector) startLoadingTick() tea.Cmd {
 	return pluginLoadingTick()
 }
 
-// pluginToggleCmd enables or disables a plugin in the user scope.
-func pluginToggleCmd(reg *coreplugin.Registry, name string, enable bool) tea.Cmd {
-	return func() tea.Msg {
-		var err error
-		if enable {
-			err = reg.Enable(name, coreplugin.ScopeUser)
-		} else {
-			err = reg.Disable(name, coreplugin.ScopeUser)
-		}
-		return PluginToggleResultMsg{PluginName: name, Enable: enable, Success: err == nil, Error: err}
-	}
+// endLoading clears the spinner. The in-flight tick stops itself on the next
+// frame once it sees isLoading false.
+func (s *PluginSelector) endLoading() {
+	s.isLoading = false
+	s.loadingMsg = ""
 }
 
-// pluginInstallCmd creates a tea.Cmd that installs the requested plugin.
-func pluginInstallCmd(reg *coreplugin.Registry, cwd string, msg PluginInstallMsg) tea.Cmd {
+// runPluginOp wraps a blocking mutation in a command that reports the unified
+// pluginOpResultMsg. Pair it with beginLoading so the spinner runs until the
+// result lands.
+func runPluginOp(res pluginOpResultMsg, work func() error) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		ref := coreplugin.FormatPluginRef(msg.PluginName, msg.Marketplace)
-		if err := coreplugin.Install(ctx, reg, cwd, ref, msg.Scope); err != nil {
-			return PluginInstallResultMsg{PluginName: msg.PluginName, Success: false, Error: err}
-		}
-		return PluginInstallResultMsg{PluginName: msg.PluginName, Success: true}
+		res.err = work()
+		return res
 	}
 }
 
@@ -813,8 +819,8 @@ func (s *PluginSelector) installPlugin(scope coreplugin.Scope) tea.Cmd {
 	}
 	name := s.detailDiscover.Name
 	marketplace := s.detailDiscover.Marketplace
-	s.isLoading = true
-	s.loadingMsg = fmt.Sprintf("Installing %s...", name)
+	// The spinner starts when UpdatePlugin handles PluginInstallMsg, so install
+	// shares the one beginLoading path with every other mutating op.
 	return func() tea.Msg {
 		return PluginInstallMsg{
 			PluginName:  name,
@@ -852,19 +858,18 @@ func (s *PluginSelector) browseMarketplace() {
 	s.scrollOffset = 0
 }
 
-// syncMarketplace creates a sync command for a marketplace.
+// syncMarketplace clones or updates a marketplace, driving the shared spinner.
 func (s *PluginSelector) syncMarketplace(id string) tea.Cmd {
-	s.isLoading = true
-	s.loadingMsg = fmt.Sprintf("Syncing %s...", id)
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-
-		if err := s.marketplaceManager.SyncOrPrune(ctx, id); err != nil {
-			return PluginMarketplaceSyncResultMsg{ID: id, Success: false, Error: err}
-		}
-		return PluginMarketplaceSyncResultMsg{ID: id, Success: true}
-	}
+	mgr := s.marketplaceManager
+	return tea.Batch(
+		s.beginLoading("Syncing "+id+"..."),
+		runPluginOp(pluginOpResultMsg{okMsg: "Synced " + id, errCtx: "sync " + id},
+			func() error {
+				ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer cancel()
+				return mgr.SyncOrPrune(ctx, id)
+			}),
+	)
 }
 
 // toggleSelectedPlugin toggles enable/disable for the selected plugin.
@@ -878,79 +883,6 @@ func (s *PluginSelector) toggleSelectedPlugin() tea.Cmd {
 		}
 	}
 	return nil
-}
-
-// HandleToggleResult handles plugin enable/disable results.
-func (s *PluginSelector) HandleToggleResult(msg PluginToggleResultMsg) {
-	s.isLoading = false
-	s.loadingMsg = ""
-	if msg.Success {
-		past := "Disabled"
-		if msg.Enable {
-			past = "Enabled"
-		}
-		s.setSuccess(fmt.Sprintf("%s %s", past, msg.PluginName))
-	} else {
-		action := "disable"
-		if msg.Enable {
-			action = "enable"
-		}
-		s.setError(fmt.Sprintf("Failed to %s: %v", action, msg.Error))
-	}
-	s.refreshAndUpdateView()
-}
-
-// HandleUninstall removes a plugin and reports whether the on-disk state
-// changed (so the caller can trigger a registry reload).
-func (s *PluginSelector) HandleUninstall(name string) bool {
-	if err := s.installer.Uninstall(name, coreplugin.ScopeUser); err != nil {
-		s.setError(fmt.Sprintf("Failed to uninstall: %v", err))
-		s.refreshAndUpdateView()
-		return false
-	}
-	s.setSuccess(fmt.Sprintf("Uninstalled %s", name))
-	s.goBack()
-	s.refreshAndUpdateView()
-	return true
-}
-
-// HandleInstallResult handles the result of plugin installation.
-func (s *PluginSelector) HandleInstallResult(msg PluginInstallResultMsg) {
-	s.isLoading = false
-	s.loadingMsg = ""
-	if !msg.Success {
-		s.setError(fmt.Sprintf("Failed to install: %v", msg.Error))
-	} else {
-		s.setSuccess(fmt.Sprintf("Installed %s", msg.PluginName))
-		s.goBack()
-	}
-	s.refreshAndUpdateView()
-}
-
-// HandleMarketplaceSync handles marketplace sync result.
-func (s *PluginSelector) HandleMarketplaceSync(msg PluginMarketplaceSyncResultMsg) {
-	s.isLoading = false
-	s.loadingMsg = ""
-	if !msg.Success {
-		// A broken GitHub source is pruned inside SyncOrPrune; here we just
-		// surface the failure and let the refresh reflect any pruning.
-		s.setError(fmt.Sprintf("Failed to sync %s: %v", msg.ID, msg.Error))
-	} else {
-		s.setSuccess(fmt.Sprintf("Synced %s", msg.ID))
-	}
-	s.refreshMarketplaces()
-	s.refreshDiscoverPlugins()
-}
-
-// HandleMarketplaceRemove handles marketplace removal.
-func (s *PluginSelector) HandleMarketplaceRemove(id string) {
-	if err := s.marketplaceManager.Remove(id); err != nil {
-		s.setError(fmt.Sprintf("Failed to remove: %v", err))
-	} else {
-		s.setSuccess(fmt.Sprintf("Removed %s", id))
-		s.goBack()
-	}
-	s.refreshMarketplaces()
 }
 
 // setError sets an error message.
@@ -1203,9 +1135,14 @@ func (s *PluginSelector) enrichDiscoverItem(item *pluginDiscoverItem) {
 	}
 }
 
-// refreshAndUpdateView refreshes plugins and updates the detail view if active
-func (s *PluginSelector) refreshAndUpdateView() {
-	s.refreshCurrentTab()
+// refreshAfterOp reloads every tab's data and the open detail view after a
+// mutation, so counts and lists stay consistent no matter which tab the op was
+// triggered from. Runs on the warm post-op path, not per keystroke.
+func (s *PluginSelector) refreshAfterOp() {
+	s.refreshMarketplaces()
+	s.refreshDiscoverPlugins()
+	s.refreshInstalledPlugins()
+	s.updateFilter()
 	if s.level == pluginLevelDetail && s.detailPlugin != nil {
 		s.refreshDetailView()
 	}
