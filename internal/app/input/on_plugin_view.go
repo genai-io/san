@@ -555,36 +555,61 @@ func (s *PluginSelector) renderMarketplaceDetail() string {
 
 func (s *PluginSelector) renderAddMarketplaceDialog() string {
 	var sb strings.Builder
-	cw := s.contentWidth()
+	innerWidth := max(20, s.contentWidth()-4)
 
 	dimStyle := kit.DimStyle()
-	brightStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextBright)
+	valStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text)
+	sepStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDisabled)
 
 	sb.WriteString(s.sepLine())
 	sb.WriteString("\n")
 	sb.WriteString(kit.SelectorTitleStyle().Render("Add Marketplace"))
 	sb.WriteString("\n\n")
 
-	sb.WriteString(dimStyle.Render("Enter marketplace source:"))
-	sb.WriteString("\n\n")
-	sb.WriteString(dimStyle.Render("Examples:"))
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("  • https://github.com/owner/repo"))
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("  • owner/repo (GitHub shorthand)"))
-	sb.WriteString("\n")
-	sb.WriteString(dimStyle.Render("  • ./path/to/marketplace (local)"))
-	sb.WriteString("\n\n")
-
-	maxInputLen := cw - 6
-	inputLine := s.addMarketplaceInput + "│"
-	if len(inputLine) > maxInputLen {
-		inputLine = "…" + inputLine[len(inputLine)-maxInputLen+1:]
+	// Accepted formats, value left-aligned in a column with a dim note.
+	examples := []struct{ value, note string }{
+		{"https://github.com/owner/repo", "full GitHub URL"},
+		{"owner/repo", "GitHub shorthand"},
+		{"./path/to/marketplace", "local path"},
 	}
-	sb.WriteString(brightStyle.Render("> " + inputLine))
+	const valCol = 31
+	for _, ex := range examples {
+		pad := strings.Repeat(" ", max(2, valCol-lipgloss.Width(ex.value)))
+		sb.WriteString("  ")
+		sb.WriteString(valStyle.Render(ex.value))
+		sb.WriteString(pad)
+		sb.WriteString(sepStyle.Render("· "))
+		sb.WriteString(dimStyle.Render(ex.note))
+		sb.WriteString("\n")
+	}
 	sb.WriteString("\n")
 
-	sb.WriteString("\n")
+	sb.WriteString(dimStyle.Render("Paste or type a marketplace source:"))
+	sb.WriteString("\n\n")
+
+	// Input field — a filled box matching the plugin filter search box, with a
+	// ▏ caret. Empty shows a dim placeholder; a long source scrolls so the tail
+	// (where the caret sits) stays visible.
+	fieldFg := kit.CurrentTheme.TextBright
+	fieldText := s.addMarketplaceInput + "▏"
+	if s.addMarketplaceInput == "" {
+		fieldFg = kit.CurrentTheme.TextDim
+		fieldText = "▏ owner/repo, a GitHub URL, or a local path"
+	} else if lipgloss.Width(fieldText) > innerWidth-2 {
+		runes := []rune(s.addMarketplaceInput)
+		keep := max(1, innerWidth-4) // room for "…", caret, and padding
+		if keep < len(runes) {
+			fieldText = "…" + string(runes[len(runes)-keep:]) + "▏"
+		}
+	}
+	sb.WriteString(lipgloss.NewStyle().
+		Foreground(fieldFg).
+		Background(kit.SearchBg).
+		Padding(0, 1).
+		Width(innerWidth).
+		Render(fieldText))
+
+	sb.WriteString("\n\n")
 	sb.WriteString(s.sepLine())
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "enter add · esc cancel")

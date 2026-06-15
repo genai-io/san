@@ -308,6 +308,23 @@ func (s *PluginSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return s.handleListKeypress(key)
 }
 
+// HandlePaste appends bracketed-paste content to the marketplace-source field.
+// A source is a single token (URL, owner/repo, or local path), so embedded
+// newlines and surrounding whitespace are stripped rather than inserted.
+func (s *PluginSelector) HandlePaste(content string) tea.Cmd {
+	if s.level != pluginLevelAddMarketplace {
+		return nil
+	}
+	content = strings.NewReplacer("\r", "", "\n", "").Replace(content)
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	s.addMarketplaceInput += content
+	s.clearMessage()
+	return nil
+}
+
 func (s *PluginSelector) handleAddMarketplaceKeypress(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "esc":
@@ -318,12 +335,14 @@ func (s *PluginSelector) handleAddMarketplaceKeypress(key tea.KeyMsg) tea.Cmd {
 	case "backspace":
 		if len(s.addMarketplaceInput) > 0 {
 			s.addMarketplaceInput = s.addMarketplaceInput[:len(s.addMarketplaceInput)-1]
+			s.clearMessage()
 		}
 		return nil
 	default:
 		// Typed text capture: append printable characters to the input.
 		if text := key.Key().Text; text != "" {
 			s.addMarketplaceInput += text
+			s.clearMessage()
 		}
 		return nil
 	}
@@ -814,20 +833,17 @@ func (s *PluginSelector) browseMarketplace() {
 	s.browseMarketplaceID = s.detailMarketplace.ID
 	s.browsePlugins = []pluginDiscoverItem{}
 
-	plugins, err := s.marketplaceManager.ListPlugins(s.detailMarketplace.ID)
+	plugins, err := s.marketplaceManager.MarketplacePlugins(s.detailMarketplace.ID)
 	if err != nil {
 		s.setError(fmt.Sprintf("Failed to list plugins: %v", err))
 		return
 	}
 
 	installedNames := s.getInstalledNames()
-	for _, pluginName := range plugins {
-		item := s.newDiscoverItem(pluginName, s.detailMarketplace.ID, installedNames)
-		if pluginPath, err := s.marketplaceManager.GetPluginPath(s.detailMarketplace.ID, pluginName); err == nil {
-			if p, err := coreplugin.LoadPlugin(pluginPath, coreplugin.ScopeUser, pluginName+"@"+s.detailMarketplace.ID); err == nil {
-				item.Description = p.Manifest.Description
-			}
-		}
+	for _, mp := range plugins {
+		item := s.newDiscoverItem(mp.Name, s.detailMarketplace.ID, installedNames)
+		applyMarketplacePlugin(&item, mp)
+		s.enrichDiscoverItem(&item)
 		s.browsePlugins = append(s.browsePlugins, item)
 	}
 
@@ -1054,13 +1070,14 @@ func (s *PluginSelector) refreshDiscoverPlugins() {
 	installedNames := s.getInstalledNames()
 
 	for _, marketplaceID := range s.marketplaceManager.List() {
-		plugins, err := s.marketplaceManager.ListPlugins(marketplaceID)
+		plugins, err := s.marketplaceManager.MarketplacePlugins(marketplaceID)
 		if err != nil {
 			continue
 		}
 
-		for _, pluginName := range plugins {
-			item := s.newDiscoverItem(pluginName, marketplaceID, installedNames)
+		for _, mp := range plugins {
+			item := s.newDiscoverItem(mp.Name, marketplaceID, installedNames)
+			applyMarketplacePlugin(&item, mp)
 			s.enrichDiscoverItem(&item)
 			s.discoverPlugins = append(s.discoverPlugins, item)
 		}
@@ -1105,7 +1122,7 @@ func (s *PluginSelector) refreshMarketplaces() {
 			item.Source = entry.Source.Path
 		}
 
-		if plugins, err := s.marketplaceManager.ListPlugins(id); err == nil {
+		if plugins, err := s.marketplaceManager.MarketplacePlugins(id); err == nil {
 			item.Available = len(plugins)
 		}
 
@@ -1147,7 +1164,21 @@ func (s *PluginSelector) newDiscoverItem(name, marketplaceID string, installed m
 	}
 }
 
-// enrichDiscoverItem loads manifest details into an item.
+// applyMarketplacePlugin copies the metadata a marketplace.json entry declares
+// into a discover item. This is the only metadata available for plugins whose
+// content lives in another repo and isn't fetched until install.
+func applyMarketplacePlugin(item *pluginDiscoverItem, mp coreplugin.MarketplacePlugin) {
+	item.Description = mp.Description
+	item.Version = mp.Version
+	if mp.Author != nil {
+		item.Author = mp.Author.Name
+	}
+}
+
+// enrichDiscoverItem fills any fields the marketplace.json entry left empty from
+// the plugin's own manifest on disk. It is best-effort: plugins whose content
+// isn't vendored in the marketplace repo (external sources, not yet installed)
+// simply keep the marketplace metadata.
 func (s *PluginSelector) enrichDiscoverItem(item *pluginDiscoverItem) {
 	fullName := item.Name + "@" + item.Marketplace
 	pluginPath, err := s.marketplaceManager.GetPluginPath(item.Marketplace, item.Name)
@@ -1158,12 +1189,18 @@ func (s *PluginSelector) enrichDiscoverItem(item *pluginDiscoverItem) {
 	if err != nil {
 		return
 	}
-	item.Description = p.Manifest.Description
-	item.Version = p.Manifest.Version
-	if p.Manifest.Author != nil {
+	if item.Description == "" {
+		item.Description = p.Manifest.Description
+	}
+	if item.Version == "" {
+		item.Version = p.Manifest.Version
+	}
+	if item.Author == "" && p.Manifest.Author != nil {
 		item.Author = p.Manifest.Author.Name
 	}
-	item.Homepage = p.Manifest.Homepage
+	if item.Homepage == "" {
+		item.Homepage = p.Manifest.Homepage
+	}
 }
 
 // refreshAndUpdateView refreshes plugins and updates the detail view if active

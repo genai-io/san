@@ -324,7 +324,21 @@ func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (strin
 
 	switch entry.Source.Source {
 	case "github":
-		return entry.InstallLocation, nil
+		// Prefer the recorded clone path, but fall back to the canonical
+		// location when it's empty or stale (e.g. a config carried over from
+		// an older config dir whose path no longer exists).
+		loc := entry.InstallLocation
+		if loc == "" {
+			return filepath.Join(m.marketplacesDir, marketplaceID), nil
+		}
+		if _, err := os.Stat(loc); err != nil {
+			if canonical := filepath.Join(m.marketplacesDir, marketplaceID); canonical != loc {
+				if _, err := os.Stat(canonical); err == nil {
+					return canonical, nil
+				}
+			}
+		}
+		return loc, nil
 	case "directory":
 		return entry.Source.Path, nil
 	default:
@@ -332,7 +346,62 @@ func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (strin
 	}
 }
 
-// ListPlugins returns all plugins in a marketplace.
+// MarketplacePlugins returns the plugins a marketplace offers. It prefers the
+// marketplace.json manifest — Claude Code's model, where plugins are declared
+// and each carries its own source (which may point to another repo). When a
+// marketplace has no manifest plugins[], it falls back to scanning the repo for
+// vendored plugin subdirectories so directory-style marketplaces keep working.
+func (m *MarketplaceManager) MarketplacePlugins(marketplaceID string) ([]MarketplacePlugin, error) {
+	if meta, err := m.GetMarketplaceMetadata(marketplaceID); err == nil && len(meta.Plugins) > 0 {
+		return meta.Plugins, nil
+	}
+
+	names, err := m.ListPlugins(marketplaceID)
+	if err != nil {
+		return nil, err
+	}
+	plugins := make([]MarketplacePlugin, 0, len(names))
+	for _, name := range names {
+		entry := MarketplacePlugin{
+			Name:   name,
+			Source: PluginSource{Type: SourcePath, Path: name},
+		}
+		if path, perr := m.GetPluginPath(marketplaceID, name); perr == nil {
+			if man, merr := loadManifest(path); merr == nil {
+				entry.Description = man.Description
+				entry.Version = man.Version
+				entry.Author = man.Author
+			}
+		}
+		plugins = append(plugins, entry)
+	}
+	return plugins, nil
+}
+
+// ResolveLocalPluginPath returns the on-disk path of a plugin whose content
+// lives inside the marketplace repo: a declared relative "path" source, or —
+// as a fallback — a vendored subdirectory found by name.
+func (m *MarketplaceManager) ResolveLocalPluginPath(marketplaceID, name string, src PluginSource) (string, error) {
+	if src.Type == SourcePath && src.Path != "" {
+		base, err := m.getMarketplaceBasePath(marketplaceID)
+		if err != nil {
+			return "", err
+		}
+		clean := filepath.Clean(src.Path)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+			return "", fmt.Errorf("invalid plugin path: %s", src.Path)
+		}
+		full := filepath.Join(base, clean)
+		if _, err := os.Stat(full); err == nil {
+			return full, nil
+		}
+	}
+	return m.GetPluginPath(marketplaceID, name)
+}
+
+// ListPlugins returns the names of vendored plugin subdirectories in a
+// marketplace. It scans the repo layout and does not read marketplace.json;
+// use MarketplacePlugins for the manifest-aware, declared plugin list.
 func (m *MarketplaceManager) ListPlugins(marketplaceID string) ([]string, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {

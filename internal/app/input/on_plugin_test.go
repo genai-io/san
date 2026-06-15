@@ -277,6 +277,36 @@ func TestHandlePluginCommandInstallFromMarketplace(t *testing.T) {
 	}
 }
 
+func TestHandlePasteAppendsMarketplaceSource(t *testing.T) {
+	m := NewPluginSelector(coreplugin.NewRegistry())
+	m.level = pluginLevelAddMarketplace
+	m.addMarketplaceInput = "owner/"
+	m.lastMessage = "Please enter a marketplace source"
+	m.isError = true
+
+	// Newlines/whitespace from a terminal paste are stripped, not embedded,
+	// and the stale validation error is cleared.
+	m.HandlePaste("repo\n")
+
+	if m.addMarketplaceInput != "owner/repo" {
+		t.Fatalf("HandlePaste = %q, want %q", m.addMarketplaceInput, "owner/repo")
+	}
+	if m.lastMessage != "" || m.isError {
+		t.Fatal("HandlePaste should clear the stale error message")
+	}
+}
+
+func TestHandlePasteIgnoredOutsideAddDialog(t *testing.T) {
+	m := NewPluginSelector(coreplugin.NewRegistry())
+	m.level = pluginLevelTabList
+
+	m.HandlePaste("owner/repo")
+
+	if m.addMarketplaceInput != "" {
+		t.Fatalf("HandlePaste outside add dialog mutated input: %q", m.addMarketplaceInput)
+	}
+}
+
 func createTestPluginMarketplace(t *testing.T) string {
 	t.Helper()
 

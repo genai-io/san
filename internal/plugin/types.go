@@ -3,7 +3,11 @@
 // installable and shareable units. Compatible with Claude Code plugin format.
 package plugin
 
-import "github.com/genai-io/san/internal/setting"
+import (
+	"encoding/json"
+
+	"github.com/genai-io/san/internal/setting"
+)
 
 // Scope represents where a plugin is installed.
 type Scope string
@@ -302,14 +306,87 @@ func (m *MarketplaceMetadata) GetDescription() string {
 	return ""
 }
 
+// Plugin source kinds, mirroring Claude Code's marketplace.json plugin sources.
+const (
+	SourcePath      = "path"       // relative dir inside the marketplace repo
+	SourceGitHub    = "github"     // {"source":"github","repo":"owner/repo"}
+	SourceURL       = "url"        // {"source":"url","url":"https://...git"}
+	SourceGitSubdir = "git-subdir" // {"source":"git-subdir","url":..,"path":..}
+	SourceNPM       = "npm"        // {"source":"npm","package":..}
+)
+
+// PluginSource describes where a marketplace plugin's content comes from.
+// In marketplace.json a plugin's "source" is either a relative-path string
+// (the plugin lives inside the marketplace repo) or an object naming an
+// external location — its own git repo, a subdir of one, or an npm package.
+type PluginSource struct {
+	Type string // one of the Source* constants above
+
+	Path string // SourcePath relative dir, or SourceGitSubdir subdir within repo
+	Repo string // SourceGitHub "owner/repo"
+	URL  string // SourceURL / SourceGitSubdir git URL
+	Ref  string // optional branch/tag
+	SHA  string // optional commit pin (takes precedence over Ref)
+
+	Package  string // SourceNPM package name
+	Version  string // SourceNPM version or range
+	Registry string // SourceNPM custom registry URL
+}
+
+// UnmarshalJSON accepts either a relative-path string ("./plugins/foo") or a
+// source object. "git" is treated as an alias for the generic "url" kind.
+func (s *PluginSource) UnmarshalJSON(data []byte) error {
+	var path string
+	if err := json.Unmarshal(data, &path); err == nil {
+		*s = PluginSource{Type: SourcePath, Path: path}
+		return nil
+	}
+
+	var obj struct {
+		Source   string `json:"source"`
+		Path     string `json:"path"`
+		Repo     string `json:"repo"`
+		URL      string `json:"url"`
+		Ref      string `json:"ref"`
+		SHA      string `json:"sha"`
+		Package  string `json:"package"`
+		Version  string `json:"version"`
+		Registry string `json:"registry"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	*s = PluginSource{
+		Type: obj.Source, Path: obj.Path, Repo: obj.Repo, URL: obj.URL,
+		Ref: obj.Ref, SHA: obj.SHA,
+		Package: obj.Package, Version: obj.Version, Registry: obj.Registry,
+	}
+	if s.Type == "git" {
+		s.Type = SourceURL
+	}
+	return nil
+}
+
+// External reports whether the plugin's content is fetched from outside the
+// marketplace repo (its own git repo or an npm package) rather than living as
+// a path inside it.
+func (s PluginSource) External() bool {
+	switch s.Type {
+	case SourceGitHub, SourceURL, SourceGitSubdir, SourceNPM:
+		return true
+	default:
+		return false
+	}
+}
+
 // MarketplacePlugin represents a plugin entry in marketplace.json.
 type MarketplacePlugin struct {
-	Name        string  `json:"name"`
-	Source      string  `json:"source"`
-	Description string  `json:"description,omitempty"`
-	Version     string  `json:"version,omitempty"`
-	Author      *Author `json:"author,omitempty"`
-	Category    string  `json:"category,omitempty"`
+	Name        string       `json:"name"`
+	Source      PluginSource `json:"source"`
+	Description string       `json:"description,omitempty"`
+	Version     string       `json:"version,omitempty"`
+	Author      *Author      `json:"author,omitempty"`
+	Category    string       `json:"category,omitempty"`
 }
 
 // InstallCounts represents the install-counts-cache.json format.

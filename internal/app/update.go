@@ -39,6 +39,15 @@ type overlayPanel interface {
 	Render() string
 }
 
+// pasteHandler is the optional half of overlayPanel for text-entry dialogs.
+// Bracketed paste arrives as tea.PasteMsg, which is not a tea.KeyMsg, so it
+// never reaches HandleKeypress — it needs its own routing (see Update). An
+// overlay that accepts pasted text implements this; one that doesn't has the
+// paste dropped rather than leaking into the hidden prompt textarea behind it.
+type pasteHandler interface {
+	HandlePaste(content string) tea.Cmd
+}
+
 // overlayPanels lists every panel that may be in front, in keyboard-priority
 // order: the docked modals win over the slash-command pickers. At most one is
 // active at a time; activeOverlay returns the first that reports IsActive().
@@ -80,6 +89,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		if c, ok := m.routeKeypress(msg); ok {
 			return m, c
+		}
+	case tea.PasteMsg:
+		// Route paste to the foreground overlay, mirroring routeKeypress.
+		// When an overlay owns the screen but can't take paste, drop it so
+		// it doesn't leak into the prompt textarea hidden behind it. With no
+		// overlay up, fall through to the textarea's own paste handling.
+		if ov, ok := m.activeOverlay(); ok {
+			if ph, ok := ov.(pasteHandler); ok {
+				return m, ph.HandlePaste(msg.Content)
+			}
+			return m, nil
 		}
 	case tea.WindowSizeMsg:
 		return m, m.handleWindowResize(msg)

@@ -137,68 +137,61 @@ func Install(ctx context.Context, reg *Registry, cwd, ref string, scope Scope) e
 func (i *Installer) Install(ctx context.Context, ref string, scope Scope) error {
 	name, marketplace := ParsePluginRef(ref)
 
-	// Find marketplace source
-	source, ok := i.marketplaces[marketplace]
-	if !ok && marketplace != "" {
-		// Fallback: try matching by marketplace.json "name" field
-		if resolved := i.resolveMarketplaceByName(marketplace); resolved != "" {
-			source, ok = i.marketplaces[resolved]
-			marketplace = resolved
+	// Resolve the marketplace: explicit ID, marketplace.json "name", or — when
+	// none is given — the first known marketplace that offers this plugin.
+	if marketplace != "" {
+		if _, ok := i.marketplaces[marketplace]; !ok {
+			if resolved := i.resolveMarketplaceByName(marketplace); resolved != "" {
+				marketplace = resolved
+			} else {
+				return fmt.Errorf("unknown marketplace: %s", marketplace)
+			}
 		}
-		if !ok {
-			return fmt.Errorf("unknown marketplace: %s", marketplace)
+	} else if found := i.findMarketplaceFor(name); found != "" {
+		marketplace = found
+	} else {
+		return fmt.Errorf("could not find plugin: %s", name)
+	}
+
+	// Ensure a GitHub marketplace's repo (and its marketplace.json) is present
+	// locally before we read the plugin's declared source.
+	if i.marketplaces[marketplace].Type == "github" {
+		if err := i.marketplaceManager.Sync(ctx, marketplace); err != nil {
+			return fmt.Errorf("failed to sync marketplace %s: %w", marketplace, err)
 		}
 	}
 
-	// Determine install path
+	// Locate the plugin's content. Following Claude Code's model, a marketplace
+	// may merely declare a plugin whose content lives in its own repo — fetch
+	// that; otherwise the content sits inside the marketplace repo.
+	psrc, declared := i.resolvePluginSource(marketplace, name)
+	var srcPath string
+	cleanup := func() {}
+	if declared && psrc.External() {
+		path, c, err := fetchExternalPlugin(ctx, psrc)
+		if err != nil {
+			return fmt.Errorf("failed to fetch plugin %s: %w", name, err)
+		}
+		srcPath, cleanup = path, c
+		defer cleanup()
+	} else {
+		path, err := i.marketplaceManager.ResolveLocalPluginPath(marketplace, name, psrc)
+		if err != nil {
+			return fmt.Errorf("plugin %s not found in marketplace %s: %w", name, marketplace, err)
+		}
+		srcPath = path
+	}
+
+	// Install into the scope dir as a fresh copy (no .git history).
 	installDir := i.getInstallDir(scope)
 	pluginPath := filepath.Join(installDir, name)
-
-	// Create install directory
 	if err := os.MkdirAll(installDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
-
-	// Install based on source type
-	var err error
-	switch source.Type {
-	case "directory":
-		// Use marketplace manager to find the correct plugin path
-		srcPath, pathErr := i.marketplaceManager.GetPluginPath(marketplace, name)
-		if pathErr != nil {
-			// Fallback to direct path
-			srcPath = filepath.Join(source.Path, name)
-		}
-		err = copyDir(srcPath, pluginPath)
-	case "github":
-		// First sync the marketplace to get the repo
-		if syncErr := i.marketplaceManager.Sync(ctx, marketplace); syncErr != nil {
-			return fmt.Errorf("failed to sync marketplace %s: %w", marketplace, syncErr)
-		}
-		// Then copy the specific plugin subdirectory
-		srcPath, pathErr := i.marketplaceManager.GetPluginPath(marketplace, name)
-		if pathErr != nil {
-			return fmt.Errorf("plugin %s not found in marketplace %s: %w", name, marketplace, pathErr)
-		}
-		err = copyDir(srcPath, pluginPath)
-	default:
-		// Try to find in any configured marketplace
-		if marketplace == "" {
-			for mktID := range i.marketplaces {
-				srcPath, pathErr := i.marketplaceManager.GetPluginPath(mktID, name)
-				if pathErr == nil {
-					err = copyDir(srcPath, pluginPath)
-					marketplace = mktID
-					break
-				}
-			}
-		}
-		if marketplace == "" {
-			return fmt.Errorf("could not find plugin: %s", name)
-		}
+	if err := os.RemoveAll(pluginPath); err != nil {
+		return fmt.Errorf("failed to clear previous install: %w", err)
 	}
-
-	if err != nil {
+	if err := copyDir(srcPath, pluginPath); err != nil {
 		return fmt.Errorf("failed to install plugin: %w", err)
 	}
 
@@ -286,6 +279,131 @@ func (i *Installer) getInstallDir(scope Scope) string {
 	default:
 		return filepath.Join(confdir.Dir(homeDir), "plugins", "cache")
 	}
+}
+
+// resolvePluginSource returns the source declared for a plugin in a
+// marketplace's marketplace.json, and whether such a declaration was found.
+func (i *Installer) resolvePluginSource(marketplaceID, name string) (PluginSource, bool) {
+	if marketplaceID == "" {
+		return PluginSource{}, false
+	}
+	meta, err := i.marketplaceManager.GetMarketplaceMetadata(marketplaceID)
+	if err != nil {
+		return PluginSource{}, false
+	}
+	for _, p := range meta.Plugins {
+		if p.Name == name {
+			return p.Source, true
+		}
+	}
+	return PluginSource{}, false
+}
+
+// findMarketplaceFor returns the first known marketplace that offers a plugin
+// with the given name — either declared in its marketplace.json or vendored as
+// a subdirectory.
+func (i *Installer) findMarketplaceFor(name string) string {
+	for _, id := range i.marketplaceManager.List() {
+		if _, ok := i.resolvePluginSource(id, name); ok {
+			return id
+		}
+		if _, err := i.marketplaceManager.GetPluginPath(id, name); err == nil {
+			return id
+		}
+	}
+	return ""
+}
+
+// fetchExternalPlugin clones a plugin's own git repository into a temp dir and
+// returns the directory holding the plugin root (the repo, or a subdirectory of
+// it for git-subdir sources), along with a cleanup func the caller must defer.
+func fetchExternalPlugin(ctx context.Context, src PluginSource) (string, func(), error) {
+	noop := func() {}
+	if src.Type == SourceNPM {
+		return "", noop, fmt.Errorf("npm plugin sources are not supported yet")
+	}
+
+	tmp, err := os.MkdirTemp("", "san-plugin-*")
+	if err != nil {
+		return "", noop, err
+	}
+	cleanup := func() { _ = os.RemoveAll(tmp) }
+
+	url := src.URL
+	if src.Type == SourceGitHub {
+		url = "https://github.com/" + src.Repo + ".git"
+	}
+	url = normalizeGitURL(url)
+	if url == "" {
+		cleanup()
+		return "", noop, fmt.Errorf("plugin source has no repository URL")
+	}
+
+	if err := cloneRepo(ctx, url, src.Ref, src.SHA, tmp); err != nil {
+		cleanup()
+		return "", noop, err
+	}
+	_ = os.RemoveAll(filepath.Join(tmp, ".git"))
+
+	root := tmp
+	if src.Type == SourceGitSubdir && src.Path != "" {
+		clean := filepath.Clean(src.Path)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+			cleanup()
+			return "", noop, fmt.Errorf("invalid subdir path: %s", src.Path)
+		}
+		root = filepath.Join(tmp, clean)
+	}
+	return root, cleanup, nil
+}
+
+// normalizeGitURL expands a bare "owner/repo" shorthand into a full GitHub
+// HTTPS URL. Full URLs (https://, ssh://, git@) are returned unchanged.
+func normalizeGitURL(url string) string {
+	if url == "" || strings.Contains(url, "://") || strings.HasPrefix(url, "git@") {
+		return url
+	}
+	if strings.Count(url, "/") == 1 && !strings.ContainsAny(url, " \t") {
+		return "https://github.com/" + url + ".git"
+	}
+	return url
+}
+
+// cloneRepo shallow-clones url into dest, honoring an optional ref (branch/tag)
+// and sha (exact commit, which takes precedence). Pinning to a sha that a
+// shallow clone doesn't contain triggers a deepen-then-checkout fallback.
+func cloneRepo(ctx context.Context, url, ref, sha, dest string) error {
+	args := []string{"clone", "--depth", "1"}
+	if ref != "" && sha == "" {
+		args = append(args, "--branch", ref)
+	}
+	args = append(args, url, dest)
+	if out, err := runGit(ctx, "", args...); err != nil {
+		return fmt.Errorf("git clone %s: %w: %s", url, err, strings.TrimSpace(out))
+	}
+
+	if sha != "" {
+		if _, err := runGit(ctx, dest, "checkout", sha); err != nil {
+			if _, ferr := runGit(ctx, dest, "fetch", "--unshallow"); ferr != nil {
+				_, _ = runGit(ctx, dest, "fetch", "--depth", "1", "origin", sha)
+			}
+			if out, cerr := runGit(ctx, dest, "checkout", sha); cerr != nil {
+				return fmt.Errorf("git checkout %s: %w: %s", sha, cerr, strings.TrimSpace(out))
+			}
+		}
+	}
+	return nil
+}
+
+// runGit runs a git command (optionally inside dir) and returns its combined
+// output for error context.
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // addToInstalled adds a plugin to installed_plugins.json using v2 format.
