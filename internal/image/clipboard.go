@@ -83,6 +83,45 @@ func readClipboardLinux() (*core.Image, error) {
 	return newClipboardImage(data)
 }
 
+// readClipboardWindows reads image from the Windows clipboard using PowerShell.
+func readClipboardWindows() (*core.Image, error) {
+	tmp, err := os.CreateTemp("", "clipboard_*.png")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpFile := tmp.Name()
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(tmpFile) }()
+
+	// Clipboard.GetImage requires a single-threaded apartment (-STA). It returns
+	// $null when the clipboard holds no image; otherwise we save it as PNG.
+	script := fmt.Sprintf(`
+		Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+		$img = [System.Windows.Forms.Clipboard]::GetImage()
+		if ($null -eq $img) { 'no image'; return }
+		$img.Save('%s', [System.Drawing.Imaging.ImageFormat]::Png)
+		'ok'
+	`, tmpFile)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-STA", "-Command", script)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read clipboard: %w", err)
+	}
+
+	if strings.TrimSpace(string(output)) == "no image" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(tmpFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read clipboard image: %w", err)
+	}
+	return newClipboardImage(data)
+}
+
 // ReadClipboard reads an image from the clipboard as a core.Image.
 // Returns nil, nil if no image is available (not an error).
 func ReadClipboard() (*core.Image, error) {
@@ -91,6 +130,8 @@ func ReadClipboard() (*core.Image, error) {
 		return readClipboardMacOS()
 	case "linux":
 		return readClipboardLinux()
+	case "windows":
+		return readClipboardWindows()
 	default:
 		return nil, fmt.Errorf("clipboard not supported on %s", runtime.GOOS)
 	}
