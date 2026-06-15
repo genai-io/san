@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -839,5 +840,24 @@ func TestMCPConfigParsing(t *testing.T) {
 	expectedEnv := tmpDir + "/data"
 	if db.Env["DB_PATH"] != expectedEnv {
 		t.Errorf("Server env DB_PATH = %q, want %q", db.Env["DB_PATH"], expectedEnv)
+	}
+}
+
+func TestMCPServerNameSafe(t *testing.T) {
+	cases := map[string]string{
+		"superpowers-chrome:browsing": "superpowers-chrome-browsing",
+		"plug:srv":                    "plug-srv",
+		"already-fine_1":              "already-fine_1",
+		"weird.name/x y":              "weird-name-x-y",
+	}
+	valid := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	for in, want := range cases {
+		got := mcpServerNameSafe(in)
+		if got != want {
+			t.Errorf("mcpServerNameSafe(%q) = %q, want %q", in, got, want)
+		}
+		if !valid.MatchString(got) {
+			t.Errorf("mcpServerNameSafe(%q) = %q, not provider-safe", in, got)
+		}
 	}
 }
