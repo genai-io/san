@@ -100,11 +100,56 @@ func ResetDefaultRegistry()           // test-only
 - Reload: enabling/disabling a plugin triggers a reload of the
   affected feature packages (commands/skills/subagents/MCP).
 
+## Marketplace & install flow
+
+A marketplace is a catalog. Its `marketplace.json` *declares* plugins;
+each plugin's `source` says where its content actually lives — a path
+inside the marketplace repo, or its own external repo (Claude Code's
+model). "N available" is the count of declared plugins, independent of
+what is cloned on disk.
+
+```mermaid
+flowchart TD
+    A["/plugin → Marketplaces → Add"] --> B["AddGitHub / AddDirectory<br/>record source in known_marketplaces.json"]
+    B --> C["Sync: git clone --depth 1<br/>→ ~/.san/plugins/marketplaces/&lt;id&gt;"]
+    C --> D{"marketplace.json<br/>has plugins[] ?"}
+    D -- yes --> E["MarketplacePlugins:<br/>declared plugins (manifest)"]
+    D -- no --> F["scan vendored subdirs<br/>(fallback)"]
+    E --> G["Discover / Browse list<br/>N available = count"]
+    F --> G
+    G --> H["Install: name@marketplace + scope"]
+    H --> I{"plugin source type ?"}
+    I -- "path (in repo)" --> J["ResolveLocalPluginPath<br/>inside the marketplace clone"]
+    I -- "github / url / git-subdir" --> K["fetchExternalPlugin:<br/>git clone the plugin's own repo<br/>honoring ref/sha, strip .git"]
+    J --> L["copyDir → scope dir"]
+    K --> L
+    L --> M["record in installed_plugins.json"]
+    M --> N["LoadPlugin → Register → Enable"]
+    N --> O["resolve components:<br/>skills / agents / commands / hooks / mcp / lsp"]
+    O --> P["push contributions to feature packages"]
+```
+
+**Plugin `source` formats** (in `marketplace.json` `plugins[]`):
+
+| Form | Example | Content fetched from |
+|------|---------|----------------------|
+| relative path (string) | `"./plugins/foo"` | a directory inside the marketplace repo |
+| `github` | `{"source":"github","repo":"owner/repo","ref?":"","sha?":""}` | that GitHub repo |
+| `url` (alias `git`) | `{"source":"url","url":"https://host/p.git","ref?":""}` | that git repo (any host) |
+| `git-subdir` | `{"source":"git-subdir","url":"…","path":"sub/dir"}` | a subdirectory of that repo |
+| `npm` | `{"source":"npm","package":"@scope/p"}` | npm (parsed; install not yet supported) |
+
+**Scope → install dir:** user → `~/.san/plugins/cache/`, project →
+`.san/plugins/`, local → `.san/plugins-local/`. Enable state lives in
+the scope's `settings.json` under `enabledPlugins`.
+
 ## Tests
 
 ```
-internal/plugin/plugin_test.go      — large suite covering load /
-                                       install / enable / contributions.
+internal/plugin/plugin_test.go              — large suite covering load /
+                                              install / enable / contributions.
+internal/plugin/marketplace_manifest_test.go — manifest source parsing,
+                                              available listing, path install.
 ```
 
 ## See Also
