@@ -110,22 +110,19 @@ func TestListNav_HandleKey_Navigation(t *testing.T) {
 	}
 }
 
-func TestListNav_HandleKey_VimKeysWhenSearchEmpty(t *testing.T) {
+func TestListNav_HandleKey_LettersAlwaysSearch(t *testing.T) {
 	n := ListNav{MaxVisible: 5, Total: 10}
 
-	// j navigates when search is empty
-	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if changed || !consumed || n.Selected != 1 {
-		t.Fatalf("j: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
-	}
-	if n.Search != "" {
-		t.Fatalf("j should not modify search, got %q", n.Search)
+	// j/k are search input even when the search is empty — there is no
+	// bare-letter vim navigation, so a query can start with any letter.
+	changed, consumed := n.HandleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if !changed || !consumed || n.Search != "k" || n.Selected != 0 {
+		t.Fatalf("k: changed=%v consumed=%v search=%q sel=%d", changed, consumed, n.Search, n.Selected)
 	}
 
-	// k navigates when search is empty
-	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if changed || !consumed || n.Selected != 0 {
-		t.Fatalf("k: changed=%v consumed=%v sel=%d", changed, consumed, n.Selected)
+	changed, consumed = n.HandleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if !changed || !consumed || n.Search != "kj" || n.Selected != 0 {
+		t.Fatalf("j: changed=%v consumed=%v search=%q sel=%d", changed, consumed, n.Search, n.Selected)
 	}
 }
 
