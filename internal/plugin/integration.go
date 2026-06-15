@@ -96,13 +96,37 @@ func GetPluginMCPServers() []PluginMCPServer {
 	for _, p := range defaultRegistry.GetEnabled() {
 		for name, cfg := range p.Components.MCP {
 			servers = append(servers, PluginMCPServer{
-				Name:   p.Name() + ":" + name,
+				Name:   mcpServerNameSafe(p.Name() + ":" + name),
 				Config: cfg,
 				Scope:  p.Scope,
 			})
 		}
 	}
 	return servers
+}
+
+// mcpServerNameSafe makes a plugin's MCP server name safe to embed in an LLM
+// tool name (servers are exposed as "mcp__<server>__<tool>"). Providers require
+// tool names to match ^[a-zA-Z0-9_-]+$, and the plugin:server namespace
+// separator ":" in particular is rejected by OpenAI-compatible APIs (DeepSeek
+// returns 400 invalid_request_error). Out-of-set runes become "-" rather than
+// "_" so a separator next to an existing "_" can't forge the "__" delimiter
+// and confuse tool-name parsing.
+func mcpServerNameSafe(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch {
+		case r == '-' || r == '_',
+			r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
 }
 
 // GetPluginNamespace extracts the namespace from a plugin path or source.
