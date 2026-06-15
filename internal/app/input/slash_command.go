@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
@@ -291,14 +292,22 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 	c.env.ResetTokens()
 	c.env.Tracker.Reset()
 	c.env.ResetCronQueue()
-	cmds := []tea.Cmd{tea.ClearScreen}
+	// In inline mode the conversation is written to the terminal's native
+	// screen + scrollback; tea.ClearScreen only redraws the managed input frame
+	// (it clears below the cursor, not the transcript above). Physically wipe
+	// the screen (ESC[2J) and scrollback (ESC[3J) and home the cursor, then
+	// ClearScreen to force the renderer to repaint a clean frame. Order matters:
+	// the raw wipe must precede the repaint, or it erases the fresh frame. tmux
+	// keeps its own history, cleared separately.
+	fullClear := xansi.CursorHomePosition + xansi.EraseEntireScreen + xansi.EraseEntireDisplay
+	cmds := []tea.Cmd{tea.Raw(fullClear), tea.ClearScreen}
 	if os.Getenv("TMUX") != "" {
 		cmds = append(cmds, func() tea.Msg {
 			_ = exec.Command("tmux", "clear-history").Run()
 			return nil
 		})
 	}
-	return "", tea.Batch(cmds...), nil
+	return "", tea.Sequence(cmds...), nil
 }
 
 func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
