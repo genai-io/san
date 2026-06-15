@@ -12,38 +12,22 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// readImageFromClipboard reads an image from the clipboard.
-// Returns nil, nil if no image is available (not an error).
-func readImageFromClipboard() (*ImageInfo, error) {
-	switch runtime.GOOS {
-	case "darwin":
-		return readClipboardMacOS()
-	case "linux":
-		return readClipboardLinux()
-	default:
-		return nil, fmt.Errorf("clipboard not supported on %s", runtime.GOOS)
-	}
-}
-
-// newClipboardImageInfo creates an ImageInfo from clipboard PNG data.
+// newClipboardImage builds a core.Image from clipboard PNG data.
 // Returns nil, nil if data is empty.
-func newClipboardImageInfo(data []byte) (*ImageInfo, error) {
+func newClipboardImage(data []byte) (*core.Image, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
 	if len(data) > maxImageSize {
 		return nil, fmt.Errorf("clipboard image too large: %d bytes (max %d)", len(data), maxImageSize)
 	}
-	return &ImageInfo{
-		MediaType: "image/png",
-		Data:      data,
-		Size:      len(data),
-		FileName:  fmt.Sprintf("clipboard_%s.png", time.Now().Format("150405")),
-	}, nil
+	fileName := fmt.Sprintf("clipboard_%s.png", time.Now().Format("150405"))
+	img := newImage("image/png", fileName, data)
+	return &img, nil
 }
 
 // readClipboardMacOS reads image from macOS clipboard using osascript.
-func readClipboardMacOS() (*ImageInfo, error) {
+func readClipboardMacOS() (*core.Image, error) {
 	tmp, err := os.CreateTemp("", "clipboard_*.png")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
@@ -82,11 +66,11 @@ func readClipboardMacOS() (*ImageInfo, error) {
 		return nil, fmt.Errorf("failed to read clipboard image: %w", err)
 	}
 
-	return newClipboardImageInfo(data)
+	return newClipboardImage(data)
 }
 
 // readClipboardLinux reads image from Linux clipboard using xclip or xsel.
-func readClipboardLinux() (*ImageInfo, error) {
+func readClipboardLinux() (*core.Image, error) {
 	cmd := exec.Command("xclip", "-selection", "clipboard", "-t", "image/png", "-o")
 	data, err := cmd.Output()
 	if err != nil {
@@ -96,19 +80,18 @@ func readClipboardLinux() (*ImageInfo, error) {
 			return nil, nil
 		}
 	}
-	return newClipboardImageInfo(data)
+	return newClipboardImage(data)
 }
 
-// ReadImageToProviderData reads clipboard image directly to core.Image
-func ReadImageToProviderData() (*core.Image, error) {
-	info, err := readImageFromClipboard()
-	if err != nil {
-		return nil, err
+// ReadClipboard reads an image from the clipboard as a core.Image.
+// Returns nil, nil if no image is available (not an error).
+func ReadClipboard() (*core.Image, error) {
+	switch runtime.GOOS {
+	case "darwin":
+		return readClipboardMacOS()
+	case "linux":
+		return readClipboardLinux()
+	default:
+		return nil, fmt.Errorf("clipboard not supported on %s", runtime.GOOS)
 	}
-	if info == nil {
-		return nil, nil
-	}
-
-	data := info.ToProviderData()
-	return &data, nil
 }

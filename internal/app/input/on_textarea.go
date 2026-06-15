@@ -302,11 +302,11 @@ func ProcessImageRefs(cwd, input string) (string, []core.Image, error) {
 			continue
 		}
 
-		imgInfo, err := image.Load(absPath)
+		img, err := image.Load(absPath)
 		if err != nil {
 			return "", nil, fmt.Errorf("loading image %s: %w", absPath, err)
 		}
-		images = append(images, imgInfo.ToProviderData())
+		images = append(images, img)
 		loadedRefs = append(loadedRefs, match[0]) // full match including @
 	}
 
