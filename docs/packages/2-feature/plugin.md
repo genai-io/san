@@ -128,7 +128,7 @@ flowchart TD
     L --> M["record in installed_plugins.json"]
     M --> N["LoadPlugin → Register → Enable"]
     N --> O["resolve components:<br/>skills / agents / commands / hooks / mcp / lsp"]
-    O --> P["push contributions to feature packages"]
+    O --> P["app feeds them to the feature packages<br/>skill / subagent / command / mcp / hook"]
 ```
 
 **Plugin `source` formats** (in `marketplace.json` `plugins[]`):

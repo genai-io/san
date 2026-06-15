@@ -120,7 +120,7 @@ flowchart TD
     L --> M["写入 installed_plugins.json"]
     M --> N["LoadPlugin → Register → Enable"]
     N --> O["解析组件：<br/>skills / agents / commands / hooks / mcp / lsp"]
-    O --> P["把贡献推送给 feature 包"]
+    O --> P["app 把它们交给 feature 包<br/>skill / subagent / command / mcp / hook"]
 ```
 
 **插件 `source` 格式**（位于 `marketplace.json` 的 `plugins[]`）：
