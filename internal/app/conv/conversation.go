@@ -111,6 +111,20 @@ func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, co
 	}
 }
 
+// DropStreamingAssistant removes the trailing assistant row that the in-flight
+// (now failed) inference was streaming into, so a retry re-streams onto a clean
+// tail instead of duplicating or interleaving partial output. Only uncommitted
+// rows are eligible, so committed scrollback is never touched.
+func (m *ConversationModel) DropStreamingAssistant() {
+	n := len(m.Messages)
+	if n == 0 || n <= m.CommittedCount {
+		return
+	}
+	if m.Messages[n-1].Role == core.RoleAssistant {
+		m.Messages = m.Messages[:n-1]
+	}
+}
+
 func (m *ConversationModel) RemoveEmptyLastAssistant() {
 	if len(m.Messages) > 0 {
 		last := m.Messages[len(m.Messages)-1]

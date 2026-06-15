@@ -29,6 +29,7 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := openai.NewClient(
 		option.WithAPIKey(secret.Resolve("DEEPSEEK_API_KEY")),
 		option.WithBaseURL(baseURL),
+		option.WithMaxRetries(0),
 	)
 	return NewClient(client, "deepseek:api_key"), nil
 }

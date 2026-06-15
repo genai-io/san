@@ -29,6 +29,7 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := anthropicsdk.NewClient(
 		anthropicoption.WithAuthToken(apiKey),
 		anthropicoption.WithBaseURL(baseURL),
+		anthropicoption.WithMaxRetries(0),
 	)
 	return NewClientWithConfig(client, "volcengine:api_key", baseURL, apiKey), nil
 }

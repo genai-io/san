@@ -33,10 +33,12 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := anthropicsdk.NewClient(
 		anthropicoption.WithAPIKey(apiKey),
 		anthropicoption.WithBaseURL(baseURL),
+		anthropicoption.WithMaxRetries(0),
 	)
 	modelClient := openai.NewClient(
 		openaioption.WithAPIKey(apiKey),
 		openaioption.WithBaseURL(openAIBaseURL),
+		openaioption.WithMaxRetries(0),
 	)
 	return NewClient(client, modelClient, "minmax:api_key"), nil
 }

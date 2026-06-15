@@ -53,6 +53,7 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := openai.NewClient(
 		option.WithAPIKey("ollama"),
 		option.WithBaseURL(baseURL),
+		option.WithMaxRetries(0),
 	)
 	return NewClient(client, "ollama:api_key"), nil
 }

@@ -2,14 +2,19 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm/llmerr"
 )
 
 // defaultMaxTokens is the fallback max output tokens when neither the caller
 // nor the provider specifies a limit.
 const defaultMaxTokens = 8192
+
+// completeMaxAttempts bounds in-place retries for one-shot utility completions.
+const completeMaxAttempts = 3
 
 // Client adapts a Provider to core.LLM.
 //
@@ -85,7 +90,9 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 					return
 				}
 			case ChunkTypeError:
-				send(core.Chunk{Err: sc.Error})
+				// Classify here so the agent loop can decide whether to
+				// retry without importing the provider SDKs.
+				send(core.Chunk{Err: llmerr.Wrap(sc.Error)})
 				return
 			}
 		}
@@ -134,13 +141,31 @@ func (l *Client) Complete(ctx context.Context,
 	thinking := l.thinkingEffort
 	l.mu.RUnlock()
 
-	return Complete(ctx, p, CompletionOptions{
+	opts := CompletionOptions{
 		Model:          model,
 		SystemPrompt:   sysPrompt,
 		Messages:       msgs,
 		MaxTokens:      maxTokens,
 		ThinkingEffort: thinking,
-	})
+	}
+
+	// Utility calls (e.g. compaction) are not streamed to the UI, so retry
+	// them in place on transient failures, sharing the agent loop's backoff.
+	var resp CompletionResponse
+	var err error
+	for attempt := 1; attempt <= completeMaxAttempts; attempt++ {
+		if resp, err = Complete(ctx, p, opts); err == nil {
+			return resp, nil
+		}
+		var re core.RetryableError
+		if !errors.As(llmerr.Wrap(err), &re) || attempt == completeMaxAttempts {
+			return resp, err
+		}
+		if werr := core.BackoffSleep(ctx, attempt, re.RetryAfter()); werr != nil {
+			return resp, werr
+		}
+	}
+	return resp, err
 }
 
 // send sends a non-streaming completion request and returns the full response.

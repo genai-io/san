@@ -27,6 +27,7 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := anthropicsdk.NewClient(
 		anthropicoption.WithAuthToken(secret.Resolve("SENSENOVA_API_KEY")),
 		anthropicoption.WithBaseURL(baseURL),
+		anthropicoption.WithMaxRetries(0),
 	)
 	return NewClient(client, "sensenova:api_key"), nil
 }

@@ -135,6 +135,12 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		return applyPreInfer(rt, m)
 	case core.OnChunk:
 		return applyChunk(rt, m, ev)
+	case core.OnStreamReset:
+		// Transient failure about to be retried: drop the partial assistant
+		// row and stop streaming so the retry's PreInfer starts a clean one.
+		m.Stream.Stop()
+		m.DropStreamingAssistant()
+		return nil
 	case core.PostInfer:
 		return applyPostInfer(rt, m, ev)
 	case core.PreTool:

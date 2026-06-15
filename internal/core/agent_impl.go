@@ -25,6 +25,9 @@ type agent struct {
 	cwd               string
 	maxSteps          int
 	maxOutputRecovery int
+	maxTurnRetries    int
+	firstChunkTimeout time.Duration
+	idleTimeout       time.Duration
 	inbox             chan Message
 	outbox            chan Event
 	onEvent           func(Event)
@@ -296,6 +299,7 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	var steps, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
 	var maxOutputRecoveryCount int
+	var turnRetries int
 
 	makeResult := func(content string, stop StopReason, detail string) *Result {
 		return &Result{
@@ -347,8 +351,24 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			if errors.Is(err, context.Canceled) {
 				return makeResult("", StopCancelled, ""), err
 			}
+			// Transient stream failure (network blip, 5xx/529 overload,
+			// 429, idle stall, truncation): discard the partial assistant
+			// output and retry this inference step after a backoff. Bounded
+			// by maxTurnRetries so a sustained outage still surfaces.
+			var re RetryableError
+			if errors.As(err, &re) {
+				if turnRetries < a.maxTurnRetries {
+					turnRetries++
+					a.emit(ctx, StreamResetEvent(a.id))
+					if werr := BackoffSleep(ctx, turnRetries, re.RetryAfter()); werr != nil {
+						return makeResult("", StopCancelled, ""), werr
+					}
+					continue
+				}
+			}
 			return nil, err
 		}
+		turnRetries = 0 // reset budget once a step completes
 
 		steps++
 		lastInputTokens = resp.InputTokens
@@ -603,7 +623,13 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 		MessageIDs:   messageIDs(msgs),
 	}))
 
-	chunks, err := a.llm.Infer(ctx, InferRequest{
+	// Per-inference child ctx so an idle stall can be torn down without
+	// cancelling the whole turn. The provider and bridge goroutines are
+	// ctx-aware, so cancelling inferCtx unwinds them cleanly.
+	inferCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	chunks, err := a.llm.Infer(inferCtx, InferRequest{
 		System:   sys,
 		Messages: msgs,
 		Tools:    tools,
@@ -612,6 +638,12 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 		return nil, fmt.Errorf("infer: %w", err)
 	}
 
+	// First chunk gets the generous TTFT budget (a reasoning model may emit
+	// nothing while it thinks); every chunk thereafter rearms the timer with
+	// the tighter inter-chunk idle budget.
+	idle := time.NewTimer(a.firstChunkTimeout)
+	defer idle.Stop()
+
 	var resp *InferResponse
 	for {
 		select {
@@ -619,18 +651,21 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 			if !ok {
 				// ctx-cancellation racing the bridge's defer close(ch)
 				// produces both ok==false and ctx.Done() ready at the
-				// same time — select picks randomly. Check ctx.Err()
-				// first so a cancel is always reported as
-				// context.Canceled, never as "stream closed without
-				// response" (which Run does not treat as an interrupt).
+				// same time — select picks randomly. Check the caller
+				// ctx first so a user interrupt is always reported as
+				// context.Canceled, never as a (retryable) truncation.
 				if err := ctx.Err(); err != nil {
 					return nil, err
 				}
 				if resp == nil {
-					return nil, fmt.Errorf("infer: stream closed without response")
+					// Closed without a Done chunk: the provider always
+					// emits Done on success, so this is an abnormal
+					// truncation — retryable.
+					return nil, errStreamTruncated
 				}
 				return resp, nil
 			}
+			idle.Reset(a.idleTimeout)
 			if chunk.Err != nil {
 				return nil, fmt.Errorf("infer: %w", chunk.Err)
 			}
@@ -640,6 +675,13 @@ func (a *agent) streamInfer(ctx context.Context) (*InferResponse, error) {
 			if chunk.Done {
 				resp = chunk.Response
 			}
+		case <-idle.C:
+			// The stream went silent (connection alive but no bytes —
+			// half-open socket, stalled provider). Tear it down and let
+			// the turn loop retry. Caller ctx is still live, so this is
+			// classified retryable, not a cancel.
+			cancel()
+			return nil, errStreamStalled
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}

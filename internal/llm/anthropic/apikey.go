@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"github.com/genai-io/san/internal/llm"
 )
@@ -18,7 +19,8 @@ var APIKeyMeta = llm.Meta{
 
 // NewAPIKeyClient creates a new Anthropic client using API Key authentication
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	client := anthropic.NewClient()
+	// Retries are owned by the app-level decorator; disable the SDK's own.
+	client := anthropic.NewClient(option.WithMaxRetries(0))
 	return NewClient(client, "anthropic:api_key"), nil
 }
 

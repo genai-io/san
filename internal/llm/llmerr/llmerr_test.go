@@ -1,0 +1,162 @@
+package llmerr
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/openai/openai-go/v3"
+	"google.golang.org/genai"
+
+	"github.com/genai-io/san/internal/core"
+)
+
+// retryInfo reports whether Wrap tagged err as retryable and, if so, its
+// Retry-After hint.
+func retryInfo(err error) (after time.Duration, retryable bool) {
+	var re core.RetryableError
+	if errors.As(err, &re) {
+		return re.RetryAfter(), true
+	}
+	return 0, false
+}
+
+func dummyReq() *http.Request {
+	r, _ := http.NewRequest(http.MethodPost, "https://example.com/v1/x", nil)
+	return r
+}
+
+func httpResp(code int, hdr http.Header) *http.Response {
+	if hdr == nil {
+		hdr = http.Header{}
+	}
+	return &http.Response{StatusCode: code, Header: hdr, Request: dummyReq()}
+}
+
+type fakeTimeout struct{}
+
+func (fakeTimeout) Error() string   { return "i/o timeout" }
+func (fakeTimeout) Timeout() bool   { return true }
+func (fakeTimeout) Temporary() bool { return true }
+
+var _ net.Error = fakeTimeout{}
+
+func TestWrapNilIsNil(t *testing.T) {
+	if got := Wrap(nil); got != nil {
+		t.Fatalf("Wrap(nil) = %v, want nil", got)
+	}
+}
+
+func TestWrapClassification(t *testing.T) {
+	tests := []struct {
+		name          string
+		err           error
+		wantRetryable bool
+		wantAfter     time.Duration
+	}{
+		{
+			name:          "anthropic 529 overloaded is retryable",
+			err:           &anthropic.Error{StatusCode: 529, Request: dummyReq(), Response: httpResp(529, nil)},
+			wantRetryable: true,
+		},
+		{
+			name:          "anthropic 400 bad request is fatal",
+			err:           &anthropic.Error{StatusCode: 400, Request: dummyReq(), Response: httpResp(400, nil)},
+			wantRetryable: false,
+		},
+		{
+			name:          "anthropic 401 auth is fatal",
+			err:           &anthropic.Error{StatusCode: 401, Request: dummyReq(), Response: httpResp(401, nil)},
+			wantRetryable: false,
+		},
+		{
+			name:          "openai 429 honors Retry-After",
+			err:           &openai.Error{StatusCode: 429, Request: dummyReq(), Response: httpResp(429, http.Header{"Retry-After": {"8"}})},
+			wantRetryable: true,
+			wantAfter:     8 * time.Second,
+		},
+		{
+			name:          "openai 429 without header still retryable",
+			err:           &openai.Error{StatusCode: 429, Request: dummyReq(), Response: httpResp(429, nil)},
+			wantRetryable: true,
+		},
+		{
+			name:          "openai 503 is retryable",
+			err:           &openai.Error{StatusCode: 503, Request: dummyReq(), Response: httpResp(503, nil)},
+			wantRetryable: true,
+		},
+		{
+			name:          "openai 422 is fatal",
+			err:           &openai.Error{StatusCode: 422, Request: dummyReq(), Response: httpResp(422, nil)},
+			wantRetryable: false,
+		},
+		{
+			name:          "genai 503 is retryable (no Retry-After header available)",
+			err:           genai.APIError{Code: 503, Message: "unavailable"},
+			wantRetryable: true,
+		},
+		{
+			name:          "genai 404 is fatal",
+			err:           genai.APIError{Code: 404, Message: "model not found"},
+			wantRetryable: false,
+		},
+		{
+			name:          "io.EOF is retryable",
+			err:           io.EOF,
+			wantRetryable: true,
+		},
+		{
+			name:          "net timeout is retryable",
+			err:           fakeTimeout{},
+			wantRetryable: true,
+		},
+		{
+			name:          "context canceled is fatal",
+			err:           context.Canceled,
+			wantRetryable: false,
+		},
+		{
+			name:          "plain error is fatal",
+			err:           errors.New("something opaque"),
+			wantRetryable: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			after, retryable := retryInfo(Wrap(tc.err))
+			if retryable != tc.wantRetryable {
+				t.Fatalf("retryable = %v, want %v", retryable, tc.wantRetryable)
+			}
+			if retryable && after != tc.wantAfter {
+				t.Fatalf("RetryAfter = %v, want %v", after, tc.wantAfter)
+			}
+		})
+	}
+}
+
+// Wrap must preserve the original error in the chain so substring-based
+// detection (e.g. isPromptTooLong) and errors.Is keep working.
+func TestWrapPreservesOriginalError(t *testing.T) {
+	wrapped := Wrap(io.EOF)
+	if !errors.Is(wrapped, io.EOF) {
+		t.Fatal("wrapped retryable error should still match io.EOF")
+	}
+	if wrapped.Error() != io.EOF.Error() {
+		t.Fatalf("Error() = %q, want %q", wrapped.Error(), io.EOF.Error())
+	}
+}
+
+func TestRetryAfterParsesHTTPDate(t *testing.T) {
+	future := time.Now().Add(30 * time.Second).UTC().Format(http.TimeFormat)
+	resp := httpResp(429, http.Header{"Retry-After": {future}})
+	d := retryAfter(resp)
+	if d <= 0 || d > 31*time.Second {
+		t.Fatalf("retryAfter(http-date) = %v, want ~30s", d)
+	}
+}

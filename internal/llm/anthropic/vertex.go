@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
 
 	"github.com/genai-io/san/internal/llm"
@@ -74,8 +75,10 @@ func NewVertexClient(ctx context.Context) (llm.Provider, error) {
 	}
 	projectID := secret.Resolve("ANTHROPIC_VERTEX_PROJECT_ID")
 
+	// Retries are owned by the app-level decorator; disable the SDK's own.
 	client := anthropic.NewClient(
 		vertex.WithGoogleAuth(ctx, region, projectID),
+		option.WithMaxRetries(0),
 	)
 
 	baseClient := NewClient(client, "anthropic:vertex")

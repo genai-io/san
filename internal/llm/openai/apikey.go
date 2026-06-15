@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 
 	"github.com/genai-io/san/internal/llm"
 )
@@ -18,7 +19,8 @@ var APIKeyMeta = llm.Meta{
 
 // NewAPIKeyClient creates a new OpenAI client using API Key authentication
 func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
-	client := openai.NewClient()
+	// Retries are owned by the app-level decorator; disable the SDK's own.
+	client := openai.NewClient(option.WithMaxRetries(0))
 	return NewClient(client, "openai:api_key"), nil
 }
 

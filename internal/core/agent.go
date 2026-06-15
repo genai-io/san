@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"time"
 )
 
 // Agent is the core abstraction — an autonomous entity that reasons and acts.
@@ -104,17 +105,20 @@ type Agent interface {
 // Permission is a tool-layer concern — use tool.WithPermission to wrap Tools
 // before passing them to NewAgent. See docs/concepts/permission-model.md.
 type Config struct {
-	ID                string
-	LLM               LLM                                                       // required: inference backend
-	System            System                                                    // required: system prompt layers
-	Tools             Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
-	AgentType         string                                                    // optional: agent type identifier for hook events
-	CompactFunc       func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
-	CWD               string
-	MaxSteps          int // max LLM inference steps per turn, 0 = unlimited
-	MaxOutputRecovery int // max retries on truncated output, 0 = use default (3)
-	InboxBuf          int // inbox channel buffer size, default 16
-	OutboxBuf         int // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
+	ID                      string
+	LLM                     LLM                                                       // required: inference backend
+	System                  System                                                    // required: system prompt layers
+	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
+	AgentType               string                                                    // optional: agent type identifier for hook events
+	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
+	CWD                     string
+	MaxSteps                int           // max LLM inference steps per turn, 0 = unlimited
+	MaxOutputRecovery       int           // max retries on truncated output, 0 = use default (3)
+	MaxTurnRetries          int           // max retries per inference step on transient stream errors, 0 = use default (2)
+	StreamFirstChunkTimeout time.Duration // abort if no first chunk arrives within this long, 0 = use default (5m)
+	StreamIdleTimeout       time.Duration // abort a stream that goes silent between chunks for this long, 0 = use default (60s)
+	InboxBuf                int           // inbox channel buffer size, default 16
+	OutboxBuf               int           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
 	// OnEvent observes lifecycle events synchronously, even when OutboxBuf is -1.
 	OnEvent func(Event)
 }
@@ -140,6 +144,15 @@ func NewAgent(cfg Config) Agent {
 	if cfg.OutboxBuf == 0 {
 		cfg.OutboxBuf = 64
 	}
+	if cfg.MaxTurnRetries <= 0 {
+		cfg.MaxTurnRetries = defaultMaxTurnRetries
+	}
+	if cfg.StreamFirstChunkTimeout <= 0 {
+		cfg.StreamFirstChunkTimeout = defaultFirstChunkTimeout
+	}
+	if cfg.StreamIdleTimeout <= 0 {
+		cfg.StreamIdleTimeout = defaultStreamIdleTimeout
+	}
 
 	var outbox chan Event
 	if cfg.OutboxBuf > 0 {
@@ -156,6 +169,9 @@ func NewAgent(cfg Config) Agent {
 		cwd:               cfg.CWD,
 		maxSteps:          cfg.MaxSteps,
 		maxOutputRecovery: cfg.MaxOutputRecovery,
+		maxTurnRetries:    cfg.MaxTurnRetries,
+		firstChunkTimeout: cfg.StreamFirstChunkTimeout,
+		idleTimeout:       cfg.StreamIdleTimeout,
 		inbox:             make(chan Message, cfg.InboxBuf),
 		outbox:            outbox,
 		onEvent:           cfg.OnEvent,
@@ -195,12 +211,17 @@ const (
 	PreInfer  EventType = "PreInfer"   // before LLM call
 	PostInfer EventType = "PostInfer"  // after LLM response (*InferResponse in Data)
 	OnChunk   EventType = "Chunk"      // streaming chunk (Chunk in Data)
-	PreTool   EventType = "PreTool"    // before tool execution (ToolCall in Data)
-	PostTool  EventType = "PostTool"   // after tool execution (ToolResult in Data)
-	OnMessage EventType = "Message"    // message received on inbox (Message in Data)
-	OnAppend  EventType = "Append"     // message appended to conversation chain (Message in Data)
-	OnTurn    EventType = "Turn"       // think+act cycle completed (Result in Data)
-	OnCompact EventType = "Compact"    // conversation compacted (CompactInfo in Data)
+
+	// OnStreamReset fires when a transient stream failure is about to be
+	// retried: the partial assistant output streamed so far must be discarded
+	// before the next attempt re-streams from scratch (no payload).
+	OnStreamReset EventType = "StreamReset"
+	PreTool       EventType = "PreTool"  // before tool execution (ToolCall in Data)
+	PostTool      EventType = "PostTool" // after tool execution (ToolResult in Data)
+	OnMessage     EventType = "Message"  // message received on inbox (Message in Data)
+	OnAppend      EventType = "Append"   // message appended to conversation chain (Message in Data)
+	OnTurn        EventType = "Turn"     // think+act cycle completed (Result in Data)
+	OnCompact     EventType = "Compact"  // conversation compacted (CompactInfo in Data)
 
 	// OnSystemChange fires when a system-prompt section is added, replaced,
 	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
@@ -296,6 +317,7 @@ func StopEvent(agentID string, err error) Event {
 	return Event{Type: OnStop, Source: agentID, Data: err}
 }
 func ChunkEvent(agentID string, c Chunk) Event { return Event{Type: OnChunk, Source: agentID, Data: c} }
+func StreamResetEvent(agentID string) Event    { return Event{Type: OnStreamReset, Source: agentID} }
 func MessageEvent(agentID string, msg Message) Event {
 	return Event{Type: OnMessage, Source: agentID, Data: msg}
 }

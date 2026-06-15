@@ -29,6 +29,7 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 	client := anthropicsdk.NewClient(
 		anthropicoption.WithAPIKey(secret.Resolve("MIMO_API_KEY")),
 		anthropicoption.WithBaseURL(baseURL),
+		anthropicoption.WithMaxRetries(0),
 	)
 	return NewClient(client, "mimo:api_key"), nil
 }
