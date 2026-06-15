@@ -48,6 +48,27 @@ func Test_userContentToBlocks_splitsByProvenance(t *testing.T) {
 	}
 }
 
+// On resume, a reminder block must stay in Content (the model needs it) but be
+// excluded from DisplayContent (the user must not see the harness scaffolding).
+func Test_extractUserContent_stripsReminderFromDisplay(t *testing.T) {
+	blocks := []ContentBlock{
+		{Type: "text", Text: "hi\n\n"},
+		{Type: "text", Text: "<system-reminder source=\"memory-auto\">\nmem\n</system-reminder>", Source: SourceReminder + ":memory-auto"},
+	}
+	var msg core.Message
+	extractUserContent(blocks, &msg)
+
+	if !strings.Contains(msg.Content, "system-reminder") {
+		t.Fatalf("Content should keep the reminder for the model, got %q", msg.Content)
+	}
+	if strings.Contains(msg.DisplayContent, "system-reminder") {
+		t.Fatalf("DisplayContent must not include the reminder, got %q", msg.DisplayContent)
+	}
+	if msg.DisplayContent != "hi" {
+		t.Fatalf("DisplayContent = %q, want %q", msg.DisplayContent, "hi")
+	}
+}
+
 // Plain user content with no reminders produces exactly one user-text block.
 func Test_userContentToBlocks_plainTextOneBlock(t *testing.T) {
 	blocks := userContentToBlocks("just a question", "", nil)

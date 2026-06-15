@@ -244,7 +244,13 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 		switch block.Type {
 		case "text":
 			content.WriteString(block.Text)
-			display.WriteString(block.Text)
+			// <system-reminder> blocks are harness-injected context the model
+			// sees but the user must not: keep them in Content, exclude them
+			// from the displayed text (otherwise a resumed session re-renders
+			// the whole reminder block to the user).
+			if !strings.HasPrefix(block.Source, SourceReminder) {
+				display.WriteString(block.Text)
+			}
 		case "image":
 			if block.ImageSource != nil {
 				msg.Images = append(msg.Images, core.Image{MediaType: block.ImageSource.MediaType, Data: block.ImageSource.Data})
@@ -264,7 +270,10 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 
 	if msg.ToolResult == nil {
 		msg.Content = content.String()
-		msg.DisplayContent = display.String()
+		// Trim the trailing blank line left where a reminder was appended
+		// (AttachToContent joins with "\n\n"), so the displayed text matches
+		// what the user originally typed.
+		msg.DisplayContent = strings.TrimRight(display.String(), "\n")
 	}
 }
 
