@@ -107,6 +107,11 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	return models, nil
 }
 
+// SupportsImages reports that DeepSeek models are text-only: the Chat
+// Completions API rejects image_url content parts.
+func (c *Client) SupportsImages(_ string) bool { return false }
+
 // Ensure Client implements Provider
 var _ llm.Provider = (*Client)(nil)
 var _ llm.ThinkingEffortProvider = (*Client)(nil)
+var _ llm.ImageSupportProvider = (*Client)(nil)

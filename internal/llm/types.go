@@ -62,6 +62,23 @@ type ThinkingEffortProvider interface {
 	DefaultThinkingEffort(model string) string
 }
 
+// ImageSupportProvider is implemented by providers that declare whether a model
+// accepts image input. Providers that don't implement it are assumed to support
+// images (the common case); a text-only provider opts out by returning false.
+type ImageSupportProvider interface {
+	SupportsImages(model string) bool
+}
+
+// SupportsImages reports whether the provider's model accepts image input. It
+// defaults to true so vision-capable providers need no change; text-only
+// providers (e.g. DeepSeek) opt out via ImageSupportProvider.
+func SupportsImages(p Provider, model string) bool {
+	if ip, ok := p.(ImageSupportProvider); ok {
+		return ip.SupportsImages(model)
+	}
+	return true
+}
+
 func ThinkingEfforts(p Provider, model string) []string {
 	ep, ok := p.(ThinkingEffortProvider)
 	if !ok {

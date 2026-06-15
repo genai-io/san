@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 )
 
@@ -85,6 +86,11 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	if !ok {
 		return tea.Batch(m.CommitMessages()...)
 	}
+	// Hold the turn (keeping the input) if it carries images the active model
+	// can't accept, rather than letting the provider reject the request.
+	if m.imagesBlockedForModel(msg.Images) {
+		return tea.Batch(m.CommitMessages()...)
+	}
 	m.conv.Append(msg)
 	m.userInput.Reset()
 	return m.SubmitToAgent(msg.Content, msg.Images)
@@ -118,6 +124,18 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 		DisplayContent: displayContent,
 		Images:         allImages,
 	}, true
+}
+
+// imagesBlockedForModel reports whether a turn carrying images must be held back
+// because the active model is text-only. It adds a user-facing notice when it
+// blocks; callers must not send the turn and should preserve the input so the
+// user can remove the image or switch to a vision-capable model.
+func (m *model) imagesBlockedForModel(images []core.Image) bool {
+	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
+		return false
+	}
+	m.conv.AddNotice("The current model doesn't support images — remove the image or switch to a vision-capable model.")
+	return true
 }
 
 // drainInputQueueAfterCancel pops one queued item (if any) and runs it

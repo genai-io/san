@@ -98,6 +98,13 @@ func TestDeepSeekStreamSendsRequest(t *testing.T) {
 	}
 }
 
+func TestDeepSeekIsTextOnly(t *testing.T) {
+	c := NewClient(openai.Client{}, "deepseek:test")
+	if c.SupportsImages("deepseek-v4-pro") {
+		t.Error("DeepSeek is text-only; SupportsImages should be false")
+	}
+}
+
 func TestDeepSeekEstimateCost(t *testing.T) {
 	cost, ok := EstimateCost("deepseek-v4-flash", llm.Usage{
 		InputTokens:  1000000,

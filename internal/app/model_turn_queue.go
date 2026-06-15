@@ -57,6 +57,9 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// producing one TurnEvent per queued message.
 	if item, ok := m.userInput.Queue.Dequeue(); ok {
 		log.QueueLog("drainTurnQueues: dequeued %q remaining=%d", truncate(item.Content, 60), m.userInput.Queue.Len())
+		if m.imagesBlockedForModel(item.Images) {
+			return tea.Batch(m.CommitMessages()...), true
+		}
 		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})
 		m.services.Agent.Send(item.Content, item.Images)
 		return nil, true
