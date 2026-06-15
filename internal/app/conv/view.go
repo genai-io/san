@@ -175,15 +175,18 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 
 func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, isLast bool) string {
 	base := RenderAssistantMessage(AssistantParams{
-		Content:       msg.Content,
-		Thinking:      msg.Thinking,
-		ToolCalls:     msg.ToolCalls,
-		StreamActive:  p.StreamActive,
-		IsLast:        isLast,
-		SpinnerView:   p.SpinnerView,
-		MDRenderer:    p.MDRenderer,
-		Width:         p.Width,
-		ExecutingTool: p.BuildingTool,
+		Content:              msg.Content,
+		Thinking:             msg.Thinking,
+		ToolCalls:            msg.ToolCalls,
+		StreamActive:         p.StreamActive,
+		IsLast:               isLast,
+		SpinnerView:          p.SpinnerView,
+		MDRenderer:           p.MDRenderer,
+		Width:                p.Width,
+		ExecutingTool:        p.BuildingTool,
+		ContentCommittedLen:  msg.ContentCommittedLen,
+		ThinkingCommittedLen: msg.ThinkingCommittedLen,
+		BulletEmitted:        msg.BulletEmitted,
 	})
 
 	if len(msg.ToolCalls) == 0 {

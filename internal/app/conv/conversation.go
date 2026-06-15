@@ -125,6 +125,23 @@ func (m *ConversationModel) DropStreamingAssistant() {
 	}
 }
 
+// ResetStreamCommit clears the streaming-commit offsets on the in-flight
+// trailing assistant message so it renders whole again. Called when the
+// terminal is cleared and rebuilt (resize reflow): the message's
+// progressively-flushed prefix is wiped from scrollback, so the live view must
+// show the full message and the next flush re-commit its blocks from the top.
+func (m *ConversationModel) ResetStreamCommit() {
+	n := len(m.Messages)
+	if n == 0 || n <= m.CommittedCount {
+		return
+	}
+	last := &m.Messages[n-1]
+	if last.Role != core.RoleAssistant {
+		return
+	}
+	last.ResetStreamCommit()
+}
+
 func (m *ConversationModel) RemoveEmptyLastAssistant() {
 	if len(m.Messages) > 0 {
 		last := m.Messages[len(m.Messages)-1]

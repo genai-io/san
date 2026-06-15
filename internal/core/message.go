@@ -81,6 +81,26 @@ type ChatMessage struct {
 	ToolResult        *ToolResult
 	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
 	Expanded          bool // UI: the tool-result block is expanded
+
+	// Streaming-commit progress. While an assistant message streams, completed
+	// markdown blocks are flushed to native scrollback (tea.Println) as they
+	// finish, so the live view and the turn-end commit render only the
+	// not-yet-committed remainder. These track how much is already in
+	// scrollback. Non-zero only on the in-flight trailing message — reset to 0
+	// once it is fully committed, so a later full rebuild (resize reflow,
+	// compact reprint) renders it whole. Transient UI state, never persisted.
+	ContentCommittedLen  int  // bytes of Content already flushed to scrollback
+	ThinkingCommittedLen int  // bytes of Thinking already flushed to scrollback
+	BulletEmitted        bool // the "● " content marker has already been emitted
+}
+
+// ResetStreamCommit clears the streaming-commit progress so the message renders
+// whole again — used once it is fully committed, or when a full rebuild reprints
+// scrollback from scratch.
+func (m *ChatMessage) ResetStreamCommit() {
+	m.ContentCommittedLen = 0
+	m.ThinkingCommittedLen = 0
+	m.BulletEmitted = false
 }
 
 // Image represents an image attachment.

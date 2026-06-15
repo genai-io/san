@@ -63,6 +63,10 @@ func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		info, _ := ev.CompactInfo()
 		return rt.OnCompacted(info)
 	default:
+		// A single event emits at most one scrollback write (extra), and
+		// ContinueOutbox never writes scrollback, so there's nothing to order —
+		// tea.Batch is safe here (unlike the multi-effect batch handler, which
+		// sequences). See handleAgentEventBatch.
 		if extra := applyAgentEvent(rt, m, ev); extra != nil {
 			return tea.Batch(extra, rt.ContinueOutbox())
 		}
@@ -71,7 +75,7 @@ func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 }
 
 func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed bool) tea.Cmd {
-	var cmds []tea.Cmd
+	var effects []tea.Cmd
 	needsContinue := true
 
 	for _, ev := range events {
@@ -81,21 +85,21 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 			result, _ := ev.Result()
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			cmds = append(cmds, rt.OnTurnEnd(result))
+			effects = append(effects, rt.OnTurnEnd(result))
 			needsContinue = false
 		case core.OnStop:
 			err, _ := ev.Error()
 			m.Stream.Stop()
 			m.Tool.ClearPending()
-			cmds = append(cmds, rt.OnAgentStop(err))
+			effects = append(effects, rt.OnAgentStop(err))
 			needsContinue = false
 		case core.OnCompact:
 			info, _ := ev.CompactInfo()
-			cmds = append(cmds, rt.OnCompacted(info))
+			effects = append(effects, rt.OnCompacted(info))
 			needsContinue = false
 		default:
 			if extra := applyAgentEvent(rt, m, ev); extra != nil {
-				cmds = append(cmds, extra)
+				effects = append(effects, extra)
 			}
 			continue
 		}
@@ -105,18 +109,29 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 	if closed {
 		m.Stream.Stop()
 		m.Tool.ClearPending()
-		cmds = append(cmds, rt.OnAgentStop(nil))
+		effects = append(effects, rt.OnAgentStop(nil))
 		needsContinue = false
 	}
 
-	if needsContinue {
-		cmds = append(cmds, rt.ContinueOutbox())
+	// Effects that write scrollback (commit/flush Println) must keep their
+	// emission order. tea.Batch runs commands in concurrent goroutines with no
+	// ordering guarantee, which can interleave progressively-committed blocks;
+	// tea.Sequence runs them in order. The outbox drain stays concurrent — it
+	// only reads the next event and never touches scrollback.
+	var ordered tea.Cmd
+	switch {
+	case len(effects) == 1:
+		ordered = effects[0]
+	case len(effects) > 1:
+		ordered = tea.Sequence(effects...)
 	}
-
-	if len(cmds) == 1 {
-		return cmds[0]
+	if !needsContinue {
+		return ordered
 	}
-	return tea.Batch(cmds...)
+	if ordered == nil {
+		return rt.ContinueOutbox()
+	}
+	return tea.Batch(ordered, rt.ContinueOutbox())
 }
 
 // --- Event side-effect handlers (no ContinueOutbox) ---
@@ -178,12 +193,19 @@ func applyChunk(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	if chunk.Text != "" || chunk.Thinking != "" {
 		m.AppendToLast(chunk.Text, chunk.Thinking)
 	}
+	// Final chunk of a text-only turn: commit the streaming message's remaining
+	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Done && chunk.Response != nil && len(chunk.Response.ToolCalls) == 0 {
 		m.Stream.Active = false
-		commitCmds := rt.CommitMessages()
-		if len(commitCmds) > 0 {
+		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)
 		}
+		return nil
+	}
+	// Mid-stream: flush any blocks that just completed (thinking once text
+	// starts, content at each fence-close / blank-line boundary) to scrollback.
+	if flushCmds := rt.FlushStreamingBlocks(); len(flushCmds) > 0 {
+		return tea.Batch(flushCmds...)
 	}
 	return nil
 }

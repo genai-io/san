@@ -17,6 +17,49 @@ func (m *model) CommitMessages() []tea.Cmd {
 	return m.renderAndCommit(true)
 }
 
+// FlushStreamingBlocks commits the in-flight assistant message's newly-completed
+// blocks to native scrollback, advancing its committed offsets so the live view
+// and the turn-end commit render only the remainder. Thinking commits as one
+// block the moment text starts (the reliable "reasoning done" signal); content
+// commits block-by-block as fenced code closes or blank lines land. Returns nil
+// when nothing new is committable.
+func (m *model) FlushStreamingBlocks() []tea.Cmd {
+	idx := len(m.conv.Messages) - 1
+	if idx < 0 {
+		return nil
+	}
+	msg := &m.conv.Messages[idx]
+	if msg.Role != core.RoleAssistant {
+		return nil
+	}
+
+	var blocks []string
+
+	if msg.ThinkingCommittedLen < len(msg.Thinking) && len(msg.Content) > 0 {
+		if block := conv.RenderCommittedThinkingBlock(msg.Thinking[msg.ThinkingCommittedLen:], m.env.Width); block != "" {
+			blocks = append(blocks, block)
+		}
+		msg.ThinkingCommittedLen = len(msg.Thinking)
+	}
+
+	if boundary := conv.CompletedBlockBoundary(msg.Content); boundary > msg.ContentCommittedLen {
+		block := conv.RenderCommittedContentBlock(msg.Content[msg.ContentCommittedLen:boundary], !msg.BulletEmitted, m.conv.MDRenderer)
+		if block != "" {
+			blocks = append(blocks, block)
+			msg.BulletEmitted = true
+		}
+		msg.ContentCommittedLen = boundary
+	}
+
+	if len(blocks) == 0 {
+		return nil
+	}
+	// Mirror RenderMessageAt's leading newline + blank-line block separation so
+	// progressively-committed blocks land in scrollback exactly where the
+	// turn-end render would place them.
+	return []tea.Cmd{tea.Println("\n" + strings.Join(blocks, "\n\n"))}
+}
+
 func (m *model) commitAllMessages() []tea.Cmd {
 	return m.renderAndCommit(false)
 }
@@ -38,6 +81,10 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		if rendered := conv.RenderSingleMessage(params, i); rendered != "" {
 			parts = append(parts, rendered)
 		}
+		// Fully in scrollback now (any progressively-flushed prefix plus this
+		// remainder). Clear the commit offsets so a later full rebuild (resize
+		// reflow, compact reprint) renders the message whole, not just its tail.
+		m.conv.Messages[i].ResetStreamCommit()
 		m.conv.CommittedCount = i + 1
 	}
 
