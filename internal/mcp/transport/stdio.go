@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"sync"
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/proc"
 )
 
@@ -81,8 +83,16 @@ func (t *STDIOTransport) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
-	// Redirect stderr to our stderr for debugging
-	t.cmd.Stderr = os.Stderr
+	// Capture the server's stderr and forward it to the debug log. Inheriting
+	// os.Stderr would write the server's diagnostics straight onto the terminal
+	// the TUI owns, corrupting the alt-screen (e.g. a plugin's MCP server
+	// printing startup banners over the prompt).
+	stderr, err := t.cmd.StderrPipe()
+	if err != nil {
+		_ = t.stdin.Close()
+		_ = t.stdout.Close()
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
 
 	// Start the process
 	if err := t.cmd.Start(); err != nil {
@@ -90,6 +100,8 @@ func (t *STDIOTransport) Start(ctx context.Context) error {
 		_ = t.stdout.Close()
 		return fmt.Errorf("failed to start MCP server: %w", err)
 	}
+
+	go t.drainStderr(stderr)
 
 	t.scanner = bufio.NewScanner(t.stdout)
 	// Allow for large messages (up to 10MB)
@@ -102,6 +114,19 @@ func (t *STDIOTransport) Start(ctx context.Context) error {
 	go t.readLoop()
 
 	return nil
+}
+
+// drainStderr forwards the MCP server's stderr to the debug log line by line,
+// keeping server diagnostics available (under SAN_DEBUG) without writing to the
+// terminal the TUI owns.
+func (t *STDIOTransport) drainStderr(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		log.Logger().Debug("mcp server stderr",
+			zap.String("command", t.config.Command),
+			zap.String("line", scanner.Text()))
+	}
 }
 
 // readLoop continuously reads responses from stdout
