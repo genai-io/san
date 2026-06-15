@@ -5,6 +5,8 @@ layer: feature
 
 # plugin
 
+> 中文版本：[`plugin.zh.md`](plugin.zh.md)
+
 Plugin loader, installer, marketplace, and aggregator. A plugin is a
 single package (directory) that may contribute skills, subagent
 definitions, slash commands, MCP servers, hooks, and env vars — this
