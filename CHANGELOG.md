@@ -3,6 +3,15 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.3] - 2026-06-15
+
+### Fixed
+- Sanitize plugin MCP server names to avoid invalid LLM tool names ([@yanmxa](https://github.com/yanmxa) in [822c400](https://github.com/genai-io/san/commit/822c4008))
+- Deduplicate installed plugin entries, inline action status, fix list layout ([@yanmxa](https://github.com/yanmxa) in [2d21022](https://github.com/genai-io/san/commit/2d210229))
+- Forward MCP server stderr to the log instead of the terminal ([@yanmxa](https://github.com/yanmxa) in [ea8fc5e](https://github.com/genai-io/san/commit/ea8fc5e1))
+- Don't re-sync marketplace on plugin install; keep spinner inline ([@yanmxa](https://github.com/yanmxa) in [c4dafc3](https://github.com/genai-io/san/commit/c4dafc34))
+- Source plugin skills from the enabled-plugin registry instead of all loaded plugins ([@yanmxa](https://github.com/yanmxa) in [#213](https://github.com/genai-io/san/pull/213))
+
 ## [v1.20.2] - 2026-06-13
 
 ### Added
