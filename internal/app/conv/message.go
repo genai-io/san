@@ -20,6 +20,14 @@ const (
 	// minWrapWidth is the minimum markdown wrap width.
 	minWrapWidth = 40
 
+	// streamWrapReserve is the column budget held back when plain-wrapping the
+	// live streaming tail: 2 cols for the "● "/"✦ " gutter plus 2 cols of slack
+	// so an ambiguous-width glyph (the spinner star ✶ counted 1 cell but drawn
+	// 2, CJK, box-drawing) can't push a line into the last column — that makes
+	// the inline-mode insertAbove miscount rows and weld a stale frame into
+	// scrollback.
+	streamWrapReserve = 4
+
 	// autoCompactThreshold is the percentage of context usage that triggers auto-compact.
 	autoCompactThreshold = 95
 
@@ -369,6 +377,14 @@ type AssistantParams struct {
 	MDRenderer        *MDRenderer
 	Width             int
 	ExecutingTool     string
+
+	// Streaming-commit offsets: how much of Content/Thinking is already in
+	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
+	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
+	// the turn's first content block has been committed.
+	ContentCommittedLen  int
+	ThinkingCommittedLen int
+	BulletEmitted        bool
 }
 
 // InterruptedMarker is the literal suffix MarkLastInterrupted appends to an
@@ -379,10 +395,87 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
+// continuationGutter is the 2-column blank that aligns continuation lines, and
+// content blocks committed after the first, under the "● " assistant marker.
+const continuationGutter = "  "
+
+// contentGutter returns the 2-column lead for an assistant content block: the
+// "● " marker for the turn's first content, or a blank gutter for blocks that
+// continue a turn whose marker was already emitted.
+func contentGutter(showBullet bool) string {
+	if showBullet {
+		return aiPromptStyle.Render("● ")
+	}
+	return continuationGutter
+}
+
+// renderThinkingBlock renders reasoning text as the muted "✦" block shared by
+// the live view and the scrollback commit path. The glyph and text both stay
+// muted, matching the status-bar thinking indicator — no hue.
+func renderThinkingBlock(thinking string, width int) string {
+	wrapWidth := max(width-streamWrapReserve, minWrapWidth)
+	wrapped := lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
+	var lines []string
+	for line := range strings.SplitSeq(wrapped, "\n") {
+		if strings.TrimSpace(line) != "" {
+			lines = append(lines, ThinkingStyle.Render(line))
+		}
+	}
+	thinkingIcon := ThinkingStyle.Render("✦ ")
+	return lipgloss.JoinHorizontal(lipgloss.Top, thinkingIcon, strings.Join(lines, "\n"))
+}
+
+// sliceFrom returns the portion of s past the first n bytes — the not-yet-
+// committed remainder of a streaming field. n out of range collapses to the
+// natural answer (whole string for n<=0, empty once n has caught up to len).
+func sliceFrom(s string, n int) string {
+	switch {
+	case n <= 0:
+		return s
+	case n >= len(s):
+		return ""
+	default:
+		return s[n:]
+	}
+}
+
+// RenderCommittedThinkingBlock renders a completed reasoning block for commit to
+// native scrollback — the muted "✦" gutter plus the wrapped thinking text.
+func RenderCommittedThinkingBlock(thinking string, width int) string {
+	if strings.TrimSpace(thinking) == "" {
+		return ""
+	}
+	return renderThinkingBlock(thinking, width)
+}
+
+// RenderCommittedContentBlock renders one or more completed markdown blocks of
+// assistant content for commit to native scrollback. showBullet leads the block
+// with the "● " marker (the turn's first content) or a blank continuation
+// gutter. Returns "" when the slice renders empty (e.g. only blank lines).
+func RenderCommittedContentBlock(content string, showBullet bool, md *MDRenderer) string {
+	body := content
+	if md != nil {
+		body = renderMarkdownContent(md, content)
+	}
+	if strings.TrimSpace(body) == "" {
+		return ""
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, contentGutter(showBullet), body)
+}
+
 // RenderAssistantMessage renders an assistant message with thinking, content, and tool calls.
 func RenderAssistantMessage(params AssistantParams) string {
 	var sb strings.Builder
-	aiIcon := aiPromptStyle.Render("● ")
+
+	// Render only the not-yet-committed remainder: completed blocks of a
+	// streaming message are already in scrollback (see FlushStreamingBlocks).
+	params.Thinking = sliceFrom(params.Thinking, params.ThinkingCommittedLen)
+	params.Content = sliceFrom(params.Content, params.ContentCommittedLen)
+
+	// The first content of a turn leads with "● "; once a block has been
+	// committed the bullet is spent and the remainder aligns under a gutter.
+	// While streaming, the active tail shows the spinner in the bullet slot.
+	aiIcon := contentGutter(!params.BulletEmitted)
 	if params.StreamActive && params.IsLast {
 		aiIcon = aiPromptStyle.Render(params.SpinnerView + " ")
 	}
@@ -398,21 +491,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 	}
 
 	if params.Thinking != "" {
-		wrapWidth := max(params.Width-2, minWrapWidth)
-		wrapped := lipgloss.NewStyle().Width(wrapWidth).Render(params.Thinking)
-		var lines []string
-		for line := range strings.SplitSeq(wrapped, "\n") {
-			if strings.TrimSpace(line) != "" {
-				if lines == nil {
-					lines = make([]string, 0, 8)
-				}
-				lines = append(lines, ThinkingStyle.Render(line))
-			}
-		}
-		// Reasoning is secondary activity: the ✦ glyph and its text both stay
-		// muted, matching the status-bar thinking indicator — no hue.
-		thinkingIcon := ThinkingStyle.Render("✦ ")
-		sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, thinkingIcon, strings.Join(lines, "\n")) + "\n\n")
+		sb.WriteString(renderThinkingBlock(params.Thinking, params.Width) + "\n\n")
 	}
 
 	content := formatAssistantContent(params)
@@ -433,15 +512,18 @@ func formatAssistantContent(params AssistantParams) string {
 		if params.ExecutingTool != "" {
 			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
 		}
-		return ThinkingStyle.Render("Thinking...")
+		if !params.BulletEmitted {
+			return ThinkingStyle.Render("Thinking...")
+		}
+		// BulletEmitted: content is already streaming to scrollback block by
+		// block — fall through to the bare streaming cursor so the gap between
+		// committed blocks still shows live activity, not the "Thinking…" filler.
 	}
 
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
-		// Wrap at terminal width so long lines don't overflow and the
-		// height calculation (which counts \n-delimited lines) matches
-		// the actual visual line count. Mirrors the thinking branch above:
-		// reserve 2 cols for the "● " prefix, floored at minWrapWidth.
-		wrapWidth := max(params.Width-2, minWrapWidth)
+		// Plain-wrap the streaming tail so its \n-line count matches the height
+		// calc; reserve streamWrapReserve cols (gutter + last-column slack).
+		wrapWidth := max(params.Width-streamWrapReserve, minWrapWidth)
 		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + "▌")
 	}
 
@@ -456,13 +538,15 @@ func formatAssistantContent(params AssistantParams) string {
 	return params.Content
 }
 
-// renderMarkdownContent renders content through the markdown renderer.
+// renderMarkdownContent renders content through the markdown renderer, dropping
+// glamour's full-width blank margin lines so blocks don't accrue extra vertical
+// gaps (especially when committed to scrollback block-by-block while streaming).
 func renderMarkdownContent(mdRenderer *MDRenderer, content string) string {
 	rendered, err := mdRenderer.Render(content)
 	if err != nil {
 		return content
 	}
-	return strings.TrimSpace(rendered)
+	return trimStyledBlankLines(rendered)
 }
 
 // getToolExecutionDesc returns a human-readable description for a tool being executed.

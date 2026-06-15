@@ -46,7 +46,11 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 
 	m.userInput.Textarea.SetWidth(msg.Width - 4 - 2)
 
-	if oldWidth != msg.Width && m.conv.CommittedCount > 0 {
+	if oldWidth != msg.Width && (m.conv.CommittedCount > 0 || m.conv.Stream.Active) {
+		// ClearScreen (in reflowScrollback) wipes the in-flight message's
+		// progressively-flushed prefix; reset its offsets so the live view
+		// shows it whole and the next flush re-commits its blocks.
+		m.conv.ResetStreamCommit()
 		return m.reflowScrollback()
 	}
 

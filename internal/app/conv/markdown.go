@@ -14,9 +14,30 @@ import (
 	"charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 )
+
+// trimStyledBlankLines drops leading and trailing lines that are blank once
+// ANSI styling is removed. glamour pads a block with full-width margin lines
+// of styled spaces — plain strings.TrimSpace can't see them because they start
+// with a color escape — and committed block-by-block those margins would stack
+// into extra vertical gaps between rendered blocks.
+func trimStyledBlankLines(s string) string {
+	lines := strings.Split(s, "\n")
+	start, end := 0, len(lines)
+	for start < end && strings.TrimSpace(xansi.Strip(lines[start])) == "" {
+		start++
+	}
+	for end > start && strings.TrimSpace(xansi.Strip(lines[end-1])) == "" {
+		end--
+	}
+	if start == 0 && end == len(lines) {
+		return s
+	}
+	return strings.Join(lines[start:end], "\n")
+}
 
 // MDRenderer renders markdown content to styled terminal output using
 // glamour. Safe for use from a single goroutine only — the TUI's
@@ -340,7 +361,6 @@ func adaptiveColorHex(c kit.AdaptiveColor) string {
 // customizeStyle adjusts glamour's default style for a clean, unified look.
 func customizeStyle(s *ansi.StyleConfig, width int) {
 	blue := adaptiveColorHex(kit.CurrentTheme.Primary)
-	muted := adaptiveColorHex(kit.CurrentTheme.Muted)
 	text := adaptiveColorHex(kit.CurrentTheme.Text)
 	textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
 
@@ -373,10 +393,13 @@ func customizeStyle(s *ansi.StyleConfig, width int) {
 	s.BlockQuote.Indent = uintPtr(1)
 	s.BlockQuote.IndentToken = stringPtr("│ ")
 
-	// Horizontal rule: full-width thin line
+	// Horizontal rule: full-width thin line. Kept on the faint Border tone (not
+	// muted) so a section divider recedes instead of competing with the prose —
+	// lighter on the light theme, subtler on the dark one.
+	border := adaptiveColorHex(kit.CurrentTheme.Border)
 	hr := strings.Repeat("─", width)
 	s.HorizontalRule.Format = "\n" + hr + "\n"
-	s.HorizontalRule.Color = &muted
+	s.HorizontalRule.Color = &border
 
 	// Inline code: no background, accent color
 	accent := adaptiveColorHex(kit.CurrentTheme.Accent)
@@ -401,6 +424,38 @@ func collapseBlankLines(s string) string {
 }
 func uintPtr(u uint) *uint       { return &u }
 func stringPtr(s string) *string { return &s }
+
+// CompletedBlockBoundary returns the byte offset in content up to which the
+// text forms complete markdown blocks that are safe to render and commit to
+// scrollback. Content after the boundary is the still-streaming block and must
+// stay in the live view until more arrives. Two things close a block: a blank
+// line outside a fenced code block (it terminates the preceding blocks), and a
+// closing code fence (the block is complete the moment it closes). The trailing
+// block is never included — the turn-end commit flushes whatever remains.
+func CompletedBlockBoundary(content string) int {
+	boundary := 0
+	offset := 0
+	inFence := false
+	for _, line := range strings.SplitAfter(content, "\n") {
+		offset += len(line)
+		// A line without a trailing newline is the last, still-streaming line:
+		// never a boundary, whatever it contains.
+		if !strings.HasSuffix(line, "\n") {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~"):
+			inFence = !inFence
+			if !inFence {
+				boundary = offset // a code block is complete once its fence closes
+			}
+		case !inFence && trimmed == "":
+			boundary = offset // a blank line terminates the preceding blocks
+		}
+	}
+	return boundary
+}
 
 // normalizeLineBreaks joins single-newline breaks within plain paragraphs so
 // that glamour's word-wrap can reflow text to the terminal width. Structural

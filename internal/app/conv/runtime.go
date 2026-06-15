@@ -18,6 +18,7 @@ type AgentOutboxMsg struct {
 // primitive), keeping the interface small and each implementation substantial.
 type Runtime interface {
 	CommitMessages() []tea.Cmd
+	FlushStreamingBlocks() []tea.Cmd
 	ContinueOutbox() tea.Cmd
 	OnTurnBegin()
 	OnTokenUsage(resp *core.InferResponse)
