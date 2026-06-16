@@ -76,6 +76,63 @@ func TestAgnesAIListModelsReturnsAPIResults(t *testing.T) {
 	}
 }
 
+func TestAgnesAIListModelsFiltersOutNonChatModalities(t *testing.T) {
+	// Agnes-AI's /v1/models endpoint returns text, image, and video models
+	// in one list. Image/video models can't be used with /v1/chat/completions
+	// so they must be filtered out before reaching the model picker.
+	transport := &modelsTransport{
+		body: `{
+			"object": "list",
+			"data": [
+				{"id": "agnes-1.5-flash", "object": "model"},
+				{"id": "agnes-2.0-flash", "object": "model"},
+				{"id": "agnes-image-2.0-flash", "object": "model"},
+				{"id": "agnes-image-2.1-flash", "object": "model"},
+				{"id": "agnes-video-v2.0", "object": "model"}
+			]
+		}`,
+	}
+	c := newTestClient(transport)
+
+	models, err := c.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	want := []string{"agnes-1.5-flash", "agnes-2.0-flash"}
+	if len(ids) != len(want) {
+		t.Fatalf("expected %d chat models %v, got %d: %v", len(want), want, len(ids), ids)
+	}
+	for i, id := range ids {
+		if id != want[i] {
+			t.Errorf("models[%d] = %q, want %q", i, id, want[i])
+		}
+	}
+}
+
+func TestIsChatModel(t *testing.T) {
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"agnes-1.5-flash", true},
+		{"agnes-2.0-flash", true},
+		{"AGNES-IMAGE-2.0-FLASH", false}, // case-insensitive
+		{"agnes-image-2.0-flash", false},
+		{"agnes-image-2.1-flash", false},
+		{"agnes-video-v2.0", false},
+		{"agnes-video-v3.0", false},
+	}
+	for _, c := range cases {
+		if got := isChatModel(c.model); got != c.want {
+			t.Errorf("isChatModel(%q) = %v, want %v", c.model, got, c.want)
+		}
+	}
+}
+
 func TestAgnesAIListModelsFallsBackToStaticLimit(t *testing.T) {
 	// If the API omits context_length, the static fallback in catalog.go
 	// should kick in so the status bar can still render.

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 
@@ -44,10 +45,12 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 	})
 }
 
-// ListModels returns the available models for Agnes-AI using the /models API.
-// The list is fully dynamic — no hardcoded catalog or fallback. If the API
-// errors, the error propagates so users see the real failure rather than a
-// stale offline list.
+// ListModels returns the available chat-capable models for Agnes-AI using
+// the /models API. Non-chat modalities (image, video) live on separate
+// endpoints and are filtered out so they can't be selected for chat.
+// The list is otherwise fully dynamic — no hardcoded catalog or fallback.
+// If the API errors, the error propagates so users see the real failure
+// rather than a stale offline list.
 func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	page, err := c.client.Models.List(ctx)
 	if err != nil {
@@ -57,6 +60,9 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	models := make([]llm.ModelInfo, 0, len(page.Data))
 	for _, m := range page.Data {
 		id := m.ID
+		if !isChatModel(id) {
+			continue
+		}
 		info := llm.ModelInfo{ID: id, Name: id, DisplayName: id}
 		if raw := m.RawJSON(); raw != "" {
 			var extra struct {
@@ -78,6 +84,16 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 
 	slices.SortFunc(models, func(a, b llm.ModelInfo) int { return cmp.Compare(a.ID, b.ID) })
 	return models, nil
+}
+
+// isChatModel reports whether the given model ID is a chat-completions
+// model. Agnes-AI's /v1/models endpoint returns every modality in one
+// list (agnes-*-flash text, agnes-image-*, agnes-video-*); only the text
+// models work with /v1/chat/completions, so the others must be filtered
+// out before being surfaced in the model picker.
+func isChatModel(modelID string) bool {
+	m := strings.ToLower(modelID)
+	return !strings.HasPrefix(m, "agnes-image") && !strings.HasPrefix(m, "agnes-video")
 }
 
 // Ensure Client implements Provider.
