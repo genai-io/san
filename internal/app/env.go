@@ -36,7 +36,10 @@ type env struct {
 	// new turn and then accumulated after each infer in that turn.
 	TurnInputTokens  int
 	TurnOutputTokens int
-	turnUsageActive  bool
+	turnUsageActive bool
+	// ConversationCost is the session-cumulative spend shown in the status
+	// bar. It survives ResetContextDisplay (per-compaction) so compaction
+	// doesn't erase prior spend; only ResetTokens (/clear, /new) zeroes it.
 	ConversationCost llm.Money
 	ThinkingEffort   string
 	// Compressions counts auto + manual compacts this session. Survives
@@ -238,14 +241,23 @@ func (m *env) SessionMode() string {
 	}
 }
 
+// ResetContextDisplay zeroes the bottom-right context-window readout (latest
+// input/output tokens). Called per-compaction: the live context shrinks to the
+// summary, so the bar/label restart from empty until the next infer. The
+// cumulative ConversationCost is deliberately NOT reset here — compaction does
+// not refund spend, so the session cost must survive it (see ResetTokens for
+// the full reset on /clear, /new).
 func (m *env) ResetContextDisplay() {
 	m.InputTokens = 0
 	m.OutputTokens = 0
-	m.ConversationCost = llm.Money{}
 }
 
+// ResetTokens clears all token/cost accounting for a fresh session (/clear,
+// /new). Unlike ResetContextDisplay this also zeroes the session-cumulative
+// ConversationCost and the compaction counter.
 func (m *env) ResetTokens() {
 	m.ResetContextDisplay()
+	m.ConversationCost = llm.Money{}
 	m.TurnInputTokens = 0
 	m.TurnOutputTokens = 0
 	m.turnUsageActive = false

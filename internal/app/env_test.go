@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/genai-io/san/internal/llm"
+)
 
 func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
 	e := &env{Compressions: 3, InputTokens: 100, OutputTokens: 50}
@@ -13,6 +17,18 @@ func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
 	}
 }
 
+// ResetContextDisplay runs on every (auto-)compaction; the session-cumulative
+// cost must survive it, otherwise a long session's displayed spend resets to
+// zero each time the context is compacted.
+func TestResetContextDisplay_PreservesConversationCost(t *testing.T) {
+	cost := llm.Money{Amount: 1.25, Currency: llm.CurrencyUSD}
+	e := &env{InputTokens: 100, OutputTokens: 50, ConversationCost: cost}
+	e.ResetContextDisplay()
+	if e.ConversationCost != cost {
+		t.Errorf("ConversationCost = %v, want %v (must survive ResetContextDisplay)", e.ConversationCost, cost)
+	}
+}
+
 func TestResetTokens_ZeroesCompressions(t *testing.T) {
 	e := &env{Compressions: 5, TurnInputTokens: 80, TurnOutputTokens: 40}
 	e.ResetTokens()
@@ -21,6 +37,14 @@ func TestResetTokens_ZeroesCompressions(t *testing.T) {
 	}
 	if e.TurnInputTokens != 0 || e.TurnOutputTokens != 0 {
 		t.Errorf("turn tokens not zeroed: %d/%d", e.TurnInputTokens, e.TurnOutputTokens)
+	}
+}
+
+func TestResetTokens_ZeroesConversationCost(t *testing.T) {
+	e := &env{ConversationCost: llm.Money{Amount: 2.50, Currency: llm.CurrencyUSD}}
+	e.ResetTokens()
+	if !e.ConversationCost.IsZero() {
+		t.Errorf("ConversationCost = %v, want zero after ResetTokens", e.ConversationCost)
 	}
 }
 
