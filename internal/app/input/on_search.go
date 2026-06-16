@@ -213,10 +213,11 @@ func (s *SearchSelector) Render() string {
 		return ""
 	}
 
+	panel := s.panel()
 	var sb strings.Builder
 	dimStyle := kit.DimStyle()
 
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 
 	sb.WriteString(kit.SelectorTitleStyle().Render("Search Engine"))
@@ -253,10 +254,10 @@ func (s *SearchSelector) Render() string {
 			body.WriteString("\n")
 		}
 	}
-	sb.WriteString(s.renderViewport(body.String()))
+	sb.WriteString(panel.PadViewport(body.String()))
 
 	sb.WriteString("\n")
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 	if s.apiKeyActive {
 		sb.WriteString(dimStyle.Render("Paste API key · Enter confirm · Esc cancel"))
@@ -268,52 +269,11 @@ func (s *SearchSelector) Render() string {
 		sb.WriteString(dimStyle.Render(hint))
 	}
 
-	content := sb.String()
-	cw := s.contentWidth()
-	box := lipgloss.NewStyle().
-		Width(cw).
-		Height(s.boxHeight()).
-		Padding(1, 2).
-		Render(content)
-
-	return lipgloss.Place(s.width, s.height-2, lipgloss.Center, lipgloss.Top, box)
+	return panel.Wrap(sb.String())
 }
 
-func (s *SearchSelector) contentWidth() int {
-	return max(60, s.width-6)
-}
-
-func (s *SearchSelector) boxHeight() int {
-	return max(18, s.height-4)
-}
-
-func (s *SearchSelector) bodyHeight() int {
-	return max(6, s.boxHeight()-10)
-}
-
-func (s *SearchSelector) renderViewport(content string) string {
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) == 1 && lines[0] == "" {
-		lines = nil
-	}
-
-	visible := s.bodyHeight()
-	if visible <= 0 {
-		return ""
-	}
-
-	view := lines
-	for len(view) < visible {
-		view = append(view, "")
-	}
-
-	return strings.Join(view, "\n") + "\n"
-}
-
-func (s *SearchSelector) sepLine() string {
-	sepStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	return sepStyle.Render(strings.Repeat("─", s.contentWidth()-8))
-}
+// panel supplies the shared selector sizing/frame primitives.
+func (s *SearchSelector) panel() kit.Panel { return kit.Panel{Width: s.width, Height: s.height} }
 
 // --- Search Runtime ---
 

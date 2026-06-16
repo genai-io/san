@@ -19,10 +19,11 @@ func (s *ProviderSelector) Render() string {
 		return s.renderEmptyState()
 	}
 
+	panel := s.panel()
 	var sb strings.Builder
 
 	// Separator above tabs
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 
 	// Tab header
@@ -40,63 +41,20 @@ func (s *ProviderSelector) Render() string {
 	} else {
 		s.renderItemList(&body)
 	}
-	sb.WriteString(s.renderViewport(body.String()))
+	sb.WriteString(panel.PadViewport(body.String()))
 
 	// Separator before hints
 	sb.WriteString("\n")
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 	sb.WriteString(s.renderHints())
 
-	content := sb.String()
-	cw := s.contentWidth()
-	box := lipgloss.NewStyle().
-		Width(cw).
-		Height(s.boxHeight()).
-		Padding(1, 2).
-		Render(content)
-	return lipgloss.Place(s.width, s.height-2, lipgloss.Center, lipgloss.Top, box)
+	return panel.Wrap(sb.String())
 }
 
-// contentWidth returns the usable width for the panel content.
-func (s *ProviderSelector) contentWidth() int {
-	// Use full terminal width minus a small margin
-	return max(60, s.width-6)
-}
-
-// boxHeight returns the fixed height for the panel, consistent across tabs.
-func (s *ProviderSelector) boxHeight() int {
-	return max(18, s.height-4)
-}
-
-// bodyHeight returns the fixed height for the scrollable content area.
-func (s *ProviderSelector) bodyHeight() int {
-	return max(6, s.boxHeight()-10)
-}
-
-func (s *ProviderSelector) renderViewport(content string) string {
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) == 1 && lines[0] == "" {
-		lines = nil
-	}
-
-	visible := s.bodyHeight()
-	if visible <= 0 {
-		return ""
-	}
-
-	view := lines
-	for len(view) < visible {
-		view = append(view, "")
-	}
-
-	return strings.Join(view, "\n") + "\n"
-}
-
-func (s *ProviderSelector) sepLine() string {
-	sepStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	return sepStyle.Render(strings.Repeat("─", s.contentWidth()-8))
-}
+// panel supplies the shared selector sizing/frame primitives (content width,
+// box/body height, separators, viewport padding, centered wrap).
+func (s *ProviderSelector) panel() kit.Panel { return kit.Panel{Width: s.width, Height: s.height} }
 
 // emptyFilterMsg returns the "no matches" text for the current tab.
 func (s *ProviderSelector) emptyFilterMsg() string {
@@ -185,7 +143,7 @@ func (s *ProviderSelector) renderTabs() string {
 // ── Search box ──────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) renderSearchBox() string {
-	innerWidth := max(20, s.contentWidth()-8)
+	innerWidth := max(20, s.panel().ContentWidth()-8)
 
 	var text string
 	if s.activeTab == providerTabModels && s.searchQuery != "" {
@@ -230,13 +188,7 @@ func (s *ProviderSelector) renderEmptyState() string {
 		msgStyle.Render("  Press ") + cmdStyle.Render("Tab") + msgStyle.Render(" to switch to Providers tab and connect one.") + "\n\n" +
 		kit.DimStyle().Render("←/→/Tab switch · Esc cancel")
 
-	cw := s.contentWidth()
-	box := lipgloss.NewStyle().
-		Width(cw).
-		Height(s.boxHeight()).
-		Padding(1, 2).
-		Render(content)
-	return lipgloss.Place(s.width, s.height-2, lipgloss.Center, lipgloss.Top, box)
+	return s.panel().Wrap(content)
 }
 
 // ── Models tab rows ─────────────────────────────────────────────────────────
