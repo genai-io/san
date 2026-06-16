@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -44,7 +45,7 @@ func (s *stubSubagentSessionStore) LoadSubagentMessages(agentID string) ([]core.
 func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
+	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
 		Agent:    "general-purpose",
 		Name:     "Scout",
 		Model:    "override-model",
@@ -75,7 +76,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
-	rc, err := executor.prepareRunConfig(tool.AgentExecRequest{
+	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
 		Agent:    "general-purpose",
 		MaxSteps: 20,
 	})
@@ -88,17 +89,87 @@ func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	}
 }
 
-func TestResolveModelIDUsesConfigBeforeParent(t *testing.T) {
+func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
+	ctx := context.Background()
 
-	if got := executor.resolveModelID("", "sonnet"); got != "claude-sonnet-4-20250514" {
+	if _, got, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-20250514" {
 		t.Fatalf("config model = %q, want sonnet alias", got)
 	}
-	if got := executor.resolveModelID("", "inherit"); got != "parent-model" {
+	if _, got, _ := executor.resolveModel(ctx, "", "inherit"); got != "parent-model" {
 		t.Fatalf("inherit model = %q, want parent", got)
 	}
-	if got := executor.resolveModelID("override-model", "sonnet"); got != "override-model" {
+	if _, got, _ := executor.resolveModel(ctx, "override-model", "sonnet"); got != "override-model" {
 		t.Fatalf("request override = %q, want override", got)
+	}
+}
+
+// stubResolver records the vendor it was asked to resolve.
+type stubResolver struct {
+	provider llm.Provider
+	vendor   llm.Name
+	err      error
+}
+
+func (s *stubResolver) Resolve(_ context.Context, p llm.Name) (llm.Provider, error) {
+	s.vendor = p
+	return s.provider, s.err
+}
+
+func TestResolveModelRoutesQualifiedRefToResolver(t *testing.T) {
+	stub := &stubResolver{}
+	executor := &Executor{parentModelID: "parent-model", resolver: stub}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if stub.vendor != llm.DeepSeek {
+		t.Fatalf("resolver vendor = %q, want %q", stub.vendor, llm.DeepSeek)
+	}
+	if modelID != "deepseek-v4" {
+		t.Fatalf("modelID = %q, want deepseek-v4", modelID)
+	}
+}
+
+func TestResolveModelQualifiedRefWithoutResolverErrors(t *testing.T) {
+	executor := &Executor{parentModelID: "parent-model"} // no resolver wired
+
+	if _, _, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", ""); err == nil {
+		t.Fatal("expected an error when an explicit vendor/model ref has no resolver")
+	}
+}
+
+func TestResolveModelPropagatesResolverError(t *testing.T) {
+	stub := &stubResolver{err: errors.New("provider \"deepseek\" is not connected")}
+	executor := &Executor{parentModelID: "parent-model", resolver: stub}
+
+	if _, _, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", ""); err == nil {
+		t.Fatal("expected the resolver error to propagate")
+	}
+}
+
+func TestParseVendorModel(t *testing.T) {
+	tests := []struct {
+		ref    string
+		vendor llm.Name
+		model  string
+		ok     bool
+	}{
+		{"deepseek/deepseek-v4", llm.DeepSeek, "deepseek-v4", true},
+		{"anthropic/claude-opus-4-20250514", llm.Anthropic, "claude-opus-4-20250514", true},
+		{"acme/some-model", "acme", "some-model", true}, // any slash parses; the pool rejects unknown vendors
+		{"opus", "", "", false},                         // alias, not a qualified ref
+		{"claude-opus-4-20250514", "", "", false},       // bare model id, no slash
+		{"deepseek/", "", "", false},                    // empty model
+		{"/deepseek-v4", "", "", false},                 // empty vendor
+	}
+	for _, tt := range tests {
+		vendor, model, ok := parseVendorModel(tt.ref)
+		if ok != tt.ok || vendor != tt.vendor || model != tt.model {
+			t.Fatalf("parseVendorModel(%q) = (%q, %q, %v), want (%q, %q, %v)",
+				tt.ref, vendor, model, ok, tt.vendor, tt.model, tt.ok)
+		}
 	}
 }
 

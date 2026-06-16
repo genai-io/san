@@ -22,9 +22,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// ProviderResolver turns a vendor name into a live provider so a subagent can
+// run on a different vendor than its parent. The app wires an *llm.ProviderCache;
+// a nil resolver disables cross-provider routing, in which case an explicit
+// "vendor/model" override errors instead of silently using the parent provider.
+type ProviderResolver interface {
+	Resolve(ctx context.Context, provider llm.Name) (llm.Provider, error)
+}
+
 // Executor runs agent LLM loops
 type Executor struct {
 	provider        llm.Provider
+	resolver        ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
 	cwd             string
 	parentModelID   string // Parent conversation's model ID (used when inheriting)
 	hooks           hook.Handler
@@ -44,6 +53,7 @@ type SubagentSessionStore interface {
 
 type runConfig struct {
 	config      *AgentConfig
+	provider    llm.Provider // provider this run talks to (parent's, or a routed vendor)
 	modelID     string
 	maxSteps    int
 	displayName string
@@ -67,6 +77,14 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 // instructions) is intentionally not propagated — see collectSubagentReminders.
 func (e *Executor) SetContext(isGit bool) {
 	e.isGit = isGit
+}
+
+// SetResolver enables cross-provider routing: a subagent whose model is an
+// explicit "vendor/model" override resolves through this resolver instead of
+// reusing the parent's provider. Without it such overrides error rather than
+// silently fall back to the parent.
+func (e *Executor) SetResolver(r ProviderResolver) {
+	e.resolver = r
 }
 
 // SetCapabilities provides skills and agents prompt sections so subagents
@@ -99,7 +117,7 @@ func (e *Executor) GetParentModelID() string {
 // Run executes an agent request and returns the result.
 // For background agents, this should be called in a goroutine.
 func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
-	run, err := e.prepareRun(req)
+	run, err := e.prepareRun(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +129,7 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 	result, err := e.executePreparedRun(ctx, run)
 	if err != nil && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
+		run.cfg.provider = e.provider
 		run.cfg.modelID = e.parentModelID
 		result, err = e.executePreparedRun(ctx, run)
 	}
@@ -197,7 +216,7 @@ func (e *Executor) prepareWorkspace(req tool.AgentExecRequest) (string, func(), 
 	return result.Path, cleanup, nil
 }
 
-func (e *Executor) prepareRunConfig(req tool.AgentExecRequest) (*runConfig, error) {
+func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -215,9 +234,15 @@ func (e *Executor) prepareRunConfig(req tool.AgentExecRequest) (*runConfig, erro
 		maxSteps = defaultMaxSteps
 	}
 
+	provider, modelID, err := e.resolveModel(ctx, req.Model, config.Model)
+	if err != nil {
+		return nil, err
+	}
+
 	return &runConfig{
 		config:      config,
-		modelID:     e.resolveModelID(req.Model, config.Model),
+		provider:    provider,
+		modelID:     modelID,
 		maxSteps:    maxSteps,
 		displayName: displayName,
 		brief:       e.buildBrief(config, permMode),
@@ -256,7 +281,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	_, agentDirectoryGetter := e.capabilityPrompts(rc.config)
 
 	sys := system.Build(core.ScopeSubagent,
-		system.WithProvider(e.provider.Name()),
+		system.WithProvider(rc.provider.Name()),
 		system.WithGitGuidelines(e.isGit),
 		system.WithSubagentIdentity(rc.brief),
 		system.WithEnvironment(system.Environment{
@@ -300,7 +325,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	coreTools = tool.WithPermission(coreTools, permFn)
 
 	ag = core.NewAgent(core.Config{
-		LLM:       llm.NewClient(e.provider, rc.modelID, 0),
+		LLM:       llm.NewClient(rc.provider, rc.modelID, 0),
 		System:    sys,
 		Tools:     coreTools,
 		AgentType: rc.config.Name,
@@ -376,18 +401,47 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 	})
 }
 
-// resolveModelID determines the model to use based on priority:
-// 1. Explicit request override
-// 2. Agent configuration
-// 3. Parent conversation model
-func (e *Executor) resolveModelID(requestModel string, configModel string) string {
-	if requestModel != "" {
-		return resolveModelAlias(requestModel)
+// resolveModel picks the provider and model id for a run, by priority:
+// 1. Explicit request override (req.Model)
+// 2. Agent configuration (config.Model)
+// 3. Parent conversation model ("inherit" or empty)
+//
+// An explicit "vendor/model" override routes to that vendor through the
+// resolver, erroring if the vendor is not connected. Every other form — an
+// alias, a bare model id, or "inherit" — stays on the parent's provider,
+// preserving prior behavior.
+func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (llm.Provider, string, error) {
+	ref := requestModel
+	if ref == "" {
+		ref = configModel
 	}
-	if configModel != "" && configModel != "inherit" {
-		return resolveModelAlias(configModel)
+	if ref == "" || ref == "inherit" {
+		return e.provider, e.parentModelID, nil
 	}
-	return e.parentModelID
+	if vendor, modelID, ok := parseVendorModel(ref); ok {
+		if e.resolver == nil {
+			return nil, "", fmt.Errorf("model %q routes to provider %q, but cross-provider routing is unavailable", ref, vendor)
+		}
+		p, err := e.resolver.Resolve(ctx, vendor)
+		if err != nil {
+			return nil, "", fmt.Errorf("model %q: %w", ref, err)
+		}
+		return p, modelID, nil
+	}
+	return e.provider, resolveModelAlias(ref), nil
+}
+
+// parseVendorModel reads the explicit "vendor/model" form (e.g.
+// "deepseek/deepseek-v4"), the only way to route a subagent to another vendor.
+// Any ref containing a slash is treated as vendor-qualified — San model ids
+// never contain one — so a misspelled or unconnected vendor surfaces as a clear
+// resolver error rather than silently running on the parent provider.
+func parseVendorModel(ref string) (vendor llm.Name, model string, ok bool) {
+	slash := strings.IndexByte(ref, '/')
+	if slash <= 0 || slash >= len(ref)-1 {
+		return "", "", false
+	}
+	return llm.Name(ref[:slash]), ref[slash+1:], true
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {

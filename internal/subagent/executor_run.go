@@ -48,7 +48,7 @@ func (r *preparedRun) recordUsage(resp *core.InferResponse) {
 	}
 }
 
-func (e *Executor) prepareRun(req tool.AgentExecRequest) (*preparedRun, error) {
+func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*preparedRun, error) {
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (e *Executor) prepareRun(req tool.AgentExecRequest) (*preparedRun, error) {
 		return nil, err
 	}
 
-	cfg, err := e.prepareRunConfig(req)
+	cfg, err := e.prepareRunConfig(ctx, req)
 	if err != nil {
 		cleanupWorkspace()
 		return nil, err

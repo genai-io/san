@@ -288,7 +288,13 @@ type AgentConfig struct {
 	Description string `yaml:"description" json:"description"`
 	Color       string `yaml:"color,omitempty" json:"color,omitempty"`
 	WhenToUse   string `yaml:"when-to-use,omitempty" json:"when_to_use,omitempty"`
-	Model       string `yaml:"model" json:"model"`
+	// Model selects the model for this agent. Accepted forms:
+	//   - "inherit" or empty — use the parent conversation's model
+	//   - an alias ("opus", "sonnet", "haiku") or a bare model id served by the
+	//     parent's provider
+	//   - "vendor/model" (e.g. "deepseek/deepseek-v4") to route to another
+	//     connected provider; the named vendor must be connected
+	Model string `yaml:"model" json:"model"`
 
 	// PermissionMode is the default policy when no allow/deny rule matches.
 	PermissionMode PermissionMode `yaml:"mode" json:"mode"`

@@ -50,7 +50,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `allowed-tools` | no | Restrict the subagent's tool set. Default = same as parent. |
 | `permission-mode` | no | One of `default`, `acceptEdits`, `bypassPermissions`, `plan`. Default = parent. |
 | `isolation` | no | `none` (default) or `worktree` — see below. |
-| `model` | no | Pin a specific model for this subagent; otherwise inherits parent's model. |
+| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
 
 ## Permission Mode
 
