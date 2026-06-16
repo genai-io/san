@@ -52,13 +52,6 @@ func SelectorItemStyle() lipgloss.Style {
 		PaddingLeft(2)
 }
 
-func SelectorSelectedStyle() lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(CurrentTheme.TextBright).
-		Bold(true).
-		PaddingLeft(2)
-}
-
 func SelectorStatusConnected() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(CurrentTheme.Success)

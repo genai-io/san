@@ -121,27 +121,6 @@ func MapString(m map[string]any, key string) string {
 	}
 }
 
-// MapInt extracts an int value from a generic map.
-func MapInt(m map[string]any, key string) int {
-	if m == nil {
-		return 0
-	}
-	value, ok := m[key]
-	if !ok || value == nil {
-		return 0
-	}
-	switch v := value.(type) {
-	case int:
-		return v
-	case int64:
-		return int(v)
-	case float64:
-		return int(v)
-	default:
-		return 0
-	}
-}
-
 // RenderEnvVarStatus returns a styled "ENVVAR ✓" or "ENVVAR ✗" indicator.
 func RenderEnvVarStatus(envVar string) string {
 	if envVar == "" {

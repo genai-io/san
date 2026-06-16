@@ -340,11 +340,6 @@ func (m *Model) ClearPaste() {
 	m.PastedChunks = nil
 }
 
-// MinTextareaHeight returns the minimum textarea height constant.
-func MinTextareaHeight() int {
-	return minTextareaHeight
-}
-
 func (m *Model) Reset() {
 	m.Textarea.Reset()
 	m.Textarea.SetHeight(minTextareaHeight)

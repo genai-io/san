@@ -660,10 +660,6 @@ func lookupSkill(svc *skill.Registry, cmd string) (*skill.Skill, bool) {
 	return sk, true
 }
 
-func LookupSkillCommand(cmd string) (*skill.Skill, bool) {
-	return lookupSkill(skill.DefaultIfInit(), cmd)
-}
-
 func unknownCommandResult(cmd string) string {
 	return fmt.Sprintf("Unknown command: /%s\nType /help for available commands.", cmd)
 }

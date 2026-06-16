@@ -200,7 +200,6 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			}
 			agentEventHub.Publish(hub.Event{
 				Type:    "task.completed",
-				Source:  fmt.Sprintf("agent:%s", info.ID),
 				Target:  "main",
 				Subject: msg.Notice,
 				Data:    msg.Content,

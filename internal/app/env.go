@@ -178,11 +178,6 @@ func (m *env) ApplyBypassPermissions() {
 	m.SessionPermissions.Mode = setting.ModeBypassPermissions
 }
 
-func (m *env) EnableAutoAcceptMode(cwd string) {
-	m.ApplyAutoAcceptPermissions(cwd)
-	m.OperationMode = setting.ModeAutoAccept
-}
-
 func (m *env) DetectThinkingKeywords(input string) {
 	lower := strings.ToLower(input)
 	efforts := llm.ThinkingEfforts(m.LLMProvider, m.GetModelID())

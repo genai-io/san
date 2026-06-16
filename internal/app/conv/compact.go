@@ -40,16 +40,6 @@ type CompactState struct {
 	WarningSuppressed bool
 }
 
-func (c *CompactState) Reset() {
-	c.Active = false
-	c.SummaryFocus = ""
-	c.LastResult = ""
-	c.LastError = false
-	c.Phase = ""
-	c.Count = 0
-	c.WarningSuppressed = false
-}
-
 func (c *CompactState) ClearResult() {
 	c.LastResult = ""
 	c.LastError = false

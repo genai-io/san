@@ -439,8 +439,8 @@ func (s *SkillSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 			line += " " + badge.Render(badgeText)
 		}
 
-		// Render the row without SelectorSelectedStyle/SelectorItemStyle's
-		// PaddingLeft(2) so the row's left edge lines up with tabs/search/
+		// Render the row without the selector row styles' PaddingLeft(2) so
+		// the row's left edge lines up with tabs/search/
 		// separator. Width(...) right-pads each row to the full inner content
 		// area so the right edge also matches the separator line.
 		rowWidth := max(20, panel.ContentWidth()-4)

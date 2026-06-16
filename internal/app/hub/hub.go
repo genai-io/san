@@ -11,7 +11,6 @@ import (
 // Event is a CloudEvents-inspired message routed through the Hub.
 type Event struct {
 	Type    string // "task.completed", "agent.message", "cron.fired"
-	Source  string // producer: "agent:<id>", "system:cron"
 	Target  string // consumer: "agent:<id>", "main"
 	Subject string // human-readable: "fix auth module completed"
 	Data    string // payload: XML content, message text, etc.

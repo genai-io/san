@@ -347,7 +347,6 @@ func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID st
 	}
 	m.agentEventHub.Publish(hub.Event{
 		Type:    eventSelfLearnReviewDone,
-		Source:  "selflearn",
 		Target:  "main",
 		Subject: formatRecapBlock(actions, forkSessionID),
 	})
@@ -530,7 +529,6 @@ func (m *model) publishSelfLearnStarted(kinds selflearn.ReviewKind) {
 	}
 	m.agentEventHub.Publish(hub.Event{
 		Type:    eventSelfLearnReviewStarted,
-		Source:  "selflearn",
 		Target:  "main",
 		Subject: kinds.String(),
 	})
@@ -549,7 +547,6 @@ func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
 	}
 	m.agentEventHub.Publish(hub.Event{
 		Type:    eventSelfLearnReviewFailed,
-		Source:  "selflearn",
 		Target:  "main",
 		Subject: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg),
 	})

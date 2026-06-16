@@ -208,14 +208,6 @@ func (s *SearchSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 	}
 }
 
-func (s *SearchSelector) HandleUpdate(msg tea.Msg) tea.Cmd {
-	if !s.apiKeyActive {
-		return nil
-	}
-	s.apiKeyInput, _ = s.apiKeyInput.Update(msg)
-	return nil
-}
-
 func (s *SearchSelector) Render() string {
 	if !s.active {
 		return ""
