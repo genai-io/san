@@ -18,7 +18,8 @@ type AgentRegistry interface {
 	SetEnabled(name string, enabled bool, userLevel bool) error
 }
 
-// agentTab identifies a category tab in the agent selector.
+// agentTab identifies a category tab in the agent selector. The values double
+// as indices into the selector's tabbedList tab order.
 type agentTab int
 
 const (
@@ -26,18 +27,6 @@ const (
 	agentTabProject
 	agentTabUser
 )
-
-func (t agentTab) String() string {
-	switch t {
-	case agentTabBuiltin:
-		return "Built-in"
-	case agentTabProject:
-		return "Project"
-	case agentTabUser:
-		return "User"
-	}
-	return ""
-}
 
 type agentItem struct {
 	Name           string
@@ -56,24 +45,33 @@ type AgentToggleMsg struct {
 	Enabled   bool
 }
 
-// AgentSelector holds the state for the agent selector overlay.
+// AgentSelector holds the state for the agent selector overlay. The tab/filter/
+// keypress/frame mechanics live in the embedded tabbedList; this type owns
+// agent loading, the row layout, and the enable/disable action.
 type AgentSelector struct {
-	registry       AgentRegistry
-	active         bool
-	agents         []agentItem // all loaded, before filtering
-	filteredAgents []agentItem // after tab + search filter
-	nav            kit.ListNav
-	width          int
-	height         int
-	activeTab      agentTab
+	registry AgentRegistry
+	list     tabbedList[agentItem]
 }
 
 func NewAgentSelector(reg AgentRegistry) AgentSelector {
 	return AgentSelector{
-		registry:  reg,
-		agents:    []agentItem{},
-		nav:       kit.ListNav{MaxVisible: 10},
-		activeTab: agentTabProject,
+		registry: reg,
+		list: tabbedList[agentItem]{
+			tabs: []tabSpec{
+				{name: "Built-in", disableIfEmpty: true},
+				{name: "Project"},
+				{name: "User"},
+			},
+			// Project first, then User, then Built-in (built-in agents are
+			// rarely the thing the user came to toggle).
+			preferred:   []int{int(agentTabProject), int(agentTabUser), int(agentTabBuiltin)},
+			noun:        "agents",
+			placeholder: "Type to filter agents...",
+			hints:       []string{"↑/↓ navigate", "Enter toggle", "←/→/Tab switch tab", "Esc cancel"},
+			matchesTab:  agentMatchesTab,
+			searchKeys:  func(a agentItem) []string { return []string{a.Name, a.Description} },
+			nav:         kit.ListNav{MaxVisible: 10},
+		},
 	}
 }
 
@@ -85,7 +83,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		true:  s.registry.GetDisabledAt(true),
 	}
 
-	s.agents = make([]agentItem, 0, len(allConfigs))
+	agents := make([]agentItem, 0, len(allConfigs))
 	for _, cfg := range allConfigs {
 		lowerName := strings.ToLower(cfg.Name)
 		var pluginName string
@@ -96,7 +94,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		// Disabled state lookup uses the user-level map for built-in/user
 		// agents, project-level map for project agents.
 		userLevel := source == "user" || source == "built-in"
-		s.agents = append(s.agents, agentItem{
+		agents = append(agents, agentItem{
 			Name:           cfg.Name,
 			Description:    cfg.Description,
 			Model:          cfg.Model,
@@ -108,12 +106,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		})
 	}
 
-	s.active = true
-	s.width = width
-	s.height = height
-	s.nav.Reset()
-	s.activeTab = s.firstNonEmptyTab()
-	s.updateFilter()
+	s.list.load(agents, width, height)
 	return nil
 }
 
@@ -140,21 +133,13 @@ func formatAgentTools(tools []string) string {
 	return strings.Join(tools, ", ")
 }
 
-func (s *AgentSelector) IsActive() bool { return s.active }
-
-func (s *AgentSelector) Cancel() {
-	s.active = false
-	s.agents = []agentItem{}
-	s.filteredAgents = []agentItem{}
-	s.nav.Reset()
-	s.nav.Total = 0
-}
+func (s *AgentSelector) IsActive() bool { return s.list.active }
 
 // agentMatchesTab returns true when an agent belongs to the given tab.
 // Plugin agents are folded into Project or User tab depending on install path
 // (a "user-plugin" source is treated as User; bare "plugin" defaults to Project).
-func agentMatchesTab(a agentItem, tab agentTab) bool {
-	switch tab {
+func agentMatchesTab(a agentItem, tab int) bool {
+	switch agentTab(tab) {
 	case agentTabBuiltin:
 		return a.Source == "built-in"
 	case agentTabProject:
@@ -165,60 +150,21 @@ func agentMatchesTab(a agentItem, tab agentTab) bool {
 	return false
 }
 
-func (s *AgentSelector) tabCount(tab agentTab) int {
-	count := 0
-	for _, a := range s.agents {
-		if agentMatchesTab(a, tab) {
-			count++
-		}
-	}
-	return count
-}
-
-func (s *AgentSelector) firstNonEmptyTab() agentTab {
-	for _, t := range []agentTab{agentTabProject, agentTabUser, agentTabBuiltin} {
-		if s.tabCount(t) > 0 {
-			return t
-		}
-	}
-	return agentTabProject
-}
-
-// updateFilter rebuilds filteredAgents from the active tab + search query.
-func (s *AgentSelector) updateFilter() {
-	query := strings.ToLower(s.nav.Search)
-	s.filteredAgents = s.filteredAgents[:0]
-	for _, a := range s.agents {
-		if !agentMatchesTab(a, s.activeTab) {
-			continue
-		}
-		if query != "" {
-			if !kit.FuzzyMatch(strings.ToLower(a.Name), query) &&
-				!kit.FuzzyMatch(strings.ToLower(a.Description), query) {
-				continue
-			}
-		}
-		s.filteredAgents = append(s.filteredAgents, a)
-	}
-	s.nav.ResetCursor()
-	s.nav.Total = len(s.filteredAgents)
-}
-
 func (s *AgentSelector) saveLevelForActiveTab() bool {
 	// Built-in and User tabs persist disable-state at the user level;
 	// Project tab persists at the project level.
-	return s.activeTab != agentTabProject
+	return s.list.activeTab != int(agentTabProject)
 }
 
 func (s *AgentSelector) Toggle() tea.Cmd {
-	if len(s.filteredAgents) == 0 || s.nav.Selected >= len(s.filteredAgents) {
+	if len(s.list.filtered) == 0 || s.list.nav.Selected >= len(s.list.filtered) {
 		return nil
 	}
-	selected := &s.filteredAgents[s.nav.Selected]
+	selected := &s.list.filtered[s.list.nav.Selected]
 	selected.Enabled = !selected.Enabled
-	for i := range s.agents {
-		if s.agents[i].Name == selected.Name {
-			s.agents[i].Enabled = selected.Enabled
+	for i := range s.list.items {
+		if s.list.items[i].Name == selected.Name {
+			s.list.items[i].Enabled = selected.Enabled
 			break
 		}
 	}
@@ -228,115 +174,18 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 	}
 }
 
-func (s *AgentSelector) cycleTab(delta int) {
-	tabs := []agentTab{agentTabBuiltin, agentTabProject, agentTabUser}
-	idx := 0
-	for i, t := range tabs {
-		if t == s.activeTab {
-			idx = i
-			break
-		}
-	}
-	n := len(tabs)
-	next := tabs[((idx+delta)%n+n)%n]
-	s.activeTab = next
-	s.updateFilter()
-}
-
 func (s *AgentSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	switch key.String() {
-	case "tab", "right":
-		s.cycleTab(+1)
-		return nil
-	case "shift+tab", "left":
-		s.cycleTab(-1)
-		return nil
-	case "enter":
-		return s.Toggle()
-	}
-	searchChanged, consumed := s.nav.HandleKey(key)
-	if searchChanged {
-		s.updateFilter()
-	}
-	if consumed {
-		return nil
-	}
-	if key.String() == "esc" {
-		s.Cancel()
-		return func() tea.Msg { return kit.DismissedMsg{} }
-	}
-	return nil
+	return s.list.handleKey(key, s.Toggle)
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
 
 func (s *AgentSelector) Render() string {
-	if !s.active {
-		return ""
-	}
-
-	panel := kit.Panel{Width: s.width, Height: s.height}
-
-	// Resize the visible window to fit the body height. Each item renders on
-	// 2 lines (row + spacer); the selected item adds 1 description sub-line.
-	// Reserve 2 lines for more-above/more-below indicators.
-	s.nav.MaxVisible = max(3, (panel.BodyHeight()-2)/2)
-	s.nav.EnsureVisible()
-
-	var sb strings.Builder
-
-	sb.WriteString(panel.SeparatorLine())
-	sb.WriteString("\n")
-	sb.WriteString(s.renderTabs())
-	sb.WriteString("\n\n")
-	sb.WriteString(kit.RenderSearchBox(kit.SearchBoxOpts{
-		Query:       s.nav.Search,
-		Placeholder: "Type to filter agents...",
-		Filtered:    len(s.filteredAgents),
-		Total:       s.tabCount(s.activeTab),
-		Width:       panel.ContentWidth(),
-	}))
-	sb.WriteString("\n\n")
-
-	var body strings.Builder
-	if len(s.filteredAgents) == 0 {
-		body.WriteString(s.renderEmpty())
-	} else {
-		s.renderItemList(&body, panel)
-	}
-	sb.WriteString(panel.PadViewport(body.String()))
-
-	sb.WriteString("\n")
-	sb.WriteString(panel.SeparatorLine())
-	sb.WriteString("\n")
-	sb.WriteString(s.renderHints())
-
-	return panel.Wrap(sb.String())
-}
-
-func (s *AgentSelector) renderTabs() string {
-	tabs := []kit.PanelTab{
-		{Name: agentTabBuiltin.String(), Count: s.tabCount(agentTabBuiltin), Show: true, Disable: s.tabCount(agentTabBuiltin) == 0},
-		{Name: agentTabProject.String(), Count: s.tabCount(agentTabProject), Show: true},
-		{Name: agentTabUser.String(), Count: s.tabCount(agentTabUser), Show: true},
-	}
-	return kit.RenderPanelTabs(tabs, int(s.activeTab))
-}
-
-func (s *AgentSelector) renderEmpty() string {
-	if len(s.agents) == 0 {
-		return kit.DimStyle().PaddingLeft(2).Render("No agents available")
-	}
-	if s.tabCount(s.activeTab) == 0 {
-		return kit.DimStyle().PaddingLeft(2).Render(
-			fmt.Sprintf("No %s agents — press Tab to switch tabs",
-				strings.ToLower(s.activeTab.String())))
-	}
-	return kit.DimStyle().PaddingLeft(2).Render("No agents match the filter")
+	return s.list.render(s.renderItemList)
 }
 
 func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
-	startIdx, endIdx := s.nav.VisibleRange()
+	startIdx, endIdx := s.list.nav.VisibleRange()
 
 	if startIdx > 0 {
 		sb.WriteString(kit.MoreAbove())
@@ -347,7 +196,7 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 	// columns align nicely while still adapting to long names.
 	maxNameLen := 12
 	for i := startIdx; i < endIdx; i++ {
-		if l := len(s.filteredAgents[i].Name); l > maxNameLen {
+		if l := len(s.list.filtered[i].Name); l > maxNameLen {
 			maxNameLen = l
 		}
 	}
@@ -357,7 +206,7 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 	badge := kit.BadgeStyle()
 
 	for i := startIdx; i < endIdx; i++ {
-		a := s.filteredAgents[i]
+		a := s.list.filtered[i]
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
@@ -416,12 +265,12 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		// separator. Width(...) right-pads each row to the full inner content
 		// area so the right edge also matches the separator line.
 		rowWidth := max(20, panel.ContentWidth()-4)
-		sb.WriteString(kit.RenderPanelRow(line, i == s.nav.Selected, rowWidth))
+		sb.WriteString(kit.RenderPanelRow(line, i == s.list.nav.Selected, rowWidth))
 		sb.WriteString("\n")
 
 		// Description sub-line aligned under the agent name (4 cols in:
 		// 2 cursor + 1 icon + 1 space).
-		if i == s.nav.Selected && a.Description != "" {
+		if i == s.list.nav.Selected && a.Description != "" {
 			subStyle := lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted).
 				PaddingLeft(4)
@@ -437,17 +286,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		}
 	}
 
-	if endIdx < len(s.filteredAgents) {
+	if endIdx < len(s.list.filtered) {
 		sb.WriteString(kit.MoreBelow())
 		sb.WriteString("\n")
 	}
-}
-
-func (s *AgentSelector) renderHints() string {
-	return kit.HintLine(
-		"↑/↓ navigate",
-		"Enter toggle",
-		"←/→/Tab switch tab",
-		"Esc cancel",
-	)
 }
