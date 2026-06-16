@@ -20,7 +20,7 @@ import (
 const (
 	pctGood     = 50.0
 	pctWarn     = 80.0
-	pctCritical = 95.0
+	pctCritical = autoCompactThreshold // critical tier == auto-compact trigger
 
 	// contextBarWidth is the cell count for the visual bar (PRD §7.1).
 	contextBarWidth = 10
