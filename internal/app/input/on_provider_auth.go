@@ -16,6 +16,21 @@ import (
 	"github.com/genai-io/san/internal/secret"
 )
 
+// HandlePaste inserts bracketed-paste content into the API key input when it's active.
+func (s *ProviderSelector) HandlePaste(content string) tea.Cmd {
+	if !s.apiKeyActive {
+		return nil
+	}
+	content = strings.NewReplacer("\r", "", "\n", "").Replace(content)
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	s.apiKeyInput.SetValue(content)
+	s.apiKeyInput.CursorEnd()
+	return nil
+}
+
 func (s *ProviderSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "enter":
