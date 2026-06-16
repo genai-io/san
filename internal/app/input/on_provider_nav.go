@@ -219,7 +219,7 @@ func (s *ProviderSelector) selectModel(m *providerModelItem) tea.Cmd {
 	}
 	s.active = false
 	return func() tea.Msg {
-		return ProviderModelSelectedMsg{
+		return providerModelSelectedMsg{
 			ModelID:      m.ID,
 			ProviderName: m.ProviderName,
 			AuthMethod:   m.AuthMethod,
@@ -232,7 +232,7 @@ func (s *ProviderSelector) selectModel(m *providerModelItem) tea.Cmd {
 func (s *ProviderSelector) selectModelFromIDs(id, provider string, auth llm.AuthMethod) tea.Cmd {
 	s.active = false
 	return func() tea.Msg {
-		return ProviderModelSelectedMsg{
+		return providerModelSelectedMsg{
 			ModelID:      id,
 			ProviderName: provider,
 			AuthMethod:   auth,

@@ -133,7 +133,7 @@ func (s *ProviderSelector) ensureModelProvidersExist() {
 }
 
 // loadModelsAsync returns a tea.Cmd that fetches models from all connected
-// providers concurrently, sending a ProviderModelsLoadedMsg when done.
+// providers concurrently, sending a providerModelsLoadedMsg when done.
 func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.CurrentModelInfo) tea.Cmd {
 	connections := store.GetConnections()
 	return func() tea.Msg {
@@ -175,12 +175,12 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 				models = append(models, newProviderModelItem(mdl, r.providerName, r.authMethod, current))
 			}
 		}
-		return ProviderModelsLoadedMsg{Models: models}
+		return providerModelsLoadedMsg{Models: models}
 	}
 }
 
 // HandleModelsLoaded updates the panel with asynchronously loaded models.
-func (s *ProviderSelector) HandleModelsLoaded(msg ProviderModelsLoadedMsg) {
+func (s *ProviderSelector) HandleModelsLoaded(msg providerModelsLoadedMsg) {
 	s.allModels = msg.Models
 	s.ensureModelProvidersExist()
 

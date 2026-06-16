@@ -24,8 +24,8 @@ type MCPState struct {
 	EditingScope  coremcp.Scope // scope of the server being edited
 }
 
-// MCPEditorFinishedMsg is sent when the external MCP config editor closes.
-type MCPEditorFinishedMsg struct {
+// mcpEditorFinishedMsg is sent when the external MCP config editor closes.
+type mcpEditorFinishedMsg struct {
 	Err error
 }
 
@@ -83,39 +83,39 @@ type MCPSelector struct {
 
 // ── Message types ───────────────────────────────────────────────────
 
-// MCPConnectMsg is sent when connecting to a server
-type MCPConnectMsg struct {
+// mcpConnectMsg is sent when connecting to a server
+type mcpConnectMsg struct {
 	ServerName string
 }
 
-// MCPConnectResultMsg is sent when connection completes
-type MCPConnectResultMsg struct {
+// mcpConnectResultMsg is sent when connection completes
+type mcpConnectResultMsg struct {
 	ServerName string
 	Success    bool
 	ToolCount  int
 	Error      error
 }
 
-// MCPDisconnectMsg is sent when disconnecting from a server
-type MCPDisconnectMsg struct {
+// mcpDisconnectMsg is sent when disconnecting from a server
+type mcpDisconnectMsg struct {
 	ServerName string
 }
 
-// MCPReconnectMsg is sent when reconnecting to a server
-type MCPReconnectMsg struct {
+// mcpReconnectMsg is sent when reconnecting to a server
+type mcpReconnectMsg struct {
 	ServerName string
 }
 
-// MCPRemoveMsg is sent when removing a server
-type MCPRemoveMsg struct {
+// mcpRemoveMsg is sent when removing a server
+type mcpRemoveMsg struct {
 	ServerName string
 }
 
-// MCPAddServerMsg is sent when the user presses ctrl+a to add a new server
-type MCPAddServerMsg struct{}
+// mcpAddServerMsg is sent when the user presses ctrl+a to add a new server
+type mcpAddServerMsg struct{}
 
-// MCPEditServerMsg is sent when the user chooses to edit a server's config
-type MCPEditServerMsg struct {
+// mcpEditServerMsg is sent when the user chooses to edit a server's config
+type mcpEditServerMsg struct {
 	ServerName string
 	Scope      string
 }
@@ -323,24 +323,24 @@ func (s *MCPSelector) executeAction() tea.Cmd {
 		scope := s.detailServer.Scope
 		s.Cancel()
 		return func() tea.Msg {
-			return MCPEditServerMsg{ServerName: name, Scope: scope}
+			return mcpEditServerMsg{ServerName: name, Scope: scope}
 		}
 	case "connect":
 		s.connecting = true
-		return func() tea.Msg { return MCPConnectMsg{ServerName: name} }
+		return func() tea.Msg { return mcpConnectMsg{ServerName: name} }
 	case "disconnect":
-		return func() tea.Msg { return MCPDisconnectMsg{ServerName: name} }
+		return func() tea.Msg { return mcpDisconnectMsg{ServerName: name} }
 	case "reconnect":
 		s.connecting = true
-		return func() tea.Msg { return MCPReconnectMsg{ServerName: name} }
+		return func() tea.Msg { return mcpReconnectMsg{ServerName: name} }
 	case "remove":
-		return func() tea.Msg { return MCPRemoveMsg{ServerName: name} }
+		return func() tea.Msg { return mcpRemoveMsg{ServerName: name} }
 	}
 	return nil
 }
 
 // HandleConnectResult handles the result of a connection attempt
-func (s *MCPSelector) HandleConnectResult(msg MCPConnectResultMsg) {
+func (s *MCPSelector) HandleConnectResult(msg mcpConnectResultMsg) {
 	s.connecting = false
 	if msg.Success {
 		s.lastError = ""
@@ -447,7 +447,7 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		if reg == nil {
-			return MCPConnectResultMsg{
+			return mcpConnectResultMsg{
 				ServerName: name,
 				Success:    false,
 				Error:      fmt.Errorf("MCP not initialized"),
@@ -455,7 +455,7 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 		}
 
 		if err := reg.Connect(ctx, name); err != nil {
-			return MCPConnectResultMsg{
+			return mcpConnectResultMsg{
 				ServerName: name,
 				Success:    false,
 				Error:      err,
@@ -467,7 +467,7 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 			toolCount = len(client.GetCachedTools())
 		}
 
-		return MCPConnectResultMsg{
+		return mcpConnectResultMsg{
 			ServerName: name,
 			Success:    true,
 			ToolCount:  toolCount,
@@ -480,14 +480,14 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 // UpdateMCP routes MCP server management messages.
 func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case MCPConnectMsg:
+	case mcpConnectMsg:
 		if state.Selector.registry != nil {
 			state.Selector.registry.SetDisabled(msg.ServerName, false)
 			state.Selector.registry.SetConnecting(msg.ServerName, true)
 		}
 		return mcpStartConnect(state.Selector.registry, msg.ServerName), true
 
-	case MCPConnectResultMsg:
+	case mcpConnectResultMsg:
 		if state.Selector.registry != nil {
 			state.Selector.registry.SetConnecting(msg.ServerName, false)
 			if !msg.Success && msg.Error != nil {
@@ -504,26 +504,26 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 		}
 		return nil, true
 
-	case MCPDisconnectMsg:
+	case mcpDisconnectMsg:
 		state.Selector.HandleDisconnect(msg.ServerName)
 		return nil, true
 
-	case MCPReconnectMsg:
+	case mcpReconnectMsg:
 		state.Selector.HandleReconnect(msg.ServerName)
 		if state.Selector.registry != nil {
 			state.Selector.registry.SetConnecting(msg.ServerName, true)
 		}
 		return mcpStartConnect(state.Selector.registry, msg.ServerName), true
 
-	case MCPRemoveMsg:
+	case mcpRemoveMsg:
 		state.Selector.HandleRemove(msg.ServerName)
 		return nil, true
 
-	case MCPAddServerMsg:
+	case mcpAddServerMsg:
 		deps.State.Textarea.SetValue("/mcp add ")
 		return nil, true
 
-	case MCPEditServerMsg:
+	case mcpEditServerMsg:
 		info, err := coremcp.PrepareServerEdit(state.Selector.registry, msg.ServerName)
 		if err != nil {
 			deps.Conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: fmt.Sprintf("Error: %v", err)})
@@ -534,7 +534,7 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 		state.EditingScope = info.Scope
 		return StartMCPEditor(info.TempFile), true
 
-	case MCPEditorFinishedMsg:
+	case mcpEditorFinishedMsg:
 		info := &coremcp.EditInfo{
 			TempFile:   state.EditingFile,
 			ServerName: state.EditingServer,
@@ -563,7 +563,7 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 // Exported for use by command handlers in the parent app package.
 func StartMCPEditor(filePath string) tea.Cmd {
 	return kit.StartExternalEditor(filePath, func(err error) tea.Msg {
-		return MCPEditorFinishedMsg{Err: err}
+		return mcpEditorFinishedMsg{Err: err}
 	})
 }
 
@@ -624,11 +624,11 @@ func (s *MCPSelector) handleListKeypress(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "ctrl+a":
 		s.Cancel()
-		return func() tea.Msg { return MCPAddServerMsg{} }
+		return func() tea.Msg { return mcpAddServerMsg{} }
 	case "ctrl+d":
 		if len(s.filteredServers) > 0 && s.nav.Selected < len(s.filteredServers) {
 			name := s.filteredServers[s.nav.Selected].Name
-			return func() tea.Msg { return MCPRemoveMsg{ServerName: name} }
+			return func() tea.Msg { return mcpRemoveMsg{ServerName: name} }
 		}
 		return nil
 	case "enter", "right":

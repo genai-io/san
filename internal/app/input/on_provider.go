@@ -146,7 +146,7 @@ type ProviderSelector struct {
 	lastConnectAuthIdx int // item index that triggered the connection
 	lastConnectSuccess bool
 
-	// spinnerTick advances on each ProviderConnectingMsg; used to pick a braille
+	// spinnerTick advances on each providerConnectingMsg; used to pick a braille
 	// frame while a connect/refresh is in flight.
 	spinnerTick int
 }
@@ -166,23 +166,23 @@ func (s *ProviderSelector) IsActive() bool {
 	return s.active
 }
 
-// ProviderModelSelectedMsg is sent when a model is selected.
-type ProviderModelSelectedMsg struct {
+// providerModelSelectedMsg is sent when a model is selected.
+type providerModelSelectedMsg struct {
 	ModelID      string
 	ProviderName string
 	AuthMethod   llm.AuthMethod
 }
 
-// ProviderConnectResultMsg is sent when inline connection completes.
-type ProviderConnectResultMsg struct {
+// providerConnectResultMsg is sent when inline connection completes.
+type providerConnectResultMsg struct {
 	AuthIdx   int
 	Success   bool
 	Message   string
 	NewStatus llm.Status
 }
 
-// ProviderModelsLoadedMsg is sent when async model loading completes.
-type ProviderModelsLoadedMsg struct {
+// providerModelsLoadedMsg is sent when async model loading completes.
+type providerModelsLoadedMsg struct {
 	Models []providerModelItem
 }
 
@@ -238,28 +238,25 @@ func (s *ProviderState) SetStatusMessage(msg string) int64 {
 	return s.statusToken
 }
 
-// ProviderStatusExpiredMsg is an alias for kit.StatusExpiredMsg.
-type ProviderStatusExpiredMsg = kit.StatusExpiredMsg
-
 // UpdateProvider routes provider connection and selection messages.
 func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case ProviderConnectingMsg:
+	case providerConnectingMsg:
 		// Keep ticking the spinner while connect/refresh is in flight; stop once
-		// the matching ProviderConnectResultMsg lands and IsConnecting goes false.
+		// the matching providerConnectResultMsg lands and IsConnecting goes false.
 		if state.Selector.IsConnecting() {
 			state.Selector.AdvanceSpinner()
 			return providerConnectingTickCmd(), true
 		}
 		return nil, true
-	case ProviderConnectResultMsg:
+	case providerConnectResultMsg:
 		return state.Selector.HandleConnectResult(msg), true
-	case ProviderModelSelectedMsg:
+	case providerModelSelectedMsg:
 		return handleProviderModelSelected(deps, state, msg), true
-	case ProviderModelsLoadedMsg:
+	case providerModelsLoadedMsg:
 		state.Selector.HandleModelsLoaded(msg)
 		return nil, true
-	case ProviderStatusExpiredMsg:
+	case kit.StatusExpiredMsg:
 		if msg.Token == state.statusToken {
 			state.StatusMessage = ""
 		}
@@ -268,7 +265,7 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 	return nil, false
 }
 
-func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg ProviderModelSelectedMsg) tea.Cmd {
+func handleProviderModelSelected(deps OverlayDeps, state *ProviderState, msg providerModelSelectedMsg) tea.Cmd {
 	_, err := state.Selector.SetModel(msg.ModelID, msg.ProviderName, msg.AuthMethod)
 	if err != nil {
 		deps.Conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: "Error: " + err.Error()})

@@ -55,8 +55,8 @@ type MemorySelector struct {
 	cwd         string
 }
 
-// MemorySelectedMsg is sent when a memory file is selected for editing.
-type MemorySelectedMsg struct {
+// memorySelectedMsg is sent when a memory file is selected for editing.
+type memorySelectedMsg struct {
 	Path  string
 	Level string
 }
@@ -168,7 +168,7 @@ func (m *MemorySelector) selectMemoryItem() tea.Cmd {
 	m.active = false
 
 	return func() tea.Msg {
-		return MemorySelectedMsg{
+		return memorySelectedMsg{
 			Path:  selected.Path,
 			Level: selected.Level,
 		}
@@ -240,7 +240,7 @@ func (m *MemorySelector) Render() string {
 // UpdateMemory routes memory selection and editor messages.
 func UpdateMemory(deps OverlayDeps, state *MemoryState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case MemorySelectedMsg:
+	case memorySelectedMsg:
 		return handleMemorySelected(deps, state, msg), true
 	case MemoryEditorFinishedMsg:
 		return handleMemoryEditorFinished(deps, state, msg), true
@@ -248,7 +248,7 @@ func UpdateMemory(deps OverlayDeps, state *MemoryState, msg tea.Msg) (tea.Cmd, b
 	return nil, false
 }
 
-func handleMemorySelected(deps OverlayDeps, state *MemoryState, msg MemorySelectedMsg) tea.Cmd {
+func handleMemorySelected(deps OverlayDeps, state *MemoryState, msg memorySelectedMsg) tea.Cmd {
 	filePath := msg.Path
 
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {

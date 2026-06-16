@@ -54,9 +54,9 @@ func TestPersonaSelector_EnterMarksCurrentAndSelects(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Select should return a command")
 	}
-	sel, ok := cmd().(PersonaSelectedMsg)
+	sel, ok := cmd().(personaSelectedMsg)
 	if !ok {
-		t.Fatalf("expected PersonaSelectedMsg, got %T", cmd())
+		t.Fatalf("expected personaSelectedMsg, got %T", cmd())
 	}
 	if sel.Name != persona.DefaultName {
 		t.Errorf("selected = %q, want %q", sel.Name, persona.DefaultName)
@@ -100,9 +100,9 @@ func TestPersonaSelector_DeleteFlowEmitsMsg(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("y should fire the delete")
 	}
-	msg, ok := cmd().(PersonaDeleteMsg)
+	msg, ok := cmd().(personaDeleteMsg)
 	if !ok || msg.Name != "tester" {
-		t.Fatalf("got %#v, want PersonaDeleteMsg{tester}", cmd())
+		t.Fatalf("got %#v, want personaDeleteMsg{tester}", cmd())
 	}
 	if s.IsActive() {
 		t.Error("picker should close after confirming delete")
@@ -123,8 +123,8 @@ func TestPersonaSelector_OpenEmitsMsg(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Ctrl+O should emit an open message")
 	}
-	if msg, ok := cmd().(PersonaOpenMsg); !ok || msg.Name != "tester" {
-		t.Fatalf("got %#v, want PersonaOpenMsg{tester}", cmd())
+	if msg, ok := cmd().(personaOpenMsg); !ok || msg.Name != "tester" {
+		t.Fatalf("got %#v, want personaOpenMsg{tester}", cmd())
 	}
 	if s.IsActive() {
 		t.Error("picker should close after opening")
@@ -153,9 +153,9 @@ func TestUpdatePersona_AppliesAndCancels(t *testing.T) {
 	s := NewPersonaSelector(persona.NewRegistry(""), nil)
 	_ = s.EnterSelect(80, 24)
 
-	cmd, handled := UpdatePersona(deps, &s, PersonaSelectedMsg{Name: "ml-researcher"})
+	cmd, handled := UpdatePersona(deps, &s, personaSelectedMsg{Name: "ml-researcher"})
 	if !handled {
-		t.Fatal("UpdatePersona should handle PersonaSelectedMsg")
+		t.Fatal("UpdatePersona should handle personaSelectedMsg")
 	}
 	if got != "ml-researcher" {
 		t.Errorf("SetActivePersona called with %q, want ml-researcher", got)

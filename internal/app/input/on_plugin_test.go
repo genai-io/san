@@ -157,7 +157,7 @@ func TestToggleSelectedPluginReturnsDisableMsg(t *testing.T) {
 		t.Fatal("toggleSelectedPlugin should return a command")
 	}
 	msg := cmd()
-	if disable, ok := msg.(PluginDisableMsg); !ok || disable.PluginName != "demo" {
+	if disable, ok := msg.(pluginDisableMsg); !ok || disable.PluginName != "demo" {
 		t.Fatalf("unexpected toggle message: %#v", msg)
 	}
 }

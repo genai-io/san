@@ -21,20 +21,20 @@ type personaItem struct {
 	Builtin     bool
 }
 
-// PersonaSelectedMsg is emitted when the user picks a persona to switch to; the
+// personaSelectedMsg is emitted when the user picks a persona to switch to; the
 // app applies it (persist + hot-patch) via OverlayDeps.SetActivePersona.
-type PersonaSelectedMsg struct {
+type personaSelectedMsg struct {
 	Name string
 }
 
-// PersonaOpenMsg asks the app to open the named persona's files for editing,
+// personaOpenMsg asks the app to open the named persona's files for editing,
 // using the OS default handler (no $EDITOR / terminal editor required).
-type PersonaOpenMsg struct {
+type personaOpenMsg struct {
 	Name string
 }
 
-// PersonaDeleteMsg asks the app to delete the named persona's directory.
-type PersonaDeleteMsg struct {
+// personaDeleteMsg asks the app to delete the named persona's directory.
+type personaDeleteMsg struct {
 	Name string
 }
 
@@ -124,7 +124,7 @@ func (s *PersonaSelector) Select() tea.Cmd {
 		return nil
 	}
 	name := s.items[s.nav.Selected].Name
-	return func() tea.Msg { return PersonaSelectedMsg{Name: name} }
+	return func() tea.Msg { return personaSelectedMsg{Name: name} }
 }
 
 func (s *PersonaSelector) selected() (personaItem, bool) {
@@ -141,7 +141,7 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 			it, ok := s.selected()
 			s.Cancel()
 			if ok {
-				return func() tea.Msg { return PersonaDeleteMsg{Name: it.Name} }
+				return func() tea.Msg { return personaDeleteMsg{Name: it.Name} }
 			}
 			return nil
 		}
@@ -159,7 +159,7 @@ func (s *PersonaSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "ctrl+o":
 		if it, ok := s.selected(); ok && !it.Builtin {
 			s.Cancel()
-			return func() tea.Msg { return PersonaOpenMsg{Name: it.Name} }
+			return func() tea.Msg { return personaOpenMsg{Name: it.Name} }
 		}
 	case "ctrl+d":
 		if it, ok := s.selected(); ok && !it.Builtin {
@@ -277,7 +277,7 @@ func (s *PersonaSelector) sepLine() string {
 // app callbacks on OverlayDeps and shows a status line.
 func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case PersonaSelectedMsg:
+	case personaSelectedMsg:
 		state.Cancel()
 		if deps.SetActivePersona != nil {
 			if err := deps.SetActivePersona(msg.Name); err != nil {
@@ -292,13 +292,13 @@ func UpdatePersona(deps OverlayDeps, state *PersonaSelector, msg tea.Msg) (tea.C
 		token := deps.State.Provider.SetStatusMessage(status)
 		return kit.StatusTimer(3*time.Second, token), true
 
-	case PersonaOpenMsg:
+	case personaOpenMsg:
 		if deps.OpenPersona != nil {
 			return deps.OpenPersona(msg.Name), true
 		}
 		return nil, true
 
-	case PersonaDeleteMsg:
+	case personaDeleteMsg:
 		if deps.DeletePersona != nil {
 			if err := deps.DeletePersona(msg.Name); err != nil {
 				token := deps.State.Provider.SetStatusMessage("Delete failed: " + err.Error())

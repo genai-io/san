@@ -13,15 +13,15 @@ import (
 )
 
 // connectResultFromCmd runs cmd (flattening a tea.Batch) and returns the first
-// ProviderConnectResultMsg it produces. connect/refresh commands batch the
+// providerConnectResultMsg it produces. connect/refresh commands batch the
 // spinner ticker alongside the async work, so the result is no longer the
 // top-level message.
-func connectResultFromCmd(cmd tea.Cmd) (ProviderConnectResultMsg, bool) {
+func connectResultFromCmd(cmd tea.Cmd) (providerConnectResultMsg, bool) {
 	if cmd == nil {
-		return ProviderConnectResultMsg{}, false
+		return providerConnectResultMsg{}, false
 	}
 	switch msg := cmd().(type) {
-	case ProviderConnectResultMsg:
+	case providerConnectResultMsg:
 		return msg, true
 	case tea.BatchMsg:
 		for _, c := range msg {
@@ -30,7 +30,7 @@ func connectResultFromCmd(cmd tea.Cmd) (ProviderConnectResultMsg, bool) {
 			}
 		}
 	}
-	return ProviderConnectResultMsg{}, false
+	return providerConnectResultMsg{}, false
 }
 
 type connectFailProvider struct{}
@@ -188,9 +188,9 @@ func TestSelectModelReturnsSelectionMessage(t *testing.T) {
 		t.Fatal("Select should return command for selected model")
 	}
 	msg := cmd()
-	selected, ok := msg.(ProviderModelSelectedMsg)
+	selected, ok := msg.(providerModelSelectedMsg)
 	if !ok {
-		t.Fatalf("selection returned %T, want ProviderModelSelectedMsg", msg)
+		t.Fatalf("selection returned %T, want providerModelSelectedMsg", msg)
 	}
 	if selected.ModelID != "gpt-5" || selected.ProviderName != "openai" || selected.AuthMethod != llm.AuthAPIKey {
 		t.Fatalf("unexpected selection: %+v", selected)
@@ -222,9 +222,9 @@ func TestSelectHighlightedModelWhenNoExplicitMark(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Select should return a command for the highlighted model")
 	}
-	selected, ok := cmd().(ProviderModelSelectedMsg)
+	selected, ok := cmd().(providerModelSelectedMsg)
 	if !ok {
-		t.Fatalf("selection returned %T, want ProviderModelSelectedMsg", cmd())
+		t.Fatalf("selection returned %T, want providerModelSelectedMsg", cmd())
 	}
 	if selected.ModelID != "claude-opus" {
 		t.Fatalf("Enter selected %q, want highlighted model %q", selected.ModelID, "claude-opus")
@@ -255,9 +255,9 @@ func TestSelectConfirmsMarkedModelRegardlessOfCursor(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Select should confirm the marked model")
 	}
-	selected, ok := cmd().(ProviderModelSelectedMsg)
+	selected, ok := cmd().(providerModelSelectedMsg)
 	if !ok {
-		t.Fatalf("selection returned %T, want ProviderModelSelectedMsg", cmd())
+		t.Fatalf("selection returned %T, want providerModelSelectedMsg", cmd())
 	}
 	if selected.ModelID != "claude-opus" {
 		t.Fatalf("Enter confirmed %q, want marked model %q", selected.ModelID, "claude-opus")
@@ -269,14 +269,14 @@ func TestProviderStatusExpiryIgnoresStaleTimer(t *testing.T) {
 	first := state.SetStatusMessage("thinking: think")
 	second := state.SetStatusMessage("compacted")
 
-	if cmd, handled := UpdateProvider(OverlayDeps{}, state, ProviderStatusExpiredMsg{Token: first}); !handled || cmd != nil {
+	if cmd, handled := UpdateProvider(OverlayDeps{}, state, kit.StatusExpiredMsg{Token: first}); !handled || cmd != nil {
 		t.Fatalf("UpdateProvider() handled=%v cmd=%v, want handled=true cmd=nil", handled, cmd)
 	}
 	if state.StatusMessage != "compacted" {
 		t.Fatalf("StatusMessage = %q, want newer status to survive stale timer", state.StatusMessage)
 	}
 
-	UpdateProvider(OverlayDeps{}, state, ProviderStatusExpiredMsg{Token: second})
+	UpdateProvider(OverlayDeps{}, state, kit.StatusExpiredMsg{Token: second})
 	if state.StatusMessage != "" {
 		t.Fatalf("StatusMessage = %q, want empty after current timer expires", state.StatusMessage)
 	}
@@ -408,7 +408,7 @@ func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 	}
 	msg, ok := connectResultFromCmd(cmd)
 	if !ok {
-		t.Fatalf("expected a ProviderConnectResultMsg from connectAuthMethod")
+		t.Fatalf("expected a providerConnectResultMsg from connectAuthMethod")
 	}
 	if msg.Success {
 		t.Fatalf("expected failed connect result, got %+v", msg)

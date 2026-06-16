@@ -25,7 +25,7 @@ type searchItem struct {
 	IsCurrent   bool
 }
 
-type SearchSelectedMsg struct {
+type searchSelectedMsg struct {
 	Provider search.ProviderName
 }
 
@@ -133,7 +133,7 @@ func (s *SearchSelector) Select() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		return SearchSelectedMsg{Provider: selected.Name}
+		return searchSelectedMsg{Provider: selected.Name}
 	}
 }
 
@@ -327,7 +327,7 @@ func (s *SearchSelector) sepLine() string {
 
 func UpdateSearch(deps OverlayDeps, state *SearchSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case SearchSelectedMsg:
+	case searchSelectedMsg:
 		state.Cancel()
 		token := deps.State.Provider.SetStatusMessage(fmt.Sprintf("Search engine: %s", msg.Provider))
 		return kit.StatusTimer(3*time.Second, token), true

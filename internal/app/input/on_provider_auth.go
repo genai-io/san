@@ -279,15 +279,15 @@ func providerFirstEnvVar(envVars []string) string {
 // thinking-spinner tick).
 const providerSpinnerInterval = 90 * time.Millisecond
 
-// ProviderConnectingMsg is the periodic "still connecting/refreshing" tick that
+// providerConnectingMsg is the periodic "still connecting/refreshing" tick that
 // advances the in-flight spinner; the terminal counterpart to
-// ProviderConnectResultMsg, which signals the work is done.
-type ProviderConnectingMsg struct{}
+// providerConnectResultMsg, which signals the work is done.
+type providerConnectingMsg struct{}
 
 // providerConnectingTickCmd schedules the next connecting tick (spinner frame).
 func providerConnectingTickCmd() tea.Cmd {
 	return tea.Tick(providerSpinnerInterval, func(time.Time) tea.Msg {
-		return ProviderConnectingMsg{}
+		return providerConnectingMsg{}
 	})
 }
 
@@ -324,7 +324,7 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 
 		llmProvider, err := llm.GetProvider(ctx, item.Provider, item.AuthMethod)
 		if err != nil {
-			return ProviderConnectResultMsg{
+			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
 				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
@@ -339,7 +339,7 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 
 		if err != nil && len(models) == 0 {
-			return ProviderConnectResultMsg{
+			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
 				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
@@ -347,7 +347,7 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 
 		if err != nil {
-			return ProviderConnectResultMsg{
+			return providerConnectResultMsg{
 				AuthIdx:   authIdx,
 				Success:   true,
 				Message:   fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models)),
@@ -355,7 +355,7 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 			}
 		}
 
-		return ProviderConnectResultMsg{
+		return providerConnectResultMsg{
 			AuthIdx:   authIdx,
 			Success:   true,
 			Message:   fmt.Sprintf("● %d models", len(models)),
@@ -381,14 +381,14 @@ func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authId
 		ctx := context.Background()
 		result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
 		if err != nil {
-			return ProviderConnectResultMsg{
+			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
 				Message: err.Error(),
 			}
 		}
 
-		return ProviderConnectResultMsg{
+		return providerConnectResultMsg{
 			AuthIdx:   authIdx,
 			Success:   true,
 			Message:   result,
@@ -399,7 +399,7 @@ func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authId
 }
 
 // HandleConnectResult updates the selector state with connection result.
-func (s *ProviderSelector) HandleConnectResult(msg ProviderConnectResultMsg) tea.Cmd {
+func (s *ProviderSelector) HandleConnectResult(msg providerConnectResultMsg) tea.Cmd {
 	s.lastConnectAuthIdx = msg.AuthIdx
 	s.lastConnectResult = msg.Message
 	s.lastConnectSuccess = msg.Success

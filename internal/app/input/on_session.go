@@ -14,8 +14,8 @@ import (
 	"github.com/genai-io/san/internal/session"
 )
 
-// SessionSelectedMsg is sent when a session is selected.
-type SessionSelectedMsg struct {
+// sessionSelectedMsg is sent when a session is selected.
+type sessionSelectedMsg struct {
 	SessionID string
 }
 
@@ -126,7 +126,7 @@ func (s *SessionSelector) Select() tea.Cmd {
 	s.active = false
 
 	return func() tea.Msg {
-		return SessionSelectedMsg{SessionID: selected.ID}
+		return sessionSelectedMsg{SessionID: selected.ID}
 	}
 }
 
@@ -365,13 +365,13 @@ func sessionPluralize(n int, unit string) string {
 // UpdateSession routes session selection messages.
 func UpdateSession(deps OverlayDeps, state *SessionState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case SessionSelectedMsg:
+	case sessionSelectedMsg:
 		return handleSessionSelected(deps, msg), true
 	}
 	return nil, false
 }
 
-func handleSessionSelected(deps OverlayDeps, msg SessionSelectedMsg) tea.Cmd {
+func handleSessionSelected(deps OverlayDeps, msg sessionSelectedMsg) tea.Cmd {
 	if err := deps.LoadSession(msg.SessionID); err != nil {
 		deps.Conv.AddNotice("Failed to load session: " + err.Error())
 	}

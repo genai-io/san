@@ -137,12 +137,12 @@ type PluginSelector struct {
 // Plugin intent messages — each requests one async mutating operation. They
 // bridge from keybindings / executeAction into UpdatePlugin, where deps (cwd,
 // reload) and the spinner live.
-type PluginEnableMsg struct{ PluginName string }
-type PluginDisableMsg struct{ PluginName string }
-type PluginUninstallMsg struct{ PluginName string }
-type PluginMarketplaceRemoveMsg struct{ ID string }
+type pluginEnableMsg struct{ PluginName string }
+type pluginDisableMsg struct{ PluginName string }
+type pluginUninstallMsg struct{ PluginName string }
+type pluginMarketplaceRemoveMsg struct{ ID string }
 
-type PluginInstallMsg struct {
+type pluginInstallMsg struct {
 	PluginName  string
 	Marketplace string
 	Scope       coreplugin.Scope
@@ -183,7 +183,7 @@ func (s *PluginSelector) IsActive() bool {
 // UpdatePlugin routes plugin management messages.
 func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case PluginEnableMsg:
+	case pluginEnableMsg:
 		reg, name := state.registry, msg.PluginName
 		return tea.Batch(
 			state.beginLoading("Enabling "+name+"..."),
@@ -191,7 +191,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 				func() error { return reg.Enable(name, coreplugin.ScopeUser) }),
 		), true
 
-	case PluginDisableMsg:
+	case pluginDisableMsg:
 		reg, name := state.registry, msg.PluginName
 		return tea.Batch(
 			state.beginLoading("Disabling "+name+"..."),
@@ -199,7 +199,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 				func() error { return reg.Disable(name, coreplugin.ScopeUser) }),
 		), true
 
-	case PluginInstallMsg:
+	case pluginInstallMsg:
 		reg, cwd := state.registry, deps.Cwd
 		name, market, scope := msg.PluginName, msg.Marketplace, msg.Scope
 		return tea.Batch(
@@ -212,7 +212,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 				}),
 		), true
 
-	case PluginUninstallMsg:
+	case pluginUninstallMsg:
 		inst, name := state.installer, msg.PluginName
 		return tea.Batch(
 			state.beginLoading("Uninstalling "+name+"..."),
@@ -220,7 +220,7 @@ func UpdatePlugin(deps OverlayDeps, state *PluginSelector, msg tea.Msg) (tea.Cmd
 				func() error { return inst.Uninstall(name, coreplugin.ScopeUser) }),
 		), true
 
-	case PluginMarketplaceRemoveMsg:
+	case pluginMarketplaceRemoveMsg:
 		mgr, id := state.marketplaceManager, msg.ID
 		return tea.Batch(
 			state.beginLoading("Removing "+id+"..."),
@@ -467,7 +467,7 @@ func (s *PluginSelector) handleListRuneKey(r string) tea.Cmd {
 			})
 		case "r":
 			return s.handleMarketplaceAction(func(m pluginMarketplaceItem) tea.Cmd {
-				return func() tea.Msg { return PluginMarketplaceRemoveMsg{ID: m.ID} }
+				return func() tea.Msg { return pluginMarketplaceRemoveMsg{ID: m.ID} }
 			})
 		}
 	}
@@ -769,15 +769,15 @@ func (s *PluginSelector) executeAction() tea.Cmd {
 	switch action.Action {
 	case "enable":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return PluginEnableMsg{PluginName: s.detailPlugin.FullName} }
+			return func() tea.Msg { return pluginEnableMsg{PluginName: s.detailPlugin.FullName} }
 		}
 	case "disable":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return PluginDisableMsg{PluginName: s.detailPlugin.FullName} }
+			return func() tea.Msg { return pluginDisableMsg{PluginName: s.detailPlugin.FullName} }
 		}
 	case "uninstall":
 		if s.detailPlugin != nil {
-			return func() tea.Msg { return PluginUninstallMsg{PluginName: s.detailPlugin.FullName} }
+			return func() tea.Msg { return pluginUninstallMsg{PluginName: s.detailPlugin.FullName} }
 		}
 	case "install_user":
 		if s.detailDiscover != nil {
@@ -805,7 +805,7 @@ func (s *PluginSelector) executeAction() tea.Cmd {
 		}
 	case "remove":
 		if s.detailMarketplace != nil {
-			return func() tea.Msg { return PluginMarketplaceRemoveMsg{ID: s.detailMarketplace.ID} }
+			return func() tea.Msg { return pluginMarketplaceRemoveMsg{ID: s.detailMarketplace.ID} }
 		}
 	case "back":
 		s.goBack()
@@ -820,10 +820,10 @@ func (s *PluginSelector) installPlugin(scope coreplugin.Scope) tea.Cmd {
 	}
 	name := s.detailDiscover.Name
 	marketplace := s.detailDiscover.Marketplace
-	// The spinner starts when UpdatePlugin handles PluginInstallMsg, so install
+	// The spinner starts when UpdatePlugin handles pluginInstallMsg, so install
 	// shares the one beginLoading path with every other mutating op.
 	return func() tea.Msg {
-		return PluginInstallMsg{
+		return pluginInstallMsg{
 			PluginName:  name,
 			Marketplace: marketplace,
 			Scope:       scope,
@@ -878,9 +878,9 @@ func (s *PluginSelector) toggleSelectedPlugin() tea.Cmd {
 	if s.activeTab == pluginTabInstalled && s.level == pluginLevelTabList && s.selectedIdx < len(s.filteredItems) {
 		if p, ok := s.filteredItems[s.selectedIdx].(pluginItem); ok {
 			if p.Enabled {
-				return func() tea.Msg { return PluginDisableMsg{PluginName: p.FullName} }
+				return func() tea.Msg { return pluginDisableMsg{PluginName: p.FullName} }
 			}
-			return func() tea.Msg { return PluginEnableMsg{PluginName: p.FullName} }
+			return func() tea.Msg { return pluginEnableMsg{PluginName: p.FullName} }
 		}
 	}
 	return nil
