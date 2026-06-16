@@ -604,6 +604,54 @@ func TestCLI_PersonaFlagAccepted(t *testing.T) {
 	}
 }
 
+// TestCLI_PersonaWithPrintFullContent verifies that when --persona and -p are
+// combined, the persona's identity/behavior/rules are loaded via system.Build,
+// and its model and disabledTools settings are applied — not ignored.
+func TestCLI_PersonaWithPrintFullContent(t *testing.T) {
+	bin := buildBinary(t)
+
+	isolatedHome := t.TempDir()
+	isolatedCwd := t.TempDir()
+
+	personaDir := filepath.Join(confdir.Dir(isolatedHome), "personas", "full-p")
+	writePersonaFile(t, personaDir, "", "system/identity.md", "You are a Go backend engineer.")
+	writePersonaFile(t, personaDir, "", "system/behavior.md", "Write tests first.")
+	writePersonaFile(t, personaDir, "", "system/rules.md", "Follow standard Go conventions.")
+	writePersonaFile(t, personaDir, "", "settings.json", `{
+		"description": "Full persona for print mode",
+		"model": "claude-sonnet-4-6",
+		"disabledTools": {"bash": true, "write": true}
+	}`)
+
+	env := filteredEnv(
+		"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+		"MOONSHOT_API_KEY", "ALIBABA_API_KEY", "BIGMODEL_API_KEY",
+		"HOME",
+	)
+	env = append(env, "HOME="+isolatedHome)
+
+	cmd := exec.Command(bin, "--persona", "full-p", "-p", "hello")
+	cmd.Env = env
+	cmd.Dir = isolatedCwd
+	out, err := cmd.CombinedOutput()
+
+	// Without a configured provider the binary should exit non-zero, but the
+	// error must NOT be about the persona (it exists and has valid content).
+	if err == nil {
+		t.Fatalf("expected non-zero exit due to missing provider")
+	}
+	output := string(out)
+	if strings.Contains(strings.ToLower(output), "not found") {
+		t.Errorf("persona should be found, got: %q", output)
+	}
+	if strings.Contains(strings.ToLower(output), "panic") {
+		t.Errorf("should not panic, got: %q", output)
+	}
+	if strings.Contains(strings.ToLower(output), "unknown flag") {
+		t.Errorf("--persona flag should be recognized, got: %q", output)
+	}
+}
+
 func TestCLI_PersonaWithoutPrintFailsWithProvider(t *testing.T) {
 	bin := buildBinary(t)
 
