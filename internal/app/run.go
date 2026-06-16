@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/persona"
@@ -27,7 +28,7 @@ func Run(opts setting.RunOptions) error {
 	}
 
 	if opts.Print != "" {
-		return runPrint(opts.Print)
+		return runPrint(opts.Print, opts.Persona)
 	}
 
 	if userQuit, err := kit.ResolveTheme(setting.LoadTheme(), setting.SaveTheme); userQuit || err != nil {
@@ -136,7 +137,7 @@ func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason stri
 	)
 }
 
-func runPrint(userMessage string) error {
+func runPrint(userMessage, personaName string) error {
 	ctx := context.Background()
 
 	llmProvider, modelID, err := resolveProvider(ctx)
@@ -144,12 +145,46 @@ func runPrint(userMessage string) error {
 		return err
 	}
 
+	// Apply persona overrides when --persona is combined with -p.
+	sysPrompt := setting.DefaultSystemPrompt
+	var disabledTools map[string]bool
+	if personaName != "" {
+		cwd, _ := os.Getwd()
+		persona.Initialize(cwd)
+		if p, ok := persona.Default().Get(personaName); ok && !p.IsBuiltin() {
+			sys := system.Build(core.ScopeMain, system.WithPersona(system.Persona{
+				Identity: p.Identity,
+				Behavior: p.Behavior,
+				Rules:    p.Rules,
+			}))
+			sysPrompt = sys.Prompt()
+
+			if p.Settings != nil {
+				if p.Settings.Model != "" {
+					modelID = p.Settings.Model
+				}
+				disabledTools = p.Settings.DisabledTools
+			}
+		}
+	}
+
+	schemas := tool.GetToolSchemas()
+	if len(disabledTools) > 0 {
+		filtered := make([]core.ToolSchema, 0, len(schemas))
+		for _, s := range schemas {
+			if !disabledTools[s.Name] {
+				filtered = append(filtered, s)
+			}
+		}
+		schemas = filtered
+	}
+
 	completionOpts := llm.CompletionOptions{
 		Model:        modelID,
 		MaxTokens:    setting.DefaultMaxTokens,
-		SystemPrompt: setting.DefaultSystemPrompt,
+		SystemPrompt: sysPrompt,
 		Messages:     []core.Message{core.UserMessage(userMessage, nil)},
-		Tools:        tool.GetToolSchemas(),
+		Tools:        schemas,
 	}
 
 	streamChan := llmProvider.Stream(ctx, completionOpts)
