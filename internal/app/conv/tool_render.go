@@ -476,15 +476,11 @@ func renderTaskOutputResultInline(data ToolResultData) string {
 
 	var sb strings.Builder
 	content := data.Content
-	errorText := data.Error
-	if errorText == "" {
-		errorText = content
-	}
 
 	if data.IsError {
 		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  TaskOutput → Error", icon)) + "\n")
-		if errorText != "" {
-			sb.WriteString(toolResultExpandedStyle.Render("    "+errorText) + "\n")
+		if content != "" {
+			sb.WriteString(toolResultExpandedStyle.Render("    "+content) + "\n")
 		}
 		return sb.String()
 	}

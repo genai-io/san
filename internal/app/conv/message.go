@@ -542,7 +542,6 @@ type ToolCallsParams struct {
 type ToolResultData struct {
 	ToolName  string
 	Content   string
-	Error     string
 	IsError   bool
 	Expanded  bool
 	ToolInput string

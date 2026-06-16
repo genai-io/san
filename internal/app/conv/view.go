@@ -99,7 +99,6 @@ func PrecomputeInlinedResults(messages []core.ChatMessage) inlinedToolResults {
 			results[callID] = ToolResultData{
 				ToolName: next.ToolResult.ToolName,
 				Content:  next.ToolResult.Content,
-				Error:    next.ToolResult.Content,
 				IsError:  next.ToolResult.IsError,
 				Expanded: next.Expanded,
 			}
@@ -152,7 +151,6 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			sb.WriteString(RenderToolResultInline(ToolResultData{
 				ToolName: msg.ToolResult.ToolName,
 				Content:  msg.ToolResult.Content,
-				Error:    msg.ToolResult.Content,
 				IsError:  msg.ToolResult.IsError,
 				Expanded: msg.Expanded,
 			}, p.MDRenderer))

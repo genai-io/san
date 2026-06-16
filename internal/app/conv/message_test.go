@@ -550,7 +550,7 @@ func Test_renderTaskOutputResultInlineShowsErrorText(t *testing.T) {
 	rendered := renderTaskOutputResultInline(ToolResultData{
 		ToolName: "TaskOutput",
 		IsError:  true,
-		Error:    "task not found: 10f7b381",
+		Content:  "task not found: 10f7b381",
 	})
 
 	if !strings.Contains(rendered, "TaskOutput → Error") {
