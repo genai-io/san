@@ -39,7 +39,7 @@ type env struct {
 	// new turn and then accumulated after each infer in that turn.
 	TurnInputTokens  int
 	TurnOutputTokens int
-	turnUsageActive bool
+	turnUsageActive  bool
 	// ConversationCost is the session-cumulative spend shown in the status
 	// bar. It survives ResetContextDisplay (per-compaction) so compaction
 	// doesn't erase prior spend; only ResetTokens (/clear, /new) zeroes it.
