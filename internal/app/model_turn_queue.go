@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
@@ -29,12 +28,8 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	}
 	log.QueueLog("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
-	if m.services.Session.ID() != "" {
-		cmds = append(cmds, m.persistSessionCmd())
-	} else {
-		if err := m.PersistSession(); err != nil {
-			log.Logger().Warn("failed to save session", zap.Error(err))
-		}
+	if cmd := m.persistAfterTurn(); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 	if cmd := input.StartPromptSuggestion(m.promptSuggestionDeps()); cmd != nil {
 		cmds = append(cmds, cmd)

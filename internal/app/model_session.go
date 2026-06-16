@@ -25,34 +25,9 @@ func (m *model) PersistSession() error {
 	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
 		return err
 	}
-	if len(m.conv.Messages) == 0 {
+	sess := m.buildSessionSnapshot()
+	if sess == nil {
 		return nil
-	}
-
-	entries := session.ConvertToEntries(m.conv.Messages)
-
-	var providerName, modelID string
-	if m.env.CurrentModel != nil {
-		providerName = string(m.env.CurrentModel.Provider)
-		modelID = m.env.CurrentModel.ModelID
-	}
-
-	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
-			ID:         m.services.Session.ID(),
-			Provider:   providerName,
-			Model:      modelID,
-			Cwd:        m.env.CWD,
-			LastPrompt: session.ExtractLastUserText(entries),
-			Mode:       m.env.SessionMode(),
-		},
-		Entries:           entries,
-		Tasks:             m.services.Tracker.Export(),
-		OmitMessageWrites: m.services.Session.Recorder() != nil,
-	}
-
-	if sess.Metadata.Title == "" || sess.Metadata.ID == "" {
-		sess.Metadata.Title = session.GenerateTitle(sess.Entries)
 	}
 
 	if err := m.services.Session.Save(sess); err != nil {
@@ -76,6 +51,41 @@ func (m *model) persistSessionCmd() tea.Cmd {
 		log.Logger().Warn("failed to ensure session store for async persist", zap.Error(err))
 		return nil
 	}
+	sess := m.buildSessionSnapshot()
+	if sess == nil {
+		return nil
+	}
+
+	store := m.services.Session.GetStore()
+	return func() tea.Msg {
+		if store == nil {
+			return persistSessionDoneMsg{err: fmt.Errorf("no session store")}
+		}
+		return persistSessionDoneMsg{err: store.Save(sess)}
+	}
+}
+
+// persistAfterTurn saves the session at the end of a turn, choosing the
+// strategy by session state: the first save (no ID yet) runs synchronously so
+// the session ID, task storage, and transcript wiring are established before
+// the next turn; later saves go through the async command. Returns the async
+// command to batch, or nil when the synchronous path ran (it logs its own
+// error, matching how async failures surface via persistSessionDoneMsg).
+func (m *model) persistAfterTurn() tea.Cmd {
+	if m.services.Session.ID() != "" {
+		return m.persistSessionCmd()
+	}
+	if err := m.PersistSession(); err != nil {
+		log.Logger().Warn("failed to persist session at turn end", zap.Error(err))
+	}
+	return nil
+}
+
+// buildSessionSnapshot assembles the current conversation + task state into a
+// session.Snapshot ready to Save, or nil when there is nothing to persist (no
+// messages). Shared by the synchronous PersistSession and the async
+// persistSessionCmd so the snapshot stays identical across both paths.
+func (m *model) buildSessionSnapshot() *session.Snapshot {
 	if len(m.conv.Messages) == 0 {
 		return nil
 	}
@@ -106,13 +116,7 @@ func (m *model) persistSessionCmd() tea.Cmd {
 		sess.Metadata.Title = session.GenerateTitle(sess.Entries)
 	}
 
-	store := m.services.Session.GetStore()
-	return func() tea.Msg {
-		if store == nil {
-			return persistSessionDoneMsg{err: fmt.Errorf("no session store")}
-		}
-		return persistSessionDoneMsg{err: store.Save(sess)}
-	}
+	return sess
 }
 
 func (m *model) loadSessionByID(id string) error {

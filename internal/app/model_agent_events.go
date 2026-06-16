@@ -120,10 +120,8 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// re-arm prompt suggestions for the now-idle textarea.
 	if result.StopReason == core.StopCancelled {
 		log.QueueLog("OnTurnEnd: turn was cancelled, skipping idle hooks")
-		if m.services.Session.ID() != "" {
-			commitCmds = append(commitCmds, m.persistSessionCmd())
-		} else if err := m.PersistSession(); err != nil {
-			log.QueueLog("OnTurnEnd: persist after cancel failed: %v", err)
+		if cmd := m.persistAfterTurn(); cmd != nil {
+			commitCmds = append(commitCmds, cmd)
 		}
 		if cmd := input.StartPromptSuggestion(m.promptSuggestionDeps()); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
