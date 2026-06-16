@@ -124,6 +124,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.env.LLMProvider = m.services.LLM.Provider()
 		return m, nil
 	case input.ToolToggleMsg:
+		// The selector already persisted the enable/disable; the tool registry
+		// is read live, so there's nothing to do at the app level. Return
+		// explicitly so the message doesn't leak into sub-model routing and
+		// the textarea (unlike AgentToggleMsg/SkillCycleMsg below, which do
+		// need a reaction).
+		return m, nil
 	case input.ConfigSavedMsg:
 		// Refresh the in-memory settings handle so re-opening /config (and any
 		// in-session reader) sees the just-saved values rather than the stale
