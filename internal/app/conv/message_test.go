@@ -95,6 +95,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 		InputTokens:      142000,
 		InputLimit:       200000,
 		ConversationCost: llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD},
+		ShowContextBar:   true,
 		Width:            120,
 	})
 	visible := stripANSI(rendered)
@@ -104,22 +105,42 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	if !strings.Contains(visible, "[") || !strings.Contains(visible, "] 71%") {
 		t.Fatalf("RenderModeStatus() = %q, want bar with percent", visible)
 	}
+	// The numeric label rides alongside the bar.
+	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
+		t.Fatalf("RenderModeStatus() = %q, want numeric ctx label", visible)
+	}
 	// Cost segment must still render.
 	if !strings.Contains(visible, "$0.04") {
 		t.Fatalf("RenderModeStatus() = %q, want cost segment", visible)
 	}
-	// Old per-call percent format must NOT appear anymore.
-	if strings.Contains(visible, "(71%)") {
-		t.Fatalf("RenderModeStatus() = %q, should not contain old (NN%%) format", visible)
+}
+
+// TestRenderModeStatusHidesBarByDefault confirms the visual bar is opt-in:
+// with ShowContextBar unset the [██░░] bar and its percent are gone, but the
+// numeric "ctx X/Y" label still shows.
+func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
+	rendered := RenderModeStatus(OperationModeParams{
+		ModelName:   "claude-sonnet-4-6",
+		InputTokens: 142000,
+		InputLimit:  200000,
+		Width:       120,
+	})
+	visible := stripANSI(rendered)
+	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
+		t.Fatalf("numeric ctx label should still show when bar is off; got %q", visible)
+	}
+	if strings.Contains(visible, "█") || strings.Contains(visible, "71%") {
+		t.Fatalf("visual bar should be hidden by default; got %q", visible)
 	}
 }
 
-func TestRenderModeStatusKeepsContextDisplayOnRightOnly(t *testing.T) {
+func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:   "claude-sonnet-4-6",
-		InputTokens: 190000,
-		InputLimit:  200000,
-		Width:       120,
+		ModelName:      "claude-sonnet-4-6",
+		InputTokens:    190000,
+		InputLimit:     200000,
+		ShowContextBar: true,
+		Width:          120,
 	})
 	visible := stripANSI(rendered)
 	if !strings.Contains(visible, "claude-sonnet-4-6") {
@@ -143,8 +164,8 @@ func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 		Width:        120,
 	})
 	visible := stripANSI(rendered)
-	if !strings.Contains(visible, "🗜️ 3") {
-		t.Fatalf("want '🗜️ 3' badge in %q", visible)
+	if !strings.Contains(visible, "compacted ×3") {
+		t.Fatalf("want 'compacted ×3' badge in %q", visible)
 	}
 }
 
@@ -157,7 +178,7 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 		Width:        120,
 	})
 	visible := stripANSI(rendered)
-	if strings.Contains(visible, "🗜️") {
+	if strings.Contains(visible, "compacted") {
 		t.Fatalf("badge should be hidden when zero; got %q", visible)
 	}
 }
@@ -167,10 +188,11 @@ func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
 	// a placeholder so the gap stays visible and actionable, instead of
 	// silently hiding the entire context segment.
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:   "some-model",
-		InputTokens: 5000,
-		InputLimit:  0,
-		Width:       120,
+		ModelName:      "some-model",
+		InputTokens:    5000,
+		InputLimit:     0,
+		ShowContextBar: true,
+		Width:          120,
 	})
 	visible := stripANSI(rendered)
 	if !strings.Contains(visible, "[----------]") {

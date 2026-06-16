@@ -60,8 +60,8 @@ func TestAppearancePanelEnterSavesAndEmits(t *testing.T) {
 	if !done {
 		t.Fatalf("enter should dismiss the popup (done=true)")
 	}
-	if p.baseline != "dark" {
-		t.Fatalf("baseline = %q, want %q", p.baseline, "dark")
+	if p.themeBaseline != "dark" {
+		t.Fatalf("themeBaseline = %q, want %q", p.themeBaseline, "dark")
 	}
 	if p.saveErr != nil {
 		t.Fatalf("unexpected saveErr: %v", p.saveErr)
@@ -116,11 +116,54 @@ func TestAppearancePanelEnterSaveFailureSurfacesError(t *testing.T) {
 	if p.saveErr == nil {
 		t.Fatalf("a failed save should set saveErr")
 	}
-	if p.baseline != "auto" {
-		t.Fatalf("baseline should be untouched on failure, got %q", p.baseline)
+	if p.themeBaseline != "auto" {
+		t.Fatalf("themeBaseline should be untouched on failure, got %q", p.themeBaseline)
 	}
-	if out := p.Render(80); !strings.Contains(out, "couldn't save theme") {
+	if out := p.Render(80); !strings.Contains(out, "couldn't save") {
 		t.Fatalf("Render should surface the save error, got:\n%s", out)
+	}
+}
+
+// TestAppearancePanelContextBarSavesAndEmits confirms selecting the "On"
+// context-bar row persists contextBar=true to the user settings file,
+// advances the bar baseline, and emits a ContextBarSavedMsg.
+func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	p := newAppearancePanel(nil)
+	p.Enter() // cursor parks on the current theme (index 2, "auto")
+	if p.barBaseline {
+		t.Fatalf("context bar should default off")
+	}
+
+	// Walk down to the "On" context-bar row (index 3) and select it.
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // auto → On
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !done {
+		t.Fatalf("enter should dismiss the popup (done=true)")
+	}
+	if !p.barBaseline {
+		t.Fatalf("barBaseline should be true after enabling")
+	}
+	msg, ok := cmd().(ContextBarSavedMsg)
+	if !ok || !msg.On {
+		t.Fatalf("expected ContextBarSavedMsg{On:true}, got %#v", cmd())
+	}
+
+	raw, err := os.ReadFile(filepath.Join(home, ".san", "settings.json"))
+	if err != nil {
+		t.Fatalf("settings file not written: %v", err)
+	}
+	var data struct {
+		ContextBar *bool `json:"contextBar"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatalf("settings file not valid JSON: %v\n%s", err, raw)
+	}
+	if data.ContextBar == nil || !*data.ContextBar {
+		t.Fatalf("persisted contextBar = %v, want true\n%s", data.ContextBar, raw)
 	}
 }
 

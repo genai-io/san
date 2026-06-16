@@ -45,7 +45,8 @@ type OperationModeParams struct {
 	ModelName        string
 	StatusMessage    string
 	ConversationCost llm.Money
-	Compressions     int // NEW — session compact count, drives the badge
+	Compressions     int  // session compact count, drives the "compacted ×N" badge
+	ShowContextBar   bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width            int
 	ThinkingEffort   string
 	ShowThinking     bool
@@ -72,13 +73,7 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	left := strings.Join(leftParts, "  ")
 
-	right := renderModelWithTokens(
-		params.ModelName, params.StatusMessage,
-		params.InputTokens, params.InputLimit,
-		params.ConversationCost,
-		params.Compressions,
-		params.Width,
-	)
+	right := renderStatusCluster(params)
 	if right == "" || params.Width <= 0 {
 		return left
 	}
@@ -87,83 +82,56 @@ func RenderModeStatus(params OperationModeParams) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// renderModelWithTokens composes the right-side cluster of the status
-// bar: model name, context label, bar, optional compressions badge,
-// optional cost. The actual rendering lives in status_bar.go; this
-// function preserves the existing call shape from RenderModeStatus.
-func renderModelWithTokens(
-	modelName, statusMessage string,
-	inputTokens, inputLimit int,
-	conversationCost llm.Money,
-	compressions int,
-	width int,
-) string {
-	if modelName == "" {
+// renderStatusCluster composes the status line's right-hand cluster, in
+// display order: model name, optional transient status message, the numeric
+// "ctx X/Y" label, the optional visual context bar, the optional compressions
+// badge, and the optional cost. Each piece is a statusSegment with a drop
+// priority; fitStatusSegments drops the least important first when the
+// terminal is too narrow to hold them all.
+func renderStatusCluster(p OperationModeParams) string {
+	if p.ModelName == "" {
 		return ""
 	}
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	sep := muted.Render(" · ")
 
-	// Always render the label + bar — RenderContext{Label,Bar} emit a
-	// dim placeholder ("ctx X/--" / "[----------] --") when the limit
-	// is unknown, so the gap stays visible instead of silently hiding.
-	labelText := RenderContextLabel(inputTokens, inputLimit)
-	barText := RenderContextBar(inputTokens, inputLimit)
-	if inputLimit > 0 {
-		if hint := compactStatusHint(float64(inputTokens) / float64(inputLimit) * 100); hint != "" {
-			barText += sep + muted.Render(hint)
-		}
-	}
-	badgeText := RenderCompressionsBadge(compressions)
-	costText := ""
-	if !conversationCost.IsZero() {
-		costText = muted.Render(kit.FormatMoney(conversationCost))
-	}
-
+	// Priority 1 = most important (dropped last). The model name always
+	// renders; everything else drops before it under width pressure.
 	segments := []statusSegment{
-		{render: func() string { return muted.Render(modelName) }, width: lipgloss.Width(modelName), priority: 1},
+		{text: muted.Render(p.ModelName), priority: 1},
 	}
-	if statusMessage != "" {
-		segments = append(segments, statusSegment{
-			render:   func() string { return muted.Render(statusMessage) },
-			width:    lipgloss.Width(statusMessage),
-			priority: 2,
-		})
-	}
-	if labelText != "" {
-		segments = append(segments, statusSegment{
-			render:   func() string { return labelText },
-			width:    lipgloss.Width(labelText),
-			priority: 3,
-		})
-		segments = append(segments, statusSegment{
-			render:   func() string { return barText },
-			width:    lipgloss.Width(barText),
-			priority: 4,
-		})
-	}
-	if badgeText != "" {
-		segments = append(segments, statusSegment{
-			render:   func() string { return badgeText },
-			width:    lipgloss.Width(badgeText),
-			priority: 5,
-		})
-	}
-	if costText != "" {
-		segments = append(segments, statusSegment{
-			render:   func() string { return costText },
-			width:    lipgloss.Width(costText),
-			priority: 6,
-		})
+	if p.StatusMessage != "" {
+		segments = append(segments, statusSegment{text: muted.Render(p.StatusMessage), priority: 2})
 	}
 
-	// AllocateStatusSegments joins survivors with segmentSep (a sentinel);
-	// split on it and rejoin with the visual separator to match the
-	// existing aesthetic. The sentinel guarantees segments containing the
-	// visual separator substring stay intact.
-	allocated := AllocateStatusSegments(segments, width)
-	parts := strings.Split(allocated, segmentSep)
-	return strings.Join(parts, sep)
+	// The numeric label always renders — it falls back to "ctx X/--" when the
+	// limit is unknown, so the slot stays visible instead of silently hiding.
+	segments = append(segments, statusSegment{
+		text:     RenderContextLabel(p.InputTokens, p.InputLimit),
+		priority: 3,
+	})
+
+	// The visual bar is opt-in (off by default). When shown it also carries
+	// the auto-compact hint as a near-full warning.
+	if p.ShowContextBar {
+		bar := RenderContextBar(p.InputTokens, p.InputLimit)
+		if p.InputLimit > 0 {
+			if hint := compactStatusHint(float64(p.InputTokens) / float64(p.InputLimit) * 100); hint != "" {
+				bar += sep + muted.Render(hint)
+			}
+		}
+		segments = append(segments, statusSegment{text: bar, priority: 4})
+	}
+
+	if badge := RenderCompressionsBadge(p.Compressions); badge != "" {
+		segments = append(segments, statusSegment{text: badge, priority: 5})
+	}
+	if !p.ConversationCost.IsZero() {
+		segments = append(segments, statusSegment{text: muted.Render(kit.FormatMoney(p.ConversationCost)), priority: 6})
+	}
+
+	survivors := fitStatusSegments(segments, p.Width, lipgloss.Width(sep))
+	return strings.Join(survivors, sep)
 }
 
 func RenderTurnUsageSummary(inputTokens, outputTokens, width int) string {
