@@ -1,7 +1,6 @@
 package session
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -10,8 +9,6 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 )
-
-var inlineImageTokenPattern = regexp.MustCompile(`\[Image #(\d+)\]`)
 
 // systemReminderRe matches a complete <system-reminder>...</system-reminder>
 // block including tags. Reminders are appended verbatim by reminder.AttachToContent
@@ -68,7 +65,13 @@ func messagesToEntries(msgs []core.Message) []Entry {
 	var prevUUID string
 
 	for _, msg := range msgs {
-		uuid := generateShortID()
+		// Prefer the stable ID stamped upstream (conv.Append, agent.append) so
+		// the append-only save path can dedupe by it; fall back only for
+		// messages assembled without one.
+		uuid := msg.ID
+		if uuid == "" {
+			uuid = core.NewMessageID()
+		}
 
 		var parentUuid *string
 		if prevUUID != "" {
@@ -145,7 +148,7 @@ func EntriesToMessages(entries []Entry) []core.Message {
 }
 
 func userContentToBlocks(content, displayContent string, images []core.Image) []ContentBlock {
-	if len(images) > 0 && displayContent != "" && inlineImageTokenPattern.MatchString(displayContent) {
+	if len(images) > 0 && displayContent != "" && core.InlineImageTokenRe.MatchString(displayContent) {
 		return interleavedUserContentToBlocks(content, displayContent, images)
 	}
 
@@ -166,7 +169,7 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 
 	idToIdx := core.BuildImageIDMap(displayContent, len(images))
 
-	matches := inlineImageTokenPattern.FindAllStringSubmatchIndex(displayContent, -1)
+	matches := core.InlineImageTokenRe.FindAllStringSubmatchIndex(displayContent, -1)
 	for _, match := range matches {
 		start, end := match[0], match[1]
 		idStart, idEnd := match[2], match[3]
@@ -314,10 +317,4 @@ func extractUserText(entry Entry) (string, bool) {
 		return text, true
 	}
 	return "", false
-}
-
-func generateShortID() string {
-	var b [8]byte
-	_, _ = rand.Read(b[:])
-	return fmt.Sprintf("%x", b[:])
 }

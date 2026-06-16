@@ -39,7 +39,7 @@ func TestSanitizeToolMessagesKeepsOnlyImmediatelyAnsweredToolCalls(t *testing.T)
 			},
 		},
 		{
-			Role:       core.RoleTool,
+			Role:       core.RoleUser,
 			ToolResult: &core.ToolResult{ToolCallID: "call_1", ToolName: "Read", Content: "ok"},
 		},
 		{Role: core.RoleUser, Content: "next"},

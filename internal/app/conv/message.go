@@ -4,7 +4,6 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -260,7 +259,6 @@ var (
 				Background(kit.CurrentTheme.Primary).
 				Bold(true)
 )
-var inlineImageTokenPattern = regexp.MustCompile(`\[Image #\d+\]`)
 
 // RenderUserMessage renders a user message with prompt and optional images.
 func RenderUserMessage(content, displayContent string, images []core.Image, mdRenderer *MDRenderer, width int) string {
@@ -270,7 +268,7 @@ func RenderUserMessage(content, displayContent string, images []core.Image, mdRe
 		displayContent = content
 	}
 
-	if len(images) > 0 && inlineImageTokenPattern.MatchString(displayContent) {
+	if len(images) > 0 && core.InlineImageTokenRe.MatchString(displayContent) {
 		sb.WriteString(lipgloss.JoinHorizontal(
 			lipgloss.Top,
 			prompt,
@@ -298,7 +296,7 @@ func RenderUserMessage(content, displayContent string, images []core.Image, mdRe
 }
 
 func styleInlineImageTokens(content string) string {
-	return inlineImageTokenPattern.ReplaceAllStringFunc(content, func(token string) string {
+	return core.InlineImageTokenRe.ReplaceAllStringFunc(content, func(token string) string {
 		return PendingImageStyle.Render(token)
 	})
 }
@@ -506,7 +504,7 @@ func getToolExecutionDesc(toolName string) string {
 		return "Fetching web content..."
 	case "WebSearch":
 		return "Searching the web..."
-	case "AskUserQuestion":
+	case tool.ToolAskUserQuestion:
 		return "Preparing question..."
 	case tool.ToolSkill:
 		return "Loading skill..."

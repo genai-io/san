@@ -21,12 +21,16 @@ func NewMessageID() string {
 }
 
 // Role identifies who produced a message in the conversation.
+//
+// A tool result is a RoleUser message carrying a non-nil ToolResult — that is
+// the wire shape every provider expects (tool_result blocks ride inside a
+// user turn), so it is also how we hold them in history. Distinguish a
+// tool-result turn from a user-typed turn by ToolResult != nil, never by Role.
 type Role string
 
 const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
-	RoleTool      Role = "tool_result" // a tool-result turn; "tool_result" is its wire value
 	RoleNotice    Role = "notice"
 )
 
@@ -101,6 +105,46 @@ func (m *ChatMessage) ResetStreamCommit() {
 	m.ContentCommittedLen = 0
 	m.ThinkingCommittedLen = 0
 	m.BulletEmitted = false
+}
+
+// ToMessage returns the wire/agent Message underlying this view-model, dropping
+// the transient display state. The ToolResult is deep-copied so a provider can
+// consume the result without aliasing conv's copy. This is the single Chat →
+// Message field mapping — every converter (provider, transcript) routes through
+// it so a new field can never be forgotten in one path.
+func (c ChatMessage) ToMessage() Message {
+	msg := Message{
+		ID:                c.ID,
+		Role:              c.Role,
+		Content:           c.Content,
+		DisplayContent:    c.DisplayContent,
+		Images:            c.Images,
+		Thinking:          c.Thinking,
+		ThinkingSignature: c.ThinkingSignature,
+		ToolCalls:         c.ToolCalls,
+	}
+	if c.ToolResult != nil {
+		tr := *c.ToolResult
+		msg.ToolResult = &tr
+	}
+	return msg
+}
+
+// ToChat wraps a wire/agent Message as a fresh view-model with no display state
+// set (expand toggles collapsed, streaming offsets zero). The single Message →
+// Chat field mapping, mirroring ToMessage.
+func (m Message) ToChat() ChatMessage {
+	return ChatMessage{
+		ID:                m.ID,
+		Role:              m.Role,
+		Content:           m.Content,
+		DisplayContent:    m.DisplayContent,
+		Images:            m.Images,
+		Thinking:          m.Thinking,
+		ThinkingSignature: m.ThinkingSignature,
+		ToolCalls:         m.ToolCalls,
+		ToolResult:        m.ToolResult,
+	}
 }
 
 // Image represents an image attachment.
@@ -289,16 +333,6 @@ func buildConversationText(msgs []Message, stripReminders bool) string {
 	return sb.String()
 }
 
-// LastAssistantContent returns the most recent non-empty assistant content from provider messages.
-func LastAssistantContent(msgs []Message) string {
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i].Role == RoleAssistant && msgs[i].Content != "" {
-			return msgs[i].Content
-		}
-	}
-	return ""
-}
-
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.
 func LastAssistantChatContent(msgs []ChatMessage) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
@@ -334,12 +368,16 @@ type ContentPart struct {
 	Image *Image
 }
 
-var inlineImageTokenRe = regexp.MustCompile(`\[Image #(\d+)\]`)
+// InlineImageTokenRe matches the "[Image #N]" placeholder tokens that stand in
+// for image attachments in a message's DisplayContent. It is the single
+// definition of that wire token format, shared by the display and persistence
+// layers so they parse it identically.
+var InlineImageTokenRe = regexp.MustCompile(`\[Image #(\d+)\]`)
 
 // InterleavedContentParts parses [Image #N] tokens from display content and returns
 // interleaved text and image parts.
 func InterleavedContentParts(msg Message) []ContentPart {
-	if len(msg.Images) == 0 || msg.DisplayContent == "" || !inlineImageTokenRe.MatchString(msg.DisplayContent) {
+	if len(msg.Images) == 0 || msg.DisplayContent == "" || !InlineImageTokenRe.MatchString(msg.DisplayContent) {
 		return nil
 	}
 
@@ -347,7 +385,7 @@ func InterleavedContentParts(msg Message) []ContentPart {
 
 	var parts []ContentPart
 	last := 0
-	matches := inlineImageTokenRe.FindAllStringSubmatchIndex(msg.DisplayContent, -1)
+	matches := InlineImageTokenRe.FindAllStringSubmatchIndex(msg.DisplayContent, -1)
 	if len(matches) > 0 {
 		parts = make([]ContentPart, 0, len(matches)*2+1)
 	}
@@ -384,7 +422,7 @@ func InterleavedContentParts(msg Message) []ContentPart {
 // from token ID to sequential index (0-based). imageCount caps the number of entries.
 func BuildImageIDMap(displayContent string, imageCount int) map[int]int {
 	m := make(map[int]int, imageCount)
-	matches := inlineImageTokenRe.FindAllStringSubmatch(displayContent, -1)
+	matches := InlineImageTokenRe.FindAllStringSubmatch(displayContent, -1)
 	idx := 0
 	for _, match := range matches {
 		id, err := strconv.Atoi(match[1])

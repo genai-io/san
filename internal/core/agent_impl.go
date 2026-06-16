@@ -803,8 +803,10 @@ func (a *agent) snapshot() []Message {
 }
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
+	// A tool result rides on a RoleUser message — its content lives on
+	// ToolResult.Content, not on Message.Content. See the Role doc.
 	a.append(Message{
-		Role: RoleTool, Content: content,
+		Role:       RoleUser,
 		ToolResult: &ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: content, IsError: isError},
 	})
 }

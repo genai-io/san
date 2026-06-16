@@ -196,15 +196,9 @@ func (r CompletionResponse) LogToolCallSummary(escaper func(string) string) stri
 	return sb.String()
 }
 
-// Usage contains token usage information. Field names use the project's domain
-// vocabulary (InputTokens/CacheCreationInputTokens/…); the json tags preserve each
-// provider's wire format (e.g. Anthropic's cache_creation_input_tokens).
-type Usage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-}
+// Usage is an alias for core.Usage — token accounting is defined once in the
+// foundation layer so the provider response and core.InferResponse share it.
+type Usage = core.Usage
 
 // --- Streaming Types ---
 

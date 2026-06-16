@@ -215,7 +215,9 @@ func alreadyInlined(ctx context.Context, fullName string) bool {
 	tag := "<command-name>" + fullName + "</command-name>"
 	for i := len(msgs) - 1; i >= 0; i-- {
 		m := msgs[i]
-		if m.Role != core.RoleUser {
+		// Want the most recent user-typed turn; a tool result is also RoleUser
+		// (it carries a ToolResult), so skip those to avoid stopping on one.
+		if m.Role != core.RoleUser || m.ToolResult != nil {
 			continue
 		}
 		return strings.HasPrefix(strings.TrimSpace(m.Content), tag)

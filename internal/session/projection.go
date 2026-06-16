@@ -3,6 +3,7 @@ package session
 import (
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session/transcript"
 )
 
@@ -16,7 +17,7 @@ func EntriesToNodes(entries []Entry, sessionID, defaultCwd string, createdAt tim
 			continue
 		}
 		if entry.UUID == "" {
-			entry.UUID = generateShortID()
+			entry.UUID = core.NewMessageID()
 		}
 		parentID := derefString(entry.ParentUuid)
 		if parentID == "" && prevID != "" {

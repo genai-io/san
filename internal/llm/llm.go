@@ -327,18 +327,26 @@ func outputLimitFromProvider(p Provider, model string) int {
 	return 0
 }
 
-// toProviderMessages converts core messages for provider consumption.
-// Key semantic change: RoleTool messages become RoleUser with ToolResult.
+// toProviderMessages converts core messages for provider consumption, keeping
+// only the fields a provider needs. A tool result is a RoleUser message with a
+// non-nil ToolResult; user-typed text is a RoleUser message without one.
 func toProviderMessages(msgs []core.Message) []core.Message {
 	out := make([]core.Message, 0, len(msgs))
 	for _, m := range msgs {
 		switch m.Role {
 		case core.RoleUser:
-			out = append(out, core.Message{
-				Role:    core.RoleUser,
-				Content: m.Content,
-				Images:  m.Images,
-			})
+			if m.ToolResult != nil {
+				out = append(out, core.Message{
+					Role:       core.RoleUser,
+					ToolResult: m.ToolResult,
+				})
+			} else {
+				out = append(out, core.Message{
+					Role:    core.RoleUser,
+					Content: m.Content,
+					Images:  m.Images,
+				})
+			}
 		case core.RoleAssistant:
 			out = append(out, core.Message{
 				Role:              core.RoleAssistant,
@@ -347,13 +355,6 @@ func toProviderMessages(msgs []core.Message) []core.Message {
 				ThinkingSignature: m.ThinkingSignature,
 				ToolCalls:         m.ToolCalls,
 			})
-		case core.RoleTool:
-			if m.ToolResult != nil {
-				out = append(out, core.Message{
-					Role:       core.RoleUser,
-					ToolResult: m.ToolResult,
-				})
-			}
 		}
 	}
 	return out
@@ -365,14 +366,11 @@ func toInferResponse(r *CompletionResponse) *core.InferResponse {
 		return nil
 	}
 	return &core.InferResponse{
-		Content:                  r.Content,
-		Thinking:                 r.Thinking,
-		ThinkingSignature:        r.ThinkingSignature,
-		ToolCalls:                r.ToolCalls,
-		StopReason:               core.StopReason(r.StopReason),
-		InputTokens:              r.Usage.InputTokens,
-		OutputTokens:             r.Usage.OutputTokens,
-		CacheCreationInputTokens: r.Usage.CacheCreationInputTokens,
-		CacheReadInputTokens:     r.Usage.CacheReadInputTokens,
+		Content:           r.Content,
+		Thinking:          r.Thinking,
+		ThinkingSignature: r.ThinkingSignature,
+		ToolCalls:         r.ToolCalls,
+		StopReason:        core.StopReason(r.StopReason),
+		Usage:             r.Usage,
 	}
 }

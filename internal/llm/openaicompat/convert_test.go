@@ -10,7 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func TestConvertMessagesConvertsRoleToolResultToToolMessage(t *testing.T) {
+func TestConvertMessagesConvertsToolResultToToolMessage(t *testing.T) {
 	msgs := []core.Message{
 		{
 			Role: core.RoleAssistant,
@@ -21,7 +21,7 @@ func TestConvertMessagesConvertsRoleToolResultToToolMessage(t *testing.T) {
 			}},
 		},
 		{
-			Role: core.RoleTool,
+			Role: core.RoleUser,
 			ToolResult: &core.ToolResult{
 				ToolCallID: "call_1",
 				ToolName:   "Read",

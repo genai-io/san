@@ -38,7 +38,7 @@ func TestRecorderWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		SystemDigest: "sha256:sys", ToolsDigest: "sha256:tools", MessageIDs: []string{"m1", "m2"},
 	}})
 	rec.OnAgentEvent(core.Event{Type: core.PostInfer, Source: "main", Data: &core.InferResponse{
-		StopReason: core.StopEndTurn, InputTokens: 42, OutputTokens: 8, CacheReadInputTokens: 10,
+		StopReason: core.StopEndTurn, Usage: core.Usage{InputTokens: 42, OutputTokens: 8, CacheReadInputTokens: 10},
 	}})
 
 	tx, err := fs.Load(context.Background(), "sess-1")

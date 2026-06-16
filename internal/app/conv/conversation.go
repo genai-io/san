@@ -259,24 +259,7 @@ func (m ConversationModel) ConvertToProviderFrom(startIdx int) []core.Message {
 		if msg.Role == core.RoleNotice {
 			continue
 		}
-
-		providerMsg := core.Message{
-			ID:                msg.ID,
-			Role:              msg.Role,
-			Content:           msg.Content,
-			DisplayContent:    msg.DisplayContent,
-			Images:            msg.Images,
-			ToolCalls:         msg.ToolCalls,
-			Thinking:          msg.Thinking,
-			ThinkingSignature: msg.ThinkingSignature,
-		}
-
-		if msg.ToolResult != nil {
-			tr := *msg.ToolResult
-			providerMsg.ToolResult = &tr
-		}
-
-		providerMsgs = append(providerMsgs, providerMsg)
+		providerMsgs = append(providerMsgs, msg.ToMessage())
 	}
 	return providerMsgs
 }

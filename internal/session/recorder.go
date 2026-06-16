@@ -233,15 +233,11 @@ func (r *Recorder) onAppend(ev core.Event) {
 // through the same converters Store.Save uses, so the dedupe key (message
 // ID) maps to byte-identical content from either writer.
 //
-// RoleTool maps to "user" because that's the wire shape sent to the LLM
-// (Anthropic models tool results as a user message containing tool_result
-// blocks). Without this case the agent's tool-result message gets an ID
-// stamped and joins a.messages → its ID lands in inference.requested's
-// messageIDs, but no message.appended is ever written, so replay can't
-// resolve the ID and the integrity check flags it as missing.
+// A tool result is a RoleUser message with a non-nil ToolResult; it serializes
+// as a "user" turn carrying tool_result blocks, the wire shape the LLM expects.
 func messageToTranscript(msg core.Message) ([]transcript.ContentBlock, string) {
 	switch msg.Role {
-	case core.RoleUser, core.RoleTool:
+	case core.RoleUser:
 		if msg.ToolResult != nil {
 			return toolResultToBlocks(msg.ToolResult), "user"
 		}

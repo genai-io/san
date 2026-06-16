@@ -42,12 +42,12 @@ func (s *scriptedLLM) Infer(_ context.Context, req core.InferRequest) (<-chan co
 
 // TestTrimTrailingPendingMessages guards against the "messages must
 // alternate" provider rejection: when the snapshot ends with a tool_result
-// (RoleTool) or any trailing user turn, the fork's own UserMessage(prompt)
-// would put two consecutive user-role messages on the wire.
+// (a RoleUser message with a ToolResult) or any trailing user turn, the fork's
+// own UserMessage(prompt) would put two consecutive user-role messages on the wire.
 func TestTrimTrailingPendingMessages(t *testing.T) {
 	asst := core.Message{Role: core.RoleAssistant, Content: "ok"}
 	usr := core.Message{Role: core.RoleUser, Content: "ask"}
-	toolResult := core.Message{Role: core.RoleTool, Content: "tool result"}
+	toolResult := core.Message{Role: core.RoleUser, ToolResult: &core.ToolResult{Content: "tool result"}}
 
 	// Snapshot ends with two trailing user messages → both dropped.
 	in := []core.Message{asst, usr, usr}

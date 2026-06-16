@@ -22,17 +22,26 @@ type InferRequest struct {
 	Tools    []ToolSchema // available tools
 }
 
+// Usage is the token accounting for one LLM call. Field names use the project's
+// domain vocabulary; the json tags preserve each provider's wire format (e.g.
+// Anthropic's cache_creation_input_tokens). It lives in core, the foundation
+// layer, so both core.InferResponse and the llm provider response share one
+// definition (llm.Usage aliases this).
+type Usage struct {
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+}
+
 // InferResponse is the final aggregated response from one LLM call.
 type InferResponse struct {
-	Content                  string     // text output
-	Thinking                 string     // chain-of-thought (extended thinking)
-	ThinkingSignature        string     // signature for replaying thinking blocks
-	ToolCalls                []ToolCall // tool execution requests
-	StopReason               StopReason
-	InputTokens              int
-	OutputTokens             int
-	CacheCreationInputTokens int
-	CacheReadInputTokens     int
+	Content           string     // text output
+	Thinking          string     // chain-of-thought (extended thinking)
+	ThinkingSignature string     // signature for replaying thinking blocks
+	ToolCalls         []ToolCall // tool execution requests
+	StopReason        StopReason
+	Usage
 }
 
 // TotalInputTokens is the full prompt size the model processed: fresh input

@@ -200,7 +200,7 @@ func TestSanitizeToolResults_AllPaired(t *testing.T) {
 		{Role: core.RoleAssistant, Content: "let me check", ToolCalls: []core.ToolCall{
 			{ID: "tc_1", Name: "Read"},
 		}},
-		{Role: core.RoleTool, ToolResult: &core.ToolResult{ToolCallID: "tc_1", Content: "file content"}},
+		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "tc_1", Content: "file content"}},
 		{Role: core.RoleAssistant, Content: "done"},
 	}
 
