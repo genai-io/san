@@ -31,18 +31,34 @@ func CalculateToolBoxWidth(screenWidth int) int {
 	return max(60, boxWidth)
 }
 
-// TruncateText shortens text to maxLen with a single-glyph ellipsis (…) if
-// needed. Returns the original text if maxLen <= 0 or if text fits within
-// maxLen. Uses rune-based slicing to avoid breaking multi-byte characters.
+// TruncateText shortens text to at most maxLen *display columns* (not runes),
+// appending a single-glyph ellipsis (…) when it has to cut. Width-aware: CJK
+// and other 2-cell glyphs are budgeted at their real column count, so the
+// result never overflows a maxLen-wide slot (a rune count would undercount
+// wide glyphs and let the row wrap). Returns the original text if maxLen <= 0
+// or it already fits.
 func TruncateText(text string, maxLen int) string {
-	runes := []rune(text)
-	if maxLen <= 0 || len(runes) <= maxLen {
+	if maxLen <= 0 || lipgloss.Width(text) <= maxLen {
 		return text
 	}
-	if maxLen <= 1 {
-		return string(runes[:maxLen])
+	if maxLen == 1 {
+		return "…"
 	}
-	return string(runes[:maxLen-1]) + "…"
+	// Accumulate width rune by rune, reserving one column for the ellipsis, and
+	// stop once the next rune would overflow. O(n), unlike a shrink-from-the-end
+	// loop that re-measures the whole string each step.
+	budget := maxLen - 1
+	width := 0
+	var b strings.Builder
+	for _, r := range text {
+		rw := lipgloss.Width(string(r))
+		if width+rw > budget {
+			break
+		}
+		width += rw
+		b.WriteRune(r)
+	}
+	return b.String() + "…"
 }
 
 func ShortenPath(path string) string {

@@ -207,7 +207,7 @@ func (s *PersonaSelector) Render() string {
 		if item.Description != "" {
 			meta = item.Scope + " · " + item.Description
 		}
-		meta = personaTruncate(meta, metaMax)
+		meta = kit.TruncateText(meta, metaMax)
 
 		line := kit.FormatAlignedRow(markerStyle.Render(marker), item.Name, nameCol, dimStyle.Render(meta))
 		body.WriteString(kit.RenderSelectableRow(line, isSelected))
@@ -226,18 +226,6 @@ func (s *PersonaSelector) Render() string {
 	}
 
 	return panel.Wrap(sb.String())
-}
-
-// personaTruncate trims s to at most maxW display columns, adding an ellipsis.
-func personaTruncate(s string, maxW int) string {
-	if lipgloss.Width(s) <= maxW {
-		return s
-	}
-	r := []rune(s)
-	for len(r) > 0 && lipgloss.Width(string(r))+1 > maxW {
-		r = r[:len(r)-1]
-	}
-	return string(r) + "…"
 }
 
 // panel supplies the shared selector sizing/frame primitives (content width,
