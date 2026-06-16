@@ -3,6 +3,11 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.5] - 2026-06-16
+
+### Fixed
+- Split cached prompt tokens from fresh input for OpenAI-compatible providers, so per-turn input usage no longer multi-counts the re-read cache and cost applies the cache-read rate ([@yanmxa](https://github.com/yanmxa) in [#234](https://github.com/genai-io/san/pull/234))
+
 ## [v1.20.4] - 2026-06-16
 
 ### Fixed
