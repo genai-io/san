@@ -495,4 +495,3 @@ func stripMarkdownHeading(line string) string {
 	indent := line[:len(line)-len(trimmed)]
 	return indent + stripped
 }
-

@@ -54,9 +54,9 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	// context and pinning the old fork for up to forkDeadline.
 	m.teardownSelfLearn()
 
-	// Env override wins: documented as the hard kill switch (§3.1).
+	// Env override wins: documented as the hard kill switch (§3.1). teardown
+	// above already cleared any prior session, so the disabled paths just return.
 	if v := setting.Getenv(selfLearnDisableEnvSuffix); v == "1" || strings.EqualFold(v, "true") {
-		m.services.SelfLearn.Reviewer = nil
 		return
 	}
 	snap := m.services.Setting.Snapshot()
@@ -66,22 +66,21 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 		return
 	}
 	if !cfg.Enabled() {
-		m.services.SelfLearn.Reviewer = nil
 		return
 	}
 
-	// Session-scoped review context. StopAgentSession's clearSelfLearn calls
-	// the cancel so an in-flight fork unblocks immediately on /clear / quit
-	// instead of waiting up to forkDeadline for its independent timeout.
+	// Session-scoped review context; teardownSelfLearn cancels it so an
+	// in-flight fork unblocks immediately on /clear / quit instead of waiting
+	// up to forkDeadline for its independent timeout. reviewCancel + live are
+	// stored in the session struct once the reviewer is built (below).
 	reviewCtx, reviewCancel := context.WithCancel(context.Background())
-	m.services.SelfLearn.Cancel = reviewCancel
 
 	// live gates the fork-goroutine write observers below. They capture this
-	// local (not m.services.SelfLearn) so they never race on a services field
-	// the UI goroutine mutates; teardownSelfLearn flips it false.
+	// local so a write landing after teardown drops silently instead of racing
+	// on UI state; teardownSelfLearn flips it false through the session struct
+	// (the same *atomic.Bool).
 	live := &atomic.Bool{}
 	live.Store(true)
-	m.services.SelfLearn.Live = live
 
 	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars)
 	skillMgr := selflearn.NewSkillManager(m.env.CWD, cfg.Perms)
@@ -192,7 +191,11 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 
 	r := selflearn.New(cfg, review)
 	r.SeedTurns(countUserTurns(m.conv.Messages, pendingSend))
-	m.services.SelfLearn.Reviewer = r
+	m.services.SelfLearn.session = &selfLearnSession{
+		reviewer: r,
+		cancel:   reviewCancel,
+		live:     live,
+	}
 }
 
 // runSelfLearnDemo drives the indicator through one scripted lifecycle
@@ -274,19 +277,17 @@ func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 }
 
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
-// session-scoped fork context, marks the wiring dead, and drops the
-// Reviewer. Idempotent. Called from StopAgentSession and the top of
+// session-scoped fork context, flips the liveness gate false, and drops the
+// session. Idempotent. Called from StopAgentSession and the top of
 // wireSelfLearn so a rebuild never leaks the prior context.
 func (m *model) teardownSelfLearn() {
-	if cancel := m.services.SelfLearn.Cancel; cancel != nil {
-		cancel()
+	s := m.services.SelfLearn.session
+	if s == nil {
+		return
 	}
-	m.services.SelfLearn.Cancel = nil
-	if live := m.services.SelfLearn.Live; live != nil {
-		live.Store(false)
-	}
-	m.services.SelfLearn.Live = nil
-	m.services.SelfLearn.Reviewer = nil
+	s.cancel()
+	s.live.Store(false)
+	m.services.SelfLearn.session = nil
 }
 
 // handleSelflearnTick advances the indicator and schedules the next tick

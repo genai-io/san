@@ -44,37 +44,47 @@ type services struct {
 	Persona  *persona.Registry
 	Reminder *reminder.Service
 
-	// SelfLearn groups the L1 self-learning state. Reviewer / Cancel / Live
-	// are populated per wiring (zero when no arm is enabled — §3.1 zero-
-	// overhead guarantee). Indicator is allocated once at services
-	// construction and outlives wiring/teardown so the render path can
-	// always Snapshot() without a nil check.
+	// SelfLearn groups the L1 self-learning state: the live per-session
+	// reviewer (nil when no arm is enabled — §3.1 zero-overhead guarantee)
+	// and the status-bar Indicator, which is allocated once at services
+	// construction and outlives any session's wire/teardown so the render
+	// path can always Snapshot() without a nil check.
 	SelfLearn SelfLearnServices
 }
 
-// SelfLearnServices bundles the L1 fields that move together. See
-// notes/active/l1-background-review.md §9 step 4.
+// SelfLearnServices holds the L1 self-learning state.
 type SelfLearnServices struct {
-	// Reviewer is the background L1 trigger. Non-nil only when an arm is
-	// enabled at session start; nil ⇒ zero overhead (no goroutine, no
-	// counters, no extra model calls).
-	Reviewer *selflearn.Reviewer
-
-	// Cancel cancels the session-scoped context every in-flight fork
-	// inherits. Called from StopAgentSession so a /clear or quit unblocks
-	// the fork immediately instead of waiting for the forkDeadline; never
-	// nil while Reviewer is non-nil.
-	Cancel context.CancelFunc
-
-	// Live is flipped to false when the current wiring is torn down so a
-	// late write observer drops silently instead of racing on the Reviewer
-	// pointer. Allocated per wiring; nil before the first wiring.
-	Live *atomic.Bool
+	// session is the live per-session reviewer plus its teardown handles, or
+	// nil when no arm is enabled (§3.1 zero overhead: no goroutine, no
+	// counters, no extra model calls). Set and cleared as a unit by
+	// wireSelfLearn / teardownSelfLearn so the reviewer, its fork-cancel, and
+	// its liveness gate can never fall out of sync.
+	session *selfLearnSession
 
 	// Indicator drives the four-phase status-bar surface (§"User-visible
 	// surface"). Always non-nil; the snapshot reports an idle phase when
 	// L1 is off or no review has run yet.
 	Indicator *SelfLearnIndicator
+}
+
+// selfLearnSession bundles the three handles that make up one live L1
+// self-learning run for the current conversation session. They are created
+// together by wireSelfLearn and dropped together by teardownSelfLearn, so
+// holding them behind a single pointer makes the "all present or none"
+// invariant structural instead of a prose promise.
+type selfLearnSession struct {
+	// reviewer is the background L1 trigger, fed by Observe at each turn end.
+	reviewer *selflearn.Reviewer
+
+	// cancel cancels the session-scoped context every in-flight fork inherits,
+	// so /clear or quit unblocks the fork immediately instead of waiting for
+	// its own forkDeadline.
+	cancel context.CancelFunc
+
+	// live is flipped to false on teardown so a write observer landing after
+	// teardown drops silently instead of mutating UI state for a dead session.
+	// The fork goroutine's observers capture this same pointer.
+	live *atomic.Bool
 }
 
 func newServices() services {
