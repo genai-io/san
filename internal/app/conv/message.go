@@ -28,9 +28,6 @@ const (
 	// scrollback.
 	streamWrapReserve = 4
 
-	// autoCompactThreshold is the percentage of context usage that triggers auto-compact.
-	autoCompactThreshold = 95
-
 	// agentContentIndent is the extra indent for agent prompt/response content
 	// beyond toolResultExpandedStyle's PaddingLeft(4). Total indent = 4 + 4 = 8 chars.
 	agentContentIndent = "    "
@@ -199,32 +196,6 @@ func toolResultIcon(isError bool) string {
 		return "✗"
 	}
 	return "⎿"
-}
-
-// RenderTokenWarning returns a warning line when context usage is high.
-// Displayed above the input separator to alert the user.
-func RenderTokenWarning(inputTokens, inputLimit int, compactSuppressed bool) string {
-	if inputLimit == 0 || inputTokens == 0 || compactSuppressed {
-		return ""
-	}
-
-	percent := float64(inputTokens) / float64(inputLimit) * 100
-	if percent < 80 {
-		return ""
-	}
-
-	untilCompact := max(int(autoCompactThreshold-percent), 0)
-
-	if percent >= autoCompactThreshold {
-		style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-		return "  " + style.Render(fmt.Sprintf("⚠ Context nearly full (%d%% used) — auto-compact imminent", int(percent)))
-	}
-	if percent >= 85 {
-		style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
-		return "  " + style.Render(fmt.Sprintf("⚡ %d%% until auto-compact", untilCompact))
-	}
-	style := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	return "  " + style.Render(fmt.Sprintf("⚡ %d%% until auto-compact", untilCompact))
 }
 
 var (

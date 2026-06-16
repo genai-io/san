@@ -3,7 +3,6 @@ package kit
 import (
 	"fmt"
 
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 )
 
@@ -23,24 +22,6 @@ func FormatTokenCount(count int) string {
 	default:
 		return fmt.Sprintf("%d", count)
 	}
-}
-
-// ShouldAutoCompact returns true when context usage is high enough to trigger
-// automatic compaction.
-func ShouldAutoCompact(p llm.Provider, messageCount, inputTokens int, store *llm.Store, currentModel *llm.CurrentModelInfo) bool {
-	if p == nil || messageCount < 3 {
-		return false
-	}
-	return core.NeedsCompaction(inputTokens, GetEffectiveInputLimit(store, currentModel))
-}
-
-// GetContextUsagePercent returns what percentage of the context window is used.
-func GetContextUsagePercent(inputTokens int, store *llm.Store, currentModel *llm.CurrentModelInfo) float64 {
-	inputLimit := GetEffectiveInputLimit(store, currentModel)
-	if inputLimit == 0 || inputTokens == 0 {
-		return 0
-	}
-	return float64(inputTokens) / float64(inputLimit) * 100
 }
 
 // GetMaxTokens returns the effective output limit, falling back to defaultMaxTokens.
