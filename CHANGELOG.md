@@ -3,6 +3,20 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.4] - 2026-06-16
+
+### Fixed
+- Truncate by display width so CJK rows don't overflow ([@yanmxa](https://github.com/yanmxa) in [6685385](https://github.com/genai-io/san/commit/66853859))
+- Stop ToolToggleMsg from leaking into sub-model routing ([@yanmxa](https://github.com/yanmxa) in [9aaf344](https://github.com/genai-io/san/commit/9aaf3448))
+- Enable Ctrl+V paste to API key input ([@dangpeng](https://github.com/dangpeng) in [edbe190](https://github.com/genai-io/san/commit/edbe1907))
+- Count cached system prompt in context usage ([@yanmxa](https://github.com/yanmxa) in [3804db8](https://github.com/genai-io/san/commit/3804db85))
+- Keep conversation cost across compaction ([@yanmxa](https://github.com/yanmxa) in [07bdce3](https://github.com/genai-io/san/commit/07bdce37))
+- Clear native scrollback on /clear ([@yanmxa](https://github.com/yanmxa) in [2b94daa](https://github.com/genai-io/san/commit/2b94daa9))
+- Exclude system-reminder blocks from resumed display text ([@yanmxa](https://github.com/yanmxa) in [7790790](https://github.com/genai-io/san/commit/77907907))
+- Stop reprinting the brand banner on model switch ([@yanmxa](https://github.com/yanmxa) in [dfe0b71](https://github.com/genai-io/san/commit/dfe0b71c))
+- Always treat typed keys as search in list selectors ([@yanmxa](https://github.com/yanmxa) in [e6cca10](https://github.com/genai-io/san/commit/e6cca107))
+- Hold images back from text-only models instead of erroring ([@yanmxa](https://github.com/yanmxa) in [75fbe58](https://github.com/genai-io/san/commit/75fbe581))
+
 ## [v1.20.3] - 2026-06-15
 
 ### Fixed
