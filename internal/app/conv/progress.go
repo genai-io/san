@@ -20,20 +20,13 @@ type ProgressUpdateMsg struct {
 	Message    string
 }
 
-// ProgressQuestionMsg carries an agent question request to the TUI.
-type ProgressQuestionMsg struct {
-	Index   int
-	Request *tool.QuestionRequest
-	Reply   chan *tool.QuestionResponse
-}
-
 // ProgressCheckTickMsg triggers a check for new progress updates.
 type ProgressCheckTickMsg struct{}
 
 // ProgressHub is an instance-scoped progress transport.
 type ProgressHub struct {
 	ch  chan ProgressUpdateMsg
-	qch chan ProgressQuestionMsg
+	qch chan QuestionRequestMsg
 }
 
 // NewProgressHub creates a new progress hub with the given buffer size.
@@ -43,7 +36,7 @@ func NewProgressHub(buffer int) *ProgressHub {
 	}
 	return &ProgressHub{
 		ch:  make(chan ProgressUpdateMsg, buffer),
-		qch: make(chan ProgressQuestionMsg, buffer),
+		qch: make(chan QuestionRequestMsg, buffer),
 	}
 }
 
@@ -71,7 +64,7 @@ func (h *ProgressHub) Ask(ctx context.Context, index int, req *tool.QuestionRequ
 
 	reply := make(chan *tool.QuestionResponse, 1)
 	select {
-	case h.qch <- ProgressQuestionMsg{Index: index, Request: req, Reply: reply}:
+	case h.qch <- QuestionRequestMsg{Index: index, Request: req, Reply: reply}:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

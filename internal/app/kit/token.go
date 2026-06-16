@@ -9,7 +9,7 @@ import (
 // TokenLimitResultMsg is sent when a token limit fetch completes.
 type TokenLimitResultMsg struct {
 	Result string
-	Error  error
+	Err    error
 }
 
 // FormatTokenCount formats a token count for display.

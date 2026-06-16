@@ -95,8 +95,8 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 // Only when there is no active agent does it drive OnCompacted directly so the
 // next session start still seeds the summary.
 func (m *model) OnCompactResult(msg conv.CompactResultMsg) tea.Cmd {
-	if msg.Error != nil {
-		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Error), true)
+	if msg.Err != nil {
+		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be completed: %v", msg.Err), true)
 		return tea.Batch(m.CommitMessages()...)
 	}
 
@@ -117,8 +117,8 @@ func (m *model) OnCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 func (m *model) OnTokenLimitResult(msg kit.TokenLimitResultMsg) tea.Cmd {
 	m.userInput.Provider.FetchingLimits = false
 	var content string
-	if msg.Error != nil {
-		content = "Error: " + msg.Error.Error()
+	if msg.Err != nil {
+		content = "Error: " + msg.Err.Error()
 	} else {
 		content = msg.Result
 	}

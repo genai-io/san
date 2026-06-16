@@ -93,7 +93,7 @@ type mcpConnectResultMsg struct {
 	ServerName string
 	Success    bool
 	ToolCount  int
-	Error      error
+	Err        error
 }
 
 // mcpDisconnectMsg is sent when disconnecting from a server
@@ -344,8 +344,8 @@ func (s *MCPSelector) HandleConnectResult(msg mcpConnectResultMsg) {
 	s.connecting = false
 	if msg.Success {
 		s.lastError = ""
-	} else if msg.Error != nil {
-		s.lastError = fmt.Sprintf("Failed to connect: %v", msg.Error)
+	} else if msg.Err != nil {
+		s.lastError = fmt.Sprintf("Failed to connect: %v", msg.Err)
 	}
 	s.refreshAndUpdateView()
 }
@@ -450,7 +450,7 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 			return mcpConnectResultMsg{
 				ServerName: name,
 				Success:    false,
-				Error:      fmt.Errorf("MCP not initialized"),
+				Err:        fmt.Errorf("MCP not initialized"),
 			}
 		}
 
@@ -458,7 +458,7 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 			return mcpConnectResultMsg{
 				ServerName: name,
 				Success:    false,
-				Error:      err,
+				Err:        err,
 			}
 		}
 
@@ -490,15 +490,15 @@ func UpdateMCP(deps OverlayDeps, state *MCPState, msg tea.Msg) (tea.Cmd, bool) {
 	case mcpConnectResultMsg:
 		if state.Selector.registry != nil {
 			state.Selector.registry.SetConnecting(msg.ServerName, false)
-			if !msg.Success && msg.Error != nil {
-				state.Selector.registry.SetConnectError(msg.ServerName, msg.Error.Error())
+			if !msg.Success && msg.Err != nil {
+				state.Selector.registry.SetConnectError(msg.ServerName, msg.Err.Error())
 			} else {
 				state.Selector.registry.SetConnectError(msg.ServerName, "")
 			}
 		}
 		state.Selector.HandleConnectResult(msg)
 		if !state.Selector.IsActive() && !msg.Success {
-			content := fmt.Sprintf("Failed to connect to '%s': %v", msg.ServerName, msg.Error)
+			content := fmt.Sprintf("Failed to connect to '%s': %v", msg.ServerName, msg.Err)
 			deps.Conv.Append(core.ChatMessage{Role: core.RoleNotice, Content: content})
 			return tea.Batch(deps.CommitMessages()...), true
 		}

@@ -279,15 +279,15 @@ func providerFirstEnvVar(envVars []string) string {
 // thinking-spinner tick).
 const providerSpinnerInterval = 90 * time.Millisecond
 
-// providerConnectingMsg is the periodic "still connecting/refreshing" tick that
+// providerConnectingTickMsg is the periodic "still connecting/refreshing" tick that
 // advances the in-flight spinner; the terminal counterpart to
 // providerConnectResultMsg, which signals the work is done.
-type providerConnectingMsg struct{}
+type providerConnectingTickMsg struct{}
 
 // providerConnectingTickCmd schedules the next connecting tick (spinner frame).
 func providerConnectingTickCmd() tea.Cmd {
 	return tea.Tick(providerSpinnerInterval, func(time.Time) tea.Msg {
-		return providerConnectingMsg{}
+		return providerConnectingTickMsg{}
 	})
 }
 

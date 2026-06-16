@@ -146,7 +146,7 @@ type ProviderSelector struct {
 	lastConnectAuthIdx int // item index that triggered the connection
 	lastConnectSuccess bool
 
-	// spinnerTick advances on each providerConnectingMsg; used to pick a braille
+	// spinnerTick advances on each providerConnectingTickMsg; used to pick a braille
 	// frame while a connect/refresh is in flight.
 	spinnerTick int
 }
@@ -241,7 +241,7 @@ func (s *ProviderState) SetStatusMessage(msg string) int64 {
 // UpdateProvider routes provider connection and selection messages.
 func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case providerConnectingMsg:
+	case providerConnectingTickMsg:
 		// Keep ticking the spinner while connect/refresh is in flight; stop once
 		// the matching providerConnectResultMsg lands and IsConnecting goes false.
 		if state.Selector.IsConnecting() {

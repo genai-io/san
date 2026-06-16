@@ -23,7 +23,7 @@ type CompactResultMsg struct {
 	Summary       string
 	OriginalCount int
 	Trigger       string // "manual" or "auto"
-	Error         error
+	Err           error
 }
 
 // --- Compact state ---
@@ -147,6 +147,6 @@ func CompactCmd(req CompactRequest) tea.Cmd {
 			}
 		}
 		summary, count, err := CompactConversation(ctx, req.Client, req.Messages, focus)
-		return CompactResultMsg{Summary: summary, OriginalCount: count, Trigger: req.Trigger, Error: err}
+		return CompactResultMsg{Summary: summary, OriginalCount: count, Trigger: req.Trigger, Err: err}
 	}
 }

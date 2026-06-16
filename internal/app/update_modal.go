@@ -19,17 +19,14 @@ func (m *model) cycleOperationMode() {
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
-	case conv.ProgressQuestionMsg:
-		cmd := m.handleQuestionRequest(conv.QuestionRequestMsg{
-			Request: msg.Request,
-			Reply:   msg.Reply,
-		})
+	case conv.QuestionRequestMsg:
+		// Questions arrive via ProgressHub.Check(); re-arm the poll so the next
+		// progress update or question keeps flowing while the modal is up.
+		cmd := m.handleQuestionRequest(msg)
 		if m.conv.ProgressHub != nil {
 			cmd = tea.Batch(cmd, m.conv.ProgressHub.Check())
 		}
 		return cmd, true
-	case conv.QuestionRequestMsg:
-		return m.handleQuestionRequest(msg), true
 	}
 	return nil, false
 }

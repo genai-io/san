@@ -16,8 +16,10 @@ func NewModalState() ModalState {
 	}
 }
 
-// QuestionRequestMsg is sent when AskUserQuestion tool is called
+// QuestionRequestMsg is sent when AskUserQuestion tool is called. Index
+// identifies the agent that raised it (0 = the top-level agent).
 type QuestionRequestMsg struct {
+	Index   int
 	Request *tool.QuestionRequest
 	Reply   chan *tool.QuestionResponse
 }

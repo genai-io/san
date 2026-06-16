@@ -86,7 +86,7 @@ func fetchTokenLimitsCmd(deps TokenLimitDeps) tea.Cmd {
 	}
 	return func() tea.Msg {
 		result, err := autoFetchTokenLimits(context.Background(), fetchDeps)
-		return kit.TokenLimitResultMsg{Result: result, Error: err}
+		return kit.TokenLimitResultMsg{Result: result, Err: err}
 	}
 }
 
