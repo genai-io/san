@@ -17,7 +17,7 @@
 //	model_workspace.go     cwd/file change reactions + FileWatcher setup
 //	model_turn_queue.go    inbox drain + prompt injection at turn end +
 //	                       stop-hook gate before persistence
-//	model_deps.go          deps builders for sub-features
+//	model_subfeatures.go   deps builders for sub-features
 //	model_actions.go       persona switch (hot-patch prompt parts + skills)
 package app
 

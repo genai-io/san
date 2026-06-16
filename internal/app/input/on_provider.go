@@ -20,7 +20,7 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// providerTab represents which tab is active in the kit.
+// providerTab represents which tab is active in the provider selector.
 type providerTab int
 
 const (
@@ -64,7 +64,7 @@ type providerAuthMethodItem struct {
 	EnvVars     []string
 }
 
-// providerModelItem represents a model in the kit.
+// providerModelItem represents a model in the provider selector.
 type providerModelItem struct {
 	ID               string
 	Name             string
