@@ -99,7 +99,7 @@ func (s *PersonaSelector) EnterSelect(width, height int) error {
 	s.height = height
 	s.nav.Reset()
 	s.nav.Total = len(s.items)
-	s.nav.MaxVisible = s.bodyHeight()
+	s.nav.MaxVisible = s.panel().BodyHeight()
 	for i, it := range s.items {
 		if it.IsCurrent {
 			s.nav.Selected = i
@@ -177,16 +177,17 @@ func (s *PersonaSelector) Render() string {
 		return ""
 	}
 
+	panel := s.panel()
 	var sb strings.Builder
 	dimStyle := kit.DimStyle()
 
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 	sb.WriteString(kit.SelectorTitleStyle().Render("Persona"))
 	sb.WriteString("\n\n")
 
 	const nameCol = 22
-	metaMax := max(16, s.contentWidth()-nameCol-12)
+	metaMax := max(16, panel.ContentWidth()-nameCol-12)
 
 	startIdx, endIdx := s.nav.VisibleRange()
 
@@ -212,10 +213,10 @@ func (s *PersonaSelector) Render() string {
 		body.WriteString(kit.RenderSelectableRow(line, isSelected))
 		body.WriteString("\n")
 	}
-	sb.WriteString(s.renderViewport(body.String()))
+	sb.WriteString(panel.PadViewport(body.String()))
 
 	sb.WriteString("\n")
-	sb.WriteString(s.sepLine())
+	sb.WriteString(panel.SeparatorLine())
 	sb.WriteString("\n")
 	if it, ok := s.selected(); s.confirmDelete && ok {
 		warn := lipgloss.NewStyle().Foreground(kit.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
@@ -224,14 +225,7 @@ func (s *PersonaSelector) Render() string {
 		sb.WriteString(dimStyle.Render("↑/↓ navigate · Enter switch · Ctrl+O open · Ctrl+D delete · Esc cancel"))
 	}
 
-	content := sb.String()
-	box := lipgloss.NewStyle().
-		Width(s.contentWidth()).
-		Height(s.boxHeight()).
-		Padding(1, 2).
-		Render(content)
-
-	return lipgloss.Place(s.width, s.height-2, lipgloss.Center, lipgloss.Top, box)
+	return panel.Wrap(sb.String())
 }
 
 // personaTruncate trims s to at most maxW display columns, adding an ellipsis.
@@ -246,30 +240,9 @@ func personaTruncate(s string, maxW int) string {
 	return string(r) + "…"
 }
 
-func (s *PersonaSelector) contentWidth() int { return max(60, s.width-6) }
-func (s *PersonaSelector) boxHeight() int    { return max(18, s.height-4) }
-func (s *PersonaSelector) bodyHeight() int   { return max(6, s.boxHeight()-10) }
-
-func (s *PersonaSelector) renderViewport(content string) string {
-	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
-	if len(lines) == 1 && lines[0] == "" {
-		lines = nil
-	}
-	visible := s.bodyHeight()
-	if visible <= 0 {
-		return ""
-	}
-	view := lines
-	for len(view) < visible {
-		view = append(view, "")
-	}
-	return strings.Join(view, "\n") + "\n"
-}
-
-func (s *PersonaSelector) sepLine() string {
-	sepStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
-	return sepStyle.Render(strings.Repeat("─", s.contentWidth()-8))
-}
+// panel supplies the shared selector sizing/frame primitives (content width,
+// box/body height, separators, viewport padding, centered wrap).
+func (s *PersonaSelector) panel() kit.Panel { return kit.Panel{Width: s.width, Height: s.height} }
 
 // --- Persona Runtime ---
 
