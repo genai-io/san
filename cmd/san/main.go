@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 
 	// Import providers for registration
+	_ "github.com/genai-io/san/internal/llm/agnesai"
 	_ "github.com/genai-io/san/internal/llm/alibaba"
 	_ "github.com/genai-io/san/internal/llm/anthropic"
 	_ "github.com/genai-io/san/internal/llm/bigmodel"

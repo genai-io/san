@@ -12,6 +12,7 @@ import (
 type Name string
 
 const (
+	AgnesAI    Name = "agnesai"
 	Anthropic  Name = "anthropic"
 	OpenAI     Name = "openai"
 	Google     Name = "google"

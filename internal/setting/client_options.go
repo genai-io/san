@@ -11,6 +11,8 @@ func DefaultModel(providerName string, authMethod string) string {
 		return "claude-sonnet-4-5@20250929"
 	}
 	switch providerName {
+	case "agnesai":
+		return "agnes-2.0-flash"
 	case "anthropic":
 		return "claude-sonnet-4-20250514"
 	case "openai":
