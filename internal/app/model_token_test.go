@@ -32,6 +32,28 @@ func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
 	}
 }
 
+// The ctx readout must count the cached system prompt (reported separately by
+// Anthropic) so it reflects real window occupancy; the per-turn totals stay raw
+// so the cached prompt isn't re-counted on every infer step.
+func TestOnTokenUsageCountsCachedPromptInContext(t *testing.T) {
+	m := &model{}
+	m.OnTurnBegin()
+
+	m.OnTokenUsage(&core.InferResponse{
+		InputTokens:              500,
+		OutputTokens:             80,
+		CacheReadInputTokens:     140000,
+		CacheCreationInputTokens: 1000,
+	})
+
+	if want := 141500; m.env.InputTokens != want {
+		t.Fatalf("context InputTokens = %d, want %d (fresh + cache read + cache creation)", m.env.InputTokens, want)
+	}
+	if m.env.TurnInputTokens != 500 {
+		t.Fatalf("TurnInputTokens = %d, want 500 (raw, excludes cached prompt)", m.env.TurnInputTokens)
+	}
+}
+
 func TestResumeCommandForSessionRequiresPersistedTranscript(t *testing.T) {
 	transcriptPath := filepath.Join(t.TempDir(), "session.jsonl")
 

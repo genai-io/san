@@ -35,6 +35,15 @@ type InferResponse struct {
 	CacheReadInputTokens     int
 }
 
+// TotalInputTokens is the full prompt size the model processed: fresh input
+// plus the cached portion (e.g. Anthropic reports the cache-marked system
+// prompt under CacheRead/CacheCreation, not InputTokens). This is the figure
+// that reflects context-window occupancy; InputTokens alone undercounts it
+// whenever prompt caching is active.
+func (r InferResponse) TotalInputTokens() int {
+	return r.InputTokens + r.CacheCreationInputTokens + r.CacheReadInputTokens
+}
+
 // Chunk is one piece of a streaming LLM response.
 type Chunk struct {
 	Text     string // incremental text

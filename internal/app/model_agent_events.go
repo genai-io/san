@@ -38,9 +38,14 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 	}
 
 	// Bottom-right context usage reflects the latest prompt/output, not a
-	// lifetime sum across the whole session.
-	m.env.InputTokens = resp.InputTokens
+	// lifetime sum across the whole session. Use the full prompt size
+	// (incl. the cached system prompt) so the ctx readout matches real
+	// context-window occupancy rather than just the uncached delta.
+	m.env.InputTokens = resp.TotalInputTokens()
 	m.env.OutputTokens = resp.OutputTokens
+	// Turn totals accumulate per infer step. Keep the raw (uncached) input
+	// here: each step re-reads the same cached prompt, so summing the cached
+	// portion across steps would multi-count it.
 	m.env.TurnInputTokens += resp.InputTokens
 	m.env.TurnOutputTokens += resp.OutputTokens
 
