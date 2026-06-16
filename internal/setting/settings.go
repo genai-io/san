@@ -32,6 +32,11 @@ type Data struct {
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
 	AllowBypass    *bool              `json:"allowBypass,omitempty"`
+	// ContextBar toggles the visual context-usage bar ([██████░░░░] 71%) in
+	// the status line. Pointer so an explicit "off" persists distinctly from
+	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
+	// "ctx X/Y" label is unaffected and always shows.
+	ContextBar *bool `json:"contextBar,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -161,6 +166,12 @@ func (s SelfLearnSettings) Validate() error {
 		)
 	}
 	return nil
+}
+
+// ShowContextBar reports whether the visual context-usage bar is enabled.
+// Nil (unset) resolves to off — the bar is opt-in.
+func (s *Data) ShowContextBar() bool {
+	return s != nil && s.ContextBar != nil && *s.ContextBar
 }
 
 // PermissionSettings defines permission rules for tool execution.
@@ -412,6 +423,10 @@ func (s *Data) Clone() *Data {
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v
+	}
+	if s.ContextBar != nil {
+		v := *s.ContextBar
+		dst.ContextBar = &v
 	}
 	for k, v := range s.Env {
 		dst.Env[k] = v

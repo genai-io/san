@@ -433,6 +433,20 @@ func SaveTheme(t string) error {
 	return nil
 }
 
+// SaveContextBar persists the context-usage bar on/off choice to
+// ~/.san/settings.json. The value is written as an explicit pointer so an
+// "off" choice overrides any inherited "on" instead of being dropped as a
+// zero value (see Data.ContextBar).
+func SaveContextBar(on bool) error {
+	if err := NewLoader().SaveToUser(&Data{ContextBar: &on}); err != nil {
+		return err
+	}
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
 // SavePersonaAt persists the chosen persona name at the given scope: the
 // project file (.san/settings.json under cwd) when userLevel is false, or the
 // user file (~/.san/settings.json) when true. An empty name clears the field.

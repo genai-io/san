@@ -108,12 +108,12 @@ func TestRenderCompressionsBadge(t *testing.T) {
 		visible string // empty means badge should not render
 	}{
 		{"zero-hidden", 0, ""},
-		{"one", 1, "🗜️ 1"},
-		{"four-dim", 4, "🗜️ 4"},
-		{"five-warn", 5, "🗜️ 5"},
-		{"nine-warn", 9, "🗜️ 9"},
-		{"ten-error", 10, "🗜️ 10"},
-		{"twenty-error", 20, "🗜️ 20"},
+		{"one", 1, "compacted ×1"},
+		{"four-dim", 4, "compacted ×4"},
+		{"five-warn", 5, "compacted ×5"},
+		{"nine-warn", 9, "compacted ×9"},
+		{"ten-error", 10, "compacted ×10"},
+		{"twenty-error", 20, "compacted ×20"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -132,59 +132,75 @@ func TestRenderCompressionsBadge(t *testing.T) {
 	}
 }
 
-func TestAllocateStatusSegments_DropsInPriorityOrder(t *testing.T) {
+func TestFitStatusSegments_DropsInPriorityOrder(t *testing.T) {
 	// Priorities: 1=highest (drops last), 4=lowest (drops first).
 	segments := []statusSegment{
-		{render: func() string { return "[bar] 71%" }, width: 11, priority: 1},
-		{render: func() string { return "ctx 142K/200K" }, width: 14, priority: 2},
-		{render: func() string { return "🗜️ 2" }, width: 5, priority: 3},
-		{render: func() string { return "$0.04" }, width: 5, priority: 4},
+		{text: "[bar] 71%", priority: 1},
+		{text: "ctx 142K/200K", priority: 2},
+		{text: "compacted ×2", priority: 3},
+		{text: "$0.04", priority: 4},
 	}
 
-	// Wide: everything fits with separators.
-	got := AllocateStatusSegments(segments, 100)
-	for _, s := range segments {
-		if !strings.Contains(got, stripANSI(s.render())) {
-			t.Errorf("wide: segment %q dropped from %q", stripANSI(s.render()), got)
+	// Wide: everything fits, in original order.
+	got := fitStatusSegments(segments, 100, 3)
+	if len(got) != len(segments) {
+		t.Fatalf("wide: kept %d segments, want %d (%q)", len(got), len(segments), got)
+	}
+	for i, seg := range segments {
+		if got[i] != seg.text {
+			t.Errorf("wide: position %d = %q, want %q", i, got[i], seg.text)
 		}
 	}
 
 	// Narrow (~30 cols): lowest-priority segments drop first.
-	got = AllocateStatusSegments(segments, 30)
-	if !strings.Contains(got, "[bar] 71%") {
-		t.Errorf("priority-1 segment should survive at width 30; got %q", got)
+	got = fitStatusSegments(segments, 30, 3)
+	joined := strings.Join(got, " · ")
+	if !strings.Contains(joined, "[bar] 71%") {
+		t.Errorf("priority-1 segment should survive at width 30; got %q", joined)
 	}
-	if strings.Contains(got, "$0.04") {
-		t.Errorf("priority-4 (cost) should drop first at width 30; got %q", got)
+	if strings.Contains(joined, "$0.04") {
+		t.Errorf("priority-4 (cost) should drop first at width 30; got %q", joined)
 	}
 }
 
-func TestAllocateStatusSegments_NeverTruncatesMidSegment(t *testing.T) {
-	segments := []statusSegment{
-		{render: func() string { return "exactly12ch" }, width: 11, priority: 1},
-	}
-	// Just enough room.
-	got := AllocateStatusSegments(segments, 11)
-	if !strings.Contains(got, "exactly12ch") {
+func TestFitStatusSegments_NeverTruncatesMidSegment(t *testing.T) {
+	segments := []statusSegment{{text: "exactly12ch", priority: 1}}
+
+	// Just enough room (segment is 11 cols wide).
+	if got := fitStatusSegments(segments, 11, 3); len(got) != 1 || got[0] != "exactly12ch" {
 		t.Errorf("segment should fit at width=its own width; got %q", got)
 	}
-	// One col too narrow.
-	got = AllocateStatusSegments(segments, 10)
-	if strings.Contains(got, "exactly12") {
+	// One col too narrow: drop the whole segment, never truncate.
+	if got := fitStatusSegments(segments, 10, 3); len(got) != 0 {
 		t.Errorf("segment must drop, not truncate, when it doesn't fit; got %q", got)
 	}
 }
 
-func TestAllocateStatusSegments_PreservesSegmentContainingSpaces(t *testing.T) {
-	// Regression: the internal separator is a sentinel (\x1f) that
-	// cannot appear in rendered text, so segments containing arbitrary
-	// substrings (including spaces) survive intact.
+func TestFitStatusSegments_PreservesOriginalOrder(t *testing.T) {
+	// Survivors keep their caller-supplied order even though the highest
+	// priority (dropped last) is the second segment.
 	segments := []statusSegment{
-		{render: func() string { return "ab  cd" }, width: 6, priority: 1},
-		{render: func() string { return "ef" }, width: 2, priority: 2},
+		{text: "first", priority: 2},
+		{text: "second", priority: 1},
 	}
-	got := AllocateStatusSegments(segments, 100)
-	if !strings.Contains(got, "ab  cd") || !strings.Contains(got, "ef") {
-		t.Errorf("segments with inner spaces corrupted: %q", got)
+	got := fitStatusSegments(segments, 100, 3)
+	if len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Errorf("survivors should keep original order; got %q", got)
+	}
+}
+
+func TestFitStatusSegments_AccountsForSeparatorWidth(t *testing.T) {
+	// Two 5-col segments need 5 + sepWidth + 5 columns together. With a
+	// 3-col separator that's 13; one column short drops the lower-priority
+	// (higher-number) second segment.
+	segments := []statusSegment{
+		{text: "aaaaa", priority: 1},
+		{text: "bbbbb", priority: 2},
+	}
+	if got := fitStatusSegments(segments, 13, 3); len(got) != 2 {
+		t.Errorf("both should fit at width 13 (5+3+5); got %q", got)
+	}
+	if got := fitStatusSegments(segments, 12, 3); len(got) != 1 || got[0] != "aaaaa" {
+		t.Errorf("separator should push the second segment out at width 12; got %q", got)
 	}
 }

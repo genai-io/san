@@ -43,6 +43,11 @@ type env struct {
 	// ResetContextDisplay (called per-compact); zeroed only by ResetTokens
 	// (called on /reset, /new).
 	Compressions int
+	// ShowContextBar mirrors the persisted appearance setting (off by
+	// default): when true the status line renders the visual [██████░░░░] 71%
+	// bar. Cached here so the hot render path never snapshots settings.
+	// Set at startup and whenever the /config Appearance panel saves.
+	ShowContextBar bool
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	OperationMode      setting.OperationMode

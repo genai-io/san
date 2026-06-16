@@ -46,6 +46,7 @@ func newBaseModel() model {
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	if settings := svc.Setting.Snapshot(); settings != nil {
 		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
+		environment.ShowContextBar = settings.ShowContextBar()
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{

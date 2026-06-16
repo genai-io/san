@@ -149,6 +149,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Theme set to " + msg.Theme)
 		return m, nil
+	case input.ContextBarSavedMsg:
+		// Update the live display flag so the status line reflects the choice
+		// immediately, then refresh the in-memory handle for re-opens.
+		m.env.ShowContextBar = msg.On
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after context-bar save failed", zap.Error(err))
+		}
+		if msg.On {
+			m.conv.AddNotice("Context bar on")
+		} else {
+			m.conv.AddNotice("Context bar off")
+		}
+		return m, nil
 	case input.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in
 		// <system-reminder>, which is only refreshed at SessionStart and

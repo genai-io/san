@@ -6,6 +6,7 @@ package conv
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -126,84 +127,63 @@ func compressionBadgeStyle(n int) lipgloss.Style {
 	}
 }
 
-// RenderCompressionsBadge returns the "🗜️ N" badge or "" when n ≤ 0.
-// Color escalates per compressionBadgeStyle.
+// RenderCompressionsBadge returns the "compacted ×N" badge or "" when n ≤ 0.
+// Plain text (no emoji) keeps the status line aligned across terminals; color
+// escalates with the count per compressionBadgeStyle.
 func RenderCompressionsBadge(n int) string {
 	if n <= 0 {
 		return ""
 	}
-	return compressionBadgeStyle(n).Render(fmt.Sprintf("🗜️ %d", n))
+	return compressionBadgeStyle(n).Render(fmt.Sprintf("compacted ×%d", n))
 }
 
-// segmentSep is the internal join separator. Uses the ASCII Unit
-// Separator (\x1f) so it can never collide with rendered segment text
-// (lipgloss emits ANSI escapes with \x1b; user strings don't contain
-// control characters). Callers split on it to swap in their own visual
-// separator.
-const segmentSep = "\x1f"
-
-// statusSegment is a unit the allocator can keep or drop atomically.
-// Lower priority drops first when width is constrained (PRD §8.3).
+// statusSegment is one keep-or-drop unit of the status line's right cluster.
+// Under width pressure whole segments are dropped, never truncated mid-text.
 type statusSegment struct {
-	render   func() string // lazy — only invoked if the segment survives
-	width    int           // precomputed visible width (excluding separators)
-	priority int           // 1 = highest (drops last); larger = drops first
+	text     string // already-rendered (styled) text
+	priority int    // 1 = most important (dropped last); larger drops first
 }
 
-// AllocateStatusSegments walks segments in priority order, keeping each
-// segment that fits in the remaining budget plus its leading separator.
-// Segments are never truncated mid-render. Returns survivors joined with
-// segmentSep, in the original caller-supplied order. Callers split on
-// segmentSep to rejoin with their preferred visual separator.
-func AllocateStatusSegments(segments []statusSegment, availableWidth int) string {
-	if availableWidth <= 0 || len(segments) == 0 {
-		return ""
-	}
-	// Sort by priority ascending (1 first). Stable so equal-priority
-	// segments keep their original order.
-	order := make([]int, len(segments))
-	for i := range order {
-		order[i] = i
-	}
-	// Insertion sort — n is tiny (≤6 segments in practice).
-	for i := 1; i < len(order); i++ {
-		j := i
-		for j > 0 && segments[order[j-1]].priority > segments[order[j]].priority {
-			order[j-1], order[j] = order[j], order[j-1]
-			j--
-		}
+// fitStatusSegments returns the segments that fit within maxWidth when joined
+// by a separator of sepWidth visible columns, preserving their caller-supplied
+// order. Under width pressure it drops the highest-priority-number segments
+// first; survivors keep the original order so the layout still reads naturally.
+func fitStatusSegments(segments []statusSegment, maxWidth, sepWidth int) []string {
+	if maxWidth <= 0 || len(segments) == 0 {
+		return nil
 	}
 
-	type kept struct {
-		idx    int
-		render string
+	// Decide keep/drop in priority order (most important first) without
+	// disturbing the original order the survivors are emitted in.
+	byPriority := make([]int, len(segments))
+	for i := range byPriority {
+		byPriority[i] = i
 	}
-	var survivors []kept
-	budget := availableWidth
-	for _, idx := range order {
-		s := segments[idx]
-		need := s.width
-		if len(survivors) > 0 {
-			need += len(segmentSep)
+	sort.SliceStable(byPriority, func(a, b int) bool {
+		return segments[byPriority[a]].priority < segments[byPriority[b]].priority
+	})
+
+	keep := make([]bool, len(segments))
+	remaining := maxWidth
+	kept := 0
+	for _, i := range byPriority {
+		need := lipgloss.Width(segments[i].text)
+		if kept > 0 {
+			need += sepWidth // every segment after the first costs a separator
 		}
-		if need > budget {
+		if need > remaining {
 			continue
 		}
-		survivors = append(survivors, kept{idx: idx, render: s.render()})
-		budget -= need
+		keep[i] = true
+		remaining -= need
+		kept++
 	}
 
-	// Re-emit in the original (caller-supplied) order so the layout reads
-	// naturally regardless of priority.
-	byIdx := make(map[int]int, len(survivors))
-	for i, k := range survivors {
-		byIdx[k.idx] = i
-	}
-	out := make([]string, 0, len(survivors))
-	for origIdx := range segments {
-		if i, ok := byIdx[origIdx]; ok {
-			out = append(out, survivors[i].render)
+	out := make([]string, 0, kept)
+	for i, seg := range segments {
+		if keep[i] {
+			out = append(out, seg.text)
 		}
 	}
-	return strings.Join(out, segmentSep)
+	return out
 }
