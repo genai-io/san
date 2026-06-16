@@ -2,7 +2,7 @@
 
 ## 状态
 
-提案中 — 2026-06-11.
+提案中 — 2026-06-11. 更新于 2026-06-16.
 
 ## 背景
 
@@ -26,14 +26,13 @@
 ```
 genai-io（Org，已存在）
 ├── san              ← San 源码仓库（已存在，被管理的目标项目）
-└── san-team         ← 新建的仓库（San 开发团队 Persona）
+└── san-team         ← 新建的仓库（纯内容，无 Go 代码）
     ├── leader/
     │   ├── system/
     │   │   ├── identity.md
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
-    │   │   └── ...
     │   └── settings.json
     ├── dev/
     │   ├── system/
@@ -41,7 +40,6 @@ genai-io（Org，已存在）
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
-    │   │   └── ...
     │   └── settings.json
     ├── qe/
     │   ├── system/
@@ -49,21 +47,21 @@ genai-io（Org，已存在）
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
-    │   │   └── ...
     │   └── settings.json
-    └── release/
-        ├── system/
-        │   ├── identity.md
-        │   ├── behavior.md
-        │   └── rules.md
-        ├── skills/
-        │   └── ...
-        └── settings.json
+    ├── release/
+    │   ├── system/
+    │   │   ├── identity.md
+    │   │   ├── behavior.md
+    │   │   └── rules.md
+    │   ├── skills/
+    │   └── settings.json
+    ├── state/             ← queue.jsonl 存放位置
+    └── run.sh             ← 轮询循环（12 行 shell 脚本）
 ```
 
-- **`san-team`**：新建仓库，包含 San 项目的开发团队。
-  Persona 直接放在仓库根目录下。如果其他项目需要类似的自主管理，
-  可以创建独立的团队仓库（如 `devops-team`）。
+- **`san-team`**：纯内容仓库 —— 无 Go 代码、无二进制。只包含
+  persona markdown 文件、共享状态目录和轮询 shell 脚本。
+  所有 Go 逻辑都在 San 中，作为可复用的独立功能。
 - **团队（Team）**：`san-team` 仓库中的一组 Persona，
   为特定目标协同工作 —— 管理 San 项目的 issue、feature、bug 和发布。
 - **Persona 目录**：每个 Persona 遵循 persona 规范的三层结构：
@@ -73,127 +71,215 @@ genai-io（Org，已存在）
 
 ## 运行模型
 
-每个 Persona 以**独立的 San 实例**运行：
+每个 Persona 以**独立的 San 实例**运行。根据角色不同，启动方式有区别：
+
+### Leader —— 交互式 TUI
+
+Leader 是管理员的对话入口，以标准交互式 San 会话运行：
 
 ```bash
-# 启动 Leader Persona（管理员交互入口）
-san start --persona leader --team san-team
-
-# 启动 Dev Persona（等待编码任务）
-san start --persona dev --team san-team
-
-# 启动 QE Persona（等待验证任务）
-san start --persona qe --team san-team
-
-# 启动 Release Persona（等待发布任务）
-san start --persona release --team san-team
+san --persona leader
 ```
 
-`--persona` 参数告诉 San 在启动时加载哪个 Persona 目录的配置
-（system/ + skills/ + settings.json），不需要在运行中通过 `/persona` 命令切换。
+使用 San 现有的 `--persona` 参数，从 `~/.san/personas/leader/`
+（指向 `san-team/leader/` 的软链接）加载 persona 配置。
 
-多个 Persona 实例可以同时运行在不同的终端、容器或机器上。
-它们通过共享工作队列（`san-team/state/queue.jsonl`）协调工作。
+### Dev, QE, Release —— 通过 run.sh 无头运行
+
+这些 persona 通过 `run.sh` 启动，以 `san --persona <name> -p` 方式无头运行。
+不需要交互式终端 —— 它们轮询队列、领取任务、执行任务、更新队列：
+
+```bash
+# 终端 2：启动 Dev 轮询循环
+./run.sh dev /path/to/san
+
+# 终端 3：启动 QE 轮询循环
+./run.sh qe /path/to/san
+
+# 终端 4：启动 Release 轮询循环
+./run.sh release /path/to/san
+```
+
+`run.sh` 是一个简单的 shell 脚本（见下文）。每个 persona 的系统提示词
+（identity + behavior + rules）由 `san --persona <name> -p` 从
+`~/.san/personas/<name>/` 加载。
+
+### 安装：链接 Persona
+
+启动前，将 san-team 中的 persona 链接到 San 的 persona 目录：
+
+```bash
+ln -s /path/to/san-team/leader  ~/.san/personas/leader
+ln -s /path/to/san-team/dev     ~/.san/personas/dev
+ln -s /path/to/san-team/qe      ~/.san/personas/qe
+ln -s /path/to/san-team/release ~/.san/personas/release
+```
+
+所有 persona —— Leader、Dev、QE、Release —— 统一使用 `~/.san/personas/` 机制。
+不需要额外的 persona 加载代码。
+
+## run.sh —— 粘合层
+
+`run.sh` 是 san-team 中唯一的"代码"。它是 `san queue` 和 `san -p` 之间的桥梁：
+
+```bash
+#!/bin/bash
+set -euo pipefail
+TEAM_DIR="$(cd "$(dirname "$0")" && pwd)"
+PERSONA="${1:?usage: $0 <leader|dev|qe|release>}"
+CWD="${2:-$(pwd)}"
+INTERVAL="${3:-30}"
+
+echo "[san-team:$PERSONA] 每 ${INTERVAL}s 轮询一次, cwd=$CWD"
+
+while true; do
+  # 1. 原子认领下一个 pending 任务
+  TASK=$(san queue claim --dir "$TEAM_DIR/state" --role "$PERSONA" --persona "$PERSONA" 2>/dev/null || true)
+  if [ -n "$TASK" ]; then
+    ID=$(echo "$TASK" | jq -r '.id')
+    TITLE=$(echo "$TASK" | jq -r '.title')
+    DESC=$(echo "$TASK" | jq -r '.description')
+    echo "[san-team:$PERSONA] 认领 $ID: $TITLE"
+
+    # 2. 构建任务提示词，无头运行 Agent
+    PROMPT="Task: $TITLE
+
+    $DESC
+
+    完成后，总结你的工作内容和 PR 链接。"
+
+    if san --persona "$PERSONA" -p "$PROMPT"; then
+      san queue complete --dir "$TEAM_DIR/state" --id "$ID" --persona "$PERSONA"
+      echo "[san-team:$PERSONA] 完成 $ID"
+    else
+      san queue release --dir "$TEAM_DIR/state" --id "$ID" --persona "$PERSONA"
+      echo "[san-team:$PERSONA] 释放 $ID（将重试）"
+    fi
+  fi
+  sleep "$INTERVAL"
+done
+```
+
+关键设计要点：
+- **队列操作是 shell 的职责**：`run.sh` 调用 `san queue claim`、
+  `san queue complete`、`san queue release`。LLM Agent 完全不知道队列的存在。
+- **Persona 加载是 San 的职责**：`san --persona <name> -p` 从
+  `~/.san/personas/` 加载 persona 系统提示词。Shell 不需要拼装 persona 文件。
+- **LLM 推理是 San 的职责**：`san -p` 用任务描述作为用户消息来执行 Agent。
+- **Shell 只是胶水**：认领 → 运行 → 完成/释放。12 行代码。
 
 ## 工作流程
 
-管理员只跟 Leader Persona 对话。Leader 把需求拆成 Task 写入共享队列，
-其他 Persona 从队列领取任务，完成后更新队列状态。
+管理员只跟 Leader Persona 对话。Leader 把需求拆成 Task，
+通过 `san queue add` 写入共享队列。其他 Persona 通过
+`run.sh` 轮询队列，认领匹配的任务，完成后更新队列状态。
 
 ```
 管理员（人）
     │
-    │  "实现用户登录功能"  or  "修复所有 P0 Bug"
+    │  "实现用户登录功能"
     ▼
-┌──────────────────────────────────────────────────────┐
-│ Leader Persona（san start --persona leader --team san-team）│
-│                                                      │
-│ 1. 理解需求                                          │
-│ 2. 画架构图、状态图（向管理员确认）                  │
-│ 3. 拆解为 Task，写入共享队列                         │
-│ 4. 监控队列，收集完成结果，向管理员汇报              │
-└──────────────────┬───────────────────────────────────┘
-                   │  共享工作队列 (state/queue.jsonl)
-          ┌────────┼────────┐
-          ▼        ▼        ▼
-    ┌──────────┐ ┌──────┐ ┌─────────┐
-    │Dev│ │  QE  │ │ Release │
-    │ san start│ │san start│ │san start│
-    │ --persona│ │--persona│ │--persona│
-    │dev│ │  qe    │ │ release │
-    └──────────┘ └──────┘ └─────────┘
+┌────────────────────────────────────────────┐
+│ Leader（san --persona leader）             │
+│                                            │
+│ 1. 理解需求                                │
+│ 2. 画架构图、状态图（向管理员确认）        │
+│ 3. 拆解为 Task                             │
+│ 4. 写入队列：san queue add ...             │
+│ 5. 监控：san queue list ...                │
+└────────────────┬───────────────────────────┘
+                 │  共享工作队列 (state/queue.jsonl)
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+  ┌──────────┐ ┌──────┐ ┌─────────┐
+  │ run.sh   │ │run.sh│ │ run.sh  │
+  │   dev    │ │  qe  │ │ release │
+  │          │ │      │ │         │
+  │ claim→   │ │claim→│ │claim→   │
+  │ san -p   │ │agent │ │ san -p  │
+  │ --persona│ │run   │ │--persona│
+  │   dev    │ │--qe  │ │ release │
+  │ →complete│ │→verify│ │→complete│
+  └──────────┘ └──────┘ └─────────┘
 ```
 
 ### Leader Persona —— 唯一入口
 
-Leader 通过 `san start --persona leader --team san-team` 启动，
+Leader 通过 `san --persona leader` 启动，
 是管理员唯一的交互界面。管理员告诉 Leader 要做什么，
 Leader 负责：
 
 1. **理解需求**：新功能？Bug 修复？重构？
 2. **分析 San 项目**：读取 San 源码仓库中的设计文档和现有代码
 3. **可视化**：画 mermaid 架构图、状态图，向管理员确认理解
-4. **拆解**：把功能拆成多个 Task，写入共享工作队列
-5. **监控**：跟踪队列中 Task 的状态变化
+4. **拆解**：把功能拆成多个 Task，通过 `san queue add --dir state/ --role dev --title "..." --description "..."` 写入队列
+5. **监控**：通过 `san queue list --dir state/` 跟踪队列中的 Task 状态
 6. **汇报**：收集完成结果，向管理员汇总
 
 Leader 不自己写代码。Leader 把 Task 写入队列后，
-由对应 Persona 的 San 实例自动领取执行。
+由对应 Persona 的 `run.sh` 循环自动领取执行。
 
 ```
 Leader 派发编码任务示例：
 
 Leader:
   1. 分析需求后，确定 Task-3 是编码任务
-  2. 将 Task-3 写入队列（标记 role: dev）
-  3. Dev San 实例轮询队列，发现 Task-3 匹配自己的角色
-  4. Dev 认领 Task-3，开始实现
-  5. 完成后更新队列状态为 done，附上 PR 链接
-  6. Leader 轮询发现 Task-3 已完成，继续下一步
+  2. 运行：san queue add --dir state/ --role dev --title "实现 JWT..."
+  3. Dev 的 run.sh 轮询队列，发现 Task-3 匹配自己的角色
+  4. Dev 通过 san queue claim 认领，运行 san --persona dev -p ".."
+  5. Agent 完成，run.sh 调用 san queue complete 附上 PR 链接
+  6. Leader 通过 san queue list 看到 Task-3 已完成
 ```
 
 ### Dev Persona —— 编码实现
 
-通过 `san start --persona dev --team san-team` 启动，
-持续轮询队列中的编码任务：
+由 `run.sh dev` 启动，持续轮询队列中的编码任务：
 
-1. 从队列认领 role 为 dev 的 Task
-2. 读取 San 项目的设计文档和现有代码
-3. 遵循分层架构规范写代码
-4. 写测试
-5. 跑 `make test` + `make lint` 通过
-6. 提交代码、创建 PR
-7. 更新队列状态为 done，附上 PR 链接
+1. `run.sh` 通过 `san queue claim` 认领 role 为 dev 的 Task
+2. 从任务描述构建提示词
+3. 运行 `san --persona dev -p "..."
+4. Agent 读取 San 项目的设计文档和现有代码
+5. Agent 遵循分层架构规范写代码
+6. Agent 写单元测试（同包内）
+7. Agent 跑 `make test` + `make lint` 通过
+8. Agent 提交代码、创建 PR
+9. 成功：`run.sh` 调用 `san queue complete --id $ID --pr <url>`
+10. 失败：`run.sh` 调用 `san queue release --id $ID`
+
+Dev Agent 完全不接触队列 —— `run.sh` 根据 Agent 的退出码处理所有队列操作。
 
 ### QE Persona —— 验证测试
 
-通过 `san start --persona qe --team san-team` 启动，
-持续轮询队列中的验证任务：
+由 `run.sh qe` 启动，持续轮询队列中的验证任务：
 
-1. 从队列认领 role 为 qe 的 Task（对应 Dev 已完成）
-2. 检出 PR 分支
-3. 跑全量测试 + lint + layer check
-4. 用 `verify` 技能确认功能正确
-5. 发 PR Review
-6. 更新队列状态：通过（verified）或失败（附原因）
+1. `run.sh` 认领 role 为 qe 的 Task
+2. 运行 `san --persona qe -p "..."
+3. Agent 检出 PR 分支
+4. Agent 跑全量测试 + lint + layer check
+5. Agent 在 `test-integration/` 中添加集成测试，提交到同一 PR
+6. Agent 发 PR Review
+7. 通过：`run.sh` 调用 `san queue verify --id $ID --result "passed"`
+8. 失败：`run.sh` 调用 `san queue release --id $ID --reason "..."`
 
-也可以在开发前介入：Leader 写好架构图后，先创建验证设计的 Task 给 QE。
+QE 也可以在开发前介入：Leader 写好架构图后，先创建验证设计的 Task 给 QE。
 
 ### Release Persona —— 发布上线
 
-通过 `san start --persona release --team san-team` 启动：
+由 `run.sh release` 启动，持续轮询队列中的发布任务：
 
-1. 从队列认领 role 为 release 的 Task（全部 QE 通过后）
-2. 生成 CHANGELOG
-3. 更新版本号
-4. 打 Git Tag
-5. 生成 Release Notes
-6. 更新队列状态为 done
+1. `run.sh` 认领 role 为 release 的 Task
+2. 运行 `san --persona release -p "..."
+3. Agent 生成 CHANGELOG
+4. Agent 更新版本号
+5. Agent 打 Git Tag
+6. Agent 生成 Release Notes
+7. 成功：`run.sh` 调用 `san queue complete --id $ID`
 
 ### 共享工作队列
 
 队列是 Persona 之间的唯一通信机制，文件位于
 `san-team/state/queue.jsonl`（JSONL 追加日志）。
+所有操作通过 `san queue` 子命令完成（详见 [ADR-0003](0003-shared-work-queue.md)）。
 
 ```
 type WorkItem struct {
@@ -207,15 +293,264 @@ type WorkItem struct {
     Result      string       // 结果说明（QE/Release 填充）
     CreatedAt   time.Time
     UpdatedAt   time.Time
+    ClaimedAt   time.Time
+    RetryCount  int
+    MaxRetries  int
 }
 ```
 
 状态流转：
 
 ```
-pending ──→ claimed ──→ done ──→ verified
-                │                  │
-                └──→ (timeout) ──→ pending（超时未完成，释放回队列）
+pending ──claim()──→ claimed ──complete()──→ done ──verify()──→ verified
+   ↑                     │                       │
+   └──release()─── ← (超时)              ← reject() ──┘
+                         │
+                         └──fail()──→ failed
+```
+
+## 完整安装运行示例
+
+从零到团队运行的完整步骤。
+
+### 前提条件
+
+```bash
+# San CLI 已编译且在 PATH 中
+cd /path/to/san
+make build
+export PATH="$PATH:$PWD/bin"
+
+# san-team 仓库克隆到 san 同级目录
+cd /path/to
+git clone git@github.com:genai-io/san-team.git
+```
+
+### 第一步：链接 Persona
+
+```bash
+ln -s /path/to/san-team/leader  ~/.san/personas/leader
+ln -s /path/to/san-team/dev     ~/.san/personas/dev
+ln -s /path/to/san-team/qe      ~/.san/personas/qe
+ln -s /path/to/san-team/release ~/.san/personas/release
+```
+
+### 第二步：启动 Leader（交互式）
+
+```bash
+# 终端 1：Leader 会话
+cd /path/to/san
+san --persona leader
+```
+
+管理员在这里与 Leader 交互。例如：
+
+```
+管理员：实现用户认证功能，支持 JWT 登录
+
+Leader：
+  读取 docs/design/ → 分析代码库 → 画时序图
+  与管理员确认 → 拆解为 Task：
+
+  $ san queue add --dir /path/to/san-team/state --role dev \
+      --title "定义 User 模型和 UserStore 接口" \
+      --description "在 internal/core/user.go 中创建 User struct..."
+
+  $ san queue add --dir /path/to/san-team/state --role dev \
+      --title "基于 SQLite 实现 UserStore" \
+      --description "在 internal/feature/userstore/ 中实现 UserStore 接口..."
+
+  $ san queue add --dir /path/to/san-team/state --role dev \
+      --title "实现 JWT token 生成与验证" \
+      --description "创建 internal/core/jwt/ 包..."
+
+  $ san queue add --dir /path/to/san-team/state --role dev \
+      --title "实现 POST /auth/login handler" \
+      --description "创建登录 API handler..."
+
+  $ san queue add --dir /path/to/san-team/state --role qe \
+      --title "验证认证模块（Task 1-4）" \
+      --description "检出各 PR，运行测试，添加集成测试..."
+
+  $ san queue add --dir /path/to/san-team/state --role release \
+      --title "发布 v1.3.0" \
+      --description "生成 CHANGELOG，更新版本号，打 tag v1.3.0..."
+```
+
+### 第三步：启动工作 Persona（无头模式）
+
+```bash
+# 终端 2：Dev 轮询循环
+cd /path/to/san-team
+./run.sh dev /path/to/san 30
+
+# 终端 3：QE 轮询循环
+cd /path/to/san-team
+./run.sh qe /path/to/san 30
+
+# 终端 4：Release 轮询循环
+cd /path/to/san-team
+./run.sh release /path/to/san 60
+```
+
+### 第四步：查看进度
+
+```bash
+# 任意终端：查看队列状态
+san queue list --dir /path/to/san-team/state
+```
+
+输出示例：
+
+```
+ID        Role     标题                              状态      负责人    PR
+a1b2c3d4  dev      定义 User 模型和 UserStore 接口    done      dev       #123
+b2c3d4e5  dev      实现 UserStore（SQLite）           done      dev       #124
+c3d4e5f6  dev      实现 JWT token 生成                claimed   dev       -
+d4e5f6a7  dev      实现 POST /auth/login              pending   -         -
+a7b8c9d0  qe       验证认证模块（Task 1-4）           pending   -         -
+b8c9d0e1  release  发布 v1.3.0                        pending   -         -
+
+Total: 6 | pending: 3 | claimed: 1 | done: 2 | verified: 0 | failed: 0
+```
+
+### run.sh 内部运行过程
+
+当 Dev 的 `run.sh` 轮询发现一个 pending 任务时：
+
+```
+1. san queue claim --dir state/ --role dev --persona dev
+   → 返回 JSON: {"id":"d4e5f6a7...", "title":"实现 POST /auth/login", ...}
+   → 任务状态变为 "claimed"
+
+2. san --persona dev -p ".." --prompt "Task: 实现 POST /auth/login
+   创建登录 API handler..." --cwd /path/to/san
+   → Agent 从 ~/.san/personas/dev/ 加载 dev persona
+   → Agent 实现 handler + 单元测试
+   → Agent 创建 PR #126
+   → Agent 退出码 0（成功）
+
+3. san queue complete --dir state/ --id d4e5f6a7 --persona dev \
+     --pr "https://github.com/genai-io/san/pull/126"
+   → 任务状态变为 "done"
+
+4. sleep 30，重复
+```
+
+如果 Agent 执行失败：
+
+```
+1. san queue claim ...  （同上）
+2. san --persona dev -p "..."
+   → Agent 遇到错误，退出码 1（失败）
+3. san queue release --dir state/ --id d4e5f6a7 --persona dev
+   → 任务状态回退 "pending"，retryCount++
+   → 下次轮询会再次认领（最多重试 maxRetries 次）
+```
+
+## 完整工作流示例
+
+管理员输入：**"实现用户认证功能，支持 JWT 登录"**
+
+### 1. Leader 理解需求 + 画架构图
+
+Leader 读取 San 项目的 `docs/design/`，分析已有代码，
+生成 mermaid 时序图：
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthHandler
+    participant AuthService
+    participant UserStore
+    participant JWT
+
+    Client->>AuthHandler: POST /auth/login
+    AuthHandler->>AuthService: Login(username, password)
+    AuthService->>UserStore: FindByUsername(username)
+    UserStore-->>AuthService: User
+    AuthService->>AuthService: Verify password
+    AuthService->>JWT: GenerateToken(user)
+    JWT-->>AuthService: token
+    AuthService-->>AuthHandler: token
+    AuthHandler-->>Client: 200 { token }
+```
+
+Leader 展示图给管理员："这是我理解的功能流程，对吗？"
+
+### 2. 拆解 Task 并写入队列
+
+管理员确认后，Leader 将 Task 写入共享队列：
+
+```
+$ san queue add --dir state/ --role dev --title "定义 User 模型和 UserStore 接口" \
+    --description "在 internal/core/user.go 中创建 User struct（ID, Username, PasswordHash, CreatedAt）..."
+
+$ san queue add --dir state/ --role dev --title "基于 SQLite 实现 UserStore" \
+    --description "在 internal/feature/userstore/ 中实现 UserStore 接口..."
+
+$ san queue add --dir state/ --role dev --title "实现 JWT token 生成与验证" \
+    --description "创建 internal/core/jwt/ 包..."
+
+$ san queue add --dir state/ --role dev --title "实现登录 API Handler" \
+    --description "在 internal/app/authhandler/ 中创建登录 API handler..."
+
+$ san queue add --dir state/ --role qe --title "验证全部认证功能" \
+    --description "检出 PR，运行测试，添加集成测试..."
+
+$ san queue add --dir state/ --role release --title "发布 v1.3.0" \
+    --description "生成 CHANGELOG，更新版本号，打 tag v1.3.0..."
+```
+
+### 3. 各 Persona 自动领取执行
+
+```
+Dev 的 run.sh 轮询队列：
+  认领 Task 1 → san --persona dev -p ".." → 实现 → PR #123 → complete
+  认领 Task 2 → san --persona dev -p ".." → 实现 → PR #124 → complete
+  认领 Task 3 → san --persona dev -p ".." → 实现 → PR #125 → complete
+  认领 Task 4 → san --persona dev -p ".." → 实现 → PR #126 → complete
+
+QE 的 run.sh 轮询队列：
+  发现 Task 1-4 均为 done → 认领 Task 5
+  san --persona qe -p ".." → 检出 PR → 运行测试 → 添加集成测试
+  → 通过 → san queue verify
+
+Leader 监控到全部 verified → 通知管理员 approve PR
+管理员审批通过 → Leader 运行：
+  $ san queue add --dir state/ --role release --title "发布 v1.3.0" ...
+
+Release 的 run.sh 轮询队列：
+  认领 Task 6 → san --persona release -p ".." → changelog → tag → complete
+
+Leader → 管理员: "认证功能已全部完成并发布，PR: #123-#126"
+```
+
+## Bug 修复流程
+
+管理员对 Leader 说：**"扫描并修复所有 P0 Bug"**
+
+```
+Leader:
+  1. 通过 gh 拉取 San 项目所有 P0 Bug issues
+  2. 逐个分析，写入队列：
+     $ san queue add --dir state/ --role dev --title "修复 #100 nil pointer in auth.go" ...
+     $ san queue add --dir state/ --role dev --title "修复 #102 timeout in db query" ...
+
+Dev 的 run.sh：
+  认领 "#100" → san --persona dev -p ".." → 修复 → PR → complete
+  认领 "#102" → san --persona dev -p ".." → 修复 → PR → complete
+
+QE 的 run.sh：
+  认领 "#100 验证" → san --persona qe -p ".." → 验证 → 通过
+  认领 "#102 验证" → san --persona qe -p ".." → 验证 → 通过
+
+Leader 通知管理员 approve → 管理员审批通过
+
+Release 的 run.sh：
+  认领 "hotfix 发布" → changelog → tag → complete
+
+Leader → 管理员: "2 个 P0 Bug 已全部修复并发布"
 ```
 
 ## Persona 配置示例
@@ -226,7 +561,7 @@ pending ──→ claimed ──→ done ──→ verified
 
 ```markdown
 你是 San 项目的开发 Agent。
-你的职责是从共享队列领取编码任务并完成实现。
+你的职责是实现分配给你的编码任务。
 你擅长 Go 开发，熟悉 San 的五层包架构。
 ```
 
@@ -235,16 +570,16 @@ pending ──→ claimed ──→ done ──→ verified
 ```markdown
 ## 工作方式
 
-1. 持续轮询共享队列，认领匹配自己角色的 Task
-2. 先读取相关的设计文档和现有代码，理解上下文后再动手
-3. 遵循 internal/ 五层架构的依赖方向：cmd → app → feature → core → infrastructure
-4. 每个变更必须包含测试
-5. 完成后运行 make test 和 make lint，确保通过后再提交
+1. 先读取相关的设计文档和现有代码，理解上下文后再动手
+2. 遵循 internal/ 五层架构的依赖方向：cmd → app → feature → core → infrastructure
+3. 每个变更必须在同包内包含单元测试
+4. 完成后运行 make test 和 make lint，确保通过后再提交
+5. 用清晰的信息提交代码、创建 PR，报告 PR 链接
 
 ## 沟通风格
 
-- 遇到不确定的设计决策，更新 Task 状态，附上问题等 Leader 回复
-- 完成后在 Task 中附上简洁明确的说明：做了什么、改了哪些文件、PR 链接
+- 遇到不确定的设计决策，在结果中记录问题供 Leader 参考
+- 完成后在结果中附上简洁明确的说明：做了什么、改了哪些文件、PR 链接
 - 不要做超出 Task 范围的事
 ```
 
@@ -333,99 +668,6 @@ pending ──→ claimed ──→ done ──→ verified
 }
 ```
 
-## 完整工作流示例
-
-管理员输入：**"实现用户认证功能，支持 JWT 登录"**
-
-### 1. Leader 理解需求 + 画架构图
-
-Leader 读取 San 项目的 `docs/design/`，分析已有代码，
-生成 mermaid 时序图：
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant AuthHandler
-    participant AuthService
-    participant UserStore
-    participant JWT
-
-    Client->>AuthHandler: POST /auth/login
-    AuthHandler->>AuthService: Login(username, password)
-    AuthService->>UserStore: FindByUsername(username)
-    UserStore-->>AuthService: User
-    AuthService->>AuthService: Verify password
-    AuthService->>JWT: GenerateToken(user)
-    JWT-->>AuthService: token
-    AuthService-->>AuthHandler: token
-    AuthHandler-->>Client: 200 { token }
-```
-
-Leader 展示图给管理员："这是我理解的功能流程，对吗？"
-
-### 2. 拆解 Task 并写入队列
-
-管理员确认后，Leader 将 Task 写入共享队列：
-
-```
-队列写入：
-  Task 1: { role: dev, title: "定义 User 模型和 UserStore 接口" }
-  Task 2: { role: dev, title: "实现 UserStore" }
-  Task 3: { role: dev, title: "实现 JWT token 生成与验证" }
-  Task 4: { role: dev, title: "实现登录 API Handler" }
-  Task 5: { role: qe, title: "验证全部认证功能" }
-  Task 6: { role: release, title: "发布 v1.2.0" }
-```
-
-### 3. 各 Persona 自动领取执行
-
-```
-Dev San 实例轮询队列：
-  认领 Task 1 → 实现 → 标记 done
-  认领 Task 2 → 实现 → 标记 done
-  认领 Task 3 → 实现 → 标记 done
-  认领 Task 4 → 实现 → 标记 done
-
-QE San 实例轮询队列：
-  发现 Task 1-4 均为 done → 认领 Task 5
-  检出 PR 分支 → 跑测试 → 通过 → 标记 verified
-
-Leader 监控到全部 verified → 通知管理员 approve PR
-管理员审批通过后 → Leader 写入 Task 6
-
-Release San 实例轮询队列：
-  认领 Task 6 → 生成 CHANGELOG → 打 tag → 标记 done
-
-Leader → 管理员: "认证功能已全部完成并发布，PR: #1234"
-```
-
-## Bug 修复流程
-
-管理员对 Leader 说：**"扫描并修复所有 P0 Bug"**
-
-```
-Leader:
-  1. 通过 GhCLI 拉取 San 项目所有 P0 Bug issues
-  2. 逐个分析，写入队列：
-     - { role: dev, title: "修复 #100 nil pointer in auth.go" }
-     - { role: dev, title: "修复 #102 timeout in db query" }
-
-Dev San 实例：
-  认领 "#100" → 分析根因 → 修复 → PR → 标记 done
-  认领 "#102" → 分析根因 → 修复 → PR → 标记 done
-
-QE San 实例：
-  认领 "#100 验证" → 测试 → Review PR → 通过 → 标记 verified
-  认领 "#102 验证" → 测试 → Review PR → 通过 → 标记 verified
-
-Leader 通知管理员 approve → 管理员审批通过
-
-Release San 实例：
-  认领 "hotfix 发布" → 生成 CHANGELOG → 打 tag → 标记 done
-
-Leader → 管理员: "2 个 P0 Bug 已全部修复并发布"
-```
-
 ## 关键设计决策
 
 ### 1. Persona 目录
@@ -441,31 +683,42 @@ Persona 定义放在独立仓库 `san-team`，与 San 源码仓库分离：
 - 可以对 san-team 仓库设置不同的访问权限
 - 团队 Persona 可以管理多个目标仓库（未来扩展）
 
-### 3. Leader 是唯一入口
+### 3. san-team 是纯内容仓库 —— 无 Go 代码
+
+san-team 只包含 markdown 文件、`state/` 和 shell 脚本。所有 Go 逻辑都在 San 中，
+作为可复用的独立功能：
+- `san queue` —— 原子工作队列操作（详见 [ADR-0003](0003-shared-work-queue.md)）
+- `san --persona <name> -p` —— 带 persona 系统提示词的无头 Agent
+
+这种分离意味着 san-team 没有构建步骤、没有依赖，任何人都可以修改 markdown 和 shell 脚本。
+
+### 4. Leader 是唯一入口
 
 管理员不直接跟 Dev/QE/Release 交互，所有指令给 Leader：
 - 管理员心智模型简单：只有一个对话对象
 - Leader 有全局视角，决定优先级和冲突处理
 - 其他 Persona 只关注队列中的任务，无需理解全局
 
-### 4. 每个 Persona 是独立的 San 实例
+### 5. 每个 Persona 是独立的 San 实例
 
-不是通过 Agent 工具嵌套调用子 Agent，而是每个 Persona 启动一个独立的
-San 进程（`san start --persona <name> --team <team>`）：
+每个 Persona 启动一个独立的 San 进程：
+- **Leader**：`san --persona leader` — 交互式 TUI，与管理员对话
+- **Dev/QE/Release**：`san --persona <name> -p` — 无头模式，由 `run.sh` 启动
+
+优点：
 - 进程级隔离：每个 Persona 有独立的上下文、工具集、权限
 - 可以部署在不同机器/容器上，独立扩缩
 - 通过共享工作队列（文件）协调，不需要进程间 RPC
-- 与 persona 的 `/persona` 切换机制互补：
-  `/persona` 用于交互式场景中热切换角色，`--persona` 用于启动时就固定角色
+- 所有 persona 加载统一在 `~/.san/personas/` 下
 
-### 5. 架构图是沟通语言
+### 6. 架构图是沟通语言
 
 Leader 在动手之前先画 mermaid 图：
 - 管理员确认理解（避免做错方向）
 - Dev Persona 有清晰的实现参考（图随 Task 描述一起写入队列）
 - QE Persona 有验证依据（按图检查完整性）
 
-### 6. Persona 自我进化
+### 7. Persona 自我进化
 
 每个 Persona 在项目中持续学习和自我改进。进化过程通过更新
 `san-team` 仓库中的 Persona 配置来固化。
@@ -502,11 +755,13 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 
 | 新概念 | 对应现有 / 规划中的机制 |
 |---|---|
-| Persona 目录 | Persona 目录（`persona-system.md` 规范） |
-| `san start --persona` | 启动时指定 persona，避免启动后热切换 |
-| 共享工作队列 | 新增：文件系统 JSONL 队列（`state/queue.jsonl`） |
-| Persona 通信 | 通过队列轮询，无需进程间 RPC |
-| Persona 权限 | settings.json 中 permissions（deny 只增不减） |
+| Persona 目录 | `~/.san/personas/`（现有 persona 系统） |
+| `san --persona leader` | 现有 `--persona` 参数（无变化） |
+| `san --persona <name> -p` | 现有：`-p` 打印模式配合 `--persona`（PR #231） |
+| 共享工作队列 | 新增：`san queue` 子命令（详见 ADR-0003） |
+| run.sh 轮询循环 | san-team 中 12 行 shell 脚本 |
+| Persona 通信 | 通过 `san queue` 队列轮询，无需进程间 RPC |
+| Persona 权限 | settings.json 中 permissions（现有机制） |
 
 ## 实现计划
 
@@ -515,37 +770,38 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 - 在 `genai-io` Org 下创建 `san-team` 仓库
 - 按 persona 规范编写四套 Persona（leader/dev/qe/release）
 - 每套包含 `system/{identity,behavior,rules}.md` + `skills/` + `settings.json`
+- 创建 `run.sh` 轮询脚本
+- 创建 `state/` 目录（queue.jsonl 在运行时创建）
 
-### 阶段二：`san start --persona` 功能
+### 阶段二：添加 `san queue` 子命令
 
-- San CLI 新增 `--persona` 和 `--team` 参数
-- 启动时加载指定团队下的 Persona 配置
-- 加载 system/ 文件作为系统提示词
-- 加载 skills/ 作为活跃技能
-- 应用 settings.json 中的权限和模型配置
+- 实现 `internal/queue/` 包（item.go, queue.go, claim.go）— ~200 行
+- 接入 `cmd/san/queue.go` cobra 子命令
+- 命令：list, claim, add, complete, verify, release, fail
+- 详见 [ADR-0003](0003-shared-work-queue.md)
 
-### 阶段三：共享工作队列
+### 阶段三：`--persona` + `-p` 集成（已完成，PR #231）
 
-- 实现 JSONL 格式的持久化队列（`state/queue.jsonl`）
-- 队列写入（Leader 创建 Task）
-- 队列轮询（Persona 认领匹配角色的 Task）
-- 状态流转（pending → claimed → done → verified）
-- 超时释放（claimed 超过 N 分钟未完成，自动回退 pending）
+- 修复 `runPrint`，使 `--persona` 和 `-p` 同时提供时加载 persona 系统提示词
+- 从 `~/.san/personas/<name>/` 加载 persona，通过 `system.Build()` 构建包含了
+  persona identity/behavior/rules 的系统提示词
+- 应用 persona 的 settings.json 中的 model 和 disabledTools
+- 这替代了 `run.sh` 需要拼装 persona 文件到 prompt 的需求
 
-### 阶段四：工作流串联
+### 阶段四：端到端工作流串联
 
-- Leader 设计文档 → 拆解 Task → 写入队列
-- Dev Persona 轮询 → 领取 → 实现 → 提交 → 更新队列
-- QE Persona 轮询 → 领取 → 验证 → 更新队列
-- Release Persona 轮询 → 领取 → 发布 → 更新队列
-- Leader 监控队列状态 → 向管理员汇报
+- Leader: `san --persona leader` → 理解需求 → 拆解 → `san queue add`
+- Dev: `run.sh dev` → `san queue claim` → `san --persona dev -p ".."` → `san queue complete`
+- QE: `run.sh qe` → `san queue claim` → `san --persona qe -p ".."` → `san queue verify`
+- Release: `run.sh release` → `san queue claim` → `san --persona release -p ".."` → `san queue complete`
+- Leader: `san queue list` → 监控 → 向管理员汇报
 
 ### 阶段五：自动触发与运维
 
 - Cron 定时 Bug 扫描 → 自动写入队列
 - 设计文档合并后自动触发 Leader 拆解
-- 进度可视化（CLI：`san team status`）
-- Persona 实例健康监控
+- 进度可视化（`san queue list`）
+- `san queue compact` 用于 JSONL 压缩
 
 ## 参考技能
 
@@ -599,18 +855,22 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 2. **Leader 合并权限**：所有代码必须由管理员手动 approve 才能合并，不允许自动 merge。
    QE 通过后 Leader 通知管理员来审批，管理员点一下 approve 就行。
 3. **失败重试策略**：由 Leader 决定每个 Task 的最大重试次数（默认 3 次）。
-   Dev 重试耗尽仍未通过 QE 时，Leader 将 Task 标记为 failed，
-   记录失败原因，通知管理员介入。
+   Dev 重试耗尽仍未通过 QE 时，`run.sh` 调用 `san queue fail`，
+   将 Task 标记为 failed。Leader 检测到后通知管理员介入。
 4. **崩溃恢复**：所有异常情况（Persona 实例崩溃、Leader 崩溃、队列文件损坏等）
    都必须妥善处理，并向管理员汇报当前状态。包括：
    - Persona 崩溃：claimed 状态 Task 超时自动回退 pending，Leader 检测到后通知管理员
    - Leader 崩溃：管理员重新启动 Leader 后，Leader 回放队列恢复上下文
    - 队列文件损坏：从 Git 历史恢复最近一次正常快照
+   - `run.sh` 崩溃：直接重启脚本即可，从上次中断处继续（已认领的 Task 超时后自动回退）
 
 
 ## 参考资料
 
 - [`persona-system.md`](../../notes/active/persona-system.md) — Persona 目录遵循的 persona 设计规范
+- [ADR-0003](0003-shared-work-queue.md) — 共享工作队列设计（`san queue`）
+- [`san-team/DESIGN.md`](../../../san-team/DESIGN.md) — prompt-first san-team 设计
+- [`san-team/state/EXAMPLE.md`](../../../san-team/state/EXAMPLE.md) — 队列示例
 - [`core.Agent`](../../packages/core.md) — 底层 Agent 原语
 - [`packages/subagent.md`](../../packages/subagent.md) — 子 Agent 机制
 - [`packages/skill.md`](../../packages/skill.md) — 技能加载
