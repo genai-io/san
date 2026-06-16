@@ -145,39 +145,38 @@ func runPrint(userMessage, personaName string) error {
 		return err
 	}
 
-	// Apply persona overrides when --persona is combined with -p.
 	sysPrompt := setting.DefaultSystemPrompt
 	var disabledTools map[string]bool
 	if personaName != "" {
 		cwd, _ := os.Getwd()
-		persona.Initialize(cwd)
-		if p, ok := persona.Default().Get(personaName); ok && !p.IsBuiltin() {
-			sys := system.Build(core.ScopeMain, system.WithPersona(system.Persona{
-				Identity: p.Identity,
-				Behavior: p.Behavior,
-				Rules:    p.Rules,
-			}))
-			sysPrompt = sys.Prompt()
+		p, _ := persona.Default().Get(personaName)
+		sys := system.Build(core.ScopeMain, system.WithPersona(system.Persona{
+			Identity: p.Identity,
+			Behavior: p.Behavior,
+			Rules:    p.Rules,
+		}))
+		sysPrompt = sys.Prompt()
 
-			if p.Settings != nil {
-				if p.Settings.Model != "" {
-					modelID = p.Settings.Model
+		base, _ := setting.LoadForCwd(cwd)
+		var overlay *setting.Data
+		if p.Settings != nil {
+			overlay = &p.Settings.Data
+		}
+		merged := setting.ApplyPersonaOverlay(base, overlay)
+		if merged.Model != "" {
+			if models, err := llmProvider.ListModels(ctx); err == nil {
+				for _, m := range models {
+					if m.ID == merged.Model {
+						modelID = merged.Model
+						break
+					}
 				}
-				disabledTools = p.Settings.DisabledTools
 			}
 		}
+		disabledTools = merged.DisabledTools
 	}
 
-	schemas := tool.GetToolSchemas()
-	if len(disabledTools) > 0 {
-		filtered := make([]core.ToolSchema, 0, len(schemas))
-		for _, s := range schemas {
-			if !disabledTools[s.Name] {
-				filtered = append(filtered, s)
-			}
-		}
-		schemas = filtered
-	}
+	schemas := (&tool.Set{Disabled: disabledTools}).Tools()
 
 	completionOpts := llm.CompletionOptions{
 		Model:        modelID,
