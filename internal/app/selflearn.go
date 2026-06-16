@@ -85,27 +85,28 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars)
 	skillMgr := selflearn.NewSkillManager(m.env.CWD, cfg.Perms)
 
-	// Write observers feed the live spinner-tail and the post-pass recap.
-	// They run on the fork goroutine and check `live` so writes landing
-	// after teardown drop silently instead of racing on UI state. The
-	// memory and skill paths are mechanically identical — same gate,
-	// same indicator hop — so they share one record helper.
-	record := func(kind string, verb func(string) string, target func(string) string) func(action, key, note string) {
-		return func(action, key, note string) {
-			if !live.Load() {
-				return
-			}
-			m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
-				Verb:   verb(action),
-				Kind:   kind,
-				Target: target(key),
-				Note:   note,
-			})
+	// Write observers feed the live spinner-tail and the post-pass recap. They
+	// run on the fork goroutine and check `live` so a write landing after
+	// teardown drops silently instead of racing on UI state. recordAction is
+	// the shared gate + indicator hop; the memory and skill paths each adapt it
+	// with their own verb/target naming.
+	recordAction := func(kind, verb, target, note string) {
+		if !live.Load() {
+			return
 		}
+		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
+			Verb:   verb,
+			Kind:   kind,
+			Target: target,
+			Note:   note,
+		})
 	}
-	identity := func(s string) string { return s }
-	memStore.SetWriteObserver(record("memory", memoryVerb, memoryTopicName))
-	skillMgr.SetWriteObserver(record("skill", skillVerb, identity))
+	memStore.SetWriteObserver(func(action, topic, note string) {
+		recordAction("memory", memoryVerb(action), memoryTopicName(topic), note)
+	})
+	skillMgr.SetWriteObserver(func(action, skillName, note string) {
+		recordAction("skill", skillVerb(action), skillName, note)
+	})
 
 	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
 		// Liveness checks before any UI mutation — a teardown race must

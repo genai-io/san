@@ -50,7 +50,7 @@ func (m *model) viewString() string {
 		if trackerView != "" {
 			trackerPrefix = "\n" + strings.TrimSuffix(trackerView, "\n") + "\n"
 		}
-		return separatorWrapped(trackerPrefix, separator, ov.Render())
+		return trackerPrefix + separator + "\n" + ov.Render()
 	}
 	return m.renderNormalView(separator, trackerView)
 }
@@ -140,10 +140,6 @@ func (m *model) renderFooter(separator string) string {
 		b.WriteString(" ")
 	}
 	return b.String()
-}
-
-func separatorWrapped(trackerPrefix, separator, content string) string {
-	return trackerPrefix + separator + "\n" + content
 }
 
 func (m model) renderInputView() string {
