@@ -61,12 +61,6 @@ func (m *model) cancelPendingToolCalls() {
 	})
 }
 
-func (m *model) cancelRemainingToolCalls(startIdx int) {
-	m.conv.AppendCancelledToolResults(m.conv.Tool.RemainingCalls(startIdx), func(core.ToolCall) string {
-		return "Tool execution skipped."
-	})
-}
-
 func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 	imgData, err := image.ReadClipboard()
 	if err != nil {

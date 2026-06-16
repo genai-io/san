@@ -45,10 +45,7 @@ type model struct {
 	services          services       // Domain service singletons, injected at construction
 }
 
-var (
-	_ conv.Runtime          = (*model)(nil)
-	_ input.ApprovalRuntime = (*model)(nil)
-)
+var _ conv.Runtime = (*model)(nil)
 
 func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{

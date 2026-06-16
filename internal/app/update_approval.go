@@ -1,57 +1,16 @@
 // Permission approval flow + bridge response. The approval modal lives in
-// the input package; here we build its deps, handle the user's decision
-// (once / for-session / persist-as-rule), and forward it through the
-// PermissionBridge that gates the agent's tool calls. AbortToolWithError
-// is the cancellation path when a tool rejection should also cancel any
-// remaining queued tool calls in the same assistant turn.
+// the input package; here we handle the user's decision (once / for-session
+// / persist-as-rule) and forward it through the PermissionBridge that gates
+// the agent's tool calls.
 package app
 
 import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/session/transcript"
-	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 )
-
-func (m *model) approvalDeps() input.ApprovalFlowDeps {
-	return input.ApprovalFlowDeps{
-		Actions:            m,
-		Input:              &m.userInput,
-		HookEngine:         m.services.Hook,
-		Settings:           m.services.Setting.Snapshot(),
-		SessionPermissions: m.env.SessionPermissions,
-		SetOperationMode:   func(mode setting.OperationMode) { m.env.OperationMode = mode },
-		Tool:               &m.conv.Tool,
-		Width:              m.env.Width,
-		Height:             m.env.Height,
-		Cwd:                m.env.CWD,
-		ProgressHub:        m.conv.ProgressHub,
-		MCPExecutor:        conv.NewMCPExecutor(mcp.NewCaller(m.services.MCP)),
-	}
-}
-
-func (m *model) AbortToolWithError(errorMsg string, retry bool) tea.Cmd {
-	if m.conv.Tool.PendingCalls == nil || m.conv.Tool.CurrentIdx >= len(m.conv.Tool.PendingCalls) {
-		m.conv.Tool.Reset()
-		m.conv.Stream.Stop()
-		return tea.Batch(m.CommitMessages()...)
-	}
-	tc := m.conv.Tool.PendingCalls[m.conv.Tool.CurrentIdx]
-	m.conv.Append(core.ChatMessage{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: tc.ID, ToolName: tc.Name, Content: errorMsg, IsError: true}})
-	m.cancelRemainingToolCalls(m.conv.Tool.CurrentIdx + 1)
-	m.conv.Tool.Reset()
-	m.conv.Stream.Stop()
-	commitCmds := m.CommitMessages()
-	if retry {
-		commitCmds = append(commitCmds, m.ContinueOutbox())
-	}
-	return tea.Batch(commitCmds...)
-}
 
 type permissionDecision struct {
 	Approved bool

@@ -215,9 +215,6 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 	if cmd, ok := conv.Update(m, &m.conv, msg); ok {
 		return cmd, true
 	}
-	if cmd, ok := input.UpdateApproval(m.approvalDeps(), msg); ok {
-		return cmd, true
-	}
 	if cmd, ok := m.updateMode(msg); ok {
 		return cmd, true
 	}

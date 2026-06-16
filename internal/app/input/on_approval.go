@@ -97,12 +97,6 @@ func (p *ApprovalModel) GetRequest() *perm.PermissionRequest {
 	return p.request
 }
 
-// ApprovalRequestMsg is sent when a tool needs permission
-type ApprovalRequestMsg struct {
-	Request  *perm.PermissionRequest
-	ToolCall any
-}
-
 // ApprovalResponseMsg is sent when the user responds to a permission request
 type ApprovalResponseMsg struct {
 	Approved bool
