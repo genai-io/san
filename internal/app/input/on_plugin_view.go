@@ -69,34 +69,14 @@ func (s *PluginSelector) renderFullWidth(content string) string {
 // ── Tabs ──────────────────────────────────────────────────────────────────
 
 func (s *PluginSelector) renderTabs() string {
-	activeStyle := lipgloss.NewStyle().
-		Foreground(kit.TabActiveFg).
-		Background(kit.TabActiveBg).
-		Bold(true).
-		Padding(0, 2)
-	inactiveStyle := lipgloss.NewStyle().
-		Foreground(kit.CurrentTheme.TextDim).
-		Padding(0, 2)
-
-	tabs := []struct {
-		name string
-		tab  pluginTab
-	}{
-		{"Discover", pluginTabDiscover},
-		{"Installed", pluginTabInstalled},
-		{"Marketplaces", pluginTabMarketplaces},
+	// Tab order matches the pluginTab enum (Discover=0, Installed=1,
+	// Marketplaces=2), so the active index is the activeTab value itself.
+	tabs := []kit.PanelTab{
+		{Name: "Discover", Show: true},
+		{Name: "Installed", Show: true},
+		{Name: "Marketplaces", Show: true},
 	}
-
-	var parts []string
-	for _, t := range tabs {
-		if t.tab == s.activeTab {
-			parts = append(parts, activeStyle.Render(t.name))
-		} else {
-			parts = append(parts, inactiveStyle.Render(t.name))
-		}
-	}
-
-	return strings.Join(parts, "  ")
+	return kit.RenderPanelTabs(tabs, int(s.activeTab))
 }
 
 // ── Search box ────────────────────────────────────────────────────────────
@@ -727,11 +707,9 @@ func (s *PluginSelector) inlineActionStatus() string {
 
 // ── Footer ────────────────────────────────────────────────────────────────
 
-var pluginSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
 // spinnerFrame returns the current spinner glyph for the loading animation.
 func (s *PluginSelector) spinnerFrame() string {
-	return pluginSpinnerFrames[s.loadingFrame%len(pluginSpinnerFrames)]
+	return kit.BrailleSpinnerFrames[s.loadingFrame%len(kit.BrailleSpinnerFrames)]
 }
 
 func (s *PluginSelector) renderFooter(sb *strings.Builder, hint string) {
