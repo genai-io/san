@@ -176,7 +176,7 @@ func renderAgentProgress(progress []string) string {
 	return sb.String()
 }
 
-func renderAgentProgressInline(tc core.ToolCall, pendingCalls []core.ToolCall, parallelResults map[int]bool, taskProgress map[int][]string, expanded bool, limit int, stats AgentStats) string {
+func renderAgentProgressInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskProgress map[int][]string, expanded bool, limit int, stats AgentStats) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -186,13 +186,6 @@ func renderAgentProgressInline(tc core.ToolCall, pendingCalls []core.ToolCall, p
 	}
 	if idx == -1 {
 		return ""
-	}
-
-	// Check if completed in parallel results (not yet committed to messages)
-	if parallelResults != nil {
-		if _, done := parallelResults[idx]; done {
-			return ""
-		}
 	}
 
 	progress := taskProgress[idx]
@@ -336,10 +329,6 @@ func isAgentToolLine(line string) bool {
 type PendingToolSpinnerParams struct {
 	// InteractivePromptActive indicates if an interactive prompt is currently active.
 	InteractivePromptActive bool
-	// ParallelMode indicates parallel tool execution.
-	ParallelMode bool
-	// HasParallelTaskTools indicates if any parallel tools are Task tools.
-	HasParallelTaskTools bool
 	// BuildingTool is the tool name being built during streaming.
 	BuildingTool string
 	// PendingCalls are the pending tool calls.
@@ -367,11 +356,6 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 		return ""
 	}
 
-	// Parallel mode with Task tools: progress rendered inline by RenderToolCalls
-	if params.ParallelMode && params.HasParallelTaskTools {
-		return ""
-	}
-
 	// Determine which tool is active
 	var toolName string
 	if params.BuildingTool != "" {
@@ -389,7 +373,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 		}
 		var sb strings.Builder
 		// Show Agent label so it remains visible after the assistant message scrolls off.
-		if !params.SuppressAgentLabel && params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
+		if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
 			tc := params.PendingCalls[params.CurrentIdx]
 			label := formatAgentLabel(tc.Input)
 			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), agentColorForInput(tc.Input, params.AgentColors)) + "\n")

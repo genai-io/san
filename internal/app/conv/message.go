@@ -37,7 +37,6 @@ const (
 type OperationModeParams struct {
 	Mode             setting.OperationMode
 	InputTokens      int
-	OutputTokens     int
 	InputLimit       int
 	ModelName        string
 	StatusMessage    string
@@ -527,7 +526,6 @@ type ToolCallsParams struct {
 	ToolCallsExpanded bool
 	ResultMap         map[string]ToolResultData
 	ParallelMode      bool
-	ParallelResults   map[int]bool
 	TaskProgress      map[int][]string
 	PendingCalls      []core.ToolCall
 	CurrentIdx        int
@@ -594,7 +592,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				}
 			}
 		} else {
-			icon := toolCallIcon(tc, params.PendingCalls, params.CurrentIdx, params.ParallelMode, params.ParallelResults, params.SpinnerView)
+			icon := toolCallIcon(tc, params.PendingCalls, params.CurrentIdx, params.ParallelMode, params.SpinnerView)
 			if _, hasResult := params.ResultMap[tc.ID]; hasResult {
 				icon = "●"
 			}
@@ -615,7 +613,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if params.ParallelMode {
 				limit = maxParallelAgentToolLines
 			}
-			sb.WriteString(renderAgentProgressInline(tc, params.PendingCalls, params.ParallelResults, params.TaskProgress, params.ToolCallsExpanded, limit, AgentStats{
+			sb.WriteString(renderAgentProgressInline(tc, params.PendingCalls, params.TaskProgress, params.ToolCallsExpanded, limit, AgentStats{
 				Model:        params.ModelName,
 				InputTokens:  params.InputTokens,
 				OutputTokens: params.OutputTokens,
@@ -626,7 +624,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 	return sb.String()
 }
 
-func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int, parallelMode bool, parallelResults map[int]bool, spinnerView string) string {
+func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int, parallelMode bool, spinnerView string) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -638,14 +636,9 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 		return "●"
 	}
 
-	if parallelMode {
-		if _, done := parallelResults[idx]; !done {
-			return spinnerView
-		}
-		return "●"
-	}
-
-	if idx == currentIdx {
+	// In parallel mode every in-flight call spins; sequentially, only the
+	// current call does.
+	if parallelMode || idx == currentIdx {
 		return spinnerView
 	}
 

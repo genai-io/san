@@ -64,7 +64,7 @@ func RenderToolResult(result toolresult.ToolResult, width int) string {
 	switch result.Metadata.Title {
 	case "Read":
 		if len(result.Lines) > 0 {
-			sb.WriteString(renderLines(result.Lines, true))
+			sb.WriteString(renderLines(result.Lines))
 		} else if result.Output != "" {
 			sb.WriteString(result.Output)
 		}
@@ -203,7 +203,7 @@ func capBoxWidth(width int) int {
 	return maxWidth
 }
 
-func renderLines(lines []toolresult.ContentLine, showLineNo bool) string {
+func renderLines(lines []toolresult.ContentLine) string {
 	if len(lines) == 0 {
 		return ""
 	}
@@ -227,14 +227,13 @@ func renderLines(lines []toolresult.ContentLine, showLineNo bool) string {
 			sb.WriteString(truncatedStyle.Render(line.Text))
 			sb.WriteString("\n")
 		default:
-			if showLineNo && line.LineNo > 0 {
+			if line.LineNo > 0 {
 				lineNoStr := fmt.Sprintf("%*d", lineNoWidth, line.LineNo)
 				sb.WriteString(lineNumberStyle.Render(lineNoStr))
-				sb.WriteString(lineNumberStyle.Render("│"))
-			} else if showLineNo {
+			} else {
 				sb.WriteString(strings.Repeat(" ", lineNoWidth))
-				sb.WriteString(lineNumberStyle.Render("│"))
 			}
+			sb.WriteString(lineNumberStyle.Render("│"))
 
 			var content string
 			switch line.Type {
