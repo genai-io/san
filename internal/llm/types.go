@@ -34,6 +34,7 @@ const (
 	AuthAPIKey  AuthMethod = "api_key"
 	AuthVertex  AuthMethod = "vertex"
 	AuthBedrock AuthMethod = "bedrock"
+	AuthCoding  AuthMethod = "coding"
 )
 
 // Meta contains static metadata about a provider auth method.
