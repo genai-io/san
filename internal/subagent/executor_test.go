@@ -159,10 +159,10 @@ func TestParseVendorModel(t *testing.T) {
 		{"deepseek/deepseek-v4", llm.DeepSeek, "deepseek-v4", true},
 		{"anthropic/claude-opus-4-20250514", llm.Anthropic, "claude-opus-4-20250514", true},
 		{"acme/some-model", "acme", "some-model", true}, // any slash parses; the pool rejects unknown vendors
-		{"opus", "", "", false},                         // alias, not a qualified ref
-		{"claude-opus-4-20250514", "", "", false},       // bare model id, no slash
-		{"deepseek/", "", "", false},                    // empty model
-		{"/deepseek-v4", "", "", false},                 // empty vendor
+		{"opus", "", "", false},                   // alias, not a qualified ref
+		{"claude-opus-4-20250514", "", "", false}, // bare model id, no slash
+		{"deepseek/", "", "", false},              // empty model
+		{"/deepseek-v4", "", "", false},           // empty vendor
 	}
 	for _, tt := range tests {
 		vendor, model, ok := parseVendorModel(tt.ref)
