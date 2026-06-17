@@ -157,7 +157,7 @@ Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user)
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |
 | **Alibaba** (Qwen) | `DASHSCOPE_API_KEY` |
 | **MiniMax** | `MINIMAX_API_KEY` |
-| **Z.ai** (GLM) | `BIGMODEL_API_KEY` |
+| **Z.ai** (GLM / GLM Coding Plan) | `BIGMODEL_API_KEY` |
 | **SenseNova** | `SENSENOVA_API_KEY` |
 | **Mimo** | `MIMO_API_KEY` |
 | **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
