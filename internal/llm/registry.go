@@ -200,6 +200,22 @@ func (r *Registry) ProvidersByOrder() []Name {
 	return result
 }
 
+// IsProvider reports whether name is a registered provider vendor. It is the
+// source of truth for telling a "vendor/model" routing ref apart from a bare
+// model id that merely contains a slash.
+func IsProvider(name Name) bool {
+	return globalRegistry.IsProvider(name)
+}
+
+// IsProvider reports whether name is a registered provider vendor.
+func (r *Registry) IsProvider(name Name) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	_, ok := r.providerDisplay[name]
+	return ok
+}
+
 // ProviderDisplayName returns the provider-level display name for a provider.
 func ProviderDisplayName(p Name) string {
 	return globalRegistry.ProviderDisplayName(p)

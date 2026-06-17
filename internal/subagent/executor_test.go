@@ -16,6 +16,14 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+// parseVendorModel gates "vendor/model" routing on registered providers, so the
+// tests that exercise routing register the vendors they reference. (The app
+// wires these via blank imports in cmd/san/main.go.)
+func init() {
+	llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek"})
+	llm.RegisterProviderDisplay(llm.Anthropic, llm.ProviderDisplay{Name: "Anthropic"})
+}
+
 type stubSubagentSessionStore struct {
 	saveParentID string
 	saveTitle    string
@@ -158,7 +166,8 @@ func TestParseVendorModel(t *testing.T) {
 	}{
 		{"deepseek/deepseek-v4", llm.DeepSeek, "deepseek-v4", true},
 		{"anthropic/claude-opus-4-20250514", llm.Anthropic, "claude-opus-4-20250514", true},
-		{"acme/some-model", "acme", "some-model", true}, // any slash parses; the pool rejects unknown vendors
+		{"acme/some-model", "", "", false},        // unknown vendor -> treated as a bare model id
+		{"xiaomi/mimo-v2-flash", "", "", false},   // mimo ships slash ids; "xiaomi" is not a vendor name
 		{"opus", "", "", false},                   // alias, not a qualified ref
 		{"claude-opus-4-20250514", "", "", false}, // bare model id, no slash
 		{"deepseek/", "", "", false},              // empty model

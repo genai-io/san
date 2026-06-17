@@ -23,7 +23,7 @@ import (
 )
 
 // ProviderResolver turns a vendor name into a live provider so a subagent can
-// run on a different vendor than its parent. The app wires an *llm.ProviderCache;
+// run on a different vendor than its parent. The app wires an *llm.ProviderPool;
 // a nil resolver disables cross-provider routing, in which case an explicit
 // "vendor/model" override errors instead of silently using the parent provider.
 type ProviderResolver interface {
@@ -433,15 +433,17 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 
 // parseVendorModel reads the explicit "vendor/model" form (e.g.
 // "deepseek/deepseek-v4"), the only way to route a subagent to another vendor.
-// Any ref containing a slash is treated as vendor-qualified — San model ids
-// never contain one — so a misspelled or unconnected vendor surfaces as a clear
-// resolver error rather than silently running on the parent provider.
+// A ref is vendor-qualified only when the part before the first slash is a
+// registered provider name; a bare model id that merely contains a slash (e.g.
+// mimo's "xiaomi/mimo-v2-flash") is not, so it stays on the parent provider
+// instead of erroring. A known but unconnected vendor still surfaces as a clear
+// resolver error.
 func parseVendorModel(ref string) (vendor llm.Name, model string, ok bool) {
-	slash := strings.IndexByte(ref, '/')
-	if slash <= 0 || slash >= len(ref)-1 {
+	v, m, found := strings.Cut(ref, "/")
+	if !found || v == "" || m == "" || !llm.IsProvider(llm.Name(v)) {
 		return "", "", false
 	}
-	return llm.Name(ref[:slash]), ref[slash+1:], true
+	return llm.Name(v), m, true
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
