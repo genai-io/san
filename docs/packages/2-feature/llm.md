@@ -7,7 +7,7 @@ layer: feature
 
 Provider registry, model store, and active-connection handle for every LLM backend
 (Anthropic, OpenAI, Google, Moonshot, Alibaba, MiniMax, Z.ai/GLM, DeepSeek,
-Ollama, SenseNova, Volcengine Ark, plus the generic openai-compat shim). Provider implementations live in
+Ollama, SenseNova, Volcengine Ark, Agnes-AI, plus the generic openai-compat shim). Provider implementations live in
 `internal/llm/<name>/` subpackages.
 
 ## Purpose
@@ -61,7 +61,7 @@ func ResetDefaultConn()       // test-only
   `~/.san/providers.json`; tracks current model.
 - `stream/` — provider-side helpers for SSE parsing.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
-  `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `sensenova/`, `volcengine/`, `openaicompat/`.
+  `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `sensenova/`, `volcengine/`, `agnesai/`, `openaicompat/`.
 
 ## Lifecycle
 

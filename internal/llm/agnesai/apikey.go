@@ -36,6 +36,6 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 }
 
 func init() {
-	llm.RegisterProviderDisplay(llm.AgnesAI, llm.ProviderDisplay{Name: "Agnes-AI", Order: 120})
+	llm.RegisterProviderDisplay(llm.AgnesAI, llm.ProviderDisplay{Name: "Agnes-AI", Order: 130})
 	llm.Register(APIKeyMeta, NewAPIKeyClient)
 }

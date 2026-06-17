@@ -32,7 +32,7 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 ### Open architecture
 
-- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local); swap via `/model`.
+- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI; swap via `/model`.
 - **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.
 - **Personas** — Markdown identities scoped to user or project; swap via `/identity` ([details](docs/concepts/harness-channels.md#identity-custom-personas)).
 - **Skills & extensions** — Claude Code skills, plugins, and MCP servers run unmodified; sandboxed subagents; lifecycle hooks (shell, LLM, agent, HTTP); auto-loaded project memory.
@@ -162,6 +162,7 @@ Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user)
 | **Mimo** | `MIMO_API_KEY` |
 | **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
 | **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
+| **Agnes-AI** | `AGNESAI_API_KEY` |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |
