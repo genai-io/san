@@ -52,6 +52,34 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `isolation` | no | `none` (default) or `worktree` — see below. |
 | `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
 
+## Cross-Provider Models
+
+The `model:` field lets each subagent run on the model that fits its role —
+using only frontmatter, with no router or extra config. A `vendor/model` value
+routes the agent to another **connected** provider:
+
+| Agent | `model:` | Why |
+|---|---|---|
+| `planner` | `anthropic/claude-opus-4-7` | strongest reasoning for decomposition |
+| `coder` | `deepseek/deepseek-v4` | cheap, fast bulk implementation |
+| `reviewer` | `anthropic/claude-sonnet-4-6` | independent review on a *different* model |
+
+`model:` accepts:
+
+- `inherit` (or empty) — the parent conversation's model.
+- an alias (`opus` / `sonnet` / `haiku`) or a bare id — served by the parent's
+  provider.
+- `vendor/model` (e.g. `deepseek/deepseek-v4`) — routed to another **connected**
+  provider.
+
+The `vendor` names the model family, not the serving platform: auth comes from
+how you connected that vendor, so Claude-on-Vertex is still `anthropic/…`. A
+role whose vendor isn't connected fails with a clear "provider not connected"
+error instead of silently falling back to the parent's model.
+
+No policy engine is needed: the foreground agent picks which agent to spawn from
+each `description` / `when-to-use`, so choosing the agent chooses the model.
+
 ## Permission Mode
 
 Subagents have no UI, so permission prompts cannot be shown. The mode
