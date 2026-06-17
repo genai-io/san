@@ -60,6 +60,11 @@ GOCACHE=/private/tmp/san-go-build-cache go test \
   ./internal/session/... ./tests/integration/session/... ./tests/integration/cli/...
 ```
 
+Before opening a PR, run `make ci` as the full local gate for CI-style
+checks. It runs the same Makefile checks as CI, including format
+checking (`make format-check`), build verification, linting, and
+coverage via `make cover`.
+
 Transcript storage layout, recording rules, and the event model are
 documented in [`docs/packages/session.md`](docs/packages/session.md).
 
