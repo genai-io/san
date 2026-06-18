@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>San — Open-source unified agent runtime for the terminal</title>
-<meta name="description" content="San is a terminal-native unified runtime for specialized agents: a single Go binary, pluggable LLM providers, fully compatible with Claude Code skills, plugins, and MCP. 20x faster startup, 5x smaller than Claude Code.">
+<meta name="description" content="San is a terminal-native unified runtime for specialized agents: a single ~12 MB Go binary, pluggable LLM providers, fully compatible with Claude Code skills, plugins, and MCP. ~0.01s cold start, zero runtime dependencies.">
 <meta property="og:title" content="San — Unified agent runtime for the terminal">
-<meta property="og:description" content="Single Go binary. Pluggable LLM providers. Claude Code compatible. 20x faster startup.">
+<meta property="og:description" content="Single Go binary. Pluggable LLM providers. Claude Code compatible. ~0.01s cold start, ~12 MB.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://genai-io.github.io/san/">
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
@@ -25,7 +25,7 @@
     <div class="nav-links" id="nav-links">
       <a href="#features">Features</a>
       <a href="#deploy">Deploy</a>
-      <a href="#benchmark">Benchmark</a>
+      <a href="#footprint">Footprint</a>
       <a href="#community">Community</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <a href="intro.html">Intro</a>
@@ -148,17 +148,17 @@
   </div>
 </section>
 
-<section id="benchmark">
+<section id="footprint">
   <div class="wrap">
     <div class="section-head">
-      <span class="kicker">Benchmark</span>
-      <h2 class="section-title">Faster &amp; leaner than <em>Claude Code</em></h2>
-      <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>) on Apple Silicon, comparable feature set.</p>
+      <span class="kicker">Footprint</span>
+      <h2 class="section-title">Small and fast, <em>by design</em></h2>
+      <p class="section-sub">Same model (<span class="mono">claude-sonnet-4-6</span>), same tasks, on Apple Silicon — measured against Claude Code for reference.</p>
     </div>
     <div class="bench-wrap reveal">
       <table>
         <thead>
-          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Advantage</th></tr>
+          <tr><th>Metric</th><th>San</th><th>Claude Code</th><th>Difference</th></tr>
         </thead>
         <tbody>
           <tr><td>Download size</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">5× smaller</td></tr>
@@ -170,7 +170,7 @@
         </tbody>
       </table>
     </div>
-    <p class="bench-note">Go native compilation vs Node.js V8/JIT/GC overhead. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
+    <p class="bench-note">San runs Claude Code's skills, plugins, and MCP unmodified — the gap is a native Go binary vs a Node.js runtime. <a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">Reproduce the numbers →</a></p>
   </div>
 </section>
 
