@@ -1,34 +1,36 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>面向终端的开源「专用 Agent 统一运行时」</strong></p>
+  <p><strong>约 12 MB 的开源高速 AI Agent 运行时</strong></p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/%E5%AE%98%E7%BD%91-0d9488?style=flat-square" alt="官网"></a>
     <a href="https://genai-io.github.io/san/getting-started.html"><img src="https://img.shields.io/badge/%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B-0d9488?style=flat-square" alt="快速开始"></a>
     <a href="docs/index.md"><img src="https://img.shields.io/badge/%E6%96%87%E6%A1%A3-0d9488?style=flat-square" alt="文档"></a>
+    <a href="https://www.producthunt.com/products/san?launch=san"><img src="https://img.shields.io/badge/Product%20Hunt-da552f?style=flat-square&logo=producthunt&logoColor=white" alt="Product Hunt"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   </p>
   <p>
     <a href="README.md">English</a> · <strong>简体中文</strong>
   </p>
   <p>
-    <img src="assets/san.png" alt="San" width="100%">
+    <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San 动态简介" width="100%"></a>
   </p>
-  <details>
-    <summary><b>▶ 观看动态简介</b></summary>
-    <p>
-      <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San 动态简介" width="100%"></a>
-    </p>
-    <sub><a href="https://genai-io.github.io/san/intro.html">打开高清完整版 ↗</a></sub>
-  </details>
+  <sub><a href="https://genai-io.github.io/san/intro.html">打开高清完整版 ↗</a></sub>
+  <p>
+    ⚡ <strong>~0.01s</strong> 冷启动&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> 单文件&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>零</strong>运行时依赖（无 Node.js / Python）
+  </p>
 </div>
 
-San 是面向终端的**专用 Agent 统一运行时**（Unified Specialized Agent Runtime）—— 不止于编程 —— 构建在五大可插拔能力之上：**模型（LLM）**、**搜索引擎**、**人设（Personas）**、**技能与扩展**（skills、plugins、MCP servers、subagents），以及**随使用不断自我进化、逐级升级**的 Agent。使用 Go 实现。
+San 是面向终端的**专用 Agent 统一运行时** —— 不止于编程。自由接入任意模型与搜索后端，切换人设，并原样运行你的 skills、plugins、MCP servers、subagents。它还会自我进化，越用越聪明。一个 Go 二进制，随处运行。
 
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 
 ## 特性
+
+<div align="center">
+  <img src="assets/san.png" alt="San —— 可插拔模型、搜索后端、人设、技能与扩展，以及自我进化的 Agent" width="100%">
+</div>
 
 ### 开放架构
 
@@ -103,27 +105,15 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ```bash
 san                              # 交互模式
 san "解释这个函数"               # 一次性运行
-san -p "做某件事"                 # 非交互 print 模式（无 TUI）
-echo "data" | san -p "分析"      # print 模式下管道输入
+san -p "做某件事"                 # print 模式（无 TUI），可管道
 san --continue                   # 恢复最近的会话
 san --resume                     # 选择历史会话恢复
-san --resume <session-id>        # 通过 ID 恢复指定会话
-san --plugin-dir <path>          # 从指定目录加载插件
 
-# 子命令
-san inspector                    # 打开会话转录查看器
-san agent run --type Explore --prompt "find main.go"  # 运行 headless agent
-san plugin list                  # 列出已安装插件
-san plugin install <ref>         # 安装插件
-san plugin enable <name>         # 启用插件
-san plugin disable <name>        # 禁用插件
-san plugin uninstall <name>      # 卸载插件
-san mcp add <name> -- <cmd>      # 添加 MCP 服务器（stdio）
-san mcp add --transport http <name> <url>  # 添加 MCP 服务器（HTTP/SSE）
-san mcp list                     # 列出 MCP 服务器
-san mcp get <name>               # 查看 MCP 服务器详情
-san mcp edit <name>              # 在 $EDITOR 中编辑 MCP 服务器配置
-san mcp remove <name>            # 移除 MCP 服务器
+# 子命令（运行 `san <command> --help` 查看完整列表）
+san inspector                    # 会话转录查看器
+san agent run --type Explore --prompt "..."   # 运行 headless agent
+san plugin <list|install|enable|...>          # 管理插件
+san mcp <add|list|remove|...>                 # 管理 MCP 服务器
 ```
 
 | 操作 | 命令 / 快捷键 |
