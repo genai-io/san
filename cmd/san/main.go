@@ -31,7 +31,7 @@ import (
 	_ "github.com/genai-io/san/internal/llm/volcengine"
 )
 
-var version = "1.20.5"
+var version = "1.20.6"
 
 // cliOpts holds all CLI flag values in one place.
 var cliOpts struct {
