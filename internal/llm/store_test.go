@@ -135,3 +135,43 @@ func TestStore_CachedModelDisplayNamePrefersRealNameAndIsStable(t *testing.T) {
 		t.Fatalf("CachedModelDisplayName(missing) = %q, want empty", got)
 	}
 }
+
+// A model can be cached under several provider keys where only some report a
+// context window: an aggregator echoes the ID with no limit, while the native
+// provider knows the real one. CachedModelLimits must prefer the known window
+// over the zero, deterministically, so the status bar never flickers to "--".
+func TestStore_CachedModelLimitsPrefersKnownWindow(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	// alibaba echoes the model with no context window; deepseek knows the real one.
+	if err := store.CacheModels(Alibaba, AuthAPIKey, []ModelInfo{
+		{ID: "deepseek-v4-pro"},
+	}); err != nil {
+		t.Fatalf("CacheModels(alibaba) error = %v", err)
+	}
+	if err := store.CacheModels(DeepSeek, AuthAPIKey, []ModelInfo{
+		{ID: "deepseek-v4-pro", InputTokenLimit: 1_000_000, OutputTokenLimit: 384_000},
+	}); err != nil {
+		t.Fatalf("CacheModels(deepseek) error = %v", err)
+	}
+
+	// Call many times; with randomized map order an order-dependent
+	// implementation would return the zero limit on some iterations.
+	for i := range 100 {
+		in, out := store.CachedModelLimits("deepseek-v4-pro")
+		if in != 1_000_000 || out != 384_000 {
+			t.Fatalf("CachedModelLimits() = (%d, %d), want (1000000, 384000) on iteration %d", in, out, i)
+		}
+	}
+
+	// An uncached ID returns zero limits.
+	if in, out := store.CachedModelLimits("missing"); in != 0 || out != 0 {
+		t.Fatalf("CachedModelLimits(missing) = (%d, %d), want (0, 0)", in, out)
+	}
+}

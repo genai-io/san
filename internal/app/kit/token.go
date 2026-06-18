@@ -33,22 +33,16 @@ func GetMaxTokens(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultM
 }
 
 // GetModelTokenLimits returns the cached token limits for the current model.
+// It resolves the model by ID across every cached provider list (like
+// CachedModelDisplayName), not just the current provider's: an OpenAI-compatible
+// aggregator may serve a model with no advertised context window while the same
+// model's native provider knows the real one. Matching by ID lets the status
+// bar borrow that known window instead of falling back to "--".
 func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (inputLimit, outputLimit int) {
 	if store == nil || currentModel == nil {
 		return 0, 0
 	}
-
-	models, ok := store.GetCachedModels(currentModel.Provider, currentModel.AuthMethod)
-	if !ok {
-		return 0, 0
-	}
-
-	for _, model := range models {
-		if model.ID == currentModel.ModelID {
-			return model.InputTokenLimit, model.OutputTokenLimit
-		}
-	}
-	return 0, 0
+	return store.CachedModelLimits(currentModel.ModelID)
 }
 
 // getEffectiveTokenLimits returns custom limits if set, otherwise cached model limits.

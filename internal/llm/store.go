@@ -310,6 +310,33 @@ func (s *Store) CachedModelDisplayName(id string) string {
 	return raw
 }
 
+// CachedModelLimits returns the token limits for a model ID found in any
+// cached provider list, ignoring TTL. Returns (0, 0) when no cached entry
+// reports a context window for the ID.
+//
+// The companion to CachedModelDisplayName, and for the same reason: the same
+// model can be cached under several provider/auth keys, and only some report a
+// context window. An OpenAI-compatible aggregator often echoes the raw model ID
+// with no context length (limit 0), while the model's native provider knows the
+// real window (e.g. DeepSeek V4 Pro at 1M). Resolving the limit from only the
+// current provider's cache would then render "--" even though another cache
+// knows the answer. So we scan all caches and prefer an entry with a real
+// (non-zero) input limit. Scans in place without allocating, since it feeds the
+// status bar on every render.
+func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, cache := range s.data.Models {
+		for _, m := range cache.Models {
+			if m.ID == id && m.InputTokenLimit > 0 {
+				return m.InputTokenLimit, m.OutputTokenLimit
+			}
+		}
+	}
+	return 0, 0
+}
+
 // SetCurrentModel sets the current model with provider info
 func (s *Store) SetCurrentModel(modelID string, provider Name, authMethod AuthMethod) error {
 	s.mu.Lock()
