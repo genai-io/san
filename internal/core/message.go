@@ -96,6 +96,7 @@ type ChatMessage struct {
 	ContentCommittedLen  int  // bytes of Content already flushed to scrollback
 	ThinkingCommittedLen int  // bytes of Thinking already flushed to scrollback
 	BulletEmitted        bool // the "● " content marker has already been emitted
+	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
 }
 
 // ResetStreamCommit clears the streaming-commit progress so the message renders
@@ -105,6 +106,7 @@ func (m *ChatMessage) ResetStreamCommit() {
 	m.ContentCommittedLen = 0
 	m.ThinkingCommittedLen = 0
 	m.BulletEmitted = false
+	m.ThinkingEmitted = false
 }
 
 // ToMessage returns the wire/agent Message underlying this view-model, dropping

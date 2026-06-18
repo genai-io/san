@@ -164,10 +164,12 @@ type AssistantParams struct {
 	// Streaming-commit offsets: how much of Content/Thinking is already in
 	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
 	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
-	// the turn's first content block has been committed.
+	// the turn's first content block has been committed; ThinkingEmitted does the
+	// same for the "✦ " marker once the turn's first thinking block is committed.
 	ContentCommittedLen  int
 	ThinkingCommittedLen int
 	BulletEmitted        bool
+	ThinkingEmitted      bool
 }
 
 // InterruptedMarker is the literal suffix MarkLastInterrupted appends to an
@@ -192,10 +194,23 @@ func contentGutter(showBullet bool) string {
 	return continuationGutter
 }
 
+// thinkingGutter returns the 2-column lead for a reasoning block: the muted "✦"
+// marker for the turn's first thinking block, or a blank continuation gutter for
+// blocks committed after it, so progressively-committed reasoning aligns under
+// the single leading glyph.
+func thinkingGutter(showIcon bool) string {
+	if showIcon {
+		return ThinkingStyle.Render("✦ ")
+	}
+	return continuationGutter
+}
+
 // renderThinkingBlock renders reasoning text as the muted "✦" block shared by
 // the live view and the scrollback commit path. The glyph and text both stay
-// muted, matching the status-bar thinking indicator — no hue.
-func renderThinkingBlock(thinking string, width int) string {
+// muted, matching the status-bar thinking indicator — no hue. showIcon leads the
+// block with the "✦ " marker (the turn's first thinking) or a blank continuation
+// gutter for blocks committed after it.
+func renderThinkingBlock(thinking string, showIcon bool, width int) string {
 	wrapWidth := max(width-streamWrapReserve, minWrapWidth)
 	wrapped := lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
 	var lines []string
@@ -204,8 +219,7 @@ func renderThinkingBlock(thinking string, width int) string {
 			lines = append(lines, ThinkingStyle.Render(line))
 		}
 	}
-	thinkingIcon := ThinkingStyle.Render("✦ ")
-	return lipgloss.JoinHorizontal(lipgloss.Top, thinkingIcon, strings.Join(lines, "\n"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, thinkingGutter(showIcon), strings.Join(lines, "\n"))
 }
 
 // sliceFrom returns the portion of s past the first n bytes — the not-yet-
@@ -223,12 +237,15 @@ func sliceFrom(s string, n int) string {
 }
 
 // RenderCommittedThinkingBlock renders a completed reasoning block for commit to
-// native scrollback — the muted "✦" gutter plus the wrapped thinking text.
-func RenderCommittedThinkingBlock(thinking string, width int) string {
+// native scrollback — the muted gutter plus the wrapped thinking text. showIcon
+// leads with the "✦ " marker (the turn's first thinking block) or a blank
+// continuation gutter for blocks committed after it. Returns "" when the slice
+// renders empty (e.g. only blank lines).
+func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int) string {
 	if strings.TrimSpace(thinking) == "" {
 		return ""
 	}
-	return renderThinkingBlock(thinking, width)
+	return renderThinkingBlock(thinking, showIcon, width)
 }
 
 // RenderCommittedContentBlock renders one or more completed markdown blocks of
@@ -274,7 +291,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 	}
 
 	if params.Thinking != "" {
-		sb.WriteString(renderThinkingBlock(params.Thinking, params.Width) + "\n\n")
+		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width) + "\n\n")
 	}
 
 	content := formatAssistantContent(params)

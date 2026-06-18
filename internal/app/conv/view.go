@@ -185,6 +185,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ContentCommittedLen:  msg.ContentCommittedLen,
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,
+		ThinkingEmitted:      msg.ThinkingEmitted,
 	})
 
 	if len(msg.ToolCalls) == 0 {
