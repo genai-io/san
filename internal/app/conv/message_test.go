@@ -8,6 +8,20 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
+// The turn's first committed thinking block leads with the "✦" marker;
+// progressively-committed blocks after it align under a blank continuation
+// gutter so the glyph appears once, not on every block.
+func TestRenderCommittedThinkingBlockGutter(t *testing.T) {
+	first := RenderCommittedThinkingBlock("first reasoning block", true, 80)
+	if !strings.Contains(first, "✦") {
+		t.Fatalf("first thinking block should lead with the ✦ marker, got %q", first)
+	}
+	cont := RenderCommittedThinkingBlock("continuation reasoning block", false, 80)
+	if strings.Contains(cont, "✦") {
+		t.Fatalf("continuation thinking block should not repeat the ✦ marker, got %q", cont)
+	}
+}
+
 func Test_extractIntField(t *testing.T) {
 	tests := []struct {
 		name     string

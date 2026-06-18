@@ -19,10 +19,11 @@ func (m *model) CommitMessages() []tea.Cmd {
 
 // FlushStreamingBlocks commits the in-flight assistant message's newly-completed
 // blocks to native scrollback, advancing its committed offsets so the live view
-// and the turn-end commit render only the remainder. Thinking commits as one
-// block the moment text starts (the reliable "reasoning done" signal); content
-// commits block-by-block as fenced code closes or blank lines land. Returns nil
-// when nothing new is committable.
+// and the turn-end commit render only the remainder. Both thinking and content
+// commit block-by-block as blank lines (or, for content, closing code fences)
+// land; once content starts — the reliable "reasoning done" signal — thinking's
+// trailing block is flushed too so nothing reasoning-side lingers in the live
+// view. Returns nil when nothing new is committable.
 func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	idx := len(m.conv.Messages) - 1
 	if idx < 0 {
@@ -35,11 +36,20 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 
 	var blocks []string
 
-	if msg.ThinkingCommittedLen < len(msg.Thinking) && len(msg.Content) > 0 {
-		if block := conv.RenderCommittedThinkingBlock(msg.Thinking[msg.ThinkingCommittedLen:], m.env.Width); block != "" {
+	// Thinking commits paragraph-by-paragraph as blank lines land; once content
+	// starts, the trailing paragraph is flushed too (it has no terminating blank
+	// line of its own).
+	thinkingEnd := conv.CompletedBlockBoundary(msg.Thinking)
+	if len(msg.Content) > 0 {
+		thinkingEnd = len(msg.Thinking)
+	}
+	if thinkingEnd > msg.ThinkingCommittedLen {
+		block := conv.RenderCommittedThinkingBlock(msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd], !msg.ThinkingEmitted, m.env.Width)
+		if block != "" {
 			blocks = append(blocks, block)
+			msg.ThinkingEmitted = true
 		}
-		msg.ThinkingCommittedLen = len(msg.Thinking)
+		msg.ThinkingCommittedLen = thinkingEnd
 	}
 
 	if boundary := conv.CompletedBlockBoundary(msg.Content); boundary > msg.ContentCommittedLen {
