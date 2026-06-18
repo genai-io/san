@@ -36,7 +36,7 @@ explanations here.
   `reference/file-naming.md`, `reference/minmax-provider.md`.
 
 - `guides/index.md` — task how-tos: getting started, the inspector, explore
-  mode, and writing skills / subagents / plugins.
+  mode, and writing skills / subagents / plugins / providers.
 - `operations/index.md` — build, test, release, troubleshoot, benchmark, and
   the small-footprint rationale.
 

@@ -114,7 +114,7 @@ chore: maintenance tasks
 
 | Area | Description |
 |------|-------------|
-| **Providers** | Add new LLM providers (Ollama, Mistral, etc.) |
+| **Providers** | Add new LLM providers (Ollama, Mistral, etc.); start with [`docs/guides/writing-a-provider.md`](docs/guides/writing-a-provider.md) |
 | **Tools** | Create new built-in tools |
 | **MCP** | Improve MCP server support |
 | **TUI** | Enhance terminal UI/UX |
