@@ -32,9 +32,17 @@ If no version is given, detect the current version and suggest the next one (see
 
 ## Workflow
 
-### 0. Pull from upstream
+### 0. Ensure on main and pull from upstream
 
-Always pull the latest upstream codebase first:
+Verify you are on the `main` branch. If not, stash any pending work and switch:
+
+```bash
+git branch --show-current
+```
+
+If not on `main`: `git stash && git checkout main`
+
+Then pull the latest upstream codebase:
 
 ```bash
 git pull upstream main --rebase
@@ -201,7 +209,7 @@ Poll until the GitHub release exists:
 gh release view v<new_version>
 ```
 
-Wait up to 3 minutes, checking every 15 seconds. If the release doesn't appear, warn the user that the workflow may have failed and ask whether to investigate.
+Wait up to 3 minutes, checking every 15 seconds. If the release hasn't appeared after 3 minutes, check the workflow — use `gh run list --workflow=release.yml --event=push --limit=3` (tag-triggered workflows are push events, not branch-based).
 
 ## Important Notes
 
