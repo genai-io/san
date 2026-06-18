@@ -3,6 +3,26 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.6] - 2026-06-18
+
+### Added
+- Subagent model overrides route across providers ([@yanmxa](https://github.com/yanmxa) in [#237](https://github.com/genai-io/san/pull/237))
+- Z.ai GLM Coding Plan provider endpoint ([@wangke19](https://github.com/wangke19) in [#239](https://github.com/genai-io/san/pull/239))
+- Agnes-AI provider ([@wangke19](https://github.com/wangke19) in [#236](https://github.com/genai-io/san/pull/236))
+
+### Changed
+- Add provider writing guide ([@onyx679](https://github.com/onyx679) in [#240](https://github.com/genai-io/san/pull/240))
+- Document cross-provider model routing in the subagent guide ([@yanmxa](https://github.com/yanmxa) in [#237](https://github.com/genai-io/san/pull/237))
+- Document `make ci` in contributing guide ([@onyx679](https://github.com/onyx679) in [#238](https://github.com/genai-io/san/pull/238))
+- Guard release skill against running off main ([@yanmxa](https://github.com/yanmxa) in [#244](https://github.com/genai-io/san/pull/244))
+- Add Product Hunt launch kit ([@yanmxa](https://github.com/yanmxa) in [88ccfbd](https://github.com/genai-io/san/commit/88ccfbd7))
+
+### Fixed
+- Resolve context window by model ID across all caches ([@yanmxa](https://github.com/yanmxa) in [#243](https://github.com/genai-io/san/pull/243))
+- Gate vendor/model routing on registered providers ([@yanmxa](https://github.com/yanmxa) in [#237](https://github.com/genai-io/san/pull/237))
+- Use ApplyPersonaOverlay and guard model override in `-p --persona` ([@dangpeng](https://github.com/dangpeng) in [#231](https://github.com/genai-io/san/pull/231))
+- Make `--persona` take effect in `-p` print mode ([@dangpeng](https://github.com/dangpeng) in [#231](https://github.com/genai-io/san/pull/231))
+
 ## [v1.20.5] - 2026-06-16
 
 ### Fixed
