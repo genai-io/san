@@ -1,34 +1,36 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>Open-source unified runtime for specialized AI agents — in the terminal</strong></p>
+  <p><strong>An open, ~12 MB runtime for fast AI agents</strong></p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
     <a href="https://genai-io.github.io/san/getting-started.html"><img src="https://img.shields.io/badge/Getting%20Started-0d9488?style=flat-square" alt="Getting Started"></a>
     <a href="docs/index.md"><img src="https://img.shields.io/badge/Docs-0d9488?style=flat-square" alt="Docs"></a>
+    <a href="https://www.producthunt.com/products/san?launch=san"><img src="https://img.shields.io/badge/Product%20Hunt-da552f?style=flat-square&logo=producthunt&logoColor=white" alt="Product Hunt"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   </p>
   <p>
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
   </p>
   <p>
-    <img src="assets/san.png" alt="San" width="100%">
+    <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
   </p>
-  <details>
-    <summary><b>▶ Watch the animated intro</b></summary>
-    <p>
-      <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
-    </p>
-    <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality version ↗</a></sub>
-  </details>
+  <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality intro ↗</a></sub>
+  <p>
+    ⚡ <strong>~0.01s</strong> cold start&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> single binary&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>zero</strong> runtime deps — no Node.js, no Python
+  </p>
 </div>
 
-San is a terminal-native **unified runtime for specialized agents** — coding and beyond — built on five pluggable pillars: **LLMs**, **search backends**, **personas**, **skills & extensions** (skills, plugins, MCP servers, subagents), and a **self-evolving** agent that levels up as you work. Written in Go.
+San is a terminal-native **unified runtime for specialized agents** — coding and beyond. Plug in any model and search backend, switch personas, and run your skills, plugins, MCP servers, and subagents unmodified. And it's self-evolving, learning as you work. One Go binary, runs anywhere.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
 ## Features
+
+<div align="center">
+  <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
+</div>
 
 ### Open architecture
 
@@ -103,27 +105,15 @@ mkdir -p ~/.local/bin && mv san ~/.local/bin/
 ```bash
 san                              # interactive
 san "explain this function"      # one-shot
-san -p "do something"            # non-interactive print mode (no TUI)
-echo "data" | san -p "analyze"   # piped input in print mode
-san --continue                   # resume latest session
-san --resume                     # pick a past session
-san --resume <session-id>        # resume specific session by ID
-san --plugin-dir <path>          # load plugins from a specific directory
+san -p "do something"            # print mode (no TUI), pipe-friendly
+san --continue                   # resume the latest session
+san --resume                     # pick a past session to resume
 
-# Subcommands
-san inspector                    # open session transcript viewer
-san agent run --type Explore --prompt "find main.go"  # run a headless agent
-san plugin list                  # list installed plugins
-san plugin install <ref>         # install a plugin
-san plugin enable <name>         # enable a plugin
-san plugin disable <name>        # disable a plugin
-san plugin uninstall <name>      # uninstall a plugin
-san mcp add <name> -- <cmd>      # add an MCP server (stdio)
-san mcp add --transport http <name> <url>  # add an MCP server (HTTP/SSE)
-san mcp list                     # list MCP servers
-san mcp get <name>               # get MCP server details
-san mcp edit <name>              # edit MCP server config in $EDITOR
-san mcp remove <name>            # remove an MCP server
+# Subcommands (run `san <command> --help` for the full list)
+san inspector                    # session transcript viewer
+san agent run --type Explore --prompt "..."   # run a headless agent
+san plugin <list|install|enable|...>          # manage plugins
+san mcp <add|list|remove|...>                 # manage MCP servers
 ```
 
 | What | How |
