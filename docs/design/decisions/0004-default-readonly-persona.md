@@ -14,7 +14,7 @@ This means a fresh San session has no read-only guardrails. Common starting
 workflows — "explain this code," "why is this test failing," "what does this
 package do" — don't need write access, but the user gets it anyway.
 
-The goal is to ship a built-in readonly persona with two core benefits:
+The goal is to ship a readonly persona with two core benefits:
 
 1. **Environment protection**: The persona physically cannot modify the user's
    working environment — no file writes, no git mutations, no package installs.
@@ -30,21 +30,26 @@ The goal is to ship a built-in readonly persona with two core benefits:
 
 ## Core Model
 
-A **built-in "readonly" persona** embedded in the San binary. Unlike the
+A **"readonly" persona** distributed as a standard persona folder. Unlike the
 earlier draft that fell back to San's default `behavior.md`, this persona
 **overrides all three prose parts** with minimal, read-only-specific content.
 Nothing from San's default engineering prompt survives — the model only sees
 what a read-only assistant needs.
 
 ```
-embedded in binary:
-  readonly/
-  ├── system/
-  │   ├── identity.md       ← minimal: "You are a read-only assistant"
-  │   ├── behavior.md       ← minimal: how to analyze, explain, debug
-  │   └── rules.md          ← minimal: read-only constraint + what to do when asked to write
-  └── settings.json         ← permissions.deny for write tools (enforcement layer)
+.san/personas/readonly/
+├── system/
+│   ├── identity.md       ← minimal: "You are a read-only assistant"
+│   ├── behavior.md       ← minimal: how to analyze, explain, debug
+│   └── rules.md          ← minimal: read-only constraint + what to do when asked to write
+└── settings.json         ← permissions.deny for write tools (enforcement layer)
 ```
+
+The persona is a regular persona directory — no engine changes required. It is
+published at [github.com/genai-io/readonly-persona](https://github.com/genai-io/readonly-persona).
+Users install it by cloning into `~/.san/personas/readonly/`. The main repo may
+carry a lightweight reference to demonstrate the pattern and link to the
+standalone repo, but does not own or maintain the full persona.
 
 Each part is intentionally short. The design principle is: **if a sentence
 does not help the model read, analyze, or explain, cut it.**
@@ -168,14 +173,23 @@ prompt-cache prefix, the smaller prompt also means a smaller cache entry.
 
 ## Decision
 
-### D1: Ship as built-in, not on-disk
+### D1: Ship as a persona folder, not built into the binary
 
-The readonly persona is compiled into the San binary via `embed.FS`, not
-scanned from `~/.san/personas/` or `.san/personas/`. It is always available
-even on a fresh install with no persona directories.
+The readonly persona is a standard persona directory — the same shape as any
+user-created persona. No engine changes, no `embed.FS`, no special loading
+path. The existing persona system already supports everything it needs:
+`system/{identity,behavior,rules}.md` plus a `settings.json` with
+`permissions.deny`.
 
-It is still registered in the persona registry so `/persona readonly` works
-and it appears in the `/persona` selector.
+It is published at
+[github.com/genai-io/readonly-persona](https://github.com/genai-io/readonly-persona).
+Users install it by cloning into `~/.san/personas/readonly/` or
+`.san/personas/readonly/`. Once installed, `/persona readonly` works and it
+appears in the `/persona` selector.
+
+The main San repo may carry a lightweight reference (a README pointer or a
+minimal example) to demonstrate the pattern and link to the standalone repo,
+but does not own or maintain the full persona.
 
 ### D2: Not the system default (initially)
 
@@ -297,12 +311,12 @@ effective settings overlay. No special subagent handling is needed.
 
 ## Implementation
 
-### Phase 1 — Embedded persona files
+### Phase 1 — Persona folder
 
-Create `internal/persona/builtin/readonly/`:
+Create the persona directory:
 
 ```
-internal/persona/builtin/readonly/
+.san/personas/readonly/
 ├── system/
 │   ├── identity.md
 │   ├── behavior.md
@@ -310,20 +324,24 @@ internal/persona/builtin/readonly/
 └── settings.json
 ```
 
-Embed via `embed.FS`. Register in the persona registry as a built-in entry
-that cannot be overridden by on-disk personas of the same name.
-
-### Phase 2 — `/persona` integration
-
-- Show "readonly" in the `/persona` selector.
-- Support `/persona readonly` to switch.
-- Persist the selection so `persona: readonly` in settings survives restart.
-
-### Phase 3 — Wire prompts into the persona loader
-
 Write the three prompt files (`identity.md`, `behavior.md`, `rules.md`) as
-defined in [Prompt content](#prompt-content) above and embed them alongside
-`settings.json`.
+defined in [Prompt content](#prompt-content) above, and `settings.json` with
+the deny list from [D4](#d4-enforcement--permissionsdeny-primary--rulesmd-advisory).
+
+### Phase 2 — Publish as standalone repo
+
+Published at [github.com/genai-io/readonly-persona](https://github.com/genai-io/readonly-persona).
+Users install via:
+
+```bash
+git clone https://github.com/genai-io/readonly-persona.git ~/.san/personas/readonly
+```
+
+### Phase 3 — In-repo reference (optional)
+
+Optionally add a pointer or minimal example in the main San repo to
+demonstrate the persona pattern and link to the standalone repo — without
+committing core to maintaining the full persona.
 
 ## Consequences
 
