@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed — 2026-06-11. Updated 2026-06-16.
+Proposed — 2026-06-11.
 
 ## Context
 
@@ -28,13 +28,14 @@ Each Persona follows the
 ```
 genai-io（Org, existing）
 ├── san              ← San source repo (existing, the managed project)
-└── san-team         ← New repo (pure content, no Go code)
+└── san-team         ← New repo (San development team Personas)
     ├── leader/
     │   ├── system/
     │   │   ├── identity.md
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
+    │   │   └── ...
     │   └── settings.json
     ├── dev/
     │   ├── system/
@@ -42,6 +43,7 @@ genai-io（Org, existing）
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
+    │   │   └── ...
     │   └── settings.json
     ├── qe/
     │   ├── system/
@@ -49,21 +51,22 @@ genai-io（Org, existing）
     │   │   ├── behavior.md
     │   │   └── rules.md
     │   ├── skills/
+    │   │   └── ...
     │   └── settings.json
-    ├── release/
-    │   ├── system/
-    │   │   ├── identity.md
-    │   │   ├── behavior.md
-    │   │   └── rules.md
-    │   ├── skills/
-    │   └── settings.json
-    ├── state/             ← queue.jsonl lives here
-    └── run.sh             ← polling loop (12-line shell script)
+    └── release/
+        ├── system/
+        │   ├── identity.md
+        │   ├── behavior.md
+        │   └── rules.md
+        ├── skills/
+        │   └── ...
+        └── settings.json
 ```
 
-- **`san-team`**: A pure-content repo — no Go code, no binaries. Contains
-  only persona markdown files, a shared state directory, and a shell script
-  for the polling loop. All Go logic lives in San as reusable features.
+- **`san-team`**: New repo containing the San project's development team.
+  Personas live directly under the repo root. If other projects need
+  similar autonomous management, they can create their own team repos
+  (e.g., `devops-team`).
 - **Team**: A collection of Personas in the `san-team` repo that
   collaborate toward a specific goal — managing the San project's issues,
   features, bugs, and releases.
@@ -76,225 +79,129 @@ genai-io（Org, existing）
 
 ## Runtime Model
 
-Each Persona runs as an **independent San instance**. The runtime model
-differs by persona role:
-
-### Leader — Interactive TUI
-
-Leader is the admin's conversation partner. Runs as a standard interactive
-San session with the leader persona loaded:
+Each Persona runs as an **independent San instance**:
 
 ```bash
-san --persona leader
+# Start Leader Persona (admin interaction entry point)
+san start --persona leader --team san-team
+
+# Start Dev Persona (waits for coding tasks)
+san start --persona dev --team san-team
+
+# Start QE Persona (waits for verification tasks)
+san start --persona qe --team san-team
+
+# Start Release Persona (waits for release tasks)
+san start --persona release --team san-team
 ```
 
-This uses San's existing `--persona` flag, which loads persona config
-from `~/.san/personas/leader/` (a symlink to `san-team/leader/`).
+The `--persona` flag tells San to load a specific Persona directory's
+config (system/ + skills/ + settings.json) at startup, avoiding the
+need for mid-session `/persona` switching.
 
-### Dev, QE, Release — Headless via run.sh
-
-These personas run headlessly via `san --persona <name> -p`, launched by
-`run.sh`. They do not need interactive terminals — they poll the queue,
-claim tasks, execute them, and update the queue:
-
-```bash
-# In terminal 2: start Dev polling loop
-./run.sh dev /path/to/san
-
-# In terminal 3: start QE polling loop
-./run.sh qe /path/to/san
-
-# In terminal 4: start Release polling loop
-./run.sh release /path/to/san
-```
-
-`run.sh` is a simple shell script (see below). Each persona's system prompt
-(identity + behavior + rules) is loaded by `san --persona <name> -p` from
-`~/.san/personas/<name>/`.
-
-### Setup: Linking Personas
-
-Before starting, link san-team personas into San's persona directory:
-
-```bash
-ln -s /path/to/san-team/leader ~/.san/personas/leader
-ln -s /path/to/san-team/dev    ~/.san/personas/dev
-ln -s /path/to/san-team/qe     ~/.san/personas/qe
-ln -s /path/to/san-team/release ~/.san/personas/release
-```
-
-All personas — Leader, Dev, QE, Release — use the same `~/.san/personas/`
-mechanism. No new persona-loading code is needed.
-
-## run.sh — The Glue Layer
-
-`run.sh` is the only "code" in san-team. It bridges `san queue` and
-`san -p`:
-
-```bash
-#!/bin/bash
-set -euo pipefail
-TEAM_DIR="$(cd "$(dirname "$0")" && pwd)"
-PERSONA="${1:?usage: $0 <leader|dev|qe|release>}"
-CWD="${2:-$(pwd)}"
-INTERVAL="${3:-30}"
-
-echo "[san-team:$PERSONA] polling every ${INTERVAL}s, cwd=$CWD"
-
-while true; do
-  # 1. Atomically claim next pending task for this persona
-  TASK=$(san queue claim --dir "$TEAM_DIR/state" --role "$PERSONA" --persona "$PERSONA" 2>/dev/null || true)
-  if [ -n "$TASK" ]; then
-    ID=$(echo "$TASK" | jq -r '.id')
-    TITLE=$(echo "$TASK" | jq -r '.title')
-    DESC=$(echo "$TASK" | jq -r '.description')
-    echo "[san-team:$PERSONA] claimed $ID: $TITLE"
-
-    # 2. Build task prompt and run agent headlessly
-    PROMPT="Task: $TITLE
-
-    $DESC
-
-    After completing, summarize what you did and any PR links."
-
-    if san --persona "$PERSONA" -p "$PROMPT"; then
-      san queue complete --dir "$TEAM_DIR/state" --id "$ID" --persona "$PERSONA"
-      echo "[san-team:$PERSONA] completed $ID"
-    else
-      san queue release --dir "$TEAM_DIR/state" --id "$ID" --persona "$PERSONA"
-      echo "[san-team:$PERSONA] released $ID (will retry)"
-    fi
-  fi
-  sleep "$INTERVAL"
-done
-```
-
-Key design points:
-- **Queue operations are the shell's job**: `run.sh` calls `san queue claim`,
-  `san queue complete`, `san queue release`. The LLM agent never knows about
-  the queue.
-- **Persona loading is San's job**: `san --persona <name> -p` loads the
-  persona system prompt from `~/.san/personas/`. The shell does not need to
-  compose persona files into the prompt.
-- **LLM inference is San's job**: `san -p` executes the agent with
-  the task description as the user message.
-- **The shell is just glue**: claim → run → complete/release. 12 lines.
+Multiple Persona instances can run simultaneously in different
+terminals, containers, or machines. They coordinate through a shared
+work queue (`san-team/state/queue.jsonl`).
 
 ## Workflow
 
 The admin talks only to the Leader Persona. Leader breaks requirements
-into Tasks and writes them to the shared queue via `san queue add`.
-Other Personas poll the queue via `run.sh`, claim matching tasks,
-complete them, and update the queue status.
+into Tasks and writes them to the shared queue. Other Personas poll the
+queue, claim matching tasks, complete them, and update the queue status.
 
 ```
 Admin (human)
     │
-    │  "Build user authentication"
+    │  "Build user authentication"  or  "Fix all P0 bugs"
     ▼
-┌────────────────────────────────────────────┐
-│ Leader (san --persona leader)              │
-│                                            │
-│ 1. Understand intent                       │
-│ 2. Draw architecture & state diagrams      │
-│ 3. Break down into Tasks                   │
-│ 4. Write tasks via: san queue add ...      │
-│ 5. Monitor: san queue list ...             │
-└────────────────┬───────────────────────────┘
-                 │  Shared work queue (state/queue.jsonl)
-        ┌────────┼────────┐
-        ▼        ▼        ▼
-  ┌──────────┐ ┌──────┐ ┌─────────┐
-  │ run.sh   │ │run.sh│ │ run.sh  │
-  │   dev    │ │  qe  │ │ release │
-  │          │ │      │ │         │
-  │ claim→   │ │claim→│ │claim→   │
-  │ san -p   │ │agent │ │ san -p  │
-  │ --persona│ │run   │ │--persona│
-  │   dev    │ │--qe  │ │ release │
-  │ →complete│ │→verify│ │→complete│
-  └──────────┘ └──────┘ └─────────┘
+┌──────────────────────────────────────────────────────┐
+│ Leader Persona (san start --persona leader --team san-team)│
+│                                                      │
+│ 1. Understand intent                                │
+│ 2. Draw architecture & state diagrams               │
+│ 3. Break down into Tasks, write to shared queue     │
+│ 4. Monitor queue, collect results, report to admin  │
+└──────────────────┬───────────────────────────────────┘
+                   │  Shared work queue (state/queue.jsonl)
+          ┌────────┼────────┐
+          ▼        ▼        ▼
+    ┌──────────┐ ┌──────┐ ┌─────────┐
+    │Dev│ │  QE  │ │ Release │
+    │ san start│ │san start│ │san start│
+    │ --persona│ │--persona│ │--persona│
+    │dev│ │  qe    │ │ release │
+    └──────────┘ └──────┘ └─────────┘
 ```
 
 ### Leader Persona — Single Entry Point
 
-Started via `san --persona leader`. The admin's only interface. Leader
-handles:
+Started via `san start --persona leader --team san-team`.
+The admin's only interface. Leader handles:
 
 1. **Understand intent**: new feature? bug fix? refactor?
 2. **Analyze San**: read design docs and existing code in the San repo
 3. **Visualize**: draw mermaid architecture/state diagrams, confirm with admin
-4. **Break down**: decompose into Tasks, write to shared work queue via
-   `san queue add --dir state/ --role dev --title "..." --description "..."`
-5. **Monitor**: track Task status via `san queue list --dir state/`
+4. **Break down**: decompose into Tasks, write to shared work queue
+5. **Monitor**: track Task status changes in the queue
 6. **Report**: collect results, summarize for the admin
 
 Leader does not write code. It writes Tasks to the queue; the matching
-Persona's `run.sh` loop picks them up automatically.
+Persona's San instance picks them up automatically.
 
 ```
 Leader dispatches a coding task:
 
 Leader:
   1. After analysis, determines Task-3 is a coding task
-  2. Runs: san queue add --dir state/ --role dev --title "Implement JWT..."
-  3. Dev's run.sh polls queue, finds Task-3 matching its role
-  4. Dev claims Task-3 via san queue claim, runs san --persona dev -p ".."
-  5. Agent completes, run.sh calls san queue complete with PR link
-  6. Leader polls queue via san queue list, sees Task-3 done
+  2. Writes Task-3 to queue (marked role: dev)
+  3. Dev San instance polls queue, finds Task-3 matching its role
+  4. Dev claims Task-3, starts implementation
+  5. On completion, updates queue status to done with PR link
+  6. Leader polls queue, sees Task-3 done, proceeds to next step
 ```
 
 ### Dev Persona — Implementation
 
-Launched by `run.sh dev`. Continuously polls the queue for coding tasks:
+Started via `san start --persona dev --team san-team`.
+Continuously polls the queue for coding tasks:
 
-1. `run.sh` claims Tasks from queue with role `dev` via `san queue claim`
-2. Builds prompt from task description
-3. Runs `san --persona dev -p "..."
-4. Agent reads San's design docs and existing code
-5. Agent implements following the layered architecture conventions
-6. Agent writes unit tests (in the same package)
-7. Agent runs `make test` + `make lint`
-8. Agent commits, creates PR
-9. On success: `run.sh` calls `san queue complete --id $ID --pr <url>`
-10. On failure: `run.sh` calls `san queue release --id $ID`
-
-The Dev agent never touches the queue — `run.sh` handles all queue
-operations based on the agent's exit code.
+1. Claims Tasks from queue with role `dev`
+2. Reads San's design docs and existing code
+3. Implements following the layered architecture conventions
+4. Writes tests
+5. Runs `make test` + `make lint`
+6. Commits, creates PR
+7. Updates queue status to `done` with PR link
 
 ### QE Persona — Verification
 
-Launched by `run.sh qe`. Continuously polls the queue for verification tasks:
+Started via `san start --persona qe --team san-team`.
+Continuously polls the queue for verification tasks:
 
-1. `run.sh` claims Tasks from queue with role `qe`
-2. Runs `san --persona qe -p "..."
-3. Agent checks out the PR branch
-4. Agent runs full test suite + lint + layer check
-5. Agent adds integration tests in `test-integration/`, commits to same PR
-6. Agent posts PR review
-7. On pass: `run.sh` calls `san queue verify --id $ID --result "passed"`
-8. On fail: `run.sh` calls `san queue release --id $ID --reason "..."`
+1. Claims Tasks from queue with role `qe` (corresponding to Dev done)
+2. Checks out the PR branch
+3. Runs full test suite + lint + layer check
+4. Uses `verify` skill to confirm correctness
+5. Posts PR review
+6. Updates queue status: `verified` or failed with reason
 
-QE can also verify designs before implementation starts (Leader creates
-a `role: qe` task with the design doc to review).
+Can also verify designs before implementation starts.
 
 ### Release Persona — Shipping
 
-Launched by `run.sh release`. Continuously polls the queue for release tasks:
+Started via `san start --persona release --team san-team`:
 
-1. `run.sh` claims Tasks from queue with role `release`
-2. Runs `san --persona release -p "..."
-3. Agent generates CHANGELOG
-4. Agent bumps version number
-5. Agent creates Git tag
-6. Agent generates release notes
-7. On success: `run.sh` calls `san queue complete --id $ID`
+1. Claims Tasks from queue with role `release` (after all QE verified)
+2. Generates CHANGELOG
+3. Bumps version number
+4. Creates Git tag
+5. Generates release notes
+6. Updates queue status to `done`
 
 ### Shared Work Queue
 
 The queue is the sole communication mechanism between Personas, stored
-at `san-team/state/queue.jsonl` (JSONL append-only log). All operations
-go through the `san queue` subcommand (see [ADR-0003](0003-shared-work-queue.md)).
+at `san-team/state/queue.jsonl` (JSONL append-only log).
 
 ```
 type WorkItem struct {
@@ -308,263 +215,15 @@ type WorkItem struct {
     Result      string       // result notes (filled by QE/Release)
     CreatedAt   time.Time
     UpdatedAt   time.Time
-    ClaimedAt   time.Time
-    RetryCount  int
-    MaxRetries  int
 }
 ```
 
 State transitions:
 
 ```
-pending ──claim()──→ claimed ──complete()──→ done ──verify()──→ verified
-   ↑                     │                       │
-   └──release()─── ← (timeout)          ← reject() ──┘
-                         │
-                         └──fail()──→ failed
-```
-
-## Complete Setup Example
-
-A step-by-step walkthrough from zero to running team.
-
-### Prerequisites
-
-```bash
-# San CLI must be built and on PATH
-cd /path/to/san
-make build
-export PATH="$PATH:$PWD/bin"
-
-# san-team repo cloned alongside san
-cd /path/to
-git clone git@github.com:genai-io/san-team.git
-```
-
-### Step 1: Link personas
-
-```bash
-ln -s /path/to/san-team/leader  ~/.san/personas/leader
-ln -s /path/to/san-team/dev     ~/.san/personas/dev
-ln -s /path/to/san-team/qe      ~/.san/personas/qe
-ln -s /path/to/san-team/release ~/.san/personas/release
-```
-
-### Step 2: Start Leader (interactive)
-
-```bash
-# Terminal 1: Leader session
-cd /path/to/san
-san --persona leader
-```
-
-The admin interacts with Leader here. For example:
-
-```
-Admin: Build user authentication with JWT login
-
-Leader:
-  Reads docs/design/ → analyzes codebase → draws sequence diagram
-  Confirms with admin → breaks down into tasks:
-
-  $ san queue add --dir /path/to/san-team/state --role dev \
-      --title "Define User model and UserStore interface" \
-      --description "Create User struct (ID, Username, PasswordHash, CreatedAt)..."
-
-  $ san queue add --dir /path/to/san-team/state --role dev \
-      --title "Implement UserStore with SQLite" \
-      --description "Implement UserStore interface using SQLite..."
-
-  $ san queue add --dir /path/to/san-team/state --role dev \
-      --title "Implement JWT token generation and verification" \
-      --description "Create internal/core/jwt/ package..."
-
-  $ san queue add --dir /path/to/san-team/state --role dev \
-      --title "Implement POST /auth/login handler" \
-      --description "Create login API handler..."
-
-  $ san queue add --dir /path/to/san-team/state --role qe \
-      --title "Verify auth module (tasks 1-4)" \
-      --description "Check out each PR, run tests, add integration tests..."
-
-  $ san queue add --dir /path/to/san-team/state --role release \
-      --title "Ship v1.3.0 with user authentication" \
-      --description "Generate CHANGELOG, bump version, tag v1.3.0..."
-```
-
-### Step 3: Start worker personas (headless)
-
-```bash
-# Terminal 2: Dev polling loop
-cd /path/to/san-team
-./run.sh dev /path/to/san 30
-
-# Terminal 3: QE polling loop
-cd /path/to/san-team
-./run.sh qe /path/to/san 30
-
-# Terminal 4: Release polling loop
-cd /path/to/san-team
-./run.sh release /path/to/san 60
-```
-
-### Step 4: Watch progress
-
-```bash
-# Any terminal: check queue status
-san queue list --dir /path/to/san-team/state
-```
-
-Output example:
-
-```
-ID        Role     Title                              Status     Assigned  PR
-a1b2c3d4  dev      Define User model and interface    done       dev       #123
-b2c3d4e5  dev      Implement UserStore with SQLite    done       dev       #124
-c3d4e5f6  dev      Implement JWT token generation     claimed    dev       -
-d4e5f6a7  dev      Implement POST /auth/login         pending    -         -
-a7b8c9d0  qe       Verify auth module (tasks 1-4)     pending    -         -
-b8c9d0e1  release  Ship v1.3.0                        pending    -         -
-
-Total: 6 | pending: 3 | claimed: 1 | done: 2 | verified: 0 | failed: 0
-```
-
-### What happens inside run.sh
-
-When Dev's `run.sh` polls and finds a pending task:
-
-```
-1. san queue claim --dir state/ --role dev --persona dev
-   → Returns JSON: {"id":"d4e5f6a7...", "title":"Implement POST /auth/login", ...}
-   → Task status is now "claimed"
-
-2. san --persona dev -p ".." --prompt "Task: Implement POST /auth/login
-   Create login API handler at internal/app/authhandler/..." --cwd /path/to/san
-   → Agent loads dev persona from ~/.san/personas/dev/
-   → Agent implements the handler + unit tests
-   → Agent creates PR #126
-   → Agent exits 0 (success)
-
-3. san queue complete --dir state/ --id d4e5f6a7 --persona dev --pr "https://github.com/genai-io/san/pull/126"
-   → Task status is now "done"
-
-4. sleep 30, repeat
-```
-
-If the agent fails:
-
-```
-1. san queue claim ...  (same)
-2. san --persona dev -p "..."
-   → Agent hits an error, exits 1 (failure)
-3. san queue release --dir state/ --id d4e5f6a7 --persona dev
-   → Task status reverts to "pending", retryCount++
-   → Next poll will claim it again (up to maxRetries)
-```
-
-## Complete Workflow Example
-
-Admin input: **"Implement user authentication with JWT login"**
-
-### 1. Leader understands + draws diagrams
-
-Leader reads San's `docs/design/`, analyzes existing code, generates a
-mermaid sequence diagram:
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant AuthHandler
-    participant AuthService
-    participant UserStore
-    participant JWT
-
-    Client->>AuthHandler: POST /auth/login
-    AuthHandler->>AuthService: Login(username, password)
-    AuthService->>UserStore: FindByUsername(username)
-    UserStore-->>AuthService: User
-    AuthService->>AuthService: Verify password
-    AuthService->>JWT: GenerateToken(user)
-    JWT-->>AuthService: token
-    AuthService-->>AuthHandler: token
-    AuthHandler-->>Client: 200 { token }
-```
-
-Leader shows the diagram: "This is how I understand the flow — correct?"
-
-### 2. Break down and write to queue
-
-After admin confirmation, Leader writes Tasks to the shared queue:
-
-```
-$ san queue add --dir state/ --role dev --title "Define User model and UserStore interface" \
-    --description "Create User struct (ID, Username, PasswordHash, CreatedAt) in internal/core/user.go..."
-
-$ san queue add --dir state/ --role dev --title "Implement UserStore with SQLite" \
-    --description "Implement UserStore interface using SQLite..."
-
-$ san queue add --dir state/ --role dev --title "Implement JWT token generation & verification" \
-    --description "Create internal/core/jwt/ package..."
-
-$ san queue add --dir state/ --role dev --title "Implement login API handler" \
-    --description "Create login API handler at internal/app/authhandler/..."
-
-$ san queue add --dir state/ --role qe --title "Verify full auth functionality" \
-    --description "Check out PRs, run tests, add integration tests..."
-
-$ san queue add --dir state/ --role release --title "Ship v1.3.0" \
-    --description "Generate CHANGELOG, bump version, tag v1.3.0..."
-```
-
-### 3. Personas claim and execute
-
-```
-Dev's run.sh polls queue:
-  Claims Task 1 → san --persona dev -p ".." → implements → PR #123 → complete
-  Claims Task 2 → san --persona dev -p ".." → implements → PR #124 → complete
-  Claims Task 3 → san --persona dev -p ".." → implements → PR #125 → complete
-  Claims Task 4 → san --persona dev -p ".." → implements → PR #126 → complete
-
-QE's run.sh polls queue:
-  Sees Tasks 1-4 done → claims Task 5
-  san --persona qe -p ".." → checks out PRs → runs tests → adds integration tests
-  → passes → san queue verify
-
-Leader monitors all verified → notifies admin to approve PRs
-Admin approves → Leader runs:
-  $ san queue add --dir state/ --role release --title "Ship v1.3.0" ...
-
-Release's run.sh polls queue:
-  Claims Task 6 → san --persona release -p ".." → changelog → tag → complete
-
-Leader → Admin: "Authentication feature complete and shipped. PRs: #123-#126"
-```
-
-## Bug Fix Flow
-
-Admin tells Leader: **"Scan and fix all P0 bugs"**
-
-```
-Leader:
-  1. Pulls all P0 bug issues from San repo via gh
-  2. Analyzes each, writes to queue:
-     $ san queue add --dir state/ --role dev --title "Fix #100 nil pointer in auth.go" ...
-     $ san queue add --dir state/ --role dev --title "Fix #102 timeout in db query" ...
-
-Dev's run.sh:
-  Claims "#100" → san --persona dev -p ".." → fix → PR → complete
-  Claims "#102" → san --persona dev -p ".." → fix → PR → complete
-
-QE's run.sh:
-  Claims "#100 verify" → san --persona qe -p ".." → verify → passes
-  Claims "#102 verify" → san --persona qe -p ".." → verify → passes
-
-Leader notifies admin to approve → admin approves
-
-Release's run.sh:
-  Claims "hotfix release" → changelog → tag → complete
-
-Leader → Admin: "2 P0 bugs fixed and shipped"
+pending ──→ claimed ──→ done ──→ verified
+                │                  │
+                └──→ (timeout) ──→ pending (timed out, released back to queue)
 ```
 
 ## Persona Configuration Examples
@@ -575,7 +234,7 @@ Each Persona is a persona directory. Using Dev as an example:
 
 ```markdown
 You are the Dev agent for the San project.
-Your job is to implement coding tasks assigned to you.
+Your job is to claim coding tasks from the shared queue and implement them.
 You are an expert Go developer familiar with San's five-layer package architecture.
 ```
 
@@ -584,16 +243,16 @@ You are an expert Go developer familiar with San's five-layer package architectu
 ```markdown
 ## Work habits
 
-1. Read relevant design docs and existing code first — understand context before acting
-2. Follow the 5-layer architecture dependency direction: cmd → app → feature → core → infrastructure
-3. Every change must include unit tests in the same package
-4. Run make test and make lint after changes — only proceed if they pass
-5. Commit with clear messages, create a PR, and report the PR link
+1. Continuously poll the shared queue for tasks matching your role
+2. Read relevant design docs and existing code first — understand context before acting
+3. Follow the 5-layer architecture dependency direction: cmd → app → feature → core → infrastructure
+4. Every change must include tests
+5. Run make test and make lint after changes — only proceed if they pass
 
 ## Communication style
 
-- When uncertain about a design decision, note it in your result for the Leader
-- On completion, summarize what you did, which files changed, and the PR link
+- When uncertain about a design decision, update the Task with your question for the Leader
+- On completion, update the Task with what you did, which files changed, and the PR link
 - Do not go beyond the assigned Task scope
 ```
 
@@ -684,6 +343,99 @@ and decision-making.
 }
 ```
 
+## Complete Workflow Example
+
+Admin input: **"Implement user authentication with JWT login"**
+
+### 1. Leader understands + draws diagrams
+
+Leader reads San's `docs/design/`, analyzes existing code, generates a
+mermaid sequence diagram:
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant AuthHandler
+    participant AuthService
+    participant UserStore
+    participant JWT
+
+    Client->>AuthHandler: POST /auth/login
+    AuthHandler->>AuthService: Login(username, password)
+    AuthService->>UserStore: FindByUsername(username)
+    UserStore-->>AuthService: User
+    AuthService->>AuthService: Verify password
+    AuthService->>JWT: GenerateToken(user)
+    JWT-->>AuthService: token
+    AuthService-->>AuthHandler: token
+    AuthHandler-->>Client: 200 { token }
+```
+
+Leader shows the diagram: "This is how I understand the flow — correct?"
+
+### 2. Break down and write to queue
+
+After admin confirmation, Leader writes Tasks to the shared queue:
+
+```
+Queue writes:
+  Task 1: { role: dev, title: "Define User model and UserStore interface" }
+  Task 2: { role: dev, title: "Implement UserStore" }
+  Task 3: { role: dev, title: "Implement JWT token generation & verification" }
+  Task 4: { role: dev, title: "Implement login API handler" }
+  Task 5: { role: qe, title: "Verify full auth functionality" }
+  Task 6: { role: release, title: "Ship v1.2.0" }
+```
+
+### 3. Personas claim and execute
+
+```
+Dev San instance polls queue:
+  Claims Task 1 → implements → marks done
+  Claims Task 2 → implements → marks done
+  Claims Task 3 → implements → marks done
+  Claims Task 4 → implements → marks done
+
+QE San instance polls queue:
+  Sees Tasks 1-4 done → claims Task 5
+  Checks out PR branch → runs tests → passes → marks verified
+
+Leader monitors all verified → notifies admin to approve PR
+Admin approves → Leader writes Task 6
+
+Release San instance polls queue:
+  Claims Task 6 → generates CHANGELOG → tags → marks done
+
+Leader → Admin: "Authentication feature complete and shipped. PR: #1234"
+```
+
+## Bug Fix Flow
+
+Admin tells Leader: **"Scan and fix all P0 bugs"**
+
+```
+Leader:
+  1. Pulls all P0 bug issues from San repo via GhCLI
+  2. Analyzes each, writes to queue:
+     - { role: dev, title: "Fix #100 nil pointer in auth.go" }
+     - { role: dev, title: "Fix #102 timeout in db query" }
+
+Dev San instance:
+  Claims "#100" → analyzes root cause → fix → PR → marks done
+  Claims "#102" → analyzes root cause → fix → PR → marks done
+
+QE San instance:
+  Claims "#100 verify" → tests → reviews PR → passes → marks verified
+  Claims "#102 verify" → tests → reviews PR → passes → marks verified
+
+Leader notifies admin to approve → admin approves
+
+Release San instance:
+  Claims "hotfix release" → generates CHANGELOG → tags → marks done
+
+Leader → Admin: "2 P0 bugs fixed and shipped"
+```
+
 ## Key Design Decisions
 
 ### 1. Persona directory
@@ -700,44 +452,31 @@ Persona definitions live in a dedicated repo, separate from the San source:
 - Different access permissions for the san-team repo
 - Team Personas can manage multiple target repos (future)
 
-### 3. san-team is pure content — no Go code
-
-san-team contains only markdown files, `state/`, and a shell script. All Go
-logic lives in San as reusable, independently useful features:
-- `san queue` — atomic work queue operations (see [ADR-0003](0003-shared-work-queue.md))
-- `san --persona <name> -p` — headless agent with persona system prompt
-
-This separation means san-team has no build step, no dependencies, and can
-be modified by anyone comfortable with markdown and shell scripts.
-
-### 4. Leader is the single entry point
+### 3. Leader is the single entry point
 
 The admin never talks directly to Dev/QE/Release:
 - Simple mental model: one conversation partner
 - Leader has global visibility to prioritize and handle conflicts
 - Other Personas focus only on their queue tasks, don't need global context
 
-### 5. Each Persona is an independent San instance
+### 4. Each Persona is an independent San instance
 
 Instead of nested sub-agent calls via the Agent tool, each Persona runs
-as an independent San process:
-- **Leader**: `san --persona leader` — interactive TUI, talks to admin
-- **Dev/QE/Release**: `san --persona <name> -p` — headless, launched by `run.sh`
-
-Benefits:
+as an independent San process (`san start --persona <name> --team <team>`):
 - Process-level isolation: each Persona has its own context, tools, permissions
 - Can be deployed on different machines/containers, independently scaled
 - Coordination through the shared work queue (file-based), no IPC needed
-- All persona loading unified under `~/.san/personas/`
+- Complements the `/persona` switch mechanism: `/persona` for interactive
+  mid-session hot-switching; `--persona` for fixed-role startup
 
-### 6. Architecture diagrams as communication language
+### 5. Architecture diagrams as communication language
 
 Leader draws mermaid diagrams before writing any code:
 - Admin confirms understanding (avoids building the wrong thing)
 - Dev Persona gets a clear reference (diagrams ship with Task descriptions)
 - QE Persona gets a verification checklist
 
-### 7. Persona Self-Evolution
+### 6. Persona Self-Evolution
 
 Every Persona continuously learns and self-improves during the project.
 Evolution is persisted by updating the Persona's configuration in the
@@ -775,13 +514,11 @@ Task complete → Persona writes retrospective → identifies improvements
 
 | New Concept | Existing / Planned Mechanism |
 |---|---|
-| Persona directory | `~/.san/personas/` (existing persona system) |
-| `san --persona leader` | Existing `--persona` flag (no change) |
-| `san --persona <name> -p` | Existing: `-p` print mode with `--persona` (PR #231) |
-| Shared work queue | New: `san queue` subcommand (see ADR-0003) |
-| run.sh polling loop | 12-line shell script in san-team |
-| Persona communication | Queue polling via `san queue`, no inter-process RPC |
-| Persona permissions | settings.json permissions (existing mechanism) |
+| Persona directory | Persona directory (`persona-system.md` spec) |
+| `san start --persona` | Startup-time persona selection (no mid-session switch needed) |
+| Shared work queue | New: filesystem JSONL queue (`state/queue.jsonl`) |
+| Persona communication | Queue polling, no inter-process RPC needed |
+| Persona permissions | settings.json permissions (deny: add-only) |
 
 ## Implementation Plan
 
@@ -790,39 +527,37 @@ Task complete → Persona writes retrospective → identifies improvements
 - Create `san-team` repo under `genai-io` Org
 - Write four Persona directories (leader/dev/qe/release)
 - Each with `system/{identity,behavior,rules}.md` + `skills/` + `settings.json`
-- Create `run.sh` polling script
-- Create `state/` directory (queue.jsonl created at runtime)
 
-### Phase 2 — Add `san queue` subcommand to San
+### Phase 2 — `san start --persona` feature
 
-- Implement `internal/queue/` package (item, queue, claim) — ~200 lines
-- Wire `cmd/san/queue.go` cobra subcommand
-- Commands: list, claim, add, complete, verify, release, fail
-- See [ADR-0003](0003-shared-work-queue.md) for details
+- San CLI adds `--persona` and `--team` flags
+- On startup, load the specified Persona config from the team directory
+- Load system/ files as the system prompt
+- Load skills/ as active skills
+- Apply settings.json permissions and model config
 
-### Phase 3 — `--persona` + `-p` integration (done, PR #231)
+### Phase 3 — Shared work queue
 
-- Fix `runPrint` to load persona system prompt when `--persona` and `-p` are
-  combined
-- Load persona from `~/.san/personas/<name>/` and build system prompt via
-  `system.Build()` with persona identity/behavior/rules
-- Apply persona's settings.json model and disabledTools
-- This replaces the need for `run.sh` to compose persona files into the prompt
+- Implement JSONL persistent queue (`state/queue.jsonl`)
+- Queue write (Leader creates Tasks)
+- Queue poll (Personas claim tasks matching their role)
+- State transitions (pending → claimed → done → verified)
+- Timeout release (claimed tasks auto-revert to pending after timeout)
 
 ### Phase 4 — End-to-end workflows
 
-- Leader: `san --persona leader` → understand → break down → `san queue add`
-- Dev: `run.sh dev` → `san queue claim` → `san --persona dev -p ".."` → `san queue complete`
-- QE: `run.sh qe` → `san queue claim` → `san --persona qe -p ".."` → `san queue verify`
-- Release: `run.sh release` → `san queue claim` → `san --persona release -p ".."` → `san queue complete`
-- Leader: `san queue list` → monitor → report to admin
+- Leader: design doc → break down → write to queue
+- Dev Persona: poll → claim → implement → commit → update queue
+- QE Persona: poll → claim → verify → update queue
+- Release Persona: poll → claim → ship → update queue
+- Leader: monitor queue status → report to admin
 
 ### Phase 5 — Automation and operations
 
 - Cron-triggered bug scanning → auto-write to queue
 - Auto-trigger Leader task breakdown on design doc merge
-- Progress dashboard (`san queue list`)
-- `san queue compact` for JSONL compaction
+- Progress dashboard (CLI: `san team status`)
+- Persona instance health monitoring
 
 ## Reference Skills
 
@@ -881,9 +616,8 @@ directly adopt them or use them as design references.
    before merging — no automatic merge. After QE passes, Leader notifies the
    admin to approve; the admin just clicks approve.
 3. **Failure retry strategy**: The Leader decides the max retry count per Task
-   (default 3). When Dev exhausts retries and still fails QE, `run.sh` calls
-   `san queue fail`, marking the Task as `failed`. Leader detects this and
-   notifies the admin.
+   (default 3). When Dev exhausts retries and still fails QE, Leader
+   marks the Task as `failed`, records the reason, and notifies the admin.
 4. **Crash recovery**: All failure scenarios (Persona crash, Leader crash,
    queue file corruption, etc.) must be handled gracefully and reported to
    the admin:
@@ -891,17 +625,12 @@ directly adopt them or use them as design references.
      detects the reversion and notifies the admin
    - Leader crash: admin restarts Leader, which replays the queue to restore context
    - Queue file corruption: recover the last good snapshot from Git history
-   - `run.sh` crash: simply restart the script; it picks up where it left off
-     (any claimed task auto-reverts after timeout)
 5. **Future team repos**: Beyond `san-team`, what infrastructure
    will teams like `devops-team` need?
 
 ## References
 
 - [`persona-system.md`](../../notes/active/persona-system.md) — persona design spec that Persona directories follow
-- [ADR-0003](0003-shared-work-queue.md) — shared work queue design (`san queue`)
-- [`san-team/DESIGN.md`](../../../san-team/DESIGN.md) — prompt-first san-team design
-- [`san-team/state/EXAMPLE.md`](../../../san-team/state/EXAMPLE.md) — queue examples
 - [`core.Agent`](../../packages/core.md) — underlying agent primitive
 - [`packages/subagent.md`](../../packages/subagent.md) — sub-agent mechanism
 - [`packages/skill.md`](../../packages/skill.md) — skill loading
