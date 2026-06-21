@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Getting Started — San</title>
-<meta name="description" content="Get started with San in three steps: install, launch and pick a theme, then connect your model.">
-<meta property="og:title" content="Getting Started — San">
-<meta property="og:description" content="Install, pick a theme, and connect your model — up and running in a couple of minutes.">
+<title>快速开始 — San</title>
+<meta name="description" content="三步快速开始使用 San：安装、启动并选择主题，然后连接你的模型。">
+<meta property="og:title" content="快速开始 — San">
+<meta property="og:description" content="安装、选择主题、连接模型——几分钟内即可开始使用。">
 <meta property="og:type" content="article">
-<meta property="og:url" content="https://genai-io.github.io/san/getting-started.html">
+<meta property="og:url" content="https://genai-io.github.io/san/getting-started.zh.html">
 <meta property="og:image" content="https://genai-io.github.io/san/san.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
 <link rel="stylesheet" href="style.css">
@@ -17,16 +17,16 @@
 
 <nav id="nav">
   <div class="wrap">
-    <span class="logo"><a href="index.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
-    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <span class="logo"><a href="index.zh.html">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
+    <button class="nav-toggle" aria-label="切换菜单" aria-expanded="false" onclick="toggleNav(this)">≡</button>
     <div class="nav-links" id="nav-links">
-      <a href="index.html#features">Features</a>
-      <a href="index.html#deploy">Deploy</a>
-      <a href="index.html#footprint">Footprint</a>
+      <a href="index.zh.html#features">功能</a>
+      <a href="index.zh.html#deploy">部署</a>
+      <a href="index.zh.html#footprint">性能</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="intro.html">Intro</a>
-      <a href="getting-started.html">Get Started</a>
-      <a href="docs.html">Docs</a>
+      <a href="intro.html">介绍</a>
+      <a href="getting-started.zh.html">快速开始</a>
+      <a href="docs.zh.html">文档</a>
       <span class="lang-switch">
         <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
           <span id="lang-label"></span>
@@ -34,15 +34,15 @@
         </button>
         <div class="lang-menu" id="lang-menu" role="listbox"></div>
       </span>
-      <a class="nav-cta" href="https://github.com/genai-io/san">★ Star on GitHub</a>
+      <a class="nav-cta" href="https://github.com/genai-io/san">★ 在 GitHub 标星</a>
     </div>
   </div>
 </nav>
 
 <header class="page-hero">
   <div class="wrap">
-    <h1>Getting Started</h1>
-    <p>From install to your first prompt in a couple of minutes.</p>
+    <h1>快速开始</h1>
+    <p>从安装到发出第一个提示词，只需几分钟。</p>
   </div>
 </header>
 
@@ -53,33 +53,33 @@
       <div class="step">
         <div class="num">1</div>
         <div class="step-body">
-          <h3>Install</h3>
-          <p>One command. Re-run anytime to upgrade.</p>
+          <h3>安装</h3>
+          <p>一条命令即可。随时重新运行以升级。</p>
           <p style="margin-top:14px;"><b>macOS / Linux</b></p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd', this)">Copy</button>
+            <button class="copy-btn" onclick="copyEl('install-cmd', this)">复制</button>
           </div>
           <p style="margin-top:14px;"><b>Windows (PowerShell)</b></p>
           <div class="cmd">
             <span class="prompt">&gt;</span>
             <code id="install-cmd-win">irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex</code>
-            <button class="copy-btn" onclick="copyEl('install-cmd-win', this)">Copy</button>
+            <button class="copy-btn" onclick="copyEl('install-cmd-win', this)">复制</button>
           </div>
-          <p style="margin-top:14px;">Prefer Go? <code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
+          <p style="margin-top:14px;">更偏好 Go？<code class="inline">go install github.com/genai-io/san/cmd/san@latest</code></p>
         </div>
       </div>
 
       <div class="step">
         <div class="num">2</div>
         <div class="step-body">
-          <h3>Launch &amp; pick a theme</h3>
-          <p>Start San by running <code class="inline">san</code>. On first launch you'll pick a color theme — choose one, and you're ready to connect a model.</p>
+          <h3>启动并选择主题</h3>
+          <p>运行 <code class="inline">san</code> 启动 San。首次启动时你需选择一个配色主题——选择后即可连接模型。</p>
           <div class="cmd">
             <span class="prompt">$</span>
             <code id="run-cmd">san</code>
-            <button class="copy-btn" onclick="copyEl('run-cmd', this)">Copy</button>
+            <button class="copy-btn" onclick="copyEl('run-cmd', this)">复制</button>
           </div>
         </div>
       </div>
@@ -87,25 +87,25 @@
       <div class="step">
         <div class="num">3</div>
         <div class="step-body">
-          <h3>Connect a model</h3>
-          <p>Type <code class="inline">/model</code> to open model settings, then:</p>
+          <h3>连接模型</h3>
+          <p>输入 <code class="inline">/model</code> 打开模型设置，然后：</p>
           <ol class="substeps">
-            <li>In the <b>Provider</b> pane on the right, paste your API key — this loads that provider's available models.</li>
-            <li>Wait for the provider's models to finish loading.</li>
-            <li>Pick the model you want from the <b>Model</b> list, and start coding.</li>
+            <li>在右侧的<b>提供商</b>面板中粘贴你的 API 密钥——这将加载该提供商的所有可用模型。</li>
+            <li>等待提供商模型列表加载完成。</li>
+            <li>从<b>模型</b>列表中选择你想要的模型，开始编码。</li>
           </ol>
-          <p style="margin-top:14px;">Switch providers or models anytime with <code class="inline">/model</code>. Your choice is saved to <code class="inline">~/.san/providers.json</code>.</p>
+          <p style="margin-top:14px;">随时通过 <code class="inline">/model</code> 切换提供商或模型。你的选择会保存到 <code class="inline">~/.san/providers.json</code>。</p>
         </div>
       </div>
 
     </div>
 
     <div class="cta-box" style="margin-top: 56px;">
-      <h2>You're set</h2>
-      <p>Explore slash commands with <code class="inline" style="background:var(--bg);">/help</code>, or dive into the docs.</p>
+      <h2>准备就绪</h2>
+      <p>输入 <code class="inline" style="background:var(--bg);">/help</code> 探索斜杠命令，或深入了解文档。</p>
       <div class="hero-actions">
-        <a class="btn btn-primary" href="https://github.com/genai-io/san/tree/main/docs">Read the docs</a>
-        <a class="btn btn-ghost" href="index.html">Back to home</a>
+        <a class="btn btn-primary" href="https://github.com/genai-io/san/tree/main/docs">阅读文档</a>
+        <a class="btn btn-ghost" href="index.zh.html">返回首页</a>
       </div>
     </div>
   </div>
@@ -116,8 +116,8 @@
     <span>© <span id="year"></span> San · Apache 2.0</span>
     <span>
       <a href="https://github.com/genai-io/san">GitHub</a> ·
-      <a href="https://github.com/genai-io/san/tree/main/docs">Docs</a> ·
-      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">Contributing</a>
+      <a href="https://github.com/genai-io/san/tree/main/docs">文档</a> ·
+      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">贡献指南</a>
     </span>
   </div>
 </footer>
@@ -127,7 +127,7 @@
     const text = document.getElementById(id).innerText;
     navigator.clipboard.writeText(text).then(() => {
       const old = btn.innerText;
-      btn.innerText = 'Copied!';
+      btn.innerText = '已复制！';
       setTimeout(() => btn.innerText = old, 1500);
     });
   }

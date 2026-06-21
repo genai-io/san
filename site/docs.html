@@ -27,6 +27,13 @@
       <a href="intro.html">Intro</a>
       <a href="getting-started.html">Get Started</a>
       <a href="docs.html">Docs</a>
+      <span class="lang-switch">
+        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label"></span>
+          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
+        </button>
+        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+      </span>
       <a class="nav-cta" href="https://github.com/genai-io/san">★ Star on GitHub</a>
     </div>
   </div>
@@ -142,6 +149,39 @@
   const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
   onScroll();
   window.addEventListener('scroll', onScroll, { passive: true });
+  // Language switcher — custom dropdown
+  (function() {
+    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
+    const PAGES = new Set(['index', 'getting-started', 'docs']);
+    const page = location.pathname.split('/').pop() || 'index.html';
+    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
+      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
+    const m = page.match(/\.([a-z]{2})\.html$/);
+    const cur = m ? m[1] : 'en';
+    const label = document.getElementById('lang-label');
+    const menu = document.getElementById('lang-menu');
+    const btn = document.getElementById('lang-btn');
+    if (!label || !menu || !btn) return;
+    label.textContent = LANGS[cur].label;
+    Object.entries(LANGS).forEach(([code, lang]) => {
+      const opt = document.createElement('button');
+      opt.textContent = lang.label;
+      opt.dataset.code = code;
+      if (code === cur) opt.classList.add('active');
+      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
+      menu.appendChild(opt);
+    });
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const open = this.getAttribute('aria-expanded') === 'true';
+      this.setAttribute('aria-expanded', !open);
+      menu.classList.toggle('open');
+    });
+    document.addEventListener('click', function () {
+      menu.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  })();
 </script>
 </body>
 </html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>San — 开源的统一智能体运行时</title>
+<meta name="description" content="San 是一个终端原生的统一智能体运行时：一个 ~12 MB 的 Go 二进制文件，可插拔的 LLM 提供商，完全兼容 Claude Code 技能、插件和 MCP。~0.01 秒冷启动，零运行时依赖。">
+<meta property="og:title" content="San — 终端的统一智能体运行时">
+<meta property="og:description" content="单一 Go 二进制文件。可插拔 LLM 提供商。兼容 Claude Code。~0.01 秒冷启动，~12 MB。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://genai-io.github.io/san/">
+<meta property="og:image" content="https://genai-io.github.io/san/san.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' font-family='monospace'>%E2%9C%A6</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <span class="logo"><a href="#top">&lt; SAN <span class="spark">✦</span> /&gt;</a></span>
+    <button class="nav-toggle" aria-label="切换菜单" aria-expanded="false" onclick="toggleNav(this)">≡</button>
+    <div class="nav-links" id="nav-links">
+      <a href="#features">功能</a>
+      <a href="#deploy">部署</a>
+      <a href="#footprint">性能</a>
+      <a href="#community">社区</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a href="intro.html">介绍</a>
+      <a href="getting-started.zh.html">快速开始</a>
+      <a href="docs.zh.html">文档</a>
+      <span class="lang-switch">
+        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="lang-label"></span>
+          <svg class="lang-arrow" width="8" height="6" viewBox="0 0 8 6"><path d="M0 0l4 6 4-6" fill="currentColor"/></svg>
+        </button>
+        <div class="lang-menu" id="lang-menu" role="listbox"></div>
+      </span>
+      <a class="nav-cta" href="https://github.com/genai-io/san">★ 在 GitHub 标星</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-head">
+      <span class="kicker load-up d1">开源智能体运行时 · Apache-2.0</span>
+      <h1 class="load-up d2">San — 统一智能体<br>在你的<span class="grad">终端中进化</span></h1>
+      <p class="sub load-up d3">一个运行时，多种智能体——<strong>与你一起成长</strong></p>
+    </div>
+
+    <div class="screen-frame load-up d4">
+      <div class="intro-embed">
+        <iframe src="intro.html?theme=dark" title="San — 动画介绍" loading="lazy" allow="fullscreen"></iframe>
+      </div>
+    </div>
+    <p class="intro-cap load-up d4"><a href="intro.html" target="_blank" rel="noopener">全屏观看 ↗</a></p>
+
+    <div class="hero-actions load-up d5">
+      <a class="btn btn-primary" href="getting-started.zh.html">快速开始 →</a>
+      <a class="btn btn-ghost" href="https://github.com/genai-io/san">在 GitHub 上查看</a>
+    </div>
+
+    <div class="install-bar load-up d6">
+      <span class="prompt">$</span>
+      <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</code>
+      <button class="copy-btn" onclick="copyInstall(this)">复制</button>
+    </div>
+
+    <div class="badges load-up d6">
+      <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square&color=0d9488" alt="版本"></a>
+      <a href="https://github.com/genai-io/san/stargazers"><img src="https://img.shields.io/github/stars/genai-io/san?style=flat-square&color=14b8a6" alt="星标"></a>
+      <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go 报告卡"></a>
+      <img src="https://img.shields.io/badge/license-Apache%202.0-0b7d72?style=flat-square" alt="许可协议">
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">功能特性</span>
+      <h2 class="section-title">开放 <em>设计</em></h2>
+      <p class="section-sub">每一层都可以在运行时替换。无供应商锁定。</p>
+    </div>
+    <div class="grid">
+      <div class="card reveal">
+        <span class="idx">01</span>
+        <h3><span class="ico">🔌</span> 多 LLM 提供商</h3>
+        <p>使用任何 LLM —— 从 Anthropic 到 Z.ai。通过 <code>/model</code> 随时切换。</p>
+      </div>
+      <div class="card reveal">
+        <span class="idx">02</span>
+        <h3><span class="ico">🔍</span> 可插拔搜索</h3>
+        <p>Exa、Tavily、Brave 或 Serper。通过 <code>/search</code> 随时切换。</p>
+      </div>
+      <div class="card reveal">
+        <span class="idx">03</span>
+        <h3><span class="ico">🧩</span> 技能与扩展</h3>
+        <p>技能、插件、MCP 服务器和子智能体——兼容 Claude Code，无需修改即可运行。</p>
+      </div>
+      <div class="card reveal">
+        <span class="idx">04</span>
+        <h3><span class="ico">🎭</span> 角色系统</h3>
+        <p>Markdown 定义的角色——系统提示、技能和配置按用户或项目打包，通过 <code>/persona</code> 切换。</p>
+      </div>
+      <div class="card reveal">
+        <span class="idx">05</span>
+        <h3><span class="ico">⚡</span> 原生性能</h3>
+        <p>单一 Go 二进制文件。12 MB，~0.01 秒启动，零运行时依赖。</p>
+      </div>
+      <div class="card reveal">
+        <span class="idx">06</span>
+        <h3><span class="ico">💾</span> 会话持久化</h3>
+        <p>会话自动保存、恢复和分支，支持自动上下文压缩。</p>
+      </div>
+      <div class="card wide reveal">
+        <span class="idx">07</span>
+        <div>
+          <h3><span class="ico">✦</span> 自我进化 <span class="soon">Lv.1 · 已上线</span></h3>
+          <p>每经过几轮交互，后台审核者会将你最近的工作提炼为持久化记忆和可复用技能——智能体在你工作中不断升级，无需手动调优。Lv.1 现已上线；更深层级即将推出。</p>
+        </div>
+        <div class="levels">
+          <span class="level live"><b>Lv.1</b> 好奇</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.10</b> 更优</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.50</b> 更强</span>
+          <span class="arrow">→</span>
+          <span class="level"><b>Lv.∞</b> 传奇</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="deploy" style="background: var(--bg-soft);">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">随处部署</span>
+      <h2 class="section-title">一个二进制。<em>随处运行。</em></h2>
+      <p class="section-sub">一个 ~12 MB 的二进制文件，零运行时依赖——同一文件可在笔记本、云节点或 256 MB 边缘设备上无需修改即可运行。</p>
+    </div>
+    <div class="deploy-targets">
+      <span class="pill">💻 macOS 和 Linux 笔记本</span>
+      <span class="pill">☁️ 云节点和虚拟机</span>
+      <span class="pill">📟 ARM 边缘设备</span>
+      <span class="pill">🐳 <code>scratch</code> 容器</span>
+      <span class="pill">⚙️ CI 步骤和生命周期钩子</span>
+      <span class="pill">🔒 离线隔离环境</span>
+    </div>
+    <p class="bench-note">无需 Node.js，无需 Python，无需 <code>node_modules</code>。<a href="https://github.com/genai-io/san/blob/main/docs/operations/footprint.md">为什么小很重要及运行环境 →</a></p>
+  </div>
+</section>
+
+<section id="footprint">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">性能对比</span>
+      <h2 class="section-title">小而快，<em>设计使然</em></h2>
+      <p class="section-sub">相同模型（<span class="mono">claude-sonnet-4-6</span>），相同任务，Apple Silicon——以 Claude Code 为参考基准。</p>
+    </div>
+    <div class="bench-wrap reveal">
+      <table>
+        <thead>
+          <tr><th>指标</th><th>San</th><th>Claude Code</th><th>差距</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>下载大小</td><td>12 MB</td><td>63 MB + Node 112 MB</td><td class="adv">小 5 倍</td></tr>
+          <tr><td>磁盘占用</td><td>38 MB</td><td>175 MB</td><td class="adv">小 4.6 倍</td></tr>
+          <tr><td>启动时间</td><td>~0.01 秒</td><td>~0.20 秒</td><td class="adv">快 20 倍</td></tr>
+          <tr><td>启动内存</td><td>~32 MB</td><td>~189 MB</td><td class="adv">少 5.8 倍</td></tr>
+          <tr><td>简单任务</td><td>~2.4 秒 / 39 MB</td><td>~10.4 秒 / 286 MB</td><td class="adv">快 4.3 倍</td></tr>
+          <tr><td>工具调用任务</td><td>~3.3 秒 / 39 MB</td><td>~26.0 秒 / 285 MB</td><td class="adv">快 7.9 倍</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="bench-note">San 无需修改即可运行 Claude Code 的技能、插件和 MCP——差距在于原生 Go 二进制与 Node.js 运行时的差异。<a href="https://github.com/genai-io/san/blob/main/docs/operations/benchmark.md">复现数据 →</a></p>
+  </div>
+</section>
+
+<section style="background: var(--bg-soft);">
+  <div class="wrap">
+    <div class="cta-box reveal">
+      <span class="kicker" style="justify-content:center;">开始使用</span>
+      <h2>30 秒内体验</h2>
+      <p>基于 Apache 2.0 开源。如果对你有用，请给仓库标星——这真的很有帮助。</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://github.com/genai-io/san">★ 在 GitHub 标星</a>
+        <a class="btn btn-ghost" href="getting-started.zh.html">快速开始</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="community">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="kicker">社区</span>
+      <h2 class="section-title">加入 <em>对话</em></h2>
+      <p class="section-sub">两种方式——微信面向中文社区，Slack 面向全球用户。</p>
+    </div>
+    <div class="qr-row reveal">
+      <div class="qr-card">
+        <img src="wechat.jpg" alt="微信官方公众号 极客外传 二维码" width="200" height="200" loading="lazy">
+        <p class="qr-cap">关注公众号「极客外传」· 回复 <span class="mono">san</span> 或 <span class="mono">三</span> 入群</p>
+      </div>
+      <div class="qr-card">
+        <img src="slack.png" alt="San Slack 二维码" width="200" height="200" loading="lazy">
+        <p class="qr-cap">扫描二维码或<a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">加入 Slack</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span class="brand">© <span id="year"></span> <span class="san">San 三</span> · Apache 2.0</span>
+    <span>
+      <a href="https://github.com/genai-io/san">GitHub</a> ·
+      <a href="https://github.com/genai-io/san/tree/main/docs">文档</a> ·
+      <a href="https://github.com/genai-io/san/blob/main/CONTRIBUTING.md">贡献指南</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  // 复制安装命令
+  function copyInstall(btn) {
+    const text = document.getElementById('install-cmd').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const old = btn.innerText;
+      btn.innerText = '已复制！';
+      setTimeout(() => btn.innerText = old, 1500);
+    });
+  }
+  document.getElementById('year').innerText = new Date().getFullYear();
+
+  // 移动端导航切换
+  function toggleNav(btn) {
+    const nav = document.getElementById('nav');
+    const open = nav.classList.toggle('open');
+    btn.setAttribute('aria-expanded', open);
+  }
+  document.querySelectorAll('#nav-links a').forEach(a =>
+    a.addEventListener('click', () => document.getElementById('nav').classList.remove('open')));
+
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+  onScroll();
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach((el, i) => {
+    el.style.transitionDelay = (i % 6) * 60 + 'ms';
+    io.observe(el);
+  });
+
+  const spyLinks = [...document.querySelectorAll('#nav-links a[href^="#"]')];
+  const sections = spyLinks
+    .map(a => document.getElementById(a.getAttribute('href').slice(1)))
+    .filter(Boolean);
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        spyLinks.forEach(l => l.classList.toggle('active',
+          l.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { rootMargin: '-45% 0px -50% 0px' });
+  sections.forEach(s => spy.observe(s));
+
+  (function () {
+    const box = document.querySelector('.intro-embed');
+    if (!box) return;
+    const frame = box.querySelector('iframe');
+    const scaleFrame = () => { frame.style.transform = 'scale(' + (box.clientWidth / 1280) + ')'; };
+    scaleFrame();
+    new ResizeObserver(scaleFrame).observe(box);
+  })();
+  // Language switcher — custom dropdown
+  (function() {
+    const LANGS = { en: { label: 'EN', ext: '.html' }, zh: { label: '中文', ext: '.zh.html' } };
+    const PAGES = new Set(['index', 'getting-started', 'docs']);
+    const page = location.pathname.split('/').pop() || 'index.html';
+    const base = PAGES.has(page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, ''))
+      ? page.replace(/\.[a-z]{2}\.html$/, '').replace(/\.html$/, '') : 'index';
+    const m = page.match(/\.([a-z]{2})\.html$/);
+    const cur = m ? m[1] : 'en';
+    const label = document.getElementById('lang-label');
+    const menu = document.getElementById('lang-menu');
+    const btn = document.getElementById('lang-btn');
+    if (!label || !menu || !btn) return;
+    label.textContent = LANGS[cur].label;
+    Object.entries(LANGS).forEach(([code, lang]) => {
+      const opt = document.createElement('button');
+      opt.textContent = lang.label;
+      opt.dataset.code = code;
+      if (code === cur) opt.classList.add('active');
+      opt.addEventListener('click', function () { location.href = base + LANGS[this.dataset.code].ext; });
+      menu.appendChild(opt);
+    });
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const open = this.getAttribute('aria-expanded') === 'true';
+      this.setAttribute('aria-expanded', !open);
+      menu.classList.toggle('open');
+    });
+    document.addEventListener('click', function () {
+      menu.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+    });
+  })();
+</script>
+</body>
+</html>

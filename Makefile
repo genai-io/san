@@ -87,6 +87,17 @@ ci: format-check build-all lint
 clean:
 	rm -rf $(BINDIR)
 
+# Serve the website locally for testing. Opens http://localhost:8080 in the
+# default browser. Requires Python 3 (available on macOS and most Linux distros
+# by default). Stop with Ctrl-C.
+.PHONY: serve-site
+serve-site:
+	@echo "→ Starting local server at http://localhost:8080"
+	@echo "  Press Ctrl-C to stop."
+	@echo ""
+	@open http://localhost:8080 2>/dev/null || true
+	python3 -m http.server 8080 -d site/
+
 release: format
 	@mkdir -p $(BINDIR)
 	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BINDIR)/$(BINARY)_darwin_amd64 $(SRCDIR)
