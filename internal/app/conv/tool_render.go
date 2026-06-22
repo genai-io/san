@@ -424,7 +424,10 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 			resultLine += " (" + doneStats + ")"
 		}
 		sb.WriteString(toolResultStyle.Render(resultLine))
-		sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)") + "\n")
+		if data.Interactive {
+			sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
+		}
+		sb.WriteString("\n")
 		return sb.String()
 	}
 

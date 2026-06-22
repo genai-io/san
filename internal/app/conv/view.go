@@ -44,6 +44,12 @@ type RenderContext struct {
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
 	InteractivePromptActive bool
+
+	// Interactive marks the live render pass (RenderActiveContent): the
+	// uncommitted tail the user can still act on. "(ctrl+o to expand)" hints
+	// show only here — once a message is frozen into native scrollback the
+	// key no longer reaches it.
+	Interactive bool
 }
 
 // inlinedToolResults precomputes which ToolResult messages should be
@@ -149,10 +155,11 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		switch {
 		case msg.ToolResult != nil:
 			sb.WriteString(RenderToolResultInline(ToolResultData{
-				ToolName: msg.ToolResult.ToolName,
-				Content:  msg.ToolResult.Content,
-				IsError:  msg.ToolResult.IsError,
-				Expanded: msg.Expanded,
+				ToolName:    msg.ToolResult.ToolName,
+				Content:     msg.ToolResult.Content,
+				IsError:     msg.ToolResult.IsError,
+				Expanded:    msg.Expanded,
+				Interactive: p.Interactive,
 			}, p.MDRenderer))
 		case core.IsCompactSummary(msg.Content):
 			// The post-compaction summary is injected as a user message (the
@@ -221,6 +228,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		TaskOwnerMap:      p.TaskOwnerMap,
 		MDRenderer:        p.MDRenderer,
 		Width:             p.Width,
+		Interactive:       p.Interactive,
 	}))
 
 	return sb.String()
@@ -263,6 +271,7 @@ func RenderSingleMessage(p RenderContext, idx int) string {
 }
 
 func RenderActiveContent(p RenderContext) string {
+	p.Interactive = true
 	if p.CommittedCount >= len(p.Messages) {
 		return renderPendingToolSpinnerFromParams(p, false)
 	}

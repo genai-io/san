@@ -400,15 +400,17 @@ type ToolCallsParams struct {
 	TaskOwnerMap      map[string]string
 	MDRenderer        *MDRenderer
 	Width             int
+	Interactive       bool
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
 type ToolResultData struct {
-	ToolName  string
-	Content   string
-	IsError   bool
-	Expanded  bool
-	ToolInput string
+	ToolName    string
+	Content     string
+	IsError     bool
+	Interactive bool
+	Expanded    bool
+	ToolInput   string
 }
 
 // RenderToolCalls renders the tool calls section of an assistant core.
@@ -428,7 +430,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
 				sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), color))
-				if !params.ToolCallsExpanded {
+				if !params.ToolCallsExpanded && params.Interactive {
 					sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
 				}
 				sb.WriteString("\n")
@@ -468,6 +470,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
+			resultData.Interactive = params.Interactive
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
 		} else if tool.IsAgentToolName(tc.Name) {
 			limit := maxCompactAgentToolLines
