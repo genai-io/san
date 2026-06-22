@@ -101,5 +101,23 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if len(parts) == 0 {
 		return nil
 	}
+	if banner := m.takeWelcomeBanner(); banner != "" {
+		parts = append([]string{banner}, parts...)
+	}
 	return []tea.Cmd{tea.Println(strings.Join(parts, "\n"))}
+}
+
+// takeWelcomeBanner returns the deferred startup splash once, on the first
+// scrollback commit, then clears the pending flag. Rendering it here rather
+// than before the TUI starts lets the banner show the model the user selected
+// after launch instead of freezing "no model selected" into scrollback.
+func (m *model) takeWelcomeBanner() string {
+	if !m.welcomePending {
+		return ""
+	}
+	m.welcomePending = false
+	return welcomeBanner(welcomeInfo{
+		Model: m.env.GetModelDisplayName(),
+		CWD:   m.env.CWD,
+	})
 }

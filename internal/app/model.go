@@ -43,6 +43,12 @@ type model struct {
 	conv              conv.Model     // Agent Outbox: conversation + output rendering
 	env               env            // Shared app state: provider, session, permission, plan, config
 	services          services       // Domain service singletons, injected at construction
+
+	// welcomePending defers the startup splash to the first scrollback commit
+	// so it shows the model the user picks after launch, not the (often unset)
+	// one at startup. Set in Run for fresh sessions; cleared by
+	// takeWelcomeBanner. See model_scrollback.go.
+	welcomePending bool
 }
 
 var _ conv.Runtime = (*model)(nil)

@@ -40,14 +40,13 @@ func Run(opts setting.RunOptions) error {
 		return err
 	}
 
-	// Fresh sessions get the splash screen before Bubbletea takes over.
-	// Resumed sessions skip it — commitAllMessages will reprint the
-	// conversation immediately, so a splash would just be churn.
+	// Fresh sessions defer the splash to the first scrollback commit so it
+	// reflects the model the user picks after launch instead of freezing
+	// "no model selected" into scrollback. Resumed sessions skip it —
+	// commitAllMessages will reprint the conversation immediately, so a splash
+	// would just be churn.
 	if len(m.conv.Messages) == 0 {
-		printWelcome(welcomeInfo{
-			Model: m.env.GetModelDisplayName(),
-			CWD:   m.env.CWD,
-		})
+		m.welcomePending = true
 	}
 
 	finalModel, err := tea.NewProgram(m).Run()

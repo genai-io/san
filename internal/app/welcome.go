@@ -1,11 +1,12 @@
 // Interactive-mode splash: a single-line brand mark + cwd-basename + model,
-// nothing else. Called once at startup, before tea.NewProgram(m).Run() —
-// Bubbletea draws inline, so the splash stays in scrollback above the
-// live view.
+// nothing else. Rendered to a string and held until the first scrollback
+// commit (see model_scrollback.go), so the banner reflects the model the user
+// actually picks rather than freezing whatever was selected at launch.
+// Bubbletea draws inline, so the committed splash stays in scrollback above
+// the live view.
 package app
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,14 +30,15 @@ type welcomeInfo struct {
 	CWD   string
 }
 
-// printWelcome writes the splash to stdout. Falls back to plain text when
-// stdout is not a TTY or NO_COLOR is set.
-func printWelcome(info welcomeInfo) {
+// welcomeBanner returns the splash as a string for deferred emission into
+// scrollback. Falls back to plain text when stdout is not a TTY or NO_COLOR
+// is set. The leading newline matches a rendered message, so the banner spaces
+// correctly when prepended to the first commit.
+func welcomeBanner(info welcomeInfo) string {
 	if !welcomeUseColor() {
-		printWelcomePlain(info)
-		return
+		return plainWelcome(info)
 	}
-	fmt.Println(renderWelcome(info))
+	return renderWelcome(info)
 }
 
 func welcomeUseColor() bool {
@@ -90,7 +92,7 @@ func projectName(p string) string {
 	return base
 }
 
-func printWelcomePlain(info welcomeInfo) {
+func plainWelcome(info welcomeInfo) string {
 	parts := []string{"< SAN ✦ />"}
 	if proj := projectName(info.CWD); proj != "" {
 		parts = append(parts, proj)
@@ -98,6 +100,5 @@ func printWelcomePlain(info welcomeInfo) {
 	if info.Model != "" {
 		parts = append(parts, info.Model)
 	}
-	fmt.Println()
-	fmt.Println(strings.Join(parts, "  ·  "))
+	return "\n" + strings.Join(parts, "  ·  ")
 }
