@@ -216,10 +216,10 @@ func (m *model) handleCtrlOSingleTick() tea.Cmd {
 	}
 	m.userInput.LastCtrlO = time.Time{}
 	m.conv.ToggleMostRecentExpandable()
-	return m.reflowScrollback()
+	return nil
 }
 
 func (m *model) expandCollapseAll() tea.Cmd {
 	m.conv.ToggleAllExpandable()
-	return m.reflowScrollback()
+	return nil
 }

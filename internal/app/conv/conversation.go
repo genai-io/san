@@ -125,23 +125,6 @@ func (m *ConversationModel) DropStreamingAssistant() {
 	}
 }
 
-// ResetStreamCommit clears the streaming-commit offsets on the in-flight
-// trailing assistant message so it renders whole again. Called when the
-// terminal is cleared and rebuilt (resize reflow): the message's
-// progressively-flushed prefix is wiped from scrollback, so the live view must
-// show the full message and the next flush re-commit its blocks from the top.
-func (m *ConversationModel) ResetStreamCommit() {
-	n := len(m.Messages)
-	if n == 0 || n <= m.CommittedCount {
-		return
-	}
-	last := &m.Messages[n-1]
-	if last.Role != core.RoleAssistant {
-		return
-	}
-	last.ResetStreamCommit()
-}
-
 func (m *ConversationModel) RemoveEmptyLastAssistant() {
 	if len(m.Messages) > 0 {
 		last := m.Messages[len(m.Messages)-1]
@@ -168,8 +151,12 @@ func (m *ConversationModel) MarkLastInterrupted() {
 	}
 }
 
+// Toggling only touches the live (uncommitted) tail: committed messages are
+// already in the terminal's native scrollback and can't be re-rendered in
+// place, so they stay frozen as last drawn.
+
 func (m *ConversationModel) ToggleMostRecentExpandable() {
-	for i := len(m.Messages) - 1; i >= 0; i-- {
+	for i := len(m.Messages) - 1; i >= m.CommittedCount; i-- {
 		msg := &m.Messages[i]
 		switch {
 		case msg.ToolResult != nil:
@@ -184,7 +171,7 @@ func (m *ConversationModel) ToggleMostRecentExpandable() {
 
 func (m *ConversationModel) ToggleAllExpandable() {
 	anyExpanded := false
-	for i := 0; i < len(m.Messages); i++ {
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
 		msg := m.Messages[i]
 		if (msg.ToolResult != nil && msg.Expanded) ||
 			(len(msg.ToolCalls) > 0 && msg.ToolCallsExpanded) {
@@ -192,7 +179,7 @@ func (m *ConversationModel) ToggleAllExpandable() {
 			break
 		}
 	}
-	for i := 0; i < len(m.Messages); i++ {
+	for i := m.CommittedCount; i < len(m.Messages); i++ {
 		if m.Messages[i].ToolResult != nil {
 			m.Messages[i].Expanded = !anyExpanded
 		}

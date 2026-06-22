@@ -1,19 +1,15 @@
-// Window resize and scrollback reflow. handleWindowResize runs the first
-// time we get a window size (the deferred initial paint), and whenever the
-// terminal width changes — width changes invalidate previously-rendered
-// scrollback, so we clear and reflow.
+// Window resize handling. handleWindowResize runs the first time we get a
+// window size (the deferred initial paint), where it commits any resumed
+// conversation. On later width changes there is nothing to recompute: the live
+// tail re-renders at the new width on the next frame, and already-committed
+// scrollback is immutable to us — the terminal rewraps it on its own.
 package app
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/genai-io/san/internal/app/conv"
 )
 
 func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
-	oldWidth := m.env.Width
 	m.env.Width = msg.Width
 	m.env.Height = msg.Height
 	m.userInput.TerminalHeight = msg.Height
@@ -45,34 +41,5 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	}
 
 	m.userInput.Textarea.SetWidth(msg.Width - 4 - 2)
-
-	if oldWidth != msg.Width && (m.conv.CommittedCount > 0 || m.conv.Stream.Active) {
-		// ClearScreen (in reflowScrollback) wipes the in-flight message's
-		// progressively-flushed prefix; reset its offsets so the live view
-		// shows it whole and the next flush re-commits its blocks.
-		m.conv.ResetStreamCommit()
-		return m.reflowScrollback()
-	}
-
 	return nil
-}
-
-func (m *model) reflowScrollback() tea.Cmd {
-	committed := m.conv.CommittedCount
-	m.conv.CommittedCount = 0
-
-	var parts []string
-	params := m.messageRenderParams()
-
-	for i := range committed {
-		if rendered := conv.RenderSingleMessage(params, i); rendered != "" {
-			parts = append(parts, rendered)
-		}
-		m.conv.CommittedCount = i + 1
-	}
-
-	if len(parts) == 0 {
-		return tea.ClearScreen
-	}
-	return tea.Sequence(tea.ClearScreen, tea.Println(strings.Join(parts, "\n")))
 }
