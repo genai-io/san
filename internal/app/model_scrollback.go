@@ -107,15 +107,23 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	return []tea.Cmd{tea.Println(strings.Join(parts, "\n"))}
 }
 
-// takeWelcomeBanner returns the deferred startup splash once, on the first
-// scrollback commit, then clears the pending flag. Rendering it here rather
-// than before the TUI starts lets the banner show the model the user selected
-// after launch instead of freezing "no model selected" into scrollback.
+// takeWelcomeBanner freezes the startup splash into scrollback once, on the
+// first commit, then clears the pending flag so the live view (liveWelcome)
+// stops drawing it. Freezing it here rather than before the TUI starts lets the
+// banner capture the model the user selected after launch instead of freezing
+// "no model selected" into scrollback.
 func (m *model) takeWelcomeBanner() string {
 	if !m.welcomePending {
 		return ""
 	}
 	m.welcomePending = false
+	return m.welcomeBannerText()
+}
+
+// welcomeBannerText renders the startup splash for the current model and cwd.
+// It backs both the live banner (liveWelcome) and the scrollback freeze
+// (takeWelcomeBanner) so the two always read identically.
+func (m model) welcomeBannerText() string {
 	return welcomeBanner(welcomeInfo{
 		Model: m.env.GetModelDisplayName(),
 		CWD:   m.env.CWD,

@@ -1,9 +1,10 @@
 // Interactive-mode splash: a single-line brand mark + cwd-basename + model,
-// nothing else. Rendered to a string and held until the first scrollback
-// commit (see model_scrollback.go), so the banner reflects the model the user
-// actually picks rather than freezing whatever was selected at launch.
-// Bubbletea draws inline, so the committed splash stays in scrollback above
-// the live view.
+// nothing else. Rendered to a string and shown in the live view from launch
+// (see view.go's liveWelcome), then frozen into scrollback on the first commit
+// (see model_scrollback.go). Drawing it live keeps it visible immediately while
+// still letting it reflect the model the user actually picks rather than
+// freezing whatever was selected at launch. Bubbletea draws inline, so the
+// committed splash stays in scrollback above the live view.
 package app
 
 import (

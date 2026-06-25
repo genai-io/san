@@ -40,8 +40,9 @@ func Run(opts setting.RunOptions) error {
 		return err
 	}
 
-	// Fresh sessions defer the splash to the first scrollback commit so it
-	// reflects the model the user picks after launch instead of freezing
+	// Fresh sessions show the splash live above the input from launch and freeze
+	// it into scrollback on the first commit, so it stays visible immediately
+	// yet reflects the model the user picks after launch instead of freezing
 	// "no model selected" into scrollback. Resumed sessions skip it —
 	// commitAllMessages will reprint the conversation immediately, so a splash
 	// would just be churn.

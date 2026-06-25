@@ -157,6 +157,13 @@ func (m model) renderInputView() string {
 func (m model) renderChatSection(activeContent, trackerView string) string {
 	var parts []string
 
+	if banner := m.liveWelcome(); banner != "" {
+		// Trailing blank line so the splash isn't cramped against the
+		// separator/input strip below it — matching the blank line it gets
+		// in scrollback, where the first message's leading newline supplies it.
+		parts = append(parts, banner, "")
+	}
+
 	if activeContent != "" {
 		parts = append(parts, activeContent)
 	}
@@ -190,6 +197,19 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 	}
 
 	return strings.Join(parts, "\n")
+}
+
+// liveWelcome returns the startup splash for the live view while it is still
+// pending — i.e. before the first scrollback commit. Drawing it here keeps the
+// banner visible from launch and lets it track the model the user picks (the
+// view re-renders on selection); the identical banner is frozen into scrollback
+// by takeWelcomeBanner on the first commit, after which welcomePending is false
+// and this returns "".
+func (m model) liveWelcome() string {
+	if !m.welcomePending {
+		return ""
+	}
+	return m.welcomeBannerText()
 }
 
 // renderSelfLearnLive returns the L1 indicator as an inline live row

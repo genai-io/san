@@ -44,10 +44,12 @@ type model struct {
 	env               env            // Shared app state: provider, session, permission, plan, config
 	services          services       // Domain service singletons, injected at construction
 
-	// welcomePending defers the startup splash to the first scrollback commit
-	// so it shows the model the user picks after launch, not the (often unset)
-	// one at startup. Set in Run for fresh sessions; cleared by
-	// takeWelcomeBanner. See model_scrollback.go.
+	// welcomePending marks the startup splash as not yet frozen into scrollback.
+	// While set, the splash renders live above the input (visible from launch
+	// and tracking the model the user picks); the first scrollback commit then
+	// freezes that same banner — with the now-selected model — and clears this.
+	// Set in Run for fresh sessions. See view.go (liveWelcome) and
+	// model_scrollback.go (takeWelcomeBanner).
 	welcomePending bool
 }
 
