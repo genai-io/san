@@ -29,7 +29,7 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 ## Features
 
 <details>
-<summary><b>Open architecture</b> &nbsp;→&nbsp; overview diagram</summary>
+<summary><b>Open architecture</b> &nbsp;·&nbsp; overview diagram</summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">

@@ -29,7 +29,7 @@ San 是面向终端的**专用 Agent 统一运行时** —— 不止于编程。
 ## 特性
 
 <details>
-<summary><b>开放架构</b> &nbsp;→&nbsp; 总览图</summary>
+<summary><b>开放架构</b> &nbsp;·&nbsp; 总览图</summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San —— 可插拔模型、搜索后端、人设、技能与扩展，以及自我进化的 Agent" width="100%">
