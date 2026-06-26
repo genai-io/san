@@ -29,15 +29,13 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 ## Features
 
 <details>
-<summary><b>Overview diagram</b></summary>
+<summary><b>Open architecture</b> &nbsp;→&nbsp; overview diagram</summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San — pluggable models, search backends, personas, skills &amp; extensions, and a self-evolving agent" width="100%">
 </div>
 
 </details>
-
-### Open architecture
 
 - **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI; swap via `/model`.
 - **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.

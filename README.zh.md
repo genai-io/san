@@ -29,15 +29,13 @@ San 是面向终端的**专用 Agent 统一运行时** —— 不止于编程。
 ## 特性
 
 <details>
-<summary><b>架构总览图</b></summary>
+<summary><b>开放架构</b> &nbsp;→&nbsp; 总览图</summary>
 
 <div align="center">
   <img src="assets/san.png" alt="San —— 可插拔模型、搜索后端、人设、技能与扩展，以及自我进化的 Agent" width="100%">
 </div>
 
 </details>
-
-### 开放架构
 
 - **模型提供商** —— Anthropic、OpenAI、Google、DeepSeek、Moonshot、Alibaba、MiniMax、Z.ai（GLM）、SenseNova、Mimo、Volcengine（Ark）、Ollama（本地）；通过 `/model` 切换。
 - **搜索后端** —— Exa、Tavily、Brave、Serper；通过 `/search` 切换。
