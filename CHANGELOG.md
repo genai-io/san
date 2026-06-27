@@ -3,6 +3,23 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.7] - 2026-06-27
+
+### Added
+- Chinese website translation ([@hchenxa](https://github.com/hchenxa) in [#251](https://github.com/genai-io/san/pull/251))
+
+### Changed
+- Refresh the README hero and consolidate intro copy ([@yanmxa](https://github.com/yanmxa) in [0274432](https://github.com/genai-io/san/commit/0274432e))
+- Collapse the features overview image in README ([@yanmxa](https://github.com/yanmxa) in [041f730](https://github.com/genai-io/san/commit/041f730b))
+- Fold the overview diagram under the open-architecture heading ([@yanmxa](https://github.com/yanmxa) in [5e9de7c](https://github.com/genai-io/san/commit/5e9de7c7))
+- Drop the arrow in the overview-diagram summary ([@yanmxa](https://github.com/yanmxa) in [e4d971f](https://github.com/genai-io/san/commit/e4d971ff))
+
+### Fixed
+- Startup banner now visible from launch and tracks the selected model ([@yanmxa](https://github.com/yanmxa) in [3cb94e7](https://github.com/genai-io/san/commit/3cb94e7e))
+- Defer the startup banner until a model is selected ([@yanmxa](https://github.com/yanmxa) in [be08db9](https://github.com/genai-io/san/commit/be08db9d))
+- Hide the ctrl+o hint on frozen tool output ([@yanmxa](https://github.com/yanmxa) in [99914a3](https://github.com/genai-io/san/commit/99914a37))
+- Stop re-rendering committed scrollback history ([@yanmxa](https://github.com/yanmxa) in [1b1ddb1](https://github.com/genai-io/san/commit/1b1ddb19))
+
 ## [v1.20.6] - 2026-06-18
 
 ### Added
