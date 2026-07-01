@@ -64,6 +64,7 @@ func init() {
 	rootCmd.AddCommand(helpCmd)
 	rootCmd.SetHelpCommand(helpCmd)
 	rootCmd.AddCommand(mcpCmd)
+	rootCmd.AddCommand(updateCmd)
 }
 
 func main() {
@@ -137,6 +138,25 @@ var versionCmd = &cobra.Command{
 	},
 }
 
+var updateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Check for san updates and install if available",
+	Long: `Check for available san version updates and install the latest version.
+
+Checks the latest release on GitHub and upgrades the san binary if a newer
+version is available.
+
+The current installed version is read from the binary itself. If a newer
+release is found, the binary is automatically downloaded and replaced.
+
+Example:
+  san update`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSelfUpdate(cmd.Context())
+	},
+}
+
 var helpCmd = &cobra.Command{
 	Use:   "help",
 	Short: "Show help information",
@@ -174,6 +194,7 @@ Session:
 Commands:
   version      Print the version number
   agent run    Run a headless agent
+  update       Check for san updates and install if available
   help         Show this help message
 
 Keybindings:
