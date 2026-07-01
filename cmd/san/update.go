@@ -16,8 +16,9 @@ import (
 	"time"
 )
 
-const (
-	githubAPI = "https://api.github.com/repos/genai-io/san/releases/latest"
+var (
+	githubAPI  = "https://api.github.com/repos/genai-io/san/releases/latest"
+	httpClient = http.DefaultClient
 )
 
 // releaseInfo represents the GitHub API response for a release.
@@ -139,7 +140,7 @@ func fetchLatestRelease(ctx context.Context) (*releaseInfo, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +167,7 @@ func downloadWithProgress(ctx context.Context, url, dest string) error {
 		return err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
