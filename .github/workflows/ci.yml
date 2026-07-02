@@ -39,14 +39,11 @@ jobs:
           cache: true
       - name: Build
         run: go build ./cmd/san/
-      - name: Test
-        run: go test -count=1 ./...
+      - name: Test (cmd/san only — integration tests are Unix-only)
+        run: go test -count=1 ./cmd/san/...
       - name: Smoke test — zip package
-        shell: bash
         run: |
-          GOOS=windows GOARCH=amd64 go build -o san.exe ./cmd/san/
-          zip san_windows_amd64.zip san.exe
-          rm san.exe
-          unzip -l san_windows_amd64.zip | grep 'san.exe'
-          unzip san_windows_amd64.zip
-          ./san.exe version
+          go build -o san.exe ./cmd/san/
+          Compress-Archive -Path san.exe -DestinationPath san_windows_amd64.zip -Force
+          Expand-Archive -Path san_windows_amd64.zip -DestinationPath extracted -Force
+          .\extracted\san.exe version
