@@ -14,6 +14,11 @@ import (
 // Callers should not assume grandchild cleanup works on Windows.
 func SetProcessGroup(cmd *exec.Cmd) {}
 
+// DetachSession is a no-op on Windows: there is no controlling-terminal /
+// /dev/tty concept to detach from, and session creation is out of scope for
+// this package.
+func DetachSession(cmd *exec.Cmd) {}
+
 // TerminateGroup terminates cmd's direct child process. Windows has no
 // signal-based group termination, so sig is ignored and we call Process.Kill,
 // which maps to TerminateProcess. Because we use the handle the standard
