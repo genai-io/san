@@ -95,6 +95,18 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
 
+	// Detach from the controlling terminal so an interactive command grabs no
+	// tty and fails fast instead of hanging the TUI. On timeout/cancel, tear
+	// down the whole process group (not just bash) so a child that grabbed the
+	// terminal — an editor, ssh — can't outlive the deadline; WaitDelay is the
+	// backstop for a grandchild that inherited the output pipe and won't close.
+	proc.DetachSession(cmd)
+	cmd.Cancel = func() error {
+		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
+		return nil
+	}
+	cmd.WaitDelay = 5 * time.Second
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -144,9 +156,10 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		// Check if it's a timeout
 		if ctx.Err() == context.DeadlineExceeded {
 			return toolresult.ToolResult{
-				Success:      false,
-				Output:       fullOutput,
-				Error:        "command timed out after " + timeout.String(),
+				Success: false,
+				Output:  fullOutput,
+				Error: "command timed out after " + timeout.String() +
+					" — if it was waiting for interactive input, re-run with a non-interactive flag (e.g. -y, -m, BatchMode=yes) or supply input inline",
 				HookResponse: hookResponse,
 				Metadata: toolresult.ResultMetadata{
 					Title:     t.Name(),
@@ -228,9 +241,11 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 
-	// Place the child in its own process group so cancellation can take down
+	// Start the child in its own session: detached from the controlling
+	// terminal (so an interactive command fails fast instead of grabbing the
+	// tty) and the leader of a new process group, so cancellation can take down
 	// any descendants it spawns (Unix). No-op on Windows.
-	proc.SetProcessGroup(cmd)
+	proc.DetachSession(cmd)
 	// Override the default exec.CommandContext cancel, which only kills the
 	// direct child via Process.Kill — without this, context-cancel of the
 	// background task leaves any grandchildren the bash shell spawned alive.
@@ -390,6 +405,13 @@ func SetEnvProvider(fn func(context.Context) []string) {
 
 func bashEnv(ctx context.Context) []string {
 	env := os.Environ()
+	// Nudge common tools onto their non-interactive path so they fail fast
+	// rather than block on a prompt. Appended (not overriding) so a caller that
+	// deliberately set these keeps their value.
+	env = append(env,
+		"GIT_TERMINAL_PROMPT=0",
+		"DEBIAN_FRONTEND=noninteractive",
+	)
 	if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
 		env = append(env, fn(ctx)...)
 	}

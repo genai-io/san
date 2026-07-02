@@ -273,6 +273,14 @@ IMPORTANT: Avoid using this tool to run grep, find, cat, head, tail, sed, awk, o
 - Edit files: Use Edit (NOT sed/awk)
 - Write files: Use Write (NOT echo/cat with redirection)
 
+Non-interactive only:
+Commands run with no controlling terminal and no stdin, so anything that waits
+for interactive input — a REPL, an editor, a password/confirmation prompt —
+cannot receive it and will hang until it times out. Pass a non-interactive flag
+or supply input inline instead: use "git commit -m ..." (not a bare "git
+commit"), "npm init -y", "ssh -o BatchMode=yes", "apt-get -y", or feed input via
+a heredoc or a --stdin-style flag.
+
 You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after 120000ms (2 minutes).
 You can use the run_in_background parameter to run the command in the background. You will be notified when it finishes.`,
 	Parameters: map[string]any{
