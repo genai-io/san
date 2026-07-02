@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -196,6 +197,184 @@ func TestExtractTarGz_InvalidFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid archive, got nil")
 	}
+}
+
+func TestExtractTarGz_WindowsBinary(t *testing.T) {
+	dir := t.TempDir()
+
+	// Build a tar.gz containing a "san.exe" entry (as expected on Windows)
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+
+	content := []byte("windows binary content")
+	hdr := &tar.Header{
+		Name: "san.exe",
+		Mode: 0755,
+		Size: int64(len(content)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+	gzw.Close()
+
+	tarball := filepath.Join(dir, "bundle.tar.gz")
+	if err := os.WriteFile(tarball, buf.Bytes(), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(dir, "extracted")
+	os.MkdirAll(destDir, 0755)
+
+	if err := extractTarGz(tarball, destDir); err != nil {
+		t.Fatalf("extractTarGz() error: %v", err)
+	}
+
+	extracted := filepath.Join(destDir, "san.exe")
+	data, err := os.ReadFile(extracted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Errorf("extracted content = %q, want %q", string(data), string(content))
+	}
+}
+
+func TestExtractZip(t *testing.T) {
+	dir := t.TempDir()
+
+	// Build a zip in memory containing a single "san.exe" file
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	content := []byte("windows binary from zip")
+	fw, err := zw.Create("san.exe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath := filepath.Join(dir, "san_windows_amd64.zip")
+	if err := os.WriteFile(zipPath, buf.Bytes(), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := extractZip(zipPath, dir); err != nil {
+		t.Fatalf("extractZip() error: %v", err)
+	}
+
+	extracted := filepath.Join(dir, "san.exe")
+	data, err := os.ReadFile(extracted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Errorf("extracted content = %q, want %q", string(data), string(content))
+	}
+}
+
+func TestExtractZip_InvalidFile(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "invalid.zip")
+	os.WriteFile(zipPath, []byte("not-a-zip"), 0644)
+
+	err := extractZip(zipPath, dir)
+	if err == nil {
+		t.Fatal("expected error for invalid zip, got nil")
+	}
+}
+
+func TestCopyFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source.bin")
+	dst := filepath.Join(dir, "dest.bin")
+
+	content := []byte("hello copy fallback")
+	if err := os.WriteFile(src, content, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyFile(dst, src); err != nil {
+		t.Fatalf("copyFile() error: %v", err)
+	}
+
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Errorf("copied content = %q, want %q", string(data), string(content))
+	}
+
+	// Verify permissions were preserved
+	srcInfo, _ := os.Stat(src)
+	dstInfo, _ := os.Stat(dst)
+	if srcInfo.Mode() != dstInfo.Mode() {
+		t.Errorf("mode = %v, want %v", dstInfo.Mode(), srcInfo.Mode())
+	}
+}
+
+func TestCopyFile_SrcNotFound(t *testing.T) {
+	dir := t.TempDir()
+	err := copyFile(filepath.Join(dir, "dest"), filepath.Join(dir, "nonexistent"))
+	if err == nil {
+		t.Fatal("expected error for nonexistent source, got nil")
+	}
+}
+
+func TestCleanupUpdateBackup(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupPath := exe + ".bak"
+
+	// Clean up any pre-existing backup file first
+	os.Remove(backupPath)
+	defer os.Remove(backupPath)
+
+	// Create a dummy backup file to simulate a stale .bak from a previous update
+	if err := os.WriteFile(backupPath, []byte("stale backup content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		t.Fatal("backup file should exist before cleanup")
+	}
+
+	// Call the startup cleanup function
+	cleanupUpdateBackup()
+
+	// Verify the backup was removed
+	if _, err := os.Stat(backupPath); !os.IsNotExist(err) {
+		t.Error("backup file should have been removed by cleanupUpdateBackup")
+	}
+}
+
+func TestCleanupUpdateBackup_NoFile(t *testing.T) {
+	// Ensure no leftover backup from a previous test run
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupPath := exe + ".bak"
+	os.Remove(backupPath)
+
+	// Should not panic or error when no backup file exists
+	cleanupUpdateBackup()
+}
+
+func TestCleanupUpdateBackup_ExecError(t *testing.T) {
+	// Smoke test: runs cleanupUpdateBackup and verifies it doesn't panic
+	cleanupUpdateBackup()
 }
 
 func TestProgressWriter(t *testing.T) {

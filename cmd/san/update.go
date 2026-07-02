@@ -2,10 +2,12 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bufio"
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -58,7 +61,11 @@ func runSelfUpdate(ctx context.Context) error {
 	}
 
 	// Find the right asset
-	assetName := fmt.Sprintf("san_%s_%s.tar.gz", runtime.GOOS, goArch(runtime.GOARCH))
+	archiveExt := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		archiveExt = ".zip"
+	}
+	assetName := fmt.Sprintf("san_%s_%s%s", runtime.GOOS, goArch(runtime.GOARCH), archiveExt)
 	var downloadURL string
 	for _, a := range latest.Assets {
 		if a.Name == assetName {
@@ -80,24 +87,38 @@ func runSelfUpdate(ctx context.Context) error {
 		return fmt.Errorf("cannot resolve binary path: %w", err)
 	}
 
-	// Download and extract to temp directory
+	// Download and extract to a temp directory on the same filesystem as
+	// the target binary so the final rename stays within one filesystem
+	// and doesn't hit EXDEV (cross-device link).
 	fmt.Printf("Downloading %s ...\n", assetName)
-	tmpDir, err := os.MkdirTemp("", "san-update-*")
+	tmpDir, err := os.MkdirTemp(filepath.Dir(exe), ".san-update-*")
 	if err != nil {
 		return fmt.Errorf("cannot create temp directory: %w", err)
 	}
 	defer os.RemoveAll(tmpDir)
 
-	tarball := filepath.Join(tmpDir, assetName)
-	if err := downloadWithProgress(ctx, downloadURL, tarball); err != nil {
+	archive := filepath.Join(tmpDir, assetName)
+	if err := downloadWithProgress(ctx, downloadURL, archive); err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	// Extract binary
-	binPath := filepath.Join(tmpDir, "san")
-	if err := extractTarGz(tarball, tmpDir); err != nil {
-		return fmt.Errorf("extract failed: %w", err)
+	// Extract the archive
+	if runtime.GOOS == "windows" {
+		if err := extractZip(archive, tmpDir); err != nil {
+			return fmt.Errorf("extract failed: %w", err)
+		}
+	} else {
+		if err := extractTarGz(archive, tmpDir); err != nil {
+			return fmt.Errorf("extract failed: %w", err)
+		}
 	}
+
+	// Determine binary name (san.exe on Windows, san on other platforms)
+	binName := "san"
+	if runtime.GOOS == "windows" {
+		binName = "san.exe"
+	}
+	binPath := filepath.Join(tmpDir, binName)
 
 	// Verify the extracted binary exists
 	if _, err := os.Stat(binPath); err != nil {
@@ -120,10 +141,25 @@ func runSelfUpdate(ctx context.Context) error {
 	}
 
 	if err := os.Rename(binPath, exe); err != nil {
-		// Restore backup
-		_ = os.Rename(backupPath, exe)
-		return fmt.Errorf("cannot install update: %w", err)
+		// On cross-device link (EXDEV), fall back to copy+delete
+		// instead of aborting — some setups have /tmp on a different
+		// filesystem than the target binary directory.
+		var linkErr *os.LinkError
+		if errors.As(err, &linkErr) && errors.Is(linkErr.Err, syscall.EXDEV) {
+			if err := copyFile(exe, binPath); err != nil {
+				_ = os.Rename(backupPath, exe)
+				return fmt.Errorf("cannot install update (copy fallback failed): %w", err)
+			}
+			_ = os.Remove(binPath)
+		} else {
+			// Restore backup
+			_ = os.Rename(backupPath, exe)
+			return fmt.Errorf("cannot install update: %w", err)
+		}
 	}
+	// Remove the backup. On Windows, the running process still has a handle
+	// to the renamed file, so this will fail silently. The .bak file is
+	// cleaned up on the next startup.
 	_ = os.Remove(backupPath)
 
 	fmt.Printf("Updated to v%s\n", latestVersion)
@@ -281,6 +317,81 @@ func extractTarGz(tarball, destDir string) error {
 		}
 	}
 	return nil
+}
+
+// extractZip extracts a zip archive to destDir.
+func extractZip(zipPath, destDir string) error {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		target := filepath.Join(destDir, f.Name)
+
+		// Prevent zip slip attacks
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path in zip: %s", f.Name)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return err
+		}
+
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return err
+		}
+
+		_, err = io.Copy(out, rc)
+		out.Close()
+		rc.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFile copies src to dst (permissions preserved).
+// Used as a fallback when os.Rename fails with EXDEV.
+func copyFile(dst, src string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	// Preserve source file permissions
+	fi, err := srcFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fi.Mode())
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return dstFile.Close()
 }
 
 // goArch maps Go arch names to release asset arch names.

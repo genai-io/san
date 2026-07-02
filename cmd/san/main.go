@@ -70,6 +70,11 @@ func init() {
 func main() {
 	defer func() { _ = log.Sync() }()
 
+	// Clean up any stale backup file from a previous self-update.
+	// On Windows, os.Remove on a running executable's renamed backup
+	// fails, so we clean it on the next launch instead.
+	cleanupUpdateBackup()
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -115,6 +120,20 @@ Non-interactive mode:
 			os.Exit(1)
 		}
 	},
+}
+
+// cleanupUpdateBackup removes any stale .bak file from a previous self-update.
+// On Windows, the running process cannot delete the renamed backup of itself,
+// so we defer cleanup to the next launch.
+func cleanupUpdateBackup() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	backupPath := exe + ".bak"
+	if _, err := os.Stat(backupPath); err == nil {
+		_ = os.Remove(backupPath)
+	}
 }
 
 // readStdin returns piped stdin data, or empty string if stdin is a terminal.
