@@ -199,6 +199,45 @@ func TestExtractTarGz_InvalidFile(t *testing.T) {
 	}
 }
 
+func TestExtractTarGz_PathTraversal(t *testing.T) {
+	dir := t.TempDir()
+
+	// Build a tar.gz whose entry escapes destDir via "../"
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+
+	content := []byte("evil")
+	hdr := &tar.Header{
+		Name: "../escaped",
+		Mode: 0755,
+		Size: int64(len(content)),
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	tw.Close()
+	gzw.Close()
+
+	tarball := filepath.Join(dir, "evil.tar.gz")
+	if err := os.WriteFile(tarball, buf.Bytes(), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	destDir := filepath.Join(dir, "extracted")
+	os.MkdirAll(destDir, 0755)
+
+	if err := extractTarGz(tarball, destDir); err == nil {
+		t.Fatal("expected error for path traversal entry, got nil")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "escaped")); err == nil {
+		t.Fatal("path traversal escaped destDir")
+	}
+}
+
 func TestExtractTarGz_WindowsBinary(t *testing.T) {
 	dir := t.TempDir()
 
