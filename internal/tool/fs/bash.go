@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -113,6 +114,14 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 
 	err := cmd.Run()
 	duration := time.Since(start)
+
+	// A command that backgrounds a child inheriting the output pipe (e.g.
+	// "./server &") exits 0, but WaitDelay then fires because that child keeps
+	// the pipe open. bash itself finished cleanly, so treat it as success
+	// rather than surfacing the "WaitDelay expired" error as a failure.
+	if errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.Success() {
+		err = nil
+	}
 
 	output := stdout.String()
 	errOutput := stderr.String()
@@ -406,12 +415,15 @@ func SetEnvProvider(fn func(context.Context) []string) {
 func bashEnv(ctx context.Context) []string {
 	env := os.Environ()
 	// Nudge common tools onto their non-interactive path so they fail fast
-	// rather than block on a prompt. Appended (not overriding) so a caller that
-	// deliberately set these keeps their value.
-	env = append(env,
-		"GIT_TERMINAL_PROMPT=0",
-		"DEBIAN_FRONTEND=noninteractive",
-	)
+	// rather than block on a prompt. Set each only when the caller hasn't
+	// already: os/exec keeps the last of duplicate keys, so an unconditional
+	// append would silently override a value the user deliberately set.
+	if _, ok := os.LookupEnv("GIT_TERMINAL_PROMPT"); !ok {
+		env = append(env, "GIT_TERMINAL_PROMPT=0")
+	}
+	if _, ok := os.LookupEnv("DEBIAN_FRONTEND"); !ok {
+		env = append(env, "DEBIAN_FRONTEND=noninteractive")
+	}
 	if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
 		env = append(env, fn(ctx)...)
 	}
