@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/desktop"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -113,6 +114,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		return m, m.handleWindowResize(msg)
+	case desktop.TickMsg:
+		// Repaint heartbeat: reschedule while the desktop is active (each tick
+		// re-renders the surface via View); let the chain lapse once we leave.
+		if m.env.Surface == SurfaceDesktop {
+			return m, desktop.Tick()
+		}
+		m.desktopTicking = false
+		return m, nil
+	case desktopFlushMsg:
+		// Inline view has repainted; now flush everything that accumulated
+		// while the desktop suppressed scrollback commits.
+		return m, tea.Batch(m.CommitMessages()...)
+	case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseWheelMsg, tea.MouseMotionMsg:
+		return m, nil // the desktop doesn't track the mouse (keeps native selection)
 	case spinner.TickMsg:
 		// The /autopilot Mission dialog runs its own spinner while awaiting a
 		// reply. Ticks carry a per-spinner id, so a foreign tick returns a nil

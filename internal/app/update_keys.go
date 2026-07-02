@@ -33,6 +33,15 @@ type ctrlOSingleTickMsg struct{}
 // means "let the textarea consume it as text" — that's handled in
 // updateTextarea, not here.
 func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
+	// The desktop surface owns the keyboard while active (scroll/paging + exit),
+	// ahead of every inline layer. ctrl+c is the one key it lets fall through,
+	// so quit/cancel still works there.
+	if m.env.Surface == SurfaceDesktop {
+		if c, ok := m.handleDesktopKey(msg); ok {
+			return c, true
+		}
+	}
+
 	if ov, ok := m.activeOverlay(); ok {
 		return ov.HandleKeypress(msg), true
 	}
@@ -78,6 +87,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 	case "alt+t", "alt+T":
 		m.conv.ShowTasks = !m.conv.ShowTasks
 		return nil, true
+
+	case "ctrl+g":
+		return m.enterDesktop(), true
 
 	case "ctrl+o":
 		return m.handleCtrlO(), true

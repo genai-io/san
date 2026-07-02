@@ -155,9 +155,10 @@ git commit -s -m "chore: bump version to <new_version>"
 **If the canonical repo is `upstream` and its `main` is protected**, pushing
 directly will fail. Use this PR-based path instead:
 
-a. Push the commit to the fork (`origin`):
+a. Force-push the commit to the fork (`origin`), since the fork's `main`
+   may still carry the previous release's squash-merged PR commit:
    ```bash
-   git push origin main
+   git push --force-with-lease origin main
    ```
 
 b. Create a PR from fork `main` to upstream `main`:
