@@ -207,6 +207,11 @@ func (m *model) buildAgentParams() agent.BuildParams {
 					Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
 				})
 			}
+			// Cache the approval as a session grant so an identical repeat hits the
+			// static fast path instead of the judge, shrinking the gray zone over
+			// the session. Safe to write here: the agent goroutine is the only
+			// mutator (the human-approval writer runs only while it is parked).
+			m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
 			m.reviewerApprovals.Add(1)
 			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
 		},
