@@ -184,6 +184,8 @@ func (subscriptionAuthenticator) Login(ctx context.Context, onURL func(string)) 
 
 func (subscriptionAuthenticator) Logout() error { return oauth.Logout() }
 
+func (subscriptionAuthenticator) HasCredentials() bool { return oauth.HasCredentials() }
+
 func init() {
 	llm.Register(SubscriptionMeta, NewSubscriptionClient)
 	llm.RegisterAuthenticator(llm.OpenAI, llm.AuthSubscription, subscriptionAuthenticator{})

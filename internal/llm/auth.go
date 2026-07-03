@@ -19,6 +19,12 @@ type Authenticator interface {
 	Logout() error
 }
 
+// StoredCredentialAuthenticator is an optional extension for authenticators that
+// can report whether they already have local credentials worth validating.
+type StoredCredentialAuthenticator interface {
+	HasCredentials() bool
+}
+
 // RegisterAuthenticator registers the interactive login handler for a provider
 // auth method.
 func RegisterAuthenticator(provider Name, authMethod AuthMethod, a Authenticator) {
@@ -37,6 +43,18 @@ func (r *Registry) RegisterAuthenticator(provider Name, authMethod AuthMethod, a
 // interactively (OAuth) rather than via an API key.
 func SupportsInteractiveLogin(provider Name, authMethod AuthMethod) bool {
 	return globalRegistry.authenticator(provider, authMethod) != nil
+}
+
+// HasInteractiveCredentials reports whether an interactive auth method already
+// has stored credentials. Callers should still verify them with the provider,
+// because this only checks local presence, not remote validity.
+func HasInteractiveCredentials(provider Name, authMethod AuthMethod) bool {
+	a := globalRegistry.authenticator(provider, authMethod)
+	if a == nil {
+		return false
+	}
+	withCredentials, ok := a.(StoredCredentialAuthenticator)
+	return ok && withCredentials.HasCredentials()
 }
 
 // Login runs the interactive sign-in for a provider auth method.

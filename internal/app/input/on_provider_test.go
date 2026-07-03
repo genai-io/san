@@ -64,6 +64,20 @@ func (p *staticListProvider) ListModels(context.Context) ([]llm.ModelInfo, error
 
 func (p *staticListProvider) Name() string { return p.name }
 
+type storedCredentialAuthenticator struct {
+	loginCalls int
+	has        bool
+}
+
+func (a *storedCredentialAuthenticator) Login(context.Context, func(string)) error {
+	a.loginCalls++
+	return fmt.Errorf("unexpected login")
+}
+
+func (a *storedCredentialAuthenticator) Logout() error { return nil }
+
+func (a *storedCredentialAuthenticator) HasCredentials() bool { return a.has }
+
 func TestCancelClearsTransientState(t *testing.T) {
 	m := NewProviderSelector()
 	m.active = true
@@ -607,6 +621,52 @@ func TestConnectAuthMethodFailsWhenModelsCannotBeLoaded(t *testing.T) {
 	}
 	if store.IsConnected(providerName, llm.AuthAPIKey) {
 		t.Fatal("provider should not be persisted as connected when model loading fails")
+	}
+}
+
+func TestInteractiveAuthReusesStoredCredentials(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	authMethod := llm.AuthMethod("subscription-reuse")
+
+	llm.Register(llm.Meta{
+		Provider:    providerName,
+		AuthMethod:  authMethod,
+		DisplayName: "Stored Credential Test",
+	}, func(context.Context) (llm.Provider, error) {
+		return &staticListProvider{
+			name:   string(providerName),
+			models: []llm.ModelInfo{{ID: "stored-model", DisplayName: "Stored Model"}},
+		}, nil
+	})
+	auth := &storedCredentialAuthenticator{has: true}
+	llm.RegisterAuthenticator(providerName, authMethod, auth)
+	t.Cleanup(func() {
+		llm.Unregister(providerName, authMethod)
+	})
+
+	m := NewProviderSelector()
+	cmd := m.tryConnectOrPromptKey(providerAuthMethodItem{
+		Provider:   providerName,
+		AuthMethod: authMethod,
+	}, 0, 3)
+	msg, ok := connectResultFromCmd(cmd)
+	if !ok {
+		t.Fatal("expected providerConnectResultMsg")
+	}
+	if auth.loginCalls != 0 {
+		t.Fatalf("Login called %d times; stored credentials should be verified without a fresh browser login", auth.loginCalls)
+	}
+	if !msg.Success {
+		t.Fatalf("expected stored credentials to connect successfully, got %+v", msg)
+	}
+
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if !store.IsConnected(providerName, authMethod) {
+		t.Fatal("provider should be persisted as connected after stored credential verification")
 	}
 }
 

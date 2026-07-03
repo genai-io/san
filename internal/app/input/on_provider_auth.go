@@ -252,9 +252,13 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 
 // tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
 func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
-	// Interactive (OAuth) auth signs in via the browser, not an API key, so it
-	// never prompts for one and must sign in before it can be treated connected.
+	// Interactive (OAuth) auth signs in via the browser, not an API key. If a
+	// prior token is present, validate it with the normal connect path instead
+	// of forcing a fresh browser login.
 	if llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
+		if llm.HasInteractiveCredentials(am.Provider, am.AuthMethod) {
+			return s.connectAuthMethod(am, authIdx)
+		}
 		return s.connectInteractive(am, authIdx)
 	}
 

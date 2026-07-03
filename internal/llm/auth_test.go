@@ -6,8 +6,9 @@ import (
 )
 
 type fakeAuthenticator struct {
-	loggedIn  bool
-	loggedOut bool
+	loggedIn       bool
+	loggedOut      bool
+	hasCredentials bool
 }
 
 func (f *fakeAuthenticator) Login(_ context.Context, onURL func(string)) error {
@@ -22,6 +23,8 @@ func (f *fakeAuthenticator) Logout() error {
 	f.loggedOut = true
 	return nil
 }
+
+func (f *fakeAuthenticator) HasCredentials() bool { return f.hasCredentials }
 
 func TestAuthenticatorRegistrationAndDispatch(t *testing.T) {
 	const provider, method = Name("fakeprovider"), AuthMethod("fakeauth")
@@ -47,6 +50,14 @@ func TestAuthenticatorRegistrationAndDispatch(t *testing.T) {
 
 	if !SupportsInteractiveLogin(provider, method) {
 		t.Fatal("expected an authenticator after registration")
+	}
+	if HasInteractiveCredentials(provider, method) {
+		t.Fatal("did not expect stored credentials before the fake reports them")
+	}
+
+	fa.hasCredentials = true
+	if !HasInteractiveCredentials(provider, method) {
+		t.Fatal("expected stored credentials after the fake reports them")
 	}
 
 	var gotURL string
