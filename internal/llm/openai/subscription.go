@@ -26,14 +26,21 @@ const codexBaseURL = "https://chatgpt.com/backend-api/codex/"
 // doesn't wedge the connect flow before falling back to the static list.
 const modelsFetchTimeout = 8 * time.Second
 
+// codexClientVersion is the client version sent to the /models endpoint, which
+// requires it and returns the model set for that version. We present a recent
+// Codex CLI version (matching the codex originator we already send); the backend
+// returns the current lineup for any sufficiently recent version. Bump if the
+// list ever goes stale.
+const codexClientVersion = "0.142.5"
+
 // staticSubscriptionModels is the fallback catalog used when the live
-// ChatGPT Codex model list can't be fetched.
+// ChatGPT Codex model list can't be fetched. Kept roughly current so the
+// fallback isn't badly out of date; the live fetch is the real source.
 var staticSubscriptionModels = []string{
-	"gpt-5.1-codex",
-	"gpt-5.1-codex-mini",
-	"gpt-5.1",
-	"gpt-5-codex",
-	"gpt-5",
+	"gpt-5.5",
+	"gpt-5.4",
+	"gpt-5.4-mini",
+	"gpt-5.3-codex-spark",
 }
 
 // SubscriptionMeta is the metadata for OpenAI via a ChatGPT subscription (OAuth).
@@ -82,7 +89,9 @@ func NewSubscriptionClient(ctx context.Context) (llm.Provider, error) {
 // unexpected response shape) so the connect flow never breaks.
 func (c *Client) subscriptionCatalog(ctx context.Context) []llm.ModelInfo {
 	var resp codexModelsResponse
-	err := c.client.Get(ctx, "models", nil, &resp, option.WithRequestTimeout(modelsFetchTimeout))
+	err := c.client.Get(ctx, "models", nil, &resp,
+		option.WithRequestTimeout(modelsFetchTimeout),
+		option.WithQuery("client_version", codexClientVersion))
 	if err == nil {
 		if models := resp.toModelInfos(); len(models) > 0 {
 			return models
@@ -101,60 +110,42 @@ func staticSubscriptionCatalog() []llm.ModelInfo {
 	return models
 }
 
-// codexModelsResponse is the ChatGPT Codex /models catalog. The backend wraps the
-// list under "data" (OpenAI convention); "models" is accepted defensively.
+// codexModelsResponse is the ChatGPT Codex /models catalog, keyed under "models".
 type codexModelsResponse struct {
-	Data   []codexModel `json:"data"`
 	Models []codexModel `json:"models"`
 }
 
-// codexModel is one catalog entry. Field names span the observed variants: the
-// request slug lives under "model" (with "slug"/"id" as fallbacks), and
-// show_in_picker hides entries the account shouldn't select.
+// codexModel is one catalog entry. The request id is the "slug"; the backend also
+// reports the context window and, via show_in_picker, whether the entry should be
+// user-selectable (null means shown).
 type codexModel struct {
-	ID           string `json:"id"`
-	Model        string `json:"model"`
-	Slug         string `json:"slug"`
-	DisplayName  string `json:"display_name"`
-	ShowInPicker *bool  `json:"show_in_picker"`
-}
-
-// slug returns the model id to send in requests, preferring the explicit slug.
-func (m codexModel) slug() string {
-	switch {
-	case m.Model != "":
-		return m.Model
-	case m.Slug != "":
-		return m.Slug
-	default:
-		return m.ID
-	}
+	Slug          string `json:"slug"`
+	DisplayName   string `json:"display_name"`
+	ContextWindow int    `json:"context_window"`
+	ShowInPicker  *bool  `json:"show_in_picker"`
 }
 
 // toModelInfos converts the catalog to llm.ModelInfo, dropping picker-hidden and
-// duplicate entries and filling token limits from the known OpenAI specs.
+// duplicate entries and taking token limits from the backend when reported.
 func (r codexModelsResponse) toModelInfos() []llm.ModelInfo {
-	entries := r.Data
-	if len(entries) == 0 {
-		entries = r.Models
-	}
-
-	seen := make(map[string]bool, len(entries))
-	models := make([]llm.ModelInfo, 0, len(entries))
-	for _, m := range entries {
+	seen := make(map[string]bool, len(r.Models))
+	models := make([]llm.ModelInfo, 0, len(r.Models))
+	for _, m := range r.Models {
+		if m.Slug == "" || seen[m.Slug] {
+			continue
+		}
 		if m.ShowInPicker != nil && !*m.ShowInPicker {
 			continue
 		}
-		id := m.slug()
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
+		seen[m.Slug] = true
 
-		info := openAIModelInfo(id)
+		info := openAIModelInfo(m.Slug)
 		if m.DisplayName != "" {
 			info.Name = m.DisplayName
 			info.DisplayName = m.DisplayName
+		}
+		if m.ContextWindow > 0 {
+			info.InputTokenLimit = m.ContextWindow
 		}
 		models = append(models, info)
 	}

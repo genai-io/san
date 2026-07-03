@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
@@ -75,12 +76,13 @@ const reasoningStreamBody = "" +
 	"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_9\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"thought\"}],\"encrypted_content\":\"enc-xyz\"}],\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n" +
 	"data: [DONE]\n\n"
 
-// modelsCatalogBody is a sample ChatGPT Codex /models JSON response: two picker
+// modelsCatalogBody is a sample ChatGPT Codex /models JSON response (real shape:
+// a "models" array of {slug, display_name, context_window, ...}): two picker
 // models plus one hidden entry that must be filtered out.
-const modelsCatalogBody = `{"data":[` +
-	`{"id":"gpt-5.1-codex","model":"gpt-5.1-codex","display_name":"GPT-5.1 Codex","show_in_picker":true},` +
-	`{"id":"gpt-5","model":"gpt-5","display_name":"GPT-5"},` +
-	`{"id":"gpt-hidden","model":"gpt-hidden","display_name":"Hidden","show_in_picker":false}` +
+const modelsCatalogBody = `{"models":[` +
+	`{"slug":"gpt-5.5","display_name":"GPT-5.5","context_window":272000},` +
+	`{"slug":"gpt-5.4","display_name":"GPT-5.4","context_window":272000},` +
+	`{"slug":"gpt-hidden","display_name":"Hidden","show_in_picker":false}` +
 	`]}`
 
 func TestSubscriptionEchoesReasoningBeforeToolCall(t *testing.T) {
@@ -209,12 +211,12 @@ func TestSubscriptionCatalogFallsBackToStatic(t *testing.T) {
 		t.Fatalf("got %d models, want %d (static fallback)", len(models), len(staticSubscriptionModels))
 	}
 
-	idx := slices.IndexFunc(models, func(m llm.ModelInfo) bool { return m.ID == "gpt-5-codex" })
+	idx := slices.IndexFunc(models, func(m llm.ModelInfo) bool { return m.ID == "gpt-5.5" })
 	if idx < 0 {
-		t.Fatalf("expected gpt-5-codex in catalog, got %v", models)
+		t.Fatalf("expected gpt-5.5 in the static fallback, got %v", models)
 	}
 	if models[idx].InputTokenLimit == 0 {
-		t.Errorf("expected a non-zero context window for gpt-5-codex")
+		t.Errorf("expected a non-zero context window for gpt-5.5")
 	}
 }
 
@@ -227,6 +229,12 @@ func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
 		t.Fatalf("ListModels: %v", err)
 	}
 
+	// The /models endpoint requires the client_version query param; without it
+	// the backend 400s and we'd silently fall back.
+	if !strings.Contains(transport.query, "client_version=") {
+		t.Errorf("models request query = %q, want a client_version param", transport.query)
+	}
+
 	// Two visible entries; the show_in_picker=false one is dropped.
 	if len(models) != 2 {
 		t.Fatalf("got %d models, want 2: %v", len(models), models)
@@ -235,8 +243,8 @@ func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
 	for _, m := range models {
 		byID[m.ID] = m
 	}
-	if got, ok := byID["gpt-5.1-codex"]; !ok || got.DisplayName != "GPT-5.1 Codex" {
-		t.Errorf("gpt-5.1-codex display name = %q (present=%v), want GPT-5.1 Codex", got.DisplayName, ok)
+	if got, ok := byID["gpt-5.5"]; !ok || got.DisplayName != "GPT-5.5" || got.InputTokenLimit != 272000 {
+		t.Errorf("gpt-5.5 = %+v (present=%v), want display GPT-5.5 / limit 272000", got, ok)
 	}
 	if _, hidden := byID["gpt-hidden"]; hidden {
 		t.Error("show_in_picker=false model must be dropped")

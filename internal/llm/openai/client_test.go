@@ -18,6 +18,7 @@ import (
 type captureStreamingTransport struct {
 	body   []byte
 	path   string
+	query  string
 	stream string // SSE body to return; defaults to responsesStreamBody when empty
 }
 
@@ -27,6 +28,7 @@ func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response
 		t.body = body
 	}
 	t.path = req.URL.Path
+	t.query = req.URL.RawQuery
 
 	body := t.stream
 	if body == "" {
