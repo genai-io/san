@@ -37,10 +37,11 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
-	PermissionDecider PermDecisionFunc
-	HookEngine        hook.Handler
-	InteractionFunc   tool.InteractionFunc
-	ToolProgress      func(toolCallID string, msg string)
+	PermissionDecider  PermDecisionFunc
+	PermissionReviewer PermReviewFunc
+	HookEngine         hook.Handler
+	InteractionFunc    tool.InteractionFunc
+	ToolProgress       func(toolCallID string, msg string)
 
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
@@ -84,6 +85,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 		adaptOpts = append(adaptOpts, tool.WithToolProgress(p.ToolProgress))
 	}
 	pb := NewPermissionBridge(p.PermissionDecider)
+	pb.SetReviewer(p.PermissionReviewer)
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {

@@ -18,10 +18,25 @@ type PermDecisionResult struct {
 	ToolName    string
 	Description string
 	RequestID   string
+	// Reviewable marks a Prompt the auto-review agent may judge instead of the
+	// user. Set only for the auto-review gray-zone default.
+	Reviewable bool
 }
 
 // PermDecisionFunc evaluates whether a tool call is allowed, denied, or needs prompting.
 type PermDecisionFunc func(name string, args map[string]any) PermDecisionResult
+
+// PermReviewResult is the outcome of a gray-zone review. Allow=true auto-approves
+// the call; the zero value (Allow=false) escalates it to the human.
+type PermReviewResult struct {
+	Allow  bool
+	Reason string
+}
+
+// PermReviewFunc judges a reviewable gray-zone tool call. It runs on the agent
+// goroutine and must fail closed (return the zero value) on any error, so a
+// broken or slow judge can never silently approve.
+type PermReviewFunc func(ctx context.Context, name string, input map[string]any, reason string) PermReviewResult
 
 // PermBridgeRequest is a pending permission request sent to the TUI for approval.
 //
@@ -48,6 +63,7 @@ type PermBridgeResponse struct {
 type PermissionBridge struct {
 	requests chan *PermBridgeRequest
 	decideFn PermDecisionFunc
+	reviewFn PermReviewFunc // optional; judges reviewable gray-zone prompts
 }
 
 func NewPermissionBridge(decideFn PermDecisionFunc) *PermissionBridge {
@@ -55,6 +71,12 @@ func NewPermissionBridge(decideFn PermDecisionFunc) *PermissionBridge {
 		requests: make(chan *PermBridgeRequest, 1),
 		decideFn: decideFn,
 	}
+}
+
+// SetReviewer installs the gray-zone judge. When set, a reviewable Prompt is
+// offered to it before falling back to the user. A nil fn disables review.
+func (pb *PermissionBridge) SetReviewer(fn PermReviewFunc) {
+	pb.reviewFn = fn
 }
 
 func (pb *PermissionBridge) PermissionFunc() perm.PermissionFunc {
@@ -85,6 +107,14 @@ func (pb *PermissionBridge) Check(ctx context.Context, name string, input map[st
 	}
 	if decision.Description == "" {
 		decision.Description = decision.Reason
+	}
+
+	// Gray-zone review: offer a reviewable Prompt to the judge before the user.
+	// Allow short-circuits; anything else falls through to the human prompt.
+	if decision.Reviewable && pb.reviewFn != nil {
+		if rv := pb.reviewFn(ctx, name, input, decision.Reason); rv.Allow {
+			return true, rv.Reason
+		}
 	}
 
 	return pb.prompt(ctx, &PermBridgeRequest{

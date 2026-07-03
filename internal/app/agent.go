@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
@@ -21,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -114,6 +116,8 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		})
 	}
 
+	rev := reviewer.New(m.env.LLMProvider, m.env.GetModelID())
+
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
 		ModelID:        m.env.GetModelID(),
@@ -163,8 +167,36 @@ func (m *model) buildAgentParams() agent.BuildParams {
 					ToolName:    name,
 					Description: decision.Reason,
 					RequestID:   core.NewMessageID(),
+					Reviewable:  decision.Reviewable,
 				}
 			}
+		},
+
+		PermissionReviewer: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
+			// Only auto-review mode delegates gray-zone prompts to the judge.
+			if m.env.OperationMode != setting.ModeAutoReview {
+				return agent.PermReviewResult{}
+			}
+			// Defense in depth: the judge may never approve a floored action,
+			// even if one somehow reaches it.
+			if setting.BypassImmuneReason(name, args) != "" {
+				return agent.PermReviewResult{}
+			}
+			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			verdict, err := rev.Judge(ctx, reviewer.Request{
+				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD,
+			})
+			if err != nil || !verdict.Allow {
+				return agent.PermReviewResult{} // fail closed → escalate to human
+			}
+			if rec != nil {
+				rec.RecordPermissionDecided(transcript.PermissionRecord{
+					Tool: name, Input: marshalPermInput(args), Decision: permDecisionFor(true),
+					Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
+				})
+			}
+			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
 		},
 	}
 }
