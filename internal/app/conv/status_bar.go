@@ -113,6 +113,23 @@ func RenderContextLabel(used, limit int) string {
 	return muted.Render(fmt.Sprintf("ctx %s/%s", kit.FormatTokenCount(used), kit.FormatTokenCount(limit)))
 }
 
+// renderStableContextLabel renders the status-bar context segment with a stable
+// width for the used-token side. The status line re-renders on every spinner
+// tick; without this padding, values like "0", "8.5k", and "10.0k" shift the
+// right-aligned cluster horizontally and read as flicker.
+func renderStableContextLabel(used, limit int) string {
+	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	usedText := kit.FormatTokenCount(used)
+	if limit <= 0 {
+		return muted.Render(fmt.Sprintf("ctx %s/--", usedText))
+	}
+	limitText := kit.FormatTokenCount(limit)
+	if pad := lipgloss.Width(limitText) - lipgloss.Width(usedText); pad > 0 {
+		usedText = strings.Repeat(" ", pad) + usedText
+	}
+	return muted.Render(fmt.Sprintf("ctx %s/%s", usedText, limitText))
+}
+
 // compressionBadgeStyle escalates color with count (PRD §7.5):
 //
 //	<5     muted
@@ -260,7 +277,7 @@ func renderStatusCluster(p OperationModeParams) string {
 	// The numeric label always renders — it falls back to "ctx X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
-		text:     RenderContextLabel(p.InputTokens, p.InputLimit),
+		text:     renderStableContextLabel(p.InputTokens, p.InputLimit),
 		priority: 3,
 	})
 
