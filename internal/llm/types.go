@@ -35,6 +35,11 @@ const (
 	AuthVertex  AuthMethod = "vertex"
 	AuthBedrock AuthMethod = "bedrock"
 	AuthCoding  AuthMethod = "coding"
+
+	// AuthSubscription authenticates with a consumer subscription (OAuth) rather
+	// than a metered API key — e.g. an OpenAI ChatGPT Plus/Pro plan. The category
+	// is provider-agnostic so other subscription logins can reuse it.
+	AuthSubscription AuthMethod = "subscription"
 )
 
 // Meta contains static metadata about a provider auth method.

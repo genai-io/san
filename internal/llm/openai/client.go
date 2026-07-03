@@ -21,10 +21,14 @@ import (
 
 // Client implements the Provider interface using the OpenAI SDK
 type Client struct {
-	client     openai.Client
-	name       string
-	limitMu    sync.Mutex
-	limitCache map[string]modelTokenLimits
+	client openai.Client
+	name   string
+	// subscription selects the ChatGPT Codex backend behavior: requests must be
+	// stateless (store=false) and carry encrypted reasoning so it round-trips,
+	// and the model list is a static catalog rather than an API call.
+	subscription bool
+	limitMu      sync.Mutex
+	limitCache   map[string]modelTokenLimits
 }
 
 // NewClient creates a new OpenAI client with the given SDK client
@@ -124,6 +128,16 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 
 		if opts.MaxTokens > 0 {
 			params.MaxOutputTokens = openai.Opt(int64(opts.MaxTokens))
+		}
+
+		// The ChatGPT Codex backend is stateless: it rejects store=true and
+		// needs reasoning returned as encrypted content so it can be replayed on
+		// the next turn.
+		if c.subscription {
+			params.Store = openai.Bool(false)
+			params.Include = []responses.ResponseIncludable{
+				responses.ResponseIncludableReasoningEncryptedContent,
+			}
 		}
 
 		if opts.Temperature > 0 {
@@ -255,6 +269,12 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 
 // ListModels returns the available models for OpenAI using the API
 func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	// The ChatGPT Codex backend has no /models endpoint, so publish a static
+	// catalog of the subscription-accessible models.
+	if c.subscription {
+		return subscriptionCatalog(), nil
+	}
+
 	// Use OpenAI API to dynamically fetch models
 	page, err := c.client.Models.List(ctx)
 	if err != nil {

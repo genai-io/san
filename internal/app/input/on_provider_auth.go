@@ -11,8 +11,11 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/openai/oauth"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/secret"
 )
 
@@ -148,24 +151,26 @@ func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 
 	item := s.visibleItems[s.selectedIdx]
 
-	var envVars []string
+	var am *providerAuthMethodItem
 	switch item.Kind {
 	case providerItemProvider:
 		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
 			return nil
 		}
-		envVars = item.Provider.AuthMethods[0].EnvVars
+		am = &item.Provider.AuthMethods[0]
 	case providerItemAuthMethod:
 		if item.AuthMethod == nil {
 			return nil
 		}
-		envVars = item.AuthMethod.EnvVars
+		am = item.AuthMethod
 	default:
 		return nil
 	}
 
-	envVar := providerFirstEnvVar(envVars)
-	if envVar == "" {
+	// Subscription auth has no env var, but its stored OAuth tokens are still
+	// removable, so allow the confirm prompt for either credential kind.
+	envVar := providerFirstEnvVar(am.EnvVars)
+	if envVar == "" && am.AuthMethod != llm.AuthSubscription {
 		return nil
 	}
 
@@ -211,11 +216,16 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 		return nil
 	}
 
-	// Remove from secret store and unset env var
-	if store := secret.Default(); store != nil {
-		_ = store.Delete(envVar)
+	// Clear the credential: OAuth tokens for subscription auth, otherwise the
+	// API-key env var in the secret store.
+	if authMethod == llm.AuthSubscription {
+		_ = oauth.Logout()
+	} else {
+		if store := secret.Default(); store != nil {
+			_ = store.Delete(envVar)
+		}
+		os.Unsetenv(envVar)
 	}
-	os.Unsetenv(envVar)
 
 	// Disconnect provider and remove cached models from the llm store
 	if s.store != nil {
@@ -243,6 +253,12 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 
 // tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
 func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
+	// Subscription auth signs in via OAuth (browser), not an API key, so it never
+	// prompts for one and must sign in before it can be treated as connected.
+	if am.AuthMethod == llm.AuthSubscription {
+		return s.connectSubscription(am, authIdx)
+	}
+
 	if am.Status == llm.StatusAvailable || providerIsEnvReady(am.EnvVars) {
 		return s.connectAuthMethod(am, s.selectedIdx)
 	}
@@ -378,6 +394,52 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 	}
 	// Start the spinner alongside the async work.
+	return tea.Batch(providerConnectingTickCmd(), work)
+}
+
+// connectSubscription runs the ChatGPT OAuth (PKCE) sign-in for the subscription
+// auth method, then records the connection. It reuses the connect spinner and
+// result plumbing so the row animates while the browser flow is in progress.
+func (s *ProviderSelector) connectSubscription(item providerAuthMethodItem, authIdx int) tea.Cmd {
+	if s.IsConnecting() {
+		// A connect/refresh is already in flight; ignore re-entry.
+		return nil
+	}
+	s.lastConnectResult = providerStatusConnecting
+	s.lastConnectAuthIdx = authIdx
+	s.lastConnectSuccess = false
+
+	work := func() tea.Msg {
+		ctx := context.Background()
+
+		// Log the authorize URL so it's recoverable when the browser can't be
+		// opened automatically (e.g. over SSH).
+		onURL := func(u string) {
+			log.Logger().Info("chatgpt subscription sign-in", zap.String("url", u))
+		}
+		if _, err := oauth.Login(ctx, onURL); err != nil {
+			return providerConnectResultMsg{
+				AuthIdx: authIdx,
+				Success: false,
+				Message: fmt.Sprintf("ChatGPT sign-in failed: %s", err.Error()),
+			}
+		}
+
+		result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
+		if err != nil {
+			return providerConnectResultMsg{
+				AuthIdx: authIdx,
+				Success: false,
+				Message: err.Error(),
+			}
+		}
+		return providerConnectResultMsg{
+			AuthIdx:   authIdx,
+			Success:   true,
+			Message:   result,
+			NewStatus: llm.StatusConnected,
+		}
+	}
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
