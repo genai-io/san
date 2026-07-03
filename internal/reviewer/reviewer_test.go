@@ -41,11 +41,13 @@ func Test_parseVerdict(t *testing.T) {
 
 // stubProvider returns a canned completion for testing Judge without a network call.
 type stubProvider struct {
-	content string
-	err     error
+	content          string
+	err              error
+	lastSystemPrompt string
 }
 
-func (s *stubProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan llm.StreamChunk {
+func (s *stubProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
+	s.lastSystemPrompt = opts.SystemPrompt
 	ch := make(chan llm.StreamChunk, 1)
 	if s.err != nil {
 		ch <- llm.StreamChunk{Type: llm.ChunkTypeError, Error: s.err}
@@ -149,4 +151,29 @@ func Test_AnswerPrompt(t *testing.T) {
 			t.Fatal("AnswerPrompt() err = nil, want error so caller skips")
 		}
 	})
+}
+
+func Test_SystemPromptOverride(t *testing.T) {
+	s := &stubProvider{content: `{"decision":"allow","reason":"ok"}`}
+	r := New(s, "model")
+	req := Request{ToolName: "Bash", Args: map[string]any{"command": "date"}}
+
+	// The built-in rubric is used until overridden.
+	_, _ = r.Judge(context.Background(), req)
+	if s.lastSystemPrompt != defaultSystemPrompt {
+		t.Errorf("Judge used %q, want the built-in rubric", s.lastSystemPrompt)
+	}
+
+	// A custom rubric replaces it.
+	r.SetSystemPrompt("MY CUSTOM RUBRIC")
+	_, _ = r.Judge(context.Background(), req)
+	if s.lastSystemPrompt != "MY CUSTOM RUBRIC" {
+		t.Errorf("Judge used %q, want the custom rubric", s.lastSystemPrompt)
+	}
+
+	// A blank override keeps the current prompt (unreadable config → built-in).
+	r.SetSystemPrompt("   ")
+	if r.systemPrompt != "MY CUSTOM RUBRIC" {
+		t.Errorf("blank override changed the prompt to %q", r.systemPrompt)
+	}
 }

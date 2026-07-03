@@ -45,6 +45,19 @@ type Data struct {
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
 	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
+	// AutoReview tunes the auto-review permission judge (model + rubric).
+	AutoReview AutoReviewSettings `json:"autoReview,omitempty"`
+}
+
+// AutoReviewSettings tunes the auto-review permission judge. Both fields are
+// optional; empty keeps the built-in defaults (session model + built-in rubric).
+type AutoReviewSettings struct {
+	// Model overrides the model used for review decisions — typically a smaller,
+	// faster model on the current provider. Empty uses the session model.
+	Model string `json:"model,omitempty"`
+	// SystemPromptFile replaces the built-in review rubric with the contents of
+	// the named file. Empty uses the built-in rubric.
+	SystemPromptFile string `json:"systemPromptFile,omitempty"`
 }
 
 // SelfLearnSettings configures the two independent self-learning arms.

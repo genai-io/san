@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -116,7 +117,20 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		})
 	}
 
-	rev := reviewer.New(m.env.LLMProvider, m.env.GetModelID())
+	snap := m.services.Setting.Snapshot()
+	reviewerModelID := m.env.GetModelID()
+	if snap != nil && snap.AutoReview.Model != "" {
+		reviewerModelID = snap.AutoReview.Model
+	}
+	rev := reviewer.New(m.env.LLMProvider, reviewerModelID)
+	if snap != nil && snap.AutoReview.SystemPromptFile != "" {
+		if b, err := os.ReadFile(snap.AutoReview.SystemPromptFile); err == nil {
+			rev.SetSystemPrompt(string(b))
+		} else {
+			log.Logger().Warn("auto-review systemPromptFile unreadable; using built-in rubric",
+				zap.String("file", snap.AutoReview.SystemPromptFile), zap.Error(err))
+		}
+	}
 
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
