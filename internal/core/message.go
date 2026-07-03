@@ -49,16 +49,17 @@ const (
 // agent run loop exchange, append to history, and persist. It holds no
 // UI/display state — for the rendered TUI view-model, see ChatMessage.
 type Message struct {
-	ID                string      `json:"id,omitempty"`
-	Role              Role        `json:"role"`
-	Content           string      `json:"content,omitempty"`
-	DisplayContent    string      `json:"display_content,omitempty"`
-	Images            []Image     `json:"images,omitempty"`
-	Thinking          string      `json:"thinking,omitempty"`
-	ThinkingSignature string      `json:"thinking_signature,omitempty"`
-	ToolCalls         []ToolCall  `json:"tool_calls,omitempty"`
-	ToolResult        *ToolResult `json:"tool_result,omitempty"`
-	Signal            Signal      `json:"-"`
+	ID                string          `json:"id,omitempty"`
+	Role              Role            `json:"role"`
+	Content           string          `json:"content,omitempty"`
+	DisplayContent    string          `json:"display_content,omitempty"`
+	Images            []Image         `json:"images,omitempty"`
+	Thinking          string          `json:"thinking,omitempty"`
+	ThinkingSignature string          `json:"thinking_signature,omitempty"`
+	Reasoning         []ReasoningItem `json:"reasoning,omitempty"`
+	ToolCalls         []ToolCall      `json:"tool_calls,omitempty"`
+	ToolResult        *ToolResult     `json:"tool_result,omitempty"`
+	Signal            Signal          `json:"-"`
 }
 
 // ChatMessage is the TUI view-model for one conversation entry: the same
@@ -163,6 +164,17 @@ type ToolCall struct {
 	Name             string `json:"name"`
 	Input            string `json:"input"`
 	ThoughtSignature []byte `json:"thought_signature,omitempty"` // Google Gemini: opaque signature to echo back
+}
+
+// ReasoningItem is an opaque reasoning block emitted by a model and echoed back
+// on the next request. Used by OpenAI's stateless (store=false) ChatGPT
+// subscription backend, where a reasoning model's function_call must be preceded
+// by its reasoning item; EncryptedContent lets the model restore the reasoning
+// without server-side state.
+type ReasoningItem struct {
+	ID               string `json:"id"`
+	EncryptedContent string `json:"encrypted_content,omitempty"`
+	Summary          string `json:"summary,omitempty"`
 }
 
 // ToolResult is the outcome of a tool execution.

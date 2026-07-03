@@ -16,8 +16,9 @@ import (
 )
 
 type captureStreamingTransport struct {
-	body []byte
-	path string
+	body   []byte
+	path   string
+	stream string // SSE body to return; defaults to responsesStreamBody when empty
 }
 
 func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -27,11 +28,15 @@ func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response
 	}
 	t.path = req.URL.Path
 
+	body := t.stream
+	if body == "" {
+		body = responsesStreamBody
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Status:     "200 OK",
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
-		Body:       io.NopCloser(strings.NewReader(responsesStreamBody)),
+		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    req,
 	}, nil
 }

@@ -66,6 +66,91 @@ func TestNonSubscriptionStreamOmitsStore(t *testing.T) {
 	}
 }
 
+// reasoningStreamBody is a Responses SSE stream whose completed response carries
+// a reasoning output item with encrypted content, as the ChatGPT backend returns
+// when include=[reasoning.encrypted_content].
+const reasoningStreamBody = "" +
+	"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"ok\"}\n\n" +
+	"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_9\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"thought\"}],\"encrypted_content\":\"enc-xyz\"}],\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n" +
+	"data: [DONE]\n\n"
+
+func TestSubscriptionEchoesReasoningBeforeToolCall(t *testing.T) {
+	transport := &captureStreamingTransport{}
+	client := newSubscriptionTestClient(transport)
+
+	drain(client.Stream(context.Background(), llm.CompletionOptions{
+		Model: "gpt-5-codex",
+		Messages: []core.Message{
+			{Role: core.RoleUser, Content: "hi"},
+			{
+				Role:      core.RoleAssistant,
+				Reasoning: []core.ReasoningItem{{ID: "rs_1", EncryptedContent: "enc-abc", Summary: "sum"}},
+				ToolCalls: []core.ToolCall{{ID: "call_1", Name: "foo", Input: "{}"}},
+			},
+			{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "call_1", Content: "ok"}},
+		},
+	}))
+
+	var payload struct {
+		Input []map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(transport.body, &payload); err != nil {
+		t.Fatalf("invalid json body: %v", err)
+	}
+
+	reasoningIdx, funcIdx := -1, -1
+	for i, item := range payload.Input {
+		switch item["type"] {
+		case "reasoning":
+			reasoningIdx = i
+			if item["encrypted_content"] != "enc-abc" {
+				t.Errorf("reasoning encrypted_content = %v, want enc-abc", item["encrypted_content"])
+			}
+			if item["id"] != "rs_1" {
+				t.Errorf("reasoning id = %v, want rs_1", item["id"])
+			}
+		case "function_call":
+			funcIdx = i
+		}
+	}
+	if reasoningIdx < 0 {
+		t.Fatal("expected a reasoning input item echoed back")
+	}
+	if funcIdx < 0 {
+		t.Fatal("expected a function_call input item")
+	}
+	if reasoningIdx > funcIdx {
+		t.Errorf("reasoning item (idx %d) must precede its function_call (idx %d)", reasoningIdx, funcIdx)
+	}
+}
+
+func TestSubscriptionCapturesReasoningFromResponse(t *testing.T) {
+	transport := &captureStreamingTransport{stream: reasoningStreamBody}
+	client := newSubscriptionTestClient(transport)
+
+	chunks := drain(client.Stream(context.Background(), llm.CompletionOptions{
+		Model:    "gpt-5-codex",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	}))
+
+	var resp *llm.CompletionResponse
+	for _, c := range chunks {
+		if c.Type == llm.ChunkTypeDone {
+			resp = c.Response
+		}
+	}
+	if resp == nil {
+		t.Fatal("no done chunk with a response")
+	}
+	if len(resp.Reasoning) != 1 {
+		t.Fatalf("captured %d reasoning items, want 1: %+v", len(resp.Reasoning), resp.Reasoning)
+	}
+	got := resp.Reasoning[0]
+	if got.ID != "rs_9" || got.EncryptedContent != "enc-xyz" || got.Summary != "thought" {
+		t.Errorf("captured reasoning = %+v, want {rs_9, enc-xyz, thought}", got)
+	}
+}
+
 func TestSubscriptionProviderRegistered(t *testing.T) {
 	meta, ok := llm.GetMeta(llm.OpenAI, llm.AuthSubscription)
 	if !ok {

@@ -36,10 +36,11 @@ type Usage struct {
 
 // InferResponse is the final aggregated response from one LLM call.
 type InferResponse struct {
-	Content           string     // text output
-	Thinking          string     // chain-of-thought (extended thinking)
-	ThinkingSignature string     // signature for replaying thinking blocks
-	ToolCalls         []ToolCall // tool execution requests
+	Content           string          // text output
+	Thinking          string          // chain-of-thought (extended thinking)
+	ThinkingSignature string          // signature for replaying thinking blocks
+	Reasoning         []ReasoningItem // reasoning blocks to echo back (OpenAI stateless backend)
+	ToolCalls         []ToolCall      // tool execution requests
 	StopReason        StopReason
 	Usage
 }

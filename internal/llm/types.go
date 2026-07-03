@@ -173,12 +173,13 @@ type CompletionOptions struct {
 
 // CompletionResponse represents a completion response from an LLM provider.
 type CompletionResponse struct {
-	Content           string          `json:"content,omitempty"`
-	Thinking          string          `json:"thinking,omitempty"`
-	ThinkingSignature string          `json:"thinking_signature,omitempty"`
-	ToolCalls         []core.ToolCall `json:"tool_calls,omitempty"`
-	StopReason        string          `json:"stop_reason"`
-	Usage             Usage           `json:"usage"`
+	Content           string               `json:"content,omitempty"`
+	Thinking          string               `json:"thinking,omitempty"`
+	ThinkingSignature string               `json:"thinking_signature,omitempty"`
+	Reasoning         []core.ReasoningItem `json:"reasoning,omitempty"`
+	ToolCalls         []core.ToolCall      `json:"tool_calls,omitempty"`
+	StopReason        string               `json:"stop_reason"`
+	Usage             Usage                `json:"usage"`
 }
 
 // Logging accessors — satisfy duck-typed interfaces in the log package so

@@ -79,6 +79,17 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 					OfMessage: responseMessageParam(responses.EasyInputMessageRoleUser, msg),
 				})
 			case core.RoleAssistant:
+				// Echo back any reasoning items first: the stateless ChatGPT
+				// backend requires a reasoning model's function_call to be
+				// preceded by its reasoning item (carried via encrypted_content).
+				for _, r := range msg.Reasoning {
+					if r.EncryptedContent == "" {
+						continue
+					}
+					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
+						OfReasoning: reasoningInputParam(r),
+					})
+				}
 				if len(msg.ToolCalls) > 0 {
 					// Add text content as a message if present
 					if messageHasResponseContent(msg) {
@@ -223,6 +234,13 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 				completed := event.AsResponseCompleted()
 				resp := completed.Response
 
+				// Capture reasoning items so they can be echoed back on the next
+				// stateless (store=false) turn; only the subscription backend
+				// includes encrypted_content, so this is empty for the direct API.
+				if c.subscription {
+					state.Response.Reasoning = extractReasoning(resp.Output)
+				}
+
 				// Map usage
 				state.UpdateUsage(int(resp.Usage.InputTokens), int(resp.Usage.OutputTokens))
 
@@ -354,6 +372,48 @@ func responseImageContentPart(mediaType, data string) responses.ResponseInputCon
 
 func messageHasResponseContent(msg core.Message) bool {
 	return strings.TrimSpace(msg.Content) != "" || len(msg.Images) > 0
+}
+
+// reasoningInputParam builds an input reasoning item that echoes a prior
+// reasoning block back to the stateless ChatGPT backend.
+func reasoningInputParam(r core.ReasoningItem) *responses.ResponseReasoningItemParam {
+	p := &responses.ResponseReasoningItemParam{
+		ID:      r.ID,
+		Summary: []responses.ResponseReasoningItemSummaryParam{},
+	}
+	if r.EncryptedContent != "" {
+		p.EncryptedContent = openai.Opt(r.EncryptedContent)
+	}
+	if r.Summary != "" {
+		p.Summary = []responses.ResponseReasoningItemSummaryParam{{Text: r.Summary}}
+	}
+	return p
+}
+
+// extractReasoning pulls reasoning items (id + encrypted content + summary) from
+// a completed response's output, for echoing back on the next stateless turn.
+// Items without encrypted content are skipped — they can't be replayed.
+func extractReasoning(output []responses.ResponseOutputItemUnion) []core.ReasoningItem {
+	var items []core.ReasoningItem
+	for _, item := range output {
+		if item.Type != "reasoning" {
+			continue
+		}
+		r := item.AsReasoning()
+		if r.EncryptedContent == "" {
+			continue
+		}
+		var summary strings.Builder
+		for _, s := range r.Summary {
+			summary.WriteString(s.Text)
+		}
+		items = append(items, core.ReasoningItem{
+			ID:               r.ID,
+			EncryptedContent: r.EncryptedContent,
+			Summary:          summary.String(),
+		})
+	}
+	return items
 }
 
 // Ensure Client implements Provider

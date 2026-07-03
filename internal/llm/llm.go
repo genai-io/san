@@ -353,6 +353,7 @@ func toProviderMessages(msgs []core.Message) []core.Message {
 				Content:           m.Content,
 				Thinking:          m.Thinking,
 				ThinkingSignature: m.ThinkingSignature,
+				Reasoning:         m.Reasoning,
 				ToolCalls:         m.ToolCalls,
 			})
 		}
@@ -369,6 +370,7 @@ func toInferResponse(r *CompletionResponse) *core.InferResponse {
 		Content:           r.Content,
 		Thinking:          r.Thinking,
 		ThinkingSignature: r.ThinkingSignature,
+		Reasoning:         r.Reasoning,
 		ToolCalls:         r.ToolCalls,
 		StopReason:        core.StopReason(r.StopReason),
 		Usage:             r.Usage,
