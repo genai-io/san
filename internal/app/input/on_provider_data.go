@@ -4,6 +4,7 @@ package input
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -89,11 +90,10 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 		allCached = store.GetAllCachedModelsIncludeExpired()
 	}
 
-	var asyncCmd tea.Cmd
 	if len(allCached) > 0 {
 		s.loadModelsCached(allCached, current)
 	}
-	asyncCmd = s.loadModelsAsync(store, current)
+	asyncCmd := s.loadModelsAsync(store, current)
 
 	s.ensureModelProvidersExist()
 	s.sortConnectedProviders(current)
@@ -223,14 +223,9 @@ func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.Name, authMet
 	}
 
 	providerName := string(provider)
-	kept := s.allModels[:0]
-	for _, item := range s.allModels {
-		if item.ProviderName == providerName && item.AuthMethod == authMethod {
-			continue
-		}
-		kept = append(kept, item)
-	}
-	s.allModels = kept
+	s.allModels = slices.DeleteFunc(s.allModels, func(item providerModelItem) bool {
+		return item.ProviderName == providerName && item.AuthMethod == authMethod
+	})
 	for _, mdl := range models {
 		s.allModels = append(s.allModels, newProviderModelItem(mdl, providerName, authMethod, current))
 	}

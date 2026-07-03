@@ -63,9 +63,9 @@ func NewSubscriptionClient(ctx context.Context) (llm.Provider, error) {
 		option.WithBaseURL(codexBaseURL),
 		option.WithMaxRetries(0),
 		option.WithHeader("OpenAI-Beta", "responses=experimental"),
-		option.WithHeader("originator", "codex_cli_rs"),
+		option.WithHeader("originator", oauth.Originator),
 		option.WithHeader("session_id", sessionID),
-		option.WithHeader("User-Agent", "codex_cli_rs"),
+		option.WithHeader("User-Agent", oauth.Originator),
 		option.WithMiddleware(func(req *http.Request, next option.MiddlewareNext) (*http.Response, error) {
 			access, accountID, err := tokens.Token(req.Context())
 			if err != nil {

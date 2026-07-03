@@ -106,7 +106,7 @@ func TestAuthorizeEndpoint(t *testing.T) {
 		"code_challenge":        "chal",
 		"code_challenge_method": "S256",
 		"state":                 "st",
-		"originator":            originator,
+		"originator":            Originator,
 	} {
 		if got := q.Get(k); got != want {
 			t.Errorf("authorize param %s = %q, want %q", k, got, want)

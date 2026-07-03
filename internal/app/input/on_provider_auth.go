@@ -352,15 +352,20 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 	work := func() tea.Msg {
 		ctx := context.Background()
 
+		result := providerConnectResultMsg{
+			AuthIdx:    authIdx,
+			Provider:   item.Provider,
+			AuthMethod: item.AuthMethod,
+		}
+		fail := func(err error) tea.Msg {
+			result.Success = false
+			result.Message = fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error())
+			return result
+		}
+
 		llmProvider, err := llm.GetProvider(ctx, item.Provider, item.AuthMethod)
 		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx:    authIdx,
-				Success:    false,
-				Message:    fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
-				Provider:   item.Provider,
-				AuthMethod: item.AuthMethod,
-			}
+			return fail(err)
 		}
 
 		models, err := llmProvider.ListModels(ctx)
@@ -371,36 +376,18 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 
 		if err != nil && len(models) == 0 {
-			return providerConnectResultMsg{
-				AuthIdx:    authIdx,
-				Success:    false,
-				Message:    fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
-				Provider:   item.Provider,
-				AuthMethod: item.AuthMethod,
-			}
+			return fail(err)
 		}
 
+		result.Success = true
+		result.NewStatus = llm.StatusConnected
+		result.Models = models
 		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx:    authIdx,
-				Success:    true,
-				Message:    fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models)),
-				NewStatus:  llm.StatusConnected,
-				Provider:   item.Provider,
-				AuthMethod: item.AuthMethod,
-				Models:     models,
-			}
+			result.Message = fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models))
+		} else {
+			result.Message = fmt.Sprintf("● %d models", len(models))
 		}
-
-		return providerConnectResultMsg{
-			AuthIdx:    authIdx,
-			Success:    true,
-			Message:    fmt.Sprintf("● %d models", len(models)),
-			NewStatus:  llm.StatusConnected,
-			Provider:   item.Provider,
-			AuthMethod: item.AuthMethod,
-			Models:     models,
-		}
+		return result
 	}
 	// Start the spinner alongside the async work.
 	return tea.Batch(providerConnectingTickCmd(), work)

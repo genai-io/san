@@ -9,25 +9,35 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+// asAuthError extracts the underlying OpenAI error when err is an
+// authentication or permission failure (HTTP 401/403); it reports false for any
+// other error.
+func asAuthError(err error) (*openai.Error, bool) {
+	var apierr *openai.Error
+	if !errors.As(err, &apierr) {
+		return nil, false
+	}
+	if apierr.StatusCode != http.StatusUnauthorized && apierr.StatusCode != http.StatusForbidden {
+		return nil, false
+	}
+	return apierr, true
+}
+
 // IsAuthError reports whether err is an OpenAI-compatible authentication or
 // permission failure (HTTP 401/403) — a bad/expired credential or an account
 // lacking access, as opposed to a transient/network/shape error.
 func IsAuthError(err error) bool {
-	var apierr *openai.Error
-	if !errors.As(err, &apierr) {
-		return false
-	}
-	return apierr.StatusCode == http.StatusUnauthorized || apierr.StatusCode == http.StatusForbidden
+	_, ok := asAuthError(err)
+	return ok
 }
 
 // NormalizeAPIError converts OpenAI-compatible auth failures into actionable
 // provider-specific guidance while preserving all other errors as-is.
 func NormalizeAPIError(providerName string, err error) error {
-	if !IsAuthError(err) {
+	apierr, ok := asAuthError(err)
+	if !ok {
 		return err
 	}
-	var apierr *openai.Error
-	errors.As(err, &apierr)
 
 	providerLabel, envVar := providerAuthHelp(providerName)
 	msg := strings.TrimSpace(apierr.Message)

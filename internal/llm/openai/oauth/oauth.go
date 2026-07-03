@@ -25,10 +25,10 @@ const (
 	primaryPort  = 1455
 	fallbackPort = 1457
 
-	// originator identifies the client to OpenAI's OAuth + Codex backend. Codex
+	// Originator identifies the client to OpenAI's OAuth + Codex backend. Codex
 	// uses this value; matching it keeps the authorize page and edge (Cloudflare)
-	// checks happy.
-	originator = "codex_cli_rs"
+	// checks happy. Exported so the Codex transport headers share one source.
+	Originator = "codex_cli_rs"
 
 	// loginTimeout bounds how long we wait for the user to complete the browser
 	// sign-in before giving up.
@@ -170,7 +170,7 @@ func authorizeEndpoint(redirectURI, challenge, state string) string {
 		"id_token_add_organizations": {"true"},
 		"codex_cli_simplified_flow":  {"true"},
 		"state":                      {state},
-		"originator":                 {originator},
+		"originator":                 {Originator},
 	}
 	return authorizeURL + "?" + q.Encode()
 }
