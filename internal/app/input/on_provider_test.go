@@ -47,6 +47,23 @@ func (p *connectFailProvider) ListModels(context.Context) ([]llm.ModelInfo, erro
 
 func (p *connectFailProvider) Name() string { return "test-connect-fail" }
 
+type staticListProvider struct {
+	name   string
+	models []llm.ModelInfo
+}
+
+func (p *staticListProvider) Stream(context.Context, llm.CompletionOptions) <-chan llm.StreamChunk {
+	ch := make(chan llm.StreamChunk)
+	close(ch)
+	return ch
+}
+
+func (p *staticListProvider) ListModels(context.Context) ([]llm.ModelInfo, error) {
+	return p.models, nil
+}
+
+func (p *staticListProvider) Name() string { return p.name }
+
 func TestCancelClearsTransientState(t *testing.T) {
 	m := NewProviderSelector()
 	m.active = true
@@ -368,6 +385,133 @@ func TestEnterLoadsCachedModelsAndPutsCurrentFirst(t *testing.T) {
 	}
 	if modelCount != 2 {
 		t.Fatalf("expected 2 model items in visible list, got %d", modelCount)
+	}
+}
+
+func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
+	store := newProviderTestStore(t)
+	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	envVar := "TEST_REFRESH_WITH_CACHE_KEY"
+	t.Setenv(envVar, "test")
+
+	if err := store.CacheModels(providerName, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "cached-model", DisplayName: "Cached Model"},
+	}); err != nil {
+		t.Fatalf("CacheModels() error = %v", err)
+	}
+	if err := store.Connect(providerName, llm.AuthAPIKey); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	llm.RegisterProviderDisplay(providerName, llm.ProviderDisplay{Name: "Refresh Test", Order: 9999})
+	llm.Register(llm.Meta{
+		Provider:    providerName,
+		AuthMethod:  llm.AuthAPIKey,
+		EnvVars:     []string{envVar},
+		DisplayName: "Refresh Test API Key",
+	}, func(context.Context) (llm.Provider, error) {
+		return &staticListProvider{
+			name: string(providerName),
+			models: []llm.ModelInfo{
+				{ID: "live-model", DisplayName: "Live Model"},
+			},
+		}, nil
+	})
+	t.Cleanup(func() {
+		llm.Unregister(providerName, llm.AuthAPIKey)
+	})
+
+	m := NewProviderSelector()
+	cmd, err := m.Enter(context.Background(), 80, 24)
+	if err != nil {
+		t.Fatalf("Enter() error = %v", err)
+	}
+	if cmd == nil {
+		t.Fatal("Enter() should refresh models even when cache exists")
+	}
+	if len(m.allModels) != 1 || m.allModels[0].ID != "cached-model" {
+		t.Fatalf("initial models = %#v, want cached model", m.allModels)
+	}
+
+	msg, ok := cmd().(providerModelsLoadedMsg)
+	if !ok {
+		t.Fatalf("refresh command returned %T, want providerModelsLoadedMsg", cmd())
+	}
+	m.HandleModelsLoaded(msg)
+
+	if len(m.allModels) != 1 || m.allModels[0].ID != "live-model" {
+		t.Fatalf("refreshed models = %#v, want live model", m.allModels)
+	}
+
+	reloaded, ok := m.store.GetCachedModels(providerName, llm.AuthAPIKey)
+	if !ok || len(reloaded) != 1 || reloaded[0].ID != "live-model" {
+		t.Fatalf("cached after refresh = %#v (ok=%v), want live model", reloaded, ok)
+	}
+}
+
+func TestRefreshAuthMethodReplacesModelsImmediately(t *testing.T) {
+	store := newProviderTestStore(t)
+	providerName := llm.Name(strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")))
+	envVar := "TEST_REFRESH_AUTH_METHOD_KEY"
+	t.Setenv(envVar, "test")
+
+	if err := store.CacheModels(providerName, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "cached-model", DisplayName: "Cached Model"},
+	}); err != nil {
+		t.Fatalf("CacheModels() error = %v", err)
+	}
+	if err := store.Connect(providerName, llm.AuthAPIKey); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	llm.RegisterProviderDisplay(providerName, llm.ProviderDisplay{Name: "Refresh Method Test", Order: 9999})
+	llm.Register(llm.Meta{
+		Provider:    providerName,
+		AuthMethod:  llm.AuthAPIKey,
+		EnvVars:     []string{envVar},
+		DisplayName: "Refresh Method Test API Key",
+	}, func(context.Context) (llm.Provider, error) {
+		return &staticListProvider{
+			name: string(providerName),
+			models: []llm.ModelInfo{
+				{ID: "live-model", DisplayName: "Live Model"},
+			},
+		}, nil
+	})
+	t.Cleanup(func() {
+		llm.Unregister(providerName, llm.AuthAPIKey)
+	})
+
+	m := NewProviderSelector()
+	m.active = true
+	m.store = store
+	m.allModels = []providerModelItem{
+		{ID: "cached-model", DisplayName: "Cached Model", ProviderName: string(providerName), AuthMethod: llm.AuthAPIKey},
+		{ID: "other-model", DisplayName: "Other Model", ProviderName: "other", AuthMethod: llm.AuthAPIKey},
+	}
+
+	cmd := m.refreshAuthMethod(providerAuthMethodItem{
+		Provider:   providerName,
+		AuthMethod: llm.AuthAPIKey,
+	}, 0)
+	msg, ok := connectResultFromCmd(cmd)
+	if !ok {
+		t.Fatal("expected providerConnectResultMsg from refreshAuthMethod")
+	}
+	if !msg.Success || len(msg.Models) != 1 || msg.Models[0].ID != "live-model" {
+		t.Fatalf("refresh result = %+v, want live model", msg)
+	}
+
+	if followup := m.HandleConnectResult(msg); followup != nil {
+		t.Fatal("refresh with models should update immediately without scheduling another model load")
+	}
+
+	byID := map[string]bool{}
+	for _, item := range m.allModels {
+		byID[item.ID] = true
+	}
+	if byID["cached-model"] || !byID["live-model"] || !byID["other-model"] {
+		t.Fatalf("models after refresh = %#v, want live model plus unrelated models", m.allModels)
 	}
 }
 

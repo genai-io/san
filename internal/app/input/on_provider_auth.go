@@ -355,9 +355,11 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		llmProvider, err := llm.GetProvider(ctx, item.Provider, item.AuthMethod)
 		if err != nil {
 			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
+				AuthIdx:    authIdx,
+				Success:    false,
+				Message:    fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
+				Provider:   item.Provider,
+				AuthMethod: item.AuthMethod,
 			}
 		}
 
@@ -370,26 +372,34 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 
 		if err != nil && len(models) == 0 {
 			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
+				AuthIdx:    authIdx,
+				Success:    false,
+				Message:    fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
+				Provider:   item.Provider,
+				AuthMethod: item.AuthMethod,
 			}
 		}
 
 		if err != nil {
 			return providerConnectResultMsg{
-				AuthIdx:   authIdx,
-				Success:   true,
-				Message:   fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models)),
-				NewStatus: llm.StatusConnected,
+				AuthIdx:    authIdx,
+				Success:    true,
+				Message:    fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models)),
+				NewStatus:  llm.StatusConnected,
+				Provider:   item.Provider,
+				AuthMethod: item.AuthMethod,
+				Models:     models,
 			}
 		}
 
 		return providerConnectResultMsg{
-			AuthIdx:   authIdx,
-			Success:   true,
-			Message:   fmt.Sprintf("● %d models", len(models)),
-			NewStatus: llm.StatusConnected,
+			AuthIdx:    authIdx,
+			Success:    true,
+			Message:    fmt.Sprintf("● %d models", len(models)),
+			NewStatus:  llm.StatusConnected,
+			Provider:   item.Provider,
+			AuthMethod: item.AuthMethod,
+			Models:     models,
 		}
 	}
 	// Start the spinner alongside the async work.
@@ -483,6 +493,12 @@ func (s *ProviderSelector) HandleConnectResult(msg providerConnectResultMsg) tea
 	s.lastConnectSuccess = msg.Success
 
 	if !msg.Success {
+		return nil
+	}
+
+	if len(msg.Models) > 0 {
+		s.replaceModelsForAuthMethod(msg.Provider, msg.AuthMethod, msg.Models)
+		s.rebuildVisibleItems()
 		return nil
 	}
 

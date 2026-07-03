@@ -175,10 +175,13 @@ type providerModelSelectedMsg struct {
 
 // providerConnectResultMsg is sent when inline connection completes.
 type providerConnectResultMsg struct {
-	AuthIdx   int
-	Success   bool
-	Message   string
-	NewStatus llm.Status
+	AuthIdx    int
+	Success    bool
+	Message    string
+	NewStatus  llm.Status
+	Provider   llm.Name
+	AuthMethod llm.AuthMethod
+	Models     []llm.ModelInfo
 }
 
 // providerModelsLoadedMsg is sent when async model loading completes.
