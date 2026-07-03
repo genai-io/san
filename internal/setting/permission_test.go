@@ -286,6 +286,14 @@ func Test_isDestructiveCommand(t *testing.T) {
 		{"git branch -D", "git branch -D feature", true},
 		{"chmod 777", "chmod 777 /tmp/file", true},
 
+		// Privilege escalation & persistence
+		{"sudo", "sudo apt-get install foo", true},
+		{"sudo rm", "sudo rm -rf /", true},
+		{"crontab", "crontab -e", true},
+		{"chsh", "chsh -s /bin/zsh", true},
+		{"visudo", "visudo", true},
+		{"launchctl load", "launchctl load ~/Library/LaunchAgents/x.plist", true},
+
 		// Path-qualified commands (should normalize to base command)
 		{"rm with full path", "/bin/rm -rf /tmp/test", true},
 		{"git with full path", "/usr/bin/git reset --hard HEAD", true},
