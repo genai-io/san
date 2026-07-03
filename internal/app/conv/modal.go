@@ -8,6 +8,7 @@ type ModalState struct {
 	Question             *QuestionPrompt
 	PendingQuestion      *tool.QuestionRequest
 	PendingQuestionReply chan *tool.QuestionResponse
+	PendingSecretReply   chan SecretPromptResponse
 }
 
 func NewModalState() ModalState {
@@ -28,5 +29,18 @@ type QuestionRequestMsg struct {
 type QuestionResponseMsg struct {
 	Request   *tool.QuestionRequest
 	Response  *tool.QuestionResponse
+	Cancelled bool
+}
+
+// SecretPromptRequestMsg is sent when an approved tool needs a secret from the
+// user. The reply value is intentionally not represented as a tool question or
+// transcript record.
+type SecretPromptRequestMsg struct {
+	Prompt string
+	Reply  chan SecretPromptResponse
+}
+
+type SecretPromptResponse struct {
+	Value     string
 	Cancelled bool
 }

@@ -6,6 +6,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -23,6 +24,12 @@ func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {
 		// Questions arrive via ProgressHub.Check(); re-arm the poll so the next
 		// progress update or question keeps flowing while the modal is up.
 		cmd := m.handleQuestionRequest(msg)
+		if m.conv.ProgressHub != nil {
+			cmd = tea.Batch(cmd, m.conv.ProgressHub.Check())
+		}
+		return cmd, true
+	case conv.SecretPromptRequestMsg:
+		cmd := m.handleSecretPromptRequest(msg)
 		if m.conv.ProgressHub != nil {
 			cmd = tea.Batch(cmd, m.conv.ProgressHub.Check())
 		}
@@ -55,5 +62,24 @@ func (m *model) handleQuestionResponse(msg conv.QuestionResponseMsg) tea.Cmd {
 		return nil
 	}
 	reply <- msg.Response
+	return nil
+}
+
+func (m *model) handleSecretPromptRequest(msg conv.SecretPromptRequestMsg) tea.Cmd {
+	m.conv.Modal.PendingSecretReply = msg.Reply
+	m.userInput.Secret.Show(msg.Prompt, m.env.Width)
+	return nil
+}
+
+func (m *model) handleSecretPromptResponse(msg input.SecretPromptResponseMsg) tea.Cmd {
+	reply := m.conv.Modal.PendingSecretReply
+	m.conv.Modal.PendingSecretReply = nil
+	if reply == nil {
+		return nil
+	}
+	reply <- conv.SecretPromptResponse{
+		Value:     msg.Value,
+		Cancelled: msg.Cancelled,
+	}
 	return nil
 }

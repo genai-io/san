@@ -96,6 +96,12 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
 
+	if responder := tool.PromptResponderFromContext(ctx); responder != nil {
+		fullOutput, err := runInteractive(ctx, command, cmd, responder)
+		duration := time.Since(start)
+		return t.foregroundResult(ctx, description, fullOutput, "", err, duration, timeout, trackedFile, cwd)
+	}
+
 	// Detach from the controlling terminal so an interactive command grabs no
 	// tty and fails fast instead of hanging the TUI. On timeout/cancel, tear
 	// down the whole process group (not just bash) so a child that grabbed the
@@ -126,7 +132,10 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	output := stdout.String()
 	errOutput := stderr.String()
 
-	// Combine output
+	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd)
+}
+
+func (t *BashTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" {

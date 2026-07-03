@@ -32,9 +32,10 @@ type InteractionFunc func(ctx context.Context, req *QuestionRequest) (*QuestionR
 type AdaptOption func(*adaptConfig)
 
 type adaptConfig struct {
-	askFn          InteractionFunc
-	messagesGetter MessagesGetter
-	progressFn     func(toolCallID string, msg string)
+	askFn           InteractionFunc
+	messagesGetter  MessagesGetter
+	progressFn      func(toolCallID string, msg string)
+	promptResponder PromptResponderProvider
 }
 
 // WithInteraction sets the handler for interactive tools.
@@ -51,6 +52,12 @@ func WithMessagesGetterProvider(fn MessagesGetter) AdaptOption {
 // WithToolProgress sets the handler for progress messages emitted by agent-like tools.
 func WithToolProgress(fn func(toolCallID string, msg string)) AdaptOption {
 	return func(c *adaptConfig) { c.progressFn = fn }
+}
+
+// WithPromptResponderProvider sets the responder provider for tools that can
+// safely handle interactive prompts during execution.
+func WithPromptResponderProvider(fn PromptResponderProvider) AdaptOption {
+	return func(c *adaptConfig) { c.promptResponder = fn }
 }
 
 // AdaptTool wraps a legacy Tool as a core.Tool with a dynamic CWD resolver.
@@ -76,7 +83,7 @@ func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...Ada
 	var adapted []core.Tool
 	for name, schema := range schemaByName {
 		if t, ok := Get(name); ok {
-			adapted = append(adapted, &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, progressFn: cfg.progressFn})
+			adapted = append(adapted, &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, progressFn: cfg.progressFn, promptResponder: cfg.promptResponder})
 		}
 	}
 	return core.NewTools(adapted...)
@@ -84,12 +91,13 @@ func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...Ada
 
 // toolAdapter wraps a legacy Tool as a core.Tool.
 type toolAdapter struct {
-	inner          Tool
-	schema         core.ToolSchema
-	cwd            func() string
-	askFn          InteractionFunc
-	messagesGetter MessagesGetter
-	progressFn     func(toolCallID string, msg string)
+	inner           Tool
+	schema          core.ToolSchema
+	cwd             func() string
+	askFn           InteractionFunc
+	messagesGetter  MessagesGetter
+	progressFn      func(toolCallID string, msg string)
+	promptResponder PromptResponderProvider
 }
 
 func (a *toolAdapter) Name() string            { return a.inner.Name() }
@@ -103,6 +111,9 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 	}
 	if a.messagesGetter != nil {
 		ctx = WithMessagesGetter(ctx, a.messagesGetter)
+	}
+	if a.promptResponder != nil {
+		ctx = ContextWithPromptResponderProvider(ctx, a.promptResponder)
 	}
 	if IsAgentToolName(a.inner.Name()) && a.progressFn != nil {
 		if callID := core.ToolCallIDFromContext(ctx); callID != "" {

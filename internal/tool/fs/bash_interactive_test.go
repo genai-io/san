@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	coretool "github.com/genai-io/san/internal/tool"
 )
 
 type fakeResponder struct {
@@ -83,12 +85,33 @@ func Test_runInteractive_skipFailsFast(t *testing.T) {
 	}
 }
 
+func TestBashExecuteApproved_usesPromptResponderFromContext(t *testing.T) {
+	r := &fakeResponder{answer: "yes", answerOK: true}
+	ctx := coretool.ContextWithPromptResponderProvider(context.Background(), func(context.Context) coretool.PromptResponder {
+		return r
+	})
+	result := (&BashTool{}).ExecuteApproved(ctx, map[string]any{
+		"command": `read -p "Continue? [y/N] " a; echo "answer=$a"`,
+		"timeout": 2000,
+	}, t.TempDir())
+
+	if !result.Success {
+		t.Fatalf("ExecuteApproved failed: error=%q output=%q", result.Error, result.Output)
+	}
+	if !strings.Contains(result.Output, "answer=yes") {
+		t.Errorf("output %q missing answer=yes", result.Output)
+	}
+	if r.answerCalls != 1 {
+		t.Errorf("answerCalls = %d, want 1", r.answerCalls)
+	}
+}
+
 func Test_lastLine(t *testing.T) {
 	cases := map[string]string{
 		"Password: ":                 "Password:",
-		"foo\nbar\nContinue? [y/N] ":  "Continue? [y/N]",
-		"line\r\nprompt> ":            "prompt>",
-		"trailing\n\n\n":              "trailing",
+		"foo\nbar\nContinue? [y/N] ": "Continue? [y/N]",
+		"line\r\nprompt> ":           "prompt>",
+		"trailing\n\n\n":             "trailing",
 		"":                           "",
 	}
 	for in, want := range cases {

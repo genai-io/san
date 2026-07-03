@@ -142,6 +142,12 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		ToolProgress: func(toolCallID string, msg string) {
 			m.conv.ProgressHub.SendForToolCall(toolCallID, msg)
 		},
+		PromptResponder: func(ctx context.Context) tool.PromptResponder {
+			if m.env.OperationMode != setting.ModeAutoReview {
+				return nil
+			}
+			return bashPromptResponder{model: m, reviewer: rev}
+		},
 
 		PermissionDecider: func(name string, args map[string]any) agent.PermDecisionResult {
 			decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)

@@ -55,6 +55,7 @@ func (m *model) overlayPanels() []overlayPanel {
 	return []overlayPanel{
 		m.conv.Modal.Question, // docked modals (rendered between separators)
 		&m.userInput.Approval,
+		&m.userInput.Secret,
 		&m.userInput.Provider.Selector, // fullscreen slash-command pickers
 		&m.userInput.Tool,
 		&m.userInput.Skill.Selector,
@@ -194,6 +195,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
+	case conv.SecretPromptRequestMsg:
+		cmd := m.handleSecretPromptRequest(msg)
+		if m.conv.ProgressHub != nil {
+			cmd = tea.Batch(cmd, m.conv.ProgressHub.Check())
+		}
+		return m, cmd
+	case input.SecretPromptResponseMsg:
+		return m, m.handleSecretPromptResponse(msg)
 	case input.ApprovalResponseMsg:
 		return m, m.handlePermBridgeDecision(permissionDecision{
 			Approved: msg.Approved, AllowAll: msg.AllowAll, Persist: msg.Persist, Request: msg.Request,

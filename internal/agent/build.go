@@ -42,6 +42,7 @@ type BuildParams struct {
 	HookEngine         hook.Handler
 	InteractionFunc    tool.InteractionFunc
 	ToolProgress       func(toolCallID string, msg string)
+	PromptResponder    tool.PromptResponderProvider
 
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
@@ -83,6 +84,9 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 	}
 	if p.ToolProgress != nil {
 		adaptOpts = append(adaptOpts, tool.WithToolProgress(p.ToolProgress))
+	}
+	if p.PromptResponder != nil {
+		adaptOpts = append(adaptOpts, tool.WithPromptResponderProvider(p.PromptResponder))
 	}
 	pb := NewPermissionBridge(p.PermissionDecider)
 	pb.SetReviewer(p.PermissionReviewer)

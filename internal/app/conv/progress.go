@@ -27,6 +27,7 @@ type ProgressCheckTickMsg struct{}
 type ProgressHub struct {
 	ch  chan ProgressUpdateMsg
 	qch chan QuestionRequestMsg
+	sch chan SecretPromptRequestMsg
 }
 
 // NewProgressHub creates a new progress hub with the given buffer size.
@@ -37,6 +38,7 @@ func NewProgressHub(buffer int) *ProgressHub {
 	return &ProgressHub{
 		ch:  make(chan ProgressUpdateMsg, buffer),
 		qch: make(chan QuestionRequestMsg, buffer),
+		sch: make(chan SecretPromptRequestMsg, buffer),
 	}
 }
 
@@ -80,12 +82,39 @@ func (h *ProgressHub) Ask(ctx context.Context, index int, req *tool.QuestionRequ
 	}
 }
 
+// RequestSecret enqueues a masked secret prompt and waits for the user's
+// response. The returned value is kept out of transcripts and model messages.
+func (h *ProgressHub) RequestSecret(ctx context.Context, prompt string) (string, bool, error) {
+	if h == nil {
+		return "", false, fmt.Errorf("progress hub not initialized")
+	}
+
+	reply := make(chan SecretPromptResponse, 1)
+	select {
+	case h.sch <- SecretPromptRequestMsg{Prompt: prompt, Reply: reply}:
+	case <-ctx.Done():
+		return "", false, ctx.Err()
+	}
+
+	select {
+	case resp := <-reply:
+		if resp.Cancelled {
+			return "", false, nil
+		}
+		return resp.Value, true, nil
+	case <-ctx.Done():
+		return "", false, ctx.Err()
+	}
+}
+
 // Check returns a tea.Cmd that polls this hub for the next update.
 func (h *ProgressHub) Check() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		select {
 		case q := <-h.qch:
 			return q
+		case s := <-h.sch:
+			return s
 		case u := <-h.ch:
 			return u
 		default:
@@ -105,6 +134,11 @@ func (h *ProgressHub) DrainPendingQuestions() {
 		case q := <-h.qch:
 			select {
 			case q.Reply <- &tool.QuestionResponse{Cancelled: true}:
+			default:
+			}
+		case s := <-h.sch:
+			select {
+			case s.Reply <- SecretPromptResponse{Cancelled: true}:
 			default:
 			}
 		default:
