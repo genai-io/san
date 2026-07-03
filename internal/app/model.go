@@ -22,6 +22,8 @@
 package app
 
 import (
+	"sync/atomic"
+
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 
@@ -51,6 +53,11 @@ type model struct {
 	// Set in Run for fresh sessions. See view.go (liveWelcome) and
 	// model_scrollback.go (takeWelcomeBanner).
 	welcomePending bool
+
+	// reviewerApprovals counts auto-review approvals this session for the status
+	// bar. A pointer so value-receiver copies of the model share one counter
+	// across the agent and UI goroutines.
+	reviewerApprovals *atomic.Int64
 }
 
 var _ conv.Runtime = (*model)(nil)

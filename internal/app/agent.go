@@ -201,6 +201,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 					Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
 				})
 			}
+			m.reviewerApprovals.Add(1)
 			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
 		},
 	}

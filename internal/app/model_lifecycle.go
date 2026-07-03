@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/hub"
@@ -59,12 +60,13 @@ func newBaseModel() model {
 			LoadDisabled:    svc.Setting.GetDisabledToolsAt,
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
 		}),
-		conv:          conv.NewModel(defaultWidth),
-		agentEventHub: hub.New(),
-		mainEvents:    make(chan hub.Event, 64),
-		systemInput:   trigger.New(),
-		env:           environment,
-		services:      svc,
+		conv:              conv.NewModel(defaultWidth),
+		agentEventHub:     hub.New(),
+		mainEvents:        make(chan hub.Event, 64),
+		systemInput:       trigger.New(),
+		env:               environment,
+		services:          svc,
+		reviewerApprovals: new(atomic.Int64),
 	}
 }
 

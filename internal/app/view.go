@@ -255,6 +255,10 @@ func (m model) renderModeStatus() string {
 	if status := m.services.Hook.CurrentStatusMessage(); status != "" {
 		modelName = status
 	}
+	reviewApprovals := 0
+	if m.reviewerApprovals != nil {
+		reviewApprovals = int(m.reviewerApprovals.Load())
+	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:             m.env.OperationMode,
 		InputTokens:      m.env.InputTokens,
@@ -268,6 +272,7 @@ func (m model) renderModeStatus() string {
 		ThinkingEffort:   thinkingEffort,
 		ShowThinking:     showThinking,
 		QueueCount:       m.userInput.Queue.Len(),
+		ReviewApprovals:  reviewApprovals,
 	})
 }
 
