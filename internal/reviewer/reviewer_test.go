@@ -99,3 +99,54 @@ func Test_Judge(t *testing.T) {
 		}
 	})
 }
+
+func Test_parsePromptReply(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		wantAnswer bool
+		wantInput  string
+		wantErr    bool
+	}{
+		{"answer yes", `{"action":"answer","input":"y"}`, true, "y", false},
+		{"answer word", `{"action":"answer","input":"yes"}`, true, "yes", false},
+		{"skip", `{"action":"skip"}`, false, "", false},
+		{"fenced answer", "```json\n{\"action\":\"answer\",\"input\":\"1\"}\n```", true, "1", false},
+		{"unknown action", `{"action":"maybe"}`, false, "", true},
+		{"no json", "sure, type y", false, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parsePromptReply(tt.content)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parsePromptReply(%q) err=%v, wantErr=%v", tt.content, err, tt.wantErr)
+			}
+			if err == nil && (got.Answer != tt.wantAnswer || got.Input != tt.wantInput) {
+				t.Errorf("parsePromptReply(%q) = %+v, want answer=%v input=%q", tt.content, got, tt.wantAnswer, tt.wantInput)
+			}
+		})
+	}
+}
+
+func Test_AnswerPrompt(t *testing.T) {
+	t.Run("answer", func(t *testing.T) {
+		r := New(&stubProvider{content: `{"action":"answer","input":"y"}`}, "model")
+		got, err := r.AnswerPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+		if err != nil || !got.Answer || got.Input != "y" {
+			t.Fatalf("AnswerPrompt() = %+v, err=%v; want answer y", got, err)
+		}
+	})
+	t.Run("skip", func(t *testing.T) {
+		r := New(&stubProvider{content: `{"action":"skip"}`}, "model")
+		got, err := r.AnswerPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
+		if err != nil || got.Answer {
+			t.Fatalf("AnswerPrompt() = %+v, err=%v; want skip", got, err)
+		}
+	})
+	t.Run("provider error", func(t *testing.T) {
+		r := New(&stubProvider{err: errors.New("boom")}, "model")
+		if _, err := r.AnswerPrompt(context.Background(), "cmd", "prompt"); err == nil {
+			t.Fatal("AnswerPrompt() err = nil, want error so caller skips")
+		}
+	})
+}
