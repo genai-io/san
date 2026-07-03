@@ -344,14 +344,9 @@ func (s *ProviderSelector) IsConnecting() bool {
 
 // refreshAuthMethod re-fetches models for an already connected provider auth method.
 func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
-	if s.IsConnecting() {
-		// A connect/refresh is already in flight; ignore re-entry so we don't
-		// start a second spinner-tick loop or a concurrent store write.
+	if !s.beginConnect(providerStatusRefreshing, authIdx) {
 		return nil
 	}
-	s.lastConnectResult = providerStatusRefreshing
-	s.lastConnectAuthIdx = authIdx
-	s.lastConnectSuccess = false
 
 	work := func() tea.Msg {
 		ctx := context.Background()
@@ -397,18 +392,46 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
+// beginConnect marks a connect/refresh as in flight for authIdx under the given
+// status marker, returning false if one is already running — re-entry is ignored
+// so we never start a second spinner-tick loop or a concurrent store write.
+func (s *ProviderSelector) beginConnect(status string, authIdx int) bool {
+	if s.IsConnecting() {
+		return false
+	}
+	s.lastConnectResult = status
+	s.lastConnectAuthIdx = authIdx
+	s.lastConnectSuccess = false
+	return true
+}
+
+// connectResultMsg runs the actual provider connection and builds the result
+// message shared by connectAuthMethod and connectInteractive.
+func (s *ProviderSelector) connectResultMsg(ctx context.Context, item providerAuthMethodItem, authIdx int) tea.Msg {
+	result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
+	if err != nil {
+		return providerConnectResultMsg{
+			AuthIdx: authIdx,
+			Success: false,
+			Message: err.Error(),
+		}
+	}
+	return providerConnectResultMsg{
+		AuthIdx:   authIdx,
+		Success:   true,
+		Message:   result,
+		NewStatus: llm.StatusConnected,
+	}
+}
+
 // connectInteractive runs an OAuth (PKCE) sign-in for an auth method that
 // authenticates in the browser, then records the connection. It reuses the
 // connect spinner and result plumbing so the row animates while the browser
 // flow is in progress.
 func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authIdx int) tea.Cmd {
-	if s.IsConnecting() {
-		// A connect/refresh is already in flight; ignore re-entry.
+	if !s.beginConnect(providerStatusConnecting, authIdx) {
 		return nil
 	}
-	s.lastConnectResult = providerStatusConnecting
-	s.lastConnectAuthIdx = authIdx
-	s.lastConnectSuccess = false
 
 	work := func() tea.Msg {
 		ctx := context.Background()
@@ -426,53 +449,19 @@ func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authI
 				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
-
-		result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
-		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: err.Error(),
-			}
-		}
-		return providerConnectResultMsg{
-			AuthIdx:   authIdx,
-			Success:   true,
-			Message:   result,
-			NewStatus: llm.StatusConnected,
-		}
+		return s.connectResultMsg(ctx, item, authIdx)
 	}
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
 // connectAuthMethod initiates an async connection to a provider auth method.
 func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
-	if s.IsConnecting() {
-		// A connect/refresh is already in flight; ignore re-entry so we don't
-		// start a second spinner-tick loop or a concurrent store write.
+	if !s.beginConnect(providerStatusConnecting, authIdx) {
 		return nil
 	}
-	s.lastConnectResult = providerStatusConnecting
-	s.lastConnectAuthIdx = authIdx
-	s.lastConnectSuccess = false
 
 	work := func() tea.Msg {
-		ctx := context.Background()
-		result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
-		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: err.Error(),
-			}
-		}
-
-		return providerConnectResultMsg{
-			AuthIdx:   authIdx,
-			Success:   true,
-			Message:   result,
-			NewStatus: llm.StatusConnected,
-		}
+		return s.connectResultMsg(context.Background(), item, authIdx)
 	}
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
