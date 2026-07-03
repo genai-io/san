@@ -287,10 +287,10 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 
 // ListModels returns the available models for OpenAI using the API
 func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
-	// The ChatGPT Codex backend has no /models endpoint, so publish a static
-	// catalog of the subscription-accessible models.
+	// The ChatGPT Codex backend advertises its own model catalog; fetch it
+	// (with a static fallback) rather than the standard /v1/models list.
 	if c.subscription {
-		return subscriptionCatalog(), nil
+		return c.subscriptionCatalog(ctx), nil
 	}
 
 	// Use OpenAI API to dynamically fetch models

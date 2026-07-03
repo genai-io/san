@@ -32,10 +32,15 @@ func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response
 	if body == "" {
 		body = responsesStreamBody
 	}
+	// The models catalog is plain JSON; the responses stream is SSE.
+	contentType := "text/event-stream"
+	if strings.HasSuffix(req.URL.Path, "/models") {
+		contentType = "application/json"
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Status:     "200 OK",
-		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Header:     http.Header{"Content-Type": []string{contentType}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    req,
 	}, nil

@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/secret"
 )
 
 // newSubscriptionTestClient reuses the capturing transport but flips the client
@@ -73,6 +74,14 @@ const reasoningStreamBody = "" +
 	"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":1,\"content_index\":0,\"delta\":\"ok\"}\n\n" +
 	"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"id\":\"rs_9\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"thought\"}],\"encrypted_content\":\"enc-xyz\"}],\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n" +
 	"data: [DONE]\n\n"
+
+// modelsCatalogBody is a sample ChatGPT Codex /models JSON response: two picker
+// models plus one hidden entry that must be filtered out.
+const modelsCatalogBody = `{"data":[` +
+	`{"id":"gpt-5.1-codex","model":"gpt-5.1-codex","display_name":"GPT-5.1 Codex","show_in_picker":true},` +
+	`{"id":"gpt-5","model":"gpt-5","display_name":"GPT-5"},` +
+	`{"id":"gpt-hidden","model":"gpt-hidden","display_name":"Hidden","show_in_picker":false}` +
+	`]}`
 
 func TestSubscriptionEchoesReasoningBeforeToolCall(t *testing.T) {
 	transport := &captureStreamingTransport{}
@@ -152,6 +161,12 @@ func TestSubscriptionCapturesReasoningFromResponse(t *testing.T) {
 }
 
 func TestSubscriptionProviderRegistered(t *testing.T) {
+	// Isolate the secret store to an empty HOME so ListModels finds no token and
+	// falls back to the static catalog instead of making a real network call.
+	t.Setenv("HOME", t.TempDir())
+	secret.ResetDefault()
+	t.Cleanup(secret.ResetDefault)
+
 	meta, ok := llm.GetMeta(llm.OpenAI, llm.AuthSubscription)
 	if !ok {
 		t.Fatal("subscription provider is not registered")
@@ -181,15 +196,17 @@ func TestSubscriptionProviderRegistered(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCatalog(t *testing.T) {
+func TestSubscriptionCatalogFallsBackToStatic(t *testing.T) {
+	// The fake transport returns an SSE body for the /models GET, which fails to
+	// parse as a catalog, so ListModels falls back to the static list.
 	client := newSubscriptionTestClient(&captureStreamingTransport{})
 
 	models, err := client.ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
 	}
-	if len(models) != len(subscriptionModels) {
-		t.Fatalf("got %d models, want %d", len(models), len(subscriptionModels))
+	if len(models) != len(staticSubscriptionModels) {
+		t.Fatalf("got %d models, want %d (static fallback)", len(models), len(staticSubscriptionModels))
 	}
 
 	idx := slices.IndexFunc(models, func(m llm.ModelInfo) bool { return m.ID == "gpt-5-codex" })
@@ -198,5 +215,30 @@ func TestSubscriptionCatalog(t *testing.T) {
 	}
 	if models[idx].InputTokenLimit == 0 {
 		t.Errorf("expected a non-zero context window for gpt-5-codex")
+	}
+}
+
+func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
+	transport := &captureStreamingTransport{stream: modelsCatalogBody}
+	client := newSubscriptionTestClient(transport)
+
+	models, err := client.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+
+	// Two visible entries; the show_in_picker=false one is dropped.
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2: %v", len(models), models)
+	}
+	byID := map[string]llm.ModelInfo{}
+	for _, m := range models {
+		byID[m.ID] = m
+	}
+	if got, ok := byID["gpt-5.1-codex"]; !ok || got.DisplayName != "GPT-5.1 Codex" {
+		t.Errorf("gpt-5.1-codex display name = %q (present=%v), want GPT-5.1 Codex", got.DisplayName, ok)
+	}
+	if _, hidden := byID["gpt-hidden"]; hidden {
+		t.Error("show_in_picker=false model must be dropped")
 	}
 }
