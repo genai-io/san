@@ -139,6 +139,23 @@ func (s *ProviderSelector) handleCredentialEditForAuthMethod(item providerListIt
 	return nil
 }
 
+// resolveRemovableAuthMethod resolves the auth method targeted by a Ctrl+D
+// removal from a visible list item: a provider row with a single auth method,
+// or an auth-method row directly. Returns nil for anything else.
+func resolveRemovableAuthMethod(item providerListItem) *providerAuthMethodItem {
+	switch item.Kind {
+	case providerItemProvider:
+		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
+			return nil
+		}
+		return &item.Provider.AuthMethods[0]
+	case providerItemAuthMethod:
+		return item.AuthMethod
+	default:
+		return nil
+	}
+}
+
 // handleCredentialRemove handles Ctrl+D: shows a confirmation prompt before removing.
 func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 	if s.activeTab != providerTabProviders {
@@ -148,21 +165,8 @@ func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 		return nil
 	}
 
-	item := s.visibleItems[s.selectedIdx]
-
-	var am *providerAuthMethodItem
-	switch item.Kind {
-	case providerItemProvider:
-		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
-			return nil
-		}
-		am = &item.Provider.AuthMethods[0]
-	case providerItemAuthMethod:
-		if item.AuthMethod == nil {
-			return nil
-		}
-		am = item.AuthMethod
-	default:
+	am := resolveRemovableAuthMethod(s.visibleItems[s.selectedIdx])
+	if am == nil {
 		return nil
 	}
 
@@ -195,25 +199,12 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	envVar := s.confirmRemoveEnvVar
 
 	// Resolve the provider and auth method from the item
-	item := s.visibleItems[s.confirmRemoveItemIdx]
-	var providerName llm.Name
-	var authMethod llm.AuthMethod
-	switch item.Kind {
-	case providerItemProvider:
-		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
-			return nil
-		}
-		providerName = item.Provider.AuthMethods[0].Provider
-		authMethod = item.Provider.AuthMethods[0].AuthMethod
-	case providerItemAuthMethod:
-		if item.AuthMethod == nil {
-			return nil
-		}
-		providerName = item.AuthMethod.Provider
-		authMethod = item.AuthMethod.AuthMethod
-	default:
+	am := resolveRemovableAuthMethod(s.visibleItems[s.confirmRemoveItemIdx])
+	if am == nil {
 		return nil
 	}
+	providerName := am.Provider
+	authMethod := am.AuthMethod
 
 	// Clear the credential: OAuth tokens for interactive-login auth, otherwise
 	// the API-key env var in the secret store.
