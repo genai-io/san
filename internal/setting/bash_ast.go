@@ -412,6 +412,11 @@ func checkASTSecurity(file *syntax.File) string {
 		return reason
 	}
 
+	// Check 6: Network egress (data exfiltration) and pipe-to-shell RCE
+	if reason := checkNetworkEgress(commands); reason != "" {
+		return reason
+	}
+
 	return ""
 }
 
@@ -562,4 +567,107 @@ func hasNestedCmdSubst(node syntax.Node) bool {
 		return true
 	})
 	return found
+}
+
+// ---------------------------------------------------------------------------
+// Network egress & remote-code-execution detection
+//
+// These land in the bypass-immune band (Step 2 of the permission pipeline), so
+// they escalate to the user and are never delegated to the auto-review agent.
+// They are the two categories where a wrong "allow" is both irreversible and a
+// prime prompt-injection payload: shipping local data off the machine, and
+// executing code fetched from the network.
+// ---------------------------------------------------------------------------
+
+// shellInterpreters read their program from stdin when handed no script file —
+// the sink half of a "curl url | sh" remote-code-execution pipe.
+var shellInterpreters = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true,
+}
+
+// rawNetworkTools move bytes over the network with no common read-only use in a
+// coding session, so any invocation is treated as egress. (curl/wget are handled
+// separately since they have legitimate download uses.)
+var rawNetworkTools = map[string]bool{
+	"nc": true, "ncat": true, "netcat": true,
+	"telnet": true, "socat": true, "ftp": true, "tftp": true,
+}
+
+// remoteCopyTools leave the machine only when pointed at a remote host, so they
+// are flagged just when an argument names one.
+var remoteCopyTools = map[string]bool{
+	"scp": true, "sftp": true, "rsync": true,
+}
+
+// curlUploadFlags always upload a local file.
+var curlUploadFlags = map[string]bool{
+	"-T": true, "--upload-file": true,
+}
+
+// checkNetworkEgress detects downloads piped into a shell (RCE) and local data
+// being sent off the machine (exfiltration).
+func checkNetworkEgress(commands []parsedCommand) string {
+	for _, cmd := range commands {
+		// RCE: "curl url | sh" — a shell running a program read from a pipe.
+		if shellInterpreters[cmd.Name] && cmd.HasPipe && !hasScriptFileArg(cmd.Args) {
+			return "pipe into shell (remote code execution vector)"
+		}
+		if rawNetworkTools[cmd.Name] {
+			return "network egress via " + cmd.Name
+		}
+		if remoteCopyTools[cmd.Name] && hasRemoteTarget(cmd.Args) {
+			return "remote transfer via " + cmd.Name
+		}
+		if (cmd.Name == "curl" || cmd.Name == "wget") && hasFileUpload(cmd.Args) {
+			return "file upload via " + cmd.Name
+		}
+	}
+	return ""
+}
+
+// hasScriptFileArg reports whether a shell invocation names a script to run
+// (e.g. "bash deploy.sh") rather than reading its program from stdin.
+func hasScriptFileArg(args []string) bool {
+	for _, a := range args {
+		if a == "" || strings.HasPrefix(a, "-") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// hasFileUpload reports whether a curl/wget invocation uploads a local file: an
+// explicit upload flag, or a data flag referencing a file with "@"
+// (e.g. "-d @secret", "-F field=@secret"). Inline data ("-d name=value") and
+// userinfo URLs ("http://user:pass@host") are deliberately not matched.
+func hasFileUpload(args []string) bool {
+	for _, a := range args {
+		if curlUploadFlags[a] {
+			return true
+		}
+		if strings.HasPrefix(a, "@") || strings.Contains(a, "=@") {
+			return true
+		}
+	}
+	return false
+}
+
+// hasRemoteTarget reports whether an scp/sftp/rsync argument names a remote host
+// (user@host:path, host:path, or a scheme:// URL) — i.e. data leaves the box.
+// Local-only transfers ("rsync src/ dst/") are not matched.
+func hasRemoteTarget(args []string) bool {
+	for _, a := range args {
+		if a == "" || strings.HasPrefix(a, "-") {
+			continue
+		}
+		if strings.Contains(a, "://") {
+			return true
+		}
+		// host:path — a colon whose left side has no path separator.
+		if i := strings.IndexByte(a, ':'); i > 0 && !strings.Contains(a[:i], "/") {
+			return true
+		}
+	}
+	return false
 }
