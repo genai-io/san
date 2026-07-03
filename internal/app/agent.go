@@ -187,6 +187,11 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			verdict, err := rev.Judge(ctx, reviewer.Request{
 				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD,
 			})
+			log.Logger().Debug("auto-review verdict",
+				zap.String("tool", name),
+				zap.Bool("allow", err == nil && verdict.Allow),
+				zap.String("reason", verdict.Reason),
+				zap.Error(err))
 			if err != nil || !verdict.Allow {
 				return agent.PermReviewResult{} // fail closed → escalate to human
 			}
