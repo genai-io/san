@@ -288,17 +288,21 @@ const (
 	ModeBypassPermissions               // allow all (bypass-immune checks still apply)
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
+	ModeAutoReview                      // auto-approve edits; delegate the rest to the review agent
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
-// BypassPermissions and DontAsk are entered explicitly, not via cycling.
-var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept}
-var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeBypassPermissions}
+// BypassPermissions is only reachable when explicitly enabled; DontAsk and
+// ReadOnly are entered programmatically (headless subagents), not via cycling.
+var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview}
+var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeBypassPermissions}
 
 func (m OperationMode) String() string {
 	switch m {
 	case ModeAutoAccept:
 		return "accept edits"
+	case ModeAutoReview:
+		return "auto review"
 	case ModeBypassPermissions:
 		return "bypass permissions"
 	case ModeDontAsk:
@@ -315,6 +319,8 @@ func OperationModeFromString(mode string) OperationMode {
 	switch mode {
 	case "acceptEdits", "accept-edits", "autoAccept", "auto-accept":
 		return ModeAutoAccept
+	case "autoReview", "auto-review", "review":
+		return ModeAutoReview
 	case "bypassPermissions", "bypass-permissions", "bypass":
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":

@@ -339,7 +339,7 @@ func compactStatusHint(percent float64) string {
 	}
 }
 
-// RenderOperationModeIndicator returns the mode status indicator for auto-accept or bypass mode.
+// RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or bypass mode.
 func RenderOperationModeIndicator(mode setting.OperationMode) string {
 	var icon, label string
 	var clr kit.AdaptiveColor
@@ -349,6 +349,10 @@ func RenderOperationModeIndicator(mode setting.OperationMode) string {
 		icon = "⏵⏵"
 		label = " accept edits on"
 		clr = kit.CurrentTheme.Success
+	case setting.ModeAutoReview:
+		icon = "⏵⏵"
+		label = " auto review on"
+		clr = kit.CurrentTheme.Warning
 	case setting.ModeBypassPermissions:
 		icon = "⏵⏵"
 		label = " bypass permissions on"

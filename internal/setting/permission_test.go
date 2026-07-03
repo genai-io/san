@@ -1008,12 +1008,15 @@ func TestResolveHookAllow(t *testing.T) {
 }
 
 func TestOperationModeNext(t *testing.T) {
-	// Normal → AutoAccept → Normal
+	// Normal → AutoAccept → AutoReview → Normal
 	if ModeNormal.Next() != ModeAutoAccept {
 		t.Errorf("Normal.Next() = %v, want AutoAccept", ModeNormal.Next())
 	}
-	if ModeAutoAccept.Next() != ModeNormal {
-		t.Errorf("AutoAccept.Next() = %v, want Normal", ModeAutoAccept.Next())
+	if ModeAutoAccept.Next() != ModeAutoReview {
+		t.Errorf("AutoAccept.Next() = %v, want AutoReview", ModeAutoAccept.Next())
+	}
+	if ModeAutoReview.Next() != ModeNormal {
+		t.Errorf("AutoReview.Next() = %v, want Normal", ModeAutoReview.Next())
 	}
 	// BypassPermissions is not in cycle — goes back to Normal
 	if ModeBypassPermissions.Next() != ModeNormal {

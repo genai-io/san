@@ -152,6 +152,8 @@ func (m *env) OperationModeName() string {
 	switch m.OperationMode {
 	case setting.ModeAutoAccept:
 		return "auto"
+	case setting.ModeAutoReview:
+		return "autoReview"
 	case setting.ModeBypassPermissions:
 		return "bypassPermissions"
 	default:
@@ -176,6 +178,16 @@ func (m *env) ApplyAutoAcceptPermissions(cwd string) {
 
 func (m *env) ApplyBypassPermissions() {
 	m.SessionPermissions.Mode = setting.ModeBypassPermissions
+}
+
+// ApplyAutoReviewPermissions grants the accept-edits posture (edits/writes auto,
+// working dir trusted) and switches to auto-review mode, where non-edit tool
+// calls that would otherwise prompt are routed to the review agent.
+func (m *env) ApplyAutoReviewPermissions(cwd string) {
+	m.SessionPermissions.Mode = setting.ModeAutoReview
+	m.SessionPermissions.AllowAllEdits = true
+	m.SessionPermissions.AllowAllWrites = true
+	m.SessionPermissions.AddWorkingDirectory(cwd)
 }
 
 func (m *env) DetectThinkingKeywords(input string) {
@@ -214,6 +226,10 @@ func (m *env) ApplyModePermissions(cwd string) {
 	if m.OperationMode == setting.ModeBypassPermissions {
 		m.ApplyBypassPermissions()
 	}
+
+	if m.OperationMode == setting.ModeAutoReview {
+		m.ApplyAutoReviewPermissions(cwd)
+	}
 }
 
 func (m *env) ApplyDefaultPermissionMode(mode string, cwd string, allowBypass bool) {
@@ -234,6 +250,8 @@ func (m *env) SessionMode() string {
 	switch m.OperationMode {
 	case setting.ModeAutoAccept:
 		return "auto-accept"
+	case setting.ModeAutoReview:
+		return "auto-review"
 	default:
 		return "normal"
 	}
