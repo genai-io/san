@@ -20,6 +20,7 @@ type captureStreamingTransport struct {
 	path   string
 	query  string
 	stream string // SSE body to return; defaults to responsesStreamBody when empty
+	status int    // HTTP status to return; defaults to 200
 }
 
 func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -34,14 +35,18 @@ func (t *captureStreamingTransport) RoundTrip(req *http.Request) (*http.Response
 	if body == "" {
 		body = responsesStreamBody
 	}
+	status := t.status
+	if status == 0 {
+		status = http.StatusOK
+	}
 	// The models catalog is plain JSON; the responses stream is SSE.
 	contentType := "text/event-stream"
 	if strings.HasSuffix(req.URL.Path, "/models") {
 		contentType = "application/json"
 	}
 	return &http.Response{
-		StatusCode: http.StatusOK,
-		Status:     "200 OK",
+		StatusCode: status,
+		Status:     http.StatusText(status),
 		Header:     http.Header{"Content-Type": []string{contentType}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 		Request:    req,

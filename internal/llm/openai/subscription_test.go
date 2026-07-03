@@ -162,6 +162,24 @@ func TestSubscriptionCapturesReasoningFromResponse(t *testing.T) {
 	}
 }
 
+func TestSubscriptionCatalogPropagatesAuthError(t *testing.T) {
+	// A 401/403 from the catalog means the credential is bad or the account lacks
+	// Codex access; ListModels must surface it (so connect fails) rather than
+	// masking it with the static fallback.
+	for _, status := range []int{401, 403} {
+		transport := &captureStreamingTransport{
+			status: status,
+			stream: `{"error":{"message":"no access","type":"invalid_request_error"}}`,
+		}
+		client := newSubscriptionTestClient(transport)
+
+		models, err := client.ListModels(context.Background())
+		if err == nil {
+			t.Errorf("status %d: expected an error, got fallback models %v", status, models)
+		}
+	}
+}
+
 func TestSubscriptionProviderRegistered(t *testing.T) {
 	// Isolate the secret store to an empty HOME so ListModels finds no token and
 	// falls back to the static catalog instead of making a real network call.
@@ -211,12 +229,12 @@ func TestSubscriptionCatalogFallsBackToStatic(t *testing.T) {
 		t.Fatalf("got %d models, want %d (static fallback)", len(models), len(staticSubscriptionModels))
 	}
 
-	idx := slices.IndexFunc(models, func(m llm.ModelInfo) bool { return m.ID == "gpt-5.5" })
+	idx := slices.IndexFunc(models, func(m llm.ModelInfo) bool { return m.ID == "gpt-5.4" })
 	if idx < 0 {
-		t.Fatalf("expected gpt-5.5 in the static fallback, got %v", models)
+		t.Fatalf("expected gpt-5.4 in the static fallback, got %v", models)
 	}
 	if models[idx].InputTokenLimit == 0 {
-		t.Errorf("expected a non-zero context window for gpt-5.5")
+		t.Errorf("expected a non-zero context window for gpt-5.4")
 	}
 }
 

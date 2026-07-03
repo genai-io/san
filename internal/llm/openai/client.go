@@ -290,7 +290,7 @@ func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
 	// The ChatGPT Codex backend advertises its own model catalog; fetch it
 	// (with a static fallback) rather than the standard /v1/models list.
 	if c.subscription {
-		return c.subscriptionCatalog(ctx), nil
+		return c.subscriptionCatalog(ctx)
 	}
 
 	// Use OpenAI API to dynamically fetch models

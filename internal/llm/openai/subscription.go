@@ -14,6 +14,7 @@ import (
 
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/llm/openai/oauth"
+	"github.com/genai-io/san/internal/llm/openaicompat"
 )
 
 // codexBaseURL is the ChatGPT subscription (Codex) Responses endpoint root. The
@@ -33,13 +34,11 @@ const modelsFetchTimeout = 8 * time.Second
 // list ever goes stale.
 const codexClientVersion = "0.142.5"
 
-// staticSubscriptionModels is the fallback catalog used when the live
-// ChatGPT Codex model list can't be fetched. Kept roughly current so the
-// fallback isn't badly out of date; the live fetch is the real source.
+// staticSubscriptionModels is the fallback catalog used when the live ChatGPT
+// Codex model list can't be fetched. Keep this intentionally small so the UI
+// makes fallback easy to distinguish from a live account-specific catalog.
 var staticSubscriptionModels = []string{
-	"gpt-5.5",
 	"gpt-5.4",
-	"gpt-5.4-mini",
 	"gpt-5.3-codex-spark",
 }
 
@@ -83,21 +82,32 @@ func NewSubscriptionClient(ctx context.Context) (llm.Provider, error) {
 	return c, nil
 }
 
-// subscriptionCatalog returns the ChatGPT Codex model catalog. It fetches the
-// live list the backend advertises for this account, falling back to a static
-// list when the fetch fails or returns nothing (offline, not signed in, or an
-// unexpected response shape) so the connect flow never breaks.
-func (c *Client) subscriptionCatalog(ctx context.Context) []llm.ModelInfo {
+// subscriptionCatalog returns the ChatGPT Codex model catalog the backend
+// advertises for this account.
+//
+// A credential/permission failure (401/403) is propagated, not masked: connect
+// verifies the account by listing models, so returning fallback models on a
+// bad/expired token or an account without Codex access would falsely mark the
+// provider "connected" and only fail on the first real request. Transient,
+// offline, or unexpected-shape errors fall back to the static list so a flaky
+// catalog endpoint doesn't block an otherwise-usable session.
+func (c *Client) subscriptionCatalog(ctx context.Context) ([]llm.ModelInfo, error) {
 	var resp codexModelsResponse
 	err := c.client.Get(ctx, "models", nil, &resp,
 		option.WithRequestTimeout(modelsFetchTimeout),
 		option.WithQuery("client_version", codexClientVersion))
-	if err == nil {
-		if models := resp.toModelInfos(); len(models) > 0 {
-			return models
+	if err != nil {
+		if openaicompat.IsAuthError(err) {
+			// Subscription auth has no API key to check — the fix is to sign in
+			// again — so don't route through the API-key-oriented normalizer.
+			return nil, fmt.Errorf("ChatGPT subscription not authorized for Codex access (sign in again): %w", err)
 		}
+		return staticSubscriptionCatalog(), nil
 	}
-	return staticSubscriptionCatalog()
+	if models := resp.toModelInfos(); len(models) > 0 {
+		return models, nil
+	}
+	return staticSubscriptionCatalog(), nil
 }
 
 // staticSubscriptionCatalog builds the fallback catalog from the static slugs.
