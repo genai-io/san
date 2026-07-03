@@ -190,8 +190,7 @@ func TestSubscriptionCatalogPropagatesAuthError(t *testing.T) {
 }
 
 func TestSubscriptionProviderRegistered(t *testing.T) {
-	// Isolate the secret store to an empty HOME so ListModels finds no token and
-	// falls back to the static catalog instead of making a real network call.
+	// Isolate the secret store to an empty HOME so there is no stored token.
 	t.Setenv("HOME", t.TempDir())
 	secret.ResetDefault()
 	t.Cleanup(secret.ResetDefault)
@@ -210,8 +209,6 @@ func TestSubscriptionProviderRegistered(t *testing.T) {
 		t.Error("subscription auth should register an interactive authenticator")
 	}
 
-	// The factory must build a working client without credentials or network:
-	// the model list is static and no request is issued until a stream call.
 	p, err := llm.GetProvider(context.Background(), llm.OpenAI, llm.AuthSubscription)
 	if err != nil {
 		t.Fatalf("GetProvider: %v", err)
@@ -219,9 +216,13 @@ func TestSubscriptionProviderRegistered(t *testing.T) {
 	if p.Name() != "openai:subscription" {
 		t.Errorf("provider name = %q, want openai:subscription", p.Name())
 	}
-	models, err := p.ListModels(context.Background())
-	if err != nil || len(models) == 0 {
-		t.Fatalf("ListModels = %v, %v; want a non-empty static catalog", models, err)
+
+	// With no stored token, ListModels must surface the credential failure (from
+	// the auth middleware, before any network call) rather than silently
+	// returning the static fallback — otherwise connect, which verifies via
+	// ListModels, would record a signed-out account as connected.
+	if _, err := p.ListModels(context.Background()); err == nil {
+		t.Error("ListModels without credentials should error, not return a static fallback")
 	}
 }
 

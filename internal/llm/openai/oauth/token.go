@@ -101,6 +101,15 @@ func HasCredentials() bool {
 	return ok
 }
 
+// CredentialError marks a failure to produce a valid subscription access token
+// — not signed in, or a stored token that can't be refreshed (revoked/expired
+// refresh token). It signals the connection isn't usable, so callers should
+// surface it rather than fall back to a degraded/offline path.
+type CredentialError struct{ Err error }
+
+func (e *CredentialError) Error() string { return e.Err.Error() }
+func (e *CredentialError) Unwrap() error { return e.Err }
+
 // TokenSource returns a valid ChatGPT access token and account id, refreshing
 // the token when it is near expiry. It is safe for concurrent use; refreshes
 // are serialized so a burst of requests triggers at most one refresh.
@@ -112,14 +121,15 @@ type TokenSource struct {
 func NewTokenSource() *TokenSource { return &TokenSource{} }
 
 // Token returns a currently-valid access token and the ChatGPT account id.
-// It refreshes transparently when the stored token is stale.
+// It refreshes transparently when the stored token is stale. Failures to obtain
+// a credential are returned as *CredentialError.
 func (ts *TokenSource) Token(ctx context.Context) (accessToken, accountID string, err error) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 
 	t, ok := load()
 	if !ok {
-		return "", "", errors.New("not signed in to ChatGPT — connect the ChatGPT Subscription provider first")
+		return "", "", &CredentialError{errors.New("not signed in to ChatGPT — connect the ChatGPT Subscription provider first")}
 	}
 	if !t.stale() {
 		return t.AccessToken, t.AccountID, nil
@@ -132,7 +142,7 @@ func (ts *TokenSource) Token(ctx context.Context) (accessToken, accountID string
 		if time.Now().Before(t.ExpiresAt) {
 			return t.AccessToken, t.AccountID, nil
 		}
-		return "", "", err
+		return "", "", &CredentialError{fmt.Errorf("ChatGPT token refresh failed: %w", err)}
 	}
 	return refreshed.AccessToken, refreshed.AccountID, nil
 }

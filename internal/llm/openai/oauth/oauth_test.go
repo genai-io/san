@@ -1,9 +1,11 @@
 package oauth
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -11,6 +13,18 @@ import (
 
 	"github.com/genai-io/san/internal/secret"
 )
+
+func TestTokenSourceNotSignedInIsCredentialError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	secret.ResetDefault()
+	t.Cleanup(secret.ResetDefault)
+
+	_, _, err := NewTokenSource().Token(context.Background())
+	var credErr *CredentialError
+	if !errors.As(err, &credErr) {
+		t.Fatalf("Token() with no stored token = %T (%v), want *CredentialError", err, err)
+	}
+}
 
 // makeJWT builds an unsigned JWT with the given claims for testing the
 // (verification-free) claim decoders.

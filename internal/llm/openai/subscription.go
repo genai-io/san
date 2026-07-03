@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -97,11 +98,19 @@ func (c *Client) subscriptionCatalog(ctx context.Context) ([]llm.ModelInfo, erro
 		option.WithRequestTimeout(modelsFetchTimeout),
 		option.WithQuery("client_version", codexClientVersion))
 	if err != nil {
-		if openaicompat.IsAuthError(err) {
-			// Subscription auth has no API key to check — the fix is to sign in
-			// again — so don't route through the API-key-oriented normalizer.
-			return nil, fmt.Errorf("ChatGPT subscription not authorized for Codex access (sign in again): %w", err)
+		// Credential-source failures (no token, or an unrefreshable/revoked token,
+		// raised by the auth middleware before the request is sent) and 401/403
+		// from the endpoint both mean the connection isn't usable — surface them so
+		// connect, which verifies the account by listing models, doesn't record a
+		// signed-out/unauthorized account as connected and fail on the first real
+		// request. Subscription auth has no API key to check; the fix is to sign in
+		// again, so don't route through the API-key-oriented normalizer.
+		var credErr *oauth.CredentialError
+		if errors.As(err, &credErr) || openaicompat.IsAuthError(err) {
+			return nil, fmt.Errorf("ChatGPT subscription sign-in required for Codex access: %w", err)
 		}
+		// Transient/offline/unexpected-shape errors fall back to the static list
+		// so a flaky catalog endpoint doesn't block an otherwise-usable session.
 		return staticSubscriptionCatalog(), nil
 	}
 	if models := resp.toModelInfos(); len(models) > 0 {
