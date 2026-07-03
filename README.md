@@ -144,7 +144,7 @@ Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user)
 | Service | Variable |
 |:--------|:---------|
 | **Anthropic** (Claude) | `ANTHROPIC_API_KEY` or [Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/partner-models/claude) |
-| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY` |
+| **OpenAI** (GPT, o-series, Codex) | `OPENAI_API_KEY`, or a ChatGPT subscription (sign in via `/model`) |
 | **Google** (Gemini) | `GOOGLE_API_KEY` |
 | **DeepSeek** (DeepSeek V4) | `DEEPSEEK_API_KEY` |
 | **Moonshot** (Kimi) | `MOONSHOT_API_KEY` |

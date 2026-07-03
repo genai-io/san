@@ -11,8 +11,10 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/secret"
 )
 
@@ -137,6 +139,23 @@ func (s *ProviderSelector) handleCredentialEditForAuthMethod(item providerListIt
 	return nil
 }
 
+// resolveRemovableAuthMethod resolves the auth method targeted by a Ctrl+D
+// removal from a visible list item: a provider row with a single auth method,
+// or an auth-method row directly. Returns nil for anything else.
+func resolveRemovableAuthMethod(item providerListItem) *providerAuthMethodItem {
+	switch item.Kind {
+	case providerItemProvider:
+		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
+			return nil
+		}
+		return &item.Provider.AuthMethods[0]
+	case providerItemAuthMethod:
+		return item.AuthMethod
+	default:
+		return nil
+	}
+}
+
 // handleCredentialRemove handles Ctrl+D: shows a confirmation prompt before removing.
 func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 	if s.activeTab != providerTabProviders {
@@ -146,26 +165,15 @@ func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 		return nil
 	}
 
-	item := s.visibleItems[s.selectedIdx]
-
-	var envVars []string
-	switch item.Kind {
-	case providerItemProvider:
-		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
-			return nil
-		}
-		envVars = item.Provider.AuthMethods[0].EnvVars
-	case providerItemAuthMethod:
-		if item.AuthMethod == nil {
-			return nil
-		}
-		envVars = item.AuthMethod.EnvVars
-	default:
+	am := resolveRemovableAuthMethod(s.visibleItems[s.selectedIdx])
+	if am == nil {
 		return nil
 	}
 
-	envVar := providerFirstEnvVar(envVars)
-	if envVar == "" {
+	// Interactive-login auth has no env var, but its stored OAuth tokens are
+	// still removable, so allow the confirm prompt for either credential kind.
+	envVar := providerFirstEnvVar(am.EnvVars)
+	if envVar == "" && !llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
 		return nil
 	}
 
@@ -191,31 +199,23 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	envVar := s.confirmRemoveEnvVar
 
 	// Resolve the provider and auth method from the item
-	item := s.visibleItems[s.confirmRemoveItemIdx]
-	var providerName llm.Name
-	var authMethod llm.AuthMethod
-	switch item.Kind {
-	case providerItemProvider:
-		if item.Provider == nil || len(item.Provider.AuthMethods) != 1 {
-			return nil
-		}
-		providerName = item.Provider.AuthMethods[0].Provider
-		authMethod = item.Provider.AuthMethods[0].AuthMethod
-	case providerItemAuthMethod:
-		if item.AuthMethod == nil {
-			return nil
-		}
-		providerName = item.AuthMethod.Provider
-		authMethod = item.AuthMethod.AuthMethod
-	default:
+	am := resolveRemovableAuthMethod(s.visibleItems[s.confirmRemoveItemIdx])
+	if am == nil {
 		return nil
 	}
+	providerName := am.Provider
+	authMethod := am.AuthMethod
 
-	// Remove from secret store and unset env var
-	if store := secret.Default(); store != nil {
-		_ = store.Delete(envVar)
+	// Clear the credential: OAuth tokens for interactive-login auth, otherwise
+	// the API-key env var in the secret store.
+	if llm.SupportsInteractiveLogin(providerName, authMethod) {
+		_ = llm.Logout(providerName, authMethod)
+	} else {
+		if store := secret.Default(); store != nil {
+			_ = store.Delete(envVar)
+		}
+		os.Unsetenv(envVar)
 	}
-	os.Unsetenv(envVar)
 
 	// Disconnect provider and remove cached models from the llm store
 	if s.store != nil {
@@ -243,6 +243,16 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 
 // tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
 func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
+	// Interactive (OAuth) auth signs in via the browser, not an API key. If a
+	// prior token is present, validate it with the normal connect path instead
+	// of forcing a fresh browser login.
+	if llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
+		if llm.HasInteractiveCredentials(am.Provider, am.AuthMethod) {
+			return s.connectAuthMethod(am, authIdx)
+		}
+		return s.connectInteractive(am, authIdx)
+	}
+
 	if am.Status == llm.StatusAvailable || providerIsEnvReady(am.EnvVars) {
 		return s.connectAuthMethod(am, s.selectedIdx)
 	}
@@ -325,25 +335,27 @@ func (s *ProviderSelector) IsConnecting() bool {
 
 // refreshAuthMethod re-fetches models for an already connected provider auth method.
 func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
-	if s.IsConnecting() {
-		// A connect/refresh is already in flight; ignore re-entry so we don't
-		// start a second spinner-tick loop or a concurrent store write.
+	if !s.beginConnect(providerStatusRefreshing, authIdx) {
 		return nil
 	}
-	s.lastConnectResult = providerStatusRefreshing
-	s.lastConnectAuthIdx = authIdx
-	s.lastConnectSuccess = false
 
 	work := func() tea.Msg {
 		ctx := context.Background()
 
+		result := providerConnectResultMsg{
+			AuthIdx:    authIdx,
+			Provider:   item.Provider,
+			AuthMethod: item.AuthMethod,
+		}
+		fail := func(err error) tea.Msg {
+			result.Success = false
+			result.Message = fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error())
+			return result
+		}
+
 		llmProvider, err := llm.GetProvider(ctx, item.Provider, item.AuthMethod)
 		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
-			}
+			return fail(err)
 		}
 
 		models, err := llmProvider.ListModels(ctx)
@@ -354,61 +366,93 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 		}
 
 		if err != nil && len(models) == 0 {
-			return providerConnectResultMsg{
-				AuthIdx: authIdx,
-				Success: false,
-				Message: fmt.Sprintf("failed to load models for %s: %s", item.Provider, err.Error()),
-			}
+			return fail(err)
 		}
 
+		result.Success = true
+		result.NewStatus = llm.StatusConnected
+		result.Models = models
 		if err != nil {
-			return providerConnectResultMsg{
-				AuthIdx:   authIdx,
-				Success:   true,
-				Message:   fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models)),
-				NewStatus: llm.StatusConnected,
-			}
+			result.Message = fmt.Sprintf("⚠ %d models loaded with refresh warning", len(models))
+		} else {
+			result.Message = fmt.Sprintf("● %d models", len(models))
 		}
-
-		return providerConnectResultMsg{
-			AuthIdx:   authIdx,
-			Success:   true,
-			Message:   fmt.Sprintf("● %d models", len(models)),
-			NewStatus: llm.StatusConnected,
-		}
+		return result
 	}
 	// Start the spinner alongside the async work.
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
-// connectAuthMethod initiates an async connection to a provider auth method.
-func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
+// beginConnect marks a connect/refresh as in flight for authIdx under the given
+// status marker, returning false if one is already running — re-entry is ignored
+// so we never start a second spinner-tick loop or a concurrent store write.
+func (s *ProviderSelector) beginConnect(status string, authIdx int) bool {
 	if s.IsConnecting() {
-		// A connect/refresh is already in flight; ignore re-entry so we don't
-		// start a second spinner-tick loop or a concurrent store write.
-		return nil
+		return false
 	}
-	s.lastConnectResult = providerStatusConnecting
+	s.lastConnectResult = status
 	s.lastConnectAuthIdx = authIdx
 	s.lastConnectSuccess = false
+	return true
+}
+
+// connectResultMsg runs the actual provider connection and builds the result
+// message shared by connectAuthMethod and connectInteractive.
+func (s *ProviderSelector) connectResultMsg(ctx context.Context, item providerAuthMethodItem, authIdx int) tea.Msg {
+	result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
+	if err != nil {
+		return providerConnectResultMsg{
+			AuthIdx: authIdx,
+			Success: false,
+			Message: err.Error(),
+		}
+	}
+	return providerConnectResultMsg{
+		AuthIdx:   authIdx,
+		Success:   true,
+		Message:   result,
+		NewStatus: llm.StatusConnected,
+	}
+}
+
+// connectInteractive runs an OAuth (PKCE) sign-in for an auth method that
+// authenticates in the browser, then records the connection. It reuses the
+// connect spinner and result plumbing so the row animates while the browser
+// flow is in progress.
+func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authIdx int) tea.Cmd {
+	if !s.beginConnect(providerStatusConnecting, authIdx) {
+		return nil
+	}
 
 	work := func() tea.Msg {
 		ctx := context.Background()
-		result, err := s.ConnectProvider(ctx, item.Provider, item.AuthMethod)
-		if err != nil {
+
+		// Log the authorize URL so it's recoverable when the browser can't be
+		// opened automatically (e.g. over SSH).
+		onURL := func(u string) {
+			log.Logger().Info("provider sign-in",
+				zap.String("provider", string(item.Provider)), zap.String("url", u))
+		}
+		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onURL); err != nil {
 			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
-				Message: err.Error(),
+				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
+		return s.connectResultMsg(ctx, item, authIdx)
+	}
+	return tea.Batch(providerConnectingTickCmd(), work)
+}
 
-		return providerConnectResultMsg{
-			AuthIdx:   authIdx,
-			Success:   true,
-			Message:   result,
-			NewStatus: llm.StatusConnected,
-		}
+// connectAuthMethod initiates an async connection to a provider auth method.
+func (s *ProviderSelector) connectAuthMethod(item providerAuthMethodItem, authIdx int) tea.Cmd {
+	if !s.beginConnect(providerStatusConnecting, authIdx) {
+		return nil
+	}
+
+	work := func() tea.Msg {
+		return s.connectResultMsg(context.Background(), item, authIdx)
 	}
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
@@ -420,6 +464,12 @@ func (s *ProviderSelector) HandleConnectResult(msg providerConnectResultMsg) tea
 	s.lastConnectSuccess = msg.Success
 
 	if !msg.Success {
+		return nil
+	}
+
+	if len(msg.Models) > 0 {
+		s.replaceModelsForAuthMethod(msg.Provider, msg.AuthMethod, msg.Models)
+		s.rebuildVisibleItems()
 		return nil
 	}
 

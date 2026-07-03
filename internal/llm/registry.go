@@ -21,6 +21,7 @@ type Registry struct {
 	entries         map[string]registryEntry // key: "provider:authMethod"
 	providerDisplay map[Name]ProviderDisplay // provider-level UI presentation
 	costEstimators  map[Name]CostEstimator   // per-provider turn-cost pricing
+	authenticators  map[string]Authenticator // key: "provider:authMethod"; interactive (OAuth) login
 }
 
 // globalRegistry is the default registry instance
@@ -28,6 +29,7 @@ var globalRegistry = &Registry{
 	entries:         make(map[string]registryEntry),
 	providerDisplay: make(map[Name]ProviderDisplay),
 	costEstimators:  make(map[Name]CostEstimator),
+	authenticators:  make(map[string]Authenticator),
 }
 
 // Register registers a provider with its metadata and factory

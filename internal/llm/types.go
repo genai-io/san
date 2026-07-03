@@ -35,6 +35,11 @@ const (
 	AuthVertex  AuthMethod = "vertex"
 	AuthBedrock AuthMethod = "bedrock"
 	AuthCoding  AuthMethod = "coding"
+
+	// AuthSubscription authenticates with a consumer subscription (OAuth) rather
+	// than a metered API key — e.g. an OpenAI ChatGPT Plus/Pro plan. The category
+	// is provider-agnostic so other subscription logins can reuse it.
+	AuthSubscription AuthMethod = "subscription"
 )
 
 // Meta contains static metadata about a provider auth method.
@@ -168,12 +173,13 @@ type CompletionOptions struct {
 
 // CompletionResponse represents a completion response from an LLM provider.
 type CompletionResponse struct {
-	Content           string          `json:"content,omitempty"`
-	Thinking          string          `json:"thinking,omitempty"`
-	ThinkingSignature string          `json:"thinking_signature,omitempty"`
-	ToolCalls         []core.ToolCall `json:"tool_calls,omitempty"`
-	StopReason        string          `json:"stop_reason"`
-	Usage             Usage           `json:"usage"`
+	Content           string               `json:"content,omitempty"`
+	Thinking          string               `json:"thinking,omitempty"`
+	ThinkingSignature string               `json:"thinking_signature,omitempty"`
+	Reasoning         []core.ReasoningItem `json:"reasoning,omitempty"`
+	ToolCalls         []core.ToolCall      `json:"tool_calls,omitempty"`
+	StopReason        string               `json:"stop_reason"`
+	Usage             Usage                `json:"usage"`
 }
 
 // Logging accessors — satisfy duck-typed interfaces in the log package so

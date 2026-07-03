@@ -381,6 +381,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			Role:    RoleAssistant,
 			Content: resp.Content, Thinking: resp.Thinking,
 			ThinkingSignature: resp.ThinkingSignature,
+			Reasoning:         resp.Reasoning,
 			ToolCalls:         resp.ToolCalls,
 		})
 

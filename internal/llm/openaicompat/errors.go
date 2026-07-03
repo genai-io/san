@@ -9,23 +9,44 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+// asAuthError extracts the underlying OpenAI error when err is an
+// authentication or permission failure (HTTP 401/403); it reports false for any
+// other error.
+func asAuthError(err error) (*openai.Error, bool) {
+	var apierr *openai.Error
+	if !errors.As(err, &apierr) {
+		return nil, false
+	}
+	if apierr.StatusCode != http.StatusUnauthorized && apierr.StatusCode != http.StatusForbidden {
+		return nil, false
+	}
+	return apierr, true
+}
+
+// IsAuthError reports whether err is an OpenAI-compatible authentication or
+// permission failure (HTTP 401/403) — a bad/expired credential or an account
+// lacking access, as opposed to a transient/network/shape error.
+func IsAuthError(err error) bool {
+	_, ok := asAuthError(err)
+	return ok
+}
+
 // NormalizeAPIError converts OpenAI-compatible auth failures into actionable
 // provider-specific guidance while preserving all other errors as-is.
 func NormalizeAPIError(providerName string, err error) error {
-	var apierr *openai.Error
-	if !errors.As(err, &apierr) {
-		return err
-	}
-
-	if apierr.StatusCode != http.StatusUnauthorized && apierr.StatusCode != http.StatusForbidden {
+	apierr, ok := asAuthError(err)
+	if !ok {
+		var generic *openai.Error
+		if errors.As(err, &generic) {
+			if msg := apiErrorMessage(generic); msg != "" {
+				return fmt.Errorf("%s: %s", err, msg)
+			}
+		}
 		return err
 	}
 
 	providerLabel, envVar := providerAuthHelp(providerName)
-	msg := strings.TrimSpace(apierr.Message)
-	if msg == "" {
-		msg = strings.TrimSpace(apierr.RawJSON())
-	}
+	msg := apiErrorMessage(apierr)
 
 	if envVar == "" {
 		if msg == "" {
@@ -38,6 +59,16 @@ func NormalizeAPIError(providerName string, err error) error {
 		return fmt.Errorf("%s authentication failed; check %s and reconnect the provider with /model", providerLabel, envVar)
 	}
 	return fmt.Errorf("%s authentication failed: %s. Check %s and reconnect the provider with /model", providerLabel, msg, envVar)
+}
+
+func apiErrorMessage(apierr *openai.Error) string {
+	if apierr == nil {
+		return ""
+	}
+	if msg := strings.TrimSpace(apierr.Message); msg != "" {
+		return msg
+	}
+	return strings.TrimSpace(apierr.RawJSON())
 }
 
 func providerAuthHelp(providerName string) (label string, envVar string) {

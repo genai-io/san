@@ -4,6 +4,7 @@ package input
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -89,12 +90,10 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 		allCached = store.GetAllCachedModelsIncludeExpired()
 	}
 
-	var asyncCmd tea.Cmd
 	if len(allCached) > 0 {
 		s.loadModelsCached(allCached, current)
-	} else {
-		asyncCmd = s.loadModelsAsync(store, current)
 	}
+	asyncCmd := s.loadModelsAsync(store, current)
 
 	s.ensureModelProvidersExist()
 	s.sortConnectedProviders(current)
@@ -152,15 +151,19 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 			wg.Add(1)
 			go func(providerName string, authMethod llm.AuthMethod) {
 				defer wg.Done()
-				p, err := llm.GetProvider(ctx, llm.Name(providerName), authMethod)
-				if err != nil {
-					return
+				// On failure, fall back to this provider's cached models. The
+				// result replaces the whole list, so returning nothing on a
+				// transient blip would drop an otherwise-connected provider's
+				// models from the picker.
+				if p, err := llm.GetProvider(ctx, llm.Name(providerName), authMethod); err == nil {
+					if mdls, err := p.ListModels(ctx); err == nil {
+						ch <- providerResult{providerName, authMethod, mdls}
+						return
+					}
 				}
-				mdls, err := p.ListModels(ctx)
-				if err != nil {
-					return
+				if cached, ok := store.GetCachedModels(llm.Name(providerName), authMethod); ok {
+					ch <- providerResult{providerName, authMethod, cached}
 				}
-				ch <- providerResult{providerName, authMethod, mdls}
 			}(name, conn.AuthMethod)
 		}
 
@@ -207,6 +210,29 @@ func (s *ProviderSelector) loadModelsCached(allCached map[string][]llm.ModelInfo
 			s.allModels = append(s.allModels, newProviderModelItem(mdl, providerName, authMethod, current))
 		}
 	}
+}
+
+func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.Name, authMethod llm.AuthMethod, models []llm.ModelInfo) {
+	if provider == "" {
+		return
+	}
+
+	var current *llm.CurrentModelInfo
+	if s.store != nil {
+		current = s.store.GetCurrentModel()
+	}
+
+	providerName := string(provider)
+	s.allModels = slices.DeleteFunc(s.allModels, func(item providerModelItem) bool {
+		return item.ProviderName == providerName && item.AuthMethod == authMethod
+	})
+	for _, mdl := range models {
+		s.allModels = append(s.allModels, newProviderModelItem(mdl, providerName, authMethod, current))
+	}
+
+	s.ensureModelProvidersExist()
+	s.sortConnectedProviders(current)
+	s.updateFilter()
 }
 
 // sortConnectedProviders sorts connected providers so that the current

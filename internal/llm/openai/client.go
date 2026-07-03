@@ -21,10 +21,14 @@ import (
 
 // Client implements the Provider interface using the OpenAI SDK
 type Client struct {
-	client     openai.Client
-	name       string
-	limitMu    sync.Mutex
-	limitCache map[string]modelTokenLimits
+	client openai.Client
+	name   string
+	// subscription selects the ChatGPT Codex backend behavior: requests must be
+	// stateless (store=false) and carry encrypted reasoning so it round-trips,
+	// and the model list is a static catalog rather than an API call.
+	subscription bool
+	limitMu      sync.Mutex
+	limitCache   map[string]modelTokenLimits
 }
 
 // NewClient creates a new OpenAI client with the given SDK client
@@ -75,6 +79,17 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 					OfMessage: responseMessageParam(responses.EasyInputMessageRoleUser, msg),
 				})
 			case core.RoleAssistant:
+				// Echo back any reasoning items first: the stateless ChatGPT
+				// backend requires a reasoning model's function_call to be
+				// preceded by its reasoning item (carried via encrypted_content).
+				for _, r := range msg.Reasoning {
+					if r.EncryptedContent == "" {
+						continue
+					}
+					inputItems = append(inputItems, responses.ResponseInputItemUnionParam{
+						OfReasoning: reasoningInputParam(r),
+					})
+				}
 				if len(msg.ToolCalls) > 0 {
 					// Add text content as a message if present
 					if messageHasResponseContent(msg) {
@@ -122,8 +137,18 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 			params.Instructions = openai.Opt(opts.SystemPrompt)
 		}
 
-		if opts.MaxTokens > 0 {
+		if opts.MaxTokens > 0 && !c.subscription {
 			params.MaxOutputTokens = openai.Opt(int64(opts.MaxTokens))
+		}
+
+		// The ChatGPT Codex backend is stateless: it rejects store=true and
+		// needs reasoning returned as encrypted content so it can be replayed on
+		// the next turn.
+		if c.subscription {
+			params.Store = openai.Bool(false)
+			params.Include = []responses.ResponseIncludable{
+				responses.ResponseIncludableReasoningEncryptedContent,
+			}
 		}
 
 		if opts.Temperature > 0 {
@@ -209,6 +234,13 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 				completed := event.AsResponseCompleted()
 				resp := completed.Response
 
+				// Capture reasoning items so they can be echoed back on the next
+				// stateless (store=false) turn; only the subscription backend
+				// includes encrypted_content, so this is empty for the direct API.
+				if c.subscription {
+					state.Response.Reasoning = extractReasoning(resp.Output)
+				}
+
 				// Map usage
 				state.UpdateUsage(int(resp.Usage.InputTokens), int(resp.Usage.OutputTokens))
 
@@ -255,6 +287,12 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 
 // ListModels returns the available models for OpenAI using the API
 func (c *Client) ListModels(ctx context.Context) ([]llm.ModelInfo, error) {
+	// The ChatGPT Codex backend advertises its own model catalog; fetch it
+	// (with a static fallback) rather than the standard /v1/models list.
+	if c.subscription {
+		return c.subscriptionCatalog(ctx)
+	}
+
 	// Use OpenAI API to dynamically fetch models
 	page, err := c.client.Models.List(ctx)
 	if err != nil {
@@ -334,6 +372,48 @@ func responseImageContentPart(mediaType, data string) responses.ResponseInputCon
 
 func messageHasResponseContent(msg core.Message) bool {
 	return strings.TrimSpace(msg.Content) != "" || len(msg.Images) > 0
+}
+
+// reasoningInputParam builds an input reasoning item that echoes a prior
+// reasoning block back to the stateless ChatGPT backend.
+func reasoningInputParam(r core.ReasoningItem) *responses.ResponseReasoningItemParam {
+	p := &responses.ResponseReasoningItemParam{
+		ID:      r.ID,
+		Summary: []responses.ResponseReasoningItemSummaryParam{},
+	}
+	if r.EncryptedContent != "" {
+		p.EncryptedContent = openai.Opt(r.EncryptedContent)
+	}
+	if r.Summary != "" {
+		p.Summary = []responses.ResponseReasoningItemSummaryParam{{Text: r.Summary}}
+	}
+	return p
+}
+
+// extractReasoning pulls reasoning items (id + encrypted content + summary) from
+// a completed response's output, for echoing back on the next stateless turn.
+// Items without encrypted content are skipped — they can't be replayed.
+func extractReasoning(output []responses.ResponseOutputItemUnion) []core.ReasoningItem {
+	var items []core.ReasoningItem
+	for _, item := range output {
+		if item.Type != "reasoning" {
+			continue
+		}
+		r := item.AsReasoning()
+		if r.EncryptedContent == "" {
+			continue
+		}
+		var summary strings.Builder
+		for _, s := range r.Summary {
+			summary.WriteString(s.Text)
+		}
+		items = append(items, core.ReasoningItem{
+			ID:               r.ID,
+			EncryptedContent: r.EncryptedContent,
+			Summary:          summary.String(),
+		})
+	}
+	return items
 }
 
 // Ensure Client implements Provider

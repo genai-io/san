@@ -265,20 +265,33 @@ func (s *ProviderSelector) toggleModel() tea.Cmd {
 		return nil
 	}
 	m := item.Model
+	// Match on auth method too: the same model ID can be offered by more than one
+	// auth method (e.g. OpenAI via Direct API and via ChatGPT subscription), and
+	// marking must pin the exact row so the selection routes through the intended
+	// auth method rather than silently falling back to the other.
 	for i := range s.allModels {
-		s.allModels[i].IsCurrent = s.allModels[i].ID == m.ID && s.allModels[i].ProviderName == m.ProviderName
+		s.allModels[i].IsCurrent = markedModel(s.allModels[i], m)
 	}
 	for i := range s.filteredModels {
-		s.filteredModels[i].IsCurrent = s.filteredModels[i].ID == m.ID && s.filteredModels[i].ProviderName == m.ProviderName
+		s.filteredModels[i].IsCurrent = markedModel(s.filteredModels[i], m)
 	}
 	for i := range s.visibleItems {
 		if s.visibleItems[i].Kind == providerItemModel && s.visibleItems[i].Model != nil {
 			vi := s.visibleItems[i].Model
-			vi.IsCurrent = vi.ID == m.ID && vi.ProviderName == m.ProviderName
+			vi.IsCurrent = markedModel(*vi, m)
 		}
 	}
 	s.modelMarked = true
 	return nil
+}
+
+// markedModel reports whether candidate is the same model row as marked,
+// identified by model ID, provider, and auth method. Auth method is part of the
+// identity because one model ID can be reachable through several auth methods.
+func markedModel(candidate providerModelItem, marked *providerModelItem) bool {
+	return candidate.ID == marked.ID &&
+		candidate.ProviderName == marked.ProviderName &&
+		candidate.AuthMethod == marked.AuthMethod
 }
 
 // selectProvider handles Enter on a provider row (Providers tab).

@@ -83,7 +83,7 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		DisplayName:      mdl.DisplayName,
 		ProviderName:     providerName,
 		AuthMethod:       authMethod,
-		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName,
+		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
 	}
@@ -175,10 +175,13 @@ type providerModelSelectedMsg struct {
 
 // providerConnectResultMsg is sent when inline connection completes.
 type providerConnectResultMsg struct {
-	AuthIdx   int
-	Success   bool
-	Message   string
-	NewStatus llm.Status
+	AuthIdx    int
+	Success    bool
+	Message    string
+	NewStatus  llm.Status
+	Provider   llm.Name
+	AuthMethod llm.AuthMethod
+	Models     []llm.ModelInfo
 }
 
 // providerModelsLoadedMsg is sent when async model loading completes.

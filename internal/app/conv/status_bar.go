@@ -103,14 +103,39 @@ func RenderContextBar(used, limit int) string {
 	return style.Render(fmt.Sprintf("[%s] %d%%", bar, int(pct+0.5)))
 }
 
+// contextLabel renders the muted "ctx used/limit" segment. An empty limitText
+// renders the limit as "--" (unknown).
+func contextLabel(usedText, limitText string) string {
+	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	if limitText == "" {
+		return muted.Render(fmt.Sprintf("ctx %s/--", usedText))
+	}
+	return muted.Render(fmt.Sprintf("ctx %s/%s", usedText, limitText))
+}
+
 // RenderContextLabel renders the "ctx X/Y" segment using compact
 // humanized numbers (PRD §7.4). Limit renders as "--" when unknown.
 func RenderContextLabel(used, limit int) string {
-	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	if limit <= 0 {
-		return muted.Render(fmt.Sprintf("ctx %s/--", kit.FormatTokenCount(used)))
+		return contextLabel(kit.FormatTokenCount(used), "")
 	}
-	return muted.Render(fmt.Sprintf("ctx %s/%s", kit.FormatTokenCount(used), kit.FormatTokenCount(limit)))
+	return contextLabel(kit.FormatTokenCount(used), kit.FormatTokenCount(limit))
+}
+
+// renderStableContextLabel renders the status-bar context segment with a stable
+// width for the used-token side. The status line re-renders on every spinner
+// tick; without this padding, values like "0", "8.5k", and "10.0k" shift the
+// right-aligned cluster horizontally and read as flicker.
+func renderStableContextLabel(used, limit int) string {
+	usedText := kit.FormatTokenCount(used)
+	if limit <= 0 {
+		return contextLabel(usedText, "")
+	}
+	limitText := kit.FormatTokenCount(limit)
+	if pad := lipgloss.Width(limitText) - lipgloss.Width(usedText); pad > 0 {
+		usedText = strings.Repeat(" ", pad) + usedText
+	}
+	return contextLabel(usedText, limitText)
 }
 
 // compressionBadgeStyle escalates color with count (PRD §7.5):
@@ -260,7 +285,7 @@ func renderStatusCluster(p OperationModeParams) string {
 	// The numeric label always renders — it falls back to "ctx X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
-		text:     RenderContextLabel(p.InputTokens, p.InputLimit),
+		text:     renderStableContextLabel(p.InputTokens, p.InputLimit),
 		priority: 3,
 	})
 
