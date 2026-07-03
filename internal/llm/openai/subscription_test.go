@@ -77,6 +77,9 @@ func TestSubscriptionProviderRegistered(t *testing.T) {
 	if len(meta.EnvVars) != 0 {
 		t.Errorf("subscription auth should declare no env vars, got %v", meta.EnvVars)
 	}
+	if !llm.SupportsInteractiveLogin(llm.OpenAI, llm.AuthSubscription) {
+		t.Error("subscription auth should register an interactive authenticator")
+	}
 
 	// The factory must build a working client without credentials or network:
 	// the model list is static and no request is issued until a stream call.

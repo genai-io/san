@@ -83,7 +83,7 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		DisplayName:      mdl.DisplayName,
 		ProviderName:     providerName,
 		AuthMethod:       authMethod,
-		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName,
+		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
 		InputTokenLimit:  mdl.InputTokenLimit,
 		OutputTokenLimit: mdl.OutputTokenLimit,
 	}

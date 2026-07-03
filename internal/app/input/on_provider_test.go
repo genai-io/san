@@ -264,6 +264,46 @@ func TestSelectConfirmsMarkedModelRegardlessOfCursor(t *testing.T) {
 	}
 }
 
+// TestSelectMarkedModelDistinguishesAuthMethod guards against routing a
+// subscription selection through the metered API key when the same model ID is
+// offered by two auth methods of the same provider.
+func TestSelectMarkedModelDistinguishesAuthMethod(t *testing.T) {
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabModels
+	m.allModels = []providerModelItem{
+		{ID: "gpt-5", ProviderName: "openai", AuthMethod: llm.AuthAPIKey},
+		{ID: "gpt-5", ProviderName: "openai", AuthMethod: llm.AuthSubscription},
+	}
+	m.visibleItems = []providerListItem{
+		{Kind: providerItemModel, Model: &m.allModels[0]},
+		{Kind: providerItemModel, Model: &m.allModels[1]},
+	}
+
+	m.selectedIdx = 1 // mark the subscription row
+	m.toggleModel()
+
+	if m.allModels[0].IsCurrent {
+		t.Error("API-key row must not be marked when the subscription row is chosen")
+	}
+	if !m.allModels[1].IsCurrent {
+		t.Error("subscription row should be marked")
+	}
+
+	m.selectedIdx = 0 // cursor back on the API-key row; the mark must still win
+	cmd := m.Select()
+	if cmd == nil {
+		t.Fatal("Select should confirm the marked model")
+	}
+	selected, ok := cmd().(providerModelSelectedMsg)
+	if !ok {
+		t.Fatalf("selection returned %T, want providerModelSelectedMsg", cmd())
+	}
+	if selected.AuthMethod != llm.AuthSubscription {
+		t.Fatalf("routed via %q, want subscription (the marked row)", selected.AuthMethod)
+	}
+}
+
 func TestProviderStatusExpiryIgnoresStaleTimer(t *testing.T) {
 	state := &ProviderState{}
 	first := state.SetStatusMessage("thinking: think")

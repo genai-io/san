@@ -14,7 +14,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/llm/openai/oauth"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/secret"
 )
@@ -167,10 +166,10 @@ func (s *ProviderSelector) handleCredentialRemove() tea.Cmd {
 		return nil
 	}
 
-	// Subscription auth has no env var, but its stored OAuth tokens are still
-	// removable, so allow the confirm prompt for either credential kind.
+	// Interactive-login auth has no env var, but its stored OAuth tokens are
+	// still removable, so allow the confirm prompt for either credential kind.
 	envVar := providerFirstEnvVar(am.EnvVars)
-	if envVar == "" && am.AuthMethod != llm.AuthSubscription {
+	if envVar == "" && !llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
 		return nil
 	}
 
@@ -216,10 +215,10 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 		return nil
 	}
 
-	// Clear the credential: OAuth tokens for subscription auth, otherwise the
-	// API-key env var in the secret store.
-	if authMethod == llm.AuthSubscription {
-		_ = oauth.Logout()
+	// Clear the credential: OAuth tokens for interactive-login auth, otherwise
+	// the API-key env var in the secret store.
+	if llm.SupportsInteractiveLogin(providerName, authMethod) {
+		_ = llm.Logout(providerName, authMethod)
 	} else {
 		if store := secret.Default(); store != nil {
 			_ = store.Delete(envVar)
@@ -253,10 +252,10 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 
 // tryConnectOrPromptKey connects if env vars are available, otherwise shows API key input.
 func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, providerIdx, authIdx int) tea.Cmd {
-	// Subscription auth signs in via OAuth (browser), not an API key, so it never
-	// prompts for one and must sign in before it can be treated as connected.
-	if am.AuthMethod == llm.AuthSubscription {
-		return s.connectSubscription(am, authIdx)
+	// Interactive (OAuth) auth signs in via the browser, not an API key, so it
+	// never prompts for one and must sign in before it can be treated connected.
+	if llm.SupportsInteractiveLogin(am.Provider, am.AuthMethod) {
+		return s.connectInteractive(am, authIdx)
 	}
 
 	if am.Status == llm.StatusAvailable || providerIsEnvReady(am.EnvVars) {
@@ -397,10 +396,11 @@ func (s *ProviderSelector) refreshAuthMethod(item providerAuthMethodItem, authId
 	return tea.Batch(providerConnectingTickCmd(), work)
 }
 
-// connectSubscription runs the ChatGPT OAuth (PKCE) sign-in for the subscription
-// auth method, then records the connection. It reuses the connect spinner and
-// result plumbing so the row animates while the browser flow is in progress.
-func (s *ProviderSelector) connectSubscription(item providerAuthMethodItem, authIdx int) tea.Cmd {
+// connectInteractive runs an OAuth (PKCE) sign-in for an auth method that
+// authenticates in the browser, then records the connection. It reuses the
+// connect spinner and result plumbing so the row animates while the browser
+// flow is in progress.
+func (s *ProviderSelector) connectInteractive(item providerAuthMethodItem, authIdx int) tea.Cmd {
 	if s.IsConnecting() {
 		// A connect/refresh is already in flight; ignore re-entry.
 		return nil
@@ -415,13 +415,14 @@ func (s *ProviderSelector) connectSubscription(item providerAuthMethodItem, auth
 		// Log the authorize URL so it's recoverable when the browser can't be
 		// opened automatically (e.g. over SSH).
 		onURL := func(u string) {
-			log.Logger().Info("chatgpt subscription sign-in", zap.String("url", u))
+			log.Logger().Info("provider sign-in",
+				zap.String("provider", string(item.Provider)), zap.String("url", u))
 		}
-		if _, err := oauth.Login(ctx, onURL); err != nil {
+		if err := llm.Login(ctx, item.Provider, item.AuthMethod, onURL); err != nil {
 			return providerConnectResultMsg{
 				AuthIdx: authIdx,
 				Success: false,
-				Message: fmt.Sprintf("ChatGPT sign-in failed: %s", err.Error()),
+				Message: fmt.Sprintf("sign-in failed: %s", err.Error()),
 			}
 		}
 

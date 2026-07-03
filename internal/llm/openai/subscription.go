@@ -90,6 +90,19 @@ func newSessionID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// subscriptionAuthenticator adapts the ChatGPT OAuth flow to llm.Authenticator
+// so the app layer can trigger sign-in/out through the llm facade rather than
+// importing this provider package directly.
+type subscriptionAuthenticator struct{}
+
+func (subscriptionAuthenticator) Login(ctx context.Context, onURL func(string)) error {
+	_, err := oauth.Login(ctx, onURL)
+	return err
+}
+
+func (subscriptionAuthenticator) Logout() error { return oauth.Logout() }
+
 func init() {
 	llm.Register(SubscriptionMeta, NewSubscriptionClient)
+	llm.RegisterAuthenticator(llm.OpenAI, llm.AuthSubscription, subscriptionAuthenticator{})
 }
