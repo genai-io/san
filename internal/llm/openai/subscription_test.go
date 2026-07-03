@@ -28,6 +28,7 @@ func TestSubscriptionStreamIsStatelessWithEncryptedReasoning(t *testing.T) {
 	drain(client.Stream(context.Background(), llm.CompletionOptions{
 		Model:          "gpt-5-codex",
 		Messages:       []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		MaxTokens:      8192,
 		ThinkingEffort: "high",
 	}))
 
@@ -45,6 +46,10 @@ func TestSubscriptionStreamIsStatelessWithEncryptedReasoning(t *testing.T) {
 	if !ok || !slices.Contains(include, "reasoning.encrypted_content") {
 		t.Fatalf("expected include to contain reasoning.encrypted_content, got %#v", payload["include"])
 	}
+
+	if _, present := payload["max_output_tokens"]; present {
+		t.Fatalf("subscription request must omit max_output_tokens; ChatGPT Codex rejects it, got %#v", payload["max_output_tokens"])
+	}
 }
 
 func TestNonSubscriptionStreamOmitsStore(t *testing.T) {
@@ -52,8 +57,9 @@ func TestNonSubscriptionStreamOmitsStore(t *testing.T) {
 	client := newTestClient(transport)
 
 	drain(client.Stream(context.Background(), llm.CompletionOptions{
-		Model:    "gpt-5.4",
-		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		Model:     "gpt-5.4",
+		Messages:  []core.Message{{Role: core.RoleUser, Content: "hi"}},
+		MaxTokens: 8192,
 	}))
 
 	var payload map[string]any
@@ -65,6 +71,9 @@ func TestNonSubscriptionStreamOmitsStore(t *testing.T) {
 	}
 	if _, present := payload["include"]; present {
 		t.Fatalf("direct-API request should not set include, got %#v", payload["include"])
+	}
+	if got, ok := payload["max_output_tokens"].(float64); !ok || got != 8192 {
+		t.Fatalf("direct-API request should set max_output_tokens=8192, got %#v", payload["max_output_tokens"])
 	}
 }
 

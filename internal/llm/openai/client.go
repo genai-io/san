@@ -137,7 +137,7 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 			params.Instructions = openai.Opt(opts.SystemPrompt)
 		}
 
-		if opts.MaxTokens > 0 {
+		if opts.MaxTokens > 0 && !c.subscription {
 			params.MaxOutputTokens = openai.Opt(int64(opts.MaxTokens))
 		}
 
