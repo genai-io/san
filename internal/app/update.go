@@ -195,12 +195,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
-	case conv.SecretPromptRequestMsg:
-		cmd := m.handleSecretPromptRequest(msg)
-		if m.conv.ProgressHub != nil {
-			cmd = tea.Batch(cmd, m.conv.ProgressHub.Check())
-		}
-		return m, cmd
 	case input.SecretPromptResponseMsg:
 		return m, m.handleSecretPromptResponse(msg)
 	case input.ApprovalResponseMsg:

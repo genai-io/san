@@ -169,25 +169,26 @@ func (m *env) ResetSessionPermissions() {
 	m.SessionPermissions.Mode = setting.ModeNormal
 }
 
-func (m *env) ApplyAutoAcceptPermissions(cwd string) {
-	m.SessionPermissions.Mode = setting.ModeAutoAccept
+// applyEditPosture grants the accept-edits posture — edits/writes auto-approved,
+// working dir trusted — under the given mode. Shared by accept-edits and
+// auto-review (which additionally routes non-edit prompts to the review agent).
+func (m *env) applyEditPosture(mode setting.OperationMode, cwd string) {
+	m.SessionPermissions.Mode = mode
 	m.SessionPermissions.AllowAllEdits = true
 	m.SessionPermissions.AllowAllWrites = true
 	m.SessionPermissions.AddWorkingDirectory(cwd)
+}
+
+func (m *env) ApplyAutoAcceptPermissions(cwd string) {
+	m.applyEditPosture(setting.ModeAutoAccept, cwd)
+}
+
+func (m *env) ApplyAutoReviewPermissions(cwd string) {
+	m.applyEditPosture(setting.ModeAutoReview, cwd)
 }
 
 func (m *env) ApplyBypassPermissions() {
 	m.SessionPermissions.Mode = setting.ModeBypassPermissions
-}
-
-// ApplyAutoReviewPermissions grants the accept-edits posture (edits/writes auto,
-// working dir trusted) and switches to auto-review mode, where non-edit tool
-// calls that would otherwise prompt are routed to the review agent.
-func (m *env) ApplyAutoReviewPermissions(cwd string) {
-	m.SessionPermissions.Mode = setting.ModeAutoReview
-	m.SessionPermissions.AllowAllEdits = true
-	m.SessionPermissions.AllowAllWrites = true
-	m.SessionPermissions.AddWorkingDirectory(cwd)
 }
 
 func (m *env) DetectThinkingKeywords(input string) {

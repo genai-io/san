@@ -61,20 +61,30 @@ const maxVerdictTokens = 512
 // Permission returns a verdict for a gray-zone tool call. A non-nil error means the
 // judge could not reach a decision; callers must fail closed (escalate).
 func (r *AutoReview) Permission(ctx context.Context, req Request) (Verdict, error) {
-	if r == nil || r.provider == nil {
-		return Verdict{}, fmt.Errorf("reviewer not configured")
-	}
-
-	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
-		Model:        r.model,
-		SystemPrompt: r.systemPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: permissionTask + "\n\n" + renderRequest(req)}},
-		MaxTokens:    maxVerdictTokens,
-	})
+	content, err := r.complete(ctx, permissionTask+"\n\n"+renderRequest(req))
 	if err != nil {
 		return Verdict{}, err
 	}
-	return parseVerdict(resp.Content)
+	return parseVerdict(content)
+}
+
+// complete runs one review inference — the shared system prompt plus the given
+// user message — and returns the raw response for the caller to parse. A nil
+// reviewer or provider yields an error so callers fail closed.
+func (r *AutoReview) complete(ctx context.Context, userMessage string) (string, error) {
+	if r == nil || r.provider == nil {
+		return "", fmt.Errorf("reviewer not configured")
+	}
+	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
+		Model:        r.model,
+		SystemPrompt: r.systemPrompt,
+		Messages:     []core.Message{{Role: core.RoleUser, Content: userMessage}},
+		MaxTokens:    maxVerdictTokens,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
 }
 
 // BashPromptReply is the judge's decision on an interactive prompt a running,
@@ -89,20 +99,11 @@ type BashPromptReply struct {
 // already-approved command, or to skip it. A non-nil error (or a skip verdict)
 // leaves the prompt unanswered so the caller fails the command closed.
 func (r *AutoReview) BashPrompt(ctx context.Context, command, prompt string) (BashPromptReply, error) {
-	if r == nil || r.provider == nil {
-		return BashPromptReply{}, fmt.Errorf("reviewer not configured")
-	}
-
-	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
-		Model:        r.model,
-		SystemPrompt: r.systemPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: bashPromptTask + "\n\n" + renderBashPrompt(command, prompt)}},
-		MaxTokens:    maxVerdictTokens,
-	})
+	content, err := r.complete(ctx, bashPromptTask+"\n\n"+renderBashPrompt(command, prompt))
 	if err != nil {
 		return BashPromptReply{}, err
 	}
-	return parseBashPromptReply(resp.Content)
+	return parseBashPromptReply(content)
 }
 
 func renderBashPrompt(command, prompt string) string {

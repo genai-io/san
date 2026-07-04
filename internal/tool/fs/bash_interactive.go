@@ -156,15 +156,20 @@ func isSecretPrompt(prompt string) bool {
 	return false
 }
 
-// lastLine returns the last non-blank line of s (the prompt itself), with
-// carriage returns and surrounding space stripped.
+// lastLine returns the last non-blank line of s (the prompt itself), trimmed. It
+// scans backward so the growing pty buffer isn't copied and split on every stall.
 func lastLine(s string) string {
-	s = strings.ReplaceAll(s, "\r", "\n")
-	lines := strings.Split(s, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if line := strings.TrimSpace(lines[i]); line != "" {
-			return line
+	end := len(s)
+	for end > 0 {
+		if c := s[end-1]; c == '\n' || c == '\r' || c == ' ' || c == '\t' {
+			end--
+			continue
 		}
+		break
 	}
-	return ""
+	start := end
+	for start > 0 && s[start-1] != '\n' && s[start-1] != '\r' {
+		start--
+	}
+	return strings.TrimSpace(s[start:end])
 }
