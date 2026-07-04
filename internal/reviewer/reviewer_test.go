@@ -39,7 +39,7 @@ func Test_parseVerdict(t *testing.T) {
 	}
 }
 
-// stubProvider returns a canned completion for testing Judge without a network call.
+// stubProvider returns a canned completion for testing Permission without a network call.
 type stubProvider struct {
 	content          string
 	err              error
@@ -61,43 +61,43 @@ func (s *stubProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-c
 func (s *stubProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (s *stubProvider) Name() string                                          { return "stub" }
 
-func Test_Judge(t *testing.T) {
+func Test_Permission(t *testing.T) {
 	req := Request{ToolName: "Bash", Args: map[string]any{"command": "go test ./..."}, CWD: "/repo"}
 
 	t.Run("allow", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"decision":"allow","reason":"runs tests"}`}, "model")
-		v, err := r.Judge(context.Background(), req)
+		v, err := r.Permission(context.Background(), req)
 		if err != nil || !v.Allow {
-			t.Fatalf("Judge() = %+v, err=%v; want Allow", v, err)
+			t.Fatalf("Permission() = %+v, err=%v; want Allow", v, err)
 		}
 	})
 
 	t.Run("escalate", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"decision":"escalate","reason":"risky"}`}, "model")
-		v, err := r.Judge(context.Background(), req)
+		v, err := r.Permission(context.Background(), req)
 		if err != nil || v.Allow {
-			t.Fatalf("Judge() = %+v, err=%v; want escalate", v, err)
+			t.Fatalf("Permission() = %+v, err=%v; want escalate", v, err)
 		}
 	})
 
 	t.Run("provider error fails closed", func(t *testing.T) {
 		r := New(&stubProvider{err: errors.New("timeout")}, "model")
-		if _, err := r.Judge(context.Background(), req); err == nil {
-			t.Fatal("Judge() err = nil, want error so caller escalates")
+		if _, err := r.Permission(context.Background(), req); err == nil {
+			t.Fatal("Permission() err = nil, want error so caller escalates")
 		}
 	})
 
 	t.Run("garbage response errors", func(t *testing.T) {
 		r := New(&stubProvider{content: "no verdict here"}, "model")
-		if _, err := r.Judge(context.Background(), req); err == nil {
-			t.Fatal("Judge() err = nil, want error")
+		if _, err := r.Permission(context.Background(), req); err == nil {
+			t.Fatal("Permission() err = nil, want error")
 		}
 	})
 
 	t.Run("nil provider errors", func(t *testing.T) {
 		r := New(nil, "model")
-		if _, err := r.Judge(context.Background(), req); err == nil {
-			t.Fatal("Judge() err = nil, want error")
+		if _, err := r.Permission(context.Background(), req); err == nil {
+			t.Fatal("Permission() err = nil, want error")
 		}
 	})
 }
@@ -130,25 +130,25 @@ func Test_parseBashPromptReply(t *testing.T) {
 	}
 }
 
-func Test_AnswerBashPrompt(t *testing.T) {
+func Test_BashPrompt(t *testing.T) {
 	t.Run("answer", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"answer","input":"y"}`}, "model")
-		got, err := r.AnswerBashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+		got, err := r.BashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
 		if err != nil || !got.Answer || got.Input != "y" {
-			t.Fatalf("AnswerBashPrompt() = %+v, err=%v; want answer y", got, err)
+			t.Fatalf("BashPrompt() = %+v, err=%v; want answer y", got, err)
 		}
 	})
 	t.Run("skip", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"skip"}`}, "model")
-		got, err := r.AnswerBashPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
+		got, err := r.BashPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
 		if err != nil || got.Answer {
-			t.Fatalf("AnswerBashPrompt() = %+v, err=%v; want skip", got, err)
+			t.Fatalf("BashPrompt() = %+v, err=%v; want skip", got, err)
 		}
 	})
 	t.Run("provider error", func(t *testing.T) {
 		r := New(&stubProvider{err: errors.New("boom")}, "model")
-		if _, err := r.AnswerBashPrompt(context.Background(), "cmd", "prompt"); err == nil {
-			t.Fatal("AnswerBashPrompt() err = nil, want error so caller skips")
+		if _, err := r.BashPrompt(context.Background(), "cmd", "prompt"); err == nil {
+			t.Fatal("BashPrompt() err = nil, want error so caller skips")
 		}
 	})
 }
@@ -159,16 +159,23 @@ func Test_SystemPromptOverride(t *testing.T) {
 	req := Request{ToolName: "Bash", Args: map[string]any{"command": "date"}}
 
 	// The built-in rubric is used until overridden.
-	_, _ = r.Judge(context.Background(), req)
+	_, _ = r.Permission(context.Background(), req)
 	if s.lastSystemPrompt != defaultSystemPrompt {
-		t.Errorf("Judge used %q, want the built-in rubric", s.lastSystemPrompt)
+		t.Errorf("Permission used %q, want the built-in rubric", s.lastSystemPrompt)
 	}
 
 	// A custom rubric replaces it.
 	r.SetSystemPrompt("MY CUSTOM RUBRIC")
-	_, _ = r.Judge(context.Background(), req)
+	_, _ = r.Permission(context.Background(), req)
 	if s.lastSystemPrompt != "MY CUSTOM RUBRIC" {
-		t.Errorf("Judge used %q, want the custom rubric", s.lastSystemPrompt)
+		t.Errorf("Permission used %q, want the custom rubric", s.lastSystemPrompt)
+	}
+
+	// BashPrompt shares the same customizable system prompt — only the per-call
+	// task differs, and that rides in the user message.
+	_, _ = r.BashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+	if s.lastSystemPrompt != "MY CUSTOM RUBRIC" {
+		t.Errorf("BashPrompt used %q, want the shared custom rubric", s.lastSystemPrompt)
 	}
 
 	// A blank override keeps the current prompt (unreadable config → built-in).

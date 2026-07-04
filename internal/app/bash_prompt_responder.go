@@ -13,7 +13,7 @@ import (
 
 type bashPromptResponder struct {
 	model    *model
-	reviewer *reviewer.Reviewer
+	reviewer *reviewer.AutoReview
 }
 
 func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt string) (string, bool) {
@@ -22,7 +22,7 @@ func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt s
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	reply, err := r.reviewer.AnswerBashPrompt(ctx, command, prompt)
+	reply, err := r.reviewer.BashPrompt(ctx, command, prompt)
 	log.Logger().Debug("auto-review prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),
