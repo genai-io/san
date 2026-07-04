@@ -32,19 +32,18 @@ func GetMaxTokens(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultM
 	return defaultMaxTokens
 }
 
-// GetModelTokenLimits returns the cached token limits for the current model.
+// GetModelTokenLimits returns the cached context window for the current model.
 //
-// It resolves from the current model's own provider/auth cache first. The same
-// model ID can be cached under several providers with different context windows
-// (e.g. gpt-5.5 via Direct API at 400k and via the ChatGPT subscription at
-// 272k); a bare ID scan iterates a map and would return a random one each
-// render, making the status-bar limit flicker. Resolving by the connected
-// provider is deterministic and correct.
+// The same model ID can be cached under several provider/auth keys with
+// different windows (gpt-5.5: 400k via Direct API, 272k via ChatGPT
+// subscription). Scanning the cache map for the ID picks a random one each
+// render — that is what made the status-bar limit flicker. So we resolve in two
+// deterministic steps:
 //
-// It falls back to a cross-provider ID scan when the current provider's cache
-// doesn't report a window — an OpenAI-compatible aggregator may serve a model
-// with no advertised context window while the same model's native provider
-// knows the real one, letting the status bar borrow it instead of showing "--".
+//  1. this model's own provider+auth cache — the correct window. Ignores the 24h
+//     TTL, otherwise an expired cache would fall to step 2 and flicker again.
+//  2. else the largest window for the ID across all caches — covers a model an
+//     aggregator serves with no window while its native provider knows the real one.
 func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (inputLimit, outputLimit int) {
 	if store == nil || currentModel == nil {
 		return 0, 0
@@ -55,12 +54,8 @@ func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (
 			authMethod = conn.AuthMethod
 		}
 	}
-	if models, ok := store.GetCachedModels(currentModel.Provider, authMethod); ok {
-		for _, m := range models {
-			if m.ID == currentModel.ModelID && m.InputTokenLimit > 0 {
-				return m.InputTokenLimit, m.OutputTokenLimit
-			}
-		}
+	if input, output := store.CachedModelLimitsForProvider(currentModel.Provider, authMethod, currentModel.ModelID); input > 0 {
+		return input, output
 	}
 	return store.CachedModelLimits(currentModel.ModelID)
 }
