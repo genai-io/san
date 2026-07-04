@@ -106,6 +106,33 @@ func TestBashExecuteApproved_usesBashPromptResponderFromContext(t *testing.T) {
 	}
 }
 
+func Test_runInteractive_nonPromptStallNotKilled(t *testing.T) {
+	// A command that prints a non-prompt line, goes quiet past the stall delay,
+	// then finishes must not be mistaken for a prompt and killed.
+	r := &fakeResponder{answer: "y", answerOK: true}
+	out := runScript(t, `echo working; sleep 0.6; echo done`, r)
+
+	if !strings.Contains(out, "done") {
+		t.Errorf("output %q: command should run to completion, not be killed", out)
+	}
+	if r.answerCalls != 0 || r.secretCalls != 0 {
+		t.Errorf("calls: answer=%d secret=%d, want 0/0 (non-prompt output must not trigger the responder)", r.answerCalls, r.secretCalls)
+	}
+}
+
+func Test_looksLikePrompt(t *testing.T) {
+	for _, s := range []string{"Continue? [y/N]", "Password:", "Proceed (yes/no)", "prompt>", "Overwrite? [Y/n]"} {
+		if !looksLikePrompt(s) {
+			t.Errorf("looksLikePrompt(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"", "=== RUN   TestFoo", "added 42 packages", "Compiling main.go", "working"} {
+		if looksLikePrompt(s) {
+			t.Errorf("looksLikePrompt(%q) = true, want false", s)
+		}
+	}
+}
+
 func Test_lastLine(t *testing.T) {
 	cases := map[string]string{
 		"Password: ":                 "Password:",

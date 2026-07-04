@@ -22,6 +22,10 @@ const (
 	maxAutoAnswers = 12
 )
 
+// interactiveBash reports whether the interactive PTY path exists on this
+// platform (unix). Bash uses its normal execution path when false.
+const interactiveBash = true
+
 // runInteractive runs cmd attached to a pseudo-terminal and answers interactive
 // prompts through responder, returning the full combined output. A prompt the
 // responder skips (ok=false), an exhausted answer budget, or a cancelled ctx
@@ -80,14 +84,15 @@ loop:
 			rearm()
 
 		case <-timer.C:
-			// Output went quiet. If the process is still alive it is most likely
-			// blocked on input.
+			// Output went quiet. Only a tail that looks like an interactive prompt
+			// is treated as waiting for input; a command working silently (a slow
+			// build, a test run) is left to keep running — never answered or killed.
 			if !processAlive(cmd) {
 				rearm()
 				continue
 			}
 			prompt := lastLine(pending.String())
-			if prompt == "" {
+			if !looksLikePrompt(prompt) {
 				rearm()
 				continue
 			}
@@ -172,4 +177,19 @@ func lastLine(s string) string {
 		start--
 	}
 	return strings.TrimSpace(s[start:end])
+}
+
+// looksLikePrompt reports whether a stalled line is plausibly an interactive
+// prompt awaiting input, rather than a command working silently. Gating on it
+// keeps ordinary non-interactive output ("=== RUN TestX", build progress) from
+// being mistaken for a prompt and killed.
+func looksLikePrompt(line string) bool {
+	if line == "" {
+		return false
+	}
+	switch line[len(line)-1] {
+	case '?', ':', ']', ')', '>':
+		return true
+	}
+	return false
 }

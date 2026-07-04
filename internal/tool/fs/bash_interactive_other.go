@@ -8,8 +8,12 @@ import (
 	"os/exec"
 )
 
-// runInteractive is unsupported off unix (no pseudo-terminal). The interactive
-// path is never selected there, so this only keeps the package building.
+// interactiveBash is false off unix (no pseudo-terminal), so bash uses its
+// normal execution path and never selects the interactive branch.
+const interactiveBash = false
+
+// runInteractive is unsupported off unix; it exists only to keep the package
+// building. The interactiveBash gate keeps it from ever being called.
 func runInteractive(_ context.Context, _ string, _ *exec.Cmd, _ BashPromptResponder) (string, error) {
 	return "", fmt.Errorf("interactive command execution is not supported on this platform")
 }

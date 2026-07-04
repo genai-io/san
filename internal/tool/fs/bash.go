@@ -96,7 +96,7 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
 
-	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil {
+	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil && interactiveBash {
 		fullOutput, err := runInteractive(ctx, command, cmd, responder)
 		duration := time.Since(start)
 		return t.foregroundResult(ctx, description, fullOutput, "", err, duration, timeout, trackedFile, cwd)
