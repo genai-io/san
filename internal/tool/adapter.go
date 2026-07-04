@@ -24,22 +24,23 @@ func PopSideEffect(toolCallID string) any {
 	return val
 }
 
-// InteractionFunc handles interactive tool requests (e.g. AskUserQuestion).
-// The TUI layer provides this via ProgressHub.Ask().
-type InteractionFunc func(ctx context.Context, req *QuestionRequest) (*QuestionResponse, error)
+// AskUserFunc poses a structured question to the user and returns their answer.
+// The AskUserQuestion tool calls it mid-execution; the TUI layer supplies the
+// implementation via ProgressHub.Ask().
+type AskUserFunc func(ctx context.Context, req *QuestionRequest) (*QuestionResponse, error)
 
 // AdaptOption configures tool adaptation behavior.
 type AdaptOption func(*adaptConfig)
 
 type adaptConfig struct {
-	askFn           InteractionFunc
+	askFn           AskUserFunc
 	messagesGetter  MessagesGetter
 	progressFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
 }
 
-// WithInteraction sets the handler for interactive tools.
-func WithInteraction(fn InteractionFunc) AdaptOption {
+// WithAskUser sets the handler the AskUserQuestion tool uses to ask the user.
+func WithAskUser(fn AskUserFunc) AdaptOption {
 	return func(c *adaptConfig) { c.askFn = fn }
 }
 
@@ -94,7 +95,7 @@ type toolAdapter struct {
 	inner           Tool
 	schema          core.ToolSchema
 	cwd             func() string
-	askFn           InteractionFunc
+	askFn           AskUserFunc
 	messagesGetter  MessagesGetter
 	progressFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider

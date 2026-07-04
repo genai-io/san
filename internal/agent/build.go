@@ -44,7 +44,7 @@ type BuildParams struct {
 	PermissionDecider  PermDecisionFunc
 	PermissionReviewer PermReviewFunc
 	HookEngine         hook.Handler
-	InteractionFunc    tool.InteractionFunc
+	AskUser            tool.AskUserFunc
 	ToolProgress       func(toolCallID string, msg string)
 	// BashPromptResponder answers prompts a command raises *while it runs*
 	// (AutoReview.BashPrompt plus the masked secret input) — a separate concern
@@ -86,8 +86,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 		AgentDirectory: p.AgentDirectory,
 	}).Tools()
 	var adaptOpts []tool.AdaptOption
-	if p.InteractionFunc != nil {
-		adaptOpts = append(adaptOpts, tool.WithInteraction(p.InteractionFunc))
+	if p.AskUser != nil {
+		adaptOpts = append(adaptOpts, tool.WithAskUser(p.AskUser))
 	}
 	if p.ToolProgress != nil {
 		adaptOpts = append(adaptOpts, tool.WithToolProgress(p.ToolProgress))
