@@ -22,7 +22,7 @@ func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt s
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	reply, err := r.reviewer.AnswerPrompt(ctx, command, prompt)
+	reply, err := r.reviewer.AnswerBashPrompt(ctx, command, prompt)
 	log.Logger().Debug("auto-review prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),

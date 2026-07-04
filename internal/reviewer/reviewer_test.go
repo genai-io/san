@@ -102,7 +102,7 @@ func Test_Judge(t *testing.T) {
 	})
 }
 
-func Test_parsePromptReply(t *testing.T) {
+func Test_parseBashPromptReply(t *testing.T) {
 	tests := []struct {
 		name       string
 		content    string
@@ -119,36 +119,36 @@ func Test_parsePromptReply(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parsePromptReply(tt.content)
+			got, err := parseBashPromptReply(tt.content)
 			if (err != nil) != tt.wantErr {
-				t.Fatalf("parsePromptReply(%q) err=%v, wantErr=%v", tt.content, err, tt.wantErr)
+				t.Fatalf("parseBashPromptReply(%q) err=%v, wantErr=%v", tt.content, err, tt.wantErr)
 			}
 			if err == nil && (got.Answer != tt.wantAnswer || got.Input != tt.wantInput) {
-				t.Errorf("parsePromptReply(%q) = %+v, want answer=%v input=%q", tt.content, got, tt.wantAnswer, tt.wantInput)
+				t.Errorf("parseBashPromptReply(%q) = %+v, want answer=%v input=%q", tt.content, got, tt.wantAnswer, tt.wantInput)
 			}
 		})
 	}
 }
 
-func Test_AnswerPrompt(t *testing.T) {
+func Test_AnswerBashPrompt(t *testing.T) {
 	t.Run("answer", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"answer","input":"y"}`}, "model")
-		got, err := r.AnswerPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+		got, err := r.AnswerBashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
 		if err != nil || !got.Answer || got.Input != "y" {
-			t.Fatalf("AnswerPrompt() = %+v, err=%v; want answer y", got, err)
+			t.Fatalf("AnswerBashPrompt() = %+v, err=%v; want answer y", got, err)
 		}
 	})
 	t.Run("skip", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"skip"}`}, "model")
-		got, err := r.AnswerPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
+		got, err := r.AnswerBashPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
 		if err != nil || got.Answer {
-			t.Fatalf("AnswerPrompt() = %+v, err=%v; want skip", got, err)
+			t.Fatalf("AnswerBashPrompt() = %+v, err=%v; want skip", got, err)
 		}
 	})
 	t.Run("provider error", func(t *testing.T) {
 		r := New(&stubProvider{err: errors.New("boom")}, "model")
-		if _, err := r.AnswerPrompt(context.Background(), "cmd", "prompt"); err == nil {
-			t.Fatal("AnswerPrompt() err = nil, want error so caller skips")
+		if _, err := r.AnswerBashPrompt(context.Background(), "cmd", "prompt"); err == nil {
+			t.Fatal("AnswerBashPrompt() err = nil, want error so caller skips")
 		}
 	})
 }

@@ -77,61 +77,61 @@ func (r *Reviewer) Judge(ctx context.Context, req Request) (Verdict, error) {
 	return parseVerdict(resp.Content)
 }
 
-// PromptReply is the judge's decision on an interactive prompt a running,
+// BashPromptReply is the judge's decision on an interactive prompt a running,
 // already-approved command raised. Answer=false means "skip" (do not answer;
 // the command then fails for lack of input).
-type PromptReply struct {
+type BashPromptReply struct {
 	Input  string
 	Answer bool
 }
 
-// AnswerPrompt decides what to type at an interactive prompt raised by an
+// AnswerBashPrompt decides what to type at an interactive prompt raised by an
 // already-approved command, or to skip it. A non-nil error (or a skip verdict)
 // leaves the prompt unanswered so the caller fails the command closed.
-func (r *Reviewer) AnswerPrompt(ctx context.Context, command, prompt string) (PromptReply, error) {
+func (r *Reviewer) AnswerBashPrompt(ctx context.Context, command, prompt string) (BashPromptReply, error) {
 	if r == nil || r.provider == nil {
-		return PromptReply{}, fmt.Errorf("reviewer not configured")
+		return BashPromptReply{}, fmt.Errorf("reviewer not configured")
 	}
 
 	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
 		Model:        r.model,
-		SystemPrompt: answerSystemPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: renderPrompt(command, prompt)}},
+		SystemPrompt: bashAnswerSystemPrompt,
+		Messages:     []core.Message{{Role: core.RoleUser, Content: renderBashPrompt(command, prompt)}},
 		MaxTokens:    maxVerdictTokens,
 	})
 	if err != nil {
-		return PromptReply{}, err
+		return BashPromptReply{}, err
 	}
-	return parsePromptReply(resp.Content)
+	return parseBashPromptReply(resp.Content)
 }
 
-func renderPrompt(command, prompt string) string {
+func renderBashPrompt(command, prompt string) string {
 	return fmt.Sprintf("Approved command:\n%s\n\nThe command is now waiting at this prompt:\n%s\n", command, prompt)
 }
 
-func parsePromptReply(content string) (PromptReply, error) {
+func parseBashPromptReply(content string) (BashPromptReply, error) {
 	raw := extractJSONObject(content)
 	if raw == "" {
-		return PromptReply{}, fmt.Errorf("no JSON object in judge response: %q", truncate(content, 200))
+		return BashPromptReply{}, fmt.Errorf("no JSON object in judge response: %q", truncate(content, 200))
 	}
 	var out struct {
 		Action string `json:"action"`
 		Input  string `json:"input"`
 	}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return PromptReply{}, fmt.Errorf("parse prompt reply: %w", err)
+		return BashPromptReply{}, fmt.Errorf("parse prompt reply: %w", err)
 	}
 	switch strings.ToLower(strings.TrimSpace(out.Action)) {
 	case "answer":
-		return PromptReply{Input: out.Input, Answer: true}, nil
+		return BashPromptReply{Input: out.Input, Answer: true}, nil
 	case "skip":
-		return PromptReply{Answer: false}, nil
+		return BashPromptReply{Answer: false}, nil
 	default:
-		return PromptReply{}, fmt.Errorf("unrecognized prompt action: %q", out.Action)
+		return BashPromptReply{}, fmt.Errorf("unrecognized prompt action: %q", out.Action)
 	}
 }
 
-const answerSystemPrompt = `An autonomous coding agent approved and started a shell command. The command is now pausing at an interactive prompt, waiting for input. Decide the exact text to send so the command proceeds with the action that was already approved — or SKIP if it must not be answered automatically.
+const bashAnswerSystemPrompt = `An autonomous coding agent approved and started a shell command. The command is now pausing at an interactive prompt, waiting for input. Decide the exact text to send so the command proceeds with the action that was already approved — or SKIP if it must not be answered automatically.
 
 Answer ONLY to continue the already-approved action (e.g. a plain "y" to a "Continue? [Y/n]" confirmation for an install that was already approved).
 
