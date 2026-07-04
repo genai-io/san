@@ -9,22 +9,25 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// ProgressUpdateMsg carries a task progress update from an agent.
-type ProgressUpdateMsg struct {
+// AgentStatusMsg carries one status line from a running agent — its model, its
+// mode, a tool it is calling, "Thinking...", or token usage. Lines accumulate
+// into the per-agent progress feed the TUI renders.
+type AgentStatusMsg struct {
 	Index      int
 	ToolCallID string
 	Message    string
 }
 
-// ProgressCheckTickMsg triggers a check for new progress updates.
-type ProgressCheckTickMsg struct{}
+// AgentToUITickMsg is the idle heartbeat: Check emits it when no message is
+// ready, so the poll re-arms without blocking.
+type AgentToUITickMsg struct{}
 
 // AgentToUI is the instance-scoped transport from running agents and tools
 // to the TUI. It multiplexes three kinds of traffic: progress lines to display,
 // interactive questions to ask (AskUser lands here), and masked secret prompts
 // (RequestSecret lands here). The agent side sends; the TUI side polls Check.
 type AgentToUI struct {
-	ch  chan ProgressUpdateMsg
+	ch  chan AgentStatusMsg
 	qch chan QuestionRequestMsg
 	sch chan SecretPromptRequestMsg
 }
@@ -35,7 +38,7 @@ func NewAgentToUI(buffer int) *AgentToUI {
 		buffer = 100
 	}
 	return &AgentToUI{
-		ch:  make(chan ProgressUpdateMsg, buffer),
+		ch:  make(chan AgentStatusMsg, buffer),
 		qch: make(chan QuestionRequestMsg, buffer),
 		sch: make(chan SecretPromptRequestMsg, buffer),
 	}
@@ -44,7 +47,7 @@ func NewAgentToUI(buffer int) *AgentToUI {
 // SendForAgent enqueues a progress message for a specific agent index.
 func (h *AgentToUI) SendForAgent(index int, msg string) {
 	select {
-	case h.ch <- ProgressUpdateMsg{Index: index, Message: msg}:
+	case h.ch <- AgentStatusMsg{Index: index, Message: msg}:
 	default:
 	}
 }
@@ -52,7 +55,7 @@ func (h *AgentToUI) SendForAgent(index int, msg string) {
 // SendForToolCall enqueues a progress message for a specific tool call.
 func (h *AgentToUI) SendForToolCall(toolCallID string, msg string) {
 	select {
-	case h.ch <- ProgressUpdateMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
+	case h.ch <- AgentStatusMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
 	default:
 	}
 }
@@ -117,7 +120,7 @@ func (h *AgentToUI) Check() tea.Cmd {
 		case u := <-h.ch:
 			return u
 		default:
-			return ProgressCheckTickMsg{}
+			return AgentToUITickMsg{}
 		}
 	})
 }

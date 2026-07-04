@@ -9,7 +9,7 @@ import (
 func TestHandleProgressWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
 
-	cmd := m.HandleProgress(ProgressUpdateMsg{
+	cmd := m.HandleProgress(AgentStatusMsg{
 		Index:   1,
 		Message: "step",
 	})

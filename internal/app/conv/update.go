@@ -29,7 +29,7 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		return rt.OnCompactResult(msg), true
 	case kit.TokenLimitResultMsg:
 		return rt.OnTokenLimitResult(msg), true
-	case ProgressUpdateMsg:
+	case AgentStatusMsg:
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
 		}
@@ -37,7 +37,7 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 			return m.HandleProgressTick(rt.HasRunningTasks()), true
 		}
 		return m.HandleProgress(msg), true
-	case ProgressCheckTickMsg:
+	case AgentToUITickMsg:
 		return m.HandleProgressTick(rt.HasRunningTasks()), true
 	default:
 		return nil, false
@@ -281,7 +281,7 @@ func (m *OutputModel) drainProgress() {
 	m.TaskProgress = m.AgentToUI.Drain(m.TaskProgress)
 }
 
-func (m *OutputModel) HandleProgress(msg ProgressUpdateMsg) tea.Cmd {
+func (m *OutputModel) HandleProgress(msg AgentStatusMsg) tea.Cmd {
 	if m.TaskProgress == nil {
 		m.TaskProgress = make(map[int][]string)
 	}
