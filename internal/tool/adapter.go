@@ -35,7 +35,7 @@ type adaptConfig struct {
 	askFn           InteractionFunc
 	messagesGetter  MessagesGetter
 	progressFn      func(toolCallID string, msg string)
-	promptResponder PromptResponderProvider
+	promptResponder BashPromptResponderProvider
 }
 
 // WithInteraction sets the handler for interactive tools.
@@ -54,9 +54,9 @@ func WithToolProgress(fn func(toolCallID string, msg string)) AdaptOption {
 	return func(c *adaptConfig) { c.progressFn = fn }
 }
 
-// WithPromptResponderProvider sets the responder provider for tools that can
+// WithBashPromptResponderProvider sets the responder provider for tools that can
 // safely handle interactive prompts during execution.
-func WithPromptResponderProvider(fn PromptResponderProvider) AdaptOption {
+func WithBashPromptResponderProvider(fn BashPromptResponderProvider) AdaptOption {
 	return func(c *adaptConfig) { c.promptResponder = fn }
 }
 
@@ -97,7 +97,7 @@ type toolAdapter struct {
 	askFn           InteractionFunc
 	messagesGetter  MessagesGetter
 	progressFn      func(toolCallID string, msg string)
-	promptResponder PromptResponderProvider
+	promptResponder BashPromptResponderProvider
 }
 
 func (a *toolAdapter) Name() string            { return a.inner.Name() }
@@ -113,7 +113,7 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 		ctx = WithMessagesGetter(ctx, a.messagesGetter)
 	}
 	if a.promptResponder != nil {
-		ctx = ContextWithPromptResponderProvider(ctx, a.promptResponder)
+		ctx = ContextWithBashPromptResponderProvider(ctx, a.promptResponder)
 	}
 	if IsAgentToolName(a.inner.Name()) && a.progressFn != nil {
 		if callID := core.ToolCallIDFromContext(ctx); callID != "" {

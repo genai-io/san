@@ -34,7 +34,7 @@ func (f *fakeResponder) RequestSecret(_ context.Context, prompt string) (string,
 	return f.secret, f.secretOK
 }
 
-func runScript(t *testing.T, script string, r PromptResponder) string {
+func runScript(t *testing.T, script string, r BashPromptResponder) string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -85,9 +85,9 @@ func Test_runInteractive_skipFailsFast(t *testing.T) {
 	}
 }
 
-func TestBashExecuteApproved_usesPromptResponderFromContext(t *testing.T) {
+func TestBashExecuteApproved_usesBashPromptResponderFromContext(t *testing.T) {
 	r := &fakeResponder{answer: "yes", answerOK: true}
-	ctx := coretool.ContextWithPromptResponderProvider(context.Background(), func(context.Context) coretool.PromptResponder {
+	ctx := coretool.ContextWithBashPromptResponderProvider(context.Background(), func(context.Context) coretool.BashPromptResponder {
 		return r
 	})
 	result := (&BashTool{}).ExecuteApproved(ctx, map[string]any{

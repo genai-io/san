@@ -26,7 +26,7 @@ const (
 // prompts through responder, returning the full combined output. A prompt the
 // responder skips (ok=false), an exhausted answer budget, or a cancelled ctx
 // closes the pty so the command fails fast rather than hanging.
-func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder PromptResponder) (string, error) {
+func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, error) {
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return "", err

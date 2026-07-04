@@ -158,7 +158,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		ToolProgress: func(toolCallID string, msg string) {
 			m.conv.ProgressHub.SendForToolCall(toolCallID, msg)
 		},
-		PromptResponder: func(ctx context.Context) tool.PromptResponder {
+		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
 			if m.env.OperationMode != setting.ModeAutoReview {
 				return nil
 			}
