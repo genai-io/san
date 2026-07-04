@@ -52,8 +52,10 @@ type Data struct {
 // AutoReviewSettings tunes the auto-review permission judge. Both fields are
 // optional; empty keeps the built-in defaults (session model + built-in rubric).
 type AutoReviewSettings struct {
-	// Model overrides the model used for review decisions — typically a smaller,
-	// faster model on the current provider. Empty uses the session model.
+	// Model overrides the model used for review decisions. A bare id (e.g.
+	// "claude-haiku-4-5") stays on the session provider; a "vendor/model" ref
+	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
+	// Empty uses the session model.
 	Model string `json:"model,omitempty"`
 	// SystemPromptFile replaces the built-in review rubric with the contents of
 	// the named file. Empty uses the built-in rubric.

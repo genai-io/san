@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -118,17 +119,18 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	}
 
 	snap := m.services.Setting.Snapshot()
-	reviewerModelID := m.env.GetModelID()
-	if snap != nil && snap.AutoReview.Model != "" {
-		reviewerModelID = snap.AutoReview.Model
+	var arModel, arPromptFile string
+	if snap != nil {
+		arModel, arPromptFile = snap.AutoReview.Model, snap.AutoReview.SystemPromptFile
 	}
-	rev := reviewer.New(m.env.LLMProvider, reviewerModelID)
-	if snap != nil && snap.AutoReview.SystemPromptFile != "" {
-		if b, err := os.ReadFile(snap.AutoReview.SystemPromptFile); err == nil {
+	reviewerProvider, reviewerModelID := m.resolveReviewerModel(arModel)
+	rev := reviewer.New(reviewerProvider, reviewerModelID)
+	if arPromptFile != "" {
+		if b, err := os.ReadFile(arPromptFile); err == nil {
 			rev.SetSystemPrompt(string(b))
 		} else {
 			log.Logger().Warn("auto-review systemPromptFile unreadable; using built-in rubric",
-				zap.String("file", snap.AutoReview.SystemPromptFile), zap.Error(err))
+				zap.String("file", arPromptFile), zap.Error(err))
 		}
 	}
 
@@ -230,6 +232,24 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
 		},
 	}
+}
+
+// resolveReviewerModel picks the provider and model for the auto-review judge.
+// A "vendor/model" ref (e.g. "anthropic/claude-haiku-4-5") routes to that
+// connected provider; a bare id stays on the session provider; empty uses the
+// session model. An unresolvable vendor falls back to the session model.
+func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
+	if ref == "" {
+		return m.env.LLMProvider, m.env.GetModelID()
+	}
+	if vendor, id, ok := strings.Cut(ref, "/"); ok && vendor != "" && id != "" && llm.IsProvider(llm.Name(vendor)) {
+		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), llm.Name(vendor)); err == nil {
+			return p, id
+		}
+		log.Logger().Warn("auto-review model vendor unavailable; using session model", zap.String("model", ref))
+		return m.env.LLMProvider, m.env.GetModelID()
+	}
+	return m.env.LLMProvider, ref
 }
 
 // marshalPermInput serializes the tool args for a permission audit record.
