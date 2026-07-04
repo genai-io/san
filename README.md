@@ -28,14 +28,9 @@ model and extensions; there's no Node.js or Python runtime to install.
 
 **Why San**
 
-- **Fast by default** — a ~12 MB single binary, ~0.01s cold start, and no runtime dependency chain (no Node.js, no Python).
-- **Open architecture** — nothing is hard-wired:
-  - **Models & tools** — swap the LLM provider at runtime (`/model`), swap the search backend (`/search`), and toggle any tool on or off (`/tools`) — all under one permission model.
-  - **Personas & extensions** — reusable persona profiles bundle your extensions — skills, plugins, MCP servers, and subagents — all Claude Code-compatible and run unmodified.
-- **A harness, not a black box** — San doesn't just wire the parts together; it runs the loop and hands you the controls:
-  - **Auto-review** — a review agent approves gray-zone actions against a rubric you define, cutting human-in-the-loop without going fully unattended.
-  - **Self-learning policy** — an opt-in background reviewer you configure to grow durable memory and a reusable skill set as you work.
-  - **Fully inspectable** — replay any session and inspect the exact system prompt, tool calls, and permission decisions in a local inspector.
+- **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
+- **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions (skills, plugins, MCP, subagents), all under one permission model.
+- **Harness** — not a black box: auto-review clears gray-zone actions against a rubric you write, an opt-in reviewer grows memory and skills as you work, and every turn is replayable in a local inspector.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -50,22 +45,18 @@ model and extensions; there's no Node.js or Python runtime to install.
 
 </details>
 
-- **Bring your own model** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI; switch with `/model`.
-- **Search when needed** — Exa, Tavily, Brave, and Serper backends; switch with `/search`.
-- **Define agent profiles** — persona bundles package system prompt parts, skills, subagent visibility, and settings overlays into reusable profiles.
-- **Reuse your ecosystem** — Claude Code-style skills, plugins, MCP servers, lifecycle hooks, and sandboxed subagents run inside San's permission model.
-- **Learns as you work** — an opt-in background reviewer distills recent work into durable memory and reusable skills; you set the cadence, size caps, and which skills it may create. *(Level 1 available; deeper levels on the way.)*
+- **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/model`
+- **Search** — Exa, Tavily, Brave, Serper. `/search`
+- **Personas & extensions** — reusable profiles, plus Claude Code skills, plugins, MCP servers, hooks, and sandboxed subagents — all run unmodified. `/persona`
+- **Self-learning** — opt-in; distills durable memory and reusable skills with configurable cadence and caps. *(Level 1; deeper levels on the way.)*
 
 ### Engineering
 
-- **Runs anywhere** — A single ~12 MB binary, zero runtime dependencies. Native Go: ~0.01s cold start, ~32 MB baseline; the same file runs unchanged on a laptop, an edge device, or a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permission system** — Three modes: ask (default), auto-accept, and auto-review, toggled with `Shift+Tab`. In auto-review, a review agent judges gray-zone actions against a rubric you can replace with your own — cutting approvals without going fully unattended. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
-- **Event-driven coordination** — Parallel subagents via a pub/sub hub ([architecture](docs/packages/2-feature/subagent.md)).
-- **Session persistence** — Auto-save, resume (`--continue`, `--resume`), fork (`/fork`), and automatic context compaction (`/compact`).
-- **Cost tracking** — Per-message and per-session token costs across all providers.
-- **Theme & appearance** — Switch TUI color themes via the `/config` Appearance panel; "auto" matches your terminal.
-- **Prompt prediction** — Speculative completion of likely next prompts to cut latency.
-- **Session inspector** — Local web UI for transcript replay, system-prompt forensics, and live-tail of active sessions (`san inspector`).
+- **Runs anywhere** — one static binary for Windows, macOS, and Linux; the same file runs on a laptop, an edge device, or a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
+- **Permissions** — three modes (ask · auto-accept · auto-review) toggled with `Shift+Tab`; subagents inherit the gates ([details](docs/concepts/permission-model.md)).
+- **Sessions** — auto-save, resume (`--continue` / `--resume`), fork (`/fork`), auto-compaction (`/compact`), and per-message cost tracking.
+- **Inspector** — replay transcripts and inspect system prompts in a local web UI (`san inspector`).
+- Plus event-driven subagent coordination, TUI themes, and prompt prediction.
 
 
 ## Installation
