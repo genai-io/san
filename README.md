@@ -29,8 +29,8 @@ model and extensions; there's no Node.js or Python runtime to install.
 **Why San**
 
 - **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
-- **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions (skills, plugins, MCP, subagents), all under one permission model.
-- **Harness** — not a black box: auto-review clears gray-zone actions against a rubric you write, an opt-in reviewer grows memory and skills as you work, and every turn is replayable in a local inspector.
+- **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
+- **Harness** — more than a wrapper: San handles routine approvals for you (auto-review), learns as you work (memory + skills), and lets you replay any turn in a local inspector.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
