@@ -22,6 +22,7 @@
 package app
 
 import (
+	"sync"
 	"sync/atomic"
 
 	"charm.land/bubbles/v2/textarea"
@@ -54,10 +55,19 @@ type model struct {
 	// model_scrollback.go (takeWelcomeBanner).
 	welcomePending bool
 
-	// reviewerApprovals counts auto-review approvals this session for the status
-	// bar. A pointer so value-receiver copies of the model share one counter
-	// across the agent and UI goroutines.
-	reviewerApprovals *atomic.Int64
+	// reviewerApprovals / reviewerEscalations count auto-review outcomes this
+	// session for the status bar: gray-zone tool calls the judge auto-approved
+	// vs. handed back to the user. Pointers so value-receiver copies of the
+	// model share one counter across the agent and UI goroutines.
+	reviewerApprovals   *atomic.Int64
+	reviewerEscalations *atomic.Int64
+
+	// pendingDecisions maps a tool call ID to the auto-review judge's decision,
+	// so the renderer can draw it inline under that tool call. Written on the
+	// agent goroutine (in PermissionReview, before the tool runs) and read on
+	// the UI goroutine at render time — a sync.Map, shared by pointer across
+	// value-receiver copies of the model.
+	pendingDecisions *sync.Map // tool call ID → core.ReviewDecision
 }
 
 var _ conv.Runtime = (*model)(nil)

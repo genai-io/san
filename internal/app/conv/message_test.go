@@ -574,3 +574,28 @@ func Test_renderTaskOutputResultInlineShowsErrorText(t *testing.T) {
 		t.Fatalf("expected TaskOutput error text, got %q", rendered)
 	}
 }
+
+func TestRenderDecision(t *testing.T) {
+	// No decision → no annotation line at all.
+	if got := renderDecision(nil); got != "" {
+		t.Errorf("nil decision should render nothing, got %q", got)
+	}
+
+	approved := stripANSI(renderDecision(&core.ReviewDecision{Approved: true, Reason: "read-only ls, no side effects"}))
+	for _, want := range []string{"↳", "auto-approved", "read-only ls, no side effects"} {
+		if !strings.Contains(approved, want) {
+			t.Errorf("approved decision missing %q: %q", want, approved)
+		}
+	}
+
+	escalated := stripANSI(renderDecision(&core.ReviewDecision{Approved: false, Reason: "writes outside the project"}))
+	if !strings.Contains(escalated, "escalated") {
+		t.Errorf("escalated decision should say so: %q", escalated)
+	}
+
+	// A blank reason drops the separator rather than leaving a dangling "·".
+	bare := stripANSI(renderDecision(&core.ReviewDecision{Approved: true}))
+	if strings.Contains(bare, "·") {
+		t.Errorf("blank reason should not render a separator: %q", bare)
+	}
+}

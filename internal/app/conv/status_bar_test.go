@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestClassifyContextTier_Boundaries(t *testing.T) {
@@ -218,5 +220,42 @@ func TestFitStatusSegments_AccountsForSeparatorWidth(t *testing.T) {
 	}
 	if got := fitStatusSegments(segments, 12, 3); len(got) != 1 || got[0] != "aaaaa" {
 		t.Errorf("separator should push the second segment out at width 12; got %q", got)
+	}
+}
+
+func TestRenderOperationModeIndicator_AutoReviewCounts(t *testing.T) {
+	cases := []struct {
+		name        string
+		approvals   int
+		escalations int
+		wantApprove bool
+		wantEscal   bool
+	}{
+		{"fresh session hides both", 0, 0, false, false},
+		{"approvals only", 3, 0, true, false},
+		{"escalations only", 0, 2, false, true},
+		{"both", 3, 2, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoReview, c.approvals, c.escalations))
+			if !strings.Contains(out, "auto review on") {
+				t.Fatalf("missing base label: %q", out)
+			}
+			if got := strings.Contains(out, "approved"); got != c.wantApprove {
+				t.Errorf("approved shown=%v, want %v (out=%q)", got, c.wantApprove, out)
+			}
+			if got := strings.Contains(out, "escalated"); got != c.wantEscal {
+				t.Errorf("escalated shown=%v, want %v (out=%q)", got, c.wantEscal, out)
+			}
+		})
+	}
+}
+
+func TestRenderOperationModeIndicator_CountsOnlyInAutoReview(t *testing.T) {
+	// Approvals/escalations are an auto-review concept; other modes never show them.
+	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoAccept, 5, 4))
+	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {
+		t.Errorf("accept-edits mode must not show review counts: %q", out)
 	}
 }

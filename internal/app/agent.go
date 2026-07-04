@@ -201,7 +201,8 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			}
 			// Defense in depth: the judge may never approve a floored action,
 			// even if one somehow reaches it.
-			if setting.BypassImmuneReason(name, args) != "" {
+			if r := setting.BypassImmuneReason(name, args); r != "" {
+				m.recordDecision(ctx, false, r)
 				return agent.PermReviewResult{}
 			}
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -215,6 +216,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 				zap.String("reason", verdict.Reason),
 				zap.Error(err))
 			if err != nil || !verdict.Allow {
+				m.recordDecision(ctx, false, escalationReason(verdict.Reason, err))
 				return agent.PermReviewResult{} // fail closed → escalate to human
 			}
 			if rec != nil {
@@ -228,7 +230,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			// the session. Safe to write here: the agent goroutine is the only
 			// mutator (the human-approval writer runs only while it is parked).
 			m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
-			m.reviewerApprovals.Add(1)
+			// Tally it and stash the decision so the renderer can draw it inline
+			// under the tool call the judge just let through (the status-bar count
+			// alone doesn't say what was approved or why).
+			m.recordDecision(ctx, true, verdict.Reason)
 			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
 		},
 	}
@@ -250,6 +255,50 @@ func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
 		return m.env.LLMProvider, m.env.GetModelID()
 	}
 	return m.env.LLMProvider, ref
+}
+
+// recordDecision tallies one auto-review decision for the status-bar count and
+// stashes it for the renderer, keyed by the tool call ID carried in ctx and
+// consumed (load + delete) in TakeDecision — so the handoff map only ever
+// holds calls whose result has not arrived yet. The approved flag
+// picks the counter, so the count and the inline annotations can never drift.
+// The count is bumped even when ctx carries no tool call ID; only the stash
+// needs one.
+func (m *model) recordDecision(ctx context.Context, approved bool, reason string) {
+	if approved {
+		m.reviewerApprovals.Add(1)
+	} else {
+		m.reviewerEscalations.Add(1)
+	}
+	if id := core.ToolCallIDFromContext(ctx); id != "" {
+		m.pendingDecisions.Store(id, core.ReviewDecision{Approved: approved, Reason: reason})
+	}
+}
+
+// TakeDecision consumes the decision stashed for a tool call (load + delete),
+// so it stamps exactly one rendered result and the handoff map holds only
+// in-flight calls. Returns nil when the call was not auto-reviewed. Mirrors the
+// tool side-effect handoff (Tool.PopSideEffect), consumed at the same point in
+// OnToolResult.
+func (m *model) TakeDecision(callID string) *core.ReviewDecision {
+	// No empty-callID guard: recordDecision never stores under an empty key, so
+	// LoadAndDelete("") already misses and returns nil.
+	v, ok := m.pendingDecisions.LoadAndDelete(callID)
+	if !ok {
+		return nil
+	}
+	decision := v.(core.ReviewDecision)
+	return &decision
+}
+
+// escalationReason is the one-line explanation shown when the judge sends a
+// gray-zone call back to the user: the judge's own reason, or a generic note
+// when it could not reach a decision (error / timeout / unparseable reply).
+func escalationReason(judgeReason string, err error) string {
+	if err != nil || judgeReason == "" {
+		return "auto-review unavailable — asking you"
+	}
+	return judgeReason
 }
 
 // marshalPermInput serializes the tool args for a permission audit record.

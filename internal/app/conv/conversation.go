@@ -97,7 +97,7 @@ func (m *ConversationModel) AppendErrorToLast(err error) {
 	}
 }
 
-func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string) {
+func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.ReviewDecision) {
 	for _, tc := range calls {
 		m.Append(core.ChatMessage{
 			Role: core.RoleUser,
@@ -107,6 +107,10 @@ func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, co
 				Content:    contentFn(tc),
 				IsError:    true,
 			},
+			// Consume the stashed auto-review decision so an interrupted judged
+			// call still shows its annotation and its handoff entry is released
+			// (this synthetic result never reaches the applyPostTool path).
+			Decision: decisionFn(tc.ID),
 		})
 	}
 }

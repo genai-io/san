@@ -217,26 +217,27 @@ func fitStatusSegments(segments []statusSegment, maxWidth, sepWidth int) []strin
 
 // OperationModeParams holds the parameters needed for rendering mode status.
 type OperationModeParams struct {
-	Mode             setting.OperationMode
-	InputTokens      int
-	InputLimit       int
-	ModelName        string
-	StatusMessage    string
-	ConversationCost llm.Money
-	Compressions     int  // session compact count, drives the "compacted ×N" badge
-	ShowContextBar   bool // render the visual [██████░░░░] 71% bar (opt-in)
-	Width            int
-	ThinkingEffort   string
-	ShowThinking     bool
-	QueueCount       int
-	ReviewApprovals  int // auto-review approvals this session, shown next to the mode
+	Mode              setting.OperationMode
+	InputTokens       int
+	InputLimit        int
+	ModelName         string
+	StatusMessage     string
+	ConversationCost  llm.Money
+	Compressions      int  // session compact count, drives the "compacted ×N" badge
+	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
+	Width             int
+	ThinkingEffort    string
+	ShowThinking      bool
+	QueueCount        int
+	ReviewApprovals   int // auto-review approvals this session, shown next to the mode
+	ReviewEscalations int // auto-review escalations to the user this session
 }
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
 	var leftParts []string
 
-	if modeStatus := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals); modeStatus != "" {
+	if modeStatus := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations); modeStatus != "" {
 		leftParts = append(leftParts, modeStatus)
 	}
 
@@ -341,7 +342,7 @@ func compactStatusHint(percent float64) string {
 }
 
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or bypass mode.
-func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals int) string {
+func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int) string {
 	var icon, label string
 	var clr kit.AdaptiveColor
 
@@ -362,8 +363,13 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals in
 		return ""
 	}
 
-	if mode == setting.ModeAutoReview && reviewApprovals > 0 {
-		label += fmt.Sprintf(" · %d approved", reviewApprovals)
+	if mode == setting.ModeAutoReview {
+		if reviewApprovals > 0 {
+			label += fmt.Sprintf(" · %d approved", reviewApprovals)
+		}
+		if reviewEscalations > 0 {
+			label += fmt.Sprintf(" · %d escalated", reviewEscalations)
+		}
 	}
 
 	style := lipgloss.NewStyle().Foreground(clr)

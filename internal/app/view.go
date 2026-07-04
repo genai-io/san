@@ -259,20 +259,25 @@ func (m model) renderModeStatus() string {
 	if m.reviewerApprovals != nil {
 		reviewApprovals = int(m.reviewerApprovals.Load())
 	}
+	reviewEscalations := 0
+	if m.reviewerEscalations != nil {
+		reviewEscalations = int(m.reviewerEscalations.Load())
+	}
 	return conv.RenderModeStatus(conv.OperationModeParams{
-		Mode:             m.env.OperationMode,
-		InputTokens:      m.env.InputTokens,
-		InputLimit:       kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
-		ModelName:        modelName,
-		StatusMessage:    m.userInput.Provider.StatusMessage,
-		ConversationCost: m.env.ConversationCost,
-		Compressions:     m.env.Compressions,
-		ShowContextBar:   m.env.ShowContextBar,
-		Width:            m.env.Width,
-		ThinkingEffort:   thinkingEffort,
-		ShowThinking:     showThinking,
-		QueueCount:       m.userInput.Queue.Len(),
-		ReviewApprovals:  reviewApprovals,
+		Mode:              m.env.OperationMode,
+		InputTokens:       m.env.InputTokens,
+		InputLimit:        kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
+		ModelName:         modelName,
+		StatusMessage:     m.userInput.Provider.StatusMessage,
+		ConversationCost:  m.env.ConversationCost,
+		Compressions:      m.env.Compressions,
+		ShowContextBar:    m.env.ShowContextBar,
+		Width:             m.env.Width,
+		ThinkingEffort:    thinkingEffort,
+		ShowThinking:      showThinking,
+		QueueCount:        m.userInput.Queue.Len(),
+		ReviewApprovals:   reviewApprovals,
+		ReviewEscalations: reviewEscalations,
 	})
 }
 

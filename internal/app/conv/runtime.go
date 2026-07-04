@@ -24,6 +24,9 @@ type Runtime interface {
 	OnTokenUsage(resp *core.InferResponse)
 	OnAgentMessage(msg core.Message) tea.Cmd
 	OnToolResult(tr core.ToolResult) *core.ToolResult
+	// TakeDecision consumes the auto-review decision stashed for a tool
+	// call (nil if it was not auto-reviewed), to stamp onto its rendered result.
+	TakeDecision(callID string) *core.ReviewDecision
 	OnTurnEnd(result core.Result) tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnPermGateRequest(req *PermGateRequest) tea.Cmd

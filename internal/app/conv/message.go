@@ -88,6 +88,13 @@ var (
 	agentLabelStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Success)
 
+	// Auto-review decision labels: green when the judge auto-approved a
+	// gray-zone tool call, amber when it escalated the call back to the user.
+	decisionApprovedStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Success)
+	decisionEscalatedStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Warning)
+
 	trackerPendingStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted)
 
@@ -382,6 +389,27 @@ func RenderSystemMessage(content string) string {
 	return systemMsgStyle.Render(content) + "\n"
 }
 
+// renderDecision renders the auto-review outcome as a one-line annotation
+// between a tool call and its result: a "↳" arrow plus the decision — green
+// "auto-approved" when the judge let it through, amber "escalated" when it
+// handed the call back to the user — and the judge's one-sentence reason dimmed
+// after it. Returns "" when the call was not judged. The "  ↳" indent aligns the
+// arrow with the "⎿" result trailer on the line below.
+func renderDecision(v *core.ReviewDecision) string {
+	if v == nil {
+		return ""
+	}
+	label, style := "escalated", decisionEscalatedStyle
+	if v.Approved {
+		label, style = "auto-approved", decisionApprovedStyle
+	}
+	line := style.Render("  ↳ " + label)
+	if v.Reason != "" {
+		line += toolResultStyle.Render(" · " + v.Reason)
+	}
+	return line + "\n"
+}
+
 // ToolCallsParams holds the parameters for rendering tool calls.
 type ToolCallsParams struct {
 	ToolCalls         []core.ToolCall
@@ -411,6 +439,9 @@ type ToolResultData struct {
 	Interactive bool
 	Expanded    bool
 	ToolInput   string
+	// Decision is the auto-review decision for this call (nil if it was not
+	// judged), drawn as a colored line between the call and its result.
+	Decision *core.ReviewDecision
 }
 
 // RenderToolCalls renders the tool calls section of an assistant core.
@@ -471,6 +502,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.Interactive
+			// Decision sits between the call and its result, mirroring the
+			// order things happened: judged → ran → produced this output.
+			sb.WriteString(renderDecision(resultData.Decision))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
 		} else if tool.IsAgentToolName(tc.Name) {
 			limit := maxCompactAgentToolLines

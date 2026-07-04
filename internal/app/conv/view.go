@@ -107,6 +107,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage) inlinedToolResults {
 				Content:  next.ToolResult.Content,
 				IsError:  next.ToolResult.IsError,
 				Expanded: next.Expanded,
+				Decision: next.Decision,
 			}
 		}
 	}

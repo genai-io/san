@@ -76,6 +76,15 @@ type Message struct {
 	Signal            Signal          `json:"-"`
 }
 
+// ReviewDecision is the auto-review judge's display-only outcome for one
+// gray-zone tool call: whether it was auto-approved (vs. escalated to the user)
+// and the judge's one-sentence reason. Rendered inline under the tool call it
+// annotates; never persisted or sent to the provider.
+type ReviewDecision struct {
+	Approved bool
+	Reason   string
+}
+
 // ChatMessage is the TUI view-model for one conversation entry: the same
 // content as Message plus transient display state (the expand/collapse
 // toggles). The app layer renders ChatMessages and converts them back to
@@ -100,6 +109,12 @@ type ChatMessage struct {
 	ToolResult        *ToolResult
 	ToolCallsExpanded bool // UI: the assistant's tool-call block is expanded
 	Expanded          bool // UI: the tool-result block is expanded
+
+	// Decision is the auto-review judge's decision for the tool call this message
+	// carries the result of — set only on a RoleUser/ToolResult message whose
+	// call was judged, so the renderer can draw the decision inline under the
+	// tool call. Display-only: dropped by ToMessage, never persisted.
+	Decision *ReviewDecision
 
 	// Streaming-commit progress. While an assistant message streams, completed
 	// markdown blocks are flushed to native scrollback (tea.Println) as they
