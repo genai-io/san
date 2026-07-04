@@ -10,9 +10,9 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// maxAgentProgressLines is the maximum number of progress lines to display.
+// maxAgentActivityLines is the maximum number of activity lines to display.
 // Older lines scroll off the top, keeping the view compact.
-const maxAgentProgressLines = 8
+const maxAgentActivityLines = 8
 
 const (
 	maxCompactAgentToolLines  = 3
@@ -25,17 +25,17 @@ type AgentStats struct {
 	OutputTokens int
 }
 
-// renderAgentProgress renders the most recent agent progress lines,
-// capped at maxAgentProgressLines to keep the view height bounded.
-func renderAgentProgress(progress []string) string {
-	if len(progress) == 0 {
+// renderAgentActivity renders the most recent agent activity lines,
+// capped at maxAgentActivityLines to keep the view height bounded.
+func renderAgentActivity(activity []string) string {
+	if len(activity) == 0 {
 		return ""
 	}
 
 	// Only show the most recent lines
-	visible := progress
-	if len(visible) > maxAgentProgressLines {
-		visible = visible[len(visible)-maxAgentProgressLines:]
+	visible := activity
+	if len(visible) > maxAgentActivityLines {
+		visible = visible[len(visible)-maxAgentActivityLines:]
 	}
 
 	var sb strings.Builder
@@ -45,7 +45,7 @@ func renderAgentProgress(progress []string) string {
 	return sb.String()
 }
 
-func renderAgentProgressInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskProgress map[int][]string, expanded bool, limit int, stats AgentStats) string {
+func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskProgress map[int][]string, expanded bool, limit int, stats AgentStats) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -57,60 +57,60 @@ func renderAgentProgressInline(tc core.ToolCall, pendingCalls []core.ToolCall, t
 		return ""
 	}
 
-	progress := taskProgress[idx]
+	activity := taskProgress[idx]
 	if expanded {
-		return renderAgentProgress(progress)
+		return renderAgentActivity(activity)
 	}
-	return renderAgentProgressCompact(tc.Input, progress, limit, stats)
+	return renderAgentActivityCompact(tc.Input, activity, limit, stats)
 }
 
-func renderAgentProgressCompact(input string, progress []string, limit int, stats AgentStats) string {
+func renderAgentActivityCompact(input string, activity []string, limit int, stats AgentStats) string {
 	var sb strings.Builder
-	if summary := agentSummary(input, progress, stats); summary != "" {
+	if summary := agentSummary(input, activity, stats); summary != "" {
 		sb.WriteString(toolResultStyle.Render("  ⎿  "+summary) + "\n")
 	}
 
-	toolLines := agentToolLines(progress, limit)
+	toolLines := agentToolLines(activity, limit)
 	for _, line := range toolLines {
 		sb.WriteString(toolResultStyle.Render("  ⎿  "+line) + "\n")
 	}
 	if len(toolLines) == 0 {
-		sb.WriteString(toolResultStyle.Render("  ⎿  "+agentStatus(progress)) + "\n")
+		sb.WriteString(toolResultStyle.Render("  ⎿  "+agentStatus(activity)) + "\n")
 	}
 	return sb.String()
 }
 
-func agentSummary(input string, progress []string, stats AgentStats) string {
+func agentSummary(input string, activity []string, stats AgentStats) string {
 	parts := make([]string, 0, 4)
-	if model := agentModel(progress, stats.Model); model != "" {
+	if model := agentModel(activity, stats.Model); model != "" {
 		parts = append(parts, "model: "+model)
 	}
-	if mode := agentMode(input, progress); mode != "" {
+	if mode := agentMode(input, activity); mode != "" {
 		parts = append(parts, "mode: "+mode)
 	}
-	if n := len(agentToolLines(progress, 0)); n > 0 {
+	if n := len(agentToolLines(activity, 0)); n > 0 {
 		parts = append(parts, fmt.Sprintf("tools: %d", n))
 	}
-	if tokens := agentTokens(progress, stats); tokens != "" {
+	if tokens := agentTokens(activity, stats); tokens != "" {
 		parts = append(parts, "tokens: "+tokens)
 	}
 	return strings.Join(parts, "   ")
 }
 
-func agentModel(progress []string, fallback string) string {
-	for i := len(progress) - 1; i >= 0; i-- {
-		if model, ok := strings.CutPrefix(strings.TrimSpace(progress[i]), "Model: "); ok {
+func agentModel(activity []string, fallback string) string {
+	for i := len(activity) - 1; i >= 0; i-- {
+		if model, ok := strings.CutPrefix(strings.TrimSpace(activity[i]), "Model: "); ok {
 			return strings.TrimSpace(model)
 		}
 	}
 	return fallback
 }
 
-func agentMode(input string, progress []string) string {
+func agentMode(input string, activity []string) string {
 	if mode := parseAgentInput(input).Mode; mode != "" {
 		return mode
 	}
-	for _, line := range progress {
+	for _, line := range activity {
 		if after, ok := strings.CutPrefix(line, "Mode: "); ok {
 			mode, _, _ := strings.Cut(after, " · ")
 			return strings.TrimSpace(mode)
@@ -126,9 +126,9 @@ func tokenSummary(inputTokens, outputTokens int) string {
 	return fmt.Sprintf("↑%s ↓%s", kit.FormatTokenCount(inputTokens), kit.FormatTokenCount(outputTokens))
 }
 
-func agentTokens(progress []string, stats AgentStats) string {
-	for i := len(progress) - 1; i >= 0; i-- {
-		inputTokens, outputTokens, ok := parseUsageProgress(progress[i])
+func agentTokens(activity []string, stats AgentStats) string {
+	for i := len(activity) - 1; i >= 0; i-- {
+		inputTokens, outputTokens, ok := parseUsageActivity(activity[i])
 		if ok {
 			return tokenSummary(inputTokens, outputTokens)
 		}
@@ -136,7 +136,7 @@ func agentTokens(progress []string, stats AgentStats) string {
 	return tokenSummary(stats.InputTokens, stats.OutputTokens)
 }
 
-func parseUsageProgress(line string) (int, int, bool) {
+func parseUsageActivity(line string) (int, int, bool) {
 	line = strings.TrimSpace(line)
 	rest, ok := strings.CutPrefix(line, "Usage: ")
 	if !ok {
@@ -162,9 +162,9 @@ func parseUsageProgress(line string) (int, int, bool) {
 	return inputTokens, outputTokens, inputTokens > 0 || outputTokens > 0
 }
 
-func agentStatus(progress []string) string {
-	for i := len(progress) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(progress[i])
+func agentStatus(activity []string) string {
+	for i := len(activity) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(activity[i])
 		if line == "" || isAgentToolLine(line) || strings.HasPrefix(line, "Mode: ") || strings.HasPrefix(line, "Model: ") || strings.HasPrefix(line, "Usage: ") {
 			continue
 		}
@@ -173,9 +173,9 @@ func agentStatus(progress []string) string {
 	return "Starting..."
 }
 
-func agentToolLines(progress []string, limit int) []string {
-	lines := make([]string, 0, len(progress))
-	for _, line := range progress {
+func agentToolLines(activity []string, limit int) []string {
+	lines := make([]string, 0, len(activity))
+	for _, line := range activity {
 		if isAgentToolLine(line) {
 			lines = append(lines, line)
 		}
@@ -204,8 +204,8 @@ type PendingToolSpinnerParams struct {
 	PendingCalls []core.ToolCall
 	// CurrentIdx is the index of the current sequential tool.
 	CurrentIdx int
-	// TaskProgress tracks agent progress messages by index.
-	TaskProgress map[int][]string
+	// TaskActivity tracks agent activity messages by index.
+	TaskActivity map[int][]string
 	// SpinnerView is the current spinner frame.
 	SpinnerView string
 	// Blink drives the agent running icon.
@@ -215,7 +215,7 @@ type PendingToolSpinnerParams struct {
 	// Width is the terminal width for label truncation.
 	Width int
 	// SuppressAgentLabel avoids duplicating the active agent title when the
-	// assistant message already rendered it above the progress lines.
+	// assistant message already rendered it above the activity lines.
 	SuppressAgentLabel bool
 }
 
@@ -235,7 +235,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 		return ""
 	}
 
-	// Agent tool: render agent label + progress lines
+	// Agent tool: render agent label + activity lines
 	if tool.IsAgentToolName(toolName) {
 		if params.SuppressAgentLabel {
 			return ""
@@ -247,7 +247,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 			label := formatAgentLabel(tc.Input)
 			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), agentColorForInput(tc.Input, params.AgentColors)) + "\n")
 		}
-		sb.WriteString(renderAgentProgress(params.TaskProgress[params.CurrentIdx]))
+		sb.WriteString(renderAgentActivity(params.TaskActivity[params.CurrentIdx]))
 		return sb.String()
 	}
 

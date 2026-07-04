@@ -9,10 +9,10 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// AgentStatusMsg carries one status line from a running agent — its model, its
-// mode, a tool it is calling, "Thinking...", or token usage. Lines accumulate
-// into the per-agent progress feed the TUI renders.
-type AgentStatusMsg struct {
+// AgentActivityMsg carries one activity line from a running agent — its model,
+// its mode, a tool it is calling, "Thinking...", or token usage. Lines
+// accumulate into the per-agent activity feed the TUI renders.
+type AgentActivityMsg struct {
 	Index      int
 	ToolCallID string
 	Message    string
@@ -23,11 +23,11 @@ type AgentStatusMsg struct {
 type AgentToUITickMsg struct{}
 
 // AgentToUI is the instance-scoped transport from running agents and tools
-// to the TUI. It multiplexes three kinds of traffic: progress lines to display,
+// to the TUI. It multiplexes three kinds of traffic: activity lines to display,
 // interactive questions to ask (AskUser lands here), and masked secret prompts
 // (RequestSecret lands here). The agent side sends; the TUI side polls Check.
 type AgentToUI struct {
-	ch  chan AgentStatusMsg
+	ch  chan AgentActivityMsg
 	qch chan QuestionRequestMsg
 	sch chan SecretPromptRequestMsg
 }
@@ -38,24 +38,24 @@ func NewAgentToUI(buffer int) *AgentToUI {
 		buffer = 100
 	}
 	return &AgentToUI{
-		ch:  make(chan AgentStatusMsg, buffer),
+		ch:  make(chan AgentActivityMsg, buffer),
 		qch: make(chan QuestionRequestMsg, buffer),
 		sch: make(chan SecretPromptRequestMsg, buffer),
 	}
 }
 
-// SendForAgent enqueues a progress message for a specific agent index.
+// SendForAgent enqueues an activity line for a specific agent index.
 func (h *AgentToUI) SendForAgent(index int, msg string) {
 	select {
-	case h.ch <- AgentStatusMsg{Index: index, Message: msg}:
+	case h.ch <- AgentActivityMsg{Index: index, Message: msg}:
 	default:
 	}
 }
 
-// SendForToolCall enqueues a progress message for a specific tool call.
+// SendForToolCall enqueues an activity line for a specific tool call.
 func (h *AgentToUI) SendForToolCall(toolCallID string, msg string) {
 	select {
-	case h.ch <- AgentStatusMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
+	case h.ch <- AgentActivityMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
 	default:
 	}
 }
@@ -149,23 +149,23 @@ func (h *AgentToUI) DrainPendingQuestions() {
 	}
 }
 
-// Drain pulls all pending progress updates into taskProgress.
-func (h *AgentToUI) Drain(taskProgress map[int][]string) map[int][]string {
+// Drain pulls all pending activity lines into taskActivity.
+func (h *AgentToUI) Drain(taskActivity map[int][]string) map[int][]string {
 	for {
 		select {
 		case u := <-h.ch:
-			if taskProgress == nil {
-				taskProgress = make(map[int][]string)
+			if taskActivity == nil {
+				taskActivity = make(map[int][]string)
 			}
-			taskProgress[u.Index] = append(taskProgress[u.Index], u.Message)
-			if len(taskProgress[u.Index]) > maxAgentProgressHistory {
-				taskProgress[u.Index] = taskProgress[u.Index][len(taskProgress[u.Index])-maxAgentProgressHistory:]
+			taskActivity[u.Index] = append(taskActivity[u.Index], u.Message)
+			if len(taskActivity[u.Index]) > maxAgentActivityHistory {
+				taskActivity[u.Index] = taskActivity[u.Index][len(taskActivity[u.Index])-maxAgentActivityHistory:]
 			}
 		default:
-			return taskProgress
+			return taskActivity
 		}
 	}
 }
 
-// maxAgentProgressHistory is the maximum number of progress lines retained per agent.
-const maxAgentProgressHistory = 12
+// maxAgentActivityHistory is the maximum number of activity lines retained per agent.
+const maxAgentActivityHistory = 12

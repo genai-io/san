@@ -419,14 +419,14 @@ func TestRenderToolCallsShowsSingleAgentRuntimeProgress(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		TaskProgress: map[int][]string{
+		TaskActivity: map[int][]string{
 			0: {
 				"Mode: explore · max 100 turns",
 				"Thinking...",
 				"Read(internal/tool/schema_agent.go)",
 				"Grep(ContinueAgent)",
 				"Read(internal/app/conv/message.go)",
-				"Grep(renderAgentProgressInline)",
+				"Grep(renderAgentActivityInline)",
 			},
 		},
 		ModelName:    "gpt-5.4-mini",
@@ -448,7 +448,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeProgress(t *testing.T) {
 	if strings.Contains(rendered, "Read(internal/tool/schema_agent.go)") {
 		t.Fatalf("RenderToolCalls() = %q, want only the latest three tool calls", rendered)
 	}
-	for _, want := range []string{"Grep(ContinueAgent)", "Read(internal/app/conv/message.go)", "Grep(renderAgentProgressInline)"} {
+	for _, want := range []string{"Grep(ContinueAgent)", "Read(internal/app/conv/message.go)", "Grep(renderAgentActivityInline)"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("RenderToolCalls() = %q, missing recent tool call %q", rendered, want)
 		}
@@ -466,7 +466,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		TaskProgress: map[int][]string{
+		TaskActivity: map[int][]string{
 			0: {
 				"Mode: explore · max 100 turns",
 				"Thinking...",
@@ -497,7 +497,7 @@ func TestRenderToolCallsUsesProgressModelForAgentSummary(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		TaskProgress: map[int][]string{
+		TaskActivity: map[int][]string{
 			0: {
 				"Model: gpt-5.5",
 				"Mode: explore · max 100 turns",
@@ -511,7 +511,7 @@ func TestRenderToolCallsUsesProgressModelForAgentSummary(t *testing.T) {
 
 	rendered := stripANSI(RenderToolCalls(params))
 	if !strings.Contains(rendered, "model: gpt-5.5") {
-		t.Fatalf("RenderToolCalls() = %q, want progress model", rendered)
+		t.Fatalf("RenderToolCalls() = %q, want activity model", rendered)
 	}
 	if strings.Contains(rendered, "model: sonnet") {
 		t.Fatalf("RenderToolCalls() = %q, should not use raw tool input model", rendered)
@@ -529,7 +529,7 @@ func TestRenderToolCallsUsesProgressUsageForAgentTokens(t *testing.T) {
 		ResultMap:    map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{call},
 		CurrentIdx:   0,
-		TaskProgress: map[int][]string{
+		TaskActivity: map[int][]string{
 			0: {
 				"Model: kimi-k2.6",
 				"Mode: explore · max 100 turns",
@@ -547,7 +547,7 @@ func TestRenderToolCallsUsesProgressUsageForAgentTokens(t *testing.T) {
 
 	rendered := stripANSI(RenderToolCalls(params))
 	if !strings.Contains(rendered, "tokens: ↑9.2k ↓410") {
-		t.Fatalf("RenderToolCalls() = %q, want latest progress token usage", rendered)
+		t.Fatalf("RenderToolCalls() = %q, want latest activity token usage", rendered)
 	}
 	if strings.Contains(rendered, "tools: 3") {
 		t.Fatalf("RenderToolCalls() = %q, usage lines should not count as tools", rendered)

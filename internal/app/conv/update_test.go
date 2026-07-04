@@ -6,29 +6,29 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func TestHandleProgressWithoutAgentToUIDoesNotPanic(t *testing.T) {
+func TestHandleActivityWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
 
-	cmd := m.HandleProgress(AgentStatusMsg{
+	cmd := m.HandleActivity(AgentActivityMsg{
 		Index:   1,
 		Message: "step",
 	})
 	if cmd == nil {
 		t.Fatal("expected spinner cmd even without an agent-to-UI channel")
 	}
-	if len(m.TaskProgress[1]) != 1 || m.TaskProgress[1][0] != "step" {
-		t.Fatalf("unexpected progress state: %#v", m.TaskProgress)
+	if len(m.TaskActivity[1]) != 1 || m.TaskActivity[1][0] != "step" {
+		t.Fatalf("unexpected activity state: %#v", m.TaskActivity)
 	}
 }
 
 func Test_drainProgressWithoutHubIsNoop(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
-	m.TaskProgress = map[int][]string{2: {"existing"}}
+	m.TaskActivity = map[int][]string{2: {"existing"}}
 
 	m.drainProgress()
 
-	if len(m.TaskProgress[2]) != 1 || m.TaskProgress[2][0] != "existing" {
-		t.Fatalf("unexpected progress state after drain: %#v", m.TaskProgress)
+	if len(m.TaskActivity[2]) != 1 || m.TaskActivity[2][0] != "existing" {
+		t.Fatalf("unexpected activity state after drain: %#v", m.TaskActivity)
 	}
 }
 

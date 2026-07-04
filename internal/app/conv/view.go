@@ -37,9 +37,9 @@ type RenderContext struct {
 	InputTokens  int
 	OutputTokens int
 
-	// ── Decorations (color / progress maps) ─────────────────────
+	// ── Decorations (color / activity maps) ─────────────────────
 	AgentColors  map[string]string
-	TaskProgress map[int][]string
+	TaskActivity map[int][]string
 	TaskOwnerMap map[string]string
 
 	// ── Modal interlock — suppress chrome under a tool prompt ───
@@ -216,7 +216,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ToolCallsExpanded: msg.ToolCallsExpanded,
 		ResultMap:         resultMap,
 		ParallelMode:      len(p.PendingCalls) > 1,
-		TaskProgress:      p.TaskProgress,
+		TaskActivity:      p.TaskActivity,
 		PendingCalls:      p.PendingCalls,
 		CurrentIdx:        p.CurrentIdx,
 		ModelName:         p.ModelName,
@@ -284,7 +284,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		BuildingTool:            p.BuildingTool,
 		PendingCalls:            p.PendingCalls,
 		CurrentIdx:              p.CurrentIdx,
-		TaskProgress:            p.TaskProgress,
+		TaskActivity:            p.TaskActivity,
 		SpinnerView:             p.SpinnerView,
 		Blink:                   p.Blink,
 		AgentColors:             p.AgentColors,

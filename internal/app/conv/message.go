@@ -388,7 +388,7 @@ type ToolCallsParams struct {
 	ToolCallsExpanded bool
 	ResultMap         map[string]ToolResultData
 	ParallelMode      bool
-	TaskProgress      map[int][]string
+	TaskActivity      map[int][]string
 	PendingCalls      []core.ToolCall
 	CurrentIdx        int
 	ModelName         string
@@ -477,7 +477,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if params.ParallelMode {
 				limit = maxParallelAgentToolLines
 			}
-			sb.WriteString(renderAgentProgressInline(tc, params.PendingCalls, params.TaskProgress, params.ToolCallsExpanded, limit, AgentStats{
+			sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, limit, AgentStats{
 				Model:        params.ModelName,
 				InputTokens:  params.InputTokens,
 				OutputTokens: params.OutputTokens,

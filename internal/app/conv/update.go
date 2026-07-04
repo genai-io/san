@@ -11,7 +11,7 @@ import (
 )
 
 // Update routes all output-path messages: agent outbox, permission gate,
-// compaction results, and progress updates.
+// compaction results, and activity updates.
 func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case AgentOutboxMsg:
@@ -29,16 +29,16 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		return rt.OnCompactResult(msg), true
 	case kit.TokenLimitResultMsg:
 		return rt.OnTokenLimitResult(msg), true
-	case AgentStatusMsg:
+	case AgentActivityMsg:
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
 		}
 		if msg.Index < 0 {
-			return m.HandleProgressTick(rt.HasRunningTasks()), true
+			return m.HandleActivityTick(rt.HasRunningTasks()), true
 		}
-		return m.HandleProgress(msg), true
+		return m.HandleActivity(msg), true
 	case AgentToUITickMsg:
-		return m.HandleProgressTick(rt.HasRunningTasks()), true
+		return m.HandleActivityTick(rt.HasRunningTasks()), true
 	default:
 		return nil, false
 	}
@@ -249,7 +249,7 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	}
 	m.Stream.BuildingTool = ""
 	if tool.IsAgentToolName(tr.ToolName) {
-		m.TaskProgress = nil
+		m.TaskActivity = nil
 	}
 	m.Tool.MarkComplete(tr.ToolCallID)
 	// A tool that completed just before the user pressed Esc may have its
@@ -272,23 +272,23 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	return nil
 }
 
-// --- Progress handling (operates on output Model directly) ---
+// --- Activity handling (operates on output Model directly) ---
 
 func (m *OutputModel) drainProgress() {
 	if m.AgentToUI == nil {
 		return
 	}
-	m.TaskProgress = m.AgentToUI.Drain(m.TaskProgress)
+	m.TaskActivity = m.AgentToUI.Drain(m.TaskActivity)
 }
 
-func (m *OutputModel) HandleProgress(msg AgentStatusMsg) tea.Cmd {
-	if m.TaskProgress == nil {
-		m.TaskProgress = make(map[int][]string)
+func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
+	if m.TaskActivity == nil {
+		m.TaskActivity = make(map[int][]string)
 	}
-	m.TaskProgress[msg.Index] = append(m.TaskProgress[msg.Index], msg.Message)
-	// Cap progress entries per agent to prevent unbounded growth
-	if len(m.TaskProgress[msg.Index]) > maxAgentProgressHistory {
-		m.TaskProgress[msg.Index] = m.TaskProgress[msg.Index][len(m.TaskProgress[msg.Index])-maxAgentProgressHistory:]
+	m.TaskActivity[msg.Index] = append(m.TaskActivity[msg.Index], msg.Message)
+	// Cap activity entries per agent to prevent unbounded growth
+	if len(m.TaskActivity[msg.Index]) > maxAgentActivityHistory {
+		m.TaskActivity[msg.Index] = m.TaskActivity[msg.Index][len(m.TaskActivity[msg.Index])-maxAgentActivityHistory:]
 	}
 
 	if m.AgentToUI == nil {
@@ -297,7 +297,7 @@ func (m *OutputModel) HandleProgress(msg AgentStatusMsg) tea.Cmd {
 	return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
 }
 
-func (m *OutputModel) HandleProgressTick(hasRunningTasks bool) tea.Cmd {
+func (m *OutputModel) HandleActivityTick(hasRunningTasks bool) tea.Cmd {
 	if m.AgentToUI != nil {
 		if hasRunningTasks {
 			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())

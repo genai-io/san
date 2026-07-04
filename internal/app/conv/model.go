@@ -11,7 +11,7 @@ import (
 type OutputModel struct {
 	Spinner      FrameClock
 	MDRenderer   *MDRenderer
-	TaskProgress map[int][]string
+	TaskActivity map[int][]string
 	AgentToUI    *AgentToUI
 	ShowTasks    bool
 }

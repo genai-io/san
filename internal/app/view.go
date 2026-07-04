@@ -318,7 +318,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Decorations
 		AgentColors:  m.agentColors(),
-		TaskProgress: m.conv.TaskProgress,
+		TaskActivity: m.conv.TaskActivity,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock
