@@ -22,19 +22,20 @@
   </p>
 </div>
 
-San is an open-source terminal agent harness: a small runtime layer that connects
-models, tools, permissions, memory, skills, plugins, MCP servers, and subagents.
-Bring your own model and extensions; San gives them a fast, inspectable loop in
-one native Go binary with no Node.js or Python runtime.
+San is an open-source **agent harness for the terminal** — one native Go binary
+that wraps any model in a fast, inspectable, permission-gated loop. Bring your own
+model and extensions; there's no Node.js or Python runtime to install.
 
-**Why people try it:**
+**Why San**
 
-- **Fast by default** — a ~12 MB single binary with ~0.01s cold start and no
-  runtime dependency chain.
-- **Model-agnostic** — works with Anthropic, OpenAI, Google, DeepSeek, Qwen,
-  Gemini-compatible providers, Ollama, and more.
-- **Harness-first** — models, tools, permissions, memory, persona bundles,
-  skills, plugins, MCP servers, hooks, and subagents fit into one terminal loop.
+- **Fast by default** — a ~12 MB single binary, ~0.01s cold start, and no runtime dependency chain (no Node.js, no Python).
+- **Open architecture** — nothing is hard-wired:
+  - **Models & tools** — swap the LLM provider at runtime (`/model`), swap the search backend (`/search`), and toggle any tool on or off (`/tools`) — all under one permission model.
+  - **Personas & extensions** — reusable persona profiles bundle your extensions — skills, plugins, MCP servers, and subagents — all Claude Code-compatible and run unmodified.
+- **A harness, not a black box** — San doesn't just wire the parts together; it runs the loop and hands you the controls:
+  - **Auto-review** — a review agent approves gray-zone actions against a rubric you define, cutting human-in-the-loop without going fully unattended.
+  - **Self-learning policy** — an opt-in background reviewer you configure to grow durable memory and a reusable skill set as you work.
+  - **Fully inspectable** — replay any session and inspect the exact system prompt, tool calls, and permission decisions in a local inspector.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -53,12 +54,12 @@ one native Go binary with no Node.js or Python runtime.
 - **Search when needed** — Exa, Tavily, Brave, and Serper backends; switch with `/search`.
 - **Define agent profiles** — persona bundles package system prompt parts, skills, subagent visibility, and settings overlays into reusable profiles.
 - **Reuse your ecosystem** — Claude Code-style skills, plugins, MCP servers, lifecycle hooks, and sandboxed subagents run inside San's permission model.
-- **Learns as you work** — a background reviewer can distill recent work into durable memory and reusable skills. *(Level 1 is available; deeper levels are experimental.)*
+- **Learns as you work** — an opt-in background reviewer distills recent work into durable memory and reusable skills; you set the cadence, size caps, and which skills it may create. *(Level 1 available; deeper levels on the way.)*
 
 ### Engineering
 
 - **Runs anywhere** — A single ~12 MB binary, zero runtime dependencies. Native Go: ~0.01s cold start, ~32 MB baseline; the same file runs unchanged on a laptop, an edge device, or a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permission system** — Mode-based access control: ask (default) and auto-accept, toggled with `Shift+Tab`. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
+- **Permission system** — Three modes: ask (default), auto-accept, and auto-review, toggled with `Shift+Tab`. In auto-review, a review agent judges gray-zone actions against a rubric you can replace with your own — cutting approvals without going fully unattended. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
 - **Event-driven coordination** — Parallel subagents via a pub/sub hub ([architecture](docs/packages/2-feature/subagent.md)).
 - **Session persistence** — Auto-save, resume (`--continue`, `--resume`), fork (`/fork`), and automatic context compaction (`/compact`).
 - **Cost tracking** — Per-message and per-session token costs across all providers.
@@ -135,7 +136,7 @@ san mcp <add|list|remove|...>                 # manage MCP servers
 |---|---|
 | Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| Toggle permission mode | `Shift+Tab` (ask · auto-accept) |
+| Toggle permission mode | `Shift+Tab` (ask · auto-accept · auto-review) |
 | Search / persona / memory | `/search` · `/persona` · `/memory` |
 | Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
