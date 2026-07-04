@@ -308,7 +308,7 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 
 	cmds := []tea.Cmd{
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
-		conv.PollPermBridge(m.services.Agent.PermissionBridge()),
+		conv.PollPermGate(m.services.Agent.PermissionGate()),
 	}
 	if m.conv.ProgressHub != nil {
 		cmds = append(cmds, m.conv.ProgressHub.Check())
@@ -381,7 +381,7 @@ func (m *model) StopAgentSession() {
 }
 
 // ============================================================
-// Agent outbox and permission bridge
+// Agent outbox and permission gate
 // ============================================================
 
 func (m *model) ContinueOutbox() tea.Cmd {
@@ -391,7 +391,7 @@ func (m *model) ContinueOutbox() tea.Cmd {
 	return conv.DrainAgentOutbox(m.services.Agent.Outbox())
 }
 
-func (m *model) OnPermBridgeRequest(req *conv.PermBridgeRequest) tea.Cmd {
+func (m *model) OnPermGateRequest(req *conv.PermGateRequest) tea.Cmd {
 	m.services.Agent.SetPendingPermission(req)
 	if req == nil {
 		return nil
@@ -458,7 +458,7 @@ func permDetail(req *perm.PermissionRequest) json.RawMessage {
 // Agent tool configuration
 // ============================================================
 
-func (m *model) preparePermissionRequest(req *conv.PermBridgeRequest) *perm.PermissionRequest {
+func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.PermissionRequest {
 	if resolved, ok := tool.Get(req.ToolName); ok {
 		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
 			if rich, err := pat.PreparePermission(context.Background(), req.Input, m.env.CWD); err == nil && rich != nil {

@@ -10,7 +10,7 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// Update routes all output-path messages: agent outbox, permission bridge,
+// Update routes all output-path messages: agent outbox, permission gate,
 // compaction results, and progress updates.
 func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
@@ -23,8 +23,8 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 			return handleAgentEventBatch(rt, m, msg.Batch, msg.Closed), true
 		}
 		return handleAgentEvent(rt, m, msg.Event), true
-	case PermBridgeMsg:
-		return rt.OnPermBridgeRequest(msg.Request), true
+	case PermGateMsg:
+		return rt.OnPermGateRequest(msg.Request), true
 	case CompactResultMsg:
 		return rt.OnCompactResult(msg), true
 	case kit.TokenLimitResultMsg:

@@ -1,6 +1,6 @@
-// Permission approval flow + bridge response. The approval modal lives in
+// Permission approval flow + gate response. The approval modal lives in
 // the input package; here we handle the user's decision (once / for-session
-// / persist-as-rule) and forward it through the PermissionBridge that gates
+// / persist-as-rule) and forward it through the PermissionGate that gates
 // the agent's tool calls.
 package app
 
@@ -53,7 +53,7 @@ func permScope(d permissionDecision) string {
 	}
 }
 
-func (m *model) handlePermBridgeDecision(decision permissionDecision) tea.Cmd {
+func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
@@ -70,7 +70,7 @@ func (m *model) handlePermBridgeDecision(decision permissionDecision) tea.Cmd {
 		}
 	}
 	select {
-	case req.Response <- conv.PermBridgeResponse{Allow: decision.Approved, Reason: reason}:
+	case req.Response <- conv.PermGateResponse{Allow: decision.Approved, Reason: reason}:
 	default:
 	}
 	if rec := m.services.Session.Recorder(); rec != nil {
@@ -84,5 +84,5 @@ func (m *model) handlePermBridgeDecision(decision permissionDecision) tea.Cmd {
 			Reason:   reason, Mode: m.env.SessionMode(),
 		})
 	}
-	return conv.PollPermBridge(m.services.Agent.PermissionBridge())
+	return conv.PollPermGate(m.services.Agent.PermissionGate())
 }

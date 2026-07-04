@@ -12,9 +12,9 @@ import (
 type Session struct {
 	mu                 sync.RWMutex
 	agent              core.Agent
-	permBridge         *PermissionBridge
+	permGate           *PermissionGate
 	cancel             context.CancelFunc
-	pendingPermRequest *PermBridgeRequest
+	pendingPermRequest *PermGateRequest
 	pluginRoot         string // see SetPluginRoot
 }
 
@@ -26,12 +26,12 @@ func (s *Session) Start(params BuildParams, messages []core.Message) error {
 		return fmt.Errorf("agent session already active")
 	}
 
-	ag, pb, err := buildAgent(params)
+	ag, pg, err := buildAgent(params)
 	if err != nil {
 		return err
 	}
 	s.agent = ag
-	s.permBridge = pb
+	s.permGate = pg
 
 	if len(messages) > 0 {
 		s.agent.SetMessages(messages)
@@ -63,7 +63,7 @@ func (s *Session) stopLocked() {
 	default:
 	}
 	s.agent = nil
-	s.permBridge = nil
+	s.permGate = nil
 	s.pendingPermRequest = nil
 	s.pluginRoot = ""
 }
@@ -115,10 +115,10 @@ const interruptDrainTimeout = 250 * time.Millisecond
 //
 // Also clears pendingPermRequest: a permission prompt that was open at
 // the moment of interrupt is dropped along with the turn, so the
-// dangling *PermBridgeRequest must not survive into the next turn (a
+// dangling *PermGateRequest must not survive into the next turn (a
 // later SetPendingPermission would then race a stale request against a
 // fresh one). The clear runs AFTER the agent quiesces so an in-flight
-// PermissionFunc can't repopulate pendingPermRequest via PollPermBridge
+// PermissionFunc can't repopulate pendingPermRequest via PollPermGate
 // → SetPendingPermission between the clear and the cancel.
 func (s *Session) InterruptTurn() {
 	s.mu.RLock()
@@ -148,19 +148,19 @@ func (s *Session) Outbox() <-chan core.Event {
 	return s.agent.Outbox()
 }
 
-func (s *Session) PermissionBridge() *PermissionBridge {
+func (s *Session) PermissionGate() *PermissionGate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.permBridge
+	return s.permGate
 }
 
-func (s *Session) PendingPermission() *PermBridgeRequest {
+func (s *Session) PendingPermission() *PermGateRequest {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pendingPermRequest
 }
 
-func (s *Session) SetPendingPermission(req *PermBridgeRequest) {
+func (s *Session) SetPendingPermission(req *PermGateRequest) {
 	s.mu.Lock()
 	s.pendingPermRequest = req
 	s.mu.Unlock()

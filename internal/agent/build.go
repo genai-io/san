@@ -56,7 +56,7 @@ type BuildParams struct {
 	OnEvent func(core.Event)
 }
 
-func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
+func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -95,8 +95,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 	if p.BashPromptResponder != nil {
 		adaptOpts = append(adaptOpts, tool.WithBashPromptResponderProvider(p.BashPromptResponder))
 	}
-	pb := NewPermissionBridge(p.PermissionRules)
-	pb.SetReviewer(p.PermissionReview)
+	pg := NewPermissionGate(p.PermissionRules)
+	pg.SetReviewer(p.PermissionReview)
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {
@@ -127,11 +127,11 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 		ID:          "main",
 		LLM:         client,
 		System:      sys,
-		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pb),
+		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
 		CompactFunc: compactFunc,
 		CWD:         p.CWD,
 		OnEvent:     p.OnEvent,
 	})
 
-	return ag, pb, nil
+	return ag, pg, nil
 }
