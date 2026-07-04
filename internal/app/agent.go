@@ -119,18 +119,18 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	}
 
 	snap := m.services.Setting.Snapshot()
-	var arModel, arPromptFile string
+	var reviewModel, reviewPromptFile string
 	if snap != nil {
-		arModel, arPromptFile = snap.AutoReview.Model, snap.AutoReview.SystemPromptFile
+		reviewModel, reviewPromptFile = snap.AutoReview.Model, snap.AutoReview.SystemPromptFile
 	}
-	reviewerProvider, reviewerModelID := m.resolveReviewerModel(arModel)
+	reviewerProvider, reviewerModelID := m.resolveReviewerModel(reviewModel)
 	rev := reviewer.New(reviewerProvider, reviewerModelID)
-	if arPromptFile != "" {
-		if b, err := os.ReadFile(arPromptFile); err == nil {
+	if reviewPromptFile != "" {
+		if b, err := os.ReadFile(reviewPromptFile); err == nil {
 			rev.SetSystemPrompt(string(b))
 		} else {
 			log.Logger().Warn("auto-review systemPromptFile unreadable; using built-in rubric",
-				zap.String("file", arPromptFile), zap.Error(err))
+				zap.String("file", reviewPromptFile), zap.Error(err))
 		}
 	}
 
