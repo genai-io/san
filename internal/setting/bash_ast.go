@@ -608,10 +608,12 @@ var rawNetworkTools = map[string]bool{
 	"telnet": true, "socat": true, "ftp": true, "tftp": true,
 }
 
-// remoteCopyTools leave the machine only when pointed at a remote host, so they
-// are flagged just when an argument names one.
+// remoteCopyTools leave the machine only when pointed at a remote host in
+// host:path or scheme:// form, so they are flagged just when an argument names
+// one. sftp is handled separately in checkNetworkEgress: it always connects to a
+// remote host, including a bare [user@]host that would look local here.
 var remoteCopyTools = map[string]bool{
-	"scp": true, "sftp": true, "rsync": true,
+	"scp": true, "rsync": true,
 }
 
 // checkNetworkEgress detects downloads piped into a shell (RCE) and local data
@@ -619,11 +621,17 @@ var remoteCopyTools = map[string]bool{
 func checkNetworkEgress(commands []parsedCommand) string {
 	for _, cmd := range commands {
 		// RCE: "curl url | sh" — a shell running a program read from a pipe.
-		if shellInterpreters[cmd.Name] && cmd.HasPipe && !hasScriptFileArg(cmd.Args) {
+		if shellInterpreters[cmd.Name] && cmd.HasPipe && !hasOperand(cmd.Args) {
 			return "pipe into shell (remote code execution vector)"
 		}
 		if rawNetworkTools[cmd.Name] {
 			return "network egress via " + cmd.Name
+		}
+		if cmd.Name == "sftp" && hasOperand(cmd.Args) {
+			// sftp always connects to a remote host, so any destination argument
+			// can move data off the box — including a bare [user@]host with no ":"
+			// that scp/rsync would treat as a local path.
+			return "remote transfer via sftp"
 		}
 		if remoteCopyTools[cmd.Name] && hasRemoteTarget(cmd.Args) {
 			return "remote transfer via " + cmd.Name
@@ -635,9 +643,11 @@ func checkNetworkEgress(commands []parsedCommand) string {
 	return ""
 }
 
-// hasScriptFileArg reports whether a shell invocation names a script to run
-// (e.g. "bash deploy.sh") rather than reading its program from stdin.
-func hasScriptFileArg(args []string) bool {
+// hasOperand reports whether the command line carries a non-flag operand. What
+// that operand means is caller-specific: for a shell it is a script file or -c
+// string (so the program is not read from a pipe); for sftp it is the
+// destination host.
+func hasOperand(args []string) bool {
 	for _, a := range args {
 		if a == "" || strings.HasPrefix(a, "-") {
 			continue
