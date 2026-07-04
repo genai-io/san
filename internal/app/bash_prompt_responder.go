@@ -8,7 +8,6 @@ import (
 
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reviewer"
-	"github.com/genai-io/san/internal/setting"
 )
 
 type bashPromptResponder struct {
@@ -17,7 +16,9 @@ type bashPromptResponder struct {
 }
 
 func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt string) (string, bool) {
-	if r.model == nil || r.model.env.OperationMode != setting.ModeAutoReview || r.reviewer == nil {
+	// The provider closure only builds this responder when auto-review is on, so
+	// no mode re-check here; guard just the dependencies.
+	if r.model == nil || r.reviewer == nil {
 		return "", false
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -34,7 +35,7 @@ func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt s
 }
 
 func (r bashPromptResponder) RequestSecret(ctx context.Context, prompt string) (string, bool) {
-	if r.model == nil || r.model.env.OperationMode != setting.ModeAutoReview || r.model.conv.ProgressHub == nil {
+	if r.model == nil || r.model.conv.ProgressHub == nil {
 		return "", false
 	}
 	secret, ok, err := r.model.conv.ProgressHub.RequestSecret(ctx, prompt)

@@ -118,21 +118,18 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		})
 	}
 
-	snap := m.services.Setting.Snapshot()
-	var reviewModel, reviewPromptFile string
-	answerBashPrompts := false
-	if snap != nil {
-		reviewModel, reviewPromptFile = snap.AutoReview.Model, snap.AutoReview.SystemPromptFile
-		answerBashPrompts = snap.AutoReview.AnswerBashPrompts
+	var ar setting.AutoReviewSettings
+	if snap := m.services.Setting.Snapshot(); snap != nil {
+		ar = snap.AutoReview
 	}
-	reviewerProvider, reviewerModelID := m.resolveReviewerModel(reviewModel)
+	reviewerProvider, reviewerModelID := m.resolveReviewerModel(ar.Model)
 	rev := reviewer.New(reviewerProvider, reviewerModelID)
-	if reviewPromptFile != "" {
-		if b, err := os.ReadFile(reviewPromptFile); err == nil {
+	if ar.SystemPromptFile != "" {
+		if b, err := os.ReadFile(ar.SystemPromptFile); err == nil {
 			rev.SetSystemPrompt(string(b))
 		} else {
 			log.Logger().Warn("auto-review systemPromptFile unreadable; using built-in rubric",
-				zap.String("file", reviewPromptFile), zap.Error(err))
+				zap.String("file", ar.SystemPromptFile), zap.Error(err))
 		}
 	}
 
@@ -163,7 +160,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
 			// Interactive answering is opt-in: without it, bash stays on the
 			// normal non-tty path even in auto-review.
-			if !answerBashPrompts || m.env.OperationMode != setting.ModeAutoReview {
+			if !ar.AnswerBashPrompts || m.env.OperationMode != setting.ModeAutoReview {
 				return nil
 			}
 			return bashPromptResponder{model: m, reviewer: rev}

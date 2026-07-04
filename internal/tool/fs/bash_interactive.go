@@ -26,10 +26,6 @@ const (
 	eofByte = 0x04
 )
 
-// supportsBashPTY reports whether the interactive PTY path exists on this
-// platform (unix). Bash uses its normal execution path when false.
-const supportsBashPTY = true
-
 // runInteractive runs cmd attached to a pseudo-terminal and answers interactive
 // prompts through responder, returning the full combined output. A skipped or
 // unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
@@ -85,6 +81,7 @@ loop:
 			}
 			out.Write(b)
 			pending.Write(b)
+			trimToLine(&pending)
 			rearm()
 
 		case <-timer.C:
@@ -136,6 +133,15 @@ loop:
 	return out.String(), werr
 }
 
+// runWithResponder is the unix interactive path: it runs cmd on a pty and answers
+// its prompts through responder, always handling the command. The platform-split
+// partner (bash_interactive_other.go) returns handled=false off unix so bash
+// falls back to its normal execution path.
+func runWithResponder(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, bool, error) {
+	out, err := runInteractive(ctx, command, cmd, responder)
+	return out, true, err
+}
+
 // processAlive reports whether the command's process is still running, without
 // reaping it (signal 0 performs error checking only).
 func processAlive(cmd *exec.Cmd) bool {
@@ -160,8 +166,21 @@ func isSecretPrompt(prompt string) bool {
 	return false
 }
 
-// lastLine returns the last non-blank line of s (the prompt itself), trimmed. It
-// scans backward so the growing pty buffer isn't copied and split on every stall.
+// trimToLine drops everything up to and including the last newline (\n or \r),
+// keeping only the current unfinished line. A prompt has no trailing newline, so
+// this bounds the pending buffer and keeps a completed line from being read as a
+// prompt.
+func trimToLine(pending *bytes.Buffer) {
+	b := pending.Bytes()
+	if i := bytes.LastIndexAny(b, "\r\n"); i >= 0 {
+		tail := append([]byte(nil), b[i+1:]...)
+		pending.Reset()
+		pending.Write(tail)
+	}
+}
+
+// lastLine returns the last non-blank line of s, trimmed. pending is bounded to a
+// single line by trimToLine, so this operates on a small buffer.
 func lastLine(s string) string {
 	end := len(s)
 	for end > 0 {

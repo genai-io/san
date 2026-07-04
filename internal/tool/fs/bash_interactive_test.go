@@ -3,6 +3,7 @@
 package fs
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 	"strings"
@@ -91,17 +92,51 @@ func Test_runInteractive_skipSendsEOF(t *testing.T) {
 	}
 }
 
-func Test_runInteractive_colonStallNotKilled(t *testing.T) {
-	// A non-prompt line ending in ':' trips the heuristic and consults the
-	// reviewer; when it declines, the command must still run to completion.
+func Test_runInteractive_completedColonLineNotConsulted(t *testing.T) {
+	// A completed line ending in ':' (it has a trailing newline) is not a prompt —
+	// trimToLine drops it, so the reviewer is never even consulted.
 	r := &fakeResponder{answerOK: false}
 	out := runScript(t, `echo "Building:"; sleep 0.6; echo done`, r)
 
 	if !strings.Contains(out, "done") {
-		t.Errorf("output %q: a false-positive stall must not kill a working command", out)
+		t.Errorf("output %q: command should finish", out)
+	}
+	if r.answerCalls != 0 {
+		t.Errorf("answerCalls = %d, want 0 (a completed line is not a prompt)", r.answerCalls)
+	}
+}
+
+func Test_runInteractive_promptLikeFalsePositiveNotKilled(t *testing.T) {
+	// A ':'-terminated tail with no trailing newline trips the heuristic and
+	// consults the reviewer; when it declines, EOF is sent (not a kill), so a
+	// command that is merely working finishes.
+	r := &fakeResponder{answerOK: false}
+	out := runScript(t, `printf "Building: "; sleep 0.6; echo done`, r)
+
+	if !strings.Contains(out, "done") {
+		t.Errorf("output %q: a declined false-positive must not kill the command", out)
 	}
 	if r.answerCalls != 1 {
-		t.Errorf("answerCalls = %d, want 1 (heuristic consulted the reviewer)", r.answerCalls)
+		t.Errorf("answerCalls = %d, want 1 (prompt-like tail consulted the reviewer)", r.answerCalls)
+	}
+}
+
+func Test_trimToLine(t *testing.T) {
+	cases := map[string]string{
+		"foo\nbar":        "bar",
+		"foo\r\nPrompt: ": "Prompt: ",
+		"no newline":      "no newline",
+		"a\nb\rc":         "c",
+		"":                "",
+		"done\n":          "",
+	}
+	for in, want := range cases {
+		var b bytes.Buffer
+		b.WriteString(in)
+		trimToLine(&b)
+		if got := b.String(); got != want {
+			t.Errorf("trimToLine(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

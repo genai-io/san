@@ -96,10 +96,12 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
 
-	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil && supportsBashPTY {
-		fullOutput, err := runInteractive(ctx, command, cmd, responder)
-		duration := time.Since(start)
-		return t.foregroundResult(ctx, description, fullOutput, "", err, duration, timeout, trackedFile, cwd)
+	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil {
+		if out, handled, err := runWithResponder(ctx, command, cmd, responder); handled {
+			duration := time.Since(start)
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd)
+		}
+		// Off unix there is no pty; fall through to the normal execution path.
 	}
 
 	// Detach from the controlling terminal so an interactive command grabs no
