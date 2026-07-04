@@ -152,10 +152,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		HookEngine:    m.services.Hook,
 
 		AskUser: func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
-			return m.conv.ProgressHub.Ask(ctx, 0, req)
+			return m.conv.AgentToUI.Ask(ctx, 0, req)
 		},
 		ToolProgress: func(toolCallID string, msg string) {
-			m.conv.ProgressHub.SendForToolCall(toolCallID, msg)
+			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
 		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
 			// Interactive answering is opt-in: without it, bash stays on the
@@ -310,8 +310,8 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
 		conv.PollPermGate(m.services.Agent.PermissionGate()),
 	}
-	if m.conv.ProgressHub != nil {
-		cmds = append(cmds, m.conv.ProgressHub.Check())
+	if m.conv.AgentToUI != nil {
+		cmds = append(cmds, m.conv.AgentToUI.Check())
 	}
 	return tea.Batch(cmds...), nil
 }

@@ -37,10 +37,10 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 }
 
 func (r bashPromptResponder) RequestSecret(ctx context.Context, prompt string) (string, bool) {
-	if r.model == nil || r.model.conv.ProgressHub == nil {
+	if r.model == nil || r.model.conv.AgentToUI == nil {
 		return "", false
 	}
-	secret, ok, err := r.model.conv.ProgressHub.RequestSecret(ctx, prompt)
+	secret, ok, err := r.model.conv.AgentToUI.RequestSecret(ctx, prompt)
 	if err != nil {
 		log.Logger().Debug("secret prompt failed", zap.Error(err))
 		return "", false

@@ -163,7 +163,7 @@ func newExecResultFromOutput(tc core.ToolCall, index int, output toolresult.Tool
 	}
 }
 
-func ExecuteApproved(ctx context.Context, hub *ProgressHub, toolCalls []core.ToolCall, idx int, cwd string, mcpExec ...coretool.MCPExecutor) tea.Cmd {
+func ExecuteApproved(ctx context.Context, agentUI *AgentToUI, toolCalls []core.ToolCall, idx int, cwd string, mcpExec ...coretool.MCPExecutor) tea.Cmd {
 	if idx >= len(toolCalls) {
 		return nil
 	}
@@ -190,7 +190,7 @@ func ExecuteApproved(ctx context.Context, hub *ProgressHub, toolCalls []core.Too
 			return newExecResult(tc, idx, errMsg, true)
 		}
 
-		attachExecAgentCallbacks(ctx, hub, idx, prepared)
+		attachExecAgentCallbacks(ctx, agentUI, idx, prepared)
 
 		start := time.Now()
 		result, err := prepared.Execute(ctx, cwd, true, executor)
@@ -205,21 +205,21 @@ func ExecuteApproved(ctx context.Context, hub *ProgressHub, toolCalls []core.Too
 	}
 }
 
-func attachExecAgentCallbacks(ctx context.Context, hub *ProgressHub, idx int, prepared *coretool.PreparedToolCall) {
+func attachExecAgentCallbacks(ctx context.Context, agentUI *AgentToUI, idx int, prepared *coretool.PreparedToolCall) {
 	if !coretool.IsAgentToolName(prepared.Call.Name) {
 		return
 	}
 
 	prepared.Params["_onProgress"] = coretool.ProgressFunc(func(msg string) {
-		if hub != nil {
-			hub.SendForAgent(idx, msg)
+		if agentUI != nil {
+			agentUI.SendForAgent(idx, msg)
 		}
 	})
 	prepared.Params["_onQuestion"] = coretool.AskQuestionFunc(func(qctx context.Context, req *coretool.QuestionRequest) (*coretool.QuestionResponse, error) {
 		if qctx == nil {
 			qctx = ctx
 		}
-		return askExecAgentQuestion(qctx, hub, idx, req)
+		return askExecAgentQuestion(qctx, agentUI, idx, req)
 	})
 
 	if getter := coretool.GetMessagesGetter(ctx); getter != nil {
@@ -227,9 +227,9 @@ func attachExecAgentCallbacks(ctx context.Context, hub *ProgressHub, idx int, pr
 	}
 }
 
-func askExecAgentQuestion(ctx context.Context, hub *ProgressHub, idx int, req *coretool.QuestionRequest) (*coretool.QuestionResponse, error) {
-	if hub == nil {
+func askExecAgentQuestion(ctx context.Context, agentUI *AgentToUI, idx int, req *coretool.QuestionRequest) (*coretool.QuestionResponse, error) {
+	if agentUI == nil {
 		return nil, context.Canceled
 	}
-	return hub.Ask(ctx, idx, req)
+	return agentUI.Ask(ctx, idx, req)
 }

@@ -12,7 +12,7 @@ type OutputModel struct {
 	Spinner      FrameClock
 	MDRenderer   *MDRenderer
 	TaskProgress map[int][]string
-	ProgressHub  *ProgressHub
+	AgentToUI    *AgentToUI
 	ShowTasks    bool
 }
 
@@ -22,14 +22,14 @@ type Model struct {
 }
 
 func NewModel(width int) Model {
-	hub := NewProgressHub(100)
+	agentUI := NewAgentToUI(100)
 	return Model{
 		ConversationModel: NewConversation(),
 		OutputModel: OutputModel{
-			Spinner:     newFrameClock(),
-			MDRenderer:  NewMDRenderer(width),
-			ProgressHub: hub,
-			ShowTasks:   true,
+			Spinner:    newFrameClock(),
+			MDRenderer: NewMDRenderer(width),
+			AgentToUI:  agentUI,
+			ShowTasks:  true,
 		},
 	}
 }

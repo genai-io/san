@@ -26,7 +26,7 @@ func PopSideEffect(toolCallID string) any {
 
 // AskUserFunc poses a structured question to the user and returns their answer.
 // The AskUserQuestion tool calls it mid-execution; the TUI layer supplies the
-// implementation via ProgressHub.Ask().
+// implementation via AgentToUI.Ask().
 type AskUserFunc func(ctx context.Context, req *QuestionRequest) (*QuestionResponse, error)
 
 // AdaptOption configures tool adaptation behavior.

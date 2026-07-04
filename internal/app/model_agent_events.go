@@ -143,7 +143,7 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 		m.conv.AddNotice(fmt.Sprintf("Agent error: %v", err))
 		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
 	}
-	m.conv.ProgressHub.DrainPendingQuestions()
+	m.conv.AgentToUI.DrainPendingQuestions()
 	m.conv.Modal.Question.Hide()
 	commitCmds := m.CommitMessages()
 	m.StopAgentSession()

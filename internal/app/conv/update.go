@@ -275,10 +275,10 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 // --- Progress handling (operates on output Model directly) ---
 
 func (m *OutputModel) drainProgress() {
-	if m.ProgressHub == nil {
+	if m.AgentToUI == nil {
 		return
 	}
-	m.TaskProgress = m.ProgressHub.Drain(m.TaskProgress)
+	m.TaskProgress = m.AgentToUI.Drain(m.TaskProgress)
 }
 
 func (m *OutputModel) HandleProgress(msg ProgressUpdateMsg) tea.Cmd {
@@ -291,18 +291,18 @@ func (m *OutputModel) HandleProgress(msg ProgressUpdateMsg) tea.Cmd {
 		m.TaskProgress[msg.Index] = m.TaskProgress[msg.Index][len(m.TaskProgress[msg.Index])-maxAgentProgressHistory:]
 	}
 
-	if m.ProgressHub == nil {
+	if m.AgentToUI == nil {
 		return m.Spinner.Tick
 	}
-	return tea.Batch(m.Spinner.Tick, m.ProgressHub.Check())
+	return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
 }
 
 func (m *OutputModel) HandleProgressTick(hasRunningTasks bool) tea.Cmd {
-	if m.ProgressHub != nil {
+	if m.AgentToUI != nil {
 		if hasRunningTasks {
-			return tea.Batch(m.Spinner.Tick, m.ProgressHub.Check())
+			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
 		}
-		return m.ProgressHub.Check()
+		return m.AgentToUI.Check()
 	}
 	if hasRunningTasks {
 		return m.Spinner.Tick

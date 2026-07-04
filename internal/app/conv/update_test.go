@@ -6,7 +6,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-func TestHandleProgressWithoutHubDoesNotPanic(t *testing.T) {
+func TestHandleProgressWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
 
 	cmd := m.HandleProgress(ProgressUpdateMsg{
@@ -14,7 +14,7 @@ func TestHandleProgressWithoutHubDoesNotPanic(t *testing.T) {
 		Message: "step",
 	})
 	if cmd == nil {
-		t.Fatal("expected spinner cmd even without progress hub")
+		t.Fatal("expected spinner cmd even without an agent-to-UI channel")
 	}
 	if len(m.TaskProgress[1]) != 1 || m.TaskProgress[1][0] != "step" {
 		t.Fatalf("unexpected progress state: %#v", m.TaskProgress)

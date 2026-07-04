@@ -33,7 +33,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	// <system-reminder> blocks to the next user message.
 	m.services.Reminder.EnqueueOnce(InterruptReminder)
 	m.conv.Stream.Stop()
-	m.conv.ProgressHub.DrainPendingQuestions()
+	m.conv.AgentToUI.DrainPendingQuestions()
 	m.conv.Modal.Question.Hide()
 	m.cancelPendingToolCalls()
 	m.conv.MarkLastInterrupted()
