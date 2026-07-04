@@ -83,9 +83,9 @@ func main() {
 
 var rootCmd = &cobra.Command{
 	Use:   "san [message]",
-	Short: "San - AI coding assistant for the terminal",
-	Long: `San is an open-source AI assistant for the terminal.
-Extensible tools, customizable prompts, multi-provider support.
+	Short: "San - fast, open agent harness for the terminal",
+	Long: `San is a fast, open agent harness for the terminal.
+Bring your model, tools, skills, plugins, MCP servers, and subagents.
 
 Non-interactive mode:
   san -p "your prompt"     Print response and exit
@@ -187,7 +187,7 @@ var helpCmd = &cobra.Command{
 
 func printHelp() {
 	help := `
-San - AI coding assistant for the terminal
+San - fast, open agent harness for the terminal
 
 Usage:
   san                        Start interactive chat mode

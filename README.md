@@ -1,6 +1,6 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>An open, ~12 MB runtime for fast AI agents</strong></p>
+  <p><strong>A fast, open agent harness for the terminal</strong></p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://goreportcard.com/report/github.com/genai-io/san"><img src="https://goreportcard.com/badge/github.com/genai-io/san?style=flat-square" alt="Go Report Card"></a>
@@ -18,11 +18,23 @@
   </p>
   <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality intro ↗</a></sub>
   <p>
-    ⚡ <strong>~0.01s</strong> cold start&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> single binary&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>zero</strong> runtime deps — no Node.js, no Python
+    ⚡ <strong>~0.01s</strong> cold start&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> single binary&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>zero</strong> runtime deps
   </p>
 </div>
 
-San is a terminal-native **unified runtime for specialized agents** — coding and beyond. Plug in any model and search backend, switch personas, and run your skills, plugins, MCP servers, and subagents unmodified. And it's self-evolving, learning as you work. One Go binary, runs anywhere.
+San is an open-source terminal agent harness: a small runtime layer that connects
+models, tools, permissions, memory, skills, plugins, MCP servers, and subagents.
+Bring your own model and extensions; San gives them a fast, inspectable loop in
+one native Go binary with no Node.js or Python runtime.
+
+**Why people try it:**
+
+- **Fast by default** — a ~12 MB single binary with ~0.01s cold start and no
+  runtime dependency chain.
+- **Model-agnostic** — works with Anthropic, OpenAI, Google, DeepSeek, Qwen,
+  Gemini-compatible providers, Ollama, and more.
+- **Harness-first** — models, tools, permissions, memory, persona bundles,
+  skills, plugins, MCP servers, hooks, and subagents fit into one terminal loop.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -37,17 +49,17 @@ San is a terminal-native **unified runtime for specialized agents** — coding a
 
 </details>
 
-- **LLM providers** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI; swap via `/model`.
-- **Search backends** — Exa, Tavily, Brave, Serper; swap via `/search`.
-- **Personas** — Markdown identities scoped to user or project; swap via `/identity` ([details](docs/concepts/harness-channels.md#identity-custom-personas)).
-- **Skills & extensions** — Claude Code skills, plugins, and MCP servers run unmodified; sandboxed subagents; lifecycle hooks (shell, LLM, agent, HTTP); auto-loaded project memory.
-- **Self-evolving** — every few turns a background reviewer distills your recent work into durable memory and reusable skills, so the agent levels up as you work. *(Level 1 available; deeper levels on the way.)*
+- **Bring your own model** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI; switch with `/model`.
+- **Search when needed** — Exa, Tavily, Brave, and Serper backends; switch with `/search`.
+- **Define agent profiles** — persona bundles package system prompt parts, skills, subagent visibility, and settings overlays into reusable profiles.
+- **Reuse your ecosystem** — Claude Code-style skills, plugins, MCP servers, lifecycle hooks, and sandboxed subagents run inside San's permission model.
+- **Learns as you work** — a background reviewer can distill recent work into durable memory and reusable skills. *(Level 1 is available; deeper levels are experimental.)*
 
 ### Engineering
 
-- **Runs anywhere** — A single ~12 MB binary, zero runtime dependencies (no Node.js, no Python). Native Go: ~0.01s cold start, ~32 MB baseline; the same file runs unchanged on a laptop, an edge device, or a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
+- **Runs anywhere** — A single ~12 MB binary, zero runtime dependencies. Native Go: ~0.01s cold start, ~32 MB baseline; the same file runs unchanged on a laptop, an edge device, or a `scratch` container. Windows, macOS, and Linux builds in release artifacts ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
 - **Permission system** — Mode-based access control: ask (default) and auto-accept, toggled with `Shift+Tab`. Subagents inherit permission gates for sandboxed execution ([details](docs/concepts/permission-model.md)).
-- **Event-driven coordination** — Parallel subagents via a pub/sub hub ([architecture](docs/packages/subagent.md)).
+- **Event-driven coordination** — Parallel subagents via a pub/sub hub ([architecture](docs/packages/2-feature/subagent.md)).
 - **Session persistence** — Auto-save, resume (`--continue`, `--resume`), fork (`/fork`), and automatic context compaction (`/compact`).
 - **Cost tracking** — Per-message and per-session token costs across all providers.
 - **Theme & appearance** — Switch TUI color themes via the `/config` Appearance panel; "auto" matches your terminal.
@@ -124,7 +136,7 @@ san mcp <add|list|remove|...>                 # manage MCP servers
 | Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept) |
-| Search / identity / memory | `/search` · `/identity` · `/memory` |
+| Search / persona / memory | `/search` · `/persona` · `/memory` |
 | Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
 | Session / loop / misc | `/fork` · `/compact` · `/loop` · `/glob` · `/init` · `/clear` |
@@ -170,9 +182,9 @@ User-level (`~/.san/`):
 
 ```
 providers.json    # Provider connections and current model
-settings.json     # Permissions, hooks, env, identity
+settings.json     # Permissions, hooks, env, active persona
 skills.json       # Skill states
-identities/       # Custom personas (see /identity)
+personas/         # Persona bundles: system prompt parts, skills, settings
 skills/           # Custom skill definitions
 agents/           # Custom agent definitions
 commands/         # Custom slash commands
@@ -186,7 +198,7 @@ Project-level (`.san/`):
 settings.json       # Permissions, hooks, disabled tools
 mcp.json            # MCP server definitions (team shared)
 mcp.local.json      # MCP server definitions (personal, git-ignored)
-identities/*.md     # Project-scoped personas (override user-level)
+personas/           # Project-scoped persona bundles (override user-level)
 agents/*.md         # Subagent definitions
 skills/*/SKILL.md   # Skills
 commands/*.md       # Slash commands
@@ -216,12 +228,13 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 ## Documentation
 
 - [Documentation Index](docs/index.md) — map of architecture, features, operations, and references
-- [Architecture](docs/architecture.md) — architecture entrypoint and reading order
+- [Architecture](docs/concepts/architecture.md) — architecture entrypoint and reading order
 - [Package Map](docs/reference/package-map.md) — package ownership and dependency boundaries
-- [System Prompt](docs/concepts/harness-channels.md) — Slot model, identity, skill/agent injection
-- [Subagents](docs/packages/subagent.md) · [Skills](docs/packages/skill.md) · [Plugins](docs/packages/plugin.md) · [MCP](docs/packages/mcp.md)
-- [Hooks](docs/packages/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/task.md)
-- [Inspector](docs/inspector.md) — local web UI for transcript replay and debugging
+- [Personas](docs/concepts/persona.md) — bundled system prompt, skills, agents, and settings
+- [System Prompt](docs/concepts/harness-channels.md) — Slot model, persona, skill/agent injection
+- [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
+- [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
+- [Inspector](docs/packages/2-feature/inspector.md) — local web UI for transcript replay and debugging
 - Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
 
 ## Related Projects
