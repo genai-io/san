@@ -193,6 +193,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("async session persist failed", zap.Error(msg.err))
 		}
 		return m, nil
+	case blocksRenderedMsg:
+		return m, m.handleBlocksRendered(msg)
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
 	case input.SecretPromptResponseMsg:

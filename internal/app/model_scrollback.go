@@ -17,14 +17,43 @@ func (m *model) CommitMessages() []tea.Cmd {
 	return m.renderAndCommit(true)
 }
 
-// FlushStreamingBlocks commits the in-flight assistant message's newly-completed
-// blocks to native scrollback, advancing its committed offsets so the live view
-// and the turn-end commit render only the remainder. Both thinking and content
-// commit block-by-block as blank lines (or, for content, closing code fences)
-// land; once content starts — the reliable "reasoning done" signal — thinking's
-// trailing block is flushed too so nothing reasoning-side lingers in the live
-// view. Returns nil when nothing new is committable.
+// blockRenderJob is the immutable snapshot the background render goroutine works
+// from, so it never touches live model state.
+type blockRenderJob struct {
+	msgID            string
+	index            int
+	thinkingSlice    string
+	contentSlice     string
+	thinkingEnd      int // commit offsets, advanced once this render lands
+	contentEnd       int
+	showThinkingIcon bool
+	showBullet       bool
+	width            int
+	md               *conv.MDRenderer
+}
+
+// blocksRenderedMsg carries a finished background render back for
+// handleBlocksRendered to commit to scrollback.
+type blocksRenderedMsg struct {
+	msgID                string
+	index                int
+	thinkingCommittedLen int
+	contentCommittedLen  int
+	thinkingEmitted      bool
+	bulletEmitted        bool
+	printed              string // "" when the blocks rendered empty (blank-only)
+}
+
+// FlushStreamingBlocks starts committing the streaming message's completed
+// blocks to scrollback. The markdown render runs off the UI goroutine
+// (renderBlocksCmd) so it can't stall repaint; one render runs at a time
+// (flushRendering) to keep the Printlns ordered, and offsets advance only when
+// it lands, so the live tail shows each block until its rendered form is in
+// scrollback. Returns nil when a render is in flight or nothing new is ready.
 func (m *model) FlushStreamingBlocks() []tea.Cmd {
+	if m.flushRendering {
+		return nil // a block is already rendering off-thread; wait for it to land
+	}
 	idx := len(m.conv.Messages) - 1
 	if idx < 0 {
 		return nil
@@ -34,40 +63,127 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		return nil
 	}
 
-	var blocks []string
-
-	// Thinking commits paragraph-by-paragraph as blank lines land; once content
-	// starts, the trailing paragraph is flushed too (it has no terminating blank
-	// line of its own).
+	// Once content starts, flush thinking's trailing paragraph too (it has no
+	// terminating blank line, but reasoning is done).
 	thinkingEnd := conv.CompletedBlockBoundary(msg.Thinking)
 	if len(msg.Content) > 0 {
 		thinkingEnd = len(msg.Thinking)
 	}
+	contentEnd := conv.CompletedBlockBoundary(msg.Content)
+
+	var thinkingSlice, contentSlice string
 	if thinkingEnd > msg.ThinkingCommittedLen {
-		block := conv.RenderCommittedThinkingBlock(msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd], !msg.ThinkingEmitted, m.env.Width)
-		if block != "" {
-			blocks = append(blocks, block)
-			msg.ThinkingEmitted = true
-		}
-		msg.ThinkingCommittedLen = thinkingEnd
+		thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
+	}
+	if contentEnd > msg.ContentCommittedLen {
+		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
+	}
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" {
+		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
-	if boundary := conv.CompletedBlockBoundary(msg.Content); boundary > msg.ContentCommittedLen {
-		block := conv.RenderCommittedContentBlock(msg.Content[msg.ContentCommittedLen:boundary], !msg.BulletEmitted, m.conv.MDRenderer)
-		if block != "" {
-			blocks = append(blocks, block)
-			msg.BulletEmitted = true
-		}
-		msg.ContentCommittedLen = boundary
-	}
+	m.flushRendering = true
+	return []tea.Cmd{renderBlocksCmd(blockRenderJob{
+		msgID:            msg.ID,
+		index:            idx,
+		thinkingSlice:    thinkingSlice,
+		contentSlice:     contentSlice,
+		thinkingEnd:      thinkingEnd,
+		contentEnd:       contentEnd,
+		showThinkingIcon: !msg.ThinkingEmitted,
+		showBullet:       !msg.BulletEmitted,
+		width:            m.env.Width,
+		md:               m.flushRenderer(),
+	})}
+}
 
-	if len(blocks) == 0 {
+// renderBlocksCmd renders the job's completed blocks (glamour, off the UI
+// goroutine) and returns them as a blocksRenderedMsg.
+func renderBlocksCmd(job blockRenderJob) tea.Cmd {
+	return func() tea.Msg {
+		// != "" just skips a slice absent this flush; the render helpers
+		// blank-check their input and we gate on a non-empty result.
+		var blocks []string
+		thinkingEmitted := false
+		if job.thinkingSlice != "" {
+			if b := conv.RenderCommittedThinkingBlock(job.thinkingSlice, job.showThinkingIcon, job.width); b != "" {
+				blocks = append(blocks, b)
+				thinkingEmitted = true
+			}
+		}
+		bulletEmitted := false
+		if job.contentSlice != "" {
+			if b := conv.RenderCommittedContentBlock(job.contentSlice, job.showBullet, job.md); b != "" {
+				blocks = append(blocks, b)
+				bulletEmitted = true
+			}
+		}
+		printed := ""
+		if len(blocks) > 0 {
+			// Match RenderMessageAt's leading newline + blank-line separation.
+			printed = "\n" + strings.Join(blocks, "\n\n")
+		}
+		return blocksRenderedMsg{
+			msgID:                job.msgID,
+			index:                job.index,
+			thinkingCommittedLen: job.thinkingEnd,
+			contentCommittedLen:  job.contentEnd,
+			thinkingEmitted:      thinkingEmitted,
+			bulletEmitted:        bulletEmitted,
+			printed:              printed,
+		}
+	}
+}
+
+// handleBlocksRendered lands a background render: advance the row's offsets,
+// print to scrollback, then flush the next completed block.
+func (m *model) handleBlocksRendered(msg blocksRenderedMsg) tea.Cmd {
+	m.flushRendering = false
+
+	// Drop the render if its row was committed whole (turn-end/cancel) or
+	// replaced by a retry (new ID) meanwhile — its content is already handled, so
+	// printing it now would duplicate or reorder scrollback.
+	if msg.index >= len(m.conv.Messages) ||
+		msg.index < m.conv.CommittedCount ||
+		m.conv.Messages[msg.index].ID != msg.msgID ||
+		m.conv.Messages[msg.index].Role != core.RoleAssistant {
 		return nil
 	}
-	// Mirror RenderMessageAt's leading newline + blank-line block separation so
-	// progressively-committed blocks land in scrollback exactly where the
-	// turn-end render would place them.
-	return []tea.Cmd{tea.Println("\n" + strings.Join(blocks, "\n\n"))}
+
+	row := &m.conv.Messages[msg.index]
+	row.ThinkingCommittedLen = msg.thinkingCommittedLen
+	row.ContentCommittedLen = msg.contentCommittedLen
+	if msg.thinkingEmitted {
+		row.ThinkingEmitted = true
+	}
+	if msg.bulletEmitted {
+		row.BulletEmitted = true
+	}
+
+	var cmds []tea.Cmd
+	if msg.printed != "" {
+		cmds = append(cmds, tea.Println(msg.printed))
+	}
+	// Catch a block that completed while this one rendered — Stream.Active means
+	// the row is still uncommitted, so it's safe.
+	if m.conv.Stream.Active {
+		cmds = append(cmds, m.FlushStreamingBlocks()...)
+	}
+	// Sequence, not Batch: this block's print must be queued before the next
+	// render's result, or concurrent Batch could reorder scrollback blocks.
+	return tea.Sequence(cmds...)
+}
+
+// flushRenderer is the background goroutine's own markdown renderer, kept off
+// m.conv.MDRenderer so a slow render can't block the live View on its mutex.
+// Rebuilt on width change; needs no lock since flushRendering means one render
+// uses it at a time.
+func (m *model) flushRenderer() *conv.MDRenderer {
+	if m.flushMD == nil || m.flushMDWidth != m.env.Width {
+		m.flushMD = conv.NewMDRenderer(m.env.Width)
+		m.flushMDWidth = m.env.Width
+	}
+	return m.flushMD
 }
 
 func (m *model) commitAllMessages() []tea.Cmd {

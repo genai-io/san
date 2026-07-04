@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -13,6 +15,22 @@ func flushTestModel(msg core.ChatMessage) *model {
 	m := &model{env: env{Width: 80}, conv: conv.NewModel(80)}
 	m.conv.Messages = []core.ChatMessage{msg}
 	return m
+}
+
+// applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
+// and lands its result, mirroring the real render → handleBlocksRendered path so
+// tests can assert the committed offsets the landing advances.
+func applyFlush(t *testing.T, m *model, cmds []tea.Cmd) {
+	t.Helper()
+	if len(cmds) == 0 {
+		t.Fatal("expected a flush render Cmd, got none")
+	}
+	msg := cmds[0]()
+	br, ok := msg.(blocksRenderedMsg)
+	if !ok {
+		t.Fatalf("flush Cmd returned %T, want blocksRenderedMsg", msg)
+	}
+	m.handleBlocksRendered(br)
 }
 
 // The live welcome banner is visible from launch and tracks the model the user
@@ -60,22 +78,25 @@ func TestTakeWelcomeBannerFreezesAndClears(t *testing.T) {
 
 // A completed thinking paragraph (terminated by a blank line) commits to
 // scrollback mid-stream, before any content arrives — reasoning no longer waits
-// for the whole block to finish.
+// for the whole block to finish. The render runs off-thread; the committed
+// offset advances only once it lands.
 func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:     core.RoleAssistant,
 		Thinking: "first paragraph of reasoning\n\n",
 	})
 
-	if cmds := m.FlushStreamingBlocks(); len(cmds) == 0 {
-		t.Fatal("a completed thinking paragraph should commit")
-	}
+	applyFlush(t, m, m.FlushStreamingBlocks())
+
 	msg := m.conv.Messages[0]
 	if msg.ThinkingCommittedLen != len(msg.Thinking) {
 		t.Fatalf("ThinkingCommittedLen = %d, want %d", msg.ThinkingCommittedLen, len(msg.Thinking))
 	}
 	if !msg.ThinkingEmitted {
 		t.Fatal("ThinkingEmitted should be set after the first thinking block commits")
+	}
+	if m.flushRendering {
+		t.Fatal("flushRendering should clear once the render has landed")
 	}
 }
 
@@ -104,12 +125,83 @@ func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
 		Content:  "Here",
 	})
 
-	if cmds := m.FlushStreamingBlocks(); len(cmds) == 0 {
-		t.Fatal("content starting should flush the trailing thinking paragraph")
-	}
+	applyFlush(t, m, m.FlushStreamingBlocks())
+
 	msg := m.conv.Messages[0]
 	if msg.ThinkingCommittedLen != len(msg.Thinking) {
 		t.Fatalf("thinking should be fully committed once content starts, got %d/%d",
 			msg.ThinkingCommittedLen, len(msg.Thinking))
+	}
+}
+
+// Only one block render is in flight at a time: while one is rendering off-
+// thread, a second flush is suppressed so the scrollback Printlns stay ordered.
+func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.RoleAssistant,
+		Content: "first block\n\nsecond block\n\n",
+	})
+
+	if cmds := m.FlushStreamingBlocks(); len(cmds) == 0 {
+		t.Fatal("the first completed block should start a render")
+	}
+	if !m.flushRendering {
+		t.Fatal("flushRendering should latch while a render is in flight")
+	}
+	if cmds := m.FlushStreamingBlocks(); cmds != nil {
+		t.Fatal("a second flush must be suppressed while one render is in flight")
+	}
+}
+
+// A render that lands after its row was already committed whole (turn-end or
+// cancel commits the remainder, in-flight block included) is dropped — no
+// duplicate Println, and flushRendering still clears.
+func TestHandleBlocksRenderedDiscardsCommittedRow(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.RoleAssistant,
+		Content: "a block\n\n",
+	})
+
+	cmds := m.FlushStreamingBlocks()
+	if len(cmds) == 0 {
+		t.Fatal("expected a render Cmd")
+	}
+	br, ok := cmds[0]().(blocksRenderedMsg)
+	if !ok {
+		t.Fatal("flush Cmd did not return a blocksRenderedMsg")
+	}
+
+	// The row got committed to scrollback before the render landed.
+	m.conv.CommittedCount = 1
+	if cmd := m.handleBlocksRendered(br); cmd != nil {
+		t.Fatal("a render for an already-committed row must be discarded (no Println)")
+	}
+	if m.flushRendering {
+		t.Fatal("flushRendering must clear even when the render is discarded")
+	}
+}
+
+// A render that lands after its row was dropped and replaced by a retry's fresh
+// row (new message ID) is dropped rather than corrupting the new row's offsets.
+func TestHandleBlocksRenderedDiscardsReplacedRow(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{
+		Role:    core.RoleAssistant,
+		ID:      "old",
+		Content: "a block\n\n",
+	})
+
+	cmds := m.FlushStreamingBlocks()
+	if len(cmds) == 0 {
+		t.Fatal("expected a render Cmd")
+	}
+	br := cmds[0]().(blocksRenderedMsg)
+
+	// Retry dropped the streaming row and appended a fresh one (new ID).
+	m.conv.Messages[0] = core.ChatMessage{Role: core.RoleAssistant, ID: "new", Content: "retried"}
+	if cmd := m.handleBlocksRendered(br); cmd != nil {
+		t.Fatal("a render for a replaced row must be discarded")
+	}
+	if got := m.conv.Messages[0].ContentCommittedLen; got != 0 {
+		t.Fatalf("the fresh row's ContentCommittedLen = %d, want 0 (stale render must not advance it)", got)
 	}
 }
