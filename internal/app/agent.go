@@ -120,8 +120,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 
 	snap := m.services.Setting.Snapshot()
 	var reviewModel, reviewPromptFile string
+	answerBashPrompts := false
 	if snap != nil {
 		reviewModel, reviewPromptFile = snap.AutoReview.Model, snap.AutoReview.SystemPromptFile
+		answerBashPrompts = snap.AutoReview.AnswerBashPrompts
 	}
 	reviewerProvider, reviewerModelID := m.resolveReviewerModel(reviewModel)
 	rev := reviewer.New(reviewerProvider, reviewerModelID)
@@ -159,7 +161,9 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			m.conv.ProgressHub.SendForToolCall(toolCallID, msg)
 		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
-			if m.env.OperationMode != setting.ModeAutoReview {
+			// Interactive answering is opt-in: without it, bash stays on the
+			// normal non-tty path even in auto-review.
+			if !answerBashPrompts || m.env.OperationMode != setting.ModeAutoReview {
 				return nil
 			}
 			return bashPromptResponder{model: m, reviewer: rev}

@@ -60,6 +60,11 @@ type AutoReviewSettings struct {
 	// SystemPromptFile replaces the built-in review rubric with the contents of
 	// the named file. Empty uses the built-in rubric.
 	SystemPromptFile string `json:"systemPromptFile,omitempty"`
+	// AnswerBashPrompts enables interactive answering: in auto-review, bash runs
+	// on a pseudo-terminal so the reviewer can answer the prompts a command
+	// raises (and route password prompts to a masked input). Off by default —
+	// leaving it off keeps every bash command on the normal, non-tty path.
+	AnswerBashPrompts bool `json:"answerBashPrompts,omitempty"`
 }
 
 // SelfLearnSettings configures the two independent self-learning arms.
