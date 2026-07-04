@@ -41,3 +41,37 @@ func TestGetModelTokenLimitsPrefersCurrentProvider(t *testing.T) {
 		}
 	}
 }
+
+func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	if err := store.Connect(llm.OpenAI, llm.AuthSubscription); err != nil {
+		t.Fatalf("Connect(subscription): %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 400000, OutputTokenLimit: 16384},
+	}); err != nil {
+		t.Fatalf("CacheModels(api_key): %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, []llm.ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 272000, OutputTokenLimit: 16384},
+	}); err != nil {
+		t.Fatalf("CacheModels(subscription): %v", err)
+	}
+
+	current := &llm.CurrentModelInfo{
+		ModelID:  "gpt-5.5",
+		Provider: llm.OpenAI,
+		// Older providers.json files did not persist authMethod on current.
+	}
+
+	for range 30 {
+		if got := GetEffectiveInputLimit(store, current); got != 272000 {
+			t.Fatalf("input limit = %d, want 272000 from connected subscription auth", got)
+		}
+	}
+}

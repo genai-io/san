@@ -175,3 +175,79 @@ func TestStore_CachedModelLimitsPrefersKnownWindow(t *testing.T) {
 		t.Fatalf("CachedModelLimits(missing) = (%d, %d), want (0, 0)", in, out)
 	}
 }
+
+// TestStore_CachedModelLimitsPrefersLargestWindow guards the deterministic
+// fallback: when the same ID is cached under two providers that both report a
+// non-zero but different window, CachedModelLimits must always return the same
+// one (the largest) rather than a random map hit that flickers the status bar.
+func TestStore_CachedModelLimitsPrefersLargestWindow(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	if err := store.CacheModels(OpenAI, AuthSubscription, []ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 272_000, OutputTokenLimit: 16_384},
+	}); err != nil {
+		t.Fatalf("CacheModels(subscription) error = %v", err)
+	}
+	if err := store.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 400_000, OutputTokenLimit: 16_384},
+	}); err != nil {
+		t.Fatalf("CacheModels(api_key) error = %v", err)
+	}
+
+	for i := range 100 {
+		in, out := store.CachedModelLimits("gpt-5.5")
+		if in != 400_000 || out != 16_384 {
+			t.Fatalf("CachedModelLimits() = (%d, %d), want (400000, 16384) on iteration %d", in, out, i)
+		}
+	}
+}
+
+// TestStore_CachedModelLimitsForProvider verifies the provider-scoped lookup is
+// deterministic and ignores TTL: it must return the current provider's own
+// window (272k for the subscription) even when an api_key cache advertises a
+// different one (400k) and even after the cache has expired — the exact state
+// that made the status-bar limit flicker every render once the 24h TTL lapsed.
+func TestStore_CachedModelLimitsForProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	if err := store.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 400_000, OutputTokenLimit: 16_384},
+	}); err != nil {
+		t.Fatalf("CacheModels(api_key) error = %v", err)
+	}
+	if err := store.CacheModels(OpenAI, AuthSubscription, []ModelInfo{
+		{ID: "gpt-5.5", InputTokenLimit: 272_000, OutputTokenLimit: 16_384},
+	}); err != nil {
+		t.Fatalf("CacheModels(subscription) error = %v", err)
+	}
+
+	// Backdate the subscription cache well past the TTL to reproduce the bug.
+	key := makemodelCacheKey(OpenAI, AuthSubscription)
+	cache := store.data.Models[key]
+	cache.CachedAt = cache.CachedAt.Add(-2 * modelCacheTTL)
+	store.data.Models[key] = cache
+
+	if in, ok := store.GetCachedModels(OpenAI, AuthSubscription); ok {
+		t.Fatalf("expected subscription cache to be expired, got %v", in)
+	}
+
+	for i := range 100 {
+		in, out := store.CachedModelLimitsForProvider(OpenAI, AuthSubscription, "gpt-5.5")
+		if in != 272_000 || out != 16_384 {
+			t.Fatalf("CachedModelLimitsForProvider() = (%d, %d), want (272000, 16384) on iteration %d", in, out, i)
+		}
+	}
+
+	// An unknown provider/auth pair reports no window.
+	if in, out := store.CachedModelLimitsForProvider(OpenAI, AuthMethod("none"), "gpt-5.5"); in != 0 || out != 0 {
+		t.Fatalf("CachedModelLimitsForProvider(none) = (%d, %d), want (0, 0)", in, out)
+	}
+}

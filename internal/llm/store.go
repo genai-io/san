@@ -310,6 +310,33 @@ func (s *Store) CachedModelDisplayName(id string) string {
 	return raw
 }
 
+// CachedModelLimitsForProvider returns the token limits for a model ID from a
+// single provider/auth cache, ignoring TTL. Returns (0, 0) when that cache has
+// no entry reporting a context window for the ID.
+//
+// Unlike CachedModelLimits it reads only the one cache keyed by provider+auth,
+// so it is deterministic: it can never flicker between two providers that
+// advertise different windows for the same ID (e.g. gpt-5.5 at 400k via Direct
+// API and 272k via the ChatGPT subscription). It ignores TTL on purpose — the
+// status bar wants the current model's own window even from a stale cache,
+// since context windows rarely change and a stale-but-correct value beats
+// falling back to a random cross-provider one once the cache expires.
+func (s *Store) CachedModelLimitsForProvider(provider Name, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cache, ok := s.data.Models[makemodelCacheKey(provider, authMethod)]
+	if !ok {
+		return 0, 0
+	}
+	for _, m := range cache.Models {
+		if m.ID == id && m.InputTokenLimit > 0 {
+			return m.InputTokenLimit, m.OutputTokenLimit
+		}
+	}
+	return 0, 0
+}
+
 // CachedModelLimits returns the token limits for a model ID found in any
 // cached provider list, ignoring TTL. Returns (0, 0) when no cached entry
 // reports a context window for the ID.
@@ -320,21 +347,24 @@ func (s *Store) CachedModelDisplayName(id string) string {
 // with no context length (limit 0), while the model's native provider knows the
 // real window (e.g. DeepSeek V4 Pro at 1M). Resolving the limit from only the
 // current provider's cache would then render "--" even though another cache
-// knows the answer. So we scan all caches and prefer an entry with a real
-// (non-zero) input limit. Scans in place without allocating, since it feeds the
-// status bar on every render.
+// knows the answer. So we scan all caches for the ID. When several report a
+// non-zero window we keep the largest, both because it best reflects the
+// model's real capability and because a fixed choice is deterministic — Go
+// randomizes map iteration order, so returning the first hit would flicker the
+// status bar between providers. Scans in place without allocating, since it
+// feeds the status bar on every render.
 func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, cache := range s.data.Models {
 		for _, m := range cache.Models {
-			if m.ID == id && m.InputTokenLimit > 0 {
-				return m.InputTokenLimit, m.OutputTokenLimit
+			if m.ID == id && m.InputTokenLimit > inputLimit {
+				inputLimit, outputLimit = m.InputTokenLimit, m.OutputTokenLimit
 			}
 		}
 	}
-	return 0, 0
+	return inputLimit, outputLimit
 }
 
 // SetCurrentModel sets the current model with provider info
