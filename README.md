@@ -30,7 +30,7 @@ model and extensions; there's no Node.js or Python runtime to install.
 
 - **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
 - **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
-- **Harness** — more than a wrapper: San handles routine approvals for you (auto-review), learns as you work (memory + skills), and lets you replay any turn in a local inspector.
+- **Harness** — tune the loop's policies, not just its parts: customize **auto-review** to reduce human-in-the-loop approvals, and **self-learning** — both memory and the skills it grows — as you work.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
