@@ -37,11 +37,18 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
-	PermissionDecider   PermDecisionFunc
-	PermissionReviewer  PermReviewFunc
-	HookEngine          hook.Handler
-	InteractionFunc     tool.InteractionFunc
-	ToolProgress        func(toolCallID string, msg string)
+	// PermissionDecider and PermissionReviewer are the two stages of the
+	// pre-execution permission gate: the decider applies the static rules
+	// (permit/reject/prompt); the reviewer is the LLM auto-review consulted only
+	// on a gray-zone prompt (AutoReview.Permission).
+	PermissionDecider  PermDecisionFunc
+	PermissionReviewer PermReviewFunc
+	HookEngine         hook.Handler
+	InteractionFunc    tool.InteractionFunc
+	ToolProgress       func(toolCallID string, msg string)
+	// BashPromptResponder answers prompts a command raises *while it runs*
+	// (AutoReview.BashPrompt plus the masked secret input) — a separate concern
+	// from the pre-execution gate above.
 	BashPromptResponder tool.BashPromptResponderProvider
 
 	// OnEvent observes every agent lifecycle event synchronously, alongside
