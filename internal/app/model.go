@@ -70,13 +70,8 @@ type model struct {
 	pendingDecisions *sync.Map // tool call ID → core.ReviewDecision
 
 	// Streaming blocks render their markdown off the UI goroutine so a completed
-	// block never stalls repaint. flushRendering keeps one render in flight at a
-	// time (ordered Printlns); flushMD is the background renderer, kept off the
-	// live-view MDRenderer's mutex and rebuilt on width change. See
-	// model_scrollback.go.
-	flushRendering bool
-	flushMD        *conv.MDRenderer
-	flushMDWidth   int
+	// block never stalls repaint. See flushState and model_scrollback.go.
+	flush flushState
 }
 
 var _ conv.Runtime = (*model)(nil)

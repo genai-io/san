@@ -18,19 +18,19 @@ func flushTestModel(msg core.ChatMessage) *model {
 }
 
 // applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
-// and lands its result, mirroring the real render → handleBlocksRendered path so
-// tests can assert the committed offsets the landing advances.
+// and lands its result, mirroring the real render → handleFlushResult path
+// so tests can assert the committed offsets the landing advances.
 func applyFlush(t *testing.T, m *model, cmds []tea.Cmd) {
 	t.Helper()
 	if len(cmds) == 0 {
 		t.Fatal("expected a flush render Cmd, got none")
 	}
 	msg := cmds[0]()
-	br, ok := msg.(blocksRenderedMsg)
+	br, ok := msg.(flushResultMsg)
 	if !ok {
-		t.Fatalf("flush Cmd returned %T, want blocksRenderedMsg", msg)
+		t.Fatalf("flush Cmd returned %T, want flushResultMsg", msg)
 	}
-	m.handleBlocksRendered(br)
+	m.handleFlushResult(br)
 }
 
 // The live welcome banner is visible from launch and tracks the model the user
@@ -95,8 +95,8 @@ func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
 	if !msg.ThinkingEmitted {
 		t.Fatal("ThinkingEmitted should be set after the first thinking block commits")
 	}
-	if m.flushRendering {
-		t.Fatal("flushRendering should clear once the render has landed")
+	if m.flush.rendering {
+		t.Fatal("flush.rendering should clear once the render has landed")
 	}
 }
 
@@ -145,8 +145,8 @@ func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 	if cmds := m.FlushStreamingBlocks(); len(cmds) == 0 {
 		t.Fatal("the first completed block should start a render")
 	}
-	if !m.flushRendering {
-		t.Fatal("flushRendering should latch while a render is in flight")
+	if !m.flush.rendering {
+		t.Fatal("flush.rendering should latch while a render is in flight")
 	}
 	if cmds := m.FlushStreamingBlocks(); cmds != nil {
 		t.Fatal("a second flush must be suppressed while one render is in flight")
@@ -155,8 +155,8 @@ func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 
 // A render that lands after its row was already committed whole (turn-end or
 // cancel commits the remainder, in-flight block included) is dropped — no
-// duplicate Println, and flushRendering still clears.
-func TestHandleBlocksRenderedDiscardsCommittedRow(t *testing.T) {
+// duplicate Println, and flush.rendering still clears.
+func TestHandleFlushResultDiscardsCommittedRow(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:    core.RoleAssistant,
 		Content: "a block\n\n",
@@ -166,24 +166,24 @@ func TestHandleBlocksRenderedDiscardsCommittedRow(t *testing.T) {
 	if len(cmds) == 0 {
 		t.Fatal("expected a render Cmd")
 	}
-	br, ok := cmds[0]().(blocksRenderedMsg)
+	br, ok := cmds[0]().(flushResultMsg)
 	if !ok {
-		t.Fatal("flush Cmd did not return a blocksRenderedMsg")
+		t.Fatal("flush Cmd did not return a flushResultMsg")
 	}
 
 	// The row got committed to scrollback before the render landed.
 	m.conv.CommittedCount = 1
-	if cmd := m.handleBlocksRendered(br); cmd != nil {
+	if cmd := m.handleFlushResult(br); cmd != nil {
 		t.Fatal("a render for an already-committed row must be discarded (no Println)")
 	}
-	if m.flushRendering {
-		t.Fatal("flushRendering must clear even when the render is discarded")
+	if m.flush.rendering {
+		t.Fatal("flush.rendering must clear even when the render is discarded")
 	}
 }
 
 // A render that lands after its row was dropped and replaced by a retry's fresh
 // row (new message ID) is dropped rather than corrupting the new row's offsets.
-func TestHandleBlocksRenderedDiscardsReplacedRow(t *testing.T) {
+func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:    core.RoleAssistant,
 		ID:      "old",
@@ -194,11 +194,11 @@ func TestHandleBlocksRenderedDiscardsReplacedRow(t *testing.T) {
 	if len(cmds) == 0 {
 		t.Fatal("expected a render Cmd")
 	}
-	br := cmds[0]().(blocksRenderedMsg)
+	br := cmds[0]().(flushResultMsg)
 
 	// Retry dropped the streaming row and appended a fresh one (new ID).
 	m.conv.Messages[0] = core.ChatMessage{Role: core.RoleAssistant, ID: "new", Content: "retried"}
-	if cmd := m.handleBlocksRendered(br); cmd != nil {
+	if cmd := m.handleFlushResult(br); cmd != nil {
 		t.Fatal("a render for a replaced row must be discarded")
 	}
 	if got := m.conv.Messages[0].ContentCommittedLen; got != 0 {

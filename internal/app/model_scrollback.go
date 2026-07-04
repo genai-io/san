@@ -17,9 +17,25 @@ func (m *model) CommitMessages() []tea.Cmd {
 	return m.renderAndCommit(true)
 }
 
-// blockRenderJob is the immutable snapshot the background render goroutine works
+// Streaming-flush pipeline. As an assistant message streams in, each of its
+// completed markdown blocks migrates from the live tail (redrawn every frame in
+// the alt-screen) into the terminal's native scrollback, one block at a time:
+//
+//	FlushStreamingBlocks  freezes the newly-completed, not-yet-committed slice of
+//	                      the live message into a flushSnapshot.
+//	renderSnapshotCmd     renders that snapshot with glamour on a background Cmd,
+//	                      so the parse + syntax highlight can't stall repaint.
+//	flushResultMsg        carries the rendered ANSI back to the UI goroutine.
+//	handleFlushResult     Println's it into scrollback and advances the message's
+//	                      commit offsets, so the live tail stops redrawing the
+//	                      prefix now committed and flushes the next block.
+//
+// One render is in flight at a time (flush.rendering) so the Printlns stay
+// ordered; the still-streaming trailing block stays live until it too completes.
+
+// flushSnapshot is the immutable snapshot the background render goroutine works
 // from, so it never touches live model state.
-type blockRenderJob struct {
+type flushSnapshot struct {
 	msgID            string
 	index            int
 	thinkingSlice    string
@@ -32,9 +48,18 @@ type blockRenderJob struct {
 	md               *conv.MDRenderer
 }
 
-// blocksRenderedMsg carries a finished background render back for
-// handleBlocksRendered to commit to scrollback.
-type blocksRenderedMsg struct {
+// flushState is the streaming-block flush subsystem: it renders each completed
+// conversation block (thinking, content) off the UI goroutine and commits the
+// result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
+type flushState struct {
+	rendering bool             // one render in flight at a time, so Printlns stay ordered
+	renderer  *conv.MDRenderer // background renderer, off the live-view MDRenderer's mutex
+	width     int              // width the renderer was built for; rebuild when it changes
+}
+
+// flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
+// the rendered blocks back for handleFlushResult to commit to scrollback.
+type flushResultMsg struct {
 	msgID                string
 	index                int
 	thinkingCommittedLen int
@@ -44,14 +69,12 @@ type blocksRenderedMsg struct {
 	printed              string // "" when the blocks rendered empty (blank-only)
 }
 
-// FlushStreamingBlocks starts committing the streaming message's completed
-// blocks to scrollback. The markdown render runs off the UI goroutine
-// (renderBlocksCmd) so it can't stall repaint; one render runs at a time
-// (flushRendering) to keep the Printlns ordered, and offsets advance only when
-// it lands, so the live tail shows each block until its rendered form is in
-// scrollback. Returns nil when a render is in flight or nothing new is ready.
+// FlushStreamingBlocks starts one turn of the streaming-flush pipeline above:
+// it freezes the last message's newly-completed blocks into a flushSnapshot and
+// kicks off their background render. Returns nil when a render is already in
+// flight or nothing new is ready to flush.
 func (m *model) FlushStreamingBlocks() []tea.Cmd {
-	if m.flushRendering {
+	if m.flush.rendering {
 		return nil // a block is already rendering off-thread; wait for it to land
 	}
 	idx := len(m.conv.Messages) - 1
@@ -82,8 +105,8 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
-	m.flushRendering = true
-	return []tea.Cmd{renderBlocksCmd(blockRenderJob{
+	m.flush.rendering = true
+	return []tea.Cmd{renderSnapshotCmd(flushSnapshot{
 		msgID:            msg.ID,
 		index:            idx,
 		thinkingSlice:    thinkingSlice,
@@ -93,27 +116,27 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		showThinkingIcon: !msg.ThinkingEmitted,
 		showBullet:       !msg.BulletEmitted,
 		width:            m.env.Width,
-		md:               m.flushRenderer(),
+		md:               m.flush.mdRenderer(m.env.Width),
 	})}
 }
 
-// renderBlocksCmd renders the job's completed blocks (glamour, off the UI
-// goroutine) and returns them as a blocksRenderedMsg.
-func renderBlocksCmd(job blockRenderJob) tea.Cmd {
+// renderSnapshotCmd renders the snapshot's completed blocks (glamour, off the UI
+// goroutine) and returns them as a flushResultMsg.
+func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 	return func() tea.Msg {
 		// != "" just skips a slice absent this flush; the render helpers
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if job.thinkingSlice != "" {
-			if b := conv.RenderCommittedThinkingBlock(job.thinkingSlice, job.showThinkingIcon, job.width); b != "" {
+		if snap.thinkingSlice != "" {
+			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width); b != "" {
 				blocks = append(blocks, b)
 				thinkingEmitted = true
 			}
 		}
 		bulletEmitted := false
-		if job.contentSlice != "" {
-			if b := conv.RenderCommittedContentBlock(job.contentSlice, job.showBullet, job.md); b != "" {
+		if snap.contentSlice != "" {
+			if b := conv.RenderCommittedContentBlock(snap.contentSlice, snap.showBullet, snap.md); b != "" {
 				blocks = append(blocks, b)
 				bulletEmitted = true
 			}
@@ -123,11 +146,11 @@ func renderBlocksCmd(job blockRenderJob) tea.Cmd {
 			// Match RenderMessageAt's leading newline + blank-line separation.
 			printed = "\n" + strings.Join(blocks, "\n\n")
 		}
-		return blocksRenderedMsg{
-			msgID:                job.msgID,
-			index:                job.index,
-			thinkingCommittedLen: job.thinkingEnd,
-			contentCommittedLen:  job.contentEnd,
+		return flushResultMsg{
+			msgID:                snap.msgID,
+			index:                snap.index,
+			thinkingCommittedLen: snap.thinkingEnd,
+			contentCommittedLen:  snap.contentEnd,
 			thinkingEmitted:      thinkingEmitted,
 			bulletEmitted:        bulletEmitted,
 			printed:              printed,
@@ -135,10 +158,10 @@ func renderBlocksCmd(job blockRenderJob) tea.Cmd {
 	}
 }
 
-// handleBlocksRendered lands a background render: advance the row's offsets,
+// handleFlushResult lands a background render: advance the row's offsets,
 // print to scrollback, then flush the next completed block.
-func (m *model) handleBlocksRendered(msg blocksRenderedMsg) tea.Cmd {
-	m.flushRendering = false
+func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
+	m.flush.rendering = false
 
 	// Drop the render if its row was committed whole (turn-end/cancel) or
 	// replaced by a retry (new ID) meanwhile — its content is already handled, so
@@ -174,16 +197,16 @@ func (m *model) handleBlocksRendered(msg blocksRenderedMsg) tea.Cmd {
 	return tea.Sequence(cmds...)
 }
 
-// flushRenderer is the background goroutine's own markdown renderer, kept off
+// mdRenderer returns the background goroutine's own markdown renderer, kept off
 // m.conv.MDRenderer so a slow render can't block the live View on its mutex.
-// Rebuilt on width change; needs no lock since flushRendering means one render
+// Rebuilt on width change; needs no lock since flush.rendering means one render
 // uses it at a time.
-func (m *model) flushRenderer() *conv.MDRenderer {
-	if m.flushMD == nil || m.flushMDWidth != m.env.Width {
-		m.flushMD = conv.NewMDRenderer(m.env.Width)
-		m.flushMDWidth = m.env.Width
+func (f *flushState) mdRenderer(width int) *conv.MDRenderer {
+	if f.renderer == nil || f.width != width {
+		f.renderer = conv.NewMDRenderer(width)
+		f.width = width
 	}
-	return m.flushMD
+	return f.renderer
 }
 
 func (m *model) commitAllMessages() []tea.Cmd {
