@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
+	"github.com/genai-io/san/internal/proc"
 )
 
 const (
@@ -24,13 +26,19 @@ const (
 	// blocked on read, without closing the master (which would not reliably wake
 	// our reader on darwin) or killing a command that is not reading stdin.
 	eofByte = 0x04
+	// drainTimeout bounds the post-loop wait for the reader to close after the
+	// process group is killed, so a child that escaped the group and still holds
+	// the pty open can't hang us past the command timeout.
+	drainTimeout = 2 * time.Second
 )
 
 // runInteractive runs cmd attached to a pseudo-terminal and answers interactive
 // prompts through responder, returning the full combined output. A skipped or
 // unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
-// command working silently keeps running; only a cancelled ctx kills the process.
+// command working silently keeps running; a cancelled ctx kills the whole
+// process group so children holding the pty are reaped too.
 func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, error) {
+	cmd.WaitDelay = 5 * time.Second // backstop for Wait if a child keeps the pty
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return "", err
@@ -72,7 +80,10 @@ loop:
 	for {
 		select {
 		case <-ctx.Done():
-			_ = cmd.Process.Kill()
+			// Kill the whole process group, not just bash: a child holding the
+			// pty slave open (sleep, a dev server) must die too, or the reader
+			// never sees EOF and the drain below blocks past the timeout.
+			_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
 			break loop
 
 		case b, ok := <-chunks:
@@ -122,8 +133,22 @@ loop:
 		}
 	}
 
-	for b := range chunks { // drain whatever the process emitted on its way out
-		out.Write(b)
+	// Drain remaining output, but bound the wait: if a child escaped the process
+	// group and still holds the pty open, the reader never sees EOF — give up
+	// rather than block ExecuteApproved past its timeout.
+	drainDeadline := time.NewTimer(drainTimeout)
+	defer drainDeadline.Stop()
+drainLoop:
+	for {
+		select {
+		case b, ok := <-chunks:
+			if !ok {
+				break drainLoop
+			}
+			out.Write(b)
+		case <-drainDeadline.C:
+			break drainLoop
+		}
 	}
 
 	werr := cmd.Wait()

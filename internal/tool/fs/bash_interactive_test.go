@@ -121,6 +121,27 @@ func Test_runInteractive_promptLikeFalsePositiveNotKilled(t *testing.T) {
 	}
 }
 
+func Test_runInteractive_timeoutReapsChildHoldingPTY(t *testing.T) {
+	// A backgrounded child keeps the pty slave open. On timeout the whole process
+	// group is killed and the drain is bounded, so runInteractive returns promptly
+	// instead of blocking until the child (sleep 30) exits.
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	cmd := exec.Command("bash", "-c", `sleep 30 & echo started; wait`)
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = runInteractive(ctx, "sleep", cmd, &fakeResponder{})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(6 * time.Second):
+		t.Fatal("runInteractive hung past the timeout with a child holding the pty")
+	}
+}
+
 func Test_trimToLine(t *testing.T) {
 	cases := map[string]string{
 		"foo\nbar":        "bar",
