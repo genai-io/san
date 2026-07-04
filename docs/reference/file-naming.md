@@ -12,8 +12,7 @@ agents.
   directories only when a multi-word directory is unavoidable.
 - Do not use ordering prefixes such as `01-` unless the files are a deliberately
   sequenced tutorial.
-- Avoid a file and directory with the same base name in the same area, such as
-  `docs/architecture.md` and `docs/packages/`.
+- Avoid a file and directory with the same base name in the same area.
 - Prefer descriptive capability names over generic names: `agent-core.md`
   instead of `core.md`.
 
@@ -29,7 +28,7 @@ agents.
 
 ## Documentation Families
 
-- System overview lives in `docs/architecture.md`; per-package design in `docs/packages/`.
+- System overview lives in `docs/concepts/architecture.md`; per-package design in `docs/packages/`.
 - Cross-cutting concepts live in `docs/concepts/`.
 - Operational runbooks live under `docs/operations/`.
 - Stable references live under `docs/reference/`.

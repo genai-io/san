@@ -6,7 +6,7 @@ surfaces for skills, plugins, MCP servers, hooks, slash commands, and
 subagents.
 
 This page is the system-level overview. For per-package design see
-[`packages/`](packages/). For dependency rules and package-layer assignments
+[`packages/`](../packages/). For dependency rules and package-layer assignments
 see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
 [`reference/package-map.md`](../reference/package-map.md).
 
@@ -81,9 +81,9 @@ cmd  →  app  →  feature  →  core  →  infrastructure
 | --- | --- |
 | `cmd` | `cmd/*` |
 | `app` | `internal/app` and subpackages |
-| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, inspector, search, worktree, setting, reminder) |
+| `feature` | Business-domain packages (agent, hook, skill, plugin, mcp, llm, tool, task, subagent, session, command, cron, persona, inspector, search, worktree, setting, reminder, selflearn, image) |
 | `core` | `internal/core` |
-| `infrastructure` | `internal/{log,secret,filecache,markdown,image}` |
+| `infrastructure` | `internal/{log,secret,filecache,markdown,proc,confdir}` |
 
 Full membership list and allowed-edge rules live in
 [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
@@ -95,12 +95,12 @@ is added.
 
 | Want to understand… | Read |
 |---|---|
-| One specific package | [`packages/<name>.md`](packages/) |
-| A cross-cutting concept (extension model, prompt slots, permissions) | [`concepts/`](concepts/) |
-| A fact (slash command list, config field, env var, token limits) | [`reference/`](reference/) |
-| Why a decision was made | [`decisions/`](decisions/) |
-| How to accomplish a task | [`guides/`](guides/) |
-| Build, test, release the repo | [`operations/`](operations/) |
+| One specific package | [`packages/<name>.md`](../packages/) |
+| A cross-cutting concept (extension model, prompt slots, permissions) | [`concepts/`](./) |
+| A fact (slash command list, config field, env var, token limits) | [`reference/`](../reference/) |
+| Why a decision was made | [`decisions/`](../design/decisions/) |
+| How to accomplish a task | [`guides/`](../guides/) |
+| Build, test, release the repo | [`operations/`](../operations/) |
 
 ## Change Rule
 
@@ -112,6 +112,6 @@ pull request.
   [`reference/package-map.md`](../reference/package-map.md) and
   [`reference/dependency-rules.md`](../reference/dependency-rules.md).
 - Changing a package's public interface: update
-  [`packages/<name>.md`](packages/) Contract section.
+  [`packages/<name>.md`](../packages/) Contract section.
 - Adding a new cross-cutting concept: write a
-  [`concepts/`](concepts/) page; do not bury it inside one package doc.
+  [`concepts/`](./) page; do not bury it inside one package doc.

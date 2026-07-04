@@ -25,10 +25,11 @@ larger package or file refactors.
   links.
 - Renamed ambiguous deep-dive documents to descriptive names and added
   `docs/reference/file-naming.md`.
+- Added `tools/layercheck` enforcement and later made it read package-layer
+  assignments directly from `docs/reference/package-map.md`.
 
 ## Next Candidates
 
 - Split detailed content from `docs/packages/ui.md` into the new architecture
   pages.
-- Add an import-boundary check matching `docs/reference/dependency-rules.md`.
 - Split large `internal/app` files by lifecycle responsibility.

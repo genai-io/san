@@ -43,6 +43,7 @@ Agent, persistence, and orchestration:
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |
+| `internal/selflearn` | `feature` | Background self-learning reviewer, durable memory store, and restricted skill-update surface. |
 
 Extension surfaces:
 
@@ -77,6 +78,7 @@ Configuration and supporting capabilities:
 | `internal/filecache` | `infrastructure` | File restore/cache helpers. |
 | `internal/markdown` | `infrastructure` | Markdown frontmatter parsing. |
 | `internal/proc` | `infrastructure` | Cross-platform process-group / signal helpers (Unix/Windows variants). |
+| `internal/confdir` | `infrastructure` | Shared `.san` configuration directory naming helper. |
 
 ## Ownership Rule
 

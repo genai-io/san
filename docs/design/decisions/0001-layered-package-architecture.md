@@ -93,9 +93,9 @@ specification docs:
   of the initial gaps were filled in the same PR; the rest tracked in
   `notes/tech-debt.md`.)
 - **`tools/layercheck` becomes load-bearing.** Updates to package
-  layout require updating `package-map.md`, `dependency-rules.md`, and
-  the layer map in `tools/layercheck/main.go`. The three sources are
-  consistent today; a single source-of-truth would be a follow-up.
+  layout require updating `package-map.md` and, when layer rules change,
+  `dependency-rules.md`. `layercheck` reads `package-map.md` directly so
+  the package-to-layer assignment has one source of truth.
 - **Provisional classifications.** `internal/image` is marked `feature`
   because it touches `core.Image`; the cleaner "infrastructure +
   adapter" split is in `notes/tech-debt.md`.
@@ -115,7 +115,7 @@ Full road map in `notes/tech-debt.md`.
 
 ## References
 
-- [`docs/architecture.md`](../../concepts/architecture.md) — the new
+- [`docs/concepts/architecture.md`](../../concepts/architecture.md) — the new
   system-level overview.
 - [`docs/packages/TEMPLATE.md`](../../packages/TEMPLATE.md) — the
   binding template for new package pages.

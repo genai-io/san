@@ -51,6 +51,7 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 | [`search`](2-feature/search.md) | Pluggable web search backends behind a small `Provider` interface. |
 | [`session`](2-feature/session.md) | Transcript persistence, resume, fork, projection. |
 | [`setting`](2-feature/setting.md) | Settings loader + central permission decision gate. |
+| [`selflearn`](2-feature/selflearn.md) | Background review loop that writes durable memory and agent-created skills. |
 | [`skill`](2-feature/skill.md) | Skill loader, state store, active-skills block consumed by the `skills-directory` reminder. |
 | [`subagent`](2-feature/subagent.md) | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
 | [`task`](2-feature/task.md) | Background task manager (bash and agent tasks). |
@@ -67,7 +68,7 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 
 | Package | One-liner |
 |---|---|
-| [`infrastructure`](4-infrastructure/infrastructure.md) | `log` / `secret` / `filecache` / `markdown` — stateless helpers documented together. |
+| [`infrastructure`](4-infrastructure/infrastructure.md) | `log` / `secret` / `filecache` / `markdown` / `confdir` / `proc` — stateless helpers documented together. |
 
 ## Reference-Shape Pages
 

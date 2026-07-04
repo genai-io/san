@@ -26,48 +26,6 @@ import (
 
 const repoModule = "github.com/genai-io/san"
 
-// layerOf assigns each package path (relative to repoModule) to a layer.
-// Subpackages without an explicit entry inherit from their nearest ancestor.
-// Keep this map in sync with docs/reference/package-map.md.
-var layerOf = map[string]string{
-	"cmd/san": "cmd",
-
-	"internal/app": "app",
-
-	"internal/core": "core",
-
-	"internal/agent":     "feature",
-	"internal/command":   "feature",
-	"internal/cron":      "feature",
-	"internal/hook":      "feature",
-	"internal/identity":  "feature",
-	"internal/image":     "feature", // image loader; produces core.Image, so it sits above core (not infrastructure)
-	"internal/inspector": "feature",
-	"internal/llm":       "feature",
-	"internal/mcp":       "feature",
-	"internal/persona":   "feature",
-	"internal/plugin":    "feature",
-	"internal/reminder":  "feature",
-	"internal/reviewer":  "feature",
-	"internal/search":    "feature",
-	"internal/selflearn": "feature",
-	"internal/session":   "feature",
-	"internal/setting":   "feature",
-	"internal/skill":     "feature",
-	"internal/subagent":  "feature",
-	"internal/task":      "feature",
-	"internal/todo":      "feature",
-	"internal/tool":      "feature",
-	"internal/worktree":  "feature",
-
-	"internal/confdir":   "infrastructure",
-	"internal/filecache": "infrastructure",
-	"internal/log":       "infrastructure",
-	"internal/markdown":  "infrastructure",
-	"internal/proc":      "infrastructure",
-	"internal/secret":    "infrastructure",
-}
-
 // rank orders layers from top of stack (0) to bottom (4). A package may import
 // other packages of equal or greater rank, never lower rank.
 var rank = map[string]int{
@@ -79,6 +37,12 @@ var rank = map[string]int{
 }
 
 func main() {
+	layerOf, err := loadLayerMap("docs/reference/package-map.md")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "layercheck:", err)
+		os.Exit(2)
+	}
+
 	pkgs, err := loadPackages()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "layercheck:", err)
@@ -94,12 +58,12 @@ func main() {
 	unknown := map[string]bool{}
 
 	for _, p := range pkgs {
-		fromRel, fromLayer, ok := lookupLayer(p.ImportPath)
+		fromRel, fromLayer, ok := lookupLayer(layerOf, p.ImportPath)
 		if !ok {
 			continue // not one of ours, or unmapped
 		}
 		for _, imp := range p.Imports {
-			toRel, toLayer, ok := lookupLayer(imp)
+			toRel, toLayer, ok := lookupLayer(layerOf, imp)
 			if !ok {
 				if strings.HasPrefix(imp, repoModule+"/") {
 					unknown[strings.TrimPrefix(imp, repoModule+"/")] = true
@@ -118,7 +82,7 @@ func main() {
 			ks = append(ks, k)
 		}
 		sort.Strings(ks)
-		fmt.Fprintln(os.Stderr, "layercheck: unmapped internal packages (add to layerOf):")
+		fmt.Fprintln(os.Stderr, "layercheck: unmapped internal packages (add to docs/reference/package-map.md):")
 		for _, k := range ks {
 			fmt.Fprintln(os.Stderr, "  "+k)
 		}
@@ -145,6 +109,70 @@ func main() {
 		fmt.Printf("  %s (%s) -> %s (%s)\n", v.from, v.fromLayer, v.to, v.toLayer)
 	}
 	os.Exit(1)
+}
+
+// loadLayerMap reads docs/reference/package-map.md and returns the package
+// layer assignment. Subpackages inherit from the nearest mapped ancestor.
+func loadLayerMap(path string) (map[string]string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	layerOf, err := parseLayerMap(string(b))
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return layerOf, nil
+}
+
+func parseLayerMap(markdown string) (map[string]string, error) {
+	layerOf := map[string]string{}
+	for _, line := range strings.Split(markdown, "\n") {
+		cells := markdownTableCells(line)
+		if len(cells) < 2 {
+			continue
+		}
+		pkg, ok := codeCell(cells[0])
+		if !ok || !(strings.HasPrefix(pkg, "cmd/") || strings.HasPrefix(pkg, "internal/")) {
+			continue
+		}
+		layer, ok := codeCell(cells[1])
+		if !ok {
+			return nil, fmt.Errorf("package %s has non-code layer cell %q", pkg, cells[1])
+		}
+		if _, ok := rank[layer]; !ok {
+			return nil, fmt.Errorf("package %s has unknown layer %q", pkg, layer)
+		}
+		if old, exists := layerOf[pkg]; exists && old != layer {
+			return nil, fmt.Errorf("package %s assigned to both %q and %q", pkg, old, layer)
+		}
+		layerOf[pkg] = layer
+	}
+	if len(layerOf) == 0 {
+		return nil, fmt.Errorf("no package rows found")
+	}
+	return layerOf, nil
+}
+
+func markdownTableCells(line string) []string {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "|") || !strings.HasSuffix(line, "|") {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(line, "|"), "|")
+	cells := make([]string, 0, len(parts))
+	for _, p := range parts {
+		cells = append(cells, strings.TrimSpace(p))
+	}
+	return cells
+}
+
+func codeCell(cell string) (string, bool) {
+	cell = strings.TrimSpace(cell)
+	if len(cell) < 2 || cell[0] != '`' || cell[len(cell)-1] != '`' {
+		return "", false
+	}
+	return strings.TrimSpace(cell[1 : len(cell)-1]), true
 }
 
 // pkgInfo is the subset of `go list -json` output that we need.
@@ -181,7 +209,7 @@ func loadPackages() ([]pkgInfo, error) {
 // lookupLayer returns the relative path and layer assignment for an absolute
 // import path under repoModule. Subpackages inherit their nearest ancestor's
 // layer. Returns ok=false for paths outside the repo.
-func lookupLayer(absPath string) (rel, layer string, ok bool) {
+func lookupLayer(layerOf map[string]string, absPath string) (rel, layer string, ok bool) {
 	r, ok := strings.CutPrefix(absPath, repoModule+"/")
 	if !ok && absPath != repoModule {
 		return "", "", false

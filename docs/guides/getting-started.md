@@ -105,6 +105,6 @@ full schema.
 - [Writing a skill](writing-a-skill.md) — your first user extension.
 - [Writing a subagent](writing-a-subagent.md) — define a parallel agent.
 - [Writing a plugin](writing-a-plugin.md) — bundle skills + agents + commands.
-- [`docs/architecture.md`](../concepts/architecture.md) — how the system is built.
+- [`docs/concepts/architecture.md`](../concepts/architecture.md) — how the system is built.
 - [`reference/slash-commands.md`](../reference/slash-commands.md) —
   every `/command`.

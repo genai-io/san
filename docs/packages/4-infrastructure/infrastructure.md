@@ -5,7 +5,7 @@ layer: infrastructure
 # infrastructure
 
 Stateless helpers usable from any layer above. None of these packages
-import any other `internal/*` package; none own business logic.
+own business logic.
 Documented together because each surface is small and the role is the
 same.
 
@@ -107,6 +107,44 @@ func ParseFrontmatterFile(path string) (frontmatter, body string, err error)
   `persona`, [`command.md`](../2-feature/command.md). Every skill / agent /
   persona / command file is parsed through it on `san` startup.
 - Code: `internal/markdown/`.
+
+## `internal/confdir`
+
+One constant and one helper for the repository's configuration directory name.
+It exists so packages that cannot depend on `internal/setting` still resolve
+`.san` paths consistently.
+
+```go
+package confdir
+
+const Name = ".san"
+
+func Dir(root string) string
+```
+
+- `Dir(root)` returns `root/.san`.
+- Consumers include `internal/log`, `internal/core/system`, `internal/setting`,
+  and extension loaders.
+- Code: `internal/confdir/`.
+
+## `internal/proc`
+
+Cross-platform process helpers for starting subprocesses in their own process
+group/session and terminating that group where the platform supports it.
+
+```go
+package proc
+
+func SetProcessGroup(cmd *exec.Cmd)
+func DetachSession(cmd *exec.Cmd)
+func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
+```
+
+- Used by bash/tool, hook, and MCP transport execution paths to keep child
+  process cleanup behavior centralized.
+- Windows support is best-effort; callers should not assume descendant cleanup
+  is complete on Windows.
+- Code: `internal/proc/`.
 
 ## See Also
 
