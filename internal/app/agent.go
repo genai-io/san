@@ -154,7 +154,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		AskUser: func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
 			return m.conv.AgentToUI.Ask(ctx, 0, req)
 		},
-		ToolProgress: func(toolCallID string, msg string) {
+		ToolActivity: func(toolCallID string, msg string) {
 			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
 		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {

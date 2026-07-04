@@ -210,7 +210,7 @@ func attachExecAgentCallbacks(ctx context.Context, agentUI *AgentToUI, idx int, 
 		return
 	}
 
-	prepared.Params["_onProgress"] = coretool.ProgressFunc(func(msg string) {
+	prepared.Params["_onActivity"] = coretool.ActivityFunc(func(msg string) {
 		if agentUI != nil {
 			agentUI.SendForAgent(idx, msg)
 		}

@@ -155,9 +155,9 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		agentName = target.name
 	}
 
-	var onProgress tool.ProgressFunc
-	if cb, ok := normalized["_onProgress"].(tool.ProgressFunc); ok {
-		onProgress = cb
+	var onActivity tool.ActivityFunc
+	if cb, ok := normalized["_onActivity"].(tool.ActivityFunc); ok {
+		onActivity = cb
 	}
 	var onQuestion tool.AskQuestionFunc
 	if cb, ok := normalized["_onQuestion"].(tool.AskQuestionFunc); ok {
@@ -175,7 +175,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		Mode:        tool.GetString(normalized, "mode"),
 		ResumeID:    target.agentID,
 		Isolation:   tool.GetString(normalized, "isolation"),
-		OnProgress:  onProgress,
+		OnActivity:  onActivity,
 		OnQuestion:  onQuestion,
 	}
 

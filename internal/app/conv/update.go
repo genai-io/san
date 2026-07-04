@@ -274,7 +274,7 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 
 // --- Activity handling (operates on output Model directly) ---
 
-func (m *OutputModel) drainProgress() {
+func (m *OutputModel) drainActivity() {
 	if m.AgentToUI == nil {
 		return
 	}

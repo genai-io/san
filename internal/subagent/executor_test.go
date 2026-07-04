@@ -214,7 +214,7 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 			modelID:     "test-model",
 		},
 		startedAt: time.Now().Add(-time.Second),
-		progress:  []string{"Read(main.go)"},
+		activity:  []string{"Read(main.go)"},
 	}
 
 	result := executor.buildCancelledAgentResult(run, &core.Result{
@@ -233,38 +233,38 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	if result.Model != "test-model" {
 		t.Fatalf("expected prepared model, got %q", result.Model)
 	}
-	if len(result.Progress) != 1 || result.Progress[0] != "Read(main.go)" {
-		t.Fatalf("unexpected progress: %#v", result.Progress)
+	if len(result.Activity) != 1 || result.Activity[0] != "Read(main.go)" {
+		t.Fatalf("unexpected activity: %#v", result.Activity)
 	}
 	if result.Error != "agent cancelled" {
 		t.Fatalf("unexpected error: %q", result.Error)
 	}
 }
 
-func TestFormatToolProgressUsesReadableAgentLabel(t *testing.T) {
-	got := formatToolProgress("Agent", map[string]any{
+func TestFormatToolActivityUsesReadableAgentLabel(t *testing.T) {
+	got := formatToolActivity("Agent", map[string]any{
 		"subagent_type": "code-reviewer",
 		"description":   "HA code structure",
 		"prompt":        "Inspect the codebase",
 	})
 
 	if got != "Agent - Code Reviewer: HA code structure" {
-		t.Fatalf("formatToolProgress() = %q, want %q", got, "Agent - Code Reviewer: HA code structure")
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - Code Reviewer: HA code structure")
 	}
 }
 
-func TestFormatToolProgressUsesShortGeneralName(t *testing.T) {
-	got := formatToolProgress("Agent", map[string]any{
+func TestFormatToolActivityUsesShortGeneralName(t *testing.T) {
+	got := formatToolActivity("Agent", map[string]any{
 		"subagent_type": "general-purpose",
 		"description":   "update repo references",
 	})
 
 	if got != "Agent - General: update repo references" {
-		t.Fatalf("formatToolProgress() = %q, want %q", got, "Agent - General: update repo references")
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - General: update repo references")
 	}
 }
 
-func TestFormatToolProgressNamesGeneralAgentByMode(t *testing.T) {
+func TestFormatToolActivityNamesGeneralAgentByMode(t *testing.T) {
 	for _, tc := range []struct {
 		agent string
 		mode  string
@@ -275,24 +275,24 @@ func TestFormatToolProgressNamesGeneralAgentByMode(t *testing.T) {
 		{agent: "general-purpose", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
 		{agent: "explorer", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
 	} {
-		got := formatToolProgress("Agent", map[string]any{
+		got := formatToolActivity("Agent", map[string]any{
 			"subagent_type": tc.agent,
 			"description":   tc.desc,
 			"mode":          tc.mode,
 		})
 		if got != tc.want {
-			t.Fatalf("formatToolProgress(mode=%s) = %q, want %q", tc.mode, got, tc.want)
+			t.Fatalf("formatToolActivity(mode=%s) = %q, want %q", tc.mode, got, tc.want)
 		}
 	}
 }
 
-func TestFormatToolProgressFallsBackToTaskOutputID(t *testing.T) {
-	got := formatToolProgress("TaskOutput", map[string]any{
+func TestFormatToolActivityFallsBackToTaskOutputID(t *testing.T) {
+	got := formatToolActivity("TaskOutput", map[string]any{
 		"task_id": "task-123",
 	})
 
 	if got != "TaskOutput(task-123)" {
-		t.Fatalf("formatToolProgress() = %q, want %q", got, "TaskOutput(task-123)")
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "TaskOutput(task-123)")
 	}
 }
 

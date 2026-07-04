@@ -79,12 +79,12 @@ func formatForegroundAgentResult(agentType string, result *tool.AgentExecResult,
 	if result.AgentID != "" {
 		fmt.Fprintf(&outputBuilder, "AgentID: %s\n", result.AgentID)
 	}
-	if len(result.Progress) > 0 {
-		fmt.Fprintf(&outputBuilder, "Process: %d\n", len(result.Progress))
+	if len(result.Activity) > 0 {
+		fmt.Fprintf(&outputBuilder, "Process: %d\n", len(result.Activity))
 	}
 	outputBuilder.WriteString("\n")
-	if len(result.Progress) > 0 {
-		for _, p := range result.Progress {
+	if len(result.Activity) > 0 {
+		for _, p := range result.Activity {
 			outputBuilder.WriteString(p)
 			outputBuilder.WriteString("\n")
 		}

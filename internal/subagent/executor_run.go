@@ -18,7 +18,7 @@ type preparedRun struct {
 	cwd              string
 	startedAt        time.Time
 	hookID           string
-	progress         []string
+	activity         []string
 	inputTokens      int
 	outputTokens     int
 	cleanupWorkspace func()
@@ -30,21 +30,21 @@ func (r *preparedRun) close() {
 	}
 }
 
-func (r *preparedRun) sendProgress(msg string) {
-	r.progress = append(r.progress, msg)
-	if r.req.OnProgress != nil {
-		r.req.OnProgress(msg)
+func (r *preparedRun) sendActivity(msg string) {
+	r.activity = append(r.activity, msg)
+	if r.req.OnActivity != nil {
+		r.req.OnActivity(msg)
 	}
 }
 
 func (r *preparedRun) recordUsage(resp *core.InferResponse) {
-	if r.req.OnProgress == nil || resp == nil {
+	if r.req.OnActivity == nil || resp == nil {
 		return
 	}
 	r.inputTokens += resp.InputTokens
 	r.outputTokens += resp.OutputTokens
 	if r.inputTokens > 0 || r.outputTokens > 0 {
-		r.sendProgress(formatUsageProgress(r.inputTokens, r.outputTokens))
+		r.sendActivity(formatUsageActivity(r.inputTokens, r.outputTokens))
 	}
 }
 
@@ -70,7 +70,7 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 		cwd:              agentCwd,
 		startedAt:        time.Now(),
 		hookID:           "a" + generateShortID(),
-		progress:         make([]string, 0, 16),
+		activity:         make([]string, 0, 16),
 		cleanupWorkspace: cleanupWorkspace,
 	}, nil
 }
@@ -90,14 +90,14 @@ func (e *Executor) logRunStart(run *preparedRun) {
 
 func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*core.Result, error) {
 	var onToolExec func(string, map[string]any)
-	if run.req.OnProgress != nil {
+	if run.req.OnActivity != nil {
 		modelMsg := fmt.Sprintf("Model: %s", run.cfg.modelID)
-		run.sendProgress(modelMsg)
+		run.sendActivity(modelMsg)
 		startMsg := fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps)
-		run.sendProgress(startMsg)
+		run.sendActivity(startMsg)
 		onToolExec = func(name string, params map[string]any) {
-			msg := formatToolProgress(name, params)
-			run.sendProgress(msg)
+			msg := formatToolActivity(name, params)
+			run.sendActivity(msg)
 		}
 	}
 	ag, cleanupAgent, err := e.buildAgent(ctx, run.cfg, run.cwd, onToolExec, func(ev core.Event) {
@@ -113,8 +113,8 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	if err := e.loadConversation(ag, ctx, run.cfg, run.req); err != nil {
 		return nil, err
 	}
-	if run.req.OnProgress != nil {
-		run.sendProgress("Thinking...")
+	if run.req.OnActivity != nil {
+		run.sendActivity("Thinking...")
 	}
 
 	result, err := ag.ThinkAct(ctx)
@@ -128,7 +128,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	return result, nil
 }
 
-func formatUsageProgress(inputTokens, outputTokens int) string {
+func formatUsageActivity(inputTokens, outputTokens int) string {
 	return fmt.Sprintf("Usage: input=%d output=%d", inputTokens, outputTokens)
 }
 
@@ -171,7 +171,7 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 		ToolUses:       result.ToolUses,
 		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:       time.Since(run.startedAt),
-		Progress:       append([]string(nil), run.progress...),
+		Activity:       append([]string(nil), run.activity...),
 		Error:          errMsg,
 	}
 }
@@ -191,7 +191,7 @@ func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Resu
 		ToolUses:   result.ToolUses,
 		TokenUsage: llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:   time.Since(run.startedAt),
-		Progress:   append([]string(nil), run.progress...),
+		Activity:   append([]string(nil), run.activity...),
 		Error:      "agent cancelled",
 	}
 }

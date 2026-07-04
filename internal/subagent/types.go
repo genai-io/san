@@ -344,7 +344,7 @@ type AgentResult struct {
 	ToolUses       int
 	TokenUsage     llm.Usage
 	Duration       time.Duration
-	Progress       []string
+	Activity       []string
 	Error          string
 }
 

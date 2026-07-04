@@ -165,7 +165,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 
 	task.Default().RegisterTask(agentTask)
 
-	req.OnProgress = func(msg string) {
+	req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
 	}
 
@@ -317,7 +317,7 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 
 	var coreTools core.Tools = tools
 	if onToolExec != nil {
-		coreTools = &progressTools{inner: tools, onExec: onToolExec}
+		coreTools = &activityTools{inner: tools, onExec: onToolExec}
 	}
 
 	// Wrap tools with permission decorator

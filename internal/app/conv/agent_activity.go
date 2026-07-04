@@ -45,7 +45,7 @@ func renderAgentActivity(activity []string) string {
 	return sb.String()
 }
 
-func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskProgress map[int][]string, expanded bool, limit int, stats AgentStats) string {
+func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, limit int, stats AgentStats) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -57,7 +57,7 @@ func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, t
 		return ""
 	}
 
-	activity := taskProgress[idx]
+	activity := taskActivity[idx]
 	if expanded {
 		return renderAgentActivity(activity)
 	}

@@ -408,7 +408,7 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsShowsSingleAgentRuntimeProgress(t *testing.T) {
+func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
@@ -486,7 +486,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsUsesProgressModelForAgentSummary(t *testing.T) {
+func TestRenderToolCallsUsesActivityModelForAgentSummary(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
@@ -518,7 +518,7 @@ func TestRenderToolCallsUsesProgressModelForAgentSummary(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsUsesProgressUsageForAgentTokens(t *testing.T) {
+func TestRenderToolCallsUsesActivityUsageForAgentTokens(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",

@@ -56,8 +56,8 @@ type AgentExecutor interface {
 	GetParentModelID() string
 }
 
-// ProgressFunc is called when the agent makes progress.
-type ProgressFunc func(msg string)
+// ActivityFunc is called when the agent reports activity.
+type ActivityFunc func(msg string)
 
 // MessagesGetter returns the current parent conversation messages.
 // Used by fork to inherit conversation context.
@@ -75,7 +75,7 @@ type AgentExecRequest struct {
 	Mode        string
 	ResumeID    string
 	Isolation   string
-	OnProgress  ProgressFunc
+	OnActivity  ActivityFunc
 	OnQuestion  AskQuestionFunc
 }
 
@@ -92,7 +92,7 @@ type AgentExecResult struct {
 	TotalInputTokens  int
 	TotalOutputTokens int
 	Duration          time.Duration
-	Progress          []string
+	Activity          []string
 	Error             string
 }
 

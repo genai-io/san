@@ -46,8 +46,8 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 	}
 }
 
-// toolProgressParams maps tool names to the parameter key used for display.
-var toolProgressParams = map[string]string{
+// toolActivityParams maps tool names to the parameter key used for display.
+var toolActivityParams = map[string]string{
 	"Read":       "file_path",
 	"Write":      "file_path",
 	"Edit":       "file_path",
@@ -62,21 +62,21 @@ var toolProgressParams = map[string]string{
 	"TaskOutput": "task_id",
 }
 
-// formatToolProgress creates a progress message for a tool call in ToolName(args) format.
-func formatToolProgress(toolName string, params map[string]any) string {
+// formatToolActivity creates an activity line for a tool call in ToolName(args) format.
+func formatToolActivity(toolName string, params map[string]any) string {
 	if toolName == "Agent" {
-		if label := formatAgentProgress(params); label != "" {
+		if label := formatAgentActivity(params); label != "" {
 			return label
 		}
 		return toolName
 	}
 
 	// Task tools: show "TaskXxx(#id subject)" by looking up subject from store
-	if label := formatTaskToolProgress(toolName, params); label != "" {
+	if label := formatTaskToolActivity(toolName, params); label != "" {
 		return label
 	}
 
-	paramKey, ok := toolProgressParams[toolName]
+	paramKey, ok := toolActivityParams[toolName]
 	if !ok {
 		return fmt.Sprintf("%s()", toolName)
 	}
@@ -93,8 +93,8 @@ func formatToolProgress(toolName string, params map[string]any) string {
 	return fmt.Sprintf("%s(%s)", toolName, value)
 }
 
-// formatTaskToolProgress formats task tool calls with "#id subject" display.
-func formatTaskToolProgress(toolName string, params map[string]any) string {
+// formatTaskToolActivity formats task tool calls with "#id subject" display.
+func formatTaskToolActivity(toolName string, params map[string]any) string {
 	switch toolName {
 	case "TaskCreate":
 		subject, _ := params["subject"].(string)
@@ -128,7 +128,7 @@ func formatTaskToolProgress(toolName string, params map[string]any) string {
 	}
 }
 
-func formatAgentProgress(params map[string]any) string {
+func formatAgentActivity(params map[string]any) string {
 	agentType, _ := params["subagent_type"].(string)
 	mode, _ := params["mode"].(string)
 	desc, _ := params["description"].(string)

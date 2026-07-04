@@ -21,11 +21,11 @@ func TestHandleActivityWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	}
 }
 
-func Test_drainProgressWithoutHubIsNoop(t *testing.T) {
+func Test_drainActivityWithoutHubIsNoop(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
 	m.TaskActivity = map[int][]string{2: {"existing"}}
 
-	m.drainProgress()
+	m.drainActivity()
 
 	if len(m.TaskActivity[2]) != 1 || m.TaskActivity[2][0] != "existing" {
 		t.Fatalf("unexpected activity state after drain: %#v", m.TaskActivity)

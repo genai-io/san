@@ -40,7 +40,7 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 		TotalInputTokens:  result.TokenUsage.InputTokens,
 		TotalOutputTokens: result.TokenUsage.OutputTokens,
 		Duration:          result.Duration,
-		Progress:          result.Progress,
+		Activity:          result.Activity,
 		Error:             result.Error,
 	}, nil
 }

@@ -78,7 +78,7 @@ func RunAgent(opts AgentRunOptions) error {
 		Prompt:   opts.Prompt,
 		Model:    opts.Model,
 		MaxSteps: opts.MaxSteps,
-		OnProgress: func(msg string) {
+		OnActivity: func(msg string) {
 			fmt.Fprintln(os.Stderr, "·", msg)
 		},
 	}

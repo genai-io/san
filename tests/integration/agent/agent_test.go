@@ -302,7 +302,7 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 	}
 }
 
-func TestAgent_OnProgressReceivesToolUpdates(t *testing.T) {
+func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 	tmpDir := t.TempDir()
 	readme := filepath.Join(tmpDir, "README.md")
 	if err := os.WriteFile(readme, []byte("hello from agent"), 0o644); err != nil {
@@ -331,13 +331,13 @@ func TestAgent_OnProgressReceivesToolUpdates(t *testing.T) {
 	}
 
 	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", nil)
-	var progress []string
+	var activity []string
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "general-purpose",
 		Mode:   "explore",
 		Prompt: "inspect the readme",
-		OnProgress: func(msg string) {
-			progress = append(progress, msg)
+		OnActivity: func(msg string) {
+			activity = append(activity, msg)
 		},
 	})
 	if err != nil {
@@ -354,11 +354,11 @@ func TestAgent_OnProgressReceivesToolUpdates(t *testing.T) {
 		"Read(README.md)",
 		"Usage: input=30 output=8",
 	} {
-		if !slices.Contains(progress, want) {
-			t.Fatalf("progress callback values missing %q: %#v", want, progress)
+		if !slices.Contains(activity, want) {
+			t.Fatalf("activity callback values missing %q: %#v", want, activity)
 		}
-		if !slices.Contains(result.Progress, want) {
-			t.Fatalf("result progress values missing %q: %#v", want, result.Progress)
+		if !slices.Contains(result.Activity, want) {
+			t.Fatalf("result activity values missing %q: %#v", want, result.Activity)
 		}
 	}
 }
