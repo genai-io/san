@@ -73,15 +73,35 @@ func Test_runInteractive_secretPromptUsesRequestSecret(t *testing.T) {
 	}
 }
 
-func Test_runInteractive_skipFailsFast(t *testing.T) {
-	r := &fakeResponder{answerOK: false} // decline to answer
-	out := runScript(t, `read -p "x? " a; echo "got=$a"`, r)
+func Test_runInteractive_skipSendsEOF(t *testing.T) {
+	// When the reviewer declines, the command receives EOF (not the answer) and
+	// is not killed: a real prompt's read returns EOF, a working command is
+	// unaffected.
+	r := &fakeResponder{answer: "y", answerOK: false}
+	out := runScript(t, `if read -p "x? " a; then echo "got=$a"; else echo eof; fi`, r)
 
 	if r.answerCalls != 1 {
 		t.Errorf("answerCalls = %d, want 1", r.answerCalls)
 	}
-	if strings.Contains(out, "got=") {
-		t.Errorf("skip must not feed input, but the command proceeded: %q", out)
+	if strings.Contains(out, "got=y") {
+		t.Errorf("declined prompt must not receive the answer: %q", out)
+	}
+	if !strings.Contains(out, "eof") {
+		t.Errorf("read should hit EOF on a declined prompt: %q", out)
+	}
+}
+
+func Test_runInteractive_colonStallNotKilled(t *testing.T) {
+	// A non-prompt line ending in ':' trips the heuristic and consults the
+	// reviewer; when it declines, the command must still run to completion.
+	r := &fakeResponder{answerOK: false}
+	out := runScript(t, `echo "Building:"; sleep 0.6; echo done`, r)
+
+	if !strings.Contains(out, "done") {
+		t.Errorf("output %q: a false-positive stall must not kill a working command", out)
+	}
+	if r.answerCalls != 1 {
+		t.Errorf("answerCalls = %d, want 1 (heuristic consulted the reviewer)", r.answerCalls)
 	}
 }
 

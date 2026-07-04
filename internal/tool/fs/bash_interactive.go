@@ -20,16 +20,20 @@ const (
 	// maxAutoAnswers bounds how many prompts one command may raise, so a
 	// misbehaving process can't loop us forever.
 	maxAutoAnswers = 12
+	// eofByte is Ctrl-D: written to the pty it signals end-of-input to a command
+	// blocked on read, without closing the master (which would not reliably wake
+	// our reader on darwin) or killing a command that is not reading stdin.
+	eofByte = 0x04
 )
 
-// interactiveBash reports whether the interactive PTY path exists on this
+// supportsBashPTY reports whether the interactive PTY path exists on this
 // platform (unix). Bash uses its normal execution path when false.
-const interactiveBash = true
+const supportsBashPTY = true
 
 // runInteractive runs cmd attached to a pseudo-terminal and answers interactive
-// prompts through responder, returning the full combined output. A prompt the
-// responder skips (ok=false), an exhausted answer budget, or a cancelled ctx
-// closes the pty so the command fails fast rather than hanging.
+// prompts through responder, returning the full combined output. A skipped or
+// unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
+// command working silently keeps running; only a cancelled ctx kills the process.
 func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, error) {
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -54,7 +58,7 @@ func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responde
 
 	var out, pending bytes.Buffer
 	answers := 0
-	skip := false
+	stoppedAnswering := false
 
 	timer := time.NewTimer(promptStallDelay)
 	defer timer.Stop()
@@ -84,10 +88,10 @@ loop:
 			rearm()
 
 		case <-timer.C:
-			// Output went quiet. Only a tail that looks like an interactive prompt
+			// Output went quiet. Only a tail that heuristically looks like a prompt
 			// is treated as waiting for input; a command working silently (a slow
-			// build, a test run) is left to keep running — never answered or killed.
-			if !processAlive(cmd) {
+			// build, a test run) is left to keep running.
+			if stoppedAnswering || !processAlive(cmd) {
 				rearm()
 				continue
 			}
@@ -96,36 +100,31 @@ loop:
 				rearm()
 				continue
 			}
-			if answers >= maxAutoAnswers {
-				skip = true
-				break loop
-			}
-			answers++
 
 			var input string
 			var ok bool
-			if isSecretPrompt(prompt) {
-				input, ok = responder.RequestSecret(ctx, prompt)
+			if answers < maxAutoAnswers {
+				answers++
+				if isSecretPrompt(prompt) {
+					input, ok = responder.RequestSecret(ctx, prompt)
+				} else {
+					input, ok = responder.AnswerPrompt(ctx, command, prompt)
+				}
+			}
+			if ok {
+				_, _ = ptmx.Write([]byte(input + "\n"))
 			} else {
-				input, ok = responder.AnswerPrompt(ctx, command, prompt)
+				// Declined, or the answer budget is spent: send EOF so a real
+				// prompt reads empty and aborts, while a command not reading stdin
+				// is unaffected — we never kill a working command. Stop here.
+				_, _ = ptmx.Write([]byte{eofByte})
+				stoppedAnswering = true
 			}
-			if !ok {
-				skip = true
-				break loop
-			}
-			_, _ = ptmx.Write([]byte(input + "\n"))
 			pending.Reset()
 			rearm()
 		}
 	}
 
-	if skip {
-		// Terminate so the reader hits EOF and unblocks. Closing the master
-		// alone does not reliably wake a blocked Read on darwin; ending the
-		// process makes the kernel deliver EOF the same way a normal exit does.
-		// The command fails for lack of input — the fail-fast outcome we want.
-		_ = cmd.Process.Kill()
-	}
 	for b := range chunks { // drain whatever the process emitted on its way out
 		out.Write(b)
 	}
@@ -179,10 +178,10 @@ func lastLine(s string) string {
 	return strings.TrimSpace(s[start:end])
 }
 
-// looksLikePrompt reports whether a stalled line is plausibly an interactive
-// prompt awaiting input, rather than a command working silently. Gating on it
-// keeps ordinary non-interactive output ("=== RUN TestX", build progress) from
-// being mistaken for a prompt and killed.
+// looksLikePrompt is a heuristic — it reports whether a stalled line's tail
+// looks like an interactive prompt (ends with ? : ] ) >), not reliable prompt
+// detection. It only gates the answer loop; a false positive is harmless because
+// a declined prompt is sent EOF rather than killing the command.
 func looksLikePrompt(line string) bool {
 	if line == "" {
 		return false
