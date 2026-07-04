@@ -418,7 +418,7 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 	if ref == "" || ref == "inherit" {
 		return e.provider, e.parentModelID, nil
 	}
-	if vendor, modelID, ok := parseVendorModel(ref); ok {
+	if vendor, modelID, ok := llm.ParseVendorModel(ref); ok {
 		if e.resolver == nil {
 			return nil, "", fmt.Errorf("model %q routes to provider %q, but cross-provider routing is unavailable", ref, vendor)
 		}
@@ -429,21 +429,6 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		return p, modelID, nil
 	}
 	return e.provider, resolveModelAlias(ref), nil
-}
-
-// parseVendorModel reads the explicit "vendor/model" form (e.g.
-// "deepseek/deepseek-v4"), the only way to route a subagent to another vendor.
-// A ref is vendor-qualified only when the part before the first slash is a
-// registered provider name; a bare model id that merely contains a slash (e.g.
-// mimo's "xiaomi/mimo-v2-flash") is not, so it stays on the parent provider
-// instead of erroring. A known but unconnected vendor still surfaces as a clear
-// resolver error.
-func parseVendorModel(ref string) (vendor llm.Name, model string, ok bool) {
-	v, m, found := strings.Cut(ref, "/")
-	if !found || v == "" || m == "" || !llm.IsProvider(llm.Name(v)) {
-		return "", "", false
-	}
-	return llm.Name(v), m, true
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {

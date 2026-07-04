@@ -43,7 +43,7 @@ func (p *SecretPromptModel) Show(prompt string, width int) {
 	p.width = width
 	p.input.SetValue("")
 	p.input.Focus()
-	p.input.SetWidth(inputWidth(width))
+	// Width is sized by Render from p.width before the input is ever displayed.
 }
 
 func (p *SecretPromptModel) Hide() {

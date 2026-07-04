@@ -17,12 +17,9 @@ type bashPromptResponder struct {
 
 // RequestAnswer delegates an ordinary prompt to the auto-review LLM, which
 // decides the reply. It never sees a secret prompt — that goes to RequestSecret.
+// The provider closure only builds this responder when auto-review is on, so
+// there is no mode re-check here.
 func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
-	// The provider closure only builds this responder when auto-review is on, so
-	// no mode re-check here; guard just the dependencies.
-	if r.model == nil || r.reviewer == nil {
-		return "", false
-	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	reply, err := r.reviewer.BashPrompt(ctx, command, prompt)
@@ -37,9 +34,6 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 }
 
 func (r bashPromptResponder) RequestSecret(ctx context.Context, prompt string) (string, bool) {
-	if r.model == nil || r.model.conv.AgentToUI == nil {
-		return "", false
-	}
 	secret, ok, err := r.model.conv.AgentToUI.RequestSecret(ctx, prompt)
 	if err != nil {
 		log.Logger().Debug("secret prompt failed", zap.Error(err))

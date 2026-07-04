@@ -16,8 +16,8 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-// parseVendorModel gates "vendor/model" routing on registered providers, so the
-// tests that exercise routing register the vendors they reference. (The app
+// llm.ParseVendorModel gates "vendor/model" routing on registered providers, so
+// the tests that exercise routing register the vendors they reference. (The app
 // wires these via blank imports in cmd/san/main.go.)
 func init() {
 	llm.RegisterProviderDisplay(llm.DeepSeek, llm.ProviderDisplay{Name: "DeepSeek"})
@@ -174,9 +174,9 @@ func TestParseVendorModel(t *testing.T) {
 		{"/deepseek-v4", "", "", false},           // empty vendor
 	}
 	for _, tt := range tests {
-		vendor, model, ok := parseVendorModel(tt.ref)
+		vendor, model, ok := llm.ParseVendorModel(tt.ref)
 		if ok != tt.ok || vendor != tt.vendor || model != tt.model {
-			t.Fatalf("parseVendorModel(%q) = (%q, %q, %v), want (%q, %q, %v)",
+			t.Fatalf("ParseVendorModel(%q) = (%q, %q, %v), want (%q, %q, %v)",
 				tt.ref, vendor, model, ok, tt.vendor, tt.model, tt.ok)
 		}
 	}

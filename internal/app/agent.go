@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -243,8 +242,8 @@ func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
 	if ref == "" {
 		return m.env.LLMProvider, m.env.GetModelID()
 	}
-	if vendor, id, ok := strings.Cut(ref, "/"); ok && vendor != "" && id != "" && llm.IsProvider(llm.Name(vendor)) {
-		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), llm.Name(vendor)); err == nil {
+	if vendor, id, ok := llm.ParseVendorModel(ref); ok {
+		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), vendor); err == nil {
 			return p, id
 		}
 		log.Logger().Warn("auto-review model vendor unavailable; using session model", zap.String("model", ref))

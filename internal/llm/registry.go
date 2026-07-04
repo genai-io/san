@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/genai-io/san/internal/secret"
@@ -216,6 +217,20 @@ func (r *Registry) IsProvider(name Name) bool {
 
 	_, ok := r.providerDisplay[name]
 	return ok
+}
+
+// ParseVendorModel reads the explicit "vendor/model" routing form (e.g.
+// "deepseek/deepseek-v4"). A ref is vendor-qualified only when the part before
+// the first slash is a registered provider name; a bare model id that merely
+// contains a slash (e.g. mimo's "xiaomi/mimo-v2-flash") is not, so it reports
+// ok=false and the caller keeps the ref on the current provider. A known but
+// unconnected vendor still parses here; resolving it is the caller's job.
+func ParseVendorModel(ref string) (vendor Name, model string, ok bool) {
+	v, m, found := strings.Cut(ref, "/")
+	if !found || v == "" || m == "" || !IsProvider(Name(v)) {
+		return "", "", false
+	}
+	return Name(v), m, true
 }
 
 // ProviderDisplayName returns the provider-level display name for a provider.
