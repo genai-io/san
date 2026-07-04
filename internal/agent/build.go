@@ -37,15 +37,15 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
-	// PermissionDecider and PermissionReviewer are the two stages of the
-	// pre-execution permission gate: the decider applies the static rules
-	// (permit/reject/prompt); the reviewer is the LLM auto-review consulted only
-	// on a gray-zone prompt (AutoReview.Permission).
-	PermissionDecider  PermDecisionFunc
-	PermissionReviewer PermReviewFunc
-	HookEngine         hook.Handler
-	AskUser            tool.AskUserFunc
-	ToolProgress       func(toolCallID string, msg string)
+	// PermissionRules and PermissionReview are the two stages of the
+	// pre-execution permission gate: the rules stage applies the static rules
+	// (permit/reject/prompt); the review stage is the LLM auto-review consulted
+	// only on a gray-zone prompt (AutoReview.Permission).
+	PermissionRules  PermDecisionFunc
+	PermissionReview PermReviewFunc
+	HookEngine       hook.Handler
+	AskUser          tool.AskUserFunc
+	ToolProgress     func(toolCallID string, msg string)
 	// BashPromptResponder answers prompts a command raises *while it runs*
 	// (AutoReview.BashPrompt plus the masked secret input) — a separate concern
 	// from the pre-execution gate above.
@@ -95,8 +95,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionBridge, error) {
 	if p.BashPromptResponder != nil {
 		adaptOpts = append(adaptOpts, tool.WithBashPromptResponderProvider(p.BashPromptResponder))
 	}
-	pb := NewPermissionBridge(p.PermissionDecider)
-	pb.SetReviewer(p.PermissionReviewer)
+	pb := NewPermissionBridge(p.PermissionRules)
+	pb.SetReviewer(p.PermissionReview)
 	var ag core.Agent
 	adaptOpts = append(adaptOpts, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {

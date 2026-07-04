@@ -154,7 +154,7 @@ func TestRecorderAndSaveDoNotDoubleWrite(t *testing.T) {
 
 // permission.required and permission.decided must share the same RequestID
 // so audit consumers can join the pair without timestamp heuristics. The ID
-// is supplied by the PermissionDecider closure and flows through
+// is supplied by the PermissionRules closure and flows through
 // PermBridgeRequest unchanged.
 func TestRecorderPermissionRequiredDecidedShareRequestID(t *testing.T) {
 	dir := t.TempDir()

@@ -166,7 +166,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			return bashPromptResponder{model: m, reviewer: rev}
 		},
 
-		PermissionDecider: func(name string, args map[string]any) agent.PermDecisionResult {
+		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
 			decision := m.services.Setting.HasPermissionToUseTool(name, args, m.env.SessionPermissions)
 			mode := m.env.SessionMode()
 			input := marshalPermInput(args)
@@ -195,7 +195,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			}
 		},
 
-		PermissionReviewer: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
+		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
 			// Only auto-review mode delegates gray-zone prompts to the judge.
 			if m.env.OperationMode != setting.ModeAutoReview {
 				return agent.PermReviewResult{}
