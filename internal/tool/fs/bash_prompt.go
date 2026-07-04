@@ -7,5 +7,5 @@ import "github.com/genai-io/san/internal/tool"
 //
 // The two methods keep a hard security boundary: a secret (password/passphrase)
 // is handled by RequestSecret and its value must go straight to the process —
-// it is never passed to AnswerPrompt, a model, a log, or the transcript.
+// it is never passed to RequestAnswer, a model, a log, or the transcript.
 type BashPromptResponder = tool.BashPromptResponder

@@ -23,7 +23,7 @@ type fakeResponder struct {
 	lastPrompt  string
 }
 
-func (f *fakeResponder) AnswerPrompt(_ context.Context, _, prompt string) (string, bool) {
+func (f *fakeResponder) RequestAnswer(_ context.Context, _, prompt string) (string, bool) {
 	f.answerCalls++
 	f.lastPrompt = prompt
 	return f.answer, f.answerOK
@@ -67,7 +67,7 @@ func Test_runInteractive_secretPromptUsesRequestSecret(t *testing.T) {
 		t.Errorf("output %q missing len=7 (secret not delivered)", out)
 	}
 	if r.secretCalls != 1 || r.answerCalls != 0 {
-		t.Errorf("calls: secret=%d answer=%d, want 1/0 (password must not go to AnswerPrompt)", r.secretCalls, r.answerCalls)
+		t.Errorf("calls: secret=%d answer=%d, want 1/0 (password must not go to RequestAnswer)", r.secretCalls, r.answerCalls)
 	}
 	if strings.Contains(out, "hunter2") {
 		t.Errorf("secret value leaked into output: %q", out)

@@ -116,7 +116,7 @@ loop:
 				if isSecretPrompt(prompt) {
 					input, ok = responder.RequestSecret(ctx, prompt)
 				} else {
-					input, ok = responder.AnswerPrompt(ctx, command, prompt)
+					input, ok = responder.RequestAnswer(ctx, command, prompt)
 				}
 			}
 			if ok {

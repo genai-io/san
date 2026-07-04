@@ -15,7 +15,9 @@ type bashPromptResponder struct {
 	reviewer *reviewer.AutoReview
 }
 
-func (r bashPromptResponder) AnswerPrompt(ctx context.Context, command, prompt string) (string, bool) {
+// RequestAnswer delegates an ordinary prompt to the auto-review LLM, which
+// decides the reply. It never sees a secret prompt — that goes to RequestSecret.
+func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
 	// The provider closure only builds this responder when auto-review is on, so
 	// no mode re-check here; guard just the dependencies.
 	if r.model == nil || r.reviewer == nil {
