@@ -137,6 +137,110 @@ func TestMDRenderer_OrderedList(t *testing.T) {
 	}
 }
 
+// A "- " or "1." line inside a code block — fenced, tilde-fenced, or 4-space
+// indented — is a code sample, not a list. splitBlocks must pass it through to
+// glamour instead of extracting it.
+func TestMDRenderer_CodeBlockNotList(t *testing.T) {
+	tests := map[string]string{
+		"fenced":            "before\n\n```\n- not a list\n1. also not\n> not a quote\n```\n\nafter",
+		"indented":          "before\n\n    - not a list\n    1. also not\n\nafter",
+		"tilde in backtick": "```\ncode\n~~~\n- not a list\n```\n\nafter",
+	}
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			out, err := NewMDRenderer(80).Render(input)
+			if err != nil {
+				t.Fatalf("Render error: %v", err)
+			}
+			plain := stripANSI(out)
+			if strings.Contains(plain, "•") {
+				t.Errorf("code content must not become a bullet list, got:\n%s", plain)
+			}
+			if !strings.Contains(plain, "not a list") {
+				t.Errorf("code sample should render verbatim, got:\n%s", plain)
+			}
+		})
+	}
+}
+
+// A list whose item embeds a table must not be folded into one raw bullet line
+// (our list renderer can't lay out a table). It goes to glamour whole, which
+// keeps the rows on separate lines.
+func TestMDRenderer_TableInListNotFolded(t *testing.T) {
+	out, err := NewMDRenderer(80).Render("* | 组件 | 类比 |\n  |---|---|\n  | kube-apiserver | 前台 |\n  | etcd | 账本 |")
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	for _, line := range strings.Split(stripANSI(out), "\n") {
+		if strings.Contains(line, "kube-apiserver") && strings.Contains(line, "etcd") {
+			t.Errorf("table rows were folded onto one line:\n%s", stripANSI(out))
+		}
+	}
+}
+
+// A "~~~" line inside a "```" block must not end it, so its lines stay verbatim
+// code rather than being reflowed into a paragraph.
+func TestNormalizeLineBreaks_MismatchedFence(t *testing.T) {
+	src := "```\n~~~\nline one\nline two\n```"
+	if got := normalizeLineBreaks(src); got != src {
+		t.Errorf("code block must be preserved verbatim:\n got %q\nwant %q", got, src)
+	}
+}
+
+// In a CJK list (which we render ourselves), an indented continuation line folds
+// into its item rather than becoming a bare paragraph at column 0. ASCII lists go
+// to glamour, whose own continuation handling we don't second-guess.
+func TestMDRenderer_ListContinuation(t *testing.T) {
+	out, err := NewMDRenderer(80).Render("- 第一项内容\n  这是续行文字\n- 第二项内容")
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		plain := strings.TrimRight(stripANSI(line), " ")
+		if plain == "" {
+			continue
+		}
+		// Every rendered line belongs to an item: it starts with a bullet or the
+		// hanging indent — never bare continuation text at column 0.
+		if !strings.HasPrefix(plain, "•") && !strings.HasPrefix(plain, " ") {
+			t.Errorf("continuation should stay within its item, got bare line %q in:\n%s", plain, stripANSI(out))
+		}
+	}
+	if !strings.Contains(strings.ReplaceAll(stripANSI(out), " ", ""), "续行文字") {
+		t.Errorf("continuation text should survive, got:\n%s", stripANSI(out))
+	}
+}
+
+// Ordered lists anchor on the first item's number: an intentional start (5., 6.)
+// is preserved, while a repeated 1./1./1. is repaired to 1., 2., 3.
+func TestMDRenderer_OrderedListNumbering(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []string
+	}{
+		{"preserves start", "5. five\n6. six\n7. seven", []string{"5. five", "6. six", "7. seven"}},
+		{"repairs repeated", "1. a\n1. b\n1. c", []string{"1. a", "2. b", "3. c"}},
+		// Skips are normalized to sequential, matching glamour/CommonMark, which
+		// renumber from the first item's number and disregard the rest.
+		{"normalizes skips", "5. five\n7. seven\n9. nine", []string{"5. five", "6. seven", "7. nine"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := NewMDRenderer(80).Render(tt.input)
+			if err != nil {
+				t.Fatalf("Render error: %v", err)
+			}
+			plain := stripANSI(out)
+			for _, want := range tt.want {
+				if !strings.Contains(plain, want) {
+					t.Errorf("want %q in output, got:\n%s", want, plain)
+				}
+			}
+		})
+	}
+}
+
 func TestMDRenderer_Link(t *testing.T) {
 	r := NewMDRenderer(80)
 

@@ -5,6 +5,8 @@ package conv
 
 import (
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -47,9 +49,17 @@ func trimStyledBlankLines(s string) string {
 type MDRenderer struct {
 	mu       sync.Mutex
 	renderer *glamour.TermRenderer
-	width    int
-	darkBg   bool // tracks last known terminal background to detect theme changes
+	// blockQuoteRenderer renders blockquote inner content: dimmed, and narrowed by the
+	// "│ " prefix so glamour wraps to a width that leaves room for it. We render
+	// blockquotes ourselves (see renderBlockQuote) because glamour's native
+	// blockquote wrapping drops the │ prefix on CJK continuation lines.
+	blockQuoteRenderer *glamour.TermRenderer
+	width              int
+	darkBg             bool // tracks last known terminal background to detect theme changes
 }
+
+// blockQuoteIndentWidth is the visible column cost of the "│ " blockquote prefix.
+const blockQuoteIndentWidth = 2
 
 // NewMDRenderer creates a new markdown renderer with the given terminal width.
 // The width passed should be the raw terminal column count; the renderer
@@ -58,12 +68,18 @@ type MDRenderer struct {
 func NewMDRenderer(width int) *MDRenderer {
 	w := max(width-4, minWrapWidth)
 	dark := kit.IsDarkBackground()
-	r := buildGlamourRenderer(w, dark)
-	return &MDRenderer{renderer: r, width: w, darkBg: dark}
+	return &MDRenderer{
+		renderer:           buildGlamourRenderer(w, dark, false),
+		blockQuoteRenderer: buildGlamourRenderer(max(w-blockQuoteIndentWidth, minWrapWidth), dark, true),
+		width:              w,
+		darkBg:             dark,
+	}
 }
 
-// buildGlamourRenderer constructs a glamour TermRenderer for the given width and background.
-func buildGlamourRenderer(width int, dark bool) *glamour.TermRenderer {
+// buildGlamourRenderer constructs a glamour TermRenderer for the given width and
+// background. When dimDocument is set the document text is rendered in the muted
+// tone — used for blockquote inner content, which glamour normally dims.
+func buildGlamourRenderer(width int, dark, dimDocument bool) *glamour.TermRenderer {
 	var style ansi.StyleConfig
 	if dark {
 		style = styles.DarkStyleConfig
@@ -71,6 +87,10 @@ func buildGlamourRenderer(width int, dark bool) *glamour.TermRenderer {
 		style = styles.LightStyleConfig
 	}
 	customizeStyle(&style, width)
+	if dimDocument {
+		textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
+		style.Document.Color = &textDim
+	}
 
 	r, err := glamour.NewTermRenderer(
 		glamour.WithStyles(style),
@@ -87,11 +107,12 @@ func buildGlamourRenderer(width int, dark bool) *glamour.TermRenderer {
 	return r
 }
 
-// rebuildIfNeeded recreates the glamour renderer when the terminal background changes.
+// rebuildIfNeeded recreates the glamour renderers when the terminal background changes.
 func (r *MDRenderer) rebuildIfNeeded() {
 	dark := kit.IsDarkBackground()
 	if dark != r.darkBg {
-		r.renderer = buildGlamourRenderer(r.width, dark)
+		r.renderer = buildGlamourRenderer(r.width, dark, false)
+		r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, true)
 		r.darkBg = dark
 	}
 }
@@ -107,13 +128,17 @@ func (r *MDRenderer) Render(content string) (string, error) {
 	// producing softbreaks that glamour preserves as newlines. Joining them
 	// lets glamour re-wrap at the actual terminal width.
 	content = normalizeLineBreaks(content)
-	segments := splitTables(content)
+	segments := splitBlocks(content)
 
 	var parts []string
 	for _, seg := range segments {
 		switch seg.kind {
 		case segTable:
 			parts = append(parts, r.renderTable(seg.content))
+		case segBlockQuote:
+			parts = append(parts, r.renderBlockQuote(seg.content))
+		case segList:
+			parts = append(parts, r.renderList(seg.content))
 		default:
 			rendered, err := r.renderer.Render(seg.content)
 			if err != nil {
@@ -125,9 +150,14 @@ func (r *MDRenderer) Render(content string) (string, error) {
 		}
 	}
 
-	result := strings.TrimRight(strings.Join(parts, ""), "\n")
-	result = strings.TrimLeft(result, "\n")
-	return result, nil
+	result := strings.Join(parts, "")
+	// With more than one segment, a table/blockquote/list contributes its own
+	// blank-line padding, which can stack against an adjacent block's — collapse
+	// across the seams. A single segment is already collapsed per-segment above.
+	if len(parts) > 1 {
+		result = collapseBlankLines(result)
+	}
+	return strings.Trim(result, "\n"), nil
 }
 
 // segmentKind identifies what type of markdown block a segment contains.
@@ -136,7 +166,13 @@ type segmentKind int
 const (
 	segPlain segmentKind = iota
 	segTable
+	segBlockQuote
+	segList
 )
+
+// listLevelIndent is the column indent glamour applies per list-nesting level;
+// we match it so our lists line up with the rest of the rendered markdown.
+const listLevelIndent = 2
 
 // segment represents a piece of markdown content.
 type segment struct {
@@ -144,36 +180,385 @@ type segment struct {
 	kind    segmentKind
 }
 
-// splitTables splits markdown content into table and non-table segments.
-// Tables are rendered separately with lipgloss/table for full border control.
-func splitTables(content string) []segment {
+// splitBlocks splits markdown content into segments that need bespoke rendering
+// — tables (lipgloss/table for full borders), blockquotes and lists (a CJK-safe
+// prefix / hanging indent, see renderBlockQuote and renderList) — and plain
+// segments for everything else, which glamour renders natively. Fenced code
+// blocks are passed through whole, so a "- " or "1." line inside a code sample
+// is never mistaken for a real list or quote.
+func splitBlocks(content string) []segment {
 	lines := strings.Split(content, "\n")
 	var segments []segment
 	var plain []string
+	flushPlain := func() {
+		if len(plain) > 0 {
+			segments = append(segments, segment{content: strings.Join(plain, "\n"), kind: segPlain})
+			plain = nil
+		}
+	}
 
 	i := 0
 	for i < len(lines) {
+		if ch, _ := fenceMarker(lines[i]); ch != 0 {
+			fenceEnd := findFenceEnd(lines, i)
+			plain = append(plain, lines[i:fenceEnd]...)
+			i = fenceEnd
+			continue
+		}
 		if isTableLine(lines[i]) {
 			tableEnd := findTableEnd(lines, i)
 			if tableEnd > i+1 && hasTableSeparator(lines, i, tableEnd) {
-				if len(plain) > 0 {
-					segments = append(segments, segment{content: strings.Join(plain, "\n"), kind: segPlain})
-					plain = nil
-				}
+				flushPlain()
 				tableLines := strings.Join(lines[i:tableEnd], "\n")
 				segments = append(segments, segment{content: tableLines, kind: segTable})
 				i = tableEnd
 				continue
 			}
 		}
+		// We only take a quote/list away from glamour when it contains CJK text
+		// glamour's ASCII-only wrap would mangle. Everything else — and anything
+		// our simpler renderer can't lay out (a table embedded in a list) — stays
+		// with glamour, which handles structure, numbering and nesting faithfully.
+		// A marker indented 4+ spaces is an indented code block, not a real block.
+		if isBlockQuoteLine(lines[i]) && leadingSpaces(lines[i]) < codeBlockIndent {
+			block := lines[i:findBlockQuoteEnd(lines, i)]
+			i += len(block)
+			if containsCJK(block) {
+				flushPlain()
+				segments = append(segments, segment{content: strings.Join(block, "\n"), kind: segBlockQuote})
+			} else {
+				plain = append(plain, block...)
+			}
+			continue
+		}
+		if indent, _, _, _, ok := parseListMarker(lines[i]); ok && indent < codeBlockIndent {
+			block := lines[i:findListEnd(lines, i)]
+			i += len(block)
+			if containsCJK(block) && !containsTableRow(block) {
+				flushPlain()
+				segments = append(segments, segment{content: strings.Join(block, "\n"), kind: segList})
+			} else {
+				plain = append(plain, block...)
+			}
+			continue
+		}
 		plain = append(plain, lines[i])
 		i++
 	}
 
-	if len(plain) > 0 {
-		segments = append(segments, segment{content: strings.Join(plain, "\n"), kind: segPlain})
-	}
+	flushPlain()
 	return segments
+}
+
+// isBlockQuoteLine reports whether a line opens or continues a blockquote (a
+// leading ">", optionally indented). Matches only lines that start the marker,
+// so lazy-continuation lines are left to the plain path — LLMs prefix every
+// blockquote line with ">" in practice.
+func isBlockQuoteLine(line string) bool {
+	t := strings.TrimSpace(line)
+	return t == ">" || strings.HasPrefix(t, "> ")
+}
+
+// findBlockQuoteEnd returns the end index (exclusive) of the consecutive run of
+// blockquote lines starting at start.
+func findBlockQuoteEnd(lines []string, start int) int {
+	i := start
+	for i < len(lines) && isBlockQuoteLine(lines[i]) {
+		i++
+	}
+	return i
+}
+
+// codeBlockIndent is the leading-space count at which a line becomes an indented
+// code block (CommonMark): a list/quote marker indented this far is code, not a
+// real block.
+const codeBlockIndent = 4
+
+// leadingSpaces counts the leading spaces on a line.
+func leadingSpaces(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " "))
+}
+
+// containsCJK reports whether any line holds a CJK character — the case glamour's
+// ASCII-only wrap can't break, and the only reason we render a block ourselves.
+func containsCJK(lines []string) bool {
+	for _, line := range lines {
+		if strings.ContainsFunc(line, isCJK) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsTableRow reports whether any line is a table row, marking a list whose
+// item embeds a table — structure our list renderer can't lay out, so glamour
+// takes it instead.
+func containsTableRow(lines []string) bool {
+	return slices.ContainsFunc(lines, isTableLine)
+}
+
+// fenceMarker returns the fence character ('`' or '~') and its run length if the
+// line opens a fenced code block (an info string may follow), else (0, 0).
+func fenceMarker(line string) (ch byte, length int) {
+	t := strings.TrimSpace(line)
+	if len(t) < 3 || (t[0] != '`' && t[0] != '~') {
+		return 0, 0
+	}
+	ch = t[0]
+	for length < len(t) && t[length] == ch {
+		length++
+	}
+	if length < 3 {
+		return 0, 0
+	}
+	return ch, length
+}
+
+// findFenceEnd returns the index just past the closing fence of the code block
+// opened at start. A closing fence must use the same character as the opener and
+// be at least as long, so a "~~~" line inside a "```" block doesn't end it early.
+// An unterminated fence runs to the end of the input.
+func findFenceEnd(lines []string, start int) int {
+	ch, length := fenceMarker(lines[start])
+	for i := start + 1; i < len(lines); i++ {
+		if closesFence(lines[i], ch, length) {
+			return i + 1
+		}
+	}
+	return len(lines)
+}
+
+// closesFence reports whether line closes a fence opened with the given character
+// and length: nothing but a run of that character, at least as long (a closing
+// fence carries no info string).
+func closesFence(line string, ch byte, length int) bool {
+	t := strings.TrimSpace(line)
+	if len(t) < length {
+		return false
+	}
+	for i := 0; i < len(t); i++ {
+		if t[i] != ch {
+			return false
+		}
+	}
+	return true
+}
+
+// renderBlockQuote renders a blockquote with a themed "│ " prefix on every
+// wrapped line. glamour's native blockquote wrapping loses the prefix on CJK
+// continuation lines: its ansi.Wrap breakpoints are ASCII-only, so an
+// unbreakable CJK run overflows the indent width and the margin writer drops the
+// token. Rendering the inner markdown ourselves (dimmed, narrowed by the prefix)
+// and prefixing each line keeps the block intact.
+func (r *MDRenderer) renderBlockQuote(content string) string {
+	inner := stripBlockQuoteMarkers(content)
+	rendered, err := r.blockQuoteRenderer.Render(inner)
+	if err != nil {
+		rendered = inner
+	} else {
+		rendered = collapseBlankLines(rendered)
+	}
+	rendered = strings.Trim(rendered, "\n")
+
+	prefix := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Render("│ ")
+	lines := strings.Split(rendered, "\n")
+	for i, line := range lines {
+		lines[i] = prefix + line
+	}
+	// Blank lines above and below match glamour's native block spacing so the
+	// quote stays visually separated from adjacent paragraphs; leading/trailing
+	// blanks are trimmed by the Render join when the quote sits at an edge.
+	return "\n\n" + strings.Join(lines, "\n") + "\n\n"
+}
+
+// stripBlockQuoteMarkers removes one leading ">" (and its following space) from
+// each blockquote line, yielding the inner markdown to render.
+func stripBlockQuoteMarkers(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		t := strings.TrimPrefix(strings.TrimSpace(line), ">")
+		lines[i] = strings.TrimPrefix(t, " ")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// listItem is one parsed list entry: its nesting depth, whether its parent list
+// is ordered, its 1-based number within that list, and its inline text.
+type listItem struct {
+	depth   int
+	ordered bool
+	number  int
+	content string
+}
+
+// parseListMarker splits a line into its leading indent and, if it opens a list
+// item, the item's inline text. It recognizes "-", "*", "+" bullets and
+// "N." / "N)" ordered markers, each followed by a space. ok is false for any
+// other line (blank lines, continuations, non-list text).
+func parseListMarker(line string) (indent int, ordered bool, number int, content string, ok bool) {
+	body := strings.TrimLeft(line, " ")
+	indent = len(line) - len(body)
+
+	if len(body) >= 2 && (body[0] == '-' || body[0] == '*' || body[0] == '+') && body[1] == ' ' {
+		return indent, false, 0, strings.TrimSpace(body[2:]), true
+	}
+
+	digits := 0
+	for digits < len(body) && body[digits] >= '0' && body[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 && digits+1 < len(body) && (body[digits] == '.' || body[digits] == ')') && body[digits+1] == ' ' {
+		num, _ := strconv.Atoi(body[:digits])
+		return indent, true, num, strings.TrimSpace(body[digits+2:]), true
+	}
+	return 0, false, 0, "", false
+}
+
+// isListLine reports whether a line opens a list item.
+func isListLine(line string) bool {
+	_, _, _, _, ok := parseListMarker(line)
+	return ok
+}
+
+// isListContinuation reports whether a line continues the previous list item's
+// text — an indented, non-blank line that isn't itself a new marker (e.g. the
+// second line of "- first\n  more").
+func isListContinuation(line string) bool {
+	return strings.TrimSpace(line) != "" && line != strings.TrimLeft(line, " \t") && !isListLine(line)
+}
+
+// findListEnd returns the end index (exclusive) of the list block starting at
+// start: a run of item lines and their indented continuation lines, tolerating a
+// single blank line within the list (a "loose" list) but stopping at the first
+// non-indented, non-item line.
+func findListEnd(lines []string, start int) int {
+	i := start
+	for i < len(lines) {
+		switch {
+		case isListLine(lines[i]), isListContinuation(lines[i]):
+			i++
+		case strings.TrimSpace(lines[i]) == "" && i+1 < len(lines) &&
+			(isListLine(lines[i+1]) || isListContinuation(lines[i+1])):
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// listLevel tracks one active nesting level while parsing: the source indent that
+// opened it, the marker type of its current run, the display number its first
+// item carried, and how many items that run has seen.
+type listLevel struct {
+	indent  int
+	ordered bool
+	start   int
+	count   int
+}
+
+// parseListItems turns a list block into items, assigning each a nesting depth
+// (from its source indent) and a display number. Numbering is anchored at each
+// run's first item, so an intentional start (5., 6.) is preserved while a
+// repeated 1./1./1. is repaired — matching how glamour renumbers from Start.
+func parseListItems(content string) []listItem {
+	var items []listItem
+	var stack []listLevel // one entry per active nesting level, outermost first
+	for _, line := range strings.Split(content, "\n") {
+		indent, ordered, number, text, ok := parseListMarker(line)
+		if !ok {
+			mergeContinuation(items, line)
+			continue
+		}
+		for len(stack) > 0 && stack[len(stack)-1].indent > indent {
+			stack = stack[:len(stack)-1]
+		}
+		if len(stack) == 0 || stack[len(stack)-1].indent < indent {
+			stack = append(stack, listLevel{indent: indent})
+		}
+		lvl := &stack[len(stack)-1]
+		if lvl.count == 0 || lvl.ordered != ordered {
+			// First item at this level, or the marker type flipped (bullets ↔
+			// numbers, i.e. a new list): anchor numbering at this item's number.
+			*lvl = listLevel{indent: lvl.indent, ordered: ordered, start: number}
+		}
+		lvl.count++
+		items = append(items, listItem{depth: len(stack) - 1, ordered: ordered, number: lvl.start + lvl.count - 1, content: text})
+	}
+	return items
+}
+
+// mergeContinuation appends a continuation line's text to the last parsed item, so
+// "- first\n  more" renders as one wrapped item. Joined without a space between
+// CJK runs, matching normalizeLineBreaks.
+func mergeContinuation(items []listItem, line string) {
+	text := strings.TrimSpace(line)
+	if text == "" || len(items) == 0 {
+		return
+	}
+	last := &items[len(items)-1]
+	sep := " "
+	if endsWithCJK(last.content) || startsWithCJK(text) {
+		sep = ""
+	}
+	last.content += sep + text
+}
+
+// listMarker returns the marker to print for an item and the item's remaining
+// content. Ordered items use "N. "; task items ("[ ] " / "[x] ") keep their
+// checkbox — glamour rendered these specially, so we preserve them rather than
+// prefixing a redundant bullet; everything else gets the "• " bullet.
+func listMarker(it listItem) (marker, content string) {
+	switch {
+	case it.ordered:
+		return strconv.Itoa(it.number) + ". ", it.content
+	case strings.HasPrefix(it.content, "[ ] "):
+		return "[ ] ", it.content[len("[ ] "):]
+	case strings.HasPrefix(it.content, "[x] "), strings.HasPrefix(it.content, "[X] "):
+		return "[✓] ", it.content[len("[x] "):]
+	default:
+		return "• ", it.content
+	}
+}
+
+// renderList renders a list with a hanging indent so wrapped continuation lines
+// align under the item text instead of falling back to column 0. glamour's
+// native list wrapping drops the hanging indent on continuation lines (and, like
+// blockquotes, its ASCII-only wrap breakpoints can't split CJK runs), so we lay
+// the items out ourselves: marker on the first line, matching indent on the rest.
+//
+// Unlike renderBlockQuote — which narrows glamour and re-prefixes each line — a
+// list can't reuse that trick: every item has its own marker width, so there's
+// no single prefix to hang. We wrap each item's inline content directly instead.
+func (r *MDRenderer) renderList(content string) string {
+	items := parseListItems(content)
+	if len(items) == 0 {
+		return content
+	}
+
+	var lines []string
+	for _, it := range items {
+		indent := strings.Repeat(" ", it.depth*listLevelIndent)
+		marker, itemText := listMarker(it)
+		markerWidth := lipgloss.Width(marker)
+		hang := strings.Repeat(" ", markerWidth)
+
+		contentWidth := max(r.width-len(indent)-markerWidth, minWrapWidth/2)
+		styled := renderInlineMarkdown(itemText)
+		wrapped := strings.Split(xansi.Wrap(styled, contentWidth, " ,.;-+|"), "\n")
+
+		for i, line := range wrapped {
+			if i == 0 {
+				lines = append(lines, indent+marker+line)
+			} else {
+				lines = append(lines, indent+hang+line)
+			}
+		}
+	}
+
+	// Blank lines above and below match glamour's native block spacing; edge
+	// blanks are trimmed by the Render join.
+	return "\n\n" + strings.Join(lines, "\n") + "\n\n"
 }
 
 // isTableLine checks if a line looks like a markdown table line (starts with |).
@@ -464,21 +849,27 @@ func CompletedBlockBoundary(content string) int {
 func normalizeLineBreaks(content string) string {
 	lines := strings.Split(content, "\n")
 	var result []string
-	inCodeBlock := false
+	var fenceCh byte // the open fence's character while inside a code block, else 0
+	var fenceLen int
 
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
+		// Inside a fenced code block: keep every line verbatim. The block ends only
+		// on a fence matching the opener's character and length, so a "~~~" inside a
+		// "```" block stays code (see fenceMarker / closesFence).
+		if fenceCh != 0 {
+			result = append(result, line)
+			if closesFence(line, fenceCh, fenceLen) {
+				fenceCh, fenceLen = 0, 0
+			}
+			continue
+		}
+		if ch, n := fenceMarker(line); ch != 0 {
+			fenceCh, fenceLen = ch, n
+			result = append(result, line)
+			continue
+		}
 
-		// Track fenced code blocks
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inCodeBlock = !inCodeBlock
-			result = append(result, line)
-			continue
-		}
-		if inCodeBlock {
-			result = append(result, line)
-			continue
-		}
+		trimmed := strings.TrimSpace(line)
 
 		// Blank line = paragraph separator
 		if trimmed == "" {
@@ -531,10 +922,6 @@ func isMarkdownStructural(line string) bool {
 	if strings.HasPrefix(line, "#") {
 		return true
 	}
-	// Unordered lists
-	if strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ") || strings.HasPrefix(line, "+ ") {
-		return true
-	}
 	// Blockquotes
 	if strings.HasPrefix(line, "> ") || line == ">" {
 		return true
@@ -547,8 +934,9 @@ func isMarkdownStructural(line string) bool {
 	if isThematicBreak(line) {
 		return true
 	}
-	// Ordered lists (digit(s) + . + space)
-	return isOrderedListItem(line)
+	// Ordered and unordered list items — same grammar splitBlocks/renderList use,
+	// so normalizeLineBreaks and block extraction always agree on what's a list.
+	return isListLine(line)
 }
 
 // isThematicBreak checks if line is a markdown thematic break (---, ***, ___).
@@ -560,17 +948,6 @@ func isThematicBreak(line string) bool {
 	return strings.Count(cleaned, "-") == len(cleaned) ||
 		strings.Count(cleaned, "*") == len(cleaned) ||
 		strings.Count(cleaned, "_") == len(cleaned)
-}
-
-// isOrderedListItem checks if line starts with a numbered list marker (e.g., "1. ").
-func isOrderedListItem(line string) bool {
-	for i, c := range line {
-		if c >= '0' && c <= '9' {
-			continue
-		}
-		return c == '.' && i > 0 && i+1 < len(line) && line[i+1] == ' '
-	}
-	return false
 }
 
 // isCJK reports whether r is a CJK (Chinese/Japanese/Korean) character.
