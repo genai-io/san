@@ -392,7 +392,7 @@ func RenderSystemMessage(content string) string {
 // renderDecision renders the auto-review outcome as a one-line annotation
 // between a tool call and its result: a "↳" arrow plus the decision — green
 // "auto-approved" when the judge let it through, amber "escalated" when it
-// handed the call back to the user — and the judge's one-sentence reason dimmed
+// handed the call back to the user — and the judge's (few-word) reason dimmed
 // after it. Returns "" when the call was not judged. The "  ↳" indent aligns the
 // arrow with the "⎿" result trailer on the line below.
 func renderDecision(v *core.ReviewDecision) string {
