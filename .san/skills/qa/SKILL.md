@@ -1,10 +1,11 @@
 ---
 name: qa
 description: >-
-  Regression test a San feature by number or name. Reads the feature doc from docs/features/,
-  runs automated Go tests and interactive tmux tests, then produces a pass/fail report.
+  Regression test a San feature by name. Looks for a feature doc in docs/reference/ or
+  docs/packages/2-feature/, runs automated Go tests and interactive tmux tests, then
+  produces a pass/fail report.
   Use this skill when the user says "qa", "regression test", "test feature X", "verify feature",
-  or references a feature number like "test 01", "qa 6-hooks", "regress 12".
+  or references a feature name like "agent", "cli-startup", "loop".
 allowed-tools:
   - Bash
   - Read
@@ -16,29 +17,31 @@ argument-hint: "<feature> [--interactive] [--pane]"
 
 # QA — Feature Regression Testing
 
-Run automated and interactive regression tests for a San feature based on its doc in `docs/features/`.
+Run automated and interactive regression tests for a San feature by name.
 
 ## Arguments
 
-- `<feature>` — Feature number (e.g. `01`, `6`) or filename stem (e.g. `6-hooks`, `cli-startup`). Partial matches are fine.
-- `--interactive` — Also run the interactive tmux tests (default: automated only).
-- `--pane` — For interactive tests, split a pane in the **current** tmux window instead of creating a separate session. This lets the user watch the test live side-by-side.
-
-If only a number is given, zero-pad and match against filenames (e.g. `1` → `1-cli-startup.md`).
+- `<feature>` — Feature name, e.g. `agent`, `cli-startup`, `loop`, `session`, `hook`.
+- `--interactive` — Also run interactive tmux tests (default: automated only).
+- `--pane` — For interactive tests, split a pane in the **current** tmux window instead of creating a separate session. Lets the user watch the test live.
 
 ## Workflow
 
 ### 1. Resolve the feature doc
 
-```
-docs/features/<N>-<name>.md
-```
+Look for the feature in this order:
+
+1. `docs/reference/<feature>.md` — reference docs, may have **Automated Tests** and **Interactive Tests (tmux)** sections
+2. `docs/packages/2-feature/<feature>.md` — feature package docs, has a `## Tests` section
 
 Read the file. Extract:
-- **Automated Tests** section — the `go test` commands and known test cases.
-- **Interactive Tests (tmux)** section — the step-by-step tmux script.
+- **Automated Tests** section — the `go test` commands and known test cases (from reference docs).
+- **Interactive Tests (tmux)** section — the step-by-step tmux script (from reference docs).
+- **Tests** section — package-level test info from feature docs.
 
-If the feature cannot be found, list all available features and ask the user to pick one.
+If the feature matches an integration test directory name (`tests/integration/<feature>/`), add `go test ./tests/integration/<feature>/...` as a default test command even if the doc doesn't list one.
+
+If the feature cannot be found in any doc path, list all available features (integration test dirs + doc stems from both locations) and ask the user to pick one.
 
 ### 2. Build the binary
 
@@ -52,7 +55,7 @@ If the build fails, stop and report the error — no point running tests against
 
 ### 3. Run automated tests
 
-Execute every `go test` command listed in the feature doc's **Automated Tests** section. Capture stdout/stderr and exit codes. Each command is a separate test group.
+Execute every `go test` command extracted from the feature doc's **Automated Tests** section, plus the default integration test command if applicable. Capture stdout/stderr and exit codes. Each command is a separate test group.
 
 Record results as:
 - **PASS** — exit code 0
@@ -71,7 +74,6 @@ Split a pane in the current tmux window for the test:
 TMUX_TARGET=$(tmux display-message -p '#{session_name}:#{window_index}')
 # Split horizontally, 50% width
 tmux split-window -h -t "$TMUX_TARGET" -l '50%'
-# The new pane is at $TMUX_TARGET.{next_pane_index}
 ```
 
 Run all interactive test steps in that pane via `tmux send-keys`. Use `tmux capture-pane -p` to read the pane output after each step and verify the **Expected** comments from the doc.
@@ -102,7 +104,7 @@ After all steps, clean up (kill session/pane, remove temp files) as specified in
 Print a summary table:
 
 ```
-## QA Report: Feature <N> — <Name>
+## QA Report: Feature — <Name>
 
 ### Automated Tests
 | Test Group               | Result |
