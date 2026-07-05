@@ -40,9 +40,8 @@ type AutopilotSavedMsg struct{ Config setting.AutoReviewSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
-	settings *setting.Settings
-	respond  MissionResponder                  // injected; nil disables live mission replies
-	live     func() setting.AutoReviewSettings // injected; returns the live session config
+	respond MissionResponder                  // injected; nil disables live mission replies
+	live    func() setting.AutoReviewSettings // injected; returns the live session config
 
 	active bool
 	width  int
@@ -68,12 +67,12 @@ type AutopilotSelector struct {
 	mission missionDialog  // Mission dialog state (autopilot_mission.go)
 }
 
-// NewAutopilotSelector builds the overlay bound to the settings service.
-func NewAutopilotSelector(settings *setting.Settings) AutopilotSelector {
+// NewAutopilotSelector builds the overlay. The live session config is supplied
+// later via SetConfigSource.
+func NewAutopilotSelector() AutopilotSelector {
 	return AutopilotSelector{
-		settings: settings,
-		prompt:   newPanelTextarea(),
-		mission:  newMissionDialog(),
+		prompt:  newPanelTextarea(),
+		mission: newMissionDialog(),
 	}
 }
 
@@ -95,13 +94,8 @@ func (p *AutopilotSelector) Enter(width, height int) {
 	p.view = apMenu
 	p.editing = false
 	p.editingBuffer = ""
-	switch {
-	case p.live != nil:
+	if p.live != nil {
 		p.snap = p.live().Clone()
-	case p.settings != nil:
-		if data := p.settings.Snapshot(); data != nil {
-			p.snap = data.AutoReview.Clone()
-		}
 	}
 	p.baseline = p.snap.Clone()
 	p.cursor = p.firstSelectable()
@@ -114,7 +108,7 @@ func (p *AutopilotSelector) Enter(width, height int) {
 func (p *AutopilotSelector) IsActive() bool { return p.active }
 
 // Dirty reports unsaved edits (used by the header tag).
-func (p *AutopilotSelector) Dirty() bool { return !autoReviewEqual(p.snap, p.baseline) }
+func (p *AutopilotSelector) Dirty() bool { return !p.snap.Equal(p.baseline) }
 
 // HandleKeypress implements overlayPanel.
 func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
@@ -395,21 +389,6 @@ func missionSummary(s setting.AutoReviewSettings) string {
 		return "empty"
 	}
 	return kit.TruncateText(strings.TrimSpace(s.Mission), 32)
-}
-
-// ── AutoReview value compare (pointer-aware, for the dirty check) ────────
-
-func autoReviewEqual(a, b setting.AutoReviewSettings) bool {
-	return a.Model == b.Model &&
-		a.SystemPrompt == b.SystemPrompt &&
-		a.SystemPromptFile == b.SystemPromptFile &&
-		a.Mission == b.Mission &&
-		a.MaxContinuations == b.MaxContinuations &&
-		a.Steers.TurnStart == b.Steers.TurnStart &&
-		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
-		a.Steers.BashPrompt == b.Steers.BashPrompt &&
-		a.Steers.Question == b.Steers.Question &&
-		a.Steers.TurnEnd == b.Steers.TurnEnd
 }
 
 // innerWidth is the card's content column — a generous fill of the terminal so

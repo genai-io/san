@@ -134,6 +134,22 @@ func (a AutoReviewSettings) IsZero() bool {
 		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
 }
 
+// Equal compares two configs by value, normalizing the tri-state permission
+// steer via PermissionOn (nil and &true are equal). Used for the /autopilot
+// panel's unsaved-edits check.
+func (a AutoReviewSettings) Equal(b AutoReviewSettings) bool {
+	return a.Model == b.Model &&
+		a.SystemPrompt == b.SystemPrompt &&
+		a.SystemPromptFile == b.SystemPromptFile &&
+		a.Mission == b.Mission &&
+		a.MaxContinuations == b.MaxContinuations &&
+		a.Steers.TurnStart == b.Steers.TurnStart &&
+		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
+		a.Steers.BashPrompt == b.Steers.BashPrompt &&
+		a.Steers.Question == b.Steers.Question &&
+		a.Steers.TurnEnd == b.Steers.TurnEnd
+}
+
 // SelfLearnSettings configures the two independent self-learning arms.
 // See notes/active/l1-background-review.md §3.1.
 type SelfLearnSettings struct {
@@ -513,11 +529,7 @@ func (s *Data) Clone() *Data {
 	dst.SearchProvider = s.SearchProvider
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
-	dst.AutoReview = s.AutoReview
-	if p := s.AutoReview.Steers.Permission; p != nil {
-		v := *p
-		dst.AutoReview.Steers.Permission = &v
-	}
+	dst.AutoReview = s.AutoReview.Clone()
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v

@@ -145,10 +145,11 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
 		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
-			// Interactive answering is opt-in via the Bash steer, read live so a
+			// Interactive answering is opt-in via the Bash steer, read live (via
+			// the synchronized snapshot — this runs on the agent goroutine) so a
 			// mid-session toggle takes effect: without it, bash stays on the
 			// normal non-tty path even in auto-review.
-			if !m.env.AutoReview.Steers.BashPrompt || m.env.OperationMode != setting.ModeAutoReview {
+			if !m.liveAutopilotConfig().Steers.BashPrompt || m.env.OperationMode != setting.ModeAutoReview {
 				return nil
 			}
 			return bashPromptResponder{model: m}
@@ -185,9 +186,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 
 		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
 			// Only auto-review mode with the Permission steer on delegates
-			// gray-zone prompts to the judge; both are read live so a mid-session
-			// toggle takes effect. Steer off ⇒ every gray-zone call escalates.
-			if m.env.OperationMode != setting.ModeAutoReview || !m.env.AutoReview.Steers.PermissionOn() {
+			// gray-zone prompts to the judge; the steer is read live via the
+			// synchronized snapshot (agent goroutine) so a mid-session toggle
+			// takes effect. Steer off ⇒ every gray-zone call escalates.
+			if m.env.OperationMode != setting.ModeAutoReview || !m.liveAutopilotConfig().Steers.PermissionOn() {
 				return agent.PermReviewResult{}
 			}
 			// Defense in depth: the judge may never approve a floored action,

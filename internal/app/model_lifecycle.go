@@ -75,6 +75,7 @@ func newBaseModel() model {
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),
 		autopilotReviewer:   new(atomic.Pointer[reviewer.AutoReview]),
+		autopilotCfg:        new(atomic.Pointer[setting.AutoReviewSettings]),
 	}
 }
 

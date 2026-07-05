@@ -115,7 +115,7 @@ func renderBashPrompt(command, prompt string) string {
 }
 
 func parseBashPromptReply(content string) (BashPromptReply, error) {
-	raw := extractJSONObject(content)
+	raw := ExtractJSONObject(content)
 	if raw == "" {
 		return BashPromptReply{}, fmt.Errorf("no JSON object in judge response: %q", truncate(content, 200))
 	}
@@ -186,7 +186,7 @@ func renderPermission(req Request) string {
 // surrounding prose or markdown fences. An unrecognized or missing decision is
 // an error so the caller fails closed.
 func parseVerdict(content string) (Verdict, error) {
-	raw := extractJSONObject(content)
+	raw := ExtractJSONObject(content)
 	if raw == "" {
 		return Verdict{}, fmt.Errorf("no JSON object in judge response: %q", truncate(content, 200))
 	}
@@ -209,9 +209,9 @@ func parseVerdict(content string) (Verdict, error) {
 	}
 }
 
-// extractJSONObject returns the substring from the first '{' to the last '}',
+// ExtractJSONObject returns the substring from the first '{' to the last '}',
 // or "" if there is no brace pair.
-func extractJSONObject(s string) string {
+func ExtractJSONObject(s string) string {
 	start := strings.IndexByte(s, '{')
 	end := strings.LastIndexByte(s, '}')
 	if start < 0 || end < 0 || end < start {

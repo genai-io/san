@@ -33,6 +33,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/reviewer"
+	"github.com/genai-io/san/internal/setting"
 )
 
 const defaultWidth = 80
@@ -75,6 +76,13 @@ type model struct {
 	// agent restart. Loaded per-call on the agent goroutine, Stored on the UI
 	// goroutine — the atomic pointer makes the single-word swap race-free.
 	autopilotReviewer *atomic.Pointer[reviewer.AutoReview]
+
+	// autopilotCfg is the synchronized snapshot of the live autopilot config the
+	// agent goroutine reads (the bash/permission steer gates). m.env.AutoReview
+	// is UI-goroutine-owned and can be reassigned by a mid-turn Save, so the
+	// agent side must not read it directly — it Loads this instead. Refreshed
+	// (Store) alongside the reviewer in rebuildAutopilotReviewer.
+	autopilotCfg *atomic.Pointer[setting.AutoReviewSettings]
 
 	// autopilotContinuations counts TurnEnd auto-continuations since the last
 	// human turn (reset in dispatchSubmission); autopilotContinuing tags the

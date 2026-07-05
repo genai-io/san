@@ -17,6 +17,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -31,6 +32,10 @@ import (
 // change takes effect on the running agent without a restart.
 func (m *model) rebuildAutopilotReviewer() {
 	ar := m.env.AutoReview
+	// Publish a synchronized snapshot for the agent goroutine's steer gates,
+	// alongside the reviewer, so a mid-turn Save is race-free (see autopilotCfg).
+	snapshot := ar.Clone()
+	m.autopilotCfg.Store(&snapshot)
 	provider, modelID := m.resolveReviewerModel(ar.Model)
 	rev := reviewer.New(provider, modelID)
 	switch {
@@ -45,6 +50,16 @@ func (m *model) rebuildAutopilotReviewer() {
 		}
 	}
 	m.autopilotReviewer.Store(rev)
+}
+
+// liveAutopilotConfig returns the synchronized config snapshot for the agent
+// goroutine's steer gates. Zero value until the first rebuildAutopilotReviewer
+// (which runs at agent build, before the agent goroutine starts).
+func (m *model) liveAutopilotConfig() setting.AutoReviewSettings {
+	if c := m.autopilotCfg.Load(); c != nil {
+		return *c
+	}
+	return setting.AutoReviewSettings{}
 }
 
 // marshalAutoReview encodes the live config for session persistence, returning
@@ -159,13 +174,8 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 }
 
 func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID, mission, lastTurn string) (bool, string, error) {
-	user := "Mission:\n" + mission + "\n\nThe agent's last turn ended with:\n" + truncateForContext(lastTurn, 2000)
-	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-		Model:        modelID,
-		SystemPrompt: continueDecisionPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: user}},
-		MaxTokens:    400,
-	})
+	user := "Mission:\n" + mission + "\n\nThe agent's last turn ended with:\n" + kit.TruncateText(lastTurn, 2000)
+	content, err := autopilotComplete(ctx, provider, modelID, continueDecisionPrompt, user, 400)
 	if err != nil {
 		return false, "", err
 	}
@@ -173,7 +183,7 @@ func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID
 		Continue    bool   `json:"continue"`
 		Instruction string `json:"instruction"`
 	}
-	if err := json.Unmarshal([]byte(extractJSONObject(resp.Content)), &out); err != nil {
+	if err := json.Unmarshal([]byte(reviewer.ExtractJSONObject(content)), &out); err != nil {
 		return false, "", err
 	}
 	return out.Continue, strings.TrimSpace(out.Instruction), nil
@@ -194,28 +204,26 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		m.autopilotContinuing = true
 		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it
 		m.conv.AddNotice(fmt.Sprintf("⏵ autopilot: continuing (%d/%d) → %s",
-			m.autopilotContinuations, m.env.AutoReview.ResolvedMaxContinuations(), truncateForContext(instr, 80)))
+			m.autopilotContinuations, m.env.AutoReview.ResolvedMaxContinuations(), kit.TruncateText(instr, 80)))
 		return m.handleSubmit()
 	}
 	m.conv.AddNotice("⏵ autopilot: handing back to you")
 	return m.fireIdleHooksCmd(msg.result)
 }
 
-// extractJSONObject returns the outermost {…} span, tolerating prose around it.
-func extractJSONObject(s string) string {
-	i := strings.IndexByte(s, '{')
-	j := strings.LastIndexByte(s, '}')
-	if i < 0 || j < i {
-		return s
+// autopilotComplete runs one single-user-message completion and returns the
+// trimmed reply — the shared shape of the copilot's steer inferences.
+func autopilotComplete(ctx context.Context, provider llm.Provider, modelID, system, user string, maxTokens int) (string, error) {
+	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
+		Model:        modelID,
+		SystemPrompt: system,
+		Messages:     []core.Message{{Role: core.RoleUser, Content: user}},
+		MaxTokens:    maxTokens,
+	})
+	if err != nil {
+		return "", err
 	}
-	return s[i : j+1]
-}
-
-func truncateForContext(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "…"
+	return strings.TrimSpace(resp.Content), nil
 }
 
 // ── Question steer (#4): auto-answer AskUserQuestion ─────────────────────
@@ -281,12 +289,7 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 			b.WriteString("\n")
 		}
 	}
-	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-		Model:        modelID,
-		SystemPrompt: questionAnswerPrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: b.String()}},
-		MaxTokens:    500,
-	})
+	content, err := autopilotComplete(ctx, provider, modelID, questionAnswerPrompt, b.String(), 500)
 	if err != nil {
 		return nil, false
 	}
@@ -294,7 +297,7 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 		Defer   bool                `json:"defer"`
 		Answers map[string][]string `json:"answers"`
 	}
-	if err := json.Unmarshal([]byte(extractJSONObject(resp.Content)), &out); err != nil || out.Defer {
+	if err := json.Unmarshal([]byte(reviewer.ExtractJSONObject(content)), &out); err != nil || out.Defer {
 		return nil, false
 	}
 	// Every question must get at least one valid (verbatim-matching) label, else
@@ -360,19 +363,11 @@ func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, 
 	if mission != "" {
 		user = "Mission:\n" + mission + "\n\nUser's message:\n" + raw
 	}
-	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
-		Model:        modelID,
-		SystemPrompt: rewritePrompt,
-		Messages:     []core.Message{{Role: core.RoleUser, Content: user}},
-		MaxTokens:    1000,
-	})
-	if err != nil {
+	out, err := autopilotComplete(ctx, provider, modelID, rewritePrompt, user, 1000)
+	if err != nil || out == "" {
 		return raw // fail open: send the original
 	}
-	if out := strings.TrimSpace(resp.Content); out != "" {
-		return out
-	}
-	return raw
+	return out
 }
 
 // handleAutopilotRewrite re-submits the (possibly) rewritten message.

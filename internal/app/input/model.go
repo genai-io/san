@@ -138,7 +138,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Provider:  ProviderState{Selector: NewProviderSelector()},
 		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
 		Config:    NewConfigSelector(deps.Setting),
-		Autopilot: NewAutopilotSelector(deps.Setting),
+		Autopilot: NewAutopilotSelector(),
 	}
 }
 
