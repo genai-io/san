@@ -137,7 +137,7 @@ func parseBashPromptReply(content string) (BashPromptReply, error) {
 const permissionTask = `Decide whether to auto-approve the following tool call, or escalate it to the user.
 
 Respond with ONLY a JSON object:
-{"decision": "allow" | "escalate", "reason": "<one short sentence>"}`
+{"decision": "allow" | "escalate", "reason": "<a few words>"}`
 
 // bashPromptTask is the per-call instruction for answering an interactive prompt
 // a running, already-approved command raised.
