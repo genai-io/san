@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rivo/uniseg"
 
 	"github.com/genai-io/san/internal/app/kit/history"
 	"github.com/genai-io/san/internal/app/kit/suggest"
@@ -47,7 +48,8 @@ func (m *Model) maxTextareaHeight() int {
 	return dynMax
 }
 
-// UpdateHeight adjusts textarea height based on content line count.
+// UpdateHeight adjusts textarea height based on content line count, accounting
+// for double-width characters (e.g. CJK) via uniseg.StringWidth.
 func (m *Model) UpdateHeight() {
 	content := m.Textarea.Value()
 	lines := strings.Count(content, "\n") + 1
@@ -56,8 +58,8 @@ func (m *Model) UpdateHeight() {
 		width = 1
 	}
 	for _, line := range strings.Split(content, "\n") {
-		lineWidth := max(len([]rune(line)), 1)
-		lines += (lineWidth - 1) / width
+		displayWidth := max(uniseg.StringWidth(line), 1)
+		lines += (displayWidth - 1) / width
 	}
 
 	newHeight := max(min(lines, m.maxTextareaHeight()), minTextareaHeight)
