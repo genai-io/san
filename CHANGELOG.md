@@ -3,6 +3,21 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.10] - 2026-07-05
+
+### Added
+- Auto-review permission mode ([@yanmxa](https://github.com/yanmxa) in [#270](https://github.com/genai-io/san/pull/270))
+- Auto-review activity in the UI ([@yanmxa](https://github.com/yanmxa) in [#274](https://github.com/genai-io/san/pull/274))
+
+### Changed
+- Clarify codebase structure boundaries ([@yanmxa](https://github.com/yanmxa) in [#272](https://github.com/genai-io/san/pull/272))
+- Render streaming markdown blocks off the UI goroutine ([@yanmxa](https://github.com/yanmxa) in [#275](https://github.com/genai-io/san/pull/275))
+- Shorten the auto-review reason and scope per-frame result precompute ([@yanmxa](https://github.com/yanmxa) in [#276](https://github.com/genai-io/san/pull/276))
+- Present the review mode to users as "Autopilot" and relax the judge ([@yanmxa](https://github.com/yanmxa) in [#277](https://github.com/genai-io/san/pull/277))
+
+### Fixed
+- Stop status-bar context limit flickering between provider windows ([@yanmxa](https://github.com/yanmxa) in [#271](https://github.com/genai-io/san/pull/271))
+
 ## [v1.20.9] - 2026-07-03
 
 ### Added
