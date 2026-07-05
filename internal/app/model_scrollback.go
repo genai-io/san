@@ -129,7 +129,7 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		var blocks []string
 		thinkingEmitted := false
 		if snap.thinkingSlice != "" {
-			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width); b != "" {
+			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
 				blocks = append(blocks, b)
 				thinkingEmitted = true
 			}

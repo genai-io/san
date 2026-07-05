@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
@@ -216,17 +217,41 @@ func thinkingGutter(showIcon bool) string {
 // the live view and the scrollback commit path. The glyph and text both stay
 // muted, matching the status-bar thinking indicator — no hue. showIcon leads the
 // block with the "✦ " marker (the turn's first thinking) or a blank continuation
-// gutter for blocks committed after it.
-func renderThinkingBlock(thinking string, showIcon bool, width int) string {
-	wrapWidth := max(width-streamWrapReserve, minWrapWidth)
-	wrapped := lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
+// gutter for blocks committed after it. With md set the reasoning is laid out as
+// markdown (then re-toned muted); without it, a plain muted wrap — the live
+// streaming tail passes nil to stay cheap, matching the content tail.
+func renderThinkingBlock(thinking string, showIcon bool, width int, md *MDRenderer) string {
+	body := mutedThinkingBody(thinking, width, md)
+	if strings.TrimSpace(xansi.Strip(body)) == "" {
+		return ""
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, thinkingGutter(showIcon), body)
+}
+
+// mutedThinkingBody lays reasoning out as markdown when a renderer is available,
+// then flattens it to the single muted thinking tone: headings, lists and tables
+// keep their structure but read as de-emphasized reasoning instead of a raw
+// "###" / "| |" dump. Without a renderer it falls back to a plain muted wrap.
+func mutedThinkingBody(thinking string, width int, md *MDRenderer) string {
+	var text string
+	if md != nil {
+		if rendered, err := md.Render(thinking); err == nil {
+			text = xansi.Strip(rendered) // drop markdown's hues; re-tone muted below
+		}
+	}
+	if text == "" {
+		wrapWidth := max(width-streamWrapReserve, minWrapWidth)
+		text = lipgloss.NewStyle().Width(wrapWidth).Render(thinking)
+	}
 	var lines []string
-	for line := range strings.SplitSeq(wrapped, "\n") {
-		if strings.TrimSpace(line) != "" {
+	for line := range strings.SplitSeq(strings.Trim(text, "\n"), "\n") {
+		if strings.TrimSpace(line) == "" {
+			lines = append(lines, "")
+		} else {
 			lines = append(lines, ThinkingStyle.Render(line))
 		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, thinkingGutter(showIcon), strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // sliceFrom returns the portion of s past the first n bytes — the not-yet-
@@ -248,11 +273,11 @@ func sliceFrom(s string, n int) string {
 // leads with the "✦ " marker (the turn's first thinking block) or a blank
 // continuation gutter for blocks committed after it. Returns "" when the slice
 // renders empty (e.g. only blank lines).
-func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int) string {
+func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int, md *MDRenderer) string {
 	if strings.TrimSpace(thinking) == "" {
 		return ""
 	}
-	return renderThinkingBlock(thinking, showIcon, width)
+	return renderThinkingBlock(thinking, showIcon, width, md)
 }
 
 // RenderCommittedContentBlock renders one or more completed markdown blocks of
@@ -298,7 +323,13 @@ func RenderAssistantMessage(params AssistantParams) string {
 	}
 
 	if params.Thinking != "" {
-		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width) + "\n\n")
+		// The live streaming tail stays plain (nil renderer), matching the content
+		// tail; a settled block lays out as muted markdown.
+		thinkMD := params.MDRenderer
+		if params.StreamActive && params.IsLast {
+			thinkMD = nil
+		}
+		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width, thinkMD) + "\n\n")
 	}
 
 	content := formatAssistantContent(params)

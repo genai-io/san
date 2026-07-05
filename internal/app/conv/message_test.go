@@ -12,13 +12,28 @@ import (
 // progressively-committed blocks after it align under a blank continuation
 // gutter so the glyph appears once, not on every block.
 func TestRenderCommittedThinkingBlockGutter(t *testing.T) {
-	first := RenderCommittedThinkingBlock("first reasoning block", true, 80)
+	first := RenderCommittedThinkingBlock("first reasoning block", true, 80, nil)
 	if !strings.Contains(first, "✦") {
 		t.Fatalf("first thinking block should lead with the ✦ marker, got %q", first)
 	}
-	cont := RenderCommittedThinkingBlock("continuation reasoning block", false, 80)
+	cont := RenderCommittedThinkingBlock("continuation reasoning block", false, 80, nil)
 	if strings.Contains(cont, "✦") {
 		t.Fatalf("continuation thinking block should not repeat the ✦ marker, got %q", cont)
+	}
+}
+
+// Committed reasoning lays out as markdown — headings and emphasis render rather
+// than showing raw "###" / "**" — but flattened to the single muted tone so it
+// reads as de-emphasized reasoning.
+func TestRenderCommittedThinkingBlockRendersMarkdown(t *testing.T) {
+	out := stripANSI(RenderCommittedThinkingBlock("### CoreDNS\n\nDNS service with **bold** text.", true, 80, NewMDRenderer(80)))
+	if strings.Contains(out, "###") || strings.Contains(out, "**") {
+		t.Errorf("reasoning should render markdown, not raw markers:\n%s", out)
+	}
+	for _, want := range []string{"CoreDNS", "bold"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("reasoning text %q should survive:\n%s", want, out)
+		}
 	}
 }
 
