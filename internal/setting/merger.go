@@ -25,18 +25,18 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.ContextBar = coalesceBool(overlay.ContextBar, base.ContextBar)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
-	result.AutoReview = mergeAutoReview(base.AutoReview, overlay.AutoReview)
+	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)
 
 	return result
 }
 
-// mergeAutoReview does a field-level merge of the autopilot config: strings and
+// mergeAutoPilot does a field-level merge of the autopilot config: strings and
 // the continuation cap coalesce (overlay's non-zero wins), steer bools OR
 // (enable-anywhere wins), and the tri-state permission steer coalesces (overlay's
 // explicit value wins, else base's, else nil = default on). Without this the
 // entire autoPilot block is dropped on every Load and every save.
-func mergeAutoReview(base, overlay AutoReviewSettings) AutoReviewSettings {
-	return AutoReviewSettings{
+func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
+	return AutoPilotSettings{
 		Model:            coalesce(overlay.Model, base.Model),
 		SystemPrompt:     coalesce(overlay.SystemPrompt, base.SystemPrompt),
 		SystemPromptFile: coalesce(overlay.SystemPromptFile, base.SystemPromptFile),

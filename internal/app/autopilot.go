@@ -31,7 +31,7 @@ import (
 // whenever the /autopilot panel saves, so a mid-session model / system-prompt
 // change takes effect on the running agent without a restart.
 func (m *model) rebuildAutopilotReviewer() {
-	ar := m.env.AutoReview
+	ar := m.env.AutoPilot
 	// Publish a synchronized snapshot for the agent goroutine's steer gates,
 	// alongside the reviewer, so a mid-turn Save is race-free (see autopilotCfg).
 	snapshot := ar.Clone()
@@ -55,16 +55,16 @@ func (m *model) rebuildAutopilotReviewer() {
 // liveAutopilotConfig returns the synchronized config snapshot for the agent
 // goroutine's steer gates. Zero value until the first rebuildAutopilotReviewer
 // (which runs at agent build, before the agent goroutine starts).
-func (m *model) liveAutopilotConfig() setting.AutoReviewSettings {
+func (m *model) liveAutopilotConfig() setting.AutoPilotSettings {
 	if c := m.autopilotCfg.Load(); c != nil {
 		return *c
 	}
-	return setting.AutoReviewSettings{}
+	return setting.AutoPilotSettings{}
 }
 
-// marshalAutoReview encodes the live config for session persistence, returning
+// marshalAutoPilot encodes the live config for session persistence, returning
 // "" for an unset config so untouched sessions carry no autopilot state.
-func marshalAutoReview(a setting.AutoReviewSettings) string {
+func marshalAutoPilot(a setting.AutoPilotSettings) string {
 	if a.IsZero() {
 		return ""
 	}
@@ -75,10 +75,10 @@ func marshalAutoReview(a setting.AutoReviewSettings) string {
 	return string(b)
 }
 
-// parseAutoReview decodes a persisted config blob; a blank or malformed blob
+// parseAutoPilot decodes a persisted config blob; a blank or malformed blob
 // yields the zero config.
-func parseAutoReview(s string) setting.AutoReviewSettings {
-	var a setting.AutoReviewSettings
+func parseAutoPilot(s string) setting.AutoPilotSettings {
+	var a setting.AutoPilotSettings
 	if s != "" {
 		_ = json.Unmarshal([]byte(s), &a)
 	}
@@ -97,7 +97,7 @@ The user is briefing you on the mission for this session. Reply in 2-4 sentences
 // a short acknowledgement of how it will steer. Wired into the /autopilot panel
 // via SetMissionResponder.
 func (m *model) missionReply(ctx context.Context, history []input.MissionMessage) (string, error) {
-	provider, modelID := m.resolveReviewerModel(m.env.AutoReview.Model)
+	provider, modelID := m.resolveReviewerModel(m.env.AutoPilot.Model)
 	if provider == nil {
 		return "", fmt.Errorf("no model connected")
 	}
@@ -147,7 +147,7 @@ Set continue=false (with instruction "") if the mission looks complete, if you a
 // steer is off, the budget is spent, there's no mission, the model is missing,
 // or the turn didn't end cleanly.
 func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
-	ar := m.env.AutoReview
+	ar := m.env.AutoPilot
 	if result.StopReason != core.StopEndTurn || !ar.Steers.TurnEnd {
 		return nil
 	}
@@ -204,7 +204,7 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		m.autopilotContinuing = true
 		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it
 		m.conv.AddNotice(fmt.Sprintf("⏵ autopilot: continuing (%d/%d) → %s",
-			m.autopilotContinuations, m.env.AutoReview.ResolvedMaxContinuations(), kit.TruncateText(instr, 80)))
+			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations(), kit.TruncateText(instr, 80)))
 		return m.handleSubmit()
 	}
 	m.conv.AddNotice("⏵ autopilot: handing back to you")
@@ -247,7 +247,7 @@ Reply with ONLY a JSON object:
 // autopilotAnswerQuestionCmd asks the copilot to answer a pending question, or
 // nil when the Question steer is off / no model is available.
 func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
-	ar := m.env.AutoReview
+	ar := m.env.AutoPilot
 	if !ar.Steers.Question || req == nil || len(req.Questions) == 0 {
 		return nil
 	}
@@ -338,7 +338,7 @@ func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
 		m.autopilotRewrote = false // this IS the rewritten re-submit
 		return nil, false
 	}
-	ar := m.env.AutoReview
+	ar := m.env.AutoPilot
 	if !ar.Steers.TurnStart || m.autopilotContinuing {
 		return nil, false
 	}

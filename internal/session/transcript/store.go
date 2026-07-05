@@ -115,7 +115,7 @@ func PatchTitle(title string) PatchOp       { return mustPatch(PatchPathTitle, t
 func PatchLastPrompt(prompt string) PatchOp { return mustPatch(PatchPathLastPrompt, prompt) }
 func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag) }
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
-func PatchAutoReview(v string) PatchOp      { return mustPatch(PatchPathAutoReview, v) }
+func PatchAutoPilot(v string) PatchOp      { return mustPatch(PatchPathAutoPilot, v) }
 func PatchTasks(tasks []todo.Task) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }
@@ -139,8 +139,8 @@ func StateOpsDiff(prev, next State) []PatchOp {
 	if prev.Mode != next.Mode {
 		ops = append(ops, PatchMode(next.Mode))
 	}
-	if prev.AutoReview != next.AutoReview {
-		ops = append(ops, PatchAutoReview(next.AutoReview))
+	if prev.AutoPilot != next.AutoPilot {
+		ops = append(ops, PatchAutoPilot(next.AutoPilot))
 	}
 	if !tasksEqual(prev.Tasks, next.Tasks) {
 		ops = append(ops, PatchTasks(TrackerTasksFromView(next.Tasks)))

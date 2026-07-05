@@ -326,14 +326,14 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
 	return nil
 }
 
-// UpdateAutoReviewAt persists the autopilot config at the requested settings
+// UpdateAutoPilotAt persists the autopilot config at the requested settings
 // level (true = user-wide, false = project-local). Like UpdateSelfLearnAt it
 // reads the target file and replaces only the autoPilot block, so an off-toggle
 // actually sticks: routing through SaveToUser/SaveToProject would re-merge via
-// mergeAutoReview and OR the steer bools with the file's previous value, making
+// mergeAutoPilot and OR the steer bools with the file's previous value, making
 // a true→false toggle impossible to persist. Every other setting in the file is
 // left untouched. (Cross-level layering still ORs on Load by design.)
-func UpdateAutoReviewAt(cfg AutoReviewSettings, userLevel bool) error {
+func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
 	loader := NewLoader()
 	path := filepath.Join(loader.projectDir, "settings.json")
 	if userLevel {
@@ -344,7 +344,7 @@ func UpdateAutoReviewAt(cfg AutoReviewSettings, userLevel bool) error {
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, existing)
 	}
-	existing.AutoReview = cfg
+	existing.AutoPilot = cfg
 	if err := writeJSONAtomic(path, existing); err != nil {
 		return err
 	}
@@ -355,21 +355,21 @@ func UpdateAutoReviewAt(cfg AutoReviewSettings, userLevel bool) error {
 	return nil
 }
 
-// AutoReviewPresetDir is the folder where /autopilot Export saves named configs
+// AutoPilotPresetDir is the folder where /autopilot Export saves named configs
 // and Import reads them — a shared, non-session space for reusable presets.
-func AutoReviewPresetDir() string {
+func AutoPilotPresetDir() string {
 	return filepath.Join(NewLoader().userDir, "autopilot")
 }
 
-// ExportAutoReview writes cfg as a named preset (<presetDir>/<name>.json),
+// ExportAutoPilot writes cfg as a named preset (<presetDir>/<name>.json),
 // returning the path. The name is reduced to a bare filename and must be
 // non-empty.
-func ExportAutoReview(name string, cfg AutoReviewSettings) (string, error) {
+func ExportAutoPilot(name string, cfg AutoPilotSettings) (string, error) {
 	base := sanitizePresetName(name)
 	if base == "" {
 		return "", fmt.Errorf("preset name required")
 	}
-	dir := AutoReviewPresetDir()
+	dir := AutoPilotPresetDir()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -380,10 +380,10 @@ func ExportAutoReview(name string, cfg AutoReviewSettings) (string, error) {
 	return path, nil
 }
 
-// ListAutoReviewPresets returns the saved preset names (without extension),
+// ListAutoPilotPresets returns the saved preset names (without extension),
 // sorted. A missing directory yields an empty list, not an error.
-func ListAutoReviewPresets() ([]string, error) {
-	entries, err := os.ReadDir(AutoReviewPresetDir())
+func ListAutoPilotPresets() ([]string, error) {
+	entries, err := os.ReadDir(AutoPilotPresetDir())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -403,14 +403,14 @@ func ListAutoReviewPresets() ([]string, error) {
 	return names, nil
 }
 
-// ImportAutoReview reads a named preset back into an AutoReviewSettings.
-func ImportAutoReview(name string) (AutoReviewSettings, error) {
-	var cfg AutoReviewSettings
+// ImportAutoPilot reads a named preset back into an AutoPilotSettings.
+func ImportAutoPilot(name string) (AutoPilotSettings, error) {
+	var cfg AutoPilotSettings
 	base := sanitizePresetName(name)
 	if base == "" {
 		return cfg, fmt.Errorf("preset name required")
 	}
-	data, err := os.ReadFile(filepath.Join(AutoReviewPresetDir(), base+".json"))
+	data, err := os.ReadFile(filepath.Join(AutoPilotPresetDir(), base+".json"))
 	if err != nil {
 		return cfg, err
 	}

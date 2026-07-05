@@ -45,18 +45,16 @@ type Data struct {
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
 	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
-	// AutoReview configures the autopilot copilot: which lifecycle points it
+	// AutoPilot configures the autopilot copilot: which lifecycle points it
 	// steers, how it drives (model + system prompt), and the mission it steers
-	// toward. Shown to users as "Autopilot" (JSON key "autoPilot"); the internal
-	// name stays AutoReview because the mechanism is a review of each gray-zone
-	// call.
-	AutoReview AutoReviewSettings `json:"autoPilot,omitempty"`
+	// toward (JSON key "autoPilot").
+	AutoPilot AutoPilotSettings `json:"autoPilot,omitempty"`
 }
 
-// AutoReviewSettings tunes the autopilot copilot. Every field is optional;
+// AutoPilotSettings tunes the autopilot copilot. Every field is optional;
 // empty keeps the built-in defaults (session model + built-in doctrine, no
 // mission, permission steer on).
-type AutoReviewSettings struct {
+type AutoPilotSettings struct {
 	// Model overrides the model used for steer decisions. A bare id (e.g.
 	// "claude-haiku-4-5") stays on the session provider; a "vendor/model" ref
 	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
@@ -108,7 +106,7 @@ const AutoPilotDefaultMaxContinuations = 20
 
 // ResolvedMaxContinuations returns the configured continuation cap, or the
 // default when unset.
-func (a AutoReviewSettings) ResolvedMaxContinuations() int {
+func (a AutoPilotSettings) ResolvedMaxContinuations() int {
 	if a.MaxContinuations <= 0 {
 		return AutoPilotDefaultMaxContinuations
 	}
@@ -117,7 +115,7 @@ func (a AutoReviewSettings) ResolvedMaxContinuations() int {
 
 // Clone returns a deep copy, duplicating the tri-state permission pointer so
 // callers can mutate the copy without touching the original.
-func (a AutoReviewSettings) Clone() AutoReviewSettings {
+func (a AutoPilotSettings) Clone() AutoPilotSettings {
 	if p := a.Steers.Permission; p != nil {
 		v := *p
 		a.Steers.Permission = &v
@@ -127,7 +125,7 @@ func (a AutoReviewSettings) Clone() AutoReviewSettings {
 
 // IsZero reports whether the config is entirely unset — used to keep the value
 // out of persisted session state and settings files when nothing was configured.
-func (a AutoReviewSettings) IsZero() bool {
+func (a AutoPilotSettings) IsZero() bool {
 	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
 		a.Mission == "" && a.MaxContinuations == 0 &&
 		!a.Steers.TurnStart && a.Steers.Permission == nil &&
@@ -137,7 +135,7 @@ func (a AutoReviewSettings) IsZero() bool {
 // Equal compares two configs by value, normalizing the tri-state permission
 // steer via PermissionOn (nil and &true are equal). Used for the /autopilot
 // panel's unsaved-edits check.
-func (a AutoReviewSettings) Equal(b AutoReviewSettings) bool {
+func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 	return a.Model == b.Model &&
 		a.SystemPrompt == b.SystemPrompt &&
 		a.SystemPromptFile == b.SystemPromptFile &&
@@ -391,20 +389,20 @@ const (
 	ModeBypassPermissions               // allow all (bypass-immune checks still apply)
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
-	ModeAutoReview                      // auto-approve edits; delegate the rest to the review agent
+	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
 // BypassPermissions is only reachable when explicitly enabled; DontAsk and
 // ReadOnly are entered programmatically (headless subagents), not via cycling.
-var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview}
-var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeBypassPermissions}
+var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot}
+var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeBypassPermissions}
 
 func (m OperationMode) String() string {
 	switch m {
 	case ModeAutoAccept:
 		return "accept edits"
-	case ModeAutoReview:
+	case ModeAutoPilot:
 		return "autopilot"
 	case ModeBypassPermissions:
 		return "bypass permissions"
@@ -423,7 +421,7 @@ func OperationModeFromString(mode string) OperationMode {
 	case "acceptEdits", "accept-edits", "autoAccept", "auto-accept":
 		return ModeAutoAccept
 	case "autoPilot", "auto-pilot", "autopilot", "pilot":
-		return ModeAutoReview
+		return ModeAutoPilot
 	case "bypassPermissions", "bypass-permissions", "bypass":
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":
@@ -529,7 +527,7 @@ func (s *Data) Clone() *Data {
 	dst.SearchProvider = s.SearchProvider
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
-	dst.AutoReview = s.AutoReview.Clone()
+	dst.AutoPilot = s.AutoPilot.Clone()
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v

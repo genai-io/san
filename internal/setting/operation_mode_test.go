@@ -5,7 +5,7 @@ import (
 )
 
 func TestNextWithBypass_Disabled(t *testing.T) {
-	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeNormal}
+	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeNormal}
 	for i := 0; i < len(cycle)-1; i++ {
 		got := cycle[i].NextWithBypass(false)
 		if got != cycle[i+1] {
@@ -15,7 +15,7 @@ func TestNextWithBypass_Disabled(t *testing.T) {
 }
 
 func TestNextWithBypass_Enabled(t *testing.T) {
-	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeBypassPermissions, ModeNormal}
+	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeBypassPermissions, ModeNormal}
 	for i := 0; i < len(cycle)-1; i++ {
 		got := cycle[i].NextWithBypass(true)
 		if got != cycle[i+1] {
@@ -35,7 +35,7 @@ func TestNextWithBypass_UnknownMode(t *testing.T) {
 }
 
 func TestNext_StillWorks(t *testing.T) {
-	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeNormal}
+	cycle := []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeNormal}
 	for i := 0; i < len(cycle)-1; i++ {
 		got := cycle[i].Next()
 		if got != cycle[i+1] {
@@ -51,13 +51,13 @@ func TestNext_BypassReturnsNormal(t *testing.T) {
 	}
 }
 
-func TestAutoReview_StringAndFromString(t *testing.T) {
-	if got := ModeAutoReview.String(); got != "autopilot" {
-		t.Errorf("ModeAutoReview.String() = %q, want %q", got, "autopilot")
+func TestAutoPilot_StringAndFromString(t *testing.T) {
+	if got := ModeAutoPilot.String(); got != "autopilot" {
+		t.Errorf("ModeAutoPilot.String() = %q, want %q", got, "autopilot")
 	}
 	for _, s := range []string{"autoPilot", "auto-pilot", "autopilot", "pilot"} {
-		if got := OperationModeFromString(s); got != ModeAutoReview {
-			t.Errorf("OperationModeFromString(%q) = %d, want %d", s, got, ModeAutoReview)
+		if got := OperationModeFromString(s); got != ModeAutoPilot {
+			t.Errorf("OperationModeFromString(%q) = %d, want %d", s, got, ModeAutoPilot)
 		}
 	}
 }

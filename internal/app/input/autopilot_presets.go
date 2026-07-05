@@ -26,7 +26,7 @@ func (p *AutopilotSelector) handleExportKey(msg tea.KeyMsg) tea.Cmd {
 	case "esc":
 		p.view = apMenu
 	case "enter":
-		path, err := setting.ExportAutoReview(p.nameBuffer, p.snap)
+		path, err := setting.ExportAutoPilot(p.nameBuffer, p.snap)
 		if err != nil {
 			p.status = "export failed: " + err.Error()
 		} else {
@@ -47,7 +47,7 @@ func (p *AutopilotSelector) handleExportKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (p *AutopilotSelector) renderExport() string {
-	dir := kit.ShortenPath(setting.AutoReviewPresetDir())
+	dir := kit.ShortenPath(setting.AutoPilotPresetDir())
 	var b strings.Builder
 	b.WriteString(apDescStyle.Render("Save this config as a preset under " + dir + "/"))
 	b.WriteString("\n\n")
@@ -67,7 +67,7 @@ func (p *AutopilotSelector) exportHint() string {
 // ── Import (preset list) ────────────────────────────────────────────────
 
 func (p *AutopilotSelector) beginImport() {
-	names, err := setting.ListAutoReviewPresets()
+	names, err := setting.ListAutoPilotPresets()
 	if err != nil {
 		p.status = "import failed: " + err.Error()
 		return
@@ -96,7 +96,7 @@ func (p *AutopilotSelector) handleImportKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		name := p.presets[p.importCursor]
-		cfg, err := setting.ImportAutoReview(name)
+		cfg, err := setting.ImportAutoPilot(name)
 		if err != nil {
 			p.status = "import failed: " + err.Error()
 		} else {

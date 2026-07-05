@@ -351,7 +351,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 		icon = "⏵⏵"
 		label = " accept edits on"
 		clr = kit.CurrentTheme.Success
-	case setting.ModeAutoReview:
+	case setting.ModeAutoPilot:
 		icon = "⏵⏵"
 		label = " autopilot on"
 		clr = kit.CurrentTheme.Warning
@@ -363,7 +363,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 		return ""
 	}
 
-	if mode == setting.ModeAutoReview {
+	if mode == setting.ModeAutoPilot {
 		if reviewApprovals > 0 {
 			label += fmt.Sprintf(" · %d approved", reviewApprovals)
 		}

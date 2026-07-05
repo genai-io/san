@@ -32,7 +32,7 @@ const (
 	PatchPathLastPrompt = "lastPrompt"
 	PatchPathTag        = "tag"
 	PatchPathMode       = "mode"
-	PatchPathAutoReview = "autoReview"
+	PatchPathAutoPilot = "autoPilot"
 	PatchPathTasks      = "tasks"
 	PatchPathWorktree   = "worktree"
 )

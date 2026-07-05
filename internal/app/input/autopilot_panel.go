@@ -1,6 +1,6 @@
 // /autopilot popup: configures the autopilot copilot — how it drives (system
 // prompt), which lifecycle points it steers, and the mission it steers toward.
-// It edits a working copy of setting.AutoReviewSettings; Save writes the
+// It edits a working copy of setting.AutoPilotSettings; Save writes the
 // autoPilot block to user settings, and Export/Import move it through a shared
 // file for reuse across sessions and projects.
 //
@@ -34,14 +34,14 @@ const (
 )
 
 // AutopilotSavedMsg is emitted on Save carrying the edited config. The app
-// applies it to the live session (m.env.AutoReview) and persists it as the
+// applies it to the live session (m.env.AutoPilot) and persists it as the
 // default seed for new sessions.
-type AutopilotSavedMsg struct{ Config setting.AutoReviewSettings }
+type AutopilotSavedMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
 	respond MissionResponder                  // injected; nil disables live mission replies
-	live    func() setting.AutoReviewSettings // injected; returns the live session config
+	live    func() setting.AutoPilotSettings // injected; returns the live session config
 
 	active bool
 	width  int
@@ -50,8 +50,8 @@ type AutopilotSelector struct {
 
 	// snap is the working buffer; Save writes it to disk. baseline is snap as
 	// of Enter() so the panel can flag unsaved edits.
-	snap     setting.AutoReviewSettings
-	baseline setting.AutoReviewSettings
+	snap     setting.AutoPilotSettings
+	baseline setting.AutoPilotSettings
 
 	cursor        int
 	editing       bool // inline-editing the continuation cap
@@ -84,7 +84,7 @@ func (p *AutopilotSelector) SetMissionResponder(fn MissionResponder) { p.respond
 // SetConfigSource wires the getter for the live session config. The panel seeds
 // its working buffer from it on Enter, so what you edit is the running session's
 // autopilot (not a stale settings snapshot).
-func (p *AutopilotSelector) SetConfigSource(fn func() setting.AutoReviewSettings) { p.live = fn }
+func (p *AutopilotSelector) SetConfigSource(fn func() setting.AutoPilotSettings) { p.live = fn }
 
 // Enter activates the overlay on the menu view with a fresh working buffer.
 func (p *AutopilotSelector) Enter(width, height int) {
@@ -287,10 +287,10 @@ type apRow struct {
 	label   string
 	desc    string                                  // muted description after the label
 	open    autopilotView                           // apRowEntry: view to switch to
-	summary func(setting.AutoReviewSettings) string // apRowEntry: right-aligned value hint
-	get     func(setting.AutoReviewSettings) bool   // apRowSteer: current state
-	toggle  func(*setting.AutoReviewSettings)       // apRowSteer: flip it
-	intGet  func(setting.AutoReviewSettings) int    // apRowInt
+	summary func(setting.AutoPilotSettings) string // apRowEntry: right-aligned value hint
+	get     func(setting.AutoPilotSettings) bool   // apRowSteer: current state
+	toggle  func(*setting.AutoPilotSettings)       // apRowSteer: flip it
+	intGet  func(setting.AutoPilotSettings) int    // apRowInt
 	indent  int
 }
 
@@ -354,26 +354,26 @@ func apStep(rows []apRow, start, step, fallback int) int {
 
 // ── Steer accessors ─────────────────────────────────────────────────────
 
-func getTurnStart(s setting.AutoReviewSettings) bool  { return s.Steers.TurnStart }
-func getPermission(s setting.AutoReviewSettings) bool { return s.Steers.PermissionOn() }
-func getBash(s setting.AutoReviewSettings) bool       { return s.Steers.BashPrompt }
-func getQuestion(s setting.AutoReviewSettings) bool   { return s.Steers.Question }
-func getTurnEnd(s setting.AutoReviewSettings) bool    { return s.Steers.TurnEnd }
-func getMaxCont(s setting.AutoReviewSettings) int     { return s.ResolvedMaxContinuations() }
+func getTurnStart(s setting.AutoPilotSettings) bool  { return s.Steers.TurnStart }
+func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.PermissionOn() }
+func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
+func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
+func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
+func getMaxCont(s setting.AutoPilotSettings) int     { return s.ResolvedMaxContinuations() }
 
-func toggleTurnStart(s *setting.AutoReviewSettings) { s.Steers.TurnStart = !s.Steers.TurnStart }
-func toggleBash(s *setting.AutoReviewSettings)      { s.Steers.BashPrompt = !s.Steers.BashPrompt }
-func toggleQuestion(s *setting.AutoReviewSettings)  { s.Steers.Question = !s.Steers.Question }
-func toggleTurnEnd(s *setting.AutoReviewSettings)   { s.Steers.TurnEnd = !s.Steers.TurnEnd }
+func toggleTurnStart(s *setting.AutoPilotSettings) { s.Steers.TurnStart = !s.Steers.TurnStart }
+func toggleBash(s *setting.AutoPilotSettings)      { s.Steers.BashPrompt = !s.Steers.BashPrompt }
+func toggleQuestion(s *setting.AutoPilotSettings)  { s.Steers.Question = !s.Steers.Question }
+func toggleTurnEnd(s *setting.AutoPilotSettings)   { s.Steers.TurnEnd = !s.Steers.TurnEnd }
 
 // togglePermission flips the tri-state permission steer, writing an explicit
 // value so an off-toggle persists distinctly from the default-on.
-func togglePermission(s *setting.AutoReviewSettings) {
+func togglePermission(s *setting.AutoPilotSettings) {
 	on := !s.Steers.PermissionOn()
 	s.Steers.Permission = &on
 }
 
-func systemPromptSummary(s setting.AutoReviewSettings) string {
+func systemPromptSummary(s setting.AutoPilotSettings) string {
 	switch {
 	case s.SystemPrompt != "":
 		return "custom"
@@ -384,7 +384,7 @@ func systemPromptSummary(s setting.AutoReviewSettings) string {
 	}
 }
 
-func missionSummary(s setting.AutoReviewSettings) string {
+func missionSummary(s setting.AutoPilotSettings) string {
 	if strings.TrimSpace(s.Mission) == "" {
 		return "empty"
 	}

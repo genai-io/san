@@ -75,14 +75,14 @@ type model struct {
 	// /autopilot panel saves so model/prompt changes take effect without an
 	// agent restart. Loaded per-call on the agent goroutine, Stored on the UI
 	// goroutine — the atomic pointer makes the single-word swap race-free.
-	autopilotReviewer *atomic.Pointer[reviewer.AutoReview]
+	autopilotReviewer *atomic.Pointer[reviewer.Judge]
 
 	// autopilotCfg is the synchronized snapshot of the live autopilot config the
-	// agent goroutine reads (the bash/permission steer gates). m.env.AutoReview
+	// agent goroutine reads (the bash/permission steer gates). m.env.AutoPilot
 	// is UI-goroutine-owned and can be reassigned by a mid-turn Save, so the
 	// agent side must not read it directly — it Loads this instead. Refreshed
 	// (Store) alongside the reviewer in rebuildAutopilotReviewer.
-	autopilotCfg *atomic.Pointer[setting.AutoReviewSettings]
+	autopilotCfg *atomic.Pointer[setting.AutoPilotSettings]
 
 	// autopilotContinuations counts TurnEnd auto-continuations since the last
 	// human turn (reset in dispatchSubmission); autopilotContinuing tags the

@@ -159,9 +159,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Apply the edit to the live session (persists/resumes with the session),
 		// hot-swap the running judge so the new model/prompt/steers take effect at
 		// once, and write it as the default seed for new sessions.
-		m.env.AutoReview = msg.Config.Clone()
+		m.env.AutoPilot = msg.Config.Clone()
 		m.rebuildAutopilotReviewer()
-		if err := setting.UpdateAutoReviewAt(msg.Config, true); err != nil {
+		if err := setting.UpdateAutoPilotAt(msg.Config, true); err != nil {
 			log.Logger().Warn("persist autopilot default failed", zap.Error(err))
 		}
 		m.conv.AddNotice("Autopilot config saved")

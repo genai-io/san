@@ -35,8 +35,8 @@ type Request struct {
 	CWD    string
 }
 
-// AutoReview judges gray-zone tool calls with a single LLM inference.
-type AutoReview struct {
+// Judge decides gray-zone tool calls with a single LLM inference.
+type Judge struct {
 	provider     llm.Provider
 	model        string
 	systemPrompt string
@@ -44,13 +44,13 @@ type AutoReview struct {
 
 // New builds a reviewer over the given provider/model. A nil provider yields a
 // reviewer whose Permission always errors, so callers fail closed.
-func New(provider llm.Provider, model string) *AutoReview {
-	return &AutoReview{provider: provider, model: model, systemPrompt: defaultSystemPrompt}
+func New(provider llm.Provider, model string) *Judge {
+	return &Judge{provider: provider, model: model, systemPrompt: defaultSystemPrompt}
 }
 
 // SetSystemPrompt overrides the judge's rubric. A blank prompt keeps the
 // current one, so an unreadable config file safely falls back to the built-in.
-func (r *AutoReview) SetSystemPrompt(prompt string) {
+func (r *Judge) SetSystemPrompt(prompt string) {
 	if strings.TrimSpace(prompt) != "" {
 		r.systemPrompt = prompt
 	}
@@ -64,7 +64,7 @@ const maxVerdictTokens = 512
 
 // Permission returns a verdict for a gray-zone tool call. A non-nil error means the
 // judge could not reach a decision; callers must fail closed (escalate).
-func (r *AutoReview) Permission(ctx context.Context, req Request) (Verdict, error) {
+func (r *Judge) Permission(ctx context.Context, req Request) (Verdict, error) {
 	content, err := r.infer(ctx, permissionTask+"\n\n"+renderPermission(req))
 	if err != nil {
 		return Verdict{}, err
@@ -75,7 +75,7 @@ func (r *AutoReview) Permission(ctx context.Context, req Request) (Verdict, erro
 // infer runs one review inference — the shared system prompt plus the given
 // user message — and returns the raw response for the caller to parse. A nil
 // reviewer or provider yields an error so callers fail closed.
-func (r *AutoReview) infer(ctx context.Context, userMessage string) (string, error) {
+func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	if r == nil || r.provider == nil {
 		return "", fmt.Errorf("reviewer not configured")
 	}
@@ -102,7 +102,7 @@ type BashPromptReply struct {
 // BashPrompt decides what to type at an interactive prompt raised by an
 // already-approved command, or to skip it. A non-nil error (or a skip verdict)
 // leaves the prompt unanswered so the caller fails the command closed.
-func (r *AutoReview) BashPrompt(ctx context.Context, command, prompt string) (BashPromptReply, error) {
+func (r *Judge) BashPrompt(ctx context.Context, command, prompt string) (BashPromptReply, error) {
 	content, err := r.infer(ctx, bashPromptTask+"\n\n"+renderBashPrompt(command, prompt))
 	if err != nil {
 		return BashPromptReply{}, err

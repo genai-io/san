@@ -63,9 +63,9 @@ func TestProjectStatePatchLastWins(t *testing.T) {
 	}
 }
 
-func TestProjectAutoReviewRoundTrip(t *testing.T) {
+func TestProjectAutoPilotRoundTrip(t *testing.T) {
 	blob := `{"mission":"ship it","steers":{"turnEnd":true}}`
-	ops := StateOpsDiff(State{}, State{AutoReview: blob})
+	ops := StateOpsDiff(State{}, State{AutoPilot: blob})
 	tr, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: ops}},
@@ -73,10 +73,10 @@ func TestProjectAutoReviewRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
 	}
-	if tr.State.AutoReview != blob {
-		t.Fatalf("autoReview not restored: %q", tr.State.AutoReview)
+	if tr.State.AutoPilot != blob {
+		t.Fatalf("autoReview not restored: %q", tr.State.AutoPilot)
 	}
-	if MetadataFromTranscript(tr).AutoReview != blob {
+	if MetadataFromTranscript(tr).AutoPilot != blob {
 		t.Fatalf("autoReview missing from metadata view")
 	}
 }
