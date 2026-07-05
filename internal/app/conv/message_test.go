@@ -325,11 +325,38 @@ func TestRenderActiveContentShowsRunningStateForPendingWebFetch(t *testing.T) {
 		SpinnerView:  "⋯",
 		Width:        100,
 	}
-	params.InlinedResults = PrecomputeInlinedResults(params.Messages)
+	params.InlinedResults = PrecomputeInlinedResults(params.Messages, 0)
 
 	rendered := stripANSI(RenderActiveContent(params))
 	if !strings.Contains(rendered, "⋯ WebFetch(https://github.com/features/copilot/plans)") {
 		t.Fatalf("RenderActiveContent() = %q, want pending WebFetch spinner", rendered)
+	}
+}
+
+func TestPrecomputeInlinedResultsFromScopesToActiveRange(t *testing.T) {
+	// assistant(0) with a tool call, then its result(1), then a fresh
+	// assistant(2) with a call and its result(3).
+	msgs := []core.ChatMessage{
+		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "a", Name: "Bash"}}},
+		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "a", ToolName: "Bash"}},
+		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "b", Name: "Bash"}}},
+		{Role: core.RoleUser, ToolResult: &core.ToolResult{ToolCallID: "b", ToolName: "Bash"}},
+	}
+
+	// from=0 inlines both results with their owners.
+	all := PrecomputeInlinedResults(msgs, 0)
+	if !all.IsResultInlined(1) || !all.IsResultInlined(3) {
+		t.Fatalf("from=0 should inline both results, got %+v", all.resultOwner)
+	}
+
+	// from=2 (first turn committed) scans only the active tail: result(3)
+	// still inlines under assistant(2); the committed result(1) is skipped.
+	active := PrecomputeInlinedResults(msgs, 2)
+	if active.IsResultInlined(1) {
+		t.Errorf("from=2 should not scan the committed result at index 1")
+	}
+	if !active.IsResultInlined(3) || active.ownerOf(3) != 2 {
+		t.Errorf("from=2 should still inline the active result at index 3 under assistant 2")
 	}
 }
 

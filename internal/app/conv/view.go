@@ -67,16 +67,25 @@ type inlinedToolResults struct {
 	resultsForAssistant map[int]map[string]ToolResultData
 }
 
-// PrecomputeInlinedResults walks `messages` once and returns the
-// inlining map. Exported because the model builds it inside
-// messageRenderParams; everything else in this package reads
-// RenderContext.InlinedResults.
-func PrecomputeInlinedResults(messages []core.ChatMessage) inlinedToolResults {
+// PrecomputeInlinedResults walks `messages[from:]` once and returns the
+// inlining map. `from` is the caller's CommittedCount: the render only ever
+// draws [from:] (committed messages live in native scrollback), so scanning the
+// whole conversation every frame is pure waste that grows with session length.
+// Absolute indices are preserved — the maps key by position in the full slice,
+// and a result at index ≥ from is always owned by an assistant at index ≥ from
+// (an assistant commits together with its tool results), so nothing is missed.
+// Exported because the model builds it inside messageRenderParams; everything
+// else in this package reads RenderContext.InlinedResults.
+func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedToolResults {
 	p := inlinedToolResults{
 		resultOwner:         make(map[int]int),
 		resultsForAssistant: make(map[int]map[string]ToolResultData),
 	}
-	for i, msg := range messages {
+	if from < 0 {
+		from = 0
+	}
+	for i := from; i < len(messages); i++ {
+		msg := messages[i]
 		if msg.Role != core.RoleAssistant || len(msg.ToolCalls) == 0 {
 			continue
 		}
