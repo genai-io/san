@@ -3,6 +3,17 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.20.11] - 2026-07-05
+
+### Added
+- Add comments in PRs when title lint fails ([@hchenxa](https://github.com/hchenxa) in [#281](https://github.com/genai-io/san/pull/281))
+
+### Fixed
+- Fix the chat window height ([@hchenxa](https://github.com/hchenxa) in [#283](https://github.com/genai-io/san/pull/283))
+- Fix TUI display correctness across streaming, wrapping, and resume ([@yanmxa](https://github.com/yanmxa) in [#279](https://github.com/genai-io/san/pull/279))
+- Order the tasks list by ID ([@hchenxa](https://github.com/hchenxa) in [#282](https://github.com/genai-io/san/pull/282))
+- Correct the QA skill working path ([@hchenxa](https://github.com/hchenxa) in [#280](https://github.com/genai-io/san/pull/280))
+
 ## [v1.20.10] - 2026-07-05
 
 ### Added
