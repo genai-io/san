@@ -1,11 +1,15 @@
 package conv
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/todo"
 )
+
+// taskIDRe matches "#<number>" task tags in rendered output.
+var taskIDRe = regexp.MustCompile(`#\d+`)
 
 func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 	todo.Initialize(todo.Options{})
@@ -81,4 +85,47 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	if !hasDim {
 		t.Fatal("in-progress task should show dim active icon (◌) at some point")
 	}
+}
+
+func TestRenderTrackerListOrdersByID(t *testing.T) {
+	todo.Initialize(todo.Options{})
+	t.Cleanup(func() { todo.Default().Reset() })
+
+	// Create tasks with mixed statuses — an in-progress task after a pending one.
+	pending1 := todo.Default().Create("Pending A", "", "", nil)
+	_ = todo.Default().Update(pending1.ID, todo.WithStatus(todo.StatusPending))
+
+	inProgress := todo.Default().Create("Active B", "", "", nil)
+	_ = todo.Default().Update(inProgress.ID, todo.WithStatus(todo.StatusInProgress))
+
+	pending2 := todo.Default().Create("Pending C", "", "", nil)
+	_ = todo.Default().Update(pending2.ID, todo.WithStatus(todo.StatusPending))
+
+	view := RenderTrackerList(TrackerListParams{
+		Tasks:        todo.Default().List(),
+		AllDone:      false,
+		StreamActive: true,
+		Width:        120,
+		SpinnerView:  "•",
+	})
+	plain := stripANSI(view)
+
+	ids := taskIDRe.FindAllString(plain, -1)
+	want := []string{"#1", "#2", "#3"}
+	if !equalSlice(ids, want) {
+		t.Fatalf("task order:\n  got:  %v\n  want: %v\n\nfull output:\n%s", ids, want, plain)
+	}
+}
+
+// equalSlice reports whether two string slices are equal.
+func equalSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

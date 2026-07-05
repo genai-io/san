@@ -58,23 +58,10 @@ func RenderTrackerList(params TrackerListParams) string {
 
 	idWidth := taskIDWidth(params.Tasks)
 
-	sorted := make([]*todo.Task, 0, len(params.Tasks))
-	var active []*todo.Task
-	var rest []*todo.Task
-	for _, t := range params.Tasks {
-		if t.Status == todo.StatusInProgress {
-			active = append(active, t)
-		} else {
-			rest = append(rest, t)
-		}
-	}
-	sorted = append(sorted, active...)
-	sorted = append(sorted, rest...)
-
 	rendered := 0
-	for _, t := range sorted {
-		if rendered >= maxVisibleTasks && t.Status != todo.StatusInProgress {
-			continue
+	for _, t := range params.Tasks {
+		if rendered >= maxVisibleTasks {
+			break
 		}
 		sb.WriteString(renderTask(t, params.Width, idWidth, params.Blockers, params.Blink))
 		rendered++
