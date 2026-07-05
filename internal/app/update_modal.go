@@ -42,7 +42,13 @@ func (m *model) handleQuestionRequest(msg conv.QuestionRequestMsg) tea.Cmd {
 	m.conv.Modal.PendingQuestion = msg.Request
 	m.conv.Modal.PendingQuestionReply = msg.Reply
 	m.conv.Modal.Question.Show(msg.Request, m.env.Width)
-	return tea.Batch(m.CommitMessages()...)
+	cmds := m.CommitMessages()
+	// Question steer (#4): show the modal, then let the copilot try to answer it
+	// on the user's behalf (it defers back to the human when unsure).
+	if cmd := m.autopilotAnswerQuestionCmd(msg.Request); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *model) handleQuestionResponse(msg conv.QuestionResponseMsg) tea.Cmd {

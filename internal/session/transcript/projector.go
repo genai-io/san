@@ -144,6 +144,12 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 				return fmt.Errorf("patch %s: %w", op.Path, err)
 			}
 			state.Mode = v
+		case PatchPathAutoReview:
+			var v string
+			if err := json.Unmarshal(op.Value, &v); err != nil {
+				return fmt.Errorf("patch %s: %w", op.Path, err)
+			}
+			state.AutoReview = v
 		case PatchPathTasks:
 			var tasks []todo.Task
 			if err := json.Unmarshal(op.Value, &tasks); err != nil {

@@ -32,6 +32,7 @@ import (
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/reviewer"
 )
 
 const defaultWidth = 80
@@ -68,6 +69,22 @@ type model struct {
 	// the UI goroutine at render time — a sync.Map, shared by pointer across
 	// value-receiver copies of the model.
 	pendingDecisions *sync.Map // tool call ID → core.ReviewDecision
+
+	// autopilotReviewer holds the live autopilot judge, hot-swapped when the
+	// /autopilot panel saves so model/prompt changes take effect without an
+	// agent restart. Loaded per-call on the agent goroutine, Stored on the UI
+	// goroutine — the atomic pointer makes the single-word swap race-free.
+	autopilotReviewer *atomic.Pointer[reviewer.AutoReview]
+
+	// autopilotContinuations counts TurnEnd auto-continuations since the last
+	// human turn (reset in dispatchSubmission); autopilotContinuing tags the
+	// in-flight submit as copilot-driven so that reset skips it.
+	autopilotContinuations int
+	autopilotContinuing    bool
+
+	// autopilotRewrote tags the re-submit of a TurnStart-rewritten message so
+	// dispatchSubmission doesn't rewrite it a second time.
+	autopilotRewrote bool
 
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.

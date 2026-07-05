@@ -12,6 +12,7 @@ type MetadataView struct {
 	LastPrompt      string
 	Tag             string
 	Mode            string
+	AutoReview      string
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	Provider        string
@@ -31,6 +32,7 @@ func MetadataFromTranscript(t *Transcript) MetadataView {
 		LastPrompt:      t.State.LastPrompt,
 		Tag:             t.State.Tag,
 		Mode:            t.State.Mode,
+		AutoReview:      t.State.AutoReview,
 		CreatedAt:       t.CreatedAt,
 		UpdatedAt:       t.UpdatedAt,
 		Provider:        t.Provider,

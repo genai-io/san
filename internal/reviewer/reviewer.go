@@ -56,6 +56,10 @@ func (r *AutoReview) SetSystemPrompt(prompt string) {
 	}
 }
 
+// DefaultSystemPrompt returns the built-in steering doctrine so UIs (the
+// /autopilot System Prompt editor) can show it as the editable starting point.
+func DefaultSystemPrompt() string { return defaultSystemPrompt }
+
 const maxVerdictTokens = 512
 
 // Permission returns a verdict for a gray-zone tool call. A non-nil error means the

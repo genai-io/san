@@ -2,10 +2,12 @@ package setting
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -322,6 +324,110 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
 	loadedSettings = nil
 	loadedSettingsMu.Unlock()
 	return nil
+}
+
+// UpdateAutoReviewAt persists the autopilot config at the requested settings
+// level (true = user-wide, false = project-local). Like UpdateSelfLearnAt it
+// reads the target file and replaces only the autoPilot block, so an off-toggle
+// actually sticks: routing through SaveToUser/SaveToProject would re-merge via
+// mergeAutoReview and OR the steer bools with the file's previous value, making
+// a true→false toggle impossible to persist. Every other setting in the file is
+// left untouched. (Cross-level layering still ORs on Load by design.)
+func UpdateAutoReviewAt(cfg AutoReviewSettings, userLevel bool) error {
+	loader := NewLoader()
+	path := filepath.Join(loader.projectDir, "settings.json")
+	if userLevel {
+		path = filepath.Join(loader.userDir, "settings.json")
+	}
+
+	existing := NewData()
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, existing)
+	}
+	existing.AutoReview = cfg
+	if err := writeJSONAtomic(path, existing); err != nil {
+		return err
+	}
+
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
+// AutoReviewPresetDir is the folder where /autopilot Export saves named configs
+// and Import reads them — a shared, non-session space for reusable presets.
+func AutoReviewPresetDir() string {
+	return filepath.Join(NewLoader().userDir, "autopilot")
+}
+
+// ExportAutoReview writes cfg as a named preset (<presetDir>/<name>.json),
+// returning the path. The name is reduced to a bare filename and must be
+// non-empty.
+func ExportAutoReview(name string, cfg AutoReviewSettings) (string, error) {
+	base := sanitizePresetName(name)
+	if base == "" {
+		return "", fmt.Errorf("preset name required")
+	}
+	dir := AutoReviewPresetDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, base+".json")
+	if err := writeJSONAtomic(path, cfg); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// ListAutoReviewPresets returns the saved preset names (without extension),
+// sorted. A missing directory yields an empty list, not an error.
+func ListAutoReviewPresets() ([]string, error) {
+	entries, err := os.ReadDir(AutoReviewPresetDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if n, ok := strings.CutSuffix(e.Name(), ".json"); ok {
+			names = append(names, n)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// ImportAutoReview reads a named preset back into an AutoReviewSettings.
+func ImportAutoReview(name string) (AutoReviewSettings, error) {
+	var cfg AutoReviewSettings
+	base := sanitizePresetName(name)
+	if base == "" {
+		return cfg, fmt.Errorf("preset name required")
+	}
+	data, err := os.ReadFile(filepath.Join(AutoReviewPresetDir(), base+".json"))
+	if err != nil {
+		return cfg, err
+	}
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
+// sanitizePresetName reduces a user-entered name to a safe bare filename so a
+// preset can never escape the preset directory.
+func sanitizePresetName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimSuffix(name, ".json")
+	name = filepath.Base(name) // strip any path components
+	if name == "." || name == ".." || name == string(filepath.Separator) {
+		return ""
+	}
+	return name
 }
 
 // GetDisabledTools returns the merged disabled tools map from loaded settings.

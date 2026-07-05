@@ -70,6 +70,23 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 		return cmd
 	}
 
+	// TurnStart steer (#1): rewrite a human message toward the mission before it
+	// reaches the agent, then re-submit. Passes through for slash commands,
+	// continuations, and the already-rewritten re-submit. Runs before the budget
+	// reset below so it can still read autopilotContinuing.
+	if cmd, intercepted := m.autopilotRewriteCmd(raw); intercepted {
+		return cmd
+	}
+
+	// A human turn resets the auto-continue budget; a copilot-driven continuation
+	// (flagged) does not, so MaxContinuations bounds a run of consecutive
+	// auto-turns rather than the whole session.
+	if m.autopilotContinuing {
+		m.autopilotContinuing = false
+	} else {
+		m.autopilotContinuations = 0
+	}
+
 	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {
 		m.conv.AddNotice("Prompt blocked: " + reason)
 		m.userInput.Reset()

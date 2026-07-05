@@ -59,6 +59,13 @@ type env struct {
 	OperationMode      setting.OperationMode
 	SessionPermissions *setting.SessionPermissions
 
+	// AutoReview is the live autopilot config for this session: seeded from
+	// settings at startup, edited via the /autopilot panel, persisted with the
+	// session, and restored on resume. The reviewer and mission responder read
+	// it from here (not from a settings snapshot) so mid-session edits and
+	// resumed configs take effect.
+	AutoReview setting.AutoReviewSettings
+
 	// ── Cache (session-scoped) ──────────────────────────────────
 	FileCache                 *filecache.Cache
 	CachedUserInstructions    string

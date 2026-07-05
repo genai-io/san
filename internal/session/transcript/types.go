@@ -33,6 +33,10 @@ type State struct {
 	LastPrompt string
 	Tag        string
 	Mode       string
+	// AutoReview is the session's autopilot config as a JSON blob (empty when
+	// unset). Stored opaque here so the transcript package stays free of an
+	// internal/setting dependency; the app marshals/unmarshals it.
+	AutoReview string
 
 	Tasks    []TrackerTaskView
 	Worktree *WorktreeState

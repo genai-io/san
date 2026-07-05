@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // overlayPanel is a UI element that, while active, takes over both the
@@ -67,6 +68,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Memory.Selector,
 		&m.userInput.Search,
 		&m.userInput.Config,
+		&m.userInput.Autopilot,
 	}
 }
 
@@ -105,6 +107,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m, m.handleWindowResize(msg)
 	case spinner.TickMsg:
+		// The /autopilot Mission dialog runs its own spinner while awaiting a
+		// reply. Ticks carry a per-spinner id, so a foreign tick returns a nil
+		// cmd here and falls through to the conversation spinner below.
+		if m.userInput.Autopilot.Thinking() {
+			if cmd := m.userInput.Autopilot.UpdateSpinner(msg); cmd != nil {
+				return m, cmd
+			}
+		}
 		if m.needsSpinner() {
 			var cmd tea.Cmd
 			m.conv.Spinner, cmd = m.conv.Spinner.Update(msg)
@@ -130,6 +140,31 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// explicitly so the message doesn't leak into sub-model routing and
 		// the textarea (unlike AgentToggleMsg/SkillCycleMsg below, which do
 		// need a reaction).
+		return m, nil
+	case input.MissionReplyMsg:
+		// The /autopilot Mission dialog's copilot reply arrived; hand it to the
+		// panel to append (or surface an error under the composer).
+		m.userInput.Autopilot.DeliverMissionReply(msg.Text, msg.Err)
+		return m, nil
+	case autopilotDecisionMsg:
+		// The TurnEnd steer's continue/stop verdict came back.
+		return m, m.handleAutopilotDecision(msg)
+	case autopilotQuestionMsg:
+		// The Question steer's answer (or defer) came back.
+		return m, m.handleAutopilotQuestion(msg)
+	case autopilotRewriteMsg:
+		// The TurnStart steer's rewrite came back; re-submit it.
+		return m, m.handleAutopilotRewrite(msg)
+	case input.AutopilotSavedMsg:
+		// Apply the edit to the live session (persists/resumes with the session),
+		// hot-swap the running judge so the new model/prompt/steers take effect at
+		// once, and write it as the default seed for new sessions.
+		m.env.AutoReview = msg.Config.Clone()
+		m.rebuildAutopilotReviewer()
+		if err := setting.UpdateAutoReviewAt(msg.Config, true); err != nil {
+			log.Logger().Warn("persist autopilot default failed", zap.Error(err))
+		}
+		m.conv.AddNotice("Autopilot config saved")
 		return m, nil
 	case input.ConfigSavedMsg:
 		// Refresh the in-memory settings handle so re-opening /config (and any

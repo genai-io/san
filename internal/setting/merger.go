@@ -25,8 +25,31 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.ContextBar = coalesceBool(overlay.ContextBar, base.ContextBar)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
+	result.AutoReview = mergeAutoReview(base.AutoReview, overlay.AutoReview)
 
 	return result
+}
+
+// mergeAutoReview does a field-level merge of the autopilot config: strings and
+// the continuation cap coalesce (overlay's non-zero wins), steer bools OR
+// (enable-anywhere wins), and the tri-state permission steer coalesces (overlay's
+// explicit value wins, else base's, else nil = default on). Without this the
+// entire autoPilot block is dropped on every Load and every save.
+func mergeAutoReview(base, overlay AutoReviewSettings) AutoReviewSettings {
+	return AutoReviewSettings{
+		Model:            coalesce(overlay.Model, base.Model),
+		SystemPrompt:     coalesce(overlay.SystemPrompt, base.SystemPrompt),
+		SystemPromptFile: coalesce(overlay.SystemPromptFile, base.SystemPromptFile),
+		Mission:          coalesce(overlay.Mission, base.Mission),
+		MaxContinuations: coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
+		Steers: SteerSettings{
+			TurnStart:  overlay.Steers.TurnStart || base.Steers.TurnStart,
+			Permission: coalesceBool(overlay.Steers.Permission, base.Steers.Permission),
+			BashPrompt: overlay.Steers.BashPrompt || base.Steers.BashPrompt,
+			Question:   overlay.Steers.Question || base.Steers.Question,
+			TurnEnd:    overlay.Steers.TurnEnd || base.Steers.TurnEnd,
+		},
+	}
 }
 
 // ApplyPersonaOverlay merges a persona's settings.json overlay on top of the

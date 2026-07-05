@@ -119,6 +119,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
+		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
 }
@@ -346,6 +347,12 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 // either way.
 func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Config.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
+}
+
+// handleAutopilotCommand opens the /autopilot copilot config popup.
+func (c *SlashCommandController) handleAutopilotCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Autopilot.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
 }
 

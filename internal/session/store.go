@@ -215,6 +215,7 @@ func (s *Store) Save(sess *Snapshot) error {
 		LastPrompt: sess.Metadata.LastPrompt,
 		Tag:        sess.Metadata.Tag,
 		Mode:       sess.Metadata.Mode,
+		AutoReview: sess.Metadata.AutoReview,
 		Tasks:      transcript.TrackerTaskViewsFromTasks(sess.Tasks),
 	}
 	if s.lastEmittedState == nil {

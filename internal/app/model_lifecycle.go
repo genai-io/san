@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -37,6 +38,8 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
+	m.userInput.Autopilot.SetMissionResponder(m.missionReply)
+	m.userInput.Autopilot.SetConfigSource(func() setting.AutoReviewSettings { return m.env.AutoReview })
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err
 	}
@@ -49,6 +52,7 @@ func newBaseModel() model {
 	if settings := svc.Setting.Snapshot(); settings != nil {
 		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
 		environment.ShowContextBar = settings.ShowContextBar()
+		environment.AutoReview = settings.AutoReview.Clone()
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
@@ -70,6 +74,7 @@ func newBaseModel() model {
 		reviewerApprovals:   new(atomic.Int64),
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),
+		autopilotReviewer:   new(atomic.Pointer[reviewer.AutoReview]),
 	}
 }
 
