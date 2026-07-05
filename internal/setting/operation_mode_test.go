@@ -52,10 +52,10 @@ func TestNext_BypassReturnsNormal(t *testing.T) {
 }
 
 func TestAutoReview_StringAndFromString(t *testing.T) {
-	if got := ModeAutoReview.String(); got != "auto review" {
-		t.Errorf("ModeAutoReview.String() = %q, want %q", got, "auto review")
+	if got := ModeAutoReview.String(); got != "autopilot" {
+		t.Errorf("ModeAutoReview.String() = %q, want %q", got, "autopilot")
 	}
-	for _, s := range []string{"autoReview", "auto-review", "review"} {
+	for _, s := range []string{"autoPilot", "auto-pilot", "autopilot", "pilot"} {
 		if got := OperationModeFromString(s); got != ModeAutoReview {
 			t.Errorf("OperationModeFromString(%q) = %d, want %d", s, got, ModeAutoReview)
 		}

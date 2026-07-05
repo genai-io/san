@@ -353,7 +353,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 		clr = kit.CurrentTheme.Success
 	case setting.ModeAutoReview:
 		icon = "⏵⏵"
-		label = " auto review on"
+		label = " autopilot on"
 		clr = kit.CurrentTheme.Warning
 	case setting.ModeBypassPermissions:
 		icon = "⏵⏵"

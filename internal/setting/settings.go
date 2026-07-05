@@ -45,8 +45,10 @@ type Data struct {
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
 	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
-	// AutoReview tunes the auto-review permission judge (model + rubric).
-	AutoReview AutoReviewSettings `json:"autoReview,omitempty"`
+	// AutoReview tunes the permission judge (model + rubric). Shown to users as
+	// "Autopilot" (JSON key "autoPilot"); the internal name stays AutoReview
+	// because the mechanism is a review of each gray-zone call.
+	AutoReview AutoReviewSettings `json:"autoPilot,omitempty"`
 }
 
 // AutoReviewSettings tunes the auto-review permission judge. Both fields are
@@ -322,7 +324,7 @@ func (m OperationMode) String() string {
 	case ModeAutoAccept:
 		return "accept edits"
 	case ModeAutoReview:
-		return "auto review"
+		return "autopilot"
 	case ModeBypassPermissions:
 		return "bypass permissions"
 	case ModeDontAsk:
@@ -339,7 +341,7 @@ func OperationModeFromString(mode string) OperationMode {
 	switch mode {
 	case "acceptEdits", "accept-edits", "autoAccept", "auto-accept":
 		return ModeAutoAccept
-	case "autoReview", "auto-review", "review":
+	case "autoPilot", "auto-pilot", "autopilot", "pilot":
 		return ModeAutoReview
 	case "bypassPermissions", "bypass-permissions", "bypass":
 		return ModeBypassPermissions

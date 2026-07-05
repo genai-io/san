@@ -153,7 +153,7 @@ func (m *env) OperationModeName() string {
 	case setting.ModeAutoAccept:
 		return "auto"
 	case setting.ModeAutoReview:
-		return "autoReview"
+		return "autoPilot"
 	case setting.ModeBypassPermissions:
 		return "bypassPermissions"
 	default:
@@ -252,7 +252,7 @@ func (m *env) SessionMode() string {
 	case setting.ModeAutoAccept:
 		return "auto-accept"
 	case setting.ModeAutoReview:
-		return "auto-review"
+		return "auto-pilot"
 	default:
 		return "normal"
 	}

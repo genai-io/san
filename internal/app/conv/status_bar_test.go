@@ -239,7 +239,7 @@ func TestRenderOperationModeIndicator_AutoReviewCounts(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoReview, c.approvals, c.escalations))
-			if !strings.Contains(out, "auto review on") {
+			if !strings.Contains(out, "autopilot on") {
 				t.Fatalf("missing base label: %q", out)
 			}
 			if got := strings.Contains(out, "approved"); got != c.wantApprove {

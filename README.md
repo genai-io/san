@@ -30,7 +30,7 @@ model and extensions; there's no Node.js or Python runtime to install.
 
 - **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
 - **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
-- **Harness** — tune policies, not just parts: customize **auto-review** to cut human-in-the-loop, and **self-learning** — memory and skills it grows and refines — as you work.
+- **Harness** — tune policies, not just parts: customize **autopilot** to cut human-in-the-loop, and **self-learning** — memory and skills it grows and refines — as you work.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -53,7 +53,7 @@ model and extensions; there's no Node.js or Python runtime to install.
 ### Engineering
 
 - **Runs anywhere** — one static binary for Windows, macOS, and Linux; the same file runs on a laptop, an edge device, or a `scratch` container ([footprint](docs/operations/footprint.md) · [benchmark](#benchmark-san-vs-claude-code)).
-- **Permissions** — three modes (ask · auto-accept · auto-review) toggled with `Shift+Tab`; subagents inherit the gates ([details](docs/concepts/permission-model.md)).
+- **Permissions** — three modes (ask · auto-accept · autopilot) toggled with `Shift+Tab`; subagents inherit the gates ([details](docs/concepts/permission-model.md)).
 - **Sessions** — auto-save, resume (`--continue` / `--resume`), fork (`/fork`), auto-compaction (`/compact`), and per-message cost tracking.
 - **Inspector** — replay transcripts and inspect system prompts in a local web UI (`san inspector`).
 - Plus event-driven subagent coordination, TUI themes, and prompt prediction.
@@ -127,7 +127,7 @@ san mcp <add|list|remove|...>                 # manage MCP servers
 |---|---|
 | Pick / switch model | `/model` — saved to `~/.san/providers.json` |
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
-| Toggle permission mode | `Shift+Tab` (ask · auto-accept · auto-review) |
+| Toggle permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
 | Search / persona / memory | `/search` · `/persona` · `/memory` |
 | Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
