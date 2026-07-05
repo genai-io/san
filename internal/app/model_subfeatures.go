@@ -7,12 +7,14 @@ package app
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 )
 
 func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
@@ -39,6 +41,15 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		SetCurrentModel: func(info *llm.CurrentModelInfo) {
 			m.env.CurrentModel = info
 			llm.Default().SetCurrentModel(info)
+			// The selector cached the model's metadata (display name, token
+			// limits) through its own Store; reload the shared store so the
+			// status bar reflects the new model's name and context-window
+			// limit instead of the raw ID and "--".
+			if store := m.services.LLM.Store(); store != nil {
+				if err := store.Reload(); err != nil {
+					log.Logger().Warn("reload provider store after model switch", zap.Error(err))
+				}
+			}
 			m.env.LoadThinkingEffortFromStore()
 		},
 		// No welcome reprint on model switch: the live status line already

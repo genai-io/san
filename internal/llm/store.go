@@ -107,6 +107,22 @@ func (s *Store) load() error {
 	return nil
 }
 
+// Reload re-reads the store from disk, refreshing this instance's in-memory
+// caches with data written by another Store instance.
+//
+// The provider selector operates on its own Store (a separate NewStore), so the
+// model metadata it caches — display names and context-window limits — and the
+// current-model choice it persists land on disk but not in the shared app-level
+// Store the status bar reads. Reloading after a model switch lets the status bar
+// pick up the new model's name and limit instead of falling back to the raw ID
+// and "--". A missing file is not an error: nothing has been persisted yet.
+func (s *Store) Reload() error {
+	if err := s.load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // ensureMapsInitialized ensures all map fields are non-nil
 func (s *Store) ensureMapsInitialized() {
 	if s.data.Connections == nil {

@@ -45,6 +45,76 @@ func TestStore_PersistsConnectionsCurrentModelSearchProviderAndTokenLimits(t *te
 	}
 }
 
+// The provider selector caches model metadata through its own Store instance;
+// the shared app-level Store the status bar reads is a separate instance backed
+// by the same file. Reload must let that shared instance pick up the selector's
+// writes so a just-switched model's display name and context window appear in
+// the status bar instead of the raw ID and "--".
+func TestStore_ReloadPicksUpAnotherInstancesWrites(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	shared, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore(shared) error = %v", err)
+	}
+
+	// Before the selector runs, the shared store knows nothing about the model.
+	if name := shared.CachedModelDisplayName("kimi-k2"); name != "" {
+		t.Fatalf("CachedModelDisplayName before selector = %q, want empty", name)
+	}
+	if in, _ := shared.CachedModelLimits("kimi-k2"); in != 0 {
+		t.Fatalf("CachedModelLimits before selector = %d, want 0", in)
+	}
+
+	// The selector (a separate instance on the same file) fetches and caches
+	// the model, then persists it as the current model.
+	selector, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore(selector) error = %v", err)
+	}
+	if err := selector.CacheModels(Moonshot, AuthAPIKey, []ModelInfo{
+		{ID: "kimi-k2", Name: "kimi-k2", DisplayName: "Kimi K2", InputTokenLimit: 256_000, OutputTokenLimit: 16_384},
+	}); err != nil {
+		t.Fatalf("CacheModels() error = %v", err)
+	}
+	if err := selector.SetCurrentModel("kimi-k2", Moonshot, AuthAPIKey); err != nil {
+		t.Fatalf("SetCurrentModel() error = %v", err)
+	}
+
+	// The shared instance's in-memory cache is still stale until it reloads.
+	if name := shared.CachedModelDisplayName("kimi-k2"); name != "" {
+		t.Fatalf("CachedModelDisplayName without reload = %q, want empty (stale)", name)
+	}
+
+	if err := shared.Reload(); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	if name := shared.CachedModelDisplayName("kimi-k2"); name != "Kimi K2" {
+		t.Fatalf("CachedModelDisplayName after reload = %q, want %q", name, "Kimi K2")
+	}
+	in, out := shared.CachedModelLimitsForProvider(Moonshot, AuthAPIKey, "kimi-k2")
+	if in != 256_000 || out != 16_384 {
+		t.Fatalf("CachedModelLimitsForProvider after reload = (%d, %d), want (256000, 16384)", in, out)
+	}
+	if cur := shared.GetCurrentModel(); cur == nil || cur.ModelID != "kimi-k2" {
+		t.Fatalf("GetCurrentModel after reload = %#v, want kimi-k2", cur)
+	}
+}
+
+// Reload on a store whose file was never written (fresh install) must be a
+// no-op, not an error.
+func TestStore_ReloadMissingFileIsNoError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if err := store.Reload(); err != nil {
+		t.Fatalf("Reload() on unwritten store error = %v, want nil", err)
+	}
+}
+
 func TestStore_SetTokenLimitUpdatesCachedModelCopy(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
