@@ -11,7 +11,7 @@ import (
 // be persisted as multiple ContentBlocks: user-typed text with empty Source,
 // reminder text with Source="reminder". Concatenating the text fields must
 // reproduce the input byte-for-byte (round-trip safety for read path).
-func Test_userContentToBlocks_splitsByProvenance(t *testing.T) {
+func Test_userContentToBlocks_splitsBySource(t *testing.T) {
 	const reminder1 = "<system-reminder>\nskills directory\n</system-reminder>"
 	const reminder2 = "<system-reminder>\nuser memory\n</system-reminder>"
 	input := "hello\n\n" + reminder1 + "\n\n" + reminder2
@@ -66,6 +66,59 @@ func Test_extractUserContent_stripsReminderFromDisplay(t *testing.T) {
 	}
 	if msg.DisplayContent != "hi" {
 		t.Fatalf("DisplayContent = %q, want %q", msg.DisplayContent, "hi")
+	}
+}
+
+// A slash-command invocation inlines the skill/custom-command body into the
+// user message's Content (for the model) while DisplayContent stays the short
+// command the user typed. On resume the body must round-trip as hidden context:
+// preserved in Content, kept out of DisplayContent — otherwise the whole skill
+// body re-renders as the user's turn.
+func Test_commandEnvelope_hiddenFromDisplayOnResume(t *testing.T) {
+	cases := map[string]struct{ content, display string }{
+		"skill": {
+			content: "<command-name>inkpost</command-name>\n\n<skill-invocation name=\"inkpost\">\nAvailable scripts (use Bash to execute):\n  - /path/shot.mjs\n\n# inkpost\n\nbody\n</skill-invocation>\n\nExecute the skill.",
+			display: "Execute the skill.",
+		},
+		"skill with args": {
+			content: "<command-name>inkpost</command-name>\n\n<skill-invocation name=\"inkpost\">\nbody\n</skill-invocation>\n\nmake a poster",
+			display: "make a poster",
+		},
+		"custom command": {
+			content: "<command-name>deploy</command-name>\n\n<custom-command name=\"deploy\">\nrun deploy\n</custom-command>\n\nship it",
+			display: "ship it",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			blocks := userContentToBlocks(tc.content, tc.display, nil)
+
+			// The envelope is tagged so it round-trips as hidden context.
+			var joined strings.Builder
+			var sawCommand bool
+			for _, b := range blocks {
+				joined.WriteString(b.Text)
+				if b.Source == SourceCommand {
+					sawCommand = true
+				}
+			}
+			if !sawCommand {
+				t.Fatalf("no block tagged Source=%q; envelope would leak into display", SourceCommand)
+			}
+			if joined.String() != tc.content {
+				t.Fatalf("round-trip mismatch:\n got: %q\nwant: %q", joined.String(), tc.content)
+			}
+
+			var msg core.Message
+			extractUserContent(blocks, &msg)
+			if msg.Content != tc.content {
+				t.Errorf("Content must keep the inlined body for the model:\n got %q\nwant %q", msg.Content, tc.content)
+			}
+			if msg.DisplayContent != tc.display {
+				t.Errorf("DisplayContent = %q, want %q (skill body must not re-render on resume)", msg.DisplayContent, tc.display)
+			}
+		})
 	}
 }
 

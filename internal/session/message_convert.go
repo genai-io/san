@@ -10,31 +10,53 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// systemReminderRe matches a complete <system-reminder>...</system-reminder>
-// block including tags. Reminders are appended verbatim by reminder.AttachToContent
-// and hook UserPromptSubmit additionalContext flows through the same path, so
-// recognizing the wrapper suffices to mark harness-injected content.
+// A user message's Content can carry text the harness injected for the model
+// but the user never typed. Two kinds, matched by the sub-patterns below:
 //
-// Captures the optional source="..." attribute so the transcript can attribute
-// "which provider injected this reminder" (skills-directory, memory-user,
-// hook context, etc.) without parsing the body.
-var systemReminderRe = regexp.MustCompile(`(?s)<system-reminder(?:\s+source="([^"]*)")?>.*?</system-reminder>`)
-
-const SourceReminder = "reminder"
-
-// splitTextByProvenance returns ContentBlocks that together preserve the input
-// byte-for-byte, marking <system-reminder> blocks with Source="reminder" so
-// traces can distinguish user-typed text from harness-injected reminders /
-// hook additionalContext. Empty input returns nil.
+//   - reminderPattern — a <system-reminder> block. reminder.AttachToContent
+//     appends these (session/project context, hook additionalContext); capture
+//     group 1 is the optional source="…" attribute that names the injecting
+//     provider (skills-directory, memory-user, …).
+//   - commandEnvelopePattern — the <command-name> + inlined skill/custom-command
+//     body a slash-command invocation prepends (input.ConsumeInvocation,
+//     command.WrapInvocation). Matched as one unit (name tag, body block, and the
+//     trailing blank line) so the user's own text after it stays clean.
 //
-// The function never trims whitespace — concatenating all returned Text fields
-// in order reproduces the original input. This keeps the read path
-// (extractUserContent, which joins text blocks) round-trip safe.
-func splitTextByProvenance(text string) []ContentBlock {
+// Persisting these with a Source lets a resumed session keep them out of the
+// visible message while preserving them in Content for the model — the same
+// split RenderUserMessage draws live from DisplayContent vs Content.
+const (
+	reminderPattern        = `<system-reminder(?:\s+source="([^"]*)")?>.*?</system-reminder>`
+	commandEnvelopePattern = `<command-name>.*?</command-name>\s*(?:<skill-invocation\b.*?</skill-invocation>|<custom-command\b.*?</custom-command>)\n*`
+)
+
+// harnessInjectedRe matches any harness-injected span. The command envelope only
+// ever leads the message, so it's anchored; reminders can appear anywhere.
+var harnessInjectedRe = regexp.MustCompile(`(?s)` + reminderPattern + `|^` + commandEnvelopePattern)
+
+const (
+	SourceReminder = "reminder"
+	SourceCommand  = "command"
+)
+
+// isHiddenSource reports whether a content block's Source marks it as
+// harness-injected text that must be kept out of the user-visible display on
+// resume. Reminder sources carry an optional ":provider" suffix, so match by
+// prefix.
+func isHiddenSource(source string) bool {
+	return source == SourceCommand || strings.HasPrefix(source, SourceReminder)
+}
+
+// splitTextBySource returns ContentBlocks that together reproduce the input
+// byte-for-byte, tagging each harness-injected span (see harnessInjectedRe) with
+// its Source so the read path (extractUserContent) can rebuild both the model's
+// Content and the user's display text. Empty input returns nil; input with no
+// injected spans returns a single untagged block.
+func splitTextBySource(text string) []ContentBlock {
 	if text == "" {
 		return nil
 	}
-	matches := systemReminderRe.FindAllStringSubmatchIndex(text, -1)
+	matches := harnessInjectedRe.FindAllStringSubmatchIndex(text, -1)
 	if len(matches) == 0 {
 		return []ContentBlock{{Type: "text", Text: text}}
 	}
@@ -46,18 +68,26 @@ func splitTextByProvenance(text string) []ContentBlock {
 		if start > cursor {
 			blocks = append(blocks, ContentBlock{Type: "text", Text: text[cursor:start]})
 		}
-		source := SourceReminder
-		// m[2]/m[3] are the source-capture group; -1 means absent.
-		if len(m) >= 4 && m[2] >= 0 && m[3] >= 0 && m[3] > m[2] {
-			source = SourceReminder + ":" + text[m[2]:m[3]]
-		}
-		blocks = append(blocks, ContentBlock{Type: "text", Text: text[start:end], Source: source})
+		blocks = append(blocks, ContentBlock{Type: "text", Text: text[start:end], Source: injectedSource(text, m)})
 		cursor = end
 	}
 	if cursor < len(text) {
 		blocks = append(blocks, ContentBlock{Type: "text", Text: text[cursor:]})
 	}
 	return blocks
+}
+
+// injectedSource classifies a harnessInjectedRe match. The command envelope is
+// the alternative that starts with <command-name>; everything else is a
+// reminder, which may carry a ":provider" attribution from capture group 1.
+func injectedSource(text string, m []int) string {
+	if strings.HasPrefix(text[m[0]:m[1]], "<command-name>") {
+		return SourceCommand
+	}
+	if m[2] >= 0 && m[3] > m[2] {
+		return SourceReminder + ":" + text[m[2]:m[3]]
+	}
+	return SourceReminder
 }
 
 func messagesToEntries(msgs []core.Message) []Entry {
@@ -159,7 +189,7 @@ func userContentToBlocks(content, displayContent string, images []core.Image) []
 			ImageSource: &ImageSource{Type: "base64", MediaType: img.MediaType, Data: img.Data},
 		})
 	}
-	blocks = append(blocks, splitTextByProvenance(content)...)
+	blocks = append(blocks, splitTextBySource(content)...)
 	return blocks
 }
 
@@ -175,7 +205,7 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 		idStart, idEnd := match[2], match[3]
 
 		if textPart := displayContent[last:start]; textPart != "" {
-			blocks = append(blocks, splitTextByProvenance(textPart)...)
+			blocks = append(blocks, splitTextBySource(textPart)...)
 		}
 
 		id, err := strconv.Atoi(displayContent[idStart:idEnd])
@@ -193,11 +223,11 @@ func interleavedUserContentToBlocks(content, displayContent string, images []cor
 	}
 
 	if tail := displayContent[last:]; tail != "" {
-		blocks = append(blocks, splitTextByProvenance(tail)...)
+		blocks = append(blocks, splitTextBySource(tail)...)
 	}
 
 	if len(blocks) == 0 && content != "" {
-		blocks = append(blocks, splitTextByProvenance(content)...)
+		blocks = append(blocks, splitTextBySource(content)...)
 	}
 
 	return blocks
@@ -247,11 +277,11 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 		switch block.Type {
 		case "text":
 			content.WriteString(block.Text)
-			// <system-reminder> blocks are harness-injected context the model
-			// sees but the user must not: keep them in Content, exclude them
-			// from the displayed text (otherwise a resumed session re-renders
-			// the whole reminder block to the user).
-			if !strings.HasPrefix(block.Source, SourceReminder) {
+			// Harness-injected spans (system-reminders, and the inlined
+			// command/skill body) are context the model sees but the user must
+			// not: keep them in Content, exclude them from the displayed text
+			// (otherwise a resumed session re-renders the whole block to the user).
+			if !isHiddenSource(block.Source) {
 				display.WriteString(block.Text)
 			}
 		case "image":
