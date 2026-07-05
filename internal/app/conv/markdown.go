@@ -66,20 +66,15 @@ const blockQuoteIndentWidth = 2
 // subtracts aiIndentWidth internally so glamour wraps exactly at the
 // visible boundary after the "● " prompt icon + indent are applied.
 func NewMDRenderer(width int) *MDRenderer {
-	w := max(width-4, minWrapWidth)
-	dark := kit.IsDarkBackground()
-	return &MDRenderer{
-		renderer:           buildGlamourRenderer(w, dark, false),
-		blockQuoteRenderer: buildGlamourRenderer(max(w-blockQuoteIndentWidth, minWrapWidth), dark, true),
-		width:              w,
-		darkBg:             dark,
-	}
+	r := &MDRenderer{width: max(width-4, minWrapWidth)}
+	r.buildRenderers(kit.IsDarkBackground())
+	return r
 }
 
 // buildGlamourRenderer constructs a glamour TermRenderer for the given width and
-// background. When dimDocument is set the document text is rendered in the muted
-// tone — used for blockquote inner content, which glamour normally dims.
-func buildGlamourRenderer(width int, dark, dimDocument bool) *glamour.TermRenderer {
+// background. A non-nil documentColor overrides the document text color — used for
+// blockquote inner content, which glamour renders in the muted tone.
+func buildGlamourRenderer(width int, dark bool, documentColor *string) *glamour.TermRenderer {
 	var style ansi.StyleConfig
 	if dark {
 		style = styles.DarkStyleConfig
@@ -87,9 +82,8 @@ func buildGlamourRenderer(width int, dark, dimDocument bool) *glamour.TermRender
 		style = styles.LightStyleConfig
 	}
 	customizeStyle(&style, width)
-	if dimDocument {
-		textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
-		style.Document.Color = &textDim
+	if documentColor != nil {
+		style.Document.Color = documentColor
 	}
 
 	r, err := glamour.NewTermRenderer(
@@ -109,12 +103,19 @@ func buildGlamourRenderer(width int, dark, dimDocument bool) *glamour.TermRender
 
 // rebuildIfNeeded recreates the glamour renderers when the terminal background changes.
 func (r *MDRenderer) rebuildIfNeeded() {
-	dark := kit.IsDarkBackground()
-	if dark != r.darkBg {
-		r.renderer = buildGlamourRenderer(r.width, dark, false)
-		r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, true)
-		r.darkBg = dark
+	if dark := kit.IsDarkBackground(); dark != r.darkBg {
+		r.buildRenderers(dark)
 	}
+}
+
+// buildRenderers builds the main and blockquote renderers for the current width
+// and background. The blockquote renderer is narrowed by the "│ " prefix width and
+// dimmed to the muted tone glamour gives blockquote bodies.
+func (r *MDRenderer) buildRenderers(dark bool) {
+	textDim := adaptiveColorHex(kit.CurrentTheme.TextDim)
+	r.renderer = buildGlamourRenderer(r.width, dark, nil)
+	r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
+	r.darkBg = dark
 }
 
 // Render parses markdown source and returns styled terminal output.
@@ -820,7 +821,8 @@ func stringPtr(s string) *string { return &s }
 func CompletedBlockBoundary(content string) int {
 	boundary := 0
 	offset := 0
-	inFence := false
+	var fenceCh byte // the open fence's character while inside a code block, else 0
+	var fenceLen int
 	for _, line := range strings.SplitAfter(content, "\n") {
 		offset += len(line)
 		// A line without a trailing newline is the last, still-streaming line:
@@ -828,14 +830,20 @@ func CompletedBlockBoundary(content string) int {
 		if !strings.HasSuffix(line, "\n") {
 			continue
 		}
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~"):
-			inFence = !inFence
-			if !inFence {
-				boundary = offset // a code block is complete once its fence closes
+		if fenceCh != 0 {
+			// Inside a code block: it completes only on a fence matching the
+			// opener's character and length (see fenceMarker / closesFence).
+			if closesFence(line, fenceCh, fenceLen) {
+				fenceCh, fenceLen = 0, 0
+				boundary = offset
 			}
-		case !inFence && trimmed == "":
+			continue
+		}
+		if ch, n := fenceMarker(line); ch != 0 {
+			fenceCh, fenceLen = ch, n
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
 			boundary = offset // a blank line terminates the preceding blocks
 		}
 	}
