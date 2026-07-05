@@ -6,12 +6,27 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 )
+
+const scrollbackPrintDelay = 40 * time.Millisecond
+
+func printScrollback(s string) tea.Cmd {
+	return func() tea.Msg {
+		// Bubble Tea queues render output and flushes it on a frame ticker. If a
+		// Println command returns immediately after Update mutates commit offsets,
+		// insertAbove can run before the cleared active view reaches the terminal,
+		// scrolling the stale live frame into native scrollback. Waiting one frame
+		// lets the managed view disappear before unmanaged scrollback is inserted.
+		time.Sleep(scrollbackPrintDelay)
+		return tea.Println(s)()
+	}
+}
 
 func (m *model) CommitMessages() []tea.Cmd {
 	return m.renderAndCommit(true)
@@ -185,7 +200,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 
 	var cmds []tea.Cmd
 	if msg.printed != "" {
-		cmds = append(cmds, tea.Println(msg.printed))
+		cmds = append(cmds, printScrollback(msg.printed))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
 	// the row is still uncommitted, so it's safe.
@@ -243,7 +258,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
-	return []tea.Cmd{tea.Println(strings.Join(parts, "\n"))}
+	return []tea.Cmd{printScrollback(strings.Join(parts, "\n"))}
 }
 
 // takeWelcomeBanner freezes the startup splash into scrollback once, on the

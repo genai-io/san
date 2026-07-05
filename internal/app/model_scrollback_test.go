@@ -153,24 +153,6 @@ func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 	}
 }
 
-// Tables are rendered very differently after commit (bordered table) than while
-// streaming (plain markdown source). Keep them in the live tail until turn end
-// so insertAbove never has to replace raw table rows with a taller committed
-// table mid-stream.
-func TestFlushStreamingBlocksHoldsTablesUntilTurnEnd(t *testing.T) {
-	m := flushTestModel(core.ChatMessage{
-		Role:    core.RoleAssistant,
-		Content: "| Kubernetes 组件 | 类比 |\n|---|---|\n| kube-apiserver | 总服务窗口 |\n\n",
-	})
-
-	if cmds := m.FlushStreamingBlocks(); cmds != nil {
-		t.Fatal("a completed markdown table must wait for turn-end commit")
-	}
-	if got := m.conv.Messages[0].ContentCommittedLen; got != 0 {
-		t.Fatalf("ContentCommittedLen = %d, want 0 (table not progressively committed)", got)
-	}
-}
-
 // A render that lands after its row was already committed whole (turn-end or
 // cancel commits the remainder, in-flight block included) is dropped — no
 // duplicate Println, and flush.rendering still clears.

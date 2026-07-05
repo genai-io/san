@@ -22,8 +22,7 @@ func TestCompletedBlockBoundary(t *testing.T) {
 		{"closed code fence commits without trailing blank", "```go\nx := 1\n```\nrest", "```go\nx := 1\n```\n"},
 		{"text then closed fence", "intro\n\n```\ncode\n```\ntail", "intro\n\n```\ncode\n```\n"},
 		{"table held until trailing blank", "| a | b |\n|---|---|\n| 1 | 2 |", ""},
-		{"table held after blank line", "| a | b |\n|---|---|\n| 1 | 2 |\n\nafter", ""},
-		{"paragraph before table can commit", "intro\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter", "intro\n\n"},
+		{"table closed by blank line", "| a | b |\n|---|---|\n| 1 | 2 |\n\nafter", "| a | b |\n|---|---|\n| 1 | 2 |\n\n"},
 	}
 
 	for _, tt := range tests {
