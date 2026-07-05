@@ -815,12 +815,17 @@ func stringPtr(s string) *string { return &s }
 // scrollback. Content after the boundary is the still-streaming block and must
 // stay in the live view until more arrives. Two things close a block: a blank
 // line outside a fenced code block (it terminates the preceding blocks), and a
-// closing code fence (the block is complete the moment it closes). The trailing
-// block is never included — the turn-end commit flushes whatever remains.
+// closing code fence (the block is complete the moment it closes). Markdown
+// tables are held back even after their closing blank line: while streaming, the
+// live view shows table source text, but the committed view renders a bordered
+// table that can be much taller. Letting a table migrate mid-stream can leave
+// the raw live rows and committed table fighting over terminal scrollback. The
+// turn-end commit renders the table once in its final form.
 func CompletedBlockBoundary(content string) int {
 	boundary := 0
 	offset := 0
 	inFence := false
+	holdAfterTable := false
 	for _, line := range strings.SplitAfter(content, "\n") {
 		offset += len(line)
 		// A line without a trailing newline is the last, still-streaming line:
@@ -832,11 +837,15 @@ func CompletedBlockBoundary(content string) int {
 		switch {
 		case strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~"):
 			inFence = !inFence
-			if !inFence {
+			if !inFence && !holdAfterTable {
 				boundary = offset // a code block is complete once its fence closes
 			}
+		case !inFence && isTableLine(trimmed):
+			holdAfterTable = true
 		case !inFence && trimmed == "":
-			boundary = offset // a blank line terminates the preceding blocks
+			if !holdAfterTable {
+				boundary = offset // a blank line terminates the preceding blocks
+			}
 		}
 	}
 	return boundary
