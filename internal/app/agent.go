@@ -149,7 +149,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			// the synchronized snapshot — this runs on the agent goroutine) so a
 			// mid-session toggle takes effect: without it, bash stays on the
 			// normal non-tty path even in auto-review.
-			if m.env.OperationMode != setting.ModeAutoPilot || !m.liveAutopilotConfig().Steers.BashPrompt {
+			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
 				return nil
 			}
 			return bashPromptResponder{model: m}
@@ -189,7 +189,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			// gray-zone prompts to the judge; the steer is read live via the
 			// synchronized snapshot (agent goroutine) so a mid-session toggle
 			// takes effect. Steer off ⇒ every gray-zone call escalates.
-			if m.env.OperationMode != setting.ModeAutoPilot || !m.liveAutopilotConfig().Steers.PermissionOn() {
+			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.PermissionOn() {
 				return agent.PermReviewResult{}
 			}
 			// Defense in depth: the judge may never approve a floored action,

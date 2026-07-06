@@ -69,6 +69,14 @@ func (m *model) liveAutopilotConfig() setting.AutoPilotSettings {
 	return setting.AutoPilotSettings{}
 }
 
+// autopilotEngaged reports whether AutoPilot is the active permission posture —
+// the precondition every steer shares. Steers are the copilot's actions, so
+// none fire unless the copilot is actually driving. Combine with the per-steer
+// toggle at each gate: `if !m.autopilotEngaged() || !<steer> { return }`.
+func (m *model) autopilotEngaged() bool {
+	return m.env.OperationMode == setting.ModeAutoPilot
+}
+
 // marshalAutoPilot encodes the live config for session persistence, returning
 // "" for an unset config so untouched sessions carry no autopilot state.
 func marshalAutoPilot(a setting.AutoPilotSettings) string {
@@ -150,12 +158,12 @@ Set continue=true only if the mission is clearly not yet complete AND there is a
 Set continue=false (with instruction "") if the mission looks complete, if you are unsure, if it needs a human decision, or if the agent is blocked or asking for input. When in doubt, stop.`
 
 // autopilotContinueCmd asks the copilot whether to auto-continue the finished
-// turn. It returns nil (letting the turn go idle normally) when the TurnEnd
-// steer is off, the budget is spent, there's no mission, the model is missing,
-// or the turn didn't end cleanly.
+// turn. It returns nil (letting the turn go idle normally) when AutoPilot mode
+// is off, the TurnEnd steer is off, the budget is spent, there's no mission, the
+// model is missing, or the turn didn't end cleanly.
 func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 	ar := m.env.AutoPilot
-	if result.StopReason != core.StopEndTurn || !ar.Steers.TurnEnd {
+	if !m.autopilotEngaged() || result.StopReason != core.StopEndTurn || !ar.Steers.TurnEnd {
 		return nil
 	}
 	if m.autopilotContinuations >= ar.ResolvedMaxContinuations() {
@@ -252,10 +260,11 @@ Reply with ONLY a JSON object:
 - Set "defer": true (answers {}) if you are unsure, if the choice is significant or irreversible, or if it genuinely needs the human. When in doubt, defer.`
 
 // autopilotAnswerQuestionCmd asks the copilot to answer a pending question, or
-// nil when the Question steer is off / no model is available.
+// nil when AutoPilot mode is off, the Question steer is off, or no model is
+// available.
 func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 	ar := m.env.AutoPilot
-	if !ar.Steers.Question || req == nil || len(req.Questions) == 0 {
+	if !m.autopilotEngaged() || !ar.Steers.Question || req == nil || len(req.Questions) == 0 {
 		return nil
 	}
 	provider, modelID := m.resolveReviewerModel(ar.Model)
@@ -336,17 +345,18 @@ const rewritePrompt = `You are the autopilot copilot for a coding agent. Rewrite
 
 Return ONLY the rewritten message, with no preamble, quotes, or explanation. If the message is already clear and complete, return it unchanged.`
 
-// autopilotRewriteCmd intercepts a human submission when the TurnStart steer is
-// on, returning (cmd, true) to rewrite it asynchronously before sending. It
-// returns (nil, false) — proceed normally — for the re-submit of an already
-// rewritten message, copilot continuations, slash commands, and empty input.
+// autopilotRewriteCmd intercepts a human submission when AutoPilot mode and the
+// TurnStart steer are on, returning (cmd, true) to rewrite it asynchronously
+// before sending. It returns (nil, false) — proceed normally — for the re-submit
+// of an already rewritten message, copilot continuations, slash commands, and
+// empty input.
 func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
 	if m.autopilotRewrote {
 		m.autopilotRewrote = false // this IS the rewritten re-submit
 		return nil, false
 	}
 	ar := m.env.AutoPilot
-	if !ar.Steers.TurnStart || m.autopilotContinuing {
+	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotContinuing {
 		return nil, false
 	}
 	raw = strings.TrimSpace(raw)
