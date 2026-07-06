@@ -142,22 +142,33 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 	}
 }
 
-func newTextarea(width int) textarea.Model {
+// newChromelessTextarea builds a bare textarea with the composer's borderless
+// styling (no prompt, no line numbers, muted placeholder) but no focus or size —
+// callers add those. Shared by the main composer and the /autopilot editors.
+func newChromelessTextarea() textarea.Model {
 	ta := textarea.New()
-	ta.Placeholder = ""
-	ta.Focus()
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetWidth(width)
-	ta.SetHeight(minTextareaHeight)
 	ta.ShowLineNumbers = false
 	styles := ta.Styles()
 	styles.Focused.CursorLine = lipgloss.NewStyle()
 	styles.Focused.Base = lipgloss.NewStyle()
 	styles.Focused.Prompt = lipgloss.NewStyle()
-	styles.Blurred.Base = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	ta.SetStyles(styles)
 	ta.KeyMap.InsertNewline.SetEnabled(true)
+	return ta
+}
+
+// newTextarea is the main composer's textarea: chromeless, focused, sized, with
+// a muted blurred state.
+func newTextarea(width int) textarea.Model {
+	ta := newChromelessTextarea()
+	ta.Focus()
+	ta.SetWidth(width)
+	ta.SetHeight(minTextareaHeight)
+	styles := ta.Styles()
+	styles.Blurred.Base = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	ta.SetStyles(styles)
 	return ta
 }

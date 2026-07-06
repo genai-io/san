@@ -45,7 +45,7 @@ type missionDialog struct {
 }
 
 func newMissionDialog() missionDialog {
-	ta := newPanelTextarea()
+	ta := newChromelessTextarea()
 	ta.Placeholder = "Brief the copilot: what should it get done this session?"
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{Frames: []string{"✦", "✶", "✸", "✶"}, FPS: 360 * time.Millisecond}

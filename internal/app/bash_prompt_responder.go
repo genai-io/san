@@ -21,7 +21,7 @@ type bashPromptResponder struct {
 func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	reply, err := r.model.autopilotReviewer.Load().BashPrompt(ctx, command, prompt)
+	reply, err := r.model.autopilot.Load().judge.BashPrompt(ctx, command, prompt)
 	log.Logger().Debug("auto-review prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),

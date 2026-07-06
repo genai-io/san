@@ -16,7 +16,6 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/plugin"
-	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -74,8 +73,7 @@ func newBaseModel() model {
 		reviewerApprovals:   new(atomic.Int64),
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),
-		autopilotReviewer:   new(atomic.Pointer[reviewer.Judge]),
-		autopilotCfg:        new(atomic.Pointer[setting.AutoPilotSettings]),
+		autopilot:           new(atomic.Pointer[autopilotRuntime]),
 	}
 }
 

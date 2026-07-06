@@ -285,37 +285,28 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error 
 	return nil
 }
 
-// UpdateSelfLearnAt persists the L1 self-learning config at the requested
-// settings level (true = user-wide, false = project-local). The new value
-// is merged with whatever else lives in that settings file — only the
-// selfLearn block is rewritten. Returns Validate's error verbatim if the
-// new config is illegal (§3.1) so the caller can surface it inline before
-// touching disk.
-func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
+// updateSettingsFile reads the settings file at the requested level (true =
+// user-wide, false = project-local), lets mutate replace a single block, and
+// writes it back — leaving every other setting in the file untouched. It
+// deliberately does NOT route through SaveToUser/SaveToProject (which merge):
+// those mergers OR the boolean fields, so reusing them would OR the new config
+// with the file's own previous value and a true→false toggle (e.g. disabling an
+// arm from /config) could never be persisted. Replacing the block lets the
+// off-toggle stick. (Cross-level layering still ORs on Load by design —
+// disabling at a lower-priority level cannot override an enable at a
+// higher-priority one.)
+func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 	loader := NewLoader()
 	path := filepath.Join(loader.projectDir, "settings.json")
 	if userLevel {
 		path = filepath.Join(loader.userDir, "settings.json")
 	}
 
-	// Read the existing settings for THIS file and replace only the
-	// selfLearn block. We deliberately do NOT route through
-	// SaveToUser/SaveToProject (which merge via mergeSelfLearn): that merge
-	// ORs the boolean fields, so reusing it here would OR the new config
-	// with the file's own previous value and a true→false toggle (e.g.
-	// disabling an arm from /config) could never be persisted. Replacing
-	// the block lets the off-toggle actually stick while leaving every
-	// other setting in the file untouched. (Cross-level layering still ORs
-	// on Load by design — disabling at a lower-priority level cannot
-	// override an enable at a higher-priority one.)
 	existing := NewData()
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, existing)
 	}
-	existing.SelfLearn = cfg
+	mutate(existing)
 	if err := writeJSONAtomic(path, existing); err != nil {
 		return err
 	}
@@ -326,33 +317,21 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
 	return nil
 }
 
-// UpdateAutoPilotAt persists the autopilot config at the requested settings
-// level (true = user-wide, false = project-local). Like UpdateSelfLearnAt it
-// reads the target file and replaces only the autoPilot block, so an off-toggle
-// actually sticks: routing through SaveToUser/SaveToProject would re-merge via
-// mergeAutoPilot and OR the steer bools with the file's previous value, making
-// a true→false toggle impossible to persist. Every other setting in the file is
-// left untouched. (Cross-level layering still ORs on Load by design.)
-func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
-	loader := NewLoader()
-	path := filepath.Join(loader.projectDir, "settings.json")
-	if userLevel {
-		path = filepath.Join(loader.userDir, "settings.json")
-	}
-
-	existing := NewData()
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, existing)
-	}
-	existing.AutoPilot = cfg
-	if err := writeJSONAtomic(path, existing); err != nil {
+// UpdateSelfLearnAt persists the L1 self-learning config at the requested
+// settings level, rewriting only the selfLearn block. Returns Validate's error
+// verbatim if the new config is illegal (§3.1) so the caller can surface it
+// inline before touching disk.
+func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
+	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	return updateSettingsFile(userLevel, func(d *Data) { d.SelfLearn = cfg })
+}
 
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
+// UpdateAutoPilotAt persists the autopilot config at the requested settings
+// level, rewriting only the autoPilot block.
+func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
+	return updateSettingsFile(userLevel, func(d *Data) { d.AutoPilot = cfg })
 }
 
 // AutoPilotPresetDir is the folder where /autopilot Export saves named configs

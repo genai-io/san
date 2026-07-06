@@ -26,16 +26,20 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+// autopilotRuntime is the immutable snapshot the agent goroutine reads: the live
+// judge plus the resolved config it was built from. rebuildAutopilotReviewer
+// swaps it as one unit so the judge and the steer gates can never skew.
+type autopilotRuntime struct {
+	judge *reviewer.Judge
+	cfg   setting.AutoPilotSettings
+}
+
 // rebuildAutopilotReviewer builds the autopilot judge from the live session
 // config and stores it in the atomic slot. Called at agent build time and again
 // whenever the /autopilot panel saves, so a mid-session model / system-prompt
 // change takes effect on the running agent without a restart.
 func (m *model) rebuildAutopilotReviewer() {
 	ar := m.env.AutoPilot
-	// Publish a synchronized snapshot for the agent goroutine's steer gates,
-	// alongside the reviewer, so a mid-turn Save is race-free (see autopilotCfg).
-	snapshot := ar.Clone()
-	m.autopilotCfg.Store(&snapshot)
 	provider, modelID := m.resolveReviewerModel(ar.Model)
 	rev := reviewer.New(provider, modelID)
 	switch {
@@ -49,15 +53,18 @@ func (m *model) rebuildAutopilotReviewer() {
 				zap.String("file", ar.SystemPromptFile), zap.Error(err))
 		}
 	}
-	m.autopilotReviewer.Store(rev)
+	// Publish the judge and the config it resolved from as one snapshot so the
+	// agent goroutine (steer gates + reviewer) never sees a judge/config skew;
+	// Clone keeps the snapshot independent of later UI-goroutine edits.
+	m.autopilot.Store(&autopilotRuntime{judge: rev, cfg: ar.Clone()})
 }
 
 // liveAutopilotConfig returns the synchronized config snapshot for the agent
 // goroutine's steer gates. Zero value until the first rebuildAutopilotReviewer
 // (which runs at agent build, before the agent goroutine starts).
 func (m *model) liveAutopilotConfig() setting.AutoPilotSettings {
-	if c := m.autopilotCfg.Load(); c != nil {
-		return *c
+	if rt := m.autopilot.Load(); rt != nil {
+		return rt.cfg
 	}
 	return setting.AutoPilotSettings{}
 }

@@ -169,7 +169,7 @@ func (p *AutopilotSelector) renderSteer(i int, row apRow) string {
 }
 
 func (p *AutopilotSelector) renderInt(i int, row apRow) string {
-	value := strconv.Itoa(row.intGet(p.snap))
+	value := strconv.Itoa(p.snap.ResolvedMaxContinuations())
 	if p.editing && i == p.cursor {
 		value = p.editingBuffer + "_"
 	}

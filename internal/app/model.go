@@ -32,8 +32,6 @@ import (
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
-	"github.com/genai-io/san/internal/reviewer"
-	"github.com/genai-io/san/internal/setting"
 )
 
 const defaultWidth = 80
@@ -71,18 +69,12 @@ type model struct {
 	// value-receiver copies of the model.
 	pendingDecisions *sync.Map // tool call ID → core.ReviewDecision
 
-	// autopilotReviewer holds the live autopilot judge, hot-swapped when the
-	// /autopilot panel saves so model/prompt changes take effect without an
-	// agent restart. Loaded per-call on the agent goroutine, Stored on the UI
-	// goroutine — the atomic pointer makes the single-word swap race-free.
-	autopilotReviewer *atomic.Pointer[reviewer.Judge]
-
-	// autopilotCfg is the synchronized snapshot of the live autopilot config the
-	// agent goroutine reads (the bash/permission steer gates). m.env.AutoPilot
-	// is UI-goroutine-owned and can be reassigned by a mid-turn Save, so the
-	// agent side must not read it directly — it Loads this instead. Refreshed
-	// (Store) alongside the reviewer in rebuildAutopilotReviewer.
-	autopilotCfg *atomic.Pointer[setting.AutoPilotSettings]
+	// autopilot holds the live autopilot snapshot (judge + resolved config),
+	// hot-swapped when the /autopilot panel saves so model/prompt/steer changes
+	// take effect without an agent restart. m.env.AutoPilot is UI-goroutine-owned
+	// and can be reassigned by a mid-turn Save, so the agent side never reads it
+	// directly — it Loads this snapshot instead (single-word swap is race-free).
+	autopilot *atomic.Pointer[autopilotRuntime]
 
 	// autopilotContinuations counts TurnEnd auto-continuations since the last
 	// human turn (reset in dispatchSubmission); autopilotContinuing tags the

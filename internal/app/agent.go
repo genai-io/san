@@ -149,7 +149,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			// the synchronized snapshot — this runs on the agent goroutine) so a
 			// mid-session toggle takes effect: without it, bash stays on the
 			// normal non-tty path even in auto-review.
-			if !m.liveAutopilotConfig().Steers.BashPrompt || m.env.OperationMode != setting.ModeAutoPilot {
+			if m.env.OperationMode != setting.ModeAutoPilot || !m.liveAutopilotConfig().Steers.BashPrompt {
 				return nil
 			}
 			return bashPromptResponder{model: m}
@@ -198,7 +198,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 				m.recordDecision(ctx, false, r)
 				return agent.PermReviewResult{}
 			}
-			rev := m.autopilotReviewer.Load()
+			rev := m.autopilot.Load().judge
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			verdict, err := rev.Permission(ctx, reviewer.Request{

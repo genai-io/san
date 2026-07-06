@@ -15,7 +15,6 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/reviewer"
@@ -71,7 +70,7 @@ type AutopilotSelector struct {
 // later via SetConfigSource.
 func NewAutopilotSelector() AutopilotSelector {
 	return AutopilotSelector{
-		prompt:  newPanelTextarea(),
+		prompt:  newChromelessTextarea(),
 		mission: newMissionDialog(),
 	}
 }
@@ -175,7 +174,7 @@ func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
 		p.reclampCursor()
 	case apRowInt:
 		p.editing = true
-		p.editingBuffer = strconv.Itoa(row.intGet(p.snap))
+		p.editingBuffer = strconv.Itoa(p.snap.ResolvedMaxContinuations())
 	case apRowActions:
 		if p.actionCursor == 0 {
 			p.beginExport()
@@ -290,7 +289,6 @@ type apRow struct {
 	summary func(setting.AutoPilotSettings) string // apRowEntry: right-aligned value hint
 	get     func(setting.AutoPilotSettings) bool   // apRowSteer: current state
 	toggle  func(*setting.AutoPilotSettings)       // apRowSteer: flip it
-	intGet  func(setting.AutoPilotSettings) int    // apRowInt
 	indent  int
 }
 
@@ -315,7 +313,7 @@ func (p *AutopilotSelector) rows() []apRow {
 		{kind: apRowSteer, label: "Turn End", desc: "auto-continue the turn", get: getTurnEnd, toggle: toggleTurnEnd},
 	}
 	if p.snap.Steers.TurnEnd {
-		rows = append(rows, apRow{kind: apRowInt, label: "Continue at most", indent: 1, intGet: getMaxCont})
+		rows = append(rows, apRow{kind: apRowInt, label: "Continue at most", indent: 1})
 	}
 	rows = append(rows,
 		apRow{kind: apRowSpacer},
@@ -359,7 +357,6 @@ func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.Permissio
 func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
 func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
 func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
-func getMaxCont(s setting.AutoPilotSettings) int     { return s.ResolvedMaxContinuations() }
 
 func toggleTurnStart(s *setting.AutoPilotSettings) { s.Steers.TurnStart = !s.Steers.TurnStart }
 func toggleBash(s *setting.AutoPilotSettings)      { s.Steers.BashPrompt = !s.Steers.BashPrompt }
@@ -397,20 +394,3 @@ func missionSummary(s setting.AutoPilotSettings) string {
 // a screen margin.
 func (p *AutopilotSelector) innerWidth() int   { return min(max(p.width-16, 56), 122) }
 func (p *AutopilotSelector) editorHeight() int { return max(8, p.height-16) }
-
-// newPanelTextarea builds a chromeless textarea for the editors, mirroring the
-// main composer's styling but sized by the caller.
-func newPanelTextarea() textarea.Model {
-	ta := textarea.New()
-	ta.Prompt = ""
-	ta.CharLimit = 0
-	ta.ShowLineNumbers = false
-	styles := ta.Styles()
-	styles.Focused.CursorLine = lipgloss.NewStyle()
-	styles.Focused.Base = lipgloss.NewStyle()
-	styles.Focused.Prompt = lipgloss.NewStyle()
-	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	ta.SetStyles(styles)
-	ta.KeyMap.InsertNewline.SetEnabled(true)
-	return ta
-}
