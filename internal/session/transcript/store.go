@@ -115,7 +115,7 @@ func PatchTitle(title string) PatchOp       { return mustPatch(PatchPathTitle, t
 func PatchLastPrompt(prompt string) PatchOp { return mustPatch(PatchPathLastPrompt, prompt) }
 func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag) }
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
-func PatchAutoPilot(v string) PatchOp      { return mustPatch(PatchPathAutoPilot, v) }
+func PatchAutoPilot(v string) PatchOp       { return mustPatch(PatchPathAutoPilot, v) }
 func PatchTasks(tasks []todo.Task) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }

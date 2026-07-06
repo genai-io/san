@@ -40,7 +40,7 @@ type AutopilotSavedMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
-	respond MissionResponder                  // injected; nil disables live mission replies
+	respond MissionResponder                 // injected; nil disables live mission replies
 	live    func() setting.AutoPilotSettings // injected; returns the live session config
 
 	active bool
@@ -285,8 +285,8 @@ const (
 type apRow struct {
 	kind    apRowKind
 	label   string
-	desc    string                                  // muted description after the label
-	open    autopilotView                           // apRowEntry: view to switch to
+	desc    string                                 // muted description after the label
+	open    autopilotView                          // apRowEntry: view to switch to
 	summary func(setting.AutoPilotSettings) string // apRowEntry: right-aligned value hint
 	get     func(setting.AutoPilotSettings) bool   // apRowSteer: current state
 	toggle  func(*setting.AutoPilotSettings)       // apRowSteer: flip it
