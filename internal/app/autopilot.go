@@ -206,12 +206,10 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 	}
 	last := core.LastAssistantChatContent(m.conv.Messages)
 	m.conv.AddNotice(autopilotHint("thinking…"))
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	return autopilotAsync(func(ctx context.Context) tea.Msg {
 		cont, instruction, err := autopilotDecideContinue(ctx, provider, modelID, mission, last)
 		return autopilotDecisionMsg{result: result, cont: cont, instruction: instruction, err: err}
-	}
+	})
 }
 
 func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID, mission, lastTurn string) (bool, string, error) {
@@ -239,13 +237,12 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 	if m.conv.Stream.Active {
 		return nil
 	}
-	if msg.err == nil && msg.cont && strings.TrimSpace(msg.instruction) != "" {
-		instr := strings.TrimSpace(msg.instruction)
+	if msg.err == nil && msg.cont && msg.instruction != "" {
 		m.autopilotContinuations++
 		m.autopilotContinuing = true
 		m.settleAutopilotHint(fmt.Sprintf("continuing (%d/%d)",
 			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations()))
-		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it, then it reads back as the submitted message
+		m.userInput.Textarea.SetValue(msg.instruction) // visible: the copilot "types" it, then it reads back as the submitted message
 		return m.handleSubmit()
 	}
 	m.settleAutopilotHint("handing back")
@@ -265,6 +262,17 @@ func autopilotComplete(ctx context.Context, provider llm.Provider, modelID, syst
 		return "", err
 	}
 	return strings.TrimSpace(resp.Content), nil
+}
+
+// autopilotAsync runs one steer inference off the UI goroutine on a shared 60s
+// budget — long enough for a slow model, short enough that a wedged one can't
+// hang the steer — and wraps its result in the message the UI routes back.
+func autopilotAsync(build func(ctx context.Context) tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		return build(ctx)
+	}
 }
 
 // ── Question steer (#4): auto-answer AskUserQuestion ─────────────────────
@@ -298,12 +306,10 @@ func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 		return nil
 	}
 	mission := strings.TrimSpace(ar.Mission)
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	return autopilotAsync(func(ctx context.Context) tea.Msg {
 		answers, ok := autopilotAnswerQuestion(ctx, provider, modelID, mission, req)
 		return autopilotQuestionMsg{req: req, answers: answers, answer: ok}
-	}
+	})
 }
 
 func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, mission string, req *tool.QuestionRequest) (map[int][]string, bool) {
@@ -394,11 +400,9 @@ func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	mission := strings.TrimSpace(ar.Mission)
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+	return autopilotAsync(func(ctx context.Context) tea.Msg {
 		return autopilotRewriteMsg{original: raw, rewritten: autopilotRewriteInput(ctx, provider, modelID, mission, raw)}
-	}, true
+	}), true
 }
 
 func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, mission, raw string) string {
@@ -415,7 +419,7 @@ func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, 
 
 // handleAutopilotRewrite re-submits the (possibly) rewritten message.
 func (m *model) handleAutopilotRewrite(msg autopilotRewriteMsg) tea.Cmd {
-	text := strings.TrimSpace(msg.rewritten)
+	text := msg.rewritten
 	if text == "" {
 		text = msg.original
 	}

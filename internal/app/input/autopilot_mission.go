@@ -48,7 +48,7 @@ func newMissionDialog() missionDialog {
 	ta := newChromelessTextarea()
 	ta.Placeholder = "Brief the copilot: what should it get done this session?"
 	sp := spinner.New()
-	sp.Spinner = spinner.Spinner{Frames: []string{"✦", "✶", "✸", "✶"}, FPS: 360 * time.Millisecond}
+	sp.Spinner = spinner.Spinner{Frames: kit.StarSpinnerFrames, FPS: kit.StarSpinnerFPS}
 	sp.Style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 	return missionDialog{input: ta, spinner: sp}
 }

@@ -1,11 +1,11 @@
 package conv
 
 import (
-	"time"
-
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/genai-io/san/internal/app/kit"
 )
 
 type OutputModel struct {
@@ -73,11 +73,9 @@ func (c FrameClock) Frame() int { return c.frame }
 
 func newFrameClock() FrameClock {
 	sp := spinner.New()
-	// 4-pt → 6-pt → 8-pt → 6-pt stars read as a rotating sparkle while
-	// the model is thinking / streaming.
 	sp.Spinner = spinner.Spinner{
-		Frames: []string{"✦", "✶", "✸", "✶"},
-		FPS:    360 * time.Millisecond,
+		Frames: kit.StarSpinnerFrames,
+		FPS:    kit.StarSpinnerFPS,
 	}
 	sp.Style = lipgloss.NewStyle()
 	return FrameClock{spinner: sp}

@@ -154,9 +154,10 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 			p.actionCursor = 1
 		}
 	case "space":
-		if r := rows[p.cursor]; r.kind == apRowSteer {
-			r.toggle(&p.snap)
-			p.reclampCursor()
+		// Space is a shortcut for the primary action of a toggle row only; on any
+		// other row it's a no-op (enter opens those).
+		if row := rows[p.cursor]; row.kind == apRowSteer {
+			return p.activateRow(row)
 		}
 	case "enter":
 		return p.activateRow(rows[p.cursor])

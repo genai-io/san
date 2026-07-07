@@ -1,5 +1,16 @@
 package kit
 
+import "time"
+
+// StarSpinnerFrames is the 4pt → 6pt → 8pt → 6pt rotating-sparkle spinner shown
+// while the model is thinking/streaming and in the /autopilot mission dialog.
+// Sharing one table keeps the app's most visible animation identical across
+// those live views. Pair it with StarSpinnerFPS.
+var StarSpinnerFrames = []string{"✦", "✶", "✸", "✶"}
+
+// StarSpinnerFPS is the per-frame interval for StarSpinnerFrames.
+const StarSpinnerFPS = 360 * time.Millisecond
+
 // BrailleSpinnerFrames is the canonical 10-frame braille spinner for
 // in-flight indicators on Unicode-capable terminals (e.g. the provider
 // connect/refresh selector). Sharing a single table avoids drift the next
