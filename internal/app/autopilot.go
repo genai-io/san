@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
@@ -75,6 +76,20 @@ func (m *model) liveAutopilotConfig() setting.AutoPilotSettings {
 // toggle at each gate: `if !m.autopilotEngaged() || !<steer> { return }`.
 func (m *model) autopilotEngaged() bool {
 	return m.env.OperationMode == setting.ModeAutoPilot
+}
+
+var (
+	autopilotHintMark = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
+	autopilotHintDim  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+)
+
+// autopilotHint formats a concise copilot notice: an amber "⏵ autopilot" mark
+// (the same brand as the mode indicator) plus a dimmed detail. It states only
+// what the copilot did — never the instruction itself, which reads back as the
+// submitted message — so the transcript looks like a human driving the session,
+// echoing the terse inline review-decision hints rather than a verbose insert.
+func autopilotHint(detail string) string {
+	return autopilotHintMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
 
 // marshalAutoPilot encodes the live config for session persistence, returning
@@ -167,7 +182,7 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		return nil
 	}
 	if m.autopilotContinuations >= ar.ResolvedMaxContinuations() {
-		m.conv.AddNotice(fmt.Sprintf("⏵ autopilot: continuation budget reached (%d) — handing back", ar.ResolvedMaxContinuations()))
+		m.conv.AddNotice(autopilotHint(fmt.Sprintf("budget reached (%d) · handing back", ar.ResolvedMaxContinuations())))
 		return nil
 	}
 	mission := strings.TrimSpace(ar.Mission)
@@ -179,7 +194,7 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		return nil
 	}
 	last := core.LastAssistantChatContent(m.conv.Messages)
-	m.conv.AddNotice("⏵ autopilot: deciding whether to continue…")
+	m.conv.AddNotice(autopilotHint("thinking…"))
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
@@ -217,12 +232,12 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		instr := strings.TrimSpace(msg.instruction)
 		m.autopilotContinuations++
 		m.autopilotContinuing = true
-		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it
-		m.conv.AddNotice(fmt.Sprintf("⏵ autopilot: continuing (%d/%d) → %s",
-			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations(), kit.TruncateText(instr, 80)))
+		m.conv.AddNotice(autopilotHint(fmt.Sprintf("continuing (%d/%d)",
+			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())))
+		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it, then it reads back as the submitted message
 		return m.handleSubmit()
 	}
-	m.conv.AddNotice("⏵ autopilot: handing back to you")
+	m.conv.AddNotice(autopilotHint("handing back"))
 	return m.fireIdleHooksCmd(msg.result)
 }
 
@@ -394,7 +409,7 @@ func (m *model) handleAutopilotRewrite(msg autopilotRewriteMsg) tea.Cmd {
 		text = msg.original
 	}
 	if text != msg.original {
-		m.conv.AddNotice("⏵ autopilot: refined your request")
+		m.conv.AddNotice(autopilotHint("refined your request"))
 	}
 	m.autopilotRewrote = true
 	m.userInput.Textarea.SetValue(text)
@@ -426,11 +441,11 @@ func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
 		return nil
 	}
 	if !msg.answer || len(msg.answers) == 0 {
-		m.conv.AddNotice("⏵ autopilot: leaving this question for you")
+		m.conv.AddNotice(autopilotHint("left this question for you"))
 		return nil
 	}
 	m.conv.Modal.Question.Hide()
-	m.conv.AddNotice("⏵ autopilot: answered on your behalf")
+	m.conv.AddNotice(autopilotHint("answered for you"))
 	return m.handleQuestionResponse(conv.QuestionResponseMsg{
 		Request:  msg.req,
 		Response: &tool.QuestionResponse{RequestID: msg.req.ID, Answers: msg.answers},
