@@ -92,6 +92,17 @@ func autopilotHint(detail string) string {
 	return autopilotHintMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
 
+// settleAutopilotHint resolves the pending "thinking…" notice into its outcome
+// on the same line — falling back to a fresh notice if that line already
+// flushed to scrollback — so the copilot's deliberation and its decision read
+// as one line instead of two.
+func (m *model) settleAutopilotHint(detail string) {
+	hint := autopilotHint(detail)
+	if !m.conv.SetLastNotice(hint) {
+		m.conv.AddNotice(hint)
+	}
+}
+
 // marshalAutoPilot encodes the live config for session persistence, returning
 // "" for an unset config so untouched sessions carry no autopilot state.
 func marshalAutoPilot(a setting.AutoPilotSettings) string {
@@ -232,12 +243,12 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 		instr := strings.TrimSpace(msg.instruction)
 		m.autopilotContinuations++
 		m.autopilotContinuing = true
-		m.conv.AddNotice(autopilotHint(fmt.Sprintf("continuing (%d/%d)",
-			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())))
+		m.settleAutopilotHint(fmt.Sprintf("continuing (%d/%d)",
+			m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations()))
 		m.userInput.Textarea.SetValue(instr) // visible: the copilot "types" it, then it reads back as the submitted message
 		return m.handleSubmit()
 	}
-	m.conv.AddNotice(autopilotHint("handing back"))
+	m.settleAutopilotHint("handing back")
 	return m.fireIdleHooksCmd(msg.result)
 }
 
