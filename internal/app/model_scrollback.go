@@ -14,15 +14,21 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-const scrollbackPrintDelay = 40 * time.Millisecond
+// scrollbackPrintDelay is how long a commit waits before Println'ing rendered
+// blocks into native scrollback. Update advances the commit offsets first, so
+// the just-committed tail leaves the live view immediately; this delay is the
+// window before it reappears in scrollback — i.e. the visible "flush" blink at
+// the end of a render. We want it as short as possible, but it has a hard floor:
+// insertAbove must run only after the now-shorter managed frame has been flushed
+// to the terminal, or it scrolls the stale live frame into scrollback (a welded
+// frame). Bubble Tea flushes on a frame ticker (default 60fps ≈ 16.7ms/frame),
+// so one frame is the floor; this keeps ~half a frame of margin above it. The
+// old 40ms was ~2.4 frames — that extra ~1.4 frames was pure blink. Bump this
+// back up if a stale live frame ever welds into scrollback.
+const scrollbackPrintDelay = 24 * time.Millisecond
 
 func printScrollback(s string) tea.Cmd {
 	return func() tea.Msg {
-		// Bubble Tea queues render output and flushes it on a frame ticker. If a
-		// Println command returns immediately after Update mutates commit offsets,
-		// insertAbove can run before the cleared active view reaches the terminal,
-		// scrolling the stale live frame into native scrollback. Waiting one frame
-		// lets the managed view disappear before unmanaged scrollback is inserted.
 		time.Sleep(scrollbackPrintDelay)
 		return tea.Println(s)()
 	}
