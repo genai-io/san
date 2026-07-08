@@ -96,6 +96,12 @@ var (
 	decisionEscalatedStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Warning)
 
+	// The autopilot continuation header: green like an auto-approved decision —
+	// the copilot drove this turn forward — with a downward arrow that points at
+	// the "❭" line right below it.
+	autopilotStepStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Success)
+
 	trackerPendingStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted)
 
@@ -114,6 +120,16 @@ var (
 				Background(kit.CurrentTheme.Primary).
 				Bold(true)
 )
+
+// RenderAutopilotMark is the "↖ autopilot · <note>" annotation a copilot-produced
+// turn wears — a continuation ("2/5") or a rewrite ("refined") — drawn tight
+// below its "❭" line: the up-left arrow points back at the instruction to say
+// the copilot, not the human, typed it (mirroring how a permission decision
+// hangs under the call it judged).
+func RenderAutopilotMark(note string) string {
+	return autopilotStepStyle.Render("  ↖ autopilot") +
+		toolResultStyle.Render(" · "+note) + "\n"
+}
 
 // RenderUserMessage renders a user message with prompt and optional images.
 func RenderUserMessage(content, displayContent string, images []core.Image, mdRenderer *MDRenderer, width int) string {

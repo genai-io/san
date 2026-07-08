@@ -278,6 +278,7 @@ func (m model) renderModeStatus() string {
 		QueueCount:        m.userInput.Queue.Len(),
 		ReviewApprovals:   reviewApprovals,
 		ReviewEscalations: reviewEscalations,
+		AutopilotThinking: m.autopilotDeciding,
 	})
 }
 

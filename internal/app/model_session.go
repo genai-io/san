@@ -158,6 +158,15 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
 		m.env.AutoPilot = ar
 	}
+
+	// Resume into the operation mode the session was saved in, so an autopilot
+	// run picks up where it left off without re-cycling shift+tab. (Bypass never
+	// round-trips — parseSessionMode maps it to Normal.)
+	if mode := parseSessionMode(sess.Metadata.Mode); mode != m.env.OperationMode {
+		m.env.OperationMode = mode
+		m.env.ApplyModePermissions(m.env.CWD)
+		m.services.Hook.SetPermissionMode(m.env.OperationModeName())
+	}
 }
 
 func (m *model) initTaskStorage(sessionID string) {

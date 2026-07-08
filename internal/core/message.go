@@ -116,6 +116,12 @@ type ChatMessage struct {
 	// tool call. Display-only: dropped by ToMessage, never persisted.
 	Decision *ReviewDecision
 
+	// AutopilotNote, when set, marks a user message the copilot produced — a
+	// continuation ("2/5") or a rewrite ("refined") — and the renderer hangs a
+	// green "↖ autopilot · <note>" annotation under its "❭" line to show the
+	// copilot typed it. Display-only: dropped by ToMessage, never persisted.
+	AutopilotNote string
+
 	// Streaming-commit progress. While an assistant message streams, completed
 	// markdown blocks are flushed to native scrollback (tea.Println) as they
 	// finish, so the live view and the turn-end commit render only the

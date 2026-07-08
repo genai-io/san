@@ -229,15 +229,16 @@ type OperationModeParams struct {
 	ThinkingEffort    string
 	ShowThinking      bool
 	QueueCount        int
-	ReviewApprovals   int // auto-review approvals this session, shown next to the mode
-	ReviewEscalations int // auto-review escalations to the user this session
+	ReviewApprovals   int  // auto-review approvals this session, shown next to the mode
+	ReviewEscalations int  // auto-review escalations to the user this session
+	AutopilotThinking bool // the copilot is mid-decision — show "thinking…" on the mode indicator
 }
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
 	var leftParts []string
 
-	if modeStatus := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations); modeStatus != "" {
+	if modeStatus := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking); modeStatus != "" {
 		leftParts = append(leftParts, modeStatus)
 	}
 
@@ -342,7 +343,7 @@ func compactStatusHint(percent float64) string {
 }
 
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or bypass mode.
-func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int) string {
+func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) string {
 	var icon, label string
 	var clr kit.AdaptiveColor
 
@@ -364,11 +365,17 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	}
 
 	if mode == setting.ModeAutoPilot {
-		if reviewApprovals > 0 {
-			label += fmt.Sprintf(" · %d approved", reviewApprovals)
-		}
-		if reviewEscalations > 0 {
-			label += fmt.Sprintf(" · %d escalated", reviewEscalations)
+		switch {
+		case autopilotThinking:
+			// The copilot is deciding — surface it here instead of a transcript line.
+			label = " autopilot · thinking…"
+		default:
+			if reviewApprovals > 0 {
+				label += fmt.Sprintf(" · %d approved", reviewApprovals)
+			}
+			if reviewEscalations > 0 {
+				label += fmt.Sprintf(" · %d escalated", reviewEscalations)
+			}
 		}
 	}
 

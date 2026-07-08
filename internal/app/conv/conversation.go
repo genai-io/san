@@ -49,20 +49,6 @@ func (m *ConversationModel) AddNotice(content string) {
 	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content})
 }
 
-// SetLastNotice rewrites the trailing notice in place when it's still in the
-// live tail (not yet flushed to scrollback), returning true. It returns false —
-// so the caller can AddNotice instead — when the last message isn't an
-// uncommitted notice. This lets a transient "…thinking" notice resolve into its
-// outcome on the same line rather than stacking a second line beneath it.
-func (m *ConversationModel) SetLastNotice(content string) bool {
-	idx := len(m.Messages) - 1
-	if idx < 0 || idx < m.CommittedCount || m.Messages[idx].Role != core.RoleNotice {
-		return false
-	}
-	m.Messages[idx].Content = content
-	return true
-}
-
 func (m *ConversationModel) AppendToLast(text, thinking string) {
 	if len(m.Messages) == 0 {
 		return

@@ -69,8 +69,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		if !m.conv.Stream.Active && !m.userInput.Approval.IsActive() &&
 			!m.conv.Modal.Question.IsActive() &&
 			!m.userInput.Provider.Selector.IsActive() && !m.userInput.Suggestions.IsVisible() {
-			m.cycleOperationMode()
-			return nil, true
+			return m.cycleOperationMode(), true
 		}
 
 	case "ctrl+t":

@@ -43,12 +43,15 @@ func TestAutoPilotSteersRoundTrip(t *testing.T) {
 	}
 
 	var d Data
-	if err := json.Unmarshal([]byte(`{"autoPilot":{"mission":"ship it","steers":{"turnEnd":true,"permission":false}}}`), &d); err != nil {
+	if err := json.Unmarshal([]byte(`{"autoPilot":{"mission":"ship it","steers":{"suggest":true,"turnEnd":true,"permission":false}}}`), &d); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	clone := d.Clone()
 	if clone.AutoPilot.Mission != "ship it" {
 		t.Errorf("clone dropped mission: %q", clone.AutoPilot.Mission)
+	}
+	if !clone.AutoPilot.Steers.Suggest {
+		t.Error("clone dropped suggest steer")
 	}
 	if !clone.AutoPilot.Steers.TurnEnd {
 		t.Error("clone dropped turnEnd steer")
@@ -64,7 +67,7 @@ func TestAutoPilotSteersRoundTrip(t *testing.T) {
 	}
 
 	merged := mergeSettings(&d, NewData())
-	if merged.AutoPilot.Mission != "ship it" || !merged.AutoPilot.Steers.TurnEnd {
+	if merged.AutoPilot.Mission != "ship it" || !merged.AutoPilot.Steers.TurnEnd || !merged.AutoPilot.Steers.Suggest {
 		t.Error("merge dropped the autoPilot block")
 	}
 }

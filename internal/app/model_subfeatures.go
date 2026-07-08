@@ -6,6 +6,8 @@
 package app
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
@@ -18,12 +20,30 @@ import (
 )
 
 func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
+	mission, suppress := m.autopilotSuggestState()
 	return input.PromptSuggestionDeps{
 		Input:        &m.userInput,
 		Conversation: &m.conv.ConversationModel,
 		HasProvider:  m.env.LLMProvider != nil,
 		BuildClient:  m.buildLLMClient,
+		Mission:      mission,
+		Suppress:     suppress,
 	}
+}
+
+// autopilotSuggestState decides how the input hint behaves under AutoPilot: with
+// the Suggest steer on it always suggests — proposing the next step toward the
+// mission when one is set, or the generic prediction when not — while with the
+// steer off the hint is suppressed so the copilot doesn't nudge. Outside
+// AutoPilot the generic prediction runs unchanged.
+func (m *model) autopilotSuggestState() (mission string, suppress bool) {
+	if !m.autopilotEngaged() {
+		return "", false
+	}
+	if !m.env.AutoPilot.Steers.Suggest {
+		return "", true
+	}
+	return strings.TrimSpace(m.env.AutoPilot.Mission), false
 }
 
 func (m *model) overlayDeps() input.OverlayDeps {

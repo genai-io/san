@@ -265,6 +265,21 @@ func (m *env) SessionMode() string {
 	}
 }
 
+// parseSessionMode is SessionMode's inverse, mapping a persisted session mode
+// back to the OperationMode a resumed session restores into. Unknown or empty
+// strings map to Normal; bypass is never persisted (SessionMode folds it into
+// "normal"), so a resumed session can't silently regain bypass.
+func parseSessionMode(mode string) setting.OperationMode {
+	switch mode {
+	case "auto-accept":
+		return setting.ModeAutoAccept
+	case "auto-pilot":
+		return setting.ModeAutoPilot
+	default:
+		return setting.ModeNormal
+	}
+}
+
 // ResetContextDisplay zeroes the bottom-right context-window readout (latest
 // input/output tokens). Called per-compaction: the live context shrinks to the
 // summary, so the bar/label restart from empty until the next infer. The

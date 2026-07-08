@@ -85,6 +85,9 @@ func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
 	case "alt+enter", "shift+enter":
 		p.mission.input.InsertString("\n")
 		return nil
+	case "ctrl+r":
+		p.clearMission()
+		return nil
 	default:
 		var cmd tea.Cmd
 		p.mission.input, cmd = p.mission.input.Update(msg)
@@ -118,6 +121,17 @@ func (p *AutopilotSelector) sendMission() tea.Cmd {
 		return MissionReplyMsg{Text: reply, Err: err}
 	}
 	return tea.Batch(p.mission.spinner.Tick, request)
+}
+
+// clearMission wipes the whole briefing — the accumulated turns and the composer
+// — so the mission resets to empty instead of only ever growing; commitMission
+// then persists the cleared ("") mission.
+func (p *AutopilotSelector) clearMission() {
+	p.mission.log = nil
+	p.mission.thinking = false
+	p.mission.input.Reset()
+	p.mission.status = "mission cleared"
+	p.commitMission()
 }
 
 // commitMission folds the user turns into the persisted mission directive.
@@ -157,7 +171,7 @@ func (p *AutopilotSelector) UpdateSpinner(msg tea.Msg) tea.Cmd {
 }
 
 func (p *AutopilotSelector) missionHint() string {
-	return kit.HintLine(keycap("enter")+" send", keycap("alt+enter")+" newline", keycap("esc")+" back")
+	return kit.HintLine(keycap("enter")+" send", keycap("alt+enter")+" newline", keycap("ctrl+r")+" clear", keycap("esc")+" back")
 }
 
 func (p *AutopilotSelector) renderMission(width int) string {

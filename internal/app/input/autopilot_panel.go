@@ -307,11 +307,12 @@ func (p *AutopilotSelector) rows() []apRow {
 		{kind: apRowEntry, label: "System Prompt", desc: "how it drives", open: apSystemPrompt, summary: systemPromptSummary},
 		{kind: apRowSpacer},
 		{kind: apRowSection, label: "Steer"},
-		{kind: apRowSteer, label: "Turn Start", desc: "rewrite each input", get: getTurnStart, toggle: toggleTurnStart},
+		{kind: apRowSteer, label: "Suggest", desc: "propose the next step", get: getSuggest, toggle: toggleSuggest},
+		{kind: apRowSteer, label: "Start", desc: "kick off & rewrite input", get: getTurnStart, toggle: toggleTurnStart},
 		{kind: apRowSteer, label: "Permission", desc: "auto-approve gray zone", get: getPermission, toggle: togglePermission},
 		{kind: apRowSteer, label: "Bash", desc: "answer command prompts", get: getBash, toggle: toggleBash},
 		{kind: apRowSteer, label: "Question", desc: "answer AskUserQuestion", get: getQuestion, toggle: toggleQuestion},
-		{kind: apRowSteer, label: "Turn End", desc: "auto-continue the turn", get: getTurnEnd, toggle: toggleTurnEnd},
+		{kind: apRowSteer, label: "End", desc: "auto-continue the turn", get: getTurnEnd, toggle: toggleTurnEnd},
 	}
 	if p.snap.Steers.TurnEnd {
 		rows = append(rows, apRow{kind: apRowInt, label: "Continue at most", indent: 1})
@@ -353,12 +354,14 @@ func apStep(rows []apRow, start, step, fallback int) int {
 
 // ── Steer accessors ─────────────────────────────────────────────────────
 
+func getSuggest(s setting.AutoPilotSettings) bool    { return s.Steers.Suggest }
 func getTurnStart(s setting.AutoPilotSettings) bool  { return s.Steers.TurnStart }
 func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.PermissionOn() }
 func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
 func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
 func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
 
+func toggleSuggest(s *setting.AutoPilotSettings)   { s.Steers.Suggest = !s.Steers.Suggest }
 func toggleTurnStart(s *setting.AutoPilotSettings) { s.Steers.TurnStart = !s.Steers.TurnStart }
 func toggleBash(s *setting.AutoPilotSettings)      { s.Steers.BashPrompt = !s.Steers.BashPrompt }
 func toggleQuestion(s *setting.AutoPilotSettings)  { s.Steers.Question = !s.Steers.Question }

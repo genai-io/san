@@ -2,6 +2,7 @@ package input
 
 import (
 	"context"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -36,6 +37,12 @@ If unsure, reply with nothing.`
 const SuggestionUserPrompt = `[PREDICTION MODE] Based on this conversation, predict what the user will type next.
 Stay silent if the next step isn't obvious. Match the user's language and style.`
 
+// autopilotSuggestSystemPrompt drives the input hint when the Suggest steer is
+// on: it proposes the next step toward the mission as a ready-to-send imperative
+// the human can accept, rather than guessing what the human would type.
+const autopilotSuggestSystemPrompt = `You are the autopilot copilot for a coding assistant. Given the mission and the session so far, suggest the SINGLE next instruction to give the agent — a short, direct imperative the user can accept and send as-is.
+Reply with ONLY that instruction (a few words to one sentence). No quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
+
 const maxSuggestionMessages = 20
 
 type PromptSuggestionRequest struct {
@@ -52,6 +59,12 @@ type PromptSuggestionDeps struct {
 	Conversation *conv.ConversationModel
 	HasProvider  bool
 	BuildClient  func() *llm.Client
+	// Mission, when set, switches the hint from "predict the human's next input"
+	// to "propose the next step toward this mission" (the Suggest steer).
+	Mission string
+	// Suppress turns the hint off entirely — set when AutoPilot is engaged with
+	// the Suggest steer off, so the copilot doesn't nudge with an input guess.
+	Suppress bool
 }
 
 func StartPromptSuggestion(deps PromptSuggestionDeps) tea.Cmd {
@@ -95,10 +108,29 @@ func SuggestPromptCmd(req PromptSuggestionRequest) tea.Cmd {
 }
 
 func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRequest, bool) {
-	if !deps.HasProvider {
+	if !deps.HasProvider || deps.Suppress {
 		return PromptSuggestionRequest{}, false
 	}
 
+	startIdx := 0
+	if len(deps.Conversation.Messages) > maxSuggestionMessages {
+		startIdx = len(deps.Conversation.Messages) - maxSuggestionMessages
+	}
+
+	// Suggest steer: propose the next mission step. Works from the very start (no
+	// prior-turn requirement), since the opening step comes from the mission.
+	if mission := strings.TrimSpace(deps.Mission); mission != "" {
+		msgs := deps.Conversation.ConvertToProviderFrom(startIdx)
+		msgs = append(msgs, core.Message{Role: core.RoleUser, Content: "Mission:\n" + mission + "\n\nSuggest the next instruction to give the agent."})
+		return PromptSuggestionRequest{
+			Client:       deps.BuildClient(),
+			Messages:     msgs,
+			SystemPrompt: autopilotSuggestSystemPrompt,
+			MaxTokens:    60,
+		}, true
+	}
+
+	// Generic prediction needs some conversation to go on.
 	assistantCount := 0
 	for _, msg := range deps.Conversation.Messages {
 		if msg.Role == core.RoleAssistant {
@@ -107,11 +139,6 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 	}
 	if assistantCount < 2 {
 		return PromptSuggestionRequest{}, false
-	}
-
-	startIdx := 0
-	if len(deps.Conversation.Messages) > maxSuggestionMessages {
-		startIdx = len(deps.Conversation.Messages) - maxSuggestionMessages
 	}
 	msgs := deps.Conversation.ConvertToProviderFrom(startIdx)
 	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: SuggestionUserPrompt})

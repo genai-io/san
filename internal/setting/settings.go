@@ -80,6 +80,9 @@ type AutoPilotSettings struct {
 // Field names track the trigger: turnStart / turnEnd bracket the turn; the
 // middle three name the agent event that hands control over.
 type SteerSettings struct {
+	// Suggest fills the input hint with the copilot's proposed next step toward
+	// the mission — the gentlest steer: it suggests, the human accepts and sends.
+	Suggest bool `json:"suggest,omitempty"`
 	// TurnStart rewrites/augments each user input before it reaches the agent.
 	TurnStart bool `json:"turnStart,omitempty"`
 	// Permission auto-approves gray-zone tool calls. Tri-state so the baseline
@@ -128,7 +131,7 @@ func (a AutoPilotSettings) Clone() AutoPilotSettings {
 func (a AutoPilotSettings) IsZero() bool {
 	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
 		a.Mission == "" && a.MaxContinuations == 0 &&
-		!a.Steers.TurnStart && a.Steers.Permission == nil &&
+		!a.Steers.Suggest && !a.Steers.TurnStart && a.Steers.Permission == nil &&
 		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
 }
 
@@ -141,6 +144,7 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.SystemPromptFile == b.SystemPromptFile &&
 		a.Mission == b.Mission &&
 		a.MaxContinuations == b.MaxContinuations &&
+		a.Steers.Suggest == b.Steers.Suggest &&
 		a.Steers.TurnStart == b.Steers.TurnStart &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&

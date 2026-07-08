@@ -1,0 +1,148 @@
+# Autopilot
+
+## Overview
+
+Autopilot is San's autonomy system, designed to minimize human intervention: a
+copilot model cruises the session, keeping routine work moving and handing
+control back only when something genuinely needs you. It acts through a set of
+independently enabled **steers** — proposing or rewriting input, approving
+gray-zone tool calls, answering a command's interactive prompts, answering
+`AskUserQuestion`, and continuing finished turns toward a mission. Only
+gray-zone permission judging is on by default.
+
+Enter AutoPilot mode with `shift+tab` (cycle until the amber
+`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
+session (`san -r <id>`) comes back in the mode it was saved in.
+
+## The six steers
+
+Steers are à-la-carte toggles, ordered by increasing autonomy. None fire unless
+AutoPilot mode is engaged.
+
+| Steer | Default | What it does |
+|---|---|---|
+| **Suggest** | off | Fills the input hint (ghost text) with the copilot's proposed next step — toward the mission when one is set, the generic prediction otherwise. `tab` accepts, `enter` sends. It suggests; it never acts. With Suggest *off*, AutoPilot suppresses the hint entirely so the copilot doesn't nudge. |
+| **Start** | off | Owns the turn's input: rewrites each message you send into a clearer, mission-aligned instruction, and — when you enter AutoPilot with a mission set and an empty composer — kicks off the mission by deriving and submitting the first step itself. |
+| **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. Fails closed: any error escalates to you. |
+| **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
+| **Question** | off | Answers `AskUserQuestion` for you when the mission makes the choice clear and low-risk; defers to you otherwise. Option labels are validated verbatim — a partial or invented answer becomes a defer. |
+| **End** | off | After a finished turn, decides whether to continue toward the mission and types the next instruction itself. Bounded by **Continue at most N times** (default 20); the counter resets on every human turn. |
+
+## Mission
+
+The mission is what the copilot drives toward this session — briefed
+conversationally in the `/autopilot` panel's Mission dialog (`enter` sends,
+`ctrl+r` clears, `esc` saves back). The steering steers (Suggest, Start,
+Question, End) read it; the safety steers (Permission, Bash) deliberately never
+see it, so an action's risk is judged independently of intent.
+
+When the End steer decides the mission is **fully accomplished**, it retires
+it: the mission is cleared and the steers reset to the passive baseline
+(Permission + Bash) — AutoPilot stays on, you take the wheel back with the
+auto-approve safety net intact.
+
+## Demo: a hands-free scaffold
+
+A two-minute run that exercises the full loop — mission kick-off, gray-zone
+approval, auto-continuation, and completion — without touching anything outside
+a scratch directory.
+
+**1. Start San in an empty directory:**
+
+```bash
+mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
+```
+
+**2. Configure the copilot** — run `/autopilot`:
+
+- Toggle **Start** and **End** on (Permission is already on).
+- Open **Mission** and brief it:
+
+  > Scaffold a `notes/` directory: `todo.md` with a 3-item checklist, `done.md`
+  > empty, and `README.md` explaining the layout. Work one file per turn. When
+  > all three exist, verify with `ls notes/` — then the mission is complete.
+
+- `esc` back, then **Save**.
+
+**3. Engage** — press `shift+tab` until the mode line shows
+`⏵⏵ autopilot on`. That's the last key you need to press: with Start on, a
+mission set, and an empty composer, the copilot derives the opening step and
+submits it itself.
+
+**4. Watch the run.** Expect a transcript like:
+
+```
+❭ Create notes/todo.md with a 3-item checklist.
+  ↖ autopilot · 1/20
+● Write(notes/todo.md)
+  ⎿  Write → 5 lines
+❭ Create an empty notes/done.md.
+  ↖ autopilot · 2/20
+...
+● Bash(ls notes/)
+  ↳ auto-approved · read-only directory listing
+  ⎿  Bash → 3 lines
+  ✓ autopilot · mission complete
+```
+
+Every `❭` in the run carries the green `↖ autopilot` mark — the copilot typed
+them all, opening step included; you never touched the composer. The `ls` is a
+gray-zone call the Permission steer approved inline. On `✓ mission complete` the mission is cleared and the steers drop back
+to the passive baseline — open `/autopilot` to confirm — while AutoPilot stays
+engaged.
+
+To see the gentler end of the spectrum, rerun with only **Suggest** on: the
+copilot proposes each step as ghost text in the composer and you accept with
+`tab` + `enter`.
+
+## Reading the transcript
+
+| Mark | Meaning |
+|---|---|
+| green `↖ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5) |
+| green `↖ autopilot · refined` | the `❭` line above is your message, rewritten by the Start steer |
+| green `↳ auto-approved · <reason>` | the permission judge let the tool call above through |
+| amber `↳ escalated · <reason>` | the judge sent the call back to you |
+| green `⏵ autopilot · answered for you` | the copilot answered an `AskUserQuestion` |
+| amber `↩ autopilot · this question is yours` | it deferred the question to you |
+| amber `↩ autopilot · over to you` | it stopped and handed control back (a decide error rides after it) |
+| green `✓ autopilot · mission complete` | the mission is done and retired |
+
+While a decision is in flight the mode line reads `⏵⏵ autopilot · thinking…`;
+approvals tally there too (`· 3 approved · 1 escalated`).
+
+## Configuration
+
+The panel edits the live session config and saves it to `settings.json` as the
+default seed for new sessions. The session's config and mode also persist with
+the transcript and restore on `/resume`.
+
+```jsonc
+{
+  "autoPilot": {
+    "model": "anthropic/claude-haiku-4-5", // steer decisions; empty = session model
+    "systemPrompt": "…",                   // "how it drives" — shared by all steers
+    "systemPromptFile": "~/prompts/pilot.md", // used when systemPrompt is empty
+    "mission": "…",                        // usually set via the panel, per session
+    "maxContinuations": 20,
+    "steers": {
+      "suggest": true,
+      "turnStart": true,   // the Start steer
+      "permission": true,  // omit for the default (on); false escalates everything
+      "bashPrompt": true,  // the Bash steer
+      "question": true,
+      "turnEnd": true      // the End steer
+    }
+  }
+}
+```
+
+Named presets: the panel's **▲ Export / ▼ Import** save and load whole configs
+under `~/.san/autopilot/<name>.json`.
+
+## Relationship to other features
+
+- [Permission model](../concepts/permission-model.md) — the static rules whose
+  gray zone the Permission steer judges; hard-blocked actions never reach it.
+- The judge component lives in `internal/reviewer` (`reviewer.Judge`); the
+  steers and panel live in `internal/app` / `internal/app/input`.

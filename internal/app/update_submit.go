@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -80,11 +81,19 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 
 	// A human turn resets the auto-continue budget; a copilot-driven continuation
 	// (flagged) does not, so MaxContinuations bounds a run of consecutive
-	// auto-turns rather than the whole session.
+	// auto-turns rather than the whole session. Capture the copilot's note now,
+	// before the flags reset, so the built message can wear its "↖ autopilot ·
+	// <note>" annotation ("N/M" continuation, or "refined" rewrite).
+	autopilotNote := ""
 	if m.autopilotContinuing {
+		autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
 		m.autopilotContinuing = false
 	} else {
 		m.autopilotContinuations = 0
+	}
+	if m.autopilotRefined {
+		autopilotNote = "refined"
+		m.autopilotRefined = false
 	}
 
 	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {
@@ -108,6 +117,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	if m.imagesBlockedForModel(msg.Images) {
 		return tea.Batch(m.CommitMessages()...)
 	}
+	msg.AutopilotNote = autopilotNote
 	m.conv.Append(msg)
 	m.userInput.Reset()
 	return m.SubmitToAgent(msg.Content, msg.Images)

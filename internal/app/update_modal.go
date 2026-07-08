@@ -10,12 +10,22 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-func (m *model) cycleOperationMode() {
+func (m *model) cycleOperationMode() tea.Cmd {
 	allowBypass := m.services.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
 	m.env.ApplyModePermissions(m.env.CWD)
 
 	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
+	// Landing on AutoPilot with the Start steer + a mission opens it hands-free.
+	if cmd := m.autopilotKickCmd(); cmd != nil {
+		return cmd
+	}
+	// With the Suggest steer on, surface the opening proposal now rather than
+	// waiting for the first turn boundary.
+	if m.autopilotEngaged() && m.env.AutoPilot.Steers.Suggest {
+		return input.StartPromptSuggestion(m.promptSuggestionDeps())
+	}
+	return nil
 }
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {

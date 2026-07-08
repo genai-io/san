@@ -238,7 +238,7 @@ func TestRenderOperationModeIndicator_AutoPilotCounts(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, c.approvals, c.escalations))
+			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, c.approvals, c.escalations, false))
 			if !strings.Contains(out, "autopilot on") {
 				t.Fatalf("missing base label: %q", out)
 			}
@@ -254,8 +254,20 @@ func TestRenderOperationModeIndicator_AutoPilotCounts(t *testing.T) {
 
 func TestRenderOperationModeIndicator_CountsOnlyInAutoPilot(t *testing.T) {
 	// Approvals/escalations are an auto-review concept; other modes never show them.
-	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoAccept, 5, 4))
+	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoAccept, 5, 4, false))
 	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {
 		t.Errorf("accept-edits mode must not show review counts: %q", out)
+	}
+}
+
+func TestRenderOperationModeIndicator_Thinking(t *testing.T) {
+	// While the copilot decides, the indicator shows "thinking…" and drops the
+	// "on"/counts so the transient state lives here, not in a transcript line.
+	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, 3, 1, true))
+	if !strings.Contains(out, "thinking…") {
+		t.Fatalf("missing thinking label: %q", out)
+	}
+	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {
+		t.Errorf("thinking must suppress the counts: %q", out)
 	}
 }
