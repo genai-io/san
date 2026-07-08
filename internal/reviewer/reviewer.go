@@ -49,8 +49,9 @@ func New(provider llm.Provider, model string) *Judge {
 }
 
 // SetSystemPrompt overrides the judge's system prompt (the shared steering
-// prompt). A blank prompt keeps the current one, so an unreadable config file
-// safely falls back to the built-in.
+// prompt). A blank prompt is ignored, so the built-in default survives an empty
+// override. Callers that resolve their own fallback (the app's
+// autopilotSystemPrompt) always pass a non-empty prompt.
 func (r *Judge) SetSystemPrompt(prompt string) {
 	if strings.TrimSpace(prompt) != "" {
 		r.systemPrompt = prompt

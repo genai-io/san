@@ -61,11 +61,12 @@ func (m *model) autopilotSystemPrompt() string {
 		return s
 	}
 	if ar.SystemPromptFile != "" {
-		if b, err := os.ReadFile(ar.SystemPromptFile); err == nil && strings.TrimSpace(string(b)) != "" {
-			return string(b)
-		} else if err != nil {
+		b, err := os.ReadFile(ar.SystemPromptFile)
+		if err != nil {
 			log.Logger().Warn("autopilot systemPromptFile unreadable; using built-in system prompt",
 				zap.String("file", ar.SystemPromptFile), zap.Error(err))
+		} else if strings.TrimSpace(string(b)) != "" {
+			return string(b)
 		}
 	}
 	return reviewer.DefaultSystemPrompt()
@@ -73,12 +74,9 @@ func (m *model) autopilotSystemPrompt() string {
 
 // steerSystemPrompt prefaces an app-side steer's task-specific instruction with
 // the shared system prompt, so every steer speaks with the same persona and
-// honors the same boundaries the user configured — mirroring how reviewer.Judge
-// prefaces its per-call task with the system prompt it holds.
+// honors the same boundaries the user configured. The prompt is always
+// non-empty (autopilotSystemPrompt falls back to the built-in default).
 func steerSystemPrompt(systemPrompt, task string) string {
-	if strings.TrimSpace(systemPrompt) == "" {
-		return task
-	}
 	return systemPrompt + "\n\n" + task
 }
 
