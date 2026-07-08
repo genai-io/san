@@ -11,7 +11,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/hub"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
@@ -31,7 +30,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if cmd := m.persistAfterTurn(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	if cmd := input.StartPromptSuggestion(m.promptSuggestionDeps()); cmd != nil {
+	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	if msg.Result.StopReason != "" && msg.Result.StopReason != core.StopEndTurn {

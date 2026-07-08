@@ -60,11 +60,10 @@ type PromptSuggestionDeps struct {
 	HasProvider  bool
 	BuildClient  func() *llm.Client
 	// Mission, when set, switches the hint from "predict the human's next input"
-	// to "propose the next step toward this mission" (the Suggest steer).
+	// to "propose the next step toward this mission" (the Suggest steer). Read
+	// live by the caller from the autopilot config — this package holds no
+	// autopilot state of its own.
 	Mission string
-	// Silent holds the hint back entirely — set when AutoPilot is engaged with
-	// the Suggest steer off, so the copilot doesn't nudge with an input guess.
-	Silent bool
 }
 
 func StartPromptSuggestion(deps PromptSuggestionDeps) tea.Cmd {
@@ -108,7 +107,7 @@ func SuggestPromptCmd(req PromptSuggestionRequest) tea.Cmd {
 }
 
 func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRequest, bool) {
-	if !deps.HasProvider || deps.Silent {
+	if !deps.HasProvider {
 		return PromptSuggestionRequest{}, false
 	}
 

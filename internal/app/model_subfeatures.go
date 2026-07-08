@@ -19,31 +19,36 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
+// startPromptSuggestion fires the input hint, unless AutoPilot is engaged with
+// the Suggest steer off — in which case the copilot deliberately doesn't nudge.
+// Both this gate and the mission below read the live autopilot config; the hint
+// keeps no autopilot state of its own, so AutoPilot is the single source.
+func (m *model) startPromptSuggestion() tea.Cmd {
+	if m.autopilotEngaged() && !m.env.AutoPilot.Steers.Suggest {
+		return nil
+	}
+	return input.StartPromptSuggestion(m.promptSuggestionDeps())
+}
+
 func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
-	mission, silent := m.autopilotSuggestState()
 	return input.PromptSuggestionDeps{
 		Input:        &m.userInput,
 		Conversation: &m.conv.ConversationModel,
 		HasProvider:  m.env.LLMProvider != nil,
 		BuildClient:  m.buildLLMClient,
-		Mission:      mission,
-		Silent:       silent,
+		Mission:      m.autopilotSuggestMission(),
 	}
 }
 
-// autopilotSuggestState decides how the input hint behaves under AutoPilot: with
-// the Suggest steer on it always suggests — proposing the next step toward the
-// mission when one is set, or the generic prediction when not — while with the
-// steer off the hint stays silent so the copilot doesn't nudge. Outside
-// AutoPilot the generic prediction runs unchanged.
-func (m *model) autopilotSuggestState() (mission string, silent bool) {
-	if !m.autopilotEngaged() {
-		return "", false
+// autopilotSuggestMission returns the mission the Suggest steer should propose
+// the next step toward — the live autopilot mission when the steer is on, else
+// "" for the generic prediction. Read fresh from env every call, so clearing
+// the mission (End completion / ctrl+r / panel) takes effect immediately.
+func (m *model) autopilotSuggestMission() string {
+	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.Suggest {
+		return ""
 	}
-	if !m.env.AutoPilot.Steers.Suggest {
-		return "", true
-	}
-	return strings.TrimSpace(m.env.AutoPilot.Mission), false
+	return strings.TrimSpace(m.env.AutoPilot.Mission)
 }
 
 func (m *model) overlayDeps() input.OverlayDeps {

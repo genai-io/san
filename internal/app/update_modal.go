@@ -47,10 +47,7 @@ func (m *model) handleAutopilotModeSettled() tea.Cmd {
 	if cmd := m.autopilotKickCmd(); cmd != nil {
 		return cmd
 	}
-	if m.env.AutoPilot.Steers.Suggest {
-		return input.StartPromptSuggestion(m.promptSuggestionDeps())
-	}
-	return nil
+	return m.startPromptSuggestion()
 }
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {

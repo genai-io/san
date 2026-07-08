@@ -13,7 +13,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -123,7 +122,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		if cmd := m.persistAfterTurn(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
-		if cmd := input.StartPromptSuggestion(m.promptSuggestionDeps()); cmd != nil {
+		if cmd := m.startPromptSuggestion(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
 		commitCmds = append(commitCmds, m.ContinueOutbox())
