@@ -158,29 +158,29 @@ func Test_SystemPromptOverride(t *testing.T) {
 	r := New(s, "model")
 	req := Request{ToolName: "Bash", Args: map[string]any{"command": "date"}}
 
-	// The built-in rubric is used until overridden.
+	// The built-in system prompt is used until overridden.
 	_, _ = r.Permission(context.Background(), req)
 	if s.lastSystemPrompt != defaultSystemPrompt {
-		t.Errorf("Permission used %q, want the built-in rubric", s.lastSystemPrompt)
+		t.Errorf("Permission used %q, want the built-in system prompt", s.lastSystemPrompt)
 	}
 
-	// A custom rubric replaces it.
-	r.SetSystemPrompt("MY CUSTOM RUBRIC")
+	// A custom system prompt replaces it.
+	r.SetSystemPrompt("MY CUSTOM SYSTEM PROMPT")
 	_, _ = r.Permission(context.Background(), req)
-	if s.lastSystemPrompt != "MY CUSTOM RUBRIC" {
-		t.Errorf("Permission used %q, want the custom rubric", s.lastSystemPrompt)
+	if s.lastSystemPrompt != "MY CUSTOM SYSTEM PROMPT" {
+		t.Errorf("Permission used %q, want the custom system prompt", s.lastSystemPrompt)
 	}
 
 	// BashPrompt shares the same customizable system prompt — only the per-call
 	// task differs, and that rides in the user message.
 	_, _ = r.BashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
-	if s.lastSystemPrompt != "MY CUSTOM RUBRIC" {
-		t.Errorf("BashPrompt used %q, want the shared custom rubric", s.lastSystemPrompt)
+	if s.lastSystemPrompt != "MY CUSTOM SYSTEM PROMPT" {
+		t.Errorf("BashPrompt used %q, want the shared custom system prompt", s.lastSystemPrompt)
 	}
 
 	// A blank override keeps the current prompt (unreadable config → built-in).
 	r.SetSystemPrompt("   ")
-	if r.systemPrompt != "MY CUSTOM RUBRIC" {
+	if r.systemPrompt != "MY CUSTOM SYSTEM PROMPT" {
 		t.Errorf("blank override changed the prompt to %q", r.systemPrompt)
 	}
 }

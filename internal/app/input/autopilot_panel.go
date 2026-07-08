@@ -192,8 +192,8 @@ func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
 func (p *AutopilotSelector) openView(v autopilotView) {
 	switch v {
 	case apSystemPrompt:
-		// Seed with the built-in doctrine when there's no override, so the user
-		// sees and edits the real prompt rather than a blank box.
+		// Seed with the built-in system prompt when there's no override, so the
+		// user sees and edits the real prompt rather than a blank box.
 		seed := p.snap.SystemPrompt
 		if seed == "" {
 			seed = reviewer.DefaultSystemPrompt()
@@ -252,7 +252,7 @@ func (p *AutopilotSelector) save() tea.Cmd {
 func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 	if msg.String() == "esc" {
 		val := strings.TrimRight(p.prompt.Value(), "\n")
-		// Left as the built-in doctrine (unchanged) → store nothing, so the
+		// Left as the built-in system prompt (unchanged) → store nothing, so the
 		// panel keeps reading "built-in" and Dirty() doesn't flag a no-op edit.
 		if strings.TrimSpace(val) == strings.TrimSpace(reviewer.DefaultSystemPrompt()) {
 			val = ""

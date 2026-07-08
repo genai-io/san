@@ -52,7 +52,7 @@ type Data struct {
 }
 
 // AutoPilotSettings tunes the autopilot copilot. Every field is optional;
-// empty keeps the built-in defaults (session model + built-in doctrine, no
+// empty keeps the built-in defaults (session model + built-in system prompt, no
 // mission, permission steer on).
 type AutoPilotSettings struct {
 	// Model overrides the model used for steer decisions. A bare id (e.g.
@@ -60,11 +60,11 @@ type AutoPilotSettings struct {
 	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
 	// Empty uses the session model.
 	Model string `json:"model,omitempty"`
-	// SystemPrompt replaces the built-in steering doctrine inline (edited in
+	// SystemPrompt replaces the built-in steering prompt inline (edited in
 	// the /autopilot panel). Takes precedence over SystemPromptFile.
 	SystemPrompt string `json:"systemPrompt,omitempty"`
-	// SystemPromptFile loads the doctrine from a file. Used only when
-	// SystemPrompt is empty; empty falls back to the built-in doctrine.
+	// SystemPromptFile loads the system prompt from a file. Used only when
+	// SystemPrompt is empty; empty falls back to the built-in system prompt.
 	SystemPromptFile string `json:"systemPromptFile,omitempty"`
 	// Mission is the per-session directive the copilot steers toward — the
 	// briefing composed in the /autopilot Mission dialog.

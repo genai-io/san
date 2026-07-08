@@ -43,21 +43,43 @@ func (m *model) rebuildAutopilotReviewer() {
 	ar := m.env.AutoPilot
 	provider, modelID := m.resolveReviewerModel(ar.Model)
 	rev := reviewer.New(provider, modelID)
-	switch {
-	case ar.SystemPrompt != "":
-		rev.SetSystemPrompt(ar.SystemPrompt)
-	case ar.SystemPromptFile != "":
-		if b, err := os.ReadFile(ar.SystemPromptFile); err == nil {
-			rev.SetSystemPrompt(string(b))
-		} else {
-			log.Logger().Warn("autopilot systemPromptFile unreadable; using built-in doctrine",
-				zap.String("file", ar.SystemPromptFile), zap.Error(err))
-		}
-	}
+	rev.SetSystemPrompt(m.autopilotSystemPrompt())
 	// Publish the judge and the config it resolved from as one snapshot so the
 	// agent goroutine (steer gates + reviewer) never sees a judge/config skew;
 	// Clone keeps the snapshot independent of later UI-goroutine edits.
 	m.autopilot.Store(&autopilotRuntime{judge: rev, cfg: ar.Clone()})
+}
+
+// autopilotSystemPrompt resolves the copilot's shared "how it drives" system
+// prompt — the general steering preamble the judge AND every app-side steer
+// (rewrite / continue / question) preface their per-call task with, so all five
+// speak with one configured voice. An inline SystemPrompt wins, then a readable
+// SystemPromptFile, then the built-in default.
+func (m *model) autopilotSystemPrompt() string {
+	ar := m.env.AutoPilot
+	if s := strings.TrimSpace(ar.SystemPrompt); s != "" {
+		return s
+	}
+	if ar.SystemPromptFile != "" {
+		if b, err := os.ReadFile(ar.SystemPromptFile); err == nil && strings.TrimSpace(string(b)) != "" {
+			return string(b)
+		} else if err != nil {
+			log.Logger().Warn("autopilot systemPromptFile unreadable; using built-in system prompt",
+				zap.String("file", ar.SystemPromptFile), zap.Error(err))
+		}
+	}
+	return reviewer.DefaultSystemPrompt()
+}
+
+// steerSystemPrompt prefaces an app-side steer's task-specific instruction with
+// the shared system prompt, so every steer speaks with the same persona and
+// honors the same boundaries the user configured — mirroring how reviewer.Judge
+// prefaces its per-call task with the system prompt it holds.
+func steerSystemPrompt(systemPrompt, task string) string {
+	if strings.TrimSpace(systemPrompt) == "" {
+		return task
+	}
+	return systemPrompt + "\n\n" + task
 }
 
 // liveAutopilotConfig returns the synchronized config snapshot for the agent
@@ -175,9 +197,9 @@ type autopilotDecisionMsg struct {
 	err         error
 }
 
-const continueDecisionPrompt = `You are the autopilot copilot steering a coding agent toward a mission across turns. The agent just finished a turn and is about to hand control back to the human.
+const continueDecisionTask = `The agent just finished a turn and is about to hand control back to the human. Decide whether to keep it going toward the mission.
 
-Decide whether to keep it going. Reply with ONLY a JSON object:
+Reply with ONLY a JSON object:
 {"continue": true|false, "instruction": "the next thing to tell the agent"}
 
 Set continue=true only if the mission is clearly not yet complete AND there is a concrete, safe next step you can direct. The instruction is a short, direct imperative — exactly what you'd type to the agent as the next message.
@@ -205,16 +227,17 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		return nil
 	}
 	last := core.LastAssistantChatContent(m.conv.Messages)
+	systemPrompt := m.autopilotSystemPrompt()
 	m.conv.AddNotice(autopilotHint("thinking…"))
 	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		cont, instruction, err := autopilotDecideContinue(ctx, provider, modelID, mission, last)
+		cont, instruction, err := autopilotDecideContinue(ctx, provider, modelID, systemPrompt, mission, last)
 		return autopilotDecisionMsg{result: result, cont: cont, instruction: instruction, err: err}
 	})
 }
 
-func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID, mission, lastTurn string) (bool, string, error) {
+func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, lastTurn string) (bool, string, error) {
 	user := "Mission:\n" + mission + "\n\nThe agent's last turn ended with:\n" + kit.TruncateText(lastTurn, 2000)
-	content, err := autopilotComplete(ctx, provider, modelID, continueDecisionPrompt, user, 400)
+	content, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, continueDecisionTask), user, 400)
 	if err != nil {
 		return false, "", err
 	}
@@ -284,7 +307,7 @@ type autopilotQuestionMsg struct {
 	answer  bool // false = defer to the human
 }
 
-const questionAnswerPrompt = `You are the autopilot copilot for a coding agent. The agent has paused to ask the user a question. Answer it on the user's behalf ONLY when the mission makes the right choice clear and low-risk.
+const questionAnswerTask = `The agent has paused to ask the user a question. Answer it on the user's behalf ONLY when the mission makes the right choice clear and low-risk.
 
 Reply with ONLY a JSON object:
 {"defer": false, "answers": {"0": ["Exact option label"], "1": ["Label A","Label B"]}}
@@ -306,13 +329,14 @@ func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 		return nil
 	}
 	mission := strings.TrimSpace(ar.Mission)
+	systemPrompt := m.autopilotSystemPrompt()
 	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		answers, ok := autopilotAnswerQuestion(ctx, provider, modelID, mission, req)
+		answers, ok := autopilotAnswerQuestion(ctx, provider, modelID, systemPrompt, mission, req)
 		return autopilotQuestionMsg{req: req, answers: answers, answer: ok}
 	})
 }
 
-func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, mission string, req *tool.QuestionRequest) (map[int][]string, bool) {
+func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission string, req *tool.QuestionRequest) (map[int][]string, bool) {
 	var b strings.Builder
 	if mission != "" {
 		b.WriteString("Mission:\n" + mission + "\n\n")
@@ -337,7 +361,7 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 			b.WriteString("\n")
 		}
 	}
-	content, err := autopilotComplete(ctx, provider, modelID, questionAnswerPrompt, b.String(), 500)
+	content, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, questionAnswerTask), b.String(), 500)
 	if err != nil {
 		return nil, false
 	}
@@ -373,7 +397,7 @@ type autopilotRewriteMsg struct {
 	rewritten string
 }
 
-const rewritePrompt = `You are the autopilot copilot for a coding agent. Rewrite the user's message into a clearer, more complete instruction for the agent, aligned with the session mission — keep the user's intent, add the specifics the mission implies, and drop nothing they asked for.
+const rewriteTask = `Rewrite the user's message into a clearer, more complete instruction for the agent, aligned with the session mission — keep the user's intent, add the specifics the mission implies, and drop nothing they asked for.
 
 Return ONLY the rewritten message, with no preamble, quotes, or explanation. If the message is already clear and complete, return it unchanged.`
 
@@ -382,7 +406,7 @@ Return ONLY the rewritten message, with no preamble, quotes, or explanation. If 
 // before sending. It returns (nil, false) — proceed normally — for the re-submit
 // of an already rewritten message, copilot continuations, slash commands, and
 // empty input.
-func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
+func (m *model) autopilotRewriteCmd(userMessage string) (tea.Cmd, bool) {
 	if m.autopilotRewrote {
 		m.autopilotRewrote = false // this IS the rewritten re-submit
 		return nil, false
@@ -391,8 +415,8 @@ func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
 	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotContinuing {
 		return nil, false
 	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" || strings.HasPrefix(raw, "/") {
+	userMessage = strings.TrimSpace(userMessage)
+	if userMessage == "" || strings.HasPrefix(userMessage, "/") {
 		return nil, false // never touch slash commands or empty input
 	}
 	provider, modelID := m.resolveReviewerModel(ar.Model)
@@ -400,19 +424,20 @@ func (m *model) autopilotRewriteCmd(raw string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	mission := strings.TrimSpace(ar.Mission)
+	systemPrompt := m.autopilotSystemPrompt()
 	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		return autopilotRewriteMsg{original: raw, rewritten: autopilotRewriteInput(ctx, provider, modelID, mission, raw)}
+		return autopilotRewriteMsg{original: userMessage, rewritten: autopilotRewriteInput(ctx, provider, modelID, systemPrompt, mission, userMessage)}
 	}), true
 }
 
-func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, mission, raw string) string {
-	user := raw
+func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, userMessage string) string {
+	user := userMessage
 	if mission != "" {
-		user = "Mission:\n" + mission + "\n\nUser's message:\n" + raw
+		user = "Mission:\n" + mission + "\n\nUser's message:\n" + userMessage
 	}
-	out, err := autopilotComplete(ctx, provider, modelID, rewritePrompt, user, 1000)
+	out, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, rewriteTask), user, 1000)
 	if err != nil || out == "" {
-		return raw // fail open: send the original
+		return userMessage // fail open: send the original
 	}
 	return out
 }
