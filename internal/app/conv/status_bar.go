@@ -365,11 +365,10 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	}
 
 	if mode == setting.ModeAutoPilot {
-		switch {
-		case autopilotThinking:
+		if autopilotThinking {
 			// The copilot is deciding — surface it here instead of a transcript line.
 			label = " autopilot · thinking…"
-		default:
+		} else {
 			if reviewApprovals > 0 {
 				label += fmt.Sprintf(" · %d approved", reviewApprovals)
 			}

@@ -96,11 +96,10 @@ var (
 	autopilotDoneMark = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 )
 
-// autopilotHint formats a concise copilot notice: an amber "⏵ autopilot" mark
-// (the same brand as the mode indicator) plus a dimmed detail. It states only
-// what the copilot did — never the instruction itself, which reads back as the
-// submitted message — so the transcript looks like a human driving the session,
-// echoing the terse inline review-decision hints rather than a verbose insert.
+// autopilotHint formats a plain amber "⏵ autopilot · <detail>" notice — the
+// neutral copilot mark (same brand as the mode indicator). Used for the one-off
+// "start failed" message; the handback / action / mission-done notices below
+// carry their own arrow + colour.
 func autopilotHint(detail string) string {
 	return autopilotHintMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
