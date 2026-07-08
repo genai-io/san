@@ -155,6 +155,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case autopilotRewriteMsg:
 		// The TurnStart steer's rewrite came back; re-submit it.
 		return m, m.handleAutopilotRewrite(msg)
+	case autopilotModeSettledMsg:
+		// The mode has rested on AutoPilot long enough to open it hands-free.
+		return m, m.handleAutopilotModeSettled()
 	case input.AutopilotSavedMsg:
 		// Apply the edit to the live session (persists/resumes with the session),
 		// hot-swap the running judge so the new model/prompt/steers take effect at

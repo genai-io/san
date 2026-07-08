@@ -231,6 +231,37 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		m.conv.AddNotice(autopilotHandback("")) // spent the budget; the ↖ N/N above says why
 		return nil
 	}
+	return m.autopilotDecideCmd(result, false)
+}
+
+// autopilotKickCmd opens the mission when the human hasn't: on entering AutoPilot
+// with the TurnStart steer on, a mission set, and the agent idle, it derives the
+// first step from the mission (the same decision as TurnEnd, just an empty-ish
+// transcript) and submits it — so briefing a mission and switching autopilot on
+// is enough to start, with no opening turn to type. Returns nil when any
+// precondition is unmet, the human is mid-compose (don't clobber input), or a
+// decision is already in flight (don't stack on rapid mode cycling).
+func (m *model) autopilotKickCmd() tea.Cmd {
+	ar := m.env.AutoPilot
+	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotDeciding {
+		return nil
+	}
+	if m.conv.Stream.Active || strings.TrimSpace(m.userInput.FullValue()) != "" {
+		return nil
+	}
+	if m.autopilotContinuations >= ar.ResolvedMaxContinuations() {
+		return nil
+	}
+	return m.autopilotDecideCmd(core.Result{}, true)
+}
+
+// autopilotDecideCmd is the shared tail of the TurnEnd continuation and the Start
+// kick: it resolves the mission/model, renders the recent transcript, marks the
+// mode line "thinking…", and fires the async continue/done decision. The callers
+// own their distinct gates (steer toggle, budget notice, mid-compose check);
+// this owns the one decision pipeline so the two can't drift apart.
+func (m *model) autopilotDecideCmd(result core.Result, kick bool) tea.Cmd {
+	ar := m.env.AutoPilot
 	mission := strings.TrimSpace(ar.Mission)
 	if mission == "" {
 		return nil // no mission to steer toward
@@ -244,41 +275,7 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 	m.autopilotDeciding = true // shown on the mode indicator, not a transcript line
 	return autopilotAsync(func(ctx context.Context) tea.Msg {
 		cont, done, instruction, err := autopilotDecideContinue(ctx, provider, modelID, systemPrompt, mission, transcript)
-		return autopilotDecisionMsg{result: result, cont: cont, done: done, instruction: instruction, err: err}
-	})
-}
-
-// autopilotKickCmd opens the mission when the human hasn't: on entering AutoPilot
-// with the TurnStart steer on, a mission set, and the agent idle, it derives the
-// first step from the mission (the same decision as TurnEnd, just an empty-ish
-// transcript) and submits it — so briefing a mission and switching autopilot on
-// is enough to start, with no opening turn to type. Returns nil when any
-// precondition is unmet, or when the human is mid-compose (don't clobber input).
-func (m *model) autopilotKickCmd() tea.Cmd {
-	ar := m.env.AutoPilot
-	if !m.autopilotEngaged() || !ar.Steers.TurnStart {
-		return nil
-	}
-	if m.conv.Stream.Active || strings.TrimSpace(m.userInput.FullValue()) != "" {
-		return nil
-	}
-	if m.autopilotContinuations >= ar.ResolvedMaxContinuations() {
-		return nil
-	}
-	mission := strings.TrimSpace(ar.Mission)
-	if mission == "" {
-		return nil
-	}
-	provider, modelID := m.resolveReviewerModel(ar.Model)
-	if provider == nil {
-		return nil
-	}
-	transcript := autopilotRecentTranscript(m.conv.Messages, 3000)
-	systemPrompt := m.autopilotSystemPrompt()
-	m.autopilotDeciding = true // shown on the mode indicator, not a transcript line
-	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		cont, done, instruction, err := autopilotDecideContinue(ctx, provider, modelID, systemPrompt, mission, transcript)
-		return autopilotDecisionMsg{kick: true, cont: cont, done: done, instruction: instruction, err: err}
+		return autopilotDecisionMsg{result: result, kick: kick, cont: cont, done: done, instruction: instruction, err: err}
 	})
 }
 
@@ -339,10 +336,20 @@ func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID
 // prior turn) fires no idle hooks and stays quiet when it finds nothing to open.
 func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 	m.autopilotDeciding = false // the "thinking…" indicator clears here
-	// The human may have started a turn, or cycled out of AutoPilot, while the
-	// decision was in flight; if so, stand down entirely.
-	if m.conv.Stream.Active || !m.autopilotEngaged() {
+	// A turn is already in flight (a new stream, or a compaction mid-apply) — the
+	// running turn owns the lifecycle, so drop this stale decision silently.
+	if m.conv.Stream.Active || m.conv.Compact.Active {
 		return nil
+	}
+	// The human took over while we were deciding — left AutoPilot, or started
+	// typing their own next message. Don't act (and never clobber their draft);
+	// hand the finished turn back to them by firing the idle hooks OnTurnEnd
+	// deferred to us (a kick had no prior turn, so it has none to fire).
+	if !m.autopilotEngaged() || strings.TrimSpace(m.userInput.FullValue()) != "" {
+		if msg.kick {
+			return nil
+		}
+		return m.fireIdleHooksCmd(msg.result)
 	}
 	if msg.err == nil && msg.cont && msg.instruction != "" {
 		m.autopilotContinuations++
@@ -377,14 +384,16 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 }
 
 // retireAutopilotMission winds down a finished mission without leaving AutoPilot:
-// it clears the mission and resets the steers to the passive baseline (permission
-// + bash judging), so the copilot stops actively driving — no more continue,
-// rewrite, or auto-answer — and just keeps auto-approving while the human takes
-// over. Session-scoped: the saved settings.json config (the user's template) is
-// left untouched.
+// it clears the mission and turns off the driving steers (Suggest, TurnStart,
+// Question, TurnEnd), so the copilot stops actively driving — no more suggest,
+// rewrite, auto-answer, or continue — while the passive safety steers stay
+// exactly as the user configured them (a Bash steer they left off is NOT flipped
+// on, an explicit permission:false is NOT overridden). Session-scoped: the saved
+// settings.json config (the user's template) is left untouched.
 func (m *model) retireAutopilotMission() {
 	m.env.AutoPilot.Mission = ""
-	m.env.AutoPilot.Steers = setting.SteerSettings{BashPrompt: true} // Permission nil = on
+	s := &m.env.AutoPilot.Steers
+	s.Suggest, s.TurnStart, s.Question, s.TurnEnd = false, false, false, false
 	m.rebuildAutopilotReviewer()
 }
 
@@ -522,7 +531,8 @@ Return ONLY the rewritten message, with no preamble, quotes, or explanation. If 
 // TurnStart steer are on, returning (cmd, true) to rewrite it asynchronously
 // before sending. It returns (nil, false) — proceed normally — for the re-submit
 // of an already rewritten message, copilot continuations, slash commands, and
-// empty input.
+// empty input. While a rewrite is already in flight it swallows the submission
+// (nil, true) so a second Enter can't launch a second rewrite / double-submit.
 func (m *model) autopilotRewriteCmd(userMessage string) (tea.Cmd, bool) {
 	if m.autopilotRewrote {
 		m.autopilotRewrote = false // this IS the rewritten re-submit
@@ -531,6 +541,9 @@ func (m *model) autopilotRewriteCmd(userMessage string) (tea.Cmd, bool) {
 	ar := m.env.AutoPilot
 	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotContinuing {
 		return nil, false
+	}
+	if m.autopilotRewriting {
+		return nil, true // a rewrite is in flight; it will submit — swallow this Enter
 	}
 	userMessage = strings.TrimSpace(userMessage)
 	if userMessage == "" || strings.HasPrefix(userMessage, "/") {
@@ -542,6 +555,7 @@ func (m *model) autopilotRewriteCmd(userMessage string) (tea.Cmd, bool) {
 	}
 	mission := strings.TrimSpace(ar.Mission)
 	systemPrompt := m.autopilotSystemPrompt()
+	m.autopilotRewriting = true
 	m.autopilotDeciding = true // rewrite in flight — "thinking…" on the mode line
 	return autopilotAsync(func(ctx context.Context) tea.Msg {
 		return autopilotRewriteMsg{original: userMessage, rewritten: autopilotRewriteInput(ctx, provider, modelID, systemPrompt, mission, userMessage)}
@@ -567,6 +581,7 @@ func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, 
 // user left AutoPilot while the rewrite ran.
 func (m *model) handleAutopilotRewrite(msg autopilotRewriteMsg) tea.Cmd {
 	m.autopilotDeciding = false
+	m.autopilotRewriting = false
 	text := msg.rewritten
 	if text == "" {
 		text = msg.original
@@ -599,6 +614,12 @@ func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
 	// Drop if the question is no longer pending (human answered, or agent stopped
 	// and drained it).
 	if m.conv.Modal.PendingQuestion != msg.req || m.conv.Modal.PendingQuestionReply == nil {
+		return nil
+	}
+	// The human may have left AutoPilot (or turned the Question steer off) while
+	// the answer inference ran — precisely to answer it themselves. If so, leave
+	// the modal up for them.
+	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.Question {
 		return nil
 	}
 	if !msg.answer || len(msg.answers) == 0 {

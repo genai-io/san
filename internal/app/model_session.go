@@ -154,10 +154,14 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	}
 
 	// Restore the session's autopilot config; an empty blob (e.g. an older
-	// session) leaves the settings-seeded default in place.
+	// session) leaves the settings-seeded default in place. Rebuild the runtime
+	// snapshot so a mid-session /resume (the agent may already be running) takes
+	// the resumed steers/model/permission config immediately, not on the next
+	// /autopilot Save.
 	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
 		m.env.AutoPilot = ar
 	}
+	m.rebuildAutopilotReviewer()
 
 	// Resume into the operation mode the session was saved in, so an autopilot
 	// run picks up where it left off without re-cycling shift+tab. (Bypass never

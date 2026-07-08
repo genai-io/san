@@ -265,15 +265,15 @@ func (m *env) SessionMode() string {
 	}
 }
 
-// parseSessionMode is SessionMode's inverse, mapping a persisted session mode
-// back to the OperationMode a resumed session restores into. Unknown or empty
-// strings map to Normal; bypass is never persisted (SessionMode folds it into
-// "normal"), so a resumed session can't silently regain bypass.
+// parseSessionMode maps a persisted session mode back to the OperationMode a
+// resumed session restores into, reusing the canonical string parser but folding
+// everything except the two elevated cycle modes to Normal — so a resumed (or
+// hand-edited) session can never silently regain bypass / dont-ask.
 func parseSessionMode(mode string) setting.OperationMode {
-	switch mode {
-	case "auto-accept":
+	switch setting.OperationModeFromString(mode) {
+	case setting.ModeAutoAccept:
 		return setting.ModeAutoAccept
-	case "auto-pilot":
+	case setting.ModeAutoPilot:
 		return setting.ModeAutoPilot
 	default:
 		return setting.ModeNormal
