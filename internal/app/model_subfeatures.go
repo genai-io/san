@@ -19,15 +19,41 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// startPromptSuggestion fires the input hint, unless AutoPilot is engaged with
-// the Suggest steer off — in which case the copilot deliberately doesn't nudge.
-// Both this gate and the mission below read the live autopilot config; the hint
-// keeps no autopilot state of its own, so AutoPilot is the single source.
+// autopilotSuggestSystemPrompt drives the input hint when the Suggest steer is
+// on: it proposes the next step toward the mission as a ready-to-send imperative
+// the human can accept, rather than guessing what the human would type.
+const autopilotSuggestSystemPrompt = `You are the autopilot copilot for a coding assistant. Given the mission and the session so far, suggest the SINGLE next instruction to give the agent — a short, direct imperative the user can accept and send as-is.
+Reply with ONLY that instruction (a few words to one sentence). No quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
+
+// startPromptSuggestion fires the input hint. AutoPilot owns the whole decision
+// here, reading its live config directly so the hint holds no autopilot state:
+// with the Suggest steer off it stays silent (no nudge); with a mission set it
+// proposes the next step toward it; otherwise it falls back to predicting the
+// human's next input.
 func (m *model) startPromptSuggestion() tea.Cmd {
+	if m.env.LLMProvider == nil {
+		return nil
+	}
 	if m.autopilotEngaged() && !m.env.AutoPilot.Steers.Suggest {
 		return nil
 	}
+	if mission := m.autopilotSuggestMission(); mission != "" {
+		return m.userInput.PromptSuggestion.Start(m.missionSuggestionRequest(mission))
+	}
 	return input.StartPromptSuggestion(m.promptSuggestionDeps())
+}
+
+// missionSuggestionRequest builds the Suggest-steer hint: the recent session
+// plus the mission, asking for the single next instruction to give the agent.
+func (m *model) missionSuggestionRequest(mission string) input.PromptSuggestionRequest {
+	msgs := input.RecentSuggestionMessages(&m.conv.ConversationModel)
+	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: "Mission:\n" + mission + "\n\nSuggest the next instruction to give the agent."})
+	return input.PromptSuggestionRequest{
+		Client:       m.buildLLMClient(),
+		Messages:     msgs,
+		SystemPrompt: autopilotSuggestSystemPrompt,
+		MaxTokens:    60,
+	}
 }
 
 func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
@@ -36,14 +62,13 @@ func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
 		Conversation: &m.conv.ConversationModel,
 		HasProvider:  m.env.LLMProvider != nil,
 		BuildClient:  m.buildLLMClient,
-		Mission:      m.autopilotSuggestMission(),
 	}
 }
 
 // autopilotSuggestMission returns the mission the Suggest steer should propose
 // the next step toward — the live autopilot mission when the steer is on, else
-// "" for the generic prediction. Read fresh from env every call, so clearing
-// the mission (End completion / ctrl+r / panel) takes effect immediately.
+// "". Read fresh from env every call, so clearing the mission (End completion /
+// ctrl+r / panel) takes effect immediately.
 func (m *model) autopilotSuggestMission() string {
 	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.Suggest {
 		return ""

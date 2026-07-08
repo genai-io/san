@@ -2,7 +2,6 @@ package input
 
 import (
 	"context"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -37,12 +36,6 @@ If unsure, reply with nothing.`
 const SuggestionUserPrompt = `[PREDICTION MODE] Based on this conversation, predict what the user will type next.
 Stay silent if the next step isn't obvious. Match the user's language and style.`
 
-// autopilotSuggestSystemPrompt drives the input hint when the Suggest steer is
-// on: it proposes the next step toward the mission as a ready-to-send imperative
-// the human can accept, rather than guessing what the human would type.
-const autopilotSuggestSystemPrompt = `You are the autopilot copilot for a coding assistant. Given the mission and the session so far, suggest the SINGLE next instruction to give the agent — a short, direct imperative the user can accept and send as-is.
-Reply with ONLY that instruction (a few words to one sentence). No quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
-
 const maxSuggestionMessages = 20
 
 type PromptSuggestionRequest struct {
@@ -59,11 +52,6 @@ type PromptSuggestionDeps struct {
 	Conversation *conv.ConversationModel
 	HasProvider  bool
 	BuildClient  func() *llm.Client
-	// Mission, when set, switches the hint from "predict the human's next input"
-	// to "propose the next step toward this mission" (the Suggest steer). Read
-	// live by the caller from the autopilot config — this package holds no
-	// autopilot state of its own.
-	Mission string
 }
 
 func StartPromptSuggestion(deps PromptSuggestionDeps) tea.Cmd {
@@ -71,14 +59,33 @@ func StartPromptSuggestion(deps PromptSuggestionDeps) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	return deps.Input.PromptSuggestion.Start(req)
+}
 
-	deps.Input.PromptSuggestion.Clear()
-
+// Start runs a pre-built suggestion request, wiring its cancellation into the
+// state so it supersedes any in-flight hint. Callers that need a bespoke request
+// (e.g. the autopilot mission hint) build it and call this directly. Returns nil
+// if the request has no client.
+func (s *PromptSuggestionState) Start(req PromptSuggestionRequest) tea.Cmd {
+	if req.Client == nil {
+		return nil
+	}
+	s.Clear()
 	ctx, cancel := context.WithCancel(context.Background())
-	deps.Input.PromptSuggestion.cancel = cancel
+	s.cancel = cancel
 	req.Ctx = ctx
-
 	return SuggestPromptCmd(req)
+}
+
+// RecentSuggestionMessages returns the tail of the conversation (at most
+// maxSuggestionMessages) as provider messages — the shared context window every
+// input hint feeds its model.
+func RecentSuggestionMessages(c *conv.ConversationModel) []core.Message {
+	startIdx := 0
+	if len(c.Messages) > maxSuggestionMessages {
+		startIdx = len(c.Messages) - maxSuggestionMessages
+	}
+	return c.ConvertToProviderFrom(startIdx)
 }
 
 func HandlePromptSuggestion(state *Model, active bool, inputValue string, msg PromptSuggestionMsg) {
@@ -106,30 +113,14 @@ func SuggestPromptCmd(req PromptSuggestionRequest) tea.Cmd {
 	}
 }
 
+// BuildPromptSuggestionRequest builds the generic hint that predicts the human's
+// next input. Needs some conversation to go on; the autopilot mission hint is
+// built by the caller (see model.missionSuggestionRequest).
 func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRequest, bool) {
 	if !deps.HasProvider {
 		return PromptSuggestionRequest{}, false
 	}
 
-	startIdx := 0
-	if len(deps.Conversation.Messages) > maxSuggestionMessages {
-		startIdx = len(deps.Conversation.Messages) - maxSuggestionMessages
-	}
-
-	// Suggest steer: propose the next mission step. Works from the very start (no
-	// prior-turn requirement), since the opening step comes from the mission.
-	if mission := strings.TrimSpace(deps.Mission); mission != "" {
-		msgs := deps.Conversation.ConvertToProviderFrom(startIdx)
-		msgs = append(msgs, core.Message{Role: core.RoleUser, Content: "Mission:\n" + mission + "\n\nSuggest the next instruction to give the agent."})
-		return PromptSuggestionRequest{
-			Client:       deps.BuildClient(),
-			Messages:     msgs,
-			SystemPrompt: autopilotSuggestSystemPrompt,
-			MaxTokens:    60,
-		}, true
-	}
-
-	// Generic prediction needs some conversation to go on.
 	assistantCount := 0
 	for _, msg := range deps.Conversation.Messages {
 		if msg.Role == core.RoleAssistant {
@@ -139,7 +130,7 @@ func BuildPromptSuggestionRequest(deps PromptSuggestionDeps) (PromptSuggestionRe
 	if assistantCount < 2 {
 		return PromptSuggestionRequest{}, false
 	}
-	msgs := deps.Conversation.ConvertToProviderFrom(startIdx)
+	msgs := RecentSuggestionMessages(deps.Conversation)
 	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: SuggestionUserPrompt})
 
 	return PromptSuggestionRequest{
