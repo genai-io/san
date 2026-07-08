@@ -354,7 +354,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 	}
 
 	if interrupted {
-		sb.WriteString("  " + ThinkingStyle.Render("⏸ interrupted by user") + "\n")
+		sb.WriteString("  " + ThinkingStyle.Render("↩ cancelled") + "\n")
 	}
 
 	return sb.String()
