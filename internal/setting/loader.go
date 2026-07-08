@@ -2,10 +2,12 @@ package setting
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -283,37 +285,28 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error 
 	return nil
 }
 
-// UpdateSelfLearnAt persists the L1 self-learning config at the requested
-// settings level (true = user-wide, false = project-local). The new value
-// is merged with whatever else lives in that settings file — only the
-// selfLearn block is rewritten. Returns Validate's error verbatim if the
-// new config is illegal (§3.1) so the caller can surface it inline before
-// touching disk.
-func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
+// updateSettingsFile reads the settings file at the requested level (true =
+// user-wide, false = project-local), lets mutate replace a single block, and
+// writes it back — leaving every other setting in the file untouched. It
+// deliberately does NOT route through SaveToUser/SaveToProject (which merge):
+// those mergers OR the boolean fields, so reusing them would OR the new config
+// with the file's own previous value and a true→false toggle (e.g. disabling an
+// arm from /config) could never be persisted. Replacing the block lets the
+// off-toggle stick. (Cross-level layering still ORs on Load by design —
+// disabling at a lower-priority level cannot override an enable at a
+// higher-priority one.)
+func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 	loader := NewLoader()
 	path := filepath.Join(loader.projectDir, "settings.json")
 	if userLevel {
 		path = filepath.Join(loader.userDir, "settings.json")
 	}
 
-	// Read the existing settings for THIS file and replace only the
-	// selfLearn block. We deliberately do NOT route through
-	// SaveToUser/SaveToProject (which merge via mergeSelfLearn): that merge
-	// ORs the boolean fields, so reusing it here would OR the new config
-	// with the file's own previous value and a true→false toggle (e.g.
-	// disabling an arm from /config) could never be persisted. Replacing
-	// the block lets the off-toggle actually stick while leaving every
-	// other setting in the file untouched. (Cross-level layering still ORs
-	// on Load by design — disabling at a lower-priority level cannot
-	// override an enable at a higher-priority one.)
 	existing := NewData()
 	if data, err := os.ReadFile(path); err == nil {
 		_ = json.Unmarshal(data, existing)
 	}
-	existing.SelfLearn = cfg
+	mutate(existing)
 	if err := writeJSONAtomic(path, existing); err != nil {
 		return err
 	}
@@ -322,6 +315,98 @@ func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
 	loadedSettings = nil
 	loadedSettingsMu.Unlock()
 	return nil
+}
+
+// UpdateSelfLearnAt persists the L1 self-learning config at the requested
+// settings level, rewriting only the selfLearn block. Returns Validate's error
+// verbatim if the new config is illegal (§3.1) so the caller can surface it
+// inline before touching disk.
+func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	return updateSettingsFile(userLevel, func(d *Data) { d.SelfLearn = cfg })
+}
+
+// UpdateAutoPilotAt persists the autopilot config at the requested settings
+// level, rewriting only the autoPilot block.
+func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
+	return updateSettingsFile(userLevel, func(d *Data) { d.AutoPilot = cfg })
+}
+
+// AutoPilotPresetDir is the folder where /autopilot Export saves named configs
+// and Import reads them — a shared, non-session space for reusable presets.
+func AutoPilotPresetDir() string {
+	return filepath.Join(NewLoader().userDir, "autopilot")
+}
+
+// ExportAutoPilot writes cfg as a named preset (<presetDir>/<name>.json),
+// returning the path. The name is reduced to a bare filename and must be
+// non-empty.
+func ExportAutoPilot(name string, cfg AutoPilotSettings) (string, error) {
+	base := sanitizePresetName(name)
+	if base == "" {
+		return "", fmt.Errorf("preset name required")
+	}
+	dir := AutoPilotPresetDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, base+".json")
+	if err := writeJSONAtomic(path, cfg); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// ListAutoPilotPresets returns the saved preset names (without extension),
+// sorted. A missing directory yields an empty list, not an error.
+func ListAutoPilotPresets() ([]string, error) {
+	entries, err := os.ReadDir(AutoPilotPresetDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if n, ok := strings.CutSuffix(e.Name(), ".json"); ok {
+			names = append(names, n)
+		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// ImportAutoPilot reads a named preset back into an AutoPilotSettings.
+func ImportAutoPilot(name string) (AutoPilotSettings, error) {
+	var cfg AutoPilotSettings
+	base := sanitizePresetName(name)
+	if base == "" {
+		return cfg, fmt.Errorf("preset name required")
+	}
+	data, err := os.ReadFile(filepath.Join(AutoPilotPresetDir(), base+".json"))
+	if err != nil {
+		return cfg, err
+	}
+	err = json.Unmarshal(data, &cfg)
+	return cfg, err
+}
+
+// sanitizePresetName reduces a user-entered name to a safe bare filename so a
+// preset can never escape the preset directory.
+func sanitizePresetName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.TrimSuffix(name, ".json")
+	name = filepath.Base(name) // strip any path components
+	if name == "." || name == ".." || name == string(filepath.Separator) {
+		return ""
+	}
+	return name
 }
 
 // GetDisabledTools returns the merged disabled tools map from loaded settings.

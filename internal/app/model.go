@@ -69,6 +69,23 @@ type model struct {
 	// value-receiver copies of the model.
 	pendingDecisions *sync.Map // tool call ID → core.ReviewDecision
 
+	// autopilot holds the live autopilot snapshot (judge + resolved config),
+	// hot-swapped when the /autopilot panel saves so model/prompt/steer changes
+	// take effect without an agent restart. m.env.AutoPilot is UI-goroutine-owned
+	// and can be reassigned by a mid-turn Save, so the agent side never reads it
+	// directly — it Loads this snapshot instead (single-word swap is race-free).
+	autopilot *atomic.Pointer[autopilotRuntime]
+
+	// autopilotContinuations counts TurnEnd auto-continuations since the last
+	// human turn (reset in dispatchSubmission); autopilotContinuing tags the
+	// in-flight submit as copilot-driven so that reset skips it.
+	autopilotContinuations int
+	autopilotContinuing    bool
+
+	// autopilotRewrote tags the re-submit of a TurnStart-rewritten message so
+	// dispatchSubmission doesn't rewrite it a second time.
+	autopilotRewrote bool
+
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState

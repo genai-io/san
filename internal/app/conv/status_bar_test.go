@@ -223,7 +223,7 @@ func TestFitStatusSegments_AccountsForSeparatorWidth(t *testing.T) {
 	}
 }
 
-func TestRenderOperationModeIndicator_AutoReviewCounts(t *testing.T) {
+func TestRenderOperationModeIndicator_AutoPilotCounts(t *testing.T) {
 	cases := []struct {
 		name        string
 		approvals   int
@@ -238,7 +238,7 @@ func TestRenderOperationModeIndicator_AutoReviewCounts(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoReview, c.approvals, c.escalations))
+			out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoPilot, c.approvals, c.escalations))
 			if !strings.Contains(out, "autopilot on") {
 				t.Fatalf("missing base label: %q", out)
 			}
@@ -252,7 +252,7 @@ func TestRenderOperationModeIndicator_AutoReviewCounts(t *testing.T) {
 	}
 }
 
-func TestRenderOperationModeIndicator_CountsOnlyInAutoReview(t *testing.T) {
+func TestRenderOperationModeIndicator_CountsOnlyInAutoPilot(t *testing.T) {
 	// Approvals/escalations are an auto-review concept; other modes never show them.
 	out := stripANSI(RenderOperationModeIndicator(setting.ModeAutoAccept, 5, 4))
 	if strings.Contains(out, "approved") || strings.Contains(out, "escalated") {

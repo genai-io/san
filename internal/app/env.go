@@ -59,6 +59,13 @@ type env struct {
 	OperationMode      setting.OperationMode
 	SessionPermissions *setting.SessionPermissions
 
+	// AutoPilot is the live autopilot config for this session: seeded from
+	// settings at startup, edited via the /autopilot panel, persisted with the
+	// session, and restored on resume. The reviewer and mission responder read
+	// it from here (not from a settings snapshot) so mid-session edits and
+	// resumed configs take effect.
+	AutoPilot setting.AutoPilotSettings
+
 	// ── Cache (session-scoped) ──────────────────────────────────
 	FileCache                 *filecache.Cache
 	CachedUserInstructions    string
@@ -152,7 +159,7 @@ func (m *env) OperationModeName() string {
 	switch m.OperationMode {
 	case setting.ModeAutoAccept:
 		return "auto"
-	case setting.ModeAutoReview:
+	case setting.ModeAutoPilot:
 		return "autoPilot"
 	case setting.ModeBypassPermissions:
 		return "bypassPermissions"
@@ -183,8 +190,8 @@ func (m *env) ApplyAutoAcceptPermissions(cwd string) {
 	m.applyEditPosture(setting.ModeAutoAccept, cwd)
 }
 
-func (m *env) ApplyAutoReviewPermissions(cwd string) {
-	m.applyEditPosture(setting.ModeAutoReview, cwd)
+func (m *env) ApplyAutoPilotPermissions(cwd string) {
+	m.applyEditPosture(setting.ModeAutoPilot, cwd)
 }
 
 func (m *env) ApplyBypassPermissions() {
@@ -228,8 +235,8 @@ func (m *env) ApplyModePermissions(cwd string) {
 		m.ApplyBypassPermissions()
 	}
 
-	if m.OperationMode == setting.ModeAutoReview {
-		m.ApplyAutoReviewPermissions(cwd)
+	if m.OperationMode == setting.ModeAutoPilot {
+		m.ApplyAutoPilotPermissions(cwd)
 	}
 }
 
@@ -251,7 +258,7 @@ func (m *env) SessionMode() string {
 	switch m.OperationMode {
 	case setting.ModeAutoAccept:
 		return "auto-accept"
-	case setting.ModeAutoReview:
+	case setting.ModeAutoPilot:
 		return "auto-pilot"
 	default:
 		return "normal"

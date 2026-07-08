@@ -37,6 +37,8 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
+	m.userInput.Autopilot.SetMissionResponder(m.missionReply)
+	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err
 	}
@@ -49,6 +51,7 @@ func newBaseModel() model {
 	if settings := svc.Setting.Snapshot(); settings != nil {
 		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
 		environment.ShowContextBar = settings.ShowContextBar()
+		environment.AutoPilot = settings.AutoPilot.Clone()
 	}
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
@@ -70,6 +73,7 @@ func newBaseModel() model {
 		reviewerApprovals:   new(atomic.Int64),
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),
+		autopilot:           new(atomic.Pointer[autopilotRuntime]),
 	}
 }
 

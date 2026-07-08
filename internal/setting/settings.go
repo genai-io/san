@@ -45,28 +45,107 @@ type Data struct {
 	// SelfLearn toggles + tunes the self-learning loop (per-turn background
 	// review of memory and skills). Both arms are off by default (opt-in).
 	SelfLearn SelfLearnSettings `json:"selfLearn,omitempty"`
-	// AutoReview tunes the permission judge (model + rubric). Shown to users as
-	// "Autopilot" (JSON key "autoPilot"); the internal name stays AutoReview
-	// because the mechanism is a review of each gray-zone call.
-	AutoReview AutoReviewSettings `json:"autoPilot,omitempty"`
+	// AutoPilot configures the autopilot copilot: which lifecycle points it
+	// steers, how it drives (model + system prompt), and the mission it steers
+	// toward (JSON key "autoPilot").
+	AutoPilot AutoPilotSettings `json:"autoPilot,omitempty"`
 }
 
-// AutoReviewSettings tunes the auto-review permission judge. Both fields are
-// optional; empty keeps the built-in defaults (session model + built-in rubric).
-type AutoReviewSettings struct {
-	// Model overrides the model used for review decisions. A bare id (e.g.
+// AutoPilotSettings tunes the autopilot copilot. Every field is optional;
+// empty keeps the built-in defaults (session model + built-in system prompt, no
+// mission, permission steer on).
+type AutoPilotSettings struct {
+	// Model overrides the model used for steer decisions. A bare id (e.g.
 	// "claude-haiku-4-5") stays on the session provider; a "vendor/model" ref
 	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
 	// Empty uses the session model.
 	Model string `json:"model,omitempty"`
-	// SystemPromptFile replaces the built-in review rubric with the contents of
-	// the named file. Empty uses the built-in rubric.
+	// SystemPrompt replaces the built-in steering prompt inline (edited in
+	// the /autopilot panel). Takes precedence over SystemPromptFile.
+	SystemPrompt string `json:"systemPrompt,omitempty"`
+	// SystemPromptFile loads the system prompt from a file. Used only when
+	// SystemPrompt is empty; empty falls back to the built-in system prompt.
 	SystemPromptFile string `json:"systemPromptFile,omitempty"`
-	// AnswerBashPrompts enables interactive answering: in auto-review, bash runs
-	// on a pseudo-terminal so the reviewer can answer the prompts a command
-	// raises (and route password prompts to a masked input). Off by default —
-	// leaving it off keeps every bash command on the normal, non-tty path.
-	AnswerBashPrompts bool `json:"answerBashPrompts,omitempty"`
+	// Mission is the per-session directive the copilot steers toward — the
+	// briefing composed in the /autopilot Mission dialog.
+	Mission string `json:"mission,omitempty"`
+	// Steers selects which lifecycle points the copilot takes the helm at.
+	Steers SteerSettings `json:"steers,omitempty"`
+	// MaxContinuations caps how many times the TurnEnd steer may auto-continue
+	// a finished turn before yielding to the human. 0 = the default cap.
+	MaxContinuations int `json:"maxContinuations,omitempty"`
+}
+
+// SteerSettings toggles each point where the copilot steers the session.
+// Field names track the trigger: turnStart / turnEnd bracket the turn; the
+// middle three name the agent event that hands control over.
+type SteerSettings struct {
+	// TurnStart rewrites/augments each user input before it reaches the agent.
+	TurnStart bool `json:"turnStart,omitempty"`
+	// Permission auto-approves gray-zone tool calls. Tri-state so the baseline
+	// can default on while an explicit off still persists: nil = on (autopilot's
+	// whole point), false = escalate every gray-zone prompt to the human.
+	Permission *bool `json:"permission,omitempty"`
+	// BashPrompt answers a running command's interactive prompts.
+	BashPrompt bool `json:"bashPrompt,omitempty"`
+	// Question answers an AskUserQuestion on the human's behalf.
+	Question bool `json:"question,omitempty"`
+	// TurnEnd auto-continues a finished turn toward the mission.
+	TurnEnd bool `json:"turnEnd,omitempty"`
+}
+
+// PermissionOn reports whether the permission steer is active. It defaults on
+// because gray-zone approval is the baseline of autopilot; an explicit false
+// makes the copilot escalate every gray-zone prompt to the human instead.
+func (s SteerSettings) PermissionOn() bool { return s.Permission == nil || *s.Permission }
+
+// AutoPilotDefaultMaxContinuations bounds TurnEnd auto-continuation when the
+// config leaves maxContinuations unset — the single source of truth shared by
+// the runtime driver and the /autopilot panel's default display.
+const AutoPilotDefaultMaxContinuations = 20
+
+// ResolvedMaxContinuations returns the configured continuation cap, or the
+// default when unset.
+func (a AutoPilotSettings) ResolvedMaxContinuations() int {
+	if a.MaxContinuations <= 0 {
+		return AutoPilotDefaultMaxContinuations
+	}
+	return a.MaxContinuations
+}
+
+// Clone returns a deep copy, duplicating the tri-state permission pointer so
+// callers can mutate the copy without touching the original.
+func (a AutoPilotSettings) Clone() AutoPilotSettings {
+	if p := a.Steers.Permission; p != nil {
+		v := *p
+		a.Steers.Permission = &v
+	}
+	return a
+}
+
+// IsZero reports whether the config is entirely unset — used to keep the value
+// out of persisted session state and settings files when nothing was configured.
+func (a AutoPilotSettings) IsZero() bool {
+	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
+		a.Mission == "" && a.MaxContinuations == 0 &&
+		!a.Steers.TurnStart && a.Steers.Permission == nil &&
+		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
+}
+
+// Equal compares two configs by value, normalizing the tri-state permission
+// steer via PermissionOn (nil and &true are equal). Used for the /autopilot
+// panel's unsaved-edits check.
+func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
+	return a.Model == b.Model &&
+		a.SystemPrompt == b.SystemPrompt &&
+		a.SystemPromptFile == b.SystemPromptFile &&
+		a.Mission == b.Mission &&
+		a.MaxContinuations == b.MaxContinuations &&
+		a.Steers.TurnStart == b.Steers.TurnStart &&
+		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
+		a.Steers.BashPrompt == b.Steers.BashPrompt &&
+		a.Steers.Question == b.Steers.Question &&
+		a.Steers.TurnEnd == b.Steers.TurnEnd
 }
 
 // SelfLearnSettings configures the two independent self-learning arms.
@@ -310,20 +389,20 @@ const (
 	ModeBypassPermissions               // allow all (bypass-immune checks still apply)
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
-	ModeAutoReview                      // auto-approve edits; delegate the rest to the review agent
+	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
 )
 
 // allModes lists the modes that the user can cycle through with the mode toggle.
 // BypassPermissions is only reachable when explicitly enabled; DontAsk and
 // ReadOnly are entered programmatically (headless subagents), not via cycling.
-var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview}
-var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoReview, ModeBypassPermissions}
+var cycleModes = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot}
+var cycleModesWithBypass = []OperationMode{ModeNormal, ModeAutoAccept, ModeAutoPilot, ModeBypassPermissions}
 
 func (m OperationMode) String() string {
 	switch m {
 	case ModeAutoAccept:
 		return "accept edits"
-	case ModeAutoReview:
+	case ModeAutoPilot:
 		return "autopilot"
 	case ModeBypassPermissions:
 		return "bypass permissions"
@@ -342,7 +421,7 @@ func OperationModeFromString(mode string) OperationMode {
 	case "acceptEdits", "accept-edits", "autoAccept", "auto-accept":
 		return ModeAutoAccept
 	case "autoPilot", "auto-pilot", "autopilot", "pilot":
-		return ModeAutoReview
+		return ModeAutoPilot
 	case "bypassPermissions", "bypass-permissions", "bypass":
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":
@@ -448,6 +527,7 @@ func (s *Data) Clone() *Data {
 	dst.SearchProvider = s.SearchProvider
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
+	dst.AutoPilot = s.AutoPilot.Clone()
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v

@@ -5,7 +5,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -117,20 +116,9 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		})
 	}
 
-	var ar setting.AutoReviewSettings
-	if snap := m.services.Setting.Snapshot(); snap != nil {
-		ar = snap.AutoReview
-	}
-	reviewerProvider, reviewerModelID := m.resolveReviewerModel(ar.Model)
-	rev := reviewer.New(reviewerProvider, reviewerModelID)
-	if ar.SystemPromptFile != "" {
-		if b, err := os.ReadFile(ar.SystemPromptFile); err == nil {
-			rev.SetSystemPrompt(string(b))
-		} else {
-			log.Logger().Warn("auto-review systemPromptFile unreadable; using built-in rubric",
-				zap.String("file", ar.SystemPromptFile), zap.Error(err))
-		}
-	}
+	// Build the autopilot judge into the atomic slot so /autopilot Save can
+	// hot-swap it mid-session; the closures below Load it per call.
+	m.rebuildAutopilotReviewer()
 
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
@@ -157,12 +145,14 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
 		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
-			// Interactive answering is opt-in: without it, bash stays on the
+			// Interactive answering is opt-in via the Bash steer, read live (via
+			// the synchronized snapshot — this runs on the agent goroutine) so a
+			// mid-session toggle takes effect: without it, bash stays on the
 			// normal non-tty path even in auto-review.
-			if !ar.AnswerBashPrompts || m.env.OperationMode != setting.ModeAutoReview {
+			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
 				return nil
 			}
-			return bashPromptResponder{model: m, reviewer: rev}
+			return bashPromptResponder{model: m}
 		},
 
 		PermissionRules: func(name string, args map[string]any) agent.PermDecisionResult {
@@ -195,8 +185,11 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		},
 
 		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
-			// Only auto-review mode delegates gray-zone prompts to the judge.
-			if m.env.OperationMode != setting.ModeAutoReview {
+			// Only auto-review mode with the Permission steer on delegates
+			// gray-zone prompts to the judge; the steer is read live via the
+			// synchronized snapshot (agent goroutine) so a mid-session toggle
+			// takes effect. Steer off ⇒ every gray-zone call escalates.
+			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.PermissionOn() {
 				return agent.PermReviewResult{}
 			}
 			// Defense in depth: the judge may never approve a floored action,
@@ -205,6 +198,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 				m.recordDecision(ctx, false, r)
 				return agent.PermReviewResult{}
 			}
+			rev := m.autopilot.Load().judge
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			verdict, err := rev.Permission(ctx, reviewer.Request{
@@ -234,7 +228,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			// under the tool call the judge just let through (the status-bar count
 			// alone doesn't say what was approved or why).
 			m.recordDecision(ctx, true, verdict.Reason)
-			return agent.PermReviewResult{Allow: true, Reason: "auto-review: " + verdict.Reason}
+			return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
 		},
 	}
 }
@@ -296,7 +290,7 @@ func (m *model) TakeDecision(callID string) *core.ReviewDecision {
 // when it could not reach a decision (error / timeout / unparseable reply).
 func escalationReason(judgeReason string, err error) string {
 	if err != nil || judgeReason == "" {
-		return "auto-review unavailable — asking you"
+		return "autopilot unavailable — asking you"
 	}
 	return judgeReason
 }

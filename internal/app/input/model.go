@@ -54,12 +54,13 @@ type Model struct {
 	Secret   SecretPromptModel
 
 	// Self-contained selectors.
-	Agent   AgentSelector
-	Persona PersonaSelector
-	Search  SearchSelector
-	Plugin  PluginSelector
-	Tool    ToolSelector
-	Config  ConfigSelector
+	Agent     AgentSelector
+	Persona   PersonaSelector
+	Search    SearchSelector
+	Plugin    PluginSelector
+	Tool      ToolSelector
+	Config    ConfigSelector
+	Autopilot AutopilotSelector
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation
@@ -124,38 +125,50 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Suggestions: suggestions,
 		Queue:       NewQueue(),
 
-		Approval: NewApproval(),
-		Secret:   NewSecretPrompt(),
-		Agent:    NewAgentSelector(deps.AgentRegistry),
-		Persona:  NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
-		Search:   NewSearchSelector(deps.Setting),
-		Skill:    SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
-		Session:  SessionState{Selector: NewSessionSelector()},
-		Memory:   MemoryState{Selector: NewMemorySelector()},
-		MCP:      MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
-		Plugin:   NewPluginSelector(deps.PluginRegistry),
-		Provider: ProviderState{Selector: NewProviderSelector()},
-		Tool:     NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
-		Config:   NewConfigSelector(deps.Setting),
+		Approval:  NewApproval(),
+		Secret:    NewSecretPrompt(),
+		Agent:     NewAgentSelector(deps.AgentRegistry),
+		Persona:   NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
+		Search:    NewSearchSelector(deps.Setting),
+		Skill:     SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},
+		Session:   SessionState{Selector: NewSessionSelector()},
+		Memory:    MemoryState{Selector: NewMemorySelector()},
+		MCP:       MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
+		Plugin:    NewPluginSelector(deps.PluginRegistry),
+		Provider:  ProviderState{Selector: NewProviderSelector()},
+		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
+		Config:    NewConfigSelector(deps.Setting),
+		Autopilot: NewAutopilotSelector(),
 	}
 }
 
-func newTextarea(width int) textarea.Model {
+// newChromelessTextarea builds a bare textarea with the composer's borderless
+// styling (no prompt, no line numbers, muted placeholder) but no focus or size —
+// callers add those. Shared by the main composer and the /autopilot editors.
+func newChromelessTextarea() textarea.Model {
 	ta := textarea.New()
-	ta.Placeholder = ""
-	ta.Focus()
 	ta.Prompt = ""
 	ta.CharLimit = 0
-	ta.SetWidth(width)
-	ta.SetHeight(minTextareaHeight)
 	ta.ShowLineNumbers = false
 	styles := ta.Styles()
 	styles.Focused.CursorLine = lipgloss.NewStyle()
 	styles.Focused.Base = lipgloss.NewStyle()
 	styles.Focused.Prompt = lipgloss.NewStyle()
-	styles.Blurred.Base = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	ta.SetStyles(styles)
 	ta.KeyMap.InsertNewline.SetEnabled(true)
+	return ta
+}
+
+// newTextarea is the main composer's textarea: chromeless, focused, sized, with
+// a muted blurred state.
+func newTextarea(width int) textarea.Model {
+	ta := newChromelessTextarea()
+	ta.Focus()
+	ta.SetWidth(width)
+	ta.SetHeight(minTextareaHeight)
+	styles := ta.Styles()
+	styles.Blurred.Base = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	ta.SetStyles(styles)
 	return ta
 }

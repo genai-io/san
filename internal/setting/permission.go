@@ -124,7 +124,7 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 			return decide(perm.Permit, "mode: accept edits")
 		}
 		return decide(perm.Prompt, "mode: accept edits requires confirmation")
-	case ModeAutoReview:
+	case ModeAutoPilot:
 		// Edits are auto-approved like accept-edits; non-edit tools fall to a
 		// reviewable Prompt — the gray zone the review agent judges.
 		if perm.IsEditTool(toolName) {

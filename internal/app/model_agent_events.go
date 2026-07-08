@@ -130,6 +130,15 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		return tea.Batch(commitCmds...)
 	}
 
+	// Autopilot TurnEnd steer (#5): let the copilot decide whether to keep the
+	// session going toward the mission. When it wants to, the idle hooks are
+	// deferred until handleAutopilotDecision (which fires them if it stops).
+	if cmd := m.autopilotContinueCmd(result); cmd != nil {
+		log.QueueLog("OnTurnEnd: autopilot deciding whether to continue")
+		commitCmds = append(commitCmds, cmd, m.ContinueOutbox())
+		return tea.Batch(commitCmds...)
+	}
+
 	log.QueueLog("OnTurnEnd: firing idle hooks async")
 	commitCmds = append(commitCmds, m.fireIdleHooksCmd(result), m.ContinueOutbox())
 	return tea.Batch(commitCmds...)

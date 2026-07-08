@@ -106,6 +106,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 			Cwd:        m.env.CWD,
 			LastPrompt: session.ExtractLastUserText(entries),
 			Mode:       m.env.SessionMode(),
+			AutoPilot:  marshalAutoPilot(m.env.AutoPilot),
 		},
 		Entries:           entries,
 		Tasks:             m.services.Tracker.Export(),
@@ -150,6 +151,12 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 
 	if len(sess.Tasks) > 0 {
 		m.services.Tracker.Import(sess.Tasks)
+	}
+
+	// Restore the session's autopilot config; an empty blob (e.g. an older
+	// session) leaves the settings-seeded default in place.
+	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
+		m.env.AutoPilot = ar
 	}
 }
 

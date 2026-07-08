@@ -63,6 +63,24 @@ func TestProjectStatePatchLastWins(t *testing.T) {
 	}
 }
 
+func TestProjectAutoPilotRoundTrip(t *testing.T) {
+	blob := `{"mission":"ship it","steers":{"turnEnd":true}}`
+	ops := StateOpsDiff(State{}, State{AutoPilot: blob})
+	tr, err := Project([]Record{
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: ops}},
+	})
+	if err != nil {
+		t.Fatalf("Project(): %v", err)
+	}
+	if tr.State.AutoPilot != blob {
+		t.Fatalf("autoReview not restored: %q", tr.State.AutoPilot)
+	}
+	if MetadataFromTranscript(tr).AutoPilot != blob {
+		t.Fatalf("autoReview missing from metadata view")
+	}
+}
+
 func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 14, 10, 0, 0, time.UTC)
 	task := todo.Task{

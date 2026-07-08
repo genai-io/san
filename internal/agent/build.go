@@ -40,14 +40,14 @@ type BuildParams struct {
 	// PermissionRules and PermissionReview are the two stages of the
 	// pre-execution permission gate: the rules stage applies the static rules
 	// (permit/reject/prompt); the review stage is the LLM auto-review consulted
-	// only on a gray-zone prompt (AutoReview.Permission).
+	// only on a gray-zone prompt (AutoPilot.Permission).
 	PermissionRules  PermDecisionFunc
 	PermissionReview PermReviewFunc
 	HookEngine       hook.Handler
 	AskUser          tool.AskUserFunc
 	ToolActivity     func(toolCallID string, msg string)
 	// BashPromptResponder answers prompts a command raises *while it runs*
-	// (AutoReview.BashPrompt plus the masked secret input) — a separate concern
+	// (AutoPilot.BashPrompt plus the masked secret input) — a separate concern
 	// from the pre-execution gate above.
 	BashPromptResponder tool.BashPromptResponderProvider
 
