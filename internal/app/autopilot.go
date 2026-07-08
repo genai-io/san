@@ -72,14 +72,6 @@ func (m *model) autopilotSystemPrompt() string {
 	return reviewer.DefaultSystemPrompt()
 }
 
-// steerSystemPrompt prefaces an app-side steer's task-specific instruction with
-// the shared system prompt, so every steer speaks with the same persona and
-// honors the same boundaries the user configured. The prompt is always
-// non-empty (autopilotSystemPrompt falls back to the built-in default).
-func steerSystemPrompt(systemPrompt, task string) string {
-	return systemPrompt + "\n\n" + task
-}
-
 // liveAutopilotConfig returns the synchronized config snapshot for the agent
 // goroutine's steer gates. Zero value until the first rebuildAutopilotReviewer
 // (which runs at agent build, before the agent goroutine starts).
@@ -234,8 +226,8 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 }
 
 func autopilotDecideContinue(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, lastTurn string) (bool, string, error) {
-	user := "Mission:\n" + mission + "\n\nThe agent's last turn ended with:\n" + kit.TruncateText(lastTurn, 2000)
-	content, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, continueDecisionTask), user, 400)
+	user := continueDecisionTask + "\n\nMission:\n" + mission + "\n\nThe agent's last turn ended with:\n" + kit.TruncateText(lastTurn, 2000)
+	content, err := autopilotComplete(ctx, provider, modelID, systemPrompt, user, 400)
 	if err != nil {
 		return false, "", err
 	}
@@ -336,6 +328,7 @@ func (m *model) autopilotAnswerQuestionCmd(req *tool.QuestionRequest) tea.Cmd {
 
 func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission string, req *tool.QuestionRequest) (map[int][]string, bool) {
 	var b strings.Builder
+	b.WriteString(questionAnswerTask + "\n\n")
 	if mission != "" {
 		b.WriteString("Mission:\n" + mission + "\n\n")
 	}
@@ -359,7 +352,7 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 			b.WriteString("\n")
 		}
 	}
-	content, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, questionAnswerTask), b.String(), 500)
+	content, err := autopilotComplete(ctx, provider, modelID, systemPrompt, b.String(), 500)
 	if err != nil {
 		return nil, false
 	}
@@ -433,7 +426,7 @@ func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, 
 	if mission != "" {
 		user = "Mission:\n" + mission + "\n\nUser's message:\n" + userMessage
 	}
-	out, err := autopilotComplete(ctx, provider, modelID, steerSystemPrompt(systemPrompt, rewriteTask), user, 1000)
+	out, err := autopilotComplete(ctx, provider, modelID, systemPrompt, rewriteTask+"\n\n"+user, 1000)
 	if err != nil || out == "" {
 		return userMessage // fail open: send the original
 	}
