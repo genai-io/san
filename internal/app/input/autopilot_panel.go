@@ -112,6 +112,24 @@ func (p *AutopilotSelector) Enter(width, height int) {
 // IsActive implements overlayPanel.
 func (p *AutopilotSelector) IsActive() bool { return p.active }
 
+// HandlePaste implements pasteHandler: bracketed paste arrives as tea.PasteMsg
+// (not a KeyMsg), so the app routes it here. It inserts the pasted text at the
+// cursor of whichever editor is open — the Mission composer or the System Prompt
+// editor. Views without a text field (menu, export/import) drop the paste.
+func (p *AutopilotSelector) HandlePaste(content string) tea.Cmd {
+	if !p.active || content == "" {
+		return nil
+	}
+	content = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(content)
+	switch p.view {
+	case apMission:
+		p.mission.input.InsertString(content)
+	case apSystemPrompt:
+		p.prompt.InsertString(content)
+	}
+	return nil
+}
+
 // Dirty reports unsaved edits (used by the header tag).
 func (p *AutopilotSelector) Dirty() bool { return !p.snap.Equal(p.baseline) }
 

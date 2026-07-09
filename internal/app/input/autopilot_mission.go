@@ -65,9 +65,10 @@ func (p *AutopilotSelector) resetMission() {
 	}
 }
 
-// enterMission focuses and sizes the composer when the view opens.
+// enterMission focuses and sizes the composer when the view opens. The width
+// leaves room for the focus rail renderComposer prefixes each line with.
 func (p *AutopilotSelector) enterMission() {
-	p.mission.input.SetWidth(p.innerWidth())
+	p.mission.input.SetWidth(p.innerWidth() - missionRailWidth)
 	p.mission.input.SetHeight(3)
 	p.mission.input.Focus()
 	p.mission.input.CursorEnd()
@@ -199,7 +200,7 @@ func (p *AutopilotSelector) renderMission(width int) string {
 	}
 	b.WriteString(apRuleStyle.Render(strings.Repeat("─", width)))
 	b.WriteString("\n")
-	b.WriteString(p.mission.input.View())
+	b.WriteString(p.renderComposer())
 	if p.mission.status != "" {
 		b.WriteString("\n")
 		b.WriteString(apDescStyle.Render(p.mission.status))
@@ -207,7 +208,26 @@ func (p *AutopilotSelector) renderMission(width int) string {
 	return b.String()
 }
 
+// missionRailWidth is the column the focus rail (+ its gap) occupies to the left
+// of the composer; enterMission subtracts it so the railed composer still fits.
+const missionRailWidth = 2
+
+// renderComposer draws the mission textarea with a focus-accent rail down its
+// left edge, so the input reads as the active field you type into rather than
+// bare text under the divider. Kept deliberately minimal — one thin bar, no box.
+func (p *AutopilotSelector) renderComposer() string {
+	rail := missionRailStyle.Render("▎") + " "
+	lines := strings.Split(p.mission.input.View(), "\n")
+	for i, ln := range lines {
+		lines[i] = rail + ln
+	}
+	return strings.Join(lines, "\n")
+}
+
 var (
 	missionUserStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
 	missionCopilotStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
+	// missionRailStyle is the thin accent bar down the composer's left edge — the
+	// app's "you are here / active" focus color, applied sparingly.
+	missionRailStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 )
