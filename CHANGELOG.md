@@ -3,6 +3,15 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.0] - 2026-07-09
+
+### Added
+- Add configurable Autopilot copilot settings, panel, and lifecycle steers ([@yanmxa](https://github.com/yanmxa) in [#286](https://github.com/genai-io/san/pull/286))
+- Add Autopilot follow-ups with Suggest steer, hands-free start, and mission lifecycle ([@yanmxa](https://github.com/yanmxa) in [#287](https://github.com/genai-io/san/pull/287))
+
+### Changed
+- Improve Autopilot start flow and interactive bash handling ([@yanmxa](https://github.com/yanmxa) in [a320e52](https://github.com/genai-io/san/commit/a320e52c))
+
 ## [v1.20.11] - 2026-07-05
 
 ### Added
