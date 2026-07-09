@@ -117,7 +117,7 @@ func autopilotHandback(detail string) string {
 
 // autopilotAction is the green notice for something the copilot handled itself
 // (answered a question for you) — green = it kept the session moving, matching
-// the ↖ continuation mark and the auto-approved decision hint.
+// the ⎿ continuation mark and the auto-approved decision hint.
 func autopilotAction(detail string) string {
 	return autopilotDoneMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
@@ -255,7 +255,7 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		return nil
 	}
 	if m.autopilotContinuations >= ar.ResolvedMaxContinuations() {
-		m.conv.AddNotice(autopilotHandback("")) // spent the budget; the ↖ N/N above says why
+		m.conv.AddNotice(autopilotHandback("")) // spent the budget; the ⎿ N/N above says why
 		return nil
 	}
 	return m.autopilotDecideCmd(result, false)

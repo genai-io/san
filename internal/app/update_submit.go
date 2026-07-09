@@ -74,7 +74,7 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// A human turn resets the auto-continue budget; a copilot-driven continuation
 	// (flagged) does not, so MaxContinuations bounds a run of consecutive
 	// auto-turns rather than the whole session. Capture the copilot's note now,
-	// before the flag resets, so the built message can wear its "↖ autopilot ·
+	// before the flag resets, so the built message can wear its "⎿ autopilot ·
 	// N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {

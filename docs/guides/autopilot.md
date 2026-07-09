@@ -93,11 +93,11 @@ with a mission set, derives the opening step and submits it itself.
 
 ```
 ❭ Create notes/todo.md with a 3-item checklist.
-  ↖ autopilot · 1/20
+  ⎿  autopilot · 1/20
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
 ❭ Create an empty notes/done.md.
-  ↖ autopilot · 2/20
+  ⎿  autopilot · 2/20
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
@@ -105,7 +105,7 @@ with a mission set, derives the opening step and submits it itself.
   ✓ autopilot · mission complete
 ```
 
-Every `❭` in the run carries the green `↖ autopilot` mark — the copilot typed
+Every `❭` in the run carries the green `⎿ autopilot` mark — the copilot typed
 them all, opening step included; you never touched the composer. The `ls` is a
 gray-zone call the Permission steer approved inline. On `✓ mission complete` the mission is cleared and the steers drop back
 to the passive baseline — open `/autopilot` to confirm — while AutoPilot stays
@@ -119,7 +119,7 @@ composer and you accept with `tab` + `enter`.
 
 | Mark | Meaning |
 |---|---|
-| green `↖ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5) |
+| green `⎿ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5) |
 | green `↳ auto-approved · <reason>` | the permission judge let the tool call above through |
 | amber `↳ escalated · <reason>` | the judge sent the call back to you |
 | green `⏵ autopilot · answered for you` | the copilot answered an `AskUserQuestion` |

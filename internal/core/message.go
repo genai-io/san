@@ -118,7 +118,7 @@ type ChatMessage struct {
 
 	// AutopilotNote, when set, marks a user message the copilot produced — a
 	// continuation ("2/5") or a rewrite ("refined") — and the renderer hangs a
-	// green "↖ autopilot · <note>" annotation under its "❭" line to show the
+	// green "⎿ autopilot · <note>" annotation under its "❭" line to show the
 	// copilot typed it. Display-only: dropped by ToMessage, never persisted.
 	AutopilotNote string
 

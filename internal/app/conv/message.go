@@ -121,13 +121,13 @@ var (
 				Bold(true)
 )
 
-// RenderAutopilotMark is the "↖ autopilot · <note>" annotation a copilot-produced
+// RenderAutopilotMark is the "⎿ autopilot · <note>" annotation a copilot-produced
 // turn wears — a continuation ("2/5") or a rewrite ("refined") — drawn tight
-// below its "❭" line: the up-left arrow points back at the instruction to say
-// the copilot, not the human, typed it (mirroring how a permission decision
-// hangs under the call it judged).
+// below its "❭" line: the trailer corner hangs the note under the instruction to
+// say the copilot, not the human, typed it (the same "⎿" trailer a tool result
+// hangs under the call it came from).
 func RenderAutopilotMark(note string) string {
-	return autopilotStepStyle.Render("  ↖ autopilot") +
+	return autopilotStepStyle.Render("  ⎿  autopilot") +
 		toolResultStyle.Render(" · "+note) + "\n"
 }
 

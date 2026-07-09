@@ -84,11 +84,11 @@ mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
 
 ```
 ❭ Create notes/todo.md with a 3-item checklist.
-  ↖ autopilot · 1/20
+  ⎿  autopilot · 1/20
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
 ❭ Create an empty notes/done.md.
-  ↖ autopilot · 2/20
+  ⎿  autopilot · 2/20
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
@@ -96,7 +96,7 @@ mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
   ✓ autopilot · mission complete
 ```
 
-整个运行里的每个 `❭` 都带绿色 `↖ autopilot` 标记 —— 包括开场那条,全部由
+整个运行里的每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由
 copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permission steer
 就地放行。出现
 `✓ mission complete` 时,mission 被清空、steer 归位到被动基线(打开
@@ -109,7 +109,7 @@ copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permis
 
 | 标记 | 含义 |
 |---|---|
-| 绿 `↖ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑) |
+| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑) |
 | 绿 `↳ auto-approved · <理由>` | 判官放行了上方的工具调用 |
 | 琥珀 `↳ escalated · <理由>` | 判官把调用退回给你 |
 | 绿 `⏵ autopilot · answered for you` | 副驾替你回答了 `AskUserQuestion` |
