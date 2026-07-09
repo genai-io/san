@@ -651,36 +651,3 @@ func TestCLI_PersonaWithPrintFullContent(t *testing.T) {
 		t.Errorf("--persona flag should be recognized, got: %q", output)
 	}
 }
-
-func TestCLI_PersonaWithoutPrintFailsWithProvider(t *testing.T) {
-	bin := buildBinary(t)
-
-	isolatedHome := t.TempDir()
-	isolatedCwd := t.TempDir()
-
-	personaDir := filepath.Join(confdir.Dir(isolatedHome), "personas", "test-p")
-	if err := os.MkdirAll(filepath.Join(personaDir, "system"), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(personaDir, "settings.json"), []byte(`{"description": "test"}`), 0o644); err != nil {
-		t.Fatalf("write settings.json: %v", err)
-	}
-
-	env := filteredEnv(
-		"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
-		"MOONSHOT_API_KEY", "ALIBABA_API_KEY", "BIGMODEL_API_KEY",
-		"HOME",
-	)
-	env = append(env, "HOME="+isolatedHome)
-
-	// Even without -p, persona validation happens early enough to matter.
-	cmd := exec.Command(bin, "--persona", "test-p")
-	cmd.Env = env
-	cmd.Dir = isolatedCwd
-	out, _ := cmd.CombinedOutput()
-	// The interactive mode with no provider will fail; the point is that it
-	// should not crash or error with "unknown flag" or "persona not found".
-	if strings.Contains(strings.ToLower(string(out)), "not found") {
-		t.Errorf("persona should be found, got: %q", string(out))
-	}
-}

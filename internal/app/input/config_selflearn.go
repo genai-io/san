@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -267,7 +268,23 @@ func (p *selfLearnPanel) withRail(rail, row string) string {
 // a checkbox. The fill is the kit's neutral search-input gray so the
 // keycap feels like a physical key cap, not a [ ] toggle.
 func keycap(s string) string {
-	return selflearnKeycapStyle.Render(" " + s + " ")
+	return selflearnKeycapStyle.Render(" " + capitalizeKeyLabel(s) + " ")
+}
+
+// capitalizeKeyLabel title-cases each part of a key combo so hints read as
+// proper key names: "ctrl+r" → "Ctrl+R", "enter" → "Enter". Arrow glyphs
+// (↑↓, ←→) and other non-letters pass through unchanged.
+func capitalizeKeyLabel(s string) string {
+	parts := strings.Split(s, "+")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		r := []rune(p)
+		r[0] = unicode.ToUpper(r[0])
+		parts[i] = string(r)
+	}
+	return strings.Join(parts, "+")
 }
 
 // ── Row rendering ───────────────────────────────────────────────────────

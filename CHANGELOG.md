@@ -3,6 +3,12 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.1] - 2026-07-10
+
+### Changed
+- Replace legacy PR workflows with the GitHub Apps flow ([@hchenxa](https://github.com/hchenxa) in [#291](https://github.com/genai-io/san/pull/291))
+- Make the Autopilot mission dialog a direct editor with paste-friendly save, clear, and refine controls ([@yanmxa](https://github.com/yanmxa) in [#292](https://github.com/genai-io/san/pull/292))
+
 ## [v1.21.0] - 2026-07-09
 
 ### Added

@@ -25,7 +25,7 @@ func (p *AutopilotSelector) Render() string {
 	case apMission:
 		return p.frame(
 			p.header("Mission"),
-			p.renderMission(p.innerWidth()),
+			p.renderMission(),
 			p.missionHint(),
 		)
 	case apExport:
@@ -37,8 +37,8 @@ func (p *AutopilotSelector) Render() string {
 			p.header(""),
 			p.renderMenu(p.innerWidth()),
 			kit.HintLine(
-				keycap("↑↓")+" navigate", keycap("←→")+" pick",
-				keycap("space")+" toggle", keycap("enter")+" open/run", keycap("esc")+" close",
+				keycap("↑↓")+" navigate", keycap("space")+" toggle", keycap("enter")+" select",
+				keycap("e")+" export", keycap("i")+" import", keycap("esc")+" close",
 			),
 		)
 	}
@@ -98,8 +98,6 @@ func (p *AutopilotSelector) renderMenu(width int) string {
 			b.WriteString(p.renderSteer(i, row))
 		case apRowInt:
 			b.WriteString(p.renderInt(i, row))
-		case apRowActions:
-			b.WriteString(p.renderActions(i))
 		case apRowSaveStart:
 			b.WriteString(p.renderSaveStart(i))
 		case apRowSpacer:
@@ -112,22 +110,6 @@ func (p *AutopilotSelector) renderMenu(width int) string {
 		b.WriteString(apSummaryStyle.Render(p.status))
 	}
 	return b.String()
-}
-
-// renderActions draws Export / Import on one line; the focused half is picked
-// with ←/→ and lit, the other stays muted. The up/down glyph stays small and
-// dim so the label leads and the marker doesn't overshadow it.
-func (p *AutopilotSelector) renderActions(i int) string {
-	seg := func(active bool, glyph, label string) string {
-		g := apChipStyle.Render(glyph + " ")
-		if i == p.cursor && active {
-			return g + apActionActiveStyle.Render(label)
-		}
-		return g + apActionIdleStyle.Render(label)
-	}
-	exp := seg(p.actionCursor == 0, "▴", "Export")
-	imp := seg(p.actionCursor == 1, "▾", "Import")
-	return p.cursorMark(i) + exp + apChipStyle.Render("    ") + imp
 }
 
 func (p *AutopilotSelector) cursorMark(i int) string {
@@ -182,19 +164,18 @@ func (p *AutopilotSelector) renderInt(i int, row apRow) string {
 
 // renderSaveStart draws Save and Start as two filled pill keys side by side —
 // both sit on the neutral keycap surface so they read as buttons at rest. The
-// focused pick (←/→) keeps the same pill and just takes a bold accent label
-// (green Save, accent Start); the other stays neutral. Focus is carried by that
-// accent, so this row skips the ▸ mark and indents to sit under the content
-// column instead.
+// focused pick (←/→) lights its label bold green; the other stays neutral. Focus
+// is carried by that color, so this row skips the ▸ mark and indents to sit under
+// the content column instead.
 func (p *AutopilotSelector) renderSaveStart(i int) string {
-	seg := func(active bool, lit lipgloss.Style, label string) string {
+	seg := func(active bool, label string) string {
 		if i == p.cursor && active {
-			return lit.Render(label)
+			return apButtonFocusedStyle.Render(label)
 		}
 		return apButtonIdleStyle.Render(label)
 	}
-	save := seg(p.saveCursor == 0, apSaveButtonStyle, "Save")
-	start := seg(p.saveCursor == 1, apStartButtonStyle, "Start")
+	save := seg(p.saveCursor == 0, "Save")
+	start := seg(p.saveCursor == 1, "Start")
 	return "  " + save + "  " + start
 }
 
@@ -207,7 +188,6 @@ var (
 	apTaglineStyle       = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Italic(true)
 	apBreadcrumbDimStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	apBreadcrumbSubStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
-	apRuleStyle          = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 
 	// Rounded card that frames the whole panel.
 	apCardStyle = lipgloss.NewStyle().
@@ -215,9 +195,6 @@ var (
 			BorderForeground(kit.CurrentTheme.Border).
 			Padding(1, 2)
 
-	// Export / Import segments: lit (focused pick) vs muted.
-	apActionActiveStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
-	apActionIdleStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	// apFaintRuleStyle is the barely-there hairline used for the header
 	// separator and the section dividers so they don't overshadow content.
 	apFaintRuleStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Faint(true)
@@ -238,9 +215,8 @@ var (
 	// Save/Start buttons: filled neutral pills on the panel's keycap surface, so
 	// they read as raised keys at rest — depth from the fill, no frame. Focus is a
 	// light touch: the picked pill keeps the same surface and just takes a bold
-	// accent label (green Save, accent Start); no heavy fill swap.
-	apButtonBaseStyle  = lipgloss.NewStyle().Padding(0, 2).Background(kit.SearchBg)
-	apButtonIdleStyle  = apButtonBaseStyle.Foreground(kit.CurrentTheme.Text)
-	apSaveButtonStyle  = apButtonBaseStyle.Foreground(kit.CurrentTheme.Success).Bold(true)
-	apStartButtonStyle = apButtonBaseStyle.Foreground(kit.CurrentTheme.Accent).Bold(true)
+	// green label; no heavy fill swap.
+	apButtonBaseStyle    = lipgloss.NewStyle().Padding(0, 2).Background(kit.SearchBg)
+	apButtonIdleStyle    = apButtonBaseStyle.Foreground(kit.CurrentTheme.Text)
+	apButtonFocusedStyle = apButtonBaseStyle.Foreground(kit.CurrentTheme.Success).Bold(true)
 )

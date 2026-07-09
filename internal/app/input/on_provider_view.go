@@ -248,9 +248,12 @@ func (s *ProviderSelector) renderProviderRow(item providerListItem, isSelected b
 	bestStatus := providerBestAuthMethodStatus(p.AuthMethods)
 	statusIcon, statusStyle, _ := providerGetStatusDisplay(bestStatus)
 
+	// The status dot carries connected-or-not, so the info column drops the
+	// redundant ✓/✗ and just names the reference for every row: the env var to
+	// set, or that there are several methods to pick.
 	envInfo := ""
 	if len(p.AuthMethods) == 1 {
-		envInfo = kit.RenderEnvVarStatus(providerFirstEnvVar(p.AuthMethods[0].EnvVars))
+		envInfo = kit.DimStyle().Render(providerFirstEnvVar(p.AuthMethods[0].EnvVars))
 	} else if len(p.AuthMethods) > 1 {
 		envInfo = kit.DimStyle().Render(fmt.Sprintf("%d auth methods", len(p.AuthMethods)))
 	}
