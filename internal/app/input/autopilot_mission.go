@@ -1,8 +1,9 @@
-// Mission dialog: a lightweight two-way briefing where the user tells the
-// copilot what to accomplish this session and the copilot confirms how it plans
-// to drive. Replies are non-streaming — the panel shows a spinner while the
-// injected MissionResponder runs, then appends the whole reply at once. The
-// accumulated user turns are the mission text persisted with the config.
+// Mission dialog: a mission editor. The text box holds the whole mission and is
+// the mission — you type, paste, and edit it (enter saves it, alt+enter inserts a
+// newline). That is the plain "input" path. The "input + thinking" path is ctrl+r:
+// the copilot (an injected MissionRefiner) rewrites the box into a cleaner, more
+// complete mission, shown in place. ctrl+c clears; esc saves and leaves. The core
+// actions all use keys every terminal delivers.
 package input
 
 import (
@@ -18,76 +19,86 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// MissionMessage is one turn in the briefing dialog.
-type MissionMessage struct {
-	FromUser bool
-	Text     string
+// MissionRefiner rewrites a mission draft into an improved mission. The app
+// injects one backed by the session model; a nil refiner disables the ctrl+r
+// refine action (editing the mission still works).
+type MissionRefiner func(ctx context.Context, draft string) (string, error)
+
+// MissionRefinedMsg carries a refined mission (or error) back to the panel; the
+// app routes it to AutopilotSelector.DeliverRefinedMission.
+type MissionRefinedMsg struct {
+	Mission string
+	Err     error
 }
 
-// MissionResponder produces the copilot's reply to the briefing so far. The app
-// injects one backed by the session provider; a nil responder disables live
-// replies (the briefing is still saved).
-type MissionResponder func(ctx context.Context, history []MissionMessage) (string, error)
-
-// MissionReplyMsg carries a copilot reply (or error) back to the panel; the app
-// routes it to AutopilotSelector.DeliverMissionReply.
-type MissionReplyMsg struct {
-	Text string
-	Err  error
-}
+// AutopilotMissionSavedMsg carries the mission the editor just saved (empty when
+// cleared) so the app persists it to the live session at once — the editor's
+// save/clear don't wait for the panel's Save button.
+type AutopilotMissionSavedMsg struct{ Mission string }
 
 type missionDialog struct {
-	log      []MissionMessage
-	input    textarea.Model
+	input    textarea.Model // holds the whole mission; editing it IS the mission
 	spinner  spinner.Model
-	thinking bool
-	status   string // transient notice/error under the composer
+	refining bool
+	status   string // transient notice/error under the editor
 }
 
 func newMissionDialog() missionDialog {
 	ta := newChromelessTextarea()
-	ta.Placeholder = "Brief the copilot: what should it get done this session?"
+	ta.Placeholder = "Describe the mission: what should the copilot get done this session?"
 	sp := spinner.New()
 	sp.Spinner = spinner.Spinner{Frames: kit.StarSpinnerFrames, FPS: kit.StarSpinnerFPS}
 	sp.Style = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent)
 	return missionDialog{input: ta, spinner: sp}
 }
 
-// resetMission clears the dialog and seeds it from the persisted mission text so
-// re-opening the panel shows the prior briefing as the first user turn.
+// missionEditorHeight is how many lines the mission editor shows — enough to
+// draft a short paragraph without dominating the card.
+const missionEditorHeight = 6
+
+// resetMission seeds the editor from the persisted mission so re-opening the
+// panel shows the current mission, ready to edit.
 func (p *AutopilotSelector) resetMission() {
-	p.mission.log = nil
-	p.mission.thinking = false
+	p.mission.refining = false
 	p.mission.status = ""
-	p.mission.input.Reset()
-	if m := strings.TrimSpace(p.snap.Mission); m != "" {
-		p.mission.log = []MissionMessage{{FromUser: true, Text: m}}
-	}
+	p.mission.input.SetValue(strings.TrimSpace(p.snap.Mission))
+	p.mission.input.CursorEnd()
 }
 
-// enterMission focuses and sizes the composer when the view opens.
+// enterMission focuses and sizes the editor when the view opens. The width leaves
+// room for the focus rail renderComposer prefixes each line with.
 func (p *AutopilotSelector) enterMission() {
-	p.mission.input.SetWidth(p.innerWidth())
-	p.mission.input.SetHeight(3)
+	p.mission.input.SetWidth(p.innerWidth() - missionRailWidth)
+	p.mission.input.SetHeight(missionEditorHeight)
 	p.mission.input.Focus()
 	p.mission.input.CursorEnd()
 }
 
 func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
+	// While a refine is in flight the box is about to be replaced — take only esc,
+	// so keystrokes can't race the reply into a lost edit.
+	if p.mission.refining && msg.String() != "esc" {
+		return nil
+	}
 	switch msg.String() {
 	case "esc":
-		p.commitMission()
 		p.mission.input.Blur()
 		p.view = apMenu
-		return nil
+		return p.saveMission("")
 	case "enter":
-		return p.sendMission()
+		// Save (cache) the current mission without leaving the editor.
+		return p.saveMission("mission saved")
 	case "alt+enter", "shift+enter":
 		p.mission.input.InsertString("\n")
 		return nil
 	case "ctrl+r":
-		p.clearMission()
-		return nil
+		return p.refineMission()
+	case "ctrl+c":
+		// The overlay captures ctrl+c (it never reaches the global quit here), so
+		// give it a purpose: wipe the mission — this session and the persisted one.
+		p.mission.input.SetValue("")
+		p.mission.input.CursorEnd()
+		return p.saveMission("mission cleared")
 	default:
 		var cmd tea.Cmd
 		p.mission.input, cmd = p.mission.input.Update(msg)
@@ -95,72 +106,66 @@ func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
-// sendMission records the user's turn, updates the persisted mission, and (when
-// a responder is wired) kicks off the copilot reply behind a spinner.
-func (p *AutopilotSelector) sendMission() tea.Cmd {
-	text := strings.TrimSpace(p.mission.input.Value())
-	if text == "" || p.mission.thinking {
-		return nil
-	}
-	p.mission.log = append(p.mission.log, MissionMessage{FromUser: true, Text: text})
-	p.mission.input.Reset()
+// saveMission commits the editor to the working buffer AND emits the mission so
+// the app persists it straight to the live session — the editor's save/clear take
+// effect at once, not only when the panel's Save button is pressed. An optional
+// status note is shown under the editor.
+func (p *AutopilotSelector) saveMission(status string) tea.Cmd {
 	p.commitMission()
+	p.mission.status = status
+	mission := p.snap.Mission
+	return func() tea.Msg { return AutopilotMissionSavedMsg{Mission: mission} }
+}
 
-	if p.respond == nil {
-		p.mission.status = "no copilot model available — briefing saved without a reply"
+// refineMission (ctrl+r) is the "input + thinking" path: it hands the current
+// draft to the copilot to rewrite into a cleaner mission, behind a spinner. A nil
+// refiner (no model) leaves the draft untouched with a note.
+func (p *AutopilotSelector) refineMission() tea.Cmd {
+	draft := strings.TrimSpace(p.mission.input.Value())
+	if draft == "" {
 		return nil
 	}
-	p.mission.thinking = true
+	if p.refine == nil {
+		p.mission.status = "no copilot model to refine with"
+		return nil
+	}
 	p.mission.status = ""
-	history := append([]MissionMessage(nil), p.mission.log...)
-	respond := p.respond
+	p.mission.refining = true
+	refine := p.refine
 	request := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		reply, err := respond(ctx, history)
-		return MissionReplyMsg{Text: reply, Err: err}
+		refined, err := refine(ctx, draft)
+		return MissionRefinedMsg{Mission: refined, Err: err}
 	}
 	return tea.Batch(p.mission.spinner.Tick, request)
 }
 
-// clearMission wipes the whole briefing — the accumulated turns and the composer
-// — so the mission resets to empty instead of only ever growing; commitMission
-// then persists the cleared ("") mission.
-func (p *AutopilotSelector) clearMission() {
-	p.mission.log = nil
-	p.mission.thinking = false
-	p.mission.input.Reset()
-	p.mission.status = "mission cleared"
-	p.commitMission()
-}
-
-// commitMission folds the user turns into the persisted mission directive.
+// commitMission persists the editor content as the mission directive.
 func (p *AutopilotSelector) commitMission() {
-	var parts []string
-	for _, m := range p.mission.log {
-		if m.FromUser {
-			parts = append(parts, m.Text)
-		}
-	}
-	p.snap.Mission = strings.Join(parts, "\n")
+	p.snap.Mission = strings.TrimSpace(p.mission.input.Value())
 }
 
-// DeliverMissionReply is called by the app when a MissionReplyMsg arrives.
-func (p *AutopilotSelector) DeliverMissionReply(text string, err error) {
-	p.mission.thinking = false
+// DeliverRefinedMission is called by the app when a MissionRefinedMsg arrives:
+// the refined mission replaces the editor content. On error the draft is kept
+// as-is so a failed refine never loses the mission.
+func (p *AutopilotSelector) DeliverRefinedMission(mission string, err error) {
+	p.mission.refining = false
 	if err != nil {
 		p.mission.status = "copilot error: " + err.Error()
 		return
 	}
-	if t := strings.TrimSpace(text); t != "" {
-		p.mission.log = append(p.mission.log, MissionMessage{FromUser: false, Text: t})
+	if m := strings.TrimSpace(mission); m != "" {
+		p.mission.input.SetValue(m)
+		p.mission.input.CursorEnd()
+		p.commitMission()
 	}
 }
 
 // Thinking reports whether the mission dialog is awaiting a reply — the app
 // gates spinner ticks on this.
 func (p *AutopilotSelector) Thinking() bool {
-	return p.active && p.view == apMission && p.mission.thinking
+	return p.active && p.view == apMission && p.mission.refining
 }
 
 // UpdateSpinner advances the mission spinner and returns its next tick.
@@ -171,35 +176,16 @@ func (p *AutopilotSelector) UpdateSpinner(msg tea.Msg) tea.Cmd {
 }
 
 func (p *AutopilotSelector) missionHint() string {
-	return kit.HintLine(keycap("enter")+" send", keycap("alt+enter")+" newline", keycap("ctrl+r")+" clear", keycap("esc")+" back")
+	return kit.HintLine(keycap("enter")+" save", keycap("ctrl+r")+" refine", keycap("ctrl+c")+" clear", keycap("esc")+" done")
 }
 
-func (p *AutopilotSelector) renderMission(width int) string {
-	body := lipgloss.NewStyle().Width(width)
+func (p *AutopilotSelector) renderMission() string {
 	var b strings.Builder
-	if len(p.mission.log) == 0 && !p.mission.thinking {
-		b.WriteString(apDescStyle.Render("Tell the copilot what to accomplish; it confirms how it plans to drive."))
-		b.WriteString("\n\n")
-	}
-	for _, m := range p.mission.log {
-		if m.FromUser {
-			b.WriteString(missionUserStyle.Render("you"))
-		} else {
-			b.WriteString(missionCopilotStyle.Render("⏵ copilot"))
-		}
+	b.WriteString(p.renderComposer())
+	if p.mission.refining {
 		b.WriteString("\n")
-		b.WriteString(body.Render(m.Text))
-		b.WriteString("\n\n")
+		b.WriteString(p.mission.spinner.View() + " " + apDescStyle.Render("refining…"))
 	}
-	if p.mission.thinking {
-		b.WriteString(missionCopilotStyle.Render("⏵ copilot"))
-		b.WriteString("\n")
-		b.WriteString(p.mission.spinner.View() + " " + apDescStyle.Render("thinking…"))
-		b.WriteString("\n\n")
-	}
-	b.WriteString(apRuleStyle.Render(strings.Repeat("─", width)))
-	b.WriteString("\n")
-	b.WriteString(p.mission.input.View())
 	if p.mission.status != "" {
 		b.WriteString("\n")
 		b.WriteString(apDescStyle.Render(p.mission.status))
@@ -207,7 +193,18 @@ func (p *AutopilotSelector) renderMission(width int) string {
 	return b.String()
 }
 
-var (
-	missionUserStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
-	missionCopilotStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
-)
+// missionRailWidth is the column the focus rail (+ its gap) occupies to the left
+// of the editor; enterMission subtracts it so the railed editor still fits.
+const missionRailWidth = 2
+
+// renderComposer draws the mission editor with the shared focus rail
+// (kit.FocusBar) down its left edge, so it reads as the active field — the same
+// affordance every selectable list row uses. Kept minimal — one thin bar, no box.
+func (p *AutopilotSelector) renderComposer() string {
+	rail := kit.FocusBarStyle().Render(kit.FocusBar) + " "
+	lines := strings.Split(p.mission.input.View(), "\n")
+	for i, ln := range lines {
+		lines[i] = rail + ln
+	}
+	return strings.Join(lines, "\n")
+}

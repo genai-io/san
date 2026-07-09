@@ -23,7 +23,6 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/setting"
 )
 
 // overlayPanel is a UI element that, while active, takes over both the
@@ -141,10 +140,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the textarea (unlike AgentToggleMsg/SkillCycleMsg below, which do
 		// need a reaction).
 		return m, nil
-	case input.MissionReplyMsg:
-		// The /autopilot Mission dialog's copilot reply arrived; hand it to the
-		// panel to append (or surface an error under the composer).
-		m.userInput.Autopilot.DeliverMissionReply(msg.Text, msg.Err)
+	case input.MissionRefinedMsg:
+		// The /autopilot Mission editor's refined text arrived; hand it to the
+		// panel to replace the draft (or surface an error under the editor).
+		m.userInput.Autopilot.DeliverRefinedMission(msg.Mission, msg.Err)
+		return m, nil
+	case input.AutopilotMissionSavedMsg:
+		// The Mission editor saved or cleared the mission — persist it to the live
+		// session at once (it rides the transcript and restores on /resume), and
+		// flush any mission still in settings.json, since a mission is session-
+		// scoped and never a default. A clear thus wipes it from both places.
+		m.env.AutoPilot.Mission = msg.Mission
+		m.persistAutopilotDefault()
 		return m, nil
 	case autopilotDecisionMsg:
 		// The TurnEnd steer's continue/stop verdict came back.
@@ -158,12 +165,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.AutopilotSavedMsg:
 		// Apply the edit to the live session (persists/resumes with the session),
 		// hot-swap the running judge so the new model/prompt/steers take effect at
-		// once, and write it as the default seed for new sessions.
+		// once, and write it — minus the per-session mission — as the default for
+		// new sessions.
 		m.env.AutoPilot = msg.Config.Clone()
-		m.rebuildAutopilotReviewer()
-		if err := setting.UpdateAutoPilotAt(msg.Config, true); err != nil {
-			log.Logger().Warn("persist autopilot default failed", zap.Error(err))
-		}
+		m.persistAutopilotDefault()
 		m.conv.AddNotice("Autopilot config saved")
 		return m, nil
 	case input.AutopilotStartMsg:
@@ -171,10 +176,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and kick the mission hands-free. The explicit counterpart to shift+tab
 		// (which only lands the mode and, with Suggest on, proposes a step).
 		m.env.AutoPilot = msg.Config.Clone()
-		m.rebuildAutopilotReviewer()
-		if err := setting.UpdateAutoPilotAt(msg.Config, true); err != nil {
-			log.Logger().Warn("persist autopilot default failed", zap.Error(err))
-		}
+		m.persistAutopilotDefault()
 		m.enterAutoPilotMode()
 		m.conv.AddNotice("Autopilot engaged")
 		return m, m.autopilotKickCmd()

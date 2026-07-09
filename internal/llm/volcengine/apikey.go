@@ -35,6 +35,6 @@ func NewAPIKeyClient(ctx context.Context) (llm.Provider, error) {
 }
 
 func init() {
-	llm.RegisterProviderDisplay(llm.Volcengine, llm.ProviderDisplay{Name: "Volcengine Ark (火山引擎)", Order: 120})
+	llm.RegisterProviderDisplay(llm.Volcengine, llm.ProviderDisplay{Name: "Volcengine Ark", Order: 120})
 	llm.Register(APIKeyMeta, NewAPIKeyClient)
 }

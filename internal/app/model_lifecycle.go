@@ -37,7 +37,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
-	m.userInput.Autopilot.SetMissionResponder(m.missionReply)
+	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
 	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err

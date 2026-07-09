@@ -16,7 +16,7 @@ mission hands-free, hit the panel's **Start** button — it engages AutoPilot an
 submits the opening step in one action (see [Start](#start-the-mission)). A
 resumed session (`san -r <id>`) comes back in the mode it was saved in.
 
-## The five steers
+## The six steers
 
 Steers are à-la-carte toggles, ordered by increasing autonomy. None fire unless
 AutoPilot mode is engaged.
@@ -26,16 +26,19 @@ AutoPilot mode is engaged.
 | **Suggest** | off | Fills the input hint (ghost text) with the copilot's proposed next step — toward the mission when one is set, the generic prediction otherwise. `tab` accepts, `enter` sends. It suggests; it never acts. With Suggest *off*, AutoPilot suppresses the hint entirely so the copilot doesn't nudge. |
 | **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. Fails closed: any error escalates to you. |
 | **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
+| **Skill** | off | Approves the copilot's skill loads outright, without the judge — a deliberate "trust skills" toggle, separate from Permission because the judge tends to escalate a skill load (it can run scripts). Off ⇒ skill loads fall to the Permission judge (or you). |
 | **Question** | off | Answers `AskUserQuestion` for you when the mission makes the choice clear and low-risk; defers to you otherwise. Option labels are validated verbatim — a partial or invented answer becomes a defer. |
 | **End** | off | After a finished turn, decides whether to continue toward the mission and types the next instruction itself. Bounded by **Continue at most N times** (default 20); the counter resets on every human turn. |
 
 ## Mission
 
-The mission is what the copilot drives toward this session — briefed
-conversationally in the `/autopilot` panel's Mission dialog (`enter` sends,
-`ctrl+r` clears, `esc` saves back). The steering steers (Suggest, Question, End)
-read it; the safety steers (Permission, Bash) deliberately never see it, so an
-action's risk is judged independently of intent.
+The mission is what the copilot drives toward this session — written in the
+`/autopilot` panel's Mission dialog, a small editor: the text you type is the
+mission (`enter` saves it, `alt+enter` for a newline; paste works), `ctrl+r` asks
+the copilot to refine the draft in place, `ctrl+c` clears it, and `esc` saves and
+leaves. The steering steers (Suggest, Question, End) read it; the safety steers
+(Permission, Bash) deliberately never see it, so an action's risk is judged
+independently of intent.
 
 When the End steer decides the mission is **fully accomplished**, it retires
 it: the mission is cleared and the steers reset to the passive baseline
@@ -145,6 +148,7 @@ the transcript and restore on `/resume`.
       "suggest": true,
       "permission": true,  // omit for the default (on); false escalates everything
       "bashPrompt": true,  // the Bash steer
+      "skill": true,       // the Skill steer — trust skill loads
       "question": true,
       "turnEnd": true      // the End steer
     }
@@ -152,8 +156,8 @@ the transcript and restore on `/resume`.
 }
 ```
 
-Named presets: the panel's **▴ Export / ▾ Import** save and load whole configs
-under `~/.san/autopilot/<name>.json`.
+Named presets: in the `/autopilot` menu, `e` exports the current config and `i`
+imports one, stored under `~/.san/autopilot/<name>.json`.
 
 ## Relationship to other features
 

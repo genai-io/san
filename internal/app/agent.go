@@ -185,17 +185,31 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		},
 
 		PermissionReview: func(ctx context.Context, name string, args map[string]any, reason string) agent.PermReviewResult {
-			// Only auto-review mode with the Permission steer on delegates
-			// gray-zone prompts to the judge; the steer is read live via the
-			// synchronized snapshot (agent goroutine) so a mid-session toggle
-			// takes effect. Steer off ⇒ every gray-zone call escalates.
-			if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.PermissionOn() {
+			// Steers are read live via the synchronized snapshot (agent goroutine)
+			// so a mid-session toggle takes effect.
+			if !m.autopilotEngaged() {
 				return agent.PermReviewResult{}
 			}
-			// Defense in depth: the judge may never approve a floored action,
-			// even if one somehow reaches it.
+			cfg := m.liveAutopilotConfig()
+			// Defense in depth: no steer may approve a floored action, even if one
+			// somehow reaches here.
 			if r := setting.BypassImmuneReason(name, args); r != "" {
 				m.recordDecision(ctx, false, r)
+				return agent.PermReviewResult{}
+			}
+			// Skill steer: trust skill loads — approve them outright, no judge, so
+			// the copilot can pull in skills without a prompt. Deliberately separate
+			// from the Permission steer, since the judge tends to escalate a skill
+			// load (it can run scripts) and you may want skills without opening the
+			// whole gray zone.
+			if name == tool.ToolSkill && cfg.Steers.Skill {
+				m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
+				m.recordDecision(ctx, true, "skill steer: trusted skill load")
+				return agent.PermReviewResult{Allow: true, Reason: "autopilot: skill steer"}
+			}
+			// Permission steer: delegate gray-zone prompts to the judge. Off ⇒ every
+			// gray-zone call escalates to the human.
+			if !cfg.Steers.PermissionOn() {
 				return agent.PermReviewResult{}
 			}
 			rev := m.autopilot.Load().judge

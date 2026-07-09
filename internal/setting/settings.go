@@ -90,6 +90,10 @@ type SteerSettings struct {
 	Permission *bool `json:"permission,omitempty"`
 	// BashPrompt answers a running command's interactive prompts.
 	BashPrompt bool `json:"bashPrompt,omitempty"`
+	// Skill approves the copilot's skill loads outright, without the judge — a
+	// deliberate "trust skills" toggle separate from the Permission steer, since
+	// the judge tends to escalate a skill load (it can run scripts).
+	Skill bool `json:"skill,omitempty"`
 	// Question answers an AskUserQuestion on the human's behalf.
 	Question bool `json:"question,omitempty"`
 	// TurnEnd auto-continues a finished turn toward the mission.
@@ -131,7 +135,7 @@ func (a AutoPilotSettings) IsZero() bool {
 	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
 		a.Mission == "" && a.MaxContinuations == 0 &&
 		!a.Steers.Suggest && a.Steers.Permission == nil &&
-		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
+		!a.Steers.BashPrompt && !a.Steers.Skill && !a.Steers.Question && !a.Steers.TurnEnd
 }
 
 // Equal compares two configs by value, normalizing the tri-state permission
@@ -146,6 +150,7 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.Steers.Suggest == b.Steers.Suggest &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&
+		a.Steers.Skill == b.Steers.Skill &&
 		a.Steers.Question == b.Steers.Question &&
 		a.Steers.TurnEnd == b.Steers.TurnEnd
 }

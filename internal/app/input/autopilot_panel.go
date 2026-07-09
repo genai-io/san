@@ -43,8 +43,8 @@ type AutopilotStartMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
-	respond MissionResponder                 // injected; nil disables live mission replies
-	live    func() setting.AutoPilotSettings // injected; returns the live session config
+	refine MissionRefiner                   // injected; nil disables mission refinement
+	live   func() setting.AutoPilotSettings // injected; returns the live session config
 
 	active bool
 	width  int
@@ -61,7 +61,6 @@ type AutopilotSelector struct {
 	editingBuffer string
 	status        string // transient export/import notice under the menu
 
-	actionCursor int      // menu: 0 = Export, 1 = Import on the actions row
 	saveCursor   int      // menu: 0 = Save, 1 = Start on the save/start row
 	nameBuffer   string   // apExport: the preset name being typed
 	presets      []string // apImport: available preset names
@@ -80,10 +79,10 @@ func NewAutopilotSelector() AutopilotSelector {
 	}
 }
 
-// SetMissionResponder wires the copilot's LLM reply function for the Mission
-// dialog. Called by the app once its provider is available; a nil responder
-// leaves the dialog usable for composing but without live replies.
-func (p *AutopilotSelector) SetMissionResponder(fn MissionResponder) { p.respond = fn }
+// SetMissionRefiner wires the copilot's LLM refine function for the Mission
+// dialog. Called by the app once its provider is available; a nil refiner leaves
+// the dialog usable for composing but without AI refinement.
+func (p *AutopilotSelector) SetMissionRefiner(fn MissionRefiner) { p.refine = fn }
 
 // SetConfigSource wires the getter for the live session config. The panel seeds
 // its working buffer from it on Enter, so what you edit is the running session's
@@ -104,7 +103,6 @@ func (p *AutopilotSelector) Enter(width, height int) {
 	p.baseline = p.snap.Clone()
 	p.cursor = p.firstSelectable()
 	p.status = ""
-	p.actionCursor = 0
 	p.saveCursor = 0
 	p.resetMission()
 }
@@ -152,17 +150,11 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 	case "down", "j":
 		p.cursor = apStep(rows, p.cursor+1, +1, p.cursor)
 	case "left", "h":
-		switch rows[p.cursor].kind {
-		case apRowActions:
-			p.actionCursor = 0
-		case apRowSaveStart:
+		if rows[p.cursor].kind == apRowSaveStart {
 			p.saveCursor = 0
 		}
 	case "right", "l":
-		switch rows[p.cursor].kind {
-		case apRowActions:
-			p.actionCursor = 1
-		case apRowSaveStart:
+		if rows[p.cursor].kind == apRowSaveStart {
 			p.saveCursor = 1
 		}
 	case "space":
@@ -173,6 +165,10 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "enter":
 		return p.activateRow(rows[p.cursor])
+	case "e", "E":
+		p.beginExport()
+	case "i", "I":
+		p.beginImport()
 	}
 	return nil
 }
@@ -188,12 +184,6 @@ func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
 	case apRowInt:
 		p.editing = true
 		p.editingBuffer = strconv.Itoa(p.snap.ResolvedMaxContinuations())
-	case apRowActions:
-		if p.actionCursor == 0 {
-			p.beginExport()
-		} else {
-			p.beginImport()
-		}
 	case apRowSaveStart:
 		if p.saveCursor == 0 {
 			return p.save()
@@ -303,7 +293,6 @@ const (
 	apRowEntry     apRowKind = iota // opens a sub-view (System Prompt / Mission)
 	apRowSteer                      // bool toggle
 	apRowInt                        // continuation cap
-	apRowActions                    // Export | Import on one line (left/right picks)
 	apRowSaveStart                  // Save | Start on one line (left/right picks)
 	apRowSection                    // section header
 	apRowSpacer                     // blank line
@@ -323,7 +312,7 @@ type apRow struct {
 
 func (r apRow) selectable() bool {
 	switch r.kind {
-	case apRowEntry, apRowSteer, apRowInt, apRowActions, apRowSaveStart:
+	case apRowEntry, apRowSteer, apRowInt, apRowSaveStart:
 		return true
 	default:
 		return false
@@ -331,13 +320,17 @@ func (r apRow) selectable() bool {
 }
 
 func (p *AutopilotSelector) rows() []apRow {
+	// System Prompt and Mission are the two editor entries — group them at the top
+	// (no section header for a single item) before the Steer toggles.
 	rows := []apRow{
 		{kind: apRowEntry, label: "System Prompt", desc: "how it drives", open: apSystemPrompt, summary: systemPromptSummary},
+		{kind: apRowEntry, label: "Mission", desc: "what to achieve", open: apMission, summary: missionSummary},
 		{kind: apRowSpacer},
 		{kind: apRowSection, label: "Steer"},
 		{kind: apRowSteer, label: "Suggest", desc: "propose the next step", get: getSuggest, toggle: toggleSuggest},
 		{kind: apRowSteer, label: "Permission", desc: "auto-approve gray zone", get: getPermission, toggle: togglePermission},
 		{kind: apRowSteer, label: "Bash", desc: "answer command prompts", get: getBash, toggle: toggleBash},
+		{kind: apRowSteer, label: "Skill", desc: "approve skill loads", get: getSkill, toggle: toggleSkill},
 		{kind: apRowSteer, label: "Question", desc: "answer AskUserQuestion", get: getQuestion, toggle: toggleQuestion},
 		{kind: apRowSteer, label: "End", desc: "auto-continue the turn", get: getTurnEnd, toggle: toggleTurnEnd},
 	}
@@ -345,11 +338,6 @@ func (p *AutopilotSelector) rows() []apRow {
 		rows = append(rows, apRow{kind: apRowInt, label: "Continue at most", indent: 1})
 	}
 	rows = append(rows,
-		apRow{kind: apRowSpacer},
-		apRow{kind: apRowSection, label: "Mission"},
-		apRow{kind: apRowEntry, label: "Mission", desc: "what to achieve", open: apMission, summary: missionSummary},
-		apRow{kind: apRowSpacer},
-		apRow{kind: apRowActions},
 		apRow{kind: apRowSpacer},
 		apRow{kind: apRowSaveStart},
 	)
@@ -384,11 +372,13 @@ func apStep(rows []apRow, start, step, fallback int) int {
 func getSuggest(s setting.AutoPilotSettings) bool    { return s.Steers.Suggest }
 func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.PermissionOn() }
 func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
+func getSkill(s setting.AutoPilotSettings) bool      { return s.Steers.Skill }
 func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
 func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
 
 func toggleSuggest(s *setting.AutoPilotSettings)  { s.Steers.Suggest = !s.Steers.Suggest }
 func toggleBash(s *setting.AutoPilotSettings)     { s.Steers.BashPrompt = !s.Steers.BashPrompt }
+func toggleSkill(s *setting.AutoPilotSettings)    { s.Steers.Skill = !s.Steers.Skill }
 func toggleQuestion(s *setting.AutoPilotSettings) { s.Steers.Question = !s.Steers.Question }
 func toggleTurnEnd(s *setting.AutoPilotSettings)  { s.Steers.TurnEnd = !s.Steers.TurnEnd }
 

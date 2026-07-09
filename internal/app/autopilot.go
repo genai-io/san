@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -154,37 +153,50 @@ func parseAutoPilot(s string) setting.AutoPilotSettings {
 	return a
 }
 
-// missionBriefingPrompt is the copilot's persona while the user briefs it in the
-// /autopilot Mission dialog. It replies as the "co-pilot" that will steer the
-// session — acknowledging the mission and stating, briefly, how it will drive.
-const missionBriefingPrompt = `You are the autopilot copilot riding shotgun on a coding agent — a second set of hands that steers the session at set points (approving gray-zone tool calls, answering prompts, deciding whether to keep the agent going after a turn).
+// autopilotWithoutMission returns the config with its mission cleared — the copy
+// written to settings.json as the default for new sessions. A mission is a
+// one-off task that belongs to this session (it persists with the transcript and
+// restores on /resume), not a global default every new session should inherit.
+func autopilotWithoutMission(cfg setting.AutoPilotSettings) setting.AutoPilotSettings {
+	shared := cfg.Clone()
+	shared.Mission = ""
+	return shared
+}
 
-The user is briefing you on the mission for this session. Reply in 2-4 sentences: confirm the goal in your own words, and state concretely how you will steer toward it — when you will handle things yourself versus hand back to the human, and what would make you stop. Be direct and specific. Do not use lists or headers. If the briefing is ambiguous, ask one sharp clarifying question instead of guessing.`
+// persistAutopilotDefault hot-swaps the running judge from m.env.AutoPilot and
+// writes that config — minus the per-session mission — to settings.json as the
+// default for new sessions. Shared tail of the panel Save/Start and the Mission
+// editor's save/clear; callers set m.env.AutoPilot first.
+func (m *model) persistAutopilotDefault() {
+	m.rebuildAutopilotReviewer()
+	if err := setting.UpdateAutoPilotAt(autopilotWithoutMission(m.env.AutoPilot), true); err != nil {
+		log.Logger().Warn("persist autopilot default failed", zap.Error(err))
+	}
+}
 
-// missionReply produces the copilot's reply to the briefing so far. It runs on
-// the configured autopilot model (falling back to the session model) and returns
-// a short acknowledgement of how it will steer. Wired into the /autopilot panel
-// via SetMissionResponder.
-func (m *model) missionReply(ctx context.Context, history []input.MissionMessage) (string, error) {
+// missionRefinePrompt drives the /autopilot Mission editor's ctrl+r action: it
+// rewrites the user's draft into a cleaner mission. The reply IS the mission, so
+// the prompt forbids any preamble or commentary.
+const missionRefinePrompt = `You are helping the user craft the mission for an autonomous coding session — the single directive the autopilot copilot will steer toward.
+
+Rewrite the user's mission draft into a clearer, more complete, self-contained directive: keep their intent and every specific they included, tighten and structure it, and add nothing they did not ask for. If it is already clear, return it largely unchanged.
+
+Return ONLY the mission text — no preamble, no quotes, no commentary. Write it as a direct instruction to the agent: concrete, actionable, a few sentences at most.`
+
+// missionRefine rewrites the mission draft into an improved mission. It runs on
+// the configured autopilot model (falling back to the session model). Wired into
+// the /autopilot panel via SetMissionRefiner.
+func (m *model) missionRefine(ctx context.Context, draft string) (string, error) {
 	provider, modelID := m.resolveReviewerModel(m.env.AutoPilot.Model)
 	if provider == nil {
 		return "", fmt.Errorf("no model connected")
 	}
 
-	msgs := make([]core.Message, 0, len(history))
-	for _, h := range history {
-		role := core.RoleUser
-		if !h.FromUser {
-			role = core.RoleAssistant
-		}
-		msgs = append(msgs, core.Message{Role: role, Content: h.Text})
-	}
-
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        modelID,
-		SystemPrompt: missionBriefingPrompt,
-		Messages:     msgs,
-		MaxTokens:    400,
+		SystemPrompt: missionRefinePrompt,
+		Messages:     []core.Message{{Role: core.RoleUser, Content: draft}},
+		MaxTokens:    600,
 	})
 	if err != nil {
 		return "", err
