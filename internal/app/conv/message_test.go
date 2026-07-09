@@ -602,6 +602,46 @@ func Test_formatToolResultSizeUsesNoOutputForEmptyContent(t *testing.T) {
 	}
 }
 
+func TestRenderToolResultInlineHidesSuccessfulEditSummary(t *testing.T) {
+	got := RenderToolResultInline(ToolResultData{
+		ToolName: "Edit",
+		Content:  "Edited /tmp/example.go",
+	}, nil)
+	if got != "" {
+		t.Fatalf("successful Edit result = %q, want no redundant summary", got)
+	}
+
+	errResult := stripANSI(RenderToolResultInline(ToolResultData{
+		ToolName: "Edit",
+		Content:  "old_string not found",
+		IsError:  true,
+	}, nil))
+	if !strings.Contains(errResult, "old_string not found") {
+		t.Fatalf("Edit error should remain visible, got %q", errResult)
+	}
+}
+
+func TestRenderToolCallsKeepsEditCallWithoutRedundantResult(t *testing.T) {
+	call := core.ToolCall{
+		ID:    "edit-1",
+		Name:  "Edit",
+		Input: `{"file_path":"internal/app/view.go","old_string":"old","new_string":"new"}`,
+	}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "Edit", Content: "Edited internal/app/view.go"},
+		},
+		Width: 100,
+	}))
+	if !strings.Contains(rendered, "Edit(internal/app/view.go)") {
+		t.Fatalf("completed Edit call should remain visible, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Edit →") {
+		t.Fatalf("redundant Edit result should be hidden, got %q", rendered)
+	}
+}
+
 func Test_renderTaskOutputResultInlineShowsErrorText(t *testing.T) {
 	rendered := renderTaskOutputResultInline(ToolResultData{
 		ToolName: "TaskOutput",

@@ -158,10 +158,14 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	}
 
 	duration := time.Since(start)
+	output := "Edited " + filePath
+	if replaceCount > 1 {
+		output += " (" + strconv.Itoa(replaceCount) + " replacements)"
+	}
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  "Successfully edited " + filePath + " (" + strconv.Itoa(replaceCount) + " replacement(s))",
+		Output:  output,
 		HookResponse: map[string]any{
 			"filePath":        filePath,
 			"oldString":       oldString,

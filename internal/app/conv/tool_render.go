@@ -115,6 +115,13 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
 	}
+	// The completed call immediately above already reads Edit(path). A second
+	// success line such as "Edit → 1 replacement(s)" repeats the operation
+	// without adding useful information. Errors still fall through so the
+	// failure reason remains prominent.
+	if toolName == "Edit" && !data.IsError {
+		return ""
+	}
 
 	sizeInfo := formatToolResultSize(toolName, data.Content)
 	icon := toolResultIcon(data.IsError)
