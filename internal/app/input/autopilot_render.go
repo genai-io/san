@@ -38,7 +38,7 @@ func (p *AutopilotSelector) Render() string {
 			p.renderMenu(p.innerWidth()),
 			kit.HintLine(
 				keycap("↑↓")+" navigate", keycap("←→")+" pick",
-				keycap("space")+" toggle", keycap("enter")+" open/save", keycap("esc")+" close",
+				keycap("space")+" toggle", keycap("enter")+" open/run", keycap("esc")+" close",
 			),
 		)
 	}
@@ -100,8 +100,8 @@ func (p *AutopilotSelector) renderMenu(width int) string {
 			b.WriteString(p.renderInt(i, row))
 		case apRowActions:
 			b.WriteString(p.renderActions(i))
-		case apRowSave:
-			b.WriteString(p.renderSave(i))
+		case apRowSaveStart:
+			b.WriteString(p.renderSaveStart(i))
 		case apRowSpacer:
 			// blank line
 		}
@@ -115,16 +115,18 @@ func (p *AutopilotSelector) renderMenu(width int) string {
 }
 
 // renderActions draws Export / Import on one line; the focused half is picked
-// with ←/→ and lit, the other stays muted.
+// with ←/→ and lit, the other stays muted. The up/down glyph stays small and
+// dim so the label leads and the marker doesn't overshadow it.
 func (p *AutopilotSelector) renderActions(i int) string {
-	seg := func(active bool, label string) string {
+	seg := func(active bool, glyph, label string) string {
+		g := apChipStyle.Render(glyph + " ")
 		if i == p.cursor && active {
-			return apActionActiveStyle.Render(label)
+			return g + apActionActiveStyle.Render(label)
 		}
-		return apActionIdleStyle.Render(label)
+		return g + apActionIdleStyle.Render(label)
 	}
-	exp := seg(p.actionCursor == 0, "▲ Export")
-	imp := seg(p.actionCursor == 1, "▼ Import")
+	exp := seg(p.actionCursor == 0, "▴", "Export")
+	imp := seg(p.actionCursor == 1, "▾", "Import")
 	return p.cursorMark(i) + exp + apChipStyle.Render("    ") + imp
 }
 
@@ -178,8 +180,22 @@ func (p *AutopilotSelector) renderInt(i int, row apRow) string {
 	return indent + p.cursorMark(i) + row.label + " " + chip + " " + apDescStyle.Render("times")
 }
 
-func (p *AutopilotSelector) renderSave(i int) string {
-	return p.cursorMark(i) + apSaveStyle.Render("Save")
+// renderSaveStart draws Save and Start as two filled pill keys side by side —
+// both sit on the neutral keycap surface so they read as buttons at rest. The
+// focused pick (←/→) keeps the same pill and just takes a bold accent label
+// (green Save, accent Start); the other stays neutral. Focus is carried by that
+// accent, so this row skips the ▸ mark and indents to sit under the content
+// column instead.
+func (p *AutopilotSelector) renderSaveStart(i int) string {
+	seg := func(active bool, lit lipgloss.Style, label string) string {
+		if i == p.cursor && active {
+			return lit.Render(label)
+		}
+		return apButtonIdleStyle.Render(label)
+	}
+	save := seg(p.saveCursor == 0, apSaveButtonStyle, "Save")
+	start := seg(p.saveCursor == 1, apStartButtonStyle, "Start")
+	return "  " + save + "  " + start
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────
@@ -219,9 +235,12 @@ var (
 	apUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
 	apUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 
-	apSaveStyle = lipgloss.NewStyle().
-			Background(kit.CurrentTheme.Success).
-			Foreground(kit.CurrentTheme.Background).
-			Bold(true).
-			Padding(0, 2)
+	// Save/Start buttons: filled neutral pills on the panel's keycap surface, so
+	// they read as raised keys at rest — depth from the fill, no frame. Focus is a
+	// light touch: the picked pill keeps the same surface and just takes a bold
+	// accent label (green Save, accent Start); no heavy fill swap.
+	apButtonBaseStyle  = lipgloss.NewStyle().Padding(0, 2).Background(kit.SearchBg)
+	apButtonIdleStyle  = apButtonBaseStyle.Foreground(kit.CurrentTheme.Text)
+	apSaveButtonStyle  = apButtonBaseStyle.Foreground(kit.CurrentTheme.Success).Bold(true)
+	apStartButtonStyle = apButtonBaseStyle.Foreground(kit.CurrentTheme.Accent).Bold(true)
 )

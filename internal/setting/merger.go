@@ -44,7 +44,6 @@ func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 		MaxContinuations: coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
 		Steers: SteerSettings{
 			Suggest:    overlay.Steers.Suggest || base.Steers.Suggest,
-			TurnStart:  overlay.Steers.TurnStart || base.Steers.TurnStart,
 			Permission: coalesceBool(overlay.Steers.Permission, base.Steers.Permission),
 			BashPrompt: overlay.Steers.BashPrompt || base.Steers.BashPrompt,
 			Question:   overlay.Steers.Question || base.Steers.Question,

@@ -71,29 +71,17 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 		return cmd
 	}
 
-	// TurnStart steer (#1): rewrite a human message toward the mission before it
-	// reaches the agent, then re-submit. Passes through for slash commands,
-	// continuations, and the already-rewritten re-submit. Runs before the budget
-	// reset below so it can still read autopilotContinuing.
-	if cmd, intercepted := m.autopilotRewriteCmd(raw); intercepted {
-		return cmd
-	}
-
 	// A human turn resets the auto-continue budget; a copilot-driven continuation
 	// (flagged) does not, so MaxContinuations bounds a run of consecutive
 	// auto-turns rather than the whole session. Capture the copilot's note now,
-	// before the flags reset, so the built message can wear its "↖ autopilot ·
-	// <note>" annotation ("N/M" continuation, or "refined" rewrite).
+	// before the flag resets, so the built message can wear its "↖ autopilot ·
+	// N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {
 		autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
 		m.autopilotContinuing = false
 	} else {
 		m.autopilotContinuations = 0
-	}
-	if m.autopilotRefined {
-		autopilotNote = "refined"
-		m.autopilotRefined = false
 	}
 
 	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {

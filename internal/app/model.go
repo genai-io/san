@@ -82,20 +82,9 @@ type model struct {
 	autopilotContinuations int
 	autopilotContinuing    bool
 
-	// autopilotRewrote tags the re-submit of a TurnStart-rewritten message so
-	// dispatchSubmission doesn't rewrite it a second time; autopilotRefined marks
-	// that the rewrite actually changed the text, so the re-submitted message
-	// wears the "↖ autopilot · refined" annotation.
-	autopilotRewrote bool
-	autopilotRefined bool
-
 	// autopilotDeciding is true while a turn-end/kick decision is in flight, so
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
-
-	// autopilotRewriting is true while a TurnStart rewrite is in flight, so a
-	// second Enter is swallowed instead of launching a duplicate rewrite/submit.
-	autopilotRewriting bool
 
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.

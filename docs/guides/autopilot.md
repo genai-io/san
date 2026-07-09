@@ -5,16 +5,18 @@
 Autopilot is San's autonomy system, designed to minimize human intervention: a
 copilot model cruises the session, keeping routine work moving and handing
 control back only when something genuinely needs you. It acts through a set of
-independently enabled **steers** — proposing or rewriting input, approving
-gray-zone tool calls, answering a command's interactive prompts, answering
+independently enabled **steers** — proposing the next step, approving gray-zone
+tool calls, answering a command's interactive prompts, answering
 `AskUserQuestion`, and continuing finished turns toward a mission. Only
 gray-zone permission judging is on by default.
 
 Enter AutoPilot mode with `shift+tab` (cycle until the amber
-`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
-session (`san -r <id>`) comes back in the mode it was saved in.
+`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. To launch a
+mission hands-free, hit the panel's **Start** button — it engages AutoPilot and
+submits the opening step in one action (see [Start](#start-the-mission)). A
+resumed session (`san -r <id>`) comes back in the mode it was saved in.
 
-## The six steers
+## The five steers
 
 Steers are à-la-carte toggles, ordered by increasing autonomy. None fire unless
 AutoPilot mode is engaged.
@@ -22,7 +24,6 @@ AutoPilot mode is engaged.
 | Steer | Default | What it does |
 |---|---|---|
 | **Suggest** | off | Fills the input hint (ghost text) with the copilot's proposed next step — toward the mission when one is set, the generic prediction otherwise. `tab` accepts, `enter` sends. It suggests; it never acts. With Suggest *off*, AutoPilot suppresses the hint entirely so the copilot doesn't nudge. |
-| **Start** | off | Owns the turn's input: rewrites each message you send into a clearer, mission-aligned instruction, and — when you enter AutoPilot with a mission set and an empty composer — kicks off the mission by deriving and submitting the first step itself. |
 | **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. Fails closed: any error escalates to you. |
 | **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
 | **Question** | off | Answers `AskUserQuestion` for you when the mission makes the choice clear and low-risk; defers to you otherwise. Option labels are validated verbatim — a partial or invented answer becomes a defer. |
@@ -32,14 +33,31 @@ AutoPilot mode is engaged.
 
 The mission is what the copilot drives toward this session — briefed
 conversationally in the `/autopilot` panel's Mission dialog (`enter` sends,
-`ctrl+r` clears, `esc` saves back). The steering steers (Suggest, Start,
-Question, End) read it; the safety steers (Permission, Bash) deliberately never
-see it, so an action's risk is judged independently of intent.
+`ctrl+r` clears, `esc` saves back). The steering steers (Suggest, Question, End)
+read it; the safety steers (Permission, Bash) deliberately never see it, so an
+action's risk is judged independently of intent.
 
 When the End steer decides the mission is **fully accomplished**, it retires
 it: the mission is cleared and the steers reset to the passive baseline
 (Permission + Bash) — AutoPilot stays on, you take the wheel back with the
 auto-approve safety net intact.
+
+## Start the mission
+
+The panel's bottom row is two buttons — **Save** and **Start** (`←`/`→` to
+pick, `enter` to run):
+
+- **Save** applies the config to the live session and writes it to
+  `settings.json` as the default seed, without changing the mode. Use it when
+  you're only tuning steers, or want to engage later with `shift+tab`.
+- **Start** does everything Save does, then engages AutoPilot and kicks the
+  mission hands-free: it derives the opening step from the mission and submits
+  it itself, so briefing a mission and hitting Start is the whole launch. Start
+  needs a mission — with none set it nudges you instead of engaging.
+
+Landing on AutoPilot via `shift+tab` no longer auto-starts; it only surfaces the
+Suggest steer's proposal (if on). Kicking the mission is always the explicit
+Start button.
 
 ## Demo: a hands-free scaffold
 
@@ -55,19 +73,18 @@ mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
 
 **2. Configure the copilot** — run `/autopilot`:
 
-- Toggle **Start** and **End** on (Permission is already on).
+- Toggle **End** on (Permission is already on).
 - Open **Mission** and brief it:
 
   > Scaffold a `notes/` directory: `todo.md` with a 3-item checklist, `done.md`
   > empty, and `README.md` explaining the layout. Work one file per turn. When
   > all three exist, verify with `ls notes/` — then the mission is complete.
 
-- `esc` back, then **Save**.
+- `esc` back.
 
-**3. Engage** — press `shift+tab` until the mode line shows
-`⏵⏵ autopilot on`. That's the last key you need to press: with Start on, a
-mission set, and an empty composer, the copilot derives the opening step and
-submits it itself.
+**3. Engage** — on the bottom row, press `→` to focus **Start** and hit
+`enter`. That's the last key you need to press: Start engages AutoPilot and,
+with a mission set, derives the opening step and submits it itself.
 
 **4. Watch the run.** Expect a transcript like:
 
@@ -91,16 +108,15 @@ gray-zone call the Permission steer approved inline. On `✓ mission complete` t
 to the passive baseline — open `/autopilot` to confirm — while AutoPilot stays
 engaged.
 
-To see the gentler end of the spectrum, rerun with only **Suggest** on: the
-copilot proposes each step as ghost text in the composer and you accept with
-`tab` + `enter`.
+To see the gentler end of the spectrum, rerun with only **Suggest** on and
+engage with `shift+tab`: the copilot proposes each step as ghost text in the
+composer and you accept with `tab` + `enter`.
 
 ## Reading the transcript
 
 | Mark | Meaning |
 |---|---|
 | green `↖ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5) |
-| green `↖ autopilot · refined` | the `❭` line above is your message, rewritten by the Start steer |
 | green `↳ auto-approved · <reason>` | the permission judge let the tool call above through |
 | amber `↳ escalated · <reason>` | the judge sent the call back to you |
 | green `⏵ autopilot · answered for you` | the copilot answered an `AskUserQuestion` |
@@ -127,7 +143,6 @@ the transcript and restore on `/resume`.
     "maxContinuations": 20,
     "steers": {
       "suggest": true,
-      "turnStart": true,   // the Start steer
       "permission": true,  // omit for the default (on); false escalates everything
       "bashPrompt": true,  // the Bash steer
       "question": true,
@@ -137,7 +152,7 @@ the transcript and restore on `/resume`.
 }
 ```
 
-Named presets: the panel's **▲ Export / ▼ Import** save and load whole configs
+Named presets: the panel's **▴ Export / ▾ Import** save and load whole configs
 under `~/.san/autopilot/<name>.json`.
 
 ## Relationship to other features

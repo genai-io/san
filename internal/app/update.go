@@ -152,9 +152,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case autopilotQuestionMsg:
 		// The Question steer's answer (or defer) came back.
 		return m, m.handleAutopilotQuestion(msg)
-	case autopilotRewriteMsg:
-		// The TurnStart steer's rewrite came back; re-submit it.
-		return m, m.handleAutopilotRewrite(msg)
 	case autopilotModeSettledMsg:
 		// The mode has rested on AutoPilot long enough to open it hands-free.
 		return m, m.handleAutopilotModeSettled()
@@ -169,6 +166,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Autopilot config saved")
 		return m, nil
+	case input.AutopilotStartMsg:
+		// Save & Start: apply + persist exactly like a Save, then engage AutoPilot
+		// and kick the mission hands-free. The explicit counterpart to shift+tab
+		// (which only lands the mode and, with Suggest on, proposes a step).
+		m.env.AutoPilot = msg.Config.Clone()
+		m.rebuildAutopilotReviewer()
+		if err := setting.UpdateAutoPilotAt(msg.Config, true); err != nil {
+			log.Logger().Warn("persist autopilot default failed", zap.Error(err))
+		}
+		m.enterAutoPilotMode()
+		m.conv.AddNotice("Autopilot engaged")
+		return m, m.autopilotKickCmd()
 	case input.ConfigSavedMsg:
 		// Refresh the in-memory settings handle so re-opening /config (and any
 		// in-session reader) sees the just-saved values rather than the stale

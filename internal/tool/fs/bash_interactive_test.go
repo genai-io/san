@@ -142,6 +142,30 @@ func Test_runInteractive_timeoutReapsChildHoldingPTY(t *testing.T) {
 	}
 }
 
+func Test_runInteractive_stdinIsTTYButStdoutIsPipe(t *testing.T) {
+	// The core of the split-fd fix: stdin is a terminal (so prompts still fire and
+	// can be answered) while stdout is a pipe (so pagers/curses never engage). The
+	// second line simulates a pager: `cat` blocks reading stdin forever *only* when
+	// stdout is a tty. Under the old full-pty path this hung to the timeout; with a
+	// pipe stdout it takes the else branch and returns at once.
+	r := &fakeResponder{}
+	script := "[ -t 0 ] && echo stdin-tty || echo stdin-pipe\n" +
+		"if [ -t 1 ]; then cat; else echo stdout-pipe; fi"
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.Command("bash", "-c", script)
+	out, err := runInteractive(ctx, script, cmd, r)
+	if err != nil {
+		t.Fatalf("runInteractive errored (a hang would surface as a timeout here): %v (out=%q)", err, out)
+	}
+	if !strings.Contains(out, "stdin-tty") {
+		t.Errorf("stdin must stay a tty so prompts still work; out=%q", out)
+	}
+	if !strings.Contains(out, "stdout-pipe") {
+		t.Errorf("stdout must be a pipe so pagers never engage; out=%q", out)
+	}
+}
+
 func Test_trimToLine(t *testing.T) {
 	cases := map[string]string{
 		"foo\nbar":        "bar",

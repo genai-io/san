@@ -16,17 +16,30 @@ import (
 func (m *model) cycleOperationMode() tea.Cmd {
 	allowBypass := m.services.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
-	m.env.ApplyModePermissions(m.env.CWD)
-
-	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
-	// Landing on AutoPilot opens the mission hands-free (Start) or surfaces the
-	// opening proposal (Suggest) — but debounce it: the cycle wraps through
-	// AutoPilot, so a gesture that only passes through it must not fire a wasted
-	// LLM call. Confirm the user actually rested here (handleAutopilotModeSettled).
+	m.applyOperationMode()
+	// Landing on AutoPilot surfaces the opening proposal (Suggest) — but debounce
+	// it: the cycle wraps through AutoPilot, so a gesture that only passes through
+	// it must not fire a wasted LLM call. Confirm the user actually rested here
+	// (handleAutopilotModeSettled).
 	if m.env.OperationMode == setting.ModeAutoPilot {
 		return tea.Tick(autopilotSettleDelay, func(time.Time) tea.Msg { return autopilotModeSettledMsg{} })
 	}
 	return nil
+}
+
+// applyOperationMode re-applies the current mode's permission posture and hook
+// mode — the shared tail of any mode change.
+func (m *model) applyOperationMode() {
+	m.env.ApplyModePermissions(m.env.CWD)
+	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
+}
+
+// enterAutoPilotMode switches the operation posture to AutoPilot without cycling,
+// so the /autopilot panel's Start button engages the copilot even from another
+// mode (otherwise the kick's autopilotEngaged() gate would drop it).
+func (m *model) enterAutoPilotMode() {
+	m.env.OperationMode = setting.ModeAutoPilot
+	m.applyOperationMode()
 }
 
 // autopilotSettleDelay is how long the mode must rest on AutoPilot before the
@@ -37,15 +50,13 @@ const autopilotSettleDelay = 250 * time.Millisecond
 // autopilotModeSettledMsg fires autopilotSettleDelay after landing on AutoPilot.
 type autopilotModeSettledMsg struct{}
 
-// handleAutopilotModeSettled runs the deferred kick/suggest once the mode has
-// rested on AutoPilot. It no-ops if the user has since cycled away or a turn is
-// in flight, so a pass-through cycle costs nothing.
+// handleAutopilotModeSettled surfaces the Suggest steer's opening proposal once
+// the mode has rested on AutoPilot. It no-ops if the user has since cycled away,
+// so a pass-through cycle costs nothing. The mission kick-off is deliberately NOT
+// here — that's the panel's explicit Start button, not a side effect of landing.
 func (m *model) handleAutopilotModeSettled() tea.Cmd {
 	if !m.autopilotEngaged() {
 		return nil
-	}
-	if cmd := m.autopilotKickCmd(); cmd != nil {
-		return cmd
 	}
 	return m.startPromptSuggestion()
 }

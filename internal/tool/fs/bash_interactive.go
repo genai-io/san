@@ -5,6 +5,7 @@ package fs
 import (
 	"bytes"
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -32,24 +33,59 @@ const (
 	drainTimeout = 2 * time.Second
 )
 
-// runInteractive runs cmd attached to a pseudo-terminal and answers interactive
-// prompts through responder, returning the full combined output. A skipped or
-// unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
-// command working silently keeps running; a cancelled ctx kills the whole
-// process group so children holding the pty are reaped too.
+// runInteractive runs cmd with a terminal for stdin only — stdout and stderr are
+// plain pipes — then answers interactive prompts through responder and returns
+// the combined output. Splitting the fds is deliberate: prompts gate on
+// isatty(stdin) (still a tty, so they appear and can be answered), while pagers
+// and full-screen/curses apps gate on isatty(stdout) (now a pipe, so `git diff`,
+// `less`, `man`, `vim`, … never engage and can never wedge the call). A skipped
+// or unanswerable prompt is sent EOF (not a kill) so a real prompt aborts while a
+// command working silently keeps running; a cancelled ctx kills the whole process
+// group so descendants holding a fd are reaped too.
 func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responder BashPromptResponder) (string, error) {
-	cmd.WaitDelay = 5 * time.Second // backstop for Wait if a child keeps the pty
-	ptmx, err := pty.Start(cmd)
+	cmd.WaitDelay = 5 * time.Second // backstop for Wait if a child keeps a fd open
+
+	// stdin: a pty slave, so isatty(stdin) is true and prompts fire; we write
+	// answers to the master (ptmx).
+	ptmx, pts, err := pty.Open()
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = ptmx.Close() }()
 
+	// stdout+stderr: one pipe. isatty(stdout) is false, so nothing pages or draws
+	// full-screen; the reader below watches this stream for prompt text.
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		_ = pts.Close()
+		return "", err
+	}
+	defer func() { _ = outR.Close() }()
+
+	cmd.Stdin = pts
+	cmd.Stdout = outW
+	cmd.Stderr = outW
+	// New session (no controlling terminal): /dev/tty grabs fail fast instead of
+	// stealing the parent TUI's terminal, and the session leader is a process-group
+	// leader TerminateGroup can reap.
+	proc.DetachSession(cmd)
+
+	if err := cmd.Start(); err != nil {
+		_ = pts.Close()
+		_ = outW.Close()
+		return "", err
+	}
+	// Drop the parent's copies of the child's fds: the child owns the pts, and
+	// closing outW lets the reader see EOF once the child (and any fd-inheriting
+	// descendant) exits.
+	_ = pts.Close()
+	_ = outW.Close()
+
 	chunks := make(chan []byte, 16)
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			n, err := ptmx.Read(buf)
+			n, err := outR.Read(buf)
 			if n > 0 {
 				chunks <- append([]byte(nil), buf[:n]...)
 			}

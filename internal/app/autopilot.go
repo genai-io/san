@@ -233,16 +233,16 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 	return m.autopilotDecideCmd(result, false)
 }
 
-// autopilotKickCmd opens the mission when the human hasn't: on entering AutoPilot
-// with the TurnStart steer on, a mission set, and the agent idle, it derives the
-// first step from the mission (the same decision as TurnEnd, just an empty-ish
-// transcript) and submits it — so briefing a mission and switching autopilot on
-// is enough to start, with no opening turn to type. Returns nil when any
+// autopilotKickCmd opens the mission hands-free — the /autopilot panel's Start
+// button dispatches it after engaging AutoPilot. With a mission set and the agent
+// idle it derives the first step from the mission (the same decision as TurnEnd,
+// just an empty-ish transcript) and submits it, so briefing a mission and hitting
+// Start is enough to begin with no opening turn to type. Returns nil when any
 // precondition is unmet, the human is mid-compose (don't clobber input), or a
-// decision is already in flight (don't stack on rapid mode cycling).
+// decision is already in flight (don't stack on a double-press).
 func (m *model) autopilotKickCmd() tea.Cmd {
 	ar := m.env.AutoPilot
-	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotDeciding {
+	if !m.autopilotEngaged() || m.autopilotDeciding {
 		return nil
 	}
 	if m.conv.Stream.Active || strings.TrimSpace(m.userInput.FullValue()) != "" {
@@ -383,16 +383,16 @@ func (m *model) handleAutopilotDecision(msg autopilotDecisionMsg) tea.Cmd {
 }
 
 // retireAutopilotMission winds down a finished mission without leaving AutoPilot:
-// it clears the mission and turns off the driving steers (Suggest, TurnStart,
-// Question, TurnEnd), so the copilot stops actively driving — no more suggest,
-// rewrite, auto-answer, or continue — while the passive safety steers stay
-// exactly as the user configured them (a Bash steer they left off is NOT flipped
-// on, an explicit permission:false is NOT overridden). Session-scoped: the saved
-// settings.json config (the user's template) is left untouched.
+// it clears the mission and turns off the driving steers (Suggest, Question,
+// TurnEnd), so the copilot stops actively driving — no more suggest, auto-answer,
+// or continue — while the passive safety steers stay exactly as the user
+// configured them (a Bash steer they left off is NOT flipped on, an explicit
+// permission:false is NOT overridden). Session-scoped: the saved settings.json
+// config (the user's template) is left untouched.
 func (m *model) retireAutopilotMission() {
 	m.env.AutoPilot.Mission = ""
 	s := &m.env.AutoPilot.Steers
-	s.Suggest, s.TurnStart, s.Question, s.TurnEnd = false, false, false, false
+	s.Suggest, s.Question, s.TurnEnd = false, false, false
 	m.rebuildAutopilotReviewer()
 }
 
@@ -511,84 +511,6 @@ func autopilotAnswerQuestion(ctx context.Context, provider llm.Provider, modelID
 		answers[i] = chosen
 	}
 	return answers, true
-}
-
-// ── TurnStart steer (#1): rewrite the user's input ──────────────────────
-
-// autopilotRewriteMsg carries the copilot's rewrite of a human message back to
-// the UI so it can be re-submitted.
-type autopilotRewriteMsg struct {
-	original  string
-	rewritten string
-}
-
-const rewriteTask = `Rewrite the user's message into a clearer, more complete instruction for the agent, aligned with the session mission — keep the user's intent, add the specifics the mission implies, and drop nothing they asked for.
-
-Return ONLY the rewritten message, with no preamble, quotes, or explanation. If the message is already clear and complete, return it unchanged.`
-
-// autopilotRewriteCmd intercepts a human submission when AutoPilot mode and the
-// TurnStart steer are on, returning (cmd, true) to rewrite it asynchronously
-// before sending. It returns (nil, false) — proceed normally — for the re-submit
-// of an already rewritten message, copilot continuations, slash commands, and
-// empty input. While a rewrite is already in flight it swallows the submission
-// (nil, true) so a second Enter can't launch a second rewrite / double-submit.
-func (m *model) autopilotRewriteCmd(userMessage string) (tea.Cmd, bool) {
-	if m.autopilotRewrote {
-		m.autopilotRewrote = false // this IS the rewritten re-submit
-		return nil, false
-	}
-	ar := m.env.AutoPilot
-	if !m.autopilotEngaged() || !ar.Steers.TurnStart || m.autopilotContinuing {
-		return nil, false
-	}
-	if m.autopilotRewriting {
-		return nil, true // a rewrite is in flight; it will submit — swallow this Enter
-	}
-	userMessage = strings.TrimSpace(userMessage)
-	if userMessage == "" || strings.HasPrefix(userMessage, "/") {
-		return nil, false // never touch slash commands or empty input
-	}
-	provider, modelID := m.resolveReviewerModel(ar.Model)
-	if provider == nil {
-		return nil, false
-	}
-	mission := strings.TrimSpace(ar.Mission)
-	systemPrompt := m.autopilotSystemPrompt()
-	m.autopilotRewriting = true
-	m.autopilotDeciding = true // rewrite in flight — "thinking…" on the mode line
-	return autopilotAsync(func(ctx context.Context) tea.Msg {
-		return autopilotRewriteMsg{original: userMessage, rewritten: autopilotRewriteInput(ctx, provider, modelID, systemPrompt, mission, userMessage)}
-	}), true
-}
-
-func autopilotRewriteInput(ctx context.Context, provider llm.Provider, modelID, systemPrompt, mission, userMessage string) string {
-	user := userMessage
-	if mission != "" {
-		user = "Mission:\n" + mission + "\n\nUser's message:\n" + userMessage
-	}
-	out, err := autopilotComplete(ctx, provider, modelID, systemPrompt, rewriteTask+"\n\n"+user, 1000)
-	if err != nil || out == "" {
-		return userMessage // fail open: send the original
-	}
-	return out
-}
-
-// handleAutopilotRewrite re-submits the (possibly) rewritten message. When the
-// rewrite changed the text, the re-submitted message wears the "↖ autopilot ·
-// refined" annotation (via autopilotRefined → dispatchSubmission) instead of a
-// separate notice. The message must never be lost, so this submits even if the
-// user left AutoPilot while the rewrite ran.
-func (m *model) handleAutopilotRewrite(msg autopilotRewriteMsg) tea.Cmd {
-	m.autopilotDeciding = false
-	m.autopilotRewriting = false
-	text := msg.rewritten
-	if text == "" {
-		text = msg.original
-	}
-	m.autopilotRefined = text != msg.original
-	m.autopilotRewrote = true
-	m.userInput.Textarea.SetValue(text)
-	return m.handleSubmit()
 }
 
 // validQuestionLabels keeps only labels that match a real option verbatim,
