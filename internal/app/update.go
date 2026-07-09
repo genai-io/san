@@ -110,7 +110,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The /autopilot Mission dialog runs its own spinner while awaiting a
 		// reply. Ticks carry a per-spinner id, so a foreign tick returns a nil
 		// cmd here and falls through to the conversation spinner below.
-		if m.userInput.Autopilot.Thinking() {
+		if m.userInput.Autopilot.Refining() {
 			if cmd := m.userInput.Autopilot.UpdateSpinner(msg); cmd != nil {
 				return m, cmd
 			}
@@ -141,10 +141,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the textarea (unlike AgentToggleMsg/SkillCycleMsg below, which do
 		// need a reaction).
 		return m, nil
-	case input.MissionReplyMsg:
-		// The /autopilot Mission dialog's copilot reply arrived; hand it to the
-		// panel to append (or surface an error under the composer).
-		m.userInput.Autopilot.DeliverMissionReply(msg.Text, msg.Err)
+	case input.MissionRefinedMsg:
+		// The refined mission arrived; hand it to the panel to replace the draft
+		// (or surface an error under the composer).
+		m.userInput.Autopilot.DeliverRefinedMission(msg.Mission, msg.Err)
 		return m, nil
 	case autopilotDecisionMsg:
 		// The TurnEnd steer's continue/stop verdict came back.

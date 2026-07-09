@@ -43,8 +43,8 @@ type AutopilotStartMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
-	respond MissionResponder                 // injected; nil disables live mission replies
-	live    func() setting.AutoPilotSettings // injected; returns the live session config
+	refine MissionRefiner                   // injected; nil disables live mission refinement
+	live   func() setting.AutoPilotSettings // injected; returns the live session config
 
 	active bool
 	width  int
@@ -80,10 +80,10 @@ func NewAutopilotSelector() AutopilotSelector {
 	}
 }
 
-// SetMissionResponder wires the copilot's LLM reply function for the Mission
-// dialog. Called by the app once its provider is available; a nil responder
-// leaves the dialog usable for composing but without live replies.
-func (p *AutopilotSelector) SetMissionResponder(fn MissionResponder) { p.respond = fn }
+// SetMissionRefiner wires the copilot's mission-refining function for the Mission
+// dialog. Called by the app once its provider is available; a nil refiner leaves
+// the dialog usable for composing but without live refinement.
+func (p *AutopilotSelector) SetMissionRefiner(fn MissionRefiner) { p.refine = fn }
 
 // SetConfigSource wires the getter for the live session config. The panel seeds
 // its working buffer from it on Enter, so what you edit is the running session's

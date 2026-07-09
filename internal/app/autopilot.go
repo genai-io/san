@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -154,37 +153,35 @@ func parseAutoPilot(s string) setting.AutoPilotSettings {
 	return a
 }
 
-// missionBriefingPrompt is the copilot's persona while the user briefs it in the
-// /autopilot Mission dialog. It replies as the "co-pilot" that will steer the
-// session — acknowledging the mission and stating, briefly, how it will drive.
-const missionBriefingPrompt = `You are the autopilot copilot riding shotgun on a coding agent — a second set of hands that steers the session at set points (approving gray-zone tool calls, answering prompts, deciding whether to keep the agent going after a turn).
+// missionRefinePrompt turns the /autopilot Mission dialog into a mission editor:
+// a later message refines the running draft instead of piling on. The reply is
+// the mission itself, so the prompt forbids any preamble or commentary.
+const missionRefinePrompt = `You are helping the user craft the mission for an autonomous coding session — the single directive the autopilot copilot will steer toward.
 
-The user is briefing you on the mission for this session. Reply in 2-4 sentences: confirm the goal in your own words, and state concretely how you will steer toward it — when you will handle things yourself versus hand back to the human, and what would make you stop. Be direct and specific. Do not use lists or headers. If the briefing is ambiguous, ask one sharp clarifying question instead of guessing.`
+You are given the current mission draft and the user's new instruction. Return the UPDATED mission: fold the instruction into the draft, keep everything still relevant, tighten and clarify, and drop nothing the user still wants. If the draft is empty, turn the instruction into a clear, self-contained mission.
 
-// missionReply produces the copilot's reply to the briefing so far. It runs on
-// the configured autopilot model (falling back to the session model) and returns
-// a short acknowledgement of how it will steer. Wired into the /autopilot panel
-// via SetMissionResponder.
-func (m *model) missionReply(ctx context.Context, history []input.MissionMessage) (string, error) {
+Return ONLY the mission text — no preamble, no quotes, no commentary. Write it as a direct instruction to the agent: concrete, actionable, a few sentences at most.`
+
+// missionRefine folds the user's new instruction into the running mission draft
+// and returns the improved mission. It runs on the configured autopilot model
+// (falling back to the session model). Wired into the /autopilot panel via
+// SetMissionRefiner.
+func (m *model) missionRefine(ctx context.Context, current, instruction string) (string, error) {
 	provider, modelID := m.resolveReviewerModel(m.env.AutoPilot.Model)
 	if provider == nil {
 		return "", fmt.Errorf("no model connected")
 	}
 
-	msgs := make([]core.Message, 0, len(history))
-	for _, h := range history {
-		role := core.RoleUser
-		if !h.FromUser {
-			role = core.RoleAssistant
-		}
-		msgs = append(msgs, core.Message{Role: role, Content: h.Text})
+	user := "User's instruction:\n" + instruction
+	if strings.TrimSpace(current) != "" {
+		user = "Current mission draft:\n" + current + "\n\n" + user
 	}
 
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        modelID,
-		SystemPrompt: missionBriefingPrompt,
-		Messages:     msgs,
-		MaxTokens:    400,
+		SystemPrompt: missionRefinePrompt,
+		Messages:     []core.Message{{Role: core.RoleUser, Content: user}},
+		MaxTokens:    600,
 	})
 	if err != nil {
 		return "", err
