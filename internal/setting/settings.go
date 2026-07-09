@@ -60,11 +60,16 @@ type AutoPilotSettings struct {
 	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
 	// Empty uses the session model.
 	Model string `json:"model,omitempty"`
-	// SystemPrompt replaces the built-in steering prompt inline (edited in
-	// the /autopilot panel). Takes precedence over SystemPromptFile.
+	// SystemPrompt replaces the built-in steering prompt inline (edited in the
+	// /autopilot panel). Per-session, like Mission: it rides the transcript and
+	// restores on /resume, but the panel does not write it as the new-session
+	// default — that stays the built-in prompt, and a custom one is carried to
+	// another session only via export/import. Takes precedence over
+	// SystemPromptFile.
 	SystemPrompt string `json:"systemPrompt,omitempty"`
-	// SystemPromptFile loads the system prompt from a file. Used only when
-	// SystemPrompt is empty; empty falls back to the built-in system prompt.
+	// SystemPromptFile loads the system prompt from a file — the settings.json
+	// hook for a persistent custom default (the panel never sets it). Used only
+	// when SystemPrompt is empty; empty falls back to the built-in system prompt.
 	SystemPromptFile string `json:"systemPromptFile,omitempty"`
 	// Mission is the per-session directive the copilot steers toward — the
 	// briefing composed in the /autopilot Mission dialog.

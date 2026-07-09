@@ -122,16 +122,18 @@ copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permis
 
 ## 配置
 
-面板编辑的是本会话的实时配置,保存后写入 `settings.json` 作为新会话的默认种子。
-会话自身的配置与模式也随转录持久化,`/resume` 时恢复。
+面板编辑的是本会话的实时配置。model、steer、续跑上限保存进 `settings.json`,作为
+新会话的默认值。**system prompt** 和 **mission** 则按会话走:它们随转录持久化、
+`/resume` 时恢复,但不会被写成默认值 —— 新会话从内置 prompt、无 mission 起步。要把
+自定义的 prompt 或 mission 带到另一个会话,导出成预设再在那边导入。
 
 ```jsonc
 {
   "autoPilot": {
     "model": "anthropic/claude-haiku-4-5", // steer 判定用的模型;留空用会话模型
-    "systemPrompt": "…",                   // “怎么开” —— 全部 steer 共用
-    "systemPromptFile": "~/prompts/pilot.md", // systemPrompt 为空时生效
-    "mission": "…",                        // 通常在面板里按会话设置
+    "systemPrompt": "…",                   // “怎么开”;按会话走,面板不会写到这里
+    "systemPromptFile": "~/prompts/pilot.md", // 持久的自定义默认;systemPrompt 为空时生效
+    "mission": "…",                        // 按会话;在面板里设置
     "maxContinuations": 20,
     "steers": {
       "suggest": true,
@@ -145,8 +147,8 @@ copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permis
 }
 ```
 
-命名预设:在 `/autopilot` 菜单里,`e` 导出当前配置、`i` 导入,存取于
-`~/.san/autopilot/<name>.json`。
+命名预设打包整份副驾配置 —— system prompt、mission 和 steer。在 `/autopilot`
+菜单里,`e` 导出当前配置、`i` 导入,存取于 `~/.san/autopilot/<name>.json`。
 
 ## 关联
 

@@ -91,8 +91,7 @@ func (p *AutopilotSelector) SetConfigSource(fn func() setting.AutoPilotSettings)
 
 // Enter activates the overlay on the menu view with a fresh working buffer.
 func (p *AutopilotSelector) Enter(width, height int) {
-	p.width = width
-	p.height = height
+	p.Resize(width, height)
 	p.active = true
 	p.view = apMenu
 	p.editing = false
@@ -105,6 +104,23 @@ func (p *AutopilotSelector) Enter(width, height int) {
 	p.status = ""
 	p.saveCursor = 0
 	p.resetMission()
+}
+
+// Resize refreshes the dimensions used by the fullscreen frame and any open
+// editor. Keeping the width captured by Enter after a terminal resize makes
+// the terminal hard-wrap every stale-width row, which visually splices pieces
+// of neighboring menu rows together.
+func (p *AutopilotSelector) Resize(width, height int) {
+	p.width = width
+	p.height = height
+	switch p.view {
+	case apSystemPrompt:
+		p.prompt.SetWidth(p.innerWidth())
+		p.prompt.SetHeight(p.editorHeight())
+	case apMission:
+		p.mission.input.SetWidth(max(p.innerWidth()-missionRailWidth, 1))
+		p.mission.input.SetHeight(missionEditorHeight)
+	}
 }
 
 // IsActive implements overlayPanel.
@@ -411,5 +427,5 @@ func missionSummary(s setting.AutoPilotSettings) string {
 // the panel reads as a confident, roomy card, capped so rows don't sprawl on an
 // ultra-wide screen. The -16 leaves room for the card's border + padding (6) and
 // a screen margin.
-func (p *AutopilotSelector) innerWidth() int   { return min(max(p.width-16, 56), 122) }
+func (p *AutopilotSelector) innerWidth() int   { return min(max(p.width-16, 1), 122) }
 func (p *AutopilotSelector) editorHeight() int { return max(8, p.height-16) }

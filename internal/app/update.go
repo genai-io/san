@@ -39,6 +39,14 @@ type overlayPanel interface {
 	Render() string
 }
 
+// resizableOverlay is implemented by fullscreen overlays whose layout caches
+// the terminal dimensions captured when they open. WindowSizeMsg must refresh
+// those dimensions or a narrower terminal will hard-wrap stale-width frames,
+// leaving fragments from adjacent rows on screen.
+type resizableOverlay interface {
+	Resize(width, height int)
+}
+
 // pasteHandler is the optional half of overlayPanel for text-entry dialogs.
 // Bracketed paste arrives as tea.PasteMsg, which is not a tea.KeyMsg, so it
 // never reaches HandleKeypress — it needs its own routing (see Update). An
@@ -146,12 +154,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.userInput.Autopilot.DeliverRefinedMission(msg.Mission, msg.Err)
 		return m, nil
 	case input.AutopilotMissionSavedMsg:
-		// The Mission editor saved or cleared the mission — persist it to the live
-		// session at once (it rides the transcript and restores on /resume), and
-		// flush any mission still in settings.json, since a mission is session-
-		// scoped and never a default. A clear thus wipes it from both places.
+		// The Mission editor saved or cleared the mission. It rides the transcript
+		// and restores on /resume, so it lives only in the live session; flushing
+		// settings.json keeps it out of the new-session default (a clear thus wipes
+		// it from both places). No judge rebuild — the judge and safety steers
+		// deliberately never read the mission, so it propagates without one.
 		m.env.AutoPilot.Mission = msg.Mission
-		m.persistAutopilotDefault()
+		m.writeAutopilotDefault()
 		return m, nil
 	case autopilotDecisionMsg:
 		// The TurnEnd steer's continue/stop verdict came back.
@@ -165,8 +174,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.AutopilotSavedMsg:
 		// Apply the edit to the live session (persists/resumes with the session),
 		// hot-swap the running judge so the new model/prompt/steers take effect at
-		// once, and write it — minus the per-session mission — as the default for
-		// new sessions.
+		// once, and write it — minus the per-session mission and system prompt — as
+		// the default for new sessions.
 		m.env.AutoPilot = msg.Config.Clone()
 		m.persistAutopilotDefault()
 		m.conv.AddNotice("Autopilot config saved")

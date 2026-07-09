@@ -132,17 +132,20 @@ approvals tally there too (`· 3 approved · 1 escalated`).
 
 ## Configuration
 
-The panel edits the live session config and saves it to `settings.json` as the
-default seed for new sessions. The session's config and mode also persist with
-the transcript and restore on `/resume`.
+The panel edits the live session config. The model, steers, and continuation cap
+are saved to `settings.json` as the default for new sessions. The **system
+prompt** and **mission** are per-session: they ride the transcript and restore on
+`/resume`, but are never written as the default — a new session starts from the
+built-in prompt with no mission. To carry a custom prompt or mission to another
+session, export it as a preset and import it there.
 
 ```jsonc
 {
   "autoPilot": {
     "model": "anthropic/claude-haiku-4-5", // steer decisions; empty = session model
-    "systemPrompt": "…",                   // "how it drives" — shared by all steers
-    "systemPromptFile": "~/prompts/pilot.md", // used when systemPrompt is empty
-    "mission": "…",                        // usually set via the panel, per session
+    "systemPrompt": "…",                   // "how it drives"; per-session, not written here by the panel
+    "systemPromptFile": "~/prompts/pilot.md", // persistent custom default; used when systemPrompt is empty
+    "mission": "…",                        // per-session; set via the panel
     "maxContinuations": 20,
     "steers": {
       "suggest": true,
@@ -156,8 +159,9 @@ the transcript and restore on `/resume`.
 }
 ```
 
-Named presets: in the `/autopilot` menu, `e` exports the current config and `i`
-imports one, stored under `~/.san/autopilot/<name>.json`.
+Named presets bundle the whole copilot config — system prompt, mission, and
+steers. In the `/autopilot` menu, `e` exports the current config and `i` imports
+one, stored under `~/.san/autopilot/<name>.json`.
 
 ## Relationship to other features
 

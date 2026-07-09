@@ -153,25 +153,41 @@ func parseAutoPilot(s string) setting.AutoPilotSettings {
 	return a
 }
 
-// autopilotWithoutMission returns the config with its mission cleared — the copy
-// written to settings.json as the default for new sessions. A mission is a
-// one-off task that belongs to this session (it persists with the transcript and
-// restores on /resume), not a global default every new session should inherit.
-func autopilotWithoutMission(cfg setting.AutoPilotSettings) setting.AutoPilotSettings {
+// autopilotWithoutSessionFields returns the config with its per-session fields
+// cleared — the copy written to settings.json as the default for new sessions.
+// The mission and the inline system prompt belong to the session that set them:
+// both ride the transcript and restore on /resume, so editing either in one
+// session must never change the default the next session inherits. New sessions
+// fall back to the built-in system prompt; a custom prompt or mission travels to
+// another session only via export/import. (SystemPromptFile is left intact — the
+// panel never sets it; it is the explicit settings.json hook for a persistent
+// custom default.)
+func autopilotWithoutSessionFields(cfg setting.AutoPilotSettings) setting.AutoPilotSettings {
 	shared := cfg.Clone()
 	shared.Mission = ""
+	shared.SystemPrompt = ""
 	return shared
 }
 
-// persistAutopilotDefault hot-swaps the running judge from m.env.AutoPilot and
-// writes that config — minus the per-session mission — to settings.json as the
-// default for new sessions. Shared tail of the panel Save/Start and the Mission
-// editor's save/clear; callers set m.env.AutoPilot first.
-func (m *model) persistAutopilotDefault() {
-	m.rebuildAutopilotReviewer()
-	if err := setting.UpdateAutoPilotAt(autopilotWithoutMission(m.env.AutoPilot), true); err != nil {
+// writeAutopilotDefault writes the live config — minus the per-session fields
+// (mission and inline system prompt) — to settings.json as the default for new
+// sessions. Those ride the transcript, never settings.json, so stripping them
+// here also flushes any a settings file might still carry. Callers set
+// m.env.AutoPilot first.
+func (m *model) writeAutopilotDefault() {
+	if err := setting.UpdateAutoPilotAt(autopilotWithoutSessionFields(m.env.AutoPilot), true); err != nil {
 		log.Logger().Warn("persist autopilot default failed", zap.Error(err))
 	}
+}
+
+// persistAutopilotDefault hot-swaps the running judge from m.env.AutoPilot and
+// writes the new-session default. Shared tail of the panel Save/Start, which
+// change the model / system prompt / steers the judge is built from; callers set
+// m.env.AutoPilot first. A mission-only change skips this — the judge and safety
+// steers never read the mission — and calls writeAutopilotDefault directly.
+func (m *model) persistAutopilotDefault() {
+	m.rebuildAutopilotReviewer()
+	m.writeAutopilotDefault()
 }
 
 // missionRefinePrompt drives the /autopilot Mission editor's ctrl+r action: it
