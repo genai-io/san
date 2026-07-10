@@ -78,8 +78,17 @@ func drain(ch <-chan llm.StreamChunk) []llm.StreamChunk {
 
 func TestOpenAIThinkingEfforts(t *testing.T) {
 	client := newTestClient(&captureStreamingTransport{})
-	got := client.ThinkingEfforts("gpt-5.5")
-	want := []string{"none", "low", "medium", "high", "xhigh"}
+	got := client.ThinkingEfforts("gpt-5.6-sol")
+	want := []string{"none", "low", "medium", "high", "xhigh", "max"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("ThinkingEfforts(gpt-5.6-sol) = %#v, want %#v", got, want)
+	}
+	if client.DefaultThinkingEffort("gpt-5.6-sol") != "medium" {
+		t.Fatalf("expected GPT-5.6 API default effort medium")
+	}
+
+	got = client.ThinkingEfforts("gpt-5.5")
+	want = []string{"none", "low", "medium", "high", "xhigh"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("ThinkingEfforts() = %#v, want %#v", got, want)
 	}

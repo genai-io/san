@@ -33,7 +33,7 @@ const modelsFetchTimeout = 8 * time.Second
 // Codex CLI version (matching the codex originator we already send); the backend
 // returns the current lineup for any sufficiently recent version. Bump if the
 // list ever goes stale.
-const codexClientVersion = "0.142.5"
+const codexClientVersion = "0.144.0"
 
 // staticSubscriptionModels is the fallback catalog used when the live ChatGPT
 // Codex model list can't be fetched. Keep this intentionally small so the UI
@@ -138,10 +138,16 @@ type codexModelsResponse struct {
 // reports the context window and, via show_in_picker, whether the entry should be
 // user-selectable (null means shown).
 type codexModel struct {
-	Slug          string `json:"slug"`
-	DisplayName   string `json:"display_name"`
-	ContextWindow int    `json:"context_window"`
-	ShowInPicker  *bool  `json:"show_in_picker"`
+	Slug                     string                `json:"slug"`
+	DisplayName              string                `json:"display_name"`
+	ContextWindow            int                   `json:"context_window"`
+	ShowInPicker             *bool                 `json:"show_in_picker"`
+	SupportedReasoningLevels []codexReasoningLevel `json:"supported_reasoning_levels"`
+	DefaultReasoningLevel    string                `json:"default_reasoning_level"`
+}
+
+type codexReasoningLevel struct {
+	Effort string `json:"effort"`
 }
 
 // toModelInfos converts the catalog to llm.ModelInfo, dropping picker-hidden and
@@ -165,6 +171,15 @@ func (r codexModelsResponse) toModelInfos() []llm.ModelInfo {
 		}
 		if m.ContextWindow > 0 {
 			info.InputTokenLimit = m.ContextWindow
+		}
+		if len(m.SupportedReasoningLevels) > 0 {
+			efforts := make([]string, 0, len(m.SupportedReasoningLevels))
+			for _, level := range m.SupportedReasoningLevels {
+				efforts = append(efforts, level.Effort)
+			}
+			if capability := llm.NewReasoningCapability(efforts, m.DefaultReasoningLevel); capability != nil {
+				info.Reasoning = capability
+			}
 		}
 		models = append(models, info)
 	}

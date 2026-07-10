@@ -353,6 +353,28 @@ func (s *Store) CachedModelLimitsForProvider(provider Name, authMethod AuthMetho
 	return 0, 0
 }
 
+// CachedModelReasoningForProvider returns normalized reasoning metadata for one
+// model from a single provider/auth cache, ignoring TTL. Like token limits, the
+// same model ID can expose different capabilities through different auth paths,
+// so this lookup must remain provider-scoped and deterministic.
+func (s *Store) CachedModelReasoningForProvider(provider Name, authMethod AuthMethod, id string) (*ReasoningCapability, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	cache, ok := s.data.Models[makemodelCacheKey(provider, authMethod)]
+	if !ok {
+		return nil, false
+	}
+	for _, model := range cache.Models {
+		if model.ID != id || model.Reasoning == nil {
+			continue
+		}
+		capability := NewReasoningCapability(model.Reasoning.Efforts, model.Reasoning.DefaultEffort)
+		return capability, capability != nil
+	}
+	return nil, false
+}
+
 // CachedModelLimits returns the token limits for a model ID found in any
 // cached provider list, ignoring TTL. Returns (0, 0) when no cached entry
 // reports a context window for the ID.

@@ -86,11 +86,12 @@ const reasoningStreamBody = "" +
 	"data: [DONE]\n\n"
 
 // modelsCatalogBody is a sample ChatGPT Codex /models JSON response (real shape:
-// a "models" array of {slug, display_name, context_window, ...}): two picker
+// a "models" array of {slug, display_name, context_window, ...}): three picker
 // models plus one hidden entry that must be filtered out.
 const modelsCatalogBody = `{"models":[` +
-	`{"slug":"gpt-5.5","display_name":"GPT-5.5","context_window":272000},` +
-	`{"slug":"gpt-5.4","display_name":"GPT-5.4","context_window":272000},` +
+	`{"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
+	`{"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
+	`{"slug":"gpt-5.6-luna","display_name":"GPT-5.6-Luna","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
 	`{"slug":"gpt-hidden","display_name":"Hidden","show_in_picker":false}` +
 	`]}`
 
@@ -259,20 +260,30 @@ func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
 
 	// The /models endpoint requires the client_version query param; without it
 	// the backend 400s and we'd silently fall back.
-	if !strings.Contains(transport.query, "client_version=") {
-		t.Errorf("models request query = %q, want a client_version param", transport.query)
+	wantVersionQuery := "client_version=" + codexClientVersion
+	if !strings.Contains(transport.query, wantVersionQuery) {
+		t.Errorf("models request query = %q, want %q", transport.query, wantVersionQuery)
 	}
 
-	// Two visible entries; the show_in_picker=false one is dropped.
-	if len(models) != 2 {
-		t.Fatalf("got %d models, want 2: %v", len(models), models)
+	// Three visible entries; the show_in_picker=false one is dropped.
+	if len(models) != 3 {
+		t.Fatalf("got %d models, want 3: %v", len(models), models)
 	}
 	byID := map[string]llm.ModelInfo{}
 	for _, m := range models {
 		byID[m.ID] = m
 	}
-	if got, ok := byID["gpt-5.5"]; !ok || got.DisplayName != "GPT-5.5" || got.InputTokenLimit != 272000 {
-		t.Errorf("gpt-5.5 = %+v (present=%v), want display GPT-5.5 / limit 272000", got, ok)
+	for _, id := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if got, ok := byID[id]; !ok || got.InputTokenLimit != 372000 {
+			t.Errorf("%s = %+v (present=%v), want limit 372000", id, got, ok)
+		} else {
+			wantEfforts := []string{"low", "medium", "high", "xhigh", "max", "ultra"}
+			if got.Reasoning == nil || strings.Join(got.Reasoning.Efforts, ",") != strings.Join(wantEfforts, ",") {
+				t.Errorf("%s reasoning = %+v, want efforts %v", id, got.Reasoning, wantEfforts)
+			} else if got.Reasoning.DefaultEffort != "low" {
+				t.Errorf("%s default reasoning = %q, want low", id, got.Reasoning.DefaultEffort)
+			}
+		}
 	}
 	if _, hidden := byID["gpt-hidden"]; hidden {
 		t.Error("show_in_picker=false model must be dropped")

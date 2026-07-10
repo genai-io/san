@@ -60,6 +60,40 @@ func TestCtrlTCyclesThinkingEffort(t *testing.T) {
 	}
 }
 
+func TestCtrlTUsesCachedModelReasoningMetadata(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, []llm.ModelInfo{{
+		ID:        "dynamic-model",
+		Reasoning: llm.NewReasoningCapability([]string{"low", "ultra"}, "low"),
+	}}); err != nil {
+		t.Fatalf("CacheModels() error = %v", err)
+	}
+
+	m := &model{}
+	m.env.store = store
+	m.env.LLMProvider = &testThinkingProvider{
+		efforts: []string{"high"},
+		def:     "high",
+	}
+	m.env.CurrentModel = &llm.CurrentModelInfo{
+		ModelID:    "dynamic-model",
+		Provider:   llm.OpenAI,
+		AuthMethod: llm.AuthSubscription,
+	}
+
+	cmd, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	if !handled || cmd == nil {
+		t.Fatal("Ctrl+T should be handled and return a status timer")
+	}
+	if m.env.ThinkingEffort != "ultra" {
+		t.Fatalf("ThinkingEffort = %q, want dynamic next effort ultra", m.env.ThinkingEffort)
+	}
+}
+
 func TestAltTTogglesTaskPanel(t *testing.T) {
 	m := &model{}
 

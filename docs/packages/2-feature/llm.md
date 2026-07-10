@@ -58,7 +58,11 @@ func ResetDefaultConn()       // test-only
   `core.LLM`, tracks per-call token counts, streams `core.Chunk`, applies
   retry/cost logic via `logging.go` and `money.go`.
 - `Store` (`store.go`) — persists user's provider connections under
-  `~/.san/providers.json`; tracks current model.
+  `~/.san/providers.json`; tracks current model and caches provider-scoped
+  model metadata. `ModelInfo.Reasoning` carries live supported/default effort
+  values when a provider advertises them; application resolution prefers that
+  metadata and falls back to `ThinkingEffortProvider` for catalogs (such as the
+  standard OpenAI `/v1/models` response) that omit reasoning capabilities.
 - `stream/` — provider-side helpers for SSE parsing.
 - Provider subpackages: `anthropic/`, `openai/`, `google/`, `moonshot/`,
   `alibaba/`, `bigmodel/`, `minmax/`, `mimo/`, `deepseek/`, `ollama/`, `sensenova/`, `volcengine/`, `agnesai/`, `openaicompat/`.

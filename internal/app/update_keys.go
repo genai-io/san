@@ -176,7 +176,7 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 func (m *model) cycleThinkingEffort() tea.Cmd {
 	current := m.env.EffectiveThinkingEffort()
-	next, ok := llm.NextThinkingEffort(m.env.LLMProvider, m.env.GetModelID(), current)
+	next, ok := llm.NextThinkingEffortForModel(m.env.LLMProvider, m.env.store, m.env.CurrentModel, current)
 	if !ok {
 		token := m.userInput.Provider.SetStatusMessage("reasoning is not supported by this provider")
 		return kit.StatusTimer(3*time.Second, token)

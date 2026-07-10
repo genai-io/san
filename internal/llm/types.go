@@ -69,6 +69,42 @@ type ThinkingEffortProvider interface {
 	DefaultThinkingEffort(model string) string
 }
 
+// ReasoningCapability describes the reasoning-effort values advertised for one
+// model. Providers that return this metadata from ListModels let the rest of the
+// app follow the live catalog instead of guessing capabilities from model IDs.
+type ReasoningCapability struct {
+	Efforts       []string `json:"efforts,omitempty"`
+	DefaultEffort string   `json:"defaultEffort,omitempty"`
+}
+
+// NewReasoningCapability normalizes provider-supplied reasoning metadata.
+// Unknown effort labels are intentionally preserved so newly introduced
+// provider-native levels work without a san release.
+func NewReasoningCapability(efforts []string, defaultEffort string) *ReasoningCapability {
+	normalized := make([]string, 0, len(efforts))
+	seen := make(map[string]struct{}, len(efforts))
+	for _, effort := range efforts {
+		effort = strings.ToLower(strings.TrimSpace(effort))
+		if effort == "" {
+			continue
+		}
+		if _, ok := seen[effort]; ok {
+			continue
+		}
+		seen[effort] = struct{}{}
+		normalized = append(normalized, effort)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+
+	defaultEffort = normalizeThinkingEffort(defaultEffort, normalized)
+	return &ReasoningCapability{
+		Efforts:       normalized,
+		DefaultEffort: defaultEffort,
+	}
+}
+
 // ImageSupportProvider is implemented by providers that declare whether a model
 // accepts image input. Providers that don't implement it are assumed to support
 // images (the common case); a text-only provider opts out by returning false.
@@ -136,6 +172,71 @@ func NextThinkingEffort(p Provider, model, current string) (string, bool) {
 	return efforts[0], true
 }
 
+// ThinkingEffortsForModel returns live cached model metadata when available,
+// falling back to the provider's static ThinkingEffortProvider implementation.
+func ThinkingEffortsForModel(p Provider, store *Store, current *CurrentModelInfo) []string {
+	capability := reasoningCapabilityForModel(p, store, current)
+	if capability == nil {
+		return nil
+	}
+	out := make([]string, len(capability.Efforts))
+	copy(out, capability.Efforts)
+	return out
+}
+
+// ResolveThinkingEffortForModel validates a selected effort against the live
+// model metadata, then falls back to that model's advertised default.
+func ResolveThinkingEffortForModel(p Provider, store *Store, current *CurrentModelInfo, selected string) string {
+	capability := reasoningCapabilityForModel(p, store, current)
+	if capability == nil {
+		return ""
+	}
+	if effort := normalizeThinkingEffort(selected, capability.Efforts); effort != "" {
+		return effort
+	}
+	return capability.DefaultEffort
+}
+
+// NextThinkingEffortForModel cycles through the live model-specific effort
+// values, using the advertised default when no valid current value is set.
+func NextThinkingEffortForModel(p Provider, store *Store, current *CurrentModelInfo, selected string) (string, bool) {
+	capability := reasoningCapabilityForModel(p, store, current)
+	if capability == nil {
+		return "", false
+	}
+	currentEffort := normalizeThinkingEffort(selected, capability.Efforts)
+	if currentEffort == "" {
+		currentEffort = capability.DefaultEffort
+	}
+	for i, effort := range capability.Efforts {
+		if effort == currentEffort {
+			return capability.Efforts[(i+1)%len(capability.Efforts)], true
+		}
+	}
+	return capability.Efforts[0], true
+}
+
+func reasoningCapabilityForModel(p Provider, store *Store, current *CurrentModelInfo) *ReasoningCapability {
+	if current == nil || current.ModelID == "" {
+		return nil
+	}
+	if store != nil {
+		authMethod := current.AuthMethod
+		if authMethod == "" {
+			if conn, ok := store.GetConnection(current.Provider); ok {
+				authMethod = conn.AuthMethod
+			}
+		}
+		if capability, ok := store.CachedModelReasoningForProvider(current.Provider, authMethod, current.ModelID); ok {
+			return capability
+		}
+	}
+	return NewReasoningCapability(
+		ThinkingEfforts(p, current.ModelID),
+		DefaultThinkingEffort(p, current.ModelID),
+	)
+}
+
 func normalizeThinkingEffort(effort string, efforts []string) string {
 	effort = strings.TrimSpace(strings.ToLower(effort))
 	if effort == "" {
@@ -151,11 +252,12 @@ func normalizeThinkingEffort(effort string, efforts []string) string {
 
 // ModelInfo represents information about an available model
 type ModelInfo struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	DisplayName      string `json:"displayName,omitempty"`
-	InputTokenLimit  int    `json:"inputTokenLimit,omitempty"`
-	OutputTokenLimit int    `json:"outputTokenLimit,omitempty"`
+	ID               string               `json:"id"`
+	Name             string               `json:"name"`
+	DisplayName      string               `json:"displayName,omitempty"`
+	InputTokenLimit  int                  `json:"inputTokenLimit,omitempty"`
+	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
+	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
 }
 
 // CompletionOptions contains options for a completion request

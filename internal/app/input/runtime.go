@@ -18,6 +18,7 @@ type OverlayDeps struct {
 
 	SwitchProvider          func(llm.Provider)
 	SetCurrentModel         func(*llm.CurrentModelInfo)
+	ReloadModelStore        func()
 	ClearCachedInstructions func()
 	RefreshMemoryContext    func(cwd, reason string)
 	FireFileChanged         func(path, tool string)

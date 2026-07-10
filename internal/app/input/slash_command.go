@@ -477,11 +477,8 @@ func (c *SlashCommandController) handleAgentCommand(_ context.Context, _ string)
 }
 
 func (c *SlashCommandController) handleThinkCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	model := ""
-	if c.env.LLM.CurrentModel() != nil {
-		model = c.env.LLM.CurrentModel().ModelID
-	}
-	efforts := llm.ThinkingEfforts(c.env.LLM.Provider(), model)
+	currentModel := c.env.LLM.CurrentModel()
+	efforts := llm.ThinkingEffortsForModel(c.env.LLM.Provider(), c.env.LLM.Store(), currentModel)
 	if len(efforts) == 0 {
 		return "Current provider does not support thinking effort.", nil, nil
 	}
@@ -489,7 +486,7 @@ func (c *SlashCommandController) handleThinkCommand(_ context.Context, args stri
 	arg := strings.TrimSpace(strings.ToLower(args))
 	var effort string
 	if arg == "" || arg == "toggle" {
-		next, _ := llm.NextThinkingEffort(c.env.LLM.Provider(), model, c.env.GetThinkingEffort())
+		next, _ := llm.NextThinkingEffortForModel(c.env.LLM.Provider(), c.env.LLM.Store(), currentModel, c.env.GetThinkingEffort())
 		effort = next
 	} else {
 		if arg == "off" && !containsThinkingEffort(efforts, "off") && containsThinkingEffort(efforts, "none") {

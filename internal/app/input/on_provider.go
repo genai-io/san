@@ -253,11 +253,18 @@ func UpdateProvider(deps OverlayDeps, state *ProviderState, msg tea.Msg) (tea.Cm
 		}
 		return nil, true
 	case providerConnectResultMsg:
-		return state.Selector.HandleConnectResult(msg), true
+		cmd := state.Selector.HandleConnectResult(msg)
+		if msg.Success && deps.ReloadModelStore != nil {
+			deps.ReloadModelStore()
+		}
+		return cmd, true
 	case providerModelSelectedMsg:
 		return handleProviderModelSelected(deps, state, msg), true
 	case providerModelsLoadedMsg:
 		state.Selector.HandleModelsLoaded(msg)
+		if deps.ReloadModelStore != nil {
+			deps.ReloadModelStore()
+		}
 		return nil, true
 	case kit.StatusExpiredMsg:
 		if msg.Token == state.statusToken {

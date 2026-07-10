@@ -7,6 +7,7 @@ import (
 )
 
 var reasoningEfforts = []string{"none", "low", "medium", "high", "xhigh"}
+var gpt56ReasoningEfforts = []string{"none", "low", "medium", "high", "xhigh", "max"}
 var highOnlyReasoningEfforts = []string{"high"}
 
 func (c *Client) ThinkingEfforts(model string) []string {
@@ -14,6 +15,10 @@ func (c *Client) ThinkingEfforts(model string) []string {
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
+	return openAIDefaultThinkingEffort(model)
+}
+
+func openAIDefaultThinkingEffort(model string) string {
 	switch efforts := openAIThinkingEfforts(model); len(efforts) {
 	case 0:
 		return ""
@@ -27,6 +32,8 @@ func (c *Client) DefaultThinkingEffort(model string) string {
 func openAIThinkingEfforts(model string) []string {
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	switch {
+	case strings.HasPrefix(normalized, "gpt-5.6"):
+		return gpt56ReasoningEfforts
 	case strings.HasPrefix(normalized, "gpt-5.5"), strings.HasPrefix(normalized, "gpt-5.4"), strings.HasPrefix(normalized, "gpt-6"):
 		return reasoningEfforts
 	case strings.HasPrefix(normalized, "gpt-5"), strings.HasPrefix(normalized, "o1"), strings.HasPrefix(normalized, "o3"), strings.HasPrefix(normalized, "o4"), strings.Contains(normalized, "codex"):
@@ -44,6 +51,10 @@ func openAIModelInfo(modelID string) llm.ModelInfo {
 		DisplayName:      modelID,
 		InputTokenLimit:  input,
 		OutputTokenLimit: output,
+		Reasoning: llm.NewReasoningCapability(
+			openAIThinkingEfforts(modelID),
+			openAIDefaultThinkingEffort(modelID),
+		),
 	}
 }
 

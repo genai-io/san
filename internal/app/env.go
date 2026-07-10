@@ -152,7 +152,11 @@ func (m *env) GetModelDisplayName() string {
 }
 
 func (m *env) EffectiveThinkingEffort() string {
-	return llm.ResolveThinkingEffort(m.LLMProvider, m.GetModelID(), m.ThinkingEffort)
+	return llm.ResolveThinkingEffortForModel(m.LLMProvider, m.store, m.CurrentModel, m.ThinkingEffort)
+}
+
+func (m *env) ThinkingEfforts() []string {
+	return llm.ThinkingEffortsForModel(m.LLMProvider, m.store, m.CurrentModel)
 }
 
 func (m *env) OperationModeName() string {
@@ -200,7 +204,7 @@ func (m *env) ApplyBypassPermissions() {
 
 func (m *env) DetectThinkingKeywords(input string) {
 	lower := strings.ToLower(input)
-	efforts := llm.ThinkingEfforts(m.LLMProvider, m.GetModelID())
+	efforts := m.ThinkingEfforts()
 	if len(efforts) == 0 {
 		return
 	}

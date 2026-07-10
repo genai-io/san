@@ -78,6 +78,19 @@ func (a *storedCredentialAuthenticator) Logout() error { return nil }
 
 func (a *storedCredentialAuthenticator) HasCredentials() bool { return a.has }
 
+func TestUpdateProviderReloadsSharedModelStoreAfterCatalogRefresh(t *testing.T) {
+	reloads := 0
+	deps := OverlayDeps{ReloadModelStore: func() { reloads++ }}
+	state := &ProviderState{}
+
+	if _, handled := UpdateProvider(deps, state, providerModelsLoadedMsg{}); !handled {
+		t.Fatal("providerModelsLoadedMsg was not handled")
+	}
+	if reloads != 1 {
+		t.Fatalf("shared model store reloads = %d, want 1", reloads)
+	}
+}
+
 func TestCancelClearsTransientState(t *testing.T) {
 	m := NewProviderSelector()
 	m.active = true

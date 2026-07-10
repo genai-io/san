@@ -77,6 +77,13 @@ func (m *model) autopilotSuggestMission() string {
 }
 
 func (m *model) overlayDeps() input.OverlayDeps {
+	reloadModelStore := func() {
+		if store := m.services.LLM.Store(); store != nil {
+			if err := store.Reload(); err != nil {
+				log.Logger().Warn("reload provider store after model catalog update", zap.Error(err))
+			}
+		}
+	}
 	return input.OverlayDeps{
 		State:             &m.userInput,
 		Conv:              &m.conv.ConversationModel,
@@ -95,13 +102,10 @@ func (m *model) overlayDeps() input.OverlayDeps {
 			// limits) through its own Store; reload the shared store so the
 			// status bar reflects the new model's name and context-window
 			// limit instead of the raw ID and "--".
-			if store := m.services.LLM.Store(); store != nil {
-				if err := store.Reload(); err != nil {
-					log.Logger().Warn("reload provider store after model switch", zap.Error(err))
-				}
-			}
+			reloadModelStore()
 			m.env.LoadThinkingEffortFromStore()
 		},
+		ReloadModelStore: reloadModelStore,
 		// No welcome reprint on model switch: the live status line already
 		// shows the current model, and the startup brand line is a one-time
 		// splash (re-emitting it duplicated the banner / leaked blank lines).
