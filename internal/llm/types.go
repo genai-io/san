@@ -144,34 +144,6 @@ func DefaultThinkingEffort(p Provider, model string) string {
 	return normalizeThinkingEffort(ep.DefaultThinkingEffort(model), ep.ThinkingEfforts(model))
 }
 
-func ResolveThinkingEffort(p Provider, model, selected string) string {
-	efforts := ThinkingEfforts(p, model)
-	if len(efforts) == 0 {
-		return ""
-	}
-	if effort := normalizeThinkingEffort(selected, efforts); effort != "" {
-		return effort
-	}
-	return DefaultThinkingEffort(p, model)
-}
-
-func NextThinkingEffort(p Provider, model, current string) (string, bool) {
-	efforts := ThinkingEfforts(p, model)
-	if len(efforts) == 0 {
-		return "", false
-	}
-	current = normalizeThinkingEffort(current, efforts)
-	if current == "" {
-		current = DefaultThinkingEffort(p, model)
-	}
-	for i, effort := range efforts {
-		if effort == current {
-			return efforts[(i+1)%len(efforts)], true
-		}
-	}
-	return efforts[0], true
-}
-
 // ThinkingEffortsForModel returns live cached model metadata when available,
 // falling back to the provider's static ThinkingEffortProvider implementation.
 func ThinkingEffortsForModel(p Provider, store *Store, current *CurrentModelInfo) []string {

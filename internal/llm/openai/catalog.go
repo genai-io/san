@@ -43,6 +43,14 @@ func openAIThinkingEfforts(model string) []string {
 	}
 }
 
+// openAIModelInfo builds catalog metadata for a model ID. It deliberately
+// leaves Reasoning unset: the standard /v1/models catalog advertises no
+// reasoning levels, and freezing our static name-based guesses into the
+// on-disk cache would mask a later binary's updated rules, since the cache is
+// read ignoring TTL. Only live catalogs that actually advertise levels — the
+// ChatGPT subscription /models response — attach Reasoning (see subscription.go);
+// everything else falls back to the provider's static ThinkingEffortProvider
+// rules at resolution time.
 func openAIModelInfo(modelID string) llm.ModelInfo {
 	input, output := openAILimits(modelID)
 	return llm.ModelInfo{
@@ -51,10 +59,6 @@ func openAIModelInfo(modelID string) llm.ModelInfo {
 		DisplayName:      modelID,
 		InputTokenLimit:  input,
 		OutputTokenLimit: output,
-		Reasoning: llm.NewReasoningCapability(
-			openAIThinkingEfforts(modelID),
-			openAIDefaultThinkingEffort(modelID),
-		),
 	}
 }
 
