@@ -14,23 +14,28 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// scrollbackPrintDelay is how long a commit waits before Println'ing rendered
-// blocks into native scrollback. Update advances the commit offsets first, so
-// the just-committed tail leaves the live view immediately; this delay is the
-// window before it reappears in scrollback — i.e. the visible "flush" blink at
-// the end of a render. We want it as short as possible, but it has a hard floor:
-// insertAbove must run only after the now-shorter managed frame has been flushed
-// to the terminal, or it scrolls the stale live frame into scrollback (a welded
-// frame). Bubble Tea flushes on a frame ticker (default 60fps ≈ 16.7ms/frame),
-// so one frame is the floor; this keeps ~half a frame of margin above it. The
-// old 40ms was ~2.4 frames — that extra ~1.4 frames was pure blink. Bump this
-// back up if a stale live frame ever welds into scrollback.
+// scrollbackPrintDelay gives Bubble Tea one frame to paint a committed block's
+// handoff copy before Println moves it into native scrollback. Keeping the copy
+// visible during this wait avoids the old blank-frame flash; waiting remains
+// necessary so insertAbove sees the same managed frame that is on the terminal.
 const scrollbackPrintDelay = 24 * time.Millisecond
 
-func printScrollback(s string) tea.Cmd {
+type scrollbackPrintReadyMsg struct {
+	id      uint64
+	content string
+}
+
+type scrollbackPrintDoneMsg struct{ id uint64 }
+
+type pendingScrollbackPrint struct {
+	id      uint64
+	content string
+}
+
+func waitToPrintScrollback(id uint64, content string) tea.Cmd {
 	return func() tea.Msg {
 		time.Sleep(scrollbackPrintDelay)
-		return tea.Println(s)()
+		return scrollbackPrintReadyMsg{id: id, content: content}
 	}
 }
 
@@ -73,9 +78,11 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering bool             // one render in flight at a time, so Printlns stay ordered
-	renderer  *conv.MDRenderer // background renderer, off the live-view MDRenderer's mutex
-	width     int              // width the renderer was built for; rebuild when it changes
+	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width         int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID   uint64                   // monotonic identity for scrollback handoffs
+	pendingPrints []pendingScrollbackPrint // visible until their Println has been processed
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -206,7 +213,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 
 	var cmds []tea.Cmd
 	if msg.printed != "" {
-		cmds = append(cmds, printScrollback(msg.printed))
+		cmds = append(cmds, m.queueScrollbackPrint(msg.printed))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
 	// the row is still uncommitted, so it's safe.
@@ -264,7 +271,39 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
-	return []tea.Cmd{printScrollback(strings.Join(parts, "\n"))}
+	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"))}
+}
+
+// queueScrollbackPrint keeps content in the managed view while Bubble Tea
+// prepares to insert the same content into native scrollback. The matching
+// done message removes this handoff copy only after Println has been processed,
+// so there is never a frame where the committed block is absent from both.
+func (m *model) queueScrollbackPrint(content string) tea.Cmd {
+	m.flush.nextPrintID++
+	id := m.flush.nextPrintID
+	m.flush.pendingPrints = append(m.flush.pendingPrints, pendingScrollbackPrint{
+		id:      id,
+		content: content,
+	})
+	return waitToPrintScrollback(id, content)
+}
+
+func (m *model) finishScrollbackPrint(id uint64) {
+	for i := range m.flush.pendingPrints {
+		if m.flush.pendingPrints[i].id != id {
+			continue
+		}
+		m.flush.pendingPrints = append(m.flush.pendingPrints[:i], m.flush.pendingPrints[i+1:]...)
+		return
+	}
+}
+
+func (m model) pendingScrollbackView() string {
+	parts := make([]string, 0, len(m.flush.pendingPrints))
+	for _, pending := range m.flush.pendingPrints {
+		parts = append(parts, pending.content)
+	}
+	return strings.Join(parts, "\n")
 }
 
 // takeWelcomeBanner freezes the startup splash into scrollback once, on the

@@ -98,6 +98,56 @@ func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
 	if m.flush.rendering {
 		t.Fatal("flush.rendering should clear once the render has landed")
 	}
+	if got := m.pendingScrollbackView(); !strings.Contains(got, "first paragraph of reasoning") {
+		t.Fatalf("pending scrollback handoff = %q, want committed block to remain visible", got)
+	}
+}
+
+func TestScrollbackHandoffStaysVisibleUntilPrintDone(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	cmd := m.queueScrollbackPrint("rendered block")
+
+	if got := m.pendingScrollbackView(); got != "rendered block" {
+		t.Fatalf("pendingScrollbackView() = %q, want %q", got, "rendered block")
+	}
+
+	ready, ok := cmd().(scrollbackPrintReadyMsg)
+	if !ok {
+		t.Fatalf("scrollback handoff command returned an unexpected message")
+	}
+	if got := m.pendingScrollbackView(); got == "" {
+		t.Fatal("handoff disappeared before Println was processed")
+	}
+
+	m.finishScrollbackPrint(ready.id)
+	if got := m.pendingScrollbackView(); got != "" {
+		t.Fatalf("pendingScrollbackView() after done = %q, want empty", got)
+	}
+}
+
+func TestScrollbackHandoffsStayOrderedAcrossPrints(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.queueScrollbackPrint("A")
+	m.queueScrollbackPrint("B")
+
+	// Monotonic ids keep the two in-flight handoffs in queue order in the view,
+	// mirroring the scrollback order their Printlns will land in.
+	if got := m.pendingScrollbackView(); got != "A\nB" {
+		t.Fatalf("pendingScrollbackView() = %q, want %q", got, "A\nB")
+	}
+
+	first, second := m.flush.pendingPrints[0].id, m.flush.pendingPrints[1].id
+
+	// Finishing the first handoff leaves the second visible and in place.
+	m.finishScrollbackPrint(first)
+	if got := m.pendingScrollbackView(); got != "B" {
+		t.Fatalf("after finishing the first print, pendingScrollbackView() = %q, want %q", got, "B")
+	}
+
+	m.finishScrollbackPrint(second)
+	if got := m.pendingScrollbackView(); got != "" {
+		t.Fatalf("after finishing both prints, pendingScrollbackView() = %q, want empty", got)
+	}
 }
 
 // The still-streaming trailing paragraph (no terminating blank line) stays in

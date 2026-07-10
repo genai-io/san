@@ -255,6 +255,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
+	case scrollbackPrintReadyMsg:
+		// Keep the handoff copy visible while Println is inserted. Sequence
+		// guarantees the done message cannot clear it before insertAbove runs.
+		return m, tea.Sequence(
+			tea.Println(msg.content),
+			func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} },
+		)
+	case scrollbackPrintDoneMsg:
+		m.finishScrollbackPrint(msg.id)
+		return m, nil
 	case conv.QuestionResponseMsg:
 		return m, m.handleQuestionResponse(msg)
 	case input.SecretPromptResponseMsg:
