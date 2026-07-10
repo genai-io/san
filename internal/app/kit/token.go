@@ -48,12 +48,7 @@ func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (
 	if store == nil || currentModel == nil {
 		return 0, 0
 	}
-	authMethod := currentModel.AuthMethod
-	if authMethod == "" {
-		if conn, ok := store.GetConnection(currentModel.Provider); ok {
-			authMethod = conn.AuthMethod
-		}
-	}
+	authMethod := store.ResolveAuthMethod(currentModel)
 	if input, output := store.CachedModelLimitsForProvider(currentModel.Provider, authMethod, currentModel.ModelID); input > 0 {
 		return input, output
 	}

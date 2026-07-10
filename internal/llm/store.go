@@ -190,6 +190,24 @@ func (s *Store) GetConnection(provider Name) (ConnectionInfo, bool) {
 	return conn, ok
 }
 
+// ResolveAuthMethod returns the model's own auth method, falling back to its
+// provider's stored connection when the model doesn't carry one. Provider-scoped
+// cache lookups (token limits, reasoning) key on provider+auth, so they resolve
+// the auth this way to avoid missing the cache for a model selected without an
+// explicit method.
+func (s *Store) ResolveAuthMethod(current *CurrentModelInfo) AuthMethod {
+	if current == nil {
+		return ""
+	}
+	if current.AuthMethod != "" {
+		return current.AuthMethod
+	}
+	if conn, ok := s.GetConnection(current.Provider); ok {
+		return conn.AuthMethod
+	}
+	return ""
+}
+
 // GetConnections returns all connections
 func (s *Store) GetConnections() map[string]ConnectionInfo {
 	s.mu.RLock()
@@ -366,11 +384,12 @@ func (s *Store) CachedModelReasoningForProvider(provider Name, authMethod AuthMe
 		return nil, false
 	}
 	for _, model := range cache.Models {
-		if model.ID != id || model.Reasoning == nil {
-			continue
+		// The cached capability was already normalized by NewReasoningCapability
+		// at write time, so hand it back as-is rather than re-normalizing on every
+		// (hot-path) lookup. Callers treat it as read-only.
+		if model.ID == id && model.Reasoning != nil {
+			return model.Reasoning, true
 		}
-		capability := NewReasoningCapability(model.Reasoning.SupportedEfforts, model.Reasoning.DefaultEffort)
-		return capability, capability != nil
 	}
 	return nil, false
 }

@@ -193,12 +193,7 @@ func reasoningCapabilityForModel(p Provider, store *Store, current *CurrentModel
 		return nil
 	}
 	if store != nil {
-		authMethod := current.AuthMethod
-		if authMethod == "" {
-			if conn, ok := store.GetConnection(current.Provider); ok {
-				authMethod = conn.AuthMethod
-			}
-		}
+		authMethod := store.ResolveAuthMethod(current)
 		if capability, ok := store.CachedModelReasoningForProvider(current.Provider, authMethod, current.ModelID); ok {
 			return capability
 		}
