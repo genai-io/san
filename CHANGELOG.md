@@ -9,6 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Keep Autopilot system prompts session-scoped, preserve mission-only saves without rebuilding the reviewer, and refresh the Autopilot panel layout on terminal resize ([@yanmxa](https://github.com/yanmxa) in [339df84](https://github.com/genai-io/san/commit/339df8481d5c6ae3885c3d2a026ea7d47c591c96))
 - Align the Autopilot continuation marker with tool-result trailers ([@yanmxa](https://github.com/yanmxa) in [d8bb6f6](https://github.com/genai-io/san/commit/d8bb6f64))
 - Hide redundant successful Edit result summaries while keeping errors visible ([@yanmxa](https://github.com/yanmxa) in [787950b](https://github.com/genai-io/san/commit/787950bb))
+- Thread Autopilot mission context into permission and bash prompt reviewers ([@yanmxa](https://github.com/yanmxa) in [2eb87bb](https://github.com/genai-io/san/commit/2eb87bb2))
 
 ## [v1.21.1] - 2026-07-10
 
