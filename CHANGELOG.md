@@ -3,6 +3,15 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.3] - 2026-07-10
+
+### Added
+- Guard Autopilot LLM steers with an immutable control-plane policy ([@yanmxa](https://github.com/yanmxa) in [26fc698](https://github.com/genai-io/san/commit/26fc698a5c1c310c95a0a79523687b8b119df2cb))
+
+### Fixed
+- Handle paste in the Autopilot overlay ([@yanmxa](https://github.com/yanmxa) in [160d772](https://github.com/genai-io/san/commit/160d772424f77cb0234402b9bae87119782c852c))
+- Hold committed scrollback blocks visible across the print handoff ([@yanmxa](https://github.com/yanmxa) in [e02ed42](https://github.com/genai-io/san/commit/e02ed422d64c76c634cba4463049feefde99a9f4))
+
 ## [v1.21.2] - 2026-07-10
 
 ### Fixed

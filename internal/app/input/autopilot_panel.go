@@ -166,7 +166,7 @@ func (p *AutopilotSelector) HandlePaste(content string) tea.Cmd {
 			return nil
 		}
 		p.mission.input.InsertString(content)
-	case apSystemPrompt:
+	case apSteeringPrompt:
 		p.prompt.InsertString(content)
 	}
 	return nil

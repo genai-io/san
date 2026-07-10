@@ -37,7 +37,7 @@ func TestAutopilotPasteIgnoredWhileRefining(t *testing.T) {
 func TestAutopilotPasteIntoSystemPrompt(t *testing.T) {
 	p := NewAutopilotSelector()
 	p.Enter(120, 40)
-	p.openView(apSystemPrompt)
+	p.openView(apSteeringPrompt)
 
 	p.HandlePaste("\ndrive with care")
 
