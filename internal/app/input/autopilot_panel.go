@@ -148,6 +148,30 @@ func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
+// HandlePaste implements pasteHandler. Bracketed paste arrives as tea.PasteMsg,
+// not a tea.KeyMsg, so it never reaches HandleKeypress — without this the app
+// drops it (see pasteHandler in update.go) rather than let it leak into the
+// prompt textarea behind the overlay. Route it into whichever text editor is
+// focused; newlines are kept since a mission or system prompt is multi-line.
+func (p *AutopilotSelector) HandlePaste(content string) tea.Cmd {
+	if !p.active || content == "" {
+		return nil
+	}
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
+	switch p.view {
+	case apMission:
+		// Mid-refine the box is about to be replaced; don't let a paste race it.
+		if p.mission.refining {
+			return nil
+		}
+		p.mission.input.InsertString(content)
+	case apSystemPrompt:
+		p.prompt.InsertString(content)
+	}
+	return nil
+}
+
 // ── Menu view ───────────────────────────────────────────────────────────
 
 func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
