@@ -16,9 +16,9 @@ func (p *AutopilotSelector) Render() string {
 		return ""
 	}
 	switch p.view {
-	case apSystemPrompt:
+	case apSteeringPrompt:
 		return p.frame(
-			p.header("System Prompt"),
+			p.header("Steering Prompt"),
 			p.prompt.View(),
 			kit.HintLine(keycap("esc")+" back", "edits apply on Save"),
 		)
@@ -125,7 +125,7 @@ func (p *AutopilotSelector) renderSection(label string, width int) string {
 	return apSectionStyle.Render(up) + " " + apFaintRuleStyle.Render(strings.Repeat("─", ruleLen))
 }
 
-// renderEntry draws an editor entry: "▸ System Prompt  how it drives … built-in".
+// renderEntry draws an editor entry: "▸ Steering Prompt  how it drives … built-in".
 // The value hint sits right-aligned; enter-to-open is covered by the bottom hint.
 func (p *AutopilotSelector) renderEntry(i int, row apRow, width int) string {
 	left := p.cursorMark(i) + apLabelStyle.Render(row.label)

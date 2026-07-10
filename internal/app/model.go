@@ -1,7 +1,7 @@
 // Root bubbletea model. Holds the four event sources (user input, system
 // triggers, agent outbox, inter-agent event hub), the env state, and the
-// services struct. Init batches the initial commands (cursor blink, MCP
-// autoconnect, cron + async-hook tickers, optional initial prompt).
+// services struct. Init batches the initial commands (MCP autoconnect, cron +
+// async-hook tickers, optional initial prompt).
 //
 // All the model's *behavior* lives in sibling files:
 //
@@ -25,7 +25,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
@@ -95,7 +94,6 @@ var _ conv.Runtime = (*model)(nil)
 
 func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
-		textarea.Blink,
 		m.userInput.MCP.Selector.AutoConnect(),
 		trigger.TriggerCronTickNow(),
 		trigger.StartCronTicker(),

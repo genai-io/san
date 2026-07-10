@@ -49,7 +49,7 @@ func (p *AutopilotSelector) handleExportKey(msg tea.KeyMsg) tea.Cmd {
 func (p *AutopilotSelector) renderExport() string {
 	dir := kit.ShortenPath(setting.AutoPilotPresetDir())
 	var b strings.Builder
-	b.WriteString(apDescStyle.Render("Save the copilot config — system prompt, mission, and steers — as a preset under " + dir + "/"))
+	b.WriteString(apDescStyle.Render("Save the copilot config — Steering Prompt, mission, and steers — as a preset under " + dir + "/"))
 	b.WriteString("\n\n")
 	b.WriteString(apLabelStyle.Render("Name") + "  ")
 	b.WriteString(apValueStyle.Render(p.nameBuffer) + apCursorStyle.Render("_"))
@@ -115,7 +115,7 @@ func (p *AutopilotSelector) renderImport() string {
 		return apDescStyle.Render("No presets yet — Export one first.")
 	}
 	var b strings.Builder
-	b.WriteString(apDescStyle.Render("Load a saved preset into the panel, then Save to apply it (steers become the new-session default; system prompt and mission stay with this session):"))
+	b.WriteString(apDescStyle.Render("Load a saved preset into the panel, then Save to apply it (steers become the new-session default; Steering Prompt and mission stay with this session):"))
 	b.WriteString("\n\n")
 	for i, name := range p.presets {
 		mark := "  "

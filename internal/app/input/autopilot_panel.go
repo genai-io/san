@@ -5,7 +5,7 @@
 // file for reuse across sessions and projects.
 //
 // The panel is a small state machine over three views: a menu (steer toggles +
-// editor entries + Save/Export/Import), a full-screen System Prompt editor, and
+// editor entries + Save/Export/Import), a full-screen Steering Prompt editor, and
 // the Mission dialog (autopilot_mission.go). It renders its own centered frame.
 package input
 
@@ -25,11 +25,11 @@ import (
 type autopilotView int
 
 const (
-	apMenu         autopilotView = iota // steer toggles + editor entries
-	apSystemPrompt                      // full-screen system-prompt editor
-	apMission                           // mission dialog (autopilot_mission.go)
-	apExport                            // name-a-preset input (autopilot_presets.go)
-	apImport                            // pick-a-preset list (autopilot_presets.go)
+	apMenu           autopilotView = iota // steer toggles + editor entries
+	apSteeringPrompt                      // full-screen steering-prompt editor
+	apMission                             // mission dialog (autopilot_mission.go)
+	apExport                              // name-a-preset input (autopilot_presets.go)
+	apImport                              // pick-a-preset list (autopilot_presets.go)
 )
 
 // AutopilotSavedMsg is emitted on Save carrying the edited config. The app
@@ -66,7 +66,7 @@ type AutopilotSelector struct {
 	presets      []string // apImport: available preset names
 	importCursor int      // apImport: selection
 
-	prompt  textarea.Model // System Prompt editor
+	prompt  textarea.Model // Steering Prompt editor
 	mission missionDialog  // Mission dialog state (autopilot_mission.go)
 }
 
@@ -114,7 +114,7 @@ func (p *AutopilotSelector) Resize(width, height int) {
 	p.width = width
 	p.height = height
 	switch p.view {
-	case apSystemPrompt:
+	case apSteeringPrompt:
 		p.prompt.SetWidth(p.innerWidth())
 		p.prompt.SetHeight(p.editorHeight())
 	case apMission:
@@ -135,7 +135,7 @@ func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch p.view {
-	case apSystemPrompt:
+	case apSteeringPrompt:
 		return p.handlePromptKey(msg)
 	case apMission:
 		return p.handleMissionKey(msg)
@@ -212,19 +212,19 @@ func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
 // openView switches to an editor sub-view, seeding it from the working buffer.
 func (p *AutopilotSelector) openView(v autopilotView) {
 	switch v {
-	case apSystemPrompt:
-		// Seed with the built-in system prompt when there's no override, so the
+	case apSteeringPrompt:
+		// Seed with the built-in steering instructions when there's no override, so the
 		// user sees and edits the real prompt rather than a blank box.
 		seed := p.snap.SystemPrompt
 		if seed == "" {
-			seed = reviewer.DefaultSystemPrompt()
+			seed = reviewer.DefaultSteeringInstructions()
 		}
 		p.prompt.SetValue(seed)
 		p.prompt.SetWidth(p.innerWidth())
 		p.prompt.SetHeight(p.editorHeight())
 		p.prompt.CursorEnd()
 		p.prompt.Focus()
-		p.view = apSystemPrompt
+		p.view = apSteeringPrompt
 	case apMission:
 		p.enterMission()
 		p.view = apMission
@@ -281,14 +281,14 @@ func (p *AutopilotSelector) start() tea.Cmd {
 	return func() tea.Msg { return AutopilotStartMsg{Config: cfg} }
 }
 
-// ── System Prompt editor view ───────────────────────────────────────────
+// ── Steering Prompt editor view ─────────────────────────────────────────
 
 func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 	if msg.String() == "esc" {
 		val := strings.TrimRight(p.prompt.Value(), "\n")
-		// Left as the built-in system prompt (unchanged) → store nothing, so the
+		// Left as the built-in steering instructions (unchanged) → store nothing, so the
 		// panel keeps reading "built-in" and Dirty() doesn't flag a no-op edit.
-		if strings.TrimSpace(val) == strings.TrimSpace(reviewer.DefaultSystemPrompt()) {
+		if strings.TrimSpace(val) == strings.TrimSpace(reviewer.DefaultSteeringInstructions()) {
 			val = ""
 		}
 		p.snap.SystemPrompt = val
@@ -306,7 +306,7 @@ func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 type apRowKind int
 
 const (
-	apRowEntry     apRowKind = iota // opens a sub-view (System Prompt / Mission)
+	apRowEntry     apRowKind = iota // opens a sub-view (Steering Prompt / Mission)
 	apRowSteer                      // bool toggle
 	apRowInt                        // continuation cap
 	apRowSaveStart                  // Save | Start on one line (left/right picks)
@@ -336,10 +336,10 @@ func (r apRow) selectable() bool {
 }
 
 func (p *AutopilotSelector) rows() []apRow {
-	// System Prompt and Mission are the two editor entries — group them at the top
+	// Steering Prompt and Mission are the two editor entries — group them at the top
 	// (no section header for a single item) before the Steer toggles.
 	rows := []apRow{
-		{kind: apRowEntry, label: "System Prompt", desc: "how it drives", open: apSystemPrompt, summary: systemPromptSummary},
+		{kind: apRowEntry, label: "Steering Prompt", desc: "how it drives", open: apSteeringPrompt, summary: steeringPromptSummary},
 		{kind: apRowEntry, label: "Mission", desc: "what to achieve", open: apMission, summary: missionSummary},
 		{kind: apRowSpacer},
 		{kind: apRowSection, label: "Steer"},
@@ -405,7 +405,7 @@ func togglePermission(s *setting.AutoPilotSettings) {
 	s.Steers.Permission = &on
 }
 
-func systemPromptSummary(s setting.AutoPilotSettings) string {
+func steeringPromptSummary(s setting.AutoPilotSettings) string {
 	switch {
 	case s.SystemPrompt != "":
 		return "custom"

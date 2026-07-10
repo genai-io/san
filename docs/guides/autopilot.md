@@ -10,20 +10,20 @@ tool calls, answering a command's interactive prompts, answering
 `AskUserQuestion`, and continuing finished turns toward a mission. Only
 gray-zone permission judging is on by default.
 
-Enter AutoPilot mode with `shift+tab` (cycle until the amber
+Enter Autopilot mode with `shift+tab` (cycle until the amber
 `⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. To launch a
-mission hands-free, hit the panel's **Start** button — it engages AutoPilot and
+mission hands-free, hit the panel's **Start** button — it engages Autopilot and
 submits the opening step in one action (see [Start](#start-the-mission)). A
 resumed session (`san -r <id>`) comes back in the mode it was saved in.
 
 ## The six steers
 
 Steers are à-la-carte toggles, ordered by increasing autonomy. None fire unless
-AutoPilot mode is engaged.
+Autopilot mode is engaged.
 
 | Steer | Default | What it does |
 |---|---|---|
-| **Suggest** | off | Fills the input hint (ghost text) with the copilot's proposed next step — toward the mission when one is set, the generic prediction otherwise. `tab` accepts, `enter` sends. It suggests; it never acts. With Suggest *off*, AutoPilot suppresses the hint entirely so the copilot doesn't nudge. |
+| **Suggest** | off | Shows a next-step suggestion in the input box. When a mission is set, the suggestion follows the mission; otherwise it uses the generic input prediction. `tab` accepts the suggestion, and `enter` sends it. Suggest only fills the hint text and never submits on its own; when off, this hint is hidden. |
 | **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. Fails closed: any error escalates to you. |
 | **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
 | **Skill** | off | Approves the copilot's skill loads outright, without the judge — a deliberate "trust skills" toggle, separate from Permission because the judge tends to escalate a skill load (it can run scripts). Off ⇒ skill loads fall to the Permission judge (or you). |
@@ -44,7 +44,7 @@ irreversible, destructive, out-of-project, or data-leaking, mission or not.
 
 When the End steer decides the mission is **fully accomplished**, it retires
 it: the mission is cleared and the steers reset to the passive baseline
-(Permission + Bash) — AutoPilot stays on, you take the wheel back with the
+(Permission + Bash) — Autopilot stays on, you take the wheel back with the
 auto-approve safety net intact.
 
 ## Start the mission
@@ -55,12 +55,12 @@ pick, `enter` to run):
 - **Save** applies the config to the live session and writes it to
   `settings.json` as the default seed, without changing the mode. Use it when
   you're only tuning steers, or want to engage later with `shift+tab`.
-- **Start** does everything Save does, then engages AutoPilot and kicks the
+- **Start** does everything Save does, then engages Autopilot and kicks the
   mission hands-free: it derives the opening step from the mission and submits
   it itself, so briefing a mission and hitting Start is the whole launch. Start
   needs a mission — with none set it nudges you instead of engaging.
 
-Landing on AutoPilot via `shift+tab` no longer auto-starts; it only surfaces the
+Landing on Autopilot via `shift+tab` no longer auto-starts; it only surfaces the
 Suggest steer's proposal (if on). Kicking the mission is always the explicit
 Start button.
 
@@ -88,7 +88,7 @@ mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
 - `esc` back.
 
 **3. Engage** — on the bottom row, press `→` to focus **Start** and hit
-`enter`. That's the last key you need to press: Start engages AutoPilot and,
+`enter`. That's the last key you need to press: Start engages Autopilot and,
 with a mission set, derives the opening step and submits it itself.
 
 **4. Watch the run.** Expect a transcript like:
@@ -110,7 +110,7 @@ with a mission set, derives the opening step and submits it itself.
 Every `❭` in the run carries the green `⎿ autopilot` mark — the copilot typed
 them all, opening step included; you never touched the composer. The `ls` is a
 gray-zone call the Permission steer approved inline. On `✓ mission complete` the mission is cleared and the steers drop back
-to the passive baseline — open `/autopilot` to confirm — while AutoPilot stays
+to the passive baseline — open `/autopilot` to confirm — while Autopilot stays
 engaged.
 
 To see the gentler end of the spectrum, rerun with only **Suggest** on and
@@ -135,18 +135,26 @@ approvals tally there too (`· 3 approved · 1 escalated`).
 ## Configuration
 
 The panel edits the live session config. The model, steers, and continuation cap
-are saved to `settings.json` as the default for new sessions. The **system
-prompt** and **mission** are per-session: they ride the transcript and restore on
+are saved to `settings.json` as the default for new sessions. The **Steering
+Prompt** and **mission** are per-session: they ride the transcript and restore on
 `/resume`, but are never written as the default — a new session starts from the
-built-in prompt with no mission. To carry a custom prompt or mission to another
-session, export it as a preset and import it there.
+built-in steering instructions with no mission. To carry custom steering
+instructions or a mission to another session, export them as a preset and import
+the preset there.
+
+The Steering Prompt controls how the copilot drives; it does not replace the
+immutable control-plane policy. Every LLM steer always receives that policy,
+which fixes the trust boundaries, fail-closed behavior, task-specific safety
+rules, and output contract. The existing `systemPrompt` / `systemPromptFile`
+configuration keys are retained for compatibility and supply only the editable
+steering-instructions portion.
 
 ```jsonc
 {
   "autoPilot": {
     "model": "anthropic/claude-haiku-4-5", // steer decisions; empty = session model
-    "systemPrompt": "…",                   // "how it drives"; per-session, not written here by the panel
-    "systemPromptFile": "~/prompts/pilot.md", // persistent custom default; used when systemPrompt is empty
+    "systemPrompt": "…",                   // Steering Prompt; per-session, not written here by the panel
+    "systemPromptFile": "~/prompts/pilot.md", // persistent steering default; used when systemPrompt is empty
     "mission": "…",                        // per-session; set via the panel
     "maxContinuations": 20,
     "steers": {
@@ -161,7 +169,7 @@ session, export it as a preset and import it there.
 }
 ```
 
-Named presets bundle the whole copilot config — system prompt, mission, and
+Named presets bundle the whole copilot config — Steering Prompt, mission, and
 steers. In the `/autopilot` menu, `e` exports the current config and `i` imports
 one, stored under `~/.san/autopilot/<name>.json`.
 
