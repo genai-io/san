@@ -32,9 +32,11 @@ Steer 是按需组合的开关,按自主程度从低到高排列。AutoPilot 模
 
 Mission 是副驾本会话要开往的目标 —— 在 `/autopilot` 面板的 Mission 对话框里
 撰写:这是个小编辑器,你打的字就是 mission(`enter` 保存、`alt+enter` 换行、
-可粘贴),`ctrl+r` 让副驾就地精炼草稿、`ctrl+c` 清空、`esc` 保存并退出。推进类
-steer(Suggest、Question、End)读它;安全类 steer(Permission、Bash)刻意对它
-不可见,使动作风险的判断独立于意图。
+可粘贴),`ctrl+r` 让副驾就地精炼草稿、`ctrl+c` 清空、`esc` 保存并退出。每个
+steer 都读它:推进类 steer(Suggest、Question、End)朝它开;安全类 steer
+(Permission、Bash)把它当作意图上下文 —— 明显在推进 mission 的调用或提示,会被
+看作预期内的常规活儿。但意图不凌驾于安全:凡是不可逆、破坏性、越出项目、或会外泄
+数据的动作,无论是否契合 mission,一律仍升级给你。
 
 当 End steer 判定 mission **已完全达成**,会将其退役:清空 mission、steer 归位
 到被动基线(Permission + Bash)—— AutoPilot 保持开启,你重新接手,自动放行的

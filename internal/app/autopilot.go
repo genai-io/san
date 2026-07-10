@@ -49,11 +49,25 @@ func (m *model) rebuildAutopilotReviewer() {
 	m.autopilot.Store(&autopilotRuntime{judge: rev, cfg: ar.Clone()})
 }
 
+// refreshAutopilotSnapshot republishes the runtime snapshot with the live config
+// but the SAME judge — for when a field the agent goroutine reads live from the
+// snapshot (the mission, now given to the Permission/Bash judge as intent) has
+// changed without touching what the judge is built from (model / system prompt /
+// steers). Cheaper than rebuildAutopilotReviewer, which would rebuild the judge
+// and re-read the system-prompt file for nothing.
+func (m *model) refreshAutopilotSnapshot() {
+	rt := m.autopilot.Load()
+	if rt == nil {
+		return
+	}
+	m.autopilot.Store(&autopilotRuntime{judge: rt.judge, cfg: m.env.AutoPilot.Clone()})
+}
+
 // autopilotSystemPrompt resolves the copilot's shared "how it drives" system
-// prompt — the general steering preamble the judge AND every app-side steer
-// (rewrite / continue / question) preface their per-call task with, so all five
-// speak with one configured voice. An inline SystemPrompt wins, then a readable
-// SystemPromptFile, then the built-in default.
+// prompt — the steering persona every LLM steer prefaces its per-call task with
+// (the Permission and Bash judges, plus the app-side Suggest, continue, and
+// Question steers), so all five speak with one configured voice. An inline
+// SystemPrompt wins, then a readable SystemPromptFile, then the built-in default.
 func (m *model) autopilotSystemPrompt() string {
 	ar := m.env.AutoPilot
 	if s := strings.TrimSpace(ar.SystemPrompt); s != "" {
@@ -191,8 +205,10 @@ func (m *model) persistAutopilotDefault() {
 }
 
 // missionRefinePrompt drives the /autopilot Mission editor's ctrl+r action: it
-// rewrites the user's draft into a cleaner mission. The reply IS the mission, so
-// the prompt forbids any preamble or commentary.
+// rewrites the user's draft into a cleaner mission. This authors mission text
+// rather than steering the session, so — unlike the five steers — it runs on its
+// own prompt, not the shared steering persona. The reply IS the mission, so the
+// prompt forbids any preamble or commentary.
 const missionRefinePrompt = `You are helping the user craft the mission for an autonomous coding session — the single directive the autopilot copilot will steer toward.
 
 Rewrite the user's mission draft into a clearer, more complete, self-contained directive: keep their intent and every specific they included, tighten and structure it, and add nothing they did not ask for. If it is already clear, return it largely unchanged.

@@ -3,6 +3,7 @@ package reviewer
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
@@ -133,24 +134,40 @@ func Test_parseBashPromptReply(t *testing.T) {
 func Test_BashPrompt(t *testing.T) {
 	t.Run("answer", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"answer","input":"y"}`}, "model")
-		got, err := r.BashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+		got, err := r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]")
 		if err != nil || !got.Answer || got.Input != "y" {
 			t.Fatalf("BashPrompt() = %+v, err=%v; want answer y", got, err)
 		}
 	})
 	t.Run("skip", func(t *testing.T) {
 		r := New(&stubProvider{content: `{"action":"skip"}`}, "model")
-		got, err := r.BashPrompt(context.Background(), "cmd", "Overwrite? [y/N]")
+		got, err := r.BashPrompt(context.Background(), "", "cmd", "Overwrite? [y/N]")
 		if err != nil || got.Answer {
 			t.Fatalf("BashPrompt() = %+v, err=%v; want skip", got, err)
 		}
 	})
 	t.Run("provider error", func(t *testing.T) {
 		r := New(&stubProvider{err: errors.New("boom")}, "model")
-		if _, err := r.BashPrompt(context.Background(), "cmd", "prompt"); err == nil {
+		if _, err := r.BashPrompt(context.Background(), "", "cmd", "prompt"); err == nil {
 			t.Fatal("BashPrompt() err = nil, want error so caller skips")
 		}
 	})
+}
+
+func Test_MissionThreadedIntoRenders(t *testing.T) {
+	const mission = "ship the v2 CLI release"
+	perm := renderPermission(Request{ToolName: "Bash", Args: map[string]any{"command": "git tag v2"}, Mission: mission})
+	if !strings.Contains(perm, mission) {
+		t.Errorf("renderPermission dropped the mission:\n%s", perm)
+	}
+	bash := renderBashPrompt(mission, "git push", "Continue? [Y/n]")
+	if !strings.Contains(bash, mission) {
+		t.Errorf("renderBashPrompt dropped the mission:\n%s", bash)
+	}
+	// No mission → no mission line, so an unset mission never adds noise.
+	if got := renderBashPrompt("", "git push", "Continue? [Y/n]"); strings.Contains(got, "Session mission") {
+		t.Errorf("renderBashPrompt added a mission line for an empty mission:\n%s", got)
+	}
 }
 
 func Test_SystemPromptOverride(t *testing.T) {
@@ -173,7 +190,7 @@ func Test_SystemPromptOverride(t *testing.T) {
 
 	// BashPrompt shares the same customizable system prompt — only the per-call
 	// task differs, and that rides in the user message.
-	_, _ = r.BashPrompt(context.Background(), "apt-get install foo", "Continue? [Y/n]")
+	_, _ = r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]")
 	if s.lastSystemPrompt != "MY CUSTOM SYSTEM PROMPT" {
 		t.Errorf("BashPrompt used %q, want the shared custom system prompt", s.lastSystemPrompt)
 	}

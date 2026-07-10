@@ -157,9 +157,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The Mission editor saved or cleared the mission. It rides the transcript
 		// and restores on /resume, so it lives only in the live session; flushing
 		// settings.json keeps it out of the new-session default (a clear thus wipes
-		// it from both places). No judge rebuild — the judge and safety steers
-		// deliberately never read the mission, so it propagates without one.
+		// it from both places). Refresh the agent goroutine's snapshot so the
+		// Permission/Bash judge sees the new mission at its next call — reusing the
+		// judge (model / prompt / steers are unchanged), so no full rebuild.
 		m.env.AutoPilot.Mission = msg.Mission
+		m.refreshAutopilotSnapshot()
 		m.writeAutopilotDefault()
 		return m, nil
 	case autopilotDecisionMsg:

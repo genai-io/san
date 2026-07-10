@@ -36,9 +36,11 @@ The mission is what the copilot drives toward this session — written in the
 `/autopilot` panel's Mission dialog, a small editor: the text you type is the
 mission (`enter` saves it, `alt+enter` for a newline; paste works), `ctrl+r` asks
 the copilot to refine the draft in place, `ctrl+c` clears it, and `esc` saves and
-leaves. The steering steers (Suggest, Question, End) read it; the safety steers
-(Permission, Bash) deliberately never see it, so an action's risk is judged
-independently of intent.
+leaves. Every steer reads it: the steering steers (Suggest, Question, End) drive
+toward it, and the safety steers (Permission, Bash) take it as intent context — a
+tool call or prompt that plainly advances the mission reads as expected, routine
+work. Intent never overrides safety, though: they still escalate anything
+irreversible, destructive, out-of-project, or data-leaking, mission or not.
 
 When the End steer decides the mission is **fully accomplished**, it retires
 it: the mission is cleared and the steers reset to the passive baseline

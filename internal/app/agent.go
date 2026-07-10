@@ -216,7 +216,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			verdict, err := rev.Permission(ctx, reviewer.Request{
-				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD,
+				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.Mission,
 			})
 			log.Logger().Debug("auto-review verdict",
 				zap.String("tool", name),

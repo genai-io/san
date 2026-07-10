@@ -19,11 +19,11 @@ import (
 	"github.com/genai-io/san/internal/log"
 )
 
-// autopilotSuggestSystemPrompt drives the input hint when the Suggest steer is
-// on: it proposes the next step toward the mission as a ready-to-send imperative
-// the human can accept, rather than guessing what the human would type.
-const autopilotSuggestSystemPrompt = `You are the autopilot copilot for a coding assistant. Given the mission and the session so far, suggest the SINGLE next instruction to give the agent — a short, direct imperative the user can accept and send as-is.
-Reply with ONLY that instruction (a few words to one sentence). No quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
+// suggestTask is the Suggest steer's per-call instruction — the mission-driven
+// input hint. Like every LLM steer it rides on the shared autopilotSystemPrompt
+// persona, so only the task and its output format live here.
+const suggestTask = `Suggest the SINGLE next instruction to give the agent toward the mission — a short, direct imperative the user can accept and send as-is.
+Reply with ONLY that instruction (a few words to one sentence): no quotes, no explanation. Reply with nothing if the mission looks complete or the next step needs a human decision.`
 
 // startPromptSuggestion fires the input hint. AutoPilot owns the whole decision
 // here, reading its live config directly so the hint holds no autopilot state:
@@ -47,11 +47,11 @@ func (m *model) startPromptSuggestion() tea.Cmd {
 // plus the mission, asking for the single next instruction to give the agent.
 func (m *model) missionSuggestionRequest(mission string) input.PromptSuggestionRequest {
 	msgs := input.RecentSuggestionMessages(&m.conv.ConversationModel)
-	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: "Mission:\n" + mission + "\n\nSuggest the next instruction to give the agent."})
+	msgs = append(msgs, core.Message{Role: core.RoleUser, Content: suggestTask + "\n\nMission:\n" + mission})
 	return input.PromptSuggestionRequest{
 		Client:       m.buildLLMClient(),
 		Messages:     msgs,
-		SystemPrompt: autopilotSuggestSystemPrompt,
+		SystemPrompt: m.autopilotSystemPrompt(),
 		MaxTokens:    60,
 	}
 }
