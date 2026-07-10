@@ -73,8 +73,8 @@ type ThinkingEffortProvider interface {
 // model. Providers that return this metadata from ListModels let the rest of the
 // app follow the live catalog instead of guessing capabilities from model IDs.
 type ReasoningCapability struct {
-	Efforts       []string `json:"efforts,omitempty"`
-	DefaultEffort string   `json:"defaultEffort,omitempty"`
+	SupportedEfforts []string `json:"supportedEfforts,omitempty"`
+	DefaultEffort    string   `json:"defaultEffort,omitempty"`
 }
 
 // NewReasoningCapability normalizes provider-supplied reasoning metadata.
@@ -100,8 +100,8 @@ func NewReasoningCapability(efforts []string, defaultEffort string) *ReasoningCa
 
 	defaultEffort = normalizeThinkingEffort(defaultEffort, normalized)
 	return &ReasoningCapability{
-		Efforts:       normalized,
-		DefaultEffort: defaultEffort,
+		SupportedEfforts: normalized,
+		DefaultEffort:    defaultEffort,
 	}
 }
 
@@ -151,8 +151,8 @@ func ThinkingEffortsForModel(p Provider, store *Store, current *CurrentModelInfo
 	if capability == nil {
 		return nil
 	}
-	out := make([]string, len(capability.Efforts))
-	copy(out, capability.Efforts)
+	out := make([]string, len(capability.SupportedEfforts))
+	copy(out, capability.SupportedEfforts)
 	return out
 }
 
@@ -163,7 +163,7 @@ func ResolveThinkingEffortForModel(p Provider, store *Store, current *CurrentMod
 	if capability == nil {
 		return ""
 	}
-	if effort := normalizeThinkingEffort(selected, capability.Efforts); effort != "" {
+	if effort := normalizeThinkingEffort(selected, capability.SupportedEfforts); effort != "" {
 		return effort
 	}
 	return capability.DefaultEffort
@@ -176,16 +176,16 @@ func NextThinkingEffortForModel(p Provider, store *Store, current *CurrentModelI
 	if capability == nil {
 		return "", false
 	}
-	currentEffort := normalizeThinkingEffort(selected, capability.Efforts)
+	currentEffort := normalizeThinkingEffort(selected, capability.SupportedEfforts)
 	if currentEffort == "" {
 		currentEffort = capability.DefaultEffort
 	}
-	for i, effort := range capability.Efforts {
+	for i, effort := range capability.SupportedEfforts {
 		if effort == currentEffort {
-			return capability.Efforts[(i+1)%len(capability.Efforts)], true
+			return capability.SupportedEfforts[(i+1)%len(capability.SupportedEfforts)], true
 		}
 	}
-	return capability.Efforts[0], true
+	return capability.SupportedEfforts[0], true
 }
 
 func reasoningCapabilityForModel(p Provider, store *Store, current *CurrentModelInfo) *ReasoningCapability {
@@ -227,6 +227,7 @@ type ModelInfo struct {
 	ID               string               `json:"id"`
 	Name             string               `json:"name"`
 	DisplayName      string               `json:"displayName,omitempty"`
+	Description      string               `json:"description,omitempty"`
 	InputTokenLimit  int                  `json:"inputTokenLimit,omitempty"`
 	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
 	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
