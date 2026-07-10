@@ -40,8 +40,8 @@ func TestNewReasoningCapabilityNormalizesProviderValues(t *testing.T) {
 	if capability == nil {
 		t.Fatal("NewReasoningCapability() = nil")
 	}
-	if !slices.Equal(capability.Efforts, []string{"low", "ultra"}) {
-		t.Fatalf("efforts = %v, want [low ultra]", capability.Efforts)
+	if !slices.Equal(capability.SupportedEfforts, []string{"low", "ultra"}) {
+		t.Fatalf("efforts = %v, want [low ultra]", capability.SupportedEfforts)
 	}
 	if capability.DefaultEffort != "ultra" {
 		t.Fatalf("default = %q, want ultra", capability.DefaultEffort)

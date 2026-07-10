@@ -15,10 +15,6 @@ func (c *Client) ThinkingEfforts(model string) []string {
 }
 
 func (c *Client) DefaultThinkingEffort(model string) string {
-	return openAIDefaultThinkingEffort(model)
-}
-
-func openAIDefaultThinkingEffort(model string) string {
 	switch efforts := openAIThinkingEfforts(model); len(efforts) {
 	case 0:
 		return ""

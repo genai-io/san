@@ -369,7 +369,7 @@ func (s *Store) CachedModelReasoningForProvider(provider Name, authMethod AuthMe
 		if model.ID != id || model.Reasoning == nil {
 			continue
 		}
-		capability := NewReasoningCapability(model.Reasoning.Efforts, model.Reasoning.DefaultEffort)
+		capability := NewReasoningCapability(model.Reasoning.SupportedEfforts, model.Reasoning.DefaultEffort)
 		return capability, capability != nil
 	}
 	return nil, false
