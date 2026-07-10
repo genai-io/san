@@ -140,12 +140,16 @@ type codexModelsResponse struct {
 type codexModel struct {
 	Slug                     string                `json:"slug"`
 	DisplayName              string                `json:"display_name"`
+	Description              string                `json:"description"`
 	ContextWindow            int                   `json:"context_window"`
 	ShowInPicker             *bool                 `json:"show_in_picker"`
 	SupportedReasoningLevels []codexReasoningLevel `json:"supported_reasoning_levels"`
 	DefaultReasoningLevel    string                `json:"default_reasoning_level"`
 }
 
+// codexReasoningLevel is one entry of supported_reasoning_levels. The backend
+// also sends a per-level "description" blurb next to each effort, which san
+// doesn't surface, so only the effort label is parsed.
 type codexReasoningLevel struct {
 	Effort string `json:"effort"`
 }
@@ -171,6 +175,9 @@ func (r codexModelsResponse) toModelInfos() []llm.ModelInfo {
 		}
 		if m.ContextWindow > 0 {
 			info.InputTokenLimit = m.ContextWindow
+		}
+		if m.Description != "" {
+			info.Description = m.Description
 		}
 		if len(m.SupportedReasoningLevels) > 0 {
 			efforts := make([]string, 0, len(m.SupportedReasoningLevels))

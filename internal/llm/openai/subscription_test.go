@@ -86,12 +86,14 @@ const reasoningStreamBody = "" +
 	"data: [DONE]\n\n"
 
 // modelsCatalogBody is a sample ChatGPT Codex /models JSON response (real shape:
-// a "models" array of {slug, display_name, context_window, ...}): three picker
-// models plus one hidden entry that must be filtered out.
+// a "models" array of {slug, display_name, description, context_window, ...}):
+// three picker models plus one hidden entry that must be filtered out. gpt-5.6-sol
+// carries the per-effort "description" blurbs the backend sends inside
+// supported_reasoning_levels, which san parses past (only the effort is kept).
 const modelsCatalogBody = `{"models":[` +
-	`{"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
-	`{"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
-	`{"slug":"gpt-5.6-luna","display_name":"GPT-5.6-Luna","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
+	`{"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","description":"Fast, balanced default.","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"Quick"},{"effort":"medium","description":"Balanced"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
+	`{"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","description":"Deeper reasoning for hard tasks.","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
+	`{"slug":"gpt-5.6-luna","display_name":"GPT-5.6-Luna","description":"Long-context specialist.","context_window":372000,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"medium"},{"effort":"high"},{"effort":"xhigh"},{"effort":"max"},{"effort":"ultra"}]},` +
 	`{"slug":"gpt-hidden","display_name":"Hidden","show_in_picker":false}` +
 	`]}`
 
@@ -273,15 +275,23 @@ func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
 	for _, m := range models {
 		byID[m.ID] = m
 	}
+	wantDescriptions := map[string]string{
+		"gpt-5.6-sol":   "Fast, balanced default.",
+		"gpt-5.6-terra": "Deeper reasoning for hard tasks.",
+		"gpt-5.6-luna":  "Long-context specialist.",
+	}
 	for _, id := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		if got, ok := byID[id]; !ok || got.InputTokenLimit != 372000 {
 			t.Errorf("%s = %+v (present=%v), want limit 372000", id, got, ok)
 		} else {
 			wantEfforts := []string{"low", "medium", "high", "xhigh", "max", "ultra"}
-			if got.Reasoning == nil || strings.Join(got.Reasoning.Efforts, ",") != strings.Join(wantEfforts, ",") {
+			if got.Reasoning == nil || strings.Join(got.Reasoning.SupportedEfforts, ",") != strings.Join(wantEfforts, ",") {
 				t.Errorf("%s reasoning = %+v, want efforts %v", id, got.Reasoning, wantEfforts)
 			} else if got.Reasoning.DefaultEffort != "low" {
 				t.Errorf("%s default reasoning = %q, want low", id, got.Reasoning.DefaultEffort)
+			}
+			if got.Description != wantDescriptions[id] {
+				t.Errorf("%s description = %q, want %q", id, got.Description, wantDescriptions[id])
 			}
 		}
 	}

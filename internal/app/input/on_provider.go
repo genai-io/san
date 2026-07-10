@@ -69,6 +69,7 @@ type providerModelItem struct {
 	ID               string
 	Name             string
 	DisplayName      string
+	Description      string
 	ProviderName     string
 	AuthMethod       llm.AuthMethod
 	IsCurrent        bool
@@ -81,6 +82,7 @@ func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm
 		ID:               mdl.ID,
 		Name:             mdl.Name,
 		DisplayName:      mdl.DisplayName,
+		Description:      mdl.Description,
 		ProviderName:     providerName,
 		AuthMethod:       authMethod,
 		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,

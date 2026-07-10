@@ -228,6 +228,18 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	}
 
 	line := fmt.Sprintf("%s %s%s", indicatorStyle.Render(indicator), displayName, warning)
+
+	// When the catalog describes the model, trail the name with a dimmed
+	// description. Truncate it to whatever room is left on the row (after the
+	// selection prefix and a two-column gap) so a long blurb never wraps.
+	if desc := strings.TrimSpace(m.Description); desc != "" {
+		const prefixAndGap = 6 // up to 4 cols of selection prefix + a 2-col gap
+		budget := s.panel().ContentWidth() - lipgloss.Width(line) - prefixAndGap
+		if budget >= 8 {
+			line += "  " + kit.DimStyle().Render(kit.TruncateText(desc, budget))
+		}
+	}
+
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
