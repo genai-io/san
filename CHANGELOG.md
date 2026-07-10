@@ -3,6 +3,15 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.4] - 2026-07-11
+
+### Added
+- Discover OpenAI model reasoning capabilities dynamically ([@yanmxa](https://github.com/yanmxa) in [f67f5ba](https://github.com/genai-io/san/commit/f67f5bac15b47251031457021d6f4fe435c6df34))
+- Show model descriptions in the provider picker ([@yanmxa](https://github.com/yanmxa) in [5e7d6b5](https://github.com/genai-io/san/commit/5e7d6b5612000493d3c3a5d8404fe8431d402836))
+
+### Changed
+- Resolve OpenAI reasoning capabilities live and simplify capability and authentication handling ([@yanmxa](https://github.com/yanmxa) in [0f6af4e](https://github.com/genai-io/san/commit/0f6af4ef825eb37372b004ef55c5fb2a5ad56a97))
+
 ## [v1.21.3] - 2026-07-10
 
 ### Added
