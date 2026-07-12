@@ -32,6 +32,13 @@ type Data struct {
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
 	AllowBypass    *bool              `json:"allowBypass,omitempty"`
+	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
+	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
+	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`
+	// StreamIdleTimeout overrides the core default (60s) for the gap between
+	// chunks once a stream has started. A valid time.Duration string (e.g. "60s",
+	// "120s"); empty = core default.
+	StreamIdleTimeout string `json:"streamIdleTimeout,omitempty"`
 	// ContextBar toggles the visual context-usage bar ([██████░░░░] 71%) in
 	// the status line. Pointer so an explicit "off" persists distinctly from
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
@@ -537,6 +544,8 @@ func (s *Data) Clone() *Data {
 	dst.Model = s.Model
 	dst.Theme = s.Theme
 	dst.SearchProvider = s.SearchProvider
+	dst.StreamFirstChunkTimeout = s.StreamFirstChunkTimeout
+	dst.StreamIdleTimeout = s.StreamIdleTimeout
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
 	dst.AutoPilot = s.AutoPilot.Clone()
