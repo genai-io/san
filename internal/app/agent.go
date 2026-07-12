@@ -120,6 +120,32 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	// hot-swap it mid-session; the closures below Load it per call.
 	m.rebuildAutopilotReviewer()
 
+	// Read stream timeout overrides from settings (low priority) then env vars
+	// (high priority). Priority: SAN_* env var > settings.json > core default.
+	// Valid time.Duration strings (e.g. "30s", "3m"); empty/invalid leaves the
+	// core default (zero value => core picks FirstChunkTimeout=5m, IdleTimeout=60s).
+	var streamFirstChunk, streamIdle time.Duration
+	if s := m.services.Setting.StreamFirstChunkTimeout(); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			streamFirstChunk = d
+		}
+	}
+	if s := m.services.Setting.StreamIdleTimeout(); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			streamIdle = d
+		}
+	}
+	if s := setting.Getenv("STREAM_FIRST_CHUNK_TIMEOUT"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			streamFirstChunk = d
+		}
+	}
+	if s := setting.Getenv("STREAM_IDLE_TIMEOUT"); s != "" {
+		if d, err := time.ParseDuration(s); err == nil {
+			streamIdle = d
+		}
+	}
+
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
 		ModelID:        m.env.GetModelID(),
@@ -244,6 +270,9 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			m.recordDecision(ctx, true, verdict.Reason)
 			return agent.PermReviewResult{Allow: true, Reason: "autopilot: " + verdict.Reason}
 		},
+
+		StreamFirstChunkTimeout: streamFirstChunk,
+		StreamIdleTimeout:       streamIdle,
 	}
 }
 

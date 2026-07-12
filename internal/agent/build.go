@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
@@ -23,6 +24,11 @@ type BuildParams struct {
 	CWD     string
 	CWDFunc func() string // dynamic CWD for tool execution; falls back to CWD if nil
 	IsGit   bool
+
+	// Stream timeout tuning. Zero values (default) use the core defaults:
+	// FirstChunkTimeout = 5m, IdleTimeout = 3m.
+	StreamFirstChunkTimeout time.Duration
+	StreamIdleTimeout       time.Duration
 
 	// AgentDirectory, when non-nil, supplies the available-agents listing
 	// embedded into the Agent tool's description. Returning an empty string
@@ -131,6 +137,9 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		CompactFunc: compactFunc,
 		CWD:         p.CWD,
 		OnEvent:     p.OnEvent,
+
+		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
+		StreamIdleTimeout:       p.StreamIdleTimeout,
 	})
 
 	return ag, pg, nil

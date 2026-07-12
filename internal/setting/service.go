@@ -135,6 +135,24 @@ func (s *Settings) SetSearchProvider(provider string) {
 	}
 }
 
+func (s *Settings) StreamFirstChunkTimeout() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return ""
+	}
+	return s.data.StreamFirstChunkTimeout
+}
+
+func (s *Settings) StreamIdleTimeout() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return ""
+	}
+	return s.data.StreamIdleTimeout
+}
+
 func (s *Settings) Hooks() map[string][]Hook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
