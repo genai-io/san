@@ -43,18 +43,25 @@ function Get-Arch {
 }
 
 function Get-LatestVersion {
-    $headers = @{ 'User-Agent' = 'san-installer' }
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
-    return ($release.tag_name -replace '^v', '')
+    $req = [System.Net.WebRequest]::Create("https://github.com/$Repo/releases/latest")
+    $req.Method = 'HEAD'
+    $req.AllowAutoRedirect = $false
+    try {
+        $resp = $req.GetResponse()
+        if ([int]$resp.StatusCode -eq 302 -or [int]$resp.StatusCode -eq 301) {
+            $location = $resp.Headers['Location']
+            if ($location -match '/tag/v([^/]+)') {
+                return $matches[1]
+            }
+        }
+    } finally {
+        if ($resp) { $resp.Close() }
+    }
+    Fail "Failed to get latest version"
 }
 
 function Get-DownloadUrl($version, $arch) {
-    $asset = "${Binary}_windows_${arch}.zip"
-    $headers = @{ 'User-Agent' = 'san-installer' }
-    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/tags/v$version" -Headers $headers
-    $match = $release.assets | Where-Object { $_.name -eq $asset } | Select-Object -First 1
-    if (-not $match) { Fail "Release asset $asset not found for v$version" }
-    return $match.browser_download_url
+    return "https://github.com/$Repo/releases/download/v${version}/${Binary}_windows_${arch}.zip"
 }
 
 function Get-InstalledVersion {

@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -35,27 +34,17 @@ func TestGoArch(t *testing.T) {
 
 func TestFetchLatestRelease(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
+		if r.Method != http.MethodHead {
 			t.Errorf("unexpected method: %s", r.Method)
 		}
-		resp := releaseInfo{
-			TagName: "v1.21.0",
-			Assets: []struct {
-				Name               string `json:"name"`
-				BrowserDownloadURL string `json:"browser_download_url"`
-			}{
-				{Name: "san_darwin_amd64.tar.gz", BrowserDownloadURL: "https://example.com/san_darwin_amd64.tar.gz"},
-				{Name: "san_linux_amd64.tar.gz", BrowserDownloadURL: "https://example.com/san_linux_amd64.tar.gz"},
-			},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Location", "https://github.com/genai-io/san/releases/tag/v1.21.0")
+		w.WriteHeader(http.StatusFound)
 	}))
 	defer srv.Close()
 
-	oldURL := githubAPI
-	githubAPI = srv.URL
-	defer func() { githubAPI = oldURL }()
+	oldURL := githubLatestRelease
+	githubLatestRelease = srv.URL
+	defer func() { githubLatestRelease = oldURL }()
 
 	release, err := fetchLatestRelease(context.Background())
 	if err != nil {
@@ -63,9 +52,6 @@ func TestFetchLatestRelease(t *testing.T) {
 	}
 	if release.TagName != "v1.21.0" {
 		t.Errorf("TagName = %q, want %q", release.TagName, "v1.21.0")
-	}
-	if len(release.Assets) != 2 {
-		t.Errorf("len(Assets) = %d, want 2", len(release.Assets))
 	}
 }
 
@@ -75,9 +61,9 @@ func TestFetchLatestRelease_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	oldURL := githubAPI
-	githubAPI = srv.URL
-	defer func() { githubAPI = oldURL }()
+	oldURL := githubLatestRelease
+	githubLatestRelease = srv.URL
+	defer func() { githubLatestRelease = oldURL }()
 
 	_, err := fetchLatestRelease(context.Background())
 	if err == nil {
@@ -85,21 +71,20 @@ func TestFetchLatestRelease_HTTPError(t *testing.T) {
 	}
 }
 
-func TestFetchLatestRelease_EmptyTag(t *testing.T) {
+func TestFetchLatestRelease_InvalidRedirect(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := releaseInfo{TagName: ""}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.Header().Set("Location", "https://example.com/something-else")
+		w.WriteHeader(http.StatusFound)
 	}))
 	defer srv.Close()
 
-	oldURL := githubAPI
-	githubAPI = srv.URL
-	defer func() { githubAPI = oldURL }()
+	oldURL := githubLatestRelease
+	githubLatestRelease = srv.URL
+	defer func() { githubLatestRelease = oldURL }()
 
 	_, err := fetchLatestRelease(context.Background())
 	if err == nil {
-		t.Fatal("expected error for empty tag, got nil")
+		t.Fatal("expected error for invalid Location header, got nil")
 	}
 }
 

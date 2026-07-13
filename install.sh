@@ -49,30 +49,12 @@ detect_platform() {
 }
 
 get_latest_version() {
-    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/'
+    curl -fsSI "https://github.com/${REPO}/releases/latest" | grep -i "^location:" | sed -E 's/.*\/tag\/v([^/]*).*/\1/' | tr -d '\r'
 }
 
 get_download_url() {
     local version="$1"
-    local asset_name="san_${OS}_${ARCH}.tar.gz"
-    local api_url="https://api.github.com/repos/${REPO}/releases/tags/v${version}"
-
-    curl -fsSL "$api_url" | awk -v asset="$asset_name" '
-        /"name":/ {
-            if ($0 ~ "\"" asset "\"") {
-                found=1
-            }
-        }
-        found && /"browser_download_url":/ {
-            line=$0
-            sub(/^.*"browser_download_url":[[:space:]]*"/, "", line)
-            sub(/".*$/, "", line)
-            if (line != "" && !printed) {
-                print line
-                printed=1
-            }
-        }
-    '
+    echo "https://github.com/${REPO}/releases/download/v${version}/san_${OS}_${ARCH}.tar.gz"
 }
 
 do_install() {

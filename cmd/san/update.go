@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,8 +19,8 @@ import (
 )
 
 var (
-	githubAPI  = "https://api.github.com/repos/genai-io/san/releases/latest"
-	httpClient = http.DefaultClient
+	githubLatestRelease = "https://github.com/genai-io/san/releases/latest"
+	httpClient          = http.DefaultClient
 )
 
 // releaseInfo represents the GitHub API response for a release.
@@ -66,16 +65,7 @@ func runSelfUpdate(ctx context.Context) error {
 		archiveExt = ".zip"
 	}
 	assetName := fmt.Sprintf("san_%s_%s%s", runtime.GOOS, goArch(runtime.GOARCH), archiveExt)
-	var downloadURL string
-	for _, a := range latest.Assets {
-		if a.Name == assetName {
-			downloadURL = a.BrowserDownloadURL
-			break
-		}
-	}
-	if downloadURL == "" {
-		return fmt.Errorf("no release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	downloadURL := fmt.Sprintf("https://github.com/genai-io/san/releases/download/v%s/%s", latestVersion, assetName)
 
 	// Find current binary path
 	exe, err := os.Executable()
@@ -168,32 +158,43 @@ func runSelfUpdate(ctx context.Context) error {
 	return nil
 }
 
-// fetchLatestRelease fetches the latest release info from GitHub.
+// fetchLatestRelease fetches the latest release tag from GitHub
+// without hitting the rate-limited API.
 func fetchLatestRelease(ctx context.Context) (*releaseInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, githubAPI, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, githubLatestRelease, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
 
-	resp, err := httpClient.Do(req)
+	// Don't follow redirects — we need the Location header
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned %s", resp.Status)
+	if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("unexpected response from GitHub: %s", resp.Status)
 	}
 
-	var release releaseInfo
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, err
+	location := resp.Header.Get("Location")
+	if location == "" {
+		return nil, fmt.Errorf("missing Location header in redirect response")
 	}
-	if release.TagName == "" {
-		return nil, fmt.Errorf("unexpected response from GitHub API")
+
+	// Location: https://github.com/genai-io/san/releases/tag/v1.21.4
+	version := strings.TrimPrefix(location, "https://github.com/genai-io/san/releases/tag/v")
+	if version == location {
+		return nil, fmt.Errorf("unexpected Location header: %s", location)
 	}
-	return &release, nil
+
+	return &releaseInfo{TagName: "v" + version}, nil
 }
 
 // downloadWithProgress downloads a file from url to dest with a terminal progress bar.
