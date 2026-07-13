@@ -85,6 +85,7 @@ type SlashCommandEnv struct {
 	ForkSession             func() (originalSessionID string, err error)
 	RunSelfLearnDemo        func()
 	SetActivePersona        func(name string) error
+	RenameSession           func(name string) error
 }
 
 type SlashCommandController struct {
@@ -120,6 +121,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
+		"name":           (*SlashCommandController).handleNameCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
 }
@@ -354,6 +356,22 @@ func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string
 func (c *SlashCommandController) handleAutopilotCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Autopilot.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
+}
+
+// handleNameCommand sets or changes the name of the current conversation session.
+// Usage: /name <session-name>
+func (c *SlashCommandController) handleNameCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	name := strings.TrimSpace(args)
+	if name == "" {
+		return "Usage: /name <session-name>\n\nSets or changes the name of the current conversation.", nil, nil
+	}
+	if c.env.RenameSession == nil {
+		return "Session renaming is not available.", nil, nil
+	}
+	if err := c.env.RenameSession(name); err != nil {
+		return "", nil, fmt.Errorf("failed to rename session: %w", err)
+	}
+	return fmt.Sprintf("Session renamed to: %s", name), nil, nil
 }
 
 // handleSelflearnDemoCommand drives the L1 status-bar indicator through

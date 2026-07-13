@@ -49,6 +49,7 @@ func builtinCommands() []Info {
 		{Name: "search", Description: "Select search engine for web search"},
 		{Name: "config", Description: "Configure self-learning and other settings"},
 		{Name: "autopilot", Description: "Configure the autopilot copilot (steers, system prompt, mission)"},
+		{Name: "name", Description: "Set or change the name of the current conversation session"},
 		{Name: "quit", Description: "Exit the application (/exit also works)"},
 	}
 }

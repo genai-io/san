@@ -66,6 +66,11 @@ type env struct {
 	// resumed configs take effect.
 	AutoPilot setting.AutoPilotSettings
 
+	// SessionName holds the custom session name set via /name. When non-empty
+	// it overrides the auto-generated title on save. Restored from persisted
+	// session metadata on resume.
+	SessionName string
+
 	// ── Cache (session-scoped) ──────────────────────────────────
 	FileCache                 *filecache.Cache
 	CachedUserInstructions    string

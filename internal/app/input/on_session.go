@@ -262,9 +262,10 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 }
 
 func (s *SessionSelector) renderSession(sess *session.SessionMetadata, isSelected bool, sb *strings.Builder, boxWidth int) {
-	// Both states reserve a 2-col left gutter (blank, or the FocusBar) so the
-	// title column lines up whether or not the row is focused.
-	const indent = "  "
+	// RenderSelectableRow adds a 4-char left prefix for unselected rows
+	// ("  " + PaddingLeft(2)) and the same 4-char visual offset for
+	// selected rows ("  ▎ "). We account for that below so the row is
+	// exactly boxWidth columns wide with metadata flush right.
 
 	displayTitle := sess.Title
 	if len([]rune(displayTitle)) < session.MinSubstantiveLength {
@@ -274,19 +275,19 @@ func (s *SessionSelector) renderSession(sess *session.SessionMetadata, isSelecte
 	}
 
 	metadata := sessionFormatCompactMetadata(sess)
-	maxTitleWidth := boxWidth - len(indent) - len(metadata) - 4
-	if maxTitleWidth < 10 {
-		maxTitleWidth = 10
-	}
-	title := kit.TruncateText(displayTitle, maxTitleWidth)
+	mdWidth := lipgloss.Width(metadata)
 
-	titleLen := len(indent) + len(title)
-	gap := boxWidth - titleLen - len(metadata) - 2
-	if gap < 2 {
-		gap = 2
-	}
+	// Available width for the title: boxWidth minus RenderSelectableRow's 4-col
+	// prefix, minus 1-space minimum gap, minus the metadata width.
+	availTitleWidth := max(boxWidth-4-mdWidth-1, 10)
+	title := kit.TruncateText(displayTitle, availTitleWidth)
+
+	// Pad so (title + padding + metadata) is boxWidth − 4, which makes the
+	// full row (including RenderSelectableRow's 4-col prefix) exactly boxWidth.
+	titleWidth := lipgloss.Width(title)
+	gap := max(boxWidth-4-titleWidth-mdWidth, 1)
 	padding := strings.Repeat(" ", gap)
-	sb.WriteString(kit.RenderSelectableRow(fmt.Sprintf("%s%s%s", title, padding, metadata), isSelected) + "\n")
+	sb.WriteString(kit.RenderSelectableRow(title+padding+metadata, isSelected) + "\n")
 
 	if lastMsg := s.getLastMessage(sess); lastMsg != "" {
 		previewStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)

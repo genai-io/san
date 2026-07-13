@@ -114,7 +114,11 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 	}
 
 	if sess.Metadata.Title == "" {
-		sess.Metadata.Title = session.GenerateTitle(sess.Entries)
+		if m.env.SessionName != "" {
+			sess.Metadata.Title = m.env.SessionName
+		} else {
+			sess.Metadata.Title = session.GenerateTitle(sess.Entries)
+		}
 	}
 
 	return sess
@@ -146,6 +150,7 @@ func (m *model) loadSessionByID(id string) error {
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = session.ConvertFromEntries(sess.Entries)
 	m.services.Session.SetID(sess.Metadata.ID)
+	m.env.SessionName = sess.Metadata.Title
 
 	m.initTaskStorage(m.services.Session.ID())
 
@@ -212,4 +217,12 @@ func (m *model) forkSession() (string, error) {
 	m.services.Session.SetID(forked.Metadata.ID)
 	m.services.Tracker.SetStorageDir("")
 	return originalID, nil
+}
+
+// renameSession sets a custom name for the current session and persists it.
+// The name is stored in env so subsequent saves use it instead of auto-generating
+// a title from the conversation entries.
+func (m *model) renameSession(name string) error {
+	m.env.SessionName = name
+	return m.PersistSession()
 }

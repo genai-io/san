@@ -55,6 +55,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ForkSession:             m.forkSession,
 		RunSelfLearnDemo:        m.runSelfLearnDemo,
 		SetActivePersona:        m.setActivePersona,
+		RenameSession:           m.renameSession,
 	}
 }
 
