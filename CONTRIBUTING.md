@@ -121,6 +121,13 @@ chore: maintenance tasks
 | **Docs** | Improve documentation |
 | **Tests** | Increase test coverage |
 
+## Project Roles
+
+San uses a contributor ladder — Contributor → Reviewer → Approver →
+Maintainer — backed by the [`OWNERS`](OWNERS) file. See
+[CONTRIBUTOR_LADDER.md](CONTRIBUTOR_LADDER.md) for what each role does and
+how contributors advance between them.
+
 ## Code of Conduct
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
