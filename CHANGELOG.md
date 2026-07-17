@@ -3,6 +3,11 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.6] - 2026-07-18
+
+### Added
+- Render multi-line and long Bash commands as readable terminal blocks ([@yanmxa](https://github.com/yanmxa) in [#319](https://github.com/genai-io/san/pull/319))
+
 ## [v1.21.5] - 2026-07-17
 
 ### Added
