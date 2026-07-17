@@ -69,10 +69,13 @@ func (s *Settings) Snapshot() *Data {
 	return s.data.Clone()
 }
 
+// AllowBypass reports whether Bypass Permissions mode is reachable (in the
+// Shift+Tab cycle and as a settings defaultMode). It is opt-out: enabled
+// unless the user explicitly sets "allowBypass": false to lock it out.
 func (s *Settings) AllowBypass() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.data != nil && s.data.AllowBypass != nil && *s.data.AllowBypass
+	return s.data == nil || s.data.AllowBypass == nil || *s.data.AllowBypass
 }
 
 func (s *Settings) IsGitRepo(cwd string) bool {

@@ -31,7 +31,10 @@ type Data struct {
 	DisabledTools  map[string]bool    `json:"disabledTools,omitempty"`
 	Theme          string             `json:"theme,omitempty"`
 	SearchProvider string             `json:"searchProvider,omitempty"`
-	AllowBypass    *bool              `json:"allowBypass,omitempty"`
+	// AllowBypass gates Bypass Permissions mode. Opt-out: nil/absent means
+	// allowed (bypass is in the Shift+Tab cycle by default); set false to
+	// lock it out. Read via Settings.AllowBypass().
+	AllowBypass *bool `json:"allowBypass,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
 	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
 	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`
