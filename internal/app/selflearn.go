@@ -7,6 +7,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,12 +27,48 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/selflearn"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/evolve"
 )
 
 // selfLearnDisableEnvSuffix is the env kill switch (§3.1) — mirrors Claude
 // Code's CLAUDE_CODE_DISABLE_AUTO_MEMORY. Read via setting.Getenv as
 // SAN_DISABLE_SELF_LEARN.
 const selfLearnDisableEnvSuffix = "DISABLE_SELF_LEARN"
+
+// learnedStoreContext is the live workspace source behind the /evolve panel:
+// workspace reloads replace both the cwd and the settings service, so the
+// panel and its store accessors read them through here rather than capturing
+// startup values. All access happens on the bubbletea update goroutine (panel
+// key handling, reloadProjectServices), so no locking is needed.
+type learnedStoreContext struct {
+	cwd      string
+	settings *setting.Settings
+}
+
+func newLearnedStoreContext(cwd string, settings *setting.Settings) *learnedStoreContext {
+	return &learnedStoreContext{cwd: cwd, settings: settings}
+}
+
+func (c *learnedStoreContext) Snapshot() (string, *setting.Settings) {
+	return c.cwd, c.settings
+}
+
+func (c *learnedStoreContext) Update(cwd string, settings *setting.Settings) {
+	c.cwd = cwd
+	c.settings = settings
+}
+
+// resolveSelfLearnConfig is the shared runtime gate for both reviewer wiring
+// and Evolve tool advertisement. The environment override is a hard disable;
+// invalid settings likewise expose neither a reviewer nor a trigger tool.
+func (m *model) resolveSelfLearnConfig() (selflearn.Config, error) {
+	if v := setting.Getenv(selfLearnDisableEnvSuffix); v == "1" || strings.EqualFold(v, "true") {
+		return selflearn.Config{}, nil
+	}
+	// Settings.SelfLearn() reads just the value-typed field — no whole-Data
+	// clone — so the per-turn drift check in ensureAgentSession stays cheap.
+	return selflearn.ResolveSettings(m.services.Setting.SelfLearn())
+}
 
 // L1 review lifecycle event types published on agentEventHub. "started" is
 // an internal spinner wake-up consumed by onMainEvent; "done"/"failed"
@@ -44,23 +82,17 @@ const (
 // wireSelfLearn builds the L1 Reviewer for the running session when ≥1
 // arm is enabled. params is captured so the fork rebuilds an LLM client
 // with the same provider/model/max-tokens for prefix-cache parity
-// (§6 invariant #2). pendingSend is the user content the caller is about
-// to deliver — it is already in m.conv.Messages but has NOT been Observed
-// yet, so SeedTurns must exclude it to keep the cadence beat honest.
-func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
+// (§6 invariant #2).
+func (m *model) wireSelfLearn(params agent.BuildParams) {
 	// Tear down first — ensureAgentSession can re-enter via an agent
 	// toggle (which calls Agent.Stop directly, bypassing StopAgentSession)
 	// and would otherwise overwrite reviewCancel un-called, leaking the
 	// context and pinning the old fork for up to forkDeadline.
 	m.teardownSelfLearn()
 
-	// Env override wins: documented as the hard kill switch (§3.1). teardown
-	// above already cleared any prior session, so the disabled paths just return.
-	if v := setting.Getenv(selfLearnDisableEnvSuffix); v == "1" || strings.EqualFold(v, "true") {
-		return
-	}
-	snap := m.services.Setting.Snapshot()
-	cfg, err := selflearn.ResolveSettings(snap.SelfLearn)
+	// The shared resolver applies the env kill switch and validates settings so
+	// reviewer wiring and Evolve advertisement cannot disagree.
+	cfg, err := m.resolveSelfLearnConfig()
 	if err != nil {
 		log.Logger().Warn("self-learning config rejected at startup", zap.Error(err))
 		return
@@ -82,8 +114,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	live := &atomic.Bool{}
 	live.Store(true)
 
-	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars)
-	skillMgr := selflearn.NewSkillManager(m.env.CWD, cfg.Perms)
+	memStore := selflearn.NewMemoryStore(m.env.CWD, cfg.MemoryMaxChars, cfg.MemoryPath)
 
 	// Write observers feed the live spinner-tail and the post-pass recap. They
 	// run on the fork goroutine and check `live` so a write landing after
@@ -94,21 +125,17 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 		if !live.Load() {
 			return
 		}
-		m.services.SelfLearn.Indicator.RecordAction(ReviewAction{
-			Verb:   verb,
-			Kind:   kind,
-			Target: target,
-			Note:   note,
-		})
+		act := ReviewAction{Verb: verb, Kind: kind, Target: target, Note: note}
+		m.services.SelfLearn.Indicator.RecordAction(act)
+		// Also feed the persistent recent-activity log behind the /evolve
+		// RECENT zones (the indicator's copy is drained after each pass).
+		m.services.SelfLearn.Recent.Add(act, time.Now())
 	}
 	memStore.SetWriteObserver(func(action, topic, note string) {
 		recordAction("memory", memoryVerb(action), memoryTopicName(topic), note)
 	})
-	skillMgr.SetWriteObserver(func(action, skillName, note string) {
-		recordAction("skill", skillVerb(action), skillName, note)
-	})
 
-	review := func(kinds selflearn.ReviewKind, snapshot []core.Message) {
+	review := func(kinds selflearn.ReviewKind, skillPerms selflearn.SkillPermissions, snapshot []core.Message) {
 		// Liveness checks before any UI mutation — a teardown race must
 		// not flash "evolving → evolved" on a session the user just killed.
 		// Active() guards the macro window; the per-phase live.Load() checks
@@ -124,6 +151,16 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 		if !live.Load() {
 			return
 		}
+
+		// The skill manager is scoped to exactly the actions the trigger allowed
+		// this pass (create on a skill-free turn, update/delete on a skill-use
+		// turn), so the reviewer can't take an action that wasn't triggered. All
+		// actions remain agent-created only.
+		skillMgr := selflearn.NewSkillManager(m.env.CWD, skillPerms)
+		skillMgr.SetWriteObserver(func(action, skillName, note string) {
+			recordAction("skill", skillVerb(action), skillName, note)
+		})
+
 		m.services.SelfLearn.Indicator.BeginReview()
 		m.publishSelfLearnStarted(kinds)
 
@@ -140,12 +177,13 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 			forkSessionID = rec.SessionID()
 		}
 		fc := selflearn.ForkConfig{
-			LLM:     client,
-			System:  sys,
-			CWD:     m.env.CWD,
-			Memory:  memStore,
-			Skills:  skillMgr,
-			OnEvent: forkOnEvent,
+			LLM:      client,
+			System:   sys,
+			CWD:      m.env.CWD,
+			Memory:   memStore,
+			Skills:   skillMgr,
+			Strategy: cfg.Strategy,
+			OnEvent:  forkOnEvent,
 		}
 		llmSummary, runErr := selflearn.RunReview(reviewCtx, fc, kinds, snapshot)
 		// Re-check live AFTER the RunReview return. This is the macro
@@ -191,7 +229,6 @@ func (m *model) wireSelfLearn(params agent.BuildParams, pendingSend string) {
 	}
 
 	r := selflearn.New(cfg, review)
-	r.SeedTurns(countUserTurns(m.conv.Messages, pendingSend))
 	m.services.SelfLearn.session = &selfLearnSession{
 		reviewer: r,
 		cancel:   reviewCancel,
@@ -248,12 +285,11 @@ func (m *model) runSelfLearnDemo() {
 	}()
 }
 
-// notifySelfLearnOverride detects when a /config save was silently
-// overridden by the OTHER settings level (the merger ORs the Enabled
-// flags across user+project so disabling at one level cannot turn off an
-// arm that the other level enabled). Surfaces a notice so the user
-// learns about the override instead of seeing a "saved" confirmation
-// while the behavior stays unchanged.
+// notifySelfLearnOverride detects when a /evolve save was overridden by the
+// other settings level. Memory enablement and each skill action are compared
+// separately because the merger combines their safety gates independently.
+// Surfaces a notice instead of leaving the user with only a misleading saved
+// confirmation while the requested behavior stays unchanged.
 func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 	snap := m.services.Setting.Snapshot()
 	if snap == nil {
@@ -263,8 +299,14 @@ func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 	if msg.SavedSelfLearn.Memory.Enabled != snap.SelfLearn.Memory.Enabled {
 		arms = append(arms, "Memory")
 	}
-	if msg.SavedSelfLearn.Skills.Enabled != snap.SelfLearn.Skills.Enabled {
-		arms = append(arms, "Skills")
+	if msg.SavedSelfLearn.Skills.AllowCreate() != snap.SelfLearn.Skills.AllowCreate() {
+		arms = append(arms, "Skill create")
+	}
+	if msg.SavedSelfLearn.Skills.AllowUpdate() != snap.SelfLearn.Skills.AllowUpdate() {
+		arms = append(arms, "Skill update")
+	}
+	if msg.SavedSelfLearn.Skills.AllowDelete() != snap.SelfLearn.Skills.AllowDelete() {
+		arms = append(arms, "Skill delete")
 	}
 	if len(arms) == 0 {
 		return
@@ -274,7 +316,40 @@ func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 		other = "user"
 	}
 	m.conv.AddNotice("Note: " + strings.Join(arms, " and ") +
-		" enabled state is overridden by " + other + "-level settings")
+		" setting is overridden by " + other + "-level settings")
+}
+
+// newLearnedSkillStore builds the /evolve inventory accessors over the live
+// workspace source. Each call constructs a short-lived SkillManager doing a
+// fresh disk scan (the reviewer mutates the skill dirs mid-session, so a
+// cached view would go stale). This is a human-initiated surface, so it uses
+// full action permissions — the reviewer's Deny* gates govern the autonomous
+// loop, not the user's own deletions — and only ever surfaces agent-created
+// skills.
+func newLearnedSkillStore(source func() (string, *setting.Settings)) input.LearnedSkillStore {
+	mgr := func() *selflearn.SkillManager {
+		cwd, _ := source()
+		return selflearn.NewSkillManager(cwd, selflearn.AllowAllSkillActions())
+	}
+	return input.LearnedSkillStore{
+		List: func() []selflearn.SkillInfo {
+			var out []selflearn.SkillInfo
+			for _, s := range mgr().Inventory() {
+				if !s.Editable() {
+					continue // agent-created only; user-authored skills live in /skills
+				}
+				out = append(out, s)
+			}
+			return out
+		},
+		Read: func(name string) (string, error) {
+			return mgr().Read(name)
+		},
+		Delete: func(name string) error {
+			_, err := mgr().Delete(name, "removed via /evolve panel")
+			return err
+		},
+	}
 }
 
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
@@ -289,6 +364,111 @@ func (m *model) teardownSelfLearn() {
 	s.cancel()
 	s.live.Store(false)
 	m.services.SelfLearn.session = nil
+}
+
+// newLearnedMemoryStore builds the /evolve "Learned" memory accessors over the
+// resolved auto-memory dir (honoring a configured memory path, read live from
+// settings): list the agent-written .md files, read one, delete one. Read/Delete
+// are guarded against path traversal.
+func newLearnedMemoryStore(source func() (string, *setting.Settings)) input.LearnedMemoryStore {
+	dir := func() string {
+		cwd, settings := source()
+		var path string
+		if settings != nil {
+			if snap := settings.Snapshot(); snap != nil {
+				path = snap.SelfLearn.Memory.Path
+			}
+		}
+		return system.ResolveAutoMemoryDir(cwd, path)
+	}
+	return input.LearnedMemoryStore{
+		List: func() []input.LearnedMemory {
+			d := dir()
+			entries, err := os.ReadDir(d)
+			if err != nil {
+				return nil
+			}
+			var out []input.LearnedMemory
+			for _, e := range entries {
+				name := e.Name()
+				if e.IsDir() || !strings.HasSuffix(name, ".md") {
+					continue
+				}
+				topic := name
+				if name != system.AutoMemoryIndexName {
+					topic = strings.TrimSuffix(name, ".md")
+				}
+				out = append(out, input.LearnedMemory{
+					Topic:   topic,
+					File:    name,
+					Summary: memoryFileSummary(filepath.Join(d, name)),
+				})
+			}
+			return out
+		},
+		Read: func(file string) (string, error) {
+			if !safeMemoryFile(file) {
+				return "", fmt.Errorf("invalid memory file: %q", file)
+			}
+			b, err := os.ReadFile(filepath.Join(dir(), file))
+			return string(b), err
+		},
+		Delete: func(file string) error {
+			if !safeMemoryFile(file) {
+				return fmt.Errorf("invalid memory file: %q", file)
+			}
+			return os.Remove(filepath.Join(dir(), file))
+		},
+	}
+}
+
+// safeMemoryFile guards Read/Delete against path traversal: the file must be a
+// plain .md base name inside the memory dir.
+func safeMemoryFile(file string) bool {
+	return file != "" && filepath.Base(file) == file && strings.HasSuffix(file, ".md")
+}
+
+// memoryFileSummary returns a short "N lines" summary for an inventory row.
+func memoryFileSummary(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) == 0 {
+		return "empty"
+	}
+	n := strings.Count(string(b), "\n")
+	if !strings.HasSuffix(string(b), "\n") {
+		n++
+	}
+	return fmt.Sprintf("%d lines", n)
+}
+
+// selfLearnCapabilities returns the enabled self-learning capabilities, used
+// to build (and gate) the Evolve trigger tool. The zero value — every skill
+// action denied and memory off — means "self-learning off", so no tool is
+// injected. Shares resolveSelfLearnConfig with wireSelfLearn so the advertised
+// tool and the wired reviewer can never disagree (env kill switch, invalid
+// settings).
+func (m *model) selfLearnCapabilities() evolve.Capabilities {
+	cfg, err := m.resolveSelfLearnConfig()
+	if err != nil {
+		return evolve.Capabilities{}
+	}
+	return evolve.Capabilities{
+		CreateSkills: cfg.Skills.AllowCreate,
+		UpdateSkills: cfg.Skills.AllowUpdate,
+		DeleteSkills: cfg.Skills.AllowDelete,
+		WriteMemory:  cfg.MemoryEnabled,
+	}
+}
+
+// selfLearnExtraTools returns the Evolve trigger tool for the main agent's
+// toolset — the only conditional extra tool today. Nil when self-learning is
+// off, so the tool is absent entirely.
+func (m *model) selfLearnExtraTools() []core.ToolSchema {
+	caps := m.selfLearnCapabilities()
+	if !caps.Active() {
+		return nil
+	}
+	return []core.ToolSchema{evolve.Schema(caps)}
 }
 
 // handleSelflearnTick advances the indicator and schedules the next tick
@@ -313,29 +493,6 @@ func memoryTopicName(file string) string {
 		return ""
 	}
 	return strings.TrimSuffix(file, ".md")
-}
-
-// countUserTurns counts user messages already Observed by the reviewer
-// so the memory arm resumes on the right cadence beat after session
-// restore (§6 invariant #8). A trailing pendingSend match is excluded —
-// the submit path Appends the message before ensureAgentSession runs, so
-// without this guard the seed double-counts the in-flight turn that
-// Observe is about to increment.
-func countUserTurns(msgs []core.ChatMessage, pendingSend string) int {
-	end := len(msgs)
-	if pendingSend != "" && end > 0 {
-		last := msgs[end-1]
-		if last.Role == core.RoleUser && last.Content == pendingSend {
-			end--
-		}
-	}
-	n := 0
-	for i := 0; i < end; i++ {
-		if msgs[i].Role == core.RoleUser {
-			n++
-		}
-	}
-	return n
 }
 
 // publishSelfLearnSummary posts the post-pass recap into the conversation

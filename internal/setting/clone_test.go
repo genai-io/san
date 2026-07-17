@@ -15,8 +15,9 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 		AllowBypass:    &yes,
 		Persona:        "ml-researcher",
 		SelfLearn: SelfLearnSettings{
-			Memory: SelfLearnMemory{Enabled: true, EveryTurns: 7, MaxKB: 15},
-			Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, AllowUpdateUserCreated: true},
+			Memory:   SelfLearnMemory{Enabled: true, MaxKB: 15},
+			Skills:   SelfLearnSkills{DenyCreate: true},
+			Strategy: "custom",
 		},
 	}
 
@@ -51,24 +52,25 @@ func TestClonePreservesAllScalarFields(t *testing.T) {
 func TestMergeSettingsPreservesSelfLearn(t *testing.T) {
 	base := &Data{
 		SelfLearn: SelfLearnSettings{
-			Memory: SelfLearnMemory{Enabled: true, EveryTurns: 3, MaxKB: 15},
-			Skills: SelfLearnSkills{Enabled: false},
+			Memory: SelfLearnMemory{Enabled: true, MaxKB: 15},
+			Skills: SelfLearnSkills{DenyUpdate: true},
 		},
 	}
 	overlay := &Data{
 		SelfLearn: SelfLearnSettings{
-			Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, EveryToolIters: 7},
+			Skills:   SelfLearnSkills{DenyCreate: true},
+			Strategy: "overlay strategy",
 		},
 	}
 	got := mergeSettings(base, overlay)
 
 	// Memory comes entirely from base since overlay didn't touch it.
-	if !got.SelfLearn.Memory.Enabled || got.SelfLearn.Memory.EveryTurns != 3 || got.SelfLearn.Memory.MaxKB != 15 {
+	if !got.SelfLearn.Memory.Enabled || got.SelfLearn.Memory.MaxKB != 15 {
 		t.Errorf("Memory: got %+v, want base passthrough", got.SelfLearn.Memory)
 	}
-	// Skills field-merges: overlay's Enabled+DenyCreate+EveryToolIters
-	// reach the result; base's missing fields stay zero.
-	if !got.SelfLearn.Skills.Enabled || !got.SelfLearn.Skills.DenyCreate || got.SelfLearn.Skills.EveryToolIters != 7 {
+	// Skills field-merges: Deny* OR across levels (overlay's DenyCreate + base's
+	// DenyUpdate both survive); the shared Strategy coalesces from the overlay.
+	if !got.SelfLearn.Skills.DenyCreate || !got.SelfLearn.Skills.DenyUpdate || got.SelfLearn.Strategy != "overlay strategy" {
 		t.Errorf("Skills: got %+v, want merged overlay", got.SelfLearn.Skills)
 	}
 

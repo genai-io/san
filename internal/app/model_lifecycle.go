@@ -47,6 +47,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 
 func newBaseModel() model {
 	svc := newServices()
+	learnedStores := newLearnedStoreContext(appCwd, svc.Setting)
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	if settings := svc.Setting.Snapshot(); settings != nil {
 		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
@@ -63,6 +64,12 @@ func newBaseModel() model {
 			Setting:         svc.Setting,
 			LoadDisabled:    svc.Setting.GetDisabledToolsAt,
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
+			Evolve: input.EvolveDeps{
+				Workspace: learnedStores.Snapshot,
+				Learned:   newLearnedSkillStore(learnedStores.Snapshot),
+				Memory:    newLearnedMemoryStore(learnedStores.Snapshot),
+				Recent:    newRecentLearnAccessor(svc.SelfLearn.Recent),
+			},
 		}),
 		conv:                conv.NewModel(defaultWidth),
 		agentEventHub:       hub.New(),
@@ -70,6 +77,7 @@ func newBaseModel() model {
 		systemInput:         trigger.New(),
 		env:                 environment,
 		services:            svc,
+		learnedStores:       learnedStores,
 		reviewerApprovals:   new(atomic.Int64),
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),

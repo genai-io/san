@@ -20,13 +20,18 @@ const forkDeadline = 5 * time.Minute
 
 // ForkConfig carries everything RunReview needs to fork a restricted reviewer
 // agent. LLM and System come from the parent so the fork inherits its provider
-// and (verbatim) system prompt; Memory and Skills are the write surfaces.
+// and (verbatim) system prompt; Memory and Skills are the write surfaces. The
+// skill actions this pass may take are read from Skills.Perms() — the prompt is
+// tailored to them and the manager enforces them at dispatch.
 type ForkConfig struct {
 	LLM    core.LLM
 	System core.System // parent's system — read for its prompt only
 	CWD    string
 	Memory *MemoryStore
 	Skills *SkillManager
+	// Strategy is the user's optional learning-strategy override; non-empty
+	// replaces the built-in guidance for both arms.
+	Strategy string
 	// OnEvent receives the fork agent's lifecycle events (PreInfer /
 	// PostInfer / OnAppend / …). Wire a sidechain recorder here to land
 	// the fork's LLM calls in the main session transcript so the
@@ -39,7 +44,7 @@ type ForkConfig struct {
 // summary, or "nothing to save"). Bounded by forkDeadline. Best-effort:
 // the caller must run it on a background goroutine.
 func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []core.Message) (string, error) {
-	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Memory, fc.Skills)
+	prompt := buildReviewPrompt(kinds, fc.CWD, fc.Memory, fc.Skills, fc.Strategy)
 
 	ctx, cancel := context.WithTimeout(ctx, forkDeadline)
 	defer cancel()

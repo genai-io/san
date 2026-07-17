@@ -18,7 +18,7 @@ func newTestStore(t *testing.T) *MemoryStore {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // Windows
 	cwd := "/work/project-x"
-	store := NewMemoryStore(cwd, 0)
+	store := NewMemoryStore(cwd, 0, "")
 	if got := store.Dir(); got != system.AutoMemoryDir(cwd) {
 		t.Fatalf("store dir = %q, want %q", got, system.AutoMemoryDir(cwd))
 	}
@@ -206,13 +206,13 @@ func TestLoadAutoMemoryRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 	cwd := "/work/project-x"
 
-	if _, ok := system.LoadAutoMemory(cwd); ok {
+	if _, ok := system.LoadAutoMemoryAt(system.AutoMemoryDir(cwd)); ok {
 		t.Fatal("empty store should report no auto-memory")
 	}
 	mustAdd(t, store, "first durable fact")
-	got, ok := system.LoadAutoMemory(cwd)
+	got, ok := system.LoadAutoMemoryAt(system.AutoMemoryDir(cwd))
 	if !ok || !strings.Contains(got, "first durable fact") {
-		t.Fatalf("LoadAutoMemory = %q, ok=%v", got, ok)
+		t.Fatalf("LoadAutoMemoryAt = %q, ok=%v", got, ok)
 	}
 }
 

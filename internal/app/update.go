@@ -76,6 +76,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Search,
 		&m.userInput.Config,
 		&m.userInput.Autopilot,
+		&m.userInput.Evolve,
 	}
 }
 
@@ -200,12 +201,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
 		m.notifySelfLearnOverride(msg)
-		// Re-wire the L1 reviewer so the just-saved arms / cadences take
-		// effect on the running session instead of silently waiting for
-		// the next agent restart. Wire only when the agent is already
-		// active; an inactive session will wire on the first user turn.
+		// Re-wire the L1 reviewer so the saved values take effect on the
+		// running session. If the save also changed the Evolve tool's
+		// capabilities, the toolset is reconciled when the next turn starts —
+		// ensureAgentSession rebuilds on capability drift (agentEvolveCaps),
+		// which covers external settings edits the same way.
 		if m.services.Agent.Active() {
-			m.wireSelfLearn(m.buildAgentParams(), "")
+			m.wireSelfLearn(m.buildAgentParams())
 		}
 		return m, nil
 	case input.ThemeSavedMsg:

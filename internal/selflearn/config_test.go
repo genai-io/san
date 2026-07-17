@@ -11,30 +11,23 @@ import (
 // to a resolved Config and that defaults apply where fields are unset.
 func TestResolveSettingsHappyPath(t *testing.T) {
 	s := setting.SelfLearnSettings{
-		Memory: setting.SelfLearnMemory{Enabled: true, EveryTurns: 7}, // MaxKB unset → default
-		Skills: setting.SelfLearnSkills{
-			Enabled:        true,
-			EveryToolIters: 15,
-			// Allow* unset → default true
-			AllowUpdateUserCreated: true,
-		},
+		Memory:   setting.SelfLearnMemory{Enabled: true}, // MaxKB unset → default
+		Skills:   setting.SelfLearnSkills{},              // Deny* unset → all three actions allowed
+		Strategy: "custom strategy",
 	}
 	r, err := ResolveSettings(s)
 	if err != nil {
 		t.Fatalf("happy path failed: %v", err)
 	}
-	if !r.Memory.Enabled || r.Memory.Interval != 7 {
-		t.Fatalf("memory arm: %+v", r.Memory)
+	if !r.MemoryEnabled {
+		t.Fatalf("memory arm: %+v", r)
 	}
-	if !r.Skills.Enabled || r.Skills.Interval != 15 {
-		t.Fatalf("skill arm: %+v", r.Skills)
+	wantSkills := AllowAllSkillActions()
+	if r.Skills != wantSkills {
+		t.Fatalf("skill permissions: got %+v, want %+v", r.Skills, wantSkills)
 	}
-	wantPerms := ActionPermissions{
-		AllowCreate: true, AllowUpdate: true, AllowDelete: true,
-		AllowUpdateUserCreated: true,
-	}
-	if r.Perms != wantPerms {
-		t.Fatalf("perms: got %+v, want %+v", r.Perms, wantPerms)
+	if r.Strategy != "custom strategy" {
+		t.Fatalf("strategy override: got %q", r.Strategy)
 	}
 	if r.MemoryMaxChars != 25*1024 {
 		t.Fatalf("memory cap: got %d, want %d", r.MemoryMaxChars, 25*1024)
@@ -51,7 +44,7 @@ func TestResolveSettingsRejectsInvalid(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error to propagate")
 	}
-	if !strings.Contains(err.Error(), `"Create new skills" needs "Update existing skills"`) {
+	if !strings.Contains(err.Error(), `"Create new skills" needs "Update a skill"`) {
 		t.Fatalf("error not from Validate: %v", err)
 	}
 }

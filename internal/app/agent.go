@@ -120,31 +120,16 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	// hot-swap it mid-session; the closures below Load it per call.
 	m.rebuildAutopilotReviewer()
 
-	// Read stream timeout overrides from settings (low priority) then env vars
-	// (high priority). Priority: SAN_* env var > settings.json > core default.
-	// Valid time.Duration strings (e.g. "30s", "3m"); empty/invalid leaves the
-	// core default (zero value => core picks FirstChunkTimeout=5m, IdleTimeout=60s).
-	var streamFirstChunk, streamIdle time.Duration
-	if s := m.services.Setting.StreamFirstChunkTimeout(); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			streamFirstChunk = d
-		}
-	}
-	if s := m.services.Setting.StreamIdleTimeout(); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			streamIdle = d
-		}
-	}
-	if s := setting.Getenv("STREAM_FIRST_CHUNK_TIMEOUT"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			streamFirstChunk = d
-		}
-	}
-	if s := setting.Getenv("STREAM_IDLE_TIMEOUT"); s != "" {
-		if d, err := time.ParseDuration(s); err == nil {
-			streamIdle = d
-		}
-	}
+	// Stream timeout overrides. Priority: SAN_* env var > settings.json > core
+	// default (zero value => core picks FirstChunkTimeout=5m, IdleTimeout=60s).
+	streamFirstChunk := firstValidDuration(
+		setting.Getenv("STREAM_FIRST_CHUNK_TIMEOUT"),
+		m.services.Setting.StreamFirstChunkTimeout(),
+	)
+	streamIdle := firstValidDuration(
+		setting.Getenv("STREAM_IDLE_TIMEOUT"),
+		m.services.Setting.StreamIdleTimeout(),
+	)
 
 	return agent.BuildParams{
 		Provider:       m.env.LLMProvider,
@@ -163,6 +148,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,
 		HookEngine:    m.services.Hook,
+
+		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
+		// so the model can queue its own self-learning reviews.
+		ExtraTools: m.selfLearnExtraTools(),
 
 		AskUser: func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
 			return m.conv.AgentToUI.Ask(ctx, 0, req)
@@ -352,6 +341,21 @@ func marshalPermInput(args map[string]any) json.RawMessage {
 	return data
 }
 
+// firstValidDuration returns the first value that parses as a time.Duration
+// (e.g. "30s", "3m"), in priority order. Empty/invalid values are skipped;
+// zero means "no override" and lets the core default apply.
+func firstValidDuration(vals ...string) time.Duration {
+	for _, v := range vals {
+		if v == "" {
+			continue
+		}
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return 0
+}
+
 // ============================================================
 // Agent lifecycle (delegates to services.Agent)
 // ============================================================
@@ -363,7 +367,15 @@ func marshalPermInput(args map[string]any) json.RawMessage {
 // the input twice. Pass "" when the caller hasn't yet appended the message.
 func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 	if m.services.Agent.Active() {
-		return nil, nil
+		// The Evolve toolset is fixed at agent-build time. If the enabled
+		// capabilities drifted since the build (a /evolve save, an external
+		// settings edit), stop the stale session and fall through to rebuild
+		// with the current toolset — the one choke point every turn passes
+		// through, so all drift sources are covered uniformly.
+		if m.selfLearnCapabilities() == m.agentEvolveCaps {
+			return nil, nil
+		}
+		m.services.Agent.Stop()
 	}
 
 	params := m.buildAgentParams()
@@ -385,11 +397,13 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		return nil, err
 	}
 
+	// Record what the toolset was built with, for the drift check above.
+	m.agentEvolveCaps = m.selfLearnCapabilities()
+
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
 	// the live Agent + System for its fork. Builds nothing if both arms are
-	// off (§3.1 zero-overhead guarantee). pendingSend is forwarded so the
-	// reviewer's cadence seed skips the in-flight user turn.
-	m.wireSelfLearn(params, pendingSend)
+	// off (§3.1 zero-overhead guarantee).
+	m.wireSelfLearn(params)
 
 	cmds := []tea.Cmd{
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
@@ -449,7 +463,13 @@ func (m *model) wireReminderProviders() {
 	// Kept as its own scope so agent-written entries never mix with the
 	// user-authored memory above.
 	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderMemoryAuto, func() string {
-		body, ok := system.LoadAutoMemory(m.env.CWD)
+		// Honor a configured memory storage path so the injected memory matches
+		// where the reviewer writes.
+		override := ""
+		if snap := m.services.Setting.Snapshot(); snap != nil {
+			override = snap.SelfLearn.Memory.Path
+		}
+		body, ok := system.LoadAutoMemoryAt(system.ResolveAutoMemoryDir(m.env.CWD, override))
 		if !ok {
 			return ""
 		}

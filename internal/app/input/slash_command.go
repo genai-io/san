@@ -122,6 +122,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
 		"name":           (*SlashCommandController).handleNameCommand,
+		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
 	}
 }
@@ -342,11 +343,9 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	return "", nil, nil
 }
 
-// handleConfigCommand opens the /config Self-Learning panel. Currently the
-// panel only hosts the L1 config; a multi-panel sidebar (Provider /
-// Permissions / Appearance / …) is planned and will be added by extending
-// ConfigSelector with sibling panels — the slash command stays /config
-// either way.
+// handleConfigCommand opens the /config popup (Appearance today; Provider /
+// Permissions are planned as sibling panels). Self-learning has moved out to
+// its own /evolve popup.
 func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Config.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
@@ -372,6 +371,13 @@ func (c *SlashCommandController) handleNameCommand(_ context.Context, args strin
 		return "", nil, fmt.Errorf("failed to rename session: %w", err)
 	}
 	return fmt.Sprintf("Session renamed to: %s", name), nil, nil
+}
+
+// handleEvolveCommand opens the /evolve popup — the self-learning
+// configuration surface with Skills and Memory tabs.
+func (c *SlashCommandController) handleEvolveCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Evolve.Enter(c.env.Width, c.env.Height)
+	return "", nil, nil
 }
 
 // handleSelflearnDemoCommand drives the L1 status-bar indicator through

@@ -529,3 +529,25 @@ func TestMemory_MissingFile_NoError(t *testing.T) {
 	_, project := LoadInstructions(tmpDir)
 	_ = project
 }
+
+func TestResolveAutoMemoryDir(t *testing.T) {
+	cwd := "/work/project-x"
+	// Empty override → the project-partitioned default.
+	if got := ResolveAutoMemoryDir(cwd, ""); got != AutoMemoryDir(cwd) {
+		t.Fatalf("empty override: got %q, want default %q", got, AutoMemoryDir(cwd))
+	}
+	// Absolute override is used verbatim.
+	if got := ResolveAutoMemoryDir(cwd, "/srv/mem"); got != "/srv/mem" {
+		t.Fatalf("absolute override: got %q", got)
+	}
+	// Relative override resolves against cwd.
+	if got := ResolveAutoMemoryDir(cwd, "notes/mem"); got != filepath.Join(cwd, "notes/mem") {
+		t.Fatalf("relative override: got %q", got)
+	}
+	// "~" expands to the home dir.
+	if home, err := os.UserHomeDir(); err == nil {
+		if got := ResolveAutoMemoryDir(cwd, "~/mem"); got != filepath.Join(home, "mem") {
+			t.Fatalf("tilde override: got %q, want %q", got, filepath.Join(home, "mem"))
+		}
+	}
+}

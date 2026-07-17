@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/tool"
 )
 
 func (m *model) OnTurnBegin() {
@@ -71,6 +72,18 @@ func (m *model) OnAgentMessage(core.Message) tea.Cmd {
 }
 
 func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
+	// Track skill usage for the self-learning trigger: any Skill tool call this
+	// turn (even a failing one — a broken skill is a prime refine/retire
+	// candidate) flips the turn onto the update/delete review path.
+	if tr.ToolName == tool.ToolSkill {
+		m.skillUsedThisTurn = true
+	}
+	// The Evolve tool is the model-decided self-learning trigger: its call
+	// this turn queues a review at turn end.
+	if tr.ToolName == tool.ToolEvolve && !tr.IsError {
+		m.evolveRequestedThisTurn = true
+	}
+
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
 	if sideEffect != nil {
 		m.applyToolSideEffects(tr.ToolName, sideEffect)
@@ -93,11 +106,16 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 		m.services.Tracker.Reset()
 	}
 	m.services.Agent.SetPluginRoot("")
-	// Forward to L1 self-learning. No-op when disabled; the reviewer gates
-	// on StopEndTurn internally so cancelled/interrupted turns are skipped.
+	// Forward to L1 self-learning with whether this turn used a skill and
+	// whether the model called Evolve (the model-decided trigger). No-op when
+	// disabled; the reviewer gates on StopEndTurn internally so cancelled /
+	// interrupted turns are skipped. Clear both flags for the next turn either
+	// way.
 	if s := m.services.SelfLearn.session; s != nil {
-		s.reviewer.Observe(result)
+		s.reviewer.Observe(result, m.skillUsedThisTurn, m.evolveRequestedThisTurn)
 	}
+	m.skillUsedThisTurn = false
+	m.evolveRequestedThisTurn = false
 	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 

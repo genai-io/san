@@ -24,6 +24,8 @@ const (
 	ToolExitWorktree  = "ExitWorktree"
 
 	ToolAskUserQuestion = "AskUserQuestion"
+
+	ToolEvolve = "Evolve"
 )
 
 // IsAgentToolName reports whether the tool name represents an agent-like worker tool.
@@ -41,6 +43,13 @@ func IsAgentToolName(name string) bool {
 type SchemaOptions struct {
 	MCPTools       func() []core.ToolSchema
 	AgentDirectory func() string
+
+	// ExtraTools are caller-supplied schemas appended to the registered set —
+	// the hook for conditionally-present tools whose schema the caller builds
+	// (e.g. the self-learning Evolve trigger, built by tool/evolve.Schema and
+	// injected only by the main agent). They pass through the same
+	// disabled/allow filtering as every other tool.
+	ExtraTools []core.ToolSchema
 }
 
 // GetToolSchemas returns core.ToolSchema definitions for all registered tools
@@ -64,6 +73,8 @@ func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 	tools = append(tools, trackerToolSchemas...)
 	tools = append(tools, cronToolSchemas...)
 	tools = append(tools, worktreeToolSchemas...)
+
+	tools = append(tools, opts.ExtraTools...)
 
 	if opts.MCPTools != nil {
 		tools = append(tools, opts.MCPTools()...)

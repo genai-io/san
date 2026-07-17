@@ -38,22 +38,22 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	}
 
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Memory: SelfLearnMemory{Enabled: true, EveryTurns: 7},
-		Skills: SelfLearnSkills{Enabled: true},
+		Memory: SelfLearnMemory{Enabled: true},
+		Skills: SelfLearnSkills{}, // all actions allowed → skills active
 	}, true); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
-	if sl := read(); !sl.Memory.Enabled || !sl.Skills.Enabled {
+	if sl := read(); !sl.Memory.Enabled || !sl.Skills.Active() {
 		t.Fatalf("after enable, want both on, got %+v", sl)
 	}
 
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
-		Memory: SelfLearnMemory{Enabled: false, EveryTurns: 7},
-		Skills: SelfLearnSkills{Enabled: false},
+		Memory: SelfLearnMemory{Enabled: false},
+		Skills: SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}, // all denied → off
 	}, true); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
-	if sl := read(); sl.Memory.Enabled || sl.Skills.Enabled {
+	if sl := read(); sl.Memory.Enabled || sl.Skills.Active() {
 		t.Fatalf("disable was dropped (OR-merge regression): %+v", sl)
 	}
 }

@@ -121,6 +121,7 @@ func discoverPlugins(cwd string) {
 func (m *model) reloadProjectServices(cwd string) {
 	setting.Initialize(setting.Options{CWD: cwd})
 	m.services.Setting = setting.Default()
+	m.learnedStores.Update(cwd, m.services.Setting)
 
 	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
 	m.services.Skill = skill.Default()

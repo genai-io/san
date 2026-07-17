@@ -21,14 +21,14 @@ import (
 func TestSnapshotIsCopiedBeforeGoroutine(t *testing.T) {
 	release := make(chan struct{})
 	done := make(chan int)
-	review := func(_ ReviewKind, snapshot []core.Message) {
+	review := func(_ ReviewKind, _ SkillPermissions, snapshot []core.Message) {
 		<-release
 		done <- len(snapshot)
 	}
-	r := New(Config{Memory: Arm{Enabled: true, Interval: 1}}, review)
+	r := New(Config{MemoryEnabled: true}, review)
 
 	original := []core.Message{{Role: core.RoleUser, Content: "a"}}
-	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original})
+	r.Observe(core.Result{StopReason: core.StopEndTurn, Messages: original}, false, true)
 
 	// Truncate the caller's slice while the goroutine is blocked. If
 	// Observe leaked the slice header the goroutine would later see len 0.
@@ -56,7 +56,7 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 	var fired atomic.Int64
 	hold := make(chan struct{})
 	fireSignal := make(chan struct{}, 1)
-	review := func(_ ReviewKind, _ []core.Message) {
+	review := func(_ ReviewKind, _ SkillPermissions, _ []core.Message) {
 		fired.Add(1)
 		select {
 		case fireSignal <- struct{}{}: // announce the first fire
@@ -65,8 +65,8 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 		<-hold // block until the test releases — keeps inFlight=true
 	}
 	r := New(Config{
-		Memory: Arm{Enabled: true, Interval: 1},
-		Skills: Arm{Enabled: true, Interval: 1},
+		MemoryEnabled: true,
+		Skills:        SkillPermissions{AllowCreate: true},
 	}, review)
 
 	const goroutines, perG = 8, 20
@@ -76,7 +76,7 @@ func TestConcurrentObserveIsRaceFree(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range perG {
-				r.Observe(endTurn(1))
+				r.Observe(endTurn(1), false, true)
 			}
 		}()
 	}
