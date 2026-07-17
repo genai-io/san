@@ -119,12 +119,16 @@ func (m *model) renderFooter(separator string) string {
 		b.WriteString("\n")
 		b.WriteString(turnUsage)
 	}
-	b.WriteString("\n")
-	b.WriteString(separator)
+	// Queued messages sit above the input separator: they are already
+	// submitted — on their way into the conversation — so they read as part
+	// of the chat flow, and the input strip below stays reserved for what's
+	// being typed now.
 	if queuePreview := m.renderQueuePreview(); queuePreview != "" {
 		b.WriteString("\n")
 		b.WriteString(queuePreview)
 	}
+	b.WriteString("\n")
+	b.WriteString(separator)
 	b.WriteString("\n")
 	b.WriteString(m.renderInputView())
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
@@ -279,7 +283,6 @@ func (m model) renderModeStatus() string {
 		Width:             m.env.Width,
 		ThinkingEffort:    thinkingEffort,
 		ShowThinking:      showThinking,
-		QueueCount:        m.userInput.Queue.Len(),
 		ReviewApprovals:   reviewApprovals,
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,

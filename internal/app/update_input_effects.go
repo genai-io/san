@@ -39,7 +39,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	m.conv.MarkLastInterrupted()
 
 	cmds := m.CommitMessages()
-	if cmd := m.drainInputQueueAfterCancel(); cmd != nil {
+	if cmd := m.drainInputQueueWhileIdle(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)

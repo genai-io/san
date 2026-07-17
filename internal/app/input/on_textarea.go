@@ -377,6 +377,19 @@ func (m *Model) RestoreImages(images []core.Image) {
 	m.Images.NextID += len(images)
 }
 
+// ReturnToTextarea hands a message the app could not send back to the user:
+// the content rejoins any in-progress typing on its own line and the images
+// become pending again, so nothing is silently dropped.
+func (m *Model) ReturnToTextarea(content string, images []core.Image) {
+	if existing := m.Textarea.Value(); existing != "" {
+		content = content + "\n" + existing
+	}
+	m.Textarea.SetValue(content)
+	m.Textarea.CursorEnd()
+	m.RestoreImages(images)
+	m.UpdateHeight()
+}
+
 func (m *Model) HasContent() bool {
 	return strings.TrimSpace(m.Textarea.Value()) != "" || len(m.Images.Pending) > 0
 }

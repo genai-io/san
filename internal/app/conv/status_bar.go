@@ -228,7 +228,6 @@ type OperationModeParams struct {
 	Width             int
 	ThinkingEffort    string
 	ShowThinking      bool
-	QueueCount        int
 	ReviewApprovals   int  // auto-review approvals this session, shown next to the mode
 	ReviewEscalations int  // auto-review escalations to the user this session
 	AutopilotThinking bool // the copilot is mid-decision — show "thinking…" on the mode indicator
@@ -246,10 +245,6 @@ func RenderModeStatus(params OperationModeParams) string {
 		if thinkingStatus := RenderThinkingIndicator(params.ThinkingEffort); thinkingStatus != "" {
 			leftParts = append(leftParts, thinkingStatus)
 		}
-	}
-
-	if queueBadge := renderQueueBadge(params.QueueCount); queueBadge != "" {
-		leftParts = append(leftParts, queueBadge)
 	}
 
 	left := strings.Join(leftParts, "  ")

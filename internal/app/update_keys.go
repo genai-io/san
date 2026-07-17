@@ -44,6 +44,14 @@ func (m *model) routeKeypress(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return c, ok
 	}
 	if c, ok := m.userInput.HandleQueueSelectKey(msg); ok {
+		// Leaving queue-edit mode releases a drain that was held while the
+		// head item was under edit (see drainTurnQueues): if the agent went
+		// idle in the meantime, dispatch the queue now.
+		if m.userInput.Queue.SelectIdx < 0 && !m.conv.Stream.Active {
+			if drain := m.drainInputQueueWhileIdle(); drain != nil {
+				return tea.Batch(c, drain), true
+			}
+		}
 		return c, ok
 	}
 
@@ -90,6 +98,11 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	case "ctrl+u":
 		if m.userInput.Queue.Len() > 0 {
+			if m.userInput.Queue.SelectIdx >= 0 {
+				// Mid-edit: return the pre-edit stash to the textarea before
+				// wiping the queue out from under the edit session.
+				m.userInput.ExitQueueSelection()
+			}
 			m.userInput.Queue.Clear()
 			return nil, true
 		}

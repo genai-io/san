@@ -49,8 +49,8 @@ func (m *model) handleSubmit() tea.Cmd {
 }
 
 // enqueueWhileStreaming parks the input in the queue and resets the
-// textarea. The queued item is dequeued either by drainInputQueueAfterCancel
-// (on stream cancel) or by drainTurnQueues (at turn boundary).
+// textarea. The queued item is dequeued either by drainInputQueueWhileIdle
+// (on stream cancel / edit exit) or by drainTurnQueues (at turn boundary).
 func (m *model) enqueueWhileStreaming(raw string) tea.Cmd {
 	images := m.userInput.PendingImages()
 	if m.userInput.Queue.Enqueue(raw, images) < 0 {
@@ -64,7 +64,7 @@ func (m *model) enqueueWhileStreaming(raw string) tea.Cmd {
 
 // dispatchSubmission runs the submission pipeline: exit shortcut →
 // prompt-hook gate → history → slash command? → otherwise send to
-// agent. Shared by the Enter handler and drainInputQueueAfterCancel.
+// agent. Shared by the Enter handler and drainInputQueueWhileIdle.
 func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	if input.IsExitRequest(raw) {
 		cmd, _ := m.QuitWithCancel()
@@ -153,18 +153,38 @@ func (m *model) imagesBlockedForModel(images []core.Image) bool {
 	return true
 }
 
-// drainInputQueueAfterCancel pops one queued item (if any) and runs it
-// through the normal submission pipeline. Called from handleStreamCancel
-// so a user who queued input while a turn was streaming sees the next one
-// run after Ctrl+C.
-func (m *model) drainInputQueueAfterCancel() tea.Cmd {
+// drainInputQueueWhileIdle pops one queued item (if any) and runs it
+// through the normal submission pipeline. Called wherever queued input may
+// meet an idle agent: from handleStreamCancel, so input queued while a turn
+// was streaming runs right after Ctrl+C/Esc; and from routeKeypress when
+// leaving queue-edit mode, which releases a drain that drainTurnQueues held
+// during the edit.
+func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 	item, ok := m.userInput.Queue.Dequeue()
 	if !ok {
 		return nil
 	}
+	if m.imagesBlockedForModel(item.Images) {
+		// Hand the message back instead of dropping it — the notice tells
+		// the user to remove the image or switch models.
+		m.userInput.ReturnToTextarea(item.Content, item.Images)
+		return tea.Batch(m.CommitMessages()...)
+	}
 	m.conv.Compact.ClearResult()
+
+	// The textarea may hold an unrelated draft (in-progress typing on the
+	// cancel path, the restored pre-edit stash on the edit-exit path) —
+	// dispatchSubmission resets the textarea after a send, so park the draft
+	// and put it back.
+	draft := m.userInput.Textarea.Value()
 	m.userInput.RestoreImages(item.Images)
-	return m.dispatchSubmission(item.Content)
+	cmd := m.dispatchSubmission(item.Content)
+	if draft != "" && m.userInput.Textarea.Value() == "" {
+		m.userInput.Textarea.SetValue(draft)
+		m.userInput.Textarea.CursorEnd()
+		m.userInput.UpdateHeight()
+	}
+	return cmd
 }
 
 // SubmitToAgent is the single exit point for "send this content to the

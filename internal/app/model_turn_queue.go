@@ -49,9 +49,18 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// Drain ONE user message per call so each gets its own agent response.
 	// The agent's inner loop also drains one inbox message at a time,
 	// producing one TurnEvent per queued message.
-	if item, ok := m.userInput.Queue.Dequeue(); ok {
+	//
+	// A head item under edit holds the drain: dispatching now would send the
+	// pre-edit text and orphan the user's changes in the textarea. Leaving
+	// edit mode re-kicks the drain (see routeKeypress).
+	if m.userInput.Queue.SelectIdx == 0 {
+		log.QueueLog("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
+	} else if item, ok := m.userInput.Queue.Dequeue(); ok {
 		log.QueueLog("drainTurnQueues: dequeued %q remaining=%d", truncate(item.Content, 60), m.userInput.Queue.Len())
 		if m.imagesBlockedForModel(item.Images) {
+			// Hand the message back instead of dropping it — the notice tells
+			// the user to remove the image or switch models.
+			m.userInput.ReturnToTextarea(item.Content, item.Images)
 			return tea.Batch(m.CommitMessages()...), true
 		}
 		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})

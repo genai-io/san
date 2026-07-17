@@ -254,26 +254,34 @@ func TestRenderTurnUsageSummaryShowsPerTurnTokens(t *testing.T) {
 	}
 }
 
-func TestRenderModeStatusHidesQueueBadgeWhenEmpty(t *testing.T) {
-	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:  "gpt-test",
-		QueueCount: 0,
-		Width:      80,
-	})
-	if strings.Contains(rendered, "queued") {
-		t.Fatalf("RenderModeStatus() = %q, should not show queue badge", rendered)
-	}
-}
-
-func TestRenderQueuePreviewShowsItems(t *testing.T) {
+func TestRenderQueuePreviewShowsShadowPromptAndEditHint(t *testing.T) {
 	rendered := stripANSI(RenderQueuePreview([]QueuePreviewItem{{
 		Content: "Codex review 建议如何运行?",
 	}}, -1, 80))
 
-	for _, want := range []string{"Codex review"} {
+	for _, want := range []string{"❭ Codex review", "↑ edit"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("RenderQueuePreview() = %q, want %q", rendered, want)
 		}
+	}
+	if strings.Contains(rendered, "1.") {
+		t.Fatalf("RenderQueuePreview() = %q, should not number items", rendered)
+	}
+}
+
+func TestRenderQueuePreviewEditingShowsFocusBarAndKeys(t *testing.T) {
+	rendered := stripANSI(RenderQueuePreview([]QueuePreviewItem{
+		{Content: "first queued"},
+		{Content: "second queued"},
+	}, 0, 80))
+
+	for _, want := range []string{"▎", "enter done · ctrl+c delete"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("RenderQueuePreview() = %q, want %q", rendered, want)
+		}
+	}
+	if strings.Contains(rendered, "↑ edit") {
+		t.Fatalf("RenderQueuePreview() = %q, idle hint should be replaced while editing", rendered)
 	}
 }
 
