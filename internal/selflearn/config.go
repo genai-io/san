@@ -10,15 +10,21 @@ import (
 // NewSkillManager, and New. Built once per session via ResolveSettings —
 // the single bridge between the setting layer and this package.
 type Config struct {
-	Memory         Arm // memory arm: enable + every-N-turns cadence
-	Skills         Arm // skills arm: enable + every-N-tool-iters cadence
-	Perms          ActionPermissions
+	MemoryEnabled  bool
 	MemoryMaxChars int
+	MemoryPath     string // auto-memory dir override (empty ⇒ project default)
+
+	// Skills bounds what a model-triggered review may do to the skill set.
+	Skills SkillPermissions
+
+	// Strategy is the user's learning-strategy override; non-empty replaces
+	// the built-in guidance for both arms in the reviewer prompt.
+	Strategy string
 }
 
 // Enabled reports whether any arm is on. When false the caller should not
 // even construct a Reviewer (zero overhead).
-func (c Config) Enabled() bool { return c.Memory.Enabled || c.Skills.Enabled }
+func (c Config) Enabled() bool { return c.MemoryEnabled || c.Skills.Any() }
 
 // ResolveSettings validates the raw settings and returns the resolved
 // Config, applying §3.1 defaults for unset fields.
@@ -27,14 +33,14 @@ func ResolveSettings(s setting.SelfLearnSettings) (Config, error) {
 		return Config{}, fmt.Errorf("self-learning config invalid: %w", err)
 	}
 	return Config{
-		Memory: Arm{Enabled: s.Memory.Enabled, Interval: s.Memory.ResolvedEveryTurns()},
-		Skills: Arm{Enabled: s.Skills.Enabled, Interval: s.Skills.ResolvedEveryToolIters()},
-		Perms: ActionPermissions{
-			AllowCreate:            s.Skills.AllowCreate(),
-			AllowUpdate:            s.Skills.AllowUpdate(),
-			AllowDelete:            s.Skills.AllowDelete(),
-			AllowUpdateUserCreated: s.Skills.AllowUpdateUserCreated,
-		},
+		MemoryEnabled:  s.Memory.Enabled,
 		MemoryMaxChars: s.Memory.ResolvedMaxKB() * 1024,
+		MemoryPath:     s.Memory.Path,
+		Skills: SkillPermissions{
+			AllowCreate: s.Skills.AllowCreate(),
+			AllowUpdate: s.Skills.AllowUpdate(),
+			AllowDelete: s.Skills.AllowDelete(),
+		},
+		Strategy: s.Strategy,
 	}, nil
 }

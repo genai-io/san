@@ -31,20 +31,22 @@ import (
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/tool/evolve"
 )
 
 const defaultWidth = 80
 
 type model struct {
 	// ── Sub-models (one per event source / concern) ─────────────
-	userInput         input.Model    // Source 1: user keyboard input
-	agentEventHub     *hub.Hub       // Source 2: inter-agent event routing (pure pub/sub)
-	mainEvents        chan hub.Event // hub-side delivery chan; awaitMainEvent reads it
-	pendingMainEvents []hub.Event    // events that arrived mid-stream, drained at OnTurnEnd
-	systemInput       trigger.Model  // Source 3: system events (cron/hooks/watcher)
-	conv              conv.Model     // Agent Outbox: conversation + output rendering
-	env               env            // Shared app state: provider, session, permission, plan, config
-	services          services       // Domain service singletons, injected at construction
+	userInput         input.Model          // Source 1: user keyboard input
+	agentEventHub     *hub.Hub             // Source 2: inter-agent event routing (pure pub/sub)
+	mainEvents        chan hub.Event       // hub-side delivery chan; awaitMainEvent reads it
+	pendingMainEvents []hub.Event          // events that arrived mid-stream, drained at OnTurnEnd
+	systemInput       trigger.Model        // Source 3: system events (cron/hooks/watcher)
+	conv              conv.Model           // Agent Outbox: conversation + output rendering
+	env               env                  // Shared app state: provider, session, permission, plan, config
+	services          services             // Domain service singletons, injected at construction
+	learnedStores     *learnedStoreContext // live cwd/settings source for /evolve inventories
 
 	// welcomePending marks the startup splash as not yet frozen into scrollback.
 	// While set, the splash renders live above the input (visible from launch
@@ -84,6 +86,23 @@ type model struct {
 	// autopilotDeciding is true while a turn-end/kick decision is in flight, so
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
+
+	// skillUsedThisTurn records whether the current turn invoked the Skill tool.
+	// It scopes the self-learning skills review: a skill-use turn weighs
+	// update/delete of that skill, a skill-free turn weighs create. Set in
+	// OnToolResult, read + cleared at OnTurnEnd.
+	skillUsedThisTurn bool
+
+	// evolveRequestedThisTurn records whether the current turn called the
+	// Evolve tool — the model-decided self-learning trigger. Set in
+	// OnToolResult, read + cleared at OnTurnEnd.
+	evolveRequestedThisTurn bool
+
+	// agentEvolveCaps records the self-learning capabilities the live agent's
+	// toolset was built with. ensureAgentSession compares them against the
+	// current settings on every turn start and rebuilds on drift — covering
+	// /evolve saves and external settings edits with one mechanism.
+	agentEvolveCaps evolve.Capabilities
 
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.

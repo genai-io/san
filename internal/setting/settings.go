@@ -167,11 +167,17 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.Steers.TurnEnd == b.Steers.TurnEnd
 }
 
-// SelfLearnSettings configures the two independent self-learning arms.
-// See notes/active/l1-background-review.md §3.1.
+// SelfLearnSettings configures self-learning. Both arms are triggered together
+// by the model (the Evolve tool); the per-arm fields are permission / store
+// settings only. See notes/active/l1-background-review.md §3.1.
 type SelfLearnSettings struct {
 	Memory SelfLearnMemory `json:"memory,omitempty"`
 	Skills SelfLearnSkills `json:"skills,omitempty"`
+
+	// Strategy, when non-empty, replaces the built-in learning strategy in the
+	// reviewer prompt (edited via the /evolve Strategy entry) — it steers both
+	// the memory and skill sections. Empty ⇒ built-in.
+	Strategy string `json:"strategy,omitempty"`
 }
 
 // SelfLearnMaxMemoryKB is the upper bound on memory.maxKB and the default
@@ -180,48 +186,84 @@ type SelfLearnSettings struct {
 // what the loader would have to truncate — see §4.2 invariant.
 const SelfLearnMaxMemoryKB = 25
 
-// SelfLearnDefaultEveryTurns and SelfLearnDefaultEveryToolIters are the
-// review-cadence defaults applied when the corresponding config field is
-// zero — the single source of truth shared by the runtime reviewer
-// (ResolveSettings) and the /config panel's default display.
-const (
-	SelfLearnDefaultEveryTurns     = 10
-	SelfLearnDefaultEveryToolIters = 10
-)
-
-// SelfLearnMemory controls memory-evolving: review every N user turns. MaxKB
-// is the on-disk cap per memory file; lower values force more aggressive
-// pruning. May not exceed SelfLearnMaxMemoryKB.
+// SelfLearnMemory controls memory-evolving. MaxKB is the on-disk cap per memory
+// file; lower values force more aggressive pruning. May not exceed
+// SelfLearnMaxMemoryKB.
 type SelfLearnMemory struct {
-	Enabled    bool `json:"enabled,omitempty"`
-	EveryTurns int  `json:"everyTurns,omitempty"` // 0 = SelfLearnDefaultEveryTurns
-	MaxKB      int  `json:"maxKB,omitempty"`      // 0 = SelfLearnMaxMemoryKB
+	Enabled bool `json:"enabled,omitempty"`
+	MaxKB   int  `json:"maxKB,omitempty"` // 0 = SelfLearnMaxMemoryKB
+
+	// Path, when non-empty, overrides where the auto-memory store lives (the
+	// /evolve Memory storage-path editor). "~" expands to home; a relative path
+	// resolves against cwd. Empty ⇒ the project-partitioned default.
+	Path string `json:"path,omitempty"`
 }
 
-// SelfLearnSkills controls skill-evolving: review when accumulated tool
-// iterations since the last review reach EveryToolIters, plus the action
-// permissions of §5.5.
+// SelfLearnSkills controls skill-evolving. Triggering is model-decided (the
+// Evolve tool); these fields only bound what a triggered review may do. The
+// review is scoped by skill use: a turn that used a skill weighs UPDATE /
+// DELETE of that skill, a skill-free turn weighs CREATE.
 //
-// Permission fields are encoded as Deny* booleans so the zero value is
-// "allow" — the Go idiom of "zero value should be sensible default" — and
-// every settings.json that omits the field gets the conservative
-// permissive default without any pointer-vs-nil ceremony.
+// There is no separate on/off toggle: skill-evolving is Active when at least
+// one action is allowed. Action gates are encoded as Deny* booleans so the
+// zero value is "allow" — the Go idiom of "zero value should be a sensible
+// default" — and an omitted field gets the permissive default. (The JSON
+// codecs below still read/write an explicit `enabled` marker for
+// compatibility with the pre-permission schema.)
 type SelfLearnSkills struct {
-	Enabled        bool `json:"enabled,omitempty"`
-	EveryToolIters int  `json:"everyToolIters,omitempty"` // 0 = SelfLearnDefaultEveryToolIters
-
 	// DenyCreate / DenyUpdate / DenyDelete gate the corresponding action on
-	// agent-created skills. Zero ⇒ allowed; set to true to disable that
-	// action. See §5.5.
+	// agent-created skills. Zero ⇒ allowed; set to true to disable that action.
+	// They bound what a model-triggered review may do to the skill set.
 	DenyCreate bool `json:"denyCreate,omitempty"`
 	DenyUpdate bool `json:"denyUpdate,omitempty"`
 	DenyDelete bool `json:"denyDelete,omitempty"`
+}
 
-	// AllowUpdateUserCreated is the advanced opt-in that extends update to
-	// also patch user-created skills (Hermes-style). Default false. Even
-	// when true, create and delete on user-created remain impossible at
-	// any config setting.
-	AllowUpdateUserCreated bool `json:"allowUpdateUserCreated,omitempty"`
+// wireSkills is the JSON shape of SelfLearnSkills: the Deny* gates plus an
+// explicit `enabled` marker retained for compatibility with the legacy
+// explicit-toggle schema (see the codec methods below).
+type wireSkills struct {
+	Enabled    bool `json:"enabled"`
+	DenyCreate bool `json:"denyCreate,omitempty"`
+	DenyUpdate bool `json:"denyUpdate,omitempty"`
+	DenyDelete bool `json:"denyDelete,omitempty"`
+}
+
+// MarshalJSON always writes the `enabled` marker. Before skill-evolving became
+// permission-driven, enabled:false was omitted by encoding/json and therefore
+// commonly persisted as an empty skills object; the explicit marker lets
+// UnmarshalJSON distinguish new permissive configurations from those legacy
+// opt-outs.
+func (s SelfLearnSkills) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wireSkills{
+		Enabled:    s.Active(),
+		DenyCreate: s.DenyCreate,
+		DenyUpdate: s.DenyUpdate,
+		DenyDelete: s.DenyDelete,
+	})
+}
+
+// UnmarshalJSON migrates the legacy explicit-toggle schema: a missing or false
+// `enabled` (both decode to false) is the old disabled state, so all
+// autonomous actions are denied. Files emitted by MarshalJSON always carry
+// enabled:true when any action is allowed, so the permission gates round-trip
+// exactly.
+func (s *SelfLearnSkills) UnmarshalJSON(data []byte) error {
+	var wire wireSkills
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*s = SelfLearnSkills{
+		DenyCreate: wire.DenyCreate,
+		DenyUpdate: wire.DenyUpdate,
+		DenyDelete: wire.DenyDelete,
+	}
+	if !wire.Enabled {
+		s.DenyCreate = true
+		s.DenyUpdate = true
+		s.DenyDelete = true
+	}
+	return nil
 }
 
 // AllowCreate / AllowUpdate / AllowDelete report whether the named action
@@ -231,30 +273,18 @@ func (s SelfLearnSkills) AllowCreate() bool { return !s.DenyCreate }
 func (s SelfLearnSkills) AllowUpdate() bool { return !s.DenyUpdate }
 func (s SelfLearnSkills) AllowDelete() bool { return !s.DenyDelete }
 
+// Active reports whether skill-evolving is on — i.e. at least one action is
+// allowed. This replaces the old explicit Enabled toggle (implicit enable).
+func (s SelfLearnSkills) Active() bool {
+	return s.AllowCreate() || s.AllowUpdate() || s.AllowDelete()
+}
+
 // ResolvedMaxKB returns the resolved MaxKB (default SelfLearnMaxMemoryKB if zero).
 func (m SelfLearnMemory) ResolvedMaxKB() int {
 	if m.MaxKB <= 0 {
 		return SelfLearnMaxMemoryKB
 	}
 	return m.MaxKB
-}
-
-// ResolvedEveryTurns returns the resolved memory review cadence in user turns
-// (default SelfLearnDefaultEveryTurns when the field is zero).
-func (m SelfLearnMemory) ResolvedEveryTurns() int {
-	if m.EveryTurns <= 0 {
-		return SelfLearnDefaultEveryTurns
-	}
-	return m.EveryTurns
-}
-
-// ResolvedEveryToolIters returns the resolved skill review cadence in tool
-// iterations (default SelfLearnDefaultEveryToolIters when the field is zero).
-func (s SelfLearnSkills) ResolvedEveryToolIters() int {
-	if s.EveryToolIters <= 0 {
-		return SelfLearnDefaultEveryToolIters
-	}
-	return s.EveryToolIters
 }
 
 // Validate enforces the cross-field invariants of §3.1: two illegal skill
@@ -273,16 +303,9 @@ func (s SelfLearnSettings) Validate() error {
 			SelfLearnMaxMemoryKB, s.Memory.MaxKB,
 		)
 	}
-	create := s.Skills.AllowCreate()
-	update := s.Skills.AllowUpdate()
-	if create && !update {
+	if s.Skills.AllowCreate() && !s.Skills.AllowUpdate() {
 		return fmt.Errorf(
-			"\"Create new skills\" needs \"Update existing skills\" — otherwise created skills could never be refined",
-		)
-	}
-	if s.Skills.AllowUpdateUserCreated && !update {
-		return fmt.Errorf(
-			"\"Update user-authored skills\" needs \"Update existing skills\" — the base update permission",
+			"\"Create new skills\" needs \"Update a skill\" — otherwise created skills could never be refined",
 		)
 	}
 	return nil

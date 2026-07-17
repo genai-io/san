@@ -31,21 +31,25 @@ var skillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 // supportSubdirs are the only places a skill_manage support file may be written.
 var supportSubdirs = map[string]struct{}{"references": {}, "templates": {}, "scripts": {}}
 
-// ActionPermissions controls what L1 may do via skill_manage (§5.5).
-// The first three flags scope to agent-created skills. AllowUpdateUserCreated
-// extends AllowUpdate to user-created skills; create/delete on user-created
-// remain impossible at any setting.
-type ActionPermissions struct {
-	AllowCreate            bool
-	AllowUpdate            bool
-	AllowDelete            bool
-	AllowUpdateUserCreated bool
+// SkillPermissions controls what L1 may do via skill_manage. All actions
+// scope to agent-created skills only — user-authored skills are always
+// read-only to the reviewer. It appears at three altitudes with one meaning:
+// the configured gates (Config.Skills), the per-pass scope the trigger derives
+// from them (a skill-use turn keeps update/delete, a skill-free turn keeps
+// create), and the SkillManager's hard floor at dispatch.
+type SkillPermissions struct {
+	AllowCreate bool
+	AllowUpdate bool
+	AllowDelete bool
 }
 
-// DefaultActionPermissions is the safe default: everything allowed within
-// the agent-created scope; user-created stays read-only.
-func DefaultActionPermissions() ActionPermissions {
-	return ActionPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
+// Any reports whether at least one action is allowed.
+func (p SkillPermissions) Any() bool { return p.AllowCreate || p.AllowUpdate || p.AllowDelete }
+
+// AllowAllSkillActions is the permissive set: every action allowed within
+// the agent-created scope; user-created stays read-only regardless.
+func AllowAllSkillActions() SkillPermissions {
+	return SkillPermissions{AllowCreate: true, AllowUpdate: true, AllowDelete: true}
 }
 
 // SkillWriteObserver fires after every successful write (create/patch/
@@ -61,7 +65,7 @@ type SkillWriteObserver func(action, name, note string)
 type SkillManager struct {
 	userDir    string
 	projectDir string
-	perms      ActionPermissions
+	perms      SkillPermissions
 	onWrite    SkillWriteObserver
 
 	mu sync.Mutex
@@ -72,7 +76,7 @@ type SkillManager struct {
 // the user home directory is unavailable (sandboxed exec, unset HOME),
 // userDir is left empty and any user-scope write fails loudly via
 // dirFor — better than silently aliasing user-scope onto cwd/.san/skills.
-func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
+func NewSkillManager(cwd string, perms SkillPermissions) *SkillManager {
 	userDir := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		userDir = filepath.Join(confdir.Dir(home), "skills")
@@ -85,7 +89,7 @@ func NewSkillManager(cwd string, perms ActionPermissions) *SkillManager {
 }
 
 // Perms returns the current action permissions (read-only snapshot).
-func (m *SkillManager) Perms() ActionPermissions { return m.perms }
+func (m *SkillManager) Perms() SkillPermissions { return m.perms }
 
 // SetWriteObserver registers the callback fired after each successful
 // write. Must be called before the first write (see type doc).
@@ -108,9 +112,8 @@ type SkillInfo struct {
 	Description string
 }
 
-// Editable reports whether the reviewer may modify this skill at all (agent-
-// created). User-created stays read-only at the base level; patching them
-// requires the AllowUpdateUserCreated opt-in.
+// Editable reports whether the reviewer may modify this skill (agent-created).
+// User-created skills are read-only to the reviewer at every setting.
 func (i SkillInfo) Editable() bool { return i.Origin == agentOrigin }
 
 // Inventory lists existing skills across both scopes (project entries shadow
@@ -205,6 +208,21 @@ func (m *SkillManager) resolve(name string) (string, error) {
 	return "", fmt.Errorf("no skill named %q", name)
 }
 
+// Read returns the full SKILL.md content for name, project scope first, for
+// read-only display (the /evolve panel's skill preview). resolve enforces the
+// same name/traversal guard used by every other on-disk action.
+func (m *SkillManager) Read(name string) (string, error) {
+	path, err := m.resolve(name)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 // parsed is the result of locating + parsing a skill's SKILL.md once. It
 // is the return type of the two guards below so callers (Edit, Patch)
 // don't have to re-parse the same file.
@@ -250,26 +268,6 @@ func (m *SkillManager) requireAgentOwned(name string) (parsed, error) {
 		return parsed{}, fmt.Errorf("skill %q is user-created and must not be modified by the reviewer", name)
 	}
 	return p, nil
-}
-
-// requirePatchable parses name and returns it when L1 is allowed to patch
-// the body in place. Agent-created skills are always patchable (subject to
-// AllowUpdate); anything else (user-created, missing/unrecognised origin)
-// is patchable only when AllowUpdateUserCreated is set (§5.5 advanced
-// opt-in) — treated as user-created since that is the conservative read
-// of any non-agent provenance.
-func (m *SkillManager) requirePatchable(name string) (parsed, error) {
-	p, err := m.parseSkill(name)
-	if err != nil {
-		return parsed{}, err
-	}
-	if p.origin == agentOrigin || m.perms.AllowUpdateUserCreated {
-		return p, nil
-	}
-	return parsed{}, fmt.Errorf(
-		"skill %q is user-created; set selfLearn.skills.allowUpdateUserCreated=true to allow patching",
-		name,
-	)
 }
 
 func (m *SkillManager) Create(name, description, body, level, note string) (string, error) {
@@ -336,10 +334,8 @@ func (m *SkillManager) Edit(name, body, note string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Edit is a full-body rewrite — restricted to agent-created skills even
-	// with allowUpdateUserCreated=true. Hermes-style "patch a user skill" is
-	// targeted; rewriting the whole body of someone's authored file goes too
-	// far.
+	// Edit is a full-body rewrite — agent-created only, like every other
+	// skill_manage action.
 	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
@@ -359,10 +355,9 @@ func (m *SkillManager) Patch(name, oldText, newText string, replaceAll bool, not
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Patch is the one action whose target scope is extended by
-	// allowUpdateUserCreated (§5.5). Other update-shaped actions (edit,
-	// write_file, remove_file, delete) stay agent-created only.
-	p, err := m.requirePatchable(name)
+	// Every skill_manage action is agent-created only — the reviewer never
+	// modifies user-authored skills.
+	p, err := m.requireAgentOwned(name)
 	if err != nil {
 		return "", err
 	}
@@ -470,7 +465,7 @@ func (m *SkillManager) Delete(name, note string) (string, error) {
 }
 
 // errActionDenied builds a uniform "permission denied" error for actions the
-// configured ActionPermissions reject. Used as the early-return in the four
+// configured SkillPermissions reject. Used as the early-return in the four
 // action entry points so the model sees a consistent shape on the
 // permission-veto path (§5.5).
 func errActionDenied(action, reason string) error {

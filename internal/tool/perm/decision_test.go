@@ -20,7 +20,7 @@ func TestIsReadOnlyTool(t *testing.T) {
 
 func TestIsSafeTool(t *testing.T) {
 	safe := []string{"TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
-		"AskUserQuestion", "LSP"}
+		"AskUserQuestion", "LSP", "Evolve"}
 	for _, name := range safe {
 		if !IsSafeTool(name) {
 			t.Errorf("IsSafeTool(%q) = false, want true", name)

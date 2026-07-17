@@ -78,18 +78,16 @@ func ApplyPersonaOverlay(base, overlay *Data) *Data {
 func mergeSelfLearn(base, overlay SelfLearnSettings) SelfLearnSettings {
 	return SelfLearnSettings{
 		Memory: SelfLearnMemory{
-			Enabled:    overlay.Memory.Enabled || base.Memory.Enabled,
-			EveryTurns: coalesceInt(overlay.Memory.EveryTurns, base.Memory.EveryTurns),
-			MaxKB:      coalesceInt(overlay.Memory.MaxKB, base.Memory.MaxKB),
+			Enabled: overlay.Memory.Enabled || base.Memory.Enabled,
+			MaxKB:   coalesceInt(overlay.Memory.MaxKB, base.Memory.MaxKB),
+			Path:    coalesce(overlay.Memory.Path, base.Memory.Path),
 		},
 		Skills: SelfLearnSkills{
-			Enabled:                overlay.Skills.Enabled || base.Skills.Enabled,
-			EveryToolIters:         coalesceInt(overlay.Skills.EveryToolIters, base.Skills.EveryToolIters),
-			DenyCreate:             overlay.Skills.DenyCreate || base.Skills.DenyCreate,
-			DenyUpdate:             overlay.Skills.DenyUpdate || base.Skills.DenyUpdate,
-			DenyDelete:             overlay.Skills.DenyDelete || base.Skills.DenyDelete,
-			AllowUpdateUserCreated: overlay.Skills.AllowUpdateUserCreated || base.Skills.AllowUpdateUserCreated,
+			DenyCreate: overlay.Skills.DenyCreate || base.Skills.DenyCreate,
+			DenyUpdate: overlay.Skills.DenyUpdate || base.Skills.DenyUpdate,
+			DenyDelete: overlay.Skills.DenyDelete || base.Skills.DenyDelete,
 		},
+		Strategy: coalesce(overlay.Strategy, base.Strategy),
 	}
 }
 

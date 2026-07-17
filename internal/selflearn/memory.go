@@ -65,14 +65,15 @@ type MemoryStore struct {
 	mu sync.Mutex
 }
 
-// NewMemoryStore returns the store for cwd's project partition. maxFile is
-// the per-file char cap; pass <= 0 for DefaultMemoryFileCharLimit. The
+// NewMemoryStore returns the store for cwd's project partition, or for
+// dirOverride when non-empty (the /evolve Memory storage path). maxCharsPerFile
+// caps each memory file; pass <= 0 for DefaultMemoryFileCharLimit. The
 // directory is created lazily on the first write.
-func NewMemoryStore(cwd string, maxFile int) *MemoryStore {
-	if maxFile <= 0 {
-		maxFile = DefaultMemoryFileCharLimit
+func NewMemoryStore(cwd string, maxCharsPerFile int, dirOverride string) *MemoryStore {
+	if maxCharsPerFile <= 0 {
+		maxCharsPerFile = DefaultMemoryFileCharLimit
 	}
-	return &MemoryStore{dir: system.AutoMemoryDir(cwd), maxFile: maxFile}
+	return &MemoryStore{dir: system.ResolveAutoMemoryDir(cwd, dirOverride), maxFile: maxCharsPerFile}
 }
 
 // MaxKB returns the per-file cap in kilobytes, rounded down. Used by the

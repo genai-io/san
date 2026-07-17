@@ -59,8 +59,9 @@ type Model struct {
 	Search    SearchSelector
 	Plugin    PluginSelector
 	Tool      ToolSelector
-	Config    ConfigSelector
-	Autopilot AutopilotSelector
+	Config    PanelPopup        // /config: appearance (+ future provider/permissions)
+	Evolve    PanelPopup        // /evolve: self-learning skills + memory
+	Autopilot AutopilotSelector // /autopilot: the session copilot
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation
@@ -114,6 +115,10 @@ type SelectorDeps struct {
 	Setting         *coresetting.Settings
 	LoadDisabled    func(userLevel bool) map[string]bool
 	UpdateDisabled  func(disabled map[string]bool, userLevel bool) error
+	// Evolve bundles the /evolve popup's dependencies: the live workspace
+	// source, the learned skill/memory stores, and the recent-activity
+	// accessor. See EvolveDeps.
+	Evolve EvolveDeps
 }
 
 func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Model {
@@ -139,6 +144,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
 		Config:    NewConfigSelector(deps.Setting),
 		Autopilot: NewAutopilotSelector(),
+		Evolve:    NewEvolveSelector(deps.Evolve),
 	}
 }
 

@@ -83,7 +83,7 @@ func TestTrimTrailingPendingMessages(t *testing.T) {
 
 func TestAllowOnlyPolicy(t *testing.T) {
 	store := newTestStore(t)
-	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp", DefaultActionPermissions())))
+	tools := core.NewTools(newMemoryWriteTool(store), newSkillManageTool(NewSkillManager("/tmp", AllowAllSkillActions())))
 	policy := allowOnly(tools)
 
 	for _, name := range []string{"memory_write", "skill_manage"} {
@@ -101,9 +101,9 @@ func TestAllowOnlyPolicy(t *testing.T) {
 func TestBuildReviewPromptSelectsArms(t *testing.T) {
 	store := newTestStore(t)
 	mustAdd(t, store, "existing fact about the build")
-	mgr := NewSkillManager("/work/project-x", DefaultActionPermissions())
+	mgr := NewSkillManager("/work/project-x", SkillPermissions{AllowCreate: true, AllowUpdate: true})
 
-	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", store, mgr)
+	memOnly := buildReviewPrompt(KindMemory, "/work/project-x", store, mgr, "")
 	if !strings.Contains(memOnly, "existing fact about the build") {
 		t.Fatal("memory prompt should embed the current store")
 	}
@@ -111,12 +111,12 @@ func TestBuildReviewPromptSelectsArms(t *testing.T) {
 		t.Fatal("memory-only prompt should not include the skill section")
 	}
 
-	skillOnly := buildReviewPrompt(KindSkills, "/work/project-x", store, mgr)
+	skillOnly := buildReviewPrompt(KindSkills, "/work/project-x", store, mgr, "")
 	if !strings.Contains(skillOnly, "skill_manage tool") {
 		t.Fatal("skill prompt should include the skill section")
 	}
 
-	combined := buildReviewPrompt(KindMemory|KindSkills, "/work/project-x", store, mgr)
+	combined := buildReviewPrompt(KindMemory|KindSkills, "/work/project-x", store, mgr, "")
 	if !strings.Contains(combined, "memory_write tool") || !strings.Contains(combined, "skill_manage tool") {
 		t.Fatal("combined prompt should include both sections")
 	}
@@ -124,7 +124,7 @@ func TestBuildReviewPromptSelectsArms(t *testing.T) {
 
 func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	store := newTestStore(t)
-	mgr := NewSkillManager("/work/project-x", DefaultActionPermissions())
+	mgr := NewSkillManager("/work/project-x", AllowAllSkillActions())
 
 	llm := &scriptedLLM{responses: []core.InferResponse{
 		{
@@ -181,7 +181,7 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 // already pointed at the temp dir by newTestStore).
 func readBackMemory(t *testing.T) (string, bool) {
 	t.Helper()
-	store := NewMemoryStore("/work/project-x", 0)
+	store := NewMemoryStore("/work/project-x", 0, "")
 	entries := readEntries(store.Dir() + "/MEMORY.md")
 	if len(entries) == 0 {
 		return "", false

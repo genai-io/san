@@ -168,7 +168,7 @@ func (p *appearancePanel) HintLine() string {
 	return keycap("↑↓") + " navigate  " + keycap("enter") + " apply"
 }
 
-func (p *appearancePanel) Render(width int) string {
+func (p *appearancePanel) Render(width, _ int) string {
 	var b strings.Builder
 
 	prevSection := ""

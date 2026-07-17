@@ -1,6 +1,9 @@
 package setting
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,22 +26,21 @@ func TestSelfLearnValidate(t *testing.T) {
 		{
 			name: "explicit defaults",
 			cfg: SelfLearnSettings{
-				Memory: SelfLearnMemory{Enabled: true, EveryTurns: 10, MaxKB: 25},
-				Skills: SelfLearnSkills{Enabled: true, EveryToolIters: 10},
+				Memory: SelfLearnMemory{Enabled: true, MaxKB: 25},
 			},
 			wantErr: "",
 		},
 		{
 			name: "freeze mode (deny create; update + delete default-allow)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{Enabled: true, DenyCreate: true},
+				Skills: SelfLearnSkills{DenyCreate: true},
 			},
 			wantErr: "",
 		},
 		{
 			name: "patch-only mode (deny create + delete)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{Enabled: true, DenyCreate: true, DenyDelete: true},
+				Skills: SelfLearnSkills{DenyCreate: true, DenyDelete: true},
 			},
 			wantErr: "",
 		},
@@ -47,25 +49,14 @@ func TestSelfLearnValidate(t *testing.T) {
 			cfg: SelfLearnSettings{
 				Skills: SelfLearnSkills{DenyUpdate: true},
 			},
-			wantErr: `"Create new skills" needs "Update existing skills"`,
+			wantErr: `"Create new skills" needs "Update a skill"`,
 		},
 		{
 			name: "ok: create + update allowed but delete denied (no-auto-delete mode)",
 			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{Enabled: true, DenyDelete: true},
+				Skills: SelfLearnSkills{DenyDelete: true},
 			},
 			wantErr: "",
-		},
-		{
-			name: "rejected: advanced opt-in without update base",
-			cfg: SelfLearnSettings{
-				Skills: SelfLearnSkills{
-					DenyUpdate:             true,
-					DenyCreate:             true,
-					AllowUpdateUserCreated: true,
-				},
-			},
-			wantErr: `"Update user-authored skills" needs "Update existing skills"`,
 		},
 		{
 			name: "rejected: maxKB above injection cap",
@@ -115,6 +106,69 @@ func TestSelfLearnAllowAccessors(t *testing.T) {
 	denied := SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
 	if denied.AllowCreate() || denied.AllowUpdate() || denied.AllowDelete() {
 		t.Fatal("explicit Deny must read as Allow=false")
+	}
+}
+
+func TestSelfLearnSkillsMigratesLegacyDisabledJSON(t *testing.T) {
+	for _, raw := range []string{
+		`{}`,
+		`{"enabled":false}`,
+		`{"denyDelete":true}`,
+	} {
+		var got SelfLearnSkills
+		if err := json.Unmarshal([]byte(raw), &got); err != nil {
+			t.Fatalf("unmarshal %s: %v", raw, err)
+		}
+		if got.Active() {
+			t.Errorf("legacy disabled config %s became active: %+v", raw, got)
+		}
+	}
+}
+
+func TestLoaderPreservesLegacySkillOptOut(t *testing.T) {
+	userDir := t.TempDir()
+	projectDir := t.TempDir()
+	path := filepath.Join(userDir, "settings.json")
+	if err := os.WriteFile(path, []byte(`{"selfLearn":{"skills":{}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := NewLoaderWithOptions(userDir, projectDir, false).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SelfLearn.Skills.Active() {
+		t.Fatalf("legacy loader path re-enabled opted-out skills: %+v", got.SelfLearn.Skills)
+	}
+}
+
+func TestSelfLearnSkillsJSONRoundTripMarksCurrentSchema(t *testing.T) {
+	want := SelfLearnSkills{DenyDelete: true}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"enabled":true`) {
+		t.Fatalf("current schema marker missing from %s", data)
+	}
+
+	var got SelfLearnSkills
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("round trip = %+v, want %+v", got, want)
+	}
+}
+
+func TestSelfLearnSkillsMigratesLegacyEnabledJSON(t *testing.T) {
+	var got SelfLearnSkills
+	if err := json.Unmarshal([]byte(`{"enabled":true,"denyDelete":true}`), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := SelfLearnSkills{DenyDelete: true}
+	if got != want {
+		t.Fatalf("legacy enabled config = %+v, want %+v", got, want)
 	}
 }
 

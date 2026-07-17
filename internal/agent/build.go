@@ -43,6 +43,11 @@ type BuildParams struct {
 	DisabledTools map[string]bool
 	MCPTools      []core.Tool
 
+	// ExtraTools are caller-built conditional tool schemas appended to the
+	// toolset (e.g. the self-learning Evolve trigger, injected only when
+	// self-learning is active). Nil ⇒ no extra tools.
+	ExtraTools []core.ToolSchema
+
 	// PermissionRules and PermissionReview are the two stages of the
 	// pre-execution permission gate: the rules stage applies the static rules
 	// (permit/reject/prompt); the review stage is the LLM auto-review consulted
@@ -90,6 +95,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	schemas := (&tool.Set{
 		Disabled:       p.DisabledTools,
 		AgentDirectory: p.AgentDirectory,
+		ExtraTools:     p.ExtraTools,
 	}).Tools()
 	var adaptOpts []tool.AdaptOption
 	if p.AskUser != nil {

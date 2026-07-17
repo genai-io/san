@@ -119,7 +119,7 @@ func TestAppearancePanelEnterSaveFailureSurfacesError(t *testing.T) {
 	if p.themeBaseline != "auto" {
 		t.Fatalf("themeBaseline should be untouched on failure, got %q", p.themeBaseline)
 	}
-	if out := p.Render(80); !strings.Contains(out, "couldn't save") {
+	if out := p.Render(80, 20); !strings.Contains(out, "couldn't save") {
 		t.Fatalf("Render should surface the save error, got:\n%s", out)
 	}
 }
@@ -167,24 +167,6 @@ func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
 	}
 }
 
-// TestConfigSelectorArrowSwitchesPanels confirms ←/→ cycle the registered
-// panels (and wrap), the navigation this feature swapped in for ctrl-tab.
-func TestConfigSelectorArrowSwitchesPanels(t *testing.T) {
-	c := NewConfigSelector(nil)
-	c.Enter(120, 40)
-	if got := c.ActivePanel().Title(); got != "self-learning" {
-		t.Fatalf("default panel = %q, want self-learning", got)
-	}
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
-	if got := c.ActivePanel().Title(); got != "appearance" {
-		t.Fatalf("after right = %q, want appearance", got)
-	}
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight}) // wrap
-	if got := c.ActivePanel().Title(); got != "self-learning" {
-		t.Fatalf("after right wrap = %q, want self-learning", got)
-	}
-	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyLeft}) // wrap back
-	if got := c.ActivePanel().Title(); got != "appearance" {
-		t.Fatalf("after left wrap = %q, want appearance", got)
-	}
-}
+// /config and /evolve each host a single panel today, so the shell's tab
+// switching is dormant; it reactivates untested-code-free when a second
+// panel is registered (see PanelPopup.HandleKeypress's tab handling).

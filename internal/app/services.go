@@ -65,6 +65,11 @@ type SelfLearnServices struct {
 	// surface"). Always non-nil; the snapshot reports an idle phase when
 	// L1 is off or no review has run yet.
 	Indicator *SelfLearnIndicator
+
+	// Recent is the rolling activity log behind the /evolve RECENT zones.
+	// Always non-nil; the per-session write observers append to it and it
+	// outlives any one session so the recap survives /clear.
+	Recent *RecentLearnLog
 }
 
 // selfLearnSession bundles the three handles that make up one live L1
@@ -105,6 +110,6 @@ func newServices() services {
 		Agent:     agent.Default(),
 		Persona:   persona.Default(),
 		Reminder:  reminder.NewService(),
-		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator()},
+		SelfLearn: SelfLearnServices{Indicator: NewSelfLearnIndicator(), Recent: NewRecentLearnLog()},
 	}
 }

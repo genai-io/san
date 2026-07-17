@@ -153,6 +153,20 @@ func (s *Settings) StreamIdleTimeout() string {
 	return s.data.StreamIdleTimeout
 }
 
+// SelfLearn returns just the self-learning settings, by value. Unlike
+// Snapshot() it does not deep-clone the whole Data — SelfLearnSettings is a
+// value type (no shared maps/pointers), so a plain copy under the read lock is
+// safe. Used by the per-turn capability-drift check, which would otherwise
+// clone every permission map and hook to read this one field.
+func (s *Settings) SelfLearn() SelfLearnSettings {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return SelfLearnSettings{}
+	}
+	return s.data.SelfLearn
+}
+
 func (s *Settings) Hooks() map[string][]Hook {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

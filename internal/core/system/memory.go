@@ -58,14 +58,37 @@ func AutoMemoryIndexPath(cwd string) string {
 	return filepath.Join(AutoMemoryDir(cwd), AutoMemoryIndexName)
 }
 
-// LoadAutoMemory reads the agent-written auto-memory index for cwd, capped at
-// autoMemoryByteCap. It is a distinct source from LoadMemoryFiles: agent-written
-// memory and user-authored SAN.md/CLAUDE.md instructions are injected as
-// separate blocks and never mixed. Returns ("", false) when the store is empty
-// or absent. When the index exceeds the cap it is truncated on a line boundary
-// with a marker — topic files are read on demand and never injected.
-func LoadAutoMemory(cwd string) (string, bool) {
-	data, err := os.ReadFile(AutoMemoryIndexPath(cwd))
+// ResolveAutoMemoryDir returns the directory backing the auto-memory store,
+// honoring a user override (the /evolve Memory storage path). An empty override
+// falls back to the project-partitioned default; a "~" prefix expands to the
+// home dir; a relative override resolves against cwd.
+func ResolveAutoMemoryDir(cwd, override string) string {
+	override = strings.TrimSpace(override)
+	if override == "" {
+		return AutoMemoryDir(cwd)
+	}
+	if override == "~" || strings.HasPrefix(override, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			override = filepath.Join(home, strings.TrimPrefix(override, "~"))
+		}
+	}
+	if !filepath.IsAbs(override) {
+		override = filepath.Join(cwd, override)
+	}
+	return override
+}
+
+// LoadAutoMemoryAt reads the agent-written auto-memory index from dir —
+// resolve it with ResolveAutoMemoryDir so a user-configured memory path is
+// honored (the reviewer prompt and the main-agent memory reminder both do).
+// Capped at autoMemoryByteCap. It is a distinct source from LoadMemoryFiles:
+// agent-written memory and user-authored SAN.md/CLAUDE.md instructions are
+// injected as separate blocks and never mixed. Returns ("", false) when the
+// store is empty or absent. When the index exceeds the cap it is truncated on
+// a line boundary with a marker — topic files are read on demand and never
+// injected.
+func LoadAutoMemoryAt(dir string) (string, bool) {
+	data, err := os.ReadFile(filepath.Join(dir, AutoMemoryIndexName))
 	if err != nil {
 		return "", false
 	}

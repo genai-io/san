@@ -13,23 +13,49 @@ import (
 // the fork refreshes/dedupes rather than blindly appending.
 //
 // Per §5.5 the skill section is synthesised against the SkillManager's
-// ActionPermissions: disallowed actions are stripped so the model doesn't
-// waste turns proposing them. The hard floor remains the permission gate at
+// permissions: disallowed actions are stripped so the model doesn't waste
+// turns proposing them. The hard floor remains the permission gate at
 // dispatch — this is just steering.
 //
 // See notes/active/l1-background-review.md §3.
-func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills *SkillManager) string {
+func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills *SkillManager, strategy string) string {
 	var b strings.Builder
 
 	b.WriteString(reviewPreamble)
 	b.WriteString("\n\n")
 	b.WriteString(reviewToolScope)
 
+	// Guidance: the user's /evolve Strategy override replaces the built-in
+	// per-arm sections wholesale; empty ⇒ the tailored built-in for whichever
+	// arms fired.
+	b.WriteString("\n\n")
+	if strategy != "" {
+		b.WriteString(strategy)
+	} else {
+		var sections []string
+		if kinds.Has(KindMemory) {
+			sections = append(sections, memorySectionFor(memory))
+		}
+		if kinds.Has(KindSkills) {
+			perms := AllowAllSkillActions()
+			if skills != nil {
+				perms = skills.Perms()
+			}
+			sections = append(sections, skillSectionFor(perms))
+		}
+		b.WriteString(strings.Join(sections, "\n\n"))
+	}
+
+	// Dynamic context is always injected (it is state, not editable guidance).
 	if kinds.Has(KindMemory) {
-		b.WriteString("\n\n")
-		b.WriteString(memorySectionFor(memory))
 		b.WriteString("\n\nCurrent memory store (MEMORY.md):\n")
-		if mem, ok := system.LoadAutoMemory(cwd); ok {
+		// Read from the store's own dir so a configured memory path is honored;
+		// fall back to the cwd default when no store was supplied.
+		memDir := system.AutoMemoryDir(cwd)
+		if memory != nil {
+			memDir = memory.Dir()
+		}
+		if mem, ok := system.LoadAutoMemoryAt(memDir); ok {
 			b.WriteString("```\n")
 			b.WriteString(mem)
 			b.WriteString("\n```")
@@ -37,10 +63,7 @@ func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills
 			b.WriteString("(empty — no entries yet)")
 		}
 	}
-
 	if kinds.Has(KindSkills) {
-		b.WriteString("\n\n")
-		b.WriteString(skillSectionFor(skills))
 		b.WriteString("\n\nExisting skills:\n")
 		b.WriteString(renderInventory(skills))
 	}
@@ -50,62 +73,88 @@ func buildReviewPrompt(kinds ReviewKind, cwd string, memory *MemoryStore, skills
 	return b.String()
 }
 
+// DefaultStrategy returns the built-in learning strategy the /evolve Strategy
+// editor seeds with: the general memory guidance plus the general skill
+// guidance (both the used-a-skill and the new-work cases), so a saved override
+// applies to every pass. The live built-in (memorySectionFor / skillSectionFor
+// above) is instead tailored per pass to the arms that fired.
+func DefaultStrategy() string {
+	return memorySectionFor(nil) + "\n\n" +
+		skillPreamble + "\n\n" +
+		skillCaseUsedHeader + "\n" + skillEvaluateGuidance + "\n\n" +
+		skillCaseNewHeader + "\n" + skillCreateGuidance + "\n\n" +
+		skillWriteScope + "\n\n" + skillAntiPatterns
+}
+
 // skillSectionFor returns the skill review-prompt section tailored to the
-// permissions the SkillManager will enforce at dispatch. See §5.5: stripping
-// disallowed actions from the prompt prevents the model from proposing things
-// it can't do — the permission layer is still the hard floor.
-func skillSectionFor(mgr *SkillManager) string {
-	perms := DefaultActionPermissions()
-	if mgr != nil {
-		perms = mgr.Perms()
-	}
-
+// actions the trigger scoped for this pass: a create pass (no skill was used)
+// frames capturing a technique from new work; a skill-use pass frames a single
+// integrated decision about the used skill — keep, refine, or retire it. The
+// SkillManager's permission gate remains the hard floor.
+func skillSectionFor(perms SkillPermissions) string {
 	var b strings.Builder
-	b.WriteString("SKILLS (skill_manage tool). A skill is a reusable, class-level technique (e.g. go-table-tests), not a session-specific note.")
-
-	// Steer the preference order based on what's actually allowed.
+	b.WriteString(skillPreamble)
+	b.WriteString("\n\n")
 	if perms.AllowCreate {
-		b.WriteString(" Prefer the broadest reuse; create is the last resort.")
+		b.WriteString(skillCaseNewHeader)
+		b.WriteString("\n")
+		b.WriteString(skillCreateGuidance)
 	} else {
-		b.WriteString(" Creation is disabled: only modify existing skills.")
+		// A skill was used: whatever actions are allowed, this is ONE decision
+		// about that skill, never several passes.
+		b.WriteString(skillCaseUsedHeader)
+		b.WriteString("\n")
+		switch {
+		case perms.AllowUpdate && perms.AllowDelete:
+			b.WriteString(skillEvaluateGuidance)
+		case perms.AllowUpdate:
+			b.WriteString(skillUpdateGuidance)
+		case perms.AllowDelete:
+			b.WriteString(skillDeleteGuidance)
+		}
 	}
-
-	b.WriteString("\nDecide in this order (preference: UPDATE > DELETE > CREATE):\n")
-	step := 1
-	if perms.AllowUpdate {
-		fmt.Fprintf(&b, "%d. UPDATE — patch an existing skill when ANY of the following:\n", step)
-		b.WriteString("     · a skill loaded / consulted this turn was proven wrong, incomplete, or outdated;\n")
-		b.WriteString("     · an existing umbrella skill covers the new learning (extend it; consider adding a references/templates/scripts support file);\n")
-		b.WriteString("     · the user voiced a style / format / workflow correction that belongs in the skill governing that task (embed it so the next session starts already knowing).\n")
-		step++
-	}
-	if perms.AllowDelete {
-		fmt.Fprintf(&b, "%d. DELETE — retire an agent-created skill when ANY of the following:\n", step)
-		b.WriteString("     · the new learning supersedes the entire skill wholesale (replace, don't coexist);\n")
-		b.WriteString("     · the skill encoded a transient / environment-dependent failure that is now resolved (the skill is now wrong);\n")
-		b.WriteString("     · the skill turned out to encode an anti-pattern.\n")
-		step++
-	}
-	if perms.AllowCreate {
-		fmt.Fprintf(&b, "%d. CREATE — only when ALL of the following hold:\n", step)
-		b.WriteString("     · the turn produced a non-trivial, generalizable technique / fix / pattern;\n")
-		b.WriteString("     · NO existing skill (agent OR user) covers this class of task;\n")
-		b.WriteString("     · the name is class-level (e.g. go-table-tests), NOT a PR number, error string, codename, or 'fix-X / debug-Y / audit-Z-today' session artifact;\n")
-		b.WriteString("     · the learning is not an anti-pattern (see below).\n")
-		b.WriteString("     Pick the level: reusable / general → user; project-specific → project.\n")
-		step++
-	}
-
-	// Scope rule.
-	if perms.AllowUpdateUserCreated {
-		b.WriteString("You may patch any existing skill (including user-created); creation and deletion remain restricted to agent-created skills.\n")
-	} else {
-		b.WriteString("You may only modify skills marked editable (agent-created); read user-created skills to avoid duplication but never change them.\n")
-	}
-
-	b.WriteString("ANTI-PATTERNS (do NOT capture as a skill): environment-dependent failures, negative claims about tools, transient errors that resolved on retry, one-off task narratives. If the only candidate falls in this bucket, save nothing.")
+	b.WriteString("\n\n")
+	b.WriteString(skillWriteScope)
+	b.WriteString("\n\n")
+	b.WriteString(skillAntiPatterns)
 	return b.String()
 }
+
+// The skill section is built from first principles: one definition, then the
+// two mutually-exclusive cases (a skill ran this turn vs. none did), then the
+// hard exclusions. Each case names its trigger, then its decision.
+
+const skillPreamble = `SKILLS — the skill_manage tool writes reusable, class-level techniques (e.g. go-table-tests), never session-specific notes.
+Default to changing nothing. Only act on a durable, general learning from THIS turn.`
+
+const skillCaseUsedHeader = `CASE A — a skill ran this turn (find it in the Skill tool calls above). Judge that one skill:`
+
+const skillCaseNewHeader = `CASE B — no skill ran, but the turn did non-trivial new work worth reusing:`
+
+// skillEvaluateGuidance frames the both-allowed case: one integrated judgement
+// of the used skill's worth, choosing at most one of keep / update / delete.
+const skillEvaluateGuidance = `  Pick exactly ONE (improving and retiring are one judgement, not two):
+    KEEP    correct and still useful. The default — prefer it.
+    UPDATE  still useful, but this turn showed it wrong/incomplete/outdated, or the user corrected a style/format/workflow it should carry. Patch the fix in.
+    DELETE  no longer useful: obsolete, superseded, or an anti-pattern. Never delete a skill that still helps.`
+
+// skillUpdateGuidance is the update-only case (delete disallowed).
+const skillUpdateGuidance = `  UPDATE it if this turn showed it wrong/incomplete/outdated, or the user corrected a style/format/workflow it should carry — patch the fix in. Otherwise KEEP it (save nothing).`
+
+// skillDeleteGuidance is the delete-only case (update disallowed): a pure worth
+// check of the used skill.
+const skillDeleteGuidance = `  DELETE it only if it no longer helps: obsolete, superseded, wrong, or an anti-pattern. Otherwise KEEP it (save nothing).`
+
+const skillCreateGuidance = `  CREATE one skill only if ALL hold:
+    - a non-trivial, generalizable technique/fix/pattern
+    - no existing skill (yours or the user's — see inventory) already covers it
+    - a class-level name (go-table-tests), not a PR number, error string, codename, or fix-X/debug-Y
+    - not an anti-pattern (below)
+  Scope: general → user; project-specific → project.`
+
+const skillWriteScope = `Write only your own (agent-created) skills; read the user's to avoid duplication, but never change them.`
+
+const skillAntiPatterns = `NEVER a skill: environment-specific failures, "tool X is broken" claims, transient errors that passed on retry, one-off task narratives. If that's all you have, save nothing.`
 
 func renderInventory(skills *SkillManager) string {
 	if skills == nil {

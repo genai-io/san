@@ -24,6 +24,7 @@ type Set struct {
 	Allow          []string                 // agent allow list (nil = all tools, non-nil = only these)
 	Disallow       []string                 // agent deny list (excluded after allow filtering)
 	IsAgent        bool                     // true for subagent tool sets (excludes parent-only tools)
+	ExtraTools     []core.ToolSchema        // caller-built conditional tools (e.g. Evolve; main agent only)
 	disallowSet    map[string]bool          // eagerly-initialized normalized lookup cache for Disallow
 }
 
@@ -53,6 +54,7 @@ func (s *Set) defaultTools() []core.ToolSchema {
 	tools := GetToolSchemasWith(SchemaOptions{
 		MCPTools:       s.MCP,
 		AgentDirectory: s.AgentDirectory,
+		ExtraTools:     s.ExtraTools,
 	})
 
 	filtered := make([]core.ToolSchema, 0, len(tools))
