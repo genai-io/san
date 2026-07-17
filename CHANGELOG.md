@@ -3,6 +3,20 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.5] - 2026-07-17
+
+### Added
+- Add a dedicated `/evolve` panel for model-decided self-learning triggers ([@yanmxa](https://github.com/yanmxa) in [#311](https://github.com/genai-io/san/pull/311))
+- Redesign queued-message interaction ([@yanmxa](https://github.com/yanmxa) in [#313](https://github.com/genai-io/san/pull/313))
+- Add session naming features ([@hchenxa](https://github.com/hchenxa) in [3438c2c](https://github.com/genai-io/san/commit/3438c2c6))
+
+### Changed
+- Add contributor ladder documentation ([@yanmxa](https://github.com/yanmxa) in [#301](https://github.com/genai-io/san/pull/301))
+
+### Fixed
+- Fix agent timeout issue ([@hchenxa](https://github.com/hchenxa) in [66102d0](https://github.com/genai-io/san/commit/66102d0b))
+- Fix installation issues when rate limited ([@hchenxa](https://github.com/hchenxa) in [1c879ae](https://github.com/genai-io/san/commit/1c879ae8))
+
 ## [v1.21.4] - 2026-07-11
 
 ### Added
