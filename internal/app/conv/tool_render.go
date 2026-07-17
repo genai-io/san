@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
@@ -48,6 +49,15 @@ var (
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Error)
+
+	// A multi-line Bash command renders as an indented block below the header. The
+	// command itself is drawn in the shared dim result tone (toolResultStyle) —
+	// the same tone as the "$" prompt and the "⎿" trailer — so the whole block
+	// reads as quiet code, one step below body prose. Only the description differs:
+	// italic, so it reads as a prose caption distinct from the code.
+	bashDescStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.TextDim).
+			Italic(true)
 )
 
 // RenderToolResult renders a complete tool result with header and content.
@@ -900,6 +910,75 @@ func renderToolLine(label string, width int) string {
 func renderToolLineWithIcon(label string, width int, iconText string) string {
 	icon := toolCallStyle.Width(2).Render(iconText)
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
+}
+
+// bashPrompt marks the first command row with a shell "$" so the block reads as
+// a terminal command. Every later row (a wrap or a continued command line) hangs
+// under the command text by an indent the width of the prompt, so the whole
+// command body lines up in one column with the "$" as a hanging prompt to its
+// left. The "$" sits in column 2, shared with the "⎿" result trailer below and
+// in the same dim tone, so the two markers still line up down the left.
+const bashPrompt = "  $ "
+
+// renderBashToolCall renders a Bash tool call so its command is always readable
+// in full. A short single-line command keeps the compact Bash(cmd) label; a
+// multi-line command — or a single line too long for that label — renders as a
+// dimmed block below a "● Bash" header, led by a shell "$" prompt, with the
+// optional description as a caption. Command lines soft-wrap to the width rather
+// than truncate, so the full command is always visible, never clipped.
+func renderBashToolCall(input string, width int, icon string) string {
+	command, description := extractBashCommand(input)
+	if command == "" {
+		return renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tool.ToolBash, extractToolArgs(input)), width, icon) + "\n"
+	}
+
+	budget := maxToolLabelWidth(width)
+
+	// A short single-line command fits on the compact label untouched.
+	if !strings.Contains(command, "\n") {
+		if label := fmt.Sprintf("%s(%s)", tool.ToolBash, command); lipgloss.Width(label) <= budget {
+			return renderToolLineWithIcon(label, width, icon) + "\n"
+		}
+	}
+
+	var sb strings.Builder
+
+	// Header line: ● Bash, trailed by the optional description as a dim caption.
+	// The caption may be shortened (it's metadata); the command below never is.
+	iconCell := toolCallStyle.Width(2).Render(icon)
+	header := toolCallStyle.Render(tool.ToolBash)
+	if description != "" {
+		header += "  " + bashDescStyle.Render(kit.TruncateText(description, budget))
+	}
+	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + "\n")
+
+	// Soft-wrap the whole command to the width left of the prompt, so long lines
+	// flow onto more rows instead of being clipped. xansi.Wrap treats embedded
+	// newlines as hard breaks and breaks any run with no break point, so
+	// multi-line commands and unbroken tokens alike stay within the width — one
+	// wrap covers every line. The first row carries the "$" prompt; every later
+	// row hangs under the command text on an indent the width of that prompt.
+	promptWidth := lipgloss.Width(bashPrompt)
+	contIndent := strings.Repeat(" ", promptWidth)
+	segments := strings.Split(xansi.Wrap(command, budget-promptWidth, " "), "\n")
+	sb.WriteString(toolResultStyle.Render(bashPrompt+segments[0]) + "\n")
+	for _, segment := range segments[1:] {
+		sb.WriteString(contIndent + toolResultStyle.Render(segment) + "\n")
+	}
+	return sb.String()
+}
+
+// extractBashCommand pulls the command and optional description out of a Bash
+// tool call's raw JSON input.
+func extractBashCommand(input string) (command, description string) {
+	var params struct {
+		Command     string `json:"command"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(input), &params); err != nil {
+		return "", ""
+	}
+	return params.Command, params.Description
 }
 
 func renderAgentToolLine(label string, width int, iconText string, color string) string {

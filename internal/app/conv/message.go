@@ -540,6 +540,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				sb.WriteString(renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n")
+			} else if tc.Name == tool.ToolBash {
+				sb.WriteString(renderBashToolCall(tc.Input, params.Width, icon))
 			} else {
 				args := extractToolArgs(tc.Input)
 				sb.WriteString(renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n")

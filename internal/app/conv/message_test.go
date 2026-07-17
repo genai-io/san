@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 )
@@ -115,6 +117,68 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 	got := extractToolArgs(input)
 	if !strings.Contains(got, "git describe --tags --abbrev=0") {
 		t.Fatalf("extractToolArgs() = %q, want full command", got)
+	}
+}
+
+func Test_renderBashToolCallSingleLineStaysCompact(t *testing.T) {
+	out := renderBashToolCall(`{"command":"git status"}`, 100, "●")
+	if !strings.Contains(out, "Bash(git status)") {
+		t.Fatalf("single-line command should render compact, got %q", out)
+	}
+	if strings.Contains(out, "│") {
+		t.Fatalf("single-line command should not render a command block, got %q", out)
+	}
+}
+
+func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
+	input := `{"command":"for f in a b; do\n  echo \"$f\"\ndone","description":"loop over files"}`
+	out := renderBashToolCall(input, 100, "●")
+
+	// Every command line renders in the block, not folded away behind ctrl+o.
+	for _, want := range []string{"for f in a b; do", `echo "$f"`, "done"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("multi-line command should show %q in place, got %q", want, out)
+		}
+	}
+	// The description rides the header as a caption.
+	if !strings.Contains(out, "loop over files") {
+		t.Fatalf("multi-line command should show its description, got %q", out)
+	}
+	// The raw command is never crammed into the Bash(...) one-line label.
+	if strings.Contains(out, "Bash(for f") {
+		t.Fatalf("multi-line command should not be crammed into a one-line label, got %q", out)
+	}
+}
+
+func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
+	// A long single line wraps into the block, which reads as a terminal command:
+	// the first row is led by a "$" prompt, later rows align under the command
+	// text without repeating it. No gutter bar, no background fill.
+	long := `{"command":"git log --oneline --graph --all --decorate --abbrev-commit --since='2 weeks ago' | head -50"}`
+	raw := renderBashToolCall(long, 70, "●")
+	if strings.ContainsAny(raw, "│┊") || strings.Contains(raw, "48;2;") {
+		t.Fatalf("command block should have no bar and no background, got %q", raw)
+	}
+
+	rows := strings.Split(strings.TrimRight(stripANSI(raw), "\n"), "\n")[1:]
+	if len(rows) < 2 {
+		t.Fatalf("expected the long command to wrap onto multiple rows, got %q", raw)
+	}
+	if !strings.HasPrefix(rows[0], bashPrompt) {
+		t.Fatalf("first command row should carry the %q prompt: %q", bashPrompt, rows[0])
+	}
+	// Continuations hang under the command text: a blank indent the width of the
+	// prompt, so command text lines up down one column and the prompt never repeats.
+	contIndent := strings.Repeat(" ", lipgloss.Width(bashPrompt))
+	for i, row := range rows[1:] {
+		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) {
+			t.Fatalf("continuation row %d should hang under the command text, not repeat the prompt: %q", i+1, row)
+		}
+	}
+
+	// The "$" sits in the "⎿" result column, so the two markers line up down the left.
+	if strings.IndexByte(bashPrompt, '$') != strings.Index("  ⎿  ", "⎿") {
+		t.Fatalf("prompt $ column must equal the result ⎿ column")
 	}
 }
 
@@ -294,7 +358,8 @@ func TestRenderQueuePreviewEditingShowsFocusBarAndKeys(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsUsesEightyPercentWidth(t *testing.T) {
+func TestRenderToolCallsWrapsLongBashCommandWithoutTruncating(t *testing.T) {
+	const width = 100
 	params := ToolCallsParams{
 		ToolCalls: []core.ToolCall{{
 			ID:    "tc-1",
@@ -302,15 +367,28 @@ func TestRenderToolCallsUsesEightyPercentWidth(t *testing.T) {
 			Input: `{"command":"cd /Users/myan/Workspace/ideas/san && git describe --tags --abbrev=0 2>/dev/null"}`,
 		}},
 		ResultMap: map[string]ToolResultData{},
-		Width:     100,
+		Width:     width,
 	}
 
-	rendered := RenderToolCalls(params)
-	if !strings.Contains(rendered, "git describe --tags --abbrev") {
-		t.Fatalf("RenderToolCalls() = %q, want wider command preview", rendered)
+	rendered := stripANSI(RenderToolCalls(params))
+
+	// A long single-line command wraps into the block form rather than being
+	// clipped: the whole command survives, including its tail, and no ellipsis.
+	if !strings.Contains(rendered, "git describe --tags --abbrev=0") {
+		t.Fatalf("RenderToolCalls() = %q, want the full command", rendered)
 	}
-	if !strings.Contains(rendered, "…") {
-		t.Fatalf("RenderToolCalls() = %q, want truncation at 80%% width", rendered)
+	if !strings.Contains(rendered, "2>/dev/null") {
+		t.Fatalf("RenderToolCalls() = %q, want the command tail kept, not truncated", rendered)
+	}
+	if strings.Contains(rendered, "…") {
+		t.Fatalf("RenderToolCalls() = %q, want no truncation ellipsis", rendered)
+	}
+	// Wrapping still honors the 80%-width budget: every line stays within it.
+	budget := maxToolLabelWidth(width)
+	for _, line := range strings.Split(strings.TrimRight(rendered, "\n"), "\n") {
+		if w := lipgloss.Width(line); w > budget {
+			t.Fatalf("wrapped line %q width %d exceeds budget %d", line, w, budget)
+		}
 	}
 }
 
