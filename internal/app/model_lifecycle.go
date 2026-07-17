@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/desktop"
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -65,6 +66,7 @@ func newBaseModel() model {
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
 		}),
 		conv:                conv.NewModel(defaultWidth),
+		desktop:             desktop.New(),
 		agentEventHub:       hub.New(),
 		mainEvents:          make(chan hub.Event, 64),
 		systemInput:         trigger.New(),

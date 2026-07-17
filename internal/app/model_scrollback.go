@@ -102,6 +102,13 @@ type flushResultMsg struct {
 // kicks off their background render. Returns nil when a render is already in
 // flight or nothing new is ready to flush.
 func (m *model) FlushStreamingBlocks() []tea.Cmd {
+	// While the desktop owns the screen (alt-screen), tea.Println would corrupt
+	// it — insertAbove assumes the inline buffer. Hold all commits; the desktop
+	// renders the full conversation from m.conv.Messages anyway, and exitDesktop
+	// flushes the backlog once the inline view is repainted.
+	if m.env.Surface == SurfaceDesktop {
+		return nil
+	}
 	if m.flush.rendering {
 		return nil // a block is already rendering off-thread; wait for it to land
 	}
@@ -242,6 +249,12 @@ func (m *model) commitAllMessages() []tea.Cmd {
 }
 
 func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
+	// Suppress scrollback writes while the desktop is active (see
+	// FlushStreamingBlocks). CommittedCount is left untouched so the whole
+	// backlog flushes intact when exitDesktop returns to the inline surface.
+	if m.env.Surface == SurfaceDesktop {
+		return nil
+	}
 	var parts []string
 	lastIdx := len(m.conv.Messages) - 1
 	params := m.messageRenderParams()

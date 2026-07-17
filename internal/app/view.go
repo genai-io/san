@@ -28,6 +28,14 @@ var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 // source the key router uses — so the panel that owns the keyboard is always
 // the one drawn on screen.
 func (m *model) View() tea.View {
+	if m.env.Surface == SurfaceDesktop {
+		m.syncDesktop()
+		v := tea.NewView(m.desktop.Render())
+		v.AltScreen = true // San owns the full screen; native scrollback is left intact below
+		// No mouse tracking: capturing the mouse would disable the terminal's own
+		// text selection/copy. Scrolling is on the keyboard (pgup/pgdn, ctrl+u/d).
+		return v
+	}
 	return tea.NewView(m.viewString())
 }
 

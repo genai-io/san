@@ -28,6 +28,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/desktop"
 	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -37,14 +38,23 @@ const defaultWidth = 80
 
 type model struct {
 	// ── Sub-models (one per event source / concern) ─────────────
-	userInput         input.Model    // Source 1: user keyboard input
-	agentEventHub     *hub.Hub       // Source 2: inter-agent event routing (pure pub/sub)
-	mainEvents        chan hub.Event // hub-side delivery chan; awaitMainEvent reads it
-	pendingMainEvents []hub.Event    // events that arrived mid-stream, drained at OnTurnEnd
-	systemInput       trigger.Model  // Source 3: system events (cron/hooks/watcher)
-	conv              conv.Model     // Agent Outbox: conversation + output rendering
-	env               env            // Shared app state: provider, session, permission, plan, config
-	services          services       // Domain service singletons, injected at construction
+	userInput         input.Model     // Source 1: user keyboard input
+	agentEventHub     *hub.Hub        // Source 2: inter-agent event routing (pure pub/sub)
+	mainEvents        chan hub.Event  // hub-side delivery chan; awaitMainEvent reads it
+	pendingMainEvents []hub.Event     // events that arrived mid-stream, drained at OnTurnEnd
+	systemInput       trigger.Model   // Source 3: system events (cron/hooks/watcher)
+	conv              conv.Model      // Agent Outbox: conversation + output rendering
+	desktop           desktop.Manager // Alt-screen "desktop" surface (opt-in via ctrl+g)
+	env               env             // Shared app state: provider, session, permission, plan, config
+	services          services        // Domain service singletons, injected at construction
+
+	// Desktop-surface scratch state (see desktop_surface.go): a single-chain
+	// guard for the animation tick, plus a width-keyed cache of the markdown
+	// renderer so streaming into the desktop's conversation window doesn't
+	// rebuild glamour every frame.
+	desktopTicking bool
+	desktopMD      *conv.MDRenderer
+	desktopMDWidth int
 
 	// welcomePending marks the startup splash as not yet frozen into scrollback.
 	// While set, the splash renders live above the input (visible from launch
