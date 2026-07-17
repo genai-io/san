@@ -30,6 +30,36 @@ type Client struct {
 	maxTokens      int
 	thinkingEffort string
 	tokens         Usage
+
+	// Token limits resolve from the provider's ListModels, which is a live
+	// network round-trip for OpenAI-compatible providers (Anthropic/Google
+	// cache it internally). A client's model is fixed for its lifetime, so the
+	// resolved limits are memoized here to keep ListModels off the
+	// per-inference-step hot path (InputLimit for compaction, output cap for
+	// every Infer/Stream).
+	inLimit  cachedLimit
+	outLimit cachedLimit
+}
+
+// cachedLimit memoizes a token limit for the client's fixed model so a provider
+// ListModels lookup runs once instead of on every inference step. Only a
+// successful (non-zero) resolution is cached; a transient failure leaves the
+// slot empty so the next call retries rather than sticking at 0 forever.
+type cachedLimit struct {
+	mu    sync.Mutex
+	value int
+}
+
+// get returns the memoized limit, resolving it once via resolve(p, model). A
+// result of 0 is treated as "unknown, retry later" and is not cached, so a
+// transient provider failure retries rather than sticking at 0.
+func (c *cachedLimit) get(p Provider, model string, resolve func(Provider, string) int) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.value == 0 {
+		c.value = resolve(p, model)
+	}
+	return c.value
 }
 
 // NewClient wraps an existing provider as a core.LLM with streaming and
@@ -47,7 +77,6 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 	l.mu.RLock()
 	p := l.provider
 	model := l.model
-	maxTokens := l.maxTokens
 	thinking := l.thinkingEffort
 	l.mu.RUnlock()
 
@@ -56,7 +85,7 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 		Messages:       toProviderMessages(req.Messages),
 		Tools:          req.Tools,
 		SystemPrompt:   req.System,
-		MaxTokens:      resolveMaxTokens(maxTokens, p, model),
+		MaxTokens:      l.effectiveMaxTokens(),
 		ThinkingEffort: thinking,
 	}
 
@@ -219,14 +248,15 @@ func (l *Client) ModelID() string {
 	return l.model
 }
 
-// InputLimit returns the model's max input token capacity (context window).
-// Queries the provider's model metadata. Returns 0 if unknown.
+// InputLimit returns the model's max input token capacity (context window),
+// or 0 if unknown. The provider lookup is memoized per model, so this is cheap
+// to call on every inference step (the compaction check does so).
 func (l *Client) InputLimit() int {
 	l.mu.RLock()
 	p := l.provider
 	model := l.model
 	l.mu.RUnlock()
-	return inputLimitFromProvider(p, model)
+	return l.inLimit.get(p, model, inputLimitFromProvider)
 }
 
 // ResolveMaxTokens returns the effective output token limit.
@@ -234,7 +264,17 @@ func (l *Client) InputLimit() int {
 //
 //  2. Provider's model metadata (OutputTokenLimit from ListModels)
 //  3. Default (8192)
-func (l *Client) ResolveMaxTokens(ctx context.Context) int {
+func (l *Client) ResolveMaxTokens(context.Context) int {
+	return l.effectiveMaxTokens()
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+// effectiveMaxTokens resolves the output-token cap: an explicit maxTokens
+// override wins, otherwise the memoized provider limit, otherwise the default.
+func (l *Client) effectiveMaxTokens() int {
 	l.mu.RLock()
 	p := l.provider
 	model := l.model
@@ -244,21 +284,7 @@ func (l *Client) ResolveMaxTokens(ctx context.Context) int {
 	if mt > 0 {
 		return mt
 	}
-	if limit := outputLimitFromProvider(p, model); limit > 0 {
-		return limit
-	}
-	return defaultMaxTokens
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-func resolveMaxTokens(maxTokens int, p Provider, model string) int {
-	if maxTokens > 0 {
-		return maxTokens
-	}
-	if limit := outputLimitFromProvider(p, model); limit > 0 {
+	if limit := l.outLimit.get(p, model, outputLimitFromProvider); limit > 0 {
 		return limit
 	}
 	return defaultMaxTokens
@@ -268,15 +294,13 @@ func resolveMaxTokens(maxTokens int, p Provider, model string) int {
 func (l *Client) completionOpts(msgs []core.Message, tools []ToolSchema, sysPrompt string) CompletionOptions {
 	l.mu.RLock()
 	model := l.model
-	maxTokens := l.maxTokens
 	thinking := l.thinkingEffort
-	p := l.provider
 	l.mu.RUnlock()
 
 	return CompletionOptions{
 		Model:          model,
 		Messages:       msgs,
-		MaxTokens:      resolveMaxTokens(maxTokens, p, model),
+		MaxTokens:      l.effectiveMaxTokens(),
 		Tools:          tools,
 		SystemPrompt:   sysPrompt,
 		ThinkingEffort: thinking,

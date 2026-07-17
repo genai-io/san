@@ -16,6 +16,7 @@ type mockLLMProvider struct {
 	models    []ModelInfo
 	listErr   error
 	lastOpts  CompletionOptions
+	listCalls int
 }
 
 func (m *mockLLMProvider) Stream(_ context.Context, opts CompletionOptions) <-chan StreamChunk {
@@ -38,6 +39,7 @@ func (m *mockLLMProvider) Stream(_ context.Context, opts CompletionOptions) <-ch
 }
 
 func (m *mockLLMProvider) ListModels(_ context.Context) ([]ModelInfo, error) {
+	m.listCalls++
 	return m.models, m.listErr
 }
 
@@ -160,6 +162,62 @@ func TestResolveMaxTokens_Fallback(t *testing.T) {
 	got := l.ResolveMaxTokens(context.Background())
 	if got != defaultMaxTokens {
 		t.Errorf("expected default %d, got %d", defaultMaxTokens, got)
+	}
+}
+
+// TestModelLimitsMemoized guards the hot-path fix: the input and output limits
+// resolve from ListModels (a live network call for OpenAI-family providers), so
+// repeated queries — one per inference step — must reuse a cached result rather
+// than call the provider each time.
+func TestModelLimitsMemoized(t *testing.T) {
+	mp := &mockLLMProvider{
+		models: []ModelInfo{{ID: "m", InputTokenLimit: 200000, OutputTokenLimit: 8000}},
+	}
+	l := &Client{provider: mp, model: "m"}
+
+	for i := range 5 {
+		if got := l.InputLimit(); got != 200000 {
+			t.Fatalf("InputLimit call %d = %d, want 200000", i, got)
+		}
+		if got := l.ResolveMaxTokens(context.Background()); got != 8000 {
+			t.Fatalf("ResolveMaxTokens call %d = %d, want 8000", i, got)
+		}
+	}
+	// One ListModels for the input limit + one for the output limit = 2 total,
+	// regardless of how many times the limits are queried.
+	if mp.listCalls != 2 {
+		t.Errorf("ListModels called %d times across 5 rounds, want 2 (memoized)", mp.listCalls)
+	}
+}
+
+// TestModelLimitsRetryAfterFailure ensures a transient resolution failure is not
+// cached as 0: the next query retries, and only a successful lookup is memoized.
+func TestModelLimitsRetryAfterFailure(t *testing.T) {
+	mp := &mockLLMProvider{listErr: errors.New("network down")}
+	l := &Client{provider: mp, model: "m"}
+
+	if got := l.InputLimit(); got != 0 {
+		t.Fatalf("InputLimit during outage = %d, want 0", got)
+	}
+	if got := l.InputLimit(); got != 0 {
+		t.Fatalf("InputLimit during outage (2nd) = %d, want 0", got)
+	}
+	if mp.listCalls != 2 {
+		t.Errorf("ListModels called %d times during outage, want 2 (failures retry)", mp.listCalls)
+	}
+
+	// Provider recovers: the success is now cached and later calls stop hitting it.
+	mp.listErr = nil
+	mp.models = []ModelInfo{{ID: "m", InputTokenLimit: 200000}}
+	if got := l.InputLimit(); got != 200000 {
+		t.Fatalf("InputLimit after recovery = %d, want 200000", got)
+	}
+	afterRecovery := mp.listCalls
+	if got := l.InputLimit(); got != 200000 {
+		t.Fatalf("InputLimit cached = %d, want 200000", got)
+	}
+	if mp.listCalls != afterRecovery {
+		t.Errorf("ListModels called again after success (%d→%d), want cached", afterRecovery, mp.listCalls)
 	}
 }
 
