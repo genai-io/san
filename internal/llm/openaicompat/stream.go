@@ -89,19 +89,12 @@ func StreamChatCompletions(ctx context.Context, cfg ChatStreamConfig) <-chan llm
 				}
 			}
 
-			// OpenAI-compatible APIs report prompt_tokens as the FULL prompt
-			// (cached tokens included) and expose the cached slice under
-			// prompt_tokens_details.cached_tokens. Split it so InputTokens holds
-			// only the fresh tokens and the cached portion lands in
-			// CacheReadInputTokens — the Anthropic convention the rest of the app
-			// assumes. Without the split, summing InputTokens across a turn's
-			// infer steps multi-counts the re-read cache (inflating the ↑ usage
-			// readout) and cost bills the cached prefix at the full input rate
-			// instead of the cache-read rate. TotalInputTokens stays the full
-			// prompt, so the ctx occupancy readout is unchanged.
-			cachedTokens := int(chunk.Usage.PromptTokensDetails.CachedTokens)
-			state.UpdateUsage(int(chunk.Usage.PromptTokens)-cachedTokens, int(chunk.Usage.CompletionTokens))
-			state.UpdateCacheUsage(0, cachedTokens)
+			// prompt_tokens is the full prompt; the cached slice lives under
+			// prompt_tokens_details. Split into the Anthropic fresh/cache-read
+			// convention the app assumes — see SplitInputTokens.
+			fresh, cached := SplitInputTokens(int(chunk.Usage.PromptTokens), int(chunk.Usage.PromptTokensDetails.CachedTokens))
+			state.UpdateUsage(fresh, int(chunk.Usage.CompletionTokens))
+			state.UpdateCacheUsage(0, cached)
 		}
 
 		if err := stream.Err(); err != nil {

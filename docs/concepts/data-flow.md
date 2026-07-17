@@ -448,7 +448,6 @@ Update → routeToSubModel                update.go
          │
          ▼
    PreInfer                             applyPreInfer
-       ├─ rt.OnTurnBegin()              turn start; reset token counters
        ├─ m.Stream.Active = true
        ├─ m.Append({Role: assistant})   empty assistant message — chunks
        │                                will be appended to it

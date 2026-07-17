@@ -188,8 +188,7 @@ InlinedResults.IsResultInlined(idx)      // 这条 result 是否会被
 
 ```
 event:           core.PreInfer
-applyPreInfer:   rt.OnTurnBegin()
-                 m.Stream.Active = true
+applyPreInfer:   m.Stream.Active = true
                  m.Append({Role: assistant, Content: ""})
                  启动 spinner
 

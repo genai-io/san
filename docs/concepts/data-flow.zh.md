@@ -426,7 +426,6 @@ Update → routeToSubModel                update.go
          │
          ▼
    PreInfer                             applyPreInfer
-       ├─ rt.OnTurnBegin()              一轮开始；token 计数清零
        ├─ m.Stream.Active = true
        ├─ m.Append({Role: assistant})   空的 assistant 消息 ——
        │                                后续 chunk 会追加进它

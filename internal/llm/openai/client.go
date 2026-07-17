@@ -241,8 +241,12 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 					state.Response.Reasoning = extractReasoning(resp.Output)
 				}
 
-				// Map usage
-				state.UpdateUsage(int(resp.Usage.InputTokens), int(resp.Usage.OutputTokens))
+				// input_tokens is the full prompt; the cached slice lives under
+				// input_tokens_details. Split into the Anthropic fresh/cache-read
+				// convention the app assumes — see openaicompat.SplitInputTokens.
+				fresh, cached := openaicompat.SplitInputTokens(int(resp.Usage.InputTokens), int(resp.Usage.InputTokensDetails.CachedTokens))
+				state.UpdateUsage(fresh, int(resp.Usage.OutputTokens))
+				state.UpdateCacheUsage(0, cached)
 
 				// Determine stop reason
 				switch resp.Status {

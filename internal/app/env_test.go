@@ -30,13 +30,13 @@ func TestResetContextDisplay_PreservesConversationCost(t *testing.T) {
 }
 
 func TestResetTokens_ZeroesCompressions(t *testing.T) {
-	e := &env{Compressions: 5, TurnInputTokens: 80, TurnOutputTokens: 40}
+	e := &env{Compressions: 5, InputTokens: 80, OutputTokens: 40}
 	e.ResetTokens()
 	if e.Compressions != 0 {
 		t.Errorf("Compressions = %d, want 0 after ResetTokens", e.Compressions)
 	}
-	if e.TurnInputTokens != 0 || e.TurnOutputTokens != 0 {
-		t.Errorf("turn tokens not zeroed: %d/%d", e.TurnInputTokens, e.TurnOutputTokens)
+	if e.InputTokens != 0 || e.OutputTokens != 0 {
+		t.Errorf("context tokens not zeroed: %d/%d", e.InputTokens, e.OutputTokens)
 	}
 }
 

@@ -20,7 +20,6 @@ type Runtime interface {
 	CommitMessages() []tea.Cmd
 	FlushStreamingBlocks() []tea.Cmd
 	ContinueOutbox() tea.Cmd
-	OnTurnBegin()
 	OnTokenUsage(resp *core.InferResponse)
 	OnAgentMessage(msg core.Message) tea.Cmd
 	OnToolResult(tr core.ToolResult) *core.ToolResult

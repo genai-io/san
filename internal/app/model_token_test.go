@@ -11,33 +11,40 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-func TestOnTokenUsageTracksLatestTurnUsage(t *testing.T) {
+// The bottom-right ctx readout must reflect only the most recent infer call's
+// full context, never a running sum across the turn's infer steps. Two
+// consecutive OnTokenUsage calls (as happens around a tool loop): the second
+// must fully replace the first, not accumulate on top of it.
+func TestOnTokenUsageUsesLatestCallNotAccumulated(t *testing.T) {
 	m := &model{}
-	m.OnTurnBegin()
 
-	m.OnTokenUsage(&core.InferResponse{Usage: core.Usage{InputTokens: 1200, OutputTokens: 80}})
-	if m.env.InputTokens != 1200 || m.env.OutputTokens != 80 {
-		t.Fatalf("first token update = in:%d out:%d, want in:1200 out:80", m.env.InputTokens, m.env.OutputTokens)
-	}
-	if m.env.TurnInputTokens != 1200 || m.env.TurnOutputTokens != 80 {
-		t.Fatalf("first turn totals = in:%d out:%d, want in:1200 out:80", m.env.TurnInputTokens, m.env.TurnOutputTokens)
+	// First infer: a large cached prompt. ctx = full prompt (fresh + cached).
+	m.OnTokenUsage(&core.InferResponse{Usage: core.Usage{
+		InputTokens:          500,
+		OutputTokens:         80,
+		CacheReadInputTokens: 140000,
+	}})
+	if m.env.InputTokens != 140500 || m.env.OutputTokens != 80 {
+		t.Fatalf("first update = in:%d out:%d, want in:140500 out:80", m.env.InputTokens, m.env.OutputTokens)
 	}
 
-	m.OnTokenUsage(&core.InferResponse{Usage: core.Usage{InputTokens: 400, OutputTokens: 25}})
-	if m.env.InputTokens != 400 || m.env.OutputTokens != 25 {
-		t.Fatalf("latest token update = in:%d out:%d, want in:400 out:25", m.env.InputTokens, m.env.OutputTokens)
-	}
-	if m.env.TurnInputTokens != 1600 || m.env.TurnOutputTokens != 105 {
-		t.Fatalf("accumulated turn totals = in:%d out:%d, want in:1600 out:105", m.env.TurnInputTokens, m.env.TurnOutputTokens)
+	// Second infer in the same turn: ctx must become THIS call's full context,
+	// not the sum of both calls (which would be 281800).
+	m.OnTokenUsage(&core.InferResponse{Usage: core.Usage{
+		InputTokens:          300,
+		OutputTokens:         25,
+		CacheReadInputTokens: 141000,
+	}})
+	if m.env.InputTokens != 141300 || m.env.OutputTokens != 25 {
+		t.Fatalf("latest update = in:%d out:%d, want in:141300 out:25 (latest full context, not accumulated)", m.env.InputTokens, m.env.OutputTokens)
 	}
 }
 
-// The ctx readout must count the cached system prompt (reported separately by
-// Anthropic) so it reflects real window occupancy; the per-turn totals stay raw
-// so the cached prompt isn't re-counted on every infer step.
+// The ctx readout must count the cached prompt (reported separately in
+// Anthropic-style usage) so it reflects real window occupancy: the full prompt
+// is fresh + cache read + cache creation.
 func TestOnTokenUsageCountsCachedPromptInContext(t *testing.T) {
 	m := &model{}
-	m.OnTurnBegin()
 
 	m.OnTokenUsage(&core.InferResponse{Usage: core.Usage{
 		InputTokens:              500,
@@ -48,9 +55,6 @@ func TestOnTokenUsageCountsCachedPromptInContext(t *testing.T) {
 
 	if want := 141500; m.env.InputTokens != want {
 		t.Fatalf("context InputTokens = %d, want %d (fresh + cache read + cache creation)", m.env.InputTokens, want)
-	}
-	if m.env.TurnInputTokens != 500 {
-		t.Fatalf("TurnInputTokens = %d, want 500 (raw, excludes cached prompt)", m.env.TurnInputTokens)
 	}
 }
 
@@ -81,38 +85,18 @@ func TestOnTokenUsageClearsCompactedStatusOnNextInfer(t *testing.T) {
 	}
 }
 
-func TestOnTurnBeginResetsTurnTotalsOnlyForNewTurn(t *testing.T) {
-	m := &model{}
-	m.env.TurnInputTokens = 1600
-	m.env.TurnOutputTokens = 105
-
-	m.env.turnUsageActive = true
-	m.OnTurnBegin()
-	if m.env.TurnInputTokens != 1600 || m.env.TurnOutputTokens != 105 {
-		t.Fatalf("existing turn totals changed unexpectedly: in:%d out:%d", m.env.TurnInputTokens, m.env.TurnOutputTokens)
-	}
-
-	m.env.turnUsageActive = false
-	m.OnTurnBegin()
-	if m.env.TurnInputTokens != 0 || m.env.TurnOutputTokens != 0 {
-		t.Fatalf("new turn reset = in:%d out:%d, want zeros", m.env.TurnInputTokens, m.env.TurnOutputTokens)
-	}
-}
-
-func TestResetContextDisplayPreservesTurnTotals(t *testing.T) {
+// ResetContextDisplay zeroes the bottom-right context readout (latest infer
+// call's input/output) so a post-compaction transitional frame doesn't show
+// stale occupancy until the next infer.
+func TestResetContextDisplayZeroesContextReadout(t *testing.T) {
 	m := &model{}
 	m.env.InputTokens = 1200
 	m.env.OutputTokens = 80
-	m.env.TurnInputTokens = 1600
-	m.env.TurnOutputTokens = 105
 
 	m.env.ResetContextDisplay()
 
 	if m.env.InputTokens != 0 || m.env.OutputTokens != 0 {
 		t.Fatalf("context display reset = in:%d out:%d, want zeros", m.env.InputTokens, m.env.OutputTokens)
-	}
-	if m.env.TurnInputTokens != 1600 || m.env.TurnOutputTokens != 105 {
-		t.Fatalf("turn totals changed unexpectedly: in:%d out:%d", m.env.TurnInputTokens, m.env.TurnOutputTokens)
 	}
 }
 

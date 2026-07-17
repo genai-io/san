@@ -310,22 +310,6 @@ func renderStatusCluster(p OperationModeParams) string {
 	return strings.Join(survivors, sep)
 }
 
-func RenderTurnUsageSummary(inputTokens, outputTokens, width int) string {
-	if inputTokens == 0 && outputTokens == 0 {
-		return ""
-	}
-
-	summary := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(
-		fmt.Sprintf("↑%s ↓%s", kit.FormatTokenCount(inputTokens), kit.FormatTokenCount(outputTokens)),
-	)
-	if width <= 0 {
-		return summary
-	}
-
-	gap := max(0, width-lipgloss.Width(summary))
-	return strings.Repeat(" ", gap) + summary
-}
-
 func compactStatusHint(percent float64) string {
 	switch {
 	case percent >= pctCritical:

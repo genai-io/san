@@ -201,8 +201,7 @@ Enter handler).
 
 ```
 event:           core.PreInfer
-applyPreInfer:   rt.OnTurnBegin()
-                 m.Stream.Active = true
+applyPreInfer:   m.Stream.Active = true
                  m.Append({Role: assistant, Content: ""})
                  start spinner
 

@@ -33,13 +33,6 @@ type env struct {
 	// active — see InferResponse.TotalInputTokens.
 	InputTokens  int
 	OutputTokens int
-	// TurnInputTokens / TurnOutputTokens track the current agent turn.
-	// A "turn" here means the whole think-act cycle, which may include multiple
-	// LLM calls around tool use. These totals are reset at the first infer of a
-	// new turn and then accumulated after each infer in that turn.
-	TurnInputTokens  int
-	TurnOutputTokens int
-	turnUsageActive  bool
 	// ConversationCost is the session-cumulative spend shown in the status
 	// bar. It survives ResetContextDisplay (per-compaction) so compaction
 	// doesn't erase prior spend; only ResetTokens (/clear, /new) zeroes it.
@@ -306,8 +299,5 @@ func (m *env) ResetContextDisplay() {
 func (m *env) ResetTokens() {
 	m.ResetContextDisplay()
 	m.ConversationCost = llm.Money{}
-	m.TurnInputTokens = 0
-	m.TurnOutputTokens = 0
-	m.turnUsageActive = false
 	m.Compressions = 0
 }

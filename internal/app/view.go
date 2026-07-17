@@ -68,8 +68,7 @@ func isDockedModal(ov overlayPanel) bool {
 }
 
 // renderNormalView composes the standard layout: chat scrollback area,
-// turn-usage summary, queue preview, textarea + suggestions, and the
-// bottom status line.
+// queue preview, textarea + suggestions, and the bottom status line.
 //
 // Only the active (uncommitted) tail is rendered here; finished messages are
 // already in the terminal's native scrollback (committed via tea.Println, see
@@ -110,15 +109,11 @@ func tailLines(s string, maxLines int) string {
 	return strings.Join(lines[len(lines)-maxLines:], "\n")
 }
 
-// renderFooter renders everything below the chat section (turn usage,
-// separators, queue preview, input area, suggestions, status line) into a
-// single string so its line count can be measured.
+// renderFooter renders everything below the chat section (separators, queue
+// preview, input area, suggestions, status line) into a single string so its
+// line count can be measured.
 func (m *model) renderFooter(separator string) string {
 	var b strings.Builder
-	if turnUsage := conv.RenderTurnUsageSummary(m.env.TurnInputTokens, m.env.TurnOutputTokens, m.env.Width); turnUsage != "" {
-		b.WriteString("\n")
-		b.WriteString(turnUsage)
-	}
 	// Queued messages sit above the input separator: they are already
 	// submitted — on their way into the conversation — so they read as part
 	// of the chat flow, and the input strip below stays reserved for what's

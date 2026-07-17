@@ -19,15 +19,6 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-func (m *model) OnTurnBegin() {
-	if m.env.turnUsageActive {
-		return
-	}
-	m.env.TurnInputTokens = 0
-	m.env.TurnOutputTokens = 0
-	m.env.turnUsageActive = true
-}
-
 func (m *model) OnTokenUsage(resp *core.InferResponse) {
 	if resp == nil {
 		return
@@ -37,17 +28,12 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 		m.userInput.Provider.StatusMessage = ""
 	}
 
-	// Bottom-right context usage reflects the latest prompt/output, not a
+	// Bottom-right context usage reflects the latest infer call, not a
 	// lifetime sum across the whole session. Use the full prompt size
-	// (incl. the cached system prompt) so the ctx readout matches real
+	// (fresh + cache read + cache creation) so the ctx readout matches real
 	// context-window occupancy rather than just the uncached delta.
 	m.env.InputTokens = resp.TotalInputTokens()
 	m.env.OutputTokens = resp.OutputTokens
-	// Turn totals accumulate per infer step. Keep the raw (uncached) input
-	// here: each step re-reads the same cached prompt, so summing the cached
-	// portion across steps would multi-count it.
-	m.env.TurnInputTokens += resp.InputTokens
-	m.env.TurnOutputTokens += resp.OutputTokens
 
 	if m.env.CurrentModel != nil {
 		usage := llm.Usage{
@@ -101,7 +87,6 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
-	m.env.turnUsageActive = false
 	if m.services.Tracker.AllDone() {
 		m.services.Tracker.Reset()
 	}
@@ -162,7 +147,6 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 }
 
 func (m *model) OnAgentStop(err error) tea.Cmd {
-	m.env.turnUsageActive = false
 	// /clear and manual stop cancel the active agent context; that is expected
 	// shutdown, not an agent failure the user needs to see.
 	if err != nil && !errors.Is(err, context.Canceled) {

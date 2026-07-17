@@ -59,11 +59,31 @@ const responsesStreamBody = "" +
 	"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n" +
 	"data: [DONE]\n\n"
 
-func newTestClient(t *captureStreamingTransport) *Client {
+// cachedResponsesTransport returns a Responses stream whose usage reports a
+// mostly-cached prompt: input_tokens is the FULL prompt (1000) with
+// input_tokens_details.cached_tokens (900) as its cached slice.
+type cachedResponsesTransport struct{}
+
+func (t *cachedResponsesTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := "" +
+		"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"ok\"}\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1000,\"input_tokens_details\":{\"cached_tokens\":900},\"output_tokens\":20,\"output_tokens_details\":{\"reasoning_tokens\":0}}}}\n\n" +
+		"data: [DONE]\n\n"
+
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}, nil
+}
+
+func newTestClient(rt http.RoundTripper) *Client {
 	client := sdk.NewClient(
 		option.WithAPIKey("test"),
 		option.WithBaseURL("https://example.com/v1"),
-		option.WithHTTPClient(&http.Client{Transport: t}),
+		option.WithHTTPClient(&http.Client{Transport: rt}),
 	)
 	return NewClient(client, "openai:test")
 }
@@ -233,5 +253,41 @@ func TestStreamResponsesIncludesImageInputs(t *testing.T) {
 	}
 	if got, _ := imagePart["image_url"].(string); got != "data:image/png;base64,ZmFrZQ==" {
 		t.Fatalf("expected data URL image, got %#v", imagePart["image_url"])
+	}
+}
+
+func TestStreamResponsesSplitsCachedInputTokens(t *testing.T) {
+	c := newTestClient(&cachedResponsesTransport{})
+
+	var done *llm.CompletionResponse
+	for chunk := range c.Stream(context.Background(), llm.CompletionOptions{
+		Model:    "gpt-5.4",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	}) {
+		if chunk.Type == llm.ChunkTypeDone {
+			done = chunk.Response
+		}
+	}
+
+	if done == nil {
+		t.Fatal("missing done chunk")
+	}
+	// input_tokens (1000) is the FULL prompt; the cached slice (900) moves to
+	// CacheRead so InputTokens holds only the fresh tokens (Anthropic
+	// convention), keeping cost from billing the cached prefix at the full rate.
+	if done.Usage.InputTokens != 100 {
+		t.Fatalf("InputTokens = %d, want 100 (1000 input - 900 cached)", done.Usage.InputTokens)
+	}
+	if done.Usage.CacheReadInputTokens != 900 {
+		t.Fatalf("CacheReadInputTokens = %d, want 900", done.Usage.CacheReadInputTokens)
+	}
+	if done.Usage.OutputTokens != 20 {
+		t.Fatalf("OutputTokens = %d, want 20", done.Usage.OutputTokens)
+	}
+	// The fresh + cached split must still sum to the API's reported input_tokens
+	// so the bottom-bar ctx readout (TotalInputTokens) stays accurate.
+	total := done.Usage.InputTokens + done.Usage.CacheReadInputTokens + done.Usage.CacheCreationInputTokens
+	if total != 1000 {
+		t.Fatalf("total input = %d, want 1000 (equal to API input_tokens)", total)
 	}
 }

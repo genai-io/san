@@ -169,7 +169,6 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 }
 
 func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
-	rt.OnTurnBegin()
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
 	commitCmds := rt.CommitMessages()

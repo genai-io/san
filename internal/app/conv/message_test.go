@@ -245,12 +245,21 @@ func TestRenderModeStatusShowsTemporaryStatusMessage(t *testing.T) {
 	}
 }
 
-func TestRenderTurnUsageSummaryShowsPerTurnTokens(t *testing.T) {
-	rendered := RenderTurnUsageSummary(1234, 56, 80)
-	for _, want := range []string{"↑1.2k", "↓56"} {
-		if !strings.Contains(rendered, want) {
-			t.Fatalf("RenderTurnUsageSummary() = %q, want %q", rendered, want)
-		}
+// The bottom status line must carry the ctx readout but never the old
+// per-turn "↑… ↓…" usage summary (removed to avoid a second, confusingly
+// scoped token figure above the input area).
+func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
+	visible := stripANSI(RenderModeStatus(OperationModeParams{
+		ModelName:   "gpt-test",
+		InputTokens: 164600,
+		InputLimit:  272000,
+		Width:       120,
+	}))
+	if !strings.Contains(visible, "ctx") {
+		t.Fatalf("RenderModeStatus() = %q, want the ctx label", visible)
+	}
+	if strings.ContainsAny(visible, "↑↓") {
+		t.Fatalf("RenderModeStatus() = %q, must not render per-turn usage arrows", visible)
 	}
 }
 
