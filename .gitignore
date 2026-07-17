@@ -26,6 +26,7 @@ coverage.out
 # Local config
 .san/*
 !.san/skills/
+!.san/personas/
 .claude/
 .mcp.json
 CLAUDE.md
