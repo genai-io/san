@@ -59,6 +59,8 @@ type Data struct {
 	// steers, how it drives (model + system prompt), and the mission it steers
 	// toward (JSON key "autoPilot").
 	AutoPilot AutoPilotSettings `json:"autoPilot,omitempty"`
+	// LastOperationMode is the user-wide mode restored when starting a new session.
+	LastOperationMode string `json:"lastOperationMode,omitempty"`
 }
 
 // AutoPilotSettings tunes the autopilot copilot. Every field is optional;
@@ -460,6 +462,23 @@ func (m OperationMode) String() string {
 	}
 }
 
+func (m OperationMode) PersistenceName() string {
+	switch m {
+	case ModeAutoAccept:
+		return "auto-accept"
+	case ModeAutoPilot:
+		return "auto-pilot"
+	case ModeBypassPermissions:
+		return "bypass"
+	case ModeDontAsk:
+		return "dont-ask"
+	case ModeReadOnly:
+		return "read-only"
+	default:
+		return "normal"
+	}
+}
+
 func OperationModeFromString(mode string) OperationMode {
 	mode = strings.TrimSpace(mode)
 	switch mode {
@@ -471,6 +490,8 @@ func OperationModeFromString(mode string) OperationMode {
 		return ModeBypassPermissions
 	case "dontAsk", "dont-ask":
 		return ModeDontAsk
+	case "readOnly", "read-only":
+		return ModeReadOnly
 	default:
 		return ModeNormal
 	}
@@ -575,6 +596,7 @@ func (s *Data) Clone() *Data {
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
 	dst.AutoPilot = s.AutoPilot.Clone()
+	dst.LastOperationMode = s.LastOperationMode
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v

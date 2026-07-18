@@ -240,6 +240,10 @@ func (m *env) ApplyModePermissions(cwd string) {
 	if m.OperationMode == setting.ModeAutoPilot {
 		m.ApplyAutoPilotPermissions(cwd)
 	}
+
+	if m.OperationMode == setting.ModeDontAsk || m.OperationMode == setting.ModeReadOnly {
+		m.SessionPermissions.Mode = m.OperationMode
+	}
 }
 
 func (m *env) ApplyDefaultPermissionMode(mode string, cwd string, allowBypass bool) {

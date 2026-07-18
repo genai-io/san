@@ -51,6 +51,28 @@ func TestNext_BypassReturnsNormal(t *testing.T) {
 	}
 }
 
+func TestOperationModePersistenceNames(t *testing.T) {
+	tests := []struct {
+		mode OperationMode
+		name string
+	}{
+		{ModeNormal, "normal"},
+		{ModeAutoAccept, "auto-accept"},
+		{ModeAutoPilot, "auto-pilot"},
+		{ModeBypassPermissions, "bypass"},
+		{ModeDontAsk, "dont-ask"},
+		{ModeReadOnly, "read-only"},
+	}
+	for _, tt := range tests {
+		if got := tt.mode.PersistenceName(); got != tt.name {
+			t.Errorf("%v.PersistenceName() = %q, want %q", tt.mode, got, tt.name)
+		}
+		if got := OperationModeFromString(tt.name); got != tt.mode {
+			t.Errorf("OperationModeFromString(%q) = %v, want %v", tt.name, got, tt.mode)
+		}
+	}
+}
+
 func TestAutoPilot_StringAndFromString(t *testing.T) {
 	if got := ModeAutoPilot.String(); got != "autopilot" {
 		t.Errorf("ModeAutoPilot.String() = %q, want %q", got, "autopilot")

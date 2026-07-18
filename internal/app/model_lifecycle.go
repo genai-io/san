@@ -55,7 +55,11 @@ func newBaseModel() model {
 	learnedStores := newLearnedStoreContext(appCwd, svc.Setting)
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	if settings := svc.Setting.Snapshot(); settings != nil {
-		environment.ApplyDefaultPermissionMode(settings.Permissions.DefaultMode, appCwd, svc.Setting.AllowBypass())
+		mode := settings.LastOperationMode
+		if mode == "" {
+			mode = settings.Permissions.DefaultMode
+		}
+		environment.ApplyDefaultPermissionMode(mode, appCwd, svc.Setting.AllowBypass())
 		environment.ShowContextBar = settings.ShowContextBar()
 		environment.AutoPilot = settings.AutoPilot.Clone()
 	}

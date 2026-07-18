@@ -6,9 +6,11 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -17,6 +19,7 @@ func (m *model) cycleOperationMode() tea.Cmd {
 	allowBypass := m.services.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
 	m.applyOperationMode()
+	m.persistOperationMode()
 	// Landing on AutoPilot surfaces the opening proposal (Suggest) — but debounce
 	// it: the cycle wraps through AutoPilot, so a gesture that only passes through
 	// it must not fire a wasted LLM call. Confirm the user actually rested here
@@ -34,12 +37,19 @@ func (m *model) applyOperationMode() {
 	m.services.Hook.SetPermissionMode(m.env.OperationModeName())
 }
 
+func (m *model) persistOperationMode() {
+	if err := setting.UpdateLastOperationMode(m.env.OperationMode); err != nil {
+		log.Logger().Warn("persist operation mode", zap.Error(err))
+	}
+}
+
 // enterAutoPilotMode switches the operation posture to AutoPilot without cycling,
 // so the /autopilot panel's Start button engages the copilot even from another
 // mode (otherwise the kick's autopilotEngaged() gate would drop it).
 func (m *model) enterAutoPilotMode() {
 	m.env.OperationMode = setting.ModeAutoPilot
 	m.applyOperationMode()
+	m.persistOperationMode()
 }
 
 // autopilotSettleDelay is how long the mode must rest on AutoPilot before the
