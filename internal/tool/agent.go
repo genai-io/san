@@ -10,27 +10,28 @@ import (
 const (
 	// IconAgent is the display icon for agent tool results.
 	IconAgent = "a"
+
+	// MaxAgentNestingDepth is the maximum allowed nesting depth for subagents.
+	MaxAgentNestingDepth = 5
 )
+
+// agentDepthKey is the context key used to track agent nesting depth.
+type agentDepthKey struct{}
 
 // messagesGetterKey is the context key for parent messages getter (used by fork).
 type messagesGetterKey struct{}
 
-// agentIDKey carries the broker address of the agent whose tools are running,
-// so SendMessage can stamp the sender. Empty for the main conversation.
-type agentIDKey struct{}
-
-// WithAgentID marks the context with the running subagent's broker address.
-func WithAgentID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, agentIDKey{}, id)
+// GetAgentDepth returns the current agent nesting depth from context.
+func GetAgentDepth(ctx context.Context) int {
+	if d, ok := ctx.Value(agentDepthKey{}).(int); ok {
+		return d
+	}
+	return 0
 }
 
-// AgentIDFromContext returns the running subagent's broker address, or "" when
-// the caller is the main conversation.
-func AgentIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(agentIDKey{}).(string); ok {
-		return id
-	}
-	return ""
+// WithAgentDepth returns a context with the given agent nesting depth.
+func WithAgentDepth(ctx context.Context, depth int) context.Context {
+	return context.WithValue(ctx, agentDepthKey{}, depth)
 }
 
 // WithMessagesGetter returns a context carrying a messages getter for fork support.
@@ -72,13 +73,10 @@ type AgentExecRequest struct {
 	Model       string
 	MaxSteps    int
 	Mode        string
+	ResumeID    string
 	Isolation   string
-	// TaskID is the background-task id of this run; the executor registers it
-	// with the broker so main can message the subagent while it runs. Empty
-	// for foreground runs.
-	TaskID     string
-	OnActivity ActivityFunc
-	OnQuestion AskQuestionFunc
+	OnActivity  ActivityFunc
+	OnQuestion  AskQuestionFunc
 }
 
 // AgentExecResult contains the result of agent execution.

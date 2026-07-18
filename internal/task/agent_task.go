@@ -3,7 +3,6 @@ package task
 import (
 	"bytes"
 	"context"
-	"errors"
 	"sync"
 	"time"
 )
@@ -159,8 +158,7 @@ func (t *AgentTask) GetOutput() string {
 }
 
 // Complete marks the task as completed and notifies subscribers.
-// A context.Canceled error records the task as stopped (deliberate cancel),
-// any other error as failed. It is idempotent — a second call is a no-op.
+// It is idempotent — a second call after completion is a no-op.
 func (t *AgentTask) Complete(err error) {
 	t.mu.Lock()
 	if t.Status != StatusRunning {
@@ -169,15 +167,11 @@ func (t *AgentTask) Complete(err error) {
 	}
 	t.EndTime = time.Now()
 
-	switch {
-	case err == nil:
-		t.Status = StatusCompleted
-	case errors.Is(err, context.Canceled):
-		t.Status = StatusStopped
-		t.Error = "stopped before completion"
-	default:
+	if err != nil {
 		t.Status = StatusFailed
 		t.Error = err.Error()
+	} else {
+		t.Status = StatusCompleted
 	}
 	outputFile := t.OutputFile
 	status := t.Status

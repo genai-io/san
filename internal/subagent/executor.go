@@ -32,22 +32,23 @@ type ProviderResolver interface {
 
 // Executor runs agent LLM loops
 type Executor struct {
-	provider            llm.Provider
-	resolver            ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
-	cwd                 string
-	parentModelID       string // Parent conversation's model ID (used when inheriting)
-	hooks               hook.Handler
-	sessionStore        SubagentSessionStore // Optional: when set, subagent sessions are persisted
-	parentSessionID     string               // Parent session ID for linking subagent sessions
-	isGit               bool                 // whether cwd is a git repository
-	projectInstructions string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
-	skillsPrompt        string               // available skills section for capable subagents
-	mcpTools            mcp.Tools            // tool schemas + execution
-	mcpServers          mcp.Servers          // connect/disconnect for per-subagent server sets
+	provider        llm.Provider
+	resolver        ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
+	cwd             string
+	parentModelID   string // Parent conversation's model ID (used when inheriting)
+	hooks           hook.Handler
+	sessionStore    SubagentSessionStore // Optional: when set, subagent sessions are persisted
+	parentSessionID string               // Parent session ID for linking subagent sessions
+	isGit           bool                 // whether cwd is a git repository
+	skillsPrompt    string               // available skills section for capable subagents
+	agentsPrompt    string               // available agents section for capable subagents
+	mcpTools        mcp.Tools            // tool schemas + execution
+	mcpServers      mcp.Servers          // connect/disconnect for per-subagent server sets
 }
 
 type SubagentSessionStore interface {
 	SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error)
+	LoadSubagentMessages(agentID string) ([]core.Message, error)
 }
 
 type runConfig struct {
@@ -72,18 +73,10 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 }
 
 // SetContext provides project context (git status) so subagents get the same
-// system prompt foundation as the parent conversation. User memory is
-// intentionally not propagated — see collectSubagentReminders.
+// system prompt foundation as the parent conversation. Memory (user/project
+// instructions) is intentionally not propagated — see collectSubagentReminders.
 func (e *Executor) SetContext(isGit bool) {
 	e.isGit = isGit
-}
-
-// SetProjectInstructions provides the project's instruction memory
-// (CLAUDE.md/AGENTS.md). Edit-capable subagents receive it as a
-// <system-reminder> so their changes follow project conventions; read-only
-// agents do not carry it.
-func (e *Executor) SetProjectInstructions(instructions string) {
-	e.projectInstructions = instructions
 }
 
 // SetResolver enables cross-provider routing: a subagent whose model is an
@@ -94,10 +87,11 @@ func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
 }
 
-// SetSkillsDirectory provides the skills directory section so subagents
-// with the Skill tool can see and invoke available skills.
-func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
+// SetCapabilities provides skills and agents prompt sections so subagents
+// that have Agent/Skill tools can see available capabilities.
+func (e *Executor) SetCapabilities(skillsPrompt, agentsPrompt string) {
 	e.skillsPrompt = skillsPrompt
+	e.agentsPrompt = agentsPrompt
 }
 
 // SetMCP wires the parent's MCP access for the subagent. Tool schemas
@@ -122,10 +116,6 @@ func (e *Executor) GetParentModelID() string {
 
 // Run executes an agent request and returns the result.
 // For background agents, this should be called in a goroutine.
-//
-// Every exit path fires the SubagentStop hook with the same AgentID the
-// SubagentStart hook carried, and a cancelled run still persists its
-// conversation so it can be resumed with SendMessage.
 func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
 	run, err := e.prepareRun(ctx, req)
 	if err != nil {
@@ -148,7 +138,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		if cancelled != nil {
 			return cancelled, err
 		}
-		e.fireSubagentStop(run.req, run.hookID, "", "")
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
 	}
 
@@ -157,9 +146,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 // RunBackground executes an agent in the background and returns the task.
 func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
-	if err := e.validateRequest(req); err != nil {
-		return nil, err
-	}
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
@@ -175,32 +161,19 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		ctx,
 		cancel,
 	)
-	agentTask.SetIdentity(req.Agent, "")
+	agentTask.SetIdentity(req.Agent, req.ResumeID)
 
 	task.Default().RegisterTask(agentTask)
 
-	req.TaskID = agentTask.GetID()
 	req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
 	}
-	// Background subagents run unattended: no interactive question channel.
-	req.OnQuestion = nil
 
 	go func() {
 		defer cancel()
 
 		result, err := e.Run(ctx, req)
 		if err != nil {
-			// A cancelled run still returns its partial work — keep it in the
-			// task output and record the resumable session so a stopped
-			// worker can be continued with SendMessage.
-			if result != nil {
-				if result.Content != "" {
-					agentTask.AppendOutput([]byte(result.Content + "\n"))
-				}
-				agentTask.SetIdentity(req.Agent, result.AgentID)
-				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
-			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
 			agentTask.Complete(err)
 			return
@@ -208,9 +181,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 
 		if result.Content != "" {
 			agentTask.AppendOutput([]byte(result.Content))
-		}
-		if result.WorktreePath != "" {
-			agentTask.AppendOutput([]byte("\n" + worktreePreservedNote(result.WorktreePath)))
 		}
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)
@@ -234,52 +204,22 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	return nil
 }
 
-// prepareWorkspace resolves the run's working directory. With worktree
-// isolation the returned finish func removes the worktree only when it is
-// clean; a worktree holding uncommitted changes is preserved and its path
-// returned, so an editing agent's work survives the run.
-func (e *Executor) prepareWorkspace(req tool.AgentExecRequest, config *AgentConfig) (string, func() (keptPath string), error) {
-	isolation := req.Isolation
-	if isolation == "" && config != nil {
-		isolation = config.Isolation
-	}
-	if isolation != "worktree" {
-		return e.cwd, func() string { return "" }, nil
+func (e *Executor) prepareWorkspace(req tool.AgentExecRequest) (string, func(), error) {
+	if req.Isolation != "worktree" {
+		return e.cwd, func() {}, nil
 	}
 
-	result, _, err := worktree.Create(e.cwd, "")
+	result, cleanup, err := worktree.Create(e.cwd, "")
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create worktree: %w", err)
 	}
-
-	baseCwd := e.cwd
-	finish := func() string {
-		if worktree.HasUncommittedChanges(result.Path) {
-			log.Logger().Info("Preserving agent worktree with uncommitted changes",
-				zap.String("path", result.Path))
-			return result.Path
-		}
-		if err := worktree.Remove(baseCwd, result.Path); err != nil {
-			log.Logger().Warn("worktree cleanup failed",
-				zap.String("path", result.Path), zap.Error(err))
-		}
-		return ""
-	}
-	return result.Path, finish, nil
-}
-
-// worktreePreservedNote tells the parent agent where preserved work lives.
-func worktreePreservedNote(path string) string {
-	return fmt.Sprintf("[worktree preserved] Uncommitted changes remain in %s — review and merge or discard them.", path)
+	return result.Path, cleanup, nil
 }
 
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
-	}
-	if !defaultRegistry.IsEnabled(req.Agent) {
-		return nil, fmt.Errorf("agent type is disabled: %s", req.Agent)
 	}
 
 	displayName := displayNameFor(config, req)
@@ -321,9 +261,7 @@ func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID stri
 	})
 }
 
-func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec func(string, map[string]any), onEvent func(core.Event)) (core.Agent, func(), error) {
-	rc := run.cfg
-	agentCwd := run.cwd
+func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd string, onToolExec func(string, map[string]any), onEvent func(core.Event)) (core.Agent, func(), error) {
 	cleanup := func() {}
 
 	if len(rc.config.McpServers) > 0 && e.mcpServers != nil {
@@ -340,6 +278,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	// ride on the first user message as <system-reminder> blocks built by
 	// loadConversation, keeping subagents on the same harness channel
 	// pattern as the main agent.
+	_, agentDirectoryGetter := e.capabilityPrompts(rc.config)
+
 	sys := system.Build(core.ScopeSubagent,
 		system.WithProvider(rc.provider.Name()),
 		system.WithGitGuidelines(e.isGit),
@@ -357,20 +297,15 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		mcpGetter = e.mcpTools.GetToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), mcpGetter)
+	toolSet.AgentDirectory = agentDirectoryGetter
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
 	var ag core.Agent
-	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
+	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {
 			return nil
 		}
 		return ag.Messages()
-	})}
-	// Foreground runs route AskUserQuestion through the spawning turn's UI.
-	// Background runs have no question channel (OnQuestion is stripped).
-	if run.req.OnQuestion != nil {
-		adaptOpts = append(adaptOpts, tool.WithAskUser(tool.AskUserFunc(run.req.OnQuestion)))
-	}
-	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, adaptOpts...)
+	}))
 
 	// Add MCP tool executors
 	if e.mcpTools != nil {
@@ -389,80 +324,50 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	permFn := subagentPermissionFunc(rc.permMode, rc.config.AllowTools, rc.config.DenyTools)
 	coreTools = tool.WithPermission(coreTools, permFn)
 
-	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	ag = core.NewAgent(core.Config{
-		LLM:         llmClient,
-		System:      sys,
-		Tools:       coreTools,
-		AgentType:   rc.config.Name,
-		CompactFunc: subagentCompactFunc(llmClient),
-		CWD:         agentCwd,
-		MaxSteps:    rc.maxSteps,
-		OutboxBuf:   -1,
-		OnEvent:     onEvent,
+		LLM:       llm.NewClient(rc.provider, rc.modelID, 0),
+		System:    sys,
+		Tools:     coreTools,
+		AgentType: rc.config.Name,
+		CWD:       agentCwd,
+		MaxSteps:  rc.maxSteps,
+		OutboxBuf: -1,
+		OnEvent:   onEvent,
 	})
 
 	return ag, cleanup, nil
 }
 
-// subagentCompactFunc summarizes the conversation on the run's own model so
-// long subagent runs survive context-window pressure instead of dying on
-// prompt-too-long. Mirrors the main agent's compaction.
-func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Message) (string, error) {
-	return func(ctx context.Context, msgs []core.Message) (string, error) {
-		text := core.BuildCompactionText(msgs)
-		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, core.CompactMaxTokens)
-		if err != nil {
-			return "", err
-		}
-		summary := strings.TrimSpace(resp.Content)
-		if summary == "" {
-			return "", fmt.Errorf("compaction produced empty summary")
-		}
-		return summary, nil
-	}
-}
-
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
-	// Harness-managed reminders ride on the first user message as
-	// <system-reminder> blocks, matching the main agent's pattern.
-	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode)
+	// Resume from saved session
+	if req.ResumeID != "" {
+		if err := e.resumeFromSession(ag, ctx, req.ResumeID, req.Prompt); err != nil {
+			return fmt.Errorf("failed to resume agent: %w", err)
+		}
+		return nil
+	}
+
+	// Fresh start: harness-managed reminders ride on the first user message
+	// as <system-reminder> blocks, matching the main agent's pattern.
+	skillsPrompt, _ := e.capabilityPrompts(rc.config)
+	reminders := collectSubagentReminders(skillsPrompt)
 	prompt := reminder.AttachToContent(req.Prompt, reminders)
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	return nil
 }
 
-// collectSubagentReminders returns the <system-reminder> blocks for the
-// subagent's first user message. Subagents get the skills directory (so they
-// can invoke capabilities) and — when they can modify the workspace — the
-// project's instruction memory, so their edits follow project conventions.
-// User memory stays with the main loop: a subagent is a one-shot worker
-// bounded by its own charter.
-func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode) []string {
-	var reminders []string
-	reminders = append(reminders, wrapNonEmpty(skills)...)
-	if modeAllowsMutation(mode) {
-		reminders = append(reminders, wrapNonEmpty(reminder.WrapMemory("project", e.projectInstructions))...)
-	}
-	return reminders
-}
-
-func wrapNonEmpty(body string) []string {
-	if w := reminder.Wrap(body); w != "" {
+// collectSubagentReminders returns the fully-wrapped <system-reminder> blocks
+// for the subagent's first user message. Empty inputs produce no entries.
+//
+// Subagents get the skills directory (so they can invoke capabilities) but
+// NOT user/project memory: memory is scoped to the long-lived main loop
+// agent, whereas a subagent is a one-shot worker bounded by its own charter
+// and should not carry the human's project/user instructions.
+func collectSubagentReminders(skills string) []string {
+	if w := reminder.Wrap(skills); w != "" {
 		return []string{w}
 	}
 	return nil
-}
-
-// modeAllowsMutation reports whether the mode lets the agent change the
-// workspace (used to decide if project conventions are relevant to it).
-func modeAllowsMutation(mode PermissionMode) bool {
-	switch operationMode(mode) {
-	case setting.ModeAutoAccept, setting.ModeBypassPermissions:
-		return true
-	default:
-		return false
-	}
 }
 
 func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
@@ -478,17 +383,18 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 	return success, errMsg
 }
 
-// fireSubagentStop fires on every run exit — success, cancellation, or error
-// — with the same AgentID that SubagentStart carried, so hook consumers can
-// pair the two events. The session id travels via the transcript path.
-func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agentTranscriptPath, resultContent string) {
+func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agentSessionID, agentTranscriptPath, resultContent string) {
 	if e.hooks == nil {
 		return
 	}
 
+	stopAgentID := agentHookID
+	if agentSessionID != "" {
+		stopAgentID = agentSessionID
+	}
 	e.hooks.ExecuteAsync(hook.SubagentStop, hook.HookInput{
 		AgentType:            req.Agent,
-		AgentID:              agentHookID,
+		AgentID:              stopAgentID,
 		AgentTranscriptPath:  agentTranscriptPath,
 		LastAssistantMessage: resultContent,
 		StopHookActive:       e.hooks.StopHookActive(),
@@ -552,29 +458,28 @@ func operationMode(mode PermissionMode) setting.OperationMode {
 	}
 }
 
-// skillsDirectoryFor returns the skills section body for the agent, gated on
-// its tool allow list — a subagent without the Skill tool gets no skills
-// section.
-func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
+// capabilityPrompts returns the skills section body and a getter for the
+// agent directory body that should be embedded into the Agent tool's
+// description. Both are gated on the subagent's tool allow list — a subagent
+// without the Skill tool gets no skills section, and one without the Agent
+// tool gets no directory (the getter returns "").
+func (e *Executor) capabilityPrompts(config *AgentConfig) (skillsPrompt string, agentDirectory func() string) {
 	if config == nil {
-		return ""
+		return "", nil
 	}
 	if config.AllowTools == nil || config.AllowTools.HasName("Skill") {
-		return e.skillsPrompt
+		skillsPrompt = e.skillsPrompt
 	}
-	return ""
+	if config.AllowTools == nil || config.AllowTools.HasName("Agent") {
+		body := e.agentsPrompt
+		agentDirectory = func() string { return body }
+	}
+	return skillsPrompt, agentDirectory
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
 // matches docs/concepts/permission-model.md: deny_tools, bypass-immune, allow_tools,
 // mode default, with Prompt collapsing to Deny because subagents cannot ask.
-//
-// One communication carve-out sits between deny and mode default: SendMessage
-// is always permitted (unless deny_tools blocks it). It only moves text
-// between agents — it never mutates the workspace, and the tool itself refuses
-// a worker-initiated resume — so a read-only worker can still report to main,
-// answer a peer, or broadcast. (Spawning is not gated here: the Agent tool is
-// parent-only, so workers never see it — the agent model is flat.)
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
 	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)

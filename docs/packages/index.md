@@ -40,7 +40,6 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 | Package | One-liner |
 |---|---|
 | [`agent`](2-feature/agent.md) | Main agent session lifecycle (Start/Stop/Send/Outbox + permission bridge). |
-| [`broker`](2-feature/broker.md) | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | [`command`](2-feature/command.md) | Slash command registry (builtin + dynamic + custom + plugin-scoped). |
 | [`cron`](2-feature/cron.md) | Cron expressions and one-shot scheduling for `/loop` and `/schedule`. |
 | [`hook`](2-feature/hook.md) | Pre/post hook engine with command / HTTP / LLM / function executors. |

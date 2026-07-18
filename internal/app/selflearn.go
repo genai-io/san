@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
@@ -68,6 +69,15 @@ func (m *model) resolveSelfLearnConfig() (selflearn.Config, error) {
 	// clone — so the per-turn drift check in ensureAgentSession stays cheap.
 	return selflearn.ResolveSettings(m.services.Setting.SelfLearn())
 }
+
+// L1 review lifecycle event types published on agentEventHub. "started" is
+// an internal spinner wake-up consumed by onMainEvent; "done"/"failed"
+// surface as user-visible notices.
+const (
+	eventSelfLearnReviewStarted = "selflearn.review.started"
+	eventSelfLearnReviewDone    = "selflearn.review.done"
+	eventSelfLearnReviewFailed  = "selflearn.review.failed"
+)
 
 // wireSelfLearn builds the L1 Reviewer for the running session when ≥1
 // arm is enabled. params is captured so the fork rebuilds an LLM client
@@ -152,7 +162,7 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 		})
 
 		m.services.SelfLearn.Indicator.BeginReview()
-		m.publishSelfLearnStarted()
+		m.publishSelfLearnStarted(kinds)
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
@@ -238,7 +248,7 @@ func (m *model) runSelfLearnDemo() {
 	const kinds = selflearn.KindMemory | selflearn.KindSkills
 	go func() {
 		ind.BeginReview()
-		m.publishSelfLearnStarted()
+		m.publishSelfLearnStarted(kinds)
 
 		steps := []struct {
 			wait   time.Duration
@@ -491,10 +501,14 @@ func memoryTopicName(file string) string {
 // forkSessionID points at the L1 fork's own session so the recap can
 // suggest "san --resume <id>" for replay.
 func (m *model) publishSelfLearnSummary(actions []ReviewAction, forkSessionID string) {
-	if len(actions) == 0 {
+	if m.agentEventHub == nil || len(actions) == 0 {
 		return
 	}
-	m.notifyMain(mainNotice{Display: formatRecapBlock(actions, forkSessionID)})
+	m.agentEventHub.Publish(hub.Event{
+		Type:    eventSelfLearnReviewDone,
+		Target:  "main",
+		Subject: formatRecapBlock(actions, forkSessionID),
+	})
 }
 
 // formatRecapBlock renders the post-review recap as a lipgloss-bordered
@@ -666,45 +680,33 @@ func skillVerb(action string) string {
 	}
 }
 
-// publishSelfLearnStarted signals the main loop that a review began (on the
-// fork goroutine), so it can start the spinner from frame one. Non-blocking:
-// a full channel drops the signal — the spinner just starts on the next one.
-func (m *model) publishSelfLearnStarted() {
-	select {
-	case m.selfLearnStarts <- struct{}{}:
-	default:
+// publishSelfLearnStarted nudges the main loop to schedule the first
+// spinner tick, so "evolving ⠋" appears from frame one.
+func (m *model) publishSelfLearnStarted(kinds selflearn.ReviewKind) {
+	if m.agentEventHub == nil {
+		return
 	}
-}
-
-// selfLearnStartedMsg wakes the Update loop when a review starts, so the
-// spinner is scheduled on the main goroutine.
-type selfLearnStartedMsg struct{}
-
-// awaitSelfLearnStart yields a selfLearnStartedMsg each time a review starts.
-func awaitSelfLearnStart(ch <-chan struct{}) tea.Cmd {
-	return func() tea.Msg {
-		<-ch
-		return selfLearnStartedMsg{}
-	}
-}
-
-// onSelfLearnStarted starts the spinner (at most once per active review) and
-// re-arms the listener. TryStartTicker keeps back-to-back reviews from
-// stacking parallel tick chains.
-func (m *model) onSelfLearnStarted() tea.Cmd {
-	next := awaitSelfLearnStart(m.selfLearnStarts)
-	if m.services.SelfLearn.Indicator != nil && m.services.SelfLearn.Indicator.TryStartTicker() {
-		return tea.Batch(scheduleSelflearnTick(), next)
-	}
-	return next
+	m.agentEventHub.Publish(hub.Event{
+		Type:    eventSelfLearnReviewStarted,
+		Target:  "main",
+		Subject: kinds.String(),
+	})
 }
 
 // publishSelfLearnFailure surfaces a terse failure notice; full details
-// land in the log. Notice only — never re-submitted to the LLM.
+// land in the log. Subject only (Data routes through SubmitToAgent —
+// see publishSelfLearnSummary).
 func (m *model) publishSelfLearnFailure(kinds selflearn.ReviewKind, err error) {
+	if m.agentEventHub == nil {
+		return
+	}
 	msg := strings.TrimSpace(err.Error())
 	if msg == "" {
 		msg = "review failed (see log)"
 	}
-	m.notifyMain(mainNotice{Display: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg)})
+	m.agentEventHub.Publish(hub.Event{
+		Type:    eventSelfLearnReviewFailed,
+		Target:  "main",
+		Subject: fmt.Sprintf("Self-improvement review failed (%s): %s", kinds.String(), msg),
+	})
 }

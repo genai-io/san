@@ -5,103 +5,114 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/genai-io/san/internal/broker"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/task"
 )
 
-func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+func TestSendMessageTool_ResumesCompletedTask(t *testing.T) {
+	task.Initialize(task.Options{})
+	t.Cleanup(task.ResetDefaultTracker)
 
-	var got broker.Message
-	broker.Register("task-1", func(m broker.Message) { got = m })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
-		"to":      "task-1",
-		"message": "check the auth module too",
-	}, ".")
+	agentTask := task.NewAgentTask("task-sendmessage-1", "Explore Worker", "Initial task", ctx, cancel)
+	agentTask.SetIdentity("Explore", "agent-session-321")
+	agentTask.Complete(nil)
+	task.Default().RegisterTask(agentTask)
+	defer task.Default().Remove("task-sendmessage-1")
 
-	if !result.Success {
-		t.Fatalf("expected delivery to succeed: %s", result.Error)
-	}
-	if got.From != broker.Main || got.To != "task-1" {
-		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
-	}
-	if !strings.Contains(got.Content, "check the auth module too") ||
-		!strings.Contains(got.Content, `<agent-message from="main">`) {
-		t.Fatalf("delivered content malformed: %q", got.Content)
-	}
-}
-
-func TestSendMessage_SubagentReportsToMain(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
-
-	var got broker.Message
-	broker.Register(broker.Main, func(m broker.Message) { got = m })
-
-	ctx := tool.WithAgentID(context.Background(), "task-9")
-	result := NewSendMessageTool().Execute(ctx, map[string]any{
-		"to":      "main",
-		"message": "found the root cause",
-	}, ".")
-
-	if !result.Success {
-		t.Fatalf("expected report to succeed: %s", result.Error)
-	}
-	if got.From != "task-9" || got.To != broker.Main {
-		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
-	}
-	if !strings.Contains(got.Content, `<agent-message from="task-9">`) {
-		t.Fatalf("sender envelope missing: %q", got.Content)
-	}
-}
-
-func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
-
-	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
-		"to":      "task-gone",
-		"message": "anyone home?",
-	}, ".")
-
-	if result.Success {
-		t.Fatal("sending to an unregistered address should fail")
-	}
-	if !strings.Contains(result.Error, "not running") {
-		t.Fatalf("unexpected error: %s", result.Error)
-	}
-}
-
-func TestSendMessage_SelfSendRejected(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
-	broker.Register("task-7", func(broker.Message) {})
-
-	ctx := tool.WithAgentID(context.Background(), "task-7")
-	result := NewSendMessageTool().Execute(ctx, map[string]any{
-		"to":      "task-7",
-		"message": "hello me",
-	}, ".")
-
-	if result.Success {
-		t.Fatal("a self-addressed message should be rejected")
-	}
-	if !strings.Contains(result.Error, "yourself") {
-		t.Fatalf("unexpected error: %s", result.Error)
-	}
-}
-
-func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
-	broker.Reset()
-	t.Cleanup(broker.Reset)
+	executor := &stubSendMessageExecutor{}
 	toolInst := NewSendMessageTool()
+	toolInst.SetExecutor(executor)
 
-	if r := toolInst.Execute(context.Background(), map[string]any{"to": "x"}, "."); r.Success {
-		t.Fatal("missing message should fail")
+	result := toolInst.Execute(context.Background(), map[string]any{
+		"task_id":     "task-sendmessage-1",
+		"message":     "Please verify the earlier finding",
+		"description": "Verify finding",
+	}, ".")
+
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
 	}
-	if r := toolInst.Execute(context.Background(), map[string]any{"message": "hi"}, "."); r.Success {
-		t.Fatal("missing recipient should fail")
+	if executor.lastRun.ResumeID != "agent-session-321" {
+		t.Fatalf("ResumeID = %q, want %q", executor.lastRun.ResumeID, "agent-session-321")
+	}
+	if executor.lastRun.Prompt != "Please verify the earlier finding" {
+		t.Fatalf("Prompt = %q", executor.lastRun.Prompt)
+	}
+}
+
+func TestSendMessageTool_RejectsRunningTask(t *testing.T) {
+	task.Initialize(task.Options{})
+	t.Cleanup(task.ResetDefaultTracker)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	agentTask := task.NewAgentTask("task-sendmessage-2", "Explore Worker", "Initial task", ctx, cancel)
+	agentTask.SetIdentity("Explore", "agent-session-654")
+	task.Default().RegisterTask(agentTask)
+	defer task.Default().Remove("task-sendmessage-2")
+
+	toolInst := NewSendMessageTool()
+	toolInst.SetExecutor(&stubSendMessageExecutor{})
+
+	result := toolInst.Execute(context.Background(), map[string]any{
+		"task_id": "task-sendmessage-2",
+		"message": "Keep going",
+	}, ".")
+
+	if result.Success {
+		t.Fatalf("expected error for running task, got success")
+	}
+	if !strings.Contains(result.Error, "still running") {
+		t.Fatalf("unexpected error: %s", result.Error)
+	}
+}
+
+func TestSendMessageTool_BackgroundMessageByAgentID(t *testing.T) {
+	executor := &stubSendMessageExecutor{}
+	toolInst := NewSendMessageTool()
+	toolInst.SetExecutor(executor)
+
+	result := toolInst.Execute(context.Background(), map[string]any{
+		"agent_id":          "agent-session-777",
+		"subagent_type":     "Explore",
+		"message":           "Retry with narrower scope",
+		"description":       "Retry audit",
+		"run_in_background": true,
+	}, ".")
+
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
+	}
+	if executor.lastBackgroundRun.ResumeID != "agent-session-777" {
+		t.Fatalf("ResumeID = %q, want %q", executor.lastBackgroundRun.ResumeID, "agent-session-777")
+	}
+	if executor.lastBackgroundRun.Prompt != "Retry with narrower scope" {
+		t.Fatalf("Prompt = %q", executor.lastBackgroundRun.Prompt)
+	}
+	if !strings.Contains(result.Output, "Message sent to worker in background.") {
+		t.Fatalf("unexpected output: %s", result.Output)
+	}
+	if strings.Contains(result.Output, "Use TaskOutput") {
+		t.Fatalf("should not encourage immediate TaskOutput polling: %s", result.Output)
+	}
+}
+
+func TestSendMessageTool_RequiresAgentTypeForDirectAgentID(t *testing.T) {
+	toolInst := NewSendMessageTool()
+	toolInst.SetExecutor(&stubSendMessageExecutor{})
+
+	result := toolInst.Execute(context.Background(), map[string]any{
+		"agent_id": "agent-session-999",
+		"message":  "Continue",
+	}, ".")
+
+	if result.Success {
+		t.Fatal("expected failure")
+	}
+	if !strings.Contains(result.Error, "subagent_type is required") {
+		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }

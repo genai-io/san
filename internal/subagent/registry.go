@@ -64,7 +64,7 @@ func (r *Registry) registerBuiltins() {
 		Description: "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.",
 		Color:       "green",
 		WhenToUse: `Use this when the task needs multiple searches, cross-file reasoning, implementation work, or another multi-step workflow.
-For non-mutating investigation, run this agent with mode=explore. For implementation work, run it with mode=edit.`,
+For non-mutating investigation, run this agent with mode=explore. For implementation work, run it with mode=acceptEdits or the default mode.`,
 		Model:          "inherit",
 		PermissionMode: PermissionDefault,
 		AllowTools:     nil,

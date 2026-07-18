@@ -116,18 +116,11 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 	if a.promptResponder != nil {
 		ctx = ContextWithBashPromptResponderProvider(ctx, a.promptResponder)
 	}
-	if IsAgentToolName(a.inner.Name()) {
-		if a.activityFn != nil {
-			if callID := core.ToolCallIDFromContext(ctx); callID != "" {
-				input["_onActivity"] = ActivityFunc(func(msg string) {
-					a.activityFn(callID, msg)
-				})
-			}
-		}
-		// Forward the interaction channel so foreground subagents can route
-		// AskUserQuestion prompts to the user through their spawning turn.
-		if a.askFn != nil {
-			input["_onQuestion"] = AskQuestionFunc(a.askFn)
+	if IsAgentToolName(a.inner.Name()) && a.activityFn != nil {
+		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
+			input["_onActivity"] = ActivityFunc(func(msg string) {
+				a.activityFn(callID, msg)
+			})
 		}
 	}
 

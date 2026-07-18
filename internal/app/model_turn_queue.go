@@ -1,9 +1,8 @@
 // Turn-boundary inbox drain and prompt injection. After every agent turn
 // ends we drain (in priority order) queued user messages, cron-fired
-// prompts, async-hook continuations, and the main-loop notice buffer (broker
-// messages routed to "main"). Each drained item is converted to a notice +
-// optional re-send to the agent. Also handles the Stop hook result that gates
-// session persistence.
+// prompts, async-hook continuations, and the main agentEventHub buffer. Each
+// drained item is converted to a notice + optional re-send to the agent.
+// Also handles the Stop hook result that gates session persistence.
 package app
 
 import (
@@ -11,12 +10,13 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 )
 
-const maxNoticesPerDrain = 8
+const maxEventsPerDrain = 8
 
 func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if msg.Blocked {
@@ -80,35 +80,35 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 		}
 	}
 
-	if len(m.pendingNotices) > 0 {
-		events := m.pendingNotices
-		m.pendingNotices = nil
+	if len(m.pendingMainEvents) > 0 {
+		events := m.pendingMainEvents
+		m.pendingMainEvents = nil
 		// Listener may have just re-armed during OnTurnEnd processing;
 		// catch any chan events that landed in that window too.
-		if extra := drainNotices(m.mainNotices, maxNoticesPerDrain-len(events)); len(extra) > 0 {
+		if extra := drainEvents(m.mainEvents, maxEventsPerDrain-len(events)); len(extra) > 0 {
 			events = append(events, extra...)
 		}
-		return m.injectNotices(events), true
+		return m.injectHubEvents(events), true
 	}
 
 	return nil, false
 }
 
-// injectNotice surfaces merged main-loop notices (subagent completions,
-// interim messages) into the live conversation: the notice line is shown, the
-// body (if any) is submitted to the main agent as a fresh turn.
-func (m *model) injectNotice(n mainNotice) tea.Cmd {
-	if n.Display != "" {
-		m.conv.AddNotice(n.Display)
+// injectNotification surfaces a background event (task completion, agent
+// message) into the live conversation. Notice + content come from hub.Merge
+// over a batch of hub.Events.
+func (m *model) injectNotification(msg hub.Message) tea.Cmd {
+	if msg.Notice != "" {
+		m.conv.AddNotice(msg.Notice)
 	}
-	if n.Content == "" {
+	if msg.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.SubmitToAgent(n.Content, nil)
+	return m.SubmitToAgent(msg.Content, nil)
 }
 
-func drainNotices(ch <-chan mainNotice, max int) []mainNotice {
-	var out []mainNotice
+func drainEvents(ch <-chan hub.Event, max int) []hub.Event {
+	var out []hub.Event
 	for range max {
 		select {
 		case e := <-ch:
@@ -120,33 +120,50 @@ func drainNotices(ch <-chan mainNotice, max int) []mainNotice {
 	return out
 }
 
-// mainNoticeMsg wraps one Source-2 notice for the Update loop.
+// mainEventMsg wraps a hub.Event for delivery to the Update loop.
 // Counterpart to AgentOutboxMsg for the agent outbox chan.
-type mainNoticeMsg struct{ notice mainNotice }
+type mainEventMsg struct{ event hub.Event }
 
-// awaitMainNotice blocks until one notice arrives on the chan, then yields a
-// mainNoticeMsg. onMainNotice re-arms after handling.
-func awaitMainNotice(ch <-chan mainNotice) tea.Cmd {
+// awaitMainEvent blocks until one event arrives on the chan, then
+// yields a mainEventMsg. onMainEvent re-arms after handling.
+func awaitMainEvent(ch <-chan hub.Event) tea.Cmd {
 	return func() tea.Msg {
-		return mainNoticeMsg{notice: <-ch}
+		return mainEventMsg{event: <-ch}
 	}
 }
 
-// onMainNotice injects a message now when idle, or parks it in pendingNotices
-// for the next turn boundary when a stream is in flight. Re-arming is
-// unconditional: after the read the chan is empty, so the next firing waits for
-// the next message.
-func (m *model) onMainNotice(n mainNotice) tea.Cmd {
-	next := awaitMainNotice(m.mainNotices)
-	if m.conv.Stream.Active {
-		m.pendingNotices = append(m.pendingNotices, n)
+// onMainEvent injects the event immediately when idle, or queues it
+// in pendingMainEvents for drainTurnQueues at the next turn boundary
+// (mid-stream). Re-arming is unconditional: after the read the chan
+// is empty, so the next firing waits for the next publish.
+func (m *model) onMainEvent(ev hub.Event) tea.Cmd {
+	next := awaitMainEvent(m.mainEvents)
+	// Selflearn tick-start events are internal spinner wake-ups, not
+	// user-visible notices. TryStartTicker keeps back-to-back reviews
+	// from stacking parallel tick chains.
+	if ev.Type == eventSelfLearnReviewStarted {
+		if m.services.SelfLearn.Indicator != nil && m.services.SelfLearn.Indicator.TryStartTicker() {
+			return tea.Batch(scheduleSelflearnTick(), next)
+		}
 		return next
 	}
-	return tea.Batch(m.injectNotices([]mainNotice{n}), next)
+	if m.conv.Stream.Active {
+		m.pendingMainEvents = append(m.pendingMainEvents, ev)
+		return next
+	}
+	return tea.Batch(m.injectHubEvents([]hub.Event{ev}), next)
 }
 
-func (m *model) injectNotices(notices []mainNotice) tea.Cmd {
-	return m.injectNotice(mergeNotices(notices))
+func (m *model) injectHubEvents(events []hub.Event) tea.Cmd {
+	return m.injectNotification(hub.Merge(eventsToMessages(events)))
+}
+
+func eventsToMessages(events []hub.Event) []hub.Message {
+	msgs := make([]hub.Message, len(events))
+	for i, e := range events {
+		msgs[i] = hub.Message{Notice: e.Subject, Content: e.Data}
+	}
+	return msgs
 }
 
 // injectCronPrompt fires a scheduled cron prompt as if the user had just

@@ -505,22 +505,13 @@ func executeToolTask(ctx context.Context, t agentToolTask) (result toolTaskOutpu
 	return toolTaskOutput{content, err}
 }
 
-// canExecuteToolBatchInParallel permits two batch shapes: all read-only
-// calls, or all agent-spawning calls. Agent calls are independent workers
-// with their own permission gates — running them concurrently is the point
-// of launching several at once; mixed batches stay sequential because
-// side-effect ordering against other tools is unknown.
 func canExecuteToolBatchInParallel(tasks []agentToolTask) bool {
-	readOnly, agents := true, true
 	for _, t := range tasks {
 		if !isReadOnlyToolCall(t.call.Name) {
-			readOnly = false
-		}
-		if !isAgentSpawnToolCall(t.call.Name) {
-			agents = false
+			return false
 		}
 	}
-	return readOnly || agents
+	return true
 }
 
 func isReadOnlyToolCall(name string) bool {
@@ -530,10 +521,6 @@ func isReadOnlyToolCall(name string) bool {
 	default:
 		return false
 	}
-}
-
-func isAgentSpawnToolCall(name string) bool {
-	return name == "Agent" || name == "SendMessage"
 }
 
 // CompactMaxTokens is the max output tokens for compaction LLM calls.

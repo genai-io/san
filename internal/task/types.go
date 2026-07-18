@@ -20,10 +20,6 @@ const (
 	StatusCompleted TaskStatus = "completed"
 	StatusFailed    TaskStatus = "failed"
 	StatusKilled    TaskStatus = "killed"
-	// StatusStopped marks a task whose run was cancelled (user stop, shutdown)
-	// rather than failing on its own. Kept distinct from StatusFailed so the
-	// main agent does not treat a deliberate stop as an error to retry.
-	StatusStopped TaskStatus = "stopped"
 )
 
 // BackgroundTask is the common interface for all background task types

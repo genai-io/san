@@ -28,10 +28,10 @@ package app
 
 // model is the Bubble Tea root model. One per process.
 type model struct {
-    userInput      input.Model     // Source 1: user keyboard
-    unregisterMain func()          // Source 2: deregisters the main address from the broker
-    mainEvents     chan mainNotice // notices bound for the main loop (subagent mail, self-learn)
-    systemInput trigger.Model      // Source 3: cron / async hook / file watcher
+    userInput   input.Model      // Source 1: user keyboard
+    eventHub    *hub.Hub         // Source 2: agent-to-agent pub/sub
+    events      chan hub.Event   // consumer-owned buffer
+    systemInput trigger.Model    // Source 3: cron / async hook / file watcher
     conv        conv.Model       // agent outbox → conversation view
     env         env              // app-local TUI state
     services    services         // 16 injected feature-layer service refs
@@ -59,11 +59,10 @@ type services struct {
 }
 ```
 
-Each sub-model package (`conv/`, `input/`, `trigger/`, `kit/`) defines its
-own narrow `Runtime` interface. Root implements those via adapter methods
-on `*model`, never reaching down into root from a sub-model. Source 2
-(agent → main) is not an app sub-package: it is the process-wide
-[`broker`](../2-feature/broker.md), which the root opens as `broker.Main`.
+Each sub-model package (`conv/`, `input/`, `trigger/`, `hub/`, `kit/`)
+defines its own narrow `Runtime` interface. Root implements those via
+adapter methods on `*model`, never reaching down into root from a
+sub-model.
 
 ### Known Violations
 
@@ -119,7 +118,7 @@ Sub-model packages:
 |---|---|---|
 | `app/input/` | Source 1 (user keyboard) | Textarea, selectors, approval modals, slash command dispatch. Big surface (37 files, `on_*.go` per component). |
 | `app/conv/` | agent outbox | Conversation render state, streaming, message rendering, tool-call rendering, progress trackers. |
-| [`broker`](../2-feature/broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
+| `app/hub/` | Source 2 (agent → agent) | Pub/sub bus for subagent completion events. |
 | `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 

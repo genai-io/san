@@ -42,13 +42,12 @@ var promptFS embed.FS
 
 // init-time read of every static template. Keeps Build() allocation-light.
 var (
-	cachedIdentity      = loadEmbed("prompts/identity.txt")
-	cachedBehavior      = loadEmbed("prompts/behavior.txt")
-	cachedRules         = loadEmbed("prompts/rules.txt")
-	cachedRulesDelegate = loadEmbed("prompts/rules-delegate.txt")
-	cachedRulesMain     = loadEmbed("prompts/rules-main.txt")
-	cachedRulesGit      = loadEmbed("prompts/rules-git.txt")
-	cachedCompact       = loadEmbed("prompts/compact.txt")
+	cachedIdentity  = loadEmbed("prompts/identity.txt")
+	cachedBehavior  = loadEmbed("prompts/behavior.txt")
+	cachedRules     = loadEmbed("prompts/rules.txt")
+	cachedRulesMain = loadEmbed("prompts/rules-main.txt")
+	cachedRulesGit  = loadEmbed("prompts/rules-git.txt")
+	cachedCompact   = loadEmbed("prompts/compact.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -152,54 +151,41 @@ func behaviorSection(override string) core.Section {
 
 // Part: rules (slot 2)
 
-// rulesParams selects which rule blocks render for an agent.
-type rulesParams struct {
-	scope          core.Scope
-	isGit          bool
-	provider       string
-	canSpawnAgents bool // include the agent-delegation protocol
-	override       string
-}
-
 // rulesSection renders the safety contract plus the operational protocols
-// (tools and system-reminders always; agent delegation when the agent can
-// spawn agents; task tracking and interactive questions for the main agent),
-// with git safety folded in when isGit and any provider quirks appended
-// last. Subagents get the safety + tool subset.
-func rulesSection(p rulesParams) core.Section {
-	p.override = strings.TrimSpace(p.override)
+// (tools and system-reminders always; task tracking and interactive questions
+// for the main agent), with git safety folded in when isGit and any provider
+// quirks appended last. Subagents get the safety + tool subset.
+func rulesSection(scope core.Scope, isGit bool, provider, override string) core.Section {
+	override = strings.TrimSpace(override)
 	source := core.Predefined
-	if p.override != "" {
+	if override != "" {
 		source = core.FromFile
 	}
 	return core.Section{
 		Slot: core.SlotRules, Name: "rules", Source: source,
 		Render: func() string {
-			body := p.override
+			body := override
 			if body == "" {
-				body = assembleRules(p)
+				body = assembleRules(scope, isGit, provider)
 			}
 			return wrap("rules", nil, body)
 		},
 	}
 }
 
-func assembleRules(p rulesParams) string {
+func assembleRules(scope core.Scope, isGit bool, provider string) string {
 	// Each file already carries its own "## " headings, so the merged
 	// <rules> envelope reads as one structured block.
 	blocks := []string{cachedRules}
-	if p.canSpawnAgents {
-		blocks = append(blocks, cachedRulesDelegate)
-	}
-	if p.scope == core.ScopeMain {
+	if scope == core.ScopeMain {
 		// Task tracking + asking the user are main-agent behaviors.
 		blocks = append(blocks, cachedRulesMain)
 	}
-	if p.isGit {
+	if isGit {
 		blocks = append(blocks, cachedRulesGit)
 	}
-	if p.provider != "" {
-		if quirks := loadEmbedOptional("prompts/providers/" + p.provider + ".txt"); quirks != "" {
+	if provider != "" {
+		if quirks := loadEmbedOptional("prompts/providers/" + provider + ".txt"); quirks != "" {
 			blocks = append(blocks, quirks)
 		}
 	}
@@ -224,13 +210,7 @@ func SwapPersona(sys core.System, p Persona, isGit bool, provider string) {
 	const caller = "command:persona"
 	sys.Use(identitySection(p.Identity), caller)
 	sys.Use(behaviorSection(p.Behavior), caller)
-	sys.Use(rulesSection(rulesParams{
-		scope:          core.ScopeMain,
-		isGit:          isGit,
-		provider:       provider,
-		canSpawnAgents: true,
-		override:       p.Rules,
-	}), caller)
+	sys.Use(rulesSection(core.ScopeMain, isGit, provider, p.Rules), caller)
 }
 
 // WithProvider folds provider-specific quirks (prompts/providers/<name>.txt,
@@ -306,11 +286,11 @@ func modeDescription(mode string) string {
 	case "explore":
 		return "read-only research; do not modify files or run shell commands"
 	case "acceptEdits":
-		return "may read and edit files; other gated tools are denied automatically"
+		return "may read and edit files; gated tools require approval"
 	case "bypass":
 		return "permission checks bypassed; act with care on destructive operations"
 	default:
-		return "read and analysis tools only; mutating tools are denied unless an allow rule covers them"
+		return "default permissions; gated tools prompt for approval"
 	}
 }
 

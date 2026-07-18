@@ -277,10 +277,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 	case stopHookResultMsg:
 		return m, m.handleStopHookResult(msg)
-	case mainNoticeMsg:
-		return m, m.onMainNotice(msg.notice)
-	case selfLearnStartedMsg:
-		return m, m.onSelfLearnStarted()
+	case mainEventMsg:
+		return m, m.onMainEvent(msg.event)
 	case selflearnTickMsg:
 		return m, m.handleSelflearnTick()
 	}

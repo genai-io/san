@@ -50,30 +50,29 @@ func ClearPluginAgentPaths() {
 
 // LoadCustomAgents loads custom agent definitions from standard locations.
 // Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
-// Priority when the same agent name appears in several locations:
+// Search order (priority):
 //  1. .san/agents/*.md (project level, preferred)
 //  2. ~/.san/agents/*.md (user level, preferred)
 //  3. .claude/agents/*.md (project level, Claude Code compatible)
 //  4. ~/.claude/agents/*.md (user level, Claude Code compatible)
 //  5. Plugin agent paths
-//
-// Registry.Register overwrites by name, so sources load lowest-priority
-// first — the highest-priority definition lands last and wins.
 func LoadCustomAgents(cwd string) {
 	homeDir, _ := os.UserHomeDir()
 
-	priorityOrdered := []agentSearchPath{
+	// Define search paths in order of priority
+	searchPaths := []agentSearchPath{
 		{path: filepath.Join(confdir.Dir(cwd), "agents")},
 		{path: filepath.Join(confdir.Dir(homeDir), "agents")},
 		{path: filepath.Join(cwd, ".claude", "agents")},
 		{path: filepath.Join(homeDir, ".claude", "agents")},
 	}
+
+	// Add plugin paths
 	additionalAgentPathsMu.Lock()
-	priorityOrdered = append(priorityOrdered, additionalAgentPaths...)
+	searchPaths = append(searchPaths, additionalAgentPaths...)
 	additionalAgentPathsMu.Unlock()
 
-	for i := len(priorityOrdered) - 1; i >= 0; i-- {
-		sp := priorityOrdered[i]
+	for _, sp := range searchPaths {
 		loadAgentsFromDirWithNamespace(sp.path, sp.namespace)
 	}
 }
@@ -138,33 +137,6 @@ func loadAgentFromFileWithNamespace(filePath string, namespace string) {
 	}
 }
 
-// frontmatterAliases are alternate key spellings accepted in agent
-// frontmatter: `tools` is Claude Code's key, the hyphenated forms are the
-// spellings docs/guides/writing-a-subagent.md documents. Canonical keys on
-// AgentConfig win when both are present.
-type frontmatterAliases struct {
-	Tools          ToolList       `yaml:"tools"`
-	AllowedTools   ToolList       `yaml:"allowed-tools"`
-	PermissionMode PermissionMode `yaml:"permission-mode"`
-	MaxSteps       int            `yaml:"max_steps"`
-}
-
-func (a frontmatterAliases) applyTo(config *AgentConfig) {
-	if config.AllowTools == nil {
-		if a.AllowedTools != nil {
-			config.AllowTools = a.AllowedTools
-		} else if a.Tools != nil {
-			config.AllowTools = a.Tools
-		}
-	}
-	if config.PermissionMode == "" && a.PermissionMode != "" {
-		config.PermissionMode = a.PermissionMode
-	}
-	if config.MaxSteps <= 0 && a.MaxSteps > 0 {
-		config.MaxSteps = a.MaxSteps
-	}
-}
-
 // parseAgentFile parses an AGENT.md file with YAML frontmatter.
 func parseAgentFile(filePath string) (*AgentConfig, error) {
 	frontmatter, _, err := markdown.ParseFrontmatterFile(filePath)
@@ -178,10 +150,6 @@ func parseAgentFile(filePath string) (*AgentConfig, error) {
 	var config AgentConfig
 	if err := yaml.Unmarshal([]byte(frontmatter), &config); err != nil {
 		return nil, err
-	}
-	var aliases frontmatterAliases
-	if err := yaml.Unmarshal([]byte(frontmatter), &aliases); err == nil {
-		aliases.applyTo(&config)
 	}
 
 	config.PermissionMode = NormalizePermissionMode(string(config.PermissionMode))

@@ -26,8 +26,8 @@ Project overrides user overrides Claude-compat by `name`.
 ---
 name: test-runner
 description: Run the test suite and surface failures
-allow_tools: [Bash, Read, Grep]
-mode: bypass
+allowed-tools: [Bash, Read, Grep]
+permission-mode: bypass
 isolation: none
 ---
 
@@ -45,17 +45,12 @@ Be terse. No code suggestions — that is the parent agent's job.
 
 | Field | Required | Purpose |
 |---|---|---|
-| `name` | yes | Subagent type identifier; used in the `Agent` tool's `subagent_type` field. |
+| `name` | yes | Subagent type identifier; used in `Agent` tool's `agent_type` field. |
 | `description` | yes | Shown in selectors and used by the foreground model to decide when to spawn this agent. |
-| `allow_tools` | no | Restrict the subagent's tool set (nil = all tools). Aliases accepted: `allowed-tools`, and Claude Code's `tools`. |
-| `deny_tools` | no | Tools (or `Tool(pattern)` rules) removed regardless of mode. |
-| `mode` | no | Permission mode: `default`, `explore`, `edit` (alias of `acceptEdits`), `bypassPermissions`. Alias accepted: `permission-mode`. See below. |
-| `isolation` | no | `none` (default) or `worktree` — see below. A per-spawn `isolation` argument overrides this. |
+| `allowed-tools` | no | Restrict the subagent's tool set. Default = same as parent. |
+| `permission-mode` | no | One of `default`, `acceptEdits`, `bypassPermissions`, `plan`. Default = parent. |
+| `isolation` | no | `none` (default) or `worktree` — see below. |
 | `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
-| `max-steps` | no | Cap on LLM inference steps (default 100). |
-| `skills` | no | Skill names whose bodies are preloaded into the agent's charter. |
-
-Canonical keys win when both a canonical key and its alias are present.
 
 ## Cross-Provider Models
 
@@ -92,27 +87,20 @@ controls what happens when a tool call would normally `ask`:
 
 | Mode | Behavior |
 |---|---|
-| `explore` | Read-only: mutating tools are denied and hidden from the schema list. |
-| `default` | Reads auto-allow; `ask` collapses to `deny`, so mutations are blocked unless an `allow_tools` rule covers them. |
-| `edit` (= `acceptEdits`) | Edit/Write auto-allow; other gated tools (e.g. unrestricted Bash) are denied. |
-| `bypassPermissions` | Everything allowed except bypass-immune safety checks. Trusted agents only — no human in the loop. |
+| `default` | `ask` collapses to `deny` (with a "would have asked" record). |
+| `acceptEdits` | Treat `ask` as `allow` for edit-class tools. |
+| `bypassPermissions` | Treat every `ask` as `allow`. Use only for read-only or trusted subagents. |
+| `plan` | Force `deny` for all write-class tools. Read-only exploration. |
 
-The `Agent` tool is never available to subagents — the agent model is flat,
-and only the main conversation spawns subagents. `SendMessage` (a subagent
-reporting to `"main"`) follows the ordinary mode pipeline.
-
-See [`concepts/agent-communication.md`](../concepts/agent-communication.md)
-for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
-for the full decision pipeline.
+See [`concepts/permission-model.md`](../concepts/permission-model.md) for
+the full decision pipeline.
 
 ## Worktree Isolation
 
 `isolation: worktree` creates a `git worktree` under
 `<project>/.git/agent-worktrees/<random>/` and runs the subagent there.
-The parent's working tree is untouched. On exit the worktree is removed
-**only if it is clean**; uncommitted changes preserve it, and the agent's
-result includes `[worktree preserved] … <path>` so the parent can review,
-merge, or discard the work.
+The parent's working tree is untouched until the subagent finishes; the
+worktree is removed on success.
 
 Use this when you want a subagent to run experiments that may dirty the
 tree (build artifacts, codegen, refactors) without polluting the
@@ -124,7 +112,7 @@ The foreground agent calls the `Agent` tool with:
 
 ```json
 {
-  "subagent_type": "test-runner",
+  "agent_type": "test-runner",
   "description": "Run the unit tests for the auth package",
   "prompt": "Focus on internal/auth/*_test.go and report failures."
 }
@@ -133,29 +121,9 @@ The foreground agent calls the `Agent` tool with:
 San:
 
 1. Looks up `test-runner` in the subagent registry.
-2. Builds a `core.Agent` with the subagent's charter and tool subset.
-3. Runs it in the spawning turn (foreground), or as a `task.AgentTask`
-   with `run_in_background: true`.
-4. Returns the final aggregated result to the parent agent — as the tool
-   result (foreground) or a `<task-notification>` on completion
-   (background).
-
-## Talking to a Running Worker
-
-A background subagent registers with the broker for its whole run — see
-[`concepts/agent-communication.md`](../concepts/agent-communication.md) for
-the model:
-
-- **Steer**: `SendMessage(to=<task id>, message)` posts into the running
-  subagent's inbox; it reads the message at its next step. Best-effort — a
-  subagent that has finished, or is deep in a long tool call, may not see it.
-- **Report to main**: inside a background subagent,
-  `SendMessage(to="main", message)` sends an interim note without ending the
-  run. The subagent's *final* answer returns on its own as a completion —
-  don't use `SendMessage` for it.
-- **Stop**: `TaskStop` cancels a run (status `stopped`, distinct from
-  `failed`). Subagents are one-shot — there is no resume; spawn a fresh one to
-  continue a line of work.
+2. Builds a `core.Agent` with the subagent's system prompt and tool subset.
+3. Runs it as a `task.AgentTask` in the background.
+4. Returns the final aggregated result to the parent agent.
 
 ## Trying It
 
@@ -170,19 +138,15 @@ the model:
 
 - **No prompt argument.** If `prompt` is missing, the subagent has no
   instructions beyond its system prompt. Always pass a prompt.
-- **`allow_tools` too narrow.** Forgot `Bash`? The subagent can't run
-  anything — and a whitelist without `SendMessage` also removes reporting
-  to main.
+- **`allowed-tools` too narrow.** Forgot `Bash`? The subagent can't
+  run anything.
 - **`bypassPermissions` on a write-class subagent.** Verify carefully
   — the subagent has no human in the loop.
-- **Same name in several locations.** Priority is project `.san` > user
-  `~/.san` > project `.claude` > user `~/.claude` > plugins; the
-  higher-priority definition wins.
+- **`isolation: worktree` without git.** Fails silently for non-git
+  projects. The subagent runs in the parent's cwd as fallback.
 
 ## See Also
 
-- [`concepts/agent-communication.md`](../concepts/agent-communication.md) —
-  how the main conversation and its subagents message each other.
 - [`packages/subagent.md`](../packages/2-feature/subagent.md) — registry +
   executor design.
 - [`packages/agent.md`](../packages/2-feature/agent.md) — foreground agent

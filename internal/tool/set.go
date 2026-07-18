@@ -6,11 +6,9 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// parentOnlyTools are tools that only the main conversation can use.
-// Subagents never get these regardless of their allow list. Agent is here
-// because the agent model is flat: only main spawns workers.
+// parentOnlyTools are tools that only the parent conversation can use.
+// Subagents never get these regardless of their allow list.
 var parentOnlyTools = map[string]bool{
-	ToolAgent:         true,
 	ToolEnterWorktree: true,
 	ToolExitWorktree:  true,
 }
@@ -86,9 +84,8 @@ func (s *Set) agentAllTools() []core.ToolSchema {
 }
 
 // agentTools returns tools filtered by the allow list.
-// Only tools in the Allow list are included (parent-only tools are excluded
-// even when listed). MCP tools matching the allow list (e.g.
-// "mcp__server__tool") are also included.
+// Only tools in the Allow list are included. MCP tools matching
+// the allow list (e.g. "mcp__server__tool") are also included.
 func (s *Set) agentTools() []core.ToolSchema {
 	allTools := GetToolSchemas()
 
@@ -100,7 +97,7 @@ func (s *Set) agentTools() []core.ToolSchema {
 
 	filtered := make([]core.ToolSchema, 0, len(s.Allow))
 	for _, t := range allTools {
-		if allowSet[strings.ToLower(t.Name)] && !parentOnlyTools[t.Name] && !s.isDisallowed(t.Name) {
+		if allowSet[strings.ToLower(t.Name)] && !s.isDisallowed(t.Name) {
 			filtered = append(filtered, t)
 		}
 	}
