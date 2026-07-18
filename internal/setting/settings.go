@@ -322,6 +322,15 @@ func (s *Data) ShowContextBar() bool {
 	return s != nil && s.ContextBar != nil && *s.ContextBar
 }
 
+// StartupMode is the operation mode a new session starts in: the mode the user
+// last left, falling back to the configured default permission mode.
+func (s *Data) StartupMode() string {
+	if s == nil {
+		return ""
+	}
+	return coalesce(s.LastOperationMode, s.Permissions.DefaultMode)
+}
+
 // PermissionSettings defines permission rules for tool execution.
 // Rule format: "Tool(pattern)" — e.g. "Bash(npm:*)", "Read(**/.env)".
 type PermissionSettings struct {
