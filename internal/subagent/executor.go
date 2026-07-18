@@ -162,9 +162,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
 	}
-	if !defaultRegistry.IsEnabled(req.Agent) {
-		return nil, fmt.Errorf("agent type is disabled: %s", req.Agent)
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	displayName := displayNameFor(config, req)
@@ -384,7 +381,7 @@ func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Messag
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
 	// Harness-managed reminders ride on the first user message as
 	// <system-reminder> blocks, matching the main agent's pattern.
-	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode, rc.config.AllowTools)
+	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode)
 	prompt := reminder.AttachToContent(req.Prompt, reminders)
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	return nil
@@ -396,10 +393,10 @@ func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runC
 // project's instruction memory, so their edits follow project conventions.
 // User memory stays with the main loop: a subagent is a one-shot worker
 // bounded by its own charter.
-func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode, allow ToolList) []string {
+func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode) []string {
 	var reminders []string
 	reminders = append(reminders, wrapNonEmpty(skills)...)
-	if canEditWorkspace(mode, allow) {
+	if modeAllowsMutation(mode) {
 		reminders = append(reminders, wrapNonEmpty(reminder.WrapMemory("project", e.projectInstructions))...)
 	}
 	return reminders
@@ -412,22 +409,15 @@ func wrapNonEmpty(body string) []string {
 	return nil
 }
 
-// canEditWorkspace reports whether the subagent can change files in the
-// workspace — the signal for whether project conventions are worth handing it.
-// True when the permission mode auto-accepts mutations (edit/bypass), or when
-// an explicit allow_tools rule grants an edit-class tool (Edit/Write/…) even
-// under a mode, such as default, that would otherwise deny them.
-func canEditWorkspace(mode PermissionMode, allow ToolList) bool {
+// modeAllowsMutation reports whether the mode lets the agent change the
+// workspace (used to decide if project conventions are relevant to it).
+func modeAllowsMutation(mode PermissionMode) bool {
 	switch operationMode(mode) {
 	case setting.ModeAutoAccept, setting.ModeBypassPermissions:
 		return true
+	default:
+		return false
 	}
-	for _, name := range allow.Names() {
-		if perm.IsEditTool(name) {
-			return true
-		}
-	}
-	return false
 }
 
 func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
