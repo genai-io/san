@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
+	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
@@ -25,9 +25,14 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	base := newBaseModel()
 	m := &base
 
-	m.agentEventHub.Register("main", func(e hub.Event) { m.mainEvents <- e })
+	// The main conversation registers the "main" address with the broker;
+	// messages routed to it (subagent completions, interim messages) land on
+	// mainNotices and are drained at turn boundaries.
+	broker.Register(broker.Main, func(msg broker.Message) {
+		m.mainNotices <- fromBrokerMessage(msg)
+	})
 
-	// Wire task completion: closure captures hub + hooks + tracker directly.
+	// Wire task completion: closure captures hooks + tracker.
 	m.wireTaskLifecycle(m.services.Hook)
 
 	m.configureAsyncHookCallback()
@@ -72,8 +77,8 @@ func newBaseModel() model {
 			},
 		}),
 		conv:                conv.NewModel(defaultWidth),
-		agentEventHub:       hub.New(),
-		mainEvents:          make(chan hub.Event, 64),
+		mainNotices:         make(chan mainNotice, 64),
+		selfLearnStarts:     make(chan struct{}, 8),
 		systemInput:         trigger.New(),
 		env:                 environment,
 		services:            svc,
@@ -188,16 +193,14 @@ func (m *model) ensureMemoryContextLoaded() {
 
 func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 	trackerSvc := m.services.Tracker
-	agentEventHub := m.agentEventHub
 
 	fireHook := func(event hook.EventType, info task.TaskInfo) {
 		if hookEngine == nil {
 			return
 		}
-		subject := hub.TaskSubject(info)
 		hookEngine.ExecuteAsync(event, hook.HookInput{
 			TaskID:          info.ID,
-			TaskSubject:     subject,
+			TaskSubject:     taskSubject(info),
 			TaskDescription: info.Description,
 		})
 	}
@@ -210,19 +213,24 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			fireHook(hook.TaskCompleted, info)
 			todo.CompleteWorker(trackerSvc, info)
 
-			subject := hub.TaskSubject(info)
-			msg, ok := hub.TaskMessage(info, subject)
-			if !ok {
-				return
+			// A finished subagent sends its result to the "main" address —
+			// the same broker path a running subagent uses for interim
+			// messages, so main has one arrival channel for everything.
+			if msg, ok := taskCompletionMessage(info); ok {
+				broker.Send(msg)
 			}
-			agentEventHub.Publish(hub.Event{
-				Type:    "task.completed",
-				Target:  "main",
-				Subject: msg.Notice,
-				Data:    msg.Content,
-			})
 		},
 	})
+}
+
+// notifyMain posts a display notice (a self-learn done/failed line) to the
+// main loop's Source-2 channel. Non-blocking: a full channel drops it rather
+// than stalling the caller's goroutine.
+func (m *model) notifyMain(n mainNotice) {
+	select {
+	case m.mainNotices <- n:
+	default:
+	}
 }
 
 type taskLifecycleFunc struct {
@@ -241,4 +249,5 @@ func (m *model) FireSessionEnd(reason string) {
 	if m.systemInput.FileWatcher != nil {
 		m.systemInput.FileWatcher.Stop()
 	}
+	broker.Unregister(broker.Main)
 }

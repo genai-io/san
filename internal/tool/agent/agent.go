@@ -77,7 +77,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		effectiveModel = t.executor.GetParentModelID()
 	}
 	if effectiveModel == "" {
-		effectiveModel = "claude-sonnet-4-20250514" // fallback
+		effectiveModel = "inherit"
 	}
 
 	// Build description
@@ -94,12 +94,22 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			AgentName:      config.Name,
 			Description:    config.Description,
 			Model:          effectiveModel,
-			PermissionMode: config.PermissionMode,
+			PermissionMode: effectivePermissionMode(params, config),
 			Tools:          config.Tools,
 			Prompt:         prompt,
 			Background:     runBackground,
 		},
 	}, nil
+}
+
+// effectivePermissionMode returns the mode the run will actually use — the
+// request's mode override when present, the agent config's mode otherwise —
+// so the permission dialog shows what the user is approving.
+func effectivePermissionMode(params map[string]any, config tool.AgentConfigInfo) string {
+	if mode := tool.GetString(params, "mode"); mode != "" && mode != "default" {
+		return mode
+	}
+	return config.PermissionMode
 }
 
 // ExecuteApproved executes the agent after user approval
@@ -112,20 +122,11 @@ func (t *AgentTool) Execute(ctx context.Context, params map[string]any, cwd stri
 	return t.execute(ctx, params, cwd)
 }
 
-// execute is the internal implementation
+// execute is the internal implementation. Subagents cannot reach this: the
+// Agent tool is parent-only (excluded from every subagent's tool set), which
+// is what keeps the model flat — main spawns workers, workers do not.
 func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
-
-	// Check and enforce nesting depth limit to prevent infinite recursion.
-	currentDepth := tool.GetAgentDepth(ctx)
-	if currentDepth >= tool.MaxAgentNestingDepth {
-		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf(
-			"maximum agent nesting depth (%d) exceeded — agents cannot spawn agents more than %d levels deep",
-			tool.MaxAgentNestingDepth, tool.MaxAgentNestingDepth,
-		))
-	}
-	// Pass incremented depth to child context so nested agents can detect it.
-	ctx = tool.WithAgentDepth(ctx, currentDepth+1)
 
 	agentType := tool.GetString(params, "subagent_type")
 	if agentType == "" {
@@ -142,7 +143,6 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	runBackground := tool.GetBool(params, "run_in_background")
 	model := tool.GetString(params, "model")
 	mode := tool.GetString(params, "mode")
-	resumeID := tool.GetString(params, "resume")
 	isolation := tool.GetString(params, "isolation")
 
 	var onActivity tool.ActivityFunc
@@ -172,7 +172,6 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Model:       model,
 		MaxSteps:    maxSteps,
 		Mode:        mode,
-		ResumeID:    resumeID,
 		Isolation:   isolation,
 		OnActivity:  onActivity,
 		OnQuestion:  onQuestion,

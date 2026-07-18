@@ -13,11 +13,16 @@ main agent's tool loop.
 ## Purpose
 
 Where [`packages/agent.md`](agent.md) owns the *foreground* agent session,
-this package owns the *background* agents the foreground spawns via the
-Agent tool. Each background agent runs in its own goroutine with its own
-inbox/outbox, isolated work tree (optional), and isolated tool/permission
-set; its final result flows back into the foreground conversation as a
-tool result.
+this package owns the subagents that session spawns via the Agent tool.
+Each subagent runs its own `core.Agent` loop (event observation via
+`OnEvent`; no outbox) with an isolated conversation, an optional disposable
+worktree, and its own tool/permission set. A foreground subagent blocks the
+spawning turn and returns its result as the tool result; a background
+subagent runs in a goroutine under a `task.AgentTask` and registers its task
+id with the [`broker`](broker.md) for the length of the run — main can
+`SendMessage` it while it runs, and its completion is routed to the `main`
+address when it finishes. The communication model is described in
+[`concepts/agent-communication.md`](../../concepts/agent-communication.md).
 
 ## Contract
 
@@ -76,23 +81,38 @@ func ResetDefaultRegistry()           // test-only
 - `Registry` (`registry.go`) — `AgentConfig` map keyed by name, plus
   enable state stores (user + project).
 - `Executor` (`executor.go`) — spawns a `core.Agent` for one subagent
-  invocation, manages its lifecycle, drains its outbox, and returns the
-  aggregated result.
+  invocation, manages its lifecycle (workspace, permission gate, hooks,
+  session persistence), and returns the aggregated result.
 - `executor_prompt.go` / `executor_run.go` / `executor_session.go` —
-  split executor concerns (prompt assembly, run loop, session attribution).
-- `loader.go` — reads markdown agent definitions from
-  `~/.san/agents/`, `<project>/.san/agents/`, plus plugin paths.
-- `match.go` — name matching for the Agent tool's `agent_type` parameter.
-- `progress_tools.go` — pseudo-tools the subagent emits to surface
-  progress to the parent agent.
+  split executor concerns (charter assembly, run loop, session attribution).
+- `loader.go` — reads markdown agent definitions from `.san/agents/`
+  (project, then user), `.claude/agents/` (Claude Code compatible), and
+  plugin paths; lower-priority sources load first so higher ones win by
+  name. Accepts alias frontmatter keys (`tools`, `allowed-tools`,
+  `permission-mode`) alongside the canonical ones.
+- `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
+  with the permission gate.
+- `progress_tools.go` — decorator around the worker's tools that streams
+  each call into the parent-visible progress trail.
 
 ## Lifecycle
 
 - Construction: `Initialize(Options{CWD, PluginAgentPaths})` loads
   definitions, initializes state stores.
 - Per-invocation: `NewExecutor(provider, cwd, model, hookEngine)` →
-  `Executor.Run(ctx, params)` spawns a `core.Agent`, blocks until end of
-  turn, returns aggregated `Result`.
+  `Executor.Run(ctx, req)` spawns a `core.Agent`, blocks until end of
+  turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
+  the same run in a `task.AgentTask` goroutine and registers with the broker under
+  the task id so main can message it mid-run.
+- Every exit path — success, cancel, error — fires `SubagentStop` with
+  the same agent id `SubagentStart` carried. Subagents are one-shot: a run
+  is not resumable; to continue a line of work, spawn a fresh subagent.
+- The agent model is flat: only the main conversation spawns subagents. The
+  `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
+  nothing to enforce at runtime.
+- Worktree isolation (`isolation: worktree`, request- or config-level)
+  removes the worktree only when clean; uncommitted changes preserve it
+  and the result names the path.
 - Concurrency: multiple executors may run in parallel; the registry is
   RWMutex-protected.
 
@@ -107,7 +127,10 @@ internal/subagent/scenarios_test.go     — common invocation shapes.
 ## See Also
 
 - Code: `internal/subagent/`
+- Communication model: [`concepts/agent-communication.md`](../../concepts/agent-communication.md)
+- Message queue: [`packages/broker.md`](broker.md)
 - Parent agent: [`packages/agent.md`](agent.md)
-- Spawning tool: [`packages/tool.md`](tool.md) (the Agent tool)
+- Spawning tools: [`packages/tool.md`](tool.md) (Agent, SendMessage)
+- Background tasks: [`packages/task.md`](task.md)
 - Worktree isolation: [`packages/worktree.md`](worktree.md)
 - Layer: `feature`

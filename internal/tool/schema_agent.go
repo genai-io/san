@@ -29,6 +29,7 @@ func agentToolSchema(directory string) core.ToolSchema {
 	sb.WriteString("- Each agent has isolated context; summarize important results back to the user yourself\n")
 	sb.WriteString("- Use foreground by default when you need the result before continuing\n")
 	sb.WriteString("- Use run_in_background only for genuinely independent work; you will be notified when it completes\n")
+	sb.WriteString("- A running background agent can be steered mid-run with SendMessage(task_id); it reports back when done\n")
 	sb.WriteString("- Provide concrete prompts with file paths, constraints, and whether code changes are expected")
 
 	return core.ToolSchema{
@@ -63,20 +64,15 @@ var agentToolParameters = map[string]any{
 		},
 		"model": map[string]any{
 			"type":        "string",
-			"description": "Optional model override. If omitted, inherits from parent conversation.",
-			"enum":        []string{"sonnet", "opus", "haiku"},
+			"description": "Optional model override: an alias (sonnet, opus, haiku), a model id on the current provider, or vendor/model (e.g. deepseek/deepseek-v4) to route to another connected provider. If omitted, inherits from parent conversation.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
 			"description": "Maximum number of LLM inference steps for the agent. Built-in agents default to 100 and lower values are raised to 100.",
 		},
-		"resume": map[string]any{
-			"type":        "string",
-			"description": "Agent ID to resume from a previous invocation.",
-		},
 		"mode": map[string]any{
 			"type":        "string",
-			"description": "Permission mode for spawned agent.",
+			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
 		"isolation": map[string]any{
@@ -90,68 +86,28 @@ var agentToolParameters = map[string]any{
 
 var sendMessageToolSchema = core.ToolSchema{
 	Name: "SendMessage",
-	Description: `Send a follow-up message to an existing subagent worker.
+	Description: `Send a message to another agent, routed by the broker. The message lands in the recipient's inbox and is read at its next step (a running subagent) or turn boundary (the main conversation).
 
-Use this when you need to provide additional input or guidance to a worker after it has started running. Routes to the running agent (preferred via task_id), or resumes a paused agent (via agent_id + subagent_type).
+Recipients (to):
+- a running subagent's task id — steer or add information to a subagent that is still working.
+- "main" — from inside a subagent, send an interim note to the main conversation without ending your run.
 
 Notes:
-- Prefer task_id when the worker is still running — the message is delivered without a fresh agent boot.
-- Use agent_id only when resuming a paused/saved agent; you must include subagent_type so the right configuration is restored.
-- Use run_in_background to detach the resumed run, mirroring the Agent tool's flag.
-- The agent receives the message as a fresh user turn — provide enough context for it to act on.
-- When using agent_id directly, also provide subagent_type so the correct agent configuration can be restored`,
+- Delivery is best-effort: a subagent that has finished (or never takes another step) will not see the message. A subagent's final result comes back on its own when it completes — do not use SendMessage for it.
+- The recipient sees the message as a user turn — make it self-contained.`,
 	Parameters: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"task_id": map[string]any{
+			"to": map[string]any{
 				"type":        "string",
-				"description": "Background task ID for the worker you want to message. Preferred when available. Provide either task_id, or agent_id with subagent_type.",
+				"description": "Recipient address: a running subagent's task id, or \"main\".",
 			},
-			"agent_id": map[string]any{
+			"message": map[string]any{
 				"type":        "string",
-				"description": "Resumable agent/session ID to continue directly. When using agent_id, subagent_type is required.",
-			},
-			"subagent_type": map[string]any{
-				"type":        "string",
-				"description": "Agent type to use when resuming by agent_id directly.",
-			},
-			"prompt": map[string]any{
-				"type":        "string",
-				"description": "The follow-up message to send to the worker.",
-			},
-			"description": map[string]any{
-				"type":        "string",
-				"description": "A short (3-5 word) description of what this follow-up asks the worker to do.",
-			},
-			"name": map[string]any{
-				"type":        "string",
-				"description": "Optional display name override for the continued worker.",
-			},
-			"run_in_background": map[string]any{
-				"type":        "boolean",
-				"description": "Set to true to continue the worker in the background. You will be notified when it completes.",
-			},
-			"model": map[string]any{
-				"type":        "string",
-				"description": "Optional model override. If omitted, inherits from parent conversation.",
-				"enum":        []string{"sonnet", "opus", "haiku"},
-			},
-			"max_steps": map[string]any{
-				"type":        "number",
-				"description": "Maximum number of LLM inference steps for the resumed run. Built-in agents default to 100 and lower values are raised to 100.",
-			},
-			"mode": map[string]any{
-				"type":        "string",
-				"description": "Permission mode for the resumed worker.",
-				"enum":        []string{"explore", "edit", "default"},
-			},
-			"isolation": map[string]any{
-				"type":        "string",
-				"description": "Isolation mode for the resumed worker.",
-				"enum":        []string{"worktree"},
+				"description": "The message to deliver. Self-contained — the recipient reads it as a user turn.",
 			},
 		},
-		"required": []string{"prompt", "description"},
+		"required": []string{"to", "message"},
 	},
 }
 

@@ -19,7 +19,7 @@ the assignment changes.
 | `internal/app/conv` | `app` | Conversation rendering state and agent outbox observation. |
 | `internal/app/input` | `app` | Text input, selectors, approvals, user-input flow. |
 | `internal/app/trigger` | `app` | System triggers such as cron and async hook polling. |
-| `internal/app/hub` | `app` | In-process event routing between agents and the TUI. |
+| `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | `internal/app/kit` | `app` | TUI support helpers shared by app subpackages. |
 
 ## Core Contracts

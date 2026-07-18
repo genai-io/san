@@ -56,7 +56,7 @@ events that mutate the TUI model.
 ```
 
 - Source 1 routes through `internal/app/input/`.
-- Source 2 routes through `internal/app/hub/` (event bus).
+- Source 2 (agents → main) routes through `internal/broker/` (the shared message queue).
 - Source 3 routes through `internal/app/trigger/`.
 - Output side renders through `internal/app/conv/`.
 
