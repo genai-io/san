@@ -54,11 +54,7 @@ func newBaseModel() model {
 	svc := newServices()
 	learnedStores := newLearnedStoreContext(appCwd, svc.Setting)
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
-	if settings := svc.Setting.Snapshot(); settings != nil {
-		environment.ApplyDefaultPermissionMode(settings.StartupMode(), appCwd, svc.Setting.AllowBypass())
-		environment.ShowContextBar = settings.ShowContextBar()
-		environment.AutoPilot = settings.AutoPilot.Clone()
-	}
+	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
 			AgentRegistry:   &agentRegistryAdapter{svc.Subagent},
@@ -88,6 +84,16 @@ func newBaseModel() model {
 		pendingDecisions:    new(sync.Map),
 		autopilot:           new(atomic.Pointer[autopilotRuntime]),
 	}
+}
+
+func applyStartupSettings(environment *env, settings *setting.Data, cwd string, allowBypass bool, hookEngine *hook.Engine) {
+	if settings == nil {
+		return
+	}
+	environment.ApplyDefaultPermissionMode(settings.StartupMode(), cwd, allowBypass)
+	hookEngine.SetPermissionMode(environment.OperationModeName())
+	environment.ShowContextBar = settings.ShowContextBar()
+	environment.AutoPilot = settings.AutoPilot.Clone()
 }
 
 func (m *model) applyRunOptions(opts setting.RunOptions) error {
