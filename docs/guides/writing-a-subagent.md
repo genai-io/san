@@ -28,6 +28,7 @@ name: test-runner
 description: Run the test suite and surface failures
 allow_tools: [Bash, Read, Grep]
 mode: bypass
+isolation: none
 ---
 
 You are a test runner. Your job is to:
@@ -49,6 +50,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `allow_tools` | no | Restrict the subagent's tool set (nil = all tools). Aliases accepted: `allowed-tools`, and Claude Code's `tools`. |
 | `deny_tools` | no | Tools (or `Tool(pattern)` rules) removed regardless of mode. |
 | `mode` | no | Permission mode: `default`, `explore`, `edit` (alias of `acceptEdits`), `bypassPermissions`. Alias accepted: `permission-mode`. See below. |
+| `isolation` | no | `none` (default) or `worktree` — see below. A per-spawn `isolation` argument overrides this. |
 | `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
 | `max-steps` | no | Cap on LLM inference steps (default 100). |
 | `skills` | no | Skill names whose bodies are preloaded into the agent's charter. |
@@ -102,6 +104,19 @@ reporting to `"main"`) follows the ordinary mode pipeline.
 See [`packages/broker.md`](../packages/2-feature/broker.md)
 for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
 for the full decision pipeline.
+
+## Worktree Isolation
+
+`isolation: worktree` creates a `git worktree` under
+`<project>/.git/agent-worktrees/<random>/` and runs the subagent there.
+The parent's working tree is untouched. On exit the worktree is removed
+**only if it is clean**; uncommitted changes preserve it, and the agent's
+result includes `[worktree preserved] … <path>` so the parent can review,
+merge, or discard the work.
+
+Use this when you want a subagent to run experiments that may dirty the
+tree (build artifacts, codegen, refactors) without polluting the
+foreground session.
 
 ## How the Parent Spawns It
 

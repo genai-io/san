@@ -143,6 +143,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	runBackground := tool.GetBool(params, "run_in_background")
 	model := tool.GetString(params, "model")
 	mode := tool.GetString(params, "mode")
+	isolation := tool.GetString(params, "isolation")
 
 	var onActivity tool.ActivityFunc
 	if cb, ok := params["_onActivity"].(tool.ActivityFunc); ok {
@@ -171,6 +172,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Model:       model,
 		MaxSteps:    maxSteps,
 		Mode:        mode,
+		Isolation:   isolation,
 		OnActivity:  onActivity,
 		OnQuestion:  onQuestion,
 	}

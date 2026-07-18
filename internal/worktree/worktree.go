@@ -1,6 +1,6 @@
 // Package worktree provides git worktree creation and management.
-// Used by the EnterWorktree tool to move the main conversation into a
-// disposable git worktree.
+// Used by both the standalone EnterWorktree tool (main conversation)
+// and the Agent tool's isolation mode (subagents).
 package worktree
 
 import (

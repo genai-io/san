@@ -323,6 +323,11 @@ type AgentConfig struct {
 	// settings.permissions.deny. Always wins over AllowTools and mode.
 	DenyTools ToolList `yaml:"deny_tools,omitempty" json:"deny_tools,omitempty"`
 
+	// Isolation selects the default workspace for this agent's runs:
+	// "" / "none" shares the session cwd, "worktree" runs in a disposable git
+	// worktree. A per-request isolation override wins over this default.
+	Isolation string `yaml:"isolation,omitempty" json:"isolation,omitempty"`
+
 	Skills       []string `yaml:"skills,omitempty" json:"skills,omitempty"`
 	SystemPrompt string   `yaml:"system-prompt,omitempty" json:"system_prompt,omitempty"`
 	MaxSteps     int      `yaml:"max-steps" json:"max_steps"`
@@ -359,7 +364,11 @@ type AgentResult struct {
 	TokenUsage     llm.Usage
 	Duration       time.Duration
 	Activity       []string
-	Error          string
+	// WorktreePath is set when the run used worktree isolation and left
+	// uncommitted changes behind — the worktree is preserved at this path
+	// instead of being removed, so the work survives the run.
+	WorktreePath string
+	Error        string
 }
 
 // defaultMaxSteps is the default maximum number of LLM inference steps.
