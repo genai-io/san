@@ -48,6 +48,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		InitTaskStorage:         m.InitTaskStorage,
 		ReconfigureAgentTool:    m.ReconfigureAgentTool,
 		StopAgentSession:        m.StopAgentSession,
+		ResetAgentSession:       m.ResetAgentSession,
 		FireSessionEnd:          m.FireSessionEnd,
 		BuildCompactRequest:     m.BuildCompactRequest,
 		SpinnerTickCmd:          m.SpinnerTickCmd,

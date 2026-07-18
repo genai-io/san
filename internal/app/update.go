@@ -247,7 +247,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// leave the toggle pending; ensureAgentSession will see the updated
 		// store the next time it actually rebuilds.
 		if m.services.Agent.Active() && !m.conv.Stream.Active {
-			m.services.Agent.Stop()
+			m.StopAgentSession()
 		}
 		return m, nil
 	case persistSessionDoneMsg:

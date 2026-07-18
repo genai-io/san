@@ -130,19 +130,23 @@ Sub-model packages:
   constructed, and `tea.Program.Run()` enters the MVU loop.
 - Per turn: user submits → input subpackage → `sendToAgent()` → agent
   inbox → agent processes → outbox events → `conv` updates → re-render.
+- Before a deliberate foreground-agent stop, the root snapshots the live
+  `core.Agent` message chain. A replacement agent is seeded from that snapshot
+  rather than the UI rendering model; `/clear` and loading another persisted
+  session explicitly discard it.
 - On `/plugin install`, `/model`, etc.: `ReloadPluginBackedState()`
   re-initializes the affected services and calls `refreshAfterReload`.
 
 ## Tests
 
-The `app` package itself has no unit tests — coverage is exercised
-end-to-end via integration tests (`tests/integration/`). Sub-model
-packages have their own tests:
+The root package has focused lifecycle/state tests and broader coverage through
+`tests/integration/`. Sub-model packages keep their own tests:
 
 ```
 internal/app/conv/message_test.go              — message rendering.
 internal/app/conv/markdown_test.go             — markdown renderer.
 internal/app/conv/tracker_view_test.go         — task tracker view.
+internal/app/agent_restart_test.go             — message-chain integrity across stop/restart.
 internal/app/input/on_approval_test.go         — approval flow.
 internal/app/input/on_mcp_test.go              — MCP slash command.
 internal/app/input/on_plugin_test.go           — plugin slash command.

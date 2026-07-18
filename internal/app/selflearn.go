@@ -74,10 +74,9 @@ func (m *model) resolveSelfLearnConfig() (selflearn.Config, error) {
 // with the same provider/model/max-tokens for prefix-cache parity
 // (§6 invariant #2).
 func (m *model) wireSelfLearn(params agent.BuildParams) {
-	// Tear down first — ensureAgentSession can re-enter via an agent
-	// toggle (which calls Agent.Stop directly, bypassing StopAgentSession)
-	// and would otherwise overwrite reviewCancel un-called, leaking the
-	// context and pinning the old fork for up to forkDeadline.
+	// Tear down first — ensureAgentSession can re-enter after a stopped agent
+	// and would otherwise overwrite reviewCancel un-called, leaking the context
+	// and pinning the old fork for up to forkDeadline.
 	m.teardownSelfLearn()
 
 	// The shared resolver applies the env kill switch and validates settings so
