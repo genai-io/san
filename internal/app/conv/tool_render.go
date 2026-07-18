@@ -916,9 +916,9 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 // a terminal command. Every later row (a wrap or a continued command line) hangs
 // under the command text by an indent the width of the prompt, so the whole
 // command body lines up in one column with the "$" as a hanging prompt to its
-// left. The "$" sits in column 2, shared with the "⎿" result trailer below and
-// in the same dim tone, so the two markers still line up down the left.
-const bashPrompt = "  $ "
+// left. With a two-cell prompt, the command text starts in the same column as
+// the Bash label in the header above.
+const bashPrompt = "$ "
 
 // renderBashToolCall renders a Bash tool call so its command is always readable
 // in full. A short single-line command keeps the compact Bash(cmd) label; a

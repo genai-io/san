@@ -160,7 +160,9 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		t.Fatalf("command block should have no bar and no background, got %q", raw)
 	}
 
-	rows := strings.Split(strings.TrimRight(stripANSI(raw), "\n"), "\n")[1:]
+	allRows := strings.Split(strings.TrimRight(stripANSI(raw), "\n"), "\n")
+	header := allRows[0]
+	rows := allRows[1:]
 	if len(rows) < 2 {
 		t.Fatalf("expected the long command to wrap onto multiple rows, got %q", raw)
 	}
@@ -176,9 +178,12 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		}
 	}
 
-	// The "$" sits in the "⎿" result column, so the two markers line up down the left.
-	if strings.IndexByte(bashPrompt, '$') != strings.Index("  ⎿  ", "⎿") {
-		t.Fatalf("prompt $ column must equal the result ⎿ column")
+	// The command text after "$ " starts in the same column as the Bash label.
+	commandColumn := strings.Index(rows[0], bashPrompt) + lipgloss.Width(bashPrompt)
+	bashOffset := strings.Index(header, "Bash")
+	bashColumn := lipgloss.Width(header[:bashOffset])
+	if commandColumn != bashColumn {
+		t.Fatalf("command column = %d, want Bash label column %d", commandColumn, bashColumn)
 	}
 }
 

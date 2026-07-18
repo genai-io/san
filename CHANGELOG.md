@@ -12,10 +12,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 - Run subagents in the session working directory and simplify result delivery ([@yanmxa](https://github.com/yanmxa) in [63142c3](https://github.com/genai-io/san/commit/63142c30))
 - Memoize model token limits per client ([@yanmxa](https://github.com/yanmxa) in [#322](https://github.com/genai-io/san/pull/322))
+- Align multi-line Bash command blocks under the Bash header ([@yanmxa](https://github.com/yanmxa) in [#327](https://github.com/genai-io/san/pull/327))
 
 ### Fixed
 - Preserve live context and the agent chain across rebuilt sessions and restarts ([@yanmxa](https://github.com/yanmxa) in [b40d63e](https://github.com/genai-io/san/commit/b40d63e1))
 - Give edit-mode subagents project instructions ([@yanmxa](https://github.com/yanmxa) in [31db935](https://github.com/genai-io/san/commit/31db935d))
+- Prevent a concurrent-map crash when recording Agent-tool permission decisions ([@yanmxa](https://github.com/yanmxa) in [#327](https://github.com/genai-io/san/pull/327))
 
 ## [v1.21.6] - 2026-07-18
 
