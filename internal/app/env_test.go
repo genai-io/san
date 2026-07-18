@@ -4,7 +4,37 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 )
+
+func TestApplyDefaultPermissionMode_RestoresAllModes(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		allowBypass bool
+		want        setting.OperationMode
+	}{
+		{"normal", "normal", true, setting.ModeNormal},
+		{"auto accept", "auto-accept", true, setting.ModeAutoAccept},
+		{"autopilot", "auto-pilot", true, setting.ModeAutoPilot},
+		{"bypass", "bypass", true, setting.ModeBypassPermissions},
+		{"bypass disabled", "bypass", false, setting.ModeNormal},
+		{"dont ask", "dont-ask", true, setting.ModeDontAsk},
+		{"read only", "read-only", true, setting.ModeReadOnly},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := env{SessionPermissions: setting.NewSessionPermissions()}
+			e.ApplyDefaultPermissionMode(tt.mode, "/workspace", tt.allowBypass)
+			if e.OperationMode != tt.want {
+				t.Fatalf("OperationMode = %v, want %v", e.OperationMode, tt.want)
+			}
+			if e.SessionPermissions.Mode != tt.want {
+				t.Fatalf("SessionPermissions.Mode = %v, want %v", e.SessionPermissions.Mode, tt.want)
+			}
+		})
+	}
+}
 
 func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
 	e := &env{Compressions: 3, InputTokens: 100, OutputTokens: 50}

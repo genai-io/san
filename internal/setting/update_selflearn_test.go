@@ -58,6 +58,40 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	}
 }
 
+// TestUpdateLastOperationMode confirms the user-wide startup preference is
+// written without changing unrelated settings.
+func TestUpdateLastOperationMode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	file := userSettingsFile(home)
+
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(`{"model":"claude-x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateLastOperationMode(ModeBypassPermissions); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d Data
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatal(err)
+	}
+	if d.LastOperationMode != "bypass" {
+		t.Fatalf("LastOperationMode = %q, want bypass", d.LastOperationMode)
+	}
+	if d.Model != "claude-x" {
+		t.Fatalf("unrelated setting clobbered: model=%q", d.Model)
+	}
+}
+
 // TestUpdateSelfLearnAtPreservesOtherSettings confirms replacing the
 // selfLearn block leaves unrelated settings in the same file intact.
 func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {

@@ -334,6 +334,12 @@ func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
 	return updateSettingsFile(userLevel, func(d *Data) { d.AutoPilot = cfg })
 }
 
+// UpdateLastOperationMode persists the user-wide mode restored when a new
+// session starts.
+func UpdateLastOperationMode(mode OperationMode) error {
+	return updateSettingsFile(true, func(d *Data) { d.LastOperationMode = mode.PersistenceName() })
+}
+
 // AutoPilotPresetDir is the folder where /autopilot Export saves named configs
 // and Import reads them — a shared, non-session space for reusable presets.
 func AutoPilotPresetDir() string {

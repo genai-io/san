@@ -179,25 +179,13 @@ func (m *env) ResetSessionPermissions() {
 }
 
 // applyEditPosture grants the accept-edits posture — edits/writes auto-approved,
-// working dir trusted — under the given mode. Shared by accept-edits and
-// auto-review (which additionally routes non-edit prompts to the review agent).
-func (m *env) applyEditPosture(mode setting.OperationMode, cwd string) {
-	m.SessionPermissions.Mode = mode
+// working dir trusted. Shared by accept-edits and auto-pilot (which additionally
+// routes non-edit prompts to the review agent). ApplyModePermissions owns
+// SessionPermissions.Mode; this only layers on the extra allowances.
+func (m *env) applyEditPosture(cwd string) {
 	m.SessionPermissions.AllowAllEdits = true
 	m.SessionPermissions.AllowAllWrites = true
 	m.SessionPermissions.AddWorkingDirectory(cwd)
-}
-
-func (m *env) ApplyAutoAcceptPermissions(cwd string) {
-	m.applyEditPosture(setting.ModeAutoAccept, cwd)
-}
-
-func (m *env) ApplyAutoPilotPermissions(cwd string) {
-	m.applyEditPosture(setting.ModeAutoPilot, cwd)
-}
-
-func (m *env) ApplyBypassPermissions() {
-	m.SessionPermissions.Mode = setting.ModeBypassPermissions
 }
 
 func (m *env) DetectThinkingKeywords(input string) {
@@ -228,17 +216,14 @@ func (m *env) DetectThinkingKeywords(input string) {
 
 func (m *env) ApplyModePermissions(cwd string) {
 	m.ResetSessionPermissions()
+	// SessionPermissions.Mode always mirrors OperationMode; the switch below only
+	// layers on the extra allowances for the edit modes. Bypass needs no extra
+	// allowances — mirroring the mode is enough.
+	m.SessionPermissions.Mode = m.OperationMode
 
-	if m.OperationMode == setting.ModeAutoAccept {
-		m.ApplyAutoAcceptPermissions(cwd)
-	}
-
-	if m.OperationMode == setting.ModeBypassPermissions {
-		m.ApplyBypassPermissions()
-	}
-
-	if m.OperationMode == setting.ModeAutoPilot {
-		m.ApplyAutoPilotPermissions(cwd)
+	switch m.OperationMode {
+	case setting.ModeAutoAccept, setting.ModeAutoPilot:
+		m.applyEditPosture(cwd)
 	}
 }
 
