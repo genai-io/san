@@ -314,18 +314,6 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 	return sess.Metadata.ID, s.SessionPath(sess.Metadata.ID), nil
 }
 
-func (s *Store) LoadSubagentMessages(agentID string) ([]core.Message, error) {
-	sess, err := s.Load(agentID)
-	if err != nil {
-		return nil, err
-	}
-	msgs := EntriesToMessages(sess.Entries)
-	if len(msgs) == 0 {
-		return nil, fmt.Errorf("no messages found in session %s", agentID)
-	}
-	return msgs, nil
-}
-
 func (s *Store) toolResultsDir(sessionID string) string {
 	return filepath.Join(s.projectDir, "blobs", "tool-result", sessionID)
 }

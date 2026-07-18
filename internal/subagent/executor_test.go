@@ -354,6 +354,27 @@ func TestSkillsDirectoryFollowsReachableTools(t *testing.T) {
 	}
 }
 
+func TestCanEditWorkspace(t *testing.T) {
+	cases := []struct {
+		name  string
+		mode  PermissionMode
+		allow ToolList
+		want  bool
+	}{
+		{"edit mode can edit", PermissionAcceptEdits, nil, true},
+		{"bypass mode can edit", PermissionBypass, nil, true},
+		{"explore mode is read-only", PermissionExplore, nil, false},
+		{"default mode alone cannot edit", PermissionDefault, nil, false},
+		{"default with read-only allow list cannot edit", PermissionDefault, ToolNames("Read", "Grep"), false},
+		{"default with an edit tool in the allow list can edit", PermissionDefault, ToolNames("Read", "Edit"), true},
+	}
+	for _, tc := range cases {
+		if got := canEditWorkspace(tc.mode, tc.allow); got != tc.want {
+			t.Errorf("%s: canEditWorkspace(%q, %v) = %v, want %v", tc.name, tc.mode, tc.allow.Names(), got, tc.want)
+		}
+	}
+}
+
 func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 	schemas := []core.ToolSchema{
 		{Name: "Read"},
