@@ -235,14 +235,14 @@ agent turn ends) drains them.
 │    JSON output said   │                     │   Context lines + Contin-     │
 │    `nextPrompt: ...`) │                     │   uationPrompt                │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Subagent completes    │ task.SetLife-       │ broker.Send to "main"; the    │
-│   (background Task,   │ cycleHandler →      │ main-loop deliver fn pushes   │
-│    spawned by the     │ broker.Send         │ it onto m.mainNotices         │
+│ Subagent completes    │ task.SetLife-       │ broker.Send(→"main"); the    │
+│   (background Task,   │ cycleHandler →      │ main deliver fn     │
+│    spawned by the     │ broker.Send        │ pushes it onto m.mainEvents   │
 │    Agent tool)        │                     │ (a Go channel)                │
 └───────────────────────┴─────────────────────┴───────────────────────────────┘
 ```
 
-`m.mainNotices` carries notices bound for the main loop: subagent completions,
+`m.mainEvents` carries notices bound for the main loop: subagent completions,
 interim messages (`SendMessage to="main"`), and self-learn notices. Agent
 mail routes through the process-wide [`broker`](../packages/2-feature/broker.md);
 the main loop opens `broker.Main` and forwards onto this channel.
@@ -262,7 +262,7 @@ OnTurnEnd                                    model_agent_events.go
         │                        (handled inline; not an inject*)
         ├─ cron queue?       ──► injectCronPrompt(prompt)
         ├─ async hook queue? ──► injectAsyncHookContinuation(item)
-        └─ main notice batch ► injectNotices(batch)
+        └─ main notice batch ► injectNotification(mergeNotices(batch))
 ```
 
 ### Waking the Update loop (idle path)
@@ -270,43 +270,43 @@ OnTurnEnd                                    model_agent_events.go
 `drainTurnQueues` only fires at `OnTurnEnd`, so mail that arrives
 *between* turns (the common case for a subagent that finishes minutes
 after launch) needs another way to wake the Update loop. The broker
-subscription delivers onto a Go channel (`m.mainNotices`), so we use the
+subscription delivers onto a Go channel (`m.mainEvents`), so we use the
 same trick the agent outbox uses — a **blocking-receive `tea.Cmd`** that
 turns "next item on the chan" into a `tea.Msg`:
 
 ```
 Init                                       model.go
-   └─ awaitMainNotice(m.mainNotices)         model_turn_queue.go
-        └─ blocks on chan, yields mainNoticeMsg{event} when one arrives
+   └─ awaitMainEvent(m.mainEvents)         model_turn_queue.go
+        └─ blocks on chan, yields mainEventMsg{event} when one arrives
 
 Update                                     update.go
-   case mainNoticeMsg:
-        └─ onMainNotice(n)                 model_turn_queue.go
-              ├─ append n (+ chan peers) to m.pendingNotices
-              ├─ start awaitMainNotice again so the next publish wakes us
+   case mainEventMsg:
+        └─ onMainEvent(ev)                 model_turn_queue.go
+              ├─ append ev (+ chan peers) to m.pendingMainEvents
+              ├─ start awaitMainEvent again so the next publish wakes us
               └─ if !Stream.Active:
-                   injectNotices(pending); clear pending
+                   injectNotification(merge(pending)); clear pending
 ```
 
-`onMainNotice` always starts a fresh `awaitMainNotice` — safe because
+`onMainEvent` always starts a fresh `awaitMainEvent` — safe because
 the chan is empty when we restart, so the next firing waits for the
 next publish (no spin loop). There are two delivery paths depending
 on what the live agent is doing when the event arrives:
 
 | When the event arrives | Who delivers it | Latency |
 |---|---|---|
-| Mid-stream (agent answering) | `OnTurnEnd → drainTurnQueues` drains `m.pendingNotices` | next turn boundary |
-| Idle (between turns) | `onMainNotice` itself takes the `!Stream.Active` branch and injects directly | immediate |
+| Mid-stream (agent answering) | `OnTurnEnd → drainTurnQueues` drains `m.pendingMainEvents` | next turn boundary |
+| Idle (between turns) | `onMainEvent` itself takes the `!Stream.Active` branch and injects directly | immediate |
 
 The idle branch is what handles the common case of a background
-subagent finishing long after the launching turn ended. `pendingNotices`
+subagent finishing long after the launching turn ended. `pendingMainEvents`
 exists only to bridge events that landed *during* a stream — those
 must wait so they don't collide with the answer in progress.
 
 The producer side: a subagent (or any background task) finishes →
 `notifyTaskCompleted` → the task-lifecycle handler registered in
 `wireTaskLifecycle` sends the completion to the "main" address → the
-`broker.Register(broker.Main, …)` delivery function pushes onto `m.mainNotices`.
+`broker.Register(broker.Main, …)` delivery function pushes onto `m.mainEvents`.
 Background tasks are one producer; subagents posting interim messages
 (`SendMessage to="main"`) and self-learn notices are others — all arrive on
 the same channel.
@@ -362,28 +362,28 @@ goroutines are involved; each `─ ─ ─►` is a handoff across one.
        → addressed to "main"
        │   model_lifecycle.go
        ▼
-   ⑤ broker.Register(Main) deliver fn
+   ⑤ Open("main",...) deliver fn
        │   model_lifecycle.go
        ▼
-   ⑥ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑦ awaitMainNotice unblocks
-                                       returns mainNoticeMsg{event}
+   ⑥ m.mainEvents <- e  ─ ─ ─ ─ ─►  ⑦ awaitMainEvent unblocks
+                                       returns mainEventMsg{event}
                                        (was parked on chan in own
                                         goroutine spawned by Init)
                                           │   bubbletea routes the
                                           │   msg to Update loop
                                           ▼
-                                       ⑧ Update case mainNoticeMsg:
-                                          → onMainNotice(n)
+                                       ⑧ Update case mainEventMsg:
+                                          → onMainEvent(ev)
                                           │   model_turn_queue.go
-                                          ├─ append to pendingNotices
-                                          ├─ restart awaitMainNotice
+                                          ├─ append to pendingMainEvents
+                                          ├─ restart awaitMainEvent
                                           ▼
                                        ⑨ Stream.Active?
                                           ├─ true → return; wait OnTurnEnd
                                           │         to call drainTurnQueues
                                           └─ false → fall through ↓
                                           ▼
-                                      ⑩ injectNotices(merged)
+                                      ⑩ injectNotification(merged)
                                           ├─ conv.AddNotice("…completed")
                                           └─ SubmitToAgent(content, nil)
                                           │   update_submit.go
@@ -405,13 +405,13 @@ Key handoffs:
 
 | Step | What crosses what | Mechanism |
 |---|---|---|
-| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainNotices`) + blocking-receive `tea.Cmd` |
+| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainEvents`) + blocking-receive `tea.Cmd` |
 | ⑫ → ⑬ | TUI Update goroutine → main agent goroutine | `Agent.Send` writes the agent's internal inbox chan |
 
 Two chans, two goroutine boundaries. The TUI sits in the middle on
 purpose — that's where `AddNotice`, provider/session checks, and
 priority ordering happen. If a Stream.Active=true diverted us into
-the `pendingNotices` branch at ⑨, the same ⑩-⑫ sequence runs
+the `pendingMainEvents` branch at ⑨, the same ⑩-⑫ sequence runs
 later from `drainTurnQueues` at the next OnTurnEnd; the only
 difference is *when*.
 

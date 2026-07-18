@@ -61,7 +61,7 @@ One subagent-specific rule composes with the pipeline:
   tool is parent-only, so a subagent never sees its schema; there is no
   spawn-permission logic on the subagent side at all. `SendMessage` (main ↔ a
   running subagent) follows the ordinary mode pipeline like any other tool.
-  See [`packages/broker.md`](../packages/2-feature/broker.md).
+  See [`agent-communication.md`](agent-communication.md).
 
 ## Plan Mode
 

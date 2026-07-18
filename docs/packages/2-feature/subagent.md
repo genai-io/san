@@ -21,7 +21,8 @@ spawning turn and returns its result as the tool result; a background
 subagent runs in a goroutine under a `task.AgentTask` and registers its task
 id with the [`broker`](broker.md) for the length of the run — main can
 `SendMessage` it while it runs, and its completion is routed to the `main`
-address when it finishes.
+address when it finishes. The communication model is described in
+[`concepts/agent-communication.md`](../../concepts/agent-communication.md).
 
 ## Contract
 
@@ -126,7 +127,8 @@ internal/subagent/scenarios_test.go     — common invocation shapes.
 ## See Also
 
 - Code: `internal/subagent/`
-- Message routing: [`broker`](broker.md)
+- Communication model: [`concepts/agent-communication.md`](../../concepts/agent-communication.md)
+- Message queue: [`packages/broker.md`](broker.md)
 - Parent agent: [`packages/agent.md`](agent.md)
 - Spawning tools: [`packages/tool.md`](tool.md) (Agent, SendMessage)
 - Background tasks: [`packages/task.md`](task.md)

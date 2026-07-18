@@ -101,7 +101,7 @@ The `Agent` tool is never available to subagents — the agent model is flat,
 and only the main conversation spawns subagents. `SendMessage` (a subagent
 reporting to `"main"`) follows the ordinary mode pipeline.
 
-See [`packages/broker.md`](../packages/2-feature/broker.md)
+See [`concepts/agent-communication.md`](../concepts/agent-communication.md)
 for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
 for the full decision pipeline.
 
@@ -143,7 +143,7 @@ San:
 ## Talking to a Running Worker
 
 A background subagent registers with the broker for its whole run — see
-[`packages/broker.md`](../packages/2-feature/broker.md) for
+[`concepts/agent-communication.md`](../concepts/agent-communication.md) for
 the model:
 
 - **Steer**: `SendMessage(to=<task id>, message)` posts into the running
@@ -181,7 +181,7 @@ the model:
 
 ## See Also
 
-- [`packages/broker.md`](../packages/2-feature/broker.md) —
+- [`concepts/agent-communication.md`](../concepts/agent-communication.md) —
   how the main conversation and its subagents message each other.
 - [`packages/subagent.md`](../packages/2-feature/subagent.md) — registry +
   executor design.
