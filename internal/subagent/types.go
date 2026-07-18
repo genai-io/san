@@ -290,8 +290,9 @@ type AgentConfig struct {
 	WhenToUse   string `yaml:"when-to-use,omitempty" json:"when_to_use,omitempty"`
 	// Model selects the model for this agent. Accepted forms:
 	//   - "inherit" or empty — use the parent conversation's model
-	//   - an alias ("opus", "sonnet", "haiku") or a bare model id served by the
-	//     parent's provider
+	//   - a Claude alias ("opus", "sonnet", "haiku") on an Anthropic parent;
+	//     other providers inherit their parent model for these aliases
+	//   - a bare model id served by the parent's provider
 	//   - "vendor/model" (e.g. "deepseek/deepseek-v4") to route to another
 	//     connected provider; the named vendor must be connected
 	Model string `yaml:"model" json:"model"`

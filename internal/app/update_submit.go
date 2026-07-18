@@ -205,7 +205,9 @@ func (m *model) SubmitToAgent(content string, images []core.Image) tea.Cmd {
 		return tea.Batch(m.CommitMessages()...)
 	}
 
-	m.env.DetectThinkingKeywords(content)
+	if m.env.DetectThinkingKeywords(content) {
+		m.ReconfigureAgentTool()
+	}
 
 	sendCmd := m.sendToAgent(content, images)
 	if startCmd != nil {

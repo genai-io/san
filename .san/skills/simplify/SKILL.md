@@ -22,7 +22,7 @@ Run `git diff` (or `git diff HEAD` if there are staged changes) to see what chan
 
 ## Phase 2: Launch Three Review Agents in Parallel
 
-Use the Agent tool to launch all three agents concurrently in a single message (foreground — do NOT set `run_in_background`). Pass each agent the full diff so it has the complete context. All three agents run in parallel and return their results in the same turn.
+Use the Agent tool to launch all three agents concurrently in a single message. Each call must use `subagent_type: "code-reviewer"`, `mode: "explore"`, and foreground execution (omit `run_in_background` or set it to `false`). Omit `model` so reviewers inherit the parent model. Subagents always share the current working directory; do not request worktree isolation. Tell each reviewer to inspect the complete `git diff HEAD` directly. Wait for all three results before changing any file.
 
 ### Agent 1: Code Reuse Review
 

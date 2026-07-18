@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/genai-io/san/internal/tool"
@@ -15,6 +16,7 @@ const backgroundLaunchSuffix = "\n\nThe agent is working in the background. You 
 // AgentTool spawns subagents to handle complex tasks.
 // It implements PermissionAwareTool to require user confirmation.
 type AgentTool struct {
+	mu       sync.RWMutex
 	executor tool.AgentExecutor
 }
 
@@ -34,7 +36,15 @@ func (t *AgentTool) RequiresPermission() bool {
 
 // SetExecutor sets the agent executor
 func (t *AgentTool) SetExecutor(executor tool.AgentExecutor) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.executor = executor
+}
+
+func (t *AgentTool) getExecutor() tool.AgentExecutor {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.executor
 }
 
 // PreparePermission prepares a permission request with agent metadata
@@ -58,12 +68,13 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	requestModel := tool.GetString(params, "model")
 
 	// Check if executor is configured
-	if t.executor == nil {
+	executor := t.getExecutor()
+	if executor == nil {
 		return nil, fmt.Errorf("agent executor not configured")
 	}
 
 	// Get agent config
-	config, ok := t.executor.GetAgentConfig(agentType)
+	config, ok := executor.GetAgentConfig(agentType)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", agentType)
 	}
@@ -74,7 +85,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		effectiveModel = config.Model
 	}
 	if effectiveModel == "" {
-		effectiveModel = t.executor.GetParentModelID()
+		effectiveModel = executor.GetParentModelID()
 	}
 	if effectiveModel == "" {
 		effectiveModel = "claude-sonnet-4-20250514" // fallback
@@ -143,7 +154,6 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	model := tool.GetString(params, "model")
 	mode := tool.GetString(params, "mode")
 	resumeID := tool.GetString(params, "resume")
-	isolation := tool.GetString(params, "isolation")
 
 	var onActivity tool.ActivityFunc
 	if cb, ok := params["_onActivity"].(tool.ActivityFunc); ok {
@@ -157,7 +167,8 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	maxSteps := tool.GetInt(params, "max_steps", 0)
 
 	// Check executor
-	if t.executor == nil {
+	executor := t.getExecutor()
+	if executor == nil {
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
@@ -173,14 +184,13 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		MaxSteps:    maxSteps,
 		Mode:        mode,
 		ResumeID:    resumeID,
-		Isolation:   isolation,
 		OnActivity:  onActivity,
 		OnQuestion:  onQuestion,
 	}
 
 	// Handle background execution
 	if runBackground {
-		taskInfo, err := t.executor.RunBackground(req)
+		taskInfo, err := executor.RunBackground(req)
 		if err != nil {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to start background agent: %v", err))
 		}
@@ -210,7 +220,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	}
 
 	// Foreground execution
-	result, err := t.executor.Run(ctx, req)
+	result, err := executor.Run(ctx, req)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent execution failed: %v", err))
 	}

@@ -32,9 +32,13 @@ in this conversation.
 
 ## Phase 2: Review across three lenses (in parallel)
 
-Use the Agent tool to launch three reviewers concurrently in one message
-(foreground). Give each the full diff. Each returns a short list of concrete,
-located findings.
+Use the Agent tool to launch three reviewers concurrently in one message. Each
+call must use `subagent_type: "code-reviewer"`, `mode: "explore"`, and foreground
+execution (omit `run_in_background` or set it to `false`). Omit `model` so
+reviewers inherit the parent model. Subagents always share the current working
+directory; do not request worktree isolation. Tell each reviewer to inspect the
+complete `git diff HEAD` directly, and wait for all three results before changing
+any file. Each returns a short list of concrete, located findings.
 
 - **Reuse.** New code that duplicates an existing helper or utility; hand-rolled
   logic (string munging, path handling, env checks, type guards) that the

@@ -15,9 +15,9 @@ main agent's tool loop.
 Where [`packages/agent.md`](agent.md) owns the *foreground* agent session,
 this package owns the *background* agents the foreground spawns via the
 Agent tool. Each background agent runs in its own goroutine with its own
-inbox/outbox, isolated work tree (optional), and isolated tool/permission
-set; its final result flows back into the foreground conversation as a
-tool result.
+inbox/outbox and isolated tool/permission set while sharing the parent's
+working directory; its final result flows back into the foreground
+conversation as a tool result.
 
 ## Contract
 
@@ -109,5 +109,4 @@ internal/subagent/scenarios_test.go     — common invocation shapes.
 - Code: `internal/subagent/`
 - Parent agent: [`packages/agent.md`](agent.md)
 - Spawning tool: [`packages/tool.md`](tool.md) (the Agent tool)
-- Worktree isolation: [`packages/worktree.md`](worktree.md)
 - Layer: `feature`

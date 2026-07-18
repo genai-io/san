@@ -200,11 +200,12 @@ func (m *env) ApplyBypassPermissions() {
 	m.SessionPermissions.Mode = setting.ModeBypassPermissions
 }
 
-func (m *env) DetectThinkingKeywords(input string) {
+func (m *env) DetectThinkingKeywords(input string) bool {
+	previous := m.EffectiveThinkingEffort()
 	lower := strings.ToLower(input)
 	efforts := m.ThinkingEfforts()
 	if len(efforts) == 0 {
-		return
+		return false
 	}
 
 	if strings.Contains(lower, "ultrathink") ||
@@ -212,7 +213,7 @@ func (m *env) DetectThinkingKeywords(input string) {
 		strings.Contains(lower, "think super hard") ||
 		strings.Contains(lower, "maximum thinking") {
 		m.ThinkingEffort = efforts[len(efforts)-1]
-		return
+		return m.EffectiveThinkingEffort() != previous
 	}
 
 	if strings.Contains(lower, "think harder") ||
@@ -222,8 +223,10 @@ func (m *env) DetectThinkingKeywords(input string) {
 		if len(efforts) >= 2 {
 			m.ThinkingEffort = efforts[len(efforts)-2]
 		}
-		return
+		return m.EffectiveThinkingEffort() != previous
 	}
+
+	return false
 }
 
 func (m *env) ApplyModePermissions(cwd string) {

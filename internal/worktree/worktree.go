@@ -1,6 +1,5 @@
-// Package worktree provides git worktree creation and management.
-// Used by both the standalone EnterWorktree tool (main conversation)
-// and the Agent tool's isolation mode (subagents).
+// Package worktree provides git worktree creation and management for the
+// main conversation's EnterWorktree and ExitWorktree tools.
 package worktree
 
 import (
@@ -24,7 +23,7 @@ type Result struct {
 	Branch string // branch name (empty for detached HEAD)
 }
 
-// Create creates a git worktree under baseCwd/.git/agent-worktrees/<slug>.
+// Create creates a git worktree under the repository's common git directory.
 // If slug is empty, a random short ID is used.
 // Returns the worktree path and a cleanup function that removes it.
 func Create(baseCwd, slug string) (*Result, func(), error) {
@@ -41,7 +40,11 @@ func Create(baseCwd, slug string) (*Result, func(), error) {
 		return nil, nil, fmt.Errorf("invalid worktree slug: must not contain path separators or '..'")
 	}
 
-	worktreePath := filepath.Join(baseCwd, ".git", worktreeDir, slug)
+	commonDir, err := gitCommonDir(baseCwd)
+	if err != nil {
+		return nil, nil, err
+	}
+	worktreePath := filepath.Join(commonDir, worktreeDir, slug)
 
 	cmd := exec.Command("git", "worktree", "add", "--detach", worktreePath)
 	cmd.Dir = baseCwd
@@ -59,6 +62,20 @@ func Create(baseCwd, slug string) (*Result, func(), error) {
 	fireWorktreeCreated(slug, worktreePath)
 
 	return &Result{Path: worktreePath}, cleanup, nil
+}
+
+func gitCommonDir(baseCwd string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--git-common-dir")
+	cmd.Dir = baseCwd
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolve git common dir: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	dir := strings.TrimSpace(string(out))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(baseCwd, dir)
+	}
+	return filepath.Clean(dir), nil
 }
 
 // Remove force-removes a git worktree.

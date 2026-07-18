@@ -140,7 +140,7 @@ func formatAsyncHookContinuationContext(result hook.AsyncHookResult, reason stri
 func runPrint(userMessage, personaName string) error {
 	ctx := context.Background()
 
-	llmProvider, modelID, err := resolveProvider(ctx)
+	llmProvider, modelID, _, err := resolveProvider(ctx)
 	if err != nil {
 		return err
 	}
@@ -206,20 +206,20 @@ func runPrint(userMessage, personaName string) error {
 // concrete model id. It shares llm.ResolveProvider's resolution order with the
 // interactive startup path; when resolution falls back to a connection without
 // a saved current model, it fills that provider's default model id.
-func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
+func resolveProvider(ctx context.Context) (llm.Provider, string, *llm.Store, error) {
 	store, err := llm.NewStore()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load store: %w", err)
+		return nil, "", nil, fmt.Errorf("failed to load store: %w", err)
 	}
 	resolved, ok := llm.ResolveProvider(ctx, store)
 	if !ok {
-		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
+		return nil, "", nil, fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
 	}
 	modelID := resolved.ModelID
 	if modelID == "" {
 		modelID = setting.DefaultModel(resolved.Provider.Name(), string(resolved.AuthMethod))
 	}
-	return resolved.Provider, modelID, nil
+	return resolved.Provider, modelID, store, nil
 }
 
 // validatePersona ensures the named persona exists on disk, early in startup,

@@ -98,17 +98,33 @@ func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 }
 
 func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
-	executor := &Executor{parentModelID: "parent-model"}
+	executor := &Executor{
+		provider:      &thinkingProvider{name: string(llm.Anthropic)},
+		parentModelID: "parent-model",
+	}
 	ctx := context.Background()
 
-	if _, got, onParent, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-20250514" || !onParent {
-		t.Fatalf("config alias = %q onParent=%v, want sonnet alias on parent provider", got, onParent)
+	if _, got, inheritsParent, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-20250514" || inheritsParent {
+		t.Fatalf("config alias = %q inheritsParent=%v, want a model override", got, inheritsParent)
 	}
-	if _, got, onParent, _ := executor.resolveModel(ctx, "", "inherit"); got != "parent-model" || !onParent {
-		t.Fatalf("inherit model = %q onParent=%v, want parent on parent provider", got, onParent)
+	if _, got, inheritsParent, _ := executor.resolveModel(ctx, "", "inherit"); got != "parent-model" || !inheritsParent {
+		t.Fatalf("inherit model = %q inheritsParent=%v, want the exact parent model", got, inheritsParent)
 	}
 	if _, got, _, _ := executor.resolveModel(ctx, "override-model", "sonnet"); got != "override-model" {
 		t.Fatalf("request override = %q, want override", got)
+	}
+}
+
+func TestResolveModelDoesNotSendClaudeAliasToOpenAI(t *testing.T) {
+	parent := &thinkingProvider{name: "openai:subscription"}
+	executor := &Executor{provider: parent, parentModelID: "gpt-parent"}
+
+	provider, modelID, inheritsParent, err := executor.resolveModel(context.Background(), "haiku", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if provider != parent || modelID != "gpt-parent" || !inheritsParent {
+		t.Fatalf("resolveModel() = (%v, %q, %v), want OpenAI parent model", provider, modelID, inheritsParent)
 	}
 }
 
@@ -128,7 +144,7 @@ func TestResolveModelRoutesQualifiedRefToResolver(t *testing.T) {
 	stub := &stubResolver{}
 	executor := &Executor{parentModelID: "parent-model", resolver: stub}
 
-	_, modelID, onParent, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
+	_, modelID, inheritsParent, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -138,8 +154,166 @@ func TestResolveModelRoutesQualifiedRefToResolver(t *testing.T) {
 	if modelID != "deepseek-v4" {
 		t.Fatalf("modelID = %q, want deepseek-v4", modelID)
 	}
-	if onParent {
-		t.Fatal("a routed vendor/model must not be flagged as on the parent provider")
+	if inheritsParent {
+		t.Fatal("a routed vendor/model must not inherit the parent model")
+	}
+}
+
+type thinkingProvider struct {
+	name        string
+	defaults    map[string]string
+	options     []llm.CompletionOptions
+	streamError error
+}
+
+func (p *thinkingProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
+	p.options = append(p.options, opts)
+	ch := make(chan llm.StreamChunk, 1)
+	if p.streamError != nil {
+		ch <- llm.StreamChunk{Type: llm.ChunkTypeError, Error: p.streamError}
+	} else {
+		resp := llm.CompletionResponse{Content: "ok", StopReason: "end_turn"}
+		ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &resp}
+	}
+	close(ch)
+	return ch
+}
+
+func (p *thinkingProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
+func (p *thinkingProvider) Name() string                                        { return p.name }
+func (p *thinkingProvider) ThinkingEfforts(model string) []string {
+	if effort := p.defaults[model]; effort != "" {
+		return []string{effort}
+	}
+	return nil
+}
+func (p *thinkingProvider) DefaultThinkingEffort(model string) string {
+	return p.defaults[model]
+}
+
+func TestRunResolvesThinkingEffortForFinalModel(t *testing.T) {
+	tests := []struct {
+		name         string
+		parentEffort string
+		requestModel string
+		wantEffort   string
+	}{
+		{name: "inherits selected parent effort", parentEffort: "high", wantEffort: "high"},
+		{name: "headless inheritance uses model default", wantEffort: "medium"},
+		{name: "model override uses target default", parentEffort: "high", requestModel: "child-model", wantEffort: "low"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			provider := &thinkingProvider{
+				name:     string(llm.OpenAI),
+				defaults: map[string]string{"parent-model": "medium", "child-model": "low"},
+			}
+			executor := NewExecutor(provider, t.TempDir(), "parent-model", nil)
+			executor.SetParentThinkingEffort(tt.parentEffort)
+
+			_, err := executor.Run(context.Background(), tool.AgentExecRequest{
+				Agent:  "general-purpose",
+				Prompt: "review",
+				Model:  tt.requestModel,
+			})
+			if err != nil {
+				t.Fatalf("Run() error: %v", err)
+			}
+			if len(provider.options) != 1 {
+				t.Fatalf("completion calls = %d, want 1", len(provider.options))
+			}
+			if got := provider.options[0].ThinkingEffort; got != tt.wantEffort {
+				t.Fatalf("ThinkingEffort = %q, want %q", got, tt.wantEffort)
+			}
+		})
+	}
+}
+
+func TestRunRoutedModelUsesTargetDefaultThinkingEffort(t *testing.T) {
+	parent := &thinkingProvider{name: string(llm.OpenAI), defaults: map[string]string{"parent-model": "high"}}
+	target := &thinkingProvider{name: string(llm.DeepSeek), defaults: map[string]string{"deepseek-v4": "low"}}
+	executor := NewExecutor(parent, t.TempDir(), "parent-model", nil)
+	executor.SetParentThinkingEffort("high")
+	executor.SetResolver(&stubResolver{provider: target})
+
+	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
+		Agent:  "general-purpose",
+		Prompt: "review",
+		Model:  "deepseek/deepseek-v4",
+	})
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if len(target.options) != 1 || target.options[0].ThinkingEffort != "low" {
+		t.Fatalf("routed options = %#v, want target effort low", target.options)
+	}
+}
+
+func TestRunModelOverrideUsesCachedTargetThinkingEffort(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore() error: %v", err)
+	}
+	if err := store.Connect(llm.OpenAI, llm.AuthSubscription); err != nil {
+		t.Fatalf("Connect() error: %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, []llm.ModelInfo{{
+		ID:        "dynamic-model",
+		Reasoning: llm.NewReasoningCapability([]string{"low", "ultra"}, "ultra"),
+	}}); err != nil {
+		t.Fatalf("CacheModels() error: %v", err)
+	}
+
+	provider := &thinkingProvider{name: "openai:subscription"}
+	executor := NewExecutor(provider, t.TempDir(), "parent-model", nil)
+	executor.SetParentThinkingEffort("high")
+	executor.SetModelStore(store)
+
+	_, err = executor.Run(context.Background(), tool.AgentExecRequest{
+		Agent:  "general-purpose",
+		Prompt: "review",
+		Model:  "dynamic-model",
+	})
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if len(provider.options) != 1 || provider.options[0].ThinkingEffort != "ultra" {
+		t.Fatalf("override options = %#v, want cached target effort ultra", provider.options)
+	}
+}
+
+func TestResolveModelExplicitParentKeepsParentEffort(t *testing.T) {
+	provider := &thinkingProvider{name: "openai:subscription"}
+	executor := &Executor{provider: provider, parentModelID: "gpt-parent"}
+
+	_, modelID, inheritsParent, err := executor.resolveModel(context.Background(), "gpt-parent", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != "gpt-parent" || !inheritsParent {
+		t.Fatalf("resolveModel() = (%q, %v), want explicit parent model to inherit effort", modelID, inheritsParent)
+	}
+}
+
+func TestRunModelFallbackRestoresParentThinkingEffort(t *testing.T) {
+	parent := &thinkingProvider{name: string(llm.OpenAI), defaults: map[string]string{"parent-model": "medium"}}
+	target := &thinkingProvider{name: string(llm.DeepSeek), streamError: errors.New("model_not_found")}
+	executor := NewExecutor(parent, t.TempDir(), "parent-model", nil)
+	executor.SetParentThinkingEffort("high")
+	executor.SetResolver(&stubResolver{provider: target})
+
+	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
+		Agent:  "general-purpose",
+		Prompt: "review",
+		Model:  "deepseek/missing-model",
+	})
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if len(parent.options) != 1 || parent.options[0].ThinkingEffort != "high" {
+		t.Fatalf("fallback options = %#v, want selected parent effort high", parent.options)
 	}
 }
 

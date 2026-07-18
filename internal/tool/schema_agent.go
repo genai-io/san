@@ -25,7 +25,7 @@ func agentToolSchema(directory string) core.ToolSchema {
 	sb.WriteString("Use direct tools instead for simple reads, narrow searches, or tasks that only need 1-2 tool calls.\n\n")
 	sb.WriteString("Usage notes:\n")
 	sb.WriteString("- Always include a short description (3-5 words) summarizing what the agent will do\n")
-	sb.WriteString("- Launch multiple agents concurrently whenever possible; to do that, use a single message with multiple Agent calls\n")
+	sb.WriteString("- Parallelize only read-only code-reviewer agents in explore mode; all subagents share the current working directory, so run writing agents sequentially\n")
 	sb.WriteString("- Each agent has isolated context; summarize important results back to the user yourself\n")
 	sb.WriteString("- Use foreground by default when you need the result before continuing\n")
 	sb.WriteString("- Use run_in_background only for genuinely independent work; you will be notified when it completes\n")
@@ -63,8 +63,7 @@ var agentToolParameters = map[string]any{
 		},
 		"model": map[string]any{
 			"type":        "string",
-			"description": "Optional model override. If omitted, inherits from parent conversation.",
-			"enum":        []string{"sonnet", "opus", "haiku"},
+			"description": "Optional model override. Omit unless a different model was explicitly requested; use vendor/model for cross-provider routing.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
@@ -77,12 +76,7 @@ var agentToolParameters = map[string]any{
 		"mode": map[string]any{
 			"type":        "string",
 			"description": "Permission mode for spawned agent.",
-			"enum":        []string{"explore", "edit", "default"},
-		},
-		"isolation": map[string]any{
-			"type":        "string",
-			"description": "Isolation mode for the agent.",
-			"enum":        []string{"worktree"},
+			"enum":        []string{"explore", "acceptEdits", "default"},
 		},
 	},
 	"required": []string{"description", "prompt"},
@@ -133,8 +127,7 @@ Notes:
 			},
 			"model": map[string]any{
 				"type":        "string",
-				"description": "Optional model override. If omitted, inherits from parent conversation.",
-				"enum":        []string{"sonnet", "opus", "haiku"},
+				"description": "Optional model override. Omit unless a different model was explicitly requested; use vendor/model for cross-provider routing.",
 			},
 			"max_steps": map[string]any{
 				"type":        "number",
@@ -143,12 +136,7 @@ Notes:
 			"mode": map[string]any{
 				"type":        "string",
 				"description": "Permission mode for the resumed worker.",
-				"enum":        []string{"explore", "edit", "default"},
-			},
-			"isolation": map[string]any{
-				"type":        "string",
-				"description": "Isolation mode for the resumed worker.",
-				"enum":        []string{"worktree"},
+				"enum":        []string{"explore", "acceptEdits", "default"},
 			},
 		},
 		"required": []string{"prompt", "description"},

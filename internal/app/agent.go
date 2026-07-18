@@ -577,14 +577,24 @@ func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.Permis
 	}
 }
 
+func (m *model) SetThinkingEffort(effort string) {
+	previous := m.env.EffectiveThinkingEffort()
+	m.env.SetThinkingEffort(effort)
+	if m.env.EffectiveThinkingEffort() != previous {
+		m.ReconfigureAgentTool()
+	}
+}
+
 func (m *model) ReconfigureAgentTool() {
-	if m.env.LLMProvider == nil {
+	if m.env.LLMProvider == nil || m.services.LLM == nil {
 		return
 	}
 	m.ensureMemoryContextLoaded()
 
+	store := m.services.LLM.Store()
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
-	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	executor.SetResolver(llm.NewProviderPool(store))
+	executor.SetModelStore(store)
 	executor.SetParentThinkingEffort(m.env.EffectiveThinkingEffort())
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())

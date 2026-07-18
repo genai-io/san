@@ -354,6 +354,30 @@ func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "explore code reviewers run in parallel",
+			tasks: []agentToolTask{
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"code-reviewer","mode":"explore"}`}},
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"code-reviewer","mode":"explore"}`}},
+			},
+			want: true,
+		},
+		{
+			name: "writing agents serialize batch",
+			tasks: []agentToolTask{
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"general-purpose","mode":"acceptEdits"}`}},
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"general-purpose","mode":"acceptEdits"}`}},
+			},
+			want: false,
+		},
+		{
+			name: "background reviewers serialize launch",
+			tasks: []agentToolTask{
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"code-reviewer","mode":"explore","run_in_background":true}`}},
+				{call: ToolCall{Name: "Agent", Input: `{"subagent_type":"code-reviewer","mode":"explore","run_in_background":true}`}},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {

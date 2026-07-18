@@ -75,8 +75,29 @@ func TestCreateRequiresGitRepo(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Create() to fail outside a git repo")
 	}
-	if !strings.Contains(err.Error(), "git worktree add failed") {
+	if !strings.Contains(err.Error(), "resolve git common dir") {
 		t.Fatalf("expected git worktree failure, got %v", err)
+	}
+}
+
+func TestCreateFromLinkedWorktree(t *testing.T) {
+	repo := makeRepo(t)
+	linked := filepath.Join(t.TempDir(), "linked")
+	runGit(t, repo, "worktree", "add", "--detach", linked)
+
+	result, cleanup, err := Create(linked, "from-linked")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	defer cleanup()
+
+	commonDir := runGit(t, linked, "rev-parse", "--git-common-dir")
+	if !filepath.IsAbs(commonDir) {
+		commonDir = filepath.Join(linked, commonDir)
+	}
+	wantPath := filepath.Join(filepath.Clean(commonDir), worktreeDir, "from-linked")
+	if result.Path != wantPath {
+		t.Fatalf("worktree path = %q, want %q", result.Path, wantPath)
 	}
 }
 

@@ -507,11 +507,28 @@ func executeToolTask(ctx context.Context, t agentToolTask) (result toolTaskOutpu
 
 func canExecuteToolBatchInParallel(tasks []agentToolTask) bool {
 	for _, t := range tasks {
-		if !isReadOnlyToolCall(t.call.Name) {
+		if !isReadOnlyToolTask(t) {
 			return false
 		}
 	}
 	return true
+}
+
+func isReadOnlyToolTask(task agentToolTask) bool {
+	if isReadOnlyToolCall(task.call.Name) {
+		return true
+	}
+	if task.call.Name != "Agent" {
+		return false
+	}
+	params, err := ParseToolInput(task.call.Input)
+	if err != nil {
+		return false
+	}
+	agentType, _ := params["subagent_type"].(string)
+	mode, _ := params["mode"].(string)
+	background, _ := params["run_in_background"].(bool)
+	return agentType == "code-reviewer" && mode == "explore" && !background
 }
 
 func isReadOnlyToolCall(name string) bool {

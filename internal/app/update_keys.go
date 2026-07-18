@@ -195,7 +195,7 @@ func (m *model) cycleThinkingEffort() tea.Cmd {
 		return kit.StatusTimer(3*time.Second, token)
 	}
 
-	m.env.SetThinkingEffort(next)
+	m.SetThinkingEffort(next)
 	status := "thinking: " + next
 	if current != "" && current == next {
 		status += " (only supported)"

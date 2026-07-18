@@ -26,9 +26,8 @@ Project overrides user overrides Claude-compat by `name`.
 ---
 name: test-runner
 description: Run the test suite and surface failures
-allowed-tools: [Bash, Read, Grep]
-permission-mode: bypass
-isolation: none
+allow_tools: [Bash, Read, Grep]
+mode: bypassPermissions
 ---
 
 You are a test runner. Your job is to:
@@ -47,10 +46,9 @@ Be terse. No code suggestions — that is the parent agent's job.
 |---|---|---|
 | `name` | yes | Subagent type identifier; used in `Agent` tool's `agent_type` field. |
 | `description` | yes | Shown in selectors and used by the foreground model to decide when to spawn this agent. |
-| `allowed-tools` | no | Restrict the subagent's tool set. Default = same as parent. |
-| `permission-mode` | no | One of `default`, `acceptEdits`, `bypassPermissions`, `plan`. Default = parent. |
-| `isolation` | no | `none` (default) or `worktree` — see below. |
-| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
+| `allow_tools` | no | Restrict the subagent's tool set. Default = same as parent. |
+| `mode` | no | One of `default`, `explore`, `acceptEdits`, `bypassPermissions`, `dontAsk`, or `auto`. Default = `default`. |
+| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. Claude aliases (`opus`/`sonnet`/`haiku`) apply only on an Anthropic parent; on other providers they inherit the parent model. A bare id uses the parent's provider; `vendor/model` routes to another **connected** provider. |
 
 ## Cross-Provider Models
 
@@ -67,8 +65,10 @@ routes the agent to another **connected** provider:
 `model:` accepts:
 
 - `inherit` (or empty) — the parent conversation's model.
-- an alias (`opus` / `sonnet` / `haiku`) or a bare id — served by the parent's
-  provider.
+- an alias (`opus` / `sonnet` / `haiku`) — resolved on an Anthropic parent;
+  otherwise it inherits the parent model. Use `anthropic/model` to route
+  explicitly from another provider.
+- a bare id — served by the parent's provider.
 - `vendor/model` (e.g. `deepseek/deepseek-v4`) — routed to another **connected**
   provider.
 
@@ -95,16 +95,12 @@ controls what happens when a tool call would normally `ask`:
 See [`concepts/permission-model.md`](../concepts/permission-model.md) for
 the full decision pipeline.
 
-## Worktree Isolation
+## Workspace Coordination
 
-`isolation: worktree` creates a `git worktree` under
-`<project>/.git/agent-worktrees/<random>/` and runs the subagent there.
-The parent's working tree is untouched until the subagent finishes; the
-worktree is removed on success.
-
-Use this when you want a subagent to run experiments that may dirty the
-tree (build artifacts, codegen, refactors) without polluting the
-foreground session.
+Subagents share the parent conversation's working directory. Use read-only
+permission modes for parallel reviewers, wait for all reviewers to finish,
+then let one agent apply the aggregated changes. Do not run multiple writing
+subagents concurrently against the same files.
 
 ## How the Parent Spawns It
 
@@ -142,8 +138,6 @@ San:
   run anything.
 - **`bypassPermissions` on a write-class subagent.** Verify carefully
   — the subagent has no human in the loop.
-- **`isolation: worktree` without git.** Fails silently for non-git
-  projects. The subagent runs in the parent's cwd as fallback.
 
 ## See Also
 

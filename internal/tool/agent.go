@@ -74,7 +74,6 @@ type AgentExecRequest struct {
 	MaxSteps    int
 	Mode        string
 	ResumeID    string
-	Isolation   string
 	OnActivity  ActivityFunc
 	OnQuestion  AskQuestionFunc
 }

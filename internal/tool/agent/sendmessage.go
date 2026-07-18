@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/genai-io/san/internal/task"
@@ -14,6 +15,7 @@ import (
 // SendMessageTool sends a follow-up message to an existing worker.
 // Running workers do not support live injection yet.
 type SendMessageTool struct {
+	mu       sync.RWMutex
 	executor tool.AgentExecutor
 }
 
@@ -29,7 +31,15 @@ func (t *SendMessageTool) Icon() string             { return tool.IconAgent }
 func (t *SendMessageTool) RequiresPermission() bool { return true }
 
 func (t *SendMessageTool) SetExecutor(executor tool.AgentExecutor) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.executor = executor
+}
+
+func (t *SendMessageTool) getExecutor() tool.AgentExecutor {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.executor
 }
 
 func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
@@ -38,7 +48,8 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	if err != nil {
 		return nil, err
 	}
-	if t.executor == nil {
+	executor := t.getExecutor()
+	if executor == nil {
 		return nil, fmt.Errorf("agent executor not configured")
 	}
 
@@ -52,7 +63,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 		}
 	}
 
-	config, ok := t.executor.GetAgentConfig(target.agentType)
+	config, ok := executor.GetAgentConfig(target.agentType)
 	if !ok {
 		return nil, fmt.Errorf("unknown agent type: %s", target.agentType)
 	}
@@ -68,7 +79,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 		effectiveModel = config.Model
 	}
 	if effectiveModel == "" {
-		effectiveModel = t.executor.GetParentModelID()
+		effectiveModel = executor.GetParentModelID()
 	}
 	if effectiveModel == "" {
 		effectiveModel = "claude-sonnet-4-20250514"
@@ -118,7 +129,8 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 	}
 	ctx = tool.WithAgentDepth(ctx, currentDepth+1)
 
-	if t.executor == nil {
+	executor := t.getExecutor()
+	if executor == nil {
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
@@ -174,13 +186,12 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		MaxSteps:    tool.GetInt(normalized, "max_steps", 0),
 		Mode:        tool.GetString(normalized, "mode"),
 		ResumeID:    target.agentID,
-		Isolation:   tool.GetString(normalized, "isolation"),
 		OnActivity:  onActivity,
 		OnQuestion:  onQuestion,
 	}
 
 	if req.Background {
-		taskInfo, err := t.executor.RunBackground(req)
+		taskInfo, err := executor.RunBackground(req)
 		if err != nil {
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to send background message to agent: %v", err))
 		}
@@ -209,7 +220,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cw
 		}
 	}
 
-	result, err := t.executor.Run(ctx, req)
+	result, err := executor.Run(ctx, req)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent message failed: %v", err))
 	}

@@ -13,21 +13,14 @@ import (
 )
 
 type preparedRun struct {
-	req              tool.AgentExecRequest
-	cfg              *runConfig
-	cwd              string
-	startedAt        time.Time
-	hookID           string
-	activity         []string
-	inputTokens      int
-	outputTokens     int
-	cleanupWorkspace func()
-}
-
-func (r *preparedRun) close() {
-	if r != nil && r.cleanupWorkspace != nil {
-		r.cleanupWorkspace()
-	}
+	req          tool.AgentExecRequest
+	cfg          *runConfig
+	cwd          string
+	startedAt    time.Time
+	hookID       string
+	activity     []string
+	inputTokens  int
+	outputTokens int
 }
 
 func (r *preparedRun) sendActivity(msg string) {
@@ -53,25 +46,18 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 		return nil, err
 	}
 
-	agentCwd, cleanupWorkspace, err := e.prepareWorkspace(req)
-	if err != nil {
-		return nil, err
-	}
-
 	cfg, err := e.prepareRunConfig(ctx, req)
 	if err != nil {
-		cleanupWorkspace()
 		return nil, err
 	}
 
 	return &preparedRun{
-		req:              req,
-		cfg:              cfg,
-		cwd:              agentCwd,
-		startedAt:        time.Now(),
-		hookID:           "a" + generateShortID(),
-		activity:         make([]string, 0, 16),
-		cleanupWorkspace: cleanupWorkspace,
+		req:       req,
+		cfg:       cfg,
+		cwd:       e.cwd,
+		startedAt: time.Now(),
+		hookID:    "a" + generateShortID(),
+		activity:  make([]string, 0, 16),
 	}, nil
 }
 

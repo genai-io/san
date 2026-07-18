@@ -18,7 +18,6 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/worktree"
 	"go.uber.org/zap"
 )
 
@@ -34,9 +33,10 @@ type ProviderResolver interface {
 type Executor struct {
 	provider        llm.Provider
 	resolver        ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
+	modelStore      *llm.Store       // optional live model capabilities for target-model effort resolution
 	cwd             string
 	parentModelID   string // Parent conversation's model ID (used when inheriting)
-	parentEffort    string // Parent's reasoning/thinking effort, applied to same-provider subagents
+	parentEffort    string // Parent's reasoning/thinking effort, applied when inheriting the exact parent model
 	hooks           hook.Handler
 	sessionStore    SubagentSessionStore // Optional: when set, subagent sessions are persisted
 	parentSessionID string               // Parent session ID for linking subagent sessions
@@ -53,14 +53,14 @@ type SubagentSessionStore interface {
 }
 
 type runConfig struct {
-	config           *AgentConfig
-	provider         llm.Provider // provider this run talks to (parent's, or a routed vendor)
-	modelID          string
-	onParentProvider bool // true when provider is the parent's (inherit/alias), not a routed vendor
-	maxSteps         int
-	displayName      string
-	brief            system.SubagentBrief // identity/charter for this run; immutable
-	permMode         PermissionMode
+	config              *AgentConfig
+	provider            llm.Provider // provider this run talks to (parent's, or a routed vendor)
+	modelID             string
+	inheritsParentModel bool // true only when the request uses the parent's exact model
+	maxSteps            int
+	displayName         string
+	brief               system.SubagentBrief // identity/charter for this run; immutable
+	permMode            PermissionMode
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
@@ -81,12 +81,9 @@ func (e *Executor) SetContext(isGit bool) {
 	e.isGit = isGit
 }
 
-// SetParentThinkingEffort records the parent conversation's reasoning effort so
-// same-provider subagents run at the same effort. This matters for backends that
-// require a reasoning field (the ChatGPT Codex subscription rejects a
-// reasoning-less request with 400); without it, an inheriting subagent would
-// send no effort and fail. Cross-provider-routed subagents do not receive it —
-// the parent's effort may be invalid for a different vendor's model.
+// SetParentThinkingEffort records the parent conversation's reasoning effort.
+// It is used only when a subagent inherits the parent's exact model; model
+// overrides resolve the target model's own default effort.
 func (e *Executor) SetParentThinkingEffort(effort string) {
 	e.parentEffort = effort
 }
@@ -97,6 +94,12 @@ func (e *Executor) SetParentThinkingEffort(effort string) {
 // silently fall back to the parent.
 func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
+}
+
+// SetModelStore enables provider/auth-scoped model capability lookup when a
+// subagent overrides the parent's model. Without it, provider defaults apply.
+func (e *Executor) SetModelStore(store *llm.Store) {
+	e.modelStore = store
 }
 
 // SetCapabilities provides skills and agents prompt sections so subagents
@@ -133,8 +136,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err != nil {
 		return nil, err
 	}
-	defer run.close()
-
 	ctx = e.attachRunContext(ctx, run.cfg.displayName)
 	e.logRunStart(run)
 	e.fireSubagentStart(run.req, run.hookID)
@@ -143,6 +144,7 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err != nil && shouldRetryWithParentModel(err, run.cfg.modelID, e.parentModelID) {
 		run.cfg.provider = e.provider
 		run.cfg.modelID = e.parentModelID
+		run.cfg.inheritsParentModel = true
 		result, err = e.executePreparedRun(ctx, run)
 	}
 	if err != nil {
@@ -216,18 +218,6 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	return nil
 }
 
-func (e *Executor) prepareWorkspace(req tool.AgentExecRequest) (string, func(), error) {
-	if req.Isolation != "worktree" {
-		return e.cwd, func() {}, nil
-	}
-
-	result, cleanup, err := worktree.Create(e.cwd, "")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create worktree: %w", err)
-	}
-	return result.Path, cleanup, nil
-}
-
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := defaultRegistry.Get(req.Agent)
 	if !ok {
@@ -246,20 +236,20 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		maxSteps = defaultMaxSteps
 	}
 
-	provider, modelID, onParentProvider, err := e.resolveModel(ctx, req.Model, config.Model)
+	provider, modelID, inheritsParentModel, err := e.resolveModel(ctx, req.Model, config.Model)
 	if err != nil {
 		return nil, err
 	}
 
 	return &runConfig{
-		config:           config,
-		provider:         provider,
-		modelID:          modelID,
-		onParentProvider: onParentProvider,
-		maxSteps:         maxSteps,
-		displayName:      displayName,
-		brief:            e.buildBrief(config, permMode),
-		permMode:         permMode,
+		config:              config,
+		provider:            provider,
+		modelID:             modelID,
+		inheritsParentModel: inheritsParentModel,
+		maxSteps:            maxSteps,
+		displayName:         displayName,
+		brief:               e.buildBrief(config, permMode),
+		permMode:            permMode,
 	}, nil
 }
 
@@ -338,13 +328,18 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	coreTools = tool.WithPermission(coreTools, permFn)
 
 	client := llm.NewClient(rc.provider, rc.modelID, 0)
-	if rc.onParentProvider {
-		// Inherit the parent's reasoning effort: it is valid for this provider's
-		// model, and some backends (the ChatGPT Codex subscription) reject a
-		// reasoning-less request with 400. Routed subagents keep the empty
-		// default — the parent's effort may be invalid for another vendor.
-		client.SetThinkingEffort(e.parentEffort)
+	effort := ""
+	if rc.inheritsParentModel && e.parentEffort != "" {
+		effort = e.parentEffort
+	} else {
+		providerName, authMethod := providerIdentity(rc.provider)
+		effort = llm.ResolveThinkingEffortForModel(rc.provider, e.modelStore, &llm.CurrentModelInfo{
+			Provider:   providerName,
+			AuthMethod: authMethod,
+			ModelID:    rc.modelID,
+		}, "")
 	}
+	client.SetThinkingEffort(effort)
 
 	ag = core.NewAgent(core.Config{
 		LLM:       client,
@@ -433,10 +428,9 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 // alias, a bare model id, or "inherit" — stays on the parent's provider,
 // preserving prior behavior.
 //
-// The returned onParentProvider flag is true for those parent-provider forms
-// and false for a routed vendor; it gates parent-effort propagation, since the
-// parent's reasoning effort is only known-valid for its own provider's models.
-func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (provider llm.Provider, modelID string, onParentProvider bool, err error) {
+// The returned inheritsParentModel flag is true only when the run uses the
+// parent's exact model. Model overrides resolve their own default effort.
+func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (provider llm.Provider, modelID string, inheritsParentModel bool, err error) {
 	ref := requestModel
 	if ref == "" {
 		ref = configModel
@@ -454,7 +448,24 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		}
 		return p, routedModel, false, nil
 	}
-	return e.provider, resolveModelAlias(ref), true, nil
+	if _, isClaudeAlias := modelAliases[ref]; isClaudeAlias && !isAnthropicProvider(e.provider) {
+		return e.provider, e.parentModelID, true, nil
+	}
+	modelID = resolveModelAlias(ref)
+	return e.provider, modelID, modelID == e.parentModelID, nil
+}
+
+func isAnthropicProvider(provider llm.Provider) bool {
+	name, _ := providerIdentity(provider)
+	return name == llm.Anthropic
+}
+
+func providerIdentity(provider llm.Provider) (llm.Name, llm.AuthMethod) {
+	if provider == nil {
+		return "", ""
+	}
+	name, auth, _ := strings.Cut(provider.Name(), ":")
+	return llm.Name(name), llm.AuthMethod(auth)
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {

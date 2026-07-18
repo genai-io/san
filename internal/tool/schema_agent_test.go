@@ -32,6 +32,27 @@ func TestAgentToolSchemaOmitsDirectoryWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestSubagentSchemasDoNotExposeWorktreeIsolation(t *testing.T) {
+	for _, schema := range []core.ToolSchema{agentToolSchema(""), sendMessageToolSchema} {
+		params := schema.Parameters.(map[string]any)
+		properties := params["properties"].(map[string]any)
+		if _, ok := properties["isolation"]; ok {
+			t.Fatalf("%s schema must not let subagents create worktrees", schema.Name)
+		}
+	}
+}
+
+func TestSubagentSchemasDoNotSuggestProviderSpecificModelAliases(t *testing.T) {
+	for _, schema := range []core.ToolSchema{agentToolSchema(""), sendMessageToolSchema} {
+		params := schema.Parameters.(map[string]any)
+		properties := params["properties"].(map[string]any)
+		model := properties["model"].(map[string]any)
+		if _, ok := model["enum"]; ok {
+			t.Fatalf("%s model override must not suggest provider-specific aliases", schema.Name)
+		}
+	}
+}
+
 func TestGetToolSchemasUsesDirectoryGetter(t *testing.T) {
 	schemas := GetToolSchemasWith(SchemaOptions{
 		AgentDirectory: func() string {

@@ -6,16 +6,16 @@ layer: feature
 # worktree
 
 Thin wrapper over `git worktree add/remove` that produces an isolated
-workspace under `<cwd>/.git/agent-worktrees/<slug>/` plus a cleanup
-closure. Used by the standalone `EnterWorktree` tool and by the Agent
-tool's `isolation: "worktree"` mode.
+workspace under the repository's common Git directory at
+`agent-worktrees/<slug>/`, plus a cleanup closure. Used by the main
+conversation's standalone `EnterWorktree` and `ExitWorktree` tools.
+Subagents share the current working directory and do not create worktrees.
 
 ## Purpose
 
-Subagents may need a clean git workspace separate from the main session's
-working directory — e.g. an "explore" subagent running long-shot
-experiments that must not pollute the parent's tree. This package gives
-each such invocation its own worktree and the closure to clean it up.
+The main conversation may need a clean git workspace for an experiment
+that must not pollute its current tree. This package creates that workspace
+and returns the closure that cleans it up.
 
 ## Contract
 
@@ -73,5 +73,5 @@ internal/worktree/hooks_test.go       — hook firing.
 ## See Also
 
 - Code: `internal/worktree/`
-- Callers: [`packages/tool.md`](tool.md) (EnterWorktree tool), [`packages/subagent.md`](subagent.md) (isolation mode)
+- Caller: [`packages/tool.md`](tool.md) (EnterWorktree and ExitWorktree tools)
 - Layer: `feature`
