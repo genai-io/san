@@ -7,7 +7,7 @@ import (
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
-func TestPermissionDecisionRecordSnapshotsInput(t *testing.T) {
+func TestPermDecisionRecordSnapshotsInput(t *testing.T) {
 	input := map[string]any{"prompt": "inspect the repository"}
 	req := &conv.PermGateRequest{
 		RequestID: "permission-1",
@@ -15,13 +15,13 @@ func TestPermissionDecisionRecordSnapshotsInput(t *testing.T) {
 		Input:     input,
 	}
 
-	record := permissionDecisionRecord(req, permissionDecision{
+	record := permDecisionRecord(req, permissionDecision{
 		Approved: true,
 		Request:  &perm.PermissionRequest{ToolName: "Agent"},
 	}, "user approved", "normal")
 
 	// Agent execution decorates this same input map after the permission gate
-	// opens. The audit record must already own serialized bytes by then.
+	// opens. The permission record must already own serialized bytes by then.
 	input["_onActivity"] = func() {}
 	input["prompt"] = "changed after approval"
 

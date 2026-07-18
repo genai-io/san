@@ -69,26 +69,22 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
 		}
 	}
-	rec := m.services.Session.Recorder()
-	var auditRecord transcript.PermissionRecord
-	if rec != nil {
-		// Snapshot the request before releasing the permission gate. Agent tools
-		// add runtime callbacks to their input map as soon as the response wakes
-		// them; serializing that shared map afterward can otherwise race the
-		// write and crash the process with concurrent map iteration/write.
-		auditRecord = permissionDecisionRecord(req, decision, reason, m.env.SessionMode())
-	}
+	// Snapshot the request before releasing the permission gate. Agent tools
+	// add runtime callbacks to their input map as soon as the response wakes
+	// them; serializing that shared map afterward can otherwise race the
+	// write and crash the process with concurrent map iteration/write.
+	permRecord := permDecisionRecord(req, decision, reason, m.env.SessionMode())
 	select {
 	case req.Response <- conv.PermGateResponse{Allow: decision.Approved, Reason: reason}:
 	default:
 	}
-	if rec != nil {
-		rec.RecordPermissionDecided(auditRecord)
+	if rec := m.services.Session.Recorder(); rec != nil {
+		rec.RecordPermissionDecided(permRecord)
 	}
 	return conv.PollPermGate(m.services.Agent.PermissionGate())
 }
 
-func permissionDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {
+func permDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {
 	return transcript.PermissionRecord{
 		RequestID: req.RequestID,
 		Tool:      req.ToolName,
