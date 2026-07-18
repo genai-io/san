@@ -14,7 +14,7 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 	t.Cleanup(broker.Reset)
 
 	var got broker.Message
-	broker.Register("task-1", func(m broker.Message) { got = m })
+	broker.Register("task-1", func(m broker.Message) bool { got = m; return true })
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-1",
@@ -38,7 +38,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	t.Cleanup(broker.Reset)
 
 	var got broker.Message
-	broker.Register(broker.Main, func(m broker.Message) { got = m })
+	broker.Register(broker.Main, func(m broker.Message) bool { got = m; return true })
 
 	ctx := tool.WithAgentID(context.Background(), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
@@ -69,7 +69,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 	if result.Success {
 		t.Fatal("sending to an unregistered address should fail")
 	}
-	if !strings.Contains(result.Error, "not running") {
+	if !strings.Contains(result.Error, "spawn a new agent") {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }
@@ -77,7 +77,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 func TestSendMessage_SelfSendRejected(t *testing.T) {
 	broker.Reset()
 	t.Cleanup(broker.Reset)
-	broker.Register("task-7", func(broker.Message) {})
+	broker.Register("task-7", func(broker.Message) bool { return true })
 
 	ctx := tool.WithAgentID(context.Background(), "task-7")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{

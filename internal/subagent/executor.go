@@ -123,8 +123,8 @@ func (e *Executor) GetParentModelID() string {
 // For background agents, this should be called in a goroutine.
 //
 // Every exit path fires the SubagentStop hook with the same AgentID the
-// SubagentStart hook carried, and a cancelled run still persists its
-// conversation so it can be resumed with SendMessage.
+// SubagentStart hook carried. Cancelled runs persist their conversation and
+// partial output for inspection.
 func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
 	run, err := e.prepareRun(ctx, req)
 	if err != nil {
@@ -190,8 +190,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		result, err := e.Run(ctx, req)
 		if err != nil {
 			// A cancelled run still returns its partial work — keep it in the
-			// task output and record the resumable session so a stopped
-			// worker can be continued with SendMessage.
+			// task output and record its persisted session for inspection.
 			if result != nil {
 				if result.Content != "" {
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
@@ -525,12 +524,14 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 // matches docs/concepts/permission-model.md: deny_tools, bypass-immune, allow_tools,
 // mode default, with Prompt collapsing to Deny because subagents cannot ask.
 //
-// One communication carve-out sits between deny and mode default: SendMessage
-// is always permitted (unless deny_tools blocks it). It only moves text
-// between agents — it never mutates the workspace, and the tool itself refuses
-// a worker-initiated resume — so a read-only worker can still report to main,
-// answer a peer, or broadcast. (Spawning is not gated here: the Agent tool is
-// parent-only, so workers never see it — the agent model is flat.)
+// One communication carve-out sits between deny and allow_tools: for a
+// mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
+// every mode, so even a read-only or default worker can report to main or
+// answer a peer — it only moves text between agents and never touches the
+// workspace. deny_tools still blocks it, and an explicit allow_tools list is
+// honored as written (leave SendMessage out to silence a worker). Spawning is
+// not gated here: the Agent tool is parent-only, so workers never see it — the
+// agent model is flat.
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
 	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)
@@ -541,6 +542,12 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		}
 		if reason := setting.BypassImmuneReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
+		}
+		// Communication carve-out (see doc comment): a mode-gated worker may
+		// always reach main or a peer via SendMessage. A worker with an explicit
+		// allow_tools list is governed by that list instead.
+		if name == tool.ToolSendMessage && allowRules == nil {
+			return true, ""
 		}
 		if allowRules.Allows(name, input) {
 			return true, ""
@@ -585,7 +592,11 @@ func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, 
 }
 
 func modeAllowsSchema(mode PermissionMode, name string) bool {
-	if perm.IsSafeTool(name) {
+	// SendMessage is a communication tool, kept visible in every mode so a
+	// mode-gated worker can report to main (the gate permits it — see
+	// subagentPermissionFunc). A worker with an explicit allow_tools list takes
+	// the whitelist branch in filterSchemasForPermission instead of this one.
+	if perm.IsSafeTool(name) || name == tool.ToolSendMessage {
 		return true
 	}
 	switch mode {

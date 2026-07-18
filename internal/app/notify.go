@@ -12,12 +12,12 @@
 package app
 
 import (
-	"encoding/xml"
 	"fmt"
 	"strings"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // mainNotice is one message routed to the main conversation on Source 2 — a
@@ -97,9 +97,9 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	}
 	b.WriteString(">\n")
 	if info.Error != "" {
-		b.WriteString(escapeXMLText(info.Error))
+		b.WriteString(tool.EscapeXMLText(info.Error))
 	} else if result != "" {
-		b.WriteString(escapeXMLText(result))
+		b.WriteString(tool.EscapeXMLText(result))
 	}
 	b.WriteString("\n</task-notification>")
 
@@ -126,6 +126,9 @@ func taskSubject(info task.TaskInfo) string {
 	return info.Description
 }
 
+// (XML-body escaping now lives in tool.EscapeXMLText — newline-preserving and
+// shared with the SendMessage envelope builder.)
+
 func formatStatus(status task.TaskStatus) string {
 	switch status {
 	case task.StatusCompleted:
@@ -139,14 +142,6 @@ func formatStatus(status task.TaskStatus) string {
 	default:
 		return ""
 	}
-}
-
-func escapeXMLText(s string) string {
-	var b strings.Builder
-	if err := xml.EscapeText(&b, []byte(s)); err != nil {
-		return s
-	}
-	return b.String()
 }
 
 func joinNameDesc(name, desc string) string {

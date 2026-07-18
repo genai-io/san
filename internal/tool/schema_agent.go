@@ -29,7 +29,7 @@ func agentToolSchema(directory string) core.ToolSchema {
 	sb.WriteString("- Each agent has isolated context; summarize important results back to the user yourself\n")
 	sb.WriteString("- Use foreground by default when you need the result before continuing\n")
 	sb.WriteString("- Use run_in_background only for genuinely independent work; you will be notified when it completes\n")
-	sb.WriteString("- A running background agent can be steered mid-run with SendMessage(task_id); it reports back when done\n")
+	sb.WriteString("- A running background agent can be steered mid-run with SendMessage(to=<task id>, message); it reports back when done\n")
 	sb.WriteString("- Provide concrete prompts with file paths, constraints, and whether code changes are expected")
 
 	return core.ToolSchema{

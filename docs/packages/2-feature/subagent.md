@@ -7,7 +7,7 @@ layer: feature
 
 Registry of custom agent **types** (markdown-defined personas with their
 own system prompt, tool subset, and permission mode) plus the **Executor**
-that spawns them as background `core.Agent` instances from within the
+that spawns foreground or background `core.Agent` instances from within the
 main agent's tool loop.
 
 ## Purpose
@@ -91,8 +91,8 @@ func ResetDefaultRegistry()           // test-only
   `permission-mode`) alongside the canonical ones.
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
-- `progress_tools.go` — decorator around the worker's tools that streams
-  each call into the parent-visible progress trail.
+- `activity_tools.go` — decorator around the worker's tools that streams
+  each call into the parent-visible activity trail.
 
 ## Lifecycle
 

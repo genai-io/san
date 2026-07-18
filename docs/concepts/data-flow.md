@@ -282,10 +282,10 @@ Init                                       model.go
 Update                                     update.go
    case mainNoticeMsg:
         └─ onMainNotice(n)                 model_turn_queue.go
-              ├─ append n (+ chan peers) to m.pendingNotices
+              ├─ if Stream.Active: append n to m.pendingNotices
               ├─ start awaitMainNotice again so the next publish wakes us
               └─ if !Stream.Active:
-                   injectNotices(pending); clear pending
+                   injectNotices([]mainNotice{n})
 ```
 
 `onMainNotice` always starts a fresh `awaitMainNotice` — safe because

@@ -142,7 +142,7 @@ func countTaskStatuses(tasks []*todo.Task) taskStatusCounts {
 	for _, t := range tasks {
 		statusDetail := kit.MapString(t.Metadata, "background_status_detail")
 		switch {
-		case t.Status == todo.StatusCompleted && (statusDetail == "failed" || statusDetail == "killed"):
+		case t.Status == todo.StatusCompleted && (statusDetail == "failed" || statusDetail == "killed" || statusDetail == "stopped"):
 			counts.failed++
 		case t.Status == todo.StatusCompleted:
 			counts.done++

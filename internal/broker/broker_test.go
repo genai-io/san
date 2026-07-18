@@ -7,8 +7,8 @@ func TestSendRoutesToRecipientOnly(t *testing.T) {
 	t.Cleanup(Reset)
 
 	var toA, toB int
-	Register("a", func(Message) { toA++ })
-	Register("b", func(Message) { toB++ })
+	Register("a", func(Message) bool { toA++; return true })
+	Register("b", func(Message) bool { toB++; return true })
 
 	if !Send(Message{To: "a", Content: "hi"}) {
 		t.Fatal("send to a registered address should report delivered")
@@ -32,7 +32,7 @@ func TestUnregisterStopsDelivery(t *testing.T) {
 	t.Cleanup(Reset)
 
 	var got int
-	Register("a", func(Message) { got++ })
+	Register("a", func(Message) bool { got++; return true })
 	Send(Message{To: "a"})
 	Unregister("a")
 	if Send(Message{To: "a"}) {

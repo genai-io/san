@@ -2,8 +2,9 @@
 
 A subagent is a markdown-defined **agent type** — a system prompt + tool
 subset + permission mode that the foreground agent can spawn via the
-`Agent` tool. Subagents run in parallel and report results back through
-the tool result.
+`Agent` tool. A foreground subagent returns through the tool result; a
+background subagent runs in parallel and reports completion to the main
+conversation.
 
 For the system-level design see [`packages/subagent.md`](../packages/2-feature/subagent.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
@@ -50,7 +51,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `deny_tools` | no | Tools (or `Tool(pattern)` rules) removed regardless of mode. |
 | `mode` | no | Permission mode: `default`, `explore`, `edit` (alias of `acceptEdits`), `bypassPermissions`. Alias accepted: `permission-mode`. See below. |
 | `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
-| `max-steps` | no | Cap on LLM inference steps (default 100). |
+| `max-steps` | no | Cap on LLM inference steps (default 100). Alias accepted: `max_steps`. |
 | `skills` | no | Skill names whose bodies are preloaded into the agent's charter. |
 
 Canonical keys win when both a canonical key and its alias are present.
@@ -138,7 +139,7 @@ the model:
   `SendMessage(to="main", message)` sends an interim note without ending the
   run. The subagent's *final* answer returns on its own as a completion —
   don't use `SendMessage` for it.
-- **Stop**: `TaskStop` cancels a run (status `stopped`, distinct from
+- **Stop**: `TaskStop` cancels a run (status `killed`, distinct from
   `failed`). Subagents are one-shot — there is no resume; spawn a fresh one to
   continue a line of work.
 
@@ -148,13 +149,15 @@ the model:
 2. Restart `san`.
 3. Ask the foreground model something that should trigger spawning:
    "use the test-runner agent to check whether tests pass".
-4. Watch the task panel for the subagent's progress; the final result
-   appears as a tool result in the parent's conversation.
+4. Watch the task panel for a background subagent's progress; its final
+   result arrives as a `<task-notification>` in the parent's conversation.
+   A foreground subagent returns its final result directly as the `Agent`
+   tool result.
 
 ## Common Pitfalls
 
-- **No prompt argument.** If `prompt` is missing, the subagent has no
-  instructions beyond its system prompt. Always pass a prompt.
+- **No prompt argument.** The `Agent` call fails because `prompt` is
+  required.
 - **`allow_tools` too narrow.** Forgot `Bash`? The subagent can't run
   anything — and a whitelist without `SendMessage` also removes reporting
   to main.

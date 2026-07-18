@@ -205,7 +205,7 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 			modelID:     "test-model",
 		},
 		startedAt: time.Now().Add(-time.Second),
-		trace:     []string{"Read(main.go)"},
+		activity:  []string{"Read(main.go)"},
 	}
 
 	result := executor.buildCancelledAgentResult(run, &core.Result{

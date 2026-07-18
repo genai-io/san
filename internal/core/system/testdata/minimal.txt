@@ -93,7 +93,7 @@ When you spawn an Agent, brief it like a smart colleague who just walked in — 
 
 Never delegate understanding: don't write "based on your findings, fix the bug" — that pushes synthesis onto the agent. Trust but verify — a summary is what the agent meant to do, not what it did; check the actual changes before reporting work done.
 
-Workers stay reachable while they run: steer or query a running background worker with SendMessage(task_id); it completes with a report back to you. A stopped worker keeps its partial work and can be resumed the same way.
+Workers stay reachable while they run: steer a running background worker with SendMessage(to=<task id>, message); it reports back when done. A stopped worker keeps partial output but cannot resume; spawn a fresh worker to continue.
 
 ## Task tracking
 

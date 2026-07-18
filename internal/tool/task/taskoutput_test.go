@@ -98,8 +98,11 @@ func TestTaskOutputTool_Completed(t *testing.T) {
 		t.Errorf("Expected output file path in output, got: %s", result.Output)
 	}
 
-	if !strings.Contains(result.Output, "SendMessage(task_id=\"test-agent-456\"") {
-		t.Errorf("Expected SendMessage suggestion in output, got: %s", result.Output)
+	// A finished worker cannot be messaged or resumed, so the output must not
+	// suggest SendMessage or Agent(resume=...) — both were removed and would
+	// fail or mislead if the model followed them.
+	if strings.Contains(result.Output, "SendMessage") || strings.Contains(result.Output, "resume=") {
+		t.Errorf("completed task must not suggest messaging/resuming a finished worker, got: %s", result.Output)
 	}
 }
 

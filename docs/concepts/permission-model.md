@@ -36,11 +36,13 @@ The pipeline lives in `internal/setting/permission.go`. Bash gets special
 treatment: `bash_ast.go` parses the command and matches per-argv patterns
 (`Bash(git status:*)` allows `git status -uall` but not `git push`).
 
-## Single Bit of Difference: "Can We Prompt?"
+## Subagent Permission Resolution
 
-The decision pipeline is **identical** for the foreground agent and for
-subagents. The single point of divergence is: when behavior is `ask`, can
-we surface a modal to the user?
+The foreground and subagent gates both use `setting.ModeDefault` for
+mode-specific default decisions, but otherwise have separate pipelines:
+foreground requests may use settings, session rules, hooks, and the approval
+bridge, while subagents apply their `deny_tools`/`allow_tools` rules and deny
+requests that would require a user prompt.
 
 - Foreground: yes. `agent.PermissionBridge` synchronously waits for the
   TUI approval, then routes the answer back into the running tool call.

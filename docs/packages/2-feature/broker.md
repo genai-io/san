@@ -53,7 +53,7 @@ block (it enqueues into the recipient's inbox and returns).
 
 | Sender | Sends |
 |---|---|
-| task lifecycle (`app`) | a subagent's completion to `Main` |
+| task lifecycle (`app`) | a background task's completion to `Main` |
 | `SendMessage` tool | main → a running subagent, or a subagent → `Main` |
 
 | Recipient | Registers |
@@ -61,9 +61,10 @@ block (it enqueues into the recipient's inbox and returns).
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
 | each background subagent (`subagent.Executor`) | its task id → pushes to its `core.Agent` inbox |
 
-A background subagent's **completion** is pushed automatically when its run
-ends — main drains it at the next turn boundary, never polling `TaskOutput`.
-A **`SendMessage`** is best-effort: a subagent that has finished (or never
+A background task's **completion** is pushed automatically when its run ends.
+Main injects it immediately while idle, or at the next turn boundary during an
+active stream; it never polls `TaskOutput`. A **`SendMessage`** is best-effort:
+a subagent that has finished (or never
 takes another step) won't see it, so it is only for steering or interim notes
 — a subagent's final result comes back on its own (the tool result for a
 foreground run, the completion for a background one), never via `SendMessage`.
