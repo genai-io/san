@@ -74,20 +74,6 @@ func (s *Session) Active() bool {
 	return s.agent != nil
 }
 
-// Messages returns a snapshot of the running agent's conversation chain, or nil
-// when no agent is active. This is the authoritative context the agent is
-// actually sending to the model — used to carry history into a rebuilt agent so
-// a mid-conversation rebuild never drops the conversation.
-func (s *Session) Messages() []core.Message {
-	s.mu.RLock()
-	ag := s.agent
-	s.mu.RUnlock()
-	if ag == nil {
-		return nil
-	}
-	return ag.Messages()
-}
-
 func (s *Session) Send(content string, images []core.Image) {
 	s.mu.RLock()
 	ag := s.agent

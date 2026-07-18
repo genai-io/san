@@ -366,7 +366,6 @@ func firstValidDuration(vals ...string) time.Duration {
 // caller is about to re-deliver it via sendToAgent and we'd otherwise see
 // the input twice. Pass "" when the caller hasn't yet appended the message.
 func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
-	var carryOver []core.Message
 	if m.services.Agent.Active() {
 		// The Evolve toolset is fixed at agent-build time. If the enabled
 		// capabilities drifted since the build (a /evolve save, an external
@@ -376,28 +375,21 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		if m.selfLearnCapabilities() == m.agentEvolveCaps {
 			return nil, nil
 		}
-		// Carry the OUTGOING agent's own chain into the replacement — that is
-		// the authoritative context it was actually sending to the model.
-		// Reseeding a rebuild from m.conv can silently drop the whole
-		// conversation when the UI model and the agent's chain have diverged,
-		// leaving the rebuilt agent with no history (the model forgets, and the
-		// transcript's messageIds stop matching the replayed stream).
-		carryOver = m.services.Agent.Messages()
 		m.services.Agent.Stop()
 	}
 
 	params := m.buildAgentParams()
 
-	// Prefer the outgoing agent's chain; fall back to the UI conversation only
-	// on a cold start / restored session where there is no live agent to carry.
-	coreMessages := carryOver
-	if len(coreMessages) == 0 {
-		coreMessages = m.conv.ConvertToProvider()
-	}
-	if pendingSend != "" && len(coreMessages) > 0 {
-		last := coreMessages[len(coreMessages)-1]
-		if last.Role == core.RoleUser && last.Content == pendingSend {
-			coreMessages = coreMessages[:len(coreMessages)-1]
+	var coreMessages []core.Message
+	if len(m.conv.Messages) > 0 {
+		for _, msg := range m.conv.ConvertToProvider() {
+			coreMessages = append(coreMessages, msg)
+		}
+		if pendingSend != "" && len(coreMessages) > 0 {
+			last := coreMessages[len(coreMessages)-1]
+			if last.Role == core.RoleUser && last.Content == pendingSend {
+				coreMessages = coreMessages[:len(coreMessages)-1]
+			}
 		}
 	}
 
