@@ -49,8 +49,8 @@ func mergeNotices(notices []mainNotice) mainNotice {
 		if n.Display != "" {
 			lines = append(lines, n.Display)
 		}
-		if strings.TrimSpace(n.Content) != "" {
-			contents = append(contents, strings.TrimSpace(n.Content))
+		if c := strings.TrimSpace(n.Content); c != "" {
+			contents = append(contents, c)
 		}
 	}
 	merged := mainNotice{Display: strings.Join(lines, "; ")}

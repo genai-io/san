@@ -188,6 +188,24 @@ func (e *Executor) logRunCompletion(run *preparedRun, result *core.Result, succe
 func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *AgentResult {
 	success, errMsg := interpretStopReason(result, run.cfg.maxSteps)
 	e.logRunCompletion(run, result, success)
+	return e.finalizeResult(run, result, success, errMsg)
+}
+
+// buildCancelledAgentResult preserves a cancelled run's partial work: the
+// conversation is persisted (so the run is resumable), the stop hook fires,
+// and the partial content plus any preserved worktree travel back to the
+// caller alongside the error.
+func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Result) *AgentResult {
+	if result == nil || result.StopReason != core.StopCancelled {
+		return nil
+	}
+	return e.finalizeResult(run, result, false, "agent cancelled")
+}
+
+// finalizeResult settles the workspace, persists the (resumable) session, fires
+// the stop hook, and projects the run into an AgentResult. Both the success and
+// cancelled paths share it — they differ only in Success/Error.
+func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success bool, errMsg string) *AgentResult {
 	run.settleWorkspace()
 
 	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
@@ -218,47 +236,6 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 		Activity:       append([]string(nil), run.trace...),
 		WorktreePath:   run.keptWorktreePath,
 		Error:          errMsg,
-	}
-}
-
-// buildCancelledAgentResult preserves a cancelled run's partial work: the
-// conversation is persisted (so the run is resumable), the stop hook fires,
-// and the partial content plus any preserved worktree travel back to the
-// caller alongside the error.
-func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Result) *AgentResult {
-	if result == nil || result.StopReason != core.StopCancelled {
-		return nil
-	}
-	run.settleWorkspace()
-
-	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
-		run.cfg.displayName,
-		run.cfg.modelID,
-		run.req.Description,
-		result.Messages,
-	)
-	e.fireSubagentStop(run.req, run.hookID, agentTranscriptPath, result.Content)
-
-	content := result.Content
-	if run.keptWorktreePath != "" {
-		content = appendWorktreeNote(content, run.keptWorktreePath)
-	}
-
-	return &AgentResult{
-		AgentID:        agentSessionID,
-		AgentName:      run.cfg.displayName,
-		TranscriptPath: agentTranscriptPath,
-		Model:          run.cfg.modelID,
-		Success:        false,
-		Content:        content,
-		Messages:       result.Messages,
-		StepCount:      result.Steps,
-		ToolUses:       result.ToolUses,
-		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
-		Duration:       time.Since(run.startedAt),
-		Activity:       append([]string(nil), run.trace...),
-		WorktreePath:   run.keptWorktreePath,
-		Error:          "agent cancelled",
 	}
 }
 

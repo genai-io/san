@@ -61,9 +61,15 @@ block (it enqueues into the recipient's inbox and returns).
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
 | each background subagent (`subagent.Executor`) | its task id → pushes to its `core.Agent` inbox |
 
+A background subagent's **completion** is pushed automatically when its run
+ends — main drains it at the next turn boundary, never polling `TaskOutput`.
+A **`SendMessage`** is best-effort: a subagent that has finished (or never
+takes another step) won't see it, so it is only for steering or interim notes
+— a subagent's final result comes back on its own (the tool result for a
+foreground run, the completion for a background one), never via `SendMessage`.
+
 ## See Also
 
-- Communication model: [`concepts/agent-communication.md`](../../concepts/agent-communication.md)
 - Subagents: [`subagent`](subagent.md)
 - Background tasks: [`task`](task.md)
 - Layer: `feature`

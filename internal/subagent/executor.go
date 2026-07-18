@@ -206,11 +206,10 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			return
 		}
 
+		// result.Content already carries the worktree-preserved note (folded in
+		// by buildAgentResult), so it needs no separate re-append here.
 		if result.Content != "" {
 			agentTask.AppendOutput([]byte(result.Content))
-		}
-		if result.WorktreePath != "" {
-			agentTask.AppendOutput([]byte("\n" + worktreePreservedNote(result.WorktreePath)))
 		}
 
 		agentTask.SetIdentity(req.Agent, result.AgentID)

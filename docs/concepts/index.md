@@ -10,7 +10,6 @@ for task how-tos see [`../guides/index.md`](../guides/index.md).
 | [`data-flow`](data-flow.md) | The full input → agent → render path. (中文: `data-flow.zh.md`) |
 | [`rendering`](rendering.md) | How model output becomes terminal frames. (中文: `rendering.zh.md`) |
 | [`extension-model`](extension-model.md) | Skills, plugins, MCP, hooks, commands, subagents — how San is extended. |
-| [`agent-communication`](agent-communication.md) | The flat agent model: how the main conversation and its workers message each other. |
 | [`harness-channels`](harness-channels.md) | Out-of-band channels (system-reminders, etc.) the harness uses. |
 | [`permission-model`](permission-model.md) | How tool-call permissions are decided and gated. |
 | [`compaction`](compaction.md) | Automatic and manual conversation compaction. |
