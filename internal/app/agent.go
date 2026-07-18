@@ -585,6 +585,7 @@ func (m *model) ReconfigureAgentTool() {
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	executor.SetParentThinkingEffort(m.env.EffectiveThinkingEffort())
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}

@@ -36,6 +36,7 @@ type Executor struct {
 	resolver        ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
 	cwd             string
 	parentModelID   string // Parent conversation's model ID (used when inheriting)
+	parentEffort    string // Parent's reasoning/thinking effort, applied to same-provider subagents
 	hooks           hook.Handler
 	sessionStore    SubagentSessionStore // Optional: when set, subagent sessions are persisted
 	parentSessionID string               // Parent session ID for linking subagent sessions
@@ -52,13 +53,14 @@ type SubagentSessionStore interface {
 }
 
 type runConfig struct {
-	config      *AgentConfig
-	provider    llm.Provider // provider this run talks to (parent's, or a routed vendor)
-	modelID     string
-	maxSteps    int
-	displayName string
-	brief       system.SubagentBrief // identity/charter for this run; immutable
-	permMode    PermissionMode
+	config           *AgentConfig
+	provider         llm.Provider // provider this run talks to (parent's, or a routed vendor)
+	modelID          string
+	onParentProvider bool // true when provider is the parent's (inherit/alias), not a routed vendor
+	maxSteps         int
+	displayName      string
+	brief            system.SubagentBrief // identity/charter for this run; immutable
+	permMode         PermissionMode
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
@@ -77,6 +79,16 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 // instructions) is intentionally not propagated — see collectSubagentReminders.
 func (e *Executor) SetContext(isGit bool) {
 	e.isGit = isGit
+}
+
+// SetParentThinkingEffort records the parent conversation's reasoning effort so
+// same-provider subagents run at the same effort. This matters for backends that
+// require a reasoning field (the ChatGPT Codex subscription rejects a
+// reasoning-less request with 400); without it, an inheriting subagent would
+// send no effort and fail. Cross-provider-routed subagents do not receive it —
+// the parent's effort may be invalid for a different vendor's model.
+func (e *Executor) SetParentThinkingEffort(effort string) {
+	e.parentEffort = effort
 }
 
 // SetResolver enables cross-provider routing: a subagent whose model is an
@@ -234,19 +246,20 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		maxSteps = defaultMaxSteps
 	}
 
-	provider, modelID, err := e.resolveModel(ctx, req.Model, config.Model)
+	provider, modelID, onParentProvider, err := e.resolveModel(ctx, req.Model, config.Model)
 	if err != nil {
 		return nil, err
 	}
 
 	return &runConfig{
-		config:      config,
-		provider:    provider,
-		modelID:     modelID,
-		maxSteps:    maxSteps,
-		displayName: displayName,
-		brief:       e.buildBrief(config, permMode),
-		permMode:    permMode,
+		config:           config,
+		provider:         provider,
+		modelID:          modelID,
+		onParentProvider: onParentProvider,
+		maxSteps:         maxSteps,
+		displayName:      displayName,
+		brief:            e.buildBrief(config, permMode),
+		permMode:         permMode,
 	}, nil
 }
 
@@ -324,8 +337,17 @@ func (e *Executor) buildAgent(ctx context.Context, rc *runConfig, agentCwd strin
 	permFn := subagentPermissionFunc(rc.permMode, rc.config.AllowTools, rc.config.DenyTools)
 	coreTools = tool.WithPermission(coreTools, permFn)
 
+	client := llm.NewClient(rc.provider, rc.modelID, 0)
+	if rc.onParentProvider {
+		// Inherit the parent's reasoning effort: it is valid for this provider's
+		// model, and some backends (the ChatGPT Codex subscription) reject a
+		// reasoning-less request with 400. Routed subagents keep the empty
+		// default — the parent's effort may be invalid for another vendor.
+		client.SetThinkingEffort(e.parentEffort)
+	}
+
 	ag = core.NewAgent(core.Config{
-		LLM:       llm.NewClient(rc.provider, rc.modelID, 0),
+		LLM:       client,
 		System:    sys,
 		Tools:     coreTools,
 		AgentType: rc.config.Name,
@@ -410,25 +432,29 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 // resolver, erroring if the vendor is not connected. Every other form — an
 // alias, a bare model id, or "inherit" — stays on the parent's provider,
 // preserving prior behavior.
-func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (llm.Provider, string, error) {
+//
+// The returned onParentProvider flag is true for those parent-provider forms
+// and false for a routed vendor; it gates parent-effort propagation, since the
+// parent's reasoning effort is only known-valid for its own provider's models.
+func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (provider llm.Provider, modelID string, onParentProvider bool, err error) {
 	ref := requestModel
 	if ref == "" {
 		ref = configModel
 	}
 	if ref == "" || ref == "inherit" {
-		return e.provider, e.parentModelID, nil
+		return e.provider, e.parentModelID, true, nil
 	}
-	if vendor, modelID, ok := llm.ParseVendorModel(ref); ok {
+	if vendor, routedModel, ok := llm.ParseVendorModel(ref); ok {
 		if e.resolver == nil {
-			return nil, "", fmt.Errorf("model %q routes to provider %q, but cross-provider routing is unavailable", ref, vendor)
+			return nil, "", false, fmt.Errorf("model %q routes to provider %q, but cross-provider routing is unavailable", ref, vendor)
 		}
 		p, err := e.resolver.Resolve(ctx, vendor)
 		if err != nil {
-			return nil, "", fmt.Errorf("model %q: %w", ref, err)
+			return nil, "", false, fmt.Errorf("model %q: %w", ref, err)
 		}
-		return p, modelID, nil
+		return p, routedModel, false, nil
 	}
-	return e.provider, resolveModelAlias(ref), nil
+	return e.provider, resolveModelAlias(ref), true, nil
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
