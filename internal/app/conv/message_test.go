@@ -177,8 +177,13 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	}
 
 	// The "$" sits in the "⎿" result column, so the two markers line up down the left.
-	if strings.IndexByte(bashPrompt, '$') != strings.Index("  ⎿  ", "⎿") {
+	resultPrefix := "  ⎿  "
+	if strings.IndexByte(bashPrompt, '$') != strings.Index(resultPrefix, "⎿") {
 		t.Fatalf("prompt $ column must equal the result ⎿ column")
+	}
+	// The command after "$" starts where the result's Bash label starts.
+	if lipgloss.Width(bashPrompt) != lipgloss.Width(resultPrefix) {
+		t.Fatalf("command indent width = %d, want result label indent %d", lipgloss.Width(bashPrompt), lipgloss.Width(resultPrefix))
 	}
 }
 
