@@ -78,7 +78,6 @@ type SlashCommandEnv struct {
 	InitTaskStorage         func()
 	ReconfigureAgentTool    func()
 	StopAgentSession        func()
-	ResetAgentSession       func()
 	FireSessionEnd          func(reason string)
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
 	SpinnerTickCmd          func() tea.Cmd
@@ -287,7 +286,7 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 }
 
 func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	c.env.ResetAgentSession()
+	c.env.StopAgentSession()
 	c.env.Conversation.Stream.Stop()
 	if c.env.Tool.Cancel != nil {
 		c.env.Tool.Cancel()

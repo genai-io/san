@@ -30,7 +30,6 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/evolve"
 )
 
@@ -108,13 +107,6 @@ type model struct {
 	// current settings on every turn start and rebuilds on drift — covering
 	// /evolve saves and external settings edits with one mechanism.
 	agentEvolveCaps evolve.Capabilities
-
-	// agentRestartMessages is the last live main-agent chain captured before a
-	// deliberate stop. The UI conversation is a rendering model and can be
-	// empty or temporarily divergent, so it is not authoritative for rebuilding
-	// a stopped agent. The snapshot is cleared only after a replacement starts,
-	// or explicitly by ResetAgentSession when the conversation itself changes.
-	agentRestartMessages []core.Message
 
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.

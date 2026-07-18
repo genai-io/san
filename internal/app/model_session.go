@@ -134,9 +134,6 @@ func (m *model) loadSessionByID(id string) error {
 		return err
 	}
 
-	// This is a different persisted conversation. Do not let a stopped agent's
-	// restart snapshot override the selected transcript on the next turn.
-	m.ResetAgentSession()
 	m.services.Tracker.SetStorageDir("")
 	m.restoreSessionData(sess)
 

@@ -366,6 +366,7 @@ func firstValidDuration(vals ...string) time.Duration {
 // caller is about to re-deliver it via sendToAgent and we'd otherwise see
 // the input twice. Pass "" when the caller hasn't yet appended the message.
 func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
+	var carryOver []core.Message
 	if m.services.Agent.Active() {
 		// The Evolve toolset is fixed at agent-build time. If the enabled
 		// capabilities drifted since the build (a /evolve save, an external
@@ -375,18 +376,34 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		if m.selfLearnCapabilities() == m.agentEvolveCaps {
 			return nil, nil
 		}
-		m.StopAgentSession()
+		// Carry the OUTGOING agent's own chain into the replacement — that is
+		// the authoritative context it was actually sending to the model.
+		// Reseeding a rebuild from m.conv can silently drop the whole
+		// conversation when the UI model and the agent's chain have diverged,
+		// leaving the rebuilt agent with no history (the model forgets, and the
+		// transcript's messageIds stop matching the replayed stream).
+		carryOver = m.services.Agent.Messages()
+		m.services.Agent.Stop()
 	}
 
 	params := m.buildAgentParams()
-	coreMessages := m.seedAgentMessages(pendingSend)
+
+	// Prefer the outgoing agent's chain; fall back to the UI conversation only
+	// on a cold start / restored session where there is no live agent to carry.
+	coreMessages := carryOver
+	if len(coreMessages) == 0 {
+		coreMessages = m.conv.ConvertToProvider()
+	}
+	if pendingSend != "" && len(coreMessages) > 0 {
+		last := coreMessages[len(coreMessages)-1]
+		if last.Role == core.RoleUser && last.Content == pendingSend {
+			coreMessages = coreMessages[:len(coreMessages)-1]
+		}
+	}
 
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
 	}
-	// Keep the snapshot across a failed Start so the user can retry without
-	// losing history; a successful replacement owns its own copy now.
-	m.agentRestartMessages = nil
 
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
@@ -404,25 +421,6 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		cmds = append(cmds, m.conv.AgentToUI.Check())
 	}
 	return tea.Batch(cmds...), nil
-}
-
-// seedAgentMessages returns the authoritative chain for a newly-built main
-// agent. A deliberate stop snapshots the live core.Agent before discarding it;
-// that snapshot wins over the UI rendering model, whose rows may have been
-// committed, cleared, or assigned different IDs. Cold starts and restored
-// sessions have no snapshot and therefore seed from the UI conversation.
-func (m *model) seedAgentMessages(pendingSend string) []core.Message {
-	coreMessages := m.agentRestartMessages
-	if len(coreMessages) == 0 {
-		coreMessages = m.conv.ConvertToProvider()
-	}
-	if pendingSend != "" && len(coreMessages) > 0 {
-		last := coreMessages[len(coreMessages)-1]
-		if last.Role == core.RoleUser && last.Content == pendingSend {
-			coreMessages = coreMessages[:len(coreMessages)-1]
-		}
-	}
-	return coreMessages
 }
 
 func (m *model) sendToAgent(content string, images []core.Image) tea.Cmd {
@@ -488,21 +486,6 @@ func (m *model) wireReminderProviders() {
 }
 
 func (m *model) StopAgentSession() {
-	// Capture before Stop clears Session.agent. This also covers stops that
-	// happen before ensureAgentSession runs (agent toggles, provider changes,
-	// terminal outbox events), which the old rebuild-local carry-over missed.
-	if messages := m.services.Agent.Messages(); len(messages) > 0 {
-		m.agentRestartMessages = messages
-	}
-	m.services.Agent.Stop()
-	m.teardownSelfLearn()
-}
-
-// ResetAgentSession stops the agent without making its live chain eligible for
-// the next rebuild. Use it when the conversation itself is being cleared or
-// replaced (for example /clear and /resume).
-func (m *model) ResetAgentSession() {
-	m.agentRestartMessages = nil
 	m.services.Agent.Stop()
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /

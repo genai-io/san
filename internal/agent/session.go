@@ -39,10 +39,7 @@ func (s *Session) Start(params BuildParams, messages []core.Message) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
-	// Capture this build's agent. Stop clears s.agent immediately, and a rapid
-	// stop/restart can otherwise make this goroutine dereference nil or run the
-	// replacement agent under the previous build's cancelled context.
-	go func() { _ = ag.Run(ctx) }()
+	go func() { _ = s.agent.Run(ctx) }()
 
 	return nil
 }
