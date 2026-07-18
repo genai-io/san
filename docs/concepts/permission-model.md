@@ -44,14 +44,24 @@ we surface a modal to the user?
 
 - Foreground: yes. `agent.PermissionBridge` synchronously waits for the
   TUI approval, then routes the answer back into the running tool call.
-- Subagent: no. There's no user attached to the subagent's loop.
-  Subagents resolve `ask` according to their `permission_mode`:
-  - `bypassPermissions` (the explore agent) — treat as allow
-  - `plan` — treat as deny + emit a "would have asked" record
-  - default — treat as deny
+- Subagent: no. There's no user attached to the subagent's loop, so `ask`
+  collapses to `deny`. What remains is the mode's own auto-allow surface:
+  - `explore` — reads only; mutations are denied outright.
+  - `default` — reads auto-allow; everything that would ask is denied.
+  - `acceptEdits` (spelled `edit` on the Agent tool) — Edit/Write
+    auto-allow; other gated tools are denied.
+  - `bypassPermissions` — everything allowed except bypass-immune checks.
 
-This is implemented as one flag on the request, not by duplicating logic
-on the subagent side.
+Both gates share the same mode table (`setting.ModeDefault`); the subagent
+side only swaps "prompt the user" for "deny".
+
+One subagent-specific rule composes with the pipeline:
+
+- **Flat spawning** — only the main conversation spawns subagents. The `Agent`
+  tool is parent-only, so a subagent never sees its schema; there is no
+  spawn-permission logic on the subagent side at all. `SendMessage` (main ↔ a
+  running subagent) follows the ordinary mode pipeline like any other tool.
+  See [`agent-communication.md`](agent-communication.md).
 
 ## Plan Mode
 

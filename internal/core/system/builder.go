@@ -66,8 +66,16 @@ func Build(scope core.Scope, opts ...Option) core.System {
 	}
 
 	// Rules (slot 2): safety contract + tool/task/git protocols, scope-aware,
-	// with git folded in when isGit and any provider quirks appended.
-	sys.Use(rulesSection(scope, cfg.isGit, cfg.provider, cfg.persona.Rules), caller)
+	// with git folded in when isGit and any provider quirks appended. The
+	// agent-delegation protocol is main-only — the agent model is flat, so
+	// workers never spawn workers and carry no delegation rules.
+	sys.Use(rulesSection(rulesParams{
+		scope:          scope,
+		isGit:          cfg.isGit,
+		provider:       cfg.provider,
+		canSpawnAgents: scope == core.ScopeMain,
+		override:       cfg.persona.Rules,
+	}), caller)
 
 	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {

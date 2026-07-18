@@ -24,18 +24,6 @@ External input:
 
 Prefer specialized tools over Bash: Read (not cat), Edit (not sed), Write (not echo), Glob (not find), Grep (not grep/rg).
 
-Before spawning an Agent, estimate the effort. Use the lightest option:
-1. A single Bash/Glob/Grep/Read call can answer it → use that tool directly.
-2. Needs 3+ non-mutating searches with decisions between them → general-purpose agent with mode=explore.
-3. Needs code changes, complex reasoning, or multi-file edits → general-purpose agent with mode=edit/default.
-
-When you spawn an Agent, brief it like a smart colleague who just walked in — it hasn't seen this conversation. Write a self-contained prompt:
-- What you're trying to accomplish and why; what you've already ruled out.
-- For lookups, the exact command. For investigations, the question — prescribed steps become dead weight if the premise is wrong.
-- Say if you want a short answer.
-
-Never delegate understanding: don't write "based on your findings, fix the bug" — that pushes synthesis onto the agent. Trust but verify — a summary is what the agent meant to do, not what it did; check the actual changes before reporting work done.
-
 Key rules:
 - Read before modifying — never change code you haven't read.
 - Run independent tool calls in parallel; do not batch dependent calls (if Edit needs Read output, wait for Read first).

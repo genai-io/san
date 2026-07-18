@@ -1,5 +1,5 @@
 // Root bubbletea model. Holds the four event sources (user input, system
-// triggers, agent outbox, inter-agent event hub), the env state, and the
+// triggers, agent outbox, main-loop notices), the env state, and the
 // services struct. Init batches the initial commands (MCP autoconnect, cron +
 // async-hook tickers, optional initial prompt).
 //
@@ -28,7 +28,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/hub"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/tool/evolve"
@@ -38,15 +37,20 @@ const defaultWidth = 80
 
 type model struct {
 	// ── Sub-models (one per event source / concern) ─────────────
-	userInput         input.Model          // Source 1: user keyboard input
-	agentEventHub     *hub.Hub             // Source 2: inter-agent event routing (pure pub/sub)
-	mainEvents        chan hub.Event       // hub-side delivery chan; awaitMainEvent reads it
-	pendingMainEvents []hub.Event          // events that arrived mid-stream, drained at OnTurnEnd
-	systemInput       trigger.Model        // Source 3: system events (cron/hooks/watcher)
-	conv              conv.Model           // Agent Outbox: conversation + output rendering
-	env               env                  // Shared app state: provider, session, permission, plan, config
-	services          services             // Domain service singletons, injected at construction
-	learnedStores     *learnedStoreContext // live cwd/settings source for /evolve inventories
+	userInput input.Model // Source 1: user keyboard input
+	// mainNotices is the TUI's notice-staging channel (Source 2) — NOT the main
+	// agent's inbox. Broker messages routed to "main" (subagent completions,
+	// interim messages) and self-learn notices land here; they drain at turn
+	// boundaries, show as a notice, then go through SubmitToAgent into the main
+	// agent's real core.Agent inbox. See notify.go.
+	mainNotices     chan mainNotice
+	pendingNotices  []mainNotice         // notices that arrived mid-stream, drained at OnTurnEnd
+	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
+	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)
+	conv            conv.Model           // Agent Outbox: conversation + output rendering
+	env             env                  // Shared app state: provider, session, permission, plan, config
+	services        services             // Domain service singletons, injected at construction
+	learnedStores   *learnedStoreContext // live cwd/settings source for /evolve inventories
 
 	// welcomePending marks the startup splash as not yet frozen into scrollback.
 	// While set, the splash renders live above the input (visible from launch
@@ -117,7 +121,8 @@ func (m *model) Init() tea.Cmd {
 		trigger.TriggerCronTickNow(),
 		trigger.StartCronTicker(),
 		trigger.StartAsyncHookTicker(),
-		awaitMainEvent(m.mainEvents),
+		awaitMainNotice(m.mainNotices),
+		awaitSelfLearnStart(m.selfLearnStarts),
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt

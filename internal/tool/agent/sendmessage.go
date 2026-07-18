@@ -2,292 +2,138 @@ package agent
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-// SendMessageTool sends a follow-up message to an existing worker.
-// Running workers do not support live injection yet.
-type SendMessageTool struct {
-	executor tool.AgentExecutor
-}
+// SendMessageTool routes a message to another agent through the broker:
+// main → a running subagent (by task id), or a subagent → "main". The message
+// lands in the recipient's inbox and is read at its next step (a subagent) or
+// turn boundary (main). Delivery is best-effort — a message to an agent that
+// has finished, or never reads again, is dropped.
+type SendMessageTool struct{}
 
-func NewSendMessageTool() *SendMessageTool {
-	return &SendMessageTool{}
-}
+func NewSendMessageTool() *SendMessageTool { return &SendMessageTool{} }
 
 func (t *SendMessageTool) Name() string { return tool.ToolSendMessage }
 func (t *SendMessageTool) Description() string {
-	return "Send a follow-up message to an existing subagent worker"
+	return "Send a message to another agent via the broker: main → a running subagent (task id), or a subagent → \"main\""
 }
 func (t *SendMessageTool) Icon() string             { return tool.IconAgent }
 func (t *SendMessageTool) RequiresPermission() bool { return true }
 
-func (t *SendMessageTool) SetExecutor(executor tool.AgentExecutor) {
-	t.executor = executor
-}
-
 func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
-	normalized := normalizeSendMessageParams(params)
-	messageText, err := tool.RequireString(normalized, "prompt")
+	message, err := tool.RequireString(params, "message")
 	if err != nil {
 		return nil, err
 	}
-	if t.executor == nil {
-		return nil, fmt.Errorf("agent executor not configured")
+	to := strings.TrimSpace(tool.GetString(params, "to"))
+	if to == "" {
+		return nil, fmt.Errorf("to is required (a subagent task id, or \"main\")")
 	}
-
-	target, err := resolveContinuationTarget(normalized)
-	if err != nil {
-		return nil, err
-	}
-	if target.taskID != "" {
-		if err := ensureContinuationTaskExists(target.taskID); err != nil {
-			return nil, err
-		}
-	}
-
-	config, ok := t.executor.GetAgentConfig(target.agentType)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent type: %s", target.agentType)
-	}
-
-	description := tool.GetString(normalized, "description")
-	if description == "" {
-		description = "Message existing worker"
-	}
-
-	runBackground := tool.GetBool(normalized, "run_in_background")
-	effectiveModel := tool.GetString(normalized, "model")
-	if effectiveModel == "" && config.Model != "" && config.Model != "inherit" {
-		effectiveModel = config.Model
-	}
-	if effectiveModel == "" {
-		effectiveModel = t.executor.GetParentModelID()
-	}
-	if effectiveModel == "" {
-		effectiveModel = "claude-sonnet-4-20250514"
-	}
-
-	desc := fmt.Sprintf("Send message to %s agent: %s", config.Name, description)
-	if target.taskID != "" {
-		desc += fmt.Sprintf(" (task %s)", target.taskID)
-	}
-	if runBackground {
-		desc += " (background)"
-	}
-
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: desc,
-		AgentMeta: &perm.AgentMetadata{
-			AgentName:      config.Name,
-			Description:    config.Description,
-			Model:          effectiveModel,
-			PermissionMode: config.PermissionMode,
-			Tools:          config.Tools,
-			Prompt:         messageText,
-			Background:     runBackground,
-		},
+		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), message),
 	}, nil
 }
 
 func (t *SendMessageTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
-	return t.execute(ctx, params, cwd)
+	return t.execute(ctx, params)
 }
 
 func (t *SendMessageTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
-	return t.execute(ctx, params, cwd)
+	return t.execute(ctx, params)
 }
 
-func (t *SendMessageTool) execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) toolresult.ToolResult {
 	start := time.Now()
 
-	currentDepth := tool.GetAgentDepth(ctx)
-	if currentDepth >= tool.MaxAgentNestingDepth {
-		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf(
-			"maximum agent nesting depth (%d) exceeded — agents cannot spawn agents more than %d levels deep",
-			tool.MaxAgentNestingDepth, tool.MaxAgentNestingDepth,
-		))
-	}
-	ctx = tool.WithAgentDepth(ctx, currentDepth+1)
-
-	if t.executor == nil {
-		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
-	}
-
-	normalized := normalizeSendMessageParams(params)
-	messageText := tool.GetString(normalized, "prompt")
-	if messageText == "" {
+	message := tool.GetString(params, "message")
+	if message == "" {
 		return toolresult.NewErrorResult(t.Name(), "message is required")
 	}
-
-	target, err := resolveContinuationTarget(normalized)
-	if err != nil {
-		return toolresult.NewErrorResult(t.Name(), err.Error())
-	}
-	if target.taskID != "" {
-		running, err := isContinuationTaskRunning(target.taskID)
-		if err != nil {
-			return toolresult.NewErrorResult(t.Name(), err.Error())
-		}
-		if running {
-			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task %s is still running; wait for completion before sending a message", target.taskID))
-		}
-		if err := ensureContinuationTaskReady(target.taskID); err != nil {
-			return toolresult.NewErrorResult(t.Name(), err.Error())
-		}
+	to := strings.TrimSpace(tool.GetString(params, "to"))
+	if to == "" {
+		return toolresult.NewErrorResult(t.Name(), "to is required (a subagent task id, or \"main\")")
 	}
 
-	description := tool.GetString(normalized, "description")
-	if description == "" {
-		description = "Message existing worker"
+	from := tool.AgentIDFromContext(ctx)
+	if from == "" {
+		from = broker.Main
+	}
+	if from == to {
+		return toolresult.NewErrorResult(t.Name(), "cannot send a message to yourself")
 	}
 
-	agentName := tool.GetString(normalized, "name")
-	if agentName == "" {
-		agentName = target.name
-	}
-
-	var onActivity tool.ActivityFunc
-	if cb, ok := normalized["_onActivity"].(tool.ActivityFunc); ok {
-		onActivity = cb
-	}
-	var onQuestion tool.AskQuestionFunc
-	if cb, ok := normalized["_onQuestion"].(tool.AskQuestionFunc); ok {
-		onQuestion = cb
-	}
-
-	req := tool.AgentExecRequest{
-		Agent:       target.agentType,
-		Name:        agentName,
-		Prompt:      messageText,
-		Description: description,
-		Background:  tool.GetBool(normalized, "run_in_background"),
-		Model:       tool.GetString(normalized, "model"),
-		MaxSteps:    tool.GetInt(normalized, "max_steps", 0),
-		Mode:        tool.GetString(normalized, "mode"),
-		ResumeID:    target.agentID,
-		Isolation:   tool.GetString(normalized, "isolation"),
-		OnActivity:  onActivity,
-		OnQuestion:  onQuestion,
-	}
-
-	if req.Background {
-		taskInfo, err := t.executor.RunBackground(req)
-		if err != nil {
-			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to send background message to agent: %v", err))
-		}
-
-		return toolresult.ToolResult{
-			Success: true,
-			Output: fmt.Sprintf("Message sent to worker in background.\nTask ID: %s\nAgent: %s\nContinuation of: %s\nDescription: %s"+backgroundLaunchSuffix,
-				taskInfo.TaskID, taskInfo.AgentName, target.agentID, description),
-			HookResponse: map[string]any{
-				"backgroundTask": map[string]any{
-					"taskId":      taskInfo.TaskID,
-					"agentName":   taskInfo.AgentName,
-					"agentType":   target.agentType,
-					"description": description,
-					"outputFile":  taskInfo.OutputFile,
-					"resumeId":    target.agentID,
-					"toolName":    t.Name(),
-				},
-			},
-			Metadata: toolresult.ResultMetadata{
-				Title:    t.Name(),
-				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("[background] %s: %s", target.agentType, taskInfo.TaskID),
-				Duration: time.Since(start),
-			},
-		}
-	}
-
-	result, err := t.executor.Run(ctx, req)
-	if err != nil {
-		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent message failed: %v", err))
-	}
-
-	duration := time.Since(start)
-	if !result.Success {
-		return toolresult.ToolResult{
-			Success: false,
-			Output:  result.Content,
-			Error:   result.Error,
-			Metadata: toolresult.ResultMetadata{
-				Title:    t.Name(),
-				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("%s: failed", target.agentType),
-				Duration: duration,
-			},
-		}
+	delivered := broker.Send(broker.Message{
+		From:    from,
+		To:      to,
+		Subject: fmt.Sprintf("Message from %s", senderLabel(from)),
+		Content: wrapAgentMessage(from, message),
+	})
+	if !delivered {
+		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf(
+			"no agent is registered at %q — the recipient is not running (a finished subagent cannot be messaged; spawn a new one)", to))
 	}
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  formatForegroundAgentResult(target.agentType, result, duration),
+		Output:  fmt.Sprintf("Message delivered to %s; it is read at the recipient's next step. Continue with your task.", recipientLabel(to)),
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d steps)", target.agentType, result.StepCount),
-			Duration: duration,
+			Subtitle: "→ " + recipientLabel(to),
+			Duration: time.Since(start),
 		},
 	}
 }
 
-func normalizeSendMessageParams(params map[string]any) map[string]any {
-	normalized := make(map[string]any, len(params)+1)
-	for k, v := range params {
-		normalized[k] = v
+// recipientLabel renders a target id for tool output.
+func recipientLabel(id string) string {
+	if id == broker.Main {
+		return "the main conversation"
 	}
-	if _, ok := normalized["prompt"]; !ok {
-		normalized["prompt"] = tool.GetString(params, "message")
-	}
-	return normalized
+	return "running " + senderLabel(id)
 }
 
-func ensureContinuationTaskExists(taskID string) error {
-	bgTask, found := task.Default().Get(taskID)
-	if !found {
-		return fmt.Errorf("task not found: %s", taskID)
+// senderLabel names an agent id for a human-facing notice.
+func senderLabel(id string) string {
+	if id == broker.Main {
+		return "the main conversation"
 	}
-	info := bgTask.GetStatus()
-	if info.Type != task.TaskTypeAgent {
-		return fmt.Errorf("task %s is not an agent task", taskID)
+	if bgTask, found := task.Default().Get(id); found {
+		if info := bgTask.GetStatus(); info.AgentName != "" {
+			return fmt.Sprintf("%s (task %s)", info.AgentName, id)
+		}
 	}
-	return nil
+	return "task " + id
 }
 
-func ensureContinuationTaskReady(taskID string) error {
-	bgTask, found := task.Default().Get(taskID)
-	if !found {
-		return fmt.Errorf("task not found: %s", taskID)
-	}
-	if bgTask.IsRunning() {
-		return fmt.Errorf("task %s is still running; wait for completion before sending a message", taskID)
-	}
-	info := bgTask.GetStatus()
-	if info.Type != task.TaskTypeAgent {
-		return fmt.Errorf("task %s is not an agent task", taskID)
-	}
-	if info.AgentSessionID == "" {
-		return fmt.Errorf("task %s has no resumable agent_id yet", taskID)
-	}
-	return nil
+// wrapAgentMessage tags peer mail so the recipient can tell it from real user
+// input, mirroring the <task-notification> convention.
+func wrapAgentMessage(from, text string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "<agent-message from=%q>\n", from)
+	b.WriteString(escapeXMLText(text))
+	b.WriteString("\n</agent-message>")
+	return b.String()
 }
 
-func isContinuationTaskRunning(taskID string) (bool, error) {
-	bgTask, found := task.Default().Get(taskID)
-	if !found {
-		return false, fmt.Errorf("task not found: %s", taskID)
+func escapeXMLText(s string) string {
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		return s
 	}
-	return bgTask.IsRunning(), nil
+	return b.String()
 }
 
 func init() {

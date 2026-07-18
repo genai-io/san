@@ -589,7 +589,8 @@ func (m *model) ReconfigureAgentTool() {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}
 	executor.SetContext(m.env.IsGit)
-	executor.SetCapabilities(m.services.Skill.PromptSection(), m.services.Subagent.PromptSection())
+	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
+	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
 	executor.SetMCP(m.services.MCP, m.services.MCP)
 
 	adapter := subagent.NewExecutorAdapter(executor)

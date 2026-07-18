@@ -30,8 +30,6 @@ type stubSubagentSessionStore struct {
 	saveModelID  string
 	saveCwd      string
 	saveMessages []core.Message
-	loadMessages []core.Message
-	loadErr      error
 }
 
 func (s *stubSubagentSessionStore) SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {
@@ -41,13 +39,6 @@ func (s *stubSubagentSessionStore) SaveSubagentConversation(parentSessionID, tit
 	s.saveCwd = cwd
 	s.saveMessages = append([]core.Message(nil), messages...)
 	return "agent-1", "/tmp/transcripts/agent-1.jsonl", nil
-}
-
-func (s *stubSubagentSessionStore) LoadSubagentMessages(agentID string) ([]core.Message, error) {
-	if s.loadErr != nil {
-		return nil, s.loadErr
-	}
-	return append([]core.Message(nil), s.loadMessages...), nil
 }
 
 func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
@@ -101,7 +92,7 @@ func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 	ctx := context.Background()
 
-	if _, got, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-20250514" {
+	if _, got, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-6" {
 		t.Fatalf("config model = %q, want sonnet alias", got)
 	}
 	if _, got, _ := executor.resolveModel(ctx, "", "inherit"); got != "parent-model" {
@@ -214,7 +205,7 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 			modelID:     "test-model",
 		},
 		startedAt: time.Now().Add(-time.Second),
-		activity:  []string{"Read(main.go)"},
+		trace:     []string{"Read(main.go)"},
 	}
 
 	result := executor.buildCancelledAgentResult(run, &core.Result{
@@ -349,37 +340,17 @@ Use conventional commits.
 	}
 }
 
-func TestCapabilityPromptsFollowReachableTools(t *testing.T) {
-	executor := &Executor{
-		skillsPrompt: "- review: Review changes",
-		agentsPrompt: "- code-reviewer: Review code",
-	}
+func TestSkillsDirectoryFollowsReachableTools(t *testing.T) {
+	executor := &Executor{skillsPrompt: "- review: Review changes"}
 
-	directoryBody := func(getter func() string) string {
-		if getter == nil {
-			return ""
-		}
-		return getter()
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: nil}); got == "" {
+		t.Fatal("nil AllowTools should expose the skills directory")
 	}
-
-	skills, agentDir := executor.capabilityPrompts(&AgentConfig{AllowTools: nil})
-	if skills == "" || directoryBody(agentDir) == "" {
-		t.Fatalf("nil AllowTools should expose all capability prompts, got skills=%q agents=%q", skills, directoryBody(agentDir))
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: ToolNames("Read", "Skill")}); got == "" {
+		t.Fatal("Skill-capable agent should expose the skills directory")
 	}
-
-	skills, agentDir = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read", "Skill")})
-	if skills == "" || directoryBody(agentDir) != "" {
-		t.Fatalf("Skill-only agent should expose skills but not agents, got skills=%q agents=%q", skills, directoryBody(agentDir))
-	}
-
-	skills, agentDir = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read", "Agent")})
-	if skills != "" || directoryBody(agentDir) == "" {
-		t.Fatalf("Agent-capable agent should expose agents but not skills, got skills=%q agents=%q", skills, directoryBody(agentDir))
-	}
-
-	skills, agentDir = executor.capabilityPrompts(&AgentConfig{AllowTools: ToolNames("Read")})
-	if skills != "" || directoryBody(agentDir) != "" {
-		t.Fatalf("read-only agent should not expose capability prompts, got skills=%q agents=%q", skills, directoryBody(agentDir))
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: ToolNames("Read")}); got != "" {
+		t.Fatalf("agent without the Skill tool should not expose skills, got %q", got)
 	}
 }
 
@@ -496,6 +467,8 @@ func TestAcceptEditsModeFiltersApprovalOnlyToolSchemas(t *testing.T) {
 		{Name: "Agent"},
 	}
 
+	// Bash needs approval so it is filtered. Agent never reaches this
+	// filter for workers — it is parent-only at the tool.Set level.
 	got := filterSchemasForPermission(schemas, PermissionAcceptEdits, nil)
 	want := []core.ToolSchema{{Name: "Read"}, {Name: "Edit"}, {Name: "Write"}}
 	if !slices.Equal(got, want) {
@@ -561,64 +534,6 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	}
 	if len(store.saveMessages) != 1 || store.saveMessages[0].Content != "hello" {
 		t.Fatalf("unexpected saved messages: %+v", store.saveMessages)
-	}
-}
-
-func TestResumeFromSessionUsesSessionStore(t *testing.T) {
-	store := &stubSubagentSessionStore{
-		loadMessages: []core.Message{
-			{Role: core.RoleUser, Content: "previous"},
-			{Role: core.RoleAssistant, Content: "response"},
-		},
-	}
-	executor := &Executor{sessionStore: store}
-
-	// Create a minimal core.Agent for testing
-	ag := core.NewAgent(core.Config{
-		LLM:    &stubLLM{},
-		System: &stubSystem{},
-		Tools:  core.NewTools(),
-	})
-	ctx := context.Background()
-
-	if err := executor.resumeFromSession(ag, ctx, "agent-1", "continue"); err != nil {
-		t.Fatalf("resumeFromSession(): %v", err)
-	}
-
-	msgs := ag.Messages()
-	if len(msgs) != 3 {
-		t.Fatalf("len(messages) = %d, want 3", len(msgs))
-	}
-	if msgs[2].Role != core.RoleUser || msgs[2].Content != "continue" {
-		t.Fatalf("unexpected continuation message: %+v", msgs[2])
-	}
-}
-
-func TestResumeFromSessionRequiresSessionStore(t *testing.T) {
-	executor := &Executor{}
-	ag := core.NewAgent(core.Config{
-		LLM:    &stubLLM{},
-		System: &stubSystem{},
-		Tools:  core.NewTools(),
-	})
-	err := executor.resumeFromSession(ag, context.Background(), "agent-1", "continue")
-	if err == nil || !strings.Contains(err.Error(), "session store not configured") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestResumeFromSessionPropagatesLoadError(t *testing.T) {
-	executor := &Executor{
-		sessionStore: &stubSubagentSessionStore{loadErr: errors.New("boom")},
-	}
-	ag := core.NewAgent(core.Config{
-		LLM:    &stubLLM{},
-		System: &stubSystem{},
-		Tools:  core.NewTools(),
-	})
-	err := executor.resumeFromSession(ag, context.Background(), "agent-1", "continue")
-	if err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

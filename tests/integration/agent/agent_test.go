@@ -347,6 +347,7 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
+	// The UI stream carries everything: telemetry and the tool trace.
 	for _, want := range []string{
 		"Model: fake-model",
 		"Mode: Explore · max 100 steps",
@@ -357,8 +358,15 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 		if !slices.Contains(activity, want) {
 			t.Fatalf("activity callback values missing %q: %#v", want, activity)
 		}
-		if !slices.Contains(result.Activity, want) {
-			t.Fatalf("result activity values missing %q: %#v", want, result.Activity)
+	}
+	// The parent-visible result carries only the tool trace — telemetry
+	// lines would be noise in the spawning agent's context.
+	if !slices.Contains(result.Activity, "Read(README.md)") {
+		t.Fatalf("result trace missing tool line: %#v", result.Activity)
+	}
+	for _, telemetry := range []string{"Model: fake-model", "Thinking...", "Usage: input=30 output=8"} {
+		if slices.Contains(result.Activity, telemetry) {
+			t.Fatalf("result trace should not carry telemetry %q: %#v", telemetry, result.Activity)
 		}
 	}
 }

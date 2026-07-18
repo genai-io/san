@@ -235,16 +235,17 @@ agent turn ends) drains them.
 │    JSON output said   │                     │   Context lines + Contin-     │
 │    `nextPrompt: ...`) │                     │   uationPrompt                │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Subagent completes    │ agent.SetLife-      │ m.agentEventHub → publishes a │
-│   (background Task,   │ cycleHandler →      │ "task.completed" event;       │
-│    spawned by the     │ hub.Publish         │ subscriber pushes it onto     │
-│    Agent tool)        │                     │ m.mainEvents (a Go channel)   │
+│ Subagent completes    │ task.SetLife-       │ broker.Send(→"main"); the    │
+│   (background Task,   │ cycleHandler →      │ main deliver fn     │
+│    spawned by the     │ broker.Send        │ pushes it onto m.mainEvents   │
+│    Agent tool)        │                     │ (a Go channel)                │
 └───────────────────────┴─────────────────────┴───────────────────────────────┘
 ```
 
-`m.agentEventHub` is a small pub/sub bus internal to the foreground
-process — its only event today is "task.completed" from a finished
-background subagent.
+`m.mainEvents` carries notices bound for the main loop: subagent completions,
+interim messages (`SendMessage to="main"`), and self-learn notices. Agent
+mail routes through the process-wide [`broker`](../packages/2-feature/broker.md);
+the main loop opens `broker.Main` and forwards onto this channel.
 
 ### Drain at turn boundary
 
@@ -261,16 +262,16 @@ OnTurnEnd                                    model_agent_events.go
         │                        (handled inline; not an inject*)
         ├─ cron queue?       ──► injectCronPrompt(prompt)
         ├─ async hook queue? ──► injectAsyncHookContinuation(item)
-        └─ agentEventHub batch ► injectNotification(merged hub.Message)
+        └─ main notice batch ► injectNotification(mergeNotices(batch))
 ```
 
 ### Waking the Update loop (idle path)
 
-`drainTurnQueues` only fires at `OnTurnEnd`, so an event that arrives
+`drainTurnQueues` only fires at `OnTurnEnd`, so mail that arrives
 *between* turns (the common case for a subagent that finishes minutes
-after launch) needs another way to wake the Update loop. The hub-side
-delivery is already a Go channel (`m.mainEvents`), so we use the same
-trick the agent outbox uses — a **blocking-receive `tea.Cmd`** that
+after launch) needs another way to wake the Update loop. The broker
+subscription delivers onto a Go channel (`m.mainEvents`), so we use the
+same trick the agent outbox uses — a **blocking-receive `tea.Cmd`** that
 turns "next item on the chan" into a `tea.Msg`:
 
 ```
@@ -302,12 +303,13 @@ subagent finishing long after the launching turn ended. `pendingMainEvents`
 exists only to bridge events that landed *during* a stream — those
 must wait so they don't collide with the answer in progress.
 
-The hub publisher side is unchanged: a subagent (or any background
-task) finishes → `notifyTaskCompleted` → the task-lifecycle handler
-registered in `wireTaskLifecycle` calls `agentEventHub.Publish` → the
-`Register("main", ...)` callback pushes onto `m.mainEvents`. So the
-producers are background tasks (`run_in_background: true` agents and
-bash commands); the only event type today is `"task.completed"`.
+The producer side: a subagent (or any background task) finishes →
+`notifyTaskCompleted` → the task-lifecycle handler registered in
+`wireTaskLifecycle` sends the completion to the "main" address → the
+`broker.Register(broker.Main, …)` delivery function pushes onto `m.mainEvents`.
+Background tasks are one producer; subagents posting interim messages
+(`SendMessage to="main"`) and self-learn notices are others — all arrive on
+the same channel.
 
 Same pattern as `conv.DrainAgentOutbox` reading the agent outbox chan
 — two Go channels, two blocking-receive cmds, one Update loop. No
@@ -324,7 +326,7 @@ actually responds. The "payload" varies by producer:
 | --- | --- |
 | Cron | The cron job's `Prompt` string (what the user wrote when scheduling) |
 | Async hook | The hook's `ContinuationPrompt` field |
-| Subagent done | `Data` from the merged `hub.Message` — usually the subagent's final output |
+| Subagent done | `Content` from the merged `mainNotice` — usually the subagent's final output |
 
 ```
 each inject*
@@ -356,13 +358,12 @@ goroutines are involved; each `─ ─ ─►` is a handoff across one.
    ③ lifecycleHandler.TaskCompleted
        │   model_lifecycle.go:194
        ▼
-   ④ agentEventHub.Publish(
-       Type: "task.completed",
-       Target: "main", ...)
-       │   model_lifecycle.go:203
+   ④ broker.Send(msg)
+       → addressed to "main"
+       │   model_lifecycle.go
        ▼
-   ⑤ Register("main",...) callback
-       │   model_lifecycle.go:30
+   ⑤ Open("main",...) deliver fn
+       │   model_lifecycle.go
        ▼
    ⑥ m.mainEvents <- e  ─ ─ ─ ─ ─►  ⑦ awaitMainEvent unblocks
                                        returns mainEventMsg{event}

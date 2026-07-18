@@ -45,11 +45,26 @@ const (
 	PermissionAuto PermissionMode = "auto"
 )
 
-// NormalizePermissionMode trims and case-corrects a permission mode string.
+// NormalizePermissionMode trims a permission mode string and folds accepted
+// aliases onto the canonical constants. "edit" is the spelling the Agent
+// tool's schema exposes; "bypass" and "readonly" appear in agent frontmatter.
 // Empty string defaults to PermissionDefault.
 func NormalizePermissionMode(s string) PermissionMode {
 	s = strings.TrimSpace(s)
-	if s == "" {
+	switch strings.ToLower(s) {
+	case "":
+		return PermissionDefault
+	case "edit", "acceptedits":
+		return PermissionAcceptEdits
+	case "explore", "readonly", "read-only":
+		return PermissionExplore
+	case "bypass", "bypasspermissions":
+		return PermissionBypass
+	case "dontask", "dont-ask":
+		return PermissionDontAsk
+	case "auto":
+		return PermissionAuto
+	case "default":
 		return PermissionDefault
 	}
 	return PermissionMode(s)
@@ -308,6 +323,11 @@ type AgentConfig struct {
 	// settings.permissions.deny. Always wins over AllowTools and mode.
 	DenyTools ToolList `yaml:"deny_tools,omitempty" json:"deny_tools,omitempty"`
 
+	// Isolation selects the default workspace for this agent's runs:
+	// "" / "none" shares the session cwd, "worktree" runs in a disposable git
+	// worktree. A per-request isolation override wins over this default.
+	Isolation string `yaml:"isolation,omitempty" json:"isolation,omitempty"`
+
 	Skills       []string `yaml:"skills,omitempty" json:"skills,omitempty"`
 	SystemPrompt string   `yaml:"system-prompt,omitempty" json:"system_prompt,omitempty"`
 	MaxSteps     int      `yaml:"max-steps" json:"max_steps"`
@@ -337,7 +357,6 @@ type AgentResult struct {
 	Model          string
 	Success        bool
 	Content        string
-	Summary        string
 	TranscriptPath string
 	Messages       []core.Message
 	StepCount      int
@@ -345,17 +364,24 @@ type AgentResult struct {
 	TokenUsage     llm.Usage
 	Duration       time.Duration
 	Activity       []string
-	Error          string
+	// WorktreePath is set when the run used worktree isolation and left
+	// uncommitted changes behind — the worktree is preserved at this path
+	// instead of being removed, so the work survives the run.
+	WorktreePath string
+	Error        string
 }
 
 // defaultMaxSteps is the default maximum number of LLM inference steps.
 const defaultMaxSteps = 100
 
-// modelAliases maps short model aliases to full Vertex AI model IDs.
+// modelAliases maps short model aliases to current-generation model ids.
+// Un-dated ids resolve on Anthropic-family providers (API and Vertex both
+// serve these prefixes); a miss falls back to the parent model via
+// shouldRetryWithParentModel.
 var modelAliases = map[string]string{
-	"sonnet": "claude-sonnet-4-20250514",
-	"opus":   "claude-opus-4-20250514",
-	"haiku":  "claude-haiku-4-5-20251001",
+	"sonnet": "claude-sonnet-4-6",
+	"opus":   "claude-opus-4-7",
+	"haiku":  "claude-haiku-4-5",
 }
 
 // resolveModelAlias returns the full model ID for a known alias,
