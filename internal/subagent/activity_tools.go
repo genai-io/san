@@ -12,18 +12,18 @@ type activityTools struct {
 	onExec func(name string, params map[string]any)
 }
 
-func (a *activityTools) Get(name string) core.Tool {
-	t := a.inner.Get(name)
+func (p *activityTools) Get(name string) core.Tool {
+	t := p.inner.Get(name)
 	if t == nil {
 		return nil
 	}
-	return &activityTool{inner: t, onExec: a.onExec}
+	return &activityTool{inner: t, onExec: p.onExec}
 }
-func (a *activityTools) All() []core.Tool                      { return a.inner.All() }
-func (a *activityTools) Add(t core.Tool, caller string)        { a.inner.Add(t, caller) }
-func (a *activityTools) Remove(name, caller string)            { a.inner.Remove(name, caller) }
-func (a *activityTools) Schemas() []core.ToolSchema            { return a.inner.Schemas() }
-func (a *activityTools) SetObserver(fn func(core.ToolsChange)) { a.inner.SetObserver(fn) }
+func (p *activityTools) All() []core.Tool                      { return p.inner.All() }
+func (p *activityTools) Add(t core.Tool, caller string)        { p.inner.Add(t, caller) }
+func (p *activityTools) Remove(name, caller string)            { p.inner.Remove(name, caller) }
+func (p *activityTools) Schemas() []core.ToolSchema            { return p.inner.Schemas() }
+func (p *activityTools) SetObserver(fn func(core.ToolsChange)) { p.inner.SetObserver(fn) }
 
 type activityTool struct {
 	inner  core.Tool

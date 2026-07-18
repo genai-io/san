@@ -9,10 +9,10 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-// maxResultActivityLines caps the tool activity echoed into the parent's
-// context. The full trail stays visible in the TUI activity stream; the parent
-// LLM only needs enough of the tail to sanity-check what the agent did.
-const maxResultActivityLines = 30
+// maxResultTraceLines caps the tool trace echoed into the parent's context.
+// The full trace stays visible in the TUI progress stream; the parent LLM
+// only needs enough of the tail to sanity-check what the agent did.
+const maxResultTraceLines = 30
 
 // formatForegroundAgentResult renders a finished subagent's result for the
 // parent's tool result: a short header, a capped tail of the tool trace, then
@@ -35,13 +35,13 @@ func formatForegroundAgentResult(agentType string, result *tool.AgentExecResult,
 	}
 	outputBuilder.WriteString("\n")
 
-	activity := result.Activity
-	if len(activity) > maxResultActivityLines {
-		fmt.Fprintf(&outputBuilder, "(%d earlier tool calls omitted)\n", len(activity)-maxResultActivityLines)
-		activity = activity[len(activity)-maxResultActivityLines:]
+	trace := result.Activity
+	if len(trace) > maxResultTraceLines {
+		fmt.Fprintf(&outputBuilder, "(%d earlier tool calls omitted)\n", len(trace)-maxResultTraceLines)
+		trace = trace[len(trace)-maxResultTraceLines:]
 	}
-	for _, line := range activity {
-		outputBuilder.WriteString(line)
+	for _, p := range trace {
+		outputBuilder.WriteString(p)
 		outputBuilder.WriteString("\n")
 	}
 	if result.Content != "" {

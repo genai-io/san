@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/xml"
 	"fmt"
 	"strings"
 	"time"
@@ -80,7 +81,8 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		Content: wrapAgentMessage(from, message),
 	})
 	if !delivered {
-		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to))
+		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf(
+			"no agent is registered at %q — the recipient is not running (a finished subagent cannot be messaged; spawn a new one)", to))
 	}
 
 	return toolresult.ToolResult{
@@ -116,35 +118,21 @@ func senderLabel(id string) string {
 	return "task " + id
 }
 
-// undeliverableReason explains why a Send to `to` was not accepted, reading the
-// recipient's actual task state so the model gets an accurate next step instead
-// of a blanket "finished" verdict: a just-spawned worker is still starting up
-// (its broker route is registered a beat after its task id is handed out), a
-// running one may have a momentarily full inbox, and only a terminal one truly
-// cannot be reached.
-func undeliverableReason(to string) string {
-	if to == broker.Main {
-		return "the main conversation is not currently reachable"
-	}
-	bgTask, found := task.Default().Get(to)
-	if !found {
-		return fmt.Sprintf("no running worker is registered at %q — it has finished or was never started; spawn a new agent to continue the work", to)
-	}
-	if bgTask.GetStatus().Status == task.StatusRunning {
-		return fmt.Sprintf("worker %q is still starting up or its inbox is momentarily full — wait a moment and send again", to)
-	}
-	return fmt.Sprintf("worker %q has finished (status %s) and can no longer be messaged; spawn a new agent to continue its work", to, bgTask.GetStatus().Status)
-}
-
 // wrapAgentMessage tags peer mail so the recipient can tell it from real user
-// input, mirroring the <task-notification> convention. The body keeps its
-// newlines (tool.EscapeXMLText only neutralizes &, <, >), so multi-line
-// messages read naturally in the recipient's context.
+// input, mirroring the <task-notification> convention.
 func wrapAgentMessage(from, text string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<agent-message from=%q>\n", from)
-	b.WriteString(tool.EscapeXMLText(text))
+	b.WriteString(escapeXMLText(text))
 	b.WriteString("\n</agent-message>")
+	return b.String()
+}
+
+func escapeXMLText(s string) string {
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		return s
+	}
 	return b.String()
 }
 

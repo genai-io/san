@@ -19,24 +19,23 @@ type preparedRun struct {
 	cwd       string
 	startedAt time.Time
 	hookID    string
-	// activity is the tool-call trail included in the parent-visible result.
-	// Status lines (model, mode, token usage, spinner text) go only to
+	// trace is the tool-call trail included in the parent-visible result.
+	// Telemetry lines (model, mode, token usage, spinner text) go only to
 	// OnActivity for the UI — they would be noise in the parent's context.
-	activity     []string
+	trace        []string
 	inputTokens  int
 	outputTokens int
 }
 
-// recordActivity adds a tool-call line to the parent-visible result trail and
-// also streams it to the UI.
-func (r *preparedRun) recordActivity(msg string) {
-	r.activity = append(r.activity, msg)
-	r.streamActivity(msg)
+// sendTrace records a tool-call line in the result trace and streams it to
+// the UI.
+func (r *preparedRun) sendTrace(msg string) {
+	r.trace = append(r.trace, msg)
+	r.sendTelemetry(msg)
 }
 
-// streamActivity streams a line to the UI's OnActivity callback only — model,
-// mode, and usage status that would be noise in the parent's result.
-func (r *preparedRun) streamActivity(msg string) {
+// sendTelemetry streams a UI-only activity line (model, mode, usage).
+func (r *preparedRun) sendTelemetry(msg string) {
 	if r.req.OnActivity != nil {
 		r.req.OnActivity(msg)
 	}
@@ -49,7 +48,7 @@ func (r *preparedRun) recordUsage(resp *core.InferResponse) {
 	r.inputTokens += resp.InputTokens
 	r.outputTokens += resp.OutputTokens
 	if r.inputTokens > 0 || r.outputTokens > 0 {
-		r.streamActivity(formatUsageActivity(r.inputTokens, r.outputTokens))
+		r.sendTelemetry(formatUsageActivity(r.inputTokens, r.outputTokens))
 	}
 }
 
@@ -69,7 +68,7 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 		cwd:       e.cwd,
 		startedAt: time.Now(),
 		hookID:    "a" + generateShortID(),
-		activity:  make([]string, 0, 16),
+		trace:     make([]string, 0, 16),
 	}, nil
 }
 
@@ -89,10 +88,10 @@ func (e *Executor) logRunStart(run *preparedRun) {
 func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*core.Result, error) {
 	var onToolExec func(string, map[string]any)
 	if run.req.OnActivity != nil {
-		run.streamActivity(fmt.Sprintf("Model: %s", run.cfg.modelID))
-		run.streamActivity(fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps))
+		run.sendTelemetry(fmt.Sprintf("Model: %s", run.cfg.modelID))
+		run.sendTelemetry(fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps))
 		onToolExec = func(name string, params map[string]any) {
-			run.recordActivity(formatToolActivity(name, params))
+			run.sendTrace(formatToolActivity(name, params))
 		}
 	}
 	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, func(ev core.Event) {
@@ -109,34 +108,20 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 		return nil, err
 	}
 	if run.req.OnActivity != nil {
-		run.streamActivity("Thinking...")
+		run.sendTelemetry("Thinking...")
 	}
-
-	// Stamp the running worker's own broker address onto the context so its
-	// SendMessage calls are attributed to it, not defaulted to "main". A
-	// background run uses its task id (and registers it below so main can
-	// message it mid-flight); a foreground run has no task id, so it borrows
-	// its hook id purely as a sender identity — nothing routes back to a
-	// foreground worker, which blocks its spawning turn.
-	agentAddr := run.req.TaskID
-	if agentAddr == "" {
-		agentAddr = run.hookID
-	}
-	ctx = tool.WithAgentID(ctx, agentAddr)
 
 	// A background subagent registers its task id with the broker for the
-	// length of the run. A routed message lands in the subagent's inbox and is
-	// read at its next step boundary; a full inbox reports the drop back to the
-	// sender rather than silently swallowing it.
+	// length of the run, so main can message it mid-flight. A routed message
+	// lands in the subagent's inbox and is read at its next step boundary.
 	if run.req.TaskID != "" {
-		broker.Register(run.req.TaskID, func(m broker.Message) bool {
+		ctx = tool.WithAgentID(ctx, run.req.TaskID)
+		broker.Register(run.req.TaskID, func(m broker.Message) {
 			select {
 			case ag.Inbox() <- core.UserMessage(m.Content, nil):
-				return true
 			default:
 				log.Logger().Warn("subagent inbox full; dropped message",
 					zap.String("from", m.From))
-				return false
 			}
 		})
 		defer broker.Unregister(run.req.TaskID)
@@ -179,8 +164,9 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 }
 
 // buildCancelledAgentResult preserves a cancelled run's partial work: the
-// conversation is persisted, the stop hook fires, and the partial content
-// travels back to the caller alongside the error.
+// conversation is persisted (so the run is resumable), the stop hook fires,
+// and the partial content plus any preserved worktree travel back to the
+// caller alongside the error.
 func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Result) *AgentResult {
 	if result == nil || result.StopReason != core.StopCancelled {
 		return nil
@@ -188,9 +174,9 @@ func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Resu
 	return e.finalizeResult(run, result, false, "agent cancelled")
 }
 
-// finalizeResult persists the session, fires the stop hook, and projects the
-// run into an AgentResult. Both the success and cancelled paths share it —
-// they differ only in Success/Error.
+// finalizeResult persists the (resumable) session, fires the stop hook, and
+// projects the run into an AgentResult. Both the success and cancelled paths
+// share it — they differ only in Success/Error.
 func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success bool, errMsg string) *AgentResult {
 	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
 		run.cfg.displayName,
@@ -212,7 +198,7 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 		ToolUses:       result.ToolUses,
 		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:       time.Since(run.startedAt),
-		Activity:       append([]string(nil), run.activity...),
+		Activity:       append([]string(nil), run.trace...),
 		Error:          errMsg,
 	}
 }

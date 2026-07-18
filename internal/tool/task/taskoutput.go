@@ -116,8 +116,9 @@ func (t *TaskOutputTool) Execute(ctx context.Context, params map[string]any, cwd
 	if !info.EndTime.IsZero() {
 		output += fmt.Sprintf("Duration: %v\n", info.EndTime.Sub(info.StartTime))
 	}
-	if info.Type == task.TaskTypeAgent && bgTask.IsRunning() {
-		output += fmt.Sprintf("To steer this worker while it runs: SendMessage(to=%q, message=\"...\"). A finished worker cannot be resumed — spawn a new agent to continue its work.\n", info.ID)
+	if info.Type == task.TaskTypeAgent && info.AgentSessionID != "" {
+		output += fmt.Sprintf("Resume: SendMessage(task_id=\"%s\", message=\"...\") or Agent(resume=\"%s\", subagent_type=\"%s\", description=\"...\", prompt=\"...\")\n",
+			info.ID, info.AgentSessionID, agentTypeForResume(info))
 	}
 	if info.Output != "" {
 		output += fmt.Sprintf("\nOutput:\n%s", info.Output)
@@ -126,7 +127,7 @@ func (t *TaskOutputTool) Execute(ctx context.Context, params map[string]any, cwd
 		output += fmt.Sprintf("\nError: %s", info.Error)
 	}
 	return toolresult.ToolResult{
-		Success: info.Status != task.StatusFailed && info.Status != task.StatusStopped,
+		Success: info.Status != task.StatusFailed,
 		Output:  output,
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
@@ -151,8 +152,6 @@ func formatStatusString(info task.TaskInfo) string {
 		return "failed"
 	case task.StatusKilled:
 		return "killed"
-	case task.StatusStopped:
-		return "stopped"
 	default:
 		return "unknown"
 	}
@@ -186,6 +185,13 @@ func formatTaskOutput(info task.TaskInfo, status string) string {
 	default:
 		return fmt.Sprintf("Task ID: %s\nStatus: %s\n", info.ID, status)
 	}
+}
+
+func agentTypeForResume(info task.TaskInfo) string {
+	if info.AgentType != "" {
+		return info.AgentType
+	}
+	return "general-purpose"
 }
 
 func shouldDeferImmediatePolling(info task.TaskInfo, block bool) bool {

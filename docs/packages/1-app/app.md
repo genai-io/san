@@ -6,7 +6,7 @@ layer: app
 # ui
 
 The Bubble Tea TUI shell. Composes the agent loop, conversation view,
-user input, broker-routed main-loop notices, system triggers (cron / async
+user input, hub-routed agent events, system triggers (cron / async
 hook / file watcher), and runtime services into a single `tea.Model`.
 
 ## Purpose
@@ -28,13 +28,13 @@ package app
 
 // model is the Bubble Tea root model. One per process.
 type model struct {
-    userInput       input.Model        // Source 1: user keyboard
-    mainNotices     chan mainNotice    // Source 2: notices bound for the main loop
-    pendingNotices  []mainNotice       // notices received while streaming
-    systemInput     trigger.Model      // Source 3: cron / async hook / file watcher
-    conv            conv.Model         // agent outbox → conversation view
-    env             env                // app-local TUI state
-    services        services           // 16 injected feature-layer service refs
+    userInput      input.Model     // Source 1: user keyboard
+    unregisterMain func()          // Source 2: deregisters the main address from the broker
+    mainEvents     chan mainNotice // notices bound for the main loop (subagent mail, self-learn)
+    systemInput trigger.Model      // Source 3: cron / async hook / file watcher
+    conv        conv.Model       // agent outbox → conversation view
+    env         env              // app-local TUI state
+    services    services         // 16 injected feature-layer service refs
 }
 
 // services holds references to feature-layer service singletons.

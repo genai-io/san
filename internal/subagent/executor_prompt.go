@@ -157,10 +157,7 @@ func displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
 }
 
 func requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
-	// The Agent tool's mode="default" means "use the agent config's mode"
-	// (as the tool schema documents and the permission dialog previews), so
-	// only an explicit, non-"default" override replaces the config's mode.
-	if req.Mode != "" && req.Mode != "default" {
+	if req.Mode != "" {
 		return NormalizePermissionMode(req.Mode)
 	}
 	return NormalizePermissionMode(string(config.PermissionMode))

@@ -28,8 +28,8 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	// The main conversation registers the "main" address with the broker;
 	// messages routed to it (subagent completions, interim messages) land on
 	// mainNotices and are drained at turn boundaries.
-	broker.Register(broker.Main, func(msg broker.Message) bool {
-		return m.notifyMain(fromBrokerMessage(msg))
+	broker.Register(broker.Main, func(msg broker.Message) {
+		m.notifyMain(fromBrokerMessage(msg))
 	})
 
 	// Wire task completion: closure captures hooks + tracker.
@@ -224,19 +224,14 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 }
 
 // notifyMain posts a notice (a broker-routed subagent message, or a self-learn
-// done/failed line) to the main loop's Source-2 channel and always reports it
-// delivered. The broker's delivery contract forbids blocking, but a subagent
-// completion is main's only signal that a background worker finished, so it
-// must not be dropped: on a full channel we hand the notice to a short-lived
-// goroutine that blocks on the send instead of discarding it. The Update loop
-// drains continuously, so the goroutine settles promptly.
-func (m *model) notifyMain(n mainNotice) bool {
+// done/failed line) to the main loop's Source-2 channel. Non-blocking — as the
+// broker contract requires of delivery — so a full channel drops the notice
+// rather than stalling the caller's goroutine.
+func (m *model) notifyMain(n mainNotice) {
 	select {
 	case m.mainNotices <- n:
 	default:
-		go func() { m.mainNotices <- n }()
 	}
-	return true
 }
 
 type taskLifecycleFunc struct {

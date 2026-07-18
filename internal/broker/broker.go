@@ -31,21 +31,15 @@ type Message struct {
 	Content string
 }
 
-// Deliver hands a routed message to a recipient. It must not block; it returns
-// whether the message was accepted — false means the recipient was reachable
-// but dropped it (e.g. its inbox was full), so the sender can tell "delivered"
-// apart from "silently discarded".
-type Deliver func(Message) bool
-
 var (
 	mu     sync.RWMutex
-	routes = map[string]Deliver{}
+	routes = map[string]func(Message){}
 )
 
 // Register makes deliver the recipient for addr. Addresses are unique per run
 // (a task id, or Main), so an address is registered by exactly one agent at a
 // time.
-func Register(addr string, deliver Deliver) {
+func Register(addr string, deliver func(Message)) {
 	mu.Lock()
 	routes[addr] = deliver
 	mu.Unlock()
@@ -60,10 +54,8 @@ func Unregister(addr string) {
 }
 
 // Send routes m to the recipient registered for m.To, reporting whether it was
-// delivered. It returns false when no one holds the address AND when the
-// recipient is registered but drops the message (a full inbox) — so a caller
-// that reports "delivered" only does so when the message was actually accepted.
-// The delivery function runs outside the lock and must not block.
+// delivered. A message to an unregistered address is dropped. The delivery
+// function runs outside the lock and must not block (it enqueues and returns).
 func Send(m Message) bool {
 	mu.RLock()
 	deliver, ok := routes[m.To]
@@ -71,12 +63,13 @@ func Send(m Message) bool {
 	if !ok {
 		return false
 	}
-	return deliver(m)
+	deliver(m)
+	return true
 }
 
 // Reset removes every registration. Test-only.
 func Reset() {
 	mu.Lock()
-	routes = map[string]Deliver{}
+	routes = map[string]func(Message){}
 	mu.Unlock()
 }
