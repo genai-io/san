@@ -22,31 +22,9 @@ type preparedRun struct {
 	// trace is the tool-call trail included in the parent-visible result.
 	// Telemetry lines (model, mode, token usage, spinner text) go only to
 	// OnActivity for the UI — they would be noise in the parent's context.
-	trace            []string
-	inputTokens      int
-	outputTokens     int
-	finishWorkspace  func() (keptPath string)
-	keptWorktreePath string
-	workspaceDone    bool
-}
-
-// close releases the workspace if no explicit settleWorkspace ran (error
-// paths); settled runs are a no-op.
-func (r *preparedRun) close() {
-	if r != nil {
-		r.settleWorkspace()
-	}
-}
-
-// settleWorkspace finalizes worktree isolation once: a clean worktree is
-// removed, one with uncommitted changes is preserved and remembered so the
-// result can point the parent at it.
-func (r *preparedRun) settleWorkspace() {
-	if r.workspaceDone || r.finishWorkspace == nil {
-		return
-	}
-	r.workspaceDone = true
-	r.keptWorktreePath = r.finishWorkspace()
+	trace        []string
+	inputTokens  int
+	outputTokens int
 }
 
 // sendTrace records a tool-call line in the result trace and streams it to
@@ -84,19 +62,13 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 		return nil, err
 	}
 
-	agentCwd, finishWorkspace, err := e.prepareWorkspace(req, cfg.config)
-	if err != nil {
-		return nil, err
-	}
-
 	return &preparedRun{
-		req:             req,
-		cfg:             cfg,
-		cwd:             agentCwd,
-		startedAt:       time.Now(),
-		hookID:          "a" + generateShortID(),
-		trace:           make([]string, 0, 16),
-		finishWorkspace: finishWorkspace,
+		req:       req,
+		cfg:       cfg,
+		cwd:       e.cwd,
+		startedAt: time.Now(),
+		hookID:    "a" + generateShortID(),
+		trace:     make([]string, 0, 16),
 	}, nil
 }
 
@@ -202,12 +174,10 @@ func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Resu
 	return e.finalizeResult(run, result, false, "agent cancelled")
 }
 
-// finalizeResult settles the workspace, persists the (resumable) session, fires
-// the stop hook, and projects the run into an AgentResult. Both the success and
-// cancelled paths share it — they differ only in Success/Error.
+// finalizeResult persists the (resumable) session, fires the stop hook, and
+// projects the run into an AgentResult. Both the success and cancelled paths
+// share it — they differ only in Success/Error.
 func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success bool, errMsg string) *AgentResult {
-	run.settleWorkspace()
-
 	agentSessionID, agentTranscriptPath := e.persistSubagentSession(
 		run.cfg.displayName,
 		run.cfg.modelID,
@@ -216,33 +186,19 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 	)
 	e.fireSubagentStop(run.req, run.hookID, agentTranscriptPath, result.Content)
 
-	content := result.Content
-	if run.keptWorktreePath != "" {
-		content = appendWorktreeNote(content, run.keptWorktreePath)
-	}
-
 	return &AgentResult{
 		AgentID:        agentSessionID,
 		AgentName:      run.cfg.displayName,
 		TranscriptPath: agentTranscriptPath,
 		Model:          run.cfg.modelID,
 		Success:        success,
-		Content:        content,
+		Content:        result.Content,
 		Messages:       result.Messages,
 		StepCount:      result.Steps,
 		ToolUses:       result.ToolUses,
 		TokenUsage:     llm.Usage{InputTokens: result.InputTokens, OutputTokens: result.OutputTokens},
 		Duration:       time.Since(run.startedAt),
 		Activity:       append([]string(nil), run.trace...),
-		WorktreePath:   run.keptWorktreePath,
 		Error:          errMsg,
 	}
-}
-
-func appendWorktreeNote(content, worktreePath string) string {
-	note := worktreePreservedNote(worktreePath)
-	if content == "" {
-		return note
-	}
-	return content + "\n\n" + note
 }
