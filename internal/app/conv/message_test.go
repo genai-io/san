@@ -176,10 +176,10 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		}
 	}
 
-	// The "$" sits in the "⎿" result column, so the two markers line up down the left.
+	// The "$" is inset one cell from the "⎿" result marker.
 	resultPrefix := "  ⎿  "
-	if strings.IndexByte(bashPrompt, '$') != strings.Index(resultPrefix, "⎿") {
-		t.Fatalf("prompt $ column must equal the result ⎿ column")
+	if got, want := strings.IndexByte(bashPrompt, '$'), strings.Index(resultPrefix, "⎿")+1; got != want {
+		t.Fatalf("prompt $ column = %d, want one cell after result ⎿ column %d", got, want)
 	}
 	// The command after "$" starts where the result's Bash label starts.
 	if lipgloss.Width(bashPrompt) != lipgloss.Width(resultPrefix) {
