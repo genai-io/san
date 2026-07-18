@@ -75,11 +75,6 @@ var agentToolParameters = map[string]any{
 			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
-		"isolation": map[string]any{
-			"type":        "string",
-			"description": "Isolation mode for the agent.",
-			"enum":        []string{"worktree"},
-		},
 	},
 	"required": []string{"description", "prompt"},
 }

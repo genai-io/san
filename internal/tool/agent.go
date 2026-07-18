@@ -72,7 +72,6 @@ type AgentExecRequest struct {
 	Model       string
 	MaxSteps    int
 	Mode        string
-	Isolation   string
 	// TaskID is the background-task id of this run; the executor registers it
 	// with the broker so main can message the subagent while it runs. Empty
 	// for foreground runs.

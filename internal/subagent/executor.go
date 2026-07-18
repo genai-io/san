@@ -18,7 +18,6 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	"github.com/genai-io/san/internal/worktree"
 	"go.uber.org/zap"
 )
 
@@ -131,7 +130,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 	if err != nil {
 		return nil, err
 	}
-	defer run.close()
 
 	ctx = e.attachRunContext(ctx, run.cfg.displayName)
 	e.logRunStart(run)
@@ -206,8 +204,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			return
 		}
 
-		// result.Content already carries the worktree-preserved note (folded in
-		// by buildAgentResult), so it needs no separate re-append here.
 		if result.Content != "" {
 			agentTask.AppendOutput([]byte(result.Content))
 		}
@@ -231,45 +227,6 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 		return fmt.Errorf("agent prompt cannot be empty")
 	}
 	return nil
-}
-
-// prepareWorkspace resolves the run's working directory. With worktree
-// isolation the returned finish func removes the worktree only when it is
-// clean; a worktree holding uncommitted changes is preserved and its path
-// returned, so an editing agent's work survives the run.
-func (e *Executor) prepareWorkspace(req tool.AgentExecRequest, config *AgentConfig) (string, func() (keptPath string), error) {
-	isolation := req.Isolation
-	if isolation == "" && config != nil {
-		isolation = config.Isolation
-	}
-	if isolation != "worktree" {
-		return e.cwd, func() string { return "" }, nil
-	}
-
-	result, _, err := worktree.Create(e.cwd, "")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create worktree: %w", err)
-	}
-
-	baseCwd := e.cwd
-	finish := func() string {
-		if worktree.HasUncommittedChanges(result.Path) {
-			log.Logger().Info("Preserving agent worktree with uncommitted changes",
-				zap.String("path", result.Path))
-			return result.Path
-		}
-		if err := worktree.Remove(baseCwd, result.Path); err != nil {
-			log.Logger().Warn("worktree cleanup failed",
-				zap.String("path", result.Path), zap.Error(err))
-		}
-		return ""
-	}
-	return result.Path, finish, nil
-}
-
-// worktreePreservedNote tells the parent agent where preserved work lives.
-func worktreePreservedNote(path string) string {
-	return fmt.Sprintf("[worktree preserved] Uncommitted changes remain in %s — review and merge or discard them.", path)
 }
 
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {

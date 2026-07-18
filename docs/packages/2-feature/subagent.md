@@ -15,8 +15,8 @@ main agent's tool loop.
 Where [`packages/agent.md`](agent.md) owns the *foreground* agent session,
 this package owns the subagents that session spawns via the Agent tool.
 Each subagent runs its own `core.Agent` loop (event observation via
-`OnEvent`; no outbox) with an isolated conversation, an optional disposable
-worktree, and its own tool/permission set. A foreground subagent blocks the
+`OnEvent`; no outbox) with an isolated conversation and its own
+tool/permission set, sharing the session's working directory. A foreground subagent blocks the
 spawning turn and returns its result as the tool result; a background
 subagent runs in a goroutine under a `task.AgentTask` and registers its task
 id with the [`broker`](broker.md) for the length of the run — main can
@@ -109,9 +109,6 @@ func ResetDefaultRegistry()           // test-only
 - The agent model is flat: only the main conversation spawns subagents. The
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
-- Worktree isolation (`isolation: worktree`, request- or config-level)
-  removes the worktree only when clean; uncommitted changes preserve it
-  and the result names the path.
 - Concurrency: multiple executors may run in parallel; the registry is
   RWMutex-protected.
 
@@ -130,5 +127,4 @@ internal/subagent/scenarios_test.go     — common invocation shapes.
 - Parent agent: [`packages/agent.md`](agent.md)
 - Spawning tools: [`packages/tool.md`](tool.md) (Agent, SendMessage)
 - Background tasks: [`packages/task.md`](task.md)
-- Worktree isolation: [`packages/worktree.md`](worktree.md)
 - Layer: `feature`

@@ -85,17 +85,3 @@ func TestParseAgentFileCanonicalKeysWinOverAliases(t *testing.T) {
 		t.Fatalf("canonical mode should win, got %q", config.PermissionMode)
 	}
 }
-
-func TestParseAgentFileReadsIsolationDefault(t *testing.T) {
-	dir := t.TempDir()
-	writeAgentFile(t, dir, "isolated",
-		"name: isolated\ndescription: worktree worker\nisolation: worktree")
-
-	config, err := parseAgentFile(filepath.Join(dir, "isolated.md"))
-	if err != nil {
-		t.Fatalf("parseAgentFile: %v", err)
-	}
-	if config.Isolation != "worktree" {
-		t.Fatalf("isolation = %q, want worktree", config.Isolation)
-	}
-}
