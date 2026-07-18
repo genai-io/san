@@ -3,6 +3,12 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.8] - 2026-07-19
+
+### Fixed
+- Snapshot permission audit input before releasing the gate to prevent concurrent map access ([@yanmxa](https://github.com/yanmxa) in [#329](https://github.com/genai-io/san/pull/329))
+- Inset and align the Bash prompt marker with result markers ([@yanmxa](https://github.com/yanmxa) in [9dbb4f5](https://github.com/genai-io/san/commit/9dbb4f59))
+
 ## [v1.21.7] - 2026-07-18
 
 ### Added
