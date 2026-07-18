@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -33,6 +35,13 @@ import (
 
 var version = "1.21.6"
 
+// buildTime and commit are set at build time via -X ldflags.
+// When built directly with go build (without ldflags), they remain empty.
+var (
+	buildTime string
+	commit    string
+)
+
 // cliOpts holds all CLI flag values in one place.
 var cliOpts struct {
 	print  string // -p/--print: non-interactive print mode
@@ -58,6 +67,9 @@ func init() {
 	rootCmd.Flags().BoolVarP(&cliOpts.resume, "resume", "r", false, "Select and resume a previous session")
 	rootCmd.PersistentFlags().StringVar(&cliOpts.pluginDir, "plugin-dir", "", "Load plugins from a specific directory")
 	rootCmd.Flags().StringVar(&cliOpts.persona, "persona", "", "Activate a persona on startup")
+
+	// Register flags on version subcommand
+	versionCmd.Flags().Bool("json", false, "Output version information in JSON format")
 
 	// Register subcommands
 	rootCmd.AddCommand(versionCmd)
@@ -151,9 +163,28 @@ func readStdin() string {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number",
+	Short: "Print version and build information",
 	Run: func(cmd *cobra.Command, args []string) {
+		jsonOutput, _ := cmd.Flags().GetBool("json")
+
+		if jsonOutput {
+			info := map[string]string{
+				"version":    version,
+				"build_time": buildTime,
+				"go_version": runtime.Version(),
+				"commit":     commit,
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			enc.Encode(info)
+			return
+		}
+
 		fmt.Printf("san version %s\n", version)
+		if buildTime != "" {
+			fmt.Printf("build: %s\n", buildTime)
+		}
+		fmt.Printf("go:    %s\n", runtime.Version())
 	},
 }
 
@@ -211,7 +242,7 @@ Session:
   san --persona <name>       Activate a persona on startup
 
 Commands:
-  version      Print the version number
+  version      Print version and build information
   agent run    Run a headless agent
   update       Check for san updates and install if available
   help         Show this help message

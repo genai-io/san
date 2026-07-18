@@ -2,7 +2,9 @@ BINARY := san
 BINDIR := bin
 SRCDIR := ./cmd/san
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION)"
+BUILDTIME := $(shell date -u +%Y-%m-%d)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILDTIME) -X main.commit=$(COMMIT)"
 
 # Disable cgo so binaries are statically linked, with no glibc version
 # dependency that would break on older distros.

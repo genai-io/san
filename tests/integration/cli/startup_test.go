@@ -5,6 +5,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,8 +51,8 @@ func projectRoot(t *testing.T) string {
 	}
 }
 
-// TestVersionCommand verifies that "san version" prints the version string
-// and exits cleanly without requiring any provider configuration.
+// TestVersionCommand verifies that "san version" prints version and build
+// information and exits cleanly without requiring any provider configuration.
 func TestVersionCommand(t *testing.T) {
 	bin := buildBinary(t)
 
@@ -61,14 +62,61 @@ func TestVersionCommand(t *testing.T) {
 		t.Fatalf("san version exited with error: %v", err)
 	}
 
-	output := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(output, "san version ") {
-		t.Errorf("expected output to start with 'san version ', got: %q", output)
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 2 {
+		t.Fatalf("expected at least 2 lines of output, got %d:\n%s", len(lines), out)
 	}
-	// Version should not be empty after the prefix.
-	ver := strings.TrimPrefix(output, "san version ")
+
+	// First line: san version <ver>
+	first := strings.TrimSpace(lines[0])
+	if !strings.HasPrefix(first, "san version ") {
+		t.Errorf("expected first line to start with 'san version ', got: %q", first)
+	}
+	ver := strings.TrimPrefix(first, "san version ")
 	if ver == "" {
 		t.Error("version string is empty")
+	}
+
+	// There should be a "go:" line
+	foundGo := false
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "go:") {
+			foundGo = true
+			break
+		}
+	}
+	if !foundGo {
+		t.Errorf("expected output to contain a 'go:' line:\n%s", out)
+	}
+}
+
+// TestVersionCommandJSON verifies that "san version --json" outputs valid JSON
+// with the expected fields.
+func TestVersionCommandJSON(t *testing.T) {
+	bin := buildBinary(t)
+
+	cmd := exec.Command(bin, "version", "--json")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("san version --json exited with error: %v", err)
+	}
+
+	var info map[string]string
+	if err := json.Unmarshal(out, &info); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+
+	for _, key := range []string{"version", "build_time", "go_version", "commit"} {
+		if _, ok := info[key]; !ok {
+			t.Errorf("JSON output missing key %q", key)
+		}
+	}
+	// The hard-coded version (no ldflags) must be present
+	if info["version"] == "" {
+		t.Error("version field is empty")
+	}
+	if info["go_version"] == "" {
+		t.Error("go_version field is empty")
 	}
 }
 
