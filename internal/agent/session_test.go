@@ -21,7 +21,7 @@ func (stubProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan ll
 	return ch
 }
 func (stubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
-func (stubProvider) Name() string                                       { return "stub" }
+func (stubProvider) Name() string                                        { return "stub" }
 
 // A mid-conversation rebuild reseeds the replacement agent from the outgoing
 // one's chain (see ensureAgentSession), so Session must surface that chain with
