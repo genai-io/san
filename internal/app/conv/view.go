@@ -184,6 +184,13 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// model reads it, and it persists/seeds resume), but it's shown as a
 			// system notice — not a "❭" user turn — so the transcript stays clean.
 			sb.WriteString(RenderSystemMessage(msg.DisplayContent))
+		case isAgentEnvelope(msg.Content):
+			// A background-agent envelope (task completion / relayed message) is
+			// submitted to the model as a user turn and persisted as raw XML.
+			// Live it shows as a green notice; on resume the turn is rebuilt from
+			// the transcript, so collapse it to the same one-line notice here
+			// instead of dumping the raw <task-notification>/<agent-message> XML.
+			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content)))
 		default:
 			sb.WriteString(RenderUserMessage(msg.Content, msg.DisplayContent, msg.Images, p.MDRenderer, p.Width))
 			if autopilotDriven {
@@ -191,7 +198,11 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			}
 		}
 	case core.RoleNotice:
-		sb.WriteString(RenderSystemMessage(msg.Content))
+		if msg.AgentNotice {
+			sb.WriteString(RenderAgentNotice(msg.Content))
+		} else {
+			sb.WriteString(RenderSystemMessage(msg.Content))
+		}
 	case core.RoleAssistant:
 		sb.WriteString(renderAssistantWithTools(p, msg, idx, isStreaming))
 	}

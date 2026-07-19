@@ -29,12 +29,16 @@ import (
 type mainNotice struct {
 	Display string
 	Content string
+	// FromAgent marks a notice relayed in from a background agent (a subagent
+	// completion or interim report), so the UI renders its Display line as an
+	// inbound agent message rather than a plain system notice.
+	FromAgent bool
 }
 
 // fromBrokerMessage converts a message the broker routed to "main" (a subagent
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
-	return mainNotice{Display: m.Subject, Content: m.Content}
+	return mainNotice{Display: m.Subject, Content: m.Content, FromAgent: true}
 }
 
 // mergeNotices collapses notices drained together into one displayed line + one
@@ -54,6 +58,12 @@ func mergeNotices(notices []mainNotice) mainNotice {
 		}
 	}
 	merged := mainNotice{Display: strings.Join(lines, "; ")}
+	for _, n := range notices {
+		if n.FromAgent {
+			merged.FromAgent = true
+			break
+		}
+	}
 	if len(contents) == 1 {
 		merged.Content = contents[0]
 	} else if len(contents) > 1 {
@@ -62,9 +72,14 @@ func mergeNotices(notices []mainNotice) mainNotice {
 	return merged
 }
 
-// maxTaskOutputInNotification caps how much of a task's output rides in the
-// completion notification; the full transcript stays in the output file.
-const maxTaskOutputInNotification = 4000
+// maxTaskOutputInNotification is the largest task output, in bytes, inlined
+// whole into the completion notification. At or below it, the full result rides
+// in the notification so the reader needs no follow-up read; above it, the body
+// is omitted and only the output-file pointer is given, so a large report is
+// fetched in one deliberate read rather than a truncated preview plus a second
+// read for the rest. Byte-sized, so a CJK report (3 bytes/char) inlines up to
+// roughly a third as many characters — ~6.6K.
+const maxTaskOutputInNotification = 20000
 
 // taskCompletionMessage builds the broker message a finished task sends to the
 // "main" address, or (_, false) if the task is not in a terminal state.
@@ -80,9 +95,6 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	}
 
 	result := strings.TrimSpace(info.Output)
-	if len(result) > maxTaskOutputInNotification {
-		result = strings.TrimSpace(result[:maxTaskOutputInNotification]) + "\n...[truncated]"
-	}
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "<task-notification task-id=%q status=%q", info.ID, status)
@@ -96,9 +108,14 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		fmt.Fprintf(&b, " output-file=%q", info.OutputFile)
 	}
 	b.WriteString(">\n")
-	if info.Error != "" {
+	switch {
+	case info.Error != "":
 		b.WriteString(tool.EscapeXMLText(info.Error))
-	} else if result != "" {
+	case len(result) > maxTaskOutputInNotification && info.OutputFile != "":
+		// Too large to inline without bloating the main context. Point at the
+		// full result instead of dumping a partial preview.
+		fmt.Fprintf(&b, "Output is %d bytes — too large to inline. Read the full result from the output file above.", len(result))
+	case result != "":
 		b.WriteString(tool.EscapeXMLText(result))
 	}
 	b.WriteString("\n</task-notification>")

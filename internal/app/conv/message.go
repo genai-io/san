@@ -70,6 +70,13 @@ var (
 			Foreground(kit.CurrentTheme.TextDim).
 			PaddingLeft(2)
 
+	// A message relayed in from a background agent (subagent completion / interim
+	// report). Uses the agent tone (Success, matching agentLabelStyle and the
+	// default agentColor) with a "◆" marker so it reads as an inbound agent
+	// message, distinct from the dim system notices around it.
+	agentNoticeStyle = lipgloss.NewStyle().
+				Foreground(kit.CurrentTheme.Success)
+
 	// The tool call line stays readable — the action and its target (the file
 	// being edited, the command being run) matter, and the live spinner rides
 	// this line while the call is in flight.
@@ -434,6 +441,13 @@ func getToolExecutionDesc(toolName string) string {
 // RenderSystemMessage renders a system/notice core.
 func RenderSystemMessage(content string) string {
 	return systemMsgStyle.Render(content) + "\n"
+}
+
+// RenderAgentNotice renders a background-agent notice (a subagent completion or
+// interim report) — a "◆" marker plus the "<description> <status>" line in the
+// accent tone, so it stands out from the dim system notices as an agent message.
+func RenderAgentNotice(content string) string {
+	return agentNoticeStyle.Render("◆ "+content) + "\n"
 }
 
 // renderDecision renders the auto-review outcome as a one-line annotation

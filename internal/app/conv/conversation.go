@@ -49,6 +49,12 @@ func (m *ConversationModel) AddNotice(content string) {
 	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content})
 }
 
+// AddAgentNotice adds a notice that came from a background agent (a subagent
+// completion or interim report), rendered distinctly from a plain system notice.
+func (m *ConversationModel) AddAgentNotice(content string) {
+	m.Messages = append(m.Messages, core.ChatMessage{Role: core.RoleNotice, Content: content, AgentNotice: true})
+}
+
 func (m *ConversationModel) AppendToLast(text, thinking string) {
 	if len(m.Messages) == 0 {
 		return

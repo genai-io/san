@@ -99,7 +99,11 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 // body (if any) is submitted to the main agent as a fresh turn.
 func (m *model) injectNotice(n mainNotice) tea.Cmd {
 	if n.Display != "" {
-		m.conv.AddNotice(n.Display)
+		if n.FromAgent {
+			m.conv.AddAgentNotice(n.Display)
+		} else {
+			m.conv.AddNotice(n.Display)
+		}
 	}
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)

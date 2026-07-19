@@ -123,6 +123,11 @@ type ChatMessage struct {
 	// copilot typed it. Display-only: dropped by ToMessage, never persisted.
 	AutopilotNote string
 
+	// AgentNotice marks a RoleNotice that carries a message from a background
+	// agent (a subagent completion or an interim report) rather than a plain
+	// system notice, so the renderer styles it distinctly. Display-only.
+	AgentNotice bool
+
 	// Streaming-commit progress. While an assistant message streams, completed
 	// markdown blocks are flushed to native scrollback (tea.Println) as they
 	// finish, so the live view and the turn-end commit render only the
