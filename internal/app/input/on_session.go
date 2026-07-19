@@ -194,7 +194,7 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 		if msg.Role != core.RoleUser && msg.Role != core.RoleAssistant {
 			continue
 		}
-		blocks := session.MessageBlocks(msg)
+		blocks := session.MessageToBlocks(msg)
 		skip := false
 		for _, block := range blocks {
 			if block.Type == "tool_result" || block.Type == "tool_use" {
@@ -237,7 +237,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 		if msg.Role != core.RoleUser {
 			continue
 		}
-		blocks := session.MessageBlocks(msg)
+		blocks := session.MessageToBlocks(msg)
 		isToolResult := false
 		for _, block := range blocks {
 			if block.Type == "tool_result" {

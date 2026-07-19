@@ -86,8 +86,9 @@ equivalent.
   the `transcript` subpackage's filesystem store.
 - `transcript/` (subpackage) — record types, JSONL store, projector that
   reconstructs `Snapshot` from event log.
-- `convert.go`, `message_convert.go` — translate between in-memory
-  `core.Message` and persisted forms.
+- `chat_convert.go`, `message_convert.go`, `node_convert.go` — translate
+  `core.Message` between the conversation view-model, transcript content
+  blocks, and transcript nodes.
 
 ## Lifecycle
 
