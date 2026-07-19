@@ -14,6 +14,9 @@ type testPermissionAwareTool struct{}
 func (t *testPermissionAwareTool) Name() string        { return "TestPermissionAwareTool" }
 func (t *testPermissionAwareTool) Description() string { return "test tool" }
 func (t *testPermissionAwareTool) Icon() string        { return "t" }
+func (t *testPermissionAwareTool) Schema() core.ToolSchema {
+	return core.ToolSchema{Name: "TestPermissionAwareTool", Description: "test tool"}
+}
 func (t *testPermissionAwareTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	return toolresult.ToolResult{Success: true, Output: "execute"}
 }

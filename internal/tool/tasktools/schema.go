@@ -1,10 +1,10 @@
-package tool
+package tasktools
 
 import "github.com/genai-io/san/internal/core"
 
-// trackerToolSchemas defines the schemas for task management tools.
-var trackerToolSchemas = []core.ToolSchema{
-	{
+// Schema returns the model-facing tool definition for TaskCreate.
+func (t *TrackerCreateTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
 		Name: "TaskCreate",
 		Description: `Create a task to track progress on multi-step work.
 
@@ -52,8 +52,12 @@ Tips:
 			},
 			"required": []string{"subject", "description"},
 		},
-	},
-	{
+	}
+}
+
+// Schema returns the model-facing tool definition for TaskGet.
+func (t *TrackerGetTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
 		Name: "TaskGet",
 		Description: `Retrieve full task details by ID (description, status, dependencies).
 
@@ -72,8 +76,12 @@ Tip: Verify blockedBy is empty before beginning work.`,
 			},
 			"required": []string{"taskId"},
 		},
-	},
-	{
+	}
+}
+
+// Schema returns the model-facing tool definition for TaskUpdate.
+func (t *TrackerUpdateTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
 		Name: "TaskUpdate",
 		Description: `Update a task's status, details, or dependencies.
 
@@ -127,8 +135,12 @@ Status: pending → in_progress → completed. Use "deleted" to remove.
 			},
 			"required": []string{"taskId"},
 		},
-	},
-	{
+	}
+}
+
+// Schema returns the model-facing tool definition for TaskList.
+func (t *TrackerListTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
 		Name: "TaskList",
 		Description: `List all tasks with their status and dependencies.
 
@@ -143,98 +155,5 @@ Prefer working on tasks in ID order (lowest first).`,
 			"type":       "object",
 			"properties": map[string]any{},
 		},
-	},
-}
-
-// cronToolSchemas defines the schemas for cron/scheduler tools.
-var cronToolSchemas = []core.ToolSchema{
-	{
-		Name: "CronCreate",
-		Description: `Schedule a prompt on a cron schedule. Uses standard 5-field cron: minute hour day-of-month month day-of-week.
-Recurring jobs (default) auto-expire after 7 days. One-shot jobs (recurring=false) fire once then auto-delete.
-Jobs only fire while the REPL is idle. Returns a job ID for CronDelete.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"cron": map[string]any{
-					"type":        "string",
-					"description": "5-field cron expression in local time (e.g., '*/5 * * * *', '0 9 * * 1-5')",
-				},
-				"prompt": map[string]any{
-					"type":        "string",
-					"description": "The prompt to enqueue at each fire time",
-				},
-				"recurring": map[string]any{
-					"type":        "boolean",
-					"description": "true (default) = fire repeatedly. false = fire once then auto-delete.",
-				},
-				"durable": map[string]any{
-					"type":        "boolean",
-					"description": "If true, job persists across sessions for this project (saved to .san/scheduled_tasks.json). Default: false (session-only).",
-				},
-			},
-			"required": []string{"cron", "prompt"},
-		},
-	},
-	{
-		Name:        "CronDelete",
-		Description: "Cancel a scheduled cron job by its ID.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id": map[string]any{
-					"type":        "string",
-					"description": "The job ID returned by CronCreate",
-				},
-			},
-			"required": []string{"id"},
-		},
-	},
-	{
-		Name:        "CronList",
-		Description: "List all scheduled cron jobs with their status, next fire time, and prompt.",
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		},
-	},
-}
-
-// worktreeToolSchemas defines the schemas for git worktree tools.
-var worktreeToolSchemas = []core.ToolSchema{
-	{
-		Name: "EnterWorktree",
-		Description: `Switch the current conversation into a git worktree for safe experimentation.
-Creates an isolated copy of the repository where you can make changes without affecting the main working tree.
-Use ExitWorktree to return to the original directory when done.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"name": map[string]any{
-					"type":        "string",
-					"description": "Optional slug for the worktree directory name (letters, digits, dots, underscores, dashes; max 64 chars)",
-				},
-			},
-		},
-	},
-	{
-		Name: "ExitWorktree",
-		Description: `Exit the current worktree session and return to the original working directory.
-Use action "keep" to preserve the worktree for later, or "remove" (default) to clean it up.
-If removing with uncommitted changes, set discard_changes=true.`,
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"action": map[string]any{
-					"type":        "string",
-					"description": "What to do with the worktree: 'keep' (preserve for later) or 'remove' (clean up). Default: 'remove'.",
-					"enum":        []string{"keep", "remove"},
-				},
-				"discard_changes": map[string]any{
-					"type":        "boolean",
-					"description": "If true, discard uncommitted changes when removing. Required when action='remove' and changes exist.",
-				},
-			},
-		},
-	},
+	}
 }

@@ -84,6 +84,13 @@ type fakeTool struct {
 func (f *fakeTool) Name() string        { return f.name }
 func (f *fakeTool) Description() string { return "fake tool for testing" }
 func (f *fakeTool) Icon() string        { return "T" }
+func (f *fakeTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
+		Name:        f.name,
+		Description: "fake tool for testing",
+		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+	}
+}
 func (f *fakeTool) Execute(_ context.Context, _ map[string]any, _ string) toolresult.ToolResult {
 	return toolresult.ToolResult{
 		Success:  true,

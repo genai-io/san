@@ -1,4 +1,4 @@
-package tool
+package agent
 
 import (
 	"strings"
@@ -6,13 +6,28 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// agentToolSchema returns the Agent tool schema with the given directory body
+// Schema returns the model-facing tool definition for Agent, without an
+// available-agents directory. GetToolSchemasWith injects the directory via
+// SchemaWithDirectory when one is available.
+func (t *AgentTool) Schema() core.ToolSchema {
+	return agentSchema("")
+}
+
+// SchemaWithDirectory returns the Agent schema with the available-agents
+// directory embedded in the description. It satisfies tool.DirectoryAwareTool
+// so the schema follows the live agent catalog on each rebuild. An empty
+// directory yields the same result as Schema.
+func (t *AgentTool) SchemaWithDirectory(directory string) core.ToolSchema {
+	return agentSchema(directory)
+}
+
+// agentSchema builds the Agent tool schema with the given directory body
 // embedded directly in the description. The directory is rendered before the
 // usage notes so the LLM sees the available agent types right after the
 // opening line. An empty directory yields a directory-less description that
 // still mentions subagent_type — useful for subagent contexts where the
 // directory is intentionally omitted to discourage recursive spawning.
-func agentToolSchema(directory string) core.ToolSchema {
+func agentSchema(directory string) core.ToolSchema {
 	directory = strings.TrimSpace(directory)
 
 	var sb strings.Builder
@@ -79,9 +94,11 @@ var agentToolParameters = map[string]any{
 	"required": []string{"description", "prompt"},
 }
 
-var sendMessageToolSchema = core.ToolSchema{
-	Name: "SendMessage",
-	Description: `Send a message to another agent, routed by the broker. The message lands in the recipient's inbox and is read at its next step (a running subagent) or turn boundary (the main conversation).
+// Schema returns the model-facing tool definition for SendMessage.
+func (t *SendMessageTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
+		Name: "SendMessage",
+		Description: `Send a message to another agent, routed by the broker. The message lands in the recipient's inbox and is read at its next step (a running subagent) or turn boundary (the main conversation).
 
 Recipients (to):
 - a running subagent's task id — steer or add information to a subagent that is still working.
@@ -90,54 +107,19 @@ Recipients (to):
 Notes:
 - Delivery is best-effort: a subagent that has finished (or never takes another step) will not see the message. A subagent's final result comes back on its own when it completes — do not use SendMessage for it.
 - The recipient sees the message as a user turn — make it self-contained.`,
-	Parameters: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"to": map[string]any{
-				"type":        "string",
-				"description": "Recipient address: a running subagent's task id, or \"main\".",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"to": map[string]any{
+					"type":        "string",
+					"description": "Recipient address: a running subagent's task id, or \"main\".",
+				},
+				"message": map[string]any{
+					"type":        "string",
+					"description": "The message to deliver. Self-contained — the recipient reads it as a user turn.",
+				},
 			},
-			"message": map[string]any{
-				"type":        "string",
-				"description": "The message to deliver. Self-contained — the recipient reads it as a user turn.",
-			},
+			"required": []string{"to", "message"},
 		},
-		"required": []string{"to", "message"},
-	},
-}
-
-// skillToolSchema is the schema for the Skill tool.
-var skillToolSchema = core.ToolSchema{
-	Name: "Skill",
-	Description: `Execute a skill within the main conversation.
-
-When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
-
-When users reference a "slash command" or "/<something>", they are referring to a skill. Use this tool to invoke it.
-
-How to invoke:
-- Set ` + "`skill`" + ` to the exact name of an available skill (no leading slash). For plugin-namespaced skills use the fully qualified ` + "`plugin:skill`" + ` form.
-- Set ` + "`args`" + ` to pass optional arguments.
-
-Important:
-- Available skills are listed in <system-reminder> messages in the conversation; only invoke a skill that appears there.
-- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task.
-- Do not invoke a skill that is already running.
-- Do not use this tool for built-in CLI commands (like /help, /clear, etc.).
-- If the current user message starts with a <command-name>...</command-name> tag, the skill body has ALREADY been inlined inside a <skill-invocation> block — follow those instructions directly instead of calling this tool again.
-`,
-	Parameters: map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"skill": map[string]any{
-				"type":        "string",
-				"description": "The skill name (e.g., 'commit', 'git:pr', 'pdf')",
-			},
-			"args": map[string]any{
-				"type":        "string",
-				"description": "Optional arguments for the skill",
-			},
-		},
-		"required": []string{"skill"},
-	},
+	}
 }

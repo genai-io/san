@@ -94,6 +94,19 @@ func (t *EvolveTool) Description() string {
 }
 func (t *EvolveTool) Icon() string { return IconEvolve }
 
+// Schema returns the model-facing tool definition for Evolve. The main agent
+// injects a capability-tailored schema via SchemaOptions.ExtraTools (built by
+// the package-level Schema); this method returns the full-capability form to
+// satisfy the tool.Tool interface.
+func (t *EvolveTool) Schema() core.ToolSchema {
+	return Schema(Capabilities{
+		CreateSkills: true,
+		UpdateSkills: true,
+		DeleteSkills: true,
+		WriteMemory:  true,
+	})
+}
+
 // Execute just acknowledges: the app observes this call and considers a review
 // at turn end, so the tool has nothing to do but confirm and echo the model's
 // reason. The wording is "flagged", not "queued" — the review may still be

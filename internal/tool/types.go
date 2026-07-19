@@ -3,6 +3,7 @@ package tool
 import (
 	"context"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -18,8 +19,25 @@ type Tool interface {
 	// Icon returns the tool icon emoji
 	Icon() string
 
+	// Schema returns the model-facing tool definition (name, description, and
+	// JSON-schema parameters) sent to the LLM. Colocating it with the tool
+	// keeps the wire contract and the implementation from drifting apart.
+	Schema() core.ToolSchema
+
 	// Execute runs the tool with the given parameters
 	Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult
+}
+
+// DirectoryAwareTool is an optional interface for a tool whose schema depends
+// on runtime state supplied at build time. The Agent tool implements it to
+// embed the live available-agents directory in its description. Tools that do
+// not implement it are described solely by Schema.
+type DirectoryAwareTool interface {
+	Tool
+
+	// SchemaWithDirectory returns the schema with the given directory body
+	// embedded. An empty directory must match Schema.
+	SchemaWithDirectory(directory string) core.ToolSchema
 }
 
 // PermissionAwareTool is a tool that requires user permission before execution
