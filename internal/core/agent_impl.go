@@ -326,15 +326,19 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			}
 		}
 
-		currentPromptTextLen := len(BuildConversationText(a.snapshot()))
-
 		// Pre-infer compaction: estimate the next prompt size from the latest
-		// known prompt-token count and current conversation growth.
-		if a.compactFunc != nil && lastInputTokens > 0 {
-			estimatedInputTokens := estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen)
-			if limit := a.llm.InputLimit(); limit > 0 && NeedsCompaction(estimatedInputTokens, limit) {
-				if a.compact(ctx) {
-					continue
+		// known prompt-token count and current conversation growth. Only this
+		// path reads the size, so skip the full-history walk entirely when
+		// compaction is disabled.
+		var currentPromptTextLen int
+		if a.compactFunc != nil {
+			currentPromptTextLen = a.conversationTextLen()
+			if lastInputTokens > 0 {
+				estimatedInputTokens := estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen)
+				if limit := a.llm.InputLimit(); limit > 0 && NeedsCompaction(estimatedInputTokens, limit) {
+					if a.compact(ctx) {
+						continue
+					}
 				}
 			}
 		}
@@ -814,6 +818,14 @@ func (a *agent) snapshot() []Message {
 	cp := make([]Message, len(a.messages))
 	copy(cp, a.messages)
 	return cp
+}
+
+// conversationTextLen locks and delegates to the conversationTextLen helper over
+// the live slice — no snapshot copy, unlike len(BuildConversationText(a.snapshot())).
+func (a *agent) conversationTextLen() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return conversationTextLen(a.messages)
 }
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {

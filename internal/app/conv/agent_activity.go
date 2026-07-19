@@ -244,8 +244,9 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 		// Show Agent label so it remains visible after the assistant message scrolls off.
 		if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
 			tc := params.PendingCalls[params.CurrentIdx]
-			label := formatAgentLabel(tc.Input)
-			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), agentColorForInput(tc.Input, params.AgentColors)) + "\n")
+			agent := parseAgentInput(tc.Input)
+			label := formatAgentLabel(agent)
+			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), configuredAgentColor(agent, params.AgentColors)) + "\n")
 		}
 		sb.WriteString(renderAgentActivity(params.TaskActivity[params.CurrentIdx]))
 		return sb.String()

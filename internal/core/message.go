@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -330,7 +331,39 @@ func BuildCompactionText(msgs []Message) string {
 
 func buildConversationText(msgs []Message, stripReminders bool) string {
 	var sb strings.Builder
-	sb.WriteString("Please summarize this coding conversation:\n\n")
+	writeConversationText(&sb, msgs, stripReminders)
+	return sb.String()
+}
+
+// conversationTextLen returns len(BuildConversationText(msgs)) without
+// materializing the string. The full-history text is rebuilt on every inference
+// step purely to size the next prompt for proactive compaction (see
+// agent.ThinkAct), so allocating and discarding a hundreds-of-KB string each
+// step is waste that grows O(history²) over a session. It shares
+// writeConversationText with buildConversationText, so the count can never
+// drift from the string BuildConversationText would produce
+// (TestConversationTextLenMatchesBuild pins this).
+func conversationTextLen(msgs []Message) int {
+	var c lenCounter
+	writeConversationText(&c, msgs, false)
+	return int(c)
+}
+
+// lenCounter is an io.Writer that counts the bytes written to it and discards
+// them, so a formatter can measure its output without buffering it.
+type lenCounter int
+
+func (c *lenCounter) Write(p []byte) (int, error) {
+	*c += lenCounter(len(p))
+	return len(p), nil
+}
+
+// writeConversationText renders the conversation as summarizable plain text to
+// w. buildConversationText writes to a strings.Builder; conversationTextLen
+// writes to a lenCounter — sharing this one walk keeps their outputs in lockstep.
+// stripReminders drops trailing <system-reminder> blocks (see BuildCompactionText).
+func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
+	io.WriteString(w, "Please summarize this coding conversation:\n\n")
 
 	for _, msg := range msgs {
 		switch msg.Role {
@@ -340,7 +373,7 @@ func buildConversationText(msgs []Message, stripReminders bool) string {
 				if len(content) > 500 {
 					content = content[:500] + "...[truncated]"
 				}
-				fmt.Fprintf(&sb, "[Tool Result: %s]\n%s\n\n", msg.ToolResult.ToolName, content)
+				fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", msg.ToolResult.ToolName, content)
 			} else {
 				content := msg.Content
 				if stripReminders {
@@ -349,12 +382,12 @@ func buildConversationText(msgs []Message, stripReminders bool) string {
 						continue
 					}
 				}
-				fmt.Fprintf(&sb, "User: %s\n\n", content)
+				fmt.Fprintf(w, "User: %s\n\n", content)
 			}
 
 		case RoleAssistant:
 			if msg.Content != "" {
-				fmt.Fprintf(&sb, "Assistant: %s\n\n", msg.Content)
+				fmt.Fprintf(w, "Assistant: %s\n\n", msg.Content)
 			}
 			if len(msg.ToolCalls) > 0 {
 				counts := make(map[string]int, len(msg.ToolCalls))
@@ -373,13 +406,11 @@ func buildConversationText(msgs []Message, stripReminders bool) string {
 						parts = append(parts, fmt.Sprintf("%s × %d", name, counts[name]))
 					}
 				}
-				fmt.Fprintf(&sb, "[Tool Calls: %s]\n", strings.Join(parts, ", "))
-				sb.WriteString("\n")
+				fmt.Fprintf(w, "[Tool Calls: %s]\n", strings.Join(parts, ", "))
+				io.WriteString(w, "\n")
 			}
 		}
 	}
-
-	return sb.String()
 }
 
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.
