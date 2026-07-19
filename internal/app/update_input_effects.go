@@ -84,12 +84,8 @@ func (m *model) QuitWithCancel() (tea.Cmd, bool) {
 		m.conv.Tool.Cancel()
 	}
 	m.FireSessionEnd("prompt_input_exit")
-	// Persist any transcript-index mutations staged during the last turn before
-	// we quit, so the session picker reflects this session on next launch
-	// without paying a full rebuild scan. Best-effort — the index rebuilds from
-	// the transcripts if this fails.
-	if store := m.services.Session.GetStore(); store != nil {
-		_ = store.FlushIndex()
-	}
+	// Index flush happens once at the post-Run teardown seam (see run.go), the
+	// single point every quit path converges on — including /exit and /quit,
+	// which run this same shutdown sequence but never reach here.
 	return tea.Quit, true
 }

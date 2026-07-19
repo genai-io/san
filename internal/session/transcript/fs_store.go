@@ -869,9 +869,10 @@ func (s *FileStore) stageIndexLocked(index *fileIndex) {
 }
 
 // flushIndexLocked writes staged index mutations to disk, if any. Callers hold
-// the write lock.
+// the write lock. A dirty index always has a non-nil cachedIndex — stageIndexLocked
+// sets both together — so the dirty flag alone gates the write.
 func (s *FileStore) flushIndexLocked() error {
-	if !s.indexDirty || s.cachedIndex == nil {
+	if !s.indexDirty {
 		return nil
 	}
 	return s.saveIndexLocked(s.cachedIndex)

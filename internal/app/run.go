@@ -56,6 +56,13 @@ func Run(opts setting.RunOptions) error {
 	}
 
 	if fm, ok := finalModel.(*model); ok {
+		// Persist any transcript-index mutations staged during the session before
+		// exit, so the next launch's picker reflects this session without a full
+		// rebuild scan. This is the single seam every quit path converges on
+		// (ctrl+c, submit-exit, /exit, /quit all end here once tea.Quit unwinds),
+		// so the flush runs exactly once regardless of which handler fired it.
+		// Best-effort — the index rebuilds from the transcripts if this fails.
+		_ = fm.services.Session.FlushIndex()
 		printExitMessage(fm)
 	}
 	return nil
