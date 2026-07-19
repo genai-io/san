@@ -3,6 +3,24 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.9] - 2026-07-20
+
+### Added
+- Support batched file edits and align the Edit tool with Pi format ([@yanmxa](https://github.com/yanmxa) in [#336](https://github.com/genai-io/san/pull/336))
+- Release queued user messages at step boundaries and clarify background-agent output ([@yanmxa](https://github.com/yanmxa) in [#336](https://github.com/genai-io/san/pull/336))
+
+### Changed
+- Make built-in tools self-describing through their schemas ([@yanmxa](https://github.com/yanmxa) in [#331](https://github.com/genai-io/san/pull/331))
+- Unify provider responses on the core inference response type ([@yanmxa](https://github.com/yanmxa) in [#332](https://github.com/genai-io/san/pull/332))
+- Cache and compact session transcript indexes while simplifying session persistence ([@yanmxa](https://github.com/yanmxa) in [#334](https://github.com/genai-io/san/pull/334))
+- Cap transcript index previews and reduce repeated conversation and agent rendering work ([@yanmxa](https://github.com/yanmxa) in [#335](https://github.com/genai-io/san/pull/335), [#336](https://github.com/genai-io/san/pull/336))
+- Clarify the README, tool feedback, and subagent model-override documentation ([@yanmxa](https://github.com/yanmxa) in [#336](https://github.com/genai-io/san/pull/336))
+
+### Fixed
+- Synchronize provider state and model metadata ([@yanmxa](https://github.com/yanmxa) in [#333](https://github.com/genai-io/san/pull/333))
+- Show queued messages when they are released and preserve Edit permission-rule path suggestions ([@yanmxa](https://github.com/yanmxa) in [#336](https://github.com/genai-io/san/pull/336))
+- Preserve OpenAI reasoning summaries, auto-compaction progress, and the configured subagent model fallback ([@yanmxa](https://github.com/yanmxa) in [#336](https://github.com/genai-io/san/pull/336))
+
 ## [v1.21.8] - 2026-07-19
 
 ### Fixed
