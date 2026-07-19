@@ -241,38 +241,12 @@ type CompletionOptions struct {
 
 // --- Completion Response Types ---
 
-// CompletionResponse represents a completion response from an LLM provider.
-type CompletionResponse struct {
-	Content           string               `json:"content,omitempty"`
-	Thinking          string               `json:"thinking,omitempty"`
-	ThinkingSignature string               `json:"thinking_signature,omitempty"`
-	Reasoning         []core.ReasoningItem `json:"reasoning,omitempty"`
-	ToolCalls         []core.ToolCall      `json:"tool_calls,omitempty"`
-	StopReason        string               `json:"stop_reason"`
-	Usage             Usage                `json:"usage"`
-}
-
-// Logging accessors — satisfy duck-typed interfaces in the log package so
-// log does not need to import llm (foundation-layer contract).
-func (r CompletionResponse) LogStopReason() string { return r.StopReason }
-func (r CompletionResponse) LogContent() string    { return r.Content }
-func (r CompletionResponse) LogThinking() string   { return r.Thinking }
-func (r CompletionResponse) LogInputTokens() int   { return r.Usage.InputTokens }
-func (r CompletionResponse) LogOutputTokens() int  { return r.Usage.OutputTokens }
-func (r CompletionResponse) LogRawToolCalls() any  { return r.ToolCalls }
-func (r CompletionResponse) LogRawUsage() any      { return r.Usage }
-
-func (r CompletionResponse) LogToolCallSummary(escaper func(string) string) string {
-	if len(r.ToolCalls) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "    ToolCalls(%d):\n", len(r.ToolCalls))
-	for _, tc := range r.ToolCalls {
-		fmt.Fprintf(&sb, "      [%s] %s(%s)\n", tc.ID, tc.Name, escaper(tc.Input))
-	}
-	return sb.String()
-}
+// CompletionResponse is the provider-facing completion result. It aliases
+// core.InferResponse: the provider streaming layer and the agent loop exchange
+// one response type, so there is no field-for-field conversion between them and
+// no way for the two to drift. The logging accessors (LogStopReason, …) live on
+// core.InferResponse.
+type CompletionResponse = core.InferResponse
 
 // Usage is an alias for core.Usage — token accounting is defined once in the
 // foundation layer so the provider response and core.InferResponse share it.
@@ -284,20 +258,18 @@ type Usage = core.Usage
 type ChunkType string
 
 const (
-	ChunkTypeText      ChunkType = "text"
-	ChunkTypeThinking  ChunkType = "thinking"
-	ChunkTypeToolStart ChunkType = "tool_start"
-	ChunkTypeToolInput ChunkType = "tool_input"
-	ChunkTypeDone      ChunkType = "done"
-	ChunkTypeError     ChunkType = "error"
+	ChunkTypeText     ChunkType = "text"
+	ChunkTypeThinking ChunkType = "thinking"
+	ChunkTypeDone     ChunkType = "done"
+	ChunkTypeError    ChunkType = "error"
 )
 
 // StreamChunk represents a chunk in a streaming response from a provider.
+// Tool-call deltas are not streamed as chunks; completed tool calls ride in the
+// final Response on the done chunk.
 type StreamChunk struct {
 	Type     ChunkType
-	Text     string              // For text chunks
-	ToolID   string              // For tool_start chunks
-	ToolName string              // For tool_start chunks
+	Text     string              // For text/thinking chunks
 	Response *CompletionResponse // For done chunks
 	Error    error               // For error chunks
 }
@@ -338,8 +310,6 @@ func Complete(ctx context.Context, provider Provider, opts CompletionOptions) (C
 		switch chunk.Type {
 		case ChunkTypeText:
 			response.Content += chunk.Text
-		case ChunkTypeToolStart, ChunkTypeToolInput:
-			// Tool calls are accumulated in the done chunk
 		case ChunkTypeDone:
 			if chunk.Response != nil {
 				return *chunk.Response, nil

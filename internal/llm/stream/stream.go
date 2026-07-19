@@ -70,27 +70,6 @@ func (s *State) EmitThinking(ctx context.Context, ch chan<- llm.StreamChunk, tex
 	s.thinkingBuf.WriteString(text)
 }
 
-// EmitToolStart forwards a tool start event.
-func (s *State) EmitToolStart(ctx context.Context, ch chan<- llm.StreamChunk, toolID, toolName string) {
-	send(ctx, ch, llm.StreamChunk{
-		Type:     llm.ChunkTypeToolStart,
-		ToolID:   toolID,
-		ToolName: toolName,
-	})
-}
-
-// EmitToolInput forwards a tool input delta.
-func (s *State) EmitToolInput(ctx context.Context, ch chan<- llm.StreamChunk, toolID, text string) {
-	if text == "" {
-		return
-	}
-	send(ctx, ch, llm.StreamChunk{
-		Type:   llm.ChunkTypeToolInput,
-		ToolID: toolID,
-		Text:   text,
-	})
-}
-
 // UpdateUsage updates the tracked usage values when the provider emits them.
 func (s *State) UpdateUsage(inputTokens, outputTokens int) {
 	if inputTokens > 0 {
@@ -128,7 +107,7 @@ func (s *State) AddToolCallsByKey(toolCalls map[string]*core.ToolCall) {
 // EnsureToolUseStopReason infers tool_use when tool calls exist but no stop reason was set.
 func (s *State) EnsureToolUseStopReason() {
 	if len(s.Response.ToolCalls) > 0 && s.Response.StopReason == "" {
-		s.Response.StopReason = "tool_use"
+		s.Response.StopReason = core.StopToolUse
 	}
 }
 

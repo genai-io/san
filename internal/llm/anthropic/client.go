@@ -217,7 +217,6 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 					currentToolID = block.ContentBlock.ID
 					currentToolName = block.ContentBlock.Name
 					currentToolInput.Reset()
-					state.EmitToolStart(ctx, ch, currentToolID, currentToolName)
 				}
 
 			case "content_block_delta":
@@ -232,7 +231,6 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 						state.Response.ThinkingSignature += delta.Delta.Signature
 					}
 				case "input_json_delta":
-					state.EmitToolInput(ctx, ch, currentToolID, delta.Delta.PartialJSON)
 					currentToolInput.WriteString(delta.Delta.PartialJSON)
 				}
 
@@ -251,7 +249,7 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 
 			case "message_delta":
 				msgDelta := event.AsMessageDelta()
-				state.Response.StopReason = string(msgDelta.Delta.StopReason)
+				state.Response.StopReason = core.StopReason(msgDelta.Delta.StopReason)
 				// Anthropic populates only OutputTokens here; some Anthropic-compatible
 				// providers (e.g. SenseNova) emit InputTokens in message_delta rather
 				// than message_start. UpdateUsage is a no-op when the value is 0, so

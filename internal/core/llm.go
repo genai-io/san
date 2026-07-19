@@ -1,6 +1,10 @@
 package core
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // StopReason describes why the LLM stopped generating.
 type StopReason string
@@ -52,6 +56,29 @@ type InferResponse struct {
 // whenever prompt caching is active.
 func (r InferResponse) TotalInputTokens() int {
 	return r.InputTokens + r.CacheCreationInputTokens + r.CacheReadInputTokens
+}
+
+// Logging accessors — satisfy the duck-typed responseLoggable interface in the
+// log package so log depends on neither core nor llm (foundation-layer
+// contract). Defined here because llm.CompletionResponse aliases this type.
+func (r InferResponse) LogStopReason() string { return string(r.StopReason) }
+func (r InferResponse) LogContent() string    { return r.Content }
+func (r InferResponse) LogThinking() string   { return r.Thinking }
+func (r InferResponse) LogInputTokens() int   { return r.InputTokens }
+func (r InferResponse) LogOutputTokens() int  { return r.OutputTokens }
+func (r InferResponse) LogRawToolCalls() any  { return r.ToolCalls }
+func (r InferResponse) LogRawUsage() any      { return r.Usage }
+
+func (r InferResponse) LogToolCallSummary(escaper func(string) string) string {
+	if len(r.ToolCalls) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "    ToolCalls(%d):\n", len(r.ToolCalls))
+	for _, tc := range r.ToolCalls {
+		fmt.Fprintf(&sb, "      [%s] %s(%s)\n", tc.ID, tc.Name, escaper(tc.Input))
+	}
+	return sb.String()
 }
 
 // Chunk is one piece of a streaming LLM response.

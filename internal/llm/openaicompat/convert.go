@@ -213,16 +213,16 @@ func ConvertTools(tools []llm.ToolSchema) []openai.ChatCompletionToolUnionParam 
 //	"tool_calls" → "tool_use"
 //	"length"     → "max_tokens"
 //	anything else is returned as-is
-func MapFinishReason(reason string) string {
+func MapFinishReason(reason string) core.StopReason {
 	switch reason {
 	case "stop":
-		return "end_turn"
+		return core.StopEndTurn
 	case "tool_calls":
-		return "tool_use"
+		return core.StopToolUse
 	case "length":
-		return "max_tokens"
+		return core.StopMaxTokens
 	default:
-		return reason
+		return core.StopReason(reason)
 	}
 }
 
