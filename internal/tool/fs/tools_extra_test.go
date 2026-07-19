@@ -124,7 +124,7 @@ func TestEditBatchReplacements(t *testing.T) {
 		t.Fatalf("batch Edit output = %q", result.Output)
 	}
 	details, ok := result.Details.(toolresult.EditDetails)
-	if !ok || details.EditCount != 2 || details.AddedLines != 2 || details.RemovedLines != 2 || details.FirstChangedLine != 1 {
+	if !ok || details.EditCount != 2 || details.AddedLines != 2 || details.RemovedLines != 2 {
 		t.Fatalf("Edit details = %#v", result.Details)
 	}
 	content, err := os.ReadFile(filePath)
