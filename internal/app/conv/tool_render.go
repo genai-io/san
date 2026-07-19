@@ -132,12 +132,10 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 
 func renderEditResultInline(data ToolResultData) string {
 	if data.IsError {
-		var sb strings.Builder
-		sb.WriteString(errorStyle.Render(fmt.Sprintf("  %s  Edit → failed", toolResultIcon(true))) + "\n")
-		for line := range strings.SplitSeq(strings.TrimPrefix(data.Content, "Error: "), "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(" "+line) + "\n")
-		}
-		return sb.String()
+		// Same "failed" summary + indented reason as the generic error branch;
+		// only the redundant "Error: " prefix is dropped first.
+		data.Content = strings.TrimPrefix(data.Content, "Error: ")
+		return renderGenericToolResultInline(data)
 	}
 	details, ok := data.Details.(toolresult.EditDetails)
 	if !ok {
@@ -164,7 +162,7 @@ func renderGenericToolResultInline(data ToolResultData) string {
 	if data.IsError {
 		// The reason is shown in full on the expanded lines below (always
 		// rendered for errors), so keep the summary a plain "failed" rather than
-		// repeating the first content line — matching renderEditResultInline.
+		// repeating the first content line.
 		sizeInfo = "failed"
 	}
 	icon := toolResultIcon(data.IsError)

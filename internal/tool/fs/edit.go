@@ -108,13 +108,6 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 			"originalFile":    oldContent,
 			"structuredPatch": []any{},
 			"userModified":    false,
-			"editResult": map[string]any{
-				"path":         filePath,
-				"editCount":    len(edits),
-				"addedLines":   changes.AddedCount,
-				"removedLines": changes.RemovedCount,
-				"unifiedDiff":  changes.UnifiedDiff,
-			},
 		},
 		Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon(), Subtitle: filePath, Duration: time.Since(start)},
 	}
@@ -162,8 +155,8 @@ func parseEditRequest(params map[string]any) (string, []editReplacement, error) 
 
 func applyEdits(content string, edits []editReplacement) (string, error) {
 	bom := ""
-	if strings.HasPrefix(content, "\ufeff") {
-		bom, content = "\ufeff", strings.TrimPrefix(content, "\ufeff")
+	if after, ok := strings.CutPrefix(content, "\ufeff"); ok {
+		bom, content = "\ufeff", after
 	}
 	windowsLineEndings := strings.Contains(content, "\r\n")
 	if windowsLineEndings && strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n") {
