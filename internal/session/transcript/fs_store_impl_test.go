@@ -1,6 +1,7 @@
 package transcript
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -617,4 +618,72 @@ func freshIndexMessageCount(t *testing.T, dir, id string) int {
 		t.Fatalf("NewFileStore(fresh): %v", err)
 	}
 	return indexMessageCount(t, fresh, id)
+}
+
+// The index is a bounded preview cache rewritten every turn: a long prompt is
+// capped in the persisted Title/LastPrompt (rune-safe, so multibyte text is
+// never split), and the file is compact JSON — while the transcript keeps the
+// full text. This is what stops a big paste from bloating the per-turn rewrite.
+func TestFileStoreIndexCapsPreviewText(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore(): %v", err)
+	}
+
+	// A prompt well over the cap in multibyte runes: a byte-slice cut would split
+	// a character mid-rune, a rune-slice cut keeps a clean prefix.
+	full := strings.Repeat("码", indexPreviewMaxRunes+50)
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	if err := store.Start(context.Background(), StartCommand{
+		SessionID: "tx-1", Cwd: "/tmp/project", Provider: "openai", Model: "gpt-test", Time: now,
+	}); err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+	if err := store.AppendMessage(context.Background(), AppendMessageCommand{
+		SessionID: "tx-1",
+		MessageID: "m1",
+		Time:      now.Add(time.Second),
+		Role:      "user",
+		Content:   []ContentBlock{{Type: "text", Text: full}},
+	}); err != nil {
+		t.Fatalf("AppendMessage(): %v", err)
+	}
+	if err := store.FlushIndex(); err != nil {
+		t.Fatalf("FlushIndex(): %v", err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(dir, transcriptIndexFile))
+	if err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	// Compact marshal ⇒ no pretty-print newlines (JSON escapes any in-string
+	// newline as "\\n", so a raw 0x0A byte can only come from indentation).
+	if bytes.ContainsRune(raw, '\n') {
+		t.Fatalf("index contains newlines; want compact marshal")
+	}
+	var idx fileIndex
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		t.Fatalf("unmarshal index: %v", err)
+	}
+	if len(idx.Entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(idx.Entries))
+	}
+	want := string([]rune(full)[:indexPreviewMaxRunes])
+	if got := idx.Entries[0].Title; got != want {
+		t.Fatalf("persisted Title = %d runes, want a %d-rune prefix", len([]rune(got)), indexPreviewMaxRunes)
+	}
+	if got := idx.Entries[0].LastPrompt; got != want {
+		t.Fatalf("persisted LastPrompt = %d runes, want a %d-rune prefix", len([]rune(got)), indexPreviewMaxRunes)
+	}
+
+	// The transcript still holds the full, uncapped text — only the index preview
+	// is bounded.
+	tx, err := store.Load(context.Background(), "tx-1")
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if got := firstTextBlock(tx.Messages[0].Content); got != full {
+		t.Fatalf("transcript text was truncated: %d runes, want %d", len([]rune(got)), len([]rune(full)))
+	}
 }
