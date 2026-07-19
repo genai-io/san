@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	session "github.com/genai-io/san/internal/session"
 )
 
@@ -197,23 +198,9 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      dir,
 		},
-		Entries: []session.Entry{
-			{
-				Type: session.EntryUser,
-				UUID: "u1",
-				Message: &session.EntryMessage{
-					Role:    "user",
-					Content: []session.ContentBlock{{Type: "text", Text: "original message"}},
-				},
-			},
-			{
-				Type: session.EntryAssistant,
-				UUID: "a1",
-				Message: &session.EntryMessage{
-					Role:    "assistant",
-					Content: []session.ContentBlock{{Type: "text", Text: "original reply"}},
-				},
-			},
+		Messages: []core.Message{
+			{ID: "u1", Role: core.RoleUser, Content: "original message"},
+			{ID: "a1", Role: core.RoleAssistant, Content: "original reply"},
 		},
 	}
 	if err := store.Save(original); err != nil {
@@ -232,11 +219,11 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// The fork must have the same conversation history as the source.
-	if len(forked.Entries) != len(original.Entries) {
-		t.Fatalf("fork should have %d entries, got %d", len(original.Entries), len(forked.Entries))
+	if len(forked.Messages) != len(original.Messages) {
+		t.Fatalf("fork should have %d entries, got %d", len(original.Messages), len(forked.Messages))
 	}
-	if forked.Entries[0].Message == nil || forked.Entries[0].Message.Content[0].Text != "original message" {
-		t.Errorf("fork entry[0] text mismatch")
+	if forked.Messages[0].Content != "original message" {
+		t.Errorf("fork message[0] text mismatch")
 	}
 
 	// The fork must reference the source via ParentSessionID.
@@ -245,13 +232,10 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 3. Append a new entry to the fork and save it.
-	forked.Entries = append(forked.Entries, session.Entry{
-		Type: session.EntryUser,
-		UUID: "u2",
-		Message: &session.EntryMessage{
-			Role:    "user",
-			Content: []session.ContentBlock{{Type: "text", Text: "fork-only message"}},
-		},
+	forked.Messages = append(forked.Messages, core.Message{
+		ID:      "u2",
+		Role:    core.RoleUser,
+		Content: "fork-only message",
 	})
 	if err := store.Save(forked); err != nil {
 		t.Fatalf("Save(forked): %v", err)
@@ -263,8 +247,8 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(source-session): %v", err)
 	}
-	if len(reloaded.Entries) != 2 {
-		t.Errorf("original should still have 2 entries, got %d", len(reloaded.Entries))
+	if len(reloaded.Messages) != 2 {
+		t.Errorf("original should still have 2 entries, got %d", len(reloaded.Messages))
 	}
 
 	// 5. Reload the fork and confirm it has the extra entry.
@@ -272,8 +256,8 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load(forked): %v", err)
 	}
-	if len(reloadedFork.Entries) != 3 {
-		t.Errorf("fork should have 3 entries, got %d", len(reloadedFork.Entries))
+	if len(reloadedFork.Messages) != 3 {
+		t.Errorf("fork should have 3 entries, got %d", len(reloadedFork.Messages))
 	}
 
 	// 6. Both must appear in the session list.

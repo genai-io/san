@@ -204,10 +204,15 @@ func (r *Recorder) onAppend(ev core.Event) {
 		return
 	}
 
-	content, role := messageToTranscript(msg)
+	// Route through the same MessageBlocks converter Store.Save uses, so the
+	// dedupe key (message ID) maps to byte-identical content from either writer.
+	// A tool result is a RoleUser message with a non-nil ToolResult; it
+	// serializes as a "user" turn carrying tool_result blocks.
+	content := MessageBlocks(msg)
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
+	role := transcriptRole(msg.Role)
 
 	r.mu.Lock()
 	parent := r.lastMessageID
@@ -226,26 +231,6 @@ func (r *Recorder) onAppend(ev core.Event) {
 	})
 	if err != nil {
 		log.Logger().Warn("recorder: append message failed", zap.Error(err))
-	}
-}
-
-// messageToTranscript routes core.Message → transcript content blocks
-// through the same converters Store.Save uses, so the dedupe key (message
-// ID) maps to byte-identical content from either writer.
-//
-// A tool result is a RoleUser message with a non-nil ToolResult; it serializes
-// as a "user" turn carrying tool_result blocks, the wire shape the LLM expects.
-func messageToTranscript(msg core.Message) ([]transcript.ContentBlock, string) {
-	switch msg.Role {
-	case core.RoleUser:
-		if msg.ToolResult != nil {
-			return toolResultToBlocks(msg.ToolResult), "user"
-		}
-		return userContentToBlocks(msg.Content, msg.DisplayContent, msg.Images), "user"
-	case core.RoleAssistant:
-		return assistantContentToBlocks(msg.Content, msg.Thinking, msg.ThinkingSignature, msg.ToolCalls), "assistant"
-	default:
-		return nil, ""
 	}
 }
 

@@ -90,91 +90,23 @@ func injectedSource(text string, m []int) string {
 	return SourceReminder
 }
 
-func messagesToEntries(msgs []core.Message) []Entry {
-	entries := make([]Entry, 0, len(msgs))
-	var prevUUID string
-
-	for _, msg := range msgs {
-		// Prefer the stable ID stamped upstream (conv.Append, agent.append) so
-		// the append-only save path can dedupe by it; fall back only for
-		// messages assembled without one.
-		uuid := msg.ID
-		if uuid == "" {
-			uuid = core.NewMessageID()
+// MessageBlocks converts a wire message into the transcript content blocks that
+// represent it on disk. It is the single source of truth for that mapping,
+// shared by the append-only save path (messagesToNodes) and the live Recorder
+// (messageToTranscript), so a message serializes identically whichever writer
+// runs. A control-signal / unknown-role message yields nil.
+func MessageBlocks(msg core.Message) []ContentBlock {
+	switch msg.Role {
+	case core.RoleUser:
+		if msg.ToolResult != nil {
+			return toolResultToBlocks(msg.ToolResult)
 		}
-
-		var parentUuid *string
-		if prevUUID != "" {
-			s := prevUUID
-			parentUuid = &s
-		}
-
-		entry := Entry{
-			UUID:       uuid,
-			ParentUuid: parentUuid,
-			Version:    GetAppVersion(),
-		}
-
-		switch msg.Role {
-		case core.RoleUser:
-			entry.Type = EntryUser
-			if msg.ToolResult != nil {
-				entry.Message = &EntryMessage{Role: "user", Content: toolResultToBlocks(msg.ToolResult)}
-			} else {
-				entry.Message = &EntryMessage{Role: "user", Content: userContentToBlocks(msg.Content, msg.DisplayContent, msg.Images)}
-			}
-		case core.RoleAssistant:
-			entry.Type = EntryAssistant
-			entry.Message = &EntryMessage{
-				Role:    "assistant",
-				Content: assistantContentToBlocks(msg.Content, msg.Thinking, msg.ThinkingSignature, msg.ToolCalls),
-			}
-		default:
-			continue
-		}
-
-		entries = append(entries, entry)
-		prevUUID = uuid
+		return userContentToBlocks(msg.Content, msg.DisplayContent, msg.Images)
+	case core.RoleAssistant:
+		return assistantContentToBlocks(msg.Content, msg.Thinking, msg.ThinkingSignature, msg.ToolCalls)
+	default:
+		return nil
 	}
-
-	return entries
-}
-
-func EntriesToMessages(entries []Entry) []core.Message {
-	toolNameMap := make(map[string]string)
-	for _, entry := range entries {
-		if entry.Type == EntryAssistant && entry.Message != nil {
-			for _, block := range entry.Message.Content {
-				if block.Type == "tool_use" {
-					toolNameMap[block.ID] = block.Name
-				}
-			}
-		}
-	}
-
-	msgs := make([]core.Message, 0, len(entries))
-	for _, entry := range entries {
-		switch entry.Type {
-		case EntryUser:
-			msg := core.Message{Role: core.RoleUser, ID: entry.UUID}
-			if entry.Message != nil {
-				extractUserContent(entry.Message.Content, &msg)
-			}
-			if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
-				if name, ok := toolNameMap[msg.ToolResult.ToolCallID]; ok {
-					msg.ToolResult.ToolName = name
-				}
-			}
-			msgs = append(msgs, msg)
-		case EntryAssistant:
-			msg := core.Message{Role: core.RoleAssistant, ID: entry.UUID}
-			if entry.Message != nil {
-				extractAssistantContent(entry.Message.Content, &msg)
-			}
-			msgs = append(msgs, msg)
-		}
-	}
-	return msgs
 }
 
 func userContentToBlocks(content, displayContent string, images []core.Image) []ContentBlock {
@@ -259,9 +191,9 @@ func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
 	return []ContentBlock{block}
 }
 
-func ExtractLastUserText(entries []Entry) string {
-	for i := len(entries) - 1; i >= 0; i-- {
-		if text, ok := extractUserText(entries[i]); ok {
+func ExtractLastUserText(msgs []core.Message) string {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if text, ok := extractUserText(msgs[i]); ok {
 			return text
 		}
 	}
@@ -330,21 +262,14 @@ func extractAssistantContent(blocks []ContentBlock, msg *core.Message) {
 	msg.Content = content.String()
 }
 
-func extractUserText(entry Entry) (string, bool) {
-	if entry.Type != EntryUser || entry.Message == nil {
+func extractUserText(msg core.Message) (string, bool) {
+	if msg.Role != core.RoleUser || msg.ToolResult != nil {
 		return "", false
 	}
-	var text string
-	for _, block := range entry.Message.Content {
-		if block.Type == "tool_result" {
-			return "", false
+	for _, block := range MessageBlocks(msg) {
+		if block.Type == "text" && block.Text != "" {
+			return block.Text, true
 		}
-		if block.Type == "text" && block.Text != "" && text == "" {
-			text = block.Text
-		}
-	}
-	if text != "" {
-		return text, true
 	}
 	return "", false
 }

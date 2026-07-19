@@ -2,7 +2,8 @@ package session
 
 import (
 	"testing"
-	"time"
+
+	"github.com/genai-io/san/internal/core"
 )
 
 func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
@@ -11,25 +12,9 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-
-	entries := []Entry{
-		{
-			Type:      EntryUser,
-			Timestamp: now,
-			Message: &EntryMessage{
-				Role:    "user",
-				Content: []ContentBlock{{Type: "text", Text: "hello"}},
-			},
-		},
-		{
-			Type:      EntryAssistant,
-			Timestamp: now.Add(time.Second),
-			Message: &EntryMessage{
-				Role:    "assistant",
-				Content: []ContentBlock{{Type: "text", Text: "world"}},
-			},
-		},
+	msgs := []core.Message{
+		{Role: core.RoleUser, Content: "hello"},
+		{Role: core.RoleAssistant, Content: "world"},
 	}
 
 	// Save with a custom title
@@ -37,7 +22,7 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 		Metadata: SessionMetadata{
 			Title: "My Custom Session",
 		},
-		Entries: entries,
+		Messages: msgs,
 	}
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("Save(): %v", err)
@@ -64,17 +49,8 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-
-	entries := []Entry{
-		{
-			Type:      EntryUser,
-			Timestamp: now,
-			Message: &EntryMessage{
-				Role:    "user",
-				Content: []ContentBlock{{Type: "text", Text: "hello"}},
-			},
-		},
+	msgs := []core.Message{
+		{Role: core.RoleUser, Content: "hello"},
 	}
 
 	// Save with initial title
@@ -82,7 +58,7 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 		Metadata: SessionMetadata{
 			Title: "Initial Title",
 		},
-		Entries: entries,
+		Messages: msgs,
 	}
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("Save() initial: %v", err)
@@ -112,24 +88,15 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	now := time.Date(2026, 7, 13, 12, 0, 0, 0, time.UTC)
-
-	entries := []Entry{
-		{
-			Type:      EntryUser,
-			Timestamp: now,
-			Message: &EntryMessage{
-				Role:    "user",
-				Content: []ContentBlock{{Type: "text", Text: "first message"}},
-			},
-		},
+	msgs := []core.Message{
+		{Role: core.RoleUser, Content: "first message"},
 	}
 
 	sess := &Snapshot{
 		Metadata: SessionMetadata{
 			Title: "Session From Listing",
 		},
-		Entries: entries,
+		Messages: msgs,
 	}
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("Save(): %v", err)

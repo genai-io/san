@@ -1,13 +1,12 @@
 package session
 
-import "time"
+import (
+	"time"
 
-func NormalizeMetadata(meta *SessionMetadata, entries []Entry, defaultCwd string, now time.Time) {
-	for i := range entries {
-		if entries[i].Type == "" && entries[i].Message != nil {
-			entries[i].Type = entryTypeForRole(entries[i].Message.Role)
-		}
-	}
+	"github.com/genai-io/san/internal/core"
+)
+
+func NormalizeMetadata(meta *SessionMetadata, msgs []core.Message, defaultCwd string, now time.Time) {
 	if meta.ID == "" {
 		meta.ID = generateSessionID()
 	}
@@ -15,14 +14,14 @@ func NormalizeMetadata(meta *SessionMetadata, entries []Entry, defaultCwd string
 		meta.CreatedAt = now
 	}
 	meta.UpdatedAt = now
-	meta.MessageCount = len(entries)
+	meta.MessageCount = len(msgs)
 	if meta.Cwd == "" {
 		meta.Cwd = defaultCwd
 	}
 	if meta.LastPrompt == "" {
-		meta.LastPrompt = ExtractLastUserText(entries)
+		meta.LastPrompt = ExtractLastUserText(msgs)
 	}
 	if meta.Title == "" {
-		meta.Title = GenerateTitle(entries)
+		meta.Title = GenerateTitle(msgs)
 	}
 }

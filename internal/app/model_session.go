@@ -90,7 +90,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 		return nil
 	}
 
-	entries := session.ConvertToEntries(m.conv.Messages)
+	msgs := session.MessagesFromChat(m.conv.Messages)
 
 	var providerName, modelID string
 	if m.env.CurrentModel != nil {
@@ -104,11 +104,11 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 			Provider:   providerName,
 			Model:      modelID,
 			Cwd:        m.env.CWD,
-			LastPrompt: session.ExtractLastUserText(entries),
+			LastPrompt: session.ExtractLastUserText(msgs),
 			Mode:       m.env.SessionMode(),
 			AutoPilot:  marshalAutoPilot(m.env.AutoPilot),
 		},
-		Entries:           entries,
+		Messages:          msgs,
 		Tasks:             m.services.Tracker.Export(),
 		OmitMessageWrites: m.services.Session.Recorder() != nil,
 	}
@@ -117,7 +117,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 		if m.env.SessionName != "" {
 			sess.Metadata.Title = m.env.SessionName
 		} else {
-			sess.Metadata.Title = session.GenerateTitle(sess.Entries)
+			sess.Metadata.Title = session.GenerateTitle(sess.Messages)
 		}
 	}
 
@@ -151,7 +151,7 @@ func (m *model) loadSessionByID(id string) error {
 }
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
-	m.conv.Messages = session.ConvertFromEntries(sess.Entries)
+	m.conv.Messages = session.MessagesToChat(sess.Messages)
 	m.services.Session.SetID(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 

@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -188,16 +189,14 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 		return ""
 	}
 
-	for i := len(fullSession.Entries) - 1; i >= 0; i-- {
-		entry := fullSession.Entries[i]
-		if entry.Message == nil {
+	for i := len(fullSession.Messages) - 1; i >= 0; i-- {
+		msg := fullSession.Messages[i]
+		if msg.Role != core.RoleUser && msg.Role != core.RoleAssistant {
 			continue
 		}
-		if entry.Type != session.EntryUser && entry.Type != session.EntryAssistant {
-			continue
-		}
+		blocks := session.MessageBlocks(msg)
 		skip := false
-		for _, block := range entry.Message.Content {
+		for _, block := range blocks {
 			if block.Type == "tool_result" || block.Type == "tool_use" {
 				skip = true
 				break
@@ -206,7 +205,7 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 		if skip {
 			continue
 		}
-		for _, block := range entry.Message.Content {
+		for _, block := range blocks {
 			if block.Type == "text" && block.Text != "" {
 				maxLen := calculateSessionPreviewLength(s.width)
 				content := sessionTruncateToFirstLine(block.Text, maxLen)
@@ -234,12 +233,13 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 		return ""
 	}
 
-	for _, entry := range fullSession.Entries {
-		if entry.Type != session.EntryUser || entry.Message == nil {
+	for _, msg := range fullSession.Messages {
+		if msg.Role != core.RoleUser {
 			continue
 		}
+		blocks := session.MessageBlocks(msg)
 		isToolResult := false
-		for _, block := range entry.Message.Content {
+		for _, block := range blocks {
 			if block.Type == "tool_result" {
 				isToolResult = true
 				break
@@ -248,7 +248,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 		if isToolResult {
 			continue
 		}
-		for _, block := range entry.Message.Content {
+		for _, block := range blocks {
 			if block.Type == "text" && len([]rune(block.Text)) >= session.MinSubstantiveLength {
 				maxLen := calculateSessionPreviewLength(s.width)
 				content := sessionTruncateToFirstLine(block.Text, maxLen)

@@ -7,102 +7,85 @@ import (
 	"github.com/genai-io/san/internal/session/transcript"
 )
 
-func EntriesToNodes(entries []Entry, sessionID, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {
-	nodes := make([]transcript.Node, 0, len(entries))
+// messagesToNodes projects the wire messages onto transcript nodes for the
+// append-only save path. Node content comes from the shared MessageBlocks
+// converter — the same one the live Recorder writes through — so both writers
+// produce byte-identical content for a given message ID. Only user/assistant
+// messages become nodes (control signals are not model-visible); each node's
+// timestamp is derived from createdAt so a re-save is deterministic.
+func messagesToNodes(msgs []core.Message, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {
+	nodes := make([]transcript.Node, 0, len(msgs))
 	var prevID string
 
-	for i := range entries {
-		entry := &entries[i]
-		if entry.Message == nil {
+	for _, msg := range msgs {
+		role := transcriptRole(msg.Role)
+		if role == "" {
 			continue
 		}
-		if entry.UUID == "" {
-			entry.UUID = core.NewMessageID()
+		id := msg.ID
+		if id == "" {
+			id = core.NewMessageID()
 		}
-		parentID := derefString(entry.ParentUuid)
-		if parentID == "" && prevID != "" {
-			parentID = prevID
-			entry.ParentUuid = stringPtr(parentID)
-		}
-		if entry.Cwd == "" {
-			entry.Cwd = defaultCwd
-		}
-		if entry.SessionID == "" {
-			entry.SessionID = sessionID
-		}
-		if entry.GitBranch == "" {
-			entry.GitBranch = gitBranch
-		}
-		if entry.Type == "" {
-			entry.Type = entryTypeForRole(entry.Message.Role)
-		}
-		if entry.Timestamp.IsZero() {
-			entry.Timestamp = createdAt.Add(time.Duration(i+1) * time.Millisecond)
-		}
-
 		nodes = append(nodes, transcript.Node{
-			ID:          entry.UUID,
-			ParentID:    parentID,
-			Role:        entry.Message.Role,
-			Time:        entry.Timestamp,
-			Cwd:         entry.Cwd,
-			GitBranch:   entry.GitBranch,
-			AgentID:     entry.AgentID,
-			IsSidechain: entry.IsSidechain,
-			Content:     entry.Message.Content,
+			ID:        id,
+			ParentID:  prevID,
+			Role:      role,
+			Time:      createdAt.Add(time.Duration(len(nodes)+1) * time.Millisecond),
+			Cwd:       defaultCwd,
+			GitBranch: gitBranch,
+			Content:   MessageBlocks(msg),
 		})
-		prevID = entry.UUID
+		prevID = id
 	}
 
 	return nodes
 }
 
-func EntriesFromNodes(sessionID string, nodes []transcript.Node) []Entry {
-	entries := make([]Entry, 0, len(nodes))
+// messagesFromNodes rebuilds the wire messages from transcript nodes on load.
+// tool_result blocks carry only a tool_use id, so a first pass indexes tool
+// names from assistant tool_use blocks to backfill ToolResult.ToolName.
+func messagesFromNodes(nodes []transcript.Node) []core.Message {
+	toolNameByID := make(map[string]string)
 	for _, node := range nodes {
-		parentID := node.ParentID
-		entry := Entry{
-			Type:        entryTypeForRole(node.Role),
-			ParentUuid:  stringPtr(parentID),
-			IsSidechain: node.IsSidechain,
-			Cwd:         node.Cwd,
-			SessionID:   sessionID,
-			GitBranch:   node.GitBranch,
-			AgentID:     node.AgentID,
-			UUID:        node.ID,
-			Timestamp:   node.Time,
-			Message: &EntryMessage{
-				Role:    node.Role,
-				Content: node.Content,
-			},
+		if node.Role == "assistant" {
+			for _, block := range node.Content {
+				if block.Type == "tool_use" {
+					toolNameByID[block.ID] = block.Name
+				}
+			}
 		}
-		if parentID == "" {
-			entry.ParentUuid = nil
-		}
-		entries = append(entries, entry)
 	}
-	return entries
+
+	msgs := make([]core.Message, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Role == "assistant" {
+			msg := core.Message{Role: core.RoleAssistant, ID: node.ID}
+			extractAssistantContent(node.Content, &msg)
+			msgs = append(msgs, msg)
+			continue
+		}
+		msg := core.Message{Role: core.RoleUser, ID: node.ID}
+		extractUserContent(node.Content, &msg)
+		if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
+			if name, ok := toolNameByID[msg.ToolResult.ToolCallID]; ok {
+				msg.ToolResult.ToolName = name
+			}
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs
 }
 
-func entryTypeForRole(role string) string {
+// transcriptRole maps a wire role onto the transcript's role string. Only
+// user and assistant turns are persisted; anything else returns "" so the
+// caller skips it.
+func transcriptRole(role core.Role) string {
 	switch role {
-	case "assistant":
-		return EntryAssistant
+	case core.RoleUser:
+		return "user"
+	case core.RoleAssistant:
+		return "assistant"
 	default:
-		return EntryUser
-	}
-}
-
-func derefString(v *string) string {
-	if v == nil {
 		return ""
 	}
-	return *v
-}
-
-func stringPtr(v string) *string {
-	if v == "" {
-		return nil
-	}
-	return &v
 }

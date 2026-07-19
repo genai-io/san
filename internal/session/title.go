@@ -3,6 +3,8 @@ package session
 import (
 	"strings"
 	"unicode/utf8"
+
+	"github.com/genai-io/san/internal/core"
 )
 
 const (
@@ -10,10 +12,10 @@ const (
 	MinSubstantiveLength = 6
 )
 
-func GenerateTitle(entries []Entry) string {
+func GenerateTitle(msgs []core.Message) string {
 	var fallback string
-	for _, entry := range entries {
-		text, ok := extractUserText(entry)
+	for _, msg := range msgs {
+		text, ok := extractUserText(msg)
 		if !ok {
 			continue
 		}
