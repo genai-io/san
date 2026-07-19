@@ -45,15 +45,18 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	return nil
 }
 
-// releaseHeadQueued hands the head queued user message to the running agent and
-// returns (cmd, true) when one was released, or (nil, false) when the queue is
-// empty or its head is under edit (SelectIdx 0 — dispatching would send pre-edit
-// text and orphan the user's changes). An image-blocked item is diverted back to
-// the textarea with a notice instead of sent. Display is deferred to the ingest
-// echo (see OnAgentMessage), correlated by the ID minted here, so the caller must
-// NOT append at the call site. Shared by the step-boundary (DrainQueuedAtStep)
-// and turn-boundary (drainTurnQueues) drains.
-func (m *model) releaseHeadQueued() (tea.Cmd, bool) {
+// releaseQueuedMessage hands the next queued user message to the running agent
+// and returns (cmd, true) when one was released, or (nil, false) when the queue
+// is empty or its head is under edit (SelectIdx 0 — dispatching would send
+// pre-edit text and orphan the user's changes). An image-blocked item is diverted
+// back to the textarea with a notice instead of sent.
+//
+// The message is shown in the conversation now, at release time, so it never
+// vanishes between the queue and the flow; the agent addresses it once it ingests
+// it a step or a turn later, and its ingest echo is a no-op (see OnAgentMessage).
+// Shared by the step-boundary (DrainQueuedAtStep) and turn-boundary
+// (drainTurnQueues) drains.
+func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	if m.userInput.Queue.SelectIdx == 0 {
 		return nil, false
 	}
@@ -67,13 +70,13 @@ func (m *model) releaseHeadQueued() (tea.Cmd, bool) {
 		m.userInput.ReturnToTextarea(item.Content, item.Images)
 		return tea.Batch(m.CommitMessages()...), true
 	}
-	released := core.Message{Role: core.RoleUser, Content: item.Content, Images: item.Images, ID: core.NewMessageID()}
-	m.awaitingIngestEcho = append(m.awaitingIngestEcho, released.ID)
-	svc := m.services.Agent
-	return func() tea.Msg {
-		svc.SendMessage(released)
+	m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})
+	svc, content, images := m.services.Agent, item.Content, item.Images
+	send := func() tea.Msg {
+		svc.Send(content, images)
 		return nil
-	}, true
+	}
+	return tea.Batch(append(m.CommitMessages(), send)...), true
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
@@ -81,7 +84,7 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// The agent's inner loop also drains one inbox message at a time,
 	// producing one TurnEvent per queued message. Leaving edit mode re-kicks a
 	// drain held by a head item under edit (see routeKeypress).
-	if cmd, released := m.releaseHeadQueued(); released {
+	if cmd, released := m.releaseQueuedMessage(); released {
 		log.QueueLog("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
 		return cmd, true
 	} else if m.userInput.Queue.SelectIdx == 0 {

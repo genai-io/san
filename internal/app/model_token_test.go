@@ -100,11 +100,10 @@ func TestResetContextDisplayZeroesContextReadout(t *testing.T) {
 	}
 }
 
-// OnAgentMessage displays a queued message released via releaseHeadQueued,
-// matched by the ID minted there; for every other echo — idle submit, cron
-// prompt, async hook, which append at the call site — it must be a strict no-op
-// or the conversation double-displays. This checks that no-op path: an echo with
-// no matching pending ID (here, none pending) appends nothing.
+// OnAgentMessage observes the agent's MessageEvent echoes only — every path
+// that hands a user message to the agent (idle submit, queue release, cron
+// prompt, async hook) appends to m.conv at the call site. The echo must be a
+// strict no-op or the conversation double-displays.
 func TestOnAgentMessageIsNoOpForUserEcho(t *testing.T) {
 	m := &model{
 		userInput: input.Model{Queue: input.NewQueue()},

@@ -53,20 +53,12 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 
 func (m *model) HasRunningTasks() bool { return m.services.Tracker.HasInProgress() }
 
-// OnAgentMessage observes the agent's MessageEvent echoes. Most paths append the
-// user message to m.conv at the call site, so their echo has nothing to do here —
-// appending again would double-display. The exception is a queued message
-// released by releaseHeadQueued (step- or turn-boundary drain): it is sent to the
-// inbox WITHOUT a call-site append, so it is displayed here, when the agent has
-// actually ingested it — which lands its "❭" line right before the response that
-// addresses it. Matched by message ID (FIFO) against awaitingIngestEcho, so
-// identical text can't cross.
-func (m *model) OnAgentMessage(msg core.Message) tea.Cmd {
-	if len(m.awaitingIngestEcho) > 0 && m.awaitingIngestEcho[0] == msg.ID {
-		m.awaitingIngestEcho = m.awaitingIngestEcho[1:]
-		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: msg.Content, Images: msg.Images})
-		return tea.Batch(m.CommitMessages()...)
-	}
+// OnAgentMessage observes the agent's MessageEvent echoes only. Every path that
+// hands a user message to the agent — idle submit, queue release
+// (releaseQueuedMessage), cron prompt, async hook — appends it to m.conv at the
+// call site, so the echo has nothing to do here: appending again would
+// double-display.
+func (m *model) OnAgentMessage(core.Message) tea.Cmd {
 	return nil
 }
 
@@ -74,12 +66,12 @@ func (m *model) OnAgentMessage(msg core.Message) tea.Cmd {
 // step boundary (a PostTool, where the turn continues), so a following LLM
 // response addresses it — the message stays editable in the queue right up to
 // this release. One release per step (drainedThisStep). The shared release
-// mechanics live in releaseHeadQueued, which also serves the turn-boundary drain.
+// mechanics live in releaseQueuedMessage, shared with the turn-boundary drain.
 func (m *model) DrainQueuedAtStep() tea.Cmd {
 	if m.drainedThisStep || !m.services.Agent.Active() {
 		return nil
 	}
-	cmd, released := m.releaseHeadQueued()
+	cmd, released := m.releaseQueuedMessage()
 	if released {
 		m.drainedThisStep = true
 	}
