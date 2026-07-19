@@ -93,6 +93,20 @@ func (s *Setup) Save(snap *Snapshot) error {
 	return st.Save(snap)
 }
 
+// FlushIndex writes any transcript-index mutations staged in memory during the
+// session out to disk. Called once at shutdown; Store.Save already flushes at
+// each turn boundary. No-op before the store exists (a session that never
+// saved), and best-effort — the index rebuilds from the transcripts otherwise.
+func (s *Setup) FlushIndex() error {
+	s.mu.RLock()
+	st := s.Store
+	s.mu.RUnlock()
+	if st == nil {
+		return nil
+	}
+	return st.FlushIndex()
+}
+
 // Load loads a session by ID via the store.
 func (s *Setup) Load(id string) (*Snapshot, error) {
 	s.mu.RLock()
