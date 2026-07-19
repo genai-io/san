@@ -73,6 +73,29 @@ type fileIndexEntry struct {
 	IsSidechain  bool      `json:"isSidechain,omitempty"`
 }
 
+// indexPreviewMaxRunes bounds the Title/LastPrompt copies stored in the index.
+// The index is a derived preview cache for the session picker — the authoritative
+// full text lives in the transcript records (LoadState), and the picker only ever
+// shows the first line truncated to the viewport width. Capping the stored copy
+// therefore loses nothing on screen while stopping a long pasted prompt from
+// bloating an entry that saveIndexLocked re-serializes on every turn.
+const indexPreviewMaxRunes = 200
+
+// indexPreview caps s to indexPreviewMaxRunes runes, cutting on a rune boundary so
+// multibyte (e.g. CJK) text is never split mid-character.
+func indexPreview(s string) string {
+	// Fast path: byte length within the cap ⇒ rune count is too (runes are ≥ 1
+	// byte each), so no []rune allocation is needed for the common short case.
+	if len(s) <= indexPreviewMaxRunes {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= indexPreviewMaxRunes {
+		return s
+	}
+	return string(runes[:indexPreviewMaxRunes])
+}
+
 func NewFileStore(baseDir, projectID string) (*FileStore, error) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "transcripts"), 0o755); err != nil {
 		return nil, fmt.Errorf("create transcripts dir: %w", err)
@@ -201,9 +224,9 @@ func (s *FileStore) AppendMessage(ctx context.Context, cmd AppendMessageCommand)
 		e.MessageCount++
 		if userText != "" {
 			if e.Title == "" {
-				e.Title = userText
+				e.Title = indexPreview(userText)
 			}
-			e.LastPrompt = userText
+			e.LastPrompt = indexPreview(userText)
 		}
 		if emitBranch != "" {
 			e.GitBranch = emitBranch
@@ -260,9 +283,9 @@ func (s *FileStore) PatchState(ctx context.Context, cmd PatchStateCommand) error
 		for _, op := range cmd.Ops {
 			switch op.Path {
 			case PatchPathTitle:
-				e.Title = c.latestState.Title
+				e.Title = indexPreview(c.latestState.Title)
 			case PatchPathLastPrompt:
-				e.LastPrompt = c.latestState.LastPrompt
+				e.LastPrompt = indexPreview(c.latestState.LastPrompt)
 			}
 		}
 	})
@@ -839,7 +862,9 @@ func (s *FileStore) loadIndexLocked() (*fileIndex, error) {
 // sole writer of the index file, so caching here keeps s.cachedIndex coherent
 // with disk. Callers hold the write lock.
 func (s *FileStore) saveIndexLocked(index *fileIndex) error {
-	data, err := json.MarshalIndent(index, "", "  ")
+	// Compact (not indented): the index is a machine-read derived cache rewritten
+	// every turn, so pretty-print whitespace is pure write amplification.
+	data, err := json.Marshal(index)
 	if err != nil {
 		return fmt.Errorf("marshal transcript index: %w", err)
 	}
@@ -913,8 +938,8 @@ func (s *FileStore) rebuildIndexLocked() error {
 			FullPath:     item.FullPath,
 			CreatedAt:    item.CreatedAt,
 			UpdatedAt:    item.UpdatedAt,
-			Title:        item.Title,
-			LastPrompt:   item.LastPrompt,
+			Title:        indexPreview(item.Title),
+			LastPrompt:   indexPreview(item.LastPrompt),
 			MessageCount: item.MessageCount,
 			GitBranch:    item.GitBranch,
 			IsSidechain:  item.IsSidechain,
@@ -968,8 +993,8 @@ func (s *FileStore) refreshIndexLocked(transcriptID string) error {
 		FullPath:     item.FullPath,
 		CreatedAt:    item.CreatedAt,
 		UpdatedAt:    item.UpdatedAt,
-		Title:        item.Title,
-		LastPrompt:   item.LastPrompt,
+		Title:        indexPreview(item.Title),
+		LastPrompt:   indexPreview(item.LastPrompt),
 		MessageCount: item.MessageCount,
 		GitBranch:    item.GitBranch,
 		IsSidechain:  item.IsSidechain,
