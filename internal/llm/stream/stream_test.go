@@ -15,22 +15,15 @@ func TestStateEmitsAndAccumulatesChunks(t *testing.T) {
 
 	state.EmitText(context.Background(), ch, "hello")
 	state.EmitThinking(context.Background(), ch, "thinking")
-	state.EmitToolStart(context.Background(), ch, "tool-1", "Read")
-	state.EmitToolInput(context.Background(), ch, "tool-1", `{"path":"a.go"}`)
 
-	// Verify streaming chunks emitted in order
-	msgs := []llm.StreamChunk{<-ch, <-ch, <-ch, <-ch}
+	// Verify streaming chunks emitted in order. Tool-call deltas are not
+	// streamed as chunks — completed calls ride in the final Response.
+	msgs := []llm.StreamChunk{<-ch, <-ch}
 	if msgs[0].Type != llm.ChunkTypeText || msgs[0].Text != "hello" {
 		t.Fatalf("unexpected text chunk: %#v", msgs[0])
 	}
 	if msgs[1].Type != llm.ChunkTypeThinking || msgs[1].Text != "thinking" {
 		t.Fatalf("unexpected thinking chunk: %#v", msgs[1])
-	}
-	if msgs[2].Type != llm.ChunkTypeToolStart || msgs[2].ToolID != "tool-1" || msgs[2].ToolName != "Read" {
-		t.Fatalf("unexpected tool start chunk: %#v", msgs[2])
-	}
-	if msgs[3].Type != llm.ChunkTypeToolInput || msgs[3].ToolID != "tool-1" || msgs[3].Text != `{"path":"a.go"}` {
-		t.Fatalf("unexpected tool input chunk: %#v", msgs[3])
 	}
 
 	// Content and thinking accumulate in internal buffers and flush on Finish.

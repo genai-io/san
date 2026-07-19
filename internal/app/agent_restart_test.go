@@ -24,7 +24,7 @@ func (p *restartStubProvider) Stream(_ context.Context, opts llm.CompletionOptio
 		Type: llm.ChunkTypeDone,
 		Response: &llm.CompletionResponse{
 			Content:    "ok",
-			StopReason: string(core.StopEndTurn),
+			StopReason: core.StopEndTurn,
 		},
 	}
 	close(ch)

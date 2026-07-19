@@ -220,14 +220,12 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 						ID:   funcCall.CallID,
 						Name: funcCall.Name,
 					}
-					state.EmitToolStart(ctx, ch, funcCall.CallID, funcCall.Name)
 				}
 
 			case "response.function_call_arguments.delta":
 				delta := event.AsResponseFunctionCallArgumentsDelta()
 				if tc, ok := toolCalls[delta.ItemID]; ok {
 					tc.Input += delta.Delta
-					state.EmitToolInput(ctx, ch, tc.ID, delta.Delta)
 				}
 
 			case "response.completed":
@@ -252,12 +250,12 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 				switch resp.Status {
 				case responses.ResponseStatusCompleted:
 					if hasToolCalls {
-						state.Response.StopReason = "tool_use"
+						state.Response.StopReason = core.StopToolUse
 					} else {
-						state.Response.StopReason = "end_turn"
+						state.Response.StopReason = core.StopEndTurn
 					}
 				case responses.ResponseStatusIncomplete:
-					state.Response.StopReason = "max_tokens"
+					state.Response.StopReason = core.StopMaxTokens
 				case responses.ResponseStatusFailed:
 					errMsg := "response failed"
 					if resp.Error.Message != "" {
@@ -266,7 +264,7 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 					state.Fail(ctx, ch, fmt.Errorf("responses API failed: %s", errMsg))
 					return
 				default:
-					state.Response.StopReason = string(resp.Status)
+					state.Response.StopReason = core.StopReason(resp.Status)
 				}
 
 			case "error":

@@ -233,9 +233,6 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 						fc := part.FunctionCall
 						argsJSON, _ := json.Marshal(fc.Args)
 
-						state.EmitToolStart(ctx, ch, fc.ID, fc.Name)
-						state.EmitToolInput(ctx, ch, fc.ID, string(argsJSON))
-
 						state.Response.ToolCalls = append(state.Response.ToolCalls, core.ToolCall{
 							ID:               fc.ID,
 							Name:             fc.Name,
@@ -249,11 +246,11 @@ func (c *Client) Stream(ctx context.Context, opts llm.CompletionOptions) <-chan 
 				if candidate.FinishReason != "" {
 					switch candidate.FinishReason {
 					case "STOP":
-						state.Response.StopReason = "end_turn"
+						state.Response.StopReason = core.StopEndTurn
 					case "MAX_TOKENS":
-						state.Response.StopReason = "max_tokens"
+						state.Response.StopReason = core.StopMaxTokens
 					default:
-						state.Response.StopReason = string(candidate.FinishReason)
+						state.Response.StopReason = core.StopReason(candidate.FinishReason)
 					}
 				}
 			}

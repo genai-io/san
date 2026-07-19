@@ -76,11 +76,9 @@ func StreamChatCompletions(ctx context.Context, cfg ChatStreamConfig) <-chan llm
 					idx := int(tc.Index)
 					if _, exists := toolCalls[idx]; !exists {
 						toolCalls[idx] = &core.ToolCall{ID: tc.ID, Name: tc.Function.Name}
-						state.EmitToolStart(ctx, ch, tc.ID, tc.Function.Name)
 					}
 					if tc.Function.Arguments != "" {
 						toolCalls[idx].Input += tc.Function.Arguments
-						state.EmitToolInput(ctx, ch, toolCalls[idx].ID, tc.Function.Arguments)
 					}
 				}
 

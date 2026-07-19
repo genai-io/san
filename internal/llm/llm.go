@@ -115,7 +115,7 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 					return
 				}
 			case ChunkTypeDone:
-				if !send(core.Chunk{Done: true, Response: toInferResponse(sc.Response)}) {
+				if !send(core.Chunk{Done: true, Response: sc.Response}) {
 					return
 				}
 			case ChunkTypeError:
@@ -383,20 +383,4 @@ func toProviderMessages(msgs []core.Message) []core.Message {
 		}
 	}
 	return out
-}
-
-// toInferResponse converts a CompletionResponse to an InferResponse.
-func toInferResponse(r *CompletionResponse) *core.InferResponse {
-	if r == nil {
-		return nil
-	}
-	return &core.InferResponse{
-		Content:           r.Content,
-		Thinking:          r.Thinking,
-		ThinkingSignature: r.ThinkingSignature,
-		Reasoning:         r.Reasoning,
-		ToolCalls:         r.ToolCalls,
-		StopReason:        core.StopReason(r.StopReason),
-		Usage:             r.Usage,
-	}
 }
