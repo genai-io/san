@@ -237,7 +237,26 @@ func (s *Store) Save(sess *Snapshot) error {
 		return err
 	}
 	s.lastEmittedState[id] = next
+	// End of a turn (main path) or of a subagent's message dump: flush the
+	// index mutations the appends above staged in memory to disk in one write.
+	if err := s.transcriptStore.FlushIndex(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// FlushIndex writes any transcript-index mutations the hot append path staged
+// in memory out to disk. Callers invoke it on shutdown; Save already flushes at
+// each turn boundary. The in-memory index stays authoritative for in-process
+// reads, and a crash that loses an unflushed update is recovered by the
+// rebuild-from-transcripts path on the next List.
+func (s *Store) FlushIndex() error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.transcriptStore == nil {
+		return nil
+	}
+	return s.transcriptStore.FlushIndex()
 }
 
 func (s *Store) Fork(sourceID string) (*Snapshot, error) {

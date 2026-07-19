@@ -34,6 +34,15 @@ type FileStore struct {
 	// stay write-through, so on-disk durability is unchanged. nil until the
 	// first load or save.
 	cachedIndex *fileIndex
+
+	// indexDirty marks that cachedIndex holds hot-path mutations not yet written
+	// to disk. Every message append and state patch used to re-serialize and
+	// rewrite the whole index file — O(sessions) work, ~7-12 times per turn.
+	// Those mutations now stage in memory (cachedIndex stays authoritative for
+	// in-process reads) and flush once at a turn boundary / on shutdown via
+	// FlushIndex. The index is a pure derived cache — a crash that loses an
+	// unflushed update is recovered by rebuildIndexLocked on the next List.
+	indexDirty bool
 }
 
 // sessionCache holds the derived state we keep in memory to avoid re-scanning
@@ -106,7 +115,7 @@ func (s *FileStore) Start(ctx context.Context, cmd StartCommand) error {
 	if err := s.appendRecord(path, rec, true); err != nil {
 		return err
 	}
-	return s.upsertIndexEntryLocked(cmd.SessionID, func(e *fileIndexEntry, fresh bool) {
+	if err := s.upsertIndexEntryLocked(cmd.SessionID, func(e *fileIndexEntry, fresh bool) {
 		e.FullPath = path
 		if fresh {
 			e.CreatedAt = cmd.Time
@@ -114,7 +123,16 @@ func (s *FileStore) Start(ctx context.Context, cmd StartCommand) error {
 		if e.UpdatedAt.Before(cmd.Time) {
 			e.UpdatedAt = cmd.Time
 		}
-	})
+	}); err != nil {
+		return err
+	}
+	// Write a new session's first index entry eagerly. Start runs once per
+	// session (it returns above for one that already exists), not on the hot
+	// per-message path, so this costs one write per session while guaranteeing
+	// the picker — even in another process, even after a crash mid-first-turn —
+	// sees the session immediately. Only the per-message field updates that
+	// follow defer to the turn-boundary flush.
+	return s.flushIndexLocked()
 }
 
 func (s *FileStore) AppendMessage(ctx context.Context, cmd AppendMessageCommand) error {
@@ -835,7 +853,38 @@ func (s *FileStore) saveIndexLocked(index *fileIndex) error {
 		return fmt.Errorf("finalize transcript index: %w", err)
 	}
 	s.cachedIndex = index
+	s.indexDirty = false
 	return nil
+}
+
+// stageIndexLocked records that cachedIndex diverges from disk without writing
+// it, so a burst of hot-path appends (a turn's tool results, a subagent's
+// message dump) collapses to a single index write at the next FlushIndex
+// instead of one full re-serialization per message. The caller has already
+// mutated the entry in place; `index` must be (or become) s.cachedIndex.
+// Callers hold the write lock.
+func (s *FileStore) stageIndexLocked(index *fileIndex) {
+	s.cachedIndex = index
+	s.indexDirty = true
+}
+
+// flushIndexLocked writes staged index mutations to disk, if any. Callers hold
+// the write lock.
+func (s *FileStore) flushIndexLocked() error {
+	if !s.indexDirty || s.cachedIndex == nil {
+		return nil
+	}
+	return s.saveIndexLocked(s.cachedIndex)
+}
+
+// FlushIndex writes any index mutations the hot append path staged in memory
+// out to disk. Callers invoke it at turn boundaries (end of Save) and on
+// shutdown; between flushes the in-memory index stays authoritative for
+// in-process reads, so the picker is never stale within the process.
+func (s *FileStore) FlushIndex() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.flushIndexLocked()
 }
 
 func (s *FileStore) rebuildIndexLocked() error {
@@ -888,13 +937,15 @@ func (s *FileStore) upsertIndexEntryLocked(transcriptID string, mutate func(e *f
 	for i := range index.Entries {
 		if index.Entries[i].SessionID == transcriptID {
 			mutate(&index.Entries[i], false)
-			return s.saveIndexLocked(index)
+			s.stageIndexLocked(index)
+			return nil
 		}
 	}
 	entry := fileIndexEntry{SessionID: transcriptID}
 	mutate(&entry, true)
 	index.Entries = append(index.Entries, entry)
-	return s.saveIndexLocked(index)
+	s.stageIndexLocked(index)
+	return nil
 }
 
 func (s *FileStore) refreshIndexLocked(transcriptID string) error {

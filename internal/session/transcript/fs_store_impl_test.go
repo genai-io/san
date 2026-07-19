@@ -538,3 +538,83 @@ func mapKeys(obj map[string]any) []string {
 	}
 	return keys
 }
+
+// The transcript index defers per-message writes to a flush boundary: appends
+// stay authoritative in the in-process cache, while the on-disk file another
+// process reads only catches up on FlushIndex. Start still writes a new
+// session's entry eagerly so the picker never loses it.
+func TestFileStoreIndexWritesDeferUntilFlush(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore(): %v", err)
+	}
+
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	if err := store.Start(context.Background(), StartCommand{
+		SessionID: "tx-1", Cwd: "/tmp/project", Provider: "openai", Model: "gpt-test", Time: now,
+	}); err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+
+	// Start writes eagerly: a fresh store reading only disk already sees the
+	// session, with no messages counted yet.
+	if got := freshIndexMessageCount(t, dir, "tx-1"); got != 0 {
+		t.Fatalf("after Start, on-disk MessageCount = %d, want 0", got)
+	}
+
+	for i, id := range []string{"m1", "m2", "m3"} {
+		if err := store.AppendMessage(context.Background(), AppendMessageCommand{
+			SessionID: "tx-1",
+			MessageID: id,
+			Time:      now.Add(time.Duration(i+1) * time.Second),
+			Role:      "user",
+			Content:   []ContentBlock{{Type: "text", Text: id}},
+		}); err != nil {
+			t.Fatalf("AppendMessage(%s): %v", id, err)
+		}
+	}
+
+	// In-process reads are always current — the cache holds every append.
+	if got := indexMessageCount(t, store, "tx-1"); got != 3 {
+		t.Fatalf("in-process MessageCount = %d, want 3", got)
+	}
+	// ...but those appends have not touched disk, so another process still
+	// reads the pre-append count.
+	if got := freshIndexMessageCount(t, dir, "tx-1"); got != 0 {
+		t.Fatalf("before flush, on-disk MessageCount = %d, want 0 (writes should defer)", got)
+	}
+
+	if err := store.FlushIndex(); err != nil {
+		t.Fatalf("FlushIndex(): %v", err)
+	}
+	if got := freshIndexMessageCount(t, dir, "tx-1"); got != 3 {
+		t.Fatalf("after flush, on-disk MessageCount = %d, want 3", got)
+	}
+}
+
+func indexMessageCount(t *testing.T, store *FileStore, id string) int {
+	t.Helper()
+	items, err := store.List(context.Background(), "proj-1", ListOptions{})
+	if err != nil {
+		t.Fatalf("List(): %v", err)
+	}
+	for _, it := range items {
+		if it.SessionID == id {
+			return it.MessageCount
+		}
+	}
+	t.Fatalf("session %s not found in list", id)
+	return 0
+}
+
+// freshIndexMessageCount opens a brand-new FileStore over the same dir so List
+// reads the on-disk index rather than any in-process cache.
+func freshIndexMessageCount(t *testing.T, dir, id string) int {
+	t.Helper()
+	fresh, err := NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore(fresh): %v", err)
+	}
+	return indexMessageCount(t, fresh, id)
+}
