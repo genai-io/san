@@ -43,6 +43,7 @@ func (e *testMCPExecutor) ExecuteMCP(ctx context.Context, name string, params ma
 
 func TestPrepareToolCallParsesAndResolvesBuiltInTool(t *testing.T) {
 	Register(&testPermissionAwareTool{})
+	t.Cleanup(func() { Unregister("TestPermissionAwareTool") })
 
 	prepared, err := PrepareToolCall(core.ToolCall{
 		ID:    "tc5",

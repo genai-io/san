@@ -102,6 +102,12 @@ func Get(name string) (Tool, bool) {
 	return defaultRegistry.Get(name)
 }
 
+// List returns the names of every tool in the default registry (lower-cased,
+// as stored; order unspecified).
+func List() []string {
+	return defaultRegistry.List()
+}
+
 // Execute runs a tool from the default registry.
 func Execute(ctx context.Context, name string, params map[string]any, cwd string) toolresult.ToolResult {
 	return defaultRegistry.Execute(ctx, name, params, cwd)

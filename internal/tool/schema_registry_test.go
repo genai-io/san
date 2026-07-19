@@ -42,6 +42,42 @@ func TestBuiltinToolsAllRegistered(t *testing.T) {
 	}
 }
 
+// TestBuiltinOrderCoversEveryRegisteredTool guards the reverse of
+// TestBuiltinToolsAllRegistered: every registered tool must appear in the
+// model-facing schema list. Without it, registering a tool but forgetting to
+// add it to builtinToolOrder ships a tool that executes yet stays invisible to
+// the model — the exact schema/implementation drift this refactor removes.
+func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
+	presented := make(map[string]bool)
+	for _, s := range tool.GetToolSchemas() {
+		presented[s.Name] = true
+	}
+
+	// Tools deliberately kept out of builtinToolOrder. Evolve is injected
+	// per-turn with capability-tailored parameters (SchemaOptions.ExtraTools),
+	// never through the registry-sourced order. A new entry here must be a
+	// conscious decision, not a forgotten wiring step.
+	exempt := map[string]bool{
+		tool.ToolEvolve: true,
+	}
+
+	for _, name := range tool.List() {
+		// Resolve each registry entry back to its tool and compare on the
+		// canonical Schema().Name, so deprecated aliases (e.g. AgentStop →
+		// TaskStop) fold onto the tool the model actually sees.
+		canonical := name
+		if tl, ok := tool.Get(name); ok {
+			canonical = tl.Schema().Name
+		}
+		if exempt[canonical] {
+			continue
+		}
+		if !presented[canonical] {
+			t.Errorf("registered tool %q (canonical %q) is absent from the model-facing schema list; add it to builtinToolOrder (or exempt it deliberately)", name, canonical)
+		}
+	}
+}
+
 func TestGetToolSchemasUsesDirectoryGetter(t *testing.T) {
 	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{
 		AgentDirectory: func() string {

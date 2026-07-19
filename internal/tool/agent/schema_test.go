@@ -32,13 +32,13 @@ func TestAgentSchemaOmitsDirectoryWhenEmpty(t *testing.T) {
 
 // TestAgentToolSchemaMatchesEmptyDirectory verifies the tool.Tool method and
 // the directory-less builder agree, so the Agent's default self-description
-// (Schema) and its zero-directory form (SchemaWithDirectory) can't drift.
+// (Schema) and its zero-directory form (SchemaWithAgentDirectory) can't drift.
 func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
 	at := &AgentTool{}
 	if at.Schema().Description != agentSchema("").Description {
 		t.Error("AgentTool.Schema must equal the directory-less agentSchema")
 	}
-	if at.SchemaWithDirectory("").Description != agentSchema("").Description {
-		t.Error("SchemaWithDirectory(\"\") must equal the directory-less agentSchema")
+	if at.SchemaWithAgentDirectory("").Description != agentSchema("").Description {
+		t.Error("SchemaWithAgentDirectory(\"\") must equal the directory-less agentSchema")
 	}
 }

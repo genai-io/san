@@ -64,8 +64,12 @@ type SchemaOptions struct {
 // builtinToolOrder is the canonical order the built-in tools are presented to
 // the model. Each entry is resolved against the registry and described by the
 // tool's own Schema, so this list controls ordering only — a tool's wire
-// contract lives with its implementation. Names absent from the registry
-// (e.g. the intentionally-disabled TaskOutput) are skipped.
+// contract lives with its implementation. Every name here must resolve to a
+// registered tool (guarded by TestBuiltinToolsAllRegistered); tools that are
+// intentionally never exposed (e.g. TaskOutput) or injected per-turn with
+// tailored parameters (e.g. Evolve) are simply left out of this list rather
+// than skipped at runtime. TestBuiltinOrderCoversEveryRegisteredTool guards
+// the reverse: a registered tool must not be missing from this order.
 var builtinToolOrder = []string{
 	ToolRead, ToolGlob, ToolGrep, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolTaskStop, ToolAskUserQuestion,
 	ToolSkill,
@@ -87,20 +91,24 @@ func GetToolSchemas() []core.ToolSchema {
 // source of truth), in builtinToolOrder; the Agent tool's description embeds
 // the available-agents directory when one is supplied.
 func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
-	var directory string
+	var agentDirectory string
 	if opts.AgentDirectory != nil {
-		directory = opts.AgentDirectory()
+		agentDirectory = opts.AgentDirectory()
 	}
 
 	tools := make([]core.ToolSchema, 0, len(builtinToolOrder)+len(opts.ExtraTools)+8)
 	for _, name := range builtinToolOrder {
 		t, ok := Get(name)
 		if !ok {
+			// Unreachable in a correctly wired binary: every builtinToolOrder
+			// entry is a registered tool (enforced by
+			// TestBuiltinToolsAllRegistered). Skip defensively rather than
+			// nil-panic should a build ever drop one.
 			continue
 		}
-		if directory != "" {
-			if da, ok := t.(DirectoryAwareTool); ok {
-				tools = append(tools, da.SchemaWithDirectory(directory))
+		if agentDirectory != "" {
+			if da, ok := t.(AgentDirectoryAwareTool); ok {
+				tools = append(tools, da.SchemaWithAgentDirectory(agentDirectory))
 				continue
 			}
 		}
