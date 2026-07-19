@@ -126,6 +126,9 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderAskUserResultInline(data)
 	}
 	sizeInfo := formatToolResultSize(toolName, data.Content)
+	if data.IsError {
+		sizeInfo = strings.SplitN(data.Content, "\n", 2)[0]
+	}
 	icon := toolResultIcon(data.IsError)
 
 	// Errors break out of the dim plumbing tone into the error color so a

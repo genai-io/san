@@ -157,8 +157,9 @@ Usage:
 - When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. Never include any part of the line number prefix in the old_string or new_string.
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
-- The edit will FAIL if old_string is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use replace_all to change every instance of old_string.
-- Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`,
+- The edit will FAIL if an old_string is not unique in the file. Either provide a larger string with more surrounding context or use replace_all to change every instance of old_string.
+- To make several independent replacements in one file, use edits: [{"old_string": "...", "new_string": "..."}]. All replacements are validated before the file is written.
+- Use replace_all for replacing and renaming strings across a file.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -179,8 +180,26 @@ Usage:
 					"description": "Replace all occurrences of old_string (default false)",
 					"default":     false,
 				},
+				"edits": map[string]any{
+					"type":        "array",
+					"description": "Independent replacements to apply together. Cannot be combined with old_string or new_string.",
+					"minItems":    1,
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"old_string":  map[string]any{"type": "string", "description": "Exact text to replace"},
+							"new_string":  map[string]any{"type": "string", "description": "Replacement text"},
+							"replace_all": map[string]any{"type": "boolean", "description": "Replace all occurrences (default false)", "default": false},
+						},
+						"required": []string{"old_string", "new_string"},
+					},
+				},
 			},
-			"required": []string{"file_path", "old_string", "new_string"},
+			"required": []string{"file_path"},
+			"oneOf": []any{
+				map[string]any{"required": []string{"old_string", "new_string"}},
+				map[string]any{"required": []string{"edits"}},
+			},
 		},
 	}
 }

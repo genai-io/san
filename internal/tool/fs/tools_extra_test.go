@@ -191,6 +191,86 @@ func TestEditReportsLineChanges(t *testing.T) {
 	}
 }
 
+func TestEditBatchReplacements(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "example.txt")
+	original := "title: old\nfirst: old\nsecond: keep\n"
+	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]any{
+		"file_path": filePath,
+		"edits": []any{
+			map[string]any{"old_string": "title: old", "new_string": "title: new"},
+			map[string]any{"old_string": "second: keep", "new_string": "second: new"},
+		},
+	}
+	result := (&EditTool{}).ExecuteApproved(context.Background(), params, tmpDir)
+	if !result.Success {
+		t.Fatalf("batch Edit failed: %s", result.FormatForLLM())
+	}
+	if !strings.Contains(result.Output, "+2 -2, 2 replacements") {
+		t.Fatalf("batch Edit output = %q", result.Output)
+	}
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(content), "title: new\nfirst: old\nsecond: new\n"; got != want {
+		t.Fatalf("file content = %q, want %q", got, want)
+	}
+
+	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path": filePath,
+		"edits": []any{
+			map[string]any{"old_string": "title: old", "new_string": "title: new"},
+			map[string]any{"old_string": "missing", "new_string": "replacement"},
+		},
+	}, tmpDir)
+	if failed.Success || !strings.Contains(failed.FormatForLLM(), "edits[1]: old_string not found") {
+		t.Fatalf("failed batch Edit = %+v", failed)
+	}
+	content, err = os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != original {
+		t.Fatalf("failed batch Edit changed file to %q", got)
+	}
+
+	overlapped := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path": filePath,
+		"edits": []any{
+			map[string]any{"old_string": "title: old", "new_string": "title: new"},
+			map[string]any{"old_string": "old\nfirst", "new_string": "new\nfirst"},
+		},
+	}, tmpDir)
+	if overlapped.Success || !strings.Contains(overlapped.FormatForLLM(), "edits overlap") {
+		t.Fatalf("overlapping batch Edit = %+v", overlapped)
+	}
+	content, err = os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(content); got != original {
+		t.Fatalf("overlapping batch Edit changed file to %q", got)
+	}
+
+	_, err = (&EditTool{}).PreparePermission(context.Background(), map[string]any{
+		"file_path":  filePath,
+		"old_string": "title: old",
+		"new_string": "title: new",
+		"edits":      []any{map[string]any{"old_string": "second: keep", "new_string": "second: new"}},
+	}, tmpDir)
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("mixed Edit form error = %v", err)
+	}
+}
+
 func TestGlob_PatternMatching(t *testing.T) {
 	// Create a temp directory structure:
 	//   root/

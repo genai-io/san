@@ -716,6 +716,9 @@ func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
 		Content:  "old_string not found",
 		IsError:  true,
 	}, nil))
+	if !strings.Contains(errResult, "Edit → old_string not found") {
+		t.Fatalf("Edit error summary should show the failure reason, got %q", errResult)
+	}
 	if !strings.Contains(errResult, "old_string not found") {
 		t.Fatalf("Edit error should remain visible, got %q", errResult)
 	}
