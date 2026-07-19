@@ -51,7 +51,7 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
-	newContent, _, err := applyEdits(string(content), edits)
+	newContent, err := applyEdits(string(content), edits)
 	if err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
 	}
@@ -78,7 +78,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
 	oldContent := string(content)
-	newContent, firstChangedLine, err := applyEdits(oldContent, edits)
+	newContent, err := applyEdits(oldContent, edits)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -97,12 +97,11 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		Success: true,
 		Output:  output,
 		Details: toolresult.EditDetails{
-			Path:             filePath,
-			EditCount:        len(edits),
-			AddedLines:       changes.AddedCount,
-			RemovedLines:     changes.RemovedCount,
-			UnifiedDiff:      changes.UnifiedDiff,
-			FirstChangedLine: firstChangedLine,
+			Path:         filePath,
+			EditCount:    len(edits),
+			AddedLines:   changes.AddedCount,
+			RemovedLines: changes.RemovedCount,
+			UnifiedDiff:  changes.UnifiedDiff,
 		},
 		HookResponse: map[string]any{
 			"filePath":        filePath,
@@ -110,12 +109,11 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 			"structuredPatch": []any{},
 			"userModified":    false,
 			"editResult": map[string]any{
-				"path":             filePath,
-				"editCount":        len(edits),
-				"addedLines":       changes.AddedCount,
-				"removedLines":     changes.RemovedCount,
-				"unifiedDiff":      changes.UnifiedDiff,
-				"firstChangedLine": firstChangedLine,
+				"path":         filePath,
+				"editCount":    len(edits),
+				"addedLines":   changes.AddedCount,
+				"removedLines": changes.RemovedCount,
+				"unifiedDiff":  changes.UnifiedDiff,
 			},
 		},
 		Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon(), Subtitle: filePath, Duration: time.Since(start)},
@@ -162,14 +160,14 @@ func parseEditRequest(params map[string]any) (string, []editReplacement, error) 
 	return filePath, edits, nil
 }
 
-func applyEdits(content string, edits []editReplacement) (string, int, error) {
+func applyEdits(content string, edits []editReplacement) (string, error) {
 	bom := ""
 	if strings.HasPrefix(content, "\ufeff") {
 		bom, content = "\ufeff", strings.TrimPrefix(content, "\ufeff")
 	}
 	windowsLineEndings := strings.Contains(content, "\r\n")
 	if windowsLineEndings && strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n") {
-		return "", 0, fmt.Errorf("file has mixed line endings; normalize it before editing")
+		return "", fmt.Errorf("file has mixed line endings; normalize it before editing")
 	}
 	content = normalizeLineEndings(content)
 
@@ -178,29 +176,28 @@ func applyEdits(content string, edits []editReplacement) (string, int, error) {
 		matches := editMatches(content, edit.oldString)
 		switch len(matches) {
 		case 0:
-			return "", 0, fmt.Errorf("edits[%d]: oldText was not found; re-read the file and provide exact current text", i)
+			return "", fmt.Errorf("edits[%d]: oldText was not found; re-read the file and provide exact current text", i)
 		case 1:
 			start := matches[0]
 			ranges = append(ranges, editRange{start: start, end: start + len(edit.oldString), replacement: edit.newString, editIndex: i})
 		default:
-			return "", 0, fmt.Errorf("edits[%d]: oldText matches %d locations; include more surrounding context", i, len(matches))
+			return "", fmt.Errorf("edits[%d]: oldText matches %d locations; include more surrounding context", i, len(matches))
 		}
 	}
 
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	for i := 1; i < len(ranges); i++ {
 		if ranges[i].start < ranges[i-1].end {
-			return "", 0, fmt.Errorf("edits[%d] overlaps edits[%d]; combine them into one edit", ranges[i-1].editIndex, ranges[i].editIndex)
+			return "", fmt.Errorf("edits[%d] overlaps edits[%d]; combine them into one edit", ranges[i-1].editIndex, ranges[i].editIndex)
 		}
 	}
-	firstChangedLine := strings.Count(content[:ranges[0].start], "\n") + 1
 	for i := len(ranges) - 1; i >= 0; i-- {
 		content = content[:ranges[i].start] + ranges[i].replacement + content[ranges[i].end:]
 	}
 	if windowsLineEndings {
 		content = strings.ReplaceAll(content, "\n", "\r\n")
 	}
-	return bom + content, firstChangedLine, nil
+	return bom + content, nil
 }
 
 func editMatches(content, oldString string) []int {

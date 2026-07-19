@@ -162,7 +162,10 @@ func renderGenericToolResultInline(data ToolResultData) string {
 	}
 	sizeInfo := formatToolResultSize(toolName, data.Content)
 	if data.IsError {
-		sizeInfo = strings.SplitN(data.Content, "\n", 2)[0]
+		// The reason is shown in full on the expanded lines below (always
+		// rendered for errors), so keep the summary a plain "failed" rather than
+		// repeating the first content line — matching renderEditResultInline.
+		sizeInfo = "failed"
 	}
 	icon := toolResultIcon(data.IsError)
 

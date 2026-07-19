@@ -6,17 +6,16 @@ import (
 	"strings"
 )
 
-// ToolResult represents the result of a tool execution
 // EditDetails describes an applied Edit result for UI rendering.
 type EditDetails struct {
-	Path             string
-	EditCount        int
-	AddedLines       int
-	RemovedLines     int
-	UnifiedDiff      string
-	FirstChangedLine int
+	Path         string
+	EditCount    int
+	AddedLines   int
+	RemovedLines int
+	UnifiedDiff  string
 }
 
+// ToolResult represents the result of a tool execution
 type ToolResult struct {
 	Success      bool             // Whether the tool succeeded
 	Output       string           // Main output content

@@ -141,7 +141,7 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Edit", Input: `{"path":"/tmp/test","edits":[{"oldText":"old","newText":"new"}]}`}}},
 		{Role: core.RoleUser, ToolResult: &core.ToolResult{
 			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
-			Details: toolresult.EditDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new", FirstChangedLine: 1},
+			Details: toolresult.EditDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"},
 		}},
 		{Role: core.RoleAssistant, Content: "I see the file."},
 	}
