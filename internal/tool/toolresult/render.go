@@ -7,6 +7,16 @@ import (
 )
 
 // ToolResult represents the result of a tool execution
+// EditDetails describes an applied Edit result for UI rendering.
+type EditDetails struct {
+	Path             string
+	EditCount        int
+	AddedLines       int
+	RemovedLines     int
+	UnifiedDiff      string
+	FirstChangedLine int
+}
+
 type ToolResult struct {
 	Success      bool             // Whether the tool succeeded
 	Output       string           // Main output content
@@ -16,6 +26,7 @@ type ToolResult struct {
 	Files        []string         // File list (for Glob)
 	SkillInfo    *SkillResultInfo // Skill-specific info (for Skill tool)
 	HookResponse any              // Structured response for PostToolUse hooks (CC-compatible)
+	Details      any              // Structured result data for UI rendering
 }
 
 // NewErrorResult creates an error result

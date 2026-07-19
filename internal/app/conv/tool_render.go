@@ -122,8 +122,43 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderTaskResultInline(data, mdRenderer)
 	case tool.ToolTaskOutput:
 		return renderTaskOutputResultInline(data)
+	case "Edit":
+		return renderEditResultInline(data)
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
+	}
+	return renderGenericToolResultInline(data)
+}
+
+func renderEditResultInline(data ToolResultData) string {
+	if data.IsError {
+		var sb strings.Builder
+		sb.WriteString(errorStyle.Render(fmt.Sprintf("  %s  Edit → failed", toolResultIcon(true))) + "\n")
+		for line := range strings.SplitSeq(strings.TrimPrefix(data.Content, "Error: "), "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render(" "+line) + "\n")
+		}
+		return sb.String()
+	}
+	details, ok := data.Details.(toolresult.EditDetails)
+	if !ok {
+		return renderGenericToolResultInline(data)
+	}
+
+	var sb strings.Builder
+	summary := fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
+	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  Edit → %s", toolResultIcon(false), summary)) + "\n")
+	if data.Expanded && details.UnifiedDiff != "" {
+		for line := range strings.SplitSeq(details.UnifiedDiff, "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+		}
+	}
+	return sb.String()
+}
+
+func renderGenericToolResultInline(data ToolResultData) string {
+	toolName := data.ToolName
+	if toolName == "" {
+		toolName = "Tool"
 	}
 	sizeInfo := formatToolResultSize(toolName, data.Content)
 	if data.IsError {
@@ -131,23 +166,21 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	}
 	icon := toolResultIcon(data.IsError)
 
-	// Errors break out of the dim plumbing tone into the error color so a
-	// failed call is visible at a glance; successes stay muted.
 	summaryStyle := toolResultStyle
 	if data.IsError {
 		summaryStyle = errorStyle
 	}
 
 	var sb strings.Builder
-	summary := summaryStyle.Render(fmt.Sprintf("  %s  %s → %s", icon, toolName, sizeInfo))
-	sb.WriteString(summary + "\n")
-
+	sb.WriteString(summaryStyle.Render(fmt.Sprintf("  %s  %s → %s", icon, toolName, sizeInfo)) + "\n")
 	if data.Expanded || data.IsError {
 		for line := range strings.SplitSeq(data.Content, "\n") {
+			if data.IsError {
+				line = " " + line
+			}
 			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
 		}
 	}
-
 	return sb.String()
 }
 

@@ -486,6 +486,7 @@ type ToolResultData struct {
 	Interactive bool
 	Expanded    bool
 	ToolInput   string
+	Details     any
 	// Decision is the auto-review decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.
 	Decision *core.ReviewDecision

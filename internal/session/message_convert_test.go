@@ -7,6 +7,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // A user message that contains harness-injected <system-reminder> blocks must
@@ -137,9 +138,10 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 	msgs := []core.Message{
 		{Role: core.RoleUser, Content: "hello"},
 		{Role: core.RoleAssistant, Content: "hi", Thinking: "let me think",
-			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test"}`}}},
+			ToolCalls: []core.ToolCall{{ID: "tc-1", Name: "Edit", Input: `{"path":"/tmp/test","edits":[{"oldText":"old","newText":"new"}]}`}}},
 		{Role: core.RoleUser, ToolResult: &core.ToolResult{
-			ToolCallID: "tc-1", ToolName: "Read", Content: "file contents",
+			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
+			Details: toolresult.EditDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new", FirstChangedLine: 1},
 		}},
 		{Role: core.RoleAssistant, Content: "I see the file."},
 	}
@@ -178,8 +180,12 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 		t.Errorf("msg[2].ToolResult.ToolCallID: want 'tc-1', got %q", restored[2].ToolResult.ToolCallID)
 	}
 	// Tool name should be resolved from the tool_use block
-	if restored[2].ToolResult.ToolName != "Read" {
-		t.Errorf("msg[2].ToolResult.ToolName: want 'Read', got %q", restored[2].ToolResult.ToolName)
+	if restored[2].ToolResult.ToolName != "Edit" {
+		t.Errorf("msg[2].ToolResult.ToolName: want 'Edit', got %q", restored[2].ToolResult.ToolName)
+	}
+	details, ok := restored[2].ToolResult.Details.(toolresult.EditDetails)
+	if !ok || details.UnifiedDiff != "@@ -1 +1 @@\n-old\n+new" {
+		t.Errorf("restored Edit details = %#v", restored[2].ToolResult.Details)
 	}
 }
 

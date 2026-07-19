@@ -16,31 +16,27 @@ import (
 
 const IconEdit = "✏️"
 
-// EditTool performs string replacement edits on files.
+// EditTool performs exact, batched string replacements on files.
 type EditTool struct{}
 
 type editReplacement struct {
-	oldString  string
-	newString  string
-	replaceAll bool
+	oldString string
+	newString string
 }
 
 type editRange struct {
 	start       int
 	end         int
 	replacement string
+	editIndex   int
 }
 
 func (t *EditTool) Name() string        { return "Edit" }
-func (t *EditTool) Description() string { return "Edit file contents using string replacement" }
+func (t *EditTool) Description() string { return "Edit file contents using exact string replacements" }
 func (t *EditTool) Icon() string        { return IconEdit }
 
-// RequiresPermission returns true - Edit always requires permission.
-func (t *EditTool) RequiresPermission() bool {
-	return true
-}
+func (t *EditTool) RequiresPermission() bool { return true }
 
-// PreparePermission prepares a permission request with diff information.
 func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
 	filePath, edits, err := parseEditRequest(params)
 	if err != nil {
@@ -55,8 +51,7 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
-	oldContent := string(content)
-	newContent, _, err := applyEdits(oldContent, edits)
+	newContent, _, err := applyEdits(string(content), edits)
 	if err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
 	}
@@ -65,12 +60,11 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
 		FilePath:    filePath,
-		Description: "Replace text in file",
-		DiffMeta:    perm.GenerateDiff(filePath, oldContent, newContent),
+		Description: fmt.Sprintf("Apply %d replacements", len(edits)),
+		DiffMeta:    perm.GenerateDiff(filePath, string(content), newContent),
 	}, nil
 }
 
-// ExecuteApproved performs the file edit after user approval.
 func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
 	filePath, edits, err := parseEditRequest(params)
@@ -84,7 +78,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
 	oldContent := string(content)
-	newContent, replaceCount, err := applyEdits(oldContent, edits)
+	newContent, firstChangedLine, err := applyEdits(oldContent, edits)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -98,130 +92,115 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	}
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
-	output := fmt.Sprintf("Edited %s (+%d -%d", filePath, changes.AddedCount, changes.RemovedCount)
-	if replaceCount > 1 {
-		output += fmt.Sprintf(", %d replacements", replaceCount)
-	}
-	output += ")"
-
-	hookResponse := map[string]any{
-		"filePath":        filePath,
-		"originalFile":    oldContent,
-		"structuredPatch": []any{},
-		"userModified":    false,
-	}
-	if len(edits) == 1 {
-		hookResponse["oldString"] = edits[0].oldString
-		hookResponse["newString"] = edits[0].newString
-		hookResponse["replaceAll"] = edits[0].replaceAll
-	} else {
-		hookResponse["edits"] = editHookResponse(edits)
-	}
-
+	output := fmt.Sprintf("Edited %s (%d replacements, +%d -%d)", filePath, len(edits), changes.AddedCount, changes.RemovedCount)
 	return toolresult.ToolResult{
-		Success:      true,
-		Output:       output,
-		HookResponse: hookResponse,
-		Metadata: toolresult.ResultMetadata{
-			Title:    t.Name(),
-			Icon:     t.Icon(),
-			Subtitle: filePath,
-			Duration: time.Since(start),
+		Success: true,
+		Output:  output,
+		Details: toolresult.EditDetails{
+			Path:             filePath,
+			EditCount:        len(edits),
+			AddedLines:       changes.AddedCount,
+			RemovedLines:     changes.RemovedCount,
+			UnifiedDiff:      changes.UnifiedDiff,
+			FirstChangedLine: firstChangedLine,
 		},
+		HookResponse: map[string]any{
+			"filePath":        filePath,
+			"originalFile":    oldContent,
+			"structuredPatch": []any{},
+			"userModified":    false,
+			"editResult": map[string]any{
+				"path":             filePath,
+				"editCount":        len(edits),
+				"addedLines":       changes.AddedCount,
+				"removedLines":     changes.RemovedCount,
+				"unifiedDiff":      changes.UnifiedDiff,
+				"firstChangedLine": firstChangedLine,
+			},
+		},
+		Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon(), Subtitle: filePath, Duration: time.Since(start)},
 	}
 }
 
 func parseEditRequest(params map[string]any) (string, []editReplacement, error) {
-	filePath, err := tool.RequireString(params, "file_path")
+	filePath, err := tool.RequireString(params, "path")
 	if err != nil {
 		return "", nil, err
 	}
-	if rawEdits, ok := params["edits"]; ok {
-		if _, hasOld := params["old_string"]; hasOld {
-			return "", nil, &tool.ToolError{Message: "edits cannot be combined with old_string or new_string"}
-		}
-		if _, hasNew := params["new_string"]; hasNew {
-			return "", nil, &tool.ToolError{Message: "edits cannot be combined with old_string or new_string"}
-		}
-		edits, err := parseBatchEdits(rawEdits)
-		return filePath, edits, err
-	}
-
-	oldString, ok := params["old_string"].(string)
+	rawEdits, ok := params["edits"]
 	if !ok {
-		return "", nil, &tool.ToolError{Message: "old_string is required"}
+		return "", nil, &tool.ToolError{Message: "edits is required"}
 	}
-	newString, ok := params["new_string"].(string)
-	if !ok {
-		return "", nil, &tool.ToolError{Message: "new_string is required"}
-	}
-	return filePath, []editReplacement{{oldString: oldString, newString: newString, replaceAll: tool.GetBool(params, "replace_all")}}, nil
-}
-
-func parseBatchEdits(raw any) ([]editReplacement, error) {
-	items, ok := raw.([]any)
+	items, ok := rawEdits.([]any)
 	if !ok || len(items) == 0 {
-		return nil, &tool.ToolError{Message: "edits must be a non-empty array"}
+		return "", nil, &tool.ToolError{Message: "edits must be a non-empty array"}
 	}
+
 	edits := make([]editReplacement, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
 	for i, rawItem := range items {
 		item, ok := rawItem.(map[string]any)
 		if !ok {
-			return nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d] must be an object", i)}
+			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d] must be an object", i)}
 		}
-		oldString, ok := item["old_string"].(string)
+		oldString, ok := item["oldText"].(string)
 		if !ok || oldString == "" {
-			return nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].old_string must be a non-empty string", i)}
+			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].oldText must be a non-empty string", i)}
 		}
-		newString, ok := item["new_string"].(string)
+		newString, ok := item["newText"].(string)
 		if !ok {
-			return nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].new_string must be a string", i)}
+			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].newText must be a string", i)}
 		}
+		oldString = normalizeLineEndings(oldString)
+		newString = normalizeLineEndings(newString)
 		if _, duplicate := seen[oldString]; duplicate {
-			return nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].old_string duplicates another edit", i)}
+			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].oldText duplicates another edit", i)}
 		}
 		seen[oldString] = struct{}{}
-		edits = append(edits, editReplacement{oldString: oldString, newString: newString, replaceAll: tool.GetBool(item, "replace_all")})
+		edits = append(edits, editReplacement{oldString: oldString, newString: newString})
 	}
-	return edits, nil
+	return filePath, edits, nil
 }
 
 func applyEdits(content string, edits []editReplacement) (string, int, error) {
-	if len(edits) == 1 && edits[0].oldString == "" {
-		if edits[0].replaceAll {
-			return strings.ReplaceAll(content, "", edits[0].newString), len(content) + 1, nil
-		}
-		return edits[0].newString + content, 1, nil
+	bom := ""
+	if strings.HasPrefix(content, "\ufeff") {
+		bom, content = "\ufeff", strings.TrimPrefix(content, "\ufeff")
 	}
+	windowsLineEndings := strings.Contains(content, "\r\n")
+	if windowsLineEndings && strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n") {
+		return "", 0, fmt.Errorf("file has mixed line endings; normalize it before editing")
+	}
+	content = normalizeLineEndings(content)
 
 	ranges := make([]editRange, 0, len(edits))
 	for i, edit := range edits {
 		matches := editMatches(content, edit.oldString)
-		if len(matches) == 0 {
-			return "", 0, fmt.Errorf("edits[%d]: old_string not found in current file", i)
-		}
-		if !edit.replaceAll && len(matches) > 1 {
-			return "", 0, fmt.Errorf("edits[%d]: old_string is not unique in current file (%d occurrences found); provide more context or use replace_all=true", i, len(matches))
-		}
-		if !edit.replaceAll {
-			matches = matches[:1]
-		}
-		for _, start := range matches {
-			ranges = append(ranges, editRange{start: start, end: start + len(edit.oldString), replacement: edit.newString})
+		switch len(matches) {
+		case 0:
+			return "", 0, fmt.Errorf("edits[%d]: oldText was not found; re-read the file and provide exact current text", i)
+		case 1:
+			start := matches[0]
+			ranges = append(ranges, editRange{start: start, end: start + len(edit.oldString), replacement: edit.newString, editIndex: i})
+		default:
+			return "", 0, fmt.Errorf("edits[%d]: oldText matches %d locations; include more surrounding context", i, len(matches))
 		}
 	}
 
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
 	for i := 1; i < len(ranges); i++ {
 		if ranges[i].start < ranges[i-1].end {
-			return "", 0, fmt.Errorf("edits overlap in current file")
+			return "", 0, fmt.Errorf("edits[%d] overlaps edits[%d]; combine them into one edit", ranges[i-1].editIndex, ranges[i].editIndex)
 		}
 	}
+	firstChangedLine := strings.Count(content[:ranges[0].start], "\n") + 1
 	for i := len(ranges) - 1; i >= 0; i-- {
 		content = content[:ranges[i].start] + ranges[i].replacement + content[ranges[i].end:]
 	}
-	return content, len(ranges), nil
+	if windowsLineEndings {
+		content = strings.ReplaceAll(content, "\n", "\r\n")
+	}
+	return bom + content, firstChangedLine, nil
 }
 
 func editMatches(content, oldString string) []int {
@@ -237,16 +216,8 @@ func editMatches(content, oldString string) []int {
 	}
 }
 
-func editHookResponse(edits []editReplacement) []map[string]any {
-	response := make([]map[string]any, len(edits))
-	for i, edit := range edits {
-		response[i] = map[string]any{
-			"oldString":  edit.oldString,
-			"newString":  edit.newString,
-			"replaceAll": edit.replaceAll,
-		}
-	}
-	return response
+func normalizeLineEndings(content string) string {
+	return strings.ReplaceAll(content, "\r\n", "\n")
 }
 
 func resolveEditPath(filePath, cwd string) string {
@@ -256,7 +227,6 @@ func resolveEditPath(filePath, cwd string) string {
 	return filepath.Join(cwd, filePath)
 }
 
-// Execute implements the Tool interface (for permission-unaware execution).
 func (t *EditTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	return t.ExecuteApproved(ctx, params, cwd)
 }

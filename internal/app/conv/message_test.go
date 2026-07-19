@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // The turn's first committed thinking block leads with the "✦" marker;
@@ -703,24 +704,40 @@ func Test_formatToolResultSizeUsesNoOutputForEmptyContent(t *testing.T) {
 }
 
 func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
-	result := stripANSI(RenderToolResultInline(ToolResultData{
-		ToolName: "Edit",
-		Content:  "Edited /tmp/example.go",
-	}, nil))
-	if !strings.Contains(result, "Edit →") {
-		t.Fatalf("successful Edit result should be visible, got %q", result)
+	details := toolresult.EditDetails{
+		Path:         "internal/app/view.go",
+		EditCount:    2,
+		AddedLines:   3,
+		RemovedLines: 1,
+		UnifiedDiff:  "@@ -1 +1 @@\n-old\n+new",
+	}
+	result := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Details: details}, nil))
+	if !strings.Contains(result, "2 replacements · +3 -1") {
+		t.Fatalf("successful Edit summary = %q", result)
+	}
+	if strings.Contains(result, "-old") {
+		t.Fatalf("collapsed Edit should not show the diff, got %q", result)
 	}
 
-	errResult := stripANSI(RenderToolResultInline(ToolResultData{
-		ToolName: "Edit",
-		Content:  "old_string not found",
-		IsError:  true,
-	}, nil))
-	if !strings.Contains(errResult, "Edit → old_string not found") {
-		t.Fatalf("Edit error summary should show the failure reason, got %q", errResult)
+	expanded := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Details: details, Expanded: true}, nil))
+	if !strings.Contains(expanded, "-old") || !strings.Contains(expanded, "+new") {
+		t.Fatalf("expanded Edit should show the final diff, got %q", expanded)
 	}
-	if !strings.Contains(errResult, "old_string not found") {
-		t.Fatalf("Edit error should remain visible, got %q", errResult)
+
+	errResult := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Content: "Error: edits[0]: oldText was not found", IsError: true}, nil))
+	if !strings.Contains(errResult, "Edit → failed") {
+		t.Fatalf("Edit error summary should show failure, got %q", errResult)
+	}
+	if strings.Contains(errResult, "Edit → Error:") || strings.Contains(errResult, "Error: edits") {
+		t.Fatalf("Edit error should not repeat the error prefix, got %q", errResult)
+	}
+	if !strings.Contains(errResult, "\n     edits[0]: oldText was not found\n") {
+		t.Fatalf("Edit error reason should align with Edit, got %q", errResult)
+	}
+
+	bashErrResult := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Bash", Content: "command failed", IsError: true}, nil))
+	if !strings.Contains(bashErrResult, "\n     command failed\n") {
+		t.Fatalf("Bash error reason should align with Bash, got %q", bashErrResult)
 	}
 }
 
@@ -728,7 +745,7 @@ func TestRenderToolCallsShowsEditResult(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "edit-1",
 		Name:  "Edit",
-		Input: `{"file_path":"internal/app/view.go","old_string":"old","new_string":"new"}`,
+		Input: `{"path":"internal/app/view.go","edits":[{"oldText":"old","newText":"new"}]}`,
 	}
 	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
 		ToolCalls: []core.ToolCall{call},

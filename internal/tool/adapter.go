@@ -13,11 +13,21 @@ import (
 // The TUI retrieves these when handling PostTool events to apply
 // environment side effects (cwd changes, file cache, background tasks).
 var sideEffects sync.Map
+var resultDetails sync.Map
 
 // PopSideEffect retrieves and removes the HookResponse for a tool call.
 // Returns nil if no side effect was stored.
 func PopSideEffect(toolCallID string) any {
 	val, ok := sideEffects.LoadAndDelete(toolCallID)
+	if !ok {
+		return nil
+	}
+	return val
+}
+
+// PopResultDetails retrieves structured result data for a tool call.
+func PopResultDetails(toolCallID string) any {
+	val, ok := resultDetails.LoadAndDelete(toolCallID)
 	if !ok {
 		return nil
 	}
@@ -150,9 +160,12 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 		result = a.inner.Execute(ctx, input, cwd)
 	}
 
-	if result.HookResponse != nil {
-		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
+	if callID := core.ToolCallIDFromContext(ctx); callID != "" {
+		if result.HookResponse != nil {
 			sideEffects.Store(callID, result.HookResponse)
+		}
+		if result.Details != nil {
+			resultDetails.Store(callID, result.Details)
 		}
 	}
 

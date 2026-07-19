@@ -220,6 +220,7 @@ type ToolResult struct {
 	Content      string `json:"content"`
 	IsError      bool   `json:"is_error,omitempty"`
 	HookResponse any    `json:"-"`
+	Details      any    `json:"-"`
 }
 
 // --- Constructors ---

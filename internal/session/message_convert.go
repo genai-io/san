@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // A user message's Content can carry text the harness injected for the model
@@ -185,6 +186,9 @@ func assistantContentToBlocks(content, thinking, thinkingSignature string, toolC
 
 func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
 	block := ContentBlock{Type: "tool_result", ToolUseID: tr.ToolCallID, IsError: tr.IsError}
+	if details, ok := tr.Details.(toolresult.EditDetails); ok {
+		block.EditDetails, _ = json.Marshal(details)
+	}
 	if tr.Content != "" {
 		block.Content = []ContentBlock{{Type: "text", Text: tr.Content}}
 	}
@@ -224,6 +228,12 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 			}
 		case "tool_result":
 			tr := &core.ToolResult{ToolCallID: block.ToolUseID, IsError: block.IsError}
+			if len(block.EditDetails) > 0 {
+				var details toolresult.EditDetails
+				if json.Unmarshal(block.EditDetails, &details) == nil {
+					tr.Details = details
+				}
+			}
 			for _, sub := range block.Content {
 				if sub.Type == "text" {
 					tr.Content = sub.Text

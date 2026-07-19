@@ -71,6 +71,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 	}
 
 	sideEffect := m.services.Tool.PopSideEffect(tr.ToolCallID)
+	details := m.services.Tool.PopResultDetails(tr.ToolCallID)
 	if sideEffect != nil {
 		m.applyToolSideEffects(tr.ToolName, sideEffect)
 	}
@@ -81,6 +82,7 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 		ToolName:   tr.ToolName,
 		Content:    tr.Content,
 		IsError:    tr.IsError,
+		Details:    details,
 	}
 	m.persistOverflow(result)
 	return result

@@ -154,52 +154,33 @@ func (t *EditTool) Schema() core.ToolSchema {
 Usage:
 - You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.
 - If you need fresh file contents before editing, call Read and wait for its result before calling Edit. Do not call Read and Edit for the same target in the same assistant message.
-- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. Never include any part of the line number prefix in the old_string or new_string.
+- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. Never include any part of the line number prefix in the oldText or newText.
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
-- The edit will FAIL if an old_string is not unique in the file. Either provide a larger string with more surrounding context or use replace_all to change every instance of old_string.
-- To make several independent replacements in one file, use edits: [{"old_string": "...", "new_string": "..."}]. All replacements are validated before the file is written.
-- Use replace_all for replacing and renaming strings across a file.`,
+- Use edits to apply one or more independent replacements in a single file. Every oldText must match exactly once; include more surrounding text if it is not unique.
+- All replacements are checked against the original file and applied together. Overlapping changes must be combined into one edit.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"file_path": map[string]any{
+				"path": map[string]any{
 					"type":        "string",
 					"description": "Path to the file to modify. Relative paths are resolved from the current session working directory.",
 				},
-				"old_string": map[string]any{
-					"type":        "string",
-					"description": "The text to replace (must be different from new_string)",
-				},
-				"new_string": map[string]any{
-					"type":        "string",
-					"description": "The text to replace it with (must be different from old_string)",
-				},
-				"replace_all": map[string]any{
-					"type":        "boolean",
-					"description": "Replace all occurrences of old_string (default false)",
-					"default":     false,
-				},
 				"edits": map[string]any{
 					"type":        "array",
-					"description": "Independent replacements to apply together. Cannot be combined with old_string or new_string.",
+					"description": "One or more exact replacements applied together.",
 					"minItems":    1,
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"old_string":  map[string]any{"type": "string", "description": "Exact text to replace"},
-							"new_string":  map[string]any{"type": "string", "description": "Replacement text"},
-							"replace_all": map[string]any{"type": "boolean", "description": "Replace all occurrences (default false)", "default": false},
+							"oldText": map[string]any{"type": "string", "description": "Exact unique text to replace"},
+							"newText": map[string]any{"type": "string", "description": "Replacement text"},
 						},
-						"required": []string{"old_string", "new_string"},
+						"required": []string{"oldText", "newText"},
 					},
 				},
 			},
-			"required": []string{"file_path"},
-			"oneOf": []any{
-				map[string]any{"required": []string{"old_string", "new_string"}},
-				map[string]any{"required": []string{"edits"}},
-			},
+			"required": []string{"path", "edits"},
 		},
 	}
 }

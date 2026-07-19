@@ -158,7 +158,7 @@ func newExecResult(tc core.ToolCall, index int, content string, isError bool) Ex
 func newExecResultFromOutput(tc core.ToolCall, index int, output toolresult.ToolResult) ExecResultMsg {
 	return ExecResultMsg{
 		Index:    index,
-		Result:   core.ToolResult{ToolCallID: tc.ID, Content: output.FormatForLLM(), IsError: !output.Success, HookResponse: output.HookResponse},
+		Result:   core.ToolResult{ToolCallID: tc.ID, Content: output.FormatForLLM(), IsError: !output.Success, HookResponse: output.HookResponse, Details: output.Details},
 		ToolName: tc.Name,
 	}
 }

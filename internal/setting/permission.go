@@ -96,11 +96,13 @@ func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, se
 	}
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
+		pathKey := "file_path"
+		if toolName == "Edit" {
+			pathKey = "path"
+		}
 		if toolName == "Edit" || toolName == "Write" {
-			if fp, ok := args["file_path"].(string); ok {
-				if !isInWorkingDirectory(fp, session.WorkingDirectories) {
-					return "outside working directory"
-				}
+			if fp, ok := args[pathKey].(string); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
+				return "outside working directory"
 			}
 		}
 	}
@@ -195,7 +197,7 @@ func (s *Data) CheckPermission(toolName string, args map[string]any, session *Se
 //
 // Different tools extract different parts of args:
 //   - Bash: "Bash(command)" where command is the shell command
-//   - Read/Edit/Write: "Read(file_path)"
+//   - Read/Write: "Read(file_path)"; Edit: "Edit(path)"
 //   - Glob/Grep: "Glob(pattern)" or "Grep(pattern)"
 //   - WebFetch: "WebFetch(domain:hostname)"
 func BuildRule(toolName string, args map[string]any) string {
@@ -214,10 +216,14 @@ func BuildRule(toolName string, args map[string]any) string {
 			}
 		}
 
-	case "Read", "Edit", "Write":
-		// For file tools, use the file path
+	case "Read", "Write":
 		if fp, ok := args["file_path"].(string); ok {
 			argStr = fp
+		}
+
+	case "Edit":
+		if path, ok := args["path"].(string); ok {
+			argStr = path
 		}
 
 	case "Glob":
@@ -501,7 +507,11 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 func BypassImmuneReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
-		if fp, ok := args["file_path"].(string); ok {
+		pathKey := "file_path"
+		if toolName == "Edit" {
+			pathKey = "path"
+		}
+		if fp, ok := args[pathKey].(string); ok {
 			if reason := isSensitivePath(fp); reason != "" {
 				return reason
 			}

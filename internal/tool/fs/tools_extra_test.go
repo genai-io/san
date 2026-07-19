@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // TestRead_LineLimit_LargeFile verifies that Read respects the limit parameter
@@ -99,175 +101,62 @@ func TestRead_LineLimit_LargeFile(t *testing.T) {
 	})
 }
 
-// TestEdit_Fails_WhenOldStringNotUnique verifies that Edit's PreparePermission
-// returns an error when old_string matches more than once and replace_all is false.
-func TestEdit_Fails_WhenOldStringNotUnique(t *testing.T) {
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "dup.txt")
-
-	content := "hello world\nhello world\nhello world\n"
-	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
-		t.Fatalf("Failed to write test file: %v", err)
-	}
-
-	tool := &EditTool{}
-	ctx := context.Background()
-
-	t.Run("returns error when old_string is not unique", func(t *testing.T) {
-		_, err := tool.PreparePermission(ctx, map[string]any{
-			"file_path":  filePath,
-			"old_string": "hello world",
-			"new_string": "goodbye world",
-		}, tmpDir)
-
-		if err == nil {
-			t.Fatal("Expected an error for non-unique old_string, got nil")
-		}
-		if !strings.Contains(err.Error(), "not unique") && !strings.Contains(err.Error(), "occurrences") {
-			t.Errorf("Expected error message about uniqueness, got: %s", err.Error())
-		}
-	})
-
-	t.Run("succeeds when replace_all=true and old_string appears multiple times", func(t *testing.T) {
-		// Re-write file since content may be unchanged after the failed prepare
-		os.WriteFile(filePath, []byte(content), 0o644)
-
-		_, err := tool.PreparePermission(ctx, map[string]any{
-			"file_path":   filePath,
-			"old_string":  "hello world",
-			"new_string":  "goodbye world",
-			"replace_all": true,
-		}, tmpDir)
-
-		if err != nil {
-			t.Fatalf("Expected no error with replace_all=true, got: %v", err)
-		}
-	})
-
-	t.Run("returns error when old_string not found at all", func(t *testing.T) {
-		os.WriteFile(filePath, []byte(content), 0o644)
-
-		_, err := tool.PreparePermission(ctx, map[string]any{
-			"file_path":  filePath,
-			"old_string": "this string does not exist in the file",
-			"new_string": "replacement",
-		}, tmpDir)
-
-		if err == nil {
-			t.Fatal("Expected an error when old_string not found, got nil")
-		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("Expected 'not found' in error message, got: %s", err.Error())
-		}
-	})
-}
-
-func TestEditReportsLineChanges(t *testing.T) {
-	tmpDir := t.TempDir()
-	filePath := filepath.Join(tmpDir, "example.txt")
-	if err := os.WriteFile(filePath, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	result := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
-		"file_path":  filePath,
-		"old_string": "two\n",
-		"new_string": "two\nextra\n",
-	}, tmpDir)
-	if !result.Success {
-		t.Fatalf("Edit failed: %s", result.Output)
-	}
-	if !strings.Contains(result.Output, "+1 -0") {
-		t.Fatalf("Edit output = %q, want line counts", result.Output)
-	}
-
-	failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
-		"file_path":  filePath,
-		"old_string": "missing",
-		"new_string": "replacement",
-	}, tmpDir)
-	if failed.Success || !strings.Contains(failed.FormatForLLM(), "not found in current file") {
-		t.Fatalf("failed Edit = %+v, want failure reason", failed)
-	}
-}
-
 func TestEditBatchReplacements(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "example.txt")
-	original := "title: old\nfirst: old\nsecond: keep\n"
+	original := "\ufefftitle: old\r\nfirst: old\r\nsecond: keep\r\n"
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	params := map[string]any{
-		"file_path": filePath,
+		"path": filePath,
 		"edits": []any{
-			map[string]any{"old_string": "title: old", "new_string": "title: new"},
-			map[string]any{"old_string": "second: keep", "new_string": "second: new"},
+			map[string]any{"oldText": "title: old\n", "newText": "title: new\n"},
+			map[string]any{"oldText": "second: keep", "newText": "second: new"},
 		},
 	}
 	result := (&EditTool{}).ExecuteApproved(context.Background(), params, tmpDir)
 	if !result.Success {
 		t.Fatalf("batch Edit failed: %s", result.FormatForLLM())
 	}
-	if !strings.Contains(result.Output, "+2 -2, 2 replacements") {
+	if !strings.Contains(result.Output, "2 replacements, +2 -2") {
 		t.Fatalf("batch Edit output = %q", result.Output)
+	}
+	details, ok := result.Details.(toolresult.EditDetails)
+	if !ok || details.EditCount != 2 || details.AddedLines != 2 || details.RemovedLines != 2 || details.FirstChangedLine != 1 {
+		t.Fatalf("Edit details = %#v", result.Details)
 	}
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(content), "title: new\nfirst: old\nsecond: new\n"; got != want {
+	if got, want := string(content), "\ufefftitle: new\r\nfirst: old\r\nsecond: new\r\n"; got != want {
 		t.Fatalf("file content = %q, want %q", got, want)
 	}
 
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
-		"file_path": filePath,
-		"edits": []any{
-			map[string]any{"old_string": "title: old", "new_string": "title: new"},
-			map[string]any{"old_string": "missing", "new_string": "replacement"},
-		},
-	}, tmpDir)
-	if failed.Success || !strings.Contains(failed.FormatForLLM(), "edits[1]: old_string not found") {
-		t.Fatalf("failed batch Edit = %+v", failed)
-	}
-	content, err = os.ReadFile(filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(content); got != original {
-		t.Fatalf("failed batch Edit changed file to %q", got)
-	}
-
-	overlapped := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
-		"file_path": filePath,
-		"edits": []any{
-			map[string]any{"old_string": "title: old", "new_string": "title: new"},
-			map[string]any{"old_string": "old\nfirst", "new_string": "new\nfirst"},
-		},
-	}, tmpDir)
-	if overlapped.Success || !strings.Contains(overlapped.FormatForLLM(), "edits overlap") {
-		t.Fatalf("overlapping batch Edit = %+v", overlapped)
-	}
-	content, err = os.ReadFile(filePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := string(content); got != original {
-		t.Fatalf("overlapping batch Edit changed file to %q", got)
-	}
-
-	_, err = (&EditTool{}).PreparePermission(context.Background(), map[string]any{
-		"file_path":  filePath,
-		"old_string": "title: old",
-		"new_string": "title: new",
-		"edits":      []any{map[string]any{"old_string": "second: keep", "new_string": "second: new"}},
-	}, tmpDir)
-	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
-		t.Fatalf("mixed Edit form error = %v", err)
+	for _, test := range []struct {
+		edits []any
+		want  string
+	}{
+		{[]any{map[string]any{"oldText": "title: old", "newText": "title: new"}, map[string]any{"oldText": "missing", "newText": "replacement"}}, "edits[1]: oldText was not found"},
+		{[]any{map[string]any{"oldText": "old", "newText": "new"}}, "edits[0]: oldText matches 2 locations"},
+		{[]any{map[string]any{"oldText": "title: old", "newText": "title: new"}, map[string]any{"oldText": "old\nfirst", "newText": "new\nfirst"}}, "edits[0] overlaps edits[1]"},
+	} {
+		failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{"path": filePath, "edits": test.edits}, tmpDir)
+		if failed.Success || !strings.Contains(failed.FormatForLLM(), test.want) {
+			t.Fatalf("invalid batch Edit = %+v, want %q", failed, test.want)
+		}
+		content, err = os.ReadFile(filePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(content); got != original {
+			t.Fatalf("invalid batch Edit changed file to %q", got)
+		}
 	}
 }
 

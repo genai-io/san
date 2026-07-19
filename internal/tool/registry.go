@@ -83,6 +83,9 @@ func (r *Registry) Execute(ctx context.Context, name string, params map[string]a
 // PopSideEffect retrieves and removes the side effect for a tool call.
 func (r *Registry) PopSideEffect(toolCallID string) any { return PopSideEffect(toolCallID) }
 
+// PopResultDetails retrieves structured result data for a tool call.
+func (r *Registry) PopResultDetails(toolCallID string) any { return PopResultDetails(toolCallID) }
+
 // defaultRegistry is the package-level tool registry, populated at init time.
 var defaultRegistry = NewRegistry()
 
