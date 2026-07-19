@@ -175,8 +175,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	// A new inference means any auto-compaction is over: a successful one already
 	// cleared this in OnCompacted, but a failed compaction falls straight through
 	// to here, so clear the in-progress indicator either way.
-	m.Compact.Active = false
-	m.Compact.Phase = ""
+	m.Compact.Clear()
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
 	commitCmds := rt.CommitMessages()

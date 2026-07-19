@@ -96,17 +96,27 @@ func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, se
 	}
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
-		pathKey := "file_path"
-		if toolName == "Edit" {
-			pathKey = "path"
-		}
 		if toolName == "Edit" || toolName == "Write" {
-			if fp, ok := args[pathKey].(string); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
+			if fp, ok := filePathArg(toolName, args); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
 				return "outside working directory"
 			}
 		}
 	}
 	return ""
+}
+
+// filePathArg extracts the file-path argument for a file tool, honoring each
+// tool's own parameter name: Edit takes "path"; Read, Write, and NotebookEdit
+// take "file_path". ok is false when the argument is absent. This is the single
+// source of truth for the mapping, so Edit's path-key divergence lives here
+// rather than being re-checked at every call site.
+func filePathArg(toolName string, args map[string]any) (string, bool) {
+	key := "file_path"
+	if toolName == "Edit" {
+		key = "path"
+	}
+	fp, ok := args[key].(string)
+	return fp, ok
 }
 
 // ModeDefault is step 7 of the permission pipeline: the decision for a tool
@@ -216,14 +226,9 @@ func BuildRule(toolName string, args map[string]any) string {
 			}
 		}
 
-	case "Read", "Write":
-		if fp, ok := args["file_path"].(string); ok {
+	case "Read", "Write", "Edit":
+		if fp, ok := filePathArg(toolName, args); ok {
 			argStr = fp
-		}
-
-	case "Edit":
-		if path, ok := args["path"].(string); ok {
-			argStr = path
 		}
 
 	case "Glob":
@@ -507,11 +512,7 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 func BypassImmuneReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
-		pathKey := "file_path"
-		if toolName == "Edit" {
-			pathKey = "path"
-		}
-		if fp, ok := args[pathKey].(string); ok {
+		if fp, ok := filePathArg(toolName, args); ok {
 			if reason := isSensitivePath(fp); reason != "" {
 				return reason
 			}

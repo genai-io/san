@@ -332,15 +332,20 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			}
 		}
 
-		// Estimate prompt growth only when proactive compaction is enabled.
+		// Estimate prompt growth only when proactive compaction is enabled and the
+		// model reports an input limit for it to fire against. Without a limit,
+		// compaction can never trigger, so the per-step conversation walk that
+		// feeds the estimate would be pure waste.
 		var currentPromptTextLen int
 		if a.compactFunc != nil {
-			currentPromptTextLen = a.conversationTextLen()
-			if lastInputTokens > 0 {
-				estimatedInputTokens := estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen)
-				if limit := a.llm.InputLimit(); limit > 0 && NeedsCompaction(estimatedInputTokens, limit) {
-					if a.compact(ctx) {
-						continue
+			if limit := a.llm.InputLimit(); limit > 0 {
+				currentPromptTextLen = a.conversationTextLen()
+				if lastInputTokens > 0 {
+					estimatedInputTokens := estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen)
+					if NeedsCompaction(estimatedInputTokens, limit) {
+						if a.compact(ctx) {
+							continue
+						}
 					}
 				}
 			}

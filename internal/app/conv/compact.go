@@ -45,6 +45,14 @@ func (c *CompactState) ClearResult() {
 	c.LastError = false
 }
 
+// Clear stops the in-progress compaction indicator (Active + Phase) without
+// touching the completed-summary result fields. Used on both the success
+// boundary and the failure fall-through into the next inference.
+func (c *CompactState) Clear() {
+	c.Active = false
+	c.Phase = ""
+}
+
 func (c *CompactState) Complete(result string, isError bool) {
 	c.Active = false
 	c.SummaryFocus = ""

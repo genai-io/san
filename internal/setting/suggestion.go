@@ -46,13 +46,9 @@ func GenerateSuggestions(toolName string, args map[string]any, maxSuggestions in
 		if cmd, ok := args["command"].(string); ok {
 			return suggestBashRules(cmd, maxSuggestions)
 		}
-	case "Edit":
-		// Edit takes "path"; Write/Read take "file_path" (see permission.BuildRule).
-		if fp, ok := args["path"].(string); ok {
-			return suggestFileRules(toolName, fp)
-		}
-	case "Write":
-		if fp, ok := args["file_path"].(string); ok {
+	case "Edit", "Write":
+		// Edit takes "path", Write "file_path"; filePathArg owns that mapping.
+		if fp, ok := filePathArg(toolName, args); ok {
 			return suggestFileRules(toolName, fp)
 		}
 	case "Skill":

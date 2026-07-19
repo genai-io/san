@@ -80,8 +80,7 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 	if trigger == "manual" {
 		m.conv.Compact.Complete(fmt.Sprintf("Condensed %d earlier messages.", info.OriginalCount), false)
 	} else {
-		m.conv.Compact.Active = false
-		m.conv.Compact.Phase = ""
+		m.conv.Compact.Clear()
 	}
 	m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: trigger})
 
