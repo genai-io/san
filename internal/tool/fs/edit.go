@@ -158,10 +158,12 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	}
 
 	duration := time.Since(start)
-	output := "Edited " + filePath
+	changes := perm.GenerateDiff(filePath, oldContent, newContent)
+	output := fmt.Sprintf("Edited %s (+%d -%d", filePath, changes.AddedCount, changes.RemovedCount)
 	if replaceCount > 1 {
-		output += " (" + strconv.Itoa(replaceCount) + " replacements)"
+		output += fmt.Sprintf(", %d replacements", replaceCount)
 	}
+	output += ")"
 
 	return toolresult.ToolResult{
 		Success: true,

@@ -17,15 +17,14 @@ func stripANSI(s string) string {
 func TestMDRenderer_AgentBodyRendererReused(t *testing.T) {
 	r := NewMDRenderer(80)
 
-	// The child must be built once and reused across frames — see agentChild.
+	// The child is cached across renders.
 	first := r.agentBodyRenderer()
 	second := r.agentBodyRenderer()
 	if first != second {
 		t.Fatalf("agentBodyRenderer built a fresh renderer instead of reusing the cached one")
 	}
 
-	// Width is narrowed by the indent, matching the pre-cache
-	// NewMDRenderer(parent.width - indent) construction.
+	// The child width accounts for the indent.
 	want := NewMDRenderer(r.width - len(agentContentIndent)).width
 	if first.width != want {
 		t.Errorf("child width = %d, want %d", first.width, want)

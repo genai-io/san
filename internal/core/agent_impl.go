@@ -326,10 +326,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			}
 		}
 
-		// Pre-infer compaction: estimate the next prompt size from the latest
-		// known prompt-token count and current conversation growth. Only this
-		// path reads the size, so skip the full-history walk entirely when
-		// compaction is disabled.
+		// Estimate prompt growth only when proactive compaction is enabled.
 		var currentPromptTextLen int
 		if a.compactFunc != nil {
 			currentPromptTextLen = a.conversationTextLen()
@@ -820,8 +817,7 @@ func (a *agent) snapshot() []Message {
 	return cp
 }
 
-// conversationTextLen locks and delegates to the conversationTextLen helper over
-// the live slice — no snapshot copy, unlike len(BuildConversationText(a.snapshot())).
+// conversationTextLen reads the live history without making a snapshot copy.
 func (a *agent) conversationTextLen() int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

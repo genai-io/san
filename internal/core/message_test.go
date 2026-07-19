@@ -5,12 +5,7 @@ import (
 	"testing"
 )
 
-// conversationTextLen must equal len(BuildConversationText(...)) exactly — it is
-// the cheap size proxy ThinkAct feeds to the compaction estimator in place of
-// materializing the whole conversation string every step. If the two ever drift,
-// the estimate silently shifts. Covers every output branch: kept reminders, tool
-// calls (deduped), short and >500-char (truncated) tool results, and the header
-// on an empty conversation.
+// The counting path must match the materialized conversation text.
 func TestConversationTextLenMatchesBuild(t *testing.T) {
 	long := strings.Repeat("x", 800)
 	msgs := []Message{

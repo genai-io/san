@@ -2,9 +2,8 @@
 
 A subagent is a markdown-defined **agent type** — a system prompt + tool
 subset + permission mode that the foreground agent can spawn via the
-`Agent` tool. A foreground subagent returns through the tool result; a
-background subagent runs in parallel and reports completion to the main
-conversation.
+`Agent` tool. Foreground subagents return a tool result; background ones notify
+the main conversation when done.
 
 For the system-level design see [`packages/subagent.md`](../packages/2-feature/subagent.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
@@ -46,21 +45,20 @@ Be terse. No code suggestions — that is the parent agent's job.
 | Field | Required | Purpose |
 |---|---|---|
 | `name` | yes | Subagent type identifier; used in the `Agent` tool's `subagent_type` field. |
-| `description` | yes | Shown in selectors and used by the foreground model to decide when to spawn this agent. |
-| `allow_tools` | no | Restrict the subagent's tool set (nil = all tools). Aliases accepted: `allowed-tools`, and Claude Code's `tools`. |
-| `deny_tools` | no | Tools (or `Tool(pattern)` rules) removed regardless of mode. |
-| `mode` | no | Permission mode: `default`, `explore`, `edit` (alias of `acceptEdits`), `bypassPermissions`. Alias accepted: `permission-mode`. See below. |
-| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another connected provider when available, otherwise inherits the parent's. |
-| `max-steps` | no | Cap on LLM inference steps (default 100). Alias accepted: `max_steps`. |
-| `skills` | no | Skill names whose bodies are preloaded into the agent's charter. |
+| `description` | yes | Helps the foreground model decide when to spawn this agent. |
+| `allow_tools` | no | Allowed tools. Defaults to all; aliases: `allowed-tools`, `tools`. |
+| `deny_tools` | no | Removes tools or `Tool(pattern)` rules. |
+| `mode` | no | `default`, `explore`, `edit` (`acceptEdits`), or `bypassPermissions`; alias: `permission-mode`. |
+| `model` | no | Defaults to the parent's model. Aliases/bare IDs use its provider; `vendor/model` uses a connected provider or falls back to the parent. |
+| `max-steps` | no | Maximum LLM steps; default: 100. Alias: `max_steps`. |
+| `skills` | no | Skills preloaded into the agent charter. |
 
 Canonical keys win when both a canonical key and its alias are present.
 
 ## Cross-Provider Models
 
-The `model:` field lets each subagent run on the model that fits its role —
-using only frontmatter, with no router or extra config. A `vendor/model` value
-routes the agent to another **connected** provider:
+The `model:` field selects a model for this subagent. `vendor/model` routes to
+a connected provider:
 
 | Agent | `model:` | Why |
 |---|---|---|
@@ -76,13 +74,12 @@ routes the agent to another **connected** provider:
 - `vendor/model` (e.g. `deepseek/deepseek-v4`) — routed to another **connected**
   provider.
 
-The `vendor` names the model family, not the serving platform: auth comes from
-how you connected that vendor, so Claude-on-Vertex is still `anthropic/…`. If
-the vendor is not connected or its client cannot be built, San inherits the
-parent's provider and model.
+The vendor names the model family, not its hosting platform: Claude on Vertex
+is still `anthropic/…`. If unavailable, San uses the parent's provider and
+model.
 
-No policy engine is needed: the foreground agent picks which agent to spawn from
-each `description` / `when-to-use`, so choosing the agent chooses the model.
+The foreground agent selects an agent by `description` / `when-to-use`; that
+also selects its model.
 
 ## Permission Mode
 
@@ -91,14 +88,13 @@ controls what happens when a tool call would normally `ask`:
 
 | Mode | Behavior |
 |---|---|
-| `explore` | Read-only: mutating tools are denied and hidden from the schema list. |
-| `default` | Reads auto-allow; `ask` collapses to `deny`, so mutations are blocked unless an `allow_tools` rule covers them. |
-| `edit` (= `acceptEdits`) | Edit/Write auto-allow; other gated tools (e.g. unrestricted Bash) are denied. |
-| `bypassPermissions` | Everything allowed except bypass-immune safety checks. Trusted agents only — no human in the loop. |
+| `explore` | Read-only; mutating tools are unavailable. |
+| `default` | Reads allowed; `ask` becomes `deny`, unless allowed by `allow_tools`. |
+| `edit` (= `acceptEdits`) | Edit/Write allowed; other gated tools, such as unrestricted Bash, are denied. |
+| `bypassPermissions` | Allows all but bypass-immune safety checks. Use only for trusted agents. |
 
-The `Agent` tool is never available to subagents — the agent model is flat,
-and only the main conversation spawns subagents. `SendMessage` (a subagent
-reporting to `"main"`) follows the ordinary mode pipeline.
+Subagents cannot spawn subagents. `SendMessage(to="main", ...)` follows the
+normal mode rules.
 
 See [`packages/broker.md`](../packages/2-feature/broker.md)
 for the message queue and [`concepts/permission-model.md`](../concepts/permission-model.md)
@@ -120,28 +116,19 @@ San:
 
 1. Looks up `test-runner` in the subagent registry.
 2. Builds a `core.Agent` with the subagent's charter and tool subset.
-3. Runs it in the spawning turn (foreground), or as a `task.AgentTask`
-   with `run_in_background: true`.
-4. Returns the final aggregated result to the parent agent — as the tool
-   result (foreground) or a `<task-notification>` on completion
+3. Runs it foreground, or as a `task.AgentTask` when `run_in_background` is true.
+4. Returns a tool result (foreground) or completion `<task-notification>`
    (background).
 
 ## Talking to a Running Worker
 
-A background subagent registers with the broker for its whole run — see
-[`packages/broker.md`](../packages/2-feature/broker.md) for
-the model:
+A background subagent registers with the broker while running:
 
-- **Steer**: `SendMessage(to=<task id>, message)` posts into the running
-  subagent's inbox; it reads the message at its next step. Best-effort — a
-  subagent that has finished, or is deep in a long tool call, may not see it.
-- **Report to main**: inside a background subagent,
-  `SendMessage(to="main", message)` sends an interim note without ending the
-  run. The subagent's *final* answer returns on its own as a completion —
-  don't use `SendMessage` for it.
-- **Stop**: `TaskStop` cancels a run (status `killed`, distinct from
-  `failed`). Subagents are one-shot — there is no resume; spawn a fresh one to
-  continue a line of work.
+- **Steer**: `SendMessage(to=<task id>, message)` sends a message that it reads
+  on its next step. Delivery is best-effort.
+- **Report to main**: `SendMessage(to="main", message)` sends an interim note.
+  The final answer returns automatically on completion.
+- **Stop**: `TaskStop` cancels the run. Start a new subagent to continue.
 
 ## Trying It
 

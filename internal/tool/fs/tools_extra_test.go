@@ -162,8 +162,35 @@ func TestEdit_Fails_WhenOldStringNotUnique(t *testing.T) {
 	})
 }
 
-// TestGlob_PatternMatching verifies that the Glob tool correctly handles
-// ** (recursive) and ? (single character) wildcard patterns.
+func TestEditReportsLineChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "example.txt")
+	if err := os.WriteFile(filePath, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path":  filePath,
+		"old_string": "two\n",
+		"new_string": "two\nextra\n",
+	}, tmpDir)
+	if !result.Success {
+		t.Fatalf("Edit failed: %s", result.Output)
+	}
+	if !strings.Contains(result.Output, "+1 -0") {
+		t.Fatalf("Edit output = %q, want line counts", result.Output)
+	}
+
+	failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path":  filePath,
+		"old_string": "missing",
+		"new_string": "replacement",
+	}, tmpDir)
+	if failed.Success || !strings.Contains(failed.FormatForLLM(), "not found in current file") {
+		t.Fatalf("failed Edit = %+v, want failure reason", failed)
+	}
+}
+
 func TestGlob_PatternMatching(t *testing.T) {
 	// Create a temp directory structure:
 	//   root/

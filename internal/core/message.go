@@ -335,22 +335,15 @@ func buildConversationText(msgs []Message, stripReminders bool) string {
 	return sb.String()
 }
 
-// conversationTextLen returns len(BuildConversationText(msgs)) without
-// materializing the string. The full-history text is rebuilt on every inference
-// step purely to size the next prompt for proactive compaction (see
-// agent.ThinkAct), so allocating and discarding a hundreds-of-KB string each
-// step is waste that grows O(history²) over a session. It shares
-// writeConversationText with buildConversationText, so the count can never
-// drift from the string BuildConversationText would produce
-// (TestConversationTextLenMatchesBuild pins this).
+// conversationTextLen returns the conversation text length without allocating it.
+// It shares the formatter with BuildConversationText to keep both results aligned.
 func conversationTextLen(msgs []Message) int {
 	var c lenCounter
 	writeConversationText(&c, msgs, false)
 	return int(c)
 }
 
-// lenCounter is an io.Writer that counts the bytes written to it and discards
-// them, so a formatter can measure its output without buffering it.
+// lenCounter counts bytes written without storing them.
 type lenCounter int
 
 func (c *lenCounter) Write(p []byte) (int, error) {
@@ -358,10 +351,8 @@ func (c *lenCounter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// writeConversationText renders the conversation as summarizable plain text to
-// w. buildConversationText writes to a strings.Builder; conversationTextLen
-// writes to a lenCounter — sharing this one walk keeps their outputs in lockstep.
-// stripReminders drops trailing <system-reminder> blocks (see BuildCompactionText).
+// writeConversationText renders plain text for conversation summarization.
+// Both builders and counters use it to produce matching output.
 func writeConversationText(w io.Writer, msgs []Message, stripReminders bool) {
 	io.WriteString(w, "Please summarize this coding conversation:\n\n")
 

@@ -1,6 +1,6 @@
 <div align="center">
   <h1>&lt; SAN ✦ /&gt;</h1>
-  <p><strong>A fast, open agent harness for the terminal</strong></p>
+  <p><strong>A fast, open agent harness for the terminal, built on a flexible and extensible architecture.</strong></p>
   <p>
     <a href="https://github.com/genai-io/san/releases"><img src="https://img.shields.io/github/v/release/genai-io/san?style=flat-square" alt="Release"></a>
     <a href="https://genai-io.github.io/san/"><img src="https://img.shields.io/badge/Website-0d9488?style=flat-square" alt="Website"></a>
@@ -21,15 +21,14 @@
   </p>
 </div>
 
-San is an open-source **agent harness for the terminal** — one native Go binary
-that wraps any model in a fast, inspectable, permission-gated loop. Bring your own
-model and extensions; there's no Node.js or Python runtime to install.
+San is an open-source terminal agent harness: one native Go binary for
+model-driven work, with no Node.js or Python runtime.
 
 **Why San**
 
 - **Fast** — a ~12 MB single binary, ~0.01s cold start, no separate runtime.
 - **Open** — swap the model, search, and tools at runtime; bring your own persona profiles and extensions.
-- **Harness** — tune policies, not just parts: customize **autopilot** to cut human-in-the-loop, and **self-learning** — memory and skills it grows and refines — as you work.
+- **Harness** — configure permissions, autopilot, memory, and skills for your workflow.
 
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
@@ -46,7 +45,7 @@ model and extensions; there's no Node.js or Python runtime to install.
 
 - **Models** — Anthropic, OpenAI, Google, DeepSeek, Moonshot, Alibaba, MiniMax, Z.ai (GLM), SenseNova, Mimo, Volcengine (Ark), Ollama (local), Agnes-AI. `/model`
 - **Search** — Exa, Tavily, Brave, Serper. `/search`
-- **Personas & extensions** — reusable profiles, plus Claude Code skills, plugins, MCP servers, hooks, and sandboxed subagents — all run unmodified. `/persona`
+- **Personas & extensions** — reusable profiles, skills, plugins, MCP servers, hooks, and permission-gated subagents. `/persona`
 - **Self-learning** — opt-in; distills durable memory and reusable skills with configurable cadence and caps. *(Level 1; deeper levels on the way.)*
 
 ### Engineering
@@ -72,7 +71,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-Re-run to upgrade.
+Start with `san`. On first launch, choose a model and add its API key when prompted. To update later, run `san update`.
 
 <details>
 <summary><b>Other methods</b></summary>
@@ -89,7 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1))) uninstall
 ```
 
-**Go Install**
+**Go Install (requires Go 1.25.8+)**
 
 ```bash
 go install github.com/genai-io/san/cmd/san@latest
@@ -117,7 +116,7 @@ san --resume                     # pick a past session to resume
 
 # Subcommands (run `san <command> --help` for the full list)
 san inspector                    # session transcript viewer
-san agent run --type Explore --prompt "..."   # run a headless agent
+san agent run --type general-purpose --prompt "..."  # run a headless agent
 san plugin <list|install|enable|...>          # manage plugins
 san mcp <add|list|remove|...>                 # manage MCP servers
 ```
@@ -139,7 +138,7 @@ For API keys, set the matching env var (see Credentials below) or paste when pro
 
 ### Configuration
 
-Config lives in `~/.san/` (user) and `<project>/.san/` (project, overrides user). A `SAN.md` or `CLAUDE.md` at the project root is auto-loaded into the system prompt.
+Configuration is loaded from `~/.san/` and `<project>/.san/` (project settings override user settings). Project instructions are read from `.san/SAN.md`, `SAN.md`, `.claude/CLAUDE.md`, or `CLAUDE.md`, in that order.
 
 <details>
 <summary><b>Credentials</b></summary>

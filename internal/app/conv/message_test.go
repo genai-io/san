@@ -702,13 +702,13 @@ func Test_formatToolResultSizeUsesNoOutputForEmptyContent(t *testing.T) {
 	}
 }
 
-func TestRenderToolResultInlineHidesSuccessfulEditSummary(t *testing.T) {
-	got := RenderToolResultInline(ToolResultData{
+func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
+	result := stripANSI(RenderToolResultInline(ToolResultData{
 		ToolName: "Edit",
 		Content:  "Edited /tmp/example.go",
-	}, nil)
-	if got != "" {
-		t.Fatalf("successful Edit result = %q, want no redundant summary", got)
+	}, nil))
+	if !strings.Contains(result, "Edit →") {
+		t.Fatalf("successful Edit result should be visible, got %q", result)
 	}
 
 	errResult := stripANSI(RenderToolResultInline(ToolResultData{
@@ -721,7 +721,7 @@ func TestRenderToolResultInlineHidesSuccessfulEditSummary(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsKeepsEditCallWithoutRedundantResult(t *testing.T) {
+func TestRenderToolCallsShowsEditResult(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "edit-1",
 		Name:  "Edit",
@@ -737,8 +737,8 @@ func TestRenderToolCallsKeepsEditCallWithoutRedundantResult(t *testing.T) {
 	if !strings.Contains(rendered, "Edit(internal/app/view.go)") {
 		t.Fatalf("completed Edit call should remain visible, got %q", rendered)
 	}
-	if strings.Contains(rendered, "Edit →") {
-		t.Fatalf("redundant Edit result should be hidden, got %q", rendered)
+	if !strings.Contains(rendered, "Edit →") {
+		t.Fatalf("Edit result should be visible, got %q", rendered)
 	}
 }
 
