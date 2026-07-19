@@ -49,6 +49,18 @@ func (t *modelsErrorTransport) RoundTrip(req *http.Request) (*http.Response, err
 	}, nil
 }
 
+type modelsTransport struct{ body string }
+
+func (t *modelsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(t.body)),
+		Request:    req,
+	}, nil
+}
+
 func TestMoonshotAssistantMessagesIncludeReasoningContent(t *testing.T) {
 	transport := &captureTransport{}
 	client := openai.NewClient(
@@ -121,5 +133,59 @@ func TestMoonshotListModelsReturnsErrorOnAPIFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "401") {
 		t.Fatalf("expected auth error, got %v", err)
+	}
+}
+
+func TestMoonshotListModelsUsesContextLengthFromAPI(t *testing.T) {
+	client := openai.NewClient(
+		option.WithAPIKey("test"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: &modelsTransport{body: `{
+			"object": "list",
+			"data": [
+				{"id": "kimi-k2.6", "object": "model", "context_length": 262144},
+				{"id": "kimi-k3", "object": "model", "context_length": 1048576}
+			]
+		}`}}),
+	)
+	c := NewClient(client, "moonshot:test")
+
+	models, err := c.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+
+	byID := make(map[string]llm.ModelInfo, len(models))
+	for _, model := range models {
+		byID[model.ID] = model
+	}
+	if got := byID["kimi-k2.6"].InputTokenLimit; got != 262_144 {
+		t.Errorf("kimi-k2.6 context limit = %d, want 262144", got)
+	}
+	if got := byID["kimi-k3"].InputTokenLimit; got != 1_048_576 {
+		t.Errorf("kimi-k3 context limit = %d, want 1048576", got)
+	}
+}
+
+func TestMoonshotListModelsFallsBackWhenContextLengthMissing(t *testing.T) {
+	client := openai.NewClient(
+		option.WithAPIKey("test"),
+		option.WithBaseURL("https://example.com/v1"),
+		option.WithHTTPClient(&http.Client{Transport: &modelsTransport{body: `{
+			"object": "list",
+			"data": [{"id": "kimi-k2.6", "object": "model"}]
+		}`}}),
+	)
+	c := NewClient(client, "moonshot:test")
+
+	models, err := c.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("got %d models, want 1", len(models))
+	}
+	if got := models[0].InputTokenLimit; got != 262_144 {
+		t.Errorf("fallback context limit = %d, want 262144", got)
 	}
 }

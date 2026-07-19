@@ -841,3 +841,29 @@ func TestRebuildVisibleItemsStructure(t *testing.T) {
 		t.Fatalf("selectedIdx should be 1 (first model), got %d", m.selectedIdx)
 	}
 }
+
+func TestRebuildModelsTabSortsByNameDescending(t *testing.T) {
+	m := NewProviderSelector()
+	m.activeTab = providerTabModels
+	m.allModels = []providerModelItem{
+		{ID: "current-small", DisplayName: "Current small", ProviderName: "moonshot", InputTokenLimit: 16_000, IsCurrent: true},
+		{ID: "unknown", DisplayName: "Unknown", ProviderName: "moonshot"},
+		{ID: "medium-b", DisplayName: "Beta", ProviderName: "moonshot", InputTokenLimit: 128_000},
+		{ID: "large", DisplayName: "Large", ProviderName: "moonshot", InputTokenLimit: 1_048_576},
+		{ID: "medium-a", DisplayName: "Alpha", ProviderName: "moonshot", InputTokenLimit: 128_000},
+	}
+	m.connectedProviders = []providerProviderItem{{Provider: "moonshot", DisplayName: "Kimi"}}
+
+	m.rebuildVisibleItems()
+
+	var ids []string
+	for _, item := range m.visibleItems {
+		if item.Kind == providerItemModel && item.Model != nil {
+			ids = append(ids, item.Model.ID)
+		}
+	}
+	want := []string{"unknown", "large", "current-small", "medium-b", "medium-a"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Fatalf("model order = %v, want %v", ids, want)
+	}
+}

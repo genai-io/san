@@ -108,6 +108,7 @@ func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, strin
 
 func (m *model) switchProvider(p llm.Provider) {
 	m.env.LLMProvider = p
+	m.services.LLM.SetProvider(p)
 	m.services.Hook.SetLLMCompleter(buildHookCompleter(p), m.env.GetModelID())
 }
 

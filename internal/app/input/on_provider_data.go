@@ -290,10 +290,7 @@ func (s *ProviderSelector) rebuildModelsTab() {
 			ProviderIdx: i,
 		})
 
-		// Sort models: current first
-		sort.SliceStable(models, func(a, b int) bool {
-			return models[a].IsCurrent && !models[b].IsCurrent
-		})
+		sortProviderModelsByNameDescending(models)
 
 		for j := range models {
 			s.visibleItems = append(s.visibleItems, providerListItem{
@@ -303,6 +300,30 @@ func (s *ProviderSelector) rebuildModelsTab() {
 			})
 		}
 	}
+}
+
+// sortProviderModelsByNameDescending keeps each provider's model picker in a
+// predictable descending name order. Context-window metadata is independent of
+// presentation order and remains available in InputTokenLimit.
+func sortProviderModelsByNameDescending(models []providerModelItem) {
+	sort.SliceStable(models, func(a, b int) bool {
+		nameA := modelSortName(models[a])
+		nameB := modelSortName(models[b])
+		if cmp := strings.Compare(strings.ToLower(nameA), strings.ToLower(nameB)); cmp != 0 {
+			return cmp > 0
+		}
+		return strings.Compare(models[a].ID, models[b].ID) > 0
+	})
+}
+
+func modelSortName(model providerModelItem) string {
+	if model.DisplayName != "" {
+		return model.DisplayName
+	}
+	if model.Name != "" {
+		return model.Name
+	}
+	return model.ID
 }
 
 // rebuildProvidersTab builds visible items for the Providers tab.

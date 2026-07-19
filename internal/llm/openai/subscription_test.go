@@ -280,6 +280,8 @@ func TestSubscriptionCatalogParsesLiveResponse(t *testing.T) {
 		"gpt-5.6-terra": "Deeper reasoning for hard tasks.",
 		"gpt-5.6-luna":  "Long-context specialist.",
 	}
+	// context_window takes priority over the static gpt-5.x fallback (400k),
+	// so the live 372k context window remains accurate for this subscription.
 	for _, id := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		if got, ok := byID[id]; !ok || got.InputTokenLimit != 372000 {
 			t.Errorf("%s = %+v (present=%v), want limit 372000", id, got, ok)

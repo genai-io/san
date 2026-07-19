@@ -2,10 +2,8 @@ package moonshot
 
 import "strings"
 
-// staticInputLimit returns the known context window for Kimi/Moonshot
-// model IDs. Moonshot's /v1/models endpoint doesn't include context_length,
-// so we parse it from the model ID suffix (8k/32k/128k) or default by
-// model family.
+// staticInputLimit returns the known context window for Kimi/Moonshot model
+// IDs when the /v1/models response does not include context_length.
 func staticInputLimit(modelID string) int {
 	m := strings.ToLower(modelID)
 	switch {
