@@ -3,9 +3,45 @@ package core
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+// drainInbox is non-blocking by default, but when pendingInput signals a
+// UI-queued message is coming it waits a brief window and picks up a message
+// that arrives just after the boundary — one a non-blocking drain would miss.
+func TestDrainInboxWaitsForPendingInput(t *testing.T) {
+	ag := NewAgent(Config{ID: "t", LLM: newBlockingLLM(1), System: NewSystem(), Tools: NewTools()})
+	a := ag.(*agent)
+	go func() {
+		for range ag.Outbox() { // drain so ingest's MessageEvent never blocks
+		}
+	}()
+
+	// No pendingInput → empty inbox drains to nothing immediately.
+	if n, err := a.drainInbox(context.Background()); err != nil || n != 0 {
+		t.Fatalf("non-blocking drain of empty inbox = (%d, %v), want (0, nil)", n, err)
+	}
+
+	// pendingInput set → a message arriving just after is still ingested.
+	pending := &atomic.Bool{}
+	pending.Store(true)
+	a.pendingInput = pending
+	go func() {
+		time.Sleep(15 * time.Millisecond)
+		a.inbox <- UserMessage("steer", nil)
+	}()
+	if n, err := a.drainInbox(context.Background()); err != nil || n != 1 {
+		t.Fatalf("waiting drain = (%d, %v), want (1, nil)", n, err)
+	}
+
+	// pendingInput cleared → back to non-blocking, empty drain returns at once.
+	pending.Store(false)
+	if n, err := a.drainInbox(context.Background()); err != nil || n != 0 {
+		t.Fatalf("non-blocking drain after clear = (%d, %v), want (0, nil)", n, err)
+	}
+}
 
 // Compaction must record the synthetic summary as a normal message.appended
 // (so replay can resolve the ID the next inference references) and emit a

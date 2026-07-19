@@ -27,6 +27,9 @@ type Runtime interface {
 	// call (nil if it was not auto-reviewed), to stamp onto its rendered result.
 	TakeDecision(callID string) *core.ReviewDecision
 	OnTurnEnd(result core.Result) tea.Cmd
+	// DrainQueuedAtStep releases one queued user message to the agent at a step
+	// boundary (a continuing turn), so it is ingested before the next step.
+	DrainQueuedAtStep() tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnPermGateRequest(req *PermGateRequest) tea.Cmd
 	OnCompactStart(count int) tea.Cmd

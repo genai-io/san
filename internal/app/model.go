@@ -44,8 +44,20 @@ type model struct {
 	// interim messages) and self-learn notices land here; they drain at turn
 	// boundaries, show as a notice, then go through SubmitToAgent into the main
 	// agent's real core.Agent inbox. See notify.go.
-	mainNotices     chan mainNotice
-	pendingNotices  []mainNotice         // notices that arrived mid-stream, drained at OnTurnEnd
+	mainNotices    chan mainNotice
+	pendingNotices []mainNotice // notices that arrived mid-stream, drained at OnTurnEnd
+	// stepDrainPending holds the content of queued user messages released to the
+	// agent mid-turn by DrainQueuedAtStep, awaiting their ingest echo so the UI
+	// can display them at the moment the agent picks them up (see OnAgentMessage).
+	stepDrainPending []string
+	// pendingInput mirrors "the input queue has a message ready for the agent" to
+	// the agent goroutine, so its drainInbox waits briefly at a step boundary for
+	// the UI to release that message. Shared by pointer with every (re)built agent;
+	// kept in sync by syncPendingInput on queue changes.
+	pendingInput *atomic.Bool
+	// drainedThisStep caps DrainQueuedAtStep to one queued message per step
+	// (PostTool fires once per tool). Reset each step in OnTokenUsage (PostInfer).
+	drainedThisStep bool
 	selfLearnStarts chan struct{}        // fork goroutine → Update loop: a review started (start the spinner)
 	systemInput     trigger.Model        // Source 3: system events (cron/hooks/watcher)
 	conv            conv.Model           // Agent Outbox: conversation + output rendering

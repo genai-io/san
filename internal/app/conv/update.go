@@ -280,7 +280,11 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		// here — the handoff map keeps only in-flight calls.
 		Decision: rt.TakeDecision(tr.ToolCallID),
 	})
-	return nil
+	// A completed tool means the turn continues (the agent loops to its next
+	// drainInbox), so this is a step boundary: release the head queued user
+	// message to the agent now — it waits briefly for it (pendingInput) and takes
+	// it into the next step. One release per step (see DrainQueuedAtStep).
+	return rt.DrainQueuedAtStep()
 }
 
 // --- Activity handling (operates on output Model directly) ---

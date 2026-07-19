@@ -23,6 +23,9 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 	if resp == nil {
 		return
 	}
+	// PostInfer starts a new step: re-arm the one-per-step queue release that
+	// this step's PostTool events will use (see DrainQueuedAtStep).
+	m.drainedThisStep = false
 
 	if m.userInput.Provider.StatusMessage == "compacted" {
 		m.userInput.Provider.StatusMessage = ""
@@ -50,11 +53,59 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 
 func (m *model) HasRunningTasks() bool { return m.services.Tracker.HasInProgress() }
 
-// OnAgentMessage observes the agent's MessageEvent echoes. Every path
-// that hands a user message to the agent appends to m.conv at the call site,
-// so the echo has nothing to do here — appending again would double-display.
-func (m *model) OnAgentMessage(core.Message) tea.Cmd {
+// OnAgentMessage observes the agent's MessageEvent echoes. Most paths append the
+// user message to m.conv at the call site, so their echo has nothing to do here —
+// appending again would double-display. The exception is a queued message
+// released mid-turn by DrainQueuedAtStep: it is sent to the inbox WITHOUT a
+// call-site append, so it is displayed here, when the agent has actually ingested
+// it — which lands its "❭" line right before the step that addresses it. Matched
+// by content in FIFO order against stepDrainPending.
+func (m *model) OnAgentMessage(msg core.Message) tea.Cmd {
+	if len(m.stepDrainPending) > 0 && m.stepDrainPending[0] == msg.Content {
+		m.stepDrainPending = m.stepDrainPending[1:]
+		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: msg.Content, Images: msg.Images})
+		return tea.Batch(m.CommitMessages()...)
+	}
 	return nil
+}
+
+// DrainQueuedAtStep releases one queued user message to the running agent at a
+// step boundary (a PostTool, where the turn continues). The agent's drainInbox
+// waits briefly for it (m.pendingInput), takes it into the next step, and the
+// LLM's next response addresses it — so the message stays editable in the queue
+// right up to this release. One release per step (drainedThisStep); the head
+// item is left in place while under edit. Display happens on the ingest echo.
+func (m *model) DrainQueuedAtStep() tea.Cmd {
+	if m.drainedThisStep || !m.services.Agent.Active() || m.userInput.Queue.SelectIdx == 0 {
+		return nil
+	}
+	item, ok := m.userInput.Queue.Dequeue()
+	if !ok {
+		return nil
+	}
+	m.drainedThisStep = true
+	if m.imagesBlockedForModel(item.Images) {
+		// Return it rather than dropping it; the notice tells the user why.
+		m.userInput.ReturnToTextarea(item.Content, item.Images)
+		return tea.Batch(m.CommitMessages()...)
+	}
+	m.stepDrainPending = append(m.stepDrainPending, item.Content)
+	svc, content, images := m.services.Agent, item.Content, item.Images
+	return func() tea.Msg {
+		svc.Send(content, images)
+		return nil
+	}
+}
+
+// syncPendingInput mirrors "the queue has a message ready for the agent" into
+// m.pendingInput, so the agent's drainInbox waits briefly for it at a step
+// boundary. A head item under edit is not ready (DrainQueuedAtStep skips it), so
+// the agent must not wait on it. Called after every event (see Update).
+func (m *model) syncPendingInput() {
+	if m.pendingInput == nil {
+		return
+	}
+	m.pendingInput.Store(m.userInput.Queue.Len() > 0 && m.userInput.Queue.SelectIdx != 0)
 }
 
 func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {

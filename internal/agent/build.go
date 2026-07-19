@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -65,6 +66,11 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
 	OnEvent func(core.Event)
+
+	// PendingInput lets the UI signal that its input queue holds a message it
+	// will release at the next step boundary, so the agent's drainInbox waits
+	// a brief window for it. Nil keeps drainInbox non-blocking.
+	PendingInput *atomic.Bool
 }
 
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
@@ -136,13 +142,14 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	}
 
 	ag = core.NewAgent(core.Config{
-		ID:          "main",
-		LLM:         client,
-		System:      sys,
-		Tools:       tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
-		CompactFunc: compactFunc,
-		CWD:         p.CWD,
-		OnEvent:     p.OnEvent,
+		ID:           "main",
+		LLM:          client,
+		System:       sys,
+		Tools:        tool.WithPreToolUseAndPermission(tools, p.HookEngine, pg),
+		CompactFunc:  compactFunc,
+		CWD:          p.CWD,
+		OnEvent:      p.OnEvent,
+		PendingInput: p.PendingInput,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
