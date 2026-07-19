@@ -23,8 +23,7 @@ import (
 
 // ProviderResolver turns a vendor name into a live provider so a subagent can
 // run on a different vendor than its parent. The app wires an *llm.ProviderPool;
-// a nil resolver disables cross-provider routing, in which case an explicit
-// "vendor/model" override errors instead of silently using the parent provider.
+// unresolved explicit "vendor/model" overrides fall back to the parent provider.
 type ProviderResolver interface {
 	Resolve(ctx context.Context, provider llm.Name) (llm.Provider, error)
 }
@@ -87,8 +86,7 @@ func (e *Executor) SetProjectInstructions(instructions string) {
 
 // SetResolver enables cross-provider routing: a subagent whose model is an
 // explicit "vendor/model" override resolves through this resolver instead of
-// reusing the parent's provider. Without it such overrides error rather than
-// silently fall back to the parent.
+// reusing the parent's provider. Unavailable routes fall back to the parent.
 func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
 }
@@ -466,24 +464,24 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 // 3. Parent conversation model ("inherit" or empty)
 //
 // An explicit "vendor/model" override routes to that vendor through the
-// resolver, erroring if the vendor is not connected. Every other form — an
-// alias, a bare model id, or "inherit" — stays on the parent's provider,
-// preserving prior behavior.
+// resolver only when a linked provider can be resolved. Otherwise it falls
+// back to the parent conversation. Every other form — an alias, a bare model
+// id, or "inherit" — stays on the parent's provider, preserving prior behavior.
 func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (llm.Provider, string, error) {
-	ref := requestModel
+	ref := strings.TrimSpace(requestModel)
 	if ref == "" {
-		ref = configModel
+		ref = strings.TrimSpace(configModel)
 	}
 	if ref == "" || ref == "inherit" {
 		return e.provider, e.parentModelID, nil
 	}
 	if vendor, modelID, ok := llm.ParseVendorModel(ref); ok {
 		if e.resolver == nil {
-			return nil, "", fmt.Errorf("model %q routes to provider %q, but cross-provider routing is unavailable", ref, vendor)
+			return e.provider, e.parentModelID, nil
 		}
 		p, err := e.resolver.Resolve(ctx, vendor)
-		if err != nil {
-			return nil, "", fmt.Errorf("model %q: %w", ref, err)
+		if err != nil || p == nil {
+			return e.provider, e.parentModelID, nil
 		}
 		return p, modelID, nil
 	}

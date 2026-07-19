@@ -84,7 +84,7 @@ var agentToolParameters = map[string]any{
 		},
 		"model": map[string]any{
 			"type":        "string",
-			"description": "Optional model override: an alias (sonnet, opus, haiku), a model id on the current provider, or vendor/model (e.g. deepseek/deepseek-v4) to route to another connected provider. If omitted, inherits from parent conversation.",
+			"description": "Optional model override: an alias (sonnet, opus, haiku), a model id on the current provider, or vendor/model (e.g. deepseek/deepseek-v4) to route to another connected provider. If omitted or unavailable, inherits from parent conversation.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",

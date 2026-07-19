@@ -50,7 +50,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `allow_tools` | no | Restrict the subagent's tool set (nil = all tools). Aliases accepted: `allowed-tools`, and Claude Code's `tools`. |
 | `deny_tools` | no | Tools (or `Tool(pattern)` rules) removed regardless of mode. |
 | `mode` | no | Permission mode: `default`, `explore`, `edit` (alias of `acceptEdits`), `bypassPermissions`. Alias accepted: `permission-mode`. See below. |
-| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another **connected** provider. |
+| `model` | no | Pin a model for this subagent; otherwise inherits the parent's. An alias (`opus`/`sonnet`/`haiku`) or bare id uses the parent's provider; `vendor/model` (e.g. `deepseek/deepseek-v4`) routes to another connected provider when available, otherwise inherits the parent's. |
 | `max-steps` | no | Cap on LLM inference steps (default 100). Alias accepted: `max_steps`. |
 | `skills` | no | Skill names whose bodies are preloaded into the agent's charter. |
 
@@ -77,9 +77,9 @@ routes the agent to another **connected** provider:
   provider.
 
 The `vendor` names the model family, not the serving platform: auth comes from
-how you connected that vendor, so Claude-on-Vertex is still `anthropic/…`. A
-role whose vendor isn't connected fails with a clear "provider not connected"
-error instead of silently falling back to the parent's model.
+how you connected that vendor, so Claude-on-Vertex is still `anthropic/…`. If
+the vendor is not connected or its client cannot be built, San inherits the
+parent's provider and model.
 
 No policy engine is needed: the foreground agent picks which agent to spawn from
 each `description` / `when-to-use`, so choosing the agent chooses the model.
