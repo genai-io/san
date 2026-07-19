@@ -26,6 +26,14 @@ type FileStore struct {
 	// scan per process. Delete clears the entry to evict all derived state
 	// at once.
 	sessions map[string]*sessionCache
+
+	// index caches the parsed transcript index so hot writes (every message
+	// append and every state patch) stop re-reading and re-parsing the whole
+	// transcripts-index.json each call. It is populated by saveIndexLocked (the
+	// sole writer of the file) and read through by loadIndexLocked; writes stay
+	// write-through, so on-disk durability is unchanged. nil until the first
+	// load or save.
+	index *fileIndex
 }
 
 // sessionCache holds the derived state we keep in memory to avoid re-scanning
@@ -788,7 +796,16 @@ func (s *FileStore) loadRecordsLocked(path string) ([]Record, error) {
 	return records, nil
 }
 
+// loadIndexLocked returns the transcript index, served from the in-memory
+// cache when populated. On a cache miss it reads and parses the file but does
+// NOT populate s.index — populating is left to saveIndexLocked so this stays a
+// pure read, safe to call while holding only the read lock (listIndexEntries).
+// A read miss (e.g. no index file yet) returns the error for the caller to
+// handle (rebuild, or start a fresh index).
 func (s *FileStore) loadIndexLocked() (*fileIndex, error) {
+	if s.index != nil {
+		return s.index, nil
+	}
 	data, err := os.ReadFile(s.indexPath())
 	if err != nil {
 		return nil, err
@@ -800,6 +817,9 @@ func (s *FileStore) loadIndexLocked() (*fileIndex, error) {
 	return &index, nil
 }
 
+// saveIndexLocked writes the index through to disk and caches it. It is the
+// sole writer of the index file, so caching here keeps s.index coherent with
+// disk. Callers hold the write lock.
 func (s *FileStore) saveIndexLocked(index *fileIndex) error {
 	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
@@ -814,6 +834,7 @@ func (s *FileStore) saveIndexLocked(index *fileIndex) error {
 		os.Remove(tmp)
 		return fmt.Errorf("finalize transcript index: %w", err)
 	}
+	s.index = index
 	return nil
 }
 
