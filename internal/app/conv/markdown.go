@@ -64,6 +64,14 @@ type MDRenderer struct {
 	// ResizeMDRenderer) and buildRenderers drops the cache on a theme change, so
 	// the raw content alone is a sufficient key.
 	cache map[string]string
+	// agentChild renders subagent/task result bodies at a narrower width (see
+	// renderTaskResultInline). It is built once and reused across frames: an
+	// expanded result in the live tail is re-rendered on every repaint, and a
+	// fresh renderer each time rebuilt two glamour pipelines and started from an
+	// empty cache — so Render's memoization never applied. Width is fixed per
+	// parent (a resize builds a new parent via ResizeMDRenderer); buildRenderers
+	// drops the child on a theme change, so it stays in sync with this renderer.
+	agentChild *MDRenderer
 }
 
 // mdCacheMax bounds the render cache. The live working set (the active tail's
@@ -133,6 +141,20 @@ func (r *MDRenderer) buildRenderers(dark bool) {
 	r.darkBg = dark
 	// Rendered output is tied to this width/background; drop any stale entries.
 	r.cache = make(map[string]string)
+	// The narrow child inherits this width/background; rebuild it lazily.
+	r.agentChild = nil
+}
+
+// agentBodyRenderer returns the cached narrow child renderer for subagent/task
+// result bodies; see the agentChild field for why.
+func (r *MDRenderer) agentBodyRenderer() *MDRenderer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rebuildIfNeeded()
+	if r.agentChild == nil {
+		r.agentChild = NewMDRenderer(r.width - len(agentContentIndent))
+	}
+	return r.agentChild
 }
 
 // Render parses markdown source and returns styled terminal output.

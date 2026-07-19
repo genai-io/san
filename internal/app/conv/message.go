@@ -501,8 +501,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			continue
 		}
 		if tool.IsAgentToolName(tc.Name) {
-			label := formatAgentLabel(tc.Input)
-			color := agentColorForInput(tc.Input, params.AgentColors)
+			agent := parseAgentInput(tc.Input)
+			label := formatAgentLabel(agent)
+			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
 			if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
@@ -514,7 +515,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				sb.WriteString("\n")
 			}
 			if params.ToolCallsExpanded && !hasResult {
-				sb.WriteString(formatAgentDefinition(tc.Input, params.Width))
+				sb.WriteString(formatAgentDefinition(agent, params.Width))
 			}
 		} else if params.ToolCallsExpanded {
 			toolLine := renderToolLine(tc.Name, params.Width)

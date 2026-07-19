@@ -14,6 +14,38 @@ func stripANSI(s string) string {
 	return ansiRegex.ReplaceAllString(s, "")
 }
 
+func TestMDRenderer_AgentBodyRendererReused(t *testing.T) {
+	r := NewMDRenderer(80)
+
+	// The child must be built once and reused across frames — see agentChild.
+	first := r.agentBodyRenderer()
+	second := r.agentBodyRenderer()
+	if first != second {
+		t.Fatalf("agentBodyRenderer built a fresh renderer instead of reusing the cached one")
+	}
+
+	// Width is narrowed by the indent, matching the pre-cache
+	// NewMDRenderer(parent.width - indent) construction.
+	want := NewMDRenderer(r.width - len(agentContentIndent)).width
+	if first.width != want {
+		t.Errorf("child width = %d, want %d", first.width, want)
+	}
+
+	// Output is unchanged versus a fresh narrow renderer.
+	const src = "# Title\n\nBody **text** with a `span`."
+	got, err := first.Render(src)
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	fresh, err := NewMDRenderer(r.width - len(agentContentIndent)).Render(src)
+	if err != nil {
+		t.Fatalf("Render error: %v", err)
+	}
+	if got != fresh {
+		t.Errorf("cached child output differs from a fresh narrow renderer")
+	}
+}
+
 func TestMDRenderer_Heading(t *testing.T) {
 	r := NewMDRenderer(80)
 

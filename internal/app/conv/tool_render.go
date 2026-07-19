@@ -453,7 +453,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		if mdRenderer != nil {
 			w = mdRenderer.width
 		}
-		sb.WriteString(formatAgentDefinition(data.ToolInput, w))
+		sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), w))
 	}
 
 	body := ""
@@ -473,8 +473,7 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		sb.WriteString(agentLabelStyle.Render("  ⎿  Response:") + "\n")
 		rendered := response
 		if mdRenderer != nil {
-			narrowRenderer := NewMDRenderer(mdRenderer.width - len(agentContentIndent))
-			if md, err := narrowRenderer.Render(response); err == nil {
+			if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
 				rendered = strings.TrimSpace(md)
 			}
 		}
@@ -564,8 +563,7 @@ func splitByProcessCount(body string, processCount int) (process, response strin
 	return strings.TrimSpace(strings.Join(processLines, "\n")), strings.TrimSpace(rest)
 }
 
-func formatAgentDefinition(input string, width int) string {
-	agent := parseAgentInput(input)
+func formatAgentDefinition(agent agentInput, width int) string {
 	if !agent.Valid {
 		return ""
 	}
@@ -706,8 +704,7 @@ func extractIntField(content, prefix string) int {
 	return n
 }
 
-func formatAgentLabel(input string) string {
-	agent := parseAgentInput(input)
+func formatAgentLabel(agent agentInput) string {
 	if !agent.Valid {
 		return "Agent"
 	}
@@ -1013,11 +1010,14 @@ func agentColor(color string) kit.AdaptiveColor {
 	}
 }
 
-func agentColorForInput(input string, colors map[string]string) string {
+// configuredAgentColor returns the color set for this agent's type in its
+// subagent config (a name like "blue" or a "#rrggbb" hex), or "" when none is
+// set. It is later resolved to a theme color by agentColor.
+func configuredAgentColor(agent agentInput, colors map[string]string) string {
 	if len(colors) == 0 {
 		return ""
 	}
-	return colors[strings.ToLower(parseAgentInput(input).Type)]
+	return colors[strings.ToLower(agent.Type)]
 }
 
 // agentBlinkTicks is the number of spinner ticks per ● / ○ swap.

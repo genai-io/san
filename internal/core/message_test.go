@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+// conversationTextLen must equal len(BuildConversationText(...)) exactly — it is
+// the cheap size proxy ThinkAct feeds to the compaction estimator in place of
+// materializing the whole conversation string every step. If the two ever drift,
+// the estimate silently shifts. Covers every output branch: kept reminders, tool
+// calls (deduped), short and >500-char (truncated) tool results, and the header
+// on an empty conversation.
+func TestConversationTextLenMatchesBuild(t *testing.T) {
+	long := strings.Repeat("x", 800)
+	msgs := []Message{
+		UserMessage("hello <system-reminder>keep me</system-reminder>", nil),
+		AssistantMessage("reasoned reply", "", []ToolCall{
+			{ID: "1", Name: "Bash"},
+			{ID: "2", Name: "Bash"},
+			{ID: "3", Name: "Read"},
+		}),
+		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "1", ToolName: "Bash", Content: "ok"}},
+		{Role: RoleUser, ToolResult: &ToolResult{ToolCallID: "2", ToolName: "Bash", Content: long}},
+		AssistantMessage("final answer", "", nil),
+	}
+
+	if got, want := conversationTextLen(msgs), len(BuildConversationText(msgs)); got != want {
+		t.Fatalf("conversationTextLen() = %d, want len(BuildConversationText()) = %d", got, want)
+	}
+	if got, want := conversationTextLen(nil), len(BuildConversationText(nil)); got != want {
+		t.Fatalf("conversationTextLen(nil) = %d, want %d", got, want)
+	}
+}
+
 func TestBuildConversationTextAggregatesToolCalls(t *testing.T) {
 	text := BuildConversationText([]Message{
 		AssistantMessage("", "", []ToolCall{
