@@ -90,12 +90,12 @@ func injectedSource(text string, m []int) string {
 	return SourceReminder
 }
 
-// MessageBlocks converts a wire message into the transcript content blocks that
+// MessageToBlocks converts a wire message into the transcript content blocks that
 // represent it on disk. It is the single source of truth for that mapping,
 // shared by the append-only save path (messagesToNodes) and the live Recorder
-// (messageToTranscript), so a message serializes identically whichever writer
-// runs. A control-signal / unknown-role message yields nil.
-func MessageBlocks(msg core.Message) []ContentBlock {
+// (onAppend), so a message serializes identically whichever writer runs. A
+// control-signal / unknown-role message yields nil.
+func MessageToBlocks(msg core.Message) []ContentBlock {
 	switch msg.Role {
 	case core.RoleUser:
 		if msg.ToolResult != nil {
@@ -266,7 +266,7 @@ func extractUserText(msg core.Message) (string, bool) {
 	if msg.Role != core.RoleUser || msg.ToolResult != nil {
 		return "", false
 	}
-	for _, block := range MessageBlocks(msg) {
+	for _, block := range MessageToBlocks(msg) {
 		if block.Type == "text" && block.Text != "" {
 			return block.Text, true
 		}

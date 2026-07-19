@@ -8,7 +8,7 @@ import (
 )
 
 // messagesToNodes projects the wire messages onto transcript nodes for the
-// append-only save path. Node content comes from the shared MessageBlocks
+// append-only save path. Node content comes from the shared MessageToBlocks
 // converter — the same one the live Recorder writes through — so both writers
 // produce byte-identical content for a given message ID. Only user/assistant
 // messages become nodes (control signals are not model-visible); each node's
@@ -33,7 +33,7 @@ func messagesToNodes(msgs []core.Message, defaultCwd string, createdAt time.Time
 			Time:      createdAt.Add(time.Duration(len(nodes)+1) * time.Millisecond),
 			Cwd:       defaultCwd,
 			GitBranch: gitBranch,
-			Content:   MessageBlocks(msg),
+			Content:   MessageToBlocks(msg),
 		})
 		prevID = id
 	}

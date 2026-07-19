@@ -204,11 +204,11 @@ func (r *Recorder) onAppend(ev core.Event) {
 		return
 	}
 
-	// Route through the same MessageBlocks converter Store.Save uses, so the
+	// Route through the same MessageToBlocks converter Store.Save uses, so the
 	// dedupe key (message ID) maps to byte-identical content from either writer.
 	// A tool result is a RoleUser message with a non-nil ToolResult; it
 	// serializes as a "user" turn carrying tool_result blocks.
-	content := MessageBlocks(msg)
+	content := MessageToBlocks(msg)
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
