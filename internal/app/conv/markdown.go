@@ -56,7 +56,22 @@ type MDRenderer struct {
 	blockQuoteRenderer *glamour.TermRenderer
 	width              int
 	darkBg             bool // tracks last known terminal background to detect theme changes
+	// cache memoizes Render output keyed by its raw input. The active tail is
+	// re-rendered on every frame — every spinner tick, for the whole duration a
+	// tool runs — while its content sits unchanged, so without this the full
+	// glamour + chroma pipeline re-runs on byte-identical input several times a
+	// second. Width is fixed per renderer (a resize builds a fresh MDRenderer via
+	// ResizeMDRenderer) and buildRenderers drops the cache on a theme change, so
+	// the raw content alone is a sufficient key.
+	cache map[string]string
 }
+
+// mdCacheMax bounds the render cache. The live working set (the active tail's
+// blocks) is tiny; the cap only guards against unbounded growth from the many
+// one-shot renders a long session accumulates (each block is rendered once when
+// committed to scrollback). On overflow the whole map is dropped — visible
+// content simply re-fills it on the next frame.
+const mdCacheMax = 256
 
 // blockQuoteIndentWidth is the visible column cost of the "│ " blockquote prefix.
 const blockQuoteIndentWidth = 2
@@ -116,6 +131,8 @@ func (r *MDRenderer) buildRenderers(dark bool) {
 	r.renderer = buildGlamourRenderer(r.width, dark, nil)
 	r.blockQuoteRenderer = buildGlamourRenderer(max(r.width-blockQuoteIndentWidth, minWrapWidth), dark, &textDim)
 	r.darkBg = dark
+	// Rendered output is tied to this width/background; drop any stale entries.
+	r.cache = make(map[string]string)
 }
 
 // Render parses markdown source and returns styled terminal output.
@@ -125,6 +142,10 @@ func (r *MDRenderer) Render(content string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.rebuildIfNeeded()
+	if cached, ok := r.cache[content]; ok {
+		return cached, nil
+	}
+	key := content
 	// Normalize paragraph line breaks: LLMs often hard-wrap at ~80 columns,
 	// producing softbreaks that glamour preserves as newlines. Joining them
 	// lets glamour re-wrap at the actual terminal width.
@@ -158,7 +179,12 @@ func (r *MDRenderer) Render(content string) (string, error) {
 	if len(parts) > 1 {
 		result = collapseBlankLines(result)
 	}
-	return strings.Trim(result, "\n"), nil
+	out := strings.Trim(result, "\n")
+	if len(r.cache) >= mdCacheMax {
+		clear(r.cache)
+	}
+	r.cache[key] = out
+	return out, nil
 }
 
 // segmentKind identifies what type of markdown block a segment contains.
