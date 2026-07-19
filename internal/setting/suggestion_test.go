@@ -67,18 +67,23 @@ func TestGenerateSuggestions_File(t *testing.T) {
 	tests := []struct {
 		name     string
 		toolName string
+		pathKey  string // the arg key each tool actually sends
 		filePath string
 		want     []string
 	}{
 		{
+			// Edit takes "path", not "file_path" — a mismatch here yields no
+			// suggestions on the permission prompt.
 			"edit file",
 			"Edit",
+			"path",
 			"/home/user/project/src/main.go",
 			[]string{"Edit(/home/user/project/src/*)"},
 		},
 		{
 			"write file",
 			"Write",
+			"file_path",
 			"/tmp/output.txt",
 			[]string{"Write(/tmp/*)"},
 		},
@@ -86,7 +91,7 @@ func TestGenerateSuggestions_File(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := map[string]any{"file_path": tt.filePath}
+			args := map[string]any{tt.pathKey: tt.filePath}
 			got := GenerateSuggestions(tt.toolName, args, 5)
 			if !stringSliceEqual(got, tt.want) {
 				t.Errorf("GenerateSuggestions(%q, %q) = %v, want %v", tt.toolName, tt.filePath, got, tt.want)
