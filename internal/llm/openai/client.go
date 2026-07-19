@@ -203,6 +203,17 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 				delta := event.AsResponseOutputTextDelta()
 				state.EmitText(ctx, ch, delta.Delta)
 
+			case "response.reasoning_summary_part.added":
+				// The reasoning summary streams as discrete parts, each a self-
+				// contained "**headline**\n\nbody" section with no separator
+				// between them. Without a break the parts collide — two adjacent
+				// bold headlines render as "…truncation****Updating…". Insert a
+				// blank line before every part after the first.
+				part := event.AsResponseReasoningSummaryPartAdded()
+				if part.SummaryIndex > 0 {
+					state.EmitThinking(ctx, ch, "\n\n")
+				}
+
 			case "response.reasoning_summary_text.delta":
 				delta := event.AsResponseReasoningSummaryTextDelta()
 				state.EmitThinking(ctx, ch, delta.Delta)
@@ -406,7 +417,10 @@ func extractReasoning(output []responses.ResponseOutputItemUnion) []core.Reasoni
 			continue
 		}
 		var summary strings.Builder
-		for _, s := range r.Summary {
+		for i, s := range r.Summary {
+			if i > 0 {
+				summary.WriteString("\n\n") // keep parts separated, as in the stream
+			}
 			summary.WriteString(s.Text)
 		}
 		items = append(items, core.ReasoningItem{

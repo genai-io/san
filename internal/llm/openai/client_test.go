@@ -203,6 +203,40 @@ func TestStreamResponsesIncludesReasoningSummaryAndEmitsThinking(t *testing.T) {
 	}
 }
 
+// The reasoning summary arrives as discrete parts with no separator between
+// them. Each part is a bolded "**headline**" section, so concatenating them
+// directly collides adjacent parts into "…**headline1****headline2**". A
+// reasoning_summary_part.added at summary_index>0 must insert a blank line.
+func TestStreamResponsesSeparatesReasoningSummaryParts(t *testing.T) {
+	transport := &captureStreamingTransport{stream: "" +
+		"data: {\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"part\":{\"type\":\"summary_text\",\"text\":\"\"}}\n\n" +
+		"data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":0,\"delta\":\"**Part one**\"}\n\n" +
+		"data: {\"type\":\"response.reasoning_summary_part.added\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":1,\"part\":{\"type\":\"summary_text\",\"text\":\"\"}}\n\n" +
+		"data: {\"type\":\"response.reasoning_summary_text.delta\",\"item_id\":\"rs_1\",\"output_index\":0,\"summary_index\":1,\"delta\":\"**Part two**\"}\n\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":0,\"status\":\"completed\",\"output\":[],\"usage\":{\"input_tokens\":1,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":2,\"output_tokens_details\":{\"reasoning_tokens\":1}}}}\n\n" +
+		"data: [DONE]\n\n",
+	}
+	client := newTestClient(transport)
+
+	chunks := drain(client.Stream(context.Background(), llm.CompletionOptions{
+		Model:    "gpt-5.4",
+		Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}},
+	}))
+
+	var thinking string
+	for _, chunk := range chunks {
+		if chunk.Type == llm.ChunkTypeDone && chunk.Response != nil {
+			thinking = chunk.Response.Thinking
+		}
+	}
+	if want := "**Part one**\n\n**Part two**"; thinking != want {
+		t.Fatalf("reasoning summary parts not separated:\n got: %q\nwant: %q", thinking, want)
+	}
+	if strings.Contains(thinking, "****") {
+		t.Fatalf("adjacent summary parts collided into %q", thinking)
+	}
+}
+
 func TestStreamResponsesIncludesImageInputs(t *testing.T) {
 	transport := &captureStreamingTransport{}
 	client := newTestClient(transport)
