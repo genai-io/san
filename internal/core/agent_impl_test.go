@@ -80,6 +80,66 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	}
 }
 
+// Auto-compaction must announce its start (with the pre-compaction message
+// count) before the blocking summarization call, so the UI can show progress
+// instead of appearing frozen, and that start must precede the OnCompact.
+func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
+	var captured []Event
+	ag := NewAgent(Config{
+		ID:     "test",
+		LLM:    newBlockingLLM(1),
+		System: NewSystem(),
+		Tools:  NewTools(),
+		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
+			return "the summary", nil
+		},
+		OnEvent: func(e Event) { captured = append(captured, e) },
+	})
+	a := ag.(*agent)
+
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("hi", nil),
+		AssistantMessage("hello", "", nil),
+		UserMessage("tell me more", nil),
+	})
+
+	if !a.compact(context.Background()) {
+		t.Fatal("compact() returned false")
+	}
+
+	startIdx, compactIdx := -1, -1
+	for i, e := range captured {
+		switch e.Type {
+		case OnCompactStart:
+			cs, ok := e.CompactStart()
+			if !ok {
+				t.Fatalf("OnCompactStart carried %T, want CompactStart", e.Data)
+			}
+			if cs.Count != 3 {
+				t.Fatalf("CompactStart.Count = %d, want 3", cs.Count)
+			}
+			startIdx = i
+		case OnCompact:
+			compactIdx = i
+		}
+	}
+
+	if startIdx < 0 {
+		t.Fatal("compact did not emit OnCompactStart")
+	}
+	if compactIdx < 0 {
+		t.Fatal("compact did not emit OnCompact")
+	}
+	if startIdx > compactIdx {
+		t.Fatalf("OnCompactStart (idx %d) must precede OnCompact (idx %d)", startIdx, compactIdx)
+	}
+}
+
 func TestEstimatePromptTokensUsesConversationGrowth(t *testing.T) {
 	got := estimatePromptTokens(1000, 2000, 3000)
 	if got != 1500 {

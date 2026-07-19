@@ -29,6 +29,7 @@ type Runtime interface {
 	OnTurnEnd(result core.Result) tea.Cmd
 	OnAgentStop(err error) tea.Cmd
 	OnPermGateRequest(req *PermGateRequest) tea.Cmd
+	OnCompactStart(count int) tea.Cmd
 	OnCompacted(info core.CompactInfo) tea.Cmd
 	OnCompactResult(msg CompactResultMsg) tea.Cmd
 	OnTokenLimitResult(msg kit.TokenLimitResultMsg) tea.Cmd

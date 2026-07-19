@@ -140,6 +140,9 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	switch ev.Type {
 	case core.OnStart:
 		return nil
+	case core.OnCompactStart:
+		cs, _ := ev.CompactStart()
+		return rt.OnCompactStart(cs.Count)
 	case core.OnMessage:
 		msg, ok := ev.Message()
 		if !ok {
@@ -169,6 +172,11 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 }
 
 func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
+	// A new inference means any auto-compaction is over: a successful one already
+	// cleared this in OnCompacted, but a failed compaction falls straight through
+	// to here, so clear the in-progress indicator either way.
+	m.Compact.Active = false
+	m.Compact.Phase = ""
 	m.Stream.Active = true
 	m.Stream.BuildingTool = ""
 	commitCmds := rt.CommitMessages()

@@ -30,6 +30,22 @@ func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 	}
 }
 
+// OnCompactStart mirrors the auto-compaction start (emitted by the agent just
+// before its blocking summarization call) into the UI. Manual /compact sets
+// this state itself in handleCompactCommand; auto-compaction would otherwise run
+// several seconds with no feedback — the "Compacting N messages…" line and the
+// spinner make that window visible instead of looking frozen. The stream state
+// is stopped so the progress line reads clean, without a competing "thinking…"
+// indicator. The state is cleared in OnCompacted (success) or applyPreInfer
+// (failure retry).
+func (m *model) OnCompactStart(count int) tea.Cmd {
+	m.conv.Stream.Stop()
+	m.conv.Compact.Active = true
+	m.conv.Compact.Phase = conv.PhaseSummarizing
+	m.conv.Compact.Count = count
+	return m.conv.Spinner.Tick
+}
+
 // OnCompacted handles the CompactEvent emitted by the agent for BOTH
 // auto-compaction and manual /compact. By the time it runs the agent has
 // already replaced its in-memory chain with the summary and recorded the
@@ -59,9 +75,13 @@ func (m *model) OnCompacted(info core.CompactInfo) tea.Cmd {
 	}
 	// Manual /compact shows the SESSION SUMMARY box; complete it here so its
 	// count matches the boundary line (both info.OriginalCount). Auto-compaction
-	// stays silent — just the boundary line.
+	// stays silent — just the boundary line — but its OnCompactStart progress
+	// line still has to be cleared now that the summary is in.
 	if trigger == "manual" {
 		m.conv.Compact.Complete(fmt.Sprintf("Condensed %d earlier messages.", info.OriginalCount), false)
+	} else {
+		m.conv.Compact.Active = false
+		m.conv.Compact.Phase = ""
 	}
 	m.services.Hook.ExecuteAsync(hook.PostCompact, hook.HookInput{Trigger: trigger})
 

@@ -563,6 +563,10 @@ func (a *agent) compact(ctx context.Context) bool {
 	if len(msgs) < 3 {
 		return false
 	}
+	// Announce the start so the UI can show a progress line during the blocking
+	// summarization call. On failure the loop falls through to streamInfer,
+	// whose PreInfer clears the indicator.
+	a.emit(ctx, CompactStartEvent(a.id, CompactStart{Count: len(msgs)}))
 	summary, err := a.compactFunc(ctx, msgs)
 	if err != nil || summary == "" {
 		return false

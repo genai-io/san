@@ -223,6 +223,13 @@ const (
 	OnTurn        EventType = "Turn"     // think+act cycle completed (Result in Data)
 	OnCompact     EventType = "Compact"  // conversation compacted (CompactInfo in Data)
 
+	// OnCompactStart fires when auto-compaction begins, before the (blocking,
+	// non-streaming) summarization call. It lets the UI show a "Compacting…"
+	// progress line for the several-second window that would otherwise look
+	// frozen. Data is CompactStart. Manual /compact drives this indicator from
+	// the UI side and does not emit it.
+	OnCompactStart EventType = "CompactStart"
+
 	// OnSystemChange fires when a system-prompt section is added, replaced,
 	// or removed. Data is SystemChange. Non-critical telemetry — never blocks
 	// the outbox on backpressure.
@@ -243,14 +250,21 @@ type Event struct {
 
 // Event.Data type helpers — reduce boilerplate in handlers.
 
-func (e Event) ToolCall() (ToolCall, bool)       { tc, ok := e.Data.(ToolCall); return tc, ok }
-func (e Event) ToolResult() (ToolResult, bool)   { tr, ok := e.Data.(ToolResult); return tr, ok }
-func (e Event) Message() (Message, bool)         { m, ok := e.Data.(Message); return m, ok }
-func (e Event) Result() (Result, bool)           { r, ok := e.Data.(Result); return r, ok }
-func (e Event) Response() (*InferResponse, bool) { r, ok := e.Data.(*InferResponse); return r, ok }
-func (e Event) Chunk() (Chunk, bool)             { c, ok := e.Data.(Chunk); return c, ok }
-func (e Event) Error() (error, bool)             { err, ok := e.Data.(error); return err, ok }
-func (e Event) CompactInfo() (CompactInfo, bool) { ci, ok := e.Data.(CompactInfo); return ci, ok }
+func (e Event) ToolCall() (ToolCall, bool)         { tc, ok := e.Data.(ToolCall); return tc, ok }
+func (e Event) ToolResult() (ToolResult, bool)     { tr, ok := e.Data.(ToolResult); return tr, ok }
+func (e Event) Message() (Message, bool)           { m, ok := e.Data.(Message); return m, ok }
+func (e Event) Result() (Result, bool)             { r, ok := e.Data.(Result); return r, ok }
+func (e Event) Response() (*InferResponse, bool)   { r, ok := e.Data.(*InferResponse); return r, ok }
+func (e Event) Chunk() (Chunk, bool)               { c, ok := e.Data.(Chunk); return c, ok }
+func (e Event) Error() (error, bool)               { err, ok := e.Data.(error); return err, ok }
+func (e Event) CompactInfo() (CompactInfo, bool)   { ci, ok := e.Data.(CompactInfo); return ci, ok }
+func (e Event) CompactStart() (CompactStart, bool) { cs, ok := e.Data.(CompactStart); return cs, ok }
+
+// CompactStart carries the pre-compaction message count for the OnCompactStart
+// event so the progress line can read "Compacting N messages…".
+type CompactStart struct {
+	Count int
+}
 
 // CompactInfo carries compaction details for the OnCompact event.
 type CompactInfo struct {
@@ -335,6 +349,9 @@ func PreToolEvent(tc ToolCall) Event    { return Event{Type: PreTool, Source: tc
 func PostToolEvent(tr ToolResult) Event { return Event{Type: PostTool, Source: tr.ToolName, Data: tr} }
 func CompactEvent(agentID string, info CompactInfo) Event {
 	return Event{Type: OnCompact, Source: agentID, Data: info}
+}
+func CompactStartEvent(agentID string, cs CompactStart) Event {
+	return Event{Type: OnCompactStart, Source: agentID, Data: cs}
 }
 
 func SystemChangeEvent(agentID string, c SystemChange) Event {
