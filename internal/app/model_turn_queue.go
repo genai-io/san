@@ -45,27 +45,47 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	return nil
 }
 
+// releaseHeadQueued hands the head queued user message to the running agent and
+// returns (cmd, true) when one was released, or (nil, false) when the queue is
+// empty or its head is under edit (SelectIdx 0 — dispatching would send pre-edit
+// text and orphan the user's changes). An image-blocked item is diverted back to
+// the textarea with a notice instead of sent. Display is deferred to the ingest
+// echo (see OnAgentMessage), correlated by the ID minted here, so the caller must
+// NOT append at the call site. Shared by the step-boundary (DrainQueuedAtStep)
+// and turn-boundary (drainTurnQueues) drains.
+func (m *model) releaseHeadQueued() (tea.Cmd, bool) {
+	if m.userInput.Queue.SelectIdx == 0 {
+		return nil, false
+	}
+	item, ok := m.userInput.Queue.Dequeue()
+	if !ok {
+		return nil, false
+	}
+	if m.imagesBlockedForModel(item.Images) {
+		// Hand the message back instead of dropping it — the notice tells the
+		// user to remove the image or switch models.
+		m.userInput.ReturnToTextarea(item.Content, item.Images)
+		return tea.Batch(m.CommitMessages()...), true
+	}
+	released := core.Message{Role: core.RoleUser, Content: item.Content, Images: item.Images, ID: core.NewMessageID()}
+	m.awaitingIngestEcho = append(m.awaitingIngestEcho, released.ID)
+	svc := m.services.Agent
+	return func() tea.Msg {
+		svc.SendMessage(released)
+		return nil
+	}, true
+}
+
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// Drain ONE user message per call so each gets its own agent response.
 	// The agent's inner loop also drains one inbox message at a time,
-	// producing one TurnEvent per queued message.
-	//
-	// A head item under edit holds the drain: dispatching now would send the
-	// pre-edit text and orphan the user's changes in the textarea. Leaving
-	// edit mode re-kicks the drain (see routeKeypress).
-	if m.userInput.Queue.SelectIdx == 0 {
+	// producing one TurnEvent per queued message. Leaving edit mode re-kicks a
+	// drain held by a head item under edit (see routeKeypress).
+	if cmd, released := m.releaseHeadQueued(); released {
+		log.QueueLog("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
+		return cmd, true
+	} else if m.userInput.Queue.SelectIdx == 0 {
 		log.QueueLog("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
-	} else if item, ok := m.userInput.Queue.Dequeue(); ok {
-		log.QueueLog("drainTurnQueues: dequeued %q remaining=%d", truncate(item.Content, 60), m.userInput.Queue.Len())
-		if m.imagesBlockedForModel(item.Images) {
-			// Hand the message back instead of dropping it — the notice tells
-			// the user to remove the image or switch models.
-			m.userInput.ReturnToTextarea(item.Content, item.Images)
-			return tea.Batch(m.CommitMessages()...), true
-		}
-		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: item.Content, Images: item.Images})
-		m.services.Agent.Send(item.Content, item.Images)
-		return nil, true
 	}
 
 	if len(m.systemInput.CronQueue) > 0 {
