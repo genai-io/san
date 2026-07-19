@@ -56,13 +56,14 @@ func (m *model) HasRunningTasks() bool { return m.services.Tracker.HasInProgress
 // OnAgentMessage observes the agent's MessageEvent echoes. Most paths append the
 // user message to m.conv at the call site, so their echo has nothing to do here —
 // appending again would double-display. The exception is a queued message
-// released mid-turn by DrainQueuedAtStep: it is sent to the inbox WITHOUT a
-// call-site append, so it is displayed here, when the agent has actually ingested
-// it — which lands its "❭" line right before the step that addresses it. Matched
-// by message ID (FIFO) against stepDrainPending, so identical text can't cross.
+// released by releaseHeadQueued (step- or turn-boundary drain): it is sent to the
+// inbox WITHOUT a call-site append, so it is displayed here, when the agent has
+// actually ingested it — which lands its "❭" line right before the response that
+// addresses it. Matched by message ID (FIFO) against awaitingIngestEcho, so
+// identical text can't cross.
 func (m *model) OnAgentMessage(msg core.Message) tea.Cmd {
-	if len(m.stepDrainPending) > 0 && m.stepDrainPending[0] == msg.ID {
-		m.stepDrainPending = m.stepDrainPending[1:]
+	if len(m.awaitingIngestEcho) > 0 && m.awaitingIngestEcho[0] == msg.ID {
+		m.awaitingIngestEcho = m.awaitingIngestEcho[1:]
 		m.conv.Append(core.ChatMessage{Role: core.RoleUser, Content: msg.Content, Images: msg.Images})
 		return tea.Batch(m.CommitMessages()...)
 	}
@@ -70,32 +71,19 @@ func (m *model) OnAgentMessage(msg core.Message) tea.Cmd {
 }
 
 // DrainQueuedAtStep releases one queued user message to the running agent at a
-// step boundary (a PostTool, where the turn continues). The agent ingests it at
-// its next drainInbox and the following LLM response addresses it — so the
-// message stays editable in the queue right up to this release. One release per
-// step (drainedThisStep); the head item is left in place while under edit.
-// Display happens on the ingest echo, correlated by the ID minted here.
+// step boundary (a PostTool, where the turn continues), so a following LLM
+// response addresses it — the message stays editable in the queue right up to
+// this release. One release per step (drainedThisStep). The shared release
+// mechanics live in releaseHeadQueued, which also serves the turn-boundary drain.
 func (m *model) DrainQueuedAtStep() tea.Cmd {
-	if m.drainedThisStep || !m.services.Agent.Active() || m.userInput.Queue.SelectIdx == 0 {
+	if m.drainedThisStep || !m.services.Agent.Active() {
 		return nil
 	}
-	item, ok := m.userInput.Queue.Dequeue()
-	if !ok {
-		return nil
+	cmd, released := m.releaseHeadQueued()
+	if released {
+		m.drainedThisStep = true
 	}
-	m.drainedThisStep = true
-	if m.imagesBlockedForModel(item.Images) {
-		// Return it rather than dropping it; the notice tells the user why.
-		m.userInput.ReturnToTextarea(item.Content, item.Images)
-		return tea.Batch(m.CommitMessages()...)
-	}
-	released := core.Message{Role: core.RoleUser, Content: item.Content, Images: item.Images, ID: core.NewMessageID()}
-	m.stepDrainPending = append(m.stepDrainPending, released.ID)
-	svc := m.services.Agent
-	return func() tea.Msg {
-		svc.SendMessage(released)
-		return nil
-	}
+	return cmd
 }
 
 func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {

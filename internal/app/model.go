@@ -46,11 +46,12 @@ type model struct {
 	// agent's real core.Agent inbox. See notify.go.
 	mainNotices    chan mainNotice
 	pendingNotices []mainNotice // notices that arrived mid-stream, drained at OnTurnEnd
-	// stepDrainPending holds the message IDs of queued user messages released to
-	// the agent mid-turn by DrainQueuedAtStep, awaiting their ingest echo so the
-	// UI can display each the moment the agent picks it up (see OnAgentMessage).
-	// Correlated by ID, not content, so identical text can't cross-match.
-	stepDrainPending []string
+	// awaitingIngestEcho holds the message IDs of queued user messages released
+	// to the agent by releaseHeadQueued (step- and turn-boundary drains), each
+	// awaiting its ingest echo so the UI can display it the moment the agent
+	// picks it up (see OnAgentMessage). Correlated by ID, not content, so
+	// identical text can't cross-match.
+	awaitingIngestEcho []string
 	// drainedThisStep caps DrainQueuedAtStep to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnTokenUsage (PostInfer).
 	drainedThisStep bool
