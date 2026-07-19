@@ -31,7 +31,7 @@ type Store struct {
 
 type Snapshot struct {
 	Metadata SessionMetadata
-	Entries  []Entry
+	Messages []core.Message
 	Tasks    []todo.Task
 
 	// OmitMessageWrites skips the per-entry AppendMessage loop in Save. Used
@@ -43,7 +43,7 @@ type Snapshot struct {
 	// The subagent path leaves this false: its agent has no Recorder wired,
 	// so Save is the only writer for those messages.
 	//
-	// Entries are still used to derive title / lastPrompt / messageCount in
+	// Messages are still used to derive title / lastPrompt / messageCount in
 	// NormalizeMetadata regardless of this flag.
 	OmitMessageWrites bool
 }
@@ -174,7 +174,7 @@ func (s *Store) Save(sess *Snapshot) error {
 	}
 
 	now := time.Now()
-	NormalizeMetadata(&sess.Metadata, sess.Entries, s.cwd, now)
+	NormalizeMetadata(&sess.Metadata, sess.Messages, s.cwd, now)
 
 	ctx := context.Background()
 	id := sess.Metadata.ID
@@ -192,18 +192,16 @@ func (s *Store) Save(sess *Snapshot) error {
 	}
 
 	if !sess.OmitMessageWrites {
-		nodes := EntriesToNodes(sess.Entries, sess.Metadata.ID, sess.Metadata.Cwd, sess.Metadata.CreatedAt, gitBranch)
+		nodes := messagesToNodes(sess.Messages, sess.Metadata.Cwd, sess.Metadata.CreatedAt, gitBranch)
 		for _, n := range nodes {
 			if err := s.transcriptStore.AppendMessage(ctx, transcript.AppendMessageCommand{
-				SessionID:   id,
-				MessageID:   n.ID,
-				ParentID:    n.ParentID,
-				Time:        n.Time,
-				GitBranch:   n.GitBranch,
-				AgentID:     n.AgentID,
-				IsSidechain: n.IsSidechain,
-				Role:        n.Role,
-				Content:     n.Content,
+				SessionID: id,
+				MessageID: n.ID,
+				ParentID:  n.ParentID,
+				Time:      n.Time,
+				GitBranch: n.GitBranch,
+				Role:      n.Role,
+				Content:   n.Content,
 			}); err != nil {
 				return err
 			}
@@ -288,8 +286,7 @@ func (s *Store) PersistToolResult(sessionID, toolCallID, content string) error {
 }
 
 func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {
-	entries := messagesToEntries(messages)
-	if len(entries) == 0 {
+	if len(messages) == 0 {
 		return "", "", nil
 	}
 	if title == "" {
@@ -306,7 +303,7 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 			Cwd:             cwd,
 			ParentSessionID: parentSessionID,
 		},
-		Entries: entries,
+		Messages: messages,
 	}
 	if err := s.Save(sess); err != nil {
 		return "", "", err
@@ -338,15 +335,15 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 	})
 	sess := &Snapshot{
 		Metadata: transcript.MetadataFromTranscript(tx),
-		Entries:  EntriesFromNodes(tx.ID, tx.Messages),
+		Messages: messagesFromNodes(tx.Messages),
 		Tasks:    transcript.TrackerTasksFromView(tx.State.Tasks),
 	}
 
 	if sess.Metadata.Title == "" {
-		sess.Metadata.Title = GenerateTitle(sess.Entries)
+		sess.Metadata.Title = GenerateTitle(sess.Messages)
 	}
 	if sess.Metadata.LastPrompt == "" {
-		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Entries)
+		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Messages)
 	}
 	return sess, nil
 }

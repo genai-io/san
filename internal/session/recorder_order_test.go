@@ -131,9 +131,9 @@ func TestRecorderAndSaveDoNotDoubleWrite(t *testing.T) {
 	// these would each spawn a second message.appended record.
 	snap := &Snapshot{
 		Metadata: SessionMetadata{ID: "sess-dup", Cwd: dir},
-		Entries: []Entry{
-			{UUID: "tui-m1", Type: EntryUser, Message: &EntryMessage{Role: "user", Content: []transcript.ContentBlock{{Type: "text", Text: "hi"}}}},
-			{UUID: "tui-m2", Type: EntryAssistant, Message: &EntryMessage{Role: "assistant", Content: []transcript.ContentBlock{{Type: "text", Text: "hello"}}}},
+		Messages: []core.Message{
+			{ID: "tui-m1", Role: core.RoleUser, Content: "hi"},
+			{ID: "tui-m2", Role: core.RoleAssistant, Content: "hello"},
 		},
 		OmitMessageWrites: true,
 	}
@@ -252,28 +252,28 @@ func TestRecorderSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	}
 }
 
-// EntriesToMessages must propagate UUID into core.Message.ID. Otherwise a
-// resumed session sends PreInfer with only the new message's ID, but the
+// messagesFromNodes must propagate the node ID into core.Message.ID. Otherwise
+// a resumed session sends PreInfer with only the new message's ID, but the
 // replay sees the full chain — triggering a spurious integrity warning on
 // every inference after a Continue/Resume.
-func TestEntriesToMessagesPropagatesUUIDToID(t *testing.T) {
-	entries := []Entry{
+func TestMessagesFromNodesPropagatesIDToMessage(t *testing.T) {
+	nodes := []transcript.Node{
 		{
-			UUID: "u-1",
-			Type: EntryUser,
-			Message: &EntryMessage{Role: "user", Content: []transcript.ContentBlock{
+			ID:   "u-1",
+			Role: "user",
+			Content: []transcript.ContentBlock{
 				{Type: "text", Text: "hello"},
-			}},
+			},
 		},
 		{
-			UUID: "a-1",
-			Type: EntryAssistant,
-			Message: &EntryMessage{Role: "assistant", Content: []transcript.ContentBlock{
+			ID:   "a-1",
+			Role: "assistant",
+			Content: []transcript.ContentBlock{
 				{Type: "text", Text: "hi"},
-			}},
+			},
 		},
 	}
-	msgs := EntriesToMessages(entries)
+	msgs := messagesFromNodes(nodes)
 	if len(msgs) != 2 {
 		t.Fatalf("got %d messages, want 2", len(msgs))
 	}

@@ -3,8 +3,10 @@ package session
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/session/transcript"
 )
 
 // A user message that contains harness-injected <system-reminder> blocks must
@@ -130,8 +132,8 @@ func Test_userContentToBlocks_plainTextOneBlock(t *testing.T) {
 	}
 }
 
-func Test_messagesToEntries_roundtrip(t *testing.T) {
-	// Test that messagesToEntries -> EntriesToMessages roundtrips correctly.
+func Test_messagesToNodes_roundtrip(t *testing.T) {
+	// Test that messagesToNodes -> messagesFromNodes roundtrips correctly.
 	msgs := []core.Message{
 		{Role: core.RoleUser, Content: "hello"},
 		{Role: core.RoleAssistant, Content: "hi", Thinking: "let me think",
@@ -142,24 +144,24 @@ func Test_messagesToEntries_roundtrip(t *testing.T) {
 		{Role: core.RoleAssistant, Content: "I see the file."},
 	}
 
-	entries := messagesToEntries(msgs)
-	if len(entries) != 4 {
-		t.Fatalf("expected 4 entries, got %d", len(entries))
+	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")
+	if len(nodes) != 4 {
+		t.Fatalf("expected 4 nodes, got %d", len(nodes))
 	}
 
-	// Verify entry types
-	if entries[0].Type != EntryUser {
-		t.Errorf("entry[0] type: want user, got %s", entries[0].Type)
+	// Verify node roles
+	if nodes[0].Role != "user" {
+		t.Errorf("node[0] role: want user, got %s", nodes[0].Role)
 	}
-	if entries[1].Type != EntryAssistant {
-		t.Errorf("entry[1] type: want assistant, got %s", entries[1].Type)
+	if nodes[1].Role != "assistant" {
+		t.Errorf("node[1] role: want assistant, got %s", nodes[1].Role)
 	}
-	if entries[2].Type != EntryUser {
-		t.Errorf("entry[2] type: want user (tool_result), got %s", entries[2].Type)
+	if nodes[2].Role != "user" {
+		t.Errorf("node[2] role: want user (tool_result), got %s", nodes[2].Role)
 	}
 
 	// Round-trip back to messages
-	restored := EntriesToMessages(entries)
+	restored := messagesFromNodes(nodes)
 	if len(restored) != 4 {
 		t.Fatalf("expected 4 messages after roundtrip, got %d", len(restored))
 	}
@@ -200,15 +202,12 @@ func Test_userContentToBlocks_preserveInlineImageOrder(t *testing.T) {
 }
 
 func Test_extractUserContent_restoresDisplayContent(t *testing.T) {
-	msgs := EntriesToMessages([]Entry{{
-		Type: EntryUser,
-		Message: &EntryMessage{
-			Role: "user",
-			Content: []ContentBlock{
-				{Type: "text", Text: "前面 "},
-				{Type: "image", ImageSource: &ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
-				{Type: "text", Text: " 后面"},
-			},
+	msgs := messagesFromNodes([]transcript.Node{{
+		Role: "user",
+		Content: []ContentBlock{
+			{Type: "text", Text: "前面 "},
+			{Type: "image", ImageSource: &ImageSource{Type: "base64", MediaType: "image/png", Data: "abc"}},
+			{Type: "text", Text: " 后面"},
 		},
 	}})
 

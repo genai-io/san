@@ -4,11 +4,11 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// ConvertToEntries turns the conversation view-model into transcript entries.
-// Notices are display-only and dropped; the rest convert to wire Messages and
-// share messagesToEntries with every other writer, so the stable IDs stamped at
-// conv.Append time survive (the append-only save path dedupes by them).
-func ConvertToEntries(messages []core.ChatMessage) []Entry {
+// MessagesFromChat turns the conversation view-model into wire messages for
+// persistence. Notices are display-only and dropped; the rest keep the stable
+// IDs stamped at conv.Append time so the append-only save path can dedupe by
+// them.
+func MessagesFromChat(messages []core.ChatMessage) []core.Message {
 	msgs := make([]core.Message, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Role == core.RoleNotice {
@@ -16,13 +16,14 @@ func ConvertToEntries(messages []core.ChatMessage) []Entry {
 		}
 		msgs = append(msgs, msg.ToMessage())
 	}
-	return messagesToEntries(msgs)
+	return msgs
 }
 
-func ConvertFromEntries(entries []Entry) []core.ChatMessage {
-	coreMsgs := EntriesToMessages(entries)
-	messages := make([]core.ChatMessage, 0, len(coreMsgs))
-	for _, m := range coreMsgs {
+// MessagesToChat turns loaded wire messages back into the conversation
+// view-model.
+func MessagesToChat(msgs []core.Message) []core.ChatMessage {
+	messages := make([]core.ChatMessage, 0, len(msgs))
+	for _, m := range msgs {
 		messages = append(messages, m.ToChat())
 	}
 	return messages

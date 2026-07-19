@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	session "github.com/genai-io/san/internal/session"
 	taskTracker "github.com/genai-io/san/internal/todo"
 )
@@ -27,41 +28,19 @@ func newTestStore(t *testing.T) *session.Store {
 	return store
 }
 
-// makeUserEntry creates a user text entry for testing.
-func makeUserEntry(uuid, text string) session.Entry {
-	return session.Entry{
-		Type: session.EntryUser,
-		UUID: uuid,
-		Message: &session.EntryMessage{
-			Role:    "user",
-			Content: []session.ContentBlock{{Type: "text", Text: text}},
-		},
-	}
+// makeUserEntry creates a user text message for testing.
+func makeUserEntry(uuid, text string) core.Message {
+	return core.Message{ID: uuid, Role: core.RoleUser, Content: text}
 }
 
-// makeAssistantEntry creates an assistant text entry for testing.
-func makeAssistantEntry(uuid, text string) session.Entry {
-	return session.Entry{
-		Type: session.EntryAssistant,
-		UUID: uuid,
-		Message: &session.EntryMessage{
-			Role:    "assistant",
-			Content: []session.ContentBlock{{Type: "text", Text: text}},
-		},
-	}
+// makeAssistantEntry creates an assistant text message for testing.
+func makeAssistantEntry(uuid, text string) core.Message {
+	return core.Message{ID: uuid, Role: core.RoleAssistant, Content: text}
 }
 
-// getEntryText extracts the first text content block from an entry.
-func getEntryText(e session.Entry) string {
-	if e.Message == nil {
-		return ""
-	}
-	for _, block := range e.Message.Content {
-		if block.Type == "text" {
-			return block.Text
-		}
-	}
-	return ""
+// getEntryText returns a message's text.
+func getEntryText(m core.Message) string {
+	return m.Content
 }
 
 func TestSession_SaveAndLoad(t *testing.T) {
@@ -75,7 +54,7 @@ func TestSession_SaveAndLoad(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("u1", "hello"),
 			makeAssistantEntry("a1", "hi there"),
 		},
@@ -96,11 +75,11 @@ func TestSession_SaveAndLoad(t *testing.T) {
 	if loaded.Metadata.Provider != "fake" {
 		t.Errorf("expected provider 'fake', got %q", loaded.Metadata.Provider)
 	}
-	if len(loaded.Entries) != 2 {
-		t.Errorf("expected 2 entries, got %d", len(loaded.Entries))
+	if len(loaded.Messages) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(loaded.Messages))
 	}
-	if getEntryText(loaded.Entries[0]) != "hello" {
-		t.Errorf("expected first entry 'hello', got %q", getEntryText(loaded.Entries[0]))
+	if getEntryText(loaded.Messages[0]) != "hello" {
+		t.Errorf("expected first entry 'hello', got %q", getEntryText(loaded.Messages[0]))
 	}
 }
 
@@ -195,7 +174,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 			ID:    "append-test",
 			Title: "Append Test",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("u1", "hello"),
 		},
 	}
@@ -204,7 +183,7 @@ func TestSession_AppendBehavior(t *testing.T) {
 	}
 
 	// Second save with 3 entries (original + 2 new)
-	sess.Entries = append(sess.Entries,
+	sess.Messages = append(sess.Messages,
 		makeAssistantEntry("a1", "hi there"),
 		makeUserEntry("u2", "how are you?"),
 	)
@@ -217,11 +196,11 @@ func TestSession_AppendBehavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if len(loaded.Entries) != 3 {
-		t.Fatalf("expected 3 entries, got %d", len(loaded.Entries))
+	if len(loaded.Messages) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(loaded.Messages))
 	}
-	if getEntryText(loaded.Entries[2]) != "how are you?" {
-		t.Errorf("expected third entry 'how are you?', got %q", getEntryText(loaded.Entries[2]))
+	if getEntryText(loaded.Messages[2]) != "how are you?" {
+		t.Errorf("expected third entry 'how are you?', got %q", getEntryText(loaded.Messages[2]))
 	}
 }
 
@@ -233,7 +212,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 			ID:    "metadata-update-test",
 			Title: "Metadata Update Test",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("u1", "hello"),
 		},
 	}
@@ -251,7 +230,7 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	sess.Entries = append(sess.Entries, makeAssistantEntry("a1", "hi there"))
+	sess.Messages = append(sess.Messages, makeAssistantEntry("a1", "hi there"))
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("second Save() error: %v", err)
 	}
@@ -271,7 +250,6 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 
-	toolInput := json.RawMessage(`{"file_path":"/tmp/test.txt"}`)
 	sess := &session.Snapshot{
 		Metadata: session.SessionMetadata{
 			ID:       "message-types-roundtrip",
@@ -280,34 +258,20 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("u1", "read this file"),
 			{
-				Type: session.EntryAssistant,
-				UUID: "a1",
-				Message: &session.EntryMessage{
-					Role: "assistant",
-					Content: []session.ContentBlock{
-						{Type: "thinking", Thinking: "need to inspect the file", Signature: "sig-1"},
-						{Type: "text", Text: "I'll inspect it."},
-						{Type: "tool_use", ID: "tc-1", Name: "Read", Input: toolInput},
-					},
-				},
+				ID:                "a1",
+				Role:              core.RoleAssistant,
+				Content:           "I'll inspect it.",
+				Thinking:          "need to inspect the file",
+				ThinkingSignature: "sig-1",
+				ToolCalls:         []core.ToolCall{{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test.txt"}`}},
 			},
 			{
-				Type: session.EntryUser,
-				UUID: "u2",
-				Message: &session.EntryMessage{
-					Role: "user",
-					Content: []session.ContentBlock{
-						{
-							Type:      "tool_result",
-							ToolUseID: "tc-1",
-							IsError:   false,
-							Content:   []session.ContentBlock{{Type: "text", Text: "file contents"}},
-						},
-					},
-				},
+				ID:         "u2",
+				Role:       core.RoleUser,
+				ToolResult: &core.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: "file contents"},
 			},
 			makeAssistantEntry("a2", "done"),
 		},
@@ -321,31 +285,31 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if len(loaded.Entries) != 4 {
-		t.Fatalf("expected 4 entries, got %d", len(loaded.Entries))
+	if len(loaded.Messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(loaded.Messages))
 	}
 
-	assistant := loaded.Entries[1]
-	if assistant.Message == nil || len(assistant.Message.Content) != 3 {
-		t.Fatalf("assistant content blocks = %v, want 3 blocks", assistant.Message)
+	assistant := loaded.Messages[1]
+	if assistant.Thinking != "need to inspect the file" || assistant.ThinkingSignature != "sig-1" {
+		t.Errorf("thinking did not round-trip: %+v", assistant)
 	}
-	if assistant.Message.Content[0].Type != "thinking" || assistant.Message.Content[0].Thinking != "need to inspect the file" {
-		t.Errorf("thinking block did not round-trip correctly: %+v", assistant.Message.Content[0])
+	if assistant.Content != "I'll inspect it." {
+		t.Errorf("assistant content did not round-trip: %q", assistant.Content)
 	}
-	if assistant.Message.Content[2].Type != "tool_use" || assistant.Message.Content[2].Name != "Read" {
-		t.Errorf("tool_use block did not round-trip correctly: %+v", assistant.Message.Content[2])
+	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].Name != "Read" {
+		t.Errorf("tool_use did not round-trip: %+v", assistant.ToolCalls)
 	}
 
-	userResult := loaded.Entries[2]
-	if userResult.Message == nil || len(userResult.Message.Content) != 1 {
-		t.Fatalf("tool result entry = %+v, want one block", userResult.Message)
+	userResult := loaded.Messages[2]
+	if userResult.ToolResult == nil || userResult.ToolResult.ToolCallID != "tc-1" {
+		t.Fatalf("tool_result did not round-trip: %+v", userResult.ToolResult)
 	}
-	resultBlock := userResult.Message.Content[0]
-	if resultBlock.Type != "tool_result" || resultBlock.ToolUseID != "tc-1" {
-		t.Errorf("tool_result block did not round-trip correctly: %+v", resultBlock)
+	if userResult.ToolResult.Content != "file contents" {
+		t.Errorf("tool_result content mismatch: %q", userResult.ToolResult.Content)
 	}
-	if len(resultBlock.Content) != 1 || resultBlock.Content[0].Text != "file contents" {
-		t.Errorf("tool_result nested content mismatch: %+v", resultBlock.Content)
+	// ToolName is backfilled from the assistant tool_use block on load.
+	if userResult.ToolResult.ToolName != "Read" {
+		t.Errorf("tool_result ToolName = %q, want Read", userResult.ToolResult.ToolName)
 	}
 }
 
@@ -382,20 +346,13 @@ func TestSession_PersistToolResult(t *testing.T) {
 			ID:    sessionID,
 			Title: "Overflow",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			{
-				Type: session.EntryUser,
-				UUID: "u1",
-				Message: &session.EntryMessage{
-					Role: "user",
-					Content: []session.ContentBlock{{
-						Type:      "tool_result",
-						ToolUseID: toolCallID,
-						Content: []session.ContentBlock{{
-							Type: "text",
-							Text: "preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]",
-						}},
-					}},
+				ID:   "u1",
+				Role: core.RoleUser,
+				ToolResult: &core.ToolResult{
+					ToolCallID: toolCallID,
+					Content:    "preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]",
 				},
 			},
 		},
@@ -408,7 +365,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	got := loaded.Entries[0].Message.Content[0].Content[0].Text
+	got := loaded.Messages[0].ToolResult.Content
 	if got != content {
 		t.Fatalf("hydrated tool result len = %d, want %d", len(got), len(content))
 	}
@@ -432,7 +389,7 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("u1", "first message"),
 			makeAssistantEntry("a1", "first response"),
 			makeUserEntry("u2", "second message"),
@@ -466,8 +423,8 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 	}
 
 	// Expect at least entries + 1 metadata line
-	if validLines < len(sess.Entries)+1 {
-		t.Errorf("expected at least %d valid JSON lines, got %d", len(sess.Entries)+1, validLines)
+	if validLines < len(sess.Messages)+1 {
+		t.Errorf("expected at least %d valid JSON lines, got %d", len(sess.Messages)+1, validLines)
 	}
 }
 
@@ -487,7 +444,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		{"user", "thanks"},
 	}
 
-	var entries []session.Entry
+	var entries []core.Message
 	for i, turn := range turns {
 		uuid := fmt.Sprintf("id-%d", i)
 		switch turn.role {
@@ -506,7 +463,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Entries: entries,
+		Messages: entries,
 	}
 
 	if err := store.Save(sess); err != nil {
@@ -519,22 +476,22 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		t.Fatalf("Load() (continue) error: %v", err)
 	}
 
-	if len(loaded.Entries) != len(turns) {
-		t.Fatalf("expected %d entries after continue, got %d", len(turns), len(loaded.Entries))
+	if len(loaded.Messages) != len(turns) {
+		t.Fatalf("expected %d entries after continue, got %d", len(turns), len(loaded.Messages))
 	}
 
 	for i, want := range turns {
-		got := getEntryText(loaded.Entries[i])
+		got := getEntryText(loaded.Messages[i])
 		if got != want.text {
 			t.Errorf("entry[%d]: want %q, got %q", i, want.text, got)
 		}
 
-		wantType := session.EntryUser
+		wantRole := core.RoleUser
 		if want.role == "assistant" {
-			wantType = session.EntryAssistant
+			wantRole = core.RoleAssistant
 		}
-		if loaded.Entries[i].Type != wantType {
-			t.Errorf("entry[%d]: want type %q, got %q", i, wantType, loaded.Entries[i].Type)
+		if loaded.Messages[i].Role != wantRole {
+			t.Errorf("entry[%d]: want role %q, got %q", i, wantRole, loaded.Messages[i].Role)
 		}
 	}
 }
@@ -548,7 +505,7 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 
 	sess := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "save-twice"},
-		Entries: []session.Entry{
+		Messages: []core.Message{
 			makeUserEntry("m1", "hello"),
 			makeAssistantEntry("m2", "hi"),
 		},
@@ -564,8 +521,8 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(loaded.Entries) != 2 {
-		t.Fatalf("expected 2 entries after two saves, got %d (dedup failed)", len(loaded.Entries))
+	if len(loaded.Messages) != 2 {
+		t.Fatalf("expected 2 entries after two saves, got %d (dedup failed)", len(loaded.Messages))
 	}
 
 	// Count raw message records on disk too — projection only shows the
@@ -603,7 +560,7 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	}
 	first := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "restart-tag", Tag: "urgent"},
-		Entries:  []session.Entry{makeUserEntry("m1", "hi")},
+		Messages: []core.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := store1.Save(first); err != nil {
 		t.Fatalf("Save first: %v", err)
@@ -616,7 +573,7 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 	}
 	cleared := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "restart-tag", Tag: ""},
-		Entries:  []session.Entry{makeUserEntry("m1", "hi")},
+		Messages: []core.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := store2.Save(cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
@@ -640,7 +597,7 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 
 	withTasks := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "clear-tasks"},
-		Entries:  []session.Entry{makeUserEntry("m1", "hi")},
+		Messages: []core.Message{makeUserEntry("m1", "hi")},
 		Tasks: []taskTracker.Task{{
 			ID: "t1", Subject: "do thing", Status: "in_progress",
 			CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -652,7 +609,7 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 
 	cleared := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "clear-tasks"},
-		Entries:  []session.Entry{makeUserEntry("m1", "hi")},
+		Messages: []core.Message{makeUserEntry("m1", "hi")},
 		Tasks:    nil,
 	}
 	if err := store.Save(cleared); err != nil {

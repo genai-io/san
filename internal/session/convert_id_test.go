@@ -2,41 +2,43 @@ package session
 
 import (
 	"testing"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 )
 
-// P1 regression: ConvertToEntries must preserve the ChatMessage.ID across
+// P1 regression: MessagesFromChat must preserve the ChatMessage.ID across
 // successive calls. Without this, every save assigns a fresh UUID and the
 // append-only persistence path duplicates the entire history each turn.
-func Test_ConvertToEntries_preservesChatMessageID(t *testing.T) {
+func Test_MessagesFromChat_preservesChatMessageID(t *testing.T) {
 	msgs := []core.ChatMessage{
 		{ID: "fixed-1", Role: core.RoleUser, Content: "hello"},
 		{ID: "fixed-2", Role: core.RoleAssistant, Content: "hi"},
 	}
 
-	first := ConvertToEntries(msgs)
-	second := ConvertToEntries(msgs)
+	first := MessagesFromChat(msgs)
+	second := MessagesFromChat(msgs)
 
 	if len(first) != 2 || len(second) != 2 {
-		t.Fatalf("expected 2 entries each call, got first=%d second=%d", len(first), len(second))
+		t.Fatalf("expected 2 messages each call, got first=%d second=%d", len(first), len(second))
 	}
 	for i := range first {
-		if first[i].UUID != msgs[i].ID {
-			t.Errorf("entry[%d] first call: UUID=%q want %q", i, first[i].UUID, msgs[i].ID)
+		if first[i].ID != msgs[i].ID {
+			t.Errorf("message[%d] first call: ID=%q want %q", i, first[i].ID, msgs[i].ID)
 		}
-		if second[i].UUID != msgs[i].ID {
-			t.Errorf("entry[%d] second call: UUID=%q want %q", i, second[i].UUID, msgs[i].ID)
+		if second[i].ID != msgs[i].ID {
+			t.Errorf("message[%d] second call: ID=%q want %q", i, second[i].ID, msgs[i].ID)
 		}
 	}
 }
 
-// ChatMessages without an ID still get a fresh UUID (back-compat for any
-// path that constructs ChatMessage without going through conv.Append).
-func Test_ConvertToEntries_fallsBackWhenIDMissing(t *testing.T) {
-	msgs := []core.ChatMessage{{Role: core.RoleUser, Content: "hello"}}
-	entries := ConvertToEntries(msgs)
-	if len(entries) != 1 || entries[0].UUID == "" {
-		t.Fatalf("expected fallback UUID, got %+v", entries)
+// A message without an ID still gets a fresh one when projected onto a
+// transcript node (back-compat for any path that builds a message without
+// going through conv.Append).
+func Test_messagesToNodes_fallsBackWhenIDMissing(t *testing.T) {
+	msgs := []core.Message{{Role: core.RoleUser, Content: "hello"}}
+	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")
+	if len(nodes) != 1 || nodes[0].ID == "" {
+		t.Fatalf("expected fallback node ID, got %+v", nodes)
 	}
 }

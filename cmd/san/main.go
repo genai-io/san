@@ -14,7 +14,6 @@ import (
 
 	"github.com/genai-io/san/internal/app"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 
 	// Import providers for registration
@@ -57,9 +56,6 @@ func init() {
 	_ = godotenv.Load()
 	// Initialize logging (enabled via SAN_DEBUG=1)
 	_ = log.Init()
-
-	// Set app version for session entries.
-	session.SetAppVersion(version)
 
 	// Register flags
 	rootCmd.Flags().StringVarP(&cliOpts.print, "print", "p", "", "Non-interactive print mode with prompt")
