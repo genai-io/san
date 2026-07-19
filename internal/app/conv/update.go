@@ -281,8 +281,9 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	})
 	// A completed tool means the turn continues (the agent loops to its next
 	// drainInbox), so this is a step boundary: release the head queued user
-	// message to the agent now — it waits briefly for it (pendingInput) and takes
-	// it into the next step. One release per step (see DrainQueuedAtStep).
+	// message to the agent now. It stays editable until this release and the
+	// agent ingests it at a following step. One release per step (see
+	// DrainQueuedAtStep).
 	return rt.DrainQueuedAtStep()
 }
 

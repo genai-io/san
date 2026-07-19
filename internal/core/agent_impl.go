@@ -32,12 +32,6 @@ type agent struct {
 	outbox            chan Event
 	onEvent           func(Event)
 
-	// pendingInput, when set, tells drainInbox that a UI-attached queue holds a
-	// message it is about to release at this step boundary, so drainInbox waits
-	// a brief bounded window for it instead of returning empty. Only the
-	// main conversation agent sets this; subagents leave it nil (non-blocking).
-	pendingInput *atomic.Bool
-
 	mu       sync.RWMutex
 	messages []Message // conversation history
 
@@ -778,46 +772,17 @@ func (a *agent) emitFinal(event Event) {
 func (a *agent) drainInbox(ctx context.Context) (int, error) {
 	select {
 	case msg, ok := <-a.inbox:
-		return a.ingestInbox(ctx, msg, ok)
+		if !ok || msg.Signal == SigStop {
+			return 0, errStopped
+		}
+		if a.ingest(ctx, msg) {
+			return 1, nil
+		}
+		return 0, nil
 	default:
-	}
-	// Inbox empty. If a UI-attached queue holds a message it is about to release
-	// at this step boundary, wait a brief bounded window so the message lands in
-	// this step (and stays editable in the UI right up to now) instead of the
-	// next. Only the main agent sets pendingInput; subagents keep the
-	// non-blocking path above.
-	if a.pendingInput == nil || !a.pendingInput.Load() {
-		return 0, nil
-	}
-	timer := time.NewTimer(pendingInputWindow)
-	defer timer.Stop()
-	select {
-	case msg, ok := <-a.inbox:
-		return a.ingestInbox(ctx, msg, ok)
-	case <-timer.C:
-		return 0, nil
-	case <-ctx.Done():
-		// Let the loop's own ctx handling produce a clean cancelled result.
 		return 0, nil
 	}
 }
-
-// ingestInbox ingests a message received from the inbox, translating a closed
-// channel or SigStop into errStopped.
-func (a *agent) ingestInbox(ctx context.Context, msg Message, ok bool) (int, error) {
-	if !ok || msg.Signal == SigStop {
-		return 0, errStopped
-	}
-	if a.ingest(ctx, msg) {
-		return 1, nil
-	}
-	return 0, nil
-}
-
-// pendingInputWindow bounds how long drainInbox waits at a step boundary for a
-// UI-queued message once pendingInput signals one is coming. Short enough to be
-// imperceptible, long enough for the UI to release the message.
-const pendingInputWindow = 200 * time.Millisecond
 
 // append adds msg to the conversation chain and emits OnAppend so observers
 // (notably the session recorder) can persist it in causal order — every

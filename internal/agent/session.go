@@ -92,13 +92,20 @@ func (s *Session) Messages() []core.Message {
 }
 
 func (s *Session) Send(content string, images []core.Image) {
+	s.SendMessage(core.Message{Role: core.RoleUser, Content: content, Images: images})
+}
+
+// SendMessage delivers a fully-formed message to the running agent's inbox,
+// preserving its ID so a UI that minted one can correlate the ingest echo (see
+// model.OnAgentMessage). No-op when no agent is active.
+func (s *Session) SendMessage(msg core.Message) {
 	s.mu.RLock()
 	ag := s.agent
 	s.mu.RUnlock()
 	if ag == nil {
 		return
 	}
-	ag.Inbox() <- core.Message{Role: core.RoleUser, Content: content, Images: images}
+	ag.Inbox() <- msg
 }
 
 // Compact asks the running agent to compact in place using the precomputed

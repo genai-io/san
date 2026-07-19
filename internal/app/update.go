@@ -93,10 +93,6 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 type initialPromptMsg string
 
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// After any event, refresh the flag that tells the agent's drainInbox whether
-	// a queued message is ready to release at a step boundary. One place covers
-	// every queue mutation (enqueue, drain, edit-navigation) that this event ran.
-	defer m.syncPendingInput()
 	switch msg := msg.(type) {
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))

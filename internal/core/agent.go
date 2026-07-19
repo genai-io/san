@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 )
 
@@ -122,11 +121,6 @@ type Config struct {
 	OutboxBuf               int           // outbox channel buffer size, default 64; -1 = no outbox (subagent path)
 	// OnEvent observes lifecycle events synchronously, even when OutboxBuf is -1.
 	OnEvent func(Event)
-	// PendingInput lets a UI-attached caller signal that its input queue holds a
-	// message it will release at the next step boundary, so drainInbox waits a
-	// brief window for it. Nil (the default, and every subagent) keeps drainInbox
-	// non-blocking.
-	PendingInput *atomic.Bool
 }
 
 // NewAgent creates an agent from config.
@@ -181,7 +175,6 @@ func NewAgent(cfg Config) Agent {
 		inbox:             make(chan Message, cfg.InboxBuf),
 		outbox:            outbox,
 		onEvent:           cfg.OnEvent,
-		pendingInput:      cfg.PendingInput,
 	}
 	// Mirror system + tools mutations onto the event bus. Attach after
 	// construction so each registry replays its initial members back to the

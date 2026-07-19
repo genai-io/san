@@ -83,7 +83,6 @@ func newBaseModel() model {
 		reviewerEscalations: new(atomic.Int64),
 		pendingDecisions:    new(sync.Map),
 		autopilot:           new(atomic.Pointer[autopilotRuntime]),
-		pendingInput:        new(atomic.Bool),
 	}
 }
 

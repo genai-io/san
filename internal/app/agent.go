@@ -137,7 +137,6 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		MaxTokens:      maxTokens,
 		ThinkingEffort: m.env.EffectiveThinkingEffort(),
 		OnEvent:        onEvent,
-		PendingInput:   m.pendingInput,
 
 		CWD:     m.env.CWD,
 		CWDFunc: func() string { return m.env.CWD },
