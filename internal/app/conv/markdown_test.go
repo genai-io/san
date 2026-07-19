@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -584,5 +585,51 @@ func TestMDRenderer_NoConsecutiveBlankLines(t *testing.T) {
 				t.Errorf("output should not contain consecutive blank lines, got:\n%s", plain)
 			}
 		})
+	}
+}
+
+// The active tail is re-rendered on every frame while its content sits
+// unchanged (through a whole tool execution), so Render memoizes its output
+// keyed by raw input to avoid re-running glamour on byte-identical content.
+func TestMDRendererCachesRenders(t *testing.T) {
+	r := NewMDRenderer(80)
+	const src = "# Title\n\nSome **bold** text and `code`.\n"
+
+	first, err := r.Render(src)
+	if err != nil {
+		t.Fatalf("Render(): %v", err)
+	}
+	if _, ok := r.cache[src]; !ok {
+		t.Fatal("expected render output to be cached under its raw input")
+	}
+
+	second, err := r.Render(src)
+	if err != nil {
+		t.Fatalf("Render() second: %v", err)
+	}
+	if second != first {
+		t.Fatalf("cached render differs from first:\n first=%q\nsecond=%q", first, second)
+	}
+
+	// A distinct input caches separately without evicting the first.
+	if _, err := r.Render("a plain paragraph"); err != nil {
+		t.Fatalf("Render(other): %v", err)
+	}
+	if len(r.cache) != 2 {
+		t.Fatalf("cache size = %d, want 2", len(r.cache))
+	}
+}
+
+// The cache is bounded so a long session's one-shot renders can't grow it
+// without limit.
+func TestMDRendererCacheBounded(t *testing.T) {
+	r := NewMDRenderer(80)
+	for i := range mdCacheMax + 50 {
+		if _, err := r.Render(fmt.Sprintf("paragraph number %d", i)); err != nil {
+			t.Fatalf("Render(#%d): %v", i, err)
+		}
+	}
+	if len(r.cache) > mdCacheMax {
+		t.Fatalf("cache size = %d, want <= %d", len(r.cache), mdCacheMax)
 	}
 }
