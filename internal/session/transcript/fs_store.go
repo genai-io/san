@@ -975,7 +975,20 @@ func (s *FileStore) rebuildIndexLocked() error {
 func (s *FileStore) upsertIndexEntryLocked(transcriptID string, mutate func(e *fileIndexEntry, fresh bool)) error {
 	index, err := s.loadIndexLocked()
 	if err != nil {
-		index = &fileIndex{Version: 1, ProjectID: s.projectID}
+		// Rebuild from the transcripts on disk before giving up on them.
+		// Start runs at the first turn of every new session, so an empty index
+		// written here reaches disk before anything reads it — and
+		// listIndexEntries' own recovery then loads a perfectly valid
+		// one-entry file and never rebuilds. Every earlier session becomes
+		// permanently invisible in /resume while its .jsonl sits untouched
+		// beside it. A genuinely fresh store has no transcripts dir, so the
+		// rebuild fails and the empty index below is the right answer.
+		if rbErr := s.rebuildIndexLocked(); rbErr == nil {
+			index, err = s.loadIndexLocked()
+		}
+		if err != nil {
+			index = &fileIndex{Version: 1, ProjectID: s.projectID}
+		}
 	}
 	for i := range index.Entries {
 		if index.Entries[i].SessionID == transcriptID {
