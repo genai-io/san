@@ -66,9 +66,17 @@ func TestPermissionScenarios(t *testing.T) {
 			want: false, wantMatch: "destructive command",
 		},
 		{
-			name: "git push --force — bypass-immune blocks even with allow Bash",
+			// Git is not bypass-immune: inside a repo these are ordinary tools,
+			// left to the permission judge rather than blocked outright.
+			name: "git push --force — allowed with allow Bash",
 			mode: PermissionBypass, allow: ToolList{{Name: "Bash"}},
 			tool: "Bash", input: map[string]any{"command": "git push --force origin main"},
+			want: true,
+		},
+		{
+			name: "chmod 777 — bypass-immune blocks even with allow Bash",
+			mode: PermissionBypass, allow: ToolList{{Name: "Bash"}},
+			tool: "Bash", input: map[string]any{"command": "chmod 777 /etc/passwd"},
 			want: false, wantMatch: "destructive command",
 		},
 

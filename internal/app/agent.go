@@ -232,6 +232,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			defer cancel()
 			verdict, err := rev.Permission(ctx, reviewer.Request{
 				ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.Mission,
+				UnderGit: m.env.IsGit,
 			})
 			log.Logger().Debug("auto-review verdict",
 				zap.String("tool", name),

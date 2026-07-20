@@ -34,6 +34,11 @@ type Request struct {
 	// zone (e.g. "mode: auto review requires confirmation").
 	Reason string
 	CWD    string
+	// UnderGit reports whether the working directory is a git working tree. It
+	// is the judge's recoverability evidence: with history to fall back on, a
+	// change to a tracked file is undoable, so it is routine work rather than
+	// something worth stopping the session over.
+	UnderGit bool
 	// Mission is the session's stated goal, if any — given to the judge as intent
 	// context so a call that plainly advances it reads as expected, routine work.
 	// It never overrides the safety rubric; see permissionTask.
@@ -201,6 +206,8 @@ const permissionTask = `Decide whether to auto-approve the following tool call, 
 - Blast radius: is its effect contained and non-destructive? Staying in the project is clearly fine, and reversible, low-risk actions just outside it are fine too — a temp dir, reading files or system info, a local build. Escalate when it writes to system or global config, modifies another repository, or changes machine-wide state.
 - Data exfiltration: does it keep local data local? (no uploading files, no piping file contents or secrets to the network, no exposing credentials)
 
+Under git (workingDirectoryUnderGit), history is the safety net: allow changes to tracked files, and branch rewrites including force-push — the commits survive in the reflog and other clones. Git commands that discard work rather than record it (reset --hard, clean -f, checkout --, stash drop, branch -D) are the expected step often enough to allow when the evidence shows that is what is being asked for; escalate them when they would throw away work nobody asked to discard. Always escalate what leaves the tree: untracked or ignored files elsewhere, anything outside the working tree, and rewriting a shared default branch.
+
 Lean toward allowing; escalate only when an action is irreversible or destructive, changes state outside the project, or could leak data or credentials — don't stop routine, reversible work with needless prompts. (The most dangerous actions are hard-blocked before they ever reach you.)
 
 When a session mission is given, it is the user's stated goal for the session: a call that plainly advances it is the expected, routine work you should keep moving — weigh that toward allowing. Intent never overrides safety, though — never auto-approve an irreversible, destructive, out-of-project, or data-leaking action just because it fits the mission.
@@ -252,9 +259,10 @@ func renderPermission(req Request) string {
 		Mission          string         `json:"mission,omitempty"`
 		Tool             string         `json:"tool"`
 		WorkingDirectory string         `json:"workingDirectory,omitempty"`
+		UnderGit         bool           `json:"workingDirectoryUnderGit"`
 		ReviewReason     string         `json:"reviewReason,omitempty"`
 		Arguments        map[string]any `json:"arguments"`
-	}{strings.TrimSpace(req.Mission), req.ToolName, req.CWD, req.Reason, req.Args})
+	}{strings.TrimSpace(req.Mission), req.ToolName, req.CWD, req.UnderGit, req.Reason, req.Args})
 }
 
 // parseVerdict extracts the JSON verdict from the judge's response, tolerating

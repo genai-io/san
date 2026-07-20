@@ -276,14 +276,6 @@ func Test_isDestructiveCommand(t *testing.T) {
 		{"rm -rf", "rm -rf /tmp/test", true},
 		{"rm -fr", "rm -fr /tmp/test", true},
 		{"rm -r", "rm -r /tmp/test", true},
-		{"git reset --hard", "git reset --hard HEAD", true},
-		{"git clean -fd", "git clean -fd", true},
-		{"git push --force", "git push --force origin main", true},
-		{"git push -f", "git push -f", true},
-		{"git checkout --", "git checkout -- .", true},
-		{"git stash drop", "git stash drop", true},
-		{"git stash clear", "git stash clear", true},
-		{"git branch -D", "git branch -D feature", true},
 		{"chmod 777", "chmod 777 /tmp/file", true},
 
 		// Privilege escalation & persistence
@@ -296,15 +288,20 @@ func Test_isDestructiveCommand(t *testing.T) {
 
 		// Path-qualified commands (should normalize to base command)
 		{"rm with full path", "/bin/rm -rf /tmp/test", true},
-		{"git with full path", "/usr/bin/git reset --hard HEAD", true},
 		{"rm with relative path", "./rm -rf /tmp", true},
 
 		// Safe commands
 		{"rm single file", "rm /tmp/file.txt", false},
 		{"git status", "git status", false},
 		{"git push", "git push origin main", false},
-		{"git push force-with-lease", "git push --force-with-lease origin main", false},
-		{"git push force-if-includes", "git push --force-if-includes origin main", false},
+		// Git commands are the permission judge's call, not an unconditional stop:
+		// inside a repo they are ordinary tools, weighed against session intent.
+		{"git push force", "git push --force origin feature", false},
+		{"git push -f", "git push -f", false},
+		{"git reset --hard", "git reset --hard HEAD", false},
+		{"git clean -fd", "git clean -fd", false},
+		{"git stash drop", "git stash drop", false},
+		{"git branch -D", "git branch -D feature", false},
 		{"git commit", "git commit -m 'msg'", false},
 		{"chmod 644", "chmod 644 /tmp/file", false},
 		{"ls", "ls -la", false},
@@ -385,8 +382,9 @@ func TestDestructiveCommandsRequireConfirmation(t *testing.T) {
 		want    perm.Decision
 	}{
 		{"rm -rf requires ask", "rm -rf /tmp/test", perm.Prompt},
-		{"git reset --hard requires ask", "git reset --hard HEAD", perm.Prompt},
-		{"git push --force requires ask", "git push --force", perm.Prompt},
+		// Git is off the floor entirely — trusting bash covers it.
+		{"git reset --hard allowed", "git reset --hard HEAD", perm.Permit},
+		{"git push --force allowed", "git push --force", perm.Permit},
 		{"normal git allowed", "git status", perm.Permit},
 		{"normal ls allowed", "ls -la", perm.Permit},
 	}
@@ -992,7 +990,7 @@ func TestResolveHookAllow(t *testing.T) {
 		{
 			"destructive command blocks",
 			"Bash",
-			map[string]any{"command": "git reset --hard HEAD"},
+			map[string]any{"command": "rm -rf /tmp/test"},
 			false,
 		},
 

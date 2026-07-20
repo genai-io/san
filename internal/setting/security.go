@@ -10,19 +10,18 @@ import (
 // destructiveCommands are patterns that should always require user confirmation,
 // even when session permissions like AllowAllBash are enabled.
 // These commands can cause irreversible data loss or system damage.
+//
+// Git commands are deliberately absent — including the discarding ones (reset
+// --hard, clean -f, checkout --, stash drop, force-push, branch -D). Inside a
+// repository they are ordinary tools of the trade, and blocking them
+// unconditionally stops expected work as often as it prevents a mistake. They
+// are gray-zone calls the permission judge weighs against the session's intent
+// instead, which is where the judgement belongs. What stays here is outside
+// git's reach entirely: filesystem, privilege, and machine-state damage.
 var destructiveCommands = []string{
 	"rm:-rf",
 	"rm:-fr",
 	"rm:-r",
-	"git:reset --hard",
-	"git:clean -fd",
-	"git:clean -f",
-	"git:push -f",
-	"git:checkout --",
-	"git:stash drop",
-	"git:stash clear",
-	"git:branch -D",
-	"git:branch -d -f",
 	"chmod:777",
 	"chmod:-R 777",
 	":(){ :|:& };:", // fork bomb
@@ -47,24 +46,6 @@ func isDestructiveCommand(cmd string) bool {
 			if strings.Contains(normalized, pattern) {
 				return true
 			}
-		}
-		if isGitPushForce(normalized) {
-			return true
-		}
-	}
-	return false
-}
-
-// isGitPushForce detects "git push --force" without false-positiving on
-// "--force-with-lease" or "--force-if-includes".
-func isGitPushForce(normalized string) bool {
-	if !strings.HasPrefix(normalized, "git:push ") {
-		return false
-	}
-	args := strings.Fields(normalized[len("git:push "):])
-	for _, arg := range args {
-		if arg == "--force" {
-			return true
 		}
 	}
 	return false

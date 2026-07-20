@@ -173,6 +173,21 @@ func Test_MissionThreadedIntoRenders(t *testing.T) {
 	}
 }
 
+// The judge is told whether the working tree is under git — its recoverability
+// evidence — and the rubric that reads it travels with the task.
+func Test_GitEvidenceThreadedIntoPermission(t *testing.T) {
+	under := renderPermission(Request{ToolName: "Write", Args: map[string]any{"file_path": "main.go"}, UnderGit: true})
+	if !strings.Contains(under, `"workingDirectoryUnderGit": true`) {
+		t.Errorf("renderPermission dropped the git evidence:\n%s", under)
+	}
+	if outside := renderPermission(Request{ToolName: "Write"}); !strings.Contains(outside, `"workingDirectoryUnderGit": false`) {
+		t.Errorf("renderPermission should state the absence of git, not omit it:\n%s", outside)
+	}
+	if !strings.Contains(permissionTask, "workingDirectoryUnderGit") {
+		t.Error("permissionTask never tells the judge what to do with the git evidence")
+	}
+}
+
 func Test_SteeringInstructionsAreGuarded(t *testing.T) {
 	s := &stubProvider{content: `{"decision":"allow","reason":"ok"}`}
 	r := New(s, "model")

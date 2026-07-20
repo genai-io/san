@@ -284,16 +284,16 @@ type autopilotDecisionMsg struct {
 	deferrals int
 }
 
-const continueDecisionTask = `The agent just finished a turn and is about to hand control back to the human. You are driving an unattended session — nobody may be at the keyboard — so decide whether to keep it going toward the mission using the supplied recent session evidence.
+const continueDecisionTask = `The agent just finished a turn and is about to hand control back to the human. Nobody may be at the keyboard, so decide whether to keep it going toward the mission using the supplied recent session evidence.
 
 Reply with ONLY a JSON object:
 {"continue": true|false, "done": true|false, "instruction": "the next thing to tell the agent"}
 
-- continue=true (with a short, direct instruction — exactly what you'd type to the agent next) whenever the mission is not yet complete and you can name a concrete next step. This is the normal answer: stopping ends the run until a human returns.
-- done=true (continue=false, instruction "") only if the mission is fully accomplished — nothing meaningful is left to do.
-- continue=false, done=false (instruction "") only when the run genuinely cannot proceed without the human: it turns on a decision only they can make (something irreversible or costly, ambiguous intent, a judgement call about their goals), or it is blocked on access only they can grant.
+- continue=true (with a short, direct instruction — exactly what you'd type to the agent next) whenever the mission is not yet complete and you can name a concrete next step. This is the normal answer.
+- done=true (continue=false, instruction "") only if the mission is fully accomplished.
+- continue=false, done=false (instruction "") only when the run cannot proceed without the human — a decision only they can make, or access only they can grant.
 
-Not knowing the BEST next step is not a reason to stop. Direct the safest reversible one — investigate, test, verify, or ask the agent to report what it found — and let the next turn re-decide with better evidence. A failed or partial step is also not a reason to stop: diagnose and retry it.
+Not knowing the BEST next step is not a reason to stop: direct the safest reversible one and let the next turn re-decide. Nor is an error — failing tests, a broken build, a rejected command, a tool that errored are ordinary work: direct the fix. Hand back only for an error you cannot act on without the human.
 
 Judge what is already accomplished from all supplied evidence, not the last turn alone. Do not re-issue a step the evidence shows is already done.`
 
@@ -301,7 +301,7 @@ Judge what is already accomplished from all supplied evidence, not the last turn
 // the End steer is itself the instruction to keep the session moving, so the
 // copilot infers the objective from the conversation rather than standing down —
 // but it must find one in the evidence, never invent one.
-const continueWithoutMissionTask = `No mission was briefed for this session. Infer the objective from the recent session evidence — the user's own stated goal, in their words — and steer toward that. If the evidence shows no clear outstanding objective, stop (continue=false, done=false); never invent one.`
+const continueWithoutMissionTask = `No mission was briefed: steer toward the objective the evidence shows the user is pursuing. If it shows none, stop (continue=false, done=false) — never invent one.`
 
 // autopilotResumableStop reports whether a finished turn is one the copilot may
 // steer onward. A clean end_turn is the ordinary case; the two ceiling stops
@@ -717,14 +717,14 @@ type autopilotQuestionMsg struct {
 	answer  bool // false = defer to the human
 }
 
-const questionAnswerTask = `The agent has paused to ask the user a question. You are driving an unattended session — a deferred question stalls the run until a human returns — so answer on the user's behalf whenever the mission or the conversation makes a reasonable choice clear.
+const questionAnswerTask = `The agent has paused to ask the user a question. A deferred question stalls the run until they return, so answer on their behalf whenever the mission or the conversation makes a reasonable choice clear.
 
 Reply with ONLY a JSON object:
 {"defer": false, "answers": {"0": ["Exact option label"], "1": ["Label A","Label B"]}}
 
 - Keys are question indices as strings; values are arrays of the EXACT option labels you choose (copy them verbatim).
 - Single-select ⇒ exactly one label; multi-select ⇒ one or more. Answer every question.
-- Set "defer": true (answers {}) only when the choice is genuinely the human's to make: it is irreversible or costly to get wrong, it turns on their personal preference or business judgement, or nothing in the mission or conversation favours any option.
+- Set "defer": true (answers {}) only when the choice is genuinely theirs — irreversible, costly to get wrong, or a matter of their preference or judgement.
 - Between defensible options, pick the most conservative and reversible one rather than deferring.`
 
 // autopilotAnswerQuestionCmd asks the copilot to answer a pending question, or

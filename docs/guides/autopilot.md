@@ -24,7 +24,7 @@ Autopilot mode is engaged.
 | Steer | Default | What it does |
 |---|---|---|
 | **Suggest** | off | Shows a next-step suggestion in the input box. When a mission is set, the suggestion follows the mission; otherwise it uses the generic input prediction. `tab` accepts the suggestion, and `enter` sends it. Suggest only fills the hint text and never submits on its own; when off, this hint is hidden. |
-| **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. Fails closed: any error escalates to you. |
+| **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. In a git working tree it counts history as the safety net: changes to tracked files are routine, and git's own sharp edges (`reset --hard`, `clean -f`, `stash drop`, force-push, `branch -D`) are weighed against the session's intent rather than blocked outright. It still escalates what leaves the tree — untracked files elsewhere, paths outside the project, a shared default branch. Fails closed: any error escalates to you. |
 | **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
 | **Skill** | off | Approves the copilot's skill loads outright, without the judge — a deliberate "trust skills" toggle, separate from Permission because the judge tends to escalate a skill load (it can run scripts). Off ⇒ skill loads fall to the Permission judge (or you). |
 | **Question** | off | Answers `AskUserQuestion` for you whenever the mission or the conversation makes a reasonable choice clear, preferring the conservative option over stalling the run. It defers only when the call is genuinely yours — irreversible, costly to get wrong, or a matter of your preference or judgement. Option labels are validated verbatim — a partial or invented answer becomes a defer. |
@@ -67,27 +67,20 @@ Start button.
 
 ## Staying autonomous
 
-A long unattended run is only as good as its ability to survive the things that
-normally stop a session. With the End steer on, the copilot keeps driving
-through all of these rather than parking until you come back:
+With the End steer on, the copilot drives through the things that would
+otherwise park the session until you came back:
 
-- **A turn that stopped mid-work.** A turn that hit its step limit, or whose
-  output was truncated beyond recovery, is picked back up — the copilot is told
-  how the turn ended and directs the resume. Your own `esc` is different: a
-  cancelled turn is you taking the helm, and the copilot leaves it to you. So is
-  a stop hook.
-- **A turn that failed outright.** After a provider error the copilot waits out
-  a growing backoff (5s, 10s, 15s), then decides whether the mission can resume —
-  up to three consecutive attempts, reset by any turn that reaches its end. An
-  error that genuinely needs you (bad credentials, a hard rejection) still lands
-  as a handback rather than a retry loop.
-- **A steer that misfired.** Each steer inference retries up to three times, so
-  a network blip or a model that answers in prose instead of JSON doesn't end the
-  mission.
-- **A compaction mid-decision.** The verdict waits for the compaction to land
-  instead of being dropped.
-- **Running out of turns.** Set **Continue at most** to `0` (shown as `∞`) and
-  the run ends when the mission is done, not when a step counter expires.
+- **A turn that stopped mid-work** — step limit, or output truncated beyond
+  recovery — is picked back up, with the copilot told how it ended. Your own
+  `esc` is different: a cancelled turn is you taking the helm. So is a stop hook.
+- **A turn that failed outright** gets a growing backoff (5s, 10s, 15s) and then
+  a resume decision, up to three consecutive attempts — reset by any turn that
+  reaches its end. An error that needs you still lands as a handback.
+- **A steer that misfired** retries up to three times, so a network blip or a
+  non-JSON reply doesn't end the mission.
+- **A compaction mid-decision** holds the verdict instead of dropping it.
+- **Running out of turns**: set **Continue at most** to `0` (shown as `∞`) and
+  the run ends when the mission is done, not when a counter expires.
 
 Uncapped runs pair well with a fast, cheap steer model — see
 [Configuration](#configuration).
