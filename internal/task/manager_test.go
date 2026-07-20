@@ -15,7 +15,7 @@ func TestManager_CreateAndGet(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "echo", "test")
 	cmd.Start()
 
-	task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+	task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 
 	if task.ID == "" {
 		t.Error("task ID should not be empty")
@@ -49,7 +49,7 @@ func TestManager_List(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+		m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 	}
 
 	tasks := m.List()
@@ -69,7 +69,7 @@ func TestManager_ListRunning(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 		tasks = append(tasks, task)
 	}
 
@@ -91,7 +91,7 @@ func TestManager_Remove(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "echo", "test")
 	cmd.Start()
 
-	task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+	task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 	taskID := task.ID
 
 	m.Remove(taskID)
@@ -113,7 +113,7 @@ func TestManager_GenerateUniqueIDs(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 
 		if ids[task.ID] {
 			t.Errorf("duplicate ID generated: %s", task.ID)
@@ -132,7 +132,7 @@ func TestManager_RegisterTask(t *testing.T) {
 	cmd.Start()
 
 	// Create task manually and register
-	task := NewBashTask("manual-id", "echo test", "Manual task", cmd, ctx, cancel)
+	task := NewBashTask("manual-id", "echo test", "Manual task", cmd, cancel)
 	m.RegisterTask(task)
 
 	retrieved, ok := m.Get("manual-id")
@@ -153,7 +153,7 @@ func TestManager_GetBashTask(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "echo", "test")
 	cmd.Start()
 
-	created := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+	created := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
 
 	task, ok := m.getBashTask(created.ID)
 	if !ok {

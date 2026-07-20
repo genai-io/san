@@ -33,7 +33,7 @@ func TestTaskLifecycleHandler(t *testing.T) {
 		t.Fatalf("start command: %v", err)
 	}
 
-	task := mgr.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
+	task := mgr.CreateBashTask(cmd, "echo test", "Test task", cancel)
 	if len(observer.created) != 1 {
 		t.Fatalf("expected 1 created notification, got %d", len(observer.created))
 	}
@@ -66,7 +66,7 @@ func TestKillNotifiesLifecycleHandler(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start command: %v", err)
 	}
-	task := mgr.CreateBashTask(cmd, "sleep 30", "Long task", ctx, cancel)
+	task := mgr.CreateBashTask(cmd, "sleep 30", "Long task", cancel)
 
 	_ = task.Kill()
 

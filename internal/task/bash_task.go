@@ -5,6 +5,7 @@ import (
 	"context"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -14,33 +15,38 @@ import (
 // BashTask represents a background bash command task
 // It implements the BackgroundTask interface
 type BashTask struct {
-	ID          string          // Unique task ID
-	Command     string          // The command being executed
-	Description string          // Brief description
-	PID         int             // Process ID
-	StartTime   time.Time       // When the task started
-	OutputFile  string          // Stable output file path when available
-	cmd         *exec.Cmd       // The running command
-	ctx         context.Context // Task context
+	ID          string    // Unique task ID
+	Command     string    // The command being executed
+	Description string    // Brief description
+	PID         int       // Process ID
+	StartTime   time.Time // When the task started
+	OutputFile  string    // Stable output file path when available
+	cmd         *exec.Cmd // The running command
 
 	cancel context.CancelFunc // Cancel function
 
-	mu            sync.RWMutex  // Protects mutable fields below
-	status        TaskStatus    // Current status
-	endTime       time.Time     // When the task ended (if completed)
-	exitCode      int           // Exit code (if completed)
-	errMsg        string        // Error message (if failed)
-	stopRequested bool          // Stop was asked for; the exit is deliberate
-	output        bytes.Buffer  // Collected stdout/stderr
-	done          chan struct{} // Closed when task completes
-	doneOnce      sync.Once     // Guards done channel close
+	// stopRequested records that Stop asked the child to exit, so Complete can
+	// tell a deliberate stop from a crash. Written by the caller of Stop and
+	// read on the goroutine waiting for the child, so it is atomic rather than
+	// mu-guarded: it shares no invariant with the fields below and is never
+	// read together with them.
+	stopRequested atomic.Bool
+
+	mu       sync.RWMutex  // Protects mutable fields below
+	status   TaskStatus    // Current status
+	endTime  time.Time     // When the task ended (if completed)
+	exitCode int           // Exit code (if completed)
+	errMsg   string        // Error message (if failed)
+	output   bytes.Buffer  // Collected stdout/stderr
+	done     chan struct{} // Closed when task completes
+	doneOnce sync.Once     // Guards done channel close
 }
 
 // Verify BashTask implements BackgroundTask
 var _ BackgroundTask = (*BashTask)(nil)
 
 // NewBashTask creates a new bash task
-func NewBashTask(id, command, description string, cmd *exec.Cmd, ctx context.Context, cancel context.CancelFunc) *BashTask {
+func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc) *BashTask {
 	task := &BashTask{
 		ID:          id,
 		Command:     command,
@@ -50,7 +56,6 @@ func NewBashTask(id, command, description string, cmd *exec.Cmd, ctx context.Con
 		StartTime:   time.Now(),
 		OutputFile:  initOutputFile(id),
 		cmd:         cmd,
-		ctx:         ctx,
 		cancel:      cancel,
 		done:        make(chan struct{}),
 	}
@@ -113,13 +118,9 @@ func (t *BashTask) GetOutput() string {
 // retry work the user had just cancelled — the outcome StatusStopped exists to
 // prevent.
 func (t *BashTask) Complete(exitCode int, err error) {
-	t.mu.RLock()
-	stopped := t.stopRequested
-	t.mu.RUnlock()
-
 	status, errMsg := StatusCompleted, ""
 	switch {
-	case stopped:
+	case t.stopRequested.Load():
 		status, errMsg = StatusStopped, "stopped before completion"
 	case err != nil:
 		status, errMsg = StatusFailed, err.Error()
@@ -129,10 +130,12 @@ func (t *BashTask) Complete(exitCode int, err error) {
 	t.finalize(status, exitCode, errMsg)
 }
 
-// markKilled marks the task as killed (internal use). The exit code follows
-// the shell convention of 128+signal for SIGKILL, so a reader of the output
-// record can't mistake a killed task's code for a successful 0.
-func (t *BashTask) markKilled() { t.finalize(StatusKilled, 128+int(syscall.SIGKILL), "") }
+// signalExitCode renders a death by signal the way a shell does, so a reader
+// of the output record can't mistake a killed task's code for a successful 0.
+func signalExitCode(sig syscall.Signal) int { return 128 + int(sig) }
+
+// markKilled marks the task as killed (internal use).
+func (t *BashTask) markKilled() { t.finalize(StatusKilled, signalExitCode(syscall.SIGKILL), "") }
 
 // finalize performs the one and only terminal transition a BashTask can make.
 // Every route out of StatusRunning — clean exit, non-zero exit, error, kill —
@@ -189,16 +192,13 @@ func (t *BashTask) WaitForCompletion(timeout time.Duration) bool {
 // so the child gets a chance to clean up. On Windows there is no signal-based
 // graceful stop, so the helper hard-kills instead.
 //
-// It deliberately does not cancel the task context. exec wires cmd.Cancel to
-// SIGKILL the group the instant the context is done, so cancelling here would
+// It deliberately leaves the task context alone. exec wires cmd.Cancel to
+// SIGKILL the group the instant that context is done, so cancelling here would
 // deliver the kill before the SIGTERM and the graceful stop would never
-// actually happen. Escalation belongs to the caller: Manager.Kill polls for
-// the exit and falls back to Kill when the child ignores the signal.
+// actually happen. Escalation belongs to the caller: Manager.Kill waits
+// gracefulStopTimeout and then falls back to Kill.
 func (t *BashTask) Stop() error {
-	t.mu.Lock()
-	t.stopRequested = true
-	t.mu.Unlock()
-
+	t.stopRequested.Store(true)
 	return proc.TerminateGroup(t.cmd, syscall.SIGTERM)
 }
 

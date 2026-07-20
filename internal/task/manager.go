@@ -10,7 +10,19 @@ import (
 	"time"
 )
 
+// gracefulStopTimeout is how long a Stop'd task gets to exit on its own
+// before Kill escalates. Named because BackgroundTask.Stop's contract points
+// at it: implementers rely on this escalation instead of enforcing their own
+// deadline.
+const gracefulStopTimeout = 2 * time.Second
+
 // Manager tracks background bash and subagent tasks.
+//
+// Nothing prunes tasks: they are kept for the life of the process, because
+// TaskOutput resolves a task ID through this map and has no fallback to the
+// output file on disk, so forgetting one would mean answering "task not
+// found" for work the model ran minutes ago. What each task holds is bounded
+// instead, by appendCapped.
 type Manager struct {
 	mu    sync.RWMutex
 	tasks map[string]BackgroundTask
@@ -24,9 +36,9 @@ func NewManager() *Manager {
 }
 
 // CreateBashTask creates and registers a new bash task
-func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, ctx context.Context, cancel context.CancelFunc) *BashTask {
+func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
 	id := generateID()
-	task := NewBashTask(id, command, description, cmd, ctx, cancel)
+	task := NewBashTask(id, command, description, cmd, cancel)
 
 	m.mu.Lock()
 	m.tasks[id] = task
@@ -121,14 +133,9 @@ func (m *Manager) IsRunning(id string) bool {
 	return ok && t.IsRunning()
 }
 
-// Remove drops a task from the manager. Nothing in the running app calls it:
-// tasks are deliberately kept for the life of the process, because TaskOutput
-// resolves a task ID through this map and reporting "task not found" for work
-// the model ran minutes ago would be worse than the memory. What each task
-// retains is bounded instead, by the cap in appendCapped.
-//
-// It exists for tests, which share the process-global manager and need to put
-// it back the way they found it.
+// Remove drops a task from the manager. Production code never calls it — see
+// Manager for why tasks are otherwise kept forever. It exists so that tests
+// sharing the process-global manager can put it back as they found it.
 func (m *Manager) Remove(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -156,7 +163,7 @@ func (m *Manager) Kill(id string) error {
 	}
 
 	// Wait for graceful exit with timeout
-	timer := time.NewTimer(2 * time.Second)
+	timer := time.NewTimer(gracefulStopTimeout)
 	defer timer.Stop()
 
 	ticker := time.NewTicker(100 * time.Millisecond)
