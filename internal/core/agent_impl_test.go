@@ -143,7 +143,7 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 
 // Regression for #338: the compaction check must test the full prompt, not the
 // uncached delta InputTokens holds under prompt caching (see TotalInputTokens).
-func TestPromptTokensCountCachedPrompt(t *testing.T) {
+func TestCompactionCheckCountsCachedPromptTokens(t *testing.T) {
 	resp := InferResponse{Usage: Usage{
 		InputTokens:              1_200,
 		CacheReadInputTokens:     170_000,
@@ -161,13 +161,13 @@ func TestPromptTokensCountCachedPrompt(t *testing.T) {
 
 // The provider's own count wins whenever it exists — the text estimate is a
 // fallback, never a correction.
-func TestCurrentPromptTokensPrefersMeasuredCount(t *testing.T) {
+func TestPromptTokensOrEstimatePrefersMeasurement(t *testing.T) {
 	a := newAgentForPromptSizing(t)
 	a.SetMessages([]Message{UserMessage(strings.Repeat("x", 400_000), nil)})
-	a.promptTokens = 12_345
+	a.lastTotalInputTokens = 12_345
 
-	if got := a.currentPromptTokens(); got != 12_345 {
-		t.Fatalf("currentPromptTokens() = %d, want the measured 12345", got)
+	if got := a.promptTokensOrEstimate(); got != 12_345 {
+		t.Fatalf("promptTokensOrEstimate() = %d, want the measured 12345", got)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestCurrentPromptTokensPrefersMeasuredCount(t *testing.T) {
 // agent seeded with a long history (session resume, model switch, toolset
 // drift), whose first prompt can already be over the threshold, without
 // tipping over on an ordinary short conversation.
-func TestCurrentPromptTokensEstimatesUnmeasuredChain(t *testing.T) {
+func TestPromptTokensOrEstimateFallsBackToEstimate(t *testing.T) {
 	const limit = 200_000
 	cases := []struct {
 		name           string
@@ -190,9 +190,9 @@ func TestCurrentPromptTokensEstimatesUnmeasuredChain(t *testing.T) {
 			a := newAgentForPromptSizing(t)
 			a.SetMessages([]Message{UserMessage(c.content, nil)})
 
-			got := a.currentPromptTokens()
+			got := a.promptTokensOrEstimate()
 			if got == 0 {
-				t.Fatal("currentPromptTokens() = 0, want an estimate")
+				t.Fatal("promptTokensOrEstimate() = 0, want an estimate")
 			}
 			if NeedsCompaction(got, limit) != c.wantCompaction {
 				t.Fatalf("NeedsCompaction(%d, %d) = %v, want %v",
@@ -221,19 +221,19 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 // before it must not survive: it would still read "full" against the tiny new
 // chain and compact again on every following step. Zero suppresses the check
 // until the next inference reports a fresh figure.
-func TestApplyCompactionClearsPromptTokens(t *testing.T) {
+func TestApplyCompactionClearsLastTotalInputTokens(t *testing.T) {
 	a := newAgentForPromptSizing(t)
 	a.SetMessages([]Message{
 		UserMessage("first", nil),
 		{Role: RoleAssistant, Content: "reply"},
 		UserMessage("second", nil),
 	})
-	a.promptTokens = 195_000
+	a.lastTotalInputTokens = 195_000
 
 	a.applyCompaction(context.Background(), "summary", 3, "manual")
 
-	if a.promptTokens != 0 {
-		t.Fatalf("promptTokens = %d, want 0 after compaction", a.promptTokens)
+	if a.lastTotalInputTokens != 0 {
+		t.Fatalf("lastTotalInputTokens = %d, want 0 after compaction", a.lastTotalInputTokens)
 	}
 }
 

@@ -32,15 +32,19 @@ type agent struct {
 	outbox            chan Event
 	onEvent           func(Event)
 
-	// promptTokens is the full prompt size the provider reported for the last
-	// inference, and the figure the proactive compaction check tests against.
+	// lastTotalInputTokens is InferResponse.TotalInputTokens from the previous
+	// inference — the whole prompt the provider billed for, cached prefix
+	// included, not the uncached delta InputTokens carries. The name says
+	// "last" because the lag is deliberate: the figure is always one step
+	// behind the prompt being assembled now.
+	//
 	// It lives on the agent rather than in ThinkAct so it survives a turn
 	// boundary: a turn's first step is exactly where the context accumulated by
 	// previous turns lands, and a single-step turn (a plain answer, no tool
 	// calls) would otherwise never be checked at all. Deliberately outside the
 	// mu block — written and read only on the agent's own goroutine (ThinkAct,
 	// ingest).
-	promptTokens int
+	lastTotalInputTokens int
 
 	mu       sync.RWMutex
 	messages []Message // conversation history
@@ -346,7 +350,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			// behind the compactFunc guard — without a compactFunc the result
 			// could not be acted on anyway.
 			if limit := a.llm.InputLimit(); limit > 0 &&
-				NeedsCompaction(a.currentPromptTokens(), limit) && a.compact(ctx) {
+				NeedsCompaction(a.promptTokensOrEstimate(), limit) && a.compact(ctx) {
 				continue
 			}
 		}
@@ -390,7 +394,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 		// limit read ~1% while the context was nearly full, so auto-compaction
 		// never fired (issue #338). TotalInputTokens is also what the status bar
 		// displays, so the two now agree.
-		a.promptTokens = resp.TotalInputTokens()
+		a.lastTotalInputTokens = resp.TotalInputTokens()
 		tokensIn += resp.InputTokens
 		tokensOut += resp.OutputTokens
 
@@ -427,21 +431,25 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	}
 }
 
-// currentPromptTokens returns the prompt size to test against the input limit.
-// The provider's own count from the previous inference is authoritative and is
-// used whenever it exists. It is missing only before this agent has inferred
-// once, which is not always a small conversation: ensureAgentSession seeds a
-// rebuilt agent with the full existing history (session resume, model switch,
-// toolset drift), so the very first prompt can already be near the limit.
+// promptTokensOrEstimate returns the prompt size to test against the input
+// limit. The name is a disclosure, not a hedge: the caller cannot tell from
+// the return value whether it got the provider's measurement or San's guess,
+// and the two are not equally trustworthy.
 //
-// The fallback is the repo's usual 4-bytes-per-token approximation. That is
+// The measurement is used whenever it exists. It is missing only before this
+// agent has inferred once, which is not always a small conversation:
+// ensureAgentSession seeds a rebuilt agent with the full existing history
+// (session resume, model switch, toolset drift), so the very first prompt can
+// already be near the limit.
+//
+// The estimate is the repo's usual 4-bytes-per-token approximation. That is
 // right for English prose and low for CJK (nearer 2–3), and it ignores the tool
 // schemas the real prompt also carries — so it errs low by design. Erring low
 // just defers to the reactive prompt-too-long retry, whereas erring high would
 // compact a conversation that still had room.
-func (a *agent) currentPromptTokens() int {
-	if a.promptTokens > 0 {
-		return a.promptTokens
+func (a *agent) promptTokensOrEstimate() int {
+	if a.lastTotalInputTokens > 0 {
+		return a.lastTotalInputTokens
 	}
 	return (len(a.system.Prompt()) + a.conversationTextLen()) / 4
 }
@@ -621,7 +629,7 @@ func (a *agent) applyCompaction(ctx context.Context, summary string, originalCou
 	// keeping the pre-compaction figure would still read "full" against the
 	// now-tiny chain and compact again on the very next step, forever. Zero
 	// suppresses the check until the next inference measures the new prompt.
-	a.promptTokens = 0
+	a.lastTotalInputTokens = 0
 	a.emitAppend(summaryMsg)
 	a.emit(ctx, CompactEvent(a.id, CompactInfo{
 		Summary:          summary,
