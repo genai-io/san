@@ -28,7 +28,6 @@ type Client struct {
 	provider       Provider
 	model          string
 	maxTokens      int
-	inputLimit     int
 	thinkingEffort string
 	tokens         Usage
 
@@ -249,33 +248,42 @@ func (l *Client) ModelID() string {
 	return l.model
 }
 
-// SetInputLimit overrides the model's context window, mirroring how maxTokens
-// overrides the output cap. The caller (the app) resolves the window the same
-// way the status bar does — user setting, then the model store's cache — so
-// the window the compaction check fires against is the one the user sees.
-// Without it the two resolve independently and can disagree: a model an
-// aggregator serves with no reported window leaves InputLimit at 0, disabling
-// auto-compaction entirely while the bar still shows a healthy percentage.
-func (l *Client) SetInputLimit(limit int) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.inputLimit = limit
-}
-
-// InputLimit returns the model's max input token capacity (context window),
-// or 0 if unknown. An explicit SetInputLimit wins; otherwise the provider
-// lookup is memoized per model, so this is cheap to call on every inference
-// step (the compaction check does so).
+// InputLimit returns the model's context window, never 0 — see
+// DefaultInputLimit for why an unknown window falls back rather than
+// disabling the caller's size check.
+//
+// It reads the shared resolver (EffectiveInputLimit) rather than taking an
+// injected value, so every client resolves the window the same way the status
+// bar does without any construction site having to remember to pass it. The
+// store answers from memory; the live provider lookup behind it is memoized
+// per model, so this stays cheap enough for the per-inference-step compaction
+// check to call it.
 func (l *Client) InputLimit() int {
 	l.mu.RLock()
 	p := l.provider
 	model := l.model
-	override := l.inputLimit
 	l.mu.RUnlock()
-	if override > 0 {
-		return override
+
+	// EffectiveInputLimit is nil-store-safe, and is called unconditionally so
+	// the env override it checks first is honored even before a store exists.
+	store := Default().Store()
+	var provider Name
+	var auth AuthMethod
+	if p != nil {
+		provider = Name(p.Name())
+		if store != nil {
+			if conn, ok := store.GetConnection(provider); ok {
+				auth = conn.AuthMethod
+			}
+		}
 	}
-	return l.inLimit.get(p, model, inputLimitFromProvider)
+	if n := store.EffectiveInputLimit(provider, auth, model); n > 0 {
+		return n
+	}
+	if n := l.inLimit.get(p, model, inputLimitFromProvider); n > 0 {
+		return n
+	}
+	return DefaultInputLimit
 }
 
 // ResolveMaxTokens returns the effective output token limit.

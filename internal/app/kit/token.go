@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
 )
 
 // TokenLimitResultMsg is sent when a token limit fetch completes.
@@ -71,27 +70,26 @@ func getEffectiveTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInf
 	return GetModelTokenLimits(store, currentModel)
 }
 
-// GetEffectiveInputLimit returns the context window to hold the conversation
-// to, resolved in the same order GetMaxTokens uses for the output cap: an
-// explicit override first, then what the model reports, then a default.
+// GetEffectiveInputLimit returns the context window for the status bar's
+// percentage. It delegates to llm.Store.EffectiveInputLimit — the same
+// resolver llm.Client.InputLimit uses for the auto-compaction trigger — so the
+// bar can never fill against a different window than the one compaction fires
+// on (issue #338).
 //
-// The default matters more here than it does for output tokens. Auto-compaction
-// only runs against a non-zero limit, so a model whose window San cannot
-// discover — an aggregator that serves it without publishing limits — would
-// otherwise grow unchecked until the provider rejected the request.
+// The one place the two differ is deliberate: with no model selected there is
+// nothing to size against and no agent running to compact, so this returns 0
+// and the bar renders "--" rather than a percentage of an invented window.
 func GetEffectiveInputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	if currentModel == nil {
-		// No model selected: genuinely nothing to size against, and no agent
-		// running to compact. The status bar renders this as "--".
 		return 0
 	}
-	if override := setting.InputLimitOverride(); override > 0 {
-		return override
+	if store != nil {
+		auth := store.ResolveAuthMethod(currentModel)
+		if limit := store.EffectiveInputLimit(currentModel.Provider, auth, currentModel.ModelID); limit > 0 {
+			return limit
+		}
 	}
-	if input, _ := getEffectiveTokenLimits(store, currentModel); input > 0 {
-		return input
-	}
-	return setting.DefaultInputLimit
+	return llm.DefaultInputLimit
 }
 
 // getEffectiveOutputLimit returns only the effective output token limit.

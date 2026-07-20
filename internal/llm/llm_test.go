@@ -192,15 +192,19 @@ func TestModelLimitsMemoized(t *testing.T) {
 
 // TestModelLimitsRetryAfterFailure ensures a transient resolution failure is not
 // cached as 0: the next query retries, and only a successful lookup is memoized.
+// During the outage callers see DefaultInputLimit — the resolution failed, but
+// InputLimit never reports 0, which the compaction check would read as "no
+// limit known" and stop firing on.
 func TestModelLimitsRetryAfterFailure(t *testing.T) {
+	t.Setenv(InputLimitEnvVar, "")
 	mp := &mockLLMProvider{listErr: errors.New("network down")}
 	l := &Client{provider: mp, model: "m"}
 
-	if got := l.InputLimit(); got != 0 {
-		t.Fatalf("InputLimit during outage = %d, want 0", got)
+	if got := l.InputLimit(); got != DefaultInputLimit {
+		t.Fatalf("InputLimit during outage = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
 	}
-	if got := l.InputLimit(); got != 0 {
-		t.Fatalf("InputLimit during outage (2nd) = %d, want 0", got)
+	if got := l.InputLimit(); got != DefaultInputLimit {
+		t.Fatalf("InputLimit during outage (2nd) = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
 	}
 	if mp.listCalls != 2 {
 		t.Errorf("ListModels called %d times during outage, want 2 (failures retry)", mp.listCalls)
@@ -221,30 +225,27 @@ func TestModelLimitsRetryAfterFailure(t *testing.T) {
 	}
 }
 
-// The app resolves the context window the same way the status bar does and
-// pushes it in with SetInputLimit. That override must win over the provider's
-// own figure — and must supply a window even when the provider reports none,
-// which is the case that otherwise disables auto-compaction outright.
-func TestSetInputLimitOverridesProvider(t *testing.T) {
+// The env override outranks the provider's own figure, for a provider that
+// under-reports its window.
+func TestInputLimitEnvOverrideBeatsProvider(t *testing.T) {
+	t.Setenv(InputLimitEnvVar, "272000")
 	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", InputTokenLimit: 200000}}}
 	l := &Client{provider: mp, model: "m"}
 
-	l.SetInputLimit(272000)
 	if got := l.InputLimit(); got != 272000 {
 		t.Fatalf("InputLimit() = %d, want the 272000 override", got)
 	}
-	if mp.listCalls != 0 {
-		t.Errorf("ListModels called %d times, want 0 (override short-circuits the lookup)", mp.listCalls)
-	}
+}
 
-	// Provider knows nothing; the override is the only source of a window.
-	silent := &Client{provider: &mockLLMProvider{models: []ModelInfo{{ID: "m"}}}, model: "m"}
-	if got := silent.InputLimit(); got != 0 {
-		t.Fatalf("precondition: InputLimit() = %d, want 0 without a provider limit", got)
-	}
-	silent.SetInputLimit(200000)
-	if got := silent.InputLimit(); got != 200000 {
-		t.Fatalf("InputLimit() = %d, want 200000", got)
+// A provider that publishes no window must not leave InputLimit at 0 — the
+// compaction check reads 0 as "unknown" and stops firing, which is how a full
+// context could grow unchecked (issue #338).
+func TestInputLimitFallsBackToDefault(t *testing.T) {
+	t.Setenv(InputLimitEnvVar, "")
+	l := &Client{provider: &mockLLMProvider{models: []ModelInfo{{ID: "m"}}}, model: "m"}
+
+	if got := l.InputLimit(); got != DefaultInputLimit {
+		t.Fatalf("InputLimit() = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
 	}
 }
 

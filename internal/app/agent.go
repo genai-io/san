@@ -135,7 +135,6 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		Provider:       m.env.LLMProvider,
 		ModelID:        m.env.GetModelID(),
 		MaxTokens:      maxTokens,
-		InputLimit:     kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
 		ThinkingEffort: m.env.EffectiveThinkingEffort(),
 		OnEvent:        onEvent,
 

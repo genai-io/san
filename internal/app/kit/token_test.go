@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
 )
 
 // TestGetModelTokenLimitsPrefersCurrentProvider guards against the status-bar
@@ -82,7 +81,7 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 // would let the conversation grow until the provider rejected it.
 func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(setting.InputLimitEnvVar, "")
+	t.Setenv(llm.InputLimitEnvVar, "")
 	store, err := llm.NewStore()
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -91,8 +90,8 @@ func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
 	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
 		ModelID: "unknown-model", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
 	})
-	if got != setting.DefaultInputLimit {
-		t.Fatalf("GetEffectiveInputLimit() = %d, want DefaultInputLimit %d", got, setting.DefaultInputLimit)
+	if got != llm.DefaultInputLimit {
+		t.Fatalf("GetEffectiveInputLimit() = %d, want DefaultInputLimit %d", got, llm.DefaultInputLimit)
 	}
 }
 
@@ -100,7 +99,7 @@ func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
 // correct a provider that under-reports its window.
 func TestGetEffectiveInputLimitEnvOverrideWins(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(setting.InputLimitEnvVar, "1000000")
+	t.Setenv(llm.InputLimitEnvVar, "1000000")
 	store, err := llm.NewStore()
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -122,7 +121,7 @@ func TestGetEffectiveInputLimitEnvOverrideWins(t *testing.T) {
 // No model selected is genuinely unknown, not a case for guessing — the status
 // bar renders 0 as "--" rather than a percentage against an invented window.
 func TestGetEffectiveInputLimitWithoutModelIsZero(t *testing.T) {
-	t.Setenv(setting.InputLimitEnvVar, "500000")
+	t.Setenv(llm.InputLimitEnvVar, "500000")
 	if got := GetEffectiveInputLimit(nil, nil); got != 0 {
 		t.Fatalf("GetEffectiveInputLimit(nil, nil) = %d, want 0", got)
 	}
