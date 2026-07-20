@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -504,5 +505,46 @@ func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
 				t.Fatalf("canExecuteToolBatchInParallel() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// With no discoverable window, proactive compaction cannot fire and this is
+// the only thing standing between a too-large prompt and a turn that fails
+// forever. It matched Anthropic's phrasing alone, so every other provider was
+// unprotected.
+func TestIsPromptTooLongAcrossProviders(t *testing.T) {
+	tooLong := []struct{ name, msg string }{
+		{"anthropic", "prompt is too long: 213423 tokens > 200000 maximum"},
+		{"anthropic type", `{"type":"error","error":{"type":"prompt_too_long"}}`},
+		{"openai", "This model's maximum context length is 128000 tokens. However, your messages resulted in 130512 tokens."},
+		{"openai code", `{"code":"context_length_exceeded"}`},
+		{"gemini", "The input token count 1050000 exceeds the maximum number of tokens allowed 1048576."},
+		{"mixed case", "Prompt Is Too Long"},
+	}
+	for _, c := range tooLong {
+		t.Run(c.name, func(t *testing.T) {
+			if !isPromptTooLong(errors.New(c.msg)) {
+				t.Fatalf("isPromptTooLong(%q) = false, want true", c.msg)
+			}
+		})
+	}
+
+	// Unrelated failures must not be mistaken for overflow: compacting on a
+	// network blip would discard history the retry path could have kept.
+	other := []struct{ name, msg string }{
+		{"network", "dial tcp: connection refused"},
+		{"rate limit", "429 Too Many Requests"},
+		{"auth", "invalid api key"},
+		{"nil", ""},
+	}
+	for _, c := range other {
+		t.Run(c.name, func(t *testing.T) {
+			if isPromptTooLong(errors.New(c.msg)) {
+				t.Fatalf("isPromptTooLong(%q) = true, want false", c.msg)
+			}
+		})
+	}
+	if isPromptTooLong(nil) {
+		t.Fatal("isPromptTooLong(nil) = true, want false")
 	}
 }

@@ -192,19 +192,16 @@ func TestModelLimitsMemoized(t *testing.T) {
 
 // TestModelLimitsRetryAfterFailure ensures a transient resolution failure is not
 // cached as 0: the next query retries, and only a successful lookup is memoized.
-// During the outage callers see DefaultInputLimit — the resolution failed, but
-// InputLimit never reports 0, which the compaction check would read as "no
-// limit known" and stop firing on.
 func TestModelLimitsRetryAfterFailure(t *testing.T) {
 	t.Setenv(InputLimitEnvVar, "")
 	mp := &mockLLMProvider{listErr: errors.New("network down")}
 	l := &Client{provider: mp, model: "m"}
 
-	if got := l.InputLimit(); got != DefaultInputLimit {
-		t.Fatalf("InputLimit during outage = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
+	if got := l.InputLimit(); got != 0 {
+		t.Fatalf("InputLimit during outage = %d, want 0", got)
 	}
-	if got := l.InputLimit(); got != DefaultInputLimit {
-		t.Fatalf("InputLimit during outage (2nd) = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
+	if got := l.InputLimit(); got != 0 {
+		t.Fatalf("InputLimit during outage (2nd) = %d, want 0", got)
 	}
 	if mp.listCalls != 2 {
 		t.Errorf("ListModels called %d times during outage, want 2 (failures retry)", mp.listCalls)
@@ -237,15 +234,16 @@ func TestInputLimitEnvOverrideBeatsProvider(t *testing.T) {
 	}
 }
 
-// A provider that publishes no window must not leave InputLimit at 0 — the
-// compaction check reads 0 as "unknown" and stops firing, which is how a full
-// context could grow unchecked (issue #338).
-func TestInputLimitFallsBackToDefault(t *testing.T) {
+// An undiscoverable window resolves to 0 rather than a guess: proactive
+// compaction then stays out of the way and the prompt-too-long retry recovers.
+// Acting on an invented number would silently compact a conversation that had
+// room, or never fire on one that did not.
+func TestInputLimitUnknownStaysZero(t *testing.T) {
 	t.Setenv(InputLimitEnvVar, "")
 	l := &Client{provider: &mockLLMProvider{models: []ModelInfo{{ID: "m"}}}, model: "m"}
 
-	if got := l.InputLimit(); got != DefaultInputLimit {
-		t.Fatalf("InputLimit() = %d, want DefaultInputLimit %d", got, DefaultInputLimit)
+	if got := l.InputLimit(); got != 0 {
+		t.Fatalf("InputLimit() = %d, want 0 for an unknown window", got)
 	}
 }
 

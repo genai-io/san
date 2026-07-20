@@ -71,25 +71,20 @@ func getEffectiveTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInf
 }
 
 // GetEffectiveInputLimit returns the context window for the status bar's
-// percentage. It delegates to llm.Store.EffectiveInputLimit — the same
-// resolver llm.Client.InputLimit uses for the auto-compaction trigger — so the
-// bar can never fill against a different window than the one compaction fires
-// on (issue #338).
+// percentage, or 0 when it is unknown (no model selected, or a model whose
+// window San cannot size) — the bar renders that as "--" rather than a
+// percentage of a guess.
 //
-// The one place the two differ is deliberate: with no model selected there is
-// nothing to size against and no agent running to compact, so this returns 0
-// and the bar renders "--" rather than a percentage of an invented window.
+// It delegates to llm.Store.EffectiveInputLimit, the same resolver
+// llm.Client.InputLimit uses for the auto-compaction trigger, so the bar can
+// never fill against a different window than the one compaction fires on
+// (issue #338).
 func GetEffectiveInputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
-	if currentModel == nil {
+	if store == nil || currentModel == nil {
 		return 0
 	}
-	if store != nil {
-		auth := store.ResolveAuthMethod(currentModel)
-		if limit := store.EffectiveInputLimit(currentModel.Provider, auth, currentModel.ModelID); limit > 0 {
-			return limit
-		}
-	}
-	return llm.DefaultInputLimit
+	auth := store.ResolveAuthMethod(currentModel)
+	return store.EffectiveInputLimit(currentModel.Provider, auth, currentModel.ModelID)
 }
 
 // getEffectiveOutputLimit returns only the effective output token limit.

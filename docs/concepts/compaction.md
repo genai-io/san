@@ -10,11 +10,12 @@ blocks, messages), how the summary is recorded for replay, and how the two
 entry points (automatic and manual `/compact`) differ and agree.
 
 The window itself is resolved as: `SAN_INPUT_LIMIT` if set, else the limit the
-model reports (or the one configured for it), else a conservative 128k default.
-The default exists because auto-compaction only runs against a non-zero limit —
-a model whose window San cannot discover would otherwise grow unchecked until
-the provider rejected the request. Set `SAN_INPUT_LIMIT` when a provider
-under-reports and that default is leaving capacity unused.
+model reports (or the one configured for it), else unknown. There is no guessed
+default — an invented window is acted on silently, and guessing low discards
+context on every compaction while guessing high never fires. An unknown window
+skips proactive compaction and leaves the reactive *prompt-too-long* retry to
+recover; the status bar shows `--` rather than a percentage of a guess. Set
+`SAN_INPUT_LIMIT` for a model San cannot size on its own.
 
 ## What compaction touches (and what it doesn't)
 

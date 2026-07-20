@@ -248,9 +248,9 @@ func (l *Client) ModelID() string {
 	return l.model
 }
 
-// InputLimit returns the model's context window, never 0 — see
-// DefaultInputLimit for why an unknown window falls back rather than
-// disabling the caller's size check.
+// InputLimit returns the model's context window, or 0 when it cannot be
+// determined — callers treat 0 as "unknown" and skip any size check rather
+// than acting on a guess (see InputLimitEnvVar).
 //
 // It reads the shared resolver (EffectiveInputLimit) rather than taking an
 // injected value, so every client resolves the window the same way the status
@@ -280,10 +280,7 @@ func (l *Client) InputLimit() int {
 	if n := store.EffectiveInputLimit(provider, auth, model); n > 0 {
 		return n
 	}
-	if n := l.inLimit.get(p, model, inputLimitFromProvider); n > 0 {
-		return n
-	}
-	return DefaultInputLimit
+	return l.inLimit.get(p, model, inputLimitFromProvider)
 }
 
 // ResolveMaxTokens returns the effective output token limit.

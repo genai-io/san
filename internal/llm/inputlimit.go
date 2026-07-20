@@ -11,19 +11,15 @@ import (
 // here. Issue #338 was the display and the trigger disagreeing; keeping one
 // resolver is what stops that from recurring.
 
-const (
-	// DefaultInputLimit is the window assumed when nothing else supplies one.
-	// Auto-compaction only runs against a non-zero limit, so returning 0 for an
-	// undiscoverable model would disable it entirely and let the conversation
-	// grow until the provider rejected it. 128k is the smallest window in
-	// common use, so this under-guesses on roomier models — compacting earlier
-	// than strictly necessary — rather than over-guessing and overflowing.
-	DefaultInputLimit = 128_000
-
-	// InputLimitEnvVar forces the window for models San cannot size, e.g. an
-	// aggregator serving a 1M-token model without publishing limits.
-	InputLimitEnvVar = "SAN_INPUT_LIMIT"
-)
+// InputLimitEnvVar sets the window for a model San cannot size on its own,
+// e.g. an aggregator serving a model without publishing its limits. There is
+// deliberately no default to stand in for it: a guessed window is acted on
+// silently, and guessing low costs real context on every compaction while
+// guessing high never fires at all. An unknown window resolves to 0, which
+// skips proactive compaction and leaves the prompt-too-long retry
+// (isPromptTooLong) to recover — one wasted request, no invented number, and
+// the status bar honestly reads "--" instead of a percentage of a guess.
+const InputLimitEnvVar = "SAN_INPUT_LIMIT"
 
 // inputLimitOverride returns the window forced by InputLimitEnvVar, or 0 when
 // unset or not a positive integer.

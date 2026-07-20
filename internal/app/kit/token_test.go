@@ -76,10 +76,10 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 	}
 }
 
-// A model whose window San cannot discover must still get a usable figure:
-// auto-compaction only runs against a non-zero limit, so returning 0 here
-// would let the conversation grow until the provider rejected it.
-func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
+// A model whose window San cannot discover resolves to 0, which the status bar
+// renders as "--". Inventing a figure would show a percentage of a guess and,
+// worse, have compaction act on it.
+func TestGetEffectiveInputLimitUnknownIsZero(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(llm.InputLimitEnvVar, "")
 	store, err := llm.NewStore()
@@ -90,13 +90,13 @@ func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
 	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
 		ModelID: "unknown-model", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
 	})
-	if got != llm.DefaultInputLimit {
-		t.Fatalf("GetEffectiveInputLimit() = %d, want DefaultInputLimit %d", got, llm.DefaultInputLimit)
+	if got != 0 {
+		t.Fatalf("GetEffectiveInputLimit() = %d, want 0 for an undiscoverable window", got)
 	}
 }
 
-// The env override wins over both the cache and the default, so a user can
-// correct a provider that under-reports its window.
+// The env override wins over the cache, so a user can correct a provider that
+// under-reports its window.
 func TestGetEffectiveInputLimitEnvOverrideWins(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(llm.InputLimitEnvVar, "1000000")
