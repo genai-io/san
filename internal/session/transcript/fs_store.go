@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/genai-io/san/internal/log"
+	"go.uber.org/zap"
 )
 
 const transcriptIndexFile = "transcripts-index.json"
@@ -827,7 +830,21 @@ func (s *FileStore) loadRecordsLocked(path string) ([]Record, error) {
 		}
 		var rec Record
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			return nil, fmt.Errorf("decode transcript record: %w", err)
+			// The file is append-only and appendRecord fsyncs only on turn
+			// boundaries, so a crash mid-append leaves a partial final line.
+			// That is the one place a torn record can be, and rejecting the
+			// whole file for it means an interrupted turn costs the user the
+			// entire session — every record before it is intact.
+			//
+			// A malformed line anywhere else is not a crash, and silently
+			// dropping it would leave a hole in the replayed conversation with
+			// nothing to show for it, so that still fails loudly.
+			if scanner.Scan() {
+				return nil, fmt.Errorf("decode transcript record: %w", err)
+			}
+			log.Logger().Warn("transcript: dropping torn final record",
+				zap.String("path", path), zap.Error(err))
+			break
 		}
 		records = append(records, rec)
 	}
