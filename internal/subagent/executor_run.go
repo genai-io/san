@@ -178,14 +178,21 @@ func (e *Executor) buildAgentResult(run *preparedRun, result *core.Result) *Agen
 	return e.finalizeResult(run, result, success, errMsg)
 }
 
-// buildCancelledAgentResult preserves a cancelled run's partial work: the
-// conversation is persisted, the stop hook fires, and the partial content
-// travels back to the caller alongside the error.
-func (e *Executor) buildCancelledAgentResult(run *preparedRun, result *core.Result) *AgentResult {
-	if result == nil || result.StopReason != core.StopCancelled {
+// buildUnfinishedAgentResult preserves the partial work of a run that ended
+// without completing: the conversation is persisted, the stop hook fires, and
+// the partial content travels back to the caller alongside the error. Covers
+// both ways a turn can end early — the user cancelled it, or inference failed
+// past the retry budget — since either way the steps already taken are worth
+// keeping. A nil Result means there is nothing to preserve.
+func (e *Executor) buildUnfinishedAgentResult(run *preparedRun, result *core.Result) *AgentResult {
+	if result == nil {
 		return nil
 	}
-	return e.finalizeResult(run, result, false, "agent cancelled")
+	if result.StopReason != core.StopCancelled && result.StopReason != core.StopError {
+		return nil
+	}
+	_, errMsg := interpretStopReason(result, run.cfg.maxSteps)
+	return e.finalizeResult(run, result, false, errMsg)
 }
 
 // finalizeResult persists the session, fires the stop hook, and projects the

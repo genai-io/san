@@ -130,7 +130,7 @@ func TestThinkActPreservesPartialOutputOnCancel(t *testing.T) {
 	if result.StopReason != StopCancelled {
 		t.Fatalf("StopReason = %q, want %q", result.StopReason, StopCancelled)
 	}
-	// subagent.buildCancelledAgentResult documents that a cancelled run's
+	// subagent.buildUnfinishedAgentResult documents that a cancelled run's
 	// partial content travels back with the error, and RunBackground gates that
 	// on Content != "". An empty string here makes that feature dead code.
 	if result.Content != llm.text {

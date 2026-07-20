@@ -210,7 +210,7 @@ func TestShouldRetryWithParentModelOnlyForMissingDifferentModel(t *testing.T) {
 	}
 }
 
-func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
+func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
 		req: tool.AgentExecRequest{Agent: "general-purpose"},
@@ -222,7 +222,7 @@ func TestBuildCancelledAgentResultUsesPreparedRunMetadata(t *testing.T) {
 		activity:  []string{"Read(main.go)"},
 	}
 
-	result := executor.buildCancelledAgentResult(run, &core.Result{
+	result := executor.buildUnfinishedAgentResult(run, &core.Result{
 		Content:    "partial",
 		Messages:   []core.Message{{Role: core.RoleAssistant, Content: "partial"}},
 		Steps:      2,
@@ -591,3 +591,58 @@ func (s *stubSystem) Drop(_, _ string)                      {}
 func (s *stubSystem) Refresh(_, _ string)                   {}
 func (s *stubSystem) Sections() []core.Section              { return nil }
 func (s *stubSystem) SetObserver(_ func(core.SystemChange)) {}
+
+// TestBuildUnfinishedAgentResultPreservesFailedRun covers the other way a run
+// ends early. A cancelled run was already preserved; a run that died on an
+// inference failure was not, because ThinkAct returned no Result at all — so
+// Run fell through to the bare-error path and persistSubagentSession never
+// ran, losing the transcript of everything the agent had done.
+func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
+	executor := &Executor{}
+	run := &preparedRun{
+		req:       tool.AgentExecRequest{Agent: "general-purpose"},
+		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
+		startedAt: time.Now().Add(-time.Second),
+	}
+
+	result := executor.buildUnfinishedAgentResult(run, &core.Result{
+		Content:    "partial",
+		Messages:   []core.Message{{Role: core.RoleAssistant, Content: "partial"}},
+		Steps:      8,
+		StopReason: core.StopError,
+		StopDetail: "provider unavailable",
+	})
+	if result == nil {
+		t.Fatal("a failed run must still be preserved, or its transcript is never persisted")
+	}
+	if result.Success {
+		t.Error("Success = true, want false")
+	}
+	if result.Error != "provider unavailable" {
+		t.Errorf("Error = %q, want the underlying failure", result.Error)
+	}
+	if result.Content != "partial" {
+		t.Errorf("Content = %q, want the partial output", result.Content)
+	}
+	if result.StepCount != 8 {
+		t.Errorf("StepCount = %d, want 8", result.StepCount)
+	}
+}
+
+// A normally-completed run is not "unfinished" — it goes through
+// buildAgentResult instead, so this guard must keep rejecting it.
+func TestBuildUnfinishedAgentResultRejectsCompletedRun(t *testing.T) {
+	executor := &Executor{}
+	run := &preparedRun{
+		req:       tool.AgentExecRequest{Agent: "general-purpose"},
+		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
+		startedAt: time.Now(),
+	}
+
+	if got := executor.buildUnfinishedAgentResult(run, &core.Result{StopReason: core.StopEndTurn}); got != nil {
+		t.Fatalf("completed run treated as unfinished: %#v", got)
+	}
+	if got := executor.buildUnfinishedAgentResult(run, nil); got != nil {
+		t.Fatalf("nil Result treated as unfinished: %#v", got)
+	}
+}
