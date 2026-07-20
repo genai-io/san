@@ -123,7 +123,9 @@ A two-minute run that exercises the full loop — kick-off, gray-zone approval,
 auto-continuation, and completion — without touching anything outside a scratch
 directory.
 
-**1. Start San in an empty repository:**
+**1. Start San in an empty repository.** Run it there and nowhere else — the
+goal below writes `notes/` wherever it starts, so in one of your own projects it
+would scribble into a real directory:
 
 ```bash
 mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san

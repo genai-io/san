@@ -104,7 +104,8 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交
 两分钟跑通完整闭环 —— 起步、灰区放行、自动续跑、目标达成 ——
 全程不触碰临时目录以外的任何东西。
 
-**1. 在一个空仓库里启动 San:**
+**1. 在一个空仓库里启动 San。** 只在那里跑 —— 下面这条 goal 会在启动目录下直接
+建 `notes/`,放到你自己的项目里跑就是往真实目录里乱写:
 
 ```bash
 mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
