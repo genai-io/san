@@ -1,8 +1,10 @@
 package input
 
 import (
+	"math"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/lipgloss/v2"
 
@@ -36,7 +38,7 @@ type Model struct {
 	LastCtrlO        time.Time
 	LastCtrlC        time.Time
 	Images           ImageState
-	TerminalHeight   int
+	terminalHeight   int // set via SetTerminalHeight, which also re-caps the box
 	PastedChunks     []PastedChunk
 	Queue            Queue
 
@@ -172,7 +174,40 @@ func newTextarea(width int) textarea.Model {
 	ta := newChromelessTextarea()
 	ta.Focus()
 	ta.SetWidth(width)
-	ta.SetHeight(minTextareaHeight)
+
+	// Let the textarea size itself: it counts soft-wrapped rows through the
+	// same memoized wrap its renderer uses, so the box can't disagree with what
+	// gets drawn — including CJK, where one rune occupies two columns.
+	ta.DynamicHeight = true
+	ta.MinHeight = minTextareaHeight
+	ta.MaxHeight = defaultMaxHeight
+	// MaxHeight caps the viewport, and with MaxContentHeight left at zero it
+	// would also stop accepting input at that many lines. Setting it separately
+	// keeps the buffer scrollable past what's on screen; MaxInt means "no limit
+	// of ours" — the textarea already stops at its own 10000-line guard, and any
+	// tighter number here silently trims a large paste before the placeholder
+	// logic ever sees it.
+	ta.MaxContentHeight = math.MaxInt
+
+	// Drive the terminal's own cursor instead of painting a reverse-video block
+	// into the frame: the block leaves the real cursor parked wherever the last
+	// paint ended (out in the streamed output), which is what the user's eye and
+	// the terminal's own IME follow. View() positions it — see model.inputCursor.
+	// Composer only; TestOverlayEditorsKeepVirtualCursor covers why the overlay
+	// editors built from newChromelessTextarea must not follow.
+	ta.SetVirtualCursor(false)
+
+	// Enter submits (see handleTextareaShortcut), so a newline needs its own
+	// keys. shift+enter is the one users reach for, but a terminal only reports
+	// it separately once key disambiguation is on (Kitty protocol: Ghostty,
+	// Kitty, WezTerm, iTerm2); elsewhere it arrives as a bare "enter" and
+	// submits. alt+enter and ctrl+j come through everywhere, so they stay as the
+	// portable fallbacks.
+	ta.KeyMap.InsertNewline = key.NewBinding(
+		key.WithKeys("shift+enter", "alt+enter", "ctrl+j"),
+		key.WithHelp("shift+enter", "insert newline"),
+	)
+
 	styles := ta.Styles()
 	styles.Blurred.Base = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	ta.SetStyles(styles)

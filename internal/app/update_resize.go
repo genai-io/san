@@ -12,7 +12,7 @@ import (
 func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	m.env.Width = msg.Width
 	m.env.Height = msg.Height
-	m.userInput.TerminalHeight = msg.Height
+	m.userInput.SetTerminalHeight(msg.Height)
 	if ov, ok := m.activeOverlay(); ok {
 		if resizable, ok := ov.(resizableOverlay); ok {
 			resizable.Resize(msg.Width, msg.Height)

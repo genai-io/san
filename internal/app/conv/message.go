@@ -44,6 +44,12 @@ func toolResultIcon(isError bool) string {
 	return "⎿"
 }
 
+// InputPrompt marks the input line, in the live textarea and in scrollback
+// alike. Its width doubles as the cursor's horizontal offset into the textarea
+// (see app.inputCursor), so the glyph and that offset stay in step by
+// construction.
+const InputPrompt = "❭ "
+
 var (
 	userMsgStyle = lipgloss.NewStyle()
 
@@ -141,7 +147,7 @@ func RenderAutopilotMark(note string) string {
 // RenderUserMessage renders a user message with prompt and optional images.
 func RenderUserMessage(content, displayContent string, images []core.Image, mdRenderer *MDRenderer, width int) string {
 	var sb strings.Builder
-	prompt := InputPromptStyle.Render("❭ ")
+	prompt := InputPromptStyle.Render(InputPrompt)
 	if displayContent == "" {
 		displayContent = content
 	}

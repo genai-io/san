@@ -182,7 +182,6 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 	if draft != "" && m.userInput.Textarea.Value() == "" {
 		m.userInput.Textarea.SetValue(draft)
 		m.userInput.Textarea.CursorEnd()
-		m.userInput.UpdateHeight()
 	}
 	return cmd
 }
