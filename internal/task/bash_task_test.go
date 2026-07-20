@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"testing"
@@ -294,5 +295,46 @@ func TestBashTask_ImplementsBackgroundTask(t *testing.T) {
 	}
 	if bt.GetDescription() != "Interface test" {
 		t.Errorf("GetDescription() = %s, want 'Interface test'", bt.GetDescription())
+	}
+}
+
+// A user-requested stop cancels the task context, and the child dies of the
+// signal that follows — so cmd.Wait reports "signal: killed", not a
+// cancellation. Recording that as failed told the main agent the work had
+// broken rather than been called off, inviting a retry of what the user had
+// just cancelled.
+func TestBashTaskStopIsNotAFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "echo", "test")
+	cmd.Start()
+
+	task := NewBashTask("stop-id", "sleep 100", "Long task", cmd, ctx, cancel)
+
+	cancel()
+	task.Complete(137, errors.New("signal: killed"))
+
+	if info := task.GetStatus(); info.Status != StatusStopped {
+		t.Errorf("expected status '%s', got '%s'", StatusStopped, info.Status)
+	}
+}
+
+// A run that outlives its own timeout also ends with a cancelled context, but
+// it failed on its own terms — nobody called it off, so it stays a failure.
+func TestBashTaskTimeoutRemainsAFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+
+	cmd := exec.Command("echo", "test")
+	cmd.Start()
+
+	task := NewBashTask("timeout-id", "sleep 100", "Long task", cmd, ctx, cancel)
+
+	<-ctx.Done()
+	task.Complete(137, errors.New("signal: killed"))
+
+	if info := task.GetStatus(); info.Status != StatusFailed {
+		t.Errorf("expected status '%s', got '%s'", StatusFailed, info.Status)
 	}
 }

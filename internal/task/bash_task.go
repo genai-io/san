@@ -3,6 +3,7 @@ package task
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -100,13 +101,25 @@ func (t *BashTask) GetOutput() string {
 	return t.output.String()
 }
 
-// Complete marks the task as completed
+// Complete records the terminal status of a bash task that has exited, the
+// counterpart to AgentTask.Complete and classifying the same three outcomes.
+//
+// A cancelled run reaches cmd.Wait as an ordinary signal death ("signal:
+// killed"), never as context.Canceled, so unlike the agent case the error
+// alone cannot tell a deliberate stop from a genuine failure. The task context
+// draws that line: Stop and Kill cancel it, while the run's own timeout
+// expires it instead — a timeout is a failure, so only cancellation is
+// exempted here. Without this a user-requested TaskStop was recorded as
+// failed, and the main agent could retry work the user had just cancelled,
+// which is the outcome StatusStopped exists to prevent.
 func (t *BashTask) Complete(exitCode int, err error) {
-	status := StatusCompleted
-	errMsg := ""
-	if err != nil {
+	status, errMsg := StatusCompleted, ""
+	switch {
+	case t.ctx != nil && errors.Is(t.ctx.Err(), context.Canceled):
+		status, errMsg = StatusStopped, "stopped before completion"
+	case err != nil:
 		status, errMsg = StatusFailed, err.Error()
-	} else if exitCode != 0 {
+	case exitCode != 0:
 		status = StatusFailed
 	}
 	t.finalize(status, exitCode, errMsg)
