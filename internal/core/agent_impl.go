@@ -314,23 +314,29 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	var steps, toolUses, tokensIn, tokensOut int
 	var maxOutputRecoveryCount int
 	var turnRetries int
+	// lastContent tracks the newest assistant text this turn, so every exit —
+	// including cancel and the step cap — reports what the model actually said
+	// rather than an empty string or a status placeholder.
+	var lastContent string
 
-	makeResult := func(content string, stop StopReason, detail string) *Result {
+	makeResult := func(stop StopReason) *Result {
 		return &Result{
-			Content: content, Messages: a.snapshot(),
+			Content: lastContent, Messages: a.snapshot(),
 			Steps: steps, ToolUses: toolUses, InputTokens: tokensIn, OutputTokens: tokensOut,
-			StopReason: stop, StopDetail: detail,
+			StopReason: stop,
 		}
 	}
 
 	for {
 		if ctx.Err() != nil {
-			return makeResult("", StopCancelled, ""), ctx.Err()
+			return makeResult(StopCancelled), ctx.Err()
 		}
 
-		// Max steps guard
+		// Max steps guard. The cap itself is reported through StopReason —
+		// interpretStopReason turns it into "reached maximum steps (N)" — so
+		// Content stays the model's own last output rather than a status string.
 		if a.maxSteps > 0 && steps >= a.maxSteps {
-			return makeResult("max steps reached", StopMaxSteps, ""), nil
+			return makeResult(StopMaxSteps), nil
 		}
 
 		// Between steps: drain any new inbox messages (non-blocking)
@@ -365,7 +371,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			// turn boundary with StopCancelled. The error is still
 			// propagated so Run's loop can branch on it.
 			if errors.Is(err, context.Canceled) {
-				return makeResult("", StopCancelled, ""), err
+				return makeResult(StopCancelled), err
 			}
 			// Transient stream failure (network blip, 5xx/529 overload,
 			// 429, idle stall, truncation): discard the partial assistant
@@ -377,7 +383,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 					turnRetries++
 					a.emit(ctx, StreamResetEvent(a.id))
 					if werr := BackoffSleep(ctx, turnRetries, re.RetryAfter()); werr != nil {
-						return makeResult("", StopCancelled, ""), werr
+						return makeResult(StopCancelled), werr
 					}
 					continue
 				}
@@ -406,6 +412,9 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			Reasoning:         resp.Reasoning,
 			ToolCalls:         resp.ToolCalls,
 		})
+		// Unconditional: a tool-only step carries no text, and reporting that
+		// honestly beats resurrecting an earlier step's narration as the outcome.
+		lastContent = resp.Content
 
 		// Max tokens recovery — output truncated, ask LLM to continue
 		if resp.StopReason == StopMaxTokens && len(resp.ToolCalls) == 0 {
@@ -414,7 +423,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 				maxRecovery = 3
 			}
 			if maxOutputRecoveryCount >= maxRecovery {
-				return makeResult(resp.Content, StopMaxOutputRecoveryExhausted, ""), nil
+				return makeResult(StopMaxOutputRecoveryExhausted), nil
 			}
 			maxOutputRecoveryCount++
 			a.append(Message{Role: RoleUser, Content: TruncatedResumePrompt})
@@ -423,7 +432,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 
 		// No tool calls → end turn
 		if len(resp.ToolCalls) == 0 {
-			return makeResult(resp.Content, StopEndTurn, ""), nil
+			return makeResult(StopEndTurn), nil
 		}
 
 		// Execute tool calls
