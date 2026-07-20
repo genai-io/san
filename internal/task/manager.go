@@ -100,6 +100,27 @@ func (m *Manager) ListRunning() []BackgroundTask {
 	return tasks
 }
 
+// HasRunning reports whether any task is running. Callers that only need the
+// answer should prefer it over len(ListRunning()), which allocates a slice of
+// every running task to be measured and thrown away.
+func (m *Manager) HasRunning() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, t := range m.tasks {
+		if t.IsRunning() {
+			return true
+		}
+	}
+	return false
+}
+
+// IsRunning reports whether the task with this ID exists and is running.
+func (m *Manager) IsRunning(id string) bool {
+	t, ok := m.Get(id)
+	return ok && t.IsRunning()
+}
+
 // Kill terminates a task by ID
 func (m *Manager) Kill(id string) error {
 	m.mu.RLock()

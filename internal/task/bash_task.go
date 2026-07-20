@@ -102,55 +102,52 @@ func (t *BashTask) GetOutput() string {
 
 // Complete marks the task as completed
 func (t *BashTask) Complete(exitCode int, err error) {
+	status := StatusCompleted
+	errMsg := ""
+	if err != nil {
+		status, errMsg = StatusFailed, err.Error()
+	} else if exitCode != 0 {
+		status = StatusFailed
+	}
+	t.finalize(status, exitCode, errMsg)
+}
+
+// markKilled marks the task as killed (internal use). The exit code follows
+// the shell convention of 128+signal for SIGKILL, so a reader of the output
+// record can't mistake a killed task's code for a successful 0.
+func (t *BashTask) markKilled() { t.finalize(StatusKilled, 128+int(syscall.SIGKILL), "") }
+
+// finalize performs the one and only terminal transition a BashTask can make.
+// Every route out of StatusRunning — clean exit, non-zero exit, error, kill —
+// funnels through here, so it is structurally impossible to add an exit path
+// that forgets to close `done` or to notify the lifecycle handler. A dropped
+// notification used to strand the task's tracker entry in in_progress forever.
+//
+// It is idempotent: a second call after the task has left StatusRunning is a
+// no-op, which is what makes Kill-then-Complete races harmless.
+func (t *BashTask) finalize(status TaskStatus, exitCode int, errMsg string) {
 	t.mu.Lock()
 	if t.status != StatusRunning {
 		t.mu.Unlock()
 		return
 	}
+	t.status = status
 	t.endTime = time.Now()
 	t.exitCode = exitCode
-
-	if err != nil {
-		t.status = StatusFailed
-		t.errMsg = err.Error()
-	} else if exitCode != 0 {
-		t.status = StatusFailed
-	} else {
-		t.status = StatusCompleted
-	}
+	t.errMsg = errMsg
 	outputFile := t.OutputFile
-	status := string(t.status)
-	exitCodeCopy := t.exitCode
-	errCopy := t.errMsg
 	t.mu.Unlock()
 
 	appendOutputFile(outputFile, outputRecord{
 		Event:  "task.completed",
-		Status: status,
+		Status: string(status),
 		Metadata: map[string]any{
-			"exit_code": exitCodeCopy,
-			"error":     errCopy,
+			"exit_code": exitCode,
+			"error":     errMsg,
 		},
 	})
 	t.doneOnce.Do(func() { close(t.done) })
 	notifyTaskCompleted(t.GetStatus())
-}
-
-// markKilled marks the task as killed (internal use).
-// Closes the done channel so WaitForCompletion unblocks.
-func (t *BashTask) markKilled() {
-	t.mu.Lock()
-	t.status = StatusKilled
-	t.endTime = time.Now()
-	outputFile := t.OutputFile
-	t.mu.Unlock()
-
-	appendOutputFile(outputFile, outputRecord{
-		Event:  "task.completed",
-		Status: string(StatusKilled),
-	})
-
-	t.doneOnce.Do(func() { close(t.done) })
 }
 
 // IsRunning returns true if the task is still running

@@ -162,26 +162,31 @@ func (t *AgentTask) GetOutput() string {
 // A context.Canceled error records the task as stopped (deliberate cancel),
 // any other error as failed. It is idempotent — a second call is a no-op.
 func (t *AgentTask) Complete(err error) {
+	switch {
+	case err == nil:
+		t.finalize(StatusCompleted, "")
+	case errors.Is(err, context.Canceled):
+		t.finalize(StatusStopped, "stopped before completion")
+	default:
+		t.finalize(StatusFailed, err.Error())
+	}
+}
+
+// markKilled marks the task as killed (internal use).
+func (t *AgentTask) markKilled() { t.finalize(StatusKilled, "") }
+
+// finalize is AgentTask's single terminal transition; see BashTask.finalize for
+// the invariant it enforces and why.
+func (t *AgentTask) finalize(status TaskStatus, errText string) {
 	t.mu.Lock()
 	if t.Status != StatusRunning {
 		t.mu.Unlock()
 		return
 	}
+	t.Status = status
+	t.Error = errText
 	t.EndTime = time.Now()
-
-	switch {
-	case err == nil:
-		t.Status = StatusCompleted
-	case errors.Is(err, context.Canceled):
-		t.Status = StatusStopped
-		t.Error = "stopped before completion"
-	default:
-		t.Status = StatusFailed
-		t.Error = err.Error()
-	}
 	outputFile := t.OutputFile
-	status := t.Status
-	errorText := t.Error
 	t.mu.Unlock()
 
 	// File I/O and done channel outside lock
@@ -189,29 +194,12 @@ func (t *AgentTask) Complete(err error) {
 		Event:  "task.completed",
 		Status: string(status),
 		Metadata: map[string]any{
-			"error": errorText,
+			"error": errText,
 		},
 	})
 
 	t.doneOnce.Do(func() { close(t.done) })
 	notifyTaskCompleted(t.GetStatus())
-}
-
-// markKilled marks the task as killed (internal use).
-// Closes the done channel and subscriber channels so WaitForCompletion unblocks.
-func (t *AgentTask) markKilled() {
-	t.mu.Lock()
-	t.Status = StatusKilled
-	t.EndTime = time.Now()
-	outputFile := t.OutputFile
-	t.mu.Unlock()
-
-	appendOutputFile(outputFile, outputRecord{
-		Event:  "task.completed",
-		Status: string(StatusKilled),
-	})
-
-	t.doneOnce.Do(func() { close(t.done) })
 }
 
 // IsRunning returns true if the task is still running

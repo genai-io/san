@@ -38,8 +38,8 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 		AllDone:      false,
 		StreamActive: true,
 		Width:        120,
-		SpinnerView:  "•",
 		Blockers:     todo.Default().OpenBlockers,
+		Executing:    func(*todo.Task) bool { return true },
 	})
 	plain := stripANSI(view)
 
@@ -70,7 +70,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	// both the solid (●) and dim (◌) phases.
 	var hasSolid, hasDim bool
 	for blink := range 4 * trackerPulseTicks {
-		frame := stripANSI(renderTask(task, 80, 2, nil, blink))
+		frame := stripANSI(renderTask(task, taskRunning, 80, 2, nil, blink))
 		if strings.Contains(frame, "●") {
 			hasSolid = true
 		}
@@ -106,7 +106,7 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 		AllDone:      false,
 		StreamActive: true,
 		Width:        120,
-		SpinnerView:  "•",
+		Executing:    func(*todo.Task) bool { return true },
 	})
 	plain := stripANSI(view)
 
@@ -128,4 +128,60 @@ func equalSlice(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// A task marked in progress whose executor is gone must render identically on
+// every frame. The status field alone used to drive the pulse, so a task the
+// model never closed out kept animating after the turn ended.
+func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
+	task := &todo.Task{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
+
+	first := stripANSI(renderTask(task, taskStalled, 80, 2, nil, 0))
+	for blink := range 4 * trackerPulseTicks {
+		if frame := stripANSI(renderTask(task, taskStalled, 80, 2, nil, blink)); frame != first {
+			t.Fatalf("stalled task animated across frames:\n%q\n%q", first, frame)
+		}
+	}
+	if !strings.Contains(first, "[stalled]") {
+		t.Fatalf("stalled task should be labelled as such, got %q", first)
+	}
+}
+
+func TestPhaseOf(t *testing.T) {
+	worker := func(statusDetail string) map[string]any {
+		return map[string]any{
+			"background_task_id":       "bg-1",
+			"background_status_detail": statusDetail,
+		}
+	}
+
+	cases := []struct {
+		name      string
+		status    string
+		metadata  map[string]any
+		executing bool
+		want      taskPhase
+	}{
+		{"pending", todo.StatusPending, nil, false, taskWaiting},
+		{"in progress with executor", todo.StatusInProgress, nil, true, taskRunning},
+		{"in progress without executor", todo.StatusInProgress, nil, false, taskStalled},
+		{"completed", todo.StatusCompleted, nil, false, taskFinished},
+		{"worker finished", todo.StatusCompleted, worker(""), false, taskFinished},
+		{"worker failed", todo.StatusCompleted, worker("failed"), false, taskAborted},
+		{"worker killed", todo.StatusCompleted, worker("killed"), false, taskAborted},
+		{"worker stopped", todo.StatusCompleted, worker("stopped"), false, taskAborted},
+		{"worker orphaned", todo.StatusCompleted, worker(todo.StatusDetailInterrupted), false, taskAborted},
+		// A terminal status wins regardless of what the executor says, so a
+		// stale "still running" answer cannot resurrect a finished task.
+		{"completed despite executor", todo.StatusCompleted, nil, true, taskFinished},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			task := &todo.Task{ID: "1", Subject: "Task", Status: tc.status, Metadata: tc.metadata}
+			if got := phaseOf(task, tc.executing); got != tc.want {
+				t.Fatalf("phaseOf = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

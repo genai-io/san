@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/todo"
 )
 
 // overlayPanel is a UI element that, while active, takes over both the
@@ -312,11 +313,33 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// needsSpinner reports whether any animation should still be running.
+//
+// Every term is live in-memory runtime state. Persisted tracker status is
+// deliberately absent: nothing obliges its writer to clear it, so keying the
+// tick loop off it let the loop re-arm itself forever after the turn ended.
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
 		m.userInput.Provider.FetchingLimits ||
-		m.services.Tracker.HasInProgress()
+		m.hasRunningBackgroundTask()
+}
+
+// hasRunningBackgroundTask reports whether any background task is executing.
+func (m *model) hasRunningBackgroundTask() bool {
+	return m.services.Task.HasRunning()
+}
+
+// executingTrackerTask reports whether the executor behind a tracker entry is
+// running right now. A worker entry names a background task, so todo resolves
+// it against the task manager. A plan item authored by the model has no
+// executor of its own — the main agent loop advances it, so it runs exactly
+// while that loop streams.
+func (m *model) executingTrackerTask(t *todo.Task) bool {
+	if todo.BackgroundTaskID(t) == "" {
+		return m.conv.Stream.Active
+	}
+	return todo.WorkerRunning(t)
 }
 
 func (m *model) updateTextarea(msg tea.Msg) tea.Cmd {

@@ -90,7 +90,8 @@ Status: pending → in_progress → completed. Use "deleted" to remove.
 - ONLY mark completed when FULLY done (not if tests fail or partial)
 - After completing, call TaskList for next task
 - If blocked, keep as in_progress and create a new task for the blocker
-- When you see a <task-reminder>, review and update stale tasks immediately`,
+- Close out every in_progress task before ending your turn; one left open is
+  shown as stalled, since nothing is executing it any more`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

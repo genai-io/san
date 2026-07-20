@@ -25,8 +25,12 @@ type TrackerListParams struct {
 	AllDone      bool
 	StreamActive bool
 	Width        int
-	SpinnerView  string
 	Blockers     func(taskID string) []string
+	// Executing reports whether the executor behind a task is running right
+	// now. An in_progress task only animates when Executing says so: the
+	// status field records intent and outlives the process that wrote it, so
+	// it cannot by itself justify a moving pixel.
+	Executing func(t *todo.Task) bool
 	// Blink is the shared frame-tick counter (see FrameClock.Frame) that
 	// drives the in-progress pulse via trackerPulseTicks.
 	Blink int
@@ -43,54 +47,100 @@ func RenderTrackerList(params TrackerListParams) string {
 		return ""
 	}
 
-	counts := countTaskStatuses(params.Tasks)
-	completed := counts.done + counts.failed
+	ended := 0
+	for _, t := range params.Tasks {
+		if t.Status == todo.StatusCompleted {
+			ended++
+		}
+	}
 
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	pct := 0
-	if len(params.Tasks) > 0 {
-		pct = completed * 100 / len(params.Tasks)
-	}
-	sb.WriteString("  " + headerStyle.Render("Tasks") + " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", pct)))
+	sb.WriteString("  " + headerStyle.Render("Tasks") + " " +
+		mutedStyle.Render(fmt.Sprintf("(%d%%)", ended*100/len(params.Tasks))))
 	sb.WriteString("\n")
 
 	idWidth := taskIDWidth(params.Tasks)
 
-	rendered := 0
-	for _, t := range params.Tasks {
-		if rendered >= maxVisibleTasks {
-			break
-		}
-		sb.WriteString(renderTask(t, params.Width, idWidth, params.Blockers, params.Blink))
-		rendered++
+	// Classify only the rows actually drawn. Liveness is the expensive input and
+	// the header above does not need it — progress counts finished work, which
+	// no executor can still be advancing.
+	for _, t := range params.Tasks[:min(len(params.Tasks), maxVisibleTasks)] {
+		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
+		sb.WriteString(renderTask(t, phase, params.Width, idWidth, params.Blockers, params.Blink))
 	}
 
 	return sb.String()
 }
 
-func renderTask(t *todo.Task, width, idWidth int, blockers func(string) []string, blink int) string {
+// taskPhase is how a task reads to the user. It collapses the recorded status,
+// how a finished task ended, and whether an executor is actually running it
+// into one exhaustive set, so each render branch answers to exactly one phase.
+type taskPhase int
+
+const (
+	taskWaiting  taskPhase = iota // nothing has started it
+	taskRunning                   // in progress, with a live executor
+	taskStalled                   // marked in progress, but nothing is executing it
+	taskAborted                   // ended without finishing its work
+	taskFinished                  // ended having done its work
+)
+
+// phaseOf classifies a task. executing answers whether its executor is running;
+// it only distinguishes taskRunning from taskStalled, since a task that already
+// reached a terminal status has no executor left to ask about.
+func phaseOf(t *todo.Task, executing bool) taskPhase {
+	switch t.Status {
+	case todo.StatusCompleted:
+		if todo.EndedAbnormally(t) {
+			return taskAborted
+		}
+		return taskFinished
+	case todo.StatusInProgress:
+		if executing {
+			return taskRunning
+		}
+		return taskStalled
+	default:
+		return taskWaiting
+	}
+}
+
+// activeText prefers the task's active phrasing ("Auditing deps") over its
+// subject ("Audit deps") while it is the one being worked on.
+func activeText(t *todo.Task, maxTextLen int) string {
+	text := t.ActiveForm
+	if text == "" {
+		text = t.Subject
+	}
+	return kit.TruncateText(text, maxTextLen)
+}
+
+func renderTask(t *todo.Task, phase taskPhase, width, idWidth int, blockers func(string) []string, blink int) string {
 	indent := "  "
 	idTag := fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
 	maxTextLen := max(width-len(indent)-idWidth-8, 12)
 	subject := kit.TruncateText(t.Subject, maxTextLen)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	statusDetail := kit.MapString(t.Metadata, "background_status_detail")
 
-	switch t.Status {
-	case todo.StatusCompleted:
-		if statusDetail == "failed" || statusDetail == "killed" {
-			failedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-			return renderTaskLine(indent, failedStyle.Render("!"), idTag, subject, mutedStyle.Render("["+statusDetail+"]"))
-		}
+	switch phase {
+	case taskAborted:
+		abortedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		detail := mutedStyle.Render("[" + todo.BackgroundStatusDetail(t) + "]")
+		return renderTaskLine(indent, abortedStyle.Render("!"), idTag, subject, detail)
+
+	case taskFinished:
 		return renderTaskLine(indent, trackerCompletedStyle.Render("●"), idTag, subject, "")
 
-	case todo.StatusInProgress:
-		displayText := subject
-		if t.ActiveForm != "" {
-			displayText = kit.TruncateText(t.ActiveForm, maxTextLen)
-		}
+	case taskStalled:
+		// Nothing is executing this task, so draw it at rest. Reaching here
+		// means the status outlived its executor within a live session — the
+		// model marked an item in_progress and moved on without closing it.
+		// Animating would claim work that isn't happening.
+		return renderTaskLine(indent, mutedStyle.Render("◌"), idTag, activeText(t, maxTextLen), mutedStyle.Render("[stalled]"))
+
+	case taskRunning:
 		// Pulse on the shared frame tick (a true ~360ms clock; see FrameClock)
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
@@ -104,7 +154,7 @@ func renderTask(t *todo.Task, width, idWidth int, blockers func(string) []string
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
 			detail = mutedStyle.Render(elapsed)
 		}
-		return renderTaskLine(indent, activeStyle.Render(activeIcon), idTag, displayText, detail)
+		return renderTaskLine(indent, activeStyle.Render(activeIcon), idTag, activeText(t, maxTextLen), detail)
 
 	default:
 		detail := ""
@@ -128,31 +178,6 @@ func renderTaskLine(indent, icon, id, subject, detail string) string {
 		line += "  " + detail
 	}
 	return line + "\n"
-}
-
-type taskStatusCounts struct {
-	done   int
-	active int
-	todo   int
-	failed int
-}
-
-func countTaskStatuses(tasks []*todo.Task) taskStatusCounts {
-	var counts taskStatusCounts
-	for _, t := range tasks {
-		statusDetail := kit.MapString(t.Metadata, "background_status_detail")
-		switch {
-		case t.Status == todo.StatusCompleted && (statusDetail == "failed" || statusDetail == "killed" || statusDetail == "stopped"):
-			counts.failed++
-		case t.Status == todo.StatusCompleted:
-			counts.done++
-		case t.Status == todo.StatusInProgress:
-			counts.active++
-		default:
-			counts.todo++
-		}
-	}
-	return counts
 }
 
 func taskIDWidth(tasks []*todo.Task) int {

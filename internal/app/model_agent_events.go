@@ -51,7 +51,9 @@ func (m *model) OnTokenUsage(resp *core.InferResponse) {
 	}
 }
 
-func (m *model) HasRunningTasks() bool { return m.services.Tracker.HasInProgress() }
+// HasRunningTasks gates the progress-hub tick's spinner batching. Like
+// needsSpinner it reads live runtime state, not persisted tracker status.
+func (m *model) HasRunningTasks() bool { return m.hasRunningBackgroundTask() }
 
 // OnAgentMessage observes the agent's MessageEvent echoes only. Every path that
 // hands a user message to the agent — idle submit, queue release

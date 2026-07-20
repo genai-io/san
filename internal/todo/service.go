@@ -12,9 +12,14 @@ type Service interface {
 	List() []*Task
 
 	// query
+	//
+	// Deliberately absent: a "has in-progress work" query. Status records what
+	// the model intended and outlives whatever was executing it, so callers
+	// reaching for it to answer "is work happening right now" get a value that
+	// never goes false on its own. Resolve liveness against the executor —
+	// the stream for plan items, task.Manager.ListRunning for workers.
 	IsBlocked(id string) bool
 	OpenBlockers(id string) []string
-	HasInProgress() bool
 	AllDone() bool
 	FindByMetadata(key, want string) *Task
 

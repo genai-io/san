@@ -74,8 +74,45 @@ func (s *Store) SetStorageDir(dir string) error {
 		os.WriteFile(lockPath, nil, 0o644)
 	}
 
-	// Load existing tasks from disk
-	return s.loadFromDisk()
+	// Load existing tasks from disk, then reconcile: this is the moment a
+	// fresh process adopts state written by a process that no longer exists.
+	if err := s.loadFromDisk(); err != nil {
+		return err
+	}
+	s.demoteOrphanedTasks()
+	return nil
+}
+
+// demoteOrphanedTasks demotes tasks recorded as in_progress that no executor is
+// advancing any more. Runs where a store is adopted — SetStorageDir and Import —
+// so records written by a process that has since died stop claiming to be live,
+// however that process ended. Must be called with s.mu held.
+//
+// Adoption also happens mid-session (resuming a session re-points the store), so
+// liveness is asked of the task manager rather than assumed from the call site:
+// a worker still executing keeps its status. Plan items have no executor to ask
+// about and fall back to pending, the truthful state of work that was started
+// but never finished.
+//
+// Not called from loadFromDisk — ReloadFromDisk uses that mid-session to pick up
+// cross-process writes, where in_progress is expected and genuine.
+func (s *Store) demoteOrphanedTasks() {
+	for _, entry := range s.tasks {
+		if entry.Status != StatusInProgress || WorkerRunning(entry) {
+			continue
+		}
+		if BackgroundTaskID(entry) != "" {
+			entry.Status = StatusCompleted
+			if entry.Metadata == nil {
+				entry.Metadata = map[string]any{}
+			}
+			entry.Metadata[metaStatusDetail] = StatusDetailInterrupted
+		} else {
+			entry.Status = StatusPending
+		}
+		entry.StatusChangedAt = time.Now()
+		s.persistTask(entry)
+	}
 }
 
 // loadFromDisk reads all {id}.json files from storageDir into memory.
@@ -281,19 +318,6 @@ func (s *Store) Delete(id string) error {
 	return nil
 }
 
-// HasInProgress returns true if any task has in_progress status.
-func (s *Store) HasInProgress() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, task := range s.tasks {
-		if task.Status == StatusInProgress {
-			return true
-		}
-	}
-	return false
-}
-
 // AllDone reports whether the store has tasks and every one of them is completed.
 func (s *Store) AllDone() bool {
 	s.mu.RLock()
@@ -361,6 +385,7 @@ func (s *Store) Import(tasks []Task) {
 		}
 		s.persistTask(&t)
 	}
+	s.demoteOrphanedTasks()
 }
 
 // GetStorageDir returns the current storage directory.
