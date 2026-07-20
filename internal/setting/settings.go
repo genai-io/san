@@ -16,7 +16,9 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 
 	"github.com/genai-io/san/internal/confdir"
 )
@@ -399,7 +401,15 @@ type HookCmd struct {
 }
 
 // SessionPermissions tracks runtime permission state for the current session.
+//
+// It is shared across goroutines: the UI goroutine rewrites the posture when
+// the user cycles the operation mode, while the agent goroutine reads it on
+// every tool call. Mutations go through the methods below, which hold mu;
+// readers take a Snapshot rather than reading fields directly, so one decision
+// never straddles a posture change.
 type SessionPermissions struct {
+	mu sync.RWMutex
+
 	Mode            OperationMode // Active permission mode (Normal, BypassPermissions, DontAsk, etc.)
 	AllowAllEdits   bool
 	AllowAllWrites  bool
@@ -427,7 +437,68 @@ func NewSessionPermissions() *SessionPermissions {
 	}
 }
 
+// Snapshot returns a detached copy safe to read without holding the lock.
+// A permission decision reads the mode, the blanket allowances, the granted
+// patterns and the working directories in sequence; taking them from one
+// snapshot keeps the decision coherent even if the user cycles the operation
+// mode mid-turn. Returns nil for a nil receiver, since callers pass an
+// optional session through.
+func (sp *SessionPermissions) Snapshot() *SessionPermissions {
+	if sp == nil {
+		return nil
+	}
+	sp.mu.RLock()
+	defer sp.mu.RUnlock()
+	// Field-by-field rather than *sp: the copy gets its own zero mutex, and a
+	// snapshot is read-only anyway.
+	return &SessionPermissions{
+		Mode:               sp.Mode,
+		AllowAllEdits:      sp.AllowAllEdits,
+		AllowAllWrites:     sp.AllowAllWrites,
+		AllowAllBash:       sp.AllowAllBash,
+		AllowAllSkills:     sp.AllowAllSkills,
+		AllowAllTasks:      sp.AllowAllTasks,
+		AllowedTools:       maps.Clone(sp.AllowedTools),
+		AllowedPatterns:    maps.Clone(sp.AllowedPatterns),
+		Denials:            sp.Denials,
+		WorkingDirectories: slices.Clone(sp.WorkingDirectories),
+		ShouldAvoidPrompts: sp.ShouldAvoidPrompts,
+	}
+}
+
+// ResetPosture clears the blanket allowances and returns to Normal mode. One
+// critical section, so a reader never observes a half-cleared posture.
+func (sp *SessionPermissions) ResetPosture() {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.AllowAllEdits = false
+	sp.AllowAllWrites = false
+	sp.AllowAllBash = false
+	sp.AllowAllSkills = false
+	sp.Mode = ModeNormal
+}
+
+// SetMode points the session at an operation mode without touching the
+// allowances layered on top of it.
+func (sp *SessionPermissions) SetMode(mode OperationMode) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.Mode = mode
+}
+
+// GrantEditPosture auto-approves edits and writes and trusts cwd, as one
+// atomic change — the accept-edits and auto-pilot posture.
+func (sp *SessionPermissions) GrantEditPosture(cwd string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.AllowAllEdits = true
+	sp.AllowAllWrites = true
+	sp.addWorkingDirectoryLocked(cwd)
+}
+
 func (sp *SessionPermissions) AllowTool(toolName string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	if sp.AllowedTools == nil {
 		sp.AllowedTools = make(map[string]bool)
 	}
@@ -435,6 +506,8 @@ func (sp *SessionPermissions) AllowTool(toolName string) {
 }
 
 func (sp *SessionPermissions) AllowPattern(pattern string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 	if sp.AllowedPatterns == nil {
 		sp.AllowedPatterns = make(map[string]bool)
 	}
@@ -462,6 +535,15 @@ func (sp *SessionPermissions) IsToolAllowed(toolName string) bool {
 
 // AddWorkingDirectory adds a directory to the allowed working directories list.
 func (sp *SessionPermissions) AddWorkingDirectory(dir string) {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	sp.addWorkingDirectoryLocked(dir)
+}
+
+// addWorkingDirectoryLocked is the body of AddWorkingDirectory for callers
+// that already hold mu (GrantEditPosture, which grants the directory and the
+// edit allowances together).
+func (sp *SessionPermissions) addWorkingDirectoryLocked(dir string) {
 	// Avoid duplicates
 	for _, d := range sp.WorkingDirectories {
 		if d == dir {

@@ -45,6 +45,13 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 // HasPermissionToUseTool is the central permission gate that determines
 // whether a tool invocation should be allowed, denied, or prompted.
 func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision {
+	// One coherent view for the whole decision. The agent goroutine runs this
+	// while the UI goroutine may be rewriting the posture (mode cycling), and
+	// the steps below read the mode, the allowances and the working
+	// directories separately — reading them live would let a single decision
+	// straddle two postures.
+	session = session.Snapshot()
+
 	rule := BuildRule(toolName, args)
 
 	// ── Step 1: Deny rules ──
