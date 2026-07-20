@@ -218,6 +218,18 @@ func (m *model) forkSession() (string, error) {
 	}
 	originalID := forked.Metadata.ParentSessionID
 	m.services.Session.SetID(forked.Metadata.ID)
+	// The live agent holds an onEvent closure over a Recorder bound to the
+	// parent's id, and a Recorder's session is fixed at construction. Without
+	// this stop it keeps writing the fork's messages, inferences, permissions
+	// and hooks into the parent transcript — so resuming the original, which is
+	// exactly what the UI tells the user to do, replays post-fork history and
+	// the parent is no longer frozen at the fork point.
+	//
+	// Stop rather than Reset: a fork continues the conversation under a new id,
+	// so the chain has to survive into the rebuilt agent. The next turn's
+	// ensureAgentSession rebuilds with a Recorder bound to the new id, since
+	// NewRecorder invalidates its cache on exactly that mismatch.
+	m.StopAgentSession()
 	m.services.Tracker.SetStorageDir("")
 	return originalID, nil
 }
