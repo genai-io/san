@@ -340,6 +340,8 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 
 		// Wait for command to complete, then wait for pipe drains
 		err := cmd.Wait()
+		// The PGID is no longer ours to signal from this moment on.
+		bgTask.MarkReaped()
 		wg.Wait()
 
 		// Combine output

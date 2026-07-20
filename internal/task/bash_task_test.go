@@ -291,6 +291,46 @@ func TestBashTaskStopDoesNotCancelTheRun(t *testing.T) {
 	}
 }
 
+// Kill delivers the group SIGKILL by cancelling the context: exec wires
+// cmd.Cancel to signal the group, and os/exec runs it before reaping the child,
+// so that path can never signal a PGID the kernel has reissued. The direct
+// TerminateGroup is only a fallback for a task built without a cancel func.
+func TestKillCancelsWhenACancelFuncIsPresent(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+
+	cancelled := false
+	task := NewBashTask("kill-id", "sleep 100", "Long task", cmd, func() { cancelled = true })
+
+	_ = task.Kill()
+
+	if !cancelled {
+		t.Error("Kill did not cancel the run, which is what delivers the group SIGKILL")
+	}
+}
+
+// Once cmd.Wait has reaped the child the raw PGID is no longer ours, so Stop
+// refuses to signal it. This narrows the reuse window, it does not close it —
+// see BashTask.MarkReaped.
+func TestStopRefusedAfterReap(t *testing.T) {
+	cmd := exec.Command("true")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+	task := NewBashTask("reaped-id", "true", "done task", cmd, func() {})
+
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	task.MarkReaped()
+
+	if err := task.Stop(); err != nil {
+		t.Errorf("Stop after the reap returned %v; it must be a no-op", err)
+	}
+}
+
 // A background command that never stops talking used to have every byte it
 // ever printed held in memory for the life of the process: BashTask skipped
 // the cap AgentTask applied, and the manager never forgets a task.

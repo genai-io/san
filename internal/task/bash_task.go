@@ -32,6 +32,12 @@ type BashTask struct {
 	// read together with them.
 	stopRequested atomic.Bool
 
+	// reaped is set once cmd.Wait has collected the child. After that the raw
+	// PGID is no longer ours — the kernel may reissue it — so Stop/Kill refuse
+	// to signal it. Set by the process owner (markReaped), read by the signaller;
+	// atomic for the same reason as stopRequested.
+	reaped atomic.Bool
+
 	mu       sync.RWMutex  // Protects mutable fields below
 	status   TaskStatus    // Current status
 	endTime  time.Time     // When the task ended (if completed)
@@ -199,6 +205,9 @@ func (t *BashTask) WaitForCompletion(timeout time.Duration) bool {
 // gracefulStopTimeout and then falls back to Kill.
 func (t *BashTask) Stop() error {
 	t.stopRequested.Store(true)
+	if t.reaped.Load() {
+		return nil // already gone; the PGID is no longer ours to signal
+	}
 	return proc.TerminateGroup(t.cmd, syscall.SIGTERM)
 }
 
@@ -206,13 +215,34 @@ func (t *BashTask) Stop() error {
 // kill returned an error, so a child that races us to exit (or a Windows
 // TerminateProcess that surfaces a benign error) still leaves the task in
 // StatusKilled with `done` closed, instead of stuck in StatusRunning.
+//
+// Cancelling the context is the whole kill: exec wires cmd.Cancel to SIGKILL
+// the group, and os/exec invokes it before reaping the child, so that path
+// cannot signal a reissued PGID. The direct signal is only a fallback for a
+// task created without a cancel func, and it too refuses once reaped.
 func (t *BashTask) Kill() error {
+	var err error
 	if t.cancel != nil {
 		t.cancel()
+	} else if !t.reaped.Load() {
+		err = proc.TerminateGroup(t.cmd, syscall.SIGKILL)
 	}
-	err := proc.TerminateGroup(t.cmd, syscall.SIGKILL)
 	t.markKilled()
 	return err
+}
+
+// MarkReaped records that cmd.Wait has collected the child, after which Stop and
+// Kill must not signal the raw PGID. Called by the process owner (the goroutine
+// that runs cmd.Wait) immediately after the wait returns.
+//
+// This narrows the reuse window; it does not close it. The wait4 that frees the
+// PGID and this flag cannot be made atomic without holding a lock across a
+// blocking Wait, so a signal racing in the instant between them still targets a
+// PGID that may already be reissued — an inherent limit of raw-PGID signalling,
+// where the common outcome is a harmless ESRCH. The cancel-driven path in Kill
+// is the only fully race-free one.
+func (t *BashTask) MarkReaped() {
+	t.reaped.Store(true)
 }
 
 // GetStatus returns the current task status info

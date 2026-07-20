@@ -37,11 +37,21 @@ func DetachSession(cmd *exec.Cmd) {
 	cmd.SysProcAttr.Setsid = true
 }
 
-// TerminateGroup sends sig to the process group led by cmd. The cmd's
-// in-memory Process handle is used to derive the PGID rather than a raw PID,
-// so this is safe against PID reuse. A missing process (ESRCH) is treated as
-// success because the caller's intent — "stop this process" — is already
-// satisfied.
+// TerminateGroup sends sig to the process group led by cmd. A missing process
+// (ESRCH) is treated as success because the caller's intent — "stop this
+// process" — is already satisfied.
+//
+// The caller must guarantee the child has not been reaped. This signals the
+// raw PGID, so it does NOT protect against PID reuse on its own: cmd.Process
+// .Pid is a plain int and syscall.Kill bypasses os.Process.Signal, which is
+// where the done flag set by Wait is checked. Once the child is reaped the
+// kernel may reissue that PGID, and the signal lands on whatever holds it now.
+//
+// Setting it as cmd.Cancel is safe by construction — os/exec invokes Cancel
+// before reaping. Calling it directly is best-effort: the caller must skip it
+// once the child is reaped, which narrows the reuse window but cannot close it
+// (the reap and the check cannot be made atomic). See BashTask.Stop and
+// markReaped in internal/task.
 func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
