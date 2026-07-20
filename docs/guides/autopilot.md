@@ -119,54 +119,61 @@ Uncapped runs pair well with a fast, cheap steer model — see
 
 ## Demo: a hands-free scaffold
 
-A two-minute run that exercises the full loop — mission kick-off, gray-zone
-approval, auto-continuation, and completion — without touching anything outside
-a scratch directory.
+A two-minute run that exercises the full loop — kick-off, gray-zone approval,
+auto-continuation, and completion — without touching anything outside a scratch
+directory.
 
-**1. Start San in an empty directory:**
+**1. Start San in an empty repository:**
 
 ```bash
-mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
+mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
 ```
 
-**2. Configure the copilot** — run `/autopilot`:
+`git init` is not incidental — under git the Permission steer treats changes to
+tracked files as recoverable, which is what keeps the run from stopping to ask.
 
-- Toggle **End** on (Permission is already on).
-- Open **Mission** and brief it:
-
-  > Scaffold a `notes/` directory: `todo.md` with a 3-item checklist, `done.md`
-  > empty, and `README.md` explaining the layout. Work one file per turn. When
-  > all three exist, verify with `ls notes/` — then the mission is complete.
-
-- `esc` back.
-
-**3. Engage** — on the bottom row, press `→` to focus **Start** and hit
-`enter`. That's the last key you need to press: Start engages Autopilot and,
-with a mission set, derives the opening step and submits it itself.
-
-**4. Watch the run.** Expect a transcript like:
+**2. State the goal.** One line, and it is the last key you press:
 
 ```
+/goal Scaffold a notes/ directory: todo.md with a 3-item checklist, done.md
+empty, and README.md explaining the layout. Work one file per turn. When all
+three exist, verify with ls notes/ — then the goal is met.
+```
+
+Three details in that wording are doing work: *one file per turn* forces several
+continuations so you can watch them, *ls notes/* puts a gray-zone bash call in
+the path, and *then the goal is met* gives the copilot a completion test it can
+actually check.
+
+**3. Watch the run.** Expect a transcript like:
+
+```
+⏵ autopilot · goal set
+
 ❭ Create notes/todo.md with a 3-item checklist.
-  ⎿  autopilot · 1/20
+  ⎿  autopilot · step 1
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
+
 ❭ Create an empty notes/done.md.
-  ⎿  autopilot · 2/20
+  ⎿  autopilot · step 2
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
   ⎿  Bash → 3 lines
-  ✓ autopilot · mission complete
+
+✓ autopilot · mission complete
 ```
 
-Every `❭` in the run carries the green `⎿ autopilot` mark — the copilot typed
-them all, opening step included; you never touched the composer. The `ls` is a
-gray-zone call the Permission steer approved inline. On `✓ mission complete` the mission is cleared and the steers drop back
-to the passive baseline — open `/autopilot` to confirm — while Autopilot stays
-engaged.
+Every `❭` carries the green `⎿ autopilot` mark — the copilot typed them all,
+opening step included; you never touched the composer. The `ls` is a gray-zone
+call the Permission steer approved inline. On `✓ mission complete` the goal is
+cleared and the steers rewind to what `/goal` found — open `/autopilot` to
+confirm — while Autopilot stays engaged. To stop early, `/goal clear`.
 
-To see the gentler end of the spectrum, rerun with only **Suggest** on and
+The same run through the panel: toggle **End** on, brief the text above as the
+**Mission**, and press **Start**. Use that route when you want a different mix —
+to see the gentle end of the spectrum, run it with only **Suggest** on and
 engage with `shift+tab`: the copilot proposes each step as ghost text in the
 composer and you accept with `tab` + `enter`.
 

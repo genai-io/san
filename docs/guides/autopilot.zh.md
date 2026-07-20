@@ -101,54 +101,59 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交
 
 ## Demo:一次免人工的脚手架搭建
 
-两分钟跑通完整闭环 —— mission 起步、灰区放行、自动续跑、任务完成 ——
+两分钟跑通完整闭环 —— 起步、灰区放行、自动续跑、目标达成 ——
 全程不触碰临时目录以外的任何东西。
 
-**1. 在空目录启动 San:**
+**1. 在一个空仓库里启动 San:**
 
 ```bash
-mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
+mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
 ```
 
-**2. 配置 copilot** —— 运行 `/autopilot`:
+`git init` 不是顺手加的:工作区在 git 下,Permission steer 会把对已跟踪文件的
+改动当作可恢复,这正是这一轮不会停下来问你的原因。
 
-- 打开 **End**(Permission 默认已开)。
-- 打开 **Mission**,交代任务:
-
-  > 搭建一个 `notes/` 目录:`todo.md` 放一个 3 项的清单、`done.md` 留空、
-  > `README.md` 说明目录结构。每回合处理一个文件。三个文件齐了之后用
-  > `ls notes/` 验证 —— 然后任务即完成。
-
-- `esc` 返回。
-
-**3. 启动巡航** —— 在底部一行按 `→` 选中 **Start**,回车。这是你需要按的
-最后一个键:Start 开启 Autopilot,且在 mission 已设时自己推出开场那一步并
-提交。
-
-**4. 观察运行。** 预期的转录大致是:
+**2. 交代目标。** 一行,而且是你要按的最后一个键:
 
 ```
+/goal 搭建一个 notes/ 目录:todo.md 放一个 3 项的清单、done.md 留空、
+README.md 说明目录结构。每回合只处理一个文件。三个文件齐了之后用
+ls notes/ 验证 —— 然后目标即达成。
+```
+
+这段话里有三个细节在起作用:*每回合只处理一个文件* 逼出多次续跑,好让你看清;
+*ls notes/* 在路径上放了一个灰区 bash 调用;*然后目标即达成* 给了副驾一个它真
+能验证的完成条件。
+
+**3. 观察运行。** 预期的转录大致是:
+
+```
+⏵ autopilot · goal set
+
 ❭ Create notes/todo.md with a 3-item checklist.
-  ⎿  autopilot · 1/20
+  ⎿  autopilot · step 1
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
+
 ❭ Create an empty notes/done.md.
-  ⎿  autopilot · 2/20
+  ⎿  autopilot · step 2
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
   ⎿  Bash → 3 lines
-  ✓ autopilot · mission complete
+
+✓ autopilot · mission complete
 ```
 
-整个运行里的每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由
-copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permission steer
-就地放行。出现
-`✓ mission complete` 时,mission 被清空、steer 归位到被动基线(打开
-`/autopilot` 可确认),而 Autopilot 保持开启。
+每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由副驾敲入,你没有
+碰过输入框。那条 `ls` 是灰区调用,由 Permission steer 就地放行。出现
+`✓ mission complete` 时,目标被清空、steer 回滚到 `/goal` 接手前的样子(打开
+`/autopilot` 可确认),而 Autopilot 保持开启。想中途停下就 `/goal clear`。
 
-想体验最轻的一档,只开 **Suggest** 重跑一遍、用 `shift+tab` 启动:copilot 把
-每一步以幽灵文本提议在输入框里,你用 `tab` + `enter` 接受发送。
+同一轮用面板走:打开 **End**、把上面那段话交代成 **Mission**、按 **Start**。
+想要别的组合时才走这条路 —— 比如体验最轻的一档:只开 **Suggest** 重跑一遍、
+用 `shift+tab` 启动,副驾把每一步以幽灵文本提议在输入框里,你用 `tab` +
+`enter` 接受发送。
 
 ## 读懂转录里的标记
 
