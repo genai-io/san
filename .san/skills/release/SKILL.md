@@ -155,26 +155,30 @@ git commit -s -m "chore: bump version to <new_version>"
 **If the canonical repo is `upstream` and its `main` is protected**, pushing
 directly will fail. Use this PR-based path instead:
 
-a. Push the commit to the fork (`origin`):
+a. Push the commit to a dedicated release branch on the fork (`origin`):
    ```bash
-   git push origin main
+   git push origin HEAD:refs/heads/release/v<new_version>
    ```
 
-b. Create a PR from fork `main` to upstream `main`:
+b. Create a PR from that branch to upstream `main`:
    ```bash
-   gh pr create --base main --head <fork-owner>:main \
+   gh pr create --base main --head <fork-owner>:release/v<new_version> \
      --title "chore: bump version to <new_version>" \
      --body "Bump code version..."
    ```
 
-c. Wait for required CI checks (DCO, test, lint) to pass on the PR.
+c. Wait for the PR checks to finish instead of reporting a pending state:
+   ```bash
+   gh pr checks <number> --watch --interval 15
+   ```
+   If a check fails, inspect and resolve it before merging. Do not merge while a
+   required check is pending.
 
-d. **Check DCO.** If the DCO check fails on upstream commits that lack a
-   sign-off (common after rebasing onto upstream), add sign-offs to all PR
-   commits:
+d. **Check DCO.** If the DCO check fails on commits in the release branch
+   that lack a sign-off, add sign-offs and update that branch:
    ```bash
    git rebase --signoff upstream/main
-   git push --force-with-lease origin main
+   git push --force-with-lease origin HEAD:refs/heads/release/v<new_version>
    ```
 
 e. Merge the PR (this repo requires squash-merge):
@@ -182,10 +186,10 @@ e. Merge the PR (this repo requires squash-merge):
    gh pr merge <number> --squash --subject "chore: bump version to <new_version>"
    ```
 
-f. Pull the merged result, tag, and push the tag to upstream:
+f. Fetch the merged result, tag the canonical upstream commit, and push the tag:
    ```bash
-   git fetch upstream && git checkout main && git reset --hard upstream/main
-   git tag v<new_version>
+   git fetch upstream
+   git tag v<new_version> upstream/main
    git push upstream v<new_version>
    ```
 
@@ -201,15 +205,29 @@ and the tag.
 
 The tag push triggers the GitHub Actions release workflow (`.github/workflows/release.yml`) which builds binaries, creates the GitHub release, and uses only the current changelog section as release notes.
 
-### 5. Wait for the release to be created
+### 5. Wait for the release workflow and verify the GitHub release
 
-Poll until the GitHub release exists:
+After pushing the tag, identify its workflow run and wait for it to finish.
+Do not use a fixed timeout or stop merely because the Release has not been
+created yet:
 
 ```bash
+run_id=$(gh run list --workflow=release.yml --event=push \
+  --commit "$(git rev-parse v<new_version>^{commit})" \
+  --json databaseId --jq '.[0].databaseId')
+gh run watch "$run_id" --interval 15 --exit-status
 gh release view v<new_version>
 ```
 
-Wait up to 3 minutes, checking every 15 seconds. If the release hasn't appeared after 3 minutes, check the workflow — use `gh run list --workflow=release.yml --event=push --limit=3` (tag-triggered workflows are push events, not branch-based).
+If the workflow run is not listed immediately after the tag push, wait until it
+appears, then use `gh run watch`. If it fails, inspect it with:
+
+```bash
+gh run view "$run_id" --log-failed
+```
+
+Do not report the release as complete until the watched workflow succeeds and
+`gh release view` confirms that the release exists.
 
 ## Important Notes
 
