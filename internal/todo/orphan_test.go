@@ -8,10 +8,10 @@ import (
 )
 
 // Adopting a store persisted by a process that is now gone must leave nothing
-// claiming to be in progress: whatever was executing those tasks died with that
+// claiming to be in progress: whatever was executing those items died with that
 // process. Reconciling here rather than at each exit path is what makes the
 // guarantee hold across crashes and SIGKILL, which run no cleanup code at all.
-func TestSetStorageDirDemotesOrphanedTasks(t *testing.T) {
+func TestSetStorageDirDemotesOrphanedItems(t *testing.T) {
 	dir := t.TempDir()
 
 	writer := NewStore()
@@ -34,18 +34,18 @@ func TestSetStorageDirDemotesOrphanedTasks(t *testing.T) {
 
 	gotPlan, ok := reader.Get(plan.ID)
 	if !ok {
-		t.Fatalf("plan task %s missing after adopt", plan.ID)
+		t.Fatalf("plan item %s missing after adopt", plan.ID)
 	}
 	if gotPlan.Status != StatusPending {
-		t.Fatalf("plan task status = %q, want %q", gotPlan.Status, StatusPending)
+		t.Fatalf("plan item status = %q, want %q", gotPlan.Status, StatusPending)
 	}
 
 	gotWorker, ok := reader.Get(worker.ID)
 	if !ok {
-		t.Fatalf("worker task %s missing after adopt", worker.ID)
+		t.Fatalf("worker item %s missing after adopt", worker.ID)
 	}
 	if gotWorker.Status != StatusCompleted {
-		t.Fatalf("worker task status = %q, want %q", gotWorker.Status, StatusCompleted)
+		t.Fatalf("worker item status = %q, want %q", gotWorker.Status, StatusCompleted)
 	}
 	if detail := BackgroundStatusDetail(gotWorker); detail != StatusDetailInterrupted {
 		t.Fatalf("worker status detail = %q, want %q", detail, StatusDetailInterrupted)
@@ -72,8 +72,8 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 	if err := writer.SetStorageDir(dir); err != nil {
 		t.Fatalf("SetStorageDir: %v", err)
 	}
-	entry := writer.Create("Audit deps", "", "", map[string]any{metaTaskID: running.ID})
-	if err := writer.Update(entry.ID, WithStatus(StatusInProgress)); err != nil {
+	item := writer.Create("Audit deps", "", "", map[string]any{metaTaskID: running.ID})
+	if err := writer.Update(item.ID, WithStatus(StatusInProgress)); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
@@ -82,9 +82,9 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 		t.Fatalf("SetStorageDir (adopt): %v", err)
 	}
 
-	got, ok := adopter.Get(entry.ID)
+	got, ok := adopter.Get(item.ID)
 	if !ok {
-		t.Fatalf("entry %s missing after adopt", entry.ID)
+		t.Fatalf("item %s missing after adopt", item.ID)
 	}
 	if got.Status != StatusInProgress {
 		t.Fatalf("running worker demoted: status = %q, want %q", got.Status, StatusInProgress)
@@ -92,7 +92,7 @@ func TestSetStorageDirKeepsRunningWorker(t *testing.T) {
 }
 
 // ReloadFromDisk exists to pick up writes from other processes mid-session, so
-// it must not reconcile: an in_progress task seen there is genuinely running.
+// it must not reconcile: an in_progress item seen there is genuinely running.
 func TestReloadFromDiskPreservesExecutingTasks(t *testing.T) {
 	dir := t.TempDir()
 
@@ -109,9 +109,9 @@ func TestReloadFromDiskPreservesExecutingTasks(t *testing.T) {
 
 	got, ok := store.Get(live.ID)
 	if !ok {
-		t.Fatalf("task %s missing after reload", live.ID)
+		t.Fatalf("item %s missing after reload", live.ID)
 	}
 	if got.Status != StatusInProgress {
-		t.Fatalf("live task demoted by reload: status = %q, want %q", got.Status, StatusInProgress)
+		t.Fatalf("live item demoted by reload: status = %q, want %q", got.Status, StatusInProgress)
 	}
 }

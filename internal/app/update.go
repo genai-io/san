@@ -48,7 +48,7 @@ type resizableOverlay interface {
 	Resize(width, height int)
 }
 
-// pasteHandler is the optional half of overlayPanel for text-entry dialogs.
+// pasteHandler is the optional half of overlayPanel for text-item dialogs.
 // Bracketed paste arrives as tea.PasteMsg, which is not a tea.KeyMsg, so it
 // never reaches HandleKeypress — it needs its own routing (see Update). An
 // overlay that accepts pasted text implements this; one that doesn't has the
@@ -333,12 +333,12 @@ func (m *model) hasRunningBackgroundTask() bool {
 	return m.services.Task.HasRunning()
 }
 
-// executingTrackerTask reports whether the executor behind a tracker entry is
-// running right now. A worker entry names a background task, so todo resolves
+// executingTrackerItem reports whether the executor behind a tracker item is
+// running right now. A worker item names a background task, so todo resolves
 // it against the task manager. A plan item authored by the model has no
 // executor of its own — the main agent loop advances it, so it runs exactly
 // while that loop streams.
-func (m *model) executingTrackerTask(t *todo.Task) bool {
+func (m *model) executingTrackerItem(t *todo.Item) bool {
 	if todo.BackgroundTaskID(t) == "" {
 		return m.conv.Stream.Active
 	}

@@ -151,11 +151,11 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 			}
 			state.AutoPilot = v
 		case PatchPathTasks:
-			var tasks []todo.Task
+			var tasks []todo.Item
 			if err := json.Unmarshal(op.Value, &tasks); err != nil {
 				return fmt.Errorf("patch %s: %w", op.Path, err)
 			}
-			state.Tasks = TrackerTaskViewsFromTasks(tasks)
+			state.Tasks = TrackerItemViewsFromItems(tasks)
 		case PatchPathWorktree:
 			if string(op.Value) == "null" {
 				state.Worktree = nil

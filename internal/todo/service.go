@@ -5,11 +5,11 @@ import "sync"
 // Service is the public contract for the tracker module.
 type Service interface {
 	// CRUD
-	Create(subject, description, activeForm string, metadata map[string]any) *Task
-	Get(id string) (*Task, bool)
+	Create(subject, description, activeForm string, metadata map[string]any) *Item
+	Get(id string) (*Item, bool)
 	Update(id string, opts ...UpdateOption) error
 	Delete(id string) error
-	List() []*Task
+	List() []*Item
 
 	// query
 	//
@@ -24,14 +24,14 @@ type Service interface {
 	IsBlocked(id string) bool
 	OpenBlockers(id string) []string
 	AllMarkedCompleted() bool
-	FindByMetadata(key, want string) *Task
+	FindByMetadata(key, want string) *Item
 
 	// persistence
 	SetStorageDir(dir string) error
 	GetStorageDir() string
 	ReloadFromDisk()
-	Export() []Task
-	Import(tasks []Task)
+	Export() []Item
+	Import(items []Item)
 
 	// lifecycle
 	Reset()

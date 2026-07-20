@@ -64,7 +64,7 @@ func (m *model) viewString() (string, *tea.Cursor) {
 // isDockedModal reports whether the active overlay docks above the input area
 // — rendered between separators with the task tracker still visible — rather
 // than taking over the full screen like the slash-command pickers do. Only
-// the Question, Approval, and secret-entry modals dock.
+// the Question, Approval, and secret-item modals dock.
 func isDockedModal(ov overlayPanel) bool {
 	switch ov.(type) {
 	case *conv.QuestionPrompt, *input.ApprovalModel, *input.SecretPromptModel:
@@ -262,11 +262,11 @@ func (m *model) renderTrackerList() string {
 		return ""
 	}
 	return conv.RenderTrackerList(conv.TrackerListParams{
-		Tasks:        m.services.Tracker.List(),
+		Items:        m.services.Tracker.List(),
 		StreamActive: m.conv.Stream.Active,
 		Width:        m.env.Width,
 		Blockers:     m.services.Tracker.OpenBlockers,
-		Executing:    m.executingTrackerTask,
+		Executing:    m.executingTrackerItem,
 		Blink:        m.conv.Spinner.Frame(),
 	})
 }
@@ -376,7 +376,7 @@ func buildAgentColors(configs []*subagent.AgentConfig) map[string]string {
 	return colors
 }
 
-func buildTaskOwnerMap(tasks []*todo.Task) map[string]string {
+func buildTaskOwnerMap(tasks []*todo.Item) map[string]string {
 	if len(tasks) == 0 {
 		return nil
 	}

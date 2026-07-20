@@ -29,7 +29,7 @@ func TestTranscriptTypesCarryProjectedState(t *testing.T) {
 		State: State{
 			Title:      "Fix persistence",
 			LastPrompt: "continue",
-			Tasks: []TrackerTaskView{{
+			Tasks: []TrackerItemView{{
 				ID:      "1",
 				Subject: "Refactor store",
 				Status:  "in_progress",
@@ -95,7 +95,7 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 	}
 
 	taskTime := now.Add(2 * time.Minute)
-	tasks := []todo.Task{{
+	tasks := []todo.Item{{
 		ID:              "1",
 		Subject:         "Refactor",
 		Description:     "Move projection helpers",
@@ -108,8 +108,8 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 		UpdatedAt:       taskTime,
 		StatusChangedAt: taskTime,
 	}}
-	views := TrackerTaskViewsFromTasks(tasks)
-	roundTrip := TrackerTasksFromView(views)
+	views := TrackerItemViewsFromItems(tasks)
+	roundTrip := TrackerItemsFromView(views)
 	if !reflect.DeepEqual(roundTrip, tasks) {
 		t.Fatalf("task roundtrip mismatch:\n got: %+v\nwant: %+v", roundTrip, tasks)
 	}

@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Task represents a tracked task
-type Task struct {
+// Item represents a tracked item
+type Item struct {
 	ID              string         `json:"id"`
 	Subject         string         `json:"subject"`
 	Description     string         `json:"description"`
@@ -27,7 +27,7 @@ type Task struct {
 	StatusChangedAt time.Time      `json:"statusChangedAt"` // when status last changed (for elapsed time display)
 }
 
-// Task status constants
+// Item status constants
 const (
 	StatusPending    = "pending"
 	StatusInProgress = "in_progress"
@@ -35,11 +35,11 @@ const (
 	StatusDeleted    = "deleted"
 )
 
-// Store is a thread-safe task store with optional disk persistence.
-// When a storageDir is set, each task is persisted as {id}.json.
+// Store is a thread-safe item store with optional disk persistence.
+// When a storageDir is set, each item is persisted as {id}.json.
 type Store struct {
 	mu         sync.RWMutex
-	tasks      map[string]*Task
+	items      map[string]*Item
 	nextID     int
 	storageDir string    // empty = in-memory only
 	lastDirMod time.Time // last known dir mtime, for change detection in ReloadFromDisk
@@ -48,12 +48,12 @@ type Store struct {
 // NewStore creates a new in-memory Store
 func NewStore() *Store {
 	return &Store{
-		tasks:  make(map[string]*Task),
+		items:  make(map[string]*Item),
 		nextID: 1,
 	}
 }
 
-// SetStorageDir sets the directory for disk persistence and loads existing tasks.
+// SetStorageDir sets the directory for disk persistence and loads existing items.
 // If dir is empty, the store operates in memory-only mode.
 func (s *Store) SetStorageDir(dir string) error {
 	s.mu.Lock()
@@ -65,7 +65,7 @@ func (s *Store) SetStorageDir(dir string) error {
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("failed to create task storage dir: %w", err)
+		return fmt.Errorf("failed to create item storage dir: %w", err)
 	}
 
 	// Create lock file
@@ -74,61 +74,61 @@ func (s *Store) SetStorageDir(dir string) error {
 		os.WriteFile(lockPath, nil, 0o644)
 	}
 
-	// Load existing tasks from disk, then reconcile: this is the moment a
+	// Load existing items from disk, then reconcile: this is the moment a
 	// fresh process adopts state written by a process that no longer exists.
 	if err := s.loadFromDisk(); err != nil {
 		return err
 	}
-	s.demoteOrphanedTasks()
+	s.demoteOrphanedItems()
 	return nil
 }
 
-// demoteOrphanedTasks demotes tasks recorded as in_progress that no executor is
+// demoteOrphanedItems demotes items recorded as in_progress that no worker is
 // advancing any more. Runs where a store is adopted — SetStorageDir and Import —
 // so records written by a process that has since died stop claiming to be live,
 // however that process ended. Must be called with s.mu held.
 //
 // Adoption also happens mid-session (resuming a session re-points the store), so
 // liveness is asked of the task manager rather than assumed from the call site:
-// a worker still executing keeps its status. Plan items have no executor to ask
+// a worker still executing keeps its status. Plan items have no worker to ask
 // about and fall back to pending, the truthful state of work that was started
 // but never finished.
 //
 // Not called from loadFromDisk — ReloadFromDisk uses that mid-session to pick up
 // cross-process writes, where in_progress is expected and genuine.
-func (s *Store) demoteOrphanedTasks() {
-	for _, entry := range s.tasks {
-		if entry.Status != StatusInProgress || WorkerRunning(entry) {
+func (s *Store) demoteOrphanedItems() {
+	for _, item := range s.items {
+		if item.Status != StatusInProgress || WorkerRunning(item) {
 			continue
 		}
-		if BackgroundTaskID(entry) != "" {
-			entry.Status = StatusCompleted
-			if entry.Metadata == nil {
-				entry.Metadata = map[string]any{}
+		if BackgroundTaskID(item) != "" {
+			item.Status = StatusCompleted
+			if item.Metadata == nil {
+				item.Metadata = map[string]any{}
 			}
-			entry.Metadata[metaStatusDetail] = StatusDetailInterrupted
+			item.Metadata[metaStatusDetail] = StatusDetailInterrupted
 		} else {
-			entry.Status = StatusPending
+			item.Status = StatusPending
 		}
-		entry.StatusChangedAt = time.Now()
-		s.persistTask(entry)
+		item.StatusChangedAt = time.Now()
+		s.persistItem(item)
 	}
 }
 
 // loadFromDisk reads all {id}.json files from storageDir into memory.
 // Must be called with s.mu held.
 func (s *Store) loadFromDisk() error {
-	entries, err := os.ReadDir(s.storageDir)
+	items, err := os.ReadDir(s.storageDir)
 	if err != nil {
 		return err
 	}
 
-	s.tasks = make(map[string]*Task)
+	s.items = make(map[string]*Item)
 	s.nextID = 1
 
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || filepath.Ext(name) != ".json" {
+	for _, item := range items {
+		name := item.Name()
+		if item.IsDir() || filepath.Ext(name) != ".json" {
 			continue
 		}
 
@@ -137,15 +137,15 @@ func (s *Store) loadFromDisk() error {
 			continue
 		}
 
-		var task Task
-		if err := json.Unmarshal(data, &task); err != nil {
+		var item Item
+		if err := json.Unmarshal(data, &item); err != nil {
 			continue
 		}
 
-		normalizeTaskSlices(&task)
-		s.tasks[task.ID] = &task
+		normalizeItemSlices(&item)
+		s.items[item.ID] = &item
 		var idNum int
-		if _, err := fmt.Sscanf(task.ID, "%d", &idNum); err == nil && idNum >= s.nextID {
+		if _, err := fmt.Sscanf(item.ID, "%d", &idNum); err == nil && idNum >= s.nextID {
 			s.nextID = idNum + 1
 		}
 	}
@@ -153,38 +153,38 @@ func (s *Store) loadFromDisk() error {
 	return nil
 }
 
-// persistTask writes a single task to disk. Must be called with s.mu held.
-func (s *Store) persistTask(task *Task) {
+// persistItem writes a single item to disk. Must be called with s.mu held.
+func (s *Store) persistItem(item *Item) {
 	if s.storageDir == "" {
 		return
 	}
-	data, err := json.MarshalIndent(task, "", "  ")
+	data, err := json.MarshalIndent(item, "", "  ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tracker: failed to marshal task %s: %v\n", task.ID, err)
+		fmt.Fprintf(os.Stderr, "tracker: failed to marshal item %s: %v\n", item.ID, err)
 		return
 	}
-	path := filepath.Join(s.storageDir, task.ID+".json")
+	path := filepath.Join(s.storageDir, item.ID+".json")
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "tracker: failed to write task %s: %v\n", task.ID, err)
+		fmt.Fprintf(os.Stderr, "tracker: failed to write item %s: %v\n", item.ID, err)
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		os.Remove(tmp)
-		fmt.Fprintf(os.Stderr, "tracker: failed to rename task %s: %v\n", task.ID, err)
+		fmt.Fprintf(os.Stderr, "tracker: failed to rename item %s: %v\n", item.ID, err)
 	}
 }
 
-// removeTaskFile deletes a task file from disk. Must be called with s.mu held.
-func (s *Store) removeTaskFile(id string) {
+// removeItemFile deletes an item file from disk. Must be called with s.mu held.
+func (s *Store) removeItemFile(id string) {
 	if s.storageDir == "" {
 		return
 	}
 	_ = os.Remove(filepath.Join(s.storageDir, id+".json"))
 }
 
-// Create adds a new task and returns it
-func (s *Store) Create(subject, description, activeForm string, metadata map[string]any) *Task {
+// Create adds a new item and returns it
+func (s *Store) Create(subject, description, activeForm string, metadata map[string]any) *Item {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -192,7 +192,7 @@ func (s *Store) Create(subject, description, activeForm string, metadata map[str
 	s.nextID++
 
 	now := time.Now()
-	task := &Task{
+	item := &Item{
 		ID:              id,
 		Subject:         subject,
 		Description:     description,
@@ -206,75 +206,75 @@ func (s *Store) Create(subject, description, activeForm string, metadata map[str
 		StatusChangedAt: now,
 	}
 
-	s.tasks[id] = task
-	s.persistTask(task)
-	return task
+	s.items[id] = item
+	s.persistItem(item)
+	return item
 }
 
-// Get retrieves a copy of a task by ID.
-func (s *Store) Get(id string) (*Task, bool) {
+// Get retrieves a copy of an item by ID.
+func (s *Store) Get(id string) (*Item, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	task, ok := s.tasks[id]
-	if !ok || task.Status == StatusDeleted {
+	item, ok := s.items[id]
+	if !ok || item.Status == StatusDeleted {
 		return nil, false
 	}
-	cp := *task
+	cp := *item
 	return &cp, true
 }
 
-// Update modifies an existing task. Returns error if task not found.
+// Update modifies an existing item. Returns error if item not found.
 func (s *Store) Update(id string, opts ...UpdateOption) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	task, ok := s.tasks[id]
+	item, ok := s.items[id]
 	if !ok {
-		return fmt.Errorf("task %s not found", id)
+		return fmt.Errorf("item %s not found", id)
 	}
 
 	for _, opt := range opts {
-		opt(task)
+		opt(item)
 	}
 
-	task.UpdatedAt = time.Now()
-	s.persistTask(task)
+	item.UpdatedAt = time.Now()
+	s.persistItem(item)
 	return nil
 }
 
-// List returns copies of all non-deleted tasks sorted by ID.
-func (s *Store) List() []*Task {
+// List returns copies of all non-deleted items sorted by ID.
+func (s *Store) List() []*Item {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tasks := make([]*Task, 0, len(s.tasks))
-	for _, task := range s.tasks {
-		if task.Status != StatusDeleted {
-			cp := *task
-			tasks = append(tasks, &cp)
+	items := make([]*Item, 0, len(s.items))
+	for _, item := range s.items {
+		if item.Status != StatusDeleted {
+			cp := *item
+			items = append(items, &cp)
 		}
 	}
 
-	sort.Slice(tasks, func(i, j int) bool {
-		return compareNumericIDs(tasks[i].ID, tasks[j].ID)
+	sort.Slice(items, func(i, j int) bool {
+		return compareNumericIDs(items[i].ID, items[j].ID)
 	})
 
-	return tasks
+	return items
 }
 
-// IsBlocked returns true if the task has any uncompleted blockers
+// IsBlocked returns true if the item has any uncompleted blockers
 func (s *Store) IsBlocked(id string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	task, ok := s.tasks[id]
-	if !ok || task.Status == StatusDeleted {
+	item, ok := s.items[id]
+	if !ok || item.Status == StatusDeleted {
 		return false
 	}
 
-	for _, blockerID := range task.BlockedBy {
-		blocker, ok := s.tasks[blockerID]
+	for _, blockerID := range item.BlockedBy {
+		blocker, ok := s.items[blockerID]
 		if ok && blocker.Status != StatusCompleted && blocker.Status != StatusDeleted {
 			return true
 		}
@@ -282,19 +282,19 @@ func (s *Store) IsBlocked(id string) bool {
 	return false
 }
 
-// OpenBlockers returns IDs of uncompleted tasks that block the given task
+// OpenBlockers returns IDs of uncompleted items that block the given item
 func (s *Store) OpenBlockers(id string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	task, ok := s.tasks[id]
-	if !ok || task.Status == StatusDeleted {
+	item, ok := s.items[id]
+	if !ok || item.Status == StatusDeleted {
 		return nil
 	}
 
 	var open []string
-	for _, blockerID := range task.BlockedBy {
-		blocker, ok := s.tasks[blockerID]
+	for _, blockerID := range item.BlockedBy {
+		blocker, ok := s.items[blockerID]
 		if ok && blocker.Status != StatusCompleted && blocker.Status != StatusDeleted {
 			open = append(open, blockerID)
 		}
@@ -302,39 +302,39 @@ func (s *Store) OpenBlockers(id string) []string {
 	return open
 }
 
-// Delete marks a task as deleted and removes its file from disk
+// Delete marks an item as deleted and removes its file from disk
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	task, ok := s.tasks[id]
+	item, ok := s.items[id]
 	if !ok {
-		return fmt.Errorf("task %s not found", id)
+		return fmt.Errorf("item %s not found", id)
 	}
 
-	task.Status = StatusDeleted
-	task.UpdatedAt = time.Now()
-	s.removeTaskFile(id)
+	item.Status = StatusDeleted
+	item.UpdatedAt = time.Now()
+	s.removeItemFile(id)
 	return nil
 }
 
-// AllMarkedCompleted reports whether the store has tasks and every one of them
+// AllMarkedCompleted reports whether the store has items and every one of them
 // carries StatusCompleted.
 //
 // The question is what the list records about itself — whether the model closed
 // out every item it wrote down — and Status is the only record of that.
 // Deriving it from executors would answer a different question and answer it
-// wrongly: a task left in_progress with no executor is abandoned work, not
+// wrongly: an item left in_progress with no worker is abandoned work, not
 // finished work, and marking it done would wipe the list at turn end and take
 // the [stalled] row down with it.
 func (s *Store) AllMarkedCompleted() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if len(s.tasks) == 0 {
+	if len(s.items) == 0 {
 		return false
 	}
-	for _, t := range s.tasks {
+	for _, t := range s.items {
 		if t.Status == StatusDeleted {
 			continue
 		}
@@ -345,55 +345,55 @@ func (s *Store) AllMarkedCompleted() bool {
 	return true
 }
 
-// Reset clears all tasks (for new sessions)
+// Reset clears all items (for new sessions)
 func (s *Store) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove all task files from disk
+	// Remove all item files from disk
 	if s.storageDir != "" {
-		for id := range s.tasks {
+		for id := range s.items {
 			_ = os.Remove(filepath.Join(s.storageDir, id+".json"))
 		}
 	}
 
-	s.tasks = make(map[string]*Task)
+	s.items = make(map[string]*Item)
 	s.nextID = 1
 }
 
-// Export returns a snapshot of all tasks (including deleted) for session persistence
-func (s *Store) Export() []Task {
+// Export returns a snapshot of all items (including deleted) for session persistence
+func (s *Store) Export() []Item {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	tasks := make([]Task, 0, len(s.tasks))
-	for _, t := range s.tasks {
-		tasks = append(tasks, *t)
+	items := make([]Item, 0, len(s.items))
+	for _, t := range s.items {
+		items = append(items, *t)
 	}
-	sort.Slice(tasks, func(i, j int) bool {
-		return compareNumericIDs(tasks[i].ID, tasks[j].ID)
+	sort.Slice(items, func(i, j int) bool {
+		return compareNumericIDs(items[i].ID, items[j].ID)
 	})
-	return tasks
+	return items
 }
 
-// Import restores tasks from a snapshot (used when loading a session)
-func (s *Store) Import(tasks []Task) {
+// Import restores items from a snapshot (used when loading a session)
+func (s *Store) Import(items []Item) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.tasks = make(map[string]*Task, len(tasks))
+	s.items = make(map[string]*Item, len(items))
 	s.nextID = 1
-	for i := range tasks {
-		t := tasks[i]
-		normalizeTaskSlices(&t)
-		s.tasks[t.ID] = &t
+	for i := range items {
+		t := items[i]
+		normalizeItemSlices(&t)
+		s.items[t.ID] = &t
 		var idNum int
 		if _, err := fmt.Sscanf(t.ID, "%d", &idNum); err == nil && idNum >= s.nextID {
 			s.nextID = idNum + 1
 		}
-		s.persistTask(&t)
+		s.persistItem(&t)
 	}
-	s.demoteOrphanedTasks()
+	s.demoteOrphanedItems()
 }
 
 // GetStorageDir returns the current storage directory.
@@ -403,7 +403,7 @@ func (s *Store) GetStorageDir() string {
 	return s.storageDir
 }
 
-// ReloadFromDisk re-reads all task files from the storage directory.
+// ReloadFromDisk re-reads all item files from the storage directory.
 // This picks up changes made by other processes (e.g., background agents).
 // No-op if no storage directory is configured or if directory hasn't been modified.
 func (s *Store) ReloadFromDisk() {
@@ -414,21 +414,21 @@ func (s *Store) ReloadFromDisk() {
 		return
 	}
 
-	// Check if any task file has been modified since last reload.
+	// Check if any item file has been modified since last reload.
 	// We can't rely on directory mtime alone because modifying existing
 	// files in-place doesn't update the directory mtime on macOS/most
 	// filesystems.
-	entries, err := os.ReadDir(s.storageDir)
+	items, err := os.ReadDir(s.storageDir)
 	if err != nil {
 		return
 	}
 
 	changed := false
-	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+	for _, item := range items {
+		if item.IsDir() || filepath.Ext(item.Name()) != ".json" {
 			continue
 		}
-		info, err := entry.Info()
+		info, err := item.Info()
 		if err != nil {
 			continue
 		}
@@ -446,12 +446,12 @@ func (s *Store) ReloadFromDisk() {
 	_ = s.loadFromDisk()
 }
 
-// UpdateOption is a functional option for updating a task
-type UpdateOption func(*Task)
+// UpdateOption is a functional option for updating an item
+type UpdateOption func(*Item)
 
-// WithStatus sets the task status and records the status change timestamp.
+// WithStatus sets the item status and records the status change timestamp.
 func WithStatus(status string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		if t.Status != status {
 			t.StatusChangedAt = time.Now()
 		}
@@ -459,37 +459,37 @@ func WithStatus(status string) UpdateOption {
 	}
 }
 
-// WithSubject sets the task subject
+// WithSubject sets the item subject
 func WithSubject(subject string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.Subject = subject
 	}
 }
 
-// WithDescription sets the task description
+// WithDescription sets the item description
 func WithDescription(description string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.Description = description
 	}
 }
 
-// WithActiveForm sets the task activeForm
+// WithActiveForm sets the item activeForm
 func WithActiveForm(activeForm string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.ActiveForm = activeForm
 	}
 }
 
-// WithOwner sets the task owner
+// WithOwner sets the item owner
 func WithOwner(owner string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.Owner = owner
 	}
 }
 
 // WithMetadata merges metadata (nil values delete keys)
 func WithMetadata(metadata map[string]any) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		if t.Metadata == nil {
 			t.Metadata = make(map[string]any)
 		}
@@ -503,22 +503,22 @@ func WithMetadata(metadata map[string]any) UpdateOption {
 	}
 }
 
-// WithAddBlocks adds task IDs that this task blocks
+// WithAddBlocks adds item IDs that this item blocks
 func WithAddBlocks(ids []string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.Blocks = appendUnique(t.Blocks, ids)
 	}
 }
 
-// WithAddBlockedBy adds task IDs that block this task
+// WithAddBlockedBy adds item IDs that block this item
 func WithAddBlockedBy(ids []string) UpdateOption {
-	return func(t *Task) {
+	return func(t *Item) {
 		t.BlockedBy = appendUnique(t.BlockedBy, ids)
 	}
 }
 
-// normalizeTaskSlices ensures Blocks and BlockedBy are non-nil slices.
-func normalizeTaskSlices(t *Task) {
+// normalizeItemSlices ensures Blocks and BlockedBy are non-nil slices.
+func normalizeItemSlices(t *Item) {
 	if t.Blocks == nil {
 		t.Blocks = []string{}
 	}
@@ -527,16 +527,16 @@ func normalizeTaskSlices(t *Task) {
 	}
 }
 
-// FindByMetadata returns a copy of the first non-deleted task whose metadata[key] equals want.
+// FindByMetadata returns a copy of the first non-deleted item whose metadata[key] equals want.
 // Returns nil if no match is found.
-func (s *Store) FindByMetadata(key, want string) *Task {
+func (s *Store) FindByMetadata(key, want string) *Item {
 	if want == "" {
 		return nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, t := range s.tasks {
+	for _, t := range s.items {
 		if t.Status == StatusDeleted {
 			continue
 		}
@@ -553,7 +553,7 @@ func (s *Store) FindByMetadata(key, want string) *Task {
 	return nil
 }
 
-// compareNumericIDs compares two task IDs numerically (e.g. "2" < "10").
+// compareNumericIDs compares two item IDs numerically (e.g. "2" < "10").
 // Falls back to lexicographic comparison if parsing fails.
 func compareNumericIDs(a, b string) bool {
 	na, errA := strconv.Atoi(a)

@@ -8,20 +8,20 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-// A background task's tracker entry must exist before the task can finish.
+// A background task's tracker item must exist before the task can finish.
 //
-// The entry used to be built from the launching tool's result, which reaches
+// The item used to be built from the launching tool's result, which reaches
 // the UI goroutine well after the task is already running. A task that ended
 // first — a subagent rejected by its provider, a bash command that exits at
-// once — completed an entry that did not exist yet, so the completion was
-// dropped and the entry created afterwards named a task that had already
+// once — completed an item that did not exist yet, so the completion was
+// dropped and the item created afterwards named a task that had already
 // ended. It stayed in_progress for the rest of the session: rendered
 // [stalled] forever, and never letting the tracker panel reset.
 //
-// Registering the task is now what creates the entry, and the manager
+// Registering the task is now what creates the item, and the manager
 // announces that from inside RegisterTask — before the caller has a goroutine
 // that could complete it — so the ordering holds by construction.
-func TestWorkerEntrySurvivesImmediateCompletion(t *testing.T) {
+func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
 	todo.Initialize(todo.Options{})
 	t.Cleanup(func() {
 		todo.Default().Reset()
@@ -38,11 +38,11 @@ func TestWorkerEntrySurvivesImmediateCompletion(t *testing.T) {
 	task.Default().RegisterTask(worker)
 	worker.Complete(nil)
 
-	entries := todo.Default().List()
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 tracker entry, got %d", len(entries))
+	items := todo.Default().List()
+	if len(items) != 1 {
+		t.Fatalf("expected 1 tracker item, got %d", len(items))
 	}
-	if entries[0].Status != todo.StatusCompleted {
-		t.Fatalf("status = %q, want %q — the entry was stranded", entries[0].Status, todo.StatusCompleted)
+	if items[0].Status != todo.StatusCompleted {
+		t.Fatalf("status = %q, want %q — the item was stranded", items[0].Status, todo.StatusCompleted)
 	}
 }

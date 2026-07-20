@@ -10,7 +10,7 @@ import (
 
 func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 13, 0, 0, 0, time.UTC)
-	task := todo.Task{
+	task := todo.Item{
 		ID:              "1",
 		Subject:         "Refactor",
 		Status:          todo.StatusInProgress,
@@ -36,8 +36,8 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 		}
 	}
 
-	taskPatch := PatchTasks([]todo.Task{task})
-	var decodedTasks []todo.Task
+	taskPatch := PatchTasks([]todo.Item{task})
+	var decodedTasks []todo.Item
 	if err := json.Unmarshal(taskPatch.Value, &decodedTasks); err != nil {
 		t.Fatalf("Unmarshal(task patch): %v", err)
 	}

@@ -65,7 +65,7 @@ func (t *TrackerListTool) Execute(ctx context.Context, params map[string]any, cw
 }
 
 // TaskIcon returns the status icon for a task.
-func TaskIcon(task *todo.Task) string {
+func TaskIcon(task *todo.Item) string {
 	switch task.Status {
 	case todo.StatusCompleted:
 		return "✓"

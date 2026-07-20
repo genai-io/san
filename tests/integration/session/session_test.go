@@ -598,7 +598,7 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	withTasks := &session.Snapshot{
 		Metadata: session.SessionMetadata{ID: "clear-tasks"},
 		Messages: []core.Message{makeUserEntry("m1", "hi")},
-		Tasks: []taskTracker.Task{{
+		Tasks: []taskTracker.Item{{
 			ID: "t1", Subject: "do thing", Status: "in_progress",
 			CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		}},

@@ -38,11 +38,11 @@ type State struct {
 	// internal/setting dependency; the app marshals/unmarshals it.
 	AutoPilot string
 
-	Tasks    []TrackerTaskView
+	Tasks    []TrackerItemView
 	Worktree *WorktreeState
 }
 
-type TrackerTaskView struct {
+type TrackerItemView struct {
 	ID              string
 	Subject         string
 	Description     string

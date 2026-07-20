@@ -116,7 +116,7 @@ func PatchLastPrompt(prompt string) PatchOp { return mustPatch(PatchPathLastProm
 func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag) }
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
 func PatchAutoPilot(v string) PatchOp       { return mustPatch(PatchPathAutoPilot, v) }
-func PatchTasks(tasks []todo.Task) PatchOp {
+func PatchTasks(tasks []todo.Item) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }
 func PatchWorktree(worktree *WorktreeState) PatchOp { return mustPatch(PatchPathWorktree, worktree) }
@@ -143,7 +143,7 @@ func StateOpsDiff(prev, next State) []PatchOp {
 		ops = append(ops, PatchAutoPilot(next.AutoPilot))
 	}
 	if !tasksEqual(prev.Tasks, next.Tasks) {
-		ops = append(ops, PatchTasks(TrackerTasksFromView(next.Tasks)))
+		ops = append(ops, PatchTasks(TrackerItemsFromView(next.Tasks)))
 	}
 	if !worktreeEqual(prev.Worktree, next.Worktree) {
 		ops = append(ops, PatchWorktree(next.Worktree))
@@ -151,7 +151,7 @@ func StateOpsDiff(prev, next State) []PatchOp {
 	return ops
 }
 
-func tasksEqual(a, b []TrackerTaskView) bool {
+func tasksEqual(a, b []TrackerItemView) bool {
 	if len(a) != len(b) {
 		return false
 	}

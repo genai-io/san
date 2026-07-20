@@ -23,8 +23,8 @@ func TestAllMarkedCompleted(t *testing.T) {
 		{"one left in progress", []string{StatusCompleted, StatusInProgress}, false},
 		{"deleted items do not count as open", []string{StatusCompleted, StatusDeleted}, true},
 		// Tombstones only: the map is not empty, so the emptiness check passes
-		// and the loop skips every entry. The view never sees this — List drops
-		// deleted tasks, so it renders nothing either way.
+		// and the loop skips every item. The view never sees this — List drops
+		// deleted items, so it renders nothing either way.
 		{"only tombstones", []string{StatusDeleted}, true},
 	}
 
@@ -32,15 +32,15 @@ func TestAllMarkedCompleted(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := NewStore()
 			for _, status := range tc.statuses {
-				entry := store.Create("task", "", "", nil)
+				item := store.Create("item", "", "", nil)
 				var err error
 				if status == StatusDeleted {
-					err = store.Delete(entry.ID)
+					err = store.Delete(item.ID)
 				} else {
-					err = store.Update(entry.ID, WithStatus(status))
+					err = store.Update(item.ID, WithStatus(status))
 				}
 				if err != nil {
-					t.Fatalf("set task %s to %s: %v", entry.ID, status, err)
+					t.Fatalf("set item %s to %s: %v", item.ID, status, err)
 				}
 			}
 			if got := store.AllMarkedCompleted(); got != tc.want {

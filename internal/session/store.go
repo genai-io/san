@@ -23,7 +23,7 @@ type Store struct {
 
 	// lastEmittedState caches the projected state most recently written for each
 	// session so Save emits only changed paths. Cold-start after a process
-	// restart pays one full snapshot per session (no entry in the cache means
+	// restart pays one full snapshot per session (no item in the cache means
 	// every non-default field looks "changed" vs the zero state, which is what
 	// we want — the projector still applies last-wins).
 	lastEmittedState map[string]transcript.State
@@ -32,9 +32,9 @@ type Store struct {
 type Snapshot struct {
 	Metadata SessionMetadata
 	Messages []core.Message
-	Tasks    []todo.Task
+	Tasks    []todo.Item
 
-	// OmitMessageWrites skips the per-entry AppendMessage loop in Save. Used
+	// OmitMessageWrites skips the per-item AppendMessage loop in Save. Used
 	// by the main TUI path where the agent's Recorder already persists every
 	// message in causal order via the OnAppend event — running Save's loop on
 	// top would write a second copy under a different ID (the TUI
@@ -153,7 +153,7 @@ func (s *Store) Load(id string) (*Snapshot, error) {
 // Save persists the snapshot via append-only writes:
 //
 //  1. Start (idempotent; no-op if the transcript already exists)
-//  2. AppendMessage per entry (deduped by message ID — cheap re-saves)
+//  2. AppendMessage per item (deduped by message ID — cheap re-saves)
 //  3. PatchState with the full projected state (last-wins on read)
 //
 // No file rewrites; each call writes only the records that didn't already
@@ -214,7 +214,7 @@ func (s *Store) Save(sess *Snapshot) error {
 		Tag:        sess.Metadata.Tag,
 		Mode:       sess.Metadata.Mode,
 		AutoPilot:  sess.Metadata.AutoPilot,
-		Tasks:      transcript.TrackerTaskViewsFromTasks(sess.Tasks),
+		Tasks:      transcript.TrackerItemViewsFromItems(sess.Tasks),
 	}
 	if s.lastEmittedState == nil {
 		s.lastEmittedState = make(map[string]transcript.State)
@@ -355,7 +355,7 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 	sess := &Snapshot{
 		Metadata: transcript.MetadataFromTranscript(tx),
 		Messages: messagesFromNodes(tx.Messages),
-		Tasks:    transcript.TrackerTasksFromView(tx.State.Tasks),
+		Tasks:    transcript.TrackerItemsFromView(tx.State.Tasks),
 	}
 
 	if sess.Metadata.Title == "" {
