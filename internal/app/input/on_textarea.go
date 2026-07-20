@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/rivo/uniseg"
 
 	"github.com/genai-io/san/internal/app/kit/history"
 	"github.com/genai-io/san/internal/app/kit/suggest"
@@ -22,6 +21,10 @@ const (
 	defaultMaxHeight     = 10
 	fixedChromeLines     = 6 // separators(2) + status(1) + prompt overhead(2) + image/warning(1)
 	maxHeightScreenRatio = 2 // use up to 1/2 of terminal height
+	// maxContentRows bounds the buffer itself, not the visible box — a sanity
+	// stop far past any message someone types by hand, since long text arrives
+	// by paste and collapses to a placeholder.
+	maxContentRows = 1000
 )
 
 // imageRefPattern matches @path/to/image.ext references (case-insensitive extension).
@@ -48,23 +51,12 @@ func (m *Model) maxTextareaHeight() int {
 	return dynMax
 }
 
-// UpdateHeight adjusts textarea height based on content line count, accounting
-// for double-width characters (e.g. CJK) via uniseg.StringWidth.
-func (m *Model) UpdateHeight() {
-	content := m.Textarea.Value()
-	lines := strings.Count(content, "\n") + 1
-	width := m.Textarea.Width()
-	if width <= 0 {
-		width = 1
-	}
-	for _, line := range strings.Split(content, "\n") {
-		displayWidth := max(uniseg.StringWidth(line), 1)
-		lines += (displayWidth - 1) / width
-	}
-
-	newHeight := max(min(lines, m.maxTextareaHeight()), minTextareaHeight)
-
-	m.Textarea.SetHeight(newHeight)
+// SetTerminalHeight records the terminal size and re-caps the input box, which
+// is allowed half the screen. Growing and shrinking to fit the content is the
+// textarea's own job (DynamicHeight); this only moves its ceiling.
+func (m *Model) SetTerminalHeight(height int) {
+	m.TerminalHeight = height
+	m.Textarea.MaxHeight = m.maxTextareaHeight()
 }
 
 // imageLabel returns the display label for a pending image token.
@@ -196,7 +188,6 @@ func (m *Model) RemoveImageToken(match ImageTokenMatch, cursor int) {
 	m.Images.RemoveAt(match.PendingIdx)
 	m.Images.Selection = ImageSelection{}
 	m.SetCursorIndex(cursor)
-	m.UpdateHeight()
 }
 
 // ExtractInlineImages removes inline image tokens from content and returns the
@@ -261,7 +252,6 @@ func (m *Model) HistoryUp() {
 	}
 	m.Textarea.SetValue(m.History.Items[m.History.Index])
 	m.Textarea.CursorEnd()
-	m.UpdateHeight()
 }
 
 // HistoryDown navigates to the next history entry.
@@ -277,7 +267,6 @@ func (m *Model) HistoryDown() {
 		m.Textarea.SetValue(m.History.Stashed)
 	}
 	m.Textarea.CursorEnd()
-	m.UpdateHeight()
 }
 
 // ProcessImageRefs extracts @image.png references from input.
@@ -343,8 +332,7 @@ func (m *Model) ClearPaste() {
 }
 
 func (m *Model) Reset() {
-	m.Textarea.Reset()
-	m.Textarea.SetHeight(minTextareaHeight)
+	m.Textarea.Reset() // shrinks back to MinHeight on its own
 	m.ClearPaste()
 	m.ClearImages()
 	m.Queue.ResetSelection()
@@ -387,7 +375,6 @@ func (m *Model) ReturnToTextarea(content string, images []core.Image) {
 	m.Textarea.SetValue(content)
 	m.Textarea.CursorEnd()
 	m.RestoreImages(images)
-	m.UpdateHeight()
 }
 
 func (m *Model) HasContent() bool {
@@ -440,7 +427,6 @@ func (m *Model) HandleTextareaUpdate(msg tea.Msg) (tea.Cmd, bool) {
 
 	changed := m.Textarea.Value() != prevValue
 	if changed {
-		m.UpdateHeight()
 		m.Suggestions.UpdateSuggestions(m.Textarea.Value())
 	}
 

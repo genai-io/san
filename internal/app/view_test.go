@@ -14,8 +14,8 @@ func TestTailLines(t *testing.T) {
 		maxLines int
 		want     string
 	}{
-		{"non-positive returns input", five, 0, five},
-		{"negative returns input", five, -3, five},
+		{"no room drops content", five, 0, ""},
+		{"negative room drops content", five, -3, ""},
 		{"fewer lines than max returns input", "a\nb", 5, "a\nb"},
 		{"exact fit returns input", five, 5, five},
 		{"truncates to last N (latest)", five, 2, "L3\nL4"},

@@ -73,7 +73,6 @@ func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 	label := m.userInput.AddPendingImage(*imgData)
 	m.userInput.Images.Selection = input.ImageSelection{}
 	m.userInput.Textarea.InsertString(label)
-	m.userInput.UpdateHeight()
 	return nil, true
 }
 

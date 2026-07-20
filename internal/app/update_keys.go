@@ -180,7 +180,6 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	case "alt+enter":
 		m.userInput.Textarea.InsertString("\n")
-		m.userInput.UpdateHeight()
 		return nil, true
 	}
 

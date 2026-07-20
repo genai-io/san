@@ -193,7 +193,6 @@ func (m *Model) ExitQueueSelection() {
 	m.Queue.ResetSelection()
 	m.Textarea.SetValue(stashed)
 	m.Textarea.CursorEnd()
-	m.UpdateHeight()
 }
 
 // SaveCurrentQueueEdit writes the current textarea content back to the
@@ -219,5 +218,4 @@ func (m *Model) LoadQueueItemIntoTextarea() {
 	}
 	m.Textarea.SetValue(item.Content)
 	m.Textarea.CursorEnd()
-	m.UpdateHeight()
 }

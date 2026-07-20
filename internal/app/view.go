@@ -28,18 +28,24 @@ var ghostTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 // source the key router uses — so the panel that owns the keyboard is always
 // the one drawn on screen.
 func (m *model) View() tea.View {
-	return tea.NewView(m.viewString())
+	content, cursor := m.viewString()
+	v := tea.NewView(content)
+	v.Cursor = cursor
+	return v
 }
 
 // viewString renders the UI to a styled string; View wraps it in a tea.View.
-func (m *model) viewString() string {
+// The second return is where the terminal's cursor belongs in that frame, or
+// nil for the layouts that show no composer — overlays own the keyboard there,
+// and their own editors paint a virtual cursor instead.
+func (m *model) viewString() (string, *tea.Cursor) {
 	if !m.env.Ready {
-		return "\n  " + brandMark() + ghostTextStyle.Render("  ·  Loading…")
+		return "\n  " + brandMark() + ghostTextStyle.Render("  ·  Loading…"), nil
 	}
 
 	ov, hasOverlay := m.activeOverlay()
 	if hasOverlay && !isDockedModal(ov) {
-		return ov.Render() // fullscreen slash-command picker
+		return ov.Render(), nil // fullscreen slash-command picker
 	}
 
 	separator := conv.SeparatorStyle.Render(strings.Repeat("─", m.env.Width))
@@ -50,7 +56,7 @@ func (m *model) viewString() string {
 		if trackerView != "" {
 			trackerPrefix = "\n" + strings.TrimSuffix(trackerView, "\n") + "\n"
 		}
-		return trackerPrefix + separator + "\n" + ov.Render()
+		return trackerPrefix + separator + "\n" + ov.Render(), nil
 	}
 	return m.renderNormalView(separator, trackerView)
 }
@@ -77,10 +83,10 @@ func isDockedModal(ov overlayPanel) bool {
 // the space above the input area, its last lines (the latest content) are
 // shown and earlier lines scroll off — the full message lands in native
 // scrollback at turn end, which the terminal scrolls back through natively.
-func (m *model) renderNormalView(separator, trackerView string) string {
+func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cursor) {
 	// Render the footer first so we can measure how many lines it consumes
 	// and cap the chat section to the remaining terminal height.
-	footer := m.renderFooter(separator)
+	footer, inputRow := m.renderFooter(separator)
 	bottomLines := strings.Count(footer, "\n")
 
 	maxContentHeight := 0
@@ -90,17 +96,34 @@ func (m *model) renderNormalView(separator, trackerView string) string {
 	}
 
 	activeContent := conv.RenderActiveContent(m.messageRenderParams())
-	chatSection := m.renderChatSection(activeContent, trackerView)
+	chatSection := tailLines(m.renderChatSection(activeContent, trackerView), maxContentHeight)
 
-	return tailLines(chatSection, maxContentHeight) + footer
+	// The footer's row offsets are relative to its own first line; the chat
+	// section above it shifts them all down.
+	return chatSection + footer, m.inputCursor(strings.Count(chatSection, "\n") + inputRow)
+}
+
+// inputCursor returns where the terminal cursor belongs inside the composer.
+// baseRow is the frame row the textarea's first line lands on; the textarea
+// reports its cursor relative to that, and the prompt shifts it right.
+func (m *model) inputCursor(baseRow int) *tea.Cursor {
+	cursor := m.userInput.Textarea.Cursor()
+	if cursor == nil { // textarea is blurred
+		return nil
+	}
+	cursor.Position.X += lipgloss.Width(conv.InputPrompt)
+	cursor.Position.Y += baseRow
+	return cursor
 }
 
 // tailLines returns the last maxLines newline-delimited lines of s, keeping the
 // latest content visible when the live tail is taller than the available
-// height. s is returned unchanged when maxLines <= 0 or it already fits.
+// height. s is returned unchanged when it already fits.
 func tailLines(s string, maxLines int) string {
+	// No room at all — the footer already fills the screen. Returning s here
+	// would push the frame past the terminal height and make it scroll.
 	if maxLines <= 0 {
-		return s
+		return ""
 	}
 	lines := strings.Split(s, "\n")
 	if len(lines) <= maxLines {
@@ -111,8 +134,10 @@ func tailLines(s string, maxLines int) string {
 
 // renderFooter renders everything below the chat section (separators, queue
 // preview, input area, suggestions, status line) into a single string so its
-// line count can be measured.
-func (m *model) renderFooter(separator string) string {
+// line count can be measured. It also reports the row the input area starts on,
+// which View needs to place the cursor: the queue preview above the composer is
+// variable-height, so the offset can't be a constant.
+func (m *model) renderFooter(separator string) (string, int) {
 	var b strings.Builder
 	// Queued messages sit above the input separator: they are already
 	// submitted — on their way into the conversation — so they read as part
@@ -125,6 +150,7 @@ func (m *model) renderFooter(separator string) string {
 	b.WriteString("\n")
 	b.WriteString(separator)
 	b.WriteString("\n")
+	inputRow := strings.Count(b.String(), "\n")
 	b.WriteString(m.renderInputView())
 	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
 		b.WriteString("\n")
@@ -138,11 +164,11 @@ func (m *model) renderFooter(separator string) string {
 	} else {
 		b.WriteString(" ")
 	}
-	return b.String()
+	return b.String(), inputRow
 }
 
 func (m model) renderInputView() string {
-	prompt := conv.InputPromptStyle.Render("❭ ")
+	prompt := conv.InputPromptStyle.Render(conv.InputPrompt)
 	if m.userInput.PromptSuggestion.Text != "" && m.userInput.Textarea.Value() == "" &&
 		!m.conv.Stream.Active && !m.userInput.Suggestions.IsVisible() {
 		return prompt + ghostTextStyle.Render(m.userInput.PromptSuggestion.Text)
