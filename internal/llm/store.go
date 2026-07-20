@@ -202,7 +202,17 @@ func (s *Store) ResolveAuthMethod(current *CurrentModelInfo) AuthMethod {
 	if current.AuthMethod != "" {
 		return current.AuthMethod
 	}
-	if conn, ok := s.GetConnection(current.Provider); ok {
+	return s.ConnectionAuthMethod(current.Provider)
+}
+
+// ConnectionAuthMethod returns the auth method of a provider's active
+// connection, or "" when it has none. Nil-receiver safe, for callers that hold
+// a provider but no model (llm.Client resolving its own context window).
+func (s *Store) ConnectionAuthMethod(provider Name) AuthMethod {
+	if s == nil {
+		return ""
+	}
+	if conn, ok := s.GetConnection(provider); ok {
 		return conn.AuthMethod
 	}
 	return ""

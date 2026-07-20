@@ -264,19 +264,15 @@ func (l *Client) InputLimit() int {
 	model := l.model
 	l.mu.RUnlock()
 
-	// EffectiveInputLimit is nil-store-safe, and is called unconditionally so
-	// the env override it checks first is honored even before a store exists.
-	store := Default().Store()
+	// Both store methods are nil-receiver safe, and EffectiveInputLimit is
+	// called unconditionally so the env override it checks first is honored
+	// even before a store exists.
 	var provider Name
-	var auth AuthMethod
 	if p != nil {
 		provider = Name(p.Name())
-		if store != nil {
-			if conn, ok := store.GetConnection(provider); ok {
-				auth = conn.AuthMethod
-			}
-		}
 	}
+	store := Default().Store()
+	auth := store.ConnectionAuthMethod(provider)
 	if n := store.EffectiveInputLimit(provider, auth, model); n > 0 {
 		return n
 	}

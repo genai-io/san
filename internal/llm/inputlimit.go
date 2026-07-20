@@ -32,8 +32,9 @@ func inputLimitOverride() int {
 }
 
 // EffectiveInputLimit resolves a model's context window from configuration and
-// cache, returning 0 when it cannot be determined — callers decide whether an
-// unknown window means DefaultInputLimit or "no model, show nothing".
+// cache, returning 0 when it cannot be determined. Callers treat 0 as
+// "unknown" and skip whatever they would have done with a window rather than
+// substituting a guess.
 //
 // Order: the env override, then the user's configured limit, then this
 // provider+auth's cached figure, then the largest figure cached for the ID

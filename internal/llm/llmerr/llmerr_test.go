@@ -160,3 +160,41 @@ func TestRetryAfterParsesHTTPDate(t *testing.T) {
 		t.Fatalf("retryAfter(http-date) = %v, want ~30s", d)
 	}
 }
+
+// A prompt that overflowed the window arrives as a 400/422, which classify
+// buckets as fatal. Wrap has to tag it so the turn loop compacts and retries
+// instead of surfacing the failure. Provider wordings live here, in the layer
+// that knows which provider produced them.
+func TestWrapTagsContextExceeded(t *testing.T) {
+	overflow := []struct{ name, msg string }{
+		{"anthropic", "prompt is too long: 213423 tokens > 200000 maximum"},
+		{"anthropic type", `{"type":"error","error":{"type":"prompt_too_long"}}`},
+		{"openai", "This model's maximum context length is 128000 tokens. However, your messages resulted in 130512 tokens."},
+		{"openai code", `{"code":"context_length_exceeded"}`},
+		{"gemini", "The input token count 1050000 exceeds the maximum number of tokens allowed 1048576."},
+		{"mixed case", "Prompt Is Too Long"},
+	}
+	for _, c := range overflow {
+		t.Run(c.name, func(t *testing.T) {
+			var exceeded core.ContextExceededError
+			if !errors.As(Wrap(errors.New(c.msg)), &exceeded) {
+				t.Fatalf("Wrap(%q) is not tagged ContextExceededError", c.msg)
+			}
+			// Retrying an oversized prompt unchanged just fails again, so the
+			// two tags must stay mutually exclusive.
+			var retryable core.RetryableError
+			if errors.As(Wrap(errors.New(c.msg)), &retryable) {
+				t.Fatalf("Wrap(%q) is also RetryableError; want context-exceeded only", c.msg)
+			}
+		})
+	}
+
+	// Unrelated failures must not be mistaken for overflow: compacting on a
+	// network blip would discard history the retry path could have kept.
+	for _, msg := range []string{"dial tcp: connection refused", "invalid api key", ""} {
+		var exceeded core.ContextExceededError
+		if errors.As(Wrap(errors.New(msg)), &exceeded) {
+			t.Fatalf("Wrap(%q) tagged as context-exceeded, want not", msg)
+		}
+	}
+}

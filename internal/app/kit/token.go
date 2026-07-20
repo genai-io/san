@@ -55,19 +55,23 @@ func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (
 	return store.CachedModelLimits(currentModel.ModelID)
 }
 
-// getEffectiveTokenLimits returns custom limits if set, otherwise cached model limits.
-func getEffectiveTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (inputLimit, outputLimit int) {
+// getEffectiveOutputLimit returns the output cap: a custom limit if set,
+// otherwise the cached model metadata. The input side has its own resolver
+// (llm.Store.EffectiveInputLimit) because it also honors an env override and
+// is shared with the agent's compaction check.
+func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	if currentModel == nil {
-		return 0, 0
+		return 0
 	}
 
 	if store != nil {
-		if input, output, ok := store.GetTokenLimit(currentModel.ModelID); ok {
-			return input, output
+		if _, output, ok := store.GetTokenLimit(currentModel.ModelID); ok {
+			return output
 		}
 	}
 
-	return GetModelTokenLimits(store, currentModel)
+	_, output := GetModelTokenLimits(store, currentModel)
+	return output
 }
 
 // GetEffectiveInputLimit returns the context window for the status bar's
@@ -85,10 +89,4 @@ func GetEffectiveInputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo
 	}
 	auth := store.ResolveAuthMethod(currentModel)
 	return store.EffectiveInputLimit(currentModel.Provider, auth, currentModel.ModelID)
-}
-
-// getEffectiveOutputLimit returns only the effective output token limit.
-func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
-	_, output := getEffectiveTokenLimits(store, currentModel)
-	return output
 }

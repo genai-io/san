@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -508,43 +509,21 @@ func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
 	}
 }
 
-// With no discoverable window, proactive compaction cannot fire and this is
-// the only thing standing between a too-large prompt and a turn that fails
-// forever. It matched Anthropic's phrasing alone, so every other provider was
-// unprotected.
-func TestIsPromptTooLongAcrossProviders(t *testing.T) {
-	tooLong := []struct{ name, msg string }{
-		{"anthropic", "prompt is too long: 213423 tokens > 200000 maximum"},
-		{"anthropic type", `{"type":"error","error":{"type":"prompt_too_long"}}`},
-		{"openai", "This model's maximum context length is 128000 tokens. However, your messages resulted in 130512 tokens."},
-		{"openai code", `{"code":"context_length_exceeded"}`},
-		{"gemini", "The input token count 1050000 exceeds the maximum number of tokens allowed 1048576."},
-		{"mixed case", "Prompt Is Too Long"},
+// The turn loop must recognize the tag the llm layer attaches, not the
+// provider wording behind it — that vocabulary lives in llmerr now.
+func TestIsPromptTooLongReadsTheContextExceededTag(t *testing.T) {
+	if !isPromptTooLong(fmt.Errorf("infer: %w", stubContextExceeded{})) {
+		t.Fatal("isPromptTooLong() = false for a tagged error, want true")
 	}
-	for _, c := range tooLong {
-		t.Run(c.name, func(t *testing.T) {
-			if !isPromptTooLong(errors.New(c.msg)) {
-				t.Fatalf("isPromptTooLong(%q) = false, want true", c.msg)
-			}
-		})
-	}
-
-	// Unrelated failures must not be mistaken for overflow: compacting on a
-	// network blip would discard history the retry path could have kept.
-	other := []struct{ name, msg string }{
-		{"network", "dial tcp: connection refused"},
-		{"rate limit", "429 Too Many Requests"},
-		{"auth", "invalid api key"},
-		{"nil", ""},
-	}
-	for _, c := range other {
-		t.Run(c.name, func(t *testing.T) {
-			if isPromptTooLong(errors.New(c.msg)) {
-				t.Fatalf("isPromptTooLong(%q) = true, want false", c.msg)
-			}
-		})
+	if isPromptTooLong(errors.New("prompt is too long: 213423 tokens > 200000")) {
+		t.Fatal("isPromptTooLong() = true for an untagged error; core must not match provider text")
 	}
 	if isPromptTooLong(nil) {
 		t.Fatal("isPromptTooLong(nil) = true, want false")
 	}
 }
+
+type stubContextExceeded struct{}
+
+func (stubContextExceeded) Error() string    { return "prompt too long" }
+func (stubContextExceeded) ContextExceeded() {}

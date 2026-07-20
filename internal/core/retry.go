@@ -36,6 +36,21 @@ type RetryableError interface {
 	RetryAfter() time.Duration
 }
 
+// ContextExceededError marks a failure caused by the prompt outgrowing the
+// model's context window. Like RetryableError, the llm layer attaches it via
+// classification, so core can compact and retry without carrying any
+// provider's error vocabulary — the phrasings differ per vendor ("prompt is
+// too long", "maximum context length", "input token count exceeds…") and
+// belong with the code that already knows which provider it is talking to.
+//
+// Deliberately distinct from RetryableError: retrying an oversized prompt
+// unchanged just fails again. The turn loop has to shrink the conversation
+// first, which is what makes this its own signal.
+type ContextExceededError interface {
+	error
+	ContextExceeded()
+}
+
 // streamIncomplete is a core-originated retryable failure: the stream either
 // ended without a terminal Done chunk (truncated) or went silent past the idle
 // deadline (stalled). Neither carries a server hint, so RetryAfter is 0.

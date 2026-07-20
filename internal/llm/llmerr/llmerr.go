@@ -29,14 +29,20 @@ const (
 	rateLimited              // 429 — retry, honoring Retry-After when present
 )
 
-// Wrap classifies err and, when it is worth retrying, returns an error that
-// satisfies core.RetryableError (carrying any Retry-After hint). Fatal errors
-// and nil are returned unchanged, so they do NOT satisfy the interface and the
-// turn loop surfaces them immediately. The original error always stays in the
-// chain — context-window messages must survive for isPromptTooLong.
+// Wrap classifies err and tags it for the turn loop: retryable failures
+// satisfy core.RetryableError (carrying any Retry-After hint), a prompt that
+// overflowed the context window satisfies core.ContextExceededError. Anything
+// else — and nil — is returned unchanged, so it satisfies neither and the turn
+// loop surfaces it immediately. The original error always stays in the chain.
 func Wrap(err error) error {
 	if err == nil {
 		return nil
+	}
+	// Checked before classify: an overflowed prompt arrives as a 400/422,
+	// which classify buckets as fatal, and it needs its own tag so the loop
+	// compacts instead of giving up.
+	if isContextExceeded(err) {
+		return contextErr{err: err}
 	}
 	switch c, after := classify(err); c {
 	case retryable:
@@ -47,6 +53,45 @@ func Wrap(err error) error {
 		return err
 	}
 }
+
+// contextExceededSignatures are the ways providers say "this prompt exceeds
+// the context window". Matching is on the message text because no provider
+// distinguishes it from other 400s with a machine-readable code.
+//
+// This is the whole safety net for a model whose window San could not size in
+// advance: proactive compaction cannot fire without a known limit, so a
+// phrasing missing here means the turn fails and keeps failing rather than
+// compacting and retrying. Add a provider's wording when adding the provider.
+var contextExceededSignatures = []string{
+	"prompt is too long",                // Anthropic
+	"prompt_too_long",                   // Anthropic (error type)
+	"maximum context length",            // OpenAI and OpenAI-compatible
+	"context_length_exceeded",           // OpenAI (error code)
+	"reduce the length of the messages", // OpenAI (remediation text)
+	"input token count",                 // Google Gemini
+	"exceeds the maximum number of tokens",
+	"context length exceeded",
+	"too many tokens",
+}
+
+func isContextExceeded(err error) bool {
+	msg := strings.ToLower(err.Error())
+	for _, sig := range contextExceededSignatures {
+		if strings.Contains(msg, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextErr satisfies core.ContextExceededError while preserving the original.
+type contextErr struct{ err error }
+
+func (e contextErr) Error() string    { return e.err.Error() }
+func (e contextErr) Unwrap() error    { return e.err }
+func (e contextErr) ContextExceeded() {}
+
+var _ core.ContextExceededError = contextErr{}
 
 // retryErr satisfies core.RetryableError while preserving the original error.
 type retryErr struct {

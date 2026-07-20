@@ -1,7 +1,5 @@
 package setting
 
-// The input-token counterpart of DefaultMaxTokens lives in the llm package
-// (llm.DefaultInputLimit), next to the resolver that applies it.
 const (
 	DefaultMaxTokens    = 8192
 	DefaultSystemPrompt = "You are a helpful AI coding assistant."

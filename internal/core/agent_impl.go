@@ -639,38 +639,12 @@ func (a *agent) applyCompaction(ctx context.Context, summary string, originalCou
 	}))
 }
 
-// isPromptTooLong checks if an error indicates the prompt exceeds the model's limit.
-// promptTooLongSignatures are the ways providers say "this prompt exceeds the
-// context window". Matching is substring-based on the error text because none
-// of them expose a machine-readable code San can rely on across vendors.
-//
-// This list is the whole safety net for a model whose window San could not
-// discover ahead of time: proactive compaction cannot fire without a limit, so
-// a signature missing here means the turn fails and keeps failing rather than
-// compacting and retrying. When adding a provider, add its phrasing too.
-var promptTooLongSignatures = []string{
-	"prompt is too long",                // Anthropic
-	"prompt_too_long",                   // Anthropic (error type)
-	"maximum context length",            // OpenAI and OpenAI-compatible
-	"context_length_exceeded",           // OpenAI (error code)
-	"reduce the length of the messages", // OpenAI (remediation text)
-	"input token count",                 // Google Gemini
-	"exceeds the maximum number of tokens",
-	"context length exceeded",
-	"too many tokens",
-}
-
+// isPromptTooLong reports whether the prompt overflowed the model's context
+// window. The llm layer tags that case during classification (see
+// llmerr.Wrap), so this stays free of provider error vocabulary.
 func isPromptTooLong(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	for _, sig := range promptTooLongSignatures {
-		if strings.Contains(msg, sig) {
-			return true
-		}
-	}
-	return false
+	var exceeded ContextExceededError
+	return errors.As(err, &exceeded)
 }
 
 // --- context keys ---
