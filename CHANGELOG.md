@@ -3,6 +3,13 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.10] - 2026-07-20
+
+### Fixed
+- Derive tracker in-progress state from live executors ([@yanmxa](https://github.com/yanmxa) in [#342](https://github.com/genai-io/san/pull/342))
+- Base auto-compaction on the full prompt, including cached tokens ([@yanmxa](https://github.com/yanmxa) in [#339](https://github.com/genai-io/san/pull/339))
+- Bind Shift+Enter, place the real cursor, and size the input box by wrapping ([@yanmxa](https://github.com/yanmxa) in [#340](https://github.com/genai-io/san/pull/340))
+
 ## [v1.21.9] - 2026-07-20
 
 ### Added
