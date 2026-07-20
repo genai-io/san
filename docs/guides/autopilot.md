@@ -174,7 +174,7 @@ composer and you accept with `tab` + `enter`.
 
 | Mark | Meaning |
 |---|---|
-| green `⎿ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5; uncapped runs show just `2`) |
+| green `⎿ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5; an uncapped run counts `step 2` instead) |
 | amber `⏵ autopilot · turn failed · retrying in 5s` | a turn errored out; the copilot will decide whether to resume |
 | green `↳ auto-approved · <reason>` | the permission judge let the tool call above through |
 | amber `↳ escalated · <reason>` | the judge sent the call back to you |

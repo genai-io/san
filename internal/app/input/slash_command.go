@@ -381,9 +381,9 @@ func (c *SlashCommandController) handleGoalCommand(_ context.Context, args strin
 	}
 	if goal == "" {
 		if c.env.GetGoal == nil || c.env.GetGoal() == "" {
-			return "No goal set.\n\nUsage: /goal <what to achieve> — autopilot drives until it's done.\n       /goal clear — stand the copilot down.", nil, nil
+			return "No goal set. /goal <what to achieve> — autopilot drives until it's done.", nil, nil
 		}
-		return "Current goal: " + c.env.GetGoal(), nil, nil
+		return "Goal: " + c.env.GetGoal() + " (/goal clear to stand down)", nil, nil
 	}
 	return "", func() tea.Msg { return GoalSetMsg{Goal: goal} }, nil
 }

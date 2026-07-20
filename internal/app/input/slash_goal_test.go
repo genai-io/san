@@ -60,7 +60,7 @@ func TestGoalCommandReportsTheCurrentGoal(t *testing.T) {
 	if msg != nil {
 		t.Errorf("bare /goal with none set should change nothing; got %T", msg)
 	}
-	if !strings.Contains(notice, "No goal set") || !strings.Contains(notice, "/goal clear") {
+	if !strings.Contains(notice, "No goal set") || !strings.Contains(notice, "/goal <") {
 		t.Errorf("notice = %q, want the no-goal usage text", notice)
 	}
 }

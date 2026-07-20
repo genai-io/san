@@ -125,16 +125,21 @@ func autopilotHint(detail string) string {
 	return autopilotHintMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
 
-// autopilotHandback is the notice shown when the copilot returns control to the
-// human — it stops mid-mission (needs a decision, or spent its continuation
-// budget), so the arrow curves back to the user rather than driving forward.
-// A non-empty detail (e.g. the decide error) rides dimmed after it.
+// autopilotReturn formats the amber "↩ autopilot · <detail>" notice — the arrow
+// curves back to the human because control is going with it. Callers supply the
+// words so the line stays one clause long.
+func autopilotReturn(detail string) string {
+	return autopilotHintMark.Render("↩ autopilot") + autopilotHintDim.Render(" · "+detail)
+}
+
+// autopilotHandback is the notice shown when the copilot stops mid-mission
+// (needs a decision, or spent its continuation budget). A non-empty detail
+// (e.g. the decide error) rides dimmed after it.
 func autopilotHandback(detail string) string {
-	s := autopilotHintMark.Render("↩ autopilot") + autopilotHintDim.Render(" · over to you")
-	if detail != "" {
-		s += autopilotHintDim.Render(" · " + detail)
+	if detail == "" {
+		return autopilotReturn("over to you")
 	}
-	return s
+	return autopilotReturn("over to you · " + detail)
 }
 
 // autopilotAction is the green notice for something the copilot handled itself
@@ -645,10 +650,12 @@ func (m *model) startGoal(goal string) tea.Cmd {
 	// Mid-turn, the running turn owns the session; the TurnEnd steer picks the
 	// goal up when it lands, so say so rather than looking like nothing happened.
 	if m.conv.Stream.Active {
-		m.conv.AddNotice(autopilotAction("goal set · taking over at the end of this turn"))
+		m.conv.AddNotice(autopilotAction("goal set · starts after this turn"))
 		return nil
 	}
-	m.conv.AddNotice(autopilotAction("goal set · taking the wheel"))
+	// Just "goal set" — the copilot's first step lands right below wearing its
+	// own ⎿ autopilot mark, which says it took the wheel better than words would.
+	m.conv.AddNotice(autopilotAction("goal set"))
 	return m.autopilotKickCmd()
 }
 
@@ -661,7 +668,7 @@ func (m *model) clearGoal() {
 		return
 	}
 	m.retireAutopilotMission()
-	m.conv.AddNotice(autopilotHandback("goal cleared"))
+	m.conv.AddNotice(autopilotReturn("goal cleared"))
 }
 
 // retireAutopilotMission winds down a finished mission without leaving AutoPilot,
