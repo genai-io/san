@@ -3,7 +3,6 @@ package task
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -26,14 +25,15 @@ type BashTask struct {
 
 	cancel context.CancelFunc // Cancel function
 
-	mu       sync.RWMutex  // Protects mutable fields below
-	status   TaskStatus    // Current status
-	endTime  time.Time     // When the task ended (if completed)
-	exitCode int           // Exit code (if completed)
-	errMsg   string        // Error message (if failed)
-	output   bytes.Buffer  // Collected stdout/stderr
-	done     chan struct{} // Closed when task completes
-	doneOnce sync.Once     // Guards done channel close
+	mu            sync.RWMutex  // Protects mutable fields below
+	status        TaskStatus    // Current status
+	endTime       time.Time     // When the task ended (if completed)
+	exitCode      int           // Exit code (if completed)
+	errMsg        string        // Error message (if failed)
+	stopRequested bool          // Stop was asked for; the exit is deliberate
+	output        bytes.Buffer  // Collected stdout/stderr
+	done          chan struct{} // Closed when task completes
+	doneOnce      sync.Once     // Guards done channel close
 }
 
 // Verify BashTask implements BackgroundTask
@@ -84,7 +84,7 @@ func (t *BashTask) GetDescription() string {
 // AppendOutput appends data to the output buffer
 func (t *BashTask) AppendOutput(data []byte) {
 	t.mu.Lock()
-	t.output.Write(data)
+	appendCapped(&t.output, data)
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
@@ -104,18 +104,22 @@ func (t *BashTask) GetOutput() string {
 // Complete records the terminal status of a bash task that has exited, the
 // counterpart to AgentTask.Complete and classifying the same three outcomes.
 //
-// A cancelled run reaches cmd.Wait as an ordinary signal death ("signal:
-// killed"), never as context.Canceled, so unlike the agent case the error
-// alone cannot tell a deliberate stop from a genuine failure. The task context
-// draws that line: Stop and Kill cancel it, while the run's own timeout
-// expires it instead — a timeout is a failure, so only cancellation is
-// exempted here. Without this a user-requested TaskStop was recorded as
-// failed, and the main agent could retry work the user had just cancelled,
-// which is the outcome StatusStopped exists to prevent.
+// A stopped run reaches cmd.Wait as an ordinary signal death ("signal:
+// terminated"), never as context.Canceled, so unlike the agent case the error
+// alone cannot tell a deliberate stop from a genuine failure. Stop records
+// that it asked, and that flag is the only thing that distinguishes them: a
+// run killed by its own timeout sets nothing and stays a failure. Without this
+// a user-requested TaskStop was recorded as failed, and the main agent could
+// retry work the user had just cancelled — the outcome StatusStopped exists to
+// prevent.
 func (t *BashTask) Complete(exitCode int, err error) {
+	t.mu.RLock()
+	stopped := t.stopRequested
+	t.mu.RUnlock()
+
 	status, errMsg := StatusCompleted, ""
 	switch {
-	case t.ctx != nil && errors.Is(t.ctx.Err(), context.Canceled):
+	case stopped:
 		status, errMsg = StatusStopped, "stopped before completion"
 	case err != nil:
 		status, errMsg = StatusFailed, err.Error()
@@ -181,12 +185,20 @@ func (t *BashTask) WaitForCompletion(timeout time.Duration) bool {
 	}
 }
 
-// Stop gracefully stops the task (SIGTERM on Unix; on Windows there is no
-// signal-based graceful stop, so the underlying helper hard-kills the child).
+// Stop asks the task to exit gracefully, sending SIGTERM to its process group
+// so the child gets a chance to clean up. On Windows there is no signal-based
+// graceful stop, so the helper hard-kills instead.
+//
+// It deliberately does not cancel the task context. exec wires cmd.Cancel to
+// SIGKILL the group the instant the context is done, so cancelling here would
+// deliver the kill before the SIGTERM and the graceful stop would never
+// actually happen. Escalation belongs to the caller: Manager.Kill polls for
+// the exit and falls back to Kill when the child ignores the signal.
 func (t *BashTask) Stop() error {
-	if t.cancel != nil {
-		t.cancel()
-	}
+	t.mu.Lock()
+	t.stopRequested = true
+	t.mu.Unlock()
+
 	return proc.TerminateGroup(t.cmd, syscall.SIGTERM)
 }
 

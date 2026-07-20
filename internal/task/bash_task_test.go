@@ -1,10 +1,13 @@
 package task
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os/exec"
+	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -298,11 +301,10 @@ func TestBashTask_ImplementsBackgroundTask(t *testing.T) {
 	}
 }
 
-// A user-requested stop cancels the task context, and the child dies of the
-// signal that follows — so cmd.Wait reports "signal: killed", not a
-// cancellation. Recording that as failed told the main agent the work had
-// broken rather than been called off, inviting a retry of what the user had
-// just cancelled.
+// A stopped child dies of the signal Stop sent it, so cmd.Wait reports
+// "signal: terminated" — indistinguishable from a crash by the error alone.
+// Recording that as failed told the main agent the work had broken rather than
+// been called off, inviting a retry of what the user had just cancelled.
 func TestBashTaskStopIsNotAFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -312,16 +314,16 @@ func TestBashTaskStopIsNotAFailure(t *testing.T) {
 
 	task := NewBashTask("stop-id", "sleep 100", "Long task", cmd, ctx, cancel)
 
-	cancel()
-	task.Complete(137, errors.New("signal: killed"))
+	_ = task.Stop()
+	task.Complete(128+int(syscall.SIGTERM), errors.New("signal: terminated"))
 
 	if info := task.GetStatus(); info.Status != StatusStopped {
 		t.Errorf("expected status '%s', got '%s'", StatusStopped, info.Status)
 	}
 }
 
-// A run that outlives its own timeout also ends with a cancelled context, but
-// it failed on its own terms — nobody called it off, so it stays a failure.
+// A run killed by its own timeout dies the same way, but nobody called it off,
+// so it stays a failure. Only Stop exempts a task from that.
 func TestBashTaskTimeoutRemainsAFailure(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
@@ -332,9 +334,56 @@ func TestBashTaskTimeoutRemainsAFailure(t *testing.T) {
 	task := NewBashTask("timeout-id", "sleep 100", "Long task", cmd, ctx, cancel)
 
 	<-ctx.Done()
-	task.Complete(137, errors.New("signal: killed"))
+	task.Complete(128+int(syscall.SIGKILL), errors.New("signal: killed"))
 
 	if info := task.GetStatus(); info.Status != StatusFailed {
 		t.Errorf("expected status '%s', got '%s'", StatusFailed, info.Status)
+	}
+}
+
+// Stop must not cancel the task context: exec wires cmd.Cancel to SIGKILL the
+// group the moment the context is done, which would land before the SIGTERM
+// and make the graceful stop a lie.
+func TestBashTaskStopLeavesContextLive(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "echo", "test")
+	cmd.Start()
+
+	task := NewBashTask("graceful-id", "sleep 100", "Long task", cmd, ctx, cancel)
+
+	_ = task.Stop()
+
+	if err := ctx.Err(); err != nil {
+		t.Errorf("Stop cancelled the task context (%v); the SIGKILL that follows "+
+			"cancellation would pre-empt the SIGTERM Stop just sent", err)
+	}
+}
+
+// A background command that never stops talking used to have every byte it
+// ever printed held in memory for the life of the process: BashTask skipped
+// the cap AgentTask applied, and the manager never forgets a task.
+func TestBashTaskOutputIsCapped(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "echo", "test")
+	cmd.Start()
+
+	task := NewBashTask("cap-id", "chatty", "Chatty task", cmd, ctx, cancel)
+
+	for range 4 {
+		task.AppendOutput(bytes.Repeat([]byte("x"), maxOutputBufferSize/2))
+	}
+	task.AppendOutput([]byte("TAIL"))
+
+	output := task.GetOutput()
+	if len(output) > maxOutputBufferSize {
+		t.Fatalf("output buffer = %d bytes, want <= %d", len(output), maxOutputBufferSize)
+	}
+	// The tail is the part worth keeping — it is where a failure shows up.
+	if !strings.HasSuffix(output, "TAIL") {
+		t.Error("cap discarded the newest output instead of the oldest")
 	}
 }
