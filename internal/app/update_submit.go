@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -200,7 +201,7 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // On no-provider or ensureAgentSession failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(content string, images []core.Image) tea.Cmd {
-	log.QueueLog("SubmitToAgent: %q", truncate(content, 60))
+	log.QueueLog("SubmitToAgent: %q", kit.TruncateText(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}

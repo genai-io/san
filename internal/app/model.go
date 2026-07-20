@@ -152,10 +152,3 @@ func (m *model) Init() tea.Cmd {
 	}
 	return tea.Batch(cmds...)
 }
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestResolveImports(t *testing.T) {
@@ -549,5 +550,41 @@ func TestResolveAutoMemoryDir(t *testing.T) {
 		if got := ResolveAutoMemoryDir(cwd, "~/mem"); got != filepath.Join(home, "mem") {
 			t.Fatalf("tilde override: got %q, want %q", got, filepath.Join(home, "mem"))
 		}
+	}
+}
+
+// A CJK memory index with no newline inside the byte cap falls through to the
+// raw byte offset, which lands inside a three-byte rune two times out of three.
+// The block goes into the system prompt, so the result has to be valid UTF-8 —
+// before the fix this emitted a dangling lead byte for the provider to reject
+// or replace with U+FFFD.
+func TestTruncateOnLineBoundaryKeepsValidUTF8(t *testing.T) {
+	paragraph := strings.Repeat("这是一段中文记忆内容。", 400)
+
+	// Sweep a rune's worth of offsets so the mid-rune cuts are covered, not
+	// just the one that happens to align.
+	for budget := 100; budget < 106; budget++ {
+		got := truncateOnLineBoundary(paragraph, budget)
+		if !utf8.ValidString(got) {
+			t.Errorf("budget=%d: result is not valid UTF-8: %q", budget, got)
+		}
+		if len(got) > budget {
+			t.Errorf("budget=%d: result is %d bytes, over budget", budget, len(got))
+		}
+	}
+}
+
+// The line-boundary path is the common one and must keep cutting there.
+func TestTruncateOnLineBoundaryPrefersNewline(t *testing.T) {
+	s := "第一行内容\n第二行内容\n第三行内容"
+	got := truncateOnLineBoundary(s, len(s)-3)
+	if strings.HasSuffix(got, "\n") || !strings.HasPrefix(got, "第一行内容") {
+		t.Fatalf("unexpected cut: %q", got)
+	}
+	if !utf8.ValidString(got) {
+		t.Errorf("result is not valid UTF-8: %q", got)
+	}
+	if strings.Count(got, "\n") != 1 {
+		t.Errorf("expected the cut at the last newline in budget, got %q", got)
 	}
 }

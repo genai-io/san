@@ -105,6 +105,13 @@ func LoadAutoMemoryAt(dir string) (string, bool) {
 
 // truncateOnLineBoundary trims s to at most max bytes, cutting at the last
 // newline within the budget so a partial line is never injected.
+//
+// With no newline in the budget the cut falls back to a raw byte offset, which
+// can land inside a multi-byte rune. This block goes into the system prompt, so
+// the result is scrubbed to valid UTF-8 before it leaves — an invalid sequence
+// is either rejected by the provider or silently turned into U+FFFD. CJK makes
+// that the likely case rather than the unlucky one: with three-byte runes, two
+// of every three offsets fall inside a character.
 func truncateOnLineBoundary(s string, max int) string {
 	if len(s) <= max {
 		return s
@@ -113,7 +120,7 @@ func truncateOnLineBoundary(s string, max int) string {
 	if i := strings.LastIndexByte(cut, '\n'); i > 0 {
 		return cut[:i]
 	}
-	return cut
+	return strings.ToValidUTF8(cut, "")
 }
 
 // MemoryFile represents a loaded memory file with metadata.

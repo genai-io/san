@@ -303,9 +303,12 @@ func ExtractJSONObject(s string) string {
 	return s[start : end+1]
 }
 
+// truncate caps s at n bytes for an error message. The byte cut can land inside
+// a multi-byte rune, so the result is scrubbed rather than handed to %q as
+// invalid UTF-8 — judge responses are model output and can be any language.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return strings.ToValidUTF8(s[:n], "") + "…"
 }
