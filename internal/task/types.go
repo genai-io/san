@@ -28,6 +28,13 @@ const (
 
 // BackgroundTask is the common interface for all background task types
 // Both BashTask and AgentTask implement this interface
+//
+// An implementation owes one thing the compiler cannot check: a Stop-induced
+// exit must stay distinguishable from a failure, so that a task the user
+// called off is not reported as broken work to retry. How is left open,
+// because the two existing types genuinely differ — a bash child dies of an
+// opaque signal and so must record the intent up front, while an agent
+// goroutine returns context.Canceled, which says it already.
 type BackgroundTask interface {
 	// GetID returns the unique task identifier
 	GetID() string
@@ -48,10 +55,19 @@ type BackgroundTask interface {
 	// Returns true if completed, false if timeout
 	WaitForCompletion(timeout time.Duration) bool
 
-	// Stop gracefully stops the task (SIGTERM for bash, context cancel for agent)
+	// Stop asks the task to exit on its own and returns without waiting for
+	// it to. Escalation is the caller's job, not the implementer's:
+	// Manager.Kill waits gracefulStopTimeout and then calls Kill, so a Stop
+	// must not enforce a deadline of its own.
+	//
+	// An implementation must not let its own hard-kill path pre-empt the
+	// graceful attempt it is making here — a Stop that trips the very
+	// mechanism that kills the task outright has not stopped it gracefully at
+	// all, it has just taken a longer route to Kill.
 	Stop() error
 
-	// Kill forcefully terminates the task (SIGKILL for bash)
+	// Kill forcefully terminates the task (SIGKILL for bash). It is safe to
+	// call after Stop, and after the task has already ended.
 	Kill() error
 
 	// AppendOutput appends data to the output buffer
