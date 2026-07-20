@@ -614,6 +614,48 @@ func (m *model) handleAutopilotRecover(msg autopilotRecoverMsg) tea.Cmd {
 	})
 }
 
+// ── /goal: state a goal, hand over the wheel ─────────────────────────────
+
+// startGoal turns a stated goal into a running mission. It is the one-line form
+// of the /autopilot panel: the goal becomes the mission, the steers that let the
+// copilot drive come on, and the continuation cap is lifted — a goal ends when
+// it is met, not when a counter runs out. Deliberately session-scoped: unlike
+// the panel's Start, it does not rewrite the user's saved defaults, because
+// stating a goal is something you do for this session, not a config edit.
+//
+// Permission is left exactly as configured. It defaults on, and an explicit
+// off is a safety choice the copilot has no business overriding just because
+// the human named a goal.
+func (m *model) startGoal(goal string) tea.Cmd {
+	m.env.AutoPilot.Mission = goal
+	s := &m.env.AutoPilot.Steers
+	s.BashPrompt, s.Skill, s.Question, s.TurnEnd = true, true, true, true
+	m.env.AutoPilot.MaxContinuations = setting.AutoPilotUnlimitedContinuations
+	m.rebuildAutopilotReviewer()
+	m.enterAutoPilotMode()
+
+	// Mid-turn, the running turn owns the session; the TurnEnd steer picks the
+	// goal up when it lands, so say so rather than looking like nothing happened.
+	if m.conv.Stream.Active {
+		m.conv.AddNotice(autopilotAction("goal set · taking over at the end of this turn"))
+		return nil
+	}
+	m.conv.AddNotice(autopilotAction("goal set · taking the wheel"))
+	return m.autopilotKickCmd()
+}
+
+// clearGoal drops the goal at the human's request. It winds down exactly like a
+// goal the copilot judged complete — same stand-down, different verdict — so the
+// two ways a run can end leave the session in the same state.
+func (m *model) clearGoal() {
+	if strings.TrimSpace(m.env.AutoPilot.Mission) == "" {
+		m.conv.AddNotice("No goal set.")
+		return
+	}
+	m.retireAutopilotMission()
+	m.conv.AddNotice(autopilotHandback("goal cleared"))
+}
+
 // retireAutopilotMission winds down a finished mission without leaving AutoPilot:
 // it clears the mission and turns off the driving steers (Suggest, Question,
 // TurnEnd), so the copilot stops actively driving — no more suggest, auto-answer,

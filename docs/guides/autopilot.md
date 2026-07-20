@@ -10,11 +10,38 @@ tool calls, answering a command's interactive prompts, answering
 `AskUserQuestion`, and continuing finished turns toward a mission. Only
 gray-zone permission judging is on by default.
 
-Enter Autopilot mode with `shift+tab` (cycle until the amber
-`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. To launch a
-mission hands-free, hit the panel's **Start** button — it engages Autopilot and
-submits the opening step in one action (see [Start](#start-the-mission)). A
-resumed session (`san -r <id>`) comes back in the mode it was saved in.
+The quickest way in is **`/goal <what to achieve>`** — one line that hands over
+the wheel (see [/goal](#goal)). For finer control, enter Autopilot mode with
+`shift+tab` (cycle until the amber `⏵⏵ autopilot on`) and configure it with the
+`/autopilot` panel; the panel's **Start** button engages Autopilot and submits
+the opening step in one action (see [Start](#start-the-mission)). A resumed
+session (`san -r <id>`) comes back in the mode it was saved in.
+
+## /goal
+
+```
+/goal add table-driven tests for internal/setting until go test ./... passes
+```
+
+States what you want and lets the copilot drive until it gets there. One
+command does everything the panel does by hand:
+
+- the goal becomes the [mission](#mission)
+- the driving steers come on (Bash, Skill, Question, End)
+- the continuation cap is lifted — the run ends when the goal is met, not when
+  a counter expires
+- Autopilot engages and opens the first step itself
+
+Stated mid-turn, it takes over when the current turn lands. `/goal` on its own
+reports the current goal; `/goal clear` stands the copilot down.
+
+It is deliberately session-scoped: unlike the panel's Save, it does not rewrite
+your saved defaults — stating a goal is something you do for this session. Your
+**Permission** steer is left exactly as configured, since an explicit `false`
+there is a safety choice a goal has no business overriding.
+
+When the copilot judges the goal met you get `✓ autopilot · mission complete`
+and it stands down on its own.
 
 ## The six steers
 
