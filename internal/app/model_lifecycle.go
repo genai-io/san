@@ -214,6 +214,14 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 	task.SetLifecycleHandler(taskLifecycleFunc{
 		onCreated: func(info task.TaskInfo) {
 			fireHook(hook.TaskCreated, info)
+
+			// The entry is born here rather than off the launching tool's
+			// result, so that it exists before the task can possibly finish:
+			// the manager notifies from inside CreateBashTask / RegisterTask,
+			// while the goroutine that can complete the task is only started
+			// afterwards. Reading it off the tool result instead let a
+			// short-lived task complete an entry that did not exist yet.
+			todo.TrackWorker(trackerSvc, info)
 		},
 		onCompleted: func(info task.TaskInfo) {
 			fireHook(hook.TaskCompleted, info)

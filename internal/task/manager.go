@@ -25,23 +25,23 @@ func NewManager() *Manager {
 
 // CreateBashTask creates and registers a new bash task
 func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, ctx context.Context, cancel context.CancelFunc) *BashTask {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	id := generateID()
 	task := NewBashTask(id, command, description, cmd, ctx, cancel)
 
+	m.mu.Lock()
 	m.tasks[id] = task
-	notifyTaskCreated(task.GetStatus())
+	m.mu.Unlock()
 
+	notifyTaskCreated(task.GetStatus())
 	return task
 }
 
 // RegisterTask registers an existing task (used for agent tasks)
 func (m *Manager) RegisterTask(task BackgroundTask) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.tasks[task.GetID()] = task
+	m.mu.Unlock()
+
 	notifyTaskCreated(task.GetStatus())
 }
 

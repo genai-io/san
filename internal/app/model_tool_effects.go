@@ -1,7 +1,9 @@
 // Side effects triggered by tool calls: cwd-changing tools (Bash, worktree),
-// file-touching tools (Write/Edit/Read), agent-launching tools (background
-// task tracking), and large-output persistence (oversized ToolResult.Content
-// gets paged out to a blob and replaced with a preview + reference).
+// file-touching tools (Write/Edit/Read), and large-output persistence
+// (oversized ToolResult.Content gets paged out to a blob and replaced with a
+// preview + reference). Background tasks are not tracked from here — they are
+// tracked from the task manager's lifecycle notifications (wireTaskLifecycle),
+// which fire early enough that a task cannot finish before its entry exists.
 package app
 
 import (
@@ -10,7 +12,6 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -19,7 +20,6 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 	if !ok {
 		return
 	}
-	m.trackAgentLaunch(toolName, resp)
 	switch toolName {
 	case "Bash":
 		if newCwd := kit.MapString(resp, "cwd"); newCwd != "" {
@@ -48,26 +48,6 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 			}
 		}
 	}
-}
-
-func (m *model) trackAgentLaunch(toolName string, resp map[string]any) {
-	if !tool.IsAgentToolName(toolName) {
-		return
-	}
-	bg, ok := resp["backgroundTask"].(map[string]any)
-	if !ok {
-		return
-	}
-	launch := todo.BackgroundTaskLaunch{
-		TaskID:      kit.MapString(bg, "taskId"),
-		AgentName:   kit.MapString(bg, "agentName"),
-		AgentType:   kit.MapString(bg, "agentType"),
-		Description: kit.MapString(bg, "description"),
-	}
-	if launch.TaskID == "" {
-		return
-	}
-	todo.TrackWorker(m.services.Tracker, launch)
 }
 
 func (m *model) persistOverflow(result *core.ToolResult) {

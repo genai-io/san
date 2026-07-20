@@ -24,6 +24,13 @@ func SetLifecycleHandler(h LifecycleHandler) {
 	taskHandler.handler = h
 }
 
+// notifyTaskCreated announces a task the manager has just taken ownership of.
+//
+// Callers must release the manager lock first, as notifyTaskCompleted's callers
+// already do. The handler builds the task's tracker entry, so this reaches the
+// todo store's lock — and that store takes the manager's lock in the other
+// direction when it reconciles orphaned entries against live tasks. Notifying
+// under the manager lock closes that cycle into a deadlock.
 func notifyTaskCreated(info TaskInfo) {
 	taskHandler.mu.RLock()
 	h := taskHandler.handler

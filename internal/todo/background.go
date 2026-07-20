@@ -63,41 +63,37 @@ func metadataString(t *Task, key string) string {
 	return value
 }
 
-// BackgroundTaskLaunch holds metadata for a newly spawned background task.
-type BackgroundTaskLaunch struct {
-	TaskID      string
-	AgentName   string
-	AgentType   string
-	Description string
-}
-
 // TrackWorker creates or updates a tracker entry for a running background task.
-func TrackWorker(svc Service, launch BackgroundTaskLaunch) {
-	if existing := svc.FindByMetadata(metaTaskID, launch.TaskID); existing != nil {
+//
+// It takes the same task.TaskInfo that CompleteWorker takes, because the two
+// must be driven by the same source: the task manager's create and complete
+// notifications. Feeding the two halves from different places lets them race,
+// and a completion that arrives before its entry exists is dropped for good —
+// CompleteWorker has nothing to find, and the entry created afterwards names a
+// task that already ended, so it sits in_progress for the rest of the session.
+func TrackWorker(svc Service, info task.TaskInfo) {
+	if info.ID == "" {
+		return
+	}
+	metadata := map[string]any{
+		metaTaskID:       info.ID,
+		metaStatusDetail: string(task.StatusRunning),
+	}
+
+	if existing := svc.FindByMetadata(metaTaskID, info.ID); existing != nil {
 		_ = svc.Update(existing.ID,
-			WithSubject(workerSubject(launch)),
-			WithDescription(launch.Description),
+			WithSubject(workerSubject(info)),
+			WithDescription(info.Description),
 			WithStatus(StatusInProgress),
-			WithMetadata(map[string]any{
-				metaTaskID:       launch.TaskID,
-				metaStatusDetail: string(task.StatusRunning),
-			}),
+			WithMetadata(metadata),
 		)
 		return
 	}
 
-	entry := svc.Create(
-		workerSubject(launch),
-		launch.Description,
-		"",
-		map[string]any{
-			metaTaskID:       launch.TaskID,
-			metaStatusDetail: string(task.StatusRunning),
-		},
-	)
+	entry := svc.Create(workerSubject(info), info.Description, "", metadata)
 	opts := []UpdateOption{WithStatus(StatusInProgress)}
-	if launch.AgentType != "" {
-		opts = append(opts, WithOwner(launch.AgentType))
+	if info.AgentType != "" {
+		opts = append(opts, WithOwner(info.AgentType))
 	}
 	_ = svc.Update(entry.ID, opts...)
 }
@@ -111,12 +107,7 @@ func CompleteWorker(svc Service, info task.TaskInfo) {
 
 	subject := entry.Subject
 	if subject == "" {
-		subject = workerSubject(BackgroundTaskLaunch{
-			TaskID:      info.ID,
-			AgentName:   info.AgentName,
-			AgentType:   info.AgentType,
-			Description: info.Description,
-		})
+		subject = workerSubject(info)
 	}
 
 	statusDetail := string(info.Status)
@@ -135,9 +126,9 @@ func CompleteWorker(svc Service, info task.TaskInfo) {
 	)
 }
 
-func workerSubject(launch BackgroundTaskLaunch) string {
-	name := strings.TrimSpace(launch.AgentName)
-	desc := strings.TrimSpace(launch.Description)
+func workerSubject(info task.TaskInfo) string {
+	name := strings.TrimSpace(info.AgentName)
+	desc := strings.TrimSpace(info.Description)
 	switch {
 	case name != "" && desc != "" && !strings.EqualFold(name, desc):
 		return name + ": " + desc
@@ -145,9 +136,13 @@ func workerSubject(launch BackgroundTaskLaunch) string {
 		return desc
 	case name != "":
 		return name
-	case launch.AgentType != "":
-		return launch.AgentType
+	case info.AgentType != "":
+		return info.AgentType
+	// A bash worker names no agent, so its command is the only description of
+	// itself it carries. Better than falling through to the opaque task ID.
+	case info.Command != "":
+		return info.Command
 	default:
-		return launch.TaskID
+		return info.ID
 	}
 }

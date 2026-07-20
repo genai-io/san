@@ -19,8 +19,9 @@ func TestTrackWorkerCreatesEntry(t *testing.T) {
 	Initialize(Options{})
 	t.Cleanup(func() { Default().Reset() })
 
-	TrackWorker(Default(), BackgroundTaskLaunch{
-		TaskID:      "bg-1",
+	TrackWorker(Default(), task.TaskInfo{
+		ID:          "bg-1",
+		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
 		AgentType:   "Explore",
 		Description: "Directory structure audit",
@@ -38,12 +39,46 @@ func TestTrackWorkerCreatesEntry(t *testing.T) {
 	}
 }
 
+// A bash worker names no agent, so the subject falls back through description
+// to the command itself. CompleteWorker already fired for bash tasks before
+// they were tracked at all; now that both halves run, they need a readable row.
+func TestTrackWorkerNamesBashWorker(t *testing.T) {
+	Initialize(Options{})
+	t.Cleanup(func() { Default().Reset() })
+
+	TrackWorker(Default(), task.TaskInfo{
+		ID:      "bg-2",
+		Type:    task.TaskTypeBash,
+		Command: "go test ./...",
+	})
+
+	tasks := Default().List()
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 tracker task, got %d", len(tasks))
+	}
+	if tasks[0].Subject != "go test ./..." {
+		t.Fatalf("subject = %q, want the command", tasks[0].Subject)
+	}
+}
+
+func TestTrackWorkerIgnoresTaskWithoutID(t *testing.T) {
+	Initialize(Options{})
+	t.Cleanup(func() { Default().Reset() })
+
+	TrackWorker(Default(), task.TaskInfo{Description: "no executor behind this"})
+
+	if tasks := Default().List(); len(tasks) != 0 {
+		t.Fatalf("expected no tracker task, got %d", len(tasks))
+	}
+}
+
 func TestCompleteWorkerUpdatesStatus(t *testing.T) {
 	Initialize(Options{})
 	t.Cleanup(func() { Default().Reset() })
 
-	TrackWorker(Default(), BackgroundTaskLaunch{
-		TaskID:      "bg-1",
+	TrackWorker(Default(), task.TaskInfo{
+		ID:          "bg-1",
+		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
 		AgentType:   "Explore",
 		Description: "Directory audit",
@@ -71,8 +106,9 @@ func TestCompleteWorkerTracksFailure(t *testing.T) {
 	Initialize(Options{})
 	t.Cleanup(func() { Default().Reset() })
 
-	TrackWorker(Default(), BackgroundTaskLaunch{
-		TaskID:      "bg-1",
+	TrackWorker(Default(), task.TaskInfo{
+		ID:          "bg-1",
+		Type:        task.TaskTypeAgent,
 		AgentName:   "fix-auth",
 		AgentType:   "general-purpose",
 		Description: "Fix auth module",
