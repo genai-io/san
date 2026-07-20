@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -78,7 +79,13 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {
-		autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
+		// An uncapped run has no denominator to count toward — show the step alone
+		// rather than inventing a ceiling it will never reach.
+		if m.env.AutoPilot.ContinuationsUnlimited() {
+			autopilotNote = strconv.Itoa(m.autopilotContinuations)
+		} else {
+			autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
+		}
 		m.autopilotContinuing = false
 	} else {
 		m.autopilotContinuations = 0

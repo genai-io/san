@@ -115,6 +115,9 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	if m.services.Tracker.AllDone() {
 		m.services.Tracker.Reset()
 	}
+	// The turn reached its end, so whatever failure the copilot was recovering
+	// from is behind us — give a later failure its full recovery budget again.
+	m.autopilotRecoveries = 0
 	m.services.Agent.SetPluginRoot("")
 	// Forward to L1 self-learning with whether this turn used a skill and
 	// whether the model called Evolve (the model-decided trigger). No-op when
@@ -174,7 +177,8 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 func (m *model) OnAgentStop(err error) tea.Cmd {
 	// /clear and manual stop cancel the active agent context; that is expected
 	// shutdown, not an agent failure the user needs to see.
-	if err != nil && !errors.Is(err, context.Canceled) {
+	failed := err != nil && !errors.Is(err, context.Canceled)
+	if failed {
 		m.conv.AddNotice(fmt.Sprintf("Agent error: %v", err))
 		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
 	}
@@ -182,5 +186,13 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 	m.conv.Modal.Question.Hide()
 	commitCmds := m.CommitMessages()
 	m.StopAgentSession()
+	// An unattended run must survive a failed turn: schedule the copilot to look
+	// at the failure and decide whether the mission can resume. No-op outside
+	// AutoPilot, and it still hands back when the error needs a human.
+	if failed {
+		if cmd := m.autopilotRecoverCmd(err); cmd != nil {
+			commitCmds = append(commitCmds, cmd)
+		}
+	}
 	return tea.Batch(commitCmds...)
 }

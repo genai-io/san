@@ -172,6 +172,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case autopilotQuestionMsg:
 		// The Question steer's answer (or defer) came back.
 		return m, m.handleAutopilotQuestion(msg)
+	case autopilotRecoverMsg:
+		// The backoff after a failed turn elapsed; see whether the run can resume.
+		return m, m.handleAutopilotRecover(msg)
 	case autopilotModeSettledMsg:
 		// The mode has rested on AutoPilot long enough to open it hands-free.
 		return m, m.handleAutopilotModeSettled()

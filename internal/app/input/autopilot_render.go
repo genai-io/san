@@ -153,13 +153,18 @@ func (p *AutopilotSelector) renderSteer(i int, row apRow) string {
 }
 
 func (p *AutopilotSelector) renderInt(i int, row apRow) string {
-	value := strconv.Itoa(p.snap.ResolvedMaxContinuations())
+	value, suffix := strconv.Itoa(p.snap.ResolvedMaxContinuations()), "times"
+	if p.snap.ContinuationsUnlimited() {
+		value, suffix = "∞", "until the mission is done"
+	}
 	if p.editing && i == p.cursor {
-		value = p.editingBuffer + "_"
+		// Teach the affordance where it's needed: 0 is meaningless as a cap, so it
+		// reads as "don't cap me".
+		value, suffix = p.editingBuffer+"_", "times · 0 = no limit"
 	}
 	indent := strings.Repeat("  ", row.indent+1)
 	chip := apChipStyle.Render("(") + apValueStyle.Render(value) + apChipStyle.Render(")")
-	return indent + p.cursorMark(i) + row.label + " " + chip + " " + apDescStyle.Render("times")
+	return indent + p.cursorMark(i) + row.label + " " + chip + " " + apDescStyle.Render(suffix)
 }
 
 // renderSaveStart draws Save and Start as two filled pill keys side by side —

@@ -11,11 +11,23 @@ import (
 
 type autopilotStubProvider struct {
 	content string
+	// replies, when set, is served one entry per call so a test can stage a
+	// failed attempt followed by a good one; the last entry repeats.
+	replies []string
+	calls   int
+	// lastOptions records what the steer actually sent, for prompt assertions.
+	lastOptions llm.CompletionOptions
 }
 
-func (s *autopilotStubProvider) Stream(_ context.Context, _ llm.CompletionOptions) <-chan llm.StreamChunk {
+func (s *autopilotStubProvider) Stream(_ context.Context, opts llm.CompletionOptions) <-chan llm.StreamChunk {
+	s.lastOptions = opts
+	content := s.content
+	if len(s.replies) > 0 {
+		content = s.replies[min(s.calls, len(s.replies)-1)]
+	}
+	s.calls++
 	ch := make(chan llm.StreamChunk, 1)
-	ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &llm.CompletionResponse{Content: s.content}}
+	ch <- llm.StreamChunk{Type: llm.ChunkTypeDone, Response: &llm.CompletionResponse{Content: content}}
 	close(ch)
 	return ch
 }
@@ -72,10 +84,83 @@ func TestAutopilotDecideContinueRejectsContradictoryStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, _, err := autopilotDecideContinue(context.Background(), &autopilotStubProvider{content: tt.content}, "model", "system", "mission", "evidence")
+			noSteerBackoff(t)
+			_, _, _, err := autopilotDecideContinue(context.Background(), &autopilotStubProvider{content: tt.content}, "model", "system", "mission", "evidence", "")
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("autopilotDecideContinue() err = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// noSteerBackoff removes the retry sleep so a test that exercises the retry path
+// doesn't wait out the real backoff.
+func noSteerBackoff(t *testing.T) {
+	t.Helper()
+	previous := autopilotSteerBackoff
+	autopilotSteerBackoff = 0
+	t.Cleanup(func() { autopilotSteerBackoff = previous })
+}
+
+func TestAutopilotDecideContinueRetriesAnUnusableReply(t *testing.T) {
+	noSteerBackoff(t)
+	provider := &autopilotStubProvider{replies: []string{
+		"I think we should keep going!", // prose, not JSON — a transient model slip
+		`{"continue":true,"done":false,"instruction":"Run the tests."}`,
+	}}
+
+	cont, done, instruction, err := autopilotDecideContinue(context.Background(), provider, "model", "system", "mission", "evidence", "")
+	if err != nil {
+		t.Fatalf("autopilotDecideContinue() err = %v, want nil after retry", err)
+	}
+	if !cont || done || instruction != "Run the tests." {
+		t.Fatalf("got cont=%v done=%v instruction=%q, want the retried decision", cont, done, instruction)
+	}
+	if provider.calls != 2 {
+		t.Errorf("provider calls = %d, want 2 (one failure, one retry)", provider.calls)
+	}
+}
+
+func TestAutopilotDecideContinueGivesUpAfterAttemptsAreSpent(t *testing.T) {
+	noSteerBackoff(t)
+	provider := &autopilotStubProvider{content: "still not JSON"}
+
+	if _, _, _, err := autopilotDecideContinue(context.Background(), provider, "model", "system", "mission", "evidence", ""); err == nil {
+		t.Fatal("autopilotDecideContinue() err = nil, want the last parse failure")
+	}
+	if provider.calls != autopilotSteerAttempts {
+		t.Errorf("provider calls = %d, want %d", provider.calls, autopilotSteerAttempts)
+	}
+}
+
+func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing.T) {
+	noSteerBackoff(t)
+	provider := &autopilotStubProvider{content: `{"continue":false,"done":false,"instruction":""}`}
+
+	if _, _, _, err := autopilotDecideContinue(context.Background(), provider, "model", "system", "", "evidence",
+		"the previous turn hit its step limit"); err != nil {
+		t.Fatalf("autopilotDecideContinue() err = %v", err)
+	}
+	sent := provider.lastOptions.Messages[0].Content
+	if !strings.Contains(sent, "the previous turn hit its step limit") {
+		t.Errorf("prompt missing the stop situation:\n%s", sent)
+	}
+	if !strings.Contains(sent, "No mission was briefed") {
+		t.Errorf("prompt missing the mission-less instructions:\n%s", sent)
+	}
+}
+
+func TestAutopilotResumableStop(t *testing.T) {
+	resumable := map[core.StopReason]bool{
+		core.StopEndTurn:                    true,
+		core.StopMaxSteps:                   true,
+		core.StopMaxOutputRecoveryExhausted: true,
+		core.StopCancelled:                  false, // the human took the helm
+		core.StopHook:                       false, // a configured halt
+	}
+	for reason, want := range resumable {
+		if got := autopilotResumableStop(reason); got != want {
+			t.Errorf("autopilotResumableStop(%q) = %v, want %v", reason, got, want)
+		}
 	}
 }

@@ -72,6 +72,35 @@ func TestAutoPilotSteersRoundTrip(t *testing.T) {
 	}
 }
 
+// An unset cap falls back to the default, a negative one lifts it entirely, and
+// either survives a settings round trip — an uncapped run is the whole point of
+// leaving autopilot unattended.
+func TestAutoPilotContinuationBudget(t *testing.T) {
+	if got := (AutoPilotSettings{}).ResolvedMaxContinuations(); got != AutoPilotDefaultMaxContinuations {
+		t.Errorf("unset cap = %d, want the default %d", got, AutoPilotDefaultMaxContinuations)
+	}
+	if (AutoPilotSettings{}).ContinuationsUnlimited() {
+		t.Error("unset cap should be bounded")
+	}
+	if !(AutoPilotSettings{MaxContinuations: AutoPilotUnlimitedContinuations}).ContinuationsUnlimited() {
+		t.Error("negative cap should read as unlimited")
+	}
+	if (AutoPilotSettings{MaxContinuations: AutoPilotUnlimitedContinuations}).IsZero() {
+		t.Error("an unlimited cap is a real config, not a zero one")
+	}
+
+	var d Data
+	if err := json.Unmarshal([]byte(`{"autoPilot":{"maxContinuations":-1}}`), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !d.Clone().AutoPilot.ContinuationsUnlimited() {
+		t.Error("clone dropped the unlimited cap")
+	}
+	if !mergeSettings(&d, NewData()).AutoPilot.ContinuationsUnlimited() {
+		t.Error("merge dropped the unlimited cap")
+	}
+}
+
 func TestAutoPilotCloneAndIsZero(t *testing.T) {
 	if !(AutoPilotSettings{}).IsZero() {
 		t.Error("empty config should be zero")

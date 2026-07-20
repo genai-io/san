@@ -224,6 +224,9 @@ func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
 	case apRowInt:
 		p.editing = true
 		p.editingBuffer = strconv.Itoa(p.snap.ResolvedMaxContinuations())
+		if p.snap.ContinuationsUnlimited() {
+			p.editingBuffer = "0" // the value that means ∞, so re-editing starts from what's set
+		}
 	case apRowSaveStart:
 		if p.saveCursor == 0 {
 			return p.save()
@@ -262,10 +265,12 @@ func (p *AutopilotSelector) handleEditingKey(msg tea.KeyMsg) tea.Cmd {
 		p.editingBuffer = ""
 	case "enter":
 		if v, err := strconv.Atoi(p.editingBuffer); err == nil {
-			if v < 1 {
-				v = 1
-			}
-			if v > 999 {
+			// 0 lifts the cap: a long unattended run should end when the mission is
+			// done, not when a step counter runs out.
+			switch {
+			case v == 0:
+				v = setting.AutoPilotUnlimitedContinuations
+			case v > 999:
 				v = 999
 			}
 			p.snap.MaxContinuations = v

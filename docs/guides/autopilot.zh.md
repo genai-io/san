@@ -25,15 +25,16 @@ Steer 是按需组合的开关,按自主程度从低到高排列。Autopilot 模
 | **Permission** | **开** | 自动放行静态规则解不了的灰区工具调用,按可逆性、影响面、数据外泄三轴判断。失败即收紧:任何错误都升级给你。 |
 | **Bash** | 关 | 回答已批准命令的交互问询(`Continue? [Y/n]`),仅当回答只是让已批准的动作继续;会扩大范围的一律跳过。 |
 | **Skill** | 关 | 直接放行副驾的 skill 加载(不经判官)—— 一个独立的"信任 skill"开关。因为 skill 可能跑脚本,判官往往会把它升级给你;单开这个就能让副驾自动加载 skill,而不必打开整个灰区。关闭时,skill 加载回落到 Permission 判官(或你)。 |
-| **Question** | 关 | 当 mission 使选择明确且低风险时替你回答 `AskUserQuestion`,否则留给你。选项标签逐字校验 —— 部分或凭空的回答一律转为留给你。 |
-| **End** | 关 | 回合结束后判断是否朝 mission 续跑,并自己敲出下一条指令。受 **Continue at most N times** 约束(默认 20);计数在每次人类回合重置。 |
+| **Question** | 关 | 只要 mission 或对话让某个选择站得住脚,就替你回答 `AskUserQuestion` —— 宁可选保守可逆的那项,也不让整轮停在这里等你。只有当这一步确实该你拍板(不可逆、代价高、取决于你的偏好或判断)时才留给你。选项标签逐字校验 —— 部分或凭空的回答一律转为留给你。 |
+| **End** | 关 | 回合结束后判断是否朝 mission 续跑,并自己敲出下一条指令。受 **Continue at most N times** 约束(默认 20,填 `0` 表示不限);计数在每次人类回合重置。没有交代 mission 时,它从对话里推断目标;对话里也看不出目标就交回给你。 |
 
 ## Mission(任务)
 
 Mission 是副驾本会话要开往的目标 —— 在 `/autopilot` 面板的 Mission 对话框里
 撰写:这是个小编辑器,你打的字就是 mission(`enter` 保存、`alt+enter` 换行、
 可粘贴),`ctrl+r` 让副驾就地精炼草稿、`ctrl+c` 清空、`esc` 保存并退出。每个
-steer 都读它:推进类 steer(Suggest、Question、End)朝它开;安全类 steer
+steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交代 mission 时
+则退回到对话本身透出的目标;安全类 steer
 (Permission、Bash)把它当作意图上下文 —— 明显在推进 mission 的调用或提示,会被
 看作预期内的常规活儿。但意图不凌驾于安全:凡是不可逆、破坏性、越出项目、或会外泄
 数据的动作,无论是否契合 mission,一律仍升级给你。
@@ -55,6 +56,25 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开;安全类 ste
 
 用 `shift+tab` 落到 Autopilot 不再自动起步,只会浮出 Suggest steer 的提议
 (若开启)。发动 mission 始终是显式的 Start 按钮。
+
+## 让它一直自主跑下去
+
+无人值守的长跑,成败在于能否扛住那些平时会让会话停下来的事。开着 End steer 时,
+下面这些副驾都会自己开过去,而不是停在原地等你回来:
+
+- **回合半途停住。** 撞上步数上限、或输出被截断且无法恢复的回合,会被接着往下开 ——
+  副驾知道上一回合是怎么停的,并据此下达续跑指令。你自己按的 `esc` 是另一回事:
+  取消回合意味着你要接管,副驾不会插手;stop hook 同理。
+- **回合直接失败。** provider 报错后,副驾按递增退避等待(5s、10s、15s),再判断
+  mission 能否续跑 —— 最多连续三次,任何跑到结束的回合都会重置该计数。真正需要
+  你处理的错误(凭据失效、硬性拒绝)仍会交回给你,而不是空转重试。
+- **steer 自己抽风。** 每次 steer 推理最多重试三次,网络抖动、或模型没吐 JSON 而
+  吐了大白话,都不至于让整个 mission 到此为止。
+- **决策撞上上下文压缩。** 裁决会等压缩落地,而不是被直接丢掉。
+- **回合数用光。** 把 **Continue at most** 设为 `0`(显示为 `∞`),这一轮就在
+  mission 完成时结束,而不是在计数器耗尽时结束。
+
+不限次数的长跑,建议配一个便宜够快的 steer 模型 —— 见[配置](#配置)。
 
 ## Demo:一次免人工的脚手架搭建
 
@@ -111,7 +131,8 @@ copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permis
 
 | 标记 | 含义 |
 |---|---|
-| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑) |
+| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑;不限次数时只显示 `2`) |
+| 琥珀 `⏵ autopilot · turn failed · retrying in 5s` | 某个回合出错,副驾稍后判断能否续跑 |
 | 绿 `↳ auto-approved · <理由>` | 判官放行了上方的工具调用 |
 | 琥珀 `↳ escalated · <理由>` | 判官把调用退回给你 |
 | 绿 `⏵ autopilot · answered for you` | 副驾替你回答了 `AskUserQuestion` |
@@ -141,7 +162,7 @@ Steering Prompt 只负责定义副驾“怎么开”,不会替换不可覆盖的
     "systemPrompt": "…",                   // Steering Prompt;按会话走,面板不会写到这里
     "systemPromptFile": "~/prompts/pilot.md", // 持久驾驶指令;systemPrompt 为空时生效
     "mission": "…",                        // 按会话;在面板里设置
-    "maxContinuations": 20,
+    "maxContinuations": 20,                // -1 表示不限次数(面板里填 0 即写入这个值)
     "steers": {
       "suggest": true,
       "permission": true,  // 省略即默认开;false 则一律升级给你

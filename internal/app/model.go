@@ -95,6 +95,11 @@ type model struct {
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
 
+	// autopilotRecoveries counts consecutive attempts to revive a run after a
+	// turn died on an error, bounding a retry loop into a sustained outage. Any
+	// turn that reaches OnTurnEnd resets it.
+	autopilotRecoveries int
+
 	// skillUsedThisTurn records whether the current turn invoked the Skill tool.
 	// It scopes the self-learning skills review: a skill-use turn weighs
 	// update/delete of that skill, a skill-free turn weighs create. Set in

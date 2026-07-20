@@ -89,7 +89,8 @@ type AutoPilotSettings struct {
 	// Steers selects which lifecycle points the copilot takes the helm at.
 	Steers SteerSettings `json:"steers,omitempty"`
 	// MaxContinuations caps how many times the TurnEnd steer may auto-continue
-	// a finished turn before yielding to the human. 0 = the default cap.
+	// a finished turn before yielding to the human. 0 = the default cap,
+	// negative = no cap (see AutoPilotUnlimitedContinuations).
 	MaxContinuations int `json:"maxContinuations,omitempty"`
 }
 
@@ -127,8 +128,20 @@ func (s SteerSettings) PermissionOn() bool { return s.Permission == nil || *s.Pe
 // the runtime driver and the /autopilot panel's default display.
 const AutoPilotDefaultMaxContinuations = 20
 
+// AutoPilotUnlimitedContinuations is the maxContinuations value that lifts the
+// cap entirely: the copilot drives until the mission is done or it decides the
+// run needs a human, rather than until it runs out of turns. For a long
+// unattended run the cap is the wrong stopping rule — it fires on a step count
+// that has nothing to do with whether the work is finished.
+const AutoPilotUnlimitedContinuations = -1
+
+// ContinuationsUnlimited reports whether auto-continuation is uncapped.
+func (a AutoPilotSettings) ContinuationsUnlimited() bool { return a.MaxContinuations < 0 }
+
 // ResolvedMaxContinuations returns the configured continuation cap, or the
-// default when unset.
+// default when unset. Meaningless when ContinuationsUnlimited — check that
+// first; it returns the default so a caller that forgets still gets a sane
+// number rather than a negative one.
 func (a AutoPilotSettings) ResolvedMaxContinuations() int {
 	if a.MaxContinuations <= 0 {
 		return AutoPilotDefaultMaxContinuations
