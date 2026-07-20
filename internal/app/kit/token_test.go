@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // TestGetModelTokenLimitsPrefersCurrentProvider guards against the status-bar
@@ -73,5 +74,56 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 		if got := GetEffectiveInputLimit(store, current); got != 272000 {
 			t.Fatalf("input limit = %d, want 272000 from connected subscription auth", got)
 		}
+	}
+}
+
+// A model whose window San cannot discover must still get a usable figure:
+// auto-compaction only runs against a non-zero limit, so returning 0 here
+// would let the conversation grow until the provider rejected it.
+func TestGetEffectiveInputLimitFallsBackToDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(setting.InputLimitEnvVar, "")
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
+		ModelID: "unknown-model", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
+	})
+	if got != setting.DefaultInputLimit {
+		t.Fatalf("GetEffectiveInputLimit() = %d, want DefaultInputLimit %d", got, setting.DefaultInputLimit)
+	}
+}
+
+// The env override wins over both the cache and the default, so a user can
+// correct a provider that under-reports its window.
+func TestGetEffectiveInputLimitEnvOverrideWins(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(setting.InputLimitEnvVar, "1000000")
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
+		{ID: "m", InputTokenLimit: 200000},
+	}); err != nil {
+		t.Fatalf("CacheModels: %v", err)
+	}
+
+	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
+		ModelID: "m", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
+	})
+	if got != 1_000_000 {
+		t.Fatalf("GetEffectiveInputLimit() = %d, want the 1000000 override", got)
+	}
+}
+
+// No model selected is genuinely unknown, not a case for guessing — the status
+// bar renders 0 as "--" rather than a percentage against an invented window.
+func TestGetEffectiveInputLimitWithoutModelIsZero(t *testing.T) {
+	t.Setenv(setting.InputLimitEnvVar, "500000")
+	if got := GetEffectiveInputLimit(nil, nil); got != 0 {
+		t.Fatalf("GetEffectiveInputLimit(nil, nil) = %d, want 0", got)
 	}
 }

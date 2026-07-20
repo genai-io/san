@@ -9,6 +9,13 @@ This page covers the mechanism end to end — what happens to each
 blocks, messages), how the summary is recorded for replay, and how the two
 entry points (automatic and manual `/compact`) differ and agree.
 
+The window itself is resolved as: `SAN_INPUT_LIMIT` if set, else the limit the
+model reports (or the one configured for it), else a conservative 128k default.
+The default exists because auto-compaction only runs against a non-zero limit —
+a model whose window San cannot discover would otherwise grow unchecked until
+the provider rejected the request. Set `SAN_INPUT_LIMIT` when a provider
+under-reports and that default is leaving capacity unused.
+
 ## What compaction touches (and what it doesn't)
 
 The three channels are treated very differently. The whole design hinges on
