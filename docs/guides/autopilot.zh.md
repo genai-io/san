@@ -8,33 +8,10 @@ Autopilot 是 San 的自动驾驶系统,旨在最大限度减少人工介入:由
 工具调用、回答命令的交互问询、回答 `AskUserQuestion`,以及在回合结束后朝
 mission 继续推进。默认仅开启灰区权限判定。
 
-最快的入口是 **`/goal <要达成什么>`** —— 一行交出方向盘(见 [/goal](#goal))。
-想更精细地控制,就用 `shift+tab` 切到 Autopilot 模式(循环到琥珀色的
-`⏵⏵ autopilot on`),再用 `/autopilot` 面板配置;面板的 **Start** 按钮一步
-完成「开启 Autopilot + 提交开场那一步」(见[启动 mission](#启动-mission))。
-恢复会话(`san -r <id>`)会回到保存时所在的模式。
-
-## /goal
-
-```
-/goal 给 internal/setting 补表驱动测试,直到 go test ./... 全绿
-```
-
-说清楚你要什么,剩下的交给副驾开到目的地。一条命令做完面板里要手动做的一切:
-
-- 这个目标成为 [mission](#mission任务)
-- 推进类 steer 全部打开(Bash、Skill、Question、End)
-- 解除续跑上限 —— 这一轮在目标达成时结束,而不是计数器耗尽时结束
-- 开启 Autopilot,并自己发出第一步
-
-在回合进行中输入,它会等当前回合落地后接管。单独输入 `/goal` 会显示当前目标;
-`/goal clear` 让副驾停手。
-
-它刻意只作用于本会话:不同于面板的 Save,它不会改写你保存的默认配置 ——
-定个目标是这一次会话的事。你的 **Permission** steer 保持原样,因为把它显式
-关成 `false` 是一个安全选择,不该因为人定了个目标就被推翻。
-
-副驾判定目标达成时会给出 `✓ autopilot · mission complete` 并自行停手。
+用 `shift+tab` 切换到 Autopilot 模式(循环到琥珀色的 `⏵⏵ autopilot on`),
+用 `/autopilot` 面板配置。恢复会话(`san -r <id>`)会回到保存时所在的模式。
+只想先看它跑起来的话,[`/goal`](#goal) 是最短的入口 —— 它就是下面这一整套的
+一个预设。
 
 ## 六个 steer
 
@@ -78,6 +55,33 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交
 
 用 `shift+tab` 落到 Autopilot 不再自动起步,只会浮出 Suggest steer 的提议
 (若开启)。发动 mission 始终是显式的 Start 按钮。
+
+## /goal
+
+最常见的那条路 —— 交代 mission、打开让副驾能动手的几个 steer、解除上限、
+发车 —— 压成一行:
+
+```
+/goal 给 internal/setting 补表驱动测试,直到 go test ./... 全绿
+```
+
+`/goal` 是一个预设,不是另一种模式:开的还是同一个 Autopilot,只是配置固定。
+
+- 这个目标成为 [mission](#mission任务)
+- 推进类 steer 全部打开(Bash、Skill、Question、End)
+- 解除续跑上限 —— 这一轮在目标达成时结束,而不是计数器耗尽时结束
+- 开启 Autopilot,并由副驾自己发出第一步
+
+在回合进行中输入,它会等当前回合落地后接管。单独输入 `/goal` 会显示当前目标;
+`/goal clear` 让副驾停手。
+
+它刻意只作用于本会话:不同于面板的 Save,它不会改写你保存的默认配置 ——
+定个目标是这一次会话的事。你的 **Permission** steer 保持原样,因为把它显式
+关成 `false` 是一个安全选择,不该因为人定了个目标就被推翻。目标结束时
+(达成或清空)steer 会回滚到 `/goal` 接手前的样子,它打开的自主权不会活得
+比目标更久。
+
+想要别的组合就还是用面板:只提议不提交、限定续跑次数、或换一套驾驶指令。
 
 ## 让它一直自主跑下去
 

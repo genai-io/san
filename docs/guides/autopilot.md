@@ -10,38 +10,11 @@ tool calls, answering a command's interactive prompts, answering
 `AskUserQuestion`, and continuing finished turns toward a mission. Only
 gray-zone permission judging is on by default.
 
-The quickest way in is **`/goal <what to achieve>`** — one line that hands over
-the wheel (see [/goal](#goal)). For finer control, enter Autopilot mode with
-`shift+tab` (cycle until the amber `⏵⏵ autopilot on`) and configure it with the
-`/autopilot` panel; the panel's **Start** button engages Autopilot and submits
-the opening step in one action (see [Start](#start-the-mission)). A resumed
-session (`san -r <id>`) comes back in the mode it was saved in.
-
-## /goal
-
-```
-/goal add table-driven tests for internal/setting until go test ./... passes
-```
-
-States what you want and lets the copilot drive until it gets there. One
-command does everything the panel does by hand:
-
-- the goal becomes the [mission](#mission)
-- the driving steers come on (Bash, Skill, Question, End)
-- the continuation cap is lifted — the run ends when the goal is met, not when
-  a counter expires
-- Autopilot engages and opens the first step itself
-
-Stated mid-turn, it takes over when the current turn lands. `/goal` on its own
-reports the current goal; `/goal clear` stands the copilot down.
-
-It is deliberately session-scoped: unlike the panel's Save, it does not rewrite
-your saved defaults — stating a goal is something you do for this session. Your
-**Permission** steer is left exactly as configured, since an explicit `false`
-there is a safety choice a goal has no business overriding.
-
-When the copilot judges the goal met you get `✓ autopilot · mission complete`
-and it stands down on its own.
+Enter Autopilot mode with `shift+tab` (cycle until the amber
+`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
+session (`san -r <id>`) comes back in the mode it was saved in. If you just want
+to see it drive, [`/goal`](#goal) is the shortest path in — it is one preset of
+everything below.
 
 ## The six steers
 
@@ -91,6 +64,38 @@ pick, `enter` to run):
 Landing on Autopilot via `shift+tab` no longer auto-starts; it only surfaces the
 Suggest steer's proposal (if on). Kicking the mission is always the explicit
 Start button.
+
+## /goal
+
+The common case — brief a mission, switch on the steers that let the copilot
+act, take the cap off, start — collapses into one line:
+
+```
+/goal add table-driven tests for internal/setting until go test ./... passes
+```
+
+`/goal` is a preset, not a separate mode: it engages the same Autopilot with a
+particular configuration.
+
+- the goal becomes the [mission](#mission)
+- the driving steers come on (Bash, Skill, Question, End)
+- the continuation cap is lifted — the run ends when the goal is met, not when
+  a counter expires
+- Autopilot engages and the copilot opens the first step itself
+
+Stated mid-turn, it takes over when the current turn lands. `/goal` on its own
+reports the current goal; `/goal clear` stands the copilot down.
+
+It is deliberately session-scoped: unlike the panel's Save, it does not rewrite
+your saved defaults — stating a goal is something you do for this session. Your
+**Permission** steer is left exactly as configured, since an explicit `false`
+there is a safety choice a goal has no business overriding. Ending the goal —
+met or cleared — rewinds the steers to what `/goal` found, so the autonomy it
+switched on doesn't outlive it.
+
+Reach for the panel instead when you want a different mix: a run that suggests
+but never submits, a bounded number of continuations, or a custom steering
+prompt.
 
 ## Staying autonomous
 
