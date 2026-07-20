@@ -241,7 +241,7 @@ func (s *ToolSelector) Render() string {
 				desc = desc[:idx]
 			}
 			if len(desc) > maxDescLen {
-				desc = desc[:maxDescLen-3] + "..."
+				desc = kit.TruncateText(desc, maxDescLen)
 			}
 
 			descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)

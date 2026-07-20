@@ -487,7 +487,7 @@ func (s *State) renderCommandSuggestions(width int) string {
 	// one visible, then a 2-space gutter, so the descriptions read as a list.
 	nameWidth := 0
 	for _, cmd := range items {
-		if w := len([]rune(cmd.Name)) + 1; w > nameWidth { // +1 for the leading "/"
+		if w := lipgloss.Width(cmd.Name) + 1; w > nameWidth { // +1 for the leading "/"
 			nameWidth = w
 		}
 	}
@@ -496,7 +496,7 @@ func (s *State) renderCommandSuggestions(width int) string {
 	maxDescLen := max(contentWidth-nameWidth-6, 10)
 	for i, cmd := range items {
 		cmdName := "/" + cmd.Name
-		pad := strings.Repeat(" ", max(0, nameWidth-len([]rune(cmdName))))
+		pad := strings.Repeat(" ", max(0, nameWidth-lipgloss.Width(cmdName)))
 		desc := kit.TruncateText(cmd.Description, maxDescLen)
 
 		if start+i == s.selectedIdx {

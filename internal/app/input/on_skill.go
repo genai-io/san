@@ -224,10 +224,12 @@ func (s *SkillSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		sb.WriteString("\n")
 	}
 
+	// Display columns throughout: the column has to be as wide as the widest
+	// name renders, and a CJK name renders at twice its byte-count intuition.
 	maxNameLen := 12
 	for i := startIdx; i < endIdx; i++ {
-		if l := len(s.list.filtered[i].FullName()); l > maxNameLen {
-			maxNameLen = l
+		if w := lipgloss.Width(s.list.filtered[i].FullName()); w > maxNameLen {
+			maxNameLen = w
 		}
 	}
 	maxNameLen = min(maxNameLen, 32)
@@ -253,7 +255,7 @@ func (s *SkillSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		}
 
 		name := kit.TruncateText(sk.FullName(), maxNameLen)
-		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-len(name)))
+		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-lipgloss.Width(name)))
 
 		badgeText := ""
 		if scopeIsPlugin(sk.Scope) && sk.Namespace != "" {

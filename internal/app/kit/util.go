@@ -61,6 +61,32 @@ func TruncateText(text string, maxLen int) string {
 	return b.String() + "…"
 }
 
+// TruncateKeepEnd trims text to maxLen display columns keeping its tail, with
+// a leading ellipsis — the mirror of TruncateText, for values whose end
+// identifies them (a path's filename, a long id). Measured in columns and cut
+// on rune boundaries, so CJK neither overflows the slot nor splits.
+func TruncateKeepEnd(text string, maxLen int) string {
+	if maxLen <= 0 || lipgloss.Width(text) <= maxLen {
+		return text
+	}
+	if maxLen == 1 {
+		return "…"
+	}
+	budget := maxLen - 1
+	runes := []rune(text)
+	width := 0
+	i := len(runes)
+	for i > 0 {
+		rw := lipgloss.Width(string(runes[i-1]))
+		if width+rw > budget {
+			break
+		}
+		width += rw
+		i--
+	}
+	return "…" + string(runes[i:])
+}
+
 func ShortenPath(path string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {

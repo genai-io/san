@@ -756,10 +756,7 @@ func conciseAgentDescription(desc string) string {
 	if len(words) > 10 {
 		return strings.Join(words[:10], " ") + "..."
 	}
-	if len(desc) > 60 {
-		return desc[:57] + "..."
-	}
-	return desc
+	return kit.TruncateText(desc, 60)
 }
 
 func displayAgentName(agentType, mode string) string {

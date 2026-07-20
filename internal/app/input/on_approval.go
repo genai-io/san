@@ -470,10 +470,9 @@ func (p *approvalAgentPreview) render(width int) string {
 	sb.WriteString(labelStyle.Render("Task:"))
 	sb.WriteString("\n")
 
-	prompt := p.agentMeta.Prompt
-	if len(prompt) > 500 {
-		prompt = prompt[:500] + "..."
-	}
+	// A subagent prompt is model-authored and may be any language, so the cap
+	// is applied in display columns and cut on a rune boundary.
+	prompt := kit.TruncateText(p.agentMeta.Prompt, 500)
 
 	lines := strings.Split(prompt, "\n")
 	for i, line := range lines {
@@ -484,11 +483,9 @@ func (p *approvalAgentPreview) render(width int) string {
 			break
 		}
 		sb.WriteString("   ")
-		if len(line) > width-6 {
-			sb.WriteString(dimStyle.Render(line[:width-9] + "..."))
-		} else {
-			sb.WriteString(dimStyle.Render(line))
-		}
+		// max(...) guards a terminal too narrow for the budget, which the old
+		// line[:width-9] would have sliced out of range.
+		sb.WriteString(dimStyle.Render(kit.TruncateText(line, max(width-6, 1))))
 		sb.WriteString("\n")
 	}
 

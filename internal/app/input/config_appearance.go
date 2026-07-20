@@ -196,7 +196,7 @@ func (p *appearancePanel) Render(width, _ int) string {
 // renderAppearanceSection renders a section heading followed by a rule that
 // fills the remaining width.
 func renderAppearanceSection(title string, width int) string {
-	ruleLen := max(width-len(title)-1, 1)
+	ruleLen := max(width-lipgloss.Width(title)-1, 1)
 	return appearanceSectionStyle.Render(title) + " " + appearanceRuleStyle.Render(strings.Repeat("─", ruleLen))
 }
 
