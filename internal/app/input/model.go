@@ -1,6 +1,7 @@
 package input
 
 import (
+	"math"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -37,7 +38,7 @@ type Model struct {
 	LastCtrlO        time.Time
 	LastCtrlC        time.Time
 	Images           ImageState
-	TerminalHeight   int
+	terminalHeight   int // set via SetTerminalHeight, which also re-caps the box
 	PastedChunks     []PastedChunk
 	Queue            Queue
 
@@ -181,17 +182,19 @@ func newTextarea(width int) textarea.Model {
 	ta.MinHeight = minTextareaHeight
 	ta.MaxHeight = defaultMaxHeight
 	// MaxHeight caps the viewport, and with MaxContentHeight left at zero it
-	// would also stop accepting input at that many lines. Set the content guard
-	// separately so the buffer stays scrollable well past what's on screen.
-	ta.MaxContentHeight = maxContentRows
+	// would also stop accepting input at that many lines. Setting it separately
+	// keeps the buffer scrollable past what's on screen; MaxInt means "no limit
+	// of ours" — the textarea already stops at its own 10000-line guard, and any
+	// tighter number here silently trims a large paste before the placeholder
+	// logic ever sees it.
+	ta.MaxContentHeight = math.MaxInt
 
 	// Drive the terminal's own cursor instead of painting a reverse-video block
 	// into the frame: the block leaves the real cursor parked wherever the last
 	// paint ended (out in the streamed output), which is what the user's eye and
 	// the terminal's own IME follow. View() positions it — see model.inputCursor.
-	// Only the composer does this; the overlay editors built from
-	// newChromelessTextarea keep their virtual cursors, since View reports no
-	// cursor position for the layouts they appear in.
+	// Composer only; TestOverlayEditorsKeepVirtualCursor covers why the overlay
+	// editors built from newChromelessTextarea must not follow.
 	ta.SetVirtualCursor(false)
 
 	// Enter submits (see handleTextareaShortcut), so a newline needs its own

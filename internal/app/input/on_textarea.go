@@ -21,10 +21,6 @@ const (
 	defaultMaxHeight     = 10
 	fixedChromeLines     = 6 // separators(2) + status(1) + prompt overhead(2) + image/warning(1)
 	maxHeightScreenRatio = 2 // use up to 1/2 of terminal height
-	// maxContentRows bounds the buffer itself, not the visible box — a sanity
-	// stop far past any message someone types by hand, since long text arrives
-	// by paste and collapses to a placeholder.
-	maxContentRows = 1000
 )
 
 // imageRefPattern matches @path/to/image.ext references (case-insensitive extension).
@@ -41,10 +37,10 @@ type ImageTokenMatch struct {
 
 // maxTextareaHeight returns the dynamic max height based on terminal size.
 func (m *Model) maxTextareaHeight() int {
-	if m.TerminalHeight <= 0 {
+	if m.terminalHeight <= 0 {
 		return defaultMaxHeight
 	}
-	dynMax := m.TerminalHeight/maxHeightScreenRatio - fixedChromeLines
+	dynMax := m.terminalHeight/maxHeightScreenRatio - fixedChromeLines
 	if dynMax < defaultMaxHeight {
 		return defaultMaxHeight
 	}
@@ -55,7 +51,7 @@ func (m *Model) maxTextareaHeight() int {
 // is allowed half the screen. Growing and shrinking to fit the content is the
 // textarea's own job (DynamicHeight); this only moves its ceiling.
 func (m *Model) SetTerminalHeight(height int) {
-	m.TerminalHeight = height
+	m.terminalHeight = height
 	m.Textarea.MaxHeight = m.maxTextareaHeight()
 }
 

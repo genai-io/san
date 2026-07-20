@@ -80,9 +80,9 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 			contentStyle = queueSelectedContentStyle
 		}
 
-		// Budget: gutter(1) + "❭ "(2) + right margin(2), minus the image tag
+		// Budget: gutter(1) + prompt + right margin(2), minus the image tag
 		// and hint when this row carries them.
-		maxContentWidth := width - 5
+		maxContentWidth := width - 3 - lipgloss.Width(InputPrompt)
 		if item.HasImages {
 			maxContentWidth -= lipgloss.Width("[Image] ")
 		}
@@ -95,7 +95,7 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 			content = PendingImageStyle.Render("[Image] ") + content
 		}
 
-		line := gutter + queuePromptStyle.Render("❭ ") + content
+		line := gutter + queuePromptStyle.Render(InputPrompt) + content
 		if i == hintIdx {
 			if pad := width - lipgloss.Width(line) - lipgloss.Width(hint) - 1; pad >= 2 {
 				line += strings.Repeat(" ", pad) + queueHintStyle.Render(hint)

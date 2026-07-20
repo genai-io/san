@@ -177,11 +177,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 
 	case "enter":
 		return m.handleSubmit(), true
-
-	case "alt+enter":
-		m.userInput.Textarea.InsertString("\n")
-		return nil, true
 	}
+	// Newline keys deliberately fall through to the textarea, which owns them
+	// via KeyMap.InsertNewline — see newTextarea.
 
 	return nil, false
 }

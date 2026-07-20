@@ -30,15 +30,15 @@ func TestTextareaGrowsToFitWrappedContent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := New("", tt.width, nil, SelectorDeps{})
-			m.Textarea.SetValue(tt.value)
+			ta := newTextarea(tt.width)
+			ta.SetValue(tt.value)
 
 			// Soft wrapping inserts row breaks, so compare with all
 			// whitespace squeezed out of both sides.
-			shown := strings.Join(strings.Fields(xansi.Strip(m.Textarea.View())), "")
+			shown := strings.Join(strings.Fields(xansi.Strip(ta.View())), "")
 			want := strings.Join(strings.Fields(tt.value), "")
 			if !strings.Contains(shown, want) {
-				t.Fatalf("height %d clips content:\n shown %q\n want  %q", m.Textarea.Height(), shown, want)
+				t.Fatalf("height %d clips content:\n shown %q\n want  %q", ta.Height(), shown, want)
 			}
 		})
 	}
@@ -47,15 +47,15 @@ func TestTextareaGrowsToFitWrappedContent(t *testing.T) {
 // A newline at the end opens a row the cursor sits on but no text occupies yet;
 // the box still has to grow to show it.
 func TestTextareaKeepsCursorRowVisible(t *testing.T) {
-	m := New("", 20, nil, SelectorDeps{})
-	m.Textarea.SetValue("first\n")
+	ta := newTextarea(20)
+	ta.SetValue("first\n")
 
-	cursor := m.Textarea.Cursor()
+	cursor := ta.Cursor()
 	if cursor == nil {
 		t.Fatal("focused composer reported no cursor")
 	}
-	if m.Textarea.Height() <= cursor.Position.Y {
-		t.Fatalf("height %d hides cursor row %d", m.Textarea.Height(), cursor.Position.Y)
+	if ta.Height() <= cursor.Position.Y {
+		t.Fatalf("height %d hides cursor row %d", ta.Height(), cursor.Position.Y)
 	}
 }
 
@@ -79,37 +79,31 @@ func TestTextareaAcceptsInputPastVisibleHeight(t *testing.T) {
 // Newlines are the composer's own binding, not a case in the key router, so the
 // keys users press have to actually reach it and split the line.
 func TestNewlineKeysInsertNewline(t *testing.T) {
-	keys := map[string]tea.KeyPressMsg{
-		"shift+enter": {Code: tea.KeyEnter, Mod: tea.ModShift},
-		"alt+enter":   {Code: tea.KeyEnter, Mod: tea.ModAlt},
-		"ctrl+j":      {Code: 'j', Mod: tea.ModCtrl},
+	tests := []struct {
+		name string
+		msg  tea.KeyPressMsg
+		want string
+	}{
+		{"shift+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModShift}, "first\n"},
+		{"alt+enter", tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt}, "first\n"},
+		{"ctrl+j", tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}, "first\n"},
+		// Enter belongs to the key router, which submits before the textarea sees it.
+		{"enter", tea.KeyPressMsg{Code: tea.KeyEnter}, "first"},
 	}
 
-	for name, msg := range keys {
-		t.Run(name, func(t *testing.T) {
-			m := New("", 40, nil, SelectorDeps{})
-			m.Textarea.SetValue("first")
-			m.Textarea.CursorEnd()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ta := newTextarea(40)
+			ta.SetValue("first")
+			ta.CursorEnd()
 
-			m.Textarea, _ = m.Textarea.Update(msg)
+			ta, _ = ta.Update(tt.msg)
 
-			if got := m.Textarea.Value(); got != "first\n" {
-				t.Fatalf("%s (%q) gave %q, want %q", name, msg.String(), got, "first\n")
+			if got := ta.Value(); got != tt.want {
+				t.Fatalf("%s (%q) gave %q, want %q", tt.name, tt.msg.String(), got, tt.want)
 			}
 		})
 	}
-
-	t.Run("plain enter stays reserved for submit", func(t *testing.T) {
-		m := New("", 40, nil, SelectorDeps{})
-		m.Textarea.SetValue("first")
-		m.Textarea.CursorEnd()
-
-		m.Textarea, _ = m.Textarea.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-
-		if got := m.Textarea.Value(); got != "first" {
-			t.Fatalf("plain enter modified the buffer: %q", got)
-		}
-	})
 }
 
 // The /autopilot and /evolve editors share newChromelessTextarea but appear in

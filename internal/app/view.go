@@ -87,13 +87,9 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 	// Render the footer first so we can measure how many lines it consumes
 	// and cap the chat section to the remaining terminal height.
 	footer, inputRow := m.renderFooter(separator)
-	bottomLines := strings.Count(footer, "\n")
-
-	maxContentHeight := 0
-	// Only truncate when there's room for at least one line of content.
-	if m.env.Height > bottomLines {
-		maxContentHeight = m.env.Height - bottomLines
-	}
+	// A non-positive result means the footer already fills the screen; tailLines
+	// reads that as "no room" and drops the chat section entirely.
+	maxContentHeight := m.env.Height - strings.Count(footer, "\n")
 
 	activeContent := conv.RenderActiveContent(m.messageRenderParams())
 	chatSection := tailLines(m.renderChatSection(activeContent, trackerView), maxContentHeight)
@@ -121,7 +117,8 @@ func (m *model) inputCursor(baseRow int) *tea.Cursor {
 // height. s is returned unchanged when it already fits.
 func tailLines(s string, maxLines int) string {
 	// No room at all — the footer already fills the screen. Returning s here
-	// would push the frame past the terminal height and make it scroll.
+	// would push the frame past the terminal height, and the renderer resolves
+	// that by dropping rows off the top, which eats into the input strip.
 	if maxLines <= 0 {
 		return ""
 	}
