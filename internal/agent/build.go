@@ -19,6 +19,7 @@ type BuildParams struct {
 	Provider       llm.Provider
 	ModelID        string
 	MaxTokens      int
+	InputLimit     int // context window; 0 falls back to the provider's own figure
 	ThinkingEffort string
 
 	CWD     string
@@ -67,13 +68,24 @@ type BuildParams struct {
 	OnEvent func(core.Event)
 }
 
+// newLLMClient builds the client the agent infers with, carrying over the
+// limits the caller resolved. Split out to keep that wiring testable: the input
+// limit is read only from deep inside ThinkAct's compaction check, where a
+// value that never arrives silently disables auto-compaction rather than
+// failing (issue #338).
+func newLLMClient(p BuildParams) *llm.Client {
+	client := llm.NewClient(p.Provider, p.ModelID, p.MaxTokens)
+	client.SetThinkingEffort(p.ThinkingEffort)
+	client.SetInputLimit(p.InputLimit)
+	return client
+}
+
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
 
-	client := llm.NewClient(p.Provider, p.ModelID, p.MaxTokens)
-	client.SetThinkingEffort(p.ThinkingEffort)
+	client := newLLMClient(p)
 
 	sys := system.Build(core.ScopeMain,
 		system.WithProvider(client.Name()),

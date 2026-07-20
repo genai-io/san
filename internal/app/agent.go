@@ -135,6 +135,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		Provider:       m.env.LLMProvider,
 		ModelID:        m.env.GetModelID(),
 		MaxTokens:      maxTokens,
+		InputLimit:     kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
 		ThinkingEffort: m.env.EffectiveThinkingEffort(),
 		OnEvent:        onEvent,
 
@@ -636,8 +637,5 @@ func (m *model) ReconfigureAgentTool() {
 func (m *model) buildLLMClient() *llm.Client {
 	c := llm.NewClient(m.env.LLMProvider, m.env.GetModelID(), kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens))
 	c.SetThinkingEffort(m.env.EffectiveThinkingEffort())
-	// Resolve the context window from the same source the status bar reads, so
-	// auto-compaction fires against the window the user is watching fill up.
-	c.SetInputLimit(kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel))
 	return c
 }

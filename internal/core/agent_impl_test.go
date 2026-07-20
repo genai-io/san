@@ -140,10 +140,8 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	}
 }
 
-// Regression for #338: with prompt caching active a provider reports the
-// cached prefix under CacheRead/CacheCreation and leaves only the uncached
-// delta in InputTokens. The compaction check must test the full prompt, or a
-// nearly-full context reads as a few percent and auto-compaction never fires.
+// Regression for #338: the compaction check must test the full prompt, not the
+// uncached delta InputTokens holds under prompt caching (see TotalInputTokens).
 func TestPromptTokensCountCachedPrompt(t *testing.T) {
 	resp := InferResponse{Usage: Usage{
 		InputTokens:              1_200,
@@ -172,32 +170,34 @@ func TestCurrentPromptTokensPrefersMeasuredCount(t *testing.T) {
 	}
 }
 
-// A rebuilt agent (session resume, model switch, toolset drift) is seeded with
-// the full existing history but has not inferred yet, so there is no measured
-// count. The estimate has to notice that the seeded chain is already over the
-// threshold, rather than letting the first request be rejected for it.
-func TestCurrentPromptTokensEstimatesSeededHistory(t *testing.T) {
-	a := newAgentForPromptSizing(t)
-	a.SetMessages([]Message{UserMessage(strings.Repeat("x", 800_000), nil)})
-
+// With no measured count the estimate stands in. It has to notice a rebuilt
+// agent seeded with a long history (session resume, model switch, toolset
+// drift), whose first prompt can already be over the threshold, without
+// tipping over on an ordinary short conversation.
+func TestCurrentPromptTokensEstimatesUnmeasuredChain(t *testing.T) {
 	const limit = 200_000
-	got := a.currentPromptTokens()
-	if got == 0 {
-		t.Fatal("currentPromptTokens() = 0, want an estimate from the seeded history")
+	cases := []struct {
+		name           string
+		content        string
+		wantCompaction bool
+	}{
+		{"seeded history", strings.Repeat("x", 800_000), true},
+		{"fresh conversation", "fix the login bug", false},
 	}
-	if !NeedsCompaction(got, limit) {
-		t.Fatalf("NeedsCompaction(%d, %d) = false, want true for a seeded 800k-byte chain", got, limit)
-	}
-}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := newAgentForPromptSizing(t)
+			a.SetMessages([]Message{UserMessage(c.content, nil)})
 
-// The estimate must stay well clear of the threshold for an ordinary short
-// conversation, or a fresh session would compact before it started.
-func TestCurrentPromptTokensEstimateIsQuietWhenSmall(t *testing.T) {
-	a := newAgentForPromptSizing(t)
-	a.SetMessages([]Message{UserMessage("fix the login bug", nil)})
-
-	if NeedsCompaction(a.currentPromptTokens(), 200_000) {
-		t.Fatalf("a short conversation estimated at %d triggered compaction", a.currentPromptTokens())
+			got := a.currentPromptTokens()
+			if got == 0 {
+				t.Fatal("currentPromptTokens() = 0, want an estimate")
+			}
+			if NeedsCompaction(got, limit) != c.wantCompaction {
+				t.Fatalf("NeedsCompaction(%d, %d) = %v, want %v",
+					got, limit, !c.wantCompaction, c.wantCompaction)
+			}
+		})
 	}
 }
 
@@ -221,18 +221,7 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 // chain and compact again on every following step. Zero suppresses the check
 // until the next inference reports a fresh figure.
 func TestApplyCompactionClearsPromptTokens(t *testing.T) {
-	ag := NewAgent(Config{
-		ID:     "test",
-		LLM:    newBlockingLLM(1),
-		System: NewSystem(),
-		Tools:  NewTools(),
-	})
-	a := ag.(*agent)
-	go func() {
-		for range ag.Outbox() {
-		}
-	}()
-
+	a := newAgentForPromptSizing(t)
 	a.SetMessages([]Message{
 		UserMessage("first", nil),
 		{Role: RoleAssistant, Content: "reply"},

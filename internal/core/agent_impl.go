@@ -342,10 +342,12 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 		// overshoot the limit outright still lands on the reactive
 		// prompt-too-long path below.
 		if a.compactFunc != nil {
-			if limit := a.llm.InputLimit(); limit > 0 && NeedsCompaction(a.currentPromptTokens(), limit) {
-				if a.compact(ctx) {
-					continue
-				}
+			// InputLimit resolves through the provider on first use, so it stays
+			// behind the compactFunc guard — without a compactFunc the result
+			// could not be acted on anyway.
+			if limit := a.llm.InputLimit(); limit > 0 &&
+				NeedsCompaction(a.currentPromptTokens(), limit) && a.compact(ctx) {
+				continue
 			}
 		}
 
@@ -431,21 +433,18 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 // once, which is not always a small conversation: ensureAgentSession seeds a
 // rebuilt agent with the full existing history (session resume, model switch,
 // toolset drift), so the very first prompt can already be near the limit.
-// Estimating from text covers that case instead of leaving it to be discovered
-// by a rejected request.
+//
+// The fallback is the repo's usual 4-bytes-per-token approximation. That is
+// right for English prose and low for CJK (nearer 2–3), and it ignores the tool
+// schemas the real prompt also carries — so it errs low by design. Erring low
+// just defers to the reactive prompt-too-long retry, whereas erring high would
+// compact a conversation that still had room.
 func (a *agent) currentPromptTokens() int {
 	if a.promptTokens > 0 {
 		return a.promptTokens
 	}
-	return estimateTokensFromBytes(len(a.system.Prompt()) + a.conversationTextLen())
+	return (len(a.system.Prompt()) + a.conversationTextLen()) / 4
 }
-
-// estimateTokensFromBytes approximates a token count from a UTF-8 byte length.
-// Four bytes per token is right for English prose and low for CJK (nearer 2–3),
-// and it ignores the tool schemas the real prompt also carries — so it errs
-// low by design. Erring low just defers to the reactive prompt-too-long retry,
-// whereas erring high would compact a conversation that still had room.
-func estimateTokensFromBytes(n int) int { return n / 4 }
 
 // conversationTextLen reads the live history without making a snapshot copy.
 func (a *agent) conversationTextLen() int {
@@ -856,7 +855,6 @@ func (a *agent) snapshot() []Message {
 	copy(cp, a.messages)
 	return cp
 }
-
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	// A tool result rides on a RoleUser message — its content lives on
