@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -119,20 +120,7 @@ func (s *Store) save() error {
 		Skills: s.states,
 	}
 
-	data, err := json.MarshalIndent(storeData, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(s.path, storeData, 0o644)
 }
 
 // GetState returns the persisted state for a skill.

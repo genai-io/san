@@ -9,6 +9,11 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/log"
 )
 
 // Item represents a tracked item
@@ -158,20 +163,12 @@ func (s *Store) persistItem(item *Item) {
 	if s.storageDir == "" {
 		return
 	}
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "tracker: failed to marshal item %s: %v\n", item.ID, err)
-		return
-	}
 	path := filepath.Join(s.storageDir, item.ID+".json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		fmt.Fprintf(os.Stderr, "tracker: failed to write item %s: %v\n", item.ID, err)
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		fmt.Fprintf(os.Stderr, "tracker: failed to rename item %s: %v\n", item.ID, err)
+	// Report through the logger, not os.Stderr: bubbletea owns the terminal
+	// while this runs, and a stray write corrupts the rendered frame.
+	if err := atomicfile.WriteJSON(path, item, 0o644); err != nil {
+		log.Logger().Error("tracker: persist item",
+			zap.String("item", item.ID), zap.Error(err))
 	}
 }
 

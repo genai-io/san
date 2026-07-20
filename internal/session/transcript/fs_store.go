@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/log"
 	"go.uber.org/zap"
 )
@@ -885,14 +886,8 @@ func (s *FileStore) saveIndexLocked(index *fileIndex) error {
 	if err != nil {
 		return fmt.Errorf("marshal transcript index: %w", err)
 	}
-	idxPath := s.indexPath()
-	tmp := idxPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := atomicfile.Write(s.indexPath(), data, 0o644); err != nil {
 		return fmt.Errorf("write transcript index: %w", err)
-	}
-	if err := os.Rename(tmp, idxPath); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("finalize transcript index: %w", err)
 	}
 	s.cachedIndex = index
 	s.indexDirty = false

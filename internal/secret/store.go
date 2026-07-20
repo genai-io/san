@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -59,15 +60,8 @@ func (s *Store) load() error {
 }
 
 func (s *Store) save() error {
-	raw, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	// 0600: this file holds API keys and tokens.
+	return atomicfile.WriteJSON(s.path, s.data, 0o600)
 }
 
 func (s *Store) Set(key, value string) error {

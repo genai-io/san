@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -123,20 +124,7 @@ func (m *MarketplaceManager) Save() error {
 	}
 
 	path := filepath.Join(m.configDir, "known_marketplaces.json")
-	data, err := json.MarshalIndent(m.marketplaces, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(path, m.marketplaces, 0o644)
 }
 
 // Get returns a marketplace by ID.

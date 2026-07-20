@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"go.uber.org/zap"
@@ -564,15 +565,5 @@ func (r *Registry) saveState() {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-	}
+	_ = atomicfile.WriteJSON(path, state, 0o644)
 }

@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
 )
@@ -197,28 +198,7 @@ func (l *Loader) saveToFile(path string, settings *Data) error {
 			toSave = mergeSettings(existing, settings)
 		}
 	}
-	return writeJSONAtomic(path, toSave)
-}
-
-// writeJSONAtomic marshals v as indented JSON and writes it to path via a
-// temp file + rename so a kill mid-write cannot truncate the target.
-func writeJSONAtomic(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(path, toSave, 0o644)
 }
 
 var (
@@ -307,7 +287,7 @@ func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 		_ = json.Unmarshal(data, existing)
 	}
 	mutate(existing)
-	if err := writeJSONAtomic(path, existing); err != nil {
+	if err := atomicfile.WriteJSON(path, existing, 0o644); err != nil {
 		return err
 	}
 
@@ -359,7 +339,7 @@ func ExportAutoPilot(name string, cfg AutoPilotSettings) (string, error) {
 		return "", err
 	}
 	path := filepath.Join(dir, base+".json")
-	if err := writeJSONAtomic(path, cfg); err != nil {
+	if err := atomicfile.WriteJSON(path, cfg, 0o644); err != nil {
 		return "", err
 	}
 	return path, nil
@@ -567,7 +547,7 @@ func SavePersonaAt(cwd, name string, userLevel bool) error {
 	}
 	existing.Persona = name
 
-	if err := writeJSONAtomic(path, existing); err != nil {
+	if err := atomicfile.WriteJSON(path, existing, 0o644); err != nil {
 		return err
 	}
 

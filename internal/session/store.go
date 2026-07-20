@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session/transcript"
@@ -292,16 +293,7 @@ func (s *Store) PersistToolResult(sessionID, toolCallID, content string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create tool result dir: %w", err)
 	}
-	filePath := filepath.Join(dir, safeName)
-	tmp := filePath + ".tmp"
-	if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("failed to write tool result: %w", err)
-	}
-	if err := os.Rename(tmp, filePath); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("failed to finalize tool result: %w", err)
-	}
-	return nil
+	return atomicfile.Write(filepath.Join(dir, safeName), []byte(content), 0o644)
 }
 
 func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {

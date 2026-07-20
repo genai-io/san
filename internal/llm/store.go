@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -141,19 +142,7 @@ func (s *Store) ensureMapsInitialized() {
 
 // save writes the store data to disk
 func (s *Store) save() error {
-	data, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal provider store: %w", err)
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write provider store %s: %w", s.path, err)
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename provider store %s: %w", s.path, err)
-	}
-	return nil
+	return atomicfile.WriteJSON(s.path, s.data, 0o644)
 }
 
 // Connect saves a connection for a provider

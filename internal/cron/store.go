@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/log"
 )
 
@@ -469,23 +469,8 @@ func (s *Scheduler) saveDurableLocked() {
 	}
 	durable = append(durable, s.foreignDurableLocked(durable)...)
 
-	data, err := json.MarshalIndent(durable, "", "  ")
-	if err != nil {
-		log.Logger().Error("cron: failed to marshal durable jobs", zap.Error(err))
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(s.storagePath), 0o755); err != nil {
-		log.Logger().Error("cron: failed to create storage directory", zap.Error(err))
-		return
-	}
-	tmp := s.storagePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		log.Logger().Error("cron: failed to write durable jobs", zap.Error(err))
-		return
-	}
-	if err := os.Rename(tmp, s.storagePath); err != nil {
-		os.Remove(tmp)
-		log.Logger().Error("cron: failed to rename durable jobs file", zap.Error(err))
+	if err := atomicfile.WriteJSON(s.storagePath, durable, 0o644); err != nil {
+		log.Logger().Error("cron: persist durable jobs", zap.Error(err))
 	}
 }
 

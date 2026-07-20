@@ -2,12 +2,12 @@ package subagent
 
 import (
 	"encoding/json"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"sync"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -71,25 +71,7 @@ func (s *AgentStore) load() {
 // persistDisabled writes the disabled agent list to disk. Lock-free — operates
 // only on the provided snapshot.
 func persistDisabled(path string, disabled []string) error {
-	data, err := json.MarshalIndent(AgentStoreData{Disabled: disabled}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal agent store: %w", err)
-	}
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create agent store directory %s: %w", dir, err)
-	}
-
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return fmt.Errorf("write agent store %s: %w", path, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("rename agent store %s: %w", path, err)
-	}
-	return nil
+	return atomicfile.WriteJSON(path, AgentStoreData{Disabled: disabled}, 0o644)
 }
 
 // IsDisabled returns whether an agent is disabled

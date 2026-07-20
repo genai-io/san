@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -446,19 +447,7 @@ func (i *Installer) addToInstalledV2(scope Scope, pluginKey string, info PluginI
 	}
 	v2.Plugins[pluginKey] = existing
 
-	data, err := json.MarshalIndent(v2, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := installedFile + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, installedFile); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(installedFile, v2, 0o644)
 }
 
 // loadInstalledPluginsV2 loads the installed plugins in v2 format.
@@ -525,19 +514,7 @@ func (i *Installer) removeFromInstalled(scope Scope, source string) error {
 		return os.Remove(installedFile)
 	}
 
-	data, err := json.MarshalIndent(v2, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := installedFile + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, installedFile); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(installedFile, v2, 0o644)
 }
 
 // copyDir copies a directory recursively.
@@ -659,18 +636,5 @@ func (i *Installer) AddMarketplace(source MarketplaceSource) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(km, "", "  ")
-	if err != nil {
-		return err
-	}
-	// Use atomic tmp+rename to prevent corruption on crash
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return atomicfile.WriteJSON(path, km, 0o644)
 }

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -281,16 +282,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	settings["enabledPlugins"] = enabledPlugins
 
 	// Write back
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := settingsPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, settingsPath); err != nil {
-		os.Remove(tmp)
+	if err := atomicfile.WriteJSON(settingsPath, settings, 0o644); err != nil {
 		return err
 	}
 	fireConfigChanged(scopeConfigSource(scope), settingsPath)

@@ -2,11 +2,11 @@ package history
 
 import (
 	"bufio"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -59,25 +59,11 @@ func Load(cwd string) []string {
 }
 
 func Save(cwd string, history []string) {
-	path := historyFilePath(cwd)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
-	}
-	// Write to temp file + rename for atomic replacement (prevents data loss on crash)
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
-	if err != nil {
-		return
-	}
-	w := bufio.NewWriter(f)
+	var b strings.Builder
 	for _, entry := range truncate(history) {
-		_, _ = fmt.Fprintln(w, escapeEntry(entry))
+		b.WriteString(escapeEntry(entry))
+		b.WriteByte('\n')
 	}
-	if err := w.Flush(); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return
-	}
-	f.Close()
-	_ = os.Rename(tmp, path)
+	// Best-effort: losing shell history is not worth surfacing to the user.
+	_ = atomicfile.Write(historyFilePath(cwd), []byte(b.String()), 0o644)
 }

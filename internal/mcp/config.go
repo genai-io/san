@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 )
 
@@ -122,17 +123,7 @@ func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope)
 	mcpConfig.MCPServers[name] = configToSave
 
 	// Write back
-	data, err := json.MarshalIndent(mcpConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmp := filePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filePath); err != nil {
-		os.Remove(tmp)
+	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
 	fireConfigChanged(scopeConfigSource(scope), filePath)
@@ -160,17 +151,7 @@ func (l *ConfigLoader) RemoveServer(name string, scope Scope) error {
 	delete(mcpConfig.MCPServers, name)
 
 	// Write back
-	data, err = json.MarshalIndent(mcpConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	tmp := filePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filePath); err != nil {
-		os.Remove(tmp)
+	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
 	fireConfigChanged(scopeConfigSource(scope), filePath)
@@ -203,16 +184,7 @@ func (l *ConfigLoader) removeServerFromFile(filePath, name string) {
 
 	delete(mcpConfig.MCPServers, name)
 
-	data, err = json.MarshalIndent(mcpConfig, "", "  ")
-	if err != nil {
-		return
-	}
-	tmp := filePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return
-	}
-	if err := os.Rename(tmp, filePath); err != nil {
-		os.Remove(tmp)
+	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return
 	}
 	fireConfigChanged(configSourceFromFilePath(filePath), filePath)
