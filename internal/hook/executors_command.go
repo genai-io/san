@@ -63,9 +63,31 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 		return handleBlockingExit(&stderr)
 	}
 	if exitCode != 0 {
+		// Report it. Leaving Error nil recorded the run as "ran" and dropped
+		// stderr on the floor, so a hook that never worked — a typo, a missing
+		// interpreter, exit 127 — looked identical to one that succeeded. The
+		// user got no log line, no transcript record and no notice.
+		//
+		// ShouldContinue stays true: a non-zero exit that is not 2 is a failed
+		// hook, not a blocking one, so the turn carries on.
+		outcome.Error = commandFailure(exitCode, &stderr)
 		return outcome
 	}
 	return e.parseOutput(strings.TrimSpace(stdout.String()), outcome)
+}
+
+// commandFailure describes a hook that exited non-zero, carrying the first
+// line of its stderr — which is where the reason lives ("jq: command not
+// found") and was previously discarded.
+func commandFailure(exitCode int, stderr *bytes.Buffer) error {
+	reason := strings.TrimSpace(stderr.String())
+	if i := strings.IndexByte(reason, '\n'); i >= 0 {
+		reason = reason[:i]
+	}
+	if reason == "" {
+		return fmt.Errorf("hook exited %d", exitCode)
+	}
+	return fmt.Errorf("hook exited %d: %s", exitCode, reason)
 }
 
 func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd setting.HookCmd, input HookInput) HookOutcome {
