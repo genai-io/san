@@ -15,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/hook"
-	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
@@ -145,7 +144,6 @@ func (m *model) ReloadAfterPluginChange() error {
 	// services (not the plugins themselves) and re-point at them.
 	m.reloadProjectServices(m.env.CWD)
 
-	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()

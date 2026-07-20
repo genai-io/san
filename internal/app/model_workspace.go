@@ -8,7 +8,6 @@ import (
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/persona"
-	"github.com/genai-io/san/internal/plugin"
 )
 
 func (m *model) changeCwd(newCwd string) {
@@ -39,7 +38,6 @@ func (m *model) ReloadProjectContext(cwd string) {
 	// feature services that depend on them and re-point at them.
 	discoverPlugins(cwd)
 	m.reloadProjectServices(cwd)
-	plugin.MergePluginHooksIntoSettings(m.services.Setting.Snapshot())
 	m.syncSettingsToHookEngine()
 }
 

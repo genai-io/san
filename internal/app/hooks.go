@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/plugin"
 )
 
 func (m *model) firePostToolHook(tr core.ToolResult, sideEffect any) {
@@ -165,8 +166,20 @@ func (m *model) refreshMemoryContext(cwd, loadReason string) {
 	m.env.CachedProjectInstructions = joinSections(projectParts)
 }
 
+// syncSettingsToHookEngine hands the engine the current settings with plugin
+// hooks folded in.
+//
+// The merge has to happen on the snapshot that is actually passed on. Settings
+// .Snapshot() deep-copies on every call, so merging into a separate one — as
+// both reload paths used to — writes the plugin hooks into a clone that is
+// immediately discarded, and the engine receives a clean copy with none of
+// them. A plugin's hooks then stopped firing after any cwd change or plugin
+// install, silently. init.go gets this right by binding the snapshot first;
+// doing the merge here means a caller cannot get it wrong.
 func (m *model) syncSettingsToHookEngine() {
-	m.services.Hook.SetSettings(m.services.Setting.Snapshot())
+	settings := m.services.Setting.Snapshot()
+	plugin.MergePluginHooksIntoSettings(settings)
+	m.services.Hook.SetSettings(settings)
 }
 
 func memoryTypeForLevel(level string) string {
