@@ -51,7 +51,7 @@ func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 
 	result := (&TrackerUpdateTool{}).Execute(context.Background(), map[string]any{
 		"taskId":       task.ID,
-		"status":       todo.StatusInProgress,
+		"status":       string(todo.StatusInProgress),
 		"owner":        "Plan",
 		"description":  "write more tests",
 		"addBlockedBy": `["` + blocker.ID + `"]`,
@@ -60,7 +60,7 @@ func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
-	if result.Metadata.Subtitle != "#"+task.ID+" "+todo.StatusInProgress {
+	if result.Metadata.Subtitle != "#"+task.ID+" "+string(todo.StatusInProgress) {
 		t.Fatalf("unexpected subtitle %q", result.Metadata.Subtitle)
 	}
 

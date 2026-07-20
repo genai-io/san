@@ -142,7 +142,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 	switch phase {
 	case itemAborted:
 		abortedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-		detail := mutedStyle.Render("[" + todo.BackgroundStatusDetail(t) + "]")
+		detail := mutedStyle.Render("[" + string(todo.BackgroundStatusDetail(t)) + "]")
 		return renderItemLine(indent, abortedStyle.Render("!"), idTag, subject, detail)
 
 	case itemFinished:

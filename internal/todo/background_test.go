@@ -126,3 +126,37 @@ func TestCompleteWorkerTracksFailure(t *testing.T) {
 		t.Fatalf("status detail = %q, want %q", metadataStr(items[0].Metadata, metaStatusDetail), task.StatusFailed)
 	}
 }
+
+// The detail axis is stored in map[string]any and read back with a .(string)
+// assertion, so a task.TaskStatus has to be converted on the way in. Storing
+// the typed value directly reads back as "" with no error anywhere — which is
+// how demoteOrphanedItems briefly lost its "interrupted" marker.
+func TestBackgroundStatusDetailRoundTripsThroughMetadata(t *testing.T) {
+	for _, detail := range []task.TaskStatus{
+		task.StatusFailed, task.StatusKilled, task.StatusStopped, StatusDetailInterrupted,
+	} {
+		item := &Item{ID: "1", Metadata: map[string]any{metaTaskID: "bg-1"}}
+		setBackgroundStatusDetail(item, detail)
+
+		if got := BackgroundStatusDetail(item); got != detail {
+			t.Errorf("detail = %q, want %q", got, detail)
+		}
+		if !EndedAbnormally(item) {
+			t.Errorf("%q should count as an abnormal end", detail)
+		}
+	}
+}
+
+// A task that finished normally is not an abnormal end, and neither is a plan
+// item that never had a worker.
+func TestEndedAbnormallyIgnoresNormalCompletionAndPlanItems(t *testing.T) {
+	done := &Item{ID: "1", Metadata: map[string]any{metaTaskID: "bg-1"}}
+	setBackgroundStatusDetail(done, task.StatusCompleted)
+	if EndedAbnormally(done) {
+		t.Error("a completed task should not count as an abnormal end")
+	}
+
+	if EndedAbnormally(&Item{ID: "2"}) {
+		t.Error("a plan item has no worker and cannot have ended abnormally")
+	}
+}

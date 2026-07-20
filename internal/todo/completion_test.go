@@ -10,22 +10,22 @@ import "testing"
 func TestAllMarkedCompleted(t *testing.T) {
 	cases := []struct {
 		name     string
-		statuses []string
+		statuses []Status
 		want     bool
 	}{
 		{"empty store", nil, false},
-		{"all completed", []string{StatusCompleted, StatusCompleted}, true},
-		{"one still pending", []string{StatusCompleted, StatusPending}, false},
+		{"all completed", []Status{StatusCompleted, StatusCompleted}, true},
+		{"one still pending", []Status{StatusCompleted, StatusPending}, false},
 		// The case the tracker used to get wrong elsewhere: an item the model
 		// marked in progress and never closed. No executor is advancing it, but
 		// it is abandoned work rather than finished work, so the list is not
 		// complete and the list stays up showing it as [stalled].
-		{"one left in progress", []string{StatusCompleted, StatusInProgress}, false},
-		{"deleted items do not count as open", []string{StatusCompleted, StatusDeleted}, true},
+		{"one left in progress", []Status{StatusCompleted, StatusInProgress}, false},
+		{"deleted items do not count as open", []Status{StatusCompleted, StatusDeleted}, true},
 		// Tombstones only: the map is not empty, so the emptiness check passes
 		// and the loop skips every item. The view never sees this — List drops
 		// deleted items, so it renders nothing either way.
-		{"only tombstones", []string{StatusDeleted}, true},
+		{"only tombstones", []Status{StatusDeleted}, true},
 	}
 
 	for _, tc := range cases {

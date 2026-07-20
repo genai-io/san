@@ -22,7 +22,12 @@ const (
 // without reporting a terminal status — process exit, crash, or SIGKILL. Set
 // by demoteOrphanedItems when a persisted store is adopted into a fresh
 // session.
-const StatusDetailInterrupted = "interrupted"
+//
+// It is a task.TaskStatus rather than a todo.Status: this axis records how the
+// background task ended, not where the item sits in its own lifecycle. The
+// value extends task's vocabulary with the one outcome only the tracker can
+// observe — a task that stopped reporting rather than reporting a stop.
+const StatusDetailInterrupted task.TaskStatus = "interrupted"
 
 // BackgroundTaskID returns the background task ID this item mirrors, or ""
 // when the item is a plan item authored by the model rather than a worker.
@@ -31,10 +36,11 @@ func BackgroundTaskID(item *Item) string {
 }
 
 // BackgroundStatusDetail returns how a worker item's background task ended —
-// "failed", "killed", "stopped", or StatusDetailInterrupted. Empty for items
-// that mirror no background task, and for those that ended normally.
-func BackgroundStatusDetail(item *Item) string {
-	return metadataString(item, metaStatusDetail)
+// task.StatusFailed, StatusKilled, StatusStopped, or StatusDetailInterrupted.
+// Empty for items that mirror no background task, and for those that ended
+// normally.
+func BackgroundStatusDetail(item *Item) task.TaskStatus {
+	return task.TaskStatus(metadataString(item, metaStatusDetail))
 }
 
 // WorkerRunning reports whether the background task behind this item is
@@ -47,16 +53,29 @@ func WorkerRunning(item *Item) bool {
 }
 
 // EndedAbnormally reports whether a worker item reached its terminal state by
-// any route other than finishing its work. The stored detail is written as
-// string(task.TaskStatus) by CompleteWorker, so it is matched against those
-// constants rather than loose literals.
+// any route other than finishing its work.
 func EndedAbnormally(item *Item) bool {
 	switch BackgroundStatusDetail(item) {
-	case string(task.StatusFailed), string(task.StatusKilled),
-		string(task.StatusStopped), StatusDetailInterrupted:
+	case task.StatusFailed, task.StatusKilled, task.StatusStopped, StatusDetailInterrupted:
 		return true
 	}
 	return false
+}
+
+// setBackgroundStatusDetail records how a worker item's background task ended.
+//
+// Metadata is map[string]any and is read back with a .(string) assertion, so
+// the value has to be stored as a plain string — putting a task.TaskStatus in
+// the slot reads back as "" with no error anywhere. Routing every write through
+// here keeps that conversion off the call sites.
+func setBackgroundStatusDetail(item *Item, detail task.TaskStatus) {
+	if item == nil {
+		return
+	}
+	if item.Metadata == nil {
+		item.Metadata = map[string]any{}
+	}
+	item.Metadata[metaStatusDetail] = string(detail)
 }
 
 func metadataString(item *Item, key string) string {
@@ -114,9 +133,9 @@ func CompleteWorker(svc Service, info task.TaskInfo) {
 		subject = workerSubject(info)
 	}
 
-	statusDetail := string(info.Status)
+	statusDetail := info.Status
 	if statusDetail == "" {
-		statusDetail = string(task.StatusCompleted)
+		statusDetail = task.StatusCompleted
 	}
 
 	_ = svc.Update(item.ID,
@@ -125,7 +144,7 @@ func CompleteWorker(svc Service, info task.TaskInfo) {
 		WithStatus(StatusCompleted),
 		WithMetadata(map[string]any{
 			metaTaskID:       info.ID,
-			metaStatusDetail: statusDetail,
+			metaStatusDetail: string(statusDetail),
 		}),
 	)
 }

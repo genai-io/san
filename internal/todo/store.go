@@ -17,7 +17,7 @@ type Item struct {
 	Subject         string         `json:"subject"`
 	Description     string         `json:"description"`
 	ActiveForm      string         `json:"activeForm,omitempty"`
-	Status          string         `json:"status"`
+	Status          Status         `json:"status"`
 	Owner           string         `json:"owner,omitempty"`
 	Metadata        map[string]any `json:"metadata,omitempty"`
 	Blocks          []string       `json:"blocks"`
@@ -27,13 +27,32 @@ type Item struct {
 	StatusChangedAt time.Time      `json:"statusChangedAt"` // when status last changed (for elapsed time display)
 }
 
+// Status is where a tracker item sits in its own lifecycle. It is a distinct
+// axis from a background task's terminal state (task.TaskStatus, stored on a
+// worker item under metaStatusDetail) — the two vocabularies overlap on
+// "completed" but answer different questions, and naming them both
+// StatusCompleted in one scope is exactly why this needs a type.
+type Status string
+
 // Item status constants
 const (
-	StatusPending    = "pending"
-	StatusInProgress = "in_progress"
-	StatusCompleted  = "completed"
-	StatusDeleted    = "deleted"
+	StatusPending    Status = "pending"
+	StatusInProgress Status = "in_progress"
+	StatusCompleted  Status = "completed"
+	StatusDeleted    Status = "deleted"
 )
+
+// ParseStatus converts an external status string — tool input, a persisted
+// record — into a Status, reporting whether it named one. It is the single
+// place the valid set is enumerated, so a new status cannot be accepted in one
+// caller and rejected in another.
+func ParseStatus(s string) (Status, bool) {
+	switch Status(s) {
+	case StatusPending, StatusInProgress, StatusCompleted, StatusDeleted:
+		return Status(s), true
+	}
+	return "", false
+}
 
 // Store is a thread-safe item store with optional disk persistence.
 // When a storageDir is set, each item is persisted as {id}.json.
@@ -103,10 +122,7 @@ func (s *Store) demoteOrphanedItems() {
 		}
 		if BackgroundTaskID(item) != "" {
 			item.Status = StatusCompleted
-			if item.Metadata == nil {
-				item.Metadata = map[string]any{}
-			}
-			item.Metadata[metaStatusDetail] = StatusDetailInterrupted
+			setBackgroundStatusDetail(item, StatusDetailInterrupted)
 		} else {
 			item.Status = StatusPending
 		}
@@ -450,7 +466,7 @@ func (s *Store) ReloadFromDisk() {
 type UpdateOption func(*Item)
 
 // WithStatus sets the item status and records the status change timestamp.
-func WithStatus(status string) UpdateOption {
+func WithStatus(status Status) UpdateOption {
 	return func(t *Item) {
 		if t.Status != status {
 			t.StatusChangedAt = time.Now()

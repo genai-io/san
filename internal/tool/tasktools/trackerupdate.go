@@ -24,7 +24,7 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 	}
 
 	// Handle deletion separately
-	if status := tool.GetString(params, "status"); status == todo.StatusDeleted {
+	if status := tool.GetString(params, "status"); status == string(todo.StatusDeleted) {
 		if err := todo.Default().Delete(taskID); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
@@ -54,7 +54,7 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 
 	subtitle := fmt.Sprintf("#%s", taskID)
 	if statusChange != "" {
-		subtitle += " " + statusChange
+		subtitle += " " + string(statusChange)
 	}
 
 	return toolresult.ToolResult{
@@ -69,18 +69,18 @@ func (t *TrackerUpdateTool) Execute(ctx context.Context, params map[string]any, 
 }
 
 // buildUpdateOptions extracts update options from params, returns options, status change, and error
-func buildUpdateOptions(params map[string]any) ([]todo.UpdateOption, string, error) {
+func buildUpdateOptions(params map[string]any) ([]todo.UpdateOption, todo.Status, error) {
 	var opts []todo.UpdateOption
-	var statusChange string
+	var statusChange todo.Status
 
-	if status := tool.GetString(params, "status"); status != "" {
-		switch status {
-		case todo.StatusPending, todo.StatusInProgress, todo.StatusCompleted:
-			opts = append(opts, todo.WithStatus(status))
-			statusChange = status
-		default:
-			return nil, "", fmt.Errorf("invalid status: %s (must be pending, in_progress, completed, or deleted)", status)
+	if raw := tool.GetString(params, "status"); raw != "" {
+		// Deletion is not an update — Execute routes it before reaching here.
+		status, ok := todo.ParseStatus(raw)
+		if !ok || status == todo.StatusDeleted {
+			return nil, "", fmt.Errorf("invalid status: %s (must be pending, in_progress, completed, or deleted)", raw)
 		}
+		opts = append(opts, todo.WithStatus(status))
+		statusChange = status
 	}
 
 	if subject := tool.GetString(params, "subject"); subject != "" {

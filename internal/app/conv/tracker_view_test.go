@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -202,16 +203,19 @@ func TestRenderTrackerListWindowsOnNewestTasks(t *testing.T) {
 }
 
 func TestPhaseOf(t *testing.T) {
-	worker := func(statusDetail string) map[string]any {
+	// Mirrors setBackgroundStatusDetail: the detail is a task.TaskStatus that
+	// has to land in the map as a plain string, since it is read back with a
+	// .(string) assertion.
+	worker := func(statusDetail task.TaskStatus) map[string]any {
 		return map[string]any{
 			"background_task_id":       "bg-1",
-			"background_status_detail": statusDetail,
+			"background_status_detail": string(statusDetail),
 		}
 	}
 
 	cases := []struct {
 		name      string
-		status    string
+		status    todo.Status
 		metadata  map[string]any
 		executing bool
 		want      itemPhase

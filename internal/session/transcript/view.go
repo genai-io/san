@@ -59,11 +59,13 @@ func TrackerItemsFromView(items []TrackerItemView) []todo.Item {
 	out := make([]todo.Item, 0, len(items))
 	for _, item := range items {
 		out = append(out, todo.Item{
-			ID:              item.ID,
-			Subject:         item.Subject,
-			Description:     item.Description,
-			ActiveForm:      item.ActiveForm,
-			Status:          item.Status,
+			ID:          item.ID,
+			Subject:     item.Subject,
+			Description: item.Description,
+			ActiveForm:  item.ActiveForm,
+			// The view type carries the persisted wire string; the domain type
+			// is where it becomes a checked lifecycle value.
+			Status:          todo.Status(item.Status),
 			Owner:           item.Owner,
 			Blocks:          append([]string(nil), item.Blocks...),
 			BlockedBy:       append([]string(nil), item.BlockedBy...),
@@ -83,7 +85,7 @@ func TrackerItemViewsFromItems(items []todo.Item) []TrackerItemView {
 			Subject:         item.Subject,
 			Description:     item.Description,
 			ActiveForm:      item.ActiveForm,
-			Status:          item.Status,
+			Status:          string(item.Status),
 			Owner:           item.Owner,
 			Blocks:          append([]string(nil), item.Blocks...),
 			BlockedBy:       append([]string(nil), item.BlockedBy...),
