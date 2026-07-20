@@ -51,12 +51,18 @@ type Scheduler struct {
 	mu          sync.RWMutex
 	jobs        map[string]*Job
 	storagePath string // file path for durable job persistence (empty = disabled)
+	// knownDurable records every durable job id this process has held, so a
+	// save can tell "I removed this" from "another instance created it". The
+	// storage file is per-project, not per-process, and two san windows open on
+	// one repo share it.
+	knownDurable map[string]bool
 }
 
 // NewScheduler creates a new in-memory *Scheduler.
 func NewScheduler() *Scheduler {
 	return &Scheduler{
-		jobs: make(map[string]*Job),
+		jobs:         make(map[string]*Job),
+		knownDurable: make(map[string]bool),
 	}
 }
 
@@ -299,6 +305,35 @@ func (s *Scheduler) SetStoragePath(path string) {
 	s.storagePath = path
 }
 
+// foreignDurableLocked returns the durable jobs currently on disk that belong
+// to another instance: ones this process has never held. Read failures yield
+// nothing, which degrades to the previous behaviour rather than refusing the
+// save.
+func (s *Scheduler) foreignDurableLocked(mine []*Job) []*Job {
+	data, err := os.ReadFile(s.storagePath)
+	if err != nil {
+		return nil
+	}
+	var onDisk []*Job
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		return nil
+	}
+
+	held := make(map[string]bool, len(mine))
+	for _, job := range mine {
+		held[job.ID] = true
+	}
+
+	var foreign []*Job
+	for _, job := range onDisk {
+		if held[job.ID] || s.knownDurable[job.ID] {
+			continue
+		}
+		foreign = append(foreign, job)
+	}
+	return foreign
+}
+
 // LoadDurable reads durable jobs from the storage file and merges them into the store.
 func (s *Scheduler) LoadDurable() error {
 	s.mu.Lock()
@@ -351,6 +386,9 @@ func (s *Scheduler) LoadDurable() error {
 		}
 		job.Durable = true
 		s.jobs[job.ID] = job
+		// Adopted at boot, so this process owns it: a later removal here is a
+		// removal, not another instance's job to preserve.
+		s.knownDurable[job.ID] = true
 	}
 
 	return nil
@@ -404,6 +442,21 @@ func estimateRecurringPeriod(expr *expression, base time.Time) time.Duration {
 
 // saveDurableLocked writes all durable jobs to the storage file.
 // Must be called with s.mu held.
+// saveDurableLocked writes this process's durable jobs, preserving any the
+// file holds that belong to another instance.
+//
+// The storage path is per-project, so two san windows open on one repo write
+// the same file. Writing only the in-memory view erased whatever the other
+// instance had added since this one booted — LoadDurable runs once, at
+// startup, so a job created in the other window was simply not in this view.
+// A durable job could vanish from disk without either user doing anything to
+// it.
+//
+// Jobs this process never knew about are carried over verbatim: their
+// schedule state belongs to the instance that owns them, and adopting them
+// into s.jobs would put them through LoadDurable's boot-time NextFire
+// recalculation, which is wrong mid-session. Jobs it did know about and no
+// longer holds were deliberately removed, so they stay removed.
 func (s *Scheduler) saveDurableLocked() {
 	if s.storagePath == "" {
 		return
@@ -413,8 +466,10 @@ func (s *Scheduler) saveDurableLocked() {
 	for _, job := range s.jobs {
 		if job.Durable {
 			durable = append(durable, job)
+			s.knownDurable[job.ID] = true
 		}
 	}
+	durable = append(durable, s.foreignDurableLocked(durable)...)
 
 	data, err := json.MarshalIndent(durable, "", "  ")
 	if err != nil {
