@@ -9,15 +9,8 @@ import (
 
 // destructiveCommands are patterns that should always require user confirmation,
 // even when session permissions like AllowAllBash are enabled.
-// These commands can cause irreversible data loss or system damage.
-//
-// Git commands are deliberately absent — including the discarding ones (reset
-// --hard, clean -f, checkout --, stash drop, force-push, branch -D). Inside a
-// repository they are ordinary tools of the trade, and blocking them
-// unconditionally stops expected work as often as it prevents a mistake. They
-// are gray-zone calls the permission judge weighs against the session's intent
-// instead, which is where the judgement belongs. What stays here is outside
-// git's reach entirely: filesystem, privilege, and machine-state damage.
+// These commands can cause irreversible data loss or system damage, and no
+// judge may lift them — see gitDiscardingCommands for the recoverable tier.
 var destructiveCommands = []string{
 	"rm:-rf",
 	"rm:-fr",
@@ -38,11 +31,51 @@ var destructiveCommands = []string{
 	"launchctl:", // macOS launch agents / daemons
 }
 
+// gitDiscardingCommands are the git operations that throw work away or rewrite
+// history. They are never silently allowed either — but unlike the list above,
+// git can bring their effect back (the reflog, other clones), and inside a
+// repository they are ordinary tools of the trade. That makes them the one tier
+// the AutoPilot judge may weigh against the session's intent instead of costing
+// a human interrupt every time; every other gate treats them exactly like the
+// destructive list, since none of those has a judge in the loop.
+var gitDiscardingCommands = []string{
+	"git:reset --hard",
+	"git:clean -fd",
+	"git:clean -f",
+	"git:push -f",
+	"git:checkout --",
+	"git:stash drop",
+	"git:stash clear",
+	"git:branch -D",
+	"git:branch -d -f",
+}
+
 // isDestructiveCommand checks if a bash command matches any destructive pattern.
 // Returns true if the command should always require user confirmation.
 func isDestructiveCommand(cmd string) bool {
+	return matchesBashPatterns(cmd, destructiveCommands)
+}
+
+// isGitDiscardingCommand reports whether the command is a git operation that
+// discards work — confirmation-worthy, but recoverable, so the judge may weigh
+// it. "git push --force" is matched explicitly rather than by pattern so
+// "--force-with-lease" and "--force-if-includes" stay out of it.
+func isGitDiscardingCommand(cmd string) bool {
+	if matchesBashPatterns(cmd, gitDiscardingCommands) {
+		return true
+	}
 	for _, normalized := range normalizedBashCommands(cmd) {
-		for _, pattern := range destructiveCommands {
+		if after, ok := strings.CutPrefix(normalized, "git:push "); ok &&
+			slices.Contains(strings.Fields(after), "--force") {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesBashPatterns(cmd string, patterns []string) bool {
+	for _, normalized := range normalizedBashCommands(cmd) {
+		for _, pattern := range patterns {
 			if strings.Contains(normalized, pattern) {
 				return true
 			}

@@ -294,14 +294,12 @@ func Test_isDestructiveCommand(t *testing.T) {
 		{"rm single file", "rm /tmp/file.txt", false},
 		{"git status", "git status", false},
 		{"git push", "git push origin main", false},
-		// Git commands are the permission judge's call, not an unconditional stop:
-		// inside a repo they are ordinary tools, weighed against session intent.
+		// Discarding git commands live in their own tier (isGitDiscardingCommand),
+		// so they are not "destructive" here even though they still need a human
+		// everywhere no judge is watching.
 		{"git push force", "git push --force origin feature", false},
-		{"git push -f", "git push -f", false},
 		{"git reset --hard", "git reset --hard HEAD", false},
-		{"git clean -fd", "git clean -fd", false},
 		{"git stash drop", "git stash drop", false},
-		{"git branch -D", "git branch -D feature", false},
 		{"git commit", "git commit -m 'msg'", false},
 		{"chmod 644", "chmod 644 /tmp/file", false},
 		{"ls", "ls -la", false},
@@ -315,6 +313,44 @@ func Test_isDestructiveCommand(t *testing.T) {
 				t.Errorf("isDestructiveCommand(%q) = %v, want %v", tt.command, got, tt.want)
 			}
 		})
+	}
+}
+
+// The floor has two tiers. Everything on it needs a human wherever no judge is
+// watching; only the outer, git-recoverable tier may be weighed by the AutoPilot
+// judge, and it is the tier that reaches the judge marked Reviewable.
+func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
+	discarding := []string{
+		"git reset --hard HEAD", "git clean -fd", "git checkout -- .",
+		"git stash drop", "git stash clear", "git branch -D feature",
+		"git push --force origin feature", "git push -f",
+	}
+	for _, cmd := range discarding {
+		args := map[string]any{"command": cmd}
+		if BypassImmuneReason("Bash", args) == "" {
+			t.Errorf("%q left the bypass-immune floor entirely", cmd)
+		}
+		if r := UnrecoverableReason("Bash", args); r != "" {
+			t.Errorf("%q read as unrecoverable (%s); the judge can never weigh it", cmd, r)
+		}
+		d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot})
+		if d.Behavior != perm.Prompt || !d.Reviewable {
+			t.Errorf("%q = %v (reviewable=%v), want a reviewable prompt", cmd, d.Behavior, d.Reviewable)
+		}
+	}
+
+	// A lease-guarded push never enters the tier at all.
+	if BypassImmuneReason("Bash", map[string]any{"command": "git push --force-with-lease"}) != "" {
+		t.Error("--force-with-lease should not be floored")
+	}
+
+	// The unrecoverable tier stays unreviewable: no judge may lift it.
+	args := map[string]any{"command": "rm -rf /tmp/x"}
+	if UnrecoverableReason("Bash", args) == "" {
+		t.Fatal("rm -rf should be unrecoverable")
+	}
+	if d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot}); d.Reviewable {
+		t.Error("rm -rf reached the judge as reviewable")
 	}
 }
 
@@ -382,9 +418,8 @@ func TestDestructiveCommandsRequireConfirmation(t *testing.T) {
 		want    perm.Decision
 	}{
 		{"rm -rf requires ask", "rm -rf /tmp/test", perm.Prompt},
-		// Git is off the floor entirely — trusting bash covers it.
-		{"git reset --hard allowed", "git reset --hard HEAD", perm.Permit},
-		{"git push --force allowed", "git push --force", perm.Permit},
+		{"git reset --hard requires ask", "git reset --hard HEAD", perm.Prompt},
+		{"git push --force requires ask", "git push --force", perm.Prompt},
 		{"normal git allowed", "git status", perm.Permit},
 		{"normal ls allowed", "ls -la", perm.Permit},
 	}

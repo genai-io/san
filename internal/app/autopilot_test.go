@@ -150,7 +150,7 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 	}
 }
 
-func TestAutopilotResumableStop(t *testing.T) {
+func TestAutopilotStopEvidence(t *testing.T) {
 	resumable := map[core.StopReason]bool{
 		core.StopEndTurn:                    true,
 		core.StopMaxSteps:                   true,
@@ -159,8 +159,14 @@ func TestAutopilotResumableStop(t *testing.T) {
 		core.StopHook:                       false, // a configured halt
 	}
 	for reason, want := range resumable {
-		if got := autopilotResumableStop(reason); got != want {
-			t.Errorf("autopilotResumableStop(%q) = %v, want %v", reason, got, want)
+		got, situation := autopilotStopEvidence(reason)
+		if got != want {
+			t.Errorf("autopilotStopEvidence(%q) resumable = %v, want %v", reason, got, want)
+		}
+		// Every resumable stop but a clean end_turn must explain itself, or the
+		// copilot sees an inexplicably truncated transcript.
+		if wantSituation := want && reason != core.StopEndTurn; wantSituation != (situation != "") {
+			t.Errorf("autopilotStopEvidence(%q) situation = %q, want explained = %v", reason, situation, wantSituation)
 		}
 	}
 }

@@ -56,7 +56,14 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 
 	// ── Step 2: Bypass-immune safety checks ──
 	if reason := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
-		return coerceAsk(decide(perm.Prompt, reason), session)
+		d := decide(perm.Prompt, reason)
+		// A floor hit git can undo is still never allowed outright, but in
+		// AutoPilot the judge may weigh it rather than it always costing a human
+		// interrupt. Outside AutoPilot no judge is installed, so this is inert.
+		if UnrecoverableReason(toolName, args) == "" {
+			d.Reviewable = true
+		}
+		return coerceAsk(d, session)
 	}
 
 	// ── Step 3: BypassPermissions mode ──
@@ -510,6 +517,22 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 // or suspicious bash). Used by the main-loop gate (checkHardBlocks) and by
 // the subagent gate, which collapses the resulting Ask into Deny.
 func BypassImmuneReason(toolName string, args map[string]any) string {
+	if reason := UnrecoverableReason(toolName, args); reason != "" {
+		return reason
+	}
+	if cmd, ok := bashCommandArg(toolName, args); ok && isGitDiscardingCommand(cmd) {
+		return "git command that discards work"
+	}
+	return ""
+}
+
+// UnrecoverableReason is the inner tier of BypassImmuneReason: the calls whose
+// effect nothing can bring back. It is what the AutoPilot judge checks, so the
+// judge may weigh a recoverable git operation against the session's intent
+// while still being unable to approve real destruction. Every gate without a
+// judge — bypass-permissions mode, subagents, hook allow-decisions — keeps
+// using BypassImmuneReason and so keeps the whole floor.
+func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
 		if fp, ok := filePathArg(toolName, args); ok {
@@ -528,6 +551,15 @@ func BypassImmuneReason(toolName string, args map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// bashCommandArg extracts a Bash tool call's command string.
+func bashCommandArg(toolName string, args map[string]any) (string, bool) {
+	if toolName != "Bash" {
+		return "", false
+	}
+	cmd, ok := args["command"].(string)
+	return cmd, ok
 }
 
 // MatchRule checks if a rule matches a pattern.

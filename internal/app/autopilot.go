@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/llmerr"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reviewer"
 	"github.com/genai-io/san/internal/setting"
@@ -303,32 +305,24 @@ Judge what is already accomplished from all supplied evidence, not the last turn
 // but it must find one in the evidence, never invent one.
 const continueWithoutMissionTask = `No mission was briefed: steer toward the objective the evidence shows the user is pursuing. If it shows none, stop (continue=false, done=false) — never invent one.`
 
-// autopilotResumableStop reports whether a finished turn is one the copilot may
-// steer onward. A clean end_turn is the ordinary case; the two ceiling stops
+// autopilotStopEvidence reads how a turn ended: whether the copilot may steer it
+// onward, and what to tell it about a turn that did not end cleanly. A clean
+// end_turn is the ordinary case and needs no explanation; the two ceiling stops
 // (the step budget, exhausted output-truncation recovery) parked the agent
 // mid-work, which is exactly when an unattended run most needs picking back up.
 // A cancel is the human taking the helm and a stop hook is a configured halt —
-// neither is the copilot's to overrule.
-func autopilotResumableStop(reason core.StopReason) bool {
+// neither is the copilot's to overrule. One switch, so a stop reason can never
+// be resumable without also saying why.
+func autopilotStopEvidence(reason core.StopReason) (resumable bool, situation string) {
 	switch reason {
-	case core.StopEndTurn, core.StopMaxSteps, core.StopMaxOutputRecoveryExhausted:
-		return true
-	default:
-		return false
-	}
-}
-
-// autopilotStopSituation describes a turn that did not end cleanly, for the
-// decision prompt's evidence. A clean end_turn needs no explanation and returns
-// "".
-func autopilotStopSituation(result core.Result) string {
-	switch result.StopReason {
+	case core.StopEndTurn:
+		return true, ""
 	case core.StopMaxSteps:
-		return "the previous turn hit its step limit and stopped mid-work — it was not finished"
+		return true, "the previous turn hit its step limit and stopped mid-work — it was not finished"
 	case core.StopMaxOutputRecoveryExhausted:
-		return "the previous turn's output was truncated and could not be recovered — it was not finished"
+		return true, "the previous turn's output was truncated and could not be recovered — it was not finished"
 	default:
-		return ""
+		return false, ""
 	}
 }
 
@@ -345,7 +339,8 @@ func (m *model) autopilotBudgetSpent() bool {
 // or the turn ended in a way the copilot must not drive through.
 func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 	ar := m.env.AutoPilot
-	if !m.autopilotEngaged() || !ar.Steers.TurnEnd || !autopilotResumableStop(result.StopReason) {
+	resumable, situation := autopilotStopEvidence(result.StopReason)
+	if !m.autopilotEngaged() || !ar.Steers.TurnEnd || !resumable {
 		return nil
 	}
 	if m.autopilotBudgetSpent() {
@@ -353,7 +348,7 @@ func (m *model) autopilotContinueCmd(result core.Result) tea.Cmd {
 		return nil
 	}
 	return m.autopilotDecideCmd(autopilotTrigger{
-		origin: autopilotFromTurnEnd, result: result, situation: autopilotStopSituation(result),
+		origin: autopilotFromTurnEnd, result: result, situation: situation,
 	})
 }
 
@@ -659,26 +654,53 @@ var autopilotSteerBackoff = 2 * time.Second
 // autopilotSteer runs a steer inference and parses its reply, retrying the whole
 // round trip. Transport failure and an unparseable answer are retried alike:
 // both are transient at this layer, and the parse is where a well-behaved model
-// occasionally slips. Returns the last error once the attempts are spent.
+// occasionally slips. A transport error that will not fix itself (bad
+// credentials, an unknown model) returns at once rather than spending the
+// attempts on it. Returns the last error once the attempts are spent.
 func autopilotSteer[T any](ctx context.Context, call autopilotInference, parse func(string) (T, error)) (T, error) {
 	var zero T
 	var err error
 	for attempt := 1; ; attempt++ {
 		var content string
+		var retryFloor time.Duration
 		if content, err = autopilotComplete(ctx, call); err == nil {
 			var out T
 			if out, err = parse(content); err == nil {
 				return out, nil
 			}
+		} else {
+			var retryable core.RetryableError
+			if !errors.As(llmerr.Wrap(err), &retryable) {
+				return zero, err
+			}
+			retryFloor = retryable.RetryAfter() // a 429's Retry-After outranks our own spacing
 		}
 		if attempt >= autopilotSteerAttempts {
 			return zero, err
 		}
-		select {
-		case <-ctx.Done():
+		if waitErr := autopilotSteerWait(ctx, attempt, retryFloor); waitErr != nil {
 			return zero, err
-		case <-time.After(time.Duration(attempt) * autopilotSteerBackoff):
 		}
+	}
+}
+
+// autopilotSteerWait spaces two steer attempts. A provider that said when to
+// come back gets the shared agent backoff, which floors the wait at its hint;
+// otherwise — a model that answered unusably, a failure with no hint — a short
+// flat pause is enough, and keeps the delay predictable.
+func autopilotSteerWait(ctx context.Context, attempt int, retryFloor time.Duration) error {
+	if retryFloor > 0 {
+		return core.BackoffSleep(ctx, attempt, retryFloor)
+	}
+	delay := time.Duration(attempt) * autopilotSteerBackoff
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
 	}
 }
 
