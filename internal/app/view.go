@@ -264,8 +264,8 @@ func (m model) renderTrackerList() string {
 		AllDone:      m.services.Tracker.AllDone(),
 		StreamActive: m.conv.Stream.Active,
 		Width:        m.env.Width,
-		SpinnerView:  m.conv.Spinner.View(),
 		Blockers:     m.services.Tracker.OpenBlockers,
+		Executing:    m.executingTrackerTask,
 		Blink:        m.conv.Spinner.Frame(),
 	})
 }

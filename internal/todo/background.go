@@ -11,6 +11,58 @@ const (
 	metaStatusDetail = "background_status_detail"
 )
 
+// StatusDetailInterrupted marks a worker entry whose executor died without
+// reporting a terminal status — process exit, crash, or SIGKILL. Set by
+// demoteOrphanedTasks when a persisted store is adopted into a fresh session.
+const StatusDetailInterrupted = "interrupted"
+
+// BackgroundTaskID returns the background task ID backing this entry, or ""
+// when the entry is a plan item authored by the model rather than a worker.
+// Callers resolve liveness by looking the ID up in the live task manager.
+func BackgroundTaskID(t *Task) string {
+	return metadataString(t, metaTaskID)
+}
+
+// BackgroundStatusDetail returns how a worker entry's executor ended —
+// "failed", "killed", "stopped", or StatusDetailInterrupted. Empty for entries
+// that are not backed by a worker, and for workers that ended normally.
+func BackgroundStatusDetail(t *Task) string {
+	return metadataString(t, metaStatusDetail)
+}
+
+// WorkerRunning reports whether the background task backing this entry is
+// executing right now. False for entries that name no worker, and for workers
+// the manager has no record of — a task it never knew or has forgotten cannot
+// be running.
+//
+// This is the read side of the join TrackWorker writes, and lives here so the
+// metadata key and the entry↔executor correspondence stay in one package.
+func WorkerRunning(t *Task) bool {
+	id := BackgroundTaskID(t)
+	return id != "" && task.Default().IsRunning(id)
+}
+
+// EndedAbnormally reports whether a worker entry reached its terminal state by
+// any route other than finishing its work. The stored detail is written as
+// string(task.TaskStatus) by CompleteWorker, so it is matched against those
+// constants rather than loose literals.
+func EndedAbnormally(t *Task) bool {
+	switch BackgroundStatusDetail(t) {
+	case string(task.StatusFailed), string(task.StatusKilled),
+		string(task.StatusStopped), StatusDetailInterrupted:
+		return true
+	}
+	return false
+}
+
+func metadataString(t *Task, key string) string {
+	if t == nil || t.Metadata == nil {
+		return ""
+	}
+	value, _ := t.Metadata[key].(string)
+	return value
+}
+
 // BackgroundTaskLaunch holds metadata for a newly spawned background task.
 type BackgroundTaskLaunch struct {
 	TaskID      string
