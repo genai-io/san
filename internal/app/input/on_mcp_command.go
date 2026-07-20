@@ -144,10 +144,7 @@ func handleMCPDisconnect(reg *coremcp.Registry, name string) (string, error) {
 		return "Usage: /mcp disconnect <server-name>", nil
 	}
 
-	if err := reg.Disconnect(name); err != nil {
-		return fmt.Sprintf("Failed to disconnect from %s: %v", name, err), nil
-	}
-
+	reg.Disconnect(name)
 	return fmt.Sprintf("Disconnected from %s", name), nil
 }
 
@@ -343,7 +340,7 @@ func handleMCPReconnect(reg *coremcp.Registry, ctx context.Context, name string)
 		return fmt.Sprintf("Server not found: %s\n\nUse /mcp list to see available servers.", name), nil
 	}
 
-	_ = reg.Disconnect(name)
+	reg.Disconnect(name)
 
 	if err := reg.Connect(ctx, name); err != nil {
 		return fmt.Sprintf("Failed to reconnect to %s: %v", name, err), nil

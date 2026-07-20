@@ -49,7 +49,7 @@ type Tools interface {
 type Servers interface {
 	List() []Server
 	Connect(ctx context.Context, name string) error
-	Disconnect(name string) error
+	Disconnect(name string)
 	ConnectAll(ctx context.Context) []error
 	DisconnectAll()
 	GetConfig(name string) (ServerConfig, bool)
