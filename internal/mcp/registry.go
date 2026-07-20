@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -53,7 +54,57 @@ type mcpState struct {
 }
 
 // defaultRegistry is the package-level MCP registry.
-var defaultRegistry = newEmptyRegistry()
+// defaultRegistry is the package-level registry; registryMu guards the pointer
+// itself. The Registry it points at locks its own contents — what needed
+// guarding is the swap, which Initialize performs on the bubbletea goroutine
+// (reloadProjectServices) while DefaultRegistry() is read elsewhere.
+var (
+	registryMu      sync.RWMutex
+	defaultRegistry = newEmptyRegistry()
+)
+
+// adoptLiveClients moves connections from the outgoing registry into this one
+// for every server whose configuration is unchanged, and tears down the rest.
+//
+// Without it a cwd change replaced the registry with a fresh, zero-client one:
+// GetToolSchemas returned nothing, so every mcp__* tool silently vanished from
+// the agent for the rest of the session, and the outgoing registry's stdio
+// subprocesses were dropped on the floor still running.
+//
+// The teardown of servers that did NOT survive runs detached: Client.Disconnect
+// waits on the child's read loop and exit, up to seven seconds per server, and
+// Initialize is called from the bubbletea goroutine.
+func (r *Registry) adoptLiveClients(old *Registry) {
+	if old == nil || old == r {
+		return
+	}
+
+	old.mu.Lock()
+	adopted := make(map[string]*Client)
+	var stale []*Client
+	for name, client := range old.clients {
+		cfg, stillConfigured := r.configs[name]
+		if stillConfigured && reflect.DeepEqual(cfg, old.configs[name]) && client.IsConnected() {
+			adopted[name] = client
+			continue
+		}
+		stale = append(stale, client)
+	}
+	old.clients = make(map[string]*Client)
+	old.mu.Unlock()
+
+	r.mu.Lock()
+	maps.Copy(r.clients, adopted)
+	r.mu.Unlock()
+
+	if len(stale) > 0 {
+		go func() {
+			for _, c := range stale {
+				_ = c.Disconnect()
+			}
+		}()
+	}
+}
 
 func newEmptyRegistry() *Registry {
 	return &Registry{

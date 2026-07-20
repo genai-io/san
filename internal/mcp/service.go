@@ -82,7 +82,13 @@ func Initialize(opts Options) error {
 		reg.PluginServers = opts.PluginServers
 		reg.configs = reg.mergePluginMCPConfigs(reg.configs)
 	}
-	defaultRegistry = reg
+	// Carry live connections across the swap. Initialize runs on every cwd
+	// change and plugin reload, and a user-level server is configured in both
+	// the old project and the new one — tearing it down would drop every
+	// mcp__* tool from the agent mid-session, with nothing to reconnect it
+	// (AutoConnect only runs at startup).
+	reg.adoptLiveClients(DefaultRegistry())
+	setDefaultRegistry(reg)
 	return nil
 }
 
@@ -95,21 +101,28 @@ func Initialize(opts Options) error {
 // through NewCaller(reg). Config editing uses the free functions
 // PrepareServerEdit / ApplyServerEdit.
 func DefaultRegistry() *Registry {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
 	return defaultRegistry
+}
+
+func setDefaultRegistry(reg *Registry) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	defaultRegistry = reg
 }
 
 // SetDefaultRegistry replaces the package-level registry. Intended for
 // tests. A nil argument restores the empty pre-Initialize registry.
 func SetDefaultRegistry(reg *Registry) {
 	if reg == nil {
-		defaultRegistry = newEmptyRegistry()
-		return
+		reg = newEmptyRegistry()
 	}
-	defaultRegistry = reg
+	setDefaultRegistry(reg)
 }
 
 // ResetDefaultRegistry restores the empty pre-Initialize registry.
 // Intended for tests.
 func ResetDefaultRegistry() {
-	defaultRegistry = newEmptyRegistry()
+	setDefaultRegistry(newEmptyRegistry())
 }
