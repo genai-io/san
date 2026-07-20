@@ -60,12 +60,10 @@ type BackgroundTask interface {
 	// Manager.Kill waits gracefulStopTimeout and then calls Kill, so a Stop
 	// must not enforce a deadline of its own.
 	//
-	// An implementation must not race ahead of whatever hard-kill it is wired
-	// to. BashTask.Stop signals rather than cancelling its context precisely
-	// because exec fires cmd.Cancel — a SIGKILL — the moment that context is
-	// done, which would land before the SIGTERM and make the graceful stop a
-	// lie. Cancelling is right for AgentTask only because nothing else is
-	// listening for it.
+	// An implementation must not let its own hard-kill path pre-empt the
+	// graceful attempt it is making here — a Stop that trips the very
+	// mechanism that kills the task outright has not stopped it gracefully at
+	// all, it has just taken a longer route to Kill.
 	Stop() error
 
 	// Kill forcefully terminates the task (SIGKILL for bash). It is safe to

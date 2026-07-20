@@ -12,14 +12,23 @@ import (
 	"time"
 )
 
-func TestBashTask_Complete(t *testing.T) {
+// newRunningBashTask builds a started BashTask over a throwaway child process,
+// mirroring newRunningAgentTask for the sibling type. Tests that need the run's
+// own context — to assert on it, or to give it a deadline — build their own.
+func newRunningBashTask(t *testing.T, id, command, description string) *BashTask {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(cancel)
 
 	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+	return NewBashTask(id, command, description, cmd, cancel)
+}
 
-	task := NewBashTask("test-id", "echo test", "Test task", cmd, cancel)
+func TestBashTask_Complete(t *testing.T) {
+	task := newRunningBashTask(t, "test-id", "echo test", "Test task")
 
 	// Complete the task
 	task.Complete(0, nil)
@@ -34,13 +43,7 @@ func TestBashTask_Complete(t *testing.T) {
 }
 
 func TestBashTask_Failed(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("fail-id", "exit 1", "Failing task", cmd, cancel)
+	task := newRunningBashTask(t, "fail-id", "exit 1", "Failing task")
 
 	// Complete with non-zero exit code
 	task.Complete(1, nil)
@@ -55,13 +58,7 @@ func TestBashTask_Failed(t *testing.T) {
 }
 
 func TestBashTask_MarkKilled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("kill-id", "sleep 100", "Long task", cmd, cancel)
+	task := newRunningBashTask(t, "kill-id", "sleep 100", "Long task")
 
 	task.markKilled()
 
@@ -72,13 +69,7 @@ func TestBashTask_MarkKilled(t *testing.T) {
 }
 
 func TestBashTask_AppendAndGetOutput(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("output-id", "echo test", "Output task", cmd, cancel)
+	task := newRunningBashTask(t, "output-id", "echo test", "Output task")
 
 	task.AppendOutput([]byte("line 1\n"))
 	task.AppendOutput([]byte("line 2\n"))
@@ -91,13 +82,7 @@ func TestBashTask_AppendAndGetOutput(t *testing.T) {
 }
 
 func TestBashTask_IsRunning(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("running-id", "echo test", "Running task", cmd, cancel)
+	task := newRunningBashTask(t, "running-id", "echo test", "Running task")
 
 	if !task.IsRunning() {
 		t.Error("task should be running initially")
@@ -111,13 +96,7 @@ func TestBashTask_IsRunning(t *testing.T) {
 }
 
 func TestBashTask_WaitForCompletion(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("wait-id", "echo test", "Wait task", cmd, cancel)
+	task := newRunningBashTask(t, "wait-id", "echo test", "Wait task")
 
 	// Complete in background after short delay
 	go func() {
@@ -132,13 +111,7 @@ func TestBashTask_WaitForCompletion(t *testing.T) {
 }
 
 func TestBashTask_WaitForCompletionTimeout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("timeout-id", "sleep 100", "Timeout task", cmd, cancel)
+	task := newRunningBashTask(t, "timeout-id", "sleep 100", "Timeout task")
 
 	// Don't complete the task, let it timeout
 	completed := task.WaitForCompletion(200 * time.Millisecond)
@@ -148,13 +121,7 @@ func TestBashTask_WaitForCompletionTimeout(t *testing.T) {
 }
 
 func TestBashTask_GetStatus(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("status-id", "echo test", "Status task", cmd, cancel)
+	task := newRunningBashTask(t, "status-id", "echo test", "Status task")
 	task.AppendOutput([]byte("output\n"))
 
 	info := task.GetStatus()
@@ -177,13 +144,7 @@ func TestBashTask_GetStatus(t *testing.T) {
 }
 
 func TestBashTask_ConcurrentAccess(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("concurrent-id", "echo test", "Concurrent task", cmd, cancel)
+	task := newRunningBashTask(t, "concurrent-id", "echo test", "Concurrent task")
 
 	var wg sync.WaitGroup
 
@@ -214,13 +175,7 @@ func TestBashTask_ConcurrentAccess(t *testing.T) {
 }
 
 func TestBashTask_StatusRunning(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("running-status-id", "echo test", "Running status task", cmd, cancel)
+	task := newRunningBashTask(t, "running-status-id", "echo test", "Running status task")
 
 	// Newly created task should be in Running state
 	info := task.GetStatus()
@@ -237,11 +192,7 @@ func TestBashTask_StatusRunning(t *testing.T) {
 func TestBashTask_AllStateTransitions(t *testing.T) {
 	// Running -> Completed
 	t.Run("Running to Completed", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		cmd := exec.CommandContext(ctx, "echo", "test")
-		cmd.Start()
-		task := NewBashTask("t1", "echo test", "test", cmd, cancel)
+		task := newRunningBashTask(t, "t1", "echo test", "test")
 		if info := task.GetStatus(); info.Status != StatusRunning {
 			t.Errorf("want %s, got %s", StatusRunning, info.Status)
 		}
@@ -253,11 +204,7 @@ func TestBashTask_AllStateTransitions(t *testing.T) {
 
 	// Running -> Failed (non-zero exit)
 	t.Run("Running to Failed", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		cmd := exec.CommandContext(ctx, "echo", "test")
-		cmd.Start()
-		task := NewBashTask("t2", "exit 1", "test", cmd, cancel)
+		task := newRunningBashTask(t, "t2", "exit 1", "test")
 		task.Complete(2, nil)
 		if info := task.GetStatus(); info.Status != StatusFailed {
 			t.Errorf("want %s, got %s", StatusFailed, info.Status)
@@ -266,11 +213,7 @@ func TestBashTask_AllStateTransitions(t *testing.T) {
 
 	// Running -> Killed
 	t.Run("Running to Killed", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		cmd := exec.CommandContext(ctx, "echo", "test")
-		cmd.Start()
-		task := NewBashTask("t3", "sleep 100", "test", cmd, cancel)
+		task := newRunningBashTask(t, "t3", "sleep 100", "test")
 		task.markKilled()
 		if info := task.GetStatus(); info.Status != StatusKilled {
 			t.Errorf("want %s, got %s", StatusKilled, info.Status)
@@ -279,13 +222,7 @@ func TestBashTask_AllStateTransitions(t *testing.T) {
 }
 
 func TestBashTask_ImplementsBackgroundTask(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("interface-id", "echo test", "Interface test", cmd, cancel)
+	task := newRunningBashTask(t, "interface-id", "echo test", "Interface test")
 
 	// Test that it implements BackgroundTask
 	var bt BackgroundTask = task
@@ -306,13 +243,7 @@ func TestBashTask_ImplementsBackgroundTask(t *testing.T) {
 // Recording that as failed told the main agent the work had broken rather than
 // been called off, inviting a retry of what the user had just cancelled.
 func TestBashTaskStopIsNotAFailure(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("stop-id", "sleep 100", "Long task", cmd, cancel)
+	task := newRunningBashTask(t, "stop-id", "sleep 100", "Long task")
 
 	_ = task.Stop()
 	task.Complete(signalExitCode(syscall.SIGTERM), errors.New("signal: terminated"))
@@ -341,23 +272,22 @@ func TestBashTaskTimeoutRemainsAFailure(t *testing.T) {
 	}
 }
 
-// Stop must not cancel the run's context: exec wires cmd.Cancel to SIGKILL the
-// group the moment that context is done, which would land before the SIGTERM
-// and make the graceful stop a lie.
-func TestBashTaskStopLeavesContextLive(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// Stop must not reach for cancellation — see BashTask.Stop for why that would
+// defeat the graceful signal it just sent.
+func TestBashTaskStopDoesNotCancelTheRun(t *testing.T) {
+	cmd := exec.Command("echo", "test")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
 
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("graceful-id", "sleep 100", "Long task", cmd, cancel)
+	cancelled := false
+	task := NewBashTask("graceful-id", "sleep 100", "Long task", cmd, func() { cancelled = true })
 
 	_ = task.Stop()
 
-	if err := ctx.Err(); err != nil {
-		t.Errorf("Stop cancelled the task context (%v); the SIGKILL that follows "+
-			"cancellation would pre-empt the SIGTERM Stop just sent", err)
+	if cancelled {
+		t.Error("Stop cancelled the run; the SIGKILL that follows cancellation " +
+			"would pre-empt the SIGTERM Stop just sent")
 	}
 }
 
@@ -365,13 +295,7 @@ func TestBashTaskStopLeavesContextLive(t *testing.T) {
 // ever printed held in memory for the life of the process: BashTask skipped
 // the cap AgentTask applied, and the manager never forgets a task.
 func TestBashTaskOutputIsCapped(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := NewBashTask("cap-id", "chatty", "Chatty task", cmd, cancel)
+	task := newRunningBashTask(t, "cap-id", "chatty", "Chatty task")
 
 	for range 4 {
 		task.AppendOutput(bytes.Repeat([]byte("x"), maxOutputBufferSize/2))
