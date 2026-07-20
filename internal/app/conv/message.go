@@ -33,7 +33,7 @@ const (
 	// autoCompactThreshold is the context usage percentage that triggers
 	// auto-compaction. pctCritical in status_bar.go derives from this; do
 	// not reintroduce a separate literal.
-	autoCompactThreshold = 95
+	autoCompactThreshold = core.AutoCompactThresholdPercent
 )
 
 // toolResultIcon returns the icon for tool results based on error state.

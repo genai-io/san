@@ -22,9 +22,10 @@ func TestClassifyContextTier_Boundaries(t *testing.T) {
 		{79, tierWarn},
 		{80, tierWarn}, // PRD §7.2 off-by-one: 80 stays warn
 		{81, tierBad},  // only >80 is bad
-		{94, tierBad},
-		{94.99, tierBad},
-		{95, tierCritical}, // PRD §7.2: ≥95 is critical
+		{89, tierBad},
+		{89.99, tierBad},
+		{90, tierCritical}, // critical == the auto-compact trigger
+		{95, tierCritical},
 		{100, tierCritical},
 		{120, tierCritical}, // clamp handled upstream; classifier still critical
 	}

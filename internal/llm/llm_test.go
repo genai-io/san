@@ -221,6 +221,33 @@ func TestModelLimitsRetryAfterFailure(t *testing.T) {
 	}
 }
 
+// The app resolves the context window the same way the status bar does and
+// pushes it in with SetInputLimit. That override must win over the provider's
+// own figure — and must supply a window even when the provider reports none,
+// which is the case that otherwise disables auto-compaction outright.
+func TestSetInputLimitOverridesProvider(t *testing.T) {
+	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", InputTokenLimit: 200000}}}
+	l := &Client{provider: mp, model: "m"}
+
+	l.SetInputLimit(272000)
+	if got := l.InputLimit(); got != 272000 {
+		t.Fatalf("InputLimit() = %d, want the 272000 override", got)
+	}
+	if mp.listCalls != 0 {
+		t.Errorf("ListModels called %d times, want 0 (override short-circuits the lookup)", mp.listCalls)
+	}
+
+	// Provider knows nothing; the override is the only source of a window.
+	silent := &Client{provider: &mockLLMProvider{models: []ModelInfo{{ID: "m"}}}, model: "m"}
+	if got := silent.InputLimit(); got != 0 {
+		t.Fatalf("precondition: InputLimit() = %d, want 0 without a provider limit", got)
+	}
+	silent.SetInputLimit(200000)
+	if got := silent.InputLimit(); got != 200000 {
+		t.Fatalf("InputLimit() = %d, want 200000", got)
+	}
+}
+
 func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 	mp := &mockLimitFetcherProvider{
 		mockLLMProvider: mockLLMProvider{

@@ -28,15 +28,15 @@ const (
 
 // contextTier classifies a context-window fill percentage into one of
 // the 4 PRD §7.2 tiers. Off-by-one preserved: 80 itself falls into warn,
-// only strictly-greater-than-80 is bad. ≥95 is critical.
+// only strictly-greater-than-80 is bad. ≥90 is critical.
 type contextTier int
 
 const (
 	tierNone     contextTier = iota // pct unknown — denominator missing
 	tierGood                        // [0, 50]    healthy
 	tierWarn                        // (50, 80]   watch
-	tierBad                         // (80, 95)   pressure
-	tierCritical                    // [95, 100+] imminent compression
+	tierBad                         // (80, 90)   pressure
+	tierCritical                    // [90, 100+] imminent compression
 )
 
 // classifyContextTier maps a percentage to its tier. Defensive for
@@ -48,9 +48,9 @@ func classifyContextTier(pct float64) contextTier {
 		return tierGood
 	case pct <= pctWarn: // 50 < pct ≤ 80
 		return tierWarn
-	case pct < pctCritical: // 80 < pct < 95
+	case pct < pctCritical: // 80 < pct < 90
 		return tierBad
-	default: // pct ≥ 95
+	default: // pct ≥ 90
 		return tierCritical
 	}
 }

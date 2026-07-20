@@ -77,10 +77,16 @@ given summary.
 ```
 AUTO  (core agent, inside the ThinkAct loop)
   ┌────────────────────────────────────────────────────────────┐
-  │ each turn:                                                   │
-  │   estimate next prompt size (BuildConversationText length)   │
+  │ each step (measurement carried across turns):                │
+  │   prompt size the provider reported last step, which is      │
+  │   TotalInputTokens (fresh + cache read + cache creation),    │
+  │   not InputTokens — under prompt caching the latter is only  │
+  │   the uncached delta and reads near-empty on a full context. │
+  │   Before the first inference there is no such count, so the  │
+  │   size is estimated from system prompt + conversation bytes; │
+  │   that covers an agent seeded with a resumed history.        │
   │        │                                                     │
-  │        ├─ ≥ 95% of input limit ──▶ compact() ──▶ continue ───┼─▶ re-infer NOW
+  │        ├─ ≥ 90% of input limit ──▶ compact() ──▶ continue ───┼─▶ re-infer NOW
   │        │                                          (in-loop)  │   with [summary]
   │   streamInfer()                                              │
   │        └─ "prompt too long" error ─▶ compact() ─▶ continue ──┼─▶ retry
@@ -107,7 +113,7 @@ MANUAL  (/compact [focus], app layer)
 
 | Aspect | Auto-compact | Manual `/compact` |
 |---|---|---|
-| Trigger | proactive size estimate (≥95% of limit) or reactive *prompt-too-long* retry | user runs `/compact [focus]` |
+| Trigger | proactive size estimate (≥90% of limit) or reactive *prompt-too-long* retry | user runs `/compact [focus]` |
 | Driver | core agent `compact()` — runs **in-loop** | app layer; summary computed, then agent **stopped** |
 | Continuation | `continue` re-infers immediately with `[summary]` | agent stopped; **next** user message reseeds it from the conversation |
 | Focus | none | optional focus string; `PreCompact` hook can add context |

@@ -140,17 +140,110 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	}
 }
 
-func TestEstimatePromptTokensUsesConversationGrowth(t *testing.T) {
-	got := estimatePromptTokens(1000, 2000, 3000)
-	if got != 1500 {
-		t.Fatalf("estimatePromptTokens() = %d, want 1500", got)
+// Regression for #338: with prompt caching active a provider reports the
+// cached prefix under CacheRead/CacheCreation and leaves only the uncached
+// delta in InputTokens. The compaction check must test the full prompt, or a
+// nearly-full context reads as a few percent and auto-compaction never fires.
+func TestPromptTokensCountCachedPrompt(t *testing.T) {
+	resp := InferResponse{Usage: Usage{
+		InputTokens:              1_200,
+		CacheReadInputTokens:     170_000,
+		CacheCreationInputTokens: 20_000,
+	}}
+
+	const limit = 200_000
+	if NeedsCompaction(resp.InputTokens, limit) {
+		t.Fatal("precondition: uncached delta alone must look far below the threshold")
+	}
+	if !NeedsCompaction(resp.TotalInputTokens(), limit) {
+		t.Fatalf("NeedsCompaction(%d, %d) = false, want true", resp.TotalInputTokens(), limit)
 	}
 }
 
-func TestEstimatePromptTokensNeverDropsBelowLastKnownPromptSize(t *testing.T) {
-	got := estimatePromptTokens(1000, 3000, 2000)
-	if got != 1000 {
-		t.Fatalf("estimatePromptTokens() = %d, want 1000", got)
+// The provider's own count wins whenever it exists — the text estimate is a
+// fallback, never a correction.
+func TestCurrentPromptTokensPrefersMeasuredCount(t *testing.T) {
+	a := newAgentForPromptSizing(t)
+	a.SetMessages([]Message{UserMessage(strings.Repeat("x", 400_000), nil)})
+	a.promptTokens = 12_345
+
+	if got := a.currentPromptTokens(); got != 12_345 {
+		t.Fatalf("currentPromptTokens() = %d, want the measured 12345", got)
+	}
+}
+
+// A rebuilt agent (session resume, model switch, toolset drift) is seeded with
+// the full existing history but has not inferred yet, so there is no measured
+// count. The estimate has to notice that the seeded chain is already over the
+// threshold, rather than letting the first request be rejected for it.
+func TestCurrentPromptTokensEstimatesSeededHistory(t *testing.T) {
+	a := newAgentForPromptSizing(t)
+	a.SetMessages([]Message{UserMessage(strings.Repeat("x", 800_000), nil)})
+
+	const limit = 200_000
+	got := a.currentPromptTokens()
+	if got == 0 {
+		t.Fatal("currentPromptTokens() = 0, want an estimate from the seeded history")
+	}
+	if !NeedsCompaction(got, limit) {
+		t.Fatalf("NeedsCompaction(%d, %d) = false, want true for a seeded 800k-byte chain", got, limit)
+	}
+}
+
+// The estimate must stay well clear of the threshold for an ordinary short
+// conversation, or a fresh session would compact before it started.
+func TestCurrentPromptTokensEstimateIsQuietWhenSmall(t *testing.T) {
+	a := newAgentForPromptSizing(t)
+	a.SetMessages([]Message{UserMessage("fix the login bug", nil)})
+
+	if NeedsCompaction(a.currentPromptTokens(), 200_000) {
+		t.Fatalf("a short conversation estimated at %d triggered compaction", a.currentPromptTokens())
+	}
+}
+
+func newAgentForPromptSizing(t *testing.T) *agent {
+	t.Helper()
+	ag := NewAgent(Config{
+		ID:     "test",
+		LLM:    newBlockingLLM(1),
+		System: NewSystem(),
+		Tools:  NewTools(),
+	})
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	return ag.(*agent)
+}
+
+// Compaction collapses the chain to a single summary, so the measurement taken
+// before it must not survive: it would still read "full" against the tiny new
+// chain and compact again on every following step. Zero suppresses the check
+// until the next inference reports a fresh figure.
+func TestApplyCompactionClearsPromptTokens(t *testing.T) {
+	ag := NewAgent(Config{
+		ID:     "test",
+		LLM:    newBlockingLLM(1),
+		System: NewSystem(),
+		Tools:  NewTools(),
+	})
+	a := ag.(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+
+	a.SetMessages([]Message{
+		UserMessage("first", nil),
+		{Role: RoleAssistant, Content: "reply"},
+		UserMessage("second", nil),
+	})
+	a.promptTokens = 195_000
+
+	a.applyCompaction(context.Background(), "summary", 3, "manual")
+
+	if a.promptTokens != 0 {
+		t.Fatalf("promptTokens = %d, want 0 after compaction", a.promptTokens)
 	}
 }
 

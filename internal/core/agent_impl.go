@@ -32,6 +32,16 @@ type agent struct {
 	outbox            chan Event
 	onEvent           func(Event)
 
+	// promptTokens is the full prompt size the provider reported for the last
+	// inference, and the figure the proactive compaction check tests against.
+	// It lives on the agent rather than in ThinkAct so it survives a turn
+	// boundary: a turn's first step is exactly where the context accumulated by
+	// previous turns lands, and a single-step turn (a plain answer, no tool
+	// calls) would otherwise never be checked at all. Deliberately outside the
+	// mu block — written and read only on the agent's own goroutine (ThinkAct,
+	// ingest).
+	promptTokens int
+
 	mu       sync.RWMutex
 	messages []Message // conversation history
 
@@ -297,7 +307,7 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 // ThinkAct runs one full inference-action cycle until end_turn.
 // Returns the result directly — the caller decides whether to emit TurnEvent.
 func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
-	var steps, toolUses, tokensIn, tokensOut, lastInputTokens, lastPromptTextLen int
+	var steps, toolUses, tokensIn, tokensOut int
 	var maxOutputRecoveryCount int
 	var turnRetries int
 
@@ -326,21 +336,15 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			}
 		}
 
-		// Estimate prompt growth only when proactive compaction is enabled and the
-		// model reports an input limit for it to fire against. Without a limit,
-		// compaction can never trigger, so the per-step conversation walk that
-		// feeds the estimate would be pure waste.
-		var currentPromptTextLen int
+		// Proactive compaction. Checked against what the provider measured on
+		// the previous step, so it lags by one step's worth of appended output —
+		// absorbed by the threshold's headroom, and a step large enough to
+		// overshoot the limit outright still lands on the reactive
+		// prompt-too-long path below.
 		if a.compactFunc != nil {
-			if limit := a.llm.InputLimit(); limit > 0 {
-				currentPromptTextLen = a.conversationTextLen()
-				if lastInputTokens > 0 {
-					estimatedInputTokens := estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen)
-					if NeedsCompaction(estimatedInputTokens, limit) {
-						if a.compact(ctx) {
-							continue
-						}
-					}
+			if limit := a.llm.InputLimit(); limit > 0 && NeedsCompaction(a.currentPromptTokens(), limit) {
+				if a.compact(ctx) {
+					continue
 				}
 			}
 		}
@@ -377,8 +381,14 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 		turnRetries = 0 // reset budget once a step completes
 
 		steps++
-		lastInputTokens = resp.InputTokens
-		lastPromptTextLen = currentPromptTextLen
+		// Record the FULL prompt the model processed, not resp.InputTokens: with
+		// prompt caching on, a provider reports the cached prefix under
+		// CacheRead/CacheCreation and InputTokens holds only the uncached delta —
+		// a few hundred tokens against a 200k window. Testing that against the
+		// limit read ~1% while the context was nearly full, so auto-compaction
+		// never fired (issue #338). TotalInputTokens is also what the status bar
+		// displays, so the two now agree.
+		a.promptTokens = resp.TotalInputTokens()
 		tokensIn += resp.InputTokens
 		tokensOut += resp.OutputTokens
 
@@ -415,18 +425,33 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	}
 }
 
-func estimatePromptTokens(lastInputTokens, lastPromptTextLen, currentPromptTextLen int) int {
-	if lastInputTokens <= 0 {
-		return 0
+// currentPromptTokens returns the prompt size to test against the input limit.
+// The provider's own count from the previous inference is authoritative and is
+// used whenever it exists. It is missing only before this agent has inferred
+// once, which is not always a small conversation: ensureAgentSession seeds a
+// rebuilt agent with the full existing history (session resume, model switch,
+// toolset drift), so the very first prompt can already be near the limit.
+// Estimating from text covers that case instead of leaving it to be discovered
+// by a rejected request.
+func (a *agent) currentPromptTokens() int {
+	if a.promptTokens > 0 {
+		return a.promptTokens
 	}
-	if lastPromptTextLen <= 0 || currentPromptTextLen <= 0 {
-		return lastInputTokens
-	}
-	estimated := (lastInputTokens * currentPromptTextLen) / lastPromptTextLen
-	if estimated < lastInputTokens {
-		return lastInputTokens
-	}
-	return estimated
+	return estimateTokensFromBytes(len(a.system.Prompt()) + a.conversationTextLen())
+}
+
+// estimateTokensFromBytes approximates a token count from a UTF-8 byte length.
+// Four bytes per token is right for English prose and low for CJK (nearer 2–3),
+// and it ignores the tool schemas the real prompt also carries — so it errs
+// low by design. Erring low just defers to the reactive prompt-too-long retry,
+// whereas erring high would compact a conversation that still had room.
+func estimateTokensFromBytes(n int) int { return n / 4 }
+
+// conversationTextLen reads the live history without making a snapshot copy.
+func (a *agent) conversationTextLen() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return conversationTextLen(a.messages)
 }
 
 // execTools runs tool calls in three phases:
@@ -592,6 +617,12 @@ func (a *agent) applyCompaction(ctx context.Context, summary string, originalCou
 	summaryMsg := UserMessage(FormatCompactSummary(summary), nil)
 	summaryMsg.ID = NewMessageID()
 	a.SetMessages([]Message{summaryMsg})
+	// The chain just collapsed to one message, so the last measurement is stale
+	// and clearing it is what stops the check from immediately re-firing:
+	// keeping the pre-compaction figure would still read "full" against the
+	// now-tiny chain and compact again on the very next step, forever. Zero
+	// suppresses the check until the next inference measures the new prompt.
+	a.promptTokens = 0
 	a.emitAppend(summaryMsg)
 	a.emit(ctx, CompactEvent(a.id, CompactInfo{
 		Summary:          summary,
@@ -826,12 +857,6 @@ func (a *agent) snapshot() []Message {
 	return cp
 }
 
-// conversationTextLen reads the live history without making a snapshot copy.
-func (a *agent) conversationTextLen() int {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return conversationTextLen(a.messages)
-}
 
 func (a *agent) appendResult(tc ToolCall, content string, isError bool) {
 	// A tool result rides on a RoleUser message — its content lives on

@@ -420,12 +420,21 @@ func LastAssistantChatContent(msgs []ChatMessage) string {
 	return ""
 }
 
-// NeedsCompaction checks if token usage exceeds the threshold percentage of the input limit.
-func NeedsCompaction(inputTokens, inputLimit int) bool {
-	if inputLimit == 0 || inputTokens == 0 {
+// AutoCompactThresholdPercent is the share of the model's input limit at which
+// the conversation is auto-compacted. The status bar's critical tier derives
+// from this constant so the bar turns critical exactly when compaction is due —
+// two separate literals would let the display and the trigger drift apart.
+const AutoCompactThresholdPercent = 90
+
+// NeedsCompaction reports whether the prompt has reached
+// AutoCompactThresholdPercent of the model's input limit. promptTokens must be
+// the FULL prompt size — including any cache-read/cache-creation portion, i.e.
+// InferResponse.TotalInputTokens — not just the uncached delta.
+func NeedsCompaction(promptTokens, inputLimit int) bool {
+	if inputLimit == 0 || promptTokens == 0 {
 		return false
 	}
-	return float64(inputTokens)/float64(inputLimit)*100 >= 95
+	return float64(promptTokens)/float64(inputLimit)*100 >= AutoCompactThresholdPercent
 }
 
 // --- Content Parts ---
