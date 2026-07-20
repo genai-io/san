@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -540,7 +539,9 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 }
 
 func memoryFormatBoxLine(content string) string {
-	visibleLen := utf8.RuneCountInString(content)
+	// Display columns, not runes: a CJK rune occupies two, so a rune count
+	// under-pads and pushes the closing border past the box corner.
+	visibleLen := lipgloss.Width(content)
 	padding := max(memoryBoxWidth-visibleLen-2, 0)
 	return fmt.Sprintf("│ %s%s│\n", content, strings.Repeat(" ", padding))
 }
@@ -554,32 +555,33 @@ func memoryShortenPathForDisplay(path, cwd string, isProject bool) string {
 	return kit.ShortenPath(path)
 }
 
+// memoryTruncatePathKeepFilename trims a path to maxLen display columns,
+// spending the budget on the filename first. All measurements are columns, and
+// every cut goes through kit.TruncateText so it lands on a rune boundary — a
+// path like ~/项目/笔记/说明.md would otherwise be sliced mid-character.
 func memoryTruncatePathKeepFilename(path string, maxLen int) string {
-	if len(path) <= maxLen {
+	if lipgloss.Width(path) <= maxLen {
 		return path
 	}
 
 	base := filepath.Base(path)
-	if len(base) >= maxLen-3 {
-		return base[:maxLen-3] + "..."
+	if lipgloss.Width(base) >= maxLen-3 {
+		return kit.TruncateText(base, maxLen)
 	}
 
-	remaining := maxLen - len(base) - 4
+	remaining := maxLen - lipgloss.Width(base) - 4
 	if remaining > 0 {
-		dir := filepath.Dir(path)
-		if len(dir) > remaining {
-			dir = dir[len(dir)-remaining:]
-		}
+		dir := kit.TruncateKeepEnd(filepath.Dir(path), remaining)
 		return "..." + dir + "/" + base
 	}
 	return base
 }
 
 func memoryPadRight(s string, length int) string {
-	if len(s) >= length {
-		return s[:length]
+	if w := lipgloss.Width(s); w >= length {
+		return kit.TruncateText(s, length)
 	}
-	return s + strings.Repeat(" ", length-len(s))
+	return s + strings.Repeat(" ", length-lipgloss.Width(s))
 }
 
 // handleMemoryShow shows the current loaded memory content.

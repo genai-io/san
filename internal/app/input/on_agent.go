@@ -196,8 +196,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 	// columns align nicely while still adapting to long names.
 	maxNameLen := 12
 	for i := startIdx; i < endIdx; i++ {
-		if l := len(s.list.filtered[i].Name); l > maxNameLen {
-			maxNameLen = l
+		if w := lipgloss.Width(s.list.filtered[i].Name); w > maxNameLen {
+			maxNameLen = w
 		}
 	}
 	maxNameLen = min(maxNameLen, 28)
@@ -218,14 +218,16 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 			statusStyle = kit.SelectorStatusNone()
 		}
 
+		// Pad by display width, not bytes: one CJK agent name would otherwise
+		// shift the model, mode and badge columns on that row only.
 		name := kit.TruncateText(a.Name, maxNameLen)
-		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-len(name)))
+		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-lipgloss.Width(name)))
 
 		model := kit.TruncateText(a.Model, 14)
-		paddedModel := model + strings.Repeat(" ", max(0, 14-len(model)))
+		paddedModel := model + strings.Repeat(" ", max(0, 14-lipgloss.Width(model)))
 
 		mode := kit.TruncateText(a.PermissionMode, 8)
-		paddedMode := mode + strings.Repeat(" ", max(0, 8-len(mode)))
+		paddedMode := mode + strings.Repeat(" ", max(0, 8-lipgloss.Width(mode)))
 
 		// Reserve room for an inline source badge on the right.
 		badgeText := ""

@@ -161,10 +161,10 @@ func sessionTruncateToFirstLine(content string, maxLen int) string {
 	if first, _, found := strings.Cut(content, "\n"); found {
 		content = first
 	}
-	if len(content) > maxLen {
-		return content[:maxLen-3] + "..."
-	}
-	return content
+	// maxLen is a column budget from calculateSessionPreviewLength; measuring
+	// it in bytes cuts a Chinese prompt to a third of the row and can land
+	// mid-rune.
+	return kit.TruncateText(content, maxLen)
 }
 
 func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
