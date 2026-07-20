@@ -55,14 +55,9 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	}
 
 	// ── Step 2: Bypass-immune safety checks ──
-	if reason := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
+	if reason, reviewable := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
 		d := decide(perm.Prompt, reason)
-		// A floor hit git can undo is still never allowed outright, but in
-		// AutoPilot the judge may weigh it rather than it always costing a human
-		// interrupt. Outside AutoPilot no judge is installed, so this is inert.
-		if UnrecoverableReason(toolName, args) == "" {
-			d.Reviewable = true
-		}
+		d.Reviewable = reviewable
 		return coerceAsk(d, session)
 	}
 
@@ -97,19 +92,25 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	return coerceAsk(modeDefaultDecision(toolName, session), session)
 }
 
-func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, session *SessionPermissions) string {
-	if reason := BypassImmuneReason(toolName, args); reason != "" {
-		return "bypass-immune: " + reason
+// bypassImmunePromptReason reports why a call is held at the floor, and whether
+// the AutoPilot judge may weigh it. Only the recoverable git tier is the judge's
+// to weigh; every other reason here — real destruction, a sensitive path, a
+// write reaching outside the working directory — stays the human's call. The
+// tier travels with the reason rather than being re-derived, so a reason added
+// later cannot land in the judge's lap by omission.
+func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
+	if reason, recoverable := bypassImmuneFloor(toolName, args); reason != "" {
+		return "bypass-immune: " + reason, recoverable
 	}
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
 		if toolName == "Edit" || toolName == "Write" {
 			if fp, ok := filePathArg(toolName, args); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
-				return "outside working directory"
+				return "outside working directory", false
 			}
 		}
 	}
-	return ""
+	return "", false
 }
 
 // filePathArg extracts the file-path argument for a file tool, honoring each
@@ -193,7 +194,9 @@ func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *S
 			return false
 		}
 	}
-	if s.bypassImmunePromptReason(toolName, args, session) != "" {
+	// A hook cannot vouch for anything the floor holds, either tier: there is no
+	// judge in this path to weigh the recoverable one.
+	if reason, _ := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
 		return false
 	}
 	for _, pattern := range s.Permissions.Ask {
@@ -517,13 +520,21 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 // or suspicious bash). Used by the main-loop gate (checkHardBlocks) and by
 // the subagent gate, which collapses the resulting Ask into Deny.
 func BypassImmuneReason(toolName string, args map[string]any) string {
+	reason, _ := bypassImmuneFloor(toolName, args)
+	return reason
+}
+
+// bypassImmuneFloor classifies a call against both tiers of the floor in one
+// pass: why it is held, and whether it is the recoverable tier the AutoPilot
+// judge may weigh.
+func bypassImmuneFloor(toolName string, args map[string]any) (reason string, recoverable bool) {
 	if reason := UnrecoverableReason(toolName, args); reason != "" {
-		return reason
+		return reason, false
 	}
 	if cmd, ok := bashCommandArg(toolName, args); ok && isGitDiscardingCommand(cmd) {
-		return "git command that discards work"
+		return "git command that discards work", true
 	}
-	return ""
+	return "", false
 }
 
 // UnrecoverableReason is the inner tier of BypassImmuneReason: the calls whose
@@ -541,7 +552,7 @@ func UnrecoverableReason(toolName string, args map[string]any) string {
 			}
 		}
 	case "Bash":
-		if cmd, ok := args["command"].(string); ok {
+		if cmd, ok := bashCommandArg(toolName, args); ok {
 			if isDestructiveCommand(cmd) {
 				return "destructive command"
 			}

@@ -101,6 +101,34 @@ func TestAutoPilotContinuationBudget(t *testing.T) {
 	}
 }
 
+// The driving configuration is one named concept, so the two ends of a run
+// can't drift: engaging never touches Permission, and stopping never flips off
+// a safety steer the user set for themselves.
+func TestAutoPilotDrivingConfiguration(t *testing.T) {
+	off := false
+	cfg := AutoPilotSettings{MaxContinuations: 5, Steers: SteerSettings{Permission: &off}}
+	cfg.EngageDriving()
+
+	if !cfg.Steers.BashPrompt || !cfg.Steers.Skill || !cfg.Steers.Question || !cfg.Steers.TurnEnd {
+		t.Errorf("EngageDriving left a driving steer off: %+v", cfg.Steers)
+	}
+	if !cfg.ContinuationsUnlimited() {
+		t.Errorf("EngageDriving left the cap at %d, want uncapped", cfg.MaxContinuations)
+	}
+	if cfg.Steers.PermissionOn() {
+		t.Error("EngageDriving overrode an explicit permission:false")
+	}
+
+	cfg.Steers.Suggest = true
+	cfg.StopDriving()
+	if cfg.Steers.Suggest || cfg.Steers.Question || cfg.Steers.TurnEnd {
+		t.Errorf("StopDriving left the copilot driving: %+v", cfg.Steers)
+	}
+	if !cfg.Steers.BashPrompt || !cfg.Steers.Skill {
+		t.Error("StopDriving flipped off a passive safety steer")
+	}
+}
+
 func TestAutoPilotCloneAndIsZero(t *testing.T) {
 	if !(AutoPilotSettings{}).IsZero() {
 		t.Error("empty config should be zero")

@@ -13,7 +13,7 @@ import (
 // and whatever message the command emitted.
 func runGoal(t *testing.T, current, args string) (string, tea.Msg) {
 	t.Helper()
-	c := &SlashCommandController{env: SlashCommandEnv{GetGoal: func() string { return current }}}
+	c := NewSlashCommandController(SlashCommandEnv{GetGoal: func() string { return current }})
 	notice, cmd, err := c.handleGoalCommand(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handleGoalCommand(%q) err = %v", args, err)

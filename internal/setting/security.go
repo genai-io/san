@@ -58,13 +58,14 @@ func isDestructiveCommand(cmd string) bool {
 
 // isGitDiscardingCommand reports whether the command is a git operation that
 // discards work — confirmation-worthy, but recoverable, so the judge may weigh
-// it. "git push --force" is matched explicitly rather than by pattern so
-// "--force-with-lease" and "--force-if-includes" stay out of it.
+// it. "git push --force" is matched by parsing the flags rather than by pattern,
+// so "--force-with-lease" and "--force-if-includes" stay out of it. One parse of
+// the command line covers both checks; this runs on every tool call.
 func isGitDiscardingCommand(cmd string) bool {
-	if matchesBashPatterns(cmd, gitDiscardingCommands) {
-		return true
-	}
 	for _, normalized := range normalizedBashCommands(cmd) {
+		if matchesAnyPattern(normalized, gitDiscardingCommands) {
+			return true
+		}
 		if after, ok := strings.CutPrefix(normalized, "git:push "); ok &&
 			slices.Contains(strings.Fields(after), "--force") {
 			return true
@@ -75,10 +76,17 @@ func isGitDiscardingCommand(cmd string) bool {
 
 func matchesBashPatterns(cmd string, patterns []string) bool {
 	for _, normalized := range normalizedBashCommands(cmd) {
-		for _, pattern := range patterns {
-			if strings.Contains(normalized, pattern) {
-				return true
-			}
+		if matchesAnyPattern(normalized, patterns) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesAnyPattern(normalized string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if strings.Contains(normalized, pattern) {
+			return true
 		}
 	}
 	return false

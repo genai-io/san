@@ -31,6 +31,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
 )
 
@@ -99,6 +100,11 @@ type model struct {
 	// turn died on an error, bounding a retry loop into a sustained outage. Any
 	// turn that reaches OnTurnEnd resets it.
 	autopilotRecoveries int
+
+	// beforeGoal is the autopilot config as it stood before /goal took the wheel,
+	// restored when the goal is met or cleared so the steers it switched on don't
+	// outlive it. Nil when no goal is driving.
+	beforeGoal *setting.AutoPilotSettings
 
 	// skillUsedThisTurn records whether the current turn invoked the Skill tool.
 	// It scopes the self-learning skills review: a skill-use turn weighs

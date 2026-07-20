@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type autopilotStubProvider struct {
@@ -147,6 +149,51 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 	}
 	if !strings.Contains(sent, "No mission was briefed") {
 		t.Errorf("prompt missing the mission-less instructions:\n%s", sent)
+	}
+}
+
+// /goal switches steers on wholesale, so standing it down has to put back what
+// the user actually configured — otherwise Bash and Skill stay on behind them.
+func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
+	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	configured := setting.AutoPilotSettings{
+		Steers:           setting.SteerSettings{Suggest: true},
+		MaxContinuations: 5,
+	}
+	// What startGoal leaves behind: the pre-goal snapshot plus the driving set.
+	m.env.AutoPilot = configured.Clone()
+	before := configured.Clone()
+	m.beforeGoal = &before
+	m.env.AutoPilot.Mission = "ship it"
+	m.env.AutoPilot.EngageDriving()
+
+	m.retireAutopilotMission()
+	if m.env.AutoPilot.Mission != "" {
+		t.Errorf("mission = %q, want it cleared", m.env.AutoPilot.Mission)
+	}
+	if got := m.env.AutoPilot; got.Steers != configured.Steers || got.MaxContinuations != configured.MaxContinuations {
+		t.Errorf("stand-down left %+v, want the pre-goal config %+v", got, configured)
+	}
+	if m.beforeGoal != nil {
+		t.Error("the pre-goal snapshot outlived the goal")
+	}
+}
+
+// Without a goal the wind-down stays subtractive: it stops the copilot driving
+// without touching safety steers the user set for themselves.
+func TestMissionRetireLeavesConfiguredSafetySteers(t *testing.T) {
+	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.env.AutoPilot = setting.AutoPilotSettings{
+		Mission: "ship it",
+		Steers:  setting.SteerSettings{BashPrompt: true, Suggest: true, TurnEnd: true},
+	}
+
+	m.retireAutopilotMission()
+	if !m.env.AutoPilot.Steers.BashPrompt {
+		t.Error("retire flipped off a Bash steer the user configured")
+	}
+	if m.env.AutoPilot.Steers.Suggest || m.env.AutoPilot.Steers.TurnEnd {
+		t.Error("retire left a driving steer on")
 	}
 }
 

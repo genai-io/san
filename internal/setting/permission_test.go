@@ -352,6 +352,20 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	if d := (&Data{}).HasPermissionToUseTool("Bash", args, &SessionPermissions{Mode: ModeAutoPilot}); d.Reviewable {
 		t.Error("rm -rf reached the judge as reviewable")
 	}
+
+	// A write reaching outside the working directory is held for the same
+	// human, not handed to the judge. It is neither tier of the floor, so a
+	// classification that inferred "reviewable" from "not unrecoverable" would
+	// quietly grant the judge a much larger say than the git tier it was for.
+	outside := (&Data{}).HasPermissionToUseTool("Write",
+		map[string]any{"file_path": "/etc/hosts"},
+		&SessionPermissions{Mode: ModeAutoPilot, WorkingDirectories: []string{"/repo"}})
+	if outside.Behavior != perm.Prompt {
+		t.Fatalf("write outside the working directory = %v, want a prompt", outside.Behavior)
+	}
+	if outside.Reviewable {
+		t.Error("write outside the working directory reached the judge as reviewable")
+	}
 }
 
 func TestDenyRulesPriorityOverSession(t *testing.T) {

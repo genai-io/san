@@ -627,11 +627,19 @@ func (m *model) handleAutopilotRecover(msg autopilotRecoverMsg) tea.Cmd {
 // off is a safety choice the copilot has no business overriding just because
 // the human named a goal.
 func (m *model) startGoal(goal string) tea.Cmd {
+	// Remember what the session looked like before the goal took over, so
+	// standing it down puts the user's own configuration back rather than
+	// leaving the driving set switched on behind them. A second /goal keeps the
+	// first snapshot — that is still the pre-goal state.
+	if m.beforeGoal == nil {
+		before := m.env.AutoPilot.Clone()
+		m.beforeGoal = &before
+	}
 	m.env.AutoPilot.Mission = goal
-	s := &m.env.AutoPilot.Steers
-	s.BashPrompt, s.Skill, s.Question, s.TurnEnd = true, true, true, true
-	m.env.AutoPilot.MaxContinuations = setting.AutoPilotUnlimitedContinuations
-	m.rebuildAutopilotReviewer()
+	m.env.AutoPilot.EngageDriving()
+	// The judge is built from the model and steering prompt, neither of which a
+	// goal touches — republishing the snapshot is enough.
+	m.refreshAutopilotSnapshot()
 	m.enterAutoPilotMode()
 
 	// Mid-turn, the running turn owns the session; the TurnEnd steer picks the
@@ -656,17 +664,25 @@ func (m *model) clearGoal() {
 	m.conv.AddNotice(autopilotHandback("goal cleared"))
 }
 
-// retireAutopilotMission winds down a finished mission without leaving AutoPilot:
-// it clears the mission and turns off the driving steers (Suggest, Question,
-// TurnEnd), so the copilot stops actively driving — no more suggest, auto-answer,
-// or continue — while the passive safety steers stay exactly as the user
-// configured them (a Bash steer they left off is NOT flipped on, an explicit
-// permission:false is NOT overridden). Session-scoped: the saved settings.json
-// config (the user's template) is left untouched.
+// retireAutopilotMission winds down a finished mission without leaving AutoPilot,
+// so the copilot stops actively driving.
+//
+// A goal-driven run rewinds to the configuration /goal found, because /goal is
+// the one path that switched steers on wholesale — leaving them on would hand
+// the next turn an autonomy the user never chose. Otherwise the wind-down is
+// subtractive: it turns off the driving steers (Suggest, Question, TurnEnd) and
+// leaves the passive safety steers exactly as the user configured them (a Bash
+// steer they left off is NOT flipped on, an explicit permission:false is NOT
+// overridden). Session-scoped either way: the saved settings.json config (the
+// user's template) is left untouched.
 func (m *model) retireAutopilotMission() {
+	if m.beforeGoal != nil {
+		m.env.AutoPilot = *m.beforeGoal
+		m.beforeGoal = nil
+	} else {
+		m.env.AutoPilot.StopDriving()
+	}
 	m.env.AutoPilot.Mission = ""
-	s := &m.env.AutoPilot.Steers
-	s.Suggest, s.Question, s.TurnEnd = false, false, false
 	m.rebuildAutopilotReviewer()
 }
 
