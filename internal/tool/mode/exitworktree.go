@@ -67,7 +67,7 @@ func (t *ExitWorktreeTool) ExecuteWithResponse(_ context.Context, _ map[string]a
 }
 
 // Execute is the non-interactive fallback.
-func (t *ExitWorktreeTool) Execute(_ context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+func (t *ExitWorktreeTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	baseCwd, ok := worktree.OriginalPath(cwd)
 	if !ok {
 		return toolresult.NewErrorResult(t.Name(), "ExitWorktree requires an active managed worktree session")
@@ -83,10 +83,10 @@ func (t *ExitWorktreeTool) Execute(_ context.Context, params map[string]any, cwd
 
 	if action == "remove" {
 		discardChanges := tool.GetBool(params, "discard_changes")
-		if worktree.HasUncommittedChanges(cwd) && !discardChanges {
+		if worktree.HasUncommittedChanges(ctx, cwd) && !discardChanges {
 			return toolresult.NewErrorResult(t.Name(), "worktree has uncommitted changes; retry with discard_changes=true or use action=keep")
 		}
-		if err := worktree.Remove(baseCwd, cwd); err != nil {
+		if err := worktree.Remove(ctx, baseCwd, cwd); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
 	}

@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"testing"
 
 	"github.com/genai-io/san/internal/hook"
@@ -13,12 +14,12 @@ func TestWorktreeHooksFire(t *testing.T) {
 
 	repo := makeRepo(t)
 
-	result, _, err := Create(repo, "hook-test")
+	result, _, err := Create(context.Background(), repo, "hook-test")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
 
-	if err := Remove(repo, result.Path); err != nil {
+	if err := Remove(context.Background(), repo, result.Path); err != nil {
 		t.Fatalf("Remove() error: %v", err)
 	}
 }

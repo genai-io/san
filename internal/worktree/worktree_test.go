@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,7 +45,7 @@ func makeRepo(t *testing.T) string {
 func TestCreateAndRemoveWorktree(t *testing.T) {
 	repo := makeRepo(t)
 
-	result, _, err := Create(repo, "feature-slug")
+	result, _, err := Create(context.Background(), repo, "feature-slug")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
@@ -60,7 +61,7 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 		t.Fatalf("expected detached worktree branch to be empty, got %q", result.Branch)
 	}
 
-	if err := Remove(repo, result.Path); err != nil {
+	if err := Remove(context.Background(), repo, result.Path); err != nil {
 		t.Fatalf("Remove() error: %v", err)
 	}
 	if _, err := os.Stat(result.Path); !os.IsNotExist(err) {
@@ -71,7 +72,7 @@ func TestCreateAndRemoveWorktree(t *testing.T) {
 func TestCreateRequiresGitRepo(t *testing.T) {
 	nonRepo := t.TempDir()
 
-	_, _, err := Create(nonRepo, "slug")
+	_, _, err := Create(context.Background(), nonRepo, "slug")
 	if err == nil {
 		t.Fatal("expected Create() to fail outside a git repo")
 	}
@@ -82,13 +83,13 @@ func TestCreateRequiresGitRepo(t *testing.T) {
 
 func TestHasUncommittedChanges(t *testing.T) {
 	repo := makeRepo(t)
-	result, cleanup, err := Create(repo, "dirty-check")
+	result, cleanup, err := Create(context.Background(), repo, "dirty-check")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
 	defer cleanup()
 
-	if HasUncommittedChanges(result.Path) {
+	if HasUncommittedChanges(context.Background(), result.Path) {
 		t.Fatal("expected fresh worktree to be clean")
 	}
 
@@ -97,20 +98,20 @@ func TestHasUncommittedChanges(t *testing.T) {
 		t.Fatalf("write README in worktree: %v", err)
 	}
 
-	if !HasUncommittedChanges(result.Path) {
+	if !HasUncommittedChanges(context.Background(), result.Path) {
 		t.Fatal("expected modified worktree to be dirty")
 	}
 }
 
 func TestHasUnmergedCommits(t *testing.T) {
 	repo := makeRepo(t)
-	result, cleanup, err := Create(repo, "commit-check")
+	result, cleanup, err := Create(context.Background(), repo, "commit-check")
 	if err != nil {
 		t.Fatalf("Create() error: %v", err)
 	}
 	defer cleanup()
 
-	if HasUnmergedCommits(result.Path) {
+	if HasUnmergedCommits(context.Background(), result.Path) {
 		t.Fatal("expected fresh worktree to have no unmerged commits")
 	}
 
@@ -123,7 +124,7 @@ func TestHasUnmergedCommits(t *testing.T) {
 	runGit(t, result.Path, "add", "feature.txt")
 	runGit(t, result.Path, "commit", "-m", "feature")
 
-	if !HasUnmergedCommits(result.Path) {
+	if !HasUnmergedCommits(context.Background(), result.Path) {
 		t.Fatal("expected local worktree commit to be reported as unmerged")
 	}
 }

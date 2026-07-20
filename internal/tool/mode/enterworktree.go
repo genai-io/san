@@ -57,8 +57,8 @@ func (t *EnterWorktreeTool) ExecuteWithResponse(_ context.Context, params map[st
 }
 
 // Execute is the non-interactive fallback (auto-approve for subagents).
-func (t *EnterWorktreeTool) Execute(_ context.Context, params map[string]any, cwd string) toolresult.ToolResult {
-	result, cleanup, err := worktree.Create(cwd, tool.GetString(params, "name"))
+func (t *EnterWorktreeTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+	result, cleanup, err := worktree.Create(ctx, cwd, tool.GetString(params, "name"))
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}

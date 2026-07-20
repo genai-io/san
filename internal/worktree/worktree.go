@@ -4,17 +4,21 @@
 package worktree
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/log"
 )
+
+const gitTimeout = 30 * time.Second
 
 const worktreeDir = "agent-worktrees"
 
@@ -27,7 +31,11 @@ type Result struct {
 // Create creates a git worktree under baseCwd/.git/agent-worktrees/<slug>.
 // If slug is empty, a random short ID is used.
 // Returns the worktree path and a cleanup function that removes it.
-func Create(baseCwd, slug string) (*Result, func(), error) {
+// Every git call here takes ctx. git worktree add can sit in a post-checkout
+// hook, and git status can block on an lfs smudge filter or a network filter
+// driver, so without one an Esc did nothing: the agent goroutine stayed in
+// cmd.Output() and the turn could not be interrupted.
+func Create(ctx context.Context, baseCwd, slug string) (*Result, func(), error) {
 	if slug == "" {
 		b := make([]byte, 4)
 		if _, err := rand.Read(b); err != nil {
@@ -43,14 +51,19 @@ func Create(baseCwd, slug string) (*Result, func(), error) {
 
 	worktreePath := filepath.Join(baseCwd, ".git", worktreeDir, slug)
 
-	cmd := exec.Command("git", "worktree", "add", "--detach", worktreePath)
+	cmd := exec.CommandContext(ctx, "git", "worktree", "add", "--detach", worktreePath)
 	cmd.Dir = baseCwd
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, nil, fmt.Errorf("git worktree add failed: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
 	cleanup := func() {
-		if err := Remove(baseCwd, worktreePath); err != nil {
+		// Cleanup runs on paths where the caller's ctx may already be done
+		// (a cancelled turn is exactly when the worktree needs removing), so
+		// it gets its own bounded context rather than the caller's.
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gitTimeout)
+		defer cancel()
+		if err := Remove(cleanupCtx, baseCwd, worktreePath); err != nil {
 			log.Logger().Warn("worktree cleanup failed",
 				zap.String("path", worktreePath),
 				zap.Error(err))
@@ -62,8 +75,8 @@ func Create(baseCwd, slug string) (*Result, func(), error) {
 }
 
 // Remove force-removes a git worktree.
-func Remove(baseCwd, worktreePath string) error {
-	cmd := exec.Command("git", "worktree", "remove", "--force", worktreePath)
+func Remove(ctx context.Context, baseCwd, worktreePath string) error {
+	cmd := exec.CommandContext(ctx, "git", "worktree", "remove", "--force", worktreePath)
 	cmd.Dir = baseCwd
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git worktree remove failed: %s: %w", strings.TrimSpace(string(out)), err)
@@ -73,8 +86,8 @@ func Remove(baseCwd, worktreePath string) error {
 }
 
 // HasUncommittedChanges returns true if the worktree has uncommitted modifications.
-func HasUncommittedChanges(worktreePath string) bool {
-	cmd := exec.Command("git", "status", "--porcelain")
+func HasUncommittedChanges(ctx context.Context, worktreePath string) bool {
+	cmd := exec.CommandContext(ctx, "git", "status", "--porcelain")
 	cmd.Dir = worktreePath
 	out, err := cmd.Output()
 	if err != nil {
@@ -84,8 +97,8 @@ func HasUncommittedChanges(worktreePath string) bool {
 }
 
 // HasUnmergedCommits returns true if the worktree has commits not present in the main repo.
-func HasUnmergedCommits(worktreePath string) bool {
-	cmd := exec.Command("git", "log", "--oneline", "HEAD", "--not", "--remotes", "--max-count=1")
+func HasUnmergedCommits(ctx context.Context, worktreePath string) bool {
+	cmd := exec.CommandContext(ctx, "git", "log", "--oneline", "HEAD", "--not", "--remotes", "--max-count=1")
 	cmd.Dir = worktreePath
 	out, err := cmd.Output()
 	if err != nil {
