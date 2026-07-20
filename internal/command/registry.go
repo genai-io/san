@@ -50,6 +50,7 @@ func builtinCommands() []Info {
 		{Name: "config", Description: "Configure appearance and other settings"},
 		{Name: "evolve", Description: "Configure self-learning (skills & memory)"},
 		{Name: "autopilot", Description: "Configure the autopilot copilot (steers, system prompt, mission)"},
+		{Name: "goal", Description: "State a goal and let autopilot drive until it's met (/goal <text>, /goal clear)"},
 		{Name: "name", Description: "Set or change the name of the current conversation session"},
 		{Name: "quit", Description: "Exit the application (/exit also works)"},
 	}

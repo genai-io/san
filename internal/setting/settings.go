@@ -138,6 +138,28 @@ const AutoPilotUnlimitedContinuations = -1
 // ContinuationsUnlimited reports whether auto-continuation is uncapped.
 func (a AutoPilotSettings) ContinuationsUnlimited() bool { return a.MaxContinuations < 0 }
 
+// EngageDriving switches on every steer that lets the copilot act without the
+// human and lifts the continuation cap — the configuration behind /goal, where
+// the run should end when the goal is met rather than when a counter expires.
+// Permission is left alone: it defaults on, and an explicit off is a safety
+// choice no stated goal should overrule.
+func (a *AutoPilotSettings) EngageDriving() {
+	a.Steers.BashPrompt = true
+	a.Steers.Skill = true
+	a.Steers.Question = true
+	a.Steers.TurnEnd = true
+	a.MaxContinuations = AutoPilotUnlimitedContinuations
+}
+
+// StopDriving turns off the steers that make the copilot act on its own,
+// leaving the passive safety steers exactly as configured — the wind-down for a
+// mission that ended without a goal to rewind to.
+func (a *AutoPilotSettings) StopDriving() {
+	a.Steers.Suggest = false
+	a.Steers.Question = false
+	a.Steers.TurnEnd = false
+}
+
 // ResolvedMaxContinuations returns the configured continuation cap, or the
 // default when unset. Meaningless when ContinuationsUnlimited — check that
 // first; it returns the default so a caller that forgets still gets a sane

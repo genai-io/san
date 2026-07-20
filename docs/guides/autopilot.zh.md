@@ -9,10 +9,9 @@ Autopilot 是 San 的自动驾驶系统,旨在最大限度减少人工介入:由
 mission 继续推进。默认仅开启灰区权限判定。
 
 用 `shift+tab` 切换到 Autopilot 模式(循环到琥珀色的 `⏵⏵ autopilot on`),
-用 `/autopilot` 面板配置。要免人工启动一个 mission,按面板的 **Start** 按钮
-—— 它一步完成「开启 Autopilot + 提交开场那一步」(见
-[启动 mission](#启动-mission))。恢复会话(`san -r <id>`)会回到保存时所在
-的模式。
+用 `/autopilot` 面板配置。恢复会话(`san -r <id>`)会回到保存时所在的模式。
+只想先看它跑起来的话,[`/goal`](#goal) 是最短的入口 —— 它就是下面这一整套的
+一个预设。
 
 ## 六个 steer
 
@@ -57,6 +56,33 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交
 用 `shift+tab` 落到 Autopilot 不再自动起步,只会浮出 Suggest steer 的提议
 (若开启)。发动 mission 始终是显式的 Start 按钮。
 
+## /goal
+
+最常见的那条路 —— 交代 mission、打开让副驾能动手的几个 steer、解除上限、
+发车 —— 压成一行:
+
+```
+/goal 给 internal/setting 补表驱动测试,直到 go test ./... 全绿
+```
+
+`/goal` 是一个预设,不是另一种模式:开的还是同一个 Autopilot,只是配置固定。
+
+- 这个目标成为 [mission](#mission任务)
+- 推进类 steer 全部打开(Bash、Skill、Question、End)
+- 解除续跑上限 —— 这一轮在目标达成时结束,而不是计数器耗尽时结束
+- 开启 Autopilot,并由副驾自己发出第一步
+
+在回合进行中输入,它会等当前回合落地后接管。单独输入 `/goal` 会显示当前目标;
+`/goal clear` 让副驾停手。
+
+它刻意只作用于本会话:不同于面板的 Save,它不会改写你保存的默认配置 ——
+定个目标是这一次会话的事。你的 **Permission** steer 保持原样,因为把它显式
+关成 `false` 是一个安全选择,不该因为人定了个目标就被推翻。目标结束时
+(达成或清空)steer 会回滚到 `/goal` 接手前的样子,它打开的自主权不会活得
+比目标更久。
+
+想要别的组合就还是用面板:只提议不提交、限定续跑次数、或换一套驾驶指令。
+
 ## 让它一直自主跑下去
 
 开着 End steer 时,那些本会让会话停下来等你的情况,副驾都会自己开过去:
@@ -75,60 +101,66 @@ steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交
 
 ## Demo:一次免人工的脚手架搭建
 
-两分钟跑通完整闭环 —— mission 起步、灰区放行、自动续跑、任务完成 ——
+两分钟跑通完整闭环 —— 起步、灰区放行、自动续跑、目标达成 ——
 全程不触碰临时目录以外的任何东西。
 
-**1. 在空目录启动 San:**
+**1. 在一个空仓库里启动 San。** 只在那里跑 —— 下面这条 goal 会在启动目录下直接
+建 `notes/`,放到你自己的项目里跑就是往真实目录里乱写:
 
 ```bash
-mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
+mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
 ```
 
-**2. 配置 copilot** —— 运行 `/autopilot`:
+`git init` 不是顺手加的:工作区在 git 下,Permission steer 会把对已跟踪文件的
+改动当作可恢复,这正是这一轮不会停下来问你的原因。
 
-- 打开 **End**(Permission 默认已开)。
-- 打开 **Mission**,交代任务:
-
-  > 搭建一个 `notes/` 目录:`todo.md` 放一个 3 项的清单、`done.md` 留空、
-  > `README.md` 说明目录结构。每回合处理一个文件。三个文件齐了之后用
-  > `ls notes/` 验证 —— 然后任务即完成。
-
-- `esc` 返回。
-
-**3. 启动巡航** —— 在底部一行按 `→` 选中 **Start**,回车。这是你需要按的
-最后一个键:Start 开启 Autopilot,且在 mission 已设时自己推出开场那一步并
-提交。
-
-**4. 观察运行。** 预期的转录大致是:
+**2. 交代目标。** 一行,而且是你要按的最后一个键:
 
 ```
+/goal 搭建一个 notes/ 目录:todo.md 放一个 3 项的清单、done.md 留空、
+README.md 说明目录结构。每回合只处理一个文件。三个文件齐了之后用
+ls notes/ 验证 —— 然后目标即达成。
+```
+
+这段话里有三个细节在起作用:*每回合只处理一个文件* 逼出多次续跑,好让你看清;
+*ls notes/* 在路径上放了一个灰区 bash 调用;*然后目标即达成* 给了副驾一个它真
+能验证的完成条件。
+
+**3. 观察运行。** 预期的转录大致是:
+
+```
+⏵ autopilot · goal set
+
 ❭ Create notes/todo.md with a 3-item checklist.
-  ⎿  autopilot · 1/20
+  ⎿  autopilot · step 1
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
+
 ❭ Create an empty notes/done.md.
-  ⎿  autopilot · 2/20
+  ⎿  autopilot · step 2
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
   ⎿  Bash → 3 lines
-  ✓ autopilot · mission complete
+
+✓ autopilot · mission complete
 ```
 
-整个运行里的每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由
-copilot 敲入,你没有碰过输入框。那条 `ls` 是灰区调用,由 Permission steer
-就地放行。出现
-`✓ mission complete` 时,mission 被清空、steer 归位到被动基线(打开
-`/autopilot` 可确认),而 Autopilot 保持开启。
+每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由副驾敲入,你没有
+碰过输入框。那条 `ls` 是灰区调用,由 Permission steer 就地放行。出现
+`✓ mission complete` 时,目标被清空、steer 回滚到 `/goal` 接手前的样子(打开
+`/autopilot` 可确认),而 Autopilot 保持开启。想中途停下就 `/goal clear`。
 
-想体验最轻的一档,只开 **Suggest** 重跑一遍、用 `shift+tab` 启动:copilot 把
-每一步以幽灵文本提议在输入框里,你用 `tab` + `enter` 接受发送。
+同一轮用面板走:打开 **End**、把上面那段话交代成 **Mission**、按 **Start**。
+想要别的组合时才走这条路 —— 比如体验最轻的一档:只开 **Suggest** 重跑一遍、
+用 `shift+tab` 启动,副驾把每一步以幽灵文本提议在输入框里,你用 `tab` +
+`enter` 接受发送。
 
 ## 读懂转录里的标记
 
 | 标记 | 含义 |
 |---|---|
-| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑;不限次数时只显示 `2`) |
+| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑;不限次数时显示 `step 2`) |
 | 琥珀 `⏵ autopilot · turn failed · retrying in 5s` | 某个回合出错,副驾稍后判断能否续跑 |
 | 绿 `↳ auto-approved · <理由>` | 判官放行了上方的工具调用 |
 | 琥珀 `↳ escalated · <理由>` | 判官把调用退回给你 |

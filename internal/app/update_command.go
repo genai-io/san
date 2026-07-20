@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -37,6 +38,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		GetThinkingEffort: func() string { return m.env.EffectiveThinkingEffort() },
 		SetThinkingEffort: m.env.SetThinkingEffort,
 		ResetTokens:       m.env.ResetTokens,
+		GetGoal:           func() string { return strings.TrimSpace(m.env.AutoPilot.Mission) },
 
 		// Model actions
 		CommitMessages:          m.CommitMessages,

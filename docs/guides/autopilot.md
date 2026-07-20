@@ -11,10 +11,10 @@ tool calls, answering a command's interactive prompts, answering
 gray-zone permission judging is on by default.
 
 Enter Autopilot mode with `shift+tab` (cycle until the amber
-`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. To launch a
-mission hands-free, hit the panel's **Start** button — it engages Autopilot and
-submits the opening step in one action (see [Start](#start-the-mission)). A
-resumed session (`san -r <id>`) comes back in the mode it was saved in.
+`⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
+session (`san -r <id>`) comes back in the mode it was saved in. If you just want
+to see it drive, [`/goal`](#goal) is the shortest path in — it is one preset of
+everything below.
 
 ## The six steers
 
@@ -65,6 +65,38 @@ Landing on Autopilot via `shift+tab` no longer auto-starts; it only surfaces the
 Suggest steer's proposal (if on). Kicking the mission is always the explicit
 Start button.
 
+## /goal
+
+The common case — brief a mission, switch on the steers that let the copilot
+act, take the cap off, start — collapses into one line:
+
+```
+/goal add table-driven tests for internal/setting until go test ./... passes
+```
+
+`/goal` is a preset, not a separate mode: it engages the same Autopilot with a
+particular configuration.
+
+- the goal becomes the [mission](#mission)
+- the driving steers come on (Bash, Skill, Question, End)
+- the continuation cap is lifted — the run ends when the goal is met, not when
+  a counter expires
+- Autopilot engages and the copilot opens the first step itself
+
+Stated mid-turn, it takes over when the current turn lands. `/goal` on its own
+reports the current goal; `/goal clear` stands the copilot down.
+
+It is deliberately session-scoped: unlike the panel's Save, it does not rewrite
+your saved defaults — stating a goal is something you do for this session. Your
+**Permission** steer is left exactly as configured, since an explicit `false`
+there is a safety choice a goal has no business overriding. Ending the goal —
+met or cleared — rewinds the steers to what `/goal` found, so the autonomy it
+switched on doesn't outlive it.
+
+Reach for the panel instead when you want a different mix: a run that suggests
+but never submits, a bounded number of continuations, or a custom steering
+prompt.
+
 ## Staying autonomous
 
 With the End steer on, the copilot drives through the things that would
@@ -87,54 +119,63 @@ Uncapped runs pair well with a fast, cheap steer model — see
 
 ## Demo: a hands-free scaffold
 
-A two-minute run that exercises the full loop — mission kick-off, gray-zone
-approval, auto-continuation, and completion — without touching anything outside
-a scratch directory.
+A two-minute run that exercises the full loop — kick-off, gray-zone approval,
+auto-continuation, and completion — without touching anything outside a scratch
+directory.
 
-**1. Start San in an empty directory:**
+**1. Start San in an empty repository.** Run it there and nowhere else — the
+goal below writes `notes/` wherever it starts, so in one of your own projects it
+would scribble into a real directory:
 
 ```bash
-mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && san
+mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
 ```
 
-**2. Configure the copilot** — run `/autopilot`:
+`git init` is not incidental — under git the Permission steer treats changes to
+tracked files as recoverable, which is what keeps the run from stopping to ask.
 
-- Toggle **End** on (Permission is already on).
-- Open **Mission** and brief it:
-
-  > Scaffold a `notes/` directory: `todo.md` with a 3-item checklist, `done.md`
-  > empty, and `README.md` explaining the layout. Work one file per turn. When
-  > all three exist, verify with `ls notes/` — then the mission is complete.
-
-- `esc` back.
-
-**3. Engage** — on the bottom row, press `→` to focus **Start** and hit
-`enter`. That's the last key you need to press: Start engages Autopilot and,
-with a mission set, derives the opening step and submits it itself.
-
-**4. Watch the run.** Expect a transcript like:
+**2. State the goal.** One line, and it is the last key you press:
 
 ```
+/goal Scaffold a notes/ directory: todo.md with a 3-item checklist, done.md
+empty, and README.md explaining the layout. Work one file per turn. When all
+three exist, verify with ls notes/ — then the goal is met.
+```
+
+Three details in that wording are doing work: *one file per turn* forces several
+continuations so you can watch them, *ls notes/* puts a gray-zone bash call in
+the path, and *then the goal is met* gives the copilot a completion test it can
+actually check.
+
+**3. Watch the run.** Expect a transcript like:
+
+```
+⏵ autopilot · goal set
+
 ❭ Create notes/todo.md with a 3-item checklist.
-  ⎿  autopilot · 1/20
+  ⎿  autopilot · step 1
 ● Write(notes/todo.md)
   ⎿  Write → 5 lines
+
 ❭ Create an empty notes/done.md.
-  ⎿  autopilot · 2/20
+  ⎿  autopilot · step 2
 ...
 ● Bash(ls notes/)
   ↳ auto-approved · read-only directory listing
   ⎿  Bash → 3 lines
-  ✓ autopilot · mission complete
+
+✓ autopilot · mission complete
 ```
 
-Every `❭` in the run carries the green `⎿ autopilot` mark — the copilot typed
-them all, opening step included; you never touched the composer. The `ls` is a
-gray-zone call the Permission steer approved inline. On `✓ mission complete` the mission is cleared and the steers drop back
-to the passive baseline — open `/autopilot` to confirm — while Autopilot stays
-engaged.
+Every `❭` carries the green `⎿ autopilot` mark — the copilot typed them all,
+opening step included; you never touched the composer. The `ls` is a gray-zone
+call the Permission steer approved inline. On `✓ mission complete` the goal is
+cleared and the steers rewind to what `/goal` found — open `/autopilot` to
+confirm — while Autopilot stays engaged. To stop early, `/goal clear`.
 
-To see the gentler end of the spectrum, rerun with only **Suggest** on and
+The same run through the panel: toggle **End** on, brief the text above as the
+**Mission**, and press **Start**. Use that route when you want a different mix —
+to see the gentle end of the spectrum, run it with only **Suggest** on and
 engage with `shift+tab`: the copilot proposes each step as ghost text in the
 composer and you accept with `tab` + `enter`.
 
@@ -142,7 +183,7 @@ composer and you accept with `tab` + `enter`.
 
 | Mark | Meaning |
 |---|---|
-| green `⎿ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5; uncapped runs show just `2`) |
+| green `⎿ autopilot · 2/5` | the `❭` line above was typed by the copilot (continuation 2 of 5; an uncapped run counts `step 2` instead) |
 | amber `⏵ autopilot · turn failed · retrying in 5s` | a turn errored out; the copilot will decide whether to resume |
 | green `↳ auto-approved · <reason>` | the permission judge let the tool call above through |
 | amber `↳ escalated · <reason>` | the judge sent the call back to you |

@@ -187,6 +187,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.persistAutopilotDefault()
 		m.conv.AddNotice("Autopilot config saved")
 		return m, nil
+	case input.GoalSetMsg:
+		// /goal: the stated goal becomes the mission and the copilot drives.
+		return m, m.startGoal(msg.Goal)
+	case input.GoalClearedMsg:
+		// /goal clear: stand the copilot down.
+		m.clearGoal()
+		return m, nil
 	case input.AutopilotStartMsg:
 		// Save & Start: apply + persist exactly like a Save, then engage AutoPilot
 		// and kick the mission hands-free. The explicit counterpart to shift+tab

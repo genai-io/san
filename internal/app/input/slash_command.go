@@ -66,6 +66,9 @@ type SlashCommandEnv struct {
 	GetThinkingEffort func() string
 	SetThinkingEffort func(string)
 	ResetTokens       func()
+	// GetGoal reads the autopilot mission the session is currently driving
+	// toward, so bare /goal can report it. Empty when no goal is set.
+	GetGoal func() string
 
 	// Model-level action callbacks. These compose multiple services or
 	// touch UI state on `m`, so commands invoke them via the model.
@@ -122,6 +125,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
+		"goal":           (*SlashCommandController).handleGoalCommand,
 		"name":           (*SlashCommandController).handleNameCommand,
 		"evolve":         (*SlashCommandController).handleEvolveCommand,
 		"selflearn-demo": (*SlashCommandController).handleSelflearnDemoCommand,
@@ -356,6 +360,32 @@ func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string
 func (c *SlashCommandController) handleAutopilotCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Autopilot.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
+}
+
+// GoalSetMsg asks the app to drive toward a stated goal: it becomes the
+// autopilot mission and the copilot takes the helm until the goal is met.
+type GoalSetMsg struct{ Goal string }
+
+// GoalClearedMsg asks the app to drop the current goal and stop driving.
+type GoalClearedMsg struct{}
+
+// handleGoalCommand states the goal for the session and hands the wheel to the
+// copilot. It is the one-line form of the /autopilot panel: brief a mission,
+// turn on the driving steers, lift the continuation cap, engage AutoPilot. Bare
+// /goal reports the current goal; /goal clear stands the copilot down.
+func (c *SlashCommandController) handleGoalCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	goal := strings.TrimSpace(args)
+
+	if strings.EqualFold(goal, "clear") {
+		return "", func() tea.Msg { return GoalClearedMsg{} }, nil
+	}
+	if goal == "" {
+		if c.env.GetGoal == nil || c.env.GetGoal() == "" {
+			return "No goal set. /goal <what to achieve> — autopilot drives until it's done.", nil, nil
+		}
+		return "Goal: " + c.env.GetGoal() + " (/goal clear to stand down)", nil, nil
+	}
+	return "", func() tea.Msg { return GoalSetMsg{Goal: goal} }, nil
 }
 
 // handleNameCommand sets or changes the name of the current conversation session.
@@ -716,7 +746,10 @@ func shouldPreserveCommandInConversation(inputText string) bool {
 		return false
 	}
 	switch name {
-	case "compact", "fork", "resume", "loop", "init", "tokenlimit":
+	// /goal is kept for the same reason as the others: it is the instruction the
+	// rest of the run answers to, so a transcript that drops it reads as the
+	// copilot driving for no stated reason.
+	case "compact", "fork", "resume", "loop", "init", "tokenlimit", "goal":
 		return true
 	}
 	return false

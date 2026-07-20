@@ -125,16 +125,21 @@ func autopilotHint(detail string) string {
 	return autopilotHintMark.Render("⏵ autopilot") + autopilotHintDim.Render(" · "+detail)
 }
 
-// autopilotHandback is the notice shown when the copilot returns control to the
-// human — it stops mid-mission (needs a decision, or spent its continuation
-// budget), so the arrow curves back to the user rather than driving forward.
-// A non-empty detail (e.g. the decide error) rides dimmed after it.
+// autopilotReturn formats the amber "↩ autopilot · <detail>" notice — the arrow
+// curves back to the human because control is going with it. Callers supply the
+// words so the line stays one clause long.
+func autopilotReturn(detail string) string {
+	return autopilotHintMark.Render("↩ autopilot") + autopilotHintDim.Render(" · "+detail)
+}
+
+// autopilotHandback is the notice shown when the copilot stops mid-mission
+// (needs a decision, or spent its continuation budget). A non-empty detail
+// (e.g. the decide error) rides dimmed after it.
 func autopilotHandback(detail string) string {
-	s := autopilotHintMark.Render("↩ autopilot") + autopilotHintDim.Render(" · over to you")
-	if detail != "" {
-		s += autopilotHintDim.Render(" · " + detail)
+	if detail == "" {
+		return autopilotReturn("over to you")
 	}
-	return s
+	return autopilotReturn("over to you · " + detail)
 }
 
 // autopilotAction is the green notice for something the copilot handled itself
@@ -614,17 +619,77 @@ func (m *model) handleAutopilotRecover(msg autopilotRecoverMsg) tea.Cmd {
 	})
 }
 
-// retireAutopilotMission winds down a finished mission without leaving AutoPilot:
-// it clears the mission and turns off the driving steers (Suggest, Question,
-// TurnEnd), so the copilot stops actively driving — no more suggest, auto-answer,
-// or continue — while the passive safety steers stay exactly as the user
-// configured them (a Bash steer they left off is NOT flipped on, an explicit
-// permission:false is NOT overridden). Session-scoped: the saved settings.json
-// config (the user's template) is left untouched.
+// ── /goal: state a goal, hand over the wheel ─────────────────────────────
+
+// startGoal turns a stated goal into a running mission. It is the one-line form
+// of the /autopilot panel: the goal becomes the mission, the steers that let the
+// copilot drive come on, and the continuation cap is lifted — a goal ends when
+// it is met, not when a counter runs out. Deliberately session-scoped: unlike
+// the panel's Start, it does not rewrite the user's saved defaults, because
+// stating a goal is something you do for this session, not a config edit.
+//
+// Permission is left exactly as configured. It defaults on, and an explicit
+// off is a safety choice the copilot has no business overriding just because
+// the human named a goal.
+func (m *model) startGoal(goal string) tea.Cmd {
+	// Remember what the session looked like before the goal took over, so
+	// standing it down puts the user's own configuration back rather than
+	// leaving the driving set switched on behind them. A second /goal keeps the
+	// first snapshot — that is still the pre-goal state.
+	if m.beforeGoal == nil {
+		before := m.env.AutoPilot.Clone()
+		m.beforeGoal = &before
+	}
+	m.env.AutoPilot.Mission = goal
+	m.env.AutoPilot.EngageDriving()
+	// The judge is built from the model and steering prompt, neither of which a
+	// goal touches — republishing the snapshot is enough.
+	m.refreshAutopilotSnapshot()
+	m.enterAutoPilotMode()
+
+	// Mid-turn, the running turn owns the session; the TurnEnd steer picks the
+	// goal up when it lands, so say so rather than looking like nothing happened.
+	if m.conv.Stream.Active {
+		m.conv.AddNotice(autopilotAction("goal set · starts after this turn"))
+		return nil
+	}
+	// Just "goal set" — the copilot's first step lands right below wearing its
+	// own ⎿ autopilot mark, which says it took the wheel better than words would.
+	m.conv.AddNotice(autopilotAction("goal set"))
+	return m.autopilotKickCmd()
+}
+
+// clearGoal drops the goal at the human's request. It winds down exactly like a
+// goal the copilot judged complete — same stand-down, different verdict — so the
+// two ways a run can end leave the session in the same state.
+func (m *model) clearGoal() {
+	if strings.TrimSpace(m.env.AutoPilot.Mission) == "" {
+		m.conv.AddNotice("No goal set.")
+		return
+	}
+	m.retireAutopilotMission()
+	m.conv.AddNotice(autopilotReturn("goal cleared"))
+}
+
+// retireAutopilotMission winds down a finished mission without leaving AutoPilot,
+// so the copilot stops actively driving.
+//
+// A goal-driven run rewinds to the configuration /goal found, because /goal is
+// the one path that switched steers on wholesale — leaving them on would hand
+// the next turn an autonomy the user never chose. Otherwise the wind-down is
+// subtractive: it turns off the driving steers (Suggest, Question, TurnEnd) and
+// leaves the passive safety steers exactly as the user configured them (a Bash
+// steer they left off is NOT flipped on, an explicit permission:false is NOT
+// overridden). Session-scoped either way: the saved settings.json config (the
+// user's template) is left untouched.
 func (m *model) retireAutopilotMission() {
+	if m.beforeGoal != nil {
+		m.env.AutoPilot = *m.beforeGoal
+		m.beforeGoal = nil
+	} else {
+		m.env.AutoPilot.StopDriving()
+	}
 	m.env.AutoPilot.Mission = ""
-	s := &m.env.AutoPilot.Steers
-	s.Suggest, s.Question, s.TurnEnd = false, false, false
 	m.rebuildAutopilotReviewer()
 }
 
