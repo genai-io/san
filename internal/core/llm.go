@@ -17,6 +17,11 @@ const (
 	StopCancelled                  StopReason = "cancelled"
 	StopHook                       StopReason = "stop_hook"
 	StopMaxOutputRecoveryExhausted StopReason = "max_output_recovery_exhausted"
+	// StopError marks a turn that died on an inference failure — the retry
+	// budget ran out, or the error was not retryable. The turn still produced
+	// messages and token usage, so it reports an outcome like any other stop
+	// reason rather than vanishing. StopDetail carries the underlying error.
+	StopError StopReason = "error"
 )
 
 // InferRequest is sent to the LLM for inference.

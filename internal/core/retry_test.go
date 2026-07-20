@@ -175,3 +175,34 @@ func TestStreamInferIdleTimeoutRetries(t *testing.T) {
 		t.Fatalf("Infer calls = %d, want 2 (idle-timeout retry)", llm.calls)
 	}
 }
+
+// TestThinkActReturnsResultWhenRetriesAreExhausted pins the Result contract on
+// the failure path. A turn that dies on a provider outage has still appended
+// messages and burned tokens, and the caller persists a run from its Result —
+// so returning only an error silently discards the work. subagent's
+// finalizeResult is the concrete casualty: no Result means the transcript is
+// never written to disk.
+func TestThinkActReturnsResultWhenRetriesAreExhausted(t *testing.T) {
+	llm := &scriptedLLM{failErr: errStreamStalled, failures: 99}
+	a := newRetryAgent(t, llm, 2, 0)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	result, err := a.ThinkAct(ctx)
+	if err == nil {
+		t.Fatal("ThinkAct should surface the error after exhausting retries")
+	}
+	if result == nil {
+		t.Fatal("ThinkAct returned nil Result on a failed turn; the caller cannot persist the run")
+	}
+	if result.StopReason != StopError {
+		t.Errorf("StopReason = %q, want %q", result.StopReason, StopError)
+	}
+	if result.StopDetail == "" {
+		t.Error("StopDetail is empty; it should carry the underlying failure")
+	}
+	if len(result.Messages) == 0 {
+		t.Error("Messages is empty; the conversation is what the caller persists")
+	}
+}

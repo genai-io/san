@@ -140,9 +140,8 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		result, err = e.executePreparedRun(ctx, run)
 	}
 	if err != nil {
-		cancelled := e.buildCancelledAgentResult(run, result)
-		if cancelled != nil {
-			return cancelled, err
+		if unfinished := e.buildUnfinishedAgentResult(run, result); unfinished != nil {
+			return unfinished, err
 		}
 		e.fireSubagentStop(run.req, run.hookID, "", "")
 		return nil, fmt.Errorf("LLM completion failed: %w", err)
@@ -435,7 +434,9 @@ func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMs
 		errMsg = fmt.Sprintf("reached maximum steps (%d)", maxSteps)
 	case core.StopMaxOutputRecoveryExhausted:
 		errMsg = "output was repeatedly truncated and recovery was exhausted"
-	case core.StopHook:
+	case core.StopCancelled:
+		errMsg = "agent cancelled"
+	case core.StopHook, core.StopError:
 		errMsg = result.StopDetail
 	}
 	return success, errMsg

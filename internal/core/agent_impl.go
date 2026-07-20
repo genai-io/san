@@ -310,6 +310,12 @@ func (a *agent) ingest(ctx context.Context, msg Message) bool {
 
 // ThinkAct runs one full inference-action cycle until end_turn.
 // Returns the result directly — the caller decides whether to emit TurnEvent.
+//
+// A Result accompanies every outcome, including the errors: a turn that ends
+// on cancellation or an inference failure still carries the messages, steps
+// and token usage it accumulated, which is what lets the caller persist the
+// run. The sole exception is a deliberate shutdown (errStopped), where no turn
+// outcome exists to report.
 func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	var steps, toolUses, tokensIn, tokensOut int
 	var maxOutputRecoveryCount int
@@ -339,7 +345,10 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 			return makeResult(StopMaxSteps), nil
 		}
 
-		// Between steps: drain any new inbox messages (non-blocking)
+		// Between steps: drain any new inbox messages (non-blocking).
+		// errStopped is drainInbox's only error, and it means a deliberate
+		// shutdown (closed inbox or SigStop) rather than a failed turn — the
+		// one exit with no outcome to report, hence no Result.
 		if steps > 0 {
 			if _, err := a.drainInbox(ctx); err != nil {
 				return nil, err
@@ -388,7 +397,13 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 					continue
 				}
 			}
-			return nil, err
+			// Retry budget exhausted, or the failure was not retryable. Report
+			// the turn rather than dropping it: the steps already taken are
+			// billed, and a caller with no Result cannot persist what the run
+			// produced — a subagent loses its entire transcript that way.
+			failed := makeResult(StopError)
+			failed.StopDetail = err.Error()
+			return failed, err
 		}
 		turnRetries = 0 // reset budget once a step completes
 
