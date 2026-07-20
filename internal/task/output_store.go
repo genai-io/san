@@ -1,6 +1,7 @@
 package task
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +13,27 @@ var (
 	outputDirMu sync.RWMutex
 	outputDir   string
 )
+
+// maxOutputBufferSize caps what a task keeps in memory. The full output is
+// always on disk in OutputFile, so the buffer only has to serve TaskOutput's
+// inline preview — and a task manager that never forgets a task (see Manager)
+// would otherwise hold every byte a chatty background command ever produced
+// for the life of the process.
+const maxOutputBufferSize = 512 * 1024
+
+// appendCapped appends data to buf, keeping only the trailing
+// maxOutputBufferSize bytes. Shared by both task types so neither can grow
+// without bound: BashTask used to skip the cap that AgentTask applied.
+func appendCapped(buf *bytes.Buffer, data []byte) {
+	buf.Write(data)
+	if buf.Len() <= maxOutputBufferSize {
+		return
+	}
+	b := buf.Bytes()
+	tail := append([]byte(nil), b[len(b)-maxOutputBufferSize:]...)
+	buf.Reset()
+	buf.Write(tail)
+}
 
 // SetOutputDir configures the directory used for stable task output files.
 // It delegates to the internal implementation, keeping backward compatibility

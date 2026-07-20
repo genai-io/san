@@ -4,7 +4,6 @@ import (
 	"context"
 	"os/exec"
 	"testing"
-	"time"
 )
 
 func TestManager_CreateAndGet(t *testing.T) {
@@ -100,74 +99,6 @@ func TestManager_Remove(t *testing.T) {
 	_, ok := m.Get(taskID)
 	if ok {
 		t.Error("task should be removed")
-	}
-}
-
-func TestManager_Cleanup(t *testing.T) {
-	m := NewManager()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create and complete a task
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
-	task.Complete(0, nil)
-
-	// Set endTime to past
-	task.mu.Lock()
-	task.endTime = time.Now().Add(-2 * time.Hour)
-	task.mu.Unlock()
-
-	// Cleanup tasks older than 1 hour
-	m.cleanup(time.Hour)
-
-	_, ok := m.Get(task.ID)
-	if ok {
-		t.Error("old completed task should be cleaned up")
-	}
-}
-
-func TestManager_CleanupKeepsRecent(t *testing.T) {
-	m := NewManager()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
-	task.Complete(0, nil)
-
-	// Cleanup with 1 hour threshold - task just completed so should be kept
-	m.cleanup(time.Hour)
-
-	_, ok := m.Get(task.ID)
-	if !ok {
-		t.Error("recently completed task should not be cleaned up")
-	}
-}
-
-func TestManager_CleanupKeepsRunning(t *testing.T) {
-	m := NewManager()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	task := m.CreateBashTask(cmd, "echo test", "Test task", ctx, cancel)
-
-	// Don't complete, keep it running
-	m.cleanup(0) // Cleanup all old tasks
-
-	_, ok := m.Get(task.ID)
-	if !ok {
-		t.Error("running task should not be cleaned up")
 	}
 }
 

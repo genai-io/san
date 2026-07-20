@@ -117,19 +117,10 @@ func (t *AgentTask) GetDescription() string {
 	return t.Description
 }
 
-const maxOutputBufferSize = 512 * 1024 // 512KB in-memory cap; full output is in OutputFile
-
 // AppendOutput appends data to the output buffer
 func (t *AgentTask) AppendOutput(data []byte) {
 	t.mu.Lock()
-	t.output.Write(data)
-	// Cap in-memory buffer to the tail to prevent unbounded growth
-	if t.output.Len() > maxOutputBufferSize {
-		b := t.output.Bytes()
-		tail := b[len(b)-maxOutputBufferSize:]
-		t.output.Reset()
-		t.output.Write(tail)
-	}
+	appendCapped(&t.output, data)
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 

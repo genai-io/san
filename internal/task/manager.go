@@ -121,6 +121,20 @@ func (m *Manager) IsRunning(id string) bool {
 	return ok && t.IsRunning()
 }
 
+// Remove drops a task from the manager. Nothing in the running app calls it:
+// tasks are deliberately kept for the life of the process, because TaskOutput
+// resolves a task ID through this map and reporting "task not found" for work
+// the model ran minutes ago would be worse than the memory. What each task
+// retains is bounded instead, by the cap in appendCapped.
+//
+// It exists for tests, which share the process-global manager and need to put
+// it back the way they found it.
+func (m *Manager) Remove(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.tasks, id)
+}
+
 // Kill terminates a task by ID
 func (m *Manager) Kill(id string) error {
 	m.mu.RLock()
@@ -157,27 +171,6 @@ func (m *Manager) Kill(id string) error {
 		case <-timer.C:
 			// Graceful stop timed out, force kill
 			return task.Kill()
-		}
-	}
-}
-
-// Remove removes a completed task from the manager
-func (m *Manager) Remove(id string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.tasks, id)
-}
-
-// cleanup removes all completed tasks older than maxAge
-func (m *Manager) cleanup(maxAge time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	now := time.Now()
-	for id, task := range m.tasks {
-		info := task.GetStatus()
-		if !task.IsRunning() && now.Sub(info.EndTime) > maxAge {
-			delete(m.tasks, id)
 		}
 	}
 }
