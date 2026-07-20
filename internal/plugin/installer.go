@@ -24,7 +24,10 @@ type Installer struct {
 // NewInstaller creates a new plugin installer.
 func NewInstaller(registry *Registry, cwd string) *Installer {
 	if registry != nil {
-		registry.cwd = cwd
+		// plugin.Install builds an Installer inside a tea.Cmd goroutine, so a
+		// concurrent cwd change (discoverPlugins -> Load) would race a bare
+		// assignment here.
+		registry.SetCwd(cwd)
 	}
 	return &Installer{
 		registry:           registry,

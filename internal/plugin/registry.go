@@ -130,6 +130,30 @@ func (r *Registry) loadEnabledPlugins(cwd string) (map[string]bool, error) {
 	return result, nil
 }
 
+// snapshotLocked copies a plugin for a caller to read outside the lock.
+//
+// Enable/Disable write p.Enabled under r.mu, and they run on a tea.Cmd
+// goroutine during /plugin install — after a git clone that can take the full
+// 120s timeout. Handing out the live pointer let the UI read that field while
+// it was being written. The Components slices and maps are shared: they are
+// built once at load time and never mutated after.
+func snapshotLocked(p *Plugin) *Plugin {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	return &cp
+}
+
+// SetCwd re-points the registry at a working directory. r.cwd is written
+// under r.mu by Load and read under it by saveEnabledState, so a caller
+// outside the package cannot assign it directly.
+func (r *Registry) SetCwd(cwd string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cwd = cwd
+}
+
 // Get returns a plugin by name.
 func (r *Registry) Get(name string) (*Plugin, bool) {
 	r.mu.RLock()
@@ -137,17 +161,17 @@ func (r *Registry) Get(name string) (*Plugin, bool) {
 
 	// Try exact match first
 	if p, ok := r.plugins[name]; ok {
-		return p, true
+		return snapshotLocked(p), true
 	}
 
 	// Try partial match (name without marketplace)
 	for key, p := range r.plugins {
 		if p.Name() == name {
-			return p, true
+			return snapshotLocked(p), true
 		}
 		// Match the prefix before @
 		if idx := len(name); idx < len(key) && key[:idx] == name && key[idx] == '@' {
-			return p, true
+			return snapshotLocked(p), true
 		}
 	}
 
@@ -161,7 +185,7 @@ func (r *Registry) List() []*Plugin {
 
 	plugins := make([]*Plugin, 0, len(r.plugins))
 	for _, p := range r.plugins {
-		plugins = append(plugins, p)
+		plugins = append(plugins, snapshotLocked(p))
 	}
 
 	sort.Slice(plugins, func(i, j int) bool {
@@ -179,7 +203,7 @@ func (r *Registry) GetEnabled() []*Plugin {
 	var enabled []*Plugin
 	for _, p := range r.plugins {
 		if p.Enabled {
-			enabled = append(enabled, p)
+			enabled = append(enabled, snapshotLocked(p))
 		}
 	}
 
@@ -344,7 +368,7 @@ func (r *Registry) GetByScope(scope Scope) []*Plugin {
 	var result []*Plugin
 	for _, p := range r.plugins {
 		if p.Scope == scope {
-			result = append(result, p)
+			result = append(result, snapshotLocked(p))
 		}
 	}
 	return result
