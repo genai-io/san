@@ -36,7 +36,7 @@ type env struct {
 	// ConversationCost is the session-cumulative spend shown in the status
 	// bar. It survives ResetContextDisplay (per-compaction) so compaction
 	// doesn't erase prior spend; only ResetTokens (/clear, /new) zeroes it.
-	ConversationCost llm.Money
+	ConversationCost llm.CostTotal
 	ThinkingEffort   string
 	// Compressions counts auto + manual compacts this session. Survives
 	// ResetContextDisplay (called per-compact); zeroed only by ResetTokens
@@ -277,6 +277,6 @@ func (m *env) ResetContextDisplay() {
 // ConversationCost and the compaction counter.
 func (m *env) ResetTokens() {
 	m.ResetContextDisplay()
-	m.ConversationCost = llm.Money{}
+	m.ConversationCost = llm.CostTotal{}
 	m.Compressions = 0
 }

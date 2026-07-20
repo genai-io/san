@@ -222,7 +222,7 @@ type OperationModeParams struct {
 	InputLimit        int
 	ModelName         string
 	StatusMessage     string
-	ConversationCost  llm.Money
+	ConversationCost  llm.CostTotal
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
@@ -303,7 +303,7 @@ func renderStatusCluster(p OperationModeParams) string {
 		segments = append(segments, statusSegment{text: badge, priority: 5})
 	}
 	if !p.ConversationCost.IsZero() {
-		segments = append(segments, statusSegment{text: muted.Render(kit.FormatMoney(p.ConversationCost)), priority: 6})
+		segments = append(segments, statusSegment{text: muted.Render(kit.FormatCostTotal(p.ConversationCost)), priority: 6})
 	}
 
 	survivors := fitStatusSegments(segments, p.Width, lipgloss.Width(sep))

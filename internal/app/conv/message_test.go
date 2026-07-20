@@ -193,7 +193,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 		ModelName:        "claude-sonnet-4-6",
 		InputTokens:      142000,
 		InputLimit:       200000,
-		ConversationCost: llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD},
+		ConversationCost: llm.NewCostTotal(llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD}),
 		ShowContextBar:   true,
 		Width:            120,
 	})

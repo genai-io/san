@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/genai-io/san/internal/llm"
@@ -51,11 +52,11 @@ func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
 // cost must survive it, otherwise a long session's displayed spend resets to
 // zero each time the context is compacted.
 func TestResetContextDisplay_PreservesConversationCost(t *testing.T) {
-	cost := llm.Money{Amount: 1.25, Currency: llm.CurrencyUSD}
+	cost := llm.NewCostTotal(llm.Money{Amount: 1.25, Currency: llm.CurrencyUSD})
 	e := &env{InputTokens: 100, OutputTokens: 50, ConversationCost: cost}
 	e.ResetContextDisplay()
-	if e.ConversationCost != cost {
-		t.Errorf("ConversationCost = %v, want %v (must survive ResetContextDisplay)", e.ConversationCost, cost)
+	if !slices.Equal(e.ConversationCost.Amounts(), cost.Amounts()) {
+		t.Errorf("ConversationCost = %v, want %v (must survive ResetContextDisplay)", e.ConversationCost.Amounts(), cost.Amounts())
 	}
 }
 
@@ -71,7 +72,7 @@ func TestResetTokens_ZeroesCompressions(t *testing.T) {
 }
 
 func TestResetTokens_ZeroesConversationCost(t *testing.T) {
-	e := &env{ConversationCost: llm.Money{Amount: 2.50, Currency: llm.CurrencyUSD}}
+	e := &env{ConversationCost: llm.NewCostTotal(llm.Money{Amount: 2.50, Currency: llm.CurrencyUSD})}
 	e.ResetTokens()
 	if !e.ConversationCost.IsZero() {
 		t.Errorf("ConversationCost = %v, want zero after ResetTokens", e.ConversationCost)
