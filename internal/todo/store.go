@@ -318,8 +318,16 @@ func (s *Store) Delete(id string) error {
 	return nil
 }
 
-// AllDone reports whether the store has tasks and every one of them is completed.
-func (s *Store) AllDone() bool {
+// AllMarkedCompleted reports whether the store has tasks and every one of them
+// carries StatusCompleted.
+//
+// The question is what the list records about itself — whether the model closed
+// out every item it wrote down — and Status is the only record of that.
+// Deriving it from executors would answer a different question and answer it
+// wrongly: a task left in_progress with no executor is abandoned work, not
+// finished work, and marking it done would wipe the list at turn end and take
+// the [stalled] row down with it.
+func (s *Store) AllMarkedCompleted() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

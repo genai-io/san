@@ -2,6 +2,8 @@ package conv
 
 import (
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -35,7 +37,6 @@ func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
 
 	view := RenderTrackerList(TrackerListParams{
 		Tasks:        todo.Default().List(),
-		AllDone:      false,
 		StreamActive: true,
 		Width:        120,
 		Blockers:     todo.Default().OpenBlockers,
@@ -103,7 +104,6 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 
 	view := RenderTrackerList(TrackerListParams{
 		Tasks:        todo.Default().List(),
-		AllDone:      false,
 		StreamActive: true,
 		Width:        120,
 		Executing:    func(*todo.Task) bool { return true },
@@ -112,22 +112,9 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 
 	ids := taskIDRe.FindAllString(plain, -1)
 	want := []string{"#1", "#2", "#3"}
-	if !equalSlice(ids, want) {
+	if !slices.Equal(ids, want) {
 		t.Fatalf("task order:\n  got:  %v\n  want: %v\n\nfull output:\n%s", ids, want, plain)
 	}
-}
-
-// equalSlice reports whether two string slices are equal.
-func equalSlice(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // A task marked in progress whose executor is gone must render identically on
@@ -144,6 +131,73 @@ func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	}
 	if !strings.Contains(first, "[stalled]") {
 		t.Fatalf("stalled task should be labelled as such, got %q", first)
+	}
+}
+
+// The panel's visibility gate. It hides only once every item is marked
+// completed, so a stalled item — in progress with nothing executing it — is
+// unfinished work and must keep the list on screen. Gating on executors instead
+// would hide exactly the row #342 added to surface.
+func TestRenderTrackerListVisibility(t *testing.T) {
+	stalled := &todo.Task{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
+	done := &todo.Task{ID: "1", Subject: "Fix auth module", Status: todo.StatusCompleted}
+
+	cases := []struct {
+		name         string
+		tasks        []*todo.Task
+		streamActive bool
+		wantVisible  bool
+	}{
+		{"no tasks", nil, true, false},
+		{"complete and idle", []*todo.Task{done}, false, false},
+		{"complete but still streaming", []*todo.Task{done}, true, true},
+		{"stalled item keeps the list up", []*todo.Task{stalled}, false, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			view := RenderTrackerList(TrackerListParams{
+				Tasks:        tc.tasks,
+				StreamActive: tc.streamActive,
+				Width:        120,
+				Executing:    func(*todo.Task) bool { return false },
+			})
+			if visible := view != ""; visible != tc.wantVisible {
+				t.Fatalf("visible = %v, want %v; rendered:\n%s", visible, tc.wantVisible, stripANSI(view))
+			}
+		})
+	}
+}
+
+// The list outlives the turn that filled it, so windowing from the front would
+// pin the panel to the turn that stalled and hide everything since.
+func TestRenderTrackerListWindowsOnNewestTasks(t *testing.T) {
+	tasks := make([]*todo.Task, 0, maxVisibleTasks+3)
+	for i := 1; i <= maxVisibleTasks+3; i++ {
+		id := strconv.Itoa(i)
+		tasks = append(tasks, &todo.Task{
+			ID:      id,
+			Subject: "Task " + id,
+			Status:  todo.StatusCompleted,
+		})
+	}
+	// The oldest task is the one left open, so it is what keeps the list alive.
+	tasks[0].Status = todo.StatusInProgress
+
+	plain := stripANSI(RenderTrackerList(TrackerListParams{
+		Tasks:        tasks,
+		StreamActive: true,
+		Width:        120,
+		Executing:    func(*todo.Task) bool { return false },
+	}))
+
+	ids := taskIDRe.FindAllString(plain, -1)
+	want := []string{"#4", "#5", "#6", "#7", "#8", "#9", "#10", "#11"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("visible tasks:\n  got:  %v\n  want: %v\n\nfull output:\n%s", ids, want, plain)
+	}
+	if !strings.Contains(plain, "+3 more above") {
+		t.Fatalf("hidden tasks should be counted, not dropped silently:\n%s", plain)
 	}
 }
 

@@ -254,14 +254,15 @@ func (m model) renderSelfLearnLive() string {
 	return ""
 }
 
-func (m model) renderTrackerList() string {
+// Pointer receiver: Executing below is a *model method value, so a value
+// receiver would take the address of the copy and force the whole model onto
+// the heap on every frame.
+func (m *model) renderTrackerList() string {
 	if !m.conv.ShowTasks {
 		return ""
 	}
-	tasks := m.services.Tracker.List()
 	return conv.RenderTrackerList(conv.TrackerListParams{
-		Tasks:        tasks,
-		AllDone:      m.services.Tracker.AllDone(),
+		Tasks:        m.services.Tracker.List(),
 		StreamActive: m.conv.Stream.Active,
 		Width:        m.env.Width,
 		Blockers:     m.services.Tracker.OpenBlockers,

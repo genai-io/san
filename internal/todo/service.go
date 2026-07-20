@@ -18,9 +18,12 @@ type Service interface {
 	// reaching for it to answer "is work happening right now" get a value that
 	// never goes false on its own. Resolve liveness against the executor —
 	// the stream for plan items, task.Manager.ListRunning for workers.
+	//
+	// AllMarkedCompleted deliberately reads Status: it reports what the list
+	// records, not what is running.
 	IsBlocked(id string) bool
 	OpenBlockers(id string) []string
-	AllDone() bool
+	AllMarkedCompleted() bool
 	FindByMetadata(key, want string) *Task
 
 	// persistence

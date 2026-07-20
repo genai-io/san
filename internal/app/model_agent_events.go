@@ -112,7 +112,15 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
-	if m.services.Tracker.AllDone() {
+	// Only a list the model closed out is safe to discard. An item left open —
+	// pending, or in_progress with nothing executing it — is unfinished work, so
+	// the list survives the turn and stays on screen.
+	//
+	// This is the sole automatic reset, so one item the model never closes keeps
+	// the list alive and growing for the rest of the session. That is why the
+	// tracker windows on its newest rows (see maxVisibleTasks) rather than
+	// assuming it renders a single turn's worth.
+	if m.services.Tracker.AllMarkedCompleted() {
 		m.services.Tracker.Reset()
 	}
 	// The turn reached its end, so whatever failure the copilot was recovering

@@ -11,6 +11,10 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
+// maxVisibleTasks caps the rows drawn. The window sits on the newest tasks,
+// not the oldest, because the list outlives the turn that filled it (see
+// OnTurnEnd): taking from the front would pin the panel to the turn that
+// stalled and hide the work in flight.
 const maxVisibleTasks = 8
 
 // trackerPulseTicks is the number of spinner frames per ●/◌ swap of an
@@ -22,7 +26,6 @@ const trackerPulseTicks = 3
 // TrackerListParams holds the parameters for rendering a tracker list.
 type TrackerListParams struct {
 	Tasks        []*todo.Task
-	AllDone      bool
 	StreamActive bool
 	Width        int
 	Blockers     func(taskID string) []string
@@ -43,15 +46,21 @@ func RenderTrackerList(params TrackerListParams) string {
 		return ""
 	}
 
-	if params.AllDone && !params.StreamActive {
-		return ""
-	}
-
 	ended := 0
 	for _, t := range params.Tasks {
 		if t.Status == todo.StatusCompleted {
 			ended++
 		}
+	}
+
+	// A fully closed-out list has nothing left to track, so the panel gets out
+	// of the way once the stream is idle. While streaming it stays up: the model
+	// can still add items, and a list that vanished mid-turn would flicker back.
+	//
+	// Derived from the tasks in hand rather than asked of the store: the count
+	// above already answers it, and one snapshot cannot disagree with itself.
+	if ended == len(params.Tasks) && !params.StreamActive {
+		return ""
 	}
 
 	var sb strings.Builder
@@ -61,12 +70,18 @@ func RenderTrackerList(params TrackerListParams) string {
 		mutedStyle.Render(fmt.Sprintf("(%d%%)", ended*100/len(params.Tasks))))
 	sb.WriteString("\n")
 
-	idWidth := taskIDWidth(params.Tasks)
+	visible := params.Tasks[max(0, len(params.Tasks)-maxVisibleTasks):]
+	if hidden := len(params.Tasks) - len(visible); hidden > 0 {
+		// Name the drop; a silent truncation reads as the whole list.
+		sb.WriteString("  " + overflowStyle.Render(fmt.Sprintf("+%d more above", hidden)) + "\n")
+	}
+
+	idWidth := taskIDWidth(visible)
 
 	// Classify only the rows actually drawn. Liveness is the expensive input and
 	// the header above does not need it — progress counts finished work, which
 	// no executor can still be advancing.
-	for _, t := range params.Tasks[:min(len(params.Tasks), maxVisibleTasks)] {
+	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
 		sb.WriteString(renderTask(t, phase, params.Width, idWidth, params.Blockers, params.Blink))
 	}

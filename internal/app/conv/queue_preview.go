@@ -40,9 +40,12 @@ var (
 			Foreground(kit.CurrentTheme.Muted).
 			Italic(true)
 
-	queueOverflowStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Muted).
-				Italic(true)
+	// overflowStyle marks a "+N more" row — a count of what was clipped, not
+	// content. Shared by every panel that windows its rows so the affordance
+	// reads the same wherever it appears.
+	overflowStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.Muted).
+			Italic(true)
 )
 
 // RenderQueuePreview renders queued messages as dim shadow prompts above the
@@ -105,10 +108,10 @@ func RenderQueuePreview(items []QueuePreviewItem, selectedIdx, width int) string
 	}
 
 	if endIdx < len(items) {
-		sb.WriteString(queueOverflowStyle.Render(fmt.Sprintf("   +%d more below", len(items)-endIdx)) + "\n")
+		sb.WriteString(overflowStyle.Render(fmt.Sprintf("   +%d more below", len(items)-endIdx)) + "\n")
 	}
 	if startIdx > 0 {
-		return queueOverflowStyle.Render(fmt.Sprintf("   +%d more above", startIdx)) + "\n" + sb.String()
+		return overflowStyle.Render(fmt.Sprintf("   +%d more above", startIdx)) + "\n" + sb.String()
 	}
 
 	return sb.String()
