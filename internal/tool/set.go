@@ -9,10 +9,21 @@ import (
 // parentOnlyTools are tools that only the main conversation can use.
 // Subagents never get these regardless of their allow list. Agent is here
 // because the agent model is flat: only main spawns workers.
+//
+// The task tracker tools are parent-only for the same reason: the tracker is
+// the main conversation's plan, and every conversation shares the one
+// process-global todo store. A subagent calling TaskCreate/TaskUpdate would
+// leak its private planning into the main panel (showing up as extra rows next
+// to the worker item that already represents it), and TaskList/TaskGet would
+// hand it back the main plan it has no business reading.
 var parentOnlyTools = map[string]bool{
 	ToolAgent:         true,
 	ToolEnterWorktree: true,
 	ToolExitWorktree:  true,
+	ToolTaskCreate:    true,
+	ToolTaskUpdate:    true,
+	ToolTaskList:      true,
+	ToolTaskGet:       true,
 }
 
 // Set provides tools for a conversation turn.
