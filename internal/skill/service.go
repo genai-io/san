@@ -91,15 +91,9 @@ func ResetDefaultRegistry() {
 	setDefaultRegistry(newEmptyRegistry())
 }
 
-// defaultRegistry is the package-level skill registry, and registryMu guards
-// the pointer itself. The Registry it points at has its own lock for its
-// contents; what needed guarding here is the swap.
-//
-// Initialize runs on the bubbletea goroutine (reloadProjectServices, reached
-// whenever the agent changes directory with `cd`), while Default() is read on
-// the agent goroutine — the Skill tool and subagent prompt assembly both call
-// it mid-turn. Mirrors the locking internal/persona already uses for its own
-// singleton.
+// registryMu guards the defaultRegistry pointer swap; the Registry it points
+// at locks its own contents. Initialize (UI goroutine) and Default() (agent
+// goroutine) run concurrently, mirroring internal/persona's singleton locking.
 var (
 	registryMu      sync.RWMutex
 	defaultRegistry = newEmptyRegistry()
