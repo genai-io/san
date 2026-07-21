@@ -30,3 +30,15 @@ func TestSubagentsCannotUseTrackerTools(t *testing.T) {
 		}
 	}
 }
+
+// Dropping the tracker tools from a subagent's schema also drops their
+// executors: the subagent's runnable tool set is built from that schema, so a
+// hallucinated TaskCreate call hits "unknown tool" instead of creating a row.
+func TestSubagentToolExecutorsExcludeTracker(t *testing.T) {
+	tools := AdaptToolRegistry((&Set{IsAgent: true}).Tools(), func() string { return "" })
+	for _, name := range []string{ToolTaskCreate, ToolTaskUpdate, ToolTaskList, ToolTaskGet} {
+		if tools.Get(name) != nil {
+			t.Errorf("subagent must have no executor for %s", name)
+		}
+	}
+}
