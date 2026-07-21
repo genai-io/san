@@ -144,7 +144,10 @@ func (a *agent) Run(ctx context.Context) error {
 				break
 			}
 
-			if result != nil {
+			// A failed turn (StopError) is an agent stop, not a turn boundary:
+			// emitting TurnEvent would fire OnTurnEnd on top of OnAgentStop.
+			// Cancellation still emits (OnTurnEnd guards StopCancelled).
+			if result != nil && result.StopReason != StopError {
 				glog.QueueLog("agent.Run: ThinkAct done, emitting TurnEvent")
 				a.emit(ctx, TurnEvent(a.id, *result))
 			}
