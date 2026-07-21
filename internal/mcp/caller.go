@@ -65,7 +65,7 @@ func ConnectServers(ctx context.Context, servers Servers, serverNames []string) 
 
 	cleanup = func() {
 		for _, name := range connected {
-			_ = servers.Disconnect(name)
+			servers.Disconnect(name)
 		}
 	}
 	return cleanup, errs

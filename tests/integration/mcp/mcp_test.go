@@ -1132,10 +1132,9 @@ func TestRealMCP_Registry_EndToEnd(t *testing.T) {
 		t.Errorf("expected echoed message, got: %q", result.Content[0].Text)
 	}
 
-	// Disconnect
-	if err := registry.Disconnect("everything"); err != nil {
-		t.Errorf("Disconnect() error: %v", err)
-	}
+	// Disconnect. The registry drops the server synchronously; the transport
+	// teardown is detached, so nothing to wait on here.
+	registry.Disconnect("everything")
 
 	// After disconnect, tool schemas should be empty
 	schemas = registry.GetToolSchemas()

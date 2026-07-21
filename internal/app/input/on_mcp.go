@@ -354,7 +354,7 @@ func (s *MCPSelector) HandleConnectResult(msg mcpConnectResultMsg) {
 // Marks the server as disabled so it won't auto-connect on restart.
 func (s *MCPSelector) HandleDisconnect(name string) {
 	if s.registry != nil {
-		_ = s.registry.Disconnect(name)
+		s.registry.Disconnect(name)
 		s.registry.SetDisabled(name, true)
 	}
 	s.refreshAndUpdateView()

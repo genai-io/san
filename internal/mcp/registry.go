@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
+	"go.uber.org/zap"
 )
 
 // PluginServer describes an MCP server contributed by a plugin.
@@ -233,31 +235,52 @@ func (r *Registry) ConnectAll(ctx context.Context) []error {
 }
 
 // Disconnect disconnects from an MCP server
-func (r *Registry) Disconnect(name string) error {
+// Disconnect drops a server from the registry. The server is gone from the
+// registry's point of view when this returns; the transport teardown runs in
+// the background.
+//
+// Detached because Client.Disconnect waits on the child's read loop and then
+// its exit — up to seven seconds for a wedged server — and this is called from
+// the bubbletea Update goroutine (the /mcp panel, /mcp disconnect). Doing it
+// inline froze the UI for that whole time, and doing it under r.mu froze the
+// agent goroutine with it, since CallTool takes the read lock.
+func (r *Registry) Disconnect(name string) {
 	r.mu.Lock()
 	client, ok := r.clients[name]
+	if ok {
+		delete(r.clients, name)
+	}
+	r.mu.Unlock()
 	if !ok {
-		r.mu.Unlock()
-		return nil
+		return
 	}
 
-	err := client.Disconnect()
-	delete(r.clients, name)
-	r.mu.Unlock()
-
+	closeInBackground(name, client)
 	r.notifyToolsChanged()
-	return err
 }
 
 // DisconnectAll disconnects from all MCP servers
 func (r *Registry) DisconnectAll() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	clients := r.clients
+	r.clients = make(map[string]*Client)
+	r.mu.Unlock()
 
-	for name, client := range r.clients {
-		_ = client.Disconnect()
-		delete(r.clients, name)
+	for name, client := range clients {
+		closeInBackground(name, client)
 	}
+}
+
+// closeInBackground tears a client down off the caller's goroutine, reporting
+// a failure to the log — the caller cannot act on it, and waiting for it is
+// what froze the UI.
+func closeInBackground(name string, client *Client) {
+	go func() {
+		if err := client.Disconnect(); err != nil {
+			log.Logger().Warn("mcp: disconnect failed",
+				zap.String("server", name), zap.Error(err))
+		}
+	}()
 }
 
 // GetClient returns a client by name
