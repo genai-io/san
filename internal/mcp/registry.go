@@ -53,7 +53,6 @@ type mcpState struct {
 	Disabled []string `json:"disabled,omitempty"`
 }
 
-// defaultRegistry is the package-level MCP registry.
 // defaultRegistry is the package-level registry; registryMu guards the pointer
 // itself. The Registry it points at locks its own contents — what needed
 // guarding is the swap, which Initialize performs on the bubbletea goroutine
