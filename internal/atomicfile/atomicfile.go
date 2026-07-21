@@ -18,15 +18,15 @@ import (
 	"path/filepath"
 )
 
-// DirPerm is the mode used for directories created on the way to the target.
-const DirPerm os.FileMode = 0o755
+// dirPerm is the mode used for directories created on the way to the target.
+const dirPerm os.FileMode = 0o755
 
 // Write replaces the file at path with data, creating parent directories as
 // needed. The temporary file is removed on every failure path, so a failed
 // write leaves nothing behind.
 func Write(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, DirPerm); err != nil {
+	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("create dir for %s: %w", path, err)
 	}
 
