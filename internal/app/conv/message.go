@@ -50,6 +50,15 @@ func toolResultIcon(isError bool) string {
 // construction.
 const InputPrompt = "❭ "
 
+// streamCursor is the block caret drawn at the live streaming tail. It is a
+// reverse-video space, not a block glyph like "▌": U+258C and its kin are
+// East-Asian *ambiguous* width — measured as one cell by lipgloss/bubbletea but
+// painted two cells wide by CJK terminals. Redrawn every frame at the growing
+// edge of streaming text, the half-cell the differ never reclaims strands a
+// stale caret mid-line (issue #374). A space is unambiguously one cell in every
+// mode; reverse video gives it the same block-caret look without the drift.
+var streamCursor = lipgloss.NewStyle().Reverse(true).Render(" ")
+
 var (
 	userMsgStyle = lipgloss.NewStyle()
 
@@ -391,7 +400,7 @@ func formatAssistantContent(params AssistantParams) string {
 		// Plain-wrap the streaming tail so its \n-line count matches the height
 		// calc; reserve streamWrapReserve cols (gutter + last-column slack).
 		wrapWidth := max(params.Width-streamWrapReserve, minWrapWidth)
-		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + "▌")
+		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + streamCursor)
 	}
 
 	if params.Content == "" {
