@@ -44,6 +44,11 @@ type Data struct {
 	// chunks once a stream has started. A valid time.Duration string (e.g. "60s",
 	// "120s"); empty = core default.
 	StreamIdleTimeout string `json:"streamIdleTimeout,omitempty"`
+	// HookUITimeout bounds a hook the UI goroutine waits on (UserPromptSubmit,
+	// SessionEnd) before it is cut short and the prompt proceeds. Raise it for a
+	// legitimately slow prompt gate (e.g. a network-backed secret scanner). A
+	// valid time.Duration string (e.g. "5s", "20s"); empty = the 5s default.
+	HookUITimeout string `json:"hookUITimeout,omitempty"`
 	// ContextBar toggles the visual context-usage bar ([██████░░░░] 71%) in
 	// the status line. Pointer so an explicit "off" persists distinctly from
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
@@ -719,6 +724,7 @@ func (s *Data) Clone() *Data {
 	dst.SearchProvider = s.SearchProvider
 	dst.StreamFirstChunkTimeout = s.StreamFirstChunkTimeout
 	dst.StreamIdleTimeout = s.StreamIdleTimeout
+	dst.HookUITimeout = s.HookUITimeout
 	dst.Persona = s.Persona
 	dst.SelfLearn = s.SelfLearn // value-typed; shallow copy is correct
 	dst.AutoPilot = s.AutoPilot.Clone()

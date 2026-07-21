@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -95,7 +96,39 @@ func (m *model) fireIdleHooksCmd(result core.Result) tea.Cmd {
 	}
 }
 
+// defaultUIHookBudget bounds a hook that the bubbletea goroutine waits on.
+//
+// The engine's own default is 600 seconds (hook.defaultTimeout), which suits a
+// detached hook. Applied to a gate sitting between a keypress and the submit it
+// means a hook that blocks — a network call, an unreachable host, a stray
+// `read` — takes the entire UI with it for ten minutes: nothing repaints, and
+// Esc and Ctrl+C queue up behind the very loop that would dispatch them.
+//
+// The cap applies even to a hook that configured a longer timeout of its own.
+// That configuration is reasonable for a hook running off the UI goroutine; on
+// this path it amounts to asking for a frozen terminal. A hook cut short fails
+// open — the engine logs it, and the user's prompt is not blocked because their
+// hook hung. A deployment with a legitimately slow gate can raise the budget
+// via the hookUITimeout setting (see uiHookBudget).
+const defaultUIHookBudget = 5 * time.Second
+
+// uiHookBudget resolves the deadline for a hook the bubbletea goroutine waits
+// on. It honors the hookUITimeout setting so a legitimately slow prompt gate can
+// raise it, falling back to defaultUIHookBudget for an empty, unparseable, or
+// non-positive value.
+func (m *model) uiHookBudget() time.Duration {
+	if raw := m.services.Setting.HookUITimeout(); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultUIHookBudget
+}
+
 func (m *model) checkPromptHook(ctx context.Context, prompt string) (bool, string) {
+	ctx, cancel := context.WithTimeout(ctx, m.uiHookBudget())
+	defer cancel()
+
 	outcome := m.services.Hook.Execute(ctx, hook.UserPromptSubmit, hook.HookInput{Prompt: prompt})
 	// UserPromptSubmit hooks may return additionalContext to inject into the
 	// next turn. Enqueue as a <system-reminder> so it rides on the user

@@ -29,6 +29,12 @@ func Default() *Settings {
 	return defaultSettings
 }
 
+// New wraps a *Data in a live *Settings handle, independent of the package-level
+// default. Intended for tests and any caller that needs an isolated instance.
+func New(d *Data) *Settings {
+	return &Settings{data: d}
+}
+
 // DefaultIfInit returns the package-level *Settings, or nil if it
 // has not been initialized with real settings yet.
 func DefaultIfInit() *Settings {
@@ -154,6 +160,15 @@ func (s *Settings) StreamIdleTimeout() string {
 		return ""
 	}
 	return s.data.StreamIdleTimeout
+}
+
+func (s *Settings) HookUITimeout() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return ""
+	}
+	return s.data.HookUITimeout
 }
 
 // SelfLearn returns just the self-learning settings, by value. Unlike

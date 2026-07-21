@@ -262,7 +262,12 @@ func (f taskLifecycleFunc) TaskCreated(info task.TaskInfo)   { f.onCreated(info)
 func (f taskLifecycleFunc) TaskCompleted(info task.TaskInfo) { f.onCompleted(info) }
 
 func (m *model) FireSessionEnd(reason string) {
-	m.services.Hook.Execute(context.Background(), hook.SessionEnd, hook.HookInput{
+	// Bounded for the same reason as checkPromptHook: this runs on the
+	// bubbletea goroutine while the user is quitting, and a SessionEnd hook
+	// that blocks makes the quit itself look hung.
+	ctx, cancel := context.WithTimeout(context.Background(), m.uiHookBudget())
+	defer cancel()
+	m.services.Hook.Execute(ctx, hook.SessionEnd, hook.HookInput{
 		Reason: reason,
 	})
 	m.services.Hook.ClearSessionHooks()
