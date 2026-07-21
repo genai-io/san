@@ -268,6 +268,7 @@ func (m *model) renderTrackerList() string {
 		Blockers:     m.services.Tracker.OpenBlockers,
 		Executing:    m.executingTrackerItem,
 		Blink:        m.conv.Spinner.Frame(),
+		AgentColors:  m.agentColors(),
 	})
 }
 

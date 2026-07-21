@@ -37,6 +37,11 @@ type TrackerListParams struct {
 	// Blink is the shared frame-tick counter (see FrameClock.Frame) that
 	// drives the in-progress pulse via trackerPulseTicks.
 	Blink int
+	// AgentColors maps an agent's name to its display color. An item owned by a
+	// background agent (Owner set) is tinted with that color, matching the
+	// agent's launch line in the flow. Plain user todos have no owner and keep
+	// the status palette.
+	AgentColors map[string]string
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
@@ -70,10 +75,14 @@ func RenderTrackerList(params TrackerListParams) string {
 		mutedStyle.Render(fmt.Sprintf("(%d%%)", ended*100/len(params.Items))))
 	sb.WriteString("\n")
 
-	visible := params.Items[max(0, len(params.Items)-maxVisibleItems):]
-	if hidden := len(params.Items) - len(visible); hidden > 0 {
-		// Name the drop; a silent truncation reads as the whole list.
-		sb.WriteString("  " + overflowStyle.Render(fmt.Sprintf("+%d more above", hidden)) + "\n")
+	// Items stay in ID order so rows hold their place as work advances — no
+	// reshuffle churn. When the list overflows the row budget, the oldest
+	// cleanly-finished items fold into one summary line: active and pending
+	// work, which is what the panel exists to surface, is never hidden.
+	folded := leadingFinishedToFold(params.Items)
+	visible := params.Items[folded:]
+	if folded > 0 {
+		sb.WriteString(renderFoldedLine(folded))
 	}
 
 	idWidth := itemIDWidth(visible)
@@ -83,10 +92,33 @@ func RenderTrackerList(params TrackerListParams) string {
 	// no worker can still be advancing.
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
-		sb.WriteString(renderItem(t, phase, params.Width, idWidth, params.Blockers, params.Blink))
+		sb.WriteString(renderItem(t, phase, params.Width, idWidth, params.Blockers, params.Blink, params.AgentColors))
 	}
 
 	return sb.String()
+}
+
+// leadingFinishedToFold reports how many items at the front of the list should
+// collapse into a summary line: the contiguous run of cleanly-finished items,
+// capped at the overflow past maxVisibleItems. An aborted/failed item breaks the
+// run, so a failure is never folded out of sight.
+func leadingFinishedToFold(items []*todo.Item) int {
+	if len(items) <= maxVisibleItems {
+		return 0
+	}
+	overflow := len(items) - maxVisibleItems
+	folded := 0
+	for folded < overflow && phaseOf(items[folded], false) == itemFinished {
+		folded++
+	}
+	return folded
+}
+
+// renderFoldedLine renders the collapsed-finished summary row that stands in for
+// the leading run of completed items.
+func renderFoldedLine(n int) string {
+	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	return "  " + trackerCompletedStyle.Render("●") + "  " + mutedStyle.Render(fmt.Sprintf("%d completed", n)) + "\n"
 }
 
 // itemPhase is how an item reads to the user. It collapses the recorded status,
@@ -132,12 +164,24 @@ func activeText(t *todo.Item, maxTextLen int) string {
 	return kit.TruncateText(text, maxTextLen)
 }
 
-func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, blink int) string {
+func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, blink int, agentColors map[string]string) string {
 	indent := "  "
 	idTag := fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
 	maxTextLen := max(width-len(indent)-idWidth-8, 12)
 	subject := kit.TruncateText(t.Subject, maxTextLen)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+
+	// A row owned by a background agent wears that agent's color (icon + text),
+	// mirroring its launch line in the flow; a plain todo keeps the status
+	// palette. Aborted rows stay error-red and stalled rows stay muted — those
+	// states carry more meaning than whose agent produced them.
+	agentFg, owned := agentForeground(t, agentColors)
+	tint := func(s lipgloss.Style) lipgloss.Style {
+		if owned {
+			return s.Foreground(agentFg)
+		}
+		return s
+	}
 
 	switch phase {
 	case itemAborted:
@@ -146,7 +190,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		return renderItemLine(indent, abortedStyle.Render("!"), idTag, subject, detail)
 
 	case itemFinished:
-		return renderItemLine(indent, trackerCompletedStyle.Render("●"), idTag, subject, "")
+		return renderItemLine(indent, tint(trackerCompletedStyle).Render("●"), idTag, tint(lipgloss.NewStyle()).Render(subject), "")
 
 	case itemStalled:
 		// Nothing is executing this item, so draw it at rest. Reaching here
@@ -160,7 +204,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		// rather than the wall clock, which only sampled on redraws and so
 		// flickered irregularly.
 		activeIcon := "●"
-		activeStyle := trackerInProgressStyle
+		activeStyle := tint(trackerInProgressStyle)
 		if (blink/trackerPulseTicks)%2 == 1 {
 			activeIcon = "◌"
 			activeStyle = mutedStyle
@@ -169,7 +213,7 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		if elapsed := formatElapsedTime(t.StatusChangedAt); elapsed != "" {
 			detail = mutedStyle.Render(elapsed)
 		}
-		return renderItemLine(indent, activeStyle.Render(activeIcon), idTag, activeText(t, maxTextLen), detail)
+		return renderItemLine(indent, activeStyle.Render(activeIcon), idTag, tint(lipgloss.NewStyle()).Render(activeText(t, maxTextLen)), detail)
 
 	default:
 		detail := ""
@@ -183,8 +227,22 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 				detail = blockedStyle.Render("← " + strings.Join(blockerRefs, ", "))
 			}
 		}
-		return renderItemLine(indent, trackerPendingStyle.Render("○"), idTag, subject, detail)
+		return renderItemLine(indent, tint(trackerPendingStyle).Render("○"), idTag, tint(lipgloss.NewStyle()).Render(subject), detail)
 	}
+}
+
+// agentForeground returns the owning agent's display color for an item, and
+// whether the item is owned by a colored agent at all — a plain user todo has no
+// owner, and an owner with no configured color resolves to nothing.
+func agentForeground(t *todo.Item, agentColors map[string]string) (kit.AdaptiveColor, bool) {
+	if t.Owner == "" || len(agentColors) == 0 {
+		return kit.AdaptiveColor{}, false
+	}
+	color, ok := agentColors[strings.ToLower(t.Owner)]
+	if !ok || color == "" {
+		return kit.AdaptiveColor{}, false
+	}
+	return agentColor(color), true
 }
 
 func renderItemLine(indent, icon, id, subject, detail string) string {

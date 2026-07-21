@@ -71,7 +71,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	// both the solid (●) and dim (◌) phases.
 	var hasSolid, hasDim bool
 	for blink := range 4 * trackerPulseTicks {
-		frame := stripANSI(renderItem(task, itemRunning, 80, 2, nil, blink))
+		frame := stripANSI(renderItem(task, itemRunning, 80, 2, nil, blink, nil))
 		if strings.Contains(frame, "●") {
 			hasSolid = true
 		}
@@ -123,9 +123,9 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0))
+	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0, nil))
 	for blink := range 4 * trackerPulseTicks {
-		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink)); frame != first {
+		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink, nil)); frame != first {
 			t.Fatalf("stalled task animated across frames:\n%q\n%q", first, frame)
 		}
 	}
@@ -169,9 +169,10 @@ func TestRenderTrackerListVisibility(t *testing.T) {
 	}
 }
 
-// The list outlives the turn that filled it, so windowing from the front would
-// pin the panel to the turn that stalled and hide everything since.
-func TestRenderTrackerListWindowsOnNewestTasks(t *testing.T) {
+// When the list overflows the row budget, the oldest cleanly-finished items
+// fold into one summary line; the active and pending tail — the work still in
+// flight — always stays on screen.
+func TestRenderTrackerListFoldsLeadingFinished(t *testing.T) {
 	tasks := make([]*todo.Item, 0, maxVisibleItems+3)
 	for i := 1; i <= maxVisibleItems+3; i++ {
 		id := strconv.Itoa(i)
@@ -181,14 +182,16 @@ func TestRenderTrackerListWindowsOnNewestTasks(t *testing.T) {
 			Status:  todo.StatusCompleted,
 		})
 	}
-	// The oldest task is the one left open, so it is what keeps the list alive.
-	tasks[0].Status = todo.StatusInProgress
+	// The tail is the work still in flight — it must never fold away.
+	tasks[len(tasks)-3].Status = todo.StatusInProgress // #9
+	tasks[len(tasks)-2].Status = todo.StatusPending    // #10
+	tasks[len(tasks)-1].Status = todo.StatusPending    // #11
 
 	plain := stripANSI(RenderTrackerList(TrackerListParams{
 		Items:        tasks,
 		StreamActive: true,
 		Width:        120,
-		Executing:    func(*todo.Item) bool { return false },
+		Executing:    func(*todo.Item) bool { return true },
 	}))
 
 	ids := taskIDRe.FindAllString(plain, -1)
@@ -196,8 +199,42 @@ func TestRenderTrackerListWindowsOnNewestTasks(t *testing.T) {
 	if !slices.Equal(ids, want) {
 		t.Fatalf("visible tasks:\n  got:  %v\n  want: %v\n\nfull output:\n%s", ids, want, plain)
 	}
-	if !strings.Contains(plain, "+3 more above") {
-		t.Fatalf("hidden tasks should be counted, not dropped silently:\n%s", plain)
+	if !strings.Contains(plain, "3 completed") {
+		t.Fatalf("folded finished items should be summarized, not dropped silently:\n%s", plain)
+	}
+}
+
+// A row owned by a background agent is tinted with that agent's color; a plain
+// todo keeps the status palette. The tint changes only color, never the text.
+func TestRenderItemTintsAgentOwnedRows(t *testing.T) {
+	item := &todo.Item{ID: "1", Subject: "Audit deps", Status: todo.StatusInProgress, Owner: "explorer"}
+	colors := map[string]string{"explorer": "yellow"}
+
+	plain := renderItem(item, itemRunning, 80, 2, nil, 0, nil)
+	tinted := renderItem(item, itemRunning, 80, 2, nil, 0, colors)
+
+	if stripANSI(plain) != stripANSI(tinted) {
+		t.Fatalf("agent tint changed the row text, not just its color:\n  %q\n  %q", stripANSI(plain), stripANSI(tinted))
+	}
+	if plain == tinted {
+		t.Fatalf("agent-owned row should be tinted with the agent color, got identical output:\n%q", tinted)
+	}
+}
+
+func TestAgentForeground(t *testing.T) {
+	colors := map[string]string{"explorer": "yellow"}
+
+	if _, ok := agentForeground(&todo.Item{Owner: "explorer"}, colors); !ok {
+		t.Fatal("agent-owned item should resolve its color")
+	}
+	if _, ok := agentForeground(&todo.Item{Owner: "Explorer"}, colors); !ok {
+		t.Fatal("owner lookup should be case-insensitive")
+	}
+	if _, ok := agentForeground(&todo.Item{Owner: ""}, colors); ok {
+		t.Fatal("a plain todo (no owner) must not resolve a color")
+	}
+	if _, ok := agentForeground(&todo.Item{Owner: "ghost"}, colors); ok {
+		t.Fatal("an owner with no configured color must not resolve one")
 	}
 }
 
