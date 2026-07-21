@@ -440,8 +440,6 @@ func estimateRecurringPeriod(expr *expression, base time.Time) time.Duration {
 	return next.Sub(base)
 }
 
-// saveDurableLocked writes all durable jobs to the storage file.
-// Must be called with s.mu held.
 // saveDurableLocked writes this process's durable jobs, preserving any the
 // file holds that belong to another instance.
 //
