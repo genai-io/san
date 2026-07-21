@@ -3,6 +3,40 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.21.11] - 2026-07-21
+
+### Added
+- Add `/goal` for setting Autopilot goals and address related Autopilot defects ([@yanmxa](https://github.com/yanmxa) in [#349](https://github.com/genai-io/san/pull/349))
+- Raise the Autopilot autonomy level ([@yanmxa](https://github.com/yanmxa) in [#347](https://github.com/genai-io/san/pull/347))
+- Tint agent-owned tracker rows and fold finished-item overflow ([@yanmxa](https://github.com/yanmxa) in [#372](https://github.com/genai-io/san/pull/372))
+
+### Changed
+- Write files atomically through a shared helper ([@yanmxa](https://github.com/yanmxa) in [#354](https://github.com/genai-io/san/pull/354))
+
+### Fixed
+- Remove the streaming caret and its stranded vertical line ([@yanmxa](https://github.com/yanmxa) in [093765a](https://github.com/genai-io/san/commit/093765a231d0e7ec1628bfdd5949b9bd87a14b68), [7f5931a](https://github.com/genai-io/san/commit/7f5931a9a6594a07b2db11f3303374de2501f0fa))
+- Prevent provider switches from crashing TUI cost accounting ([@yanmxa](https://github.com/yanmxa) in [#357](https://github.com/genai-io/san/pull/357))
+- Keep MCP servers connected when the working directory changes ([@yanmxa](https://github.com/yanmxa) in [#361](https://github.com/genai-io/san/pull/361))
+- Preserve plugin hooks across reloads ([@yanmxa](https://github.com/yanmxa) in [#362](https://github.com/genai-io/san/pull/362))
+- Bound hooks awaited by the UI goroutine ([@yanmxa](https://github.com/yanmxa) in [#370](https://github.com/genai-io/san/pull/370))
+- Rebuild damaged transcript indexes instead of hiding sessions ([@yanmxa](https://github.com/yanmxa) in [#363](https://github.com/genai-io/san/pull/363))
+- Recover sessions with a torn final transcript record ([@yanmxa](https://github.com/yanmxa) in [#364](https://github.com/genai-io/san/pull/364))
+- Keep lock-protected plugin state from escaping as live pointers ([@yanmxa](https://github.com/yanmxa) in [#366](https://github.com/genai-io/san/pull/366))
+- Prevent MCP server teardown from freezing the TUI and agent ([@yanmxa](https://github.com/yanmxa) in [#367](https://github.com/genai-io/san/pull/367))
+- Keep scheduled jobs in one San window from deleting another window's jobs ([@yanmxa](https://github.com/yanmxa) in [#371](https://github.com/genai-io/san/pull/371))
+- Prevent a permission check from racing a mode switch ([@yanmxa](https://github.com/yanmxa) in [4b303c3](https://github.com/genai-io/san/commit/4b303c34736fb4480457514c883eecc05923d7f4))
+- Measure TUI panel layouts in display columns ([@yanmxa](https://github.com/yanmxa) in [e16adfd](https://github.com/genai-io/san/commit/e16adfd3197ea92855196fdd28a415bc97821c90))
+- Avoid signaling a reissued process group when stopping a task ([@yanmxa](https://github.com/yanmxa) in [f7d346b](https://github.com/genai-io/san/commit/f7d346ba1e2332000d027e44396a9a60e2afd2a1))
+- Surface hooks that exit non-zero ([@yanmxa](https://github.com/yanmxa) in [970576f](https://github.com/genai-io/san/commit/970576f4c9db39e59b76bd279fcd28e24a0045d3))
+- Keep `/fork` from writing fork history into its parent session ([@yanmxa](https://github.com/yanmxa) in [dc64c01](https://github.com/genai-io/san/commit/dc64c01271d9f6dbde1ec59008544277a9a549ae))
+- Return a result and suppress `TurnEvent` when a turn fails ([@yanmxa](https://github.com/yanmxa) in [39794fd](https://github.com/genai-io/san/commit/39794fd2c23383a3ab886d63dd2e87827ff9942b), [81a2ef6](https://github.com/genai-io/san/commit/81a2ef62f74e713341af8c9c67e82de4b85005e6))
+- Guard the package-level skill registry during concurrent reinitialization ([@yanmxa](https://github.com/yanmxa) in [4daeec4](https://github.com/genai-io/san/commit/4daeec4958166acce12e23e4247591aad846a113))
+- Keep the task tracker parent-only for subagents ([@yanmxa](https://github.com/yanmxa) in [#373](https://github.com/genai-io/san/pull/373))
+- Make graceful task stops complete gracefully and bound Bash task output ([@yanmxa](https://github.com/yanmxa) in [#350](https://github.com/genai-io/san/pull/350))
+- Report model output whenever a turn exits ([@yanmxa](https://github.com/yanmxa) in [#351](https://github.com/genai-io/san/pull/351))
+- Join tracker workers to task lifecycles rather than tool results ([@yanmxa](https://github.com/yanmxa) in [#348](https://github.com/genai-io/san/pull/348))
+- Keep the tracker task list windowed on its newest items ([@yanmxa](https://github.com/yanmxa) in [#346](https://github.com/genai-io/san/pull/346))
+
 ## [v1.21.10] - 2026-07-20
 
 ### Fixed
