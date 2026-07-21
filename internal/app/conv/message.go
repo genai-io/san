@@ -50,15 +50,6 @@ func toolResultIcon(isError bool) string {
 // construction.
 const InputPrompt = "❭ "
 
-// streamCursor is the block caret drawn at the live streaming tail. It is a
-// reverse-video space, not a block glyph like "▌": U+258C and its kin are
-// East-Asian *ambiguous* width — measured as one cell by lipgloss/bubbletea but
-// painted two cells wide by CJK terminals. Redrawn every frame at the growing
-// edge of streaming text, the half-cell the differ never reclaims strands a
-// stale caret mid-line (issue #374). A space is unambiguously one cell in every
-// mode; reverse video gives it the same block-caret look without the drift.
-var streamCursor = lipgloss.NewStyle().Reverse(true).Render(" ")
-
 var (
 	userMsgStyle = lipgloss.NewStyle()
 
@@ -392,15 +383,21 @@ func formatAssistantContent(params AssistantParams) string {
 			return ThinkingStyle.Render("Thinking...")
 		}
 		// BulletEmitted: content is already streaming to scrollback block by
-		// block — fall through to the bare streaming cursor so the gap between
-		// committed blocks still shows live activity, not the "Thinking…" filler.
+		// block — fall through so the momentary gap between committed blocks
+		// still shows the live spinner, not the "Thinking…" filler.
 	}
 
 	if params.StreamActive && params.IsLast && len(params.ToolCalls) == 0 {
+		if params.Content == "" {
+			// Nothing new to draw (turn start, or the gap right after a block
+			// commits): a lone space keeps the leading spinner on screen so the
+			// tail reads as live without trailing any caret glyph after the text.
+			return " "
+		}
 		// Plain-wrap the streaming tail so its \n-line count matches the height
 		// calc; reserve streamWrapReserve cols (gutter + last-column slack).
 		wrapWidth := max(params.Width-streamWrapReserve, minWrapWidth)
-		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content + streamCursor)
+		return lipgloss.NewStyle().Width(wrapWidth).Render(params.Content)
 	}
 
 	if params.Content == "" {
