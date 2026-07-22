@@ -125,6 +125,31 @@ func TestResetReadStampsForgetsReads(t *testing.T) {
 	}
 }
 
+func TestEditAfterOwnWriteNeedsNoRead(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "hello.txt")
+
+	// The exact flow from live testing: Write a new file, then Edit it
+	// repeatedly — no Read anywhere. The tool's own results are the view.
+	result := (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path": filePath,
+		"content":   "123",
+	}, tmpDir)
+	if out := result.FormatForLLM(); strings.Contains(out, "Error") {
+		t.Fatalf("write failed: %s", out)
+	}
+	if out := editOnce(filePath, "123", "23", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
+		t.Fatalf("edit after own Write should need no Read, got: %s", out)
+	}
+	if out := editOnce(filePath, "23", "5", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
+		t.Fatalf("edit after own Edit should need no Read, got: %s", out)
+	}
+	got, _ := os.ReadFile(filePath)
+	if string(got) != "5" {
+		t.Fatalf("file content = %q", got)
+	}
+}
+
 func TestEditKeepsOwnWriteFresh(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "chain.txt")
