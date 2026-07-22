@@ -108,10 +108,6 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	return renderGenericToolResultInline(data)
 }
 
-// diffDefaultVisibleLines caps the diff shown under an Edit/Write result
-// before the user expands it with ctrl+o.
-const diffDefaultVisibleLines = 20
-
 func renderFileChangeResultInline(data ToolResultData) string {
 	if data.IsError {
 		// Same "failed" summary + indented reason as the generic error branch;
@@ -141,19 +137,11 @@ func renderFileChangeResultInline(data ToolResultData) string {
 	if width <= 0 {
 		width = 80
 	}
-	visible := diffDefaultVisibleLines
-	if data.Expanded {
-		visible = 0
-	}
-	block, hiddenCount := RenderFileDiff(perm.ParseUnifiedDiff(details.UnifiedDiff), width, visible)
+	// The diff renders in full: scrollback freezes, so anything hidden here
+	// would be lost for good. The only bound is the 400-line cap applied when
+	// the diff was stored, which surfaces as its own notice row.
+	block, _ := RenderFileDiff(perm.ParseUnifiedDiff(details.UnifiedDiff), width, 0)
 	sb.WriteString(block)
-	if hiddenCount > 0 {
-		note := fmt.Sprintf("     … %d more lines", hiddenCount)
-		if data.Interactive {
-			note += " (ctrl+o to expand)"
-		}
-		sb.WriteString(truncatedStyle.Render(note) + "\n")
-	}
 	return sb.String()
 }
 
