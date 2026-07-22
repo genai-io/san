@@ -84,11 +84,9 @@ Use it to enforce naming conventions and replace hacks with clear, maintainable,
 		Model:          "inherit",
 		PermissionMode: PermissionAcceptEdits,
 		AllowTools:     nil,
-		DenyTools: ToolNames("Agent", "SendMessage",
-			"EnterWorktree", "ExitWorktree",
-			"CronCreate", "CronDelete", "CronList"),
-		MaxSteps: 100,
-		Source:   "built-in",
+		DenyTools:      ToolNames("Agent", "SendMessage"),
+		MaxSteps:       100,
+		Source:         "built-in",
 	}
 
 	// code-reviewer agent - reviews code for quality issues without mutating the workspace

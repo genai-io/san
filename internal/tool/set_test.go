@@ -46,7 +46,7 @@ func TestSubagentToolExecutorsExcludeTracker(t *testing.T) {
 // Cron joins the tracker in the parent-only tier: scheduling creates state
 // that outlives the worker and belongs to the session owner.
 func TestSubagentsCannotUseCronTools(t *testing.T) {
-	cronTools := []string{ToolCronCreate, ToolCronDelete, ToolCronList}
+	cronTools := []string{ToolCron}
 
 	main := (&Set{}).Tools()
 	for _, name := range cronTools {
