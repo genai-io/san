@@ -46,6 +46,7 @@ type adaptConfig struct {
 	askFn           AskUserFunc
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
+	progressFn      func(toolCallID string, lines int, bytes int64)
 	promptResponder BashPromptResponderProvider
 }
 
@@ -63,6 +64,12 @@ func WithMessagesGetterProvider(fn MessagesGetter) AdaptOption {
 // WithToolActivity sets the handler for activity lines emitted by agent-like tools.
 func WithToolActivity(fn func(toolCallID string, msg string)) AdaptOption {
 	return func(c *adaptConfig) { c.activityFn = fn }
+}
+
+// WithToolProgress sets the handler for output-progress snapshots emitted by a
+// running command (currently Bash), reporting its cumulative line/byte totals.
+func WithToolProgress(fn func(toolCallID string, lines int, bytes int64)) AdaptOption {
+	return func(c *adaptConfig) { c.progressFn = fn }
 }
 
 // WithBashPromptResponderProvider sets the responder provider for tools that can
@@ -94,7 +101,7 @@ func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...Ada
 	var adapted []core.Tool
 	for name, schema := range schemaByName {
 		if t, ok := Get(name); ok {
-			adapted = append(adapted, &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder})
+			adapted = append(adapted, &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, progressFn: cfg.progressFn, promptResponder: cfg.promptResponder})
 		}
 	}
 	return core.NewTools(adapted...)
@@ -108,6 +115,7 @@ type toolAdapter struct {
 	askFn           AskUserFunc
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
+	progressFn      func(toolCallID string, lines int, bytes int64)
 	promptResponder BashPromptResponderProvider
 }
 
@@ -125,6 +133,13 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 	}
 	if a.promptResponder != nil {
 		ctx = ContextWithBashPromptResponderProvider(ctx, a.promptResponder)
+	}
+	if a.progressFn != nil {
+		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
+			ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64) {
+				a.progressFn(callID, lines, bytes)
+			})
+		}
 	}
 	if IsAgentToolName(a.inner.Name()) {
 		if a.activityFn != nil {

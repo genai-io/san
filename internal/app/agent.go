@@ -159,6 +159,9 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		ToolActivity: func(toolCallID string, msg string) {
 			m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
 		},
+		ToolProgress: func(toolCallID string, lines int, bytes int64) {
+			m.conv.AgentToUI.SendToolProgress(toolCallID, conv.FormatToolProgress(lines, bytes))
+		},
 		BashPromptResponder: func(ctx context.Context) tool.BashPromptResponder {
 			// Interactive answering is opt-in via the Bash steer, read live (via
 			// the synchronized snapshot — this runs on the agent goroutine) so a

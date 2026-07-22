@@ -338,6 +338,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 		PendingCalls:  m.conv.Tool.PendingCalls,
 		CurrentIdx:    m.conv.Tool.CurrentIdx,
 		ToolStartedAt: m.conv.Tool.StartedAt,
+		ToolProgress:  m.conv.Tool.Progress,
 
 		// Renderer env
 		Width:      m.env.Width,

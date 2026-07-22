@@ -12,10 +12,15 @@ import (
 // AgentActivityMsg carries one activity line from a running agent — its model,
 // its mode, a tool it is calling, "Thinking...", or token usage. Lines
 // accumulate into the per-agent activity feed the TUI renders.
+//
+// A message with Progress set is instead a running command's latest output
+// counter (keyed by ToolCallID): it replaces the previous value rather than
+// appending, and never joins the activity feed.
 type AgentActivityMsg struct {
 	Index      int
 	ToolCallID string
 	Message    string
+	Progress   bool
 }
 
 // AgentToUITickMsg is the idle heartbeat: Check emits it when no message is
@@ -56,6 +61,16 @@ func (h *AgentToUI) SendForAgent(index int, msg string) {
 func (h *AgentToUI) SendForToolCall(toolCallID string, msg string) {
 	select {
 	case h.ch <- AgentActivityMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
+	default:
+	}
+}
+
+// SendToolProgress enqueues the latest output counter for a running tool call.
+// It is a replaceable snapshot, not a feed line: a full channel simply drops it
+// and the next tick re-sends, so a running command never blocks on the UI.
+func (h *AgentToUI) SendToolProgress(toolCallID string, text string) {
+	select {
+	case h.ch <- AgentActivityMsg{Index: -1, ToolCallID: toolCallID, Message: text, Progress: true}:
 	default:
 	}
 }
@@ -154,6 +169,9 @@ func (h *AgentToUI) Drain(taskActivity map[int][]string) map[int][]string {
 	for {
 		select {
 		case u := <-h.ch:
+			if u.Progress {
+				continue // ephemeral output counter, not a feed line
+			}
 			if taskActivity == nil {
 				taskActivity = make(map[int][]string)
 			}

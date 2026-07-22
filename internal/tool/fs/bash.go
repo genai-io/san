@@ -117,8 +117,11 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Count output as it streams so the UI can show a live line counter; when
+	// nothing is listening, tee returns the bare buffer and this costs nothing.
+	progress := &outputProgress{report: tool.BashProgressFromContext(ctx)}
+	cmd.Stdout = progress.tee(&stdout)
+	cmd.Stderr = progress.tee(&stderr)
 
 	err := cmd.Run()
 	duration := time.Since(start)

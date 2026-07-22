@@ -496,16 +496,19 @@ type ToolCallsParams struct {
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// for the live elapsed timer on its row. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
-	ModelName     string
-	InputTokens   int
-	OutputTokens  int
-	Blink         int
-	AgentColors   map[string]string
-	SpinnerView   string
-	TaskOwnerMap  map[string]string
-	MDRenderer    *MDRenderer
-	Width         int
-	Interactive   bool
+	// ToolProgress maps a running command's ID to its latest output counter,
+	// shown next to the timer. Empty for calls that have produced no output.
+	ToolProgress map[string]string
+	ModelName    string
+	InputTokens  int
+	OutputTokens int
+	Blink        int
+	AgentColors  map[string]string
+	SpinnerView  string
+	TaskOwnerMap map[string]string
+	MDRenderer   *MDRenderer
+	Width        int
+	Interactive  bool
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -579,7 +582,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				args := extractToolArgs(tc.Input)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			}
-			sb.WriteString(appendRowDetail(row, runningElapsedDetail(tc, params)))
+			sb.WriteString(appendRowDetail(row, runningRowDetail(tc, params)))
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
@@ -626,13 +629,14 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 	return "●"
 }
 
-// runningElapsedDetail returns a dim " · 12s" suffix for a tool call that is
-// still executing and has run at least a second — long enough to be worth
-// telling the user it is alive and how long it has taken. A call that has
+// runningRowDetail returns a dim " · 12s · 1.2k lines" suffix for a tool call
+// that is still executing and has run at least a second — long enough to be
+// worth telling the user it is alive, how long it has taken, and (for a command
+// producing output) that output is flowing rather than hung. A call that has
 // finished (its result is in) or has not started (no start stamp) gets "".
 // The stamp map only holds in-flight calls, so membership already gates this:
 // a not-yet-current sequential call has no entry and shows nothing.
-func runningElapsedDetail(tc core.ToolCall, params ToolCallsParams) string {
+func runningRowDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if _, done := params.ResultMap[tc.ID]; done {
 		return ""
 	}
@@ -644,7 +648,11 @@ func runningElapsedDetail(tc core.ToolCall, params ToolCallsParams) string {
 	if elapsed == "" {
 		return ""
 	}
-	return toolResultStyle.Render(" · " + elapsed)
+	detail := " · " + elapsed
+	if progress := params.ToolProgress[tc.ID]; progress != "" {
+		detail += " · " + progress
+	}
+	return toolResultStyle.Render(detail)
 }
 
 // appendRowDetail splices a trailing detail (an already-styled elapsed timer)
