@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -67,7 +66,6 @@ func RunAgent(opts AgentRunOptions) error {
 	// as TUI-spawned subagents.
 	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
 	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))
-	executor.SetContext(setting.IsGitRepo(cwd))
 
 	fmt.Printf("Agent: %s\n", opts.Type)
 	fmt.Printf("Prompt: %s\n", opts.Prompt)

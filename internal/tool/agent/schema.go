@@ -42,16 +42,12 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("When using the Agent tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.\n\n")
-	sb.WriteString("Use direct tools instead for simple reads, narrow searches, or tasks that only need 1-2 tool calls.\n\n")
-	sb.WriteString("Usage notes:\n")
-	sb.WriteString("- Always include a short description (3-5 words) summarizing what the agent will do\n")
-	sb.WriteString("- Launch multiple agents concurrently whenever possible; to do that, use a single message with multiple Agent calls\n")
-	sb.WriteString("- Each agent has isolated context; summarize important results back to the user yourself\n")
-	sb.WriteString("- Use foreground by default when you need the result before continuing\n")
-	sb.WriteString("- Use run_in_background only for genuinely independent work; you will be notified when it completes\n")
-	sb.WriteString("- A running background agent can be steered mid-run with SendMessage(to=<task id>, message); it reports back when done\n")
-	sb.WriteString("- Cancel a running background task (worker or command) with signal \"stop\" and its task_id; prompt records the cancellation reason\n")
-	sb.WriteString("- Provide concrete prompts with file paths, constraints, and whether code changes are expected")
+	sb.WriteString("Use the lightest option that fits: a single Bash or Read call → that tool directly; 3+ non-mutating searches with decisions between them → mode=explore; code changes or multi-file edits → mode=edit.\n\n")
+	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
+	sb.WriteString("Notes:\n")
+	sb.WriteString("- Launch independent agents concurrently — multiple Agent calls in one message. Run foreground when you need the result to continue; run_in_background only for genuinely independent work (you are notified on completion).\n")
+	sb.WriteString("- Cancel a running background task with signal \"stop\" and its task_id.\n")
+	sb.WriteString("- A result summary is what the agent meant to do, not what it did — verify the actual changes before reporting work done, and summarize results back to the user yourself.")
 
 	return core.ToolSchema{
 		Name:        "Agent",

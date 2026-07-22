@@ -24,37 +24,18 @@ type scenario struct {
 }
 
 func testScenarios() []scenario {
-	mainEnv := Environment{Cwd: "/home/user/myproject", IsGit: true, ModelID: "claude-sonnet-4-20250514"}
-	subEnv := Environment{Cwd: "/home/user/myproject", IsGit: true, ModelID: "claude-sonnet-4-20250514"}
+	// The scenario cwd is not a real repo on the test machine, so the branch
+	// line is deterministically absent from golden files.
+	mainEnv := Environment{Cwd: "/home/user/myproject"}
+	subEnv := Environment{Cwd: "/home/user/myproject"}
 
 	return []scenario{
-		{
-			name:  "minimal",
-			scope: core.ScopeMain,
-			opts: func() []Option {
-				return []Option{
-					WithEnvironment(Environment{Cwd: "/tmp/project"}),
-				}
-			},
-		},
 		{
 			name:  "main_session",
 			scope: core.ScopeMain,
 			opts: func() []Option {
 				return []Option{
-					WithGitGuidelines(true),
-					WithTaskTracking(true),
 					WithEnvironment(mainEnv),
-				}
-			},
-		},
-		{
-			name:  "no_git",
-			scope: core.ScopeMain,
-			opts: func() []Option {
-				return []Option{
-					WithGitGuidelines(false),
-					WithEnvironment(Environment{Cwd: "/home/user/myproject", IsGit: false, ModelID: "claude-sonnet-4-20250514"}),
 				}
 			},
 		},
@@ -63,7 +44,6 @@ func testScenarios() []scenario {
 			scope: core.ScopeSubagent,
 			opts: func() []Option {
 				return []Option{
-					WithGitGuidelines(true),
 					WithSubagentIdentity(SubagentBrief{
 						AgentName:   "general-purpose",
 						Description: "General-purpose agent for research and multi-step tasks.",
@@ -78,7 +58,6 @@ func testScenarios() []scenario {
 			scope: core.ScopeSubagent,
 			opts: func() []Option {
 				return []Option{
-					WithGitGuidelines(true),
 					WithSubagentIdentity(SubagentBrief{
 						AgentName:    "general-purpose",
 						Description:  "General-purpose agent for research and execution.",
@@ -140,27 +119,6 @@ func TestGoldenFiles(t *testing.T) {
 
 // --- Section presence/absence integration tests ---
 
-func TestScenarioMinimal_NoGitGuidelines(t *testing.T) {
-	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/project"}))
-	prompt := sys.Prompt()
-
-	if strings.Contains(prompt, "## Git safety") {
-		t.Error("non-git scenario should NOT contain git safety rules")
-	}
-	if !strings.Contains(prompt, "## Tools") {
-		t.Error("should always contain core tool rules")
-	}
-	if strings.Contains(prompt, "<memory") {
-		t.Error("should NOT contain memory when empty")
-	}
-	if strings.Contains(prompt, "<skills>") {
-		t.Error("should NOT contain skills when empty")
-	}
-	if strings.Contains(prompt, "<agents>") {
-		t.Error("should NOT contain agents when empty")
-	}
-}
-
 func TestScenarioMainSession_HasAllSections(t *testing.T) {
 	for _, sc := range testScenarios() {
 		if sc.name != "main_session" {
@@ -173,21 +131,22 @@ func TestScenarioMainSession_HasAllSections(t *testing.T) {
 			label   string
 			content string
 		}{
-			{"identity", "interactive AI assistant"},
+			{"identity", "You are a coding agent"},
 			{"environment", "<environment>"},
-			{"git env", "git: yes"},
 			// Memory, skills, agents intentionally absent from system prompt:
 			//   - <memory> rides on user messages as <system-reminder>
 			//   - <skills> rides on user messages as <system-reminder>
 			//   - agent directory lives in the Agent tool's description
-			{"core tool rules", "## Tools"},
-			{"git rules", "## Git safety"},
-			{"question guidelines", "AskUserQuestion"},
-			{"task guidelines", "TaskCreate"},
+			{"core rules", "## Safety"},
 		}
 		for _, r := range required {
 			if !strings.Contains(prompt, r.content) {
 				t.Errorf("main session should contain %s (%q)", r.label, r.content)
+			}
+		}
+		for _, gone := range []string{"<memory", "<skills>", "<agents>"} {
+			if strings.Contains(prompt, gone) {
+				t.Errorf("main session should NOT contain %q", gone)
 			}
 		}
 	}
@@ -207,11 +166,8 @@ func TestScenarioSubagentReadonly_NoMainOnlyGuidelines(t *testing.T) {
 		if !strings.Contains(prompt, `mode="explore"`) {
 			t.Error("identity tag should carry explore mode attribute")
 		}
-		if strings.Contains(prompt, "AskUserQuestion") {
-			t.Error("subagent should NOT have question guidelines")
-		}
-		if strings.Contains(prompt, "TaskCreate") {
-			t.Error("subagent should NOT have task management guidelines")
+		if strings.Contains(prompt, "<behavior>") {
+			t.Error("subagent should NOT have the behavior part")
 		}
 	}
 }

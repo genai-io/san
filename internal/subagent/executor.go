@@ -37,7 +37,6 @@ type Executor struct {
 	hooks               hook.Handler
 	sessionStore        SubagentSessionStore // Optional: when set, subagent sessions are persisted
 	parentSessionID     string               // Parent session ID for linking subagent sessions
-	isGit               bool                 // whether cwd is a git repository
 	projectInstructions string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
 	skillsPrompt        string               // available skills section for capable subagents
 	mcpTools            mcp.Tools            // tool schemas + execution
@@ -67,13 +66,6 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
 	}
-}
-
-// SetContext provides project context (git status) so subagents get the same
-// system prompt foundation as the parent conversation. User memory is
-// intentionally not propagated — see collectSubagentReminders.
-func (e *Executor) SetContext(isGit bool) {
-	e.isGit = isGit
 }
 
 // SetProjectInstructions provides the project's instruction memory
@@ -296,14 +288,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	// loadConversation, keeping subagents on the same harness channel
 	// pattern as the main agent.
 	sys := system.Build(core.ScopeSubagent,
-		system.WithProvider(rc.provider.Name()),
-		system.WithGitGuidelines(e.isGit),
 		system.WithSubagentIdentity(rc.brief),
-		system.WithEnvironment(system.Environment{
-			Cwd:     agentCwd,
-			IsGit:   e.isGit,
-			ModelID: rc.modelID,
-		}),
+		system.WithEnvironment(system.Environment{Cwd: agentCwd}),
 	)
 
 	// Tools — adapt legacy tool registry + MCP tools

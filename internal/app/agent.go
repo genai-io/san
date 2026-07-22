@@ -142,7 +142,6 @@ func (m *model) buildAgentParams() agent.BuildParams {
 
 		CWD:     m.env.CWD,
 		CWDFunc: func() string { return m.env.CWD },
-		IsGit:   m.env.IsGit,
 
 		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
 		Persona:        m.personaPrompt(),
@@ -636,7 +635,6 @@ func (m *model) ReconfigureAgentTool() {
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}
-	executor.SetContext(m.env.IsGit)
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
 	executor.SetMCP(m.services.MCP, m.services.MCP)

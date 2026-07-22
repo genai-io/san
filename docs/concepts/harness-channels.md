@@ -5,7 +5,7 @@ each with different cache, lifecycle, and stability properties:
 
 | Channel | What lives there | Cache-friendly? | Mutable mid-session? |
 |---|---|---|---|
-| **System prompt** | Identity, output style, engineering defaults, provider quirks, policy, guidelines, environment footer. Slot-sectioned. | Yes — invariant per session unless a section mutates. | Yes (Use/Drop), but expensive (cache miss). |
+| **System prompt** | Identity, output style, engineering defaults, policy, guidelines, environment footer. Slot-sectioned. | Yes — invariant per session unless a section mutates. | Yes (Use/Drop), but expensive (cache miss). |
 | **`<system-reminder>` blocks** | Session-level / project-level dynamic content: **active-skills directory**, SAN.md/CLAUDE.md memory, one-time notices. Attached below the next user message. | Yes — once attached, the user message is immutable. | No (re-emitted as new attachments, never mutated). |
 | **User messages** | The actual prompt the user typed. | Yes — already cached. | No. |
 

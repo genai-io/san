@@ -65,8 +65,8 @@ A system prompt only ever answers four questions:
 |---|---|---|
 | Who am I? | `identity` | role / persona ("You are …") |
 | How do I act? | `behavior` | communication style + engineering method |
-| What rules do I follow? | `rules` | safety contract + tool / task / git protocols |
-| Where/when am I? | `environment` | cwd / date / model / git (computed at runtime) |
+| What rules do I follow? | `rules` | safety contract + harness protocols |
+| Where/when am I? | `environment` | cwd / date / branch / platform (computed at runtime) |
 
 That is the whole prompt. So the design is: **the system prompt is these four
 parts, and each prose part is replaceable by a file. If the persona provides
@@ -99,12 +99,11 @@ under `internal/core/system/prompts/`:
 | Part | Built-in default sourced from | Scope rules |
 |---|---|---|
 | `identity` | `identity.txt` | — |
-| `behavior` | `output.txt` + `engineering.txt` | main-only (subagents carry their own charter) |
-| `rules` | `policy.txt` + `guidelines/{tools,system-reminders,tasks,questions,git}.txt` + provider quirks | `tasks`/`questions` main-only; `git` only when `isGit`; `policy`+`tools`+`system-reminders` always |
+| `behavior` | `behavior.txt` | main-only (subagents carry their own charter) |
+| `rules` | `rules.txt` | always |
 | `environment` | computed (`renderEnvironment`) | — |
 
-The default `rules` renderer stays scope-aware and git-conditional; a persona
-that overrides `rules.md` replaces that whole part.
+A persona that overrides `rules.md` replaces that whole part.
 
 ### Why `behavior` and `rules` (naming)
 

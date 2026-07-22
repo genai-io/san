@@ -3,6 +3,8 @@ package system
 import (
 	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -16,41 +18,36 @@ import (
 // named file under its system/ directory:
 //
 //	prompts/identity.txt              — who you are (the "identity" part)
-//	prompts/behavior.txt              — how you work: style + engineering (the "behavior" part)
-//	prompts/rules.txt                 — safety + tools + system reminders (the "rules" core)
-//	prompts/rules-task.txt            — task-tracking protocol (main agent, when the task tools are enabled)
-//	prompts/rules-main.txt            — rules for the main agent only (asking the user)
-//	prompts/rules-git.txt             — rules added only in a git repo (git safety)
+//	prompts/behavior.txt              — how you work (the "behavior" part)
+//	prompts/rules.txt                 — safety + system reminders (the "rules" part)
 //	prompts/compact.txt               — conversation compactor prompt (standalone)
-//	prompts/providers/<name>.txt      — provider-specific quirks (optional, appended to rules)
 //
 // These compose into four parts, top to bottom:
 //
-//	You are San, …                    (identity, raw preamble)
+//	You are a coding agent, …         (identity, raw preamble)
 //	<behavior> … </behavior>          (main agent only)
-//	<rules> … </rules>                (core + main-only + git, scope-aware)
+//	<rules> … </rules>
 //	<environment> … </environment>    (volatile footer)
 //
 // Identity is bare because Anthropic's standard preamble shape starts with
 // "You are X". The other parts live in a named XML envelope so the model can
 // address each as a structured unit, and so a persona can replace a whole
-// part by dropping in one file (system/<part>.md). The rules part is split
-// across three files only because two of its blocks are conditional (main-
-// agent-only, git-only); they render into a single <rules> envelope.
+// part by dropping in one file (system/<part>.md).
+//
+// Per-tool guidance (when to reach for a tool, how to call it) lives in each
+// tool's schema description, not here — the prompt carries only cross-tool
+// rules a single description cannot express, and a disabled tool takes its
+// guidance with it because the schema disappears from the request.
 //
 //go:embed prompts/*.txt
 var promptFS embed.FS
 
 // init-time read of every static template. Keeps Build() allocation-light.
 var (
-	cachedIdentity      = loadEmbed("prompts/identity.txt")
-	cachedBehavior      = loadEmbed("prompts/behavior.txt")
-	cachedRules         = loadEmbed("prompts/rules.txt")
-	cachedRulesDelegate = loadEmbed("prompts/rules-delegate.txt")
-	cachedRulesTask     = loadEmbed("prompts/rules-task.txt")
-	cachedRulesMain     = loadEmbed("prompts/rules-main.txt")
-	cachedRulesGit      = loadEmbed("prompts/rules-git.txt")
-	cachedCompact       = loadEmbed("prompts/compact.txt")
+	cachedIdentity = loadEmbed("prompts/identity.txt")
+	cachedBehavior = loadEmbed("prompts/behavior.txt")
+	cachedRules    = loadEmbed("prompts/rules.txt")
+	cachedCompact  = loadEmbed("prompts/compact.txt")
 )
 
 // loadEmbed reads a required embedded prompt and trims surrounding whitespace.
@@ -60,16 +57,6 @@ func loadEmbed(path string) string {
 	data, err := promptFS.ReadFile(path)
 	if err != nil {
 		panic("system: missing embedded prompt " + path + ": " + err.Error())
-	}
-	return strings.TrimSpace(string(data))
-}
-
-// loadEmbedOptional is like loadEmbed but returns "" for missing files.
-// Used for optional templates (e.g. provider-specific quirks).
-func loadEmbedOptional(path string) string {
-	data, err := promptFS.ReadFile(path)
-	if err != nil {
-		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
@@ -154,64 +141,24 @@ func behaviorSection(override string) core.Section {
 
 // Part: rules (slot 2)
 
-// rulesParams selects which rule blocks render for an agent.
-type rulesParams struct {
-	scope          core.Scope
-	isGit          bool
-	provider       string
-	canSpawnAgents bool // include the agent-delegation protocol
-	taskTracking   bool // include the task-tracking protocol (main agent only)
-	override       string
-}
-
-// rulesSection renders the safety contract plus the operational protocols
-// (tools and system-reminders always; agent delegation when the agent can
-// spawn agents; task tracking when its tools are enabled, and interactive
-// questions, for the main agent), with git safety folded in when isGit and
-// any provider quirks appended last. Subagents get the safety + tool subset.
-func rulesSection(p rulesParams) core.Section {
-	p.override = strings.TrimSpace(p.override)
+// rulesSection renders the safety contract and harness protocols. A non-empty
+// override (a persona's rules part) replaces the built-in default.
+func rulesSection(override string) core.Section {
+	override = strings.TrimSpace(override)
 	source := core.Predefined
-	if p.override != "" {
+	if override != "" {
 		source = core.FromFile
 	}
 	return core.Section{
 		Slot: core.SlotRules, Name: "rules", Source: source,
 		Render: func() string {
-			body := p.override
+			body := override
 			if body == "" {
-				body = assembleRules(p)
+				body = cachedRules
 			}
 			return wrap("rules", nil, body)
 		},
 	}
-}
-
-func assembleRules(p rulesParams) string {
-	// Each file already carries its own "## " headings, so the merged
-	// <rules> envelope reads as one structured block.
-	blocks := []string{cachedRules}
-	if p.canSpawnAgents {
-		blocks = append(blocks, cachedRulesDelegate)
-	}
-	if p.scope == core.ScopeMain {
-		// Task tracking + asking the user are main-agent behaviors. Task
-		// tracking is gated on the tools being enabled — when they ship
-		// disabled the prompt must not advertise them.
-		if p.taskTracking {
-			blocks = append(blocks, cachedRulesTask)
-		}
-		blocks = append(blocks, cachedRulesMain)
-	}
-	if p.isGit {
-		blocks = append(blocks, cachedRulesGit)
-	}
-	if p.provider != "" {
-		if quirks := loadEmbedOptional("prompts/providers/" + p.provider + ".txt"); quirks != "" {
-			blocks = append(blocks, quirks)
-		}
-	}
-	return strings.Join(blocks, "\n\n")
 }
 
 // Options
@@ -225,40 +172,12 @@ func WithPersona(p Persona) Option {
 
 // SwapPersona replaces the identity / behavior / rules parts on an already-built
 // main-agent system — e.g. a mid-session persona switch. Empty fields revert
-// that part to the built-in default. isGit and provider are the current
-// environment facts needed to rebuild a reverted rules part. Task tracking
-// tracks the default here (the app enables it up front via Build); a persona
-// switch does not toggle tool availability. Visible on the next sys.Prompt().
-func SwapPersona(sys core.System, p Persona, isGit bool, provider string) {
+// that part to the built-in default. Visible on the next sys.Prompt().
+func SwapPersona(sys core.System, p Persona) {
 	const caller = "command:persona"
 	sys.Use(identitySection(p.Identity), caller)
 	sys.Use(behaviorSection(p.Behavior), caller)
-	sys.Use(rulesSection(rulesParams{
-		scope:          core.ScopeMain,
-		isGit:          isGit,
-		provider:       provider,
-		canSpawnAgents: true,
-		override:       p.Rules,
-	}), caller)
-}
-
-// WithProvider folds provider-specific quirks (prompts/providers/<name>.txt,
-// optional) into the rules part. An empty or unmatched name is a no-op.
-func WithProvider(name string) Option {
-	return func(cfg *buildConfig) { cfg.provider = name }
-}
-
-// WithGitGuidelines includes the git-safety rules. Off by default.
-func WithGitGuidelines(isGit bool) Option {
-	return func(cfg *buildConfig) { cfg.isGit = isGit }
-}
-
-// WithTaskTracking includes the task-tracking protocol for the main agent. Off
-// by default because the tools ship disabled; the app passes true only when
-// every task tracker tool is enabled, so the prompt never advertises tools the
-// model cannot call.
-func WithTaskTracking(enabled bool) Option {
-	return func(cfg *buildConfig) { cfg.taskTracking = enabled }
+	sys.Use(rulesSection(p.Rules), caller)
 }
 
 // Subagent identity (Scope == ScopeSubagent)
@@ -293,7 +212,7 @@ func subagentIdentitySection(b SubagentBrief) core.Section {
 
 func renderSubagentIdentity(b SubagentBrief) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "You are a %s subagent operating inside San.\n", b.AgentName)
+	fmt.Fprintf(&sb, "You are a %s subagent.\n", b.AgentName)
 	if b.Description != "" {
 		fmt.Fprintf(&sb, "Role: %s\n", b.Description)
 	}
@@ -333,13 +252,11 @@ func modeDescription(mode string) string {
 
 // Part: environment (slot 3, volatile)
 
-// Environment is the small, frequently-changing footer: cwd, git, platform,
-// model, today's date. Placed last so the cache prefix above it survives
+// Environment is the small, frequently-changing footer: cwd, git branch,
+// platform, today's date. Placed last so the cache prefix above it survives
 // daily date rollovers and cwd switches.
 type Environment struct {
-	Cwd     string
-	IsGit   bool
-	ModelID string
+	Cwd string
 }
 
 // WithEnvironment registers the environment section. Callers should refresh
@@ -359,14 +276,53 @@ func environmentSection(env Environment) core.Section {
 }
 
 func renderEnvironment(env Environment) string {
-	git := "no"
-	if env.IsGit {
-		git = "yes"
+	var b strings.Builder
+	fmt.Fprintf(&b, "date: %s\ncwd: %s", time.Now().Format("2006-01-02"), env.Cwd)
+	if branch := gitBranch(env.Cwd); branch != "" {
+		fmt.Fprintf(&b, "\nbranch: %s", branch)
 	}
-	body := fmt.Sprintf(
-		"date: %s\ncwd: %s\ngit: %s\nplatform: %s/%s\nmodel: %s",
-		time.Now().Format("2006-01-02"),
-		env.Cwd, git, runtime.GOOS, runtime.GOARCH, env.ModelID,
-	)
-	return wrap("environment", nil, body)
+	fmt.Fprintf(&b, "\nplatform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	return wrap("environment", nil, b.String())
+}
+
+// gitBranch resolves the current branch name by reading .git/HEAD directly —
+// no subprocess. It walks up from cwd to find the repo root and follows the
+// "gitdir:" indirection a linked worktree's .git file carries. Returns "" when
+// nothing readable is found; a detached HEAD yields the short commit hash.
+func gitBranch(cwd string) string {
+	dir := cwd
+	for {
+		gitPath := filepath.Join(dir, ".git")
+		if info, err := os.Stat(gitPath); err == nil {
+			return branchFromGitPath(gitPath, info.IsDir())
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+func branchFromGitPath(gitPath string, isDir bool) string {
+	gitDir := gitPath
+	if !isDir {
+		data, err := os.ReadFile(gitPath)
+		if err != nil {
+			return ""
+		}
+		gitDir = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(data)), "gitdir:"))
+	}
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	ref := strings.TrimSpace(string(head))
+	if branch, ok := strings.CutPrefix(ref, "ref: refs/heads/"); ok {
+		return branch
+	}
+	if len(ref) >= 7 {
+		return ref[:7] + " (detached)"
+	}
+	return ""
 }

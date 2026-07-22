@@ -6,7 +6,9 @@ import "github.com/genai-io/san/internal/core"
 func (t *AskUserQuestionTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "AskUserQuestion",
-		Description: `Ask the user a question with predefined choices. An 'Other' option with free-text input is always appended automatically.
+		Description: `Ask the user a question with predefined choices; an 'Other' free-text option is appended automatically.
+
+Use this instead of plain text when you need a decision or preference (ambiguous request, multiple valid approaches); skip it when a reasonable default exists or the answer is in the code.
 
 Single question (most common):
   {"question": "Which version?", "options": ["v1.0", "v2.0", "v3.0"]}

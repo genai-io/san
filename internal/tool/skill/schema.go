@@ -6,23 +6,11 @@ import "github.com/genai-io/san/internal/core"
 func (t *SkillTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Skill",
-		Description: `Execute a skill within the main conversation.
+		Description: `Invoke a skill by exact name (no leading slash; plugin skills as "plugin:skill").
 
-When users ask you to perform tasks, check if any of the available skills match. Skills provide specialized capabilities and domain knowledge.
-
-When users reference a "slash command" or "/<something>", they are referring to a skill. Use this tool to invoke it.
-
-How to invoke:
-- Set ` + "`skill`" + ` to the exact name of an available skill (no leading slash). For plugin-namespaced skills use the fully qualified ` + "`plugin:skill`" + ` form.
-- Set ` + "`args`" + ` to pass optional arguments.
-
-Important:
-- Available skills are listed in <system-reminder> messages in the conversation; only invoke a skill that appears there.
-- When a skill matches the user's request, this is a BLOCKING REQUIREMENT: invoke the relevant Skill tool BEFORE generating any other response about the task.
-- Do not invoke a skill that is already running.
-- Do not use this tool for built-in CLI commands (like /help, /clear, etc.).
-- If the current user message starts with a <command-name>...</command-name> tag, the skill body has ALREADY been inlined inside a <skill-invocation> block — follow those instructions directly instead of calling this tool again.
-`,
+- Available skills are listed in <system-reminder> messages; only invoke one that appears there. A "/name" (slash command) in a user message refers to a skill — but not built-in CLI commands like /help or /clear.
+- When a skill matches the task, invoke it BEFORE generating any other response about the task.
+- Don't invoke a skill that is already running. If the user message carries a <command-name> tag, the skill body is already inlined — follow it instead of calling this tool again.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

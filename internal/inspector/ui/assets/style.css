@@ -787,9 +787,9 @@ main.show-prompt.prompt-wide .prompt {
  *         identity, AGENT.md, etc.). Rare in the default prompt; coded
  *         as italic Fraunces with amber tick to read as "prose section"
  *         rather than "structured block".
- *   h2   — subsection inside any top-level block (## Tone, ## Updates,
- *         ## Behavior under <output>, etc.). Italic, no chrome, just
- *         smaller text — clearly subordinate to the enclosing block.
+ *   h2   — subsection inside any top-level block (## Style, ## Safety
+ *         under <rules>, etc.). Italic, no chrome, just smaller text —
+ *         clearly subordinate to the enclosing block.
  *   h3   — minor label / eyebrow. Mono uppercase amber.
  *   h4   — smaller italic label.
  *

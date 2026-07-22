@@ -1,8 +1,0 @@
-## Asking the user
-
-When you need a decision or preference from the user, use AskUserQuestion instead of asking in plain text — the tool provides an interactive UI.
-
-Use it for: ambiguous requests, multiple valid approaches.
-Skip it for: clear tasks, when reasonable defaults exist, when answerable from code or docs.
-
-Format: 1-8 questions, 2-8 options each, concise descriptions.

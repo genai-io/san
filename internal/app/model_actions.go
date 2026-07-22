@@ -53,11 +53,7 @@ func (m *model) setActivePersona(name string) error {
 
 	// Prompt (immediate): hot-patch the running main agent's parts.
 	if sys := m.services.Agent.System(); sys != nil {
-		provider := ""
-		if m.env.LLMProvider != nil {
-			provider = m.env.LLMProvider.Name()
-		}
-		system.SwapPersona(sys, m.personaPrompt(), m.env.IsGit, provider)
+		system.SwapPersona(sys, m.personaPrompt())
 	}
 	m.ReconfigureAgentTool()
 	return nil

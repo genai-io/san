@@ -6,18 +6,12 @@ import "github.com/genai-io/san/internal/core"
 func (t *ReadTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Read",
-		Description: `Reads a file from the local filesystem. You can access any file directly by using this tool.
-Assume this tool is able to read all files on the machine. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+		Description: `Reads a file from the local filesystem.
 
-Usage:
-- The file_path parameter may be absolute or relative to the current session working directory
-- Prefer relative paths for files inside the current session working directory; use absolute paths for files outside it
-- By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- Results are returned with line numbers starting at 1
-- This tool can only read files, not directories. To read a directory, use an ls command via the Bash tool.
-- You will regularly be asked to read screenshots. If the user provides a path to a screenshot, ALWAYS use this tool to view the file at the path.
-- If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.`,
+- Prefer relative paths for files inside the session working directory; absolute for targets outside it
+- Reads up to 2000 lines from the start by default; use offset/limit only for very long files
+- Output is line-numbered starting at 1
+- Images (e.g. screenshots) are supported — read the file to view it`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -43,16 +37,11 @@ Usage:
 func (t *EditTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Edit",
-		Description: `Performs exact string replacements in files.
+		Description: `Performs exact string replacements in a file.
 
-Usage:
-- You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.
-- If you need fresh file contents before editing, call Read and wait for its result before calling Edit. Do not call Read and Edit for the same target in the same assistant message.
-- When editing text from Read tool output, ensure you preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. Never include any part of the line number prefix in the oldText or newText.
-- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
-- Only use emojis if the user explicitly requests it. Avoid adding emojis to files unless asked.
-- Use edits to apply one or more independent replacements in a single file. Every oldText must match exactly once; include more surrounding text if it is not unique.
-- All replacements are checked against the original file and applied together. Overlapping changes must be combined into one edit.`,
+- Requires a prior Read of the file — editing an unread file errors. If you need fresh contents, Read and wait for the result before calling Edit; don't send both in the same message.
+- oldText must match the file exactly (strip Read's line-number prefix, preserve indentation) and match exactly once — add surrounding context if it isn't unique.
+- All edits are checked against the original file and applied together; combine overlapping changes into one edit.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -83,14 +72,11 @@ Usage:
 func (t *WriteTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Write",
-		Description: `Writes a file to the local filesystem.
+		Description: `Writes a file to the local filesystem, overwriting any existing content.
 
-Usage:
-- This tool will overwrite the existing file if there is one at the provided path.
-- If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.
-- Prefer the Edit tool for modifying existing files — it only sends the diff. Only use this tool to create new files or for complete rewrites.
-- NEVER create documentation files (*.md) or README files unless explicitly requested by the User.
-- Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.`,
+- Overwriting an existing file requires a prior Read of it — the call fails otherwise.
+- Prefer Edit for modifying existing files; use Write for new files or complete rewrites.
+- Never create documentation or README files unless explicitly requested.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -112,35 +98,13 @@ Usage:
 func (t *BashTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Bash",
-		Description: `Executes a given bash command and returns its output.
+		Description: `Executes a bash command and returns its output.
 
-CRITICAL — Working directory:
-Commands already execute in the session working directory. NEVER prefix with
-"cd <session-working-directory> &&". Use relative paths for files inside the
-session working directory; reserve absolute paths for targets outside it.
-A successful "cd" updates the session working directory for subsequent commands.
-Shell state (variables, aliases) does not persist between calls.
-
-Search and discovery run through this tool: use rg (preferred) or grep for
-content search, find or fd for file discovery, and ls for listing. Pipe
-through head/tail/wc to trim large output. Provably read-only commands
-(search, listing, git inspection) run without approval prompts.
-
-For file CONTENT operations, still use the dedicated tools:
-- Read files: Use Read (NOT cat/head/tail) — returns line numbers, handles images
-- Edit files: Use Edit (NOT sed/awk)
-- Write files: Use Write (NOT echo/cat with redirection)
-
-Non-interactive only:
-Commands run with no controlling terminal and no stdin, so anything that waits
-for interactive input — a REPL, an editor, a password/confirmation prompt —
-cannot receive it and will hang until it times out. Pass a non-interactive flag
-or supply input inline instead: use "git commit -m ..." (not a bare "git
-commit"), "npm init -y", "ssh -o BatchMode=yes", "apt-get -y", or feed input via
-a heredoc or a --stdin-style flag.
-
-You may specify an optional timeout in milliseconds (up to 600000ms / 10 minutes). By default, your command will timeout after 120000ms (2 minutes).
-You can use the run_in_background parameter to run the command in the background. You will be notified when it finishes. To cancel it early, call Agent with signal "stop" and its task ID.`,
+- Commands already run in the session working directory — NEVER prefix with "cd <cwd> &&"; use relative paths inside it. A successful cd updates the session working directory; other shell state (variables, aliases) does not persist between calls.
+- Search and discovery run through this tool (rg, find/fd, ls); pipe large output through head/wc. Provably read-only commands run without approval prompts.
+- For file contents use the dedicated tools: Read (not cat), Edit (not sed), Write (not echo/redirection).
+- No TTY and no stdin — anything awaiting interactive input hangs until timeout. Use non-interactive flags ("git commit -m", "npm init -y", "apt-get -y") or feed input via heredoc.
+- Optional timeout in ms (default 120000, max 600000). run_in_background detaches the command; you are notified when it finishes, and can cancel it via Agent with signal "stop" and its task ID.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

@@ -23,7 +23,6 @@ type BuildParams struct {
 
 	CWD     string
 	CWDFunc func() string // dynamic CWD for tool execution; falls back to CWD if nil
-	IsGit   bool
 
 	// Stream timeout tuning. Zero values (default) use the core defaults:
 	// FirstChunkTimeout = 5m, IdleTimeout = 3m.
@@ -76,15 +75,8 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	client.SetThinkingEffort(p.ThinkingEffort)
 
 	sys := system.Build(core.ScopeMain,
-		system.WithProvider(client.Name()),
 		system.WithPersona(p.Persona),
-		system.WithGitGuidelines(p.IsGit),
-		system.WithTaskTracking(tool.TaskTrackingEnabled(p.DisabledTools)),
-		system.WithEnvironment(system.Environment{
-			Cwd:     p.CWD,
-			IsGit:   p.IsGit,
-			ModelID: client.ModelID(),
-		}),
+		system.WithEnvironment(system.Environment{Cwd: p.CWD}),
 	)
 
 	cwdFunc := p.CWDFunc

@@ -1,6 +1,8 @@
 package system
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -8,21 +10,71 @@ import (
 )
 
 func TestBuildEnvironmentRendersFacts(t *testing.T) {
-	body := renderEnvironment(Environment{Cwd: "/tmp/project", IsGit: true, ModelID: "test-model"})
-	if !strings.Contains(body, "cwd: /tmp/project") {
+	repo := t.TempDir()
+	gitDir := filepath.Join(repo, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := renderEnvironment(Environment{Cwd: repo})
+	if !strings.Contains(body, "cwd: "+repo) {
 		t.Fatalf("renderEnvironment missing cwd: %q", body)
 	}
-	if !strings.Contains(body, "git: yes") {
-		t.Fatalf("renderEnvironment missing git status: %q", body)
+	if !strings.Contains(body, "branch: main") {
+		t.Fatalf("renderEnvironment missing branch: %q", body)
 	}
-	if !strings.Contains(body, "model: test-model") {
-		t.Fatalf("renderEnvironment missing model: %q", body)
+}
+
+func TestBuildEnvironmentOmitsBranchOutsideRepo(t *testing.T) {
+	body := renderEnvironment(Environment{Cwd: t.TempDir()})
+	if strings.Contains(body, "branch:") {
+		t.Fatalf("non-repo environment should omit the branch line: %q", body)
+	}
+}
+
+func TestGitBranch(t *testing.T) {
+	repo := t.TempDir()
+	gitDir := filepath.Join(repo, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/feature/x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Branch resolves from a subdirectory by walking up to the repo root.
+	sub := filepath.Join(repo, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitBranch(sub); got != "feature/x" {
+		t.Errorf("gitBranch = %q, want %q", got, "feature/x")
+	}
+
+	// Linked worktree: .git is a file pointing at the real git dir.
+	wt := t.TempDir()
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+gitDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitBranch(wt); got != "feature/x" {
+		t.Errorf("worktree gitBranch = %q, want %q", got, "feature/x")
+	}
+
+	// Detached HEAD yields the short hash.
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("0123456789abcdef0123456789abcdef01234567\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitBranch(repo); got != "0123456 (detached)" {
+		t.Errorf("detached gitBranch = %q, want %q", got, "0123456 (detached)")
 	}
 }
 
 func TestBuildPromptCaching(t *testing.T) {
 	sys := Build(core.ScopeMain,
-		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
 	)
 
 	first := sys.Prompt()
@@ -71,12 +123,12 @@ func TestBuildPromptOrder_StableBeforeVolatile(t *testing.T) {
 	// Volatile sections (environment) must sit AFTER stable ones so the
 	// prompt-cache prefix survives daily date rollovers.
 	sys := Build(core.ScopeMain,
-		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
 	)
 	prompt := sys.Prompt()
 
 	indices := map[string]int{
-		"identity": strings.Index(prompt, "interactive AI assistant"),
+		"identity": strings.Index(prompt, "You are a coding agent"),
 		"behavior": strings.Index(prompt, "<behavior>"),
 		"rules":    strings.Index(prompt, "<rules>"),
 		"env":      strings.Index(prompt, "<environment>"),
@@ -111,46 +163,12 @@ func TestBuildPromptEmptyOptionsExcluded(t *testing.T) {
 	}
 }
 
-func TestBuildScopeMain_HasTaskAndQuestionGuidelines(t *testing.T) {
-	sys := Build(core.ScopeMain,
-		WithTaskTracking(true),
-		WithEnvironment(Environment{Cwd: "/tmp/test"}),
-	)
-	prompt := sys.Prompt()
-
-	if !strings.Contains(prompt, "TaskCreate") {
-		t.Error("main scope with task tracking on should include task guidelines")
-	}
-	if !strings.Contains(prompt, "AskUserQuestion") {
-		t.Error("main scope should include question guidelines")
-	}
-}
-
-func TestBuildScopeMain_TaskTrackingGatedOnTools(t *testing.T) {
-	// Tools disabled: the task-tracking protocol drops out, but asking-the-user
-	// guidance (also main-only, in a separate block) must stay.
-	prompt := Build(core.ScopeMain,
-		WithEnvironment(Environment{Cwd: "/tmp/test"}),
-		WithTaskTracking(false),
-	).Prompt()
-
-	if strings.Contains(prompt, "TaskCreate") {
-		t.Error("WithTaskTracking(false) should drop the task-tracking guidance")
-	}
-	if !strings.Contains(prompt, "AskUserQuestion") {
-		t.Error("WithTaskTracking(false) must not drop the question guidance")
-	}
-}
-
 func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
 	sys := Build(core.ScopeSubagent, WithEnvironment(Environment{Cwd: "/tmp/test"}))
 	prompt := sys.Prompt()
 
-	if strings.Contains(prompt, "TaskCreate") {
-		t.Error("subagent scope should not include task guidelines")
-	}
-	if strings.Contains(prompt, "AskUserQuestion") {
-		t.Error("subagent scope should not include question guidelines")
+	if strings.Contains(prompt, "<behavior>") {
+		t.Error("subagent scope should not include the behavior part")
 	}
 }
 
@@ -176,26 +194,8 @@ func TestBuildSubagentIdentity_ReplacesDefault(t *testing.T) {
 		t.Error("custom prompt body should appear inside identity")
 	}
 	// Default identity should be replaced, not duplicated.
-	if strings.Contains(prompt, "interactive AI assistant") {
+	if strings.Contains(prompt, "You are a coding agent") {
 		t.Error("default identity should be replaced by subagent identity")
-	}
-}
-
-func TestBuildGitGuidelinesToggle(t *testing.T) {
-	withGit := Build(core.ScopeMain,
-		WithGitGuidelines(true),
-		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: true}),
-	)
-	withoutGit := Build(core.ScopeMain,
-		WithGitGuidelines(false),
-		WithEnvironment(Environment{Cwd: "/tmp/test", IsGit: false}),
-	)
-
-	if !strings.Contains(withGit.Prompt(), "## Git safety") {
-		t.Error("git=true should include git safety rules")
-	}
-	if strings.Contains(withoutGit.Prompt(), "## Git safety") {
-		t.Error("git=false should omit git safety rules")
 	}
 }
 
@@ -226,12 +226,10 @@ func TestSystemUseDropRefresh(t *testing.T) {
 
 func TestCachedTemplatesNonEmpty(t *testing.T) {
 	for name, body := range map[string]string{
-		"cachedIdentity":  cachedIdentity,
-		"cachedBehavior":  cachedBehavior,
-		"cachedRules":     cachedRules,
-		"cachedRulesMain": cachedRulesMain,
-		"cachedRulesGit":  cachedRulesGit,
-		"cachedCompact":   cachedCompact,
+		"cachedIdentity": cachedIdentity,
+		"cachedBehavior": cachedBehavior,
+		"cachedRules":    cachedRules,
+		"cachedCompact":  cachedCompact,
 	} {
 		if body == "" {
 			t.Errorf("%s should be non-empty after init()", name)

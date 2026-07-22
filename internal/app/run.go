@@ -172,7 +172,6 @@ func runPrint(userMessage, personaName string) error {
 				Behavior: p.Behavior,
 				Rules:    p.Rules,
 			}),
-			system.WithTaskTracking(tool.TaskTrackingEnabled(disabledTools)),
 		)
 		sysPrompt = sys.Prompt()
 

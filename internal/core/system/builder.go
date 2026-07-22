@@ -4,8 +4,7 @@
 // Construction is via Build(scope, opts...). The prompt is assembled from a
 // small fixed set of parts — identity, behavior, rules, environment — each
 // rendered once from the resolved buildConfig. Options populate that config;
-// they do not mutate the System directly, so a part may depend on several
-// options at once (e.g. rules needs both isGit and provider).
+// they do not mutate the System directly.
 package system
 
 import (
@@ -29,13 +28,10 @@ type Persona struct {
 // Options populate it; Build then constructs each part once from the resolved
 // values.
 type buildConfig struct {
-	scope        core.Scope
-	isGit        bool
-	provider     string
-	taskTracking bool           // include the task-tracking protocol (main agent only)
-	env          *Environment   // volatile footer; nil when not supplied
-	persona      Persona        // per-part overrides; empty fields use the default
-	subagent     *SubagentBrief // non-nil for a subagent charter
+	scope    core.Scope
+	env      *Environment   // volatile footer; nil when not supplied
+	persona  Persona        // per-part overrides; empty fields use the default
+	subagent *SubagentBrief // non-nil for a subagent charter
 }
 
 // Build constructs a System for the given Scope and applies the options.
@@ -45,9 +41,6 @@ type buildConfig struct {
 // and environment (volatile footer). Each part is a single named section, so
 // a persona can later replace a whole part by name with one file.
 func Build(scope core.Scope, opts ...Option) core.System {
-	// Task tracking is off unless a caller opts in with WithTaskTracking. The
-	// tools ship disabled, so the prompt must not advertise them by default;
-	// the app enables the block only when every task tracker tool is enabled.
 	cfg := &buildConfig{scope: scope}
 	for _, opt := range opts {
 		opt(cfg)
@@ -69,18 +62,10 @@ func Build(scope core.Scope, opts ...Option) core.System {
 		sys.Use(behaviorSection(cfg.persona.Behavior), caller)
 	}
 
-	// Rules (slot 2): safety contract + tool/task/git protocols, scope-aware,
-	// with git folded in when isGit and any provider quirks appended. The
-	// agent-delegation protocol is main-only — the agent model is flat, so
-	// workers never spawn workers and carry no delegation rules.
-	sys.Use(rulesSection(rulesParams{
-		scope:          scope,
-		isGit:          cfg.isGit,
-		provider:       cfg.provider,
-		canSpawnAgents: scope == core.ScopeMain,
-		taskTracking:   cfg.taskTracking,
-		override:       cfg.persona.Rules,
-	}), caller)
+	// Rules (slot 2): safety contract + harness protocols. Per-tool guidance
+	// lives in tool schemas, so the rules part does not vary by scope or tool
+	// availability.
+	sys.Use(rulesSection(cfg.persona.Rules), caller)
 
 	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {

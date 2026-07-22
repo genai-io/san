@@ -6,7 +6,7 @@ import "github.com/genai-io/san/internal/core"
 func (t *TrackerCreateTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "TaskCreate",
-		Description: `Create a task to track progress on multi-step work.
+		Description: `Create a task to track progress on multi-step work. The task list is shown to the user above the input area.
 
 When to use:
 - Complex tasks requiring 3+ distinct steps
@@ -93,7 +93,9 @@ Status: pending → in_progress → completed. Use "deleted" to remove.
 - After completing, call TaskGet for the next task
 - If blocked, keep as in_progress and create a new task for the blocker
 - Close out every in_progress task before ending your turn; one left open is
-  shown as stalled, since nothing is executing it any more`,
+  shown as stalled, since nothing is executing it any more
+- When a <task-reminder> block appears in the conversation, review and update
+  stale tasks immediately`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

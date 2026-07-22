@@ -6,14 +6,10 @@ import "github.com/genai-io/san/internal/core"
 func (t *WebFetchTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "WebFetch",
-		Description: `Fetches content from a specified URL and converts HTML to Markdown for readability.
+		Description: `Fetches a URL and returns its content as markdown.
 
-Usage notes:
-- The URL must be a fully-formed valid URL
-- HTTP URLs will be automatically upgraded to HTTPS
-- This tool is read-only and does not modify any files
-- Results may be truncated if the content is very large
-- For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api)`,
+- HTTP is upgraded to HTTPS; very large content may be truncated.
+- For GitHub URLs prefer the gh CLI via Bash (gh pr view, gh issue view, gh api).`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
