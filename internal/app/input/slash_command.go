@@ -496,7 +496,7 @@ func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) 
 	if c.env.MCP != nil {
 		mcpTools = c.env.MCP.GetToolSchemas
 	}
-	if err := c.env.Input.Tool.EnterSelect(c.env.Width, c.env.Height, c.env.Setting.DisabledTools(), mcpTools); err != nil {
+	if err := c.env.Input.Tool.EnterSelect(c.env.Width, c.env.Height, mcpTools); err != nil {
 		return "", nil, err
 	}
 	return "", nil, nil

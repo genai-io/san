@@ -2,6 +2,7 @@ package input
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,24 +20,35 @@ type toolItem struct {
 	Enabled     bool
 }
 
-// ToolSelector holds state for the tool selector overlay.
-type ToolSelector struct {
-	active        bool
-	tools         []toolItem
-	filteredTools []toolItem
-	nav           kit.ListNav
-	width         int
-	height        int
-	disabledTools map[string]bool
-	saveLevel     kit.SaveLevel
-	loadDisabled  func(userLevel bool) map[string]bool
-	saveDisabled  func(disabled map[string]bool, userLevel bool) error
-}
+// toolTab identifies a save-level tab in the tool selector. Unlike the agent
+// and skill tabs — which partition items by source — every tool appears under
+// both tabs; the tab only picks which settings level (project vs user) drives
+// the shown state and receives the toggle. The values double as indices into
+// the selector's tabbedList tab order.
+type toolTab int
+
+const (
+	toolTabProject toolTab = iota
+	toolTabUser
+)
 
 // ToolToggleMsg is sent when a tool's enabled state is toggled.
 type ToolToggleMsg struct {
 	ToolName string
 	Enabled  bool
+}
+
+// ToolSelector holds the state for the tool selector overlay. The tab/filter/
+// keypress/frame mechanics live in the embedded tabbedList; this type owns tool
+// loading, the row layout, and the enable/disable action. It matches the agent
+// and skill overlays so the three read as one family.
+type ToolSelector struct {
+	list         tabbedList[toolItem]
+	loadDisabled func(userLevel bool) map[string]bool
+	saveDisabled func(disabled map[string]bool, userLevel bool) error
+	// disabledByLevel holds a working copy of each level's explicit disabled
+	// entries (keyed by userLevel), loaded once per open and mutated by Toggle.
+	disabledByLevel map[bool]map[string]bool
 }
 
 // NewToolSelector creates a new ToolSelector with injected load/save callbacks.
@@ -45,244 +57,204 @@ func NewToolSelector(
 	saveDisabled func(disabled map[string]bool, userLevel bool) error,
 ) ToolSelector {
 	return ToolSelector{
-		active:       false,
-		tools:        []toolItem{},
-		nav:          kit.ListNav{MaxVisible: 10},
 		loadDisabled: loadDisabled,
 		saveDisabled: saveDisabled,
+		list: tabbedList[toolItem]{
+			tabs: []tabSpec{
+				{name: "Project"},
+				{name: "User"},
+			},
+			noun:        "tools",
+			placeholder: "Type to filter tools...",
+			hints:       []string{"↑/↓ navigate", "Enter toggle", "←/→/Tab switch level", "Esc close"},
+			// Every tool is manageable at both levels, so no tab filters it out.
+			matchesTab: func(toolItem, int) bool { return true },
+			searchKeys: func(t toolItem) []string { return []string{t.Name, t.Description} },
+			nav:        kit.ListNav{MaxVisible: 10},
+		},
 	}
 }
 
-// EnterSelect enters tool selection mode.
-func (s *ToolSelector) EnterSelect(width, height int, disabledTools map[string]bool, mcpTools func() []core.ToolSchema) error {
+// EnterSelect activates the selector and loads every tool with its per-level
+// enabled state.
+func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.ToolSchema) error {
 	allTools := coretool.GetToolSchemasWith(coretool.SchemaOptions{MCPTools: mcpTools})
 
-	s.tools = make([]toolItem, 0, len(allTools))
-	for _, t := range allTools {
-		s.tools = append(s.tools, toolItem{
-			Name:        t.Name,
-			Description: t.Description,
-			Enabled:     !disabledTools[t.Name],
-		})
+	// Pre-load both levels so switching tabs never has to touch disk.
+	s.disabledByLevel = map[bool]map[string]bool{
+		false: cloneDisabled(s.loadDisabled(false)),
+		true:  cloneDisabled(s.loadDisabled(true)),
 	}
 
-	s.active = true
-	s.width = width
-	s.height = height
-	s.disabledTools = disabledTools
-	s.filteredTools = s.tools
-	s.nav.Reset()
-	s.nav.Total = len(s.filteredTools)
+	items := make([]toolItem, 0, len(allTools))
+	for _, t := range allTools {
+		items = append(items, toolItem{Name: t.Name, Description: t.Description})
+	}
 
+	s.list.load(items, width, height)
+	s.recomputeEnabled()
 	return nil
 }
 
-// IsActive returns whether the selector is active.
-func (s *ToolSelector) IsActive() bool {
-	return s.active
+// cloneDisabled returns a mutable copy of a level's disabled map, never nil so
+// Toggle can write into it.
+func cloneDisabled(m map[string]bool) map[string]bool {
+	if c := maps.Clone(m); c != nil {
+		return c
+	}
+	return map[string]bool{}
 }
 
-// Cancel cancels the selector.
-func (s *ToolSelector) Cancel() {
-	s.active = false
-	s.tools = []toolItem{}
-	s.filteredTools = []toolItem{}
-	s.nav.Reset()
-	s.nav.Total = 0
+func (s *ToolSelector) IsActive() bool { return s.list.active }
+
+func (s *ToolSelector) saveLevelForActiveTab() bool {
+	return s.list.activeTab == int(toolTabUser)
 }
 
-func (s *ToolSelector) updateFilter() {
-	if s.nav.Search == "" {
-		s.filteredTools = s.tools
-	} else {
-		query := strings.ToLower(s.nav.Search)
-		s.filteredTools = make([]toolItem, 0)
-		for _, t := range s.tools {
-			if kit.FuzzyMatch(strings.ToLower(t.Name), query) ||
-				kit.FuzzyMatch(strings.ToLower(t.Description), query) {
-				s.filteredTools = append(s.filteredTools, t)
-			}
-		}
-	}
-	s.nav.ResetCursor()
-	s.nav.Total = len(s.filteredTools)
-}
-
-func (s *ToolSelector) reloadToolStates() {
-	levelDisabled := s.loadDisabled(s.saveLevel == kit.SaveLevelUser)
-
-	for k := range s.disabledTools {
-		delete(s.disabledTools, k)
-	}
-	for k, v := range levelDisabled {
-		s.disabledTools[k] = v
-	}
-
-	for i := range s.tools {
-		s.tools[i].Enabled = !s.effectiveDisabled(s.tools[i].Name)
-	}
-	for i := range s.filteredTools {
-		s.filteredTools[i].Enabled = !s.effectiveDisabled(s.filteredTools[i].Name)
-	}
-}
-
-// effectiveDisabled resolves a tool's state at the current level: an explicit
+// effectiveDisabled resolves a tool's state at the given level: an explicit
 // settings entry wins; absent keys fall back to the factory default.
-func (s *ToolSelector) effectiveDisabled(name string) bool {
-	if disabled, ok := s.disabledTools[name]; ok {
+func (s *ToolSelector) effectiveDisabled(userLevel bool, name string) bool {
+	if disabled, ok := s.disabledByLevel[userLevel][name]; ok {
 		return disabled
 	}
 	return setting.IsDefaultDisabledTool(name)
 }
 
-// Toggle toggles the enabled state of the currently selected tool.
+// recomputeEnabled refreshes every item's Enabled flag for the active tab's
+// level. Called after a tab switch, since a tool's state differs per level.
+func (s *ToolSelector) recomputeEnabled() {
+	userLevel := s.saveLevelForActiveTab()
+	for i := range s.list.items {
+		s.list.items[i].Enabled = !s.effectiveDisabled(userLevel, s.list.items[i].Name)
+	}
+	for i := range s.list.filtered {
+		s.list.filtered[i].Enabled = !s.effectiveDisabled(userLevel, s.list.filtered[i].Name)
+	}
+}
+
+// Toggle flips the enabled state of the selected tool at the active level and
+// persists it.
 func (s *ToolSelector) Toggle() tea.Cmd {
-	if len(s.filteredTools) == 0 || s.nav.Selected >= len(s.filteredTools) {
+	if len(s.list.filtered) == 0 || s.list.nav.Selected >= len(s.list.filtered) {
 		return nil
 	}
+	userLevel := s.saveLevelForActiveTab()
 
-	selected := &s.filteredTools[s.nav.Selected]
+	selected := &s.list.filtered[s.list.nav.Selected]
 	selected.Enabled = !selected.Enabled
-
-	for i := range s.tools {
-		if s.tools[i].Name == selected.Name {
-			s.tools[i].Enabled = selected.Enabled
+	for i := range s.list.items {
+		if s.list.items[i].Name == selected.Name {
+			s.list.items[i].Enabled = selected.Enabled
 			break
 		}
 	}
 
 	// A factory-default-disabled tool needs an explicit "false" entry when
 	// enabled — deleting its key would fall back to the disabled default.
+	m := s.disabledByLevel[userLevel]
 	switch {
 	case selected.Enabled && setting.IsDefaultDisabledTool(selected.Name):
-		s.disabledTools[selected.Name] = false
+		m[selected.Name] = false
 	case selected.Enabled:
-		delete(s.disabledTools, selected.Name)
+		delete(m, selected.Name)
 	case setting.IsDefaultDisabledTool(selected.Name):
-		delete(s.disabledTools, selected.Name)
+		delete(m, selected.Name)
 	default:
-		s.disabledTools[selected.Name] = true
+		m[selected.Name] = true
 	}
-
-	_ = s.saveDisabled(s.disabledTools, s.saveLevel == kit.SaveLevelUser)
+	_ = s.saveDisabled(m, userLevel)
 
 	return func() tea.Msg {
-		return ToolToggleMsg{
-			ToolName: selected.Name,
-			Enabled:  selected.Enabled,
-		}
+		return ToolToggleMsg{ToolName: selected.Name, Enabled: selected.Enabled}
 	}
 }
 
-// HandleKeypress handles a keypress and returns a command if needed.
 func (s *ToolSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	if key.String() == "tab" {
-		if s.saveLevel == kit.SaveLevelProject {
-			s.saveLevel = kit.SaveLevelUser
-		} else {
-			s.saveLevel = kit.SaveLevelProject
-		}
-		s.reloadToolStates()
-		return nil
+	prevTab := s.list.activeTab
+	cmd := s.list.handleKey(key, s.Toggle)
+	// A tab switch changes the level, so re-resolve every tool's shown state.
+	if s.list.activeTab != prevTab {
+		s.recomputeEnabled()
 	}
-
-	if key.String() == "enter" {
-		return s.Toggle()
-	}
-
-	searchChanged, consumed := s.nav.HandleKey(key)
-	if searchChanged {
-		s.updateFilter()
-	}
-	if consumed {
-		return nil
-	}
-
-	if key.String() == "esc" {
-		s.Cancel()
-		return func() tea.Msg { return kit.DismissedMsg{} }
-	}
-
-	return nil
+	return cmd
 }
 
-// Render renders the tool selector overlay.
+// ── Rendering ──────────────────────────────────────────────────────────────────
+
 func (s *ToolSelector) Render() string {
-	if !s.active {
-		return ""
-	}
+	return s.list.render(s.renderItemList)
+}
 
-	var sb strings.Builder
+func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
+	startIdx, endIdx := s.list.nav.VisibleRange()
 
-	levelIndicator := fmt.Sprintf("[%s]", s.saveLevel.String())
-	title := fmt.Sprintf("Manage Tools (%d/%d)  %s", len(s.filteredTools), len(s.tools), levelIndicator)
-	sb.WriteString(kit.SelectorTitleStyle().Render(title))
-	sb.WriteString("\n")
-
-	if s.nav.Search == "" {
-		sb.WriteString(kit.SelectorHintStyle().Render("Type to filter..."))
-	} else {
-		sb.WriteString(kit.SelectorBreadcrumbStyle().Render(s.nav.Search + "▏"))
-	}
-	sb.WriteString("\n\n")
-
-	boxWidth := kit.CalculateToolBoxWidth(s.width)
-	maxDescLen := max(boxWidth-30, 20)
-
-	if len(s.filteredTools) == 0 {
-		sb.WriteString(kit.SelectorHintStyle().Render("  No tools match the filter"))
+	if startIdx > 0 {
+		sb.WriteString(kit.MoreAbove())
 		sb.WriteString("\n")
-	} else {
-		startIdx, endIdx := s.nav.VisibleRange()
+	}
 
-		if startIdx > 0 {
-			sb.WriteString(kit.SelectorHintStyle().Render("  ↑ more above"))
-			sb.WriteString("\n")
+	// Display-width column: a CJK tool name renders at twice its byte-count.
+	maxNameLen := 12
+	for i := startIdx; i < endIdx; i++ {
+		if w := lipgloss.Width(s.list.filtered[i].Name); w > maxNameLen {
+			maxNameLen = w
+		}
+	}
+	maxNameLen = min(maxNameLen, 24)
+
+	descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+
+	for i := startIdx; i < endIdx; i++ {
+		t := s.list.filtered[i]
+
+		var statusIcon string
+		var statusStyle lipgloss.Style
+		if t.Enabled {
+			statusIcon = "●"
+			statusStyle = kit.SelectorStatusConnected()
+		} else {
+			statusIcon = "○"
+			statusStyle = kit.SelectorStatusNone()
 		}
 
-		for i := startIdx; i < endIdx; i++ {
-			t := s.filteredTools[i]
+		name := kit.TruncateText(t.Name, maxNameLen)
+		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-lipgloss.Width(name)))
 
-			var statusIcon string
-			var statusStyle lipgloss.Style
-			if t.Enabled {
-				statusIcon = "●"
-				statusStyle = kit.SelectorStatusConnected()
-			} else {
-				statusIcon = "○"
-				statusStyle = kit.SelectorStatusNone()
-			}
-
-			desc := t.Description
-			if idx := strings.Index(desc, "\n"); idx != -1 {
-				desc = desc[:idx]
-			}
-			if len(desc) > maxDescLen {
-				desc = kit.TruncateText(desc, maxDescLen)
-			}
-
-			descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-			line := fmt.Sprintf("%s %-15s  %s",
-				statusStyle.Render(statusIcon),
-				t.Name,
-				descStyle.Render(desc),
-			)
-
-			sb.WriteString(kit.RenderSelectableRow(line, i == s.nav.Selected))
-			sb.WriteString("\n")
+		// Tool descriptions can be multi-paragraph; the row shows the first line.
+		desc := t.Description
+		if idx := strings.IndexByte(desc, '\n'); idx != -1 {
+			desc = desc[:idx]
 		}
 
-		if endIdx < len(s.filteredTools) {
-			sb.WriteString(kit.SelectorHintStyle().Render("  ↓ more below"))
+		// Width budget for one row, accounting for the panel's Padding(1, 2)
+		// (4 cols total) plus the row's own decoration:
+		//   2 ("> ") + 1 (icon) + 1 (space) + name + 2 (sep) + desc
+		// The trailing -4 is a right-margin safety buffer.
+		rowFixed := 2 + 1 + 1 + maxNameLen + 2
+		descWidth := max(15, panel.ContentWidth()-4-rowFixed-4)
+		desc = kit.TruncateText(desc, descWidth)
+
+		line := fmt.Sprintf("%s %s  %s",
+			statusStyle.Render(statusIcon),
+			paddedName,
+			descStyle.Render(desc),
+		)
+
+		// Render without the row style's PaddingLeft(2) so the left edge lines
+		// up with tabs/search/separator; Width right-pads to the inner content
+		// area so the right edge matches the separator line too.
+		rowWidth := max(20, panel.ContentWidth()-4)
+		sb.WriteString(kit.RenderPanelRow(line, i == s.list.nav.Selected, rowWidth))
+		sb.WriteString("\n")
+
+		// Spacer for breathing room between rows (matches agent/skill).
+		if i < endIdx-1 {
 			sb.WriteString("\n")
 		}
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(kit.SelectorHintStyle().Render("↑/↓ navigate · Enter toggle · Tab level · Esc cancel"))
-
-	content := sb.String()
-	box := kit.SelectorBorderStyle().Width(boxWidth).Render(content)
-
-	return lipgloss.Place(s.width, s.height-4, lipgloss.Center, lipgloss.Center, box)
+	if endIdx < len(s.list.filtered) {
+		sb.WriteString(kit.MoreBelow())
+		sb.WriteString("\n")
+	}
 }
