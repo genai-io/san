@@ -41,6 +41,13 @@ func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) 
 	rendered, hunksSeen := 0, 0
 	hidden := 0
 	for i, line := range lines {
+		// The "\ No newline at end of file" marker is unified-diff
+		// bookkeeping, not file content — under a small-file edit it would
+		// trail nearly every row. Other metadata (the stored-diff cap notice)
+		// still renders.
+		if line.Type == perm.DiffLineMetadata && line.Content == "No newline at end of file" {
+			continue
+		}
 		if line.Type == perm.DiffLineHunk {
 			hunksSeen++
 			// The first hunk needs no separator; later ones get a dim "⋯" so

@@ -65,6 +65,18 @@ func TestRenderFileDiffCapsRows(t *testing.T) {
 	}
 }
 
+func TestRenderFileDiffHidesNoNewlineMarker(t *testing.T) {
+	diff := "@@ -1 +1 @@\n-123\n\\ No newline at end of file\n+23\n\\ No newline at end of file\n"
+	out, _ := RenderFileDiff(perm.ParseUnifiedDiff(diff), 60, 0)
+	plain := xansi.Strip(out)
+	if strings.Contains(plain, "No newline") {
+		t.Fatalf("no-newline marker is diff bookkeeping and must not render, got:\n%s", plain)
+	}
+	if !strings.Contains(plain, "1 - 123") || !strings.Contains(plain, "1 + 23") {
+		t.Fatalf("diff rows should still render, got:\n%s", plain)
+	}
+}
+
 func TestRenderFileDiffExpandsTabsInRows(t *testing.T) {
 	diff := "@@ -1,1 +1,1 @@\n-\told\n+\tnew\n"
 	plain := xansi.Strip(func() string { out, _ := RenderFileDiff(perm.ParseUnifiedDiff(diff), 60, 0); return out }())
