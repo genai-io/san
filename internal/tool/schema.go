@@ -19,9 +19,7 @@ const (
 	ToolTaskGet         = "TaskGet"
 	ToolTaskUpdate      = "TaskUpdate"
 	ToolTaskList        = "TaskList"
-	ToolCronCreate      = "CronCreate"
-	ToolCronDelete      = "CronDelete"
-	ToolCronList        = "CronList"
+	ToolCron            = "Cron"
 	ToolAskUserQuestion = "AskUserQuestion"
 
 	ToolEvolve = "Evolve"
@@ -65,7 +63,7 @@ var builtinToolOrder = []string{
 	ToolSkill,
 	ToolAgent, ToolSendMessage,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate, ToolTaskList,
-	ToolCronCreate, ToolCronDelete, ToolCronList,
+	ToolCron,
 }
 
 // GetToolSchemas returns core.ToolSchema definitions for all registered tools

@@ -160,9 +160,9 @@ func TestPermissionScenarios(t *testing.T) {
 			want: false, wantMatch: "reserved for the main conversation",
 		},
 		{
-			name: "cron list denied for worker despite being a safe tool",
+			name: "cron denied for worker in every mode",
 			mode: PermissionExplore,
-			tool: "CronList", input: map[string]any{},
+			tool: "Cron", input: map[string]any{"action": "list"},
 			want: false, wantMatch: "reserved for the main conversation",
 		},
 		{

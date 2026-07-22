@@ -180,6 +180,13 @@ func ModeDefaultForCall(toolName string, args map[string]any, mode OperationMode
 			return decide(perm.Permit, "mode: read-only bash command")
 		}
 	}
+	// Listing scheduled jobs is read-only; create/delete still follow the
+	// mode default like any other mutating call.
+	if toolName == "Cron" {
+		if action, ok := args["action"].(string); ok && action == "list" {
+			return decide(perm.Permit, "mode: read-only cron listing")
+		}
+	}
 	return ModeDefault(toolName, mode)
 }
 

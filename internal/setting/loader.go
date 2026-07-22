@@ -395,16 +395,47 @@ func sanitizePresetName(name string) string {
 	return name
 }
 
-// GetDisabledTools returns the merged disabled tools map from loaded settings.
-// Returns a copy so callers cannot mutate the cached settings.
+// defaultDisabledTools are tools that ship disabled: rarely-used features
+// whose schemas should not cost every conversation context. The /tool panel
+// enables one by writing an explicit "false" entry, which overrides the
+// default here.
+var defaultDisabledTools = map[string]bool{
+	"Cron": true,
+}
+
+// IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
+// panel uses this to write an explicit enable entry instead of deleting the
+// key (deletion would fall back to the default).
+func IsDefaultDisabledTool(name string) bool {
+	return defaultDisabledTools[name]
+}
+
+// WithDefaultDisabledTools overlays the factory defaults onto explicit
+// settings entries: an explicit entry (true or false) always wins; absent
+// keys fall back to the default.
+func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
+	result := make(map[string]bool, len(explicit)+len(defaultDisabledTools))
+	for name, disabled := range defaultDisabledTools {
+		result[name] = disabled
+	}
+	maps.Copy(result, explicit)
+	for name, disabled := range result {
+		if !disabled {
+			delete(result, name)
+		}
+	}
+	return result
+}
+
+// GetDisabledTools returns the merged disabled tools map from loaded settings,
+// with factory defaults applied. Returns a copy so callers cannot mutate the
+// cached settings.
 func GetDisabledTools() map[string]bool {
 	s, err := Load()
-	if err != nil || s.DisabledTools == nil {
-		return make(map[string]bool)
+	if err != nil {
+		return WithDefaultDisabledTools(nil)
 	}
-	result := make(map[string]bool, len(s.DisabledTools))
-	maps.Copy(result, s.DisabledTools)
-	return result
+	return WithDefaultDisabledTools(s.DisabledTools)
 }
 
 // GetDisabledToolsAt returns disabled tools from a single settings file (not merged).

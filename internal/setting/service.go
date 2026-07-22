@@ -117,14 +117,10 @@ func (s *Settings) Reload(cwd string) error {
 func (s *Settings) DisabledTools() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.data == nil || s.data.DisabledTools == nil {
-		return make(map[string]bool)
+	if s.data == nil {
+		return WithDefaultDisabledTools(nil)
 	}
-	result := make(map[string]bool, len(s.data.DisabledTools))
-	for k, v := range s.data.DisabledTools {
-		result[k] = v
-	}
-	return result
+	return WithDefaultDisabledTools(s.data.DisabledTools)
 }
 
 func (s *Settings) SearchProvider() string {

@@ -1,6 +1,10 @@
 package setting
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/genai-io/san/internal/tool/perm"
+)
 
 func TestIsReadOnlyBashCommand(t *testing.T) {
 	readOnly := []string{
@@ -58,5 +62,14 @@ func TestIsReadOnlyBashCommand(t *testing.T) {
 		if IsReadOnlyBashCommand(cmd) {
 			t.Errorf("IsReadOnlyBashCommand(%q) = true, want false", cmd)
 		}
+	}
+}
+
+func TestModeDefaultForCallPermitsCronListing(t *testing.T) {
+	if d := ModeDefaultForCall("Cron", map[string]any{"action": "list"}, ModeNormal); d.Behavior != perm.Permit {
+		t.Fatalf("Cron list = %v, want Permit", d.Behavior)
+	}
+	if d := ModeDefaultForCall("Cron", map[string]any{"action": "create", "cron": "0 9 * * *", "prompt": "x"}, ModeNormal); d.Behavior == perm.Permit {
+		t.Fatal("Cron create must not auto-permit")
 	}
 }

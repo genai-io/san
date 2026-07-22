@@ -30,14 +30,16 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "hooks": { "PreToolUse": [...] },
   "env": { "MY_VAR": "value" },
   "enabledPlugins": { "my-plugin": true },
-  "disabledTools": { "WebSearch": true },
+  "disabledTools": { "WebSearch": true, "Cron": false },
   "theme": "dark"
 }
 ```
 
 ## UI Interactions
 
-- **`/tools`**: shows which tools are disabled via `disabledTools`.
+- **`/tools`**: shows which tools are disabled via `disabledTools`. Some
+  tools ship disabled (currently `Cron`); an explicit `"Cron": false` entry —
+  what the panel writes when you enable it — overrides the factory default.
 - **Env vars**: injected into the Bash tool's environment automatically.
 - **Theme**: applied at startup; no restart needed when changed via `/model` or similar commands.
 

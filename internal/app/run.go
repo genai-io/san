@@ -182,6 +182,7 @@ func runPrint(userMessage, personaName string) error {
 		}
 		disabledTools = merged.DisabledTools
 	}
+	disabledTools = setting.WithDefaultDisabledTools(disabledTools)
 
 	schemas := (&tool.Set{Disabled: disabledTools}).Tools()
 

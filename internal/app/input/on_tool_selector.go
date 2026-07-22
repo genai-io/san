@@ -9,6 +9,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	coretool "github.com/genai-io/san/internal/tool"
 )
 
@@ -118,11 +119,20 @@ func (s *ToolSelector) reloadToolStates() {
 	}
 
 	for i := range s.tools {
-		s.tools[i].Enabled = !s.disabledTools[s.tools[i].Name]
+		s.tools[i].Enabled = !s.effectiveDisabled(s.tools[i].Name)
 	}
 	for i := range s.filteredTools {
-		s.filteredTools[i].Enabled = !s.disabledTools[s.filteredTools[i].Name]
+		s.filteredTools[i].Enabled = !s.effectiveDisabled(s.filteredTools[i].Name)
 	}
+}
+
+// effectiveDisabled resolves a tool's state at the current level: an explicit
+// settings entry wins; absent keys fall back to the factory default.
+func (s *ToolSelector) effectiveDisabled(name string) bool {
+	if disabled, ok := s.disabledTools[name]; ok {
+		return disabled
+	}
+	return setting.IsDefaultDisabledTool(name)
 }
 
 // Toggle toggles the enabled state of the currently selected tool.
@@ -141,9 +151,16 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 		}
 	}
 
-	if selected.Enabled {
+	// A factory-default-disabled tool needs an explicit "false" entry when
+	// enabled — deleting its key would fall back to the disabled default.
+	switch {
+	case selected.Enabled && setting.IsDefaultDisabledTool(selected.Name):
+		s.disabledTools[selected.Name] = false
+	case selected.Enabled:
 		delete(s.disabledTools, selected.Name)
-	} else {
+	case setting.IsDefaultDisabledTool(selected.Name):
+		delete(s.disabledTools, selected.Name)
+	default:
 		s.disabledTools[selected.Name] = true
 	}
 

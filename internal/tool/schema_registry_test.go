@@ -33,7 +33,7 @@ func TestBuiltinToolsAllRegistered(t *testing.T) {
 		tool.ToolEdit, tool.ToolWrite, tool.ToolBash, tool.ToolAskUserQuestion,
 		tool.ToolSkill, tool.ToolAgent, tool.ToolSendMessage,
 		tool.ToolTaskCreate, tool.ToolTaskGet, tool.ToolTaskUpdate, tool.ToolTaskList,
-		tool.ToolCronCreate, tool.ToolCronDelete, tool.ToolCronList,
+		tool.ToolCron,
 	} {
 		if _, ok := findSchema(schemas, name); !ok {
 			t.Errorf("built-in tool %q is missing from GetToolSchemas output", name)

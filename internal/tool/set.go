@@ -24,9 +24,7 @@ var parentOnlyTools = map[string]bool{
 	ToolTaskUpdate: true,
 	ToolTaskList:   true,
 	ToolTaskGet:    true,
-	ToolCronCreate: true,
-	ToolCronDelete: true,
-	ToolCronList:   true,
+	ToolCron:       true,
 }
 
 // IsParentOnlyTool reports whether the tool is reserved for the main

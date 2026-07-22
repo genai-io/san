@@ -140,7 +140,6 @@ deny_tools:
   - Agent
   - SendMessage
   - Bash(rm *)            # Block dangerous bash patterns
-  - CronCreate
 ```
 
 #### Evaluation Order
