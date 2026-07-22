@@ -447,6 +447,66 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 }
 
+func TestFormatToolProgress(t *testing.T) {
+	cases := []struct {
+		lines int
+		bytes int64
+		want  string
+	}{
+		{0, 0, ""},
+		{1, 6, "1 line"},
+		{42, 900, "42 lines"},
+		{1500, 40000, "1.5k lines"},
+		{0, 200, "200 B"},
+		{0, 2048, "2.0 KB"},
+		{0, 5 * 1024 * 1024, "5.0 MB"},
+	}
+	for _, c := range cases {
+		if got := FormatToolProgress(c.lines, c.bytes); got != c.want {
+			t.Errorf("FormatToolProgress(%d, %d) = %q, want %q", c.lines, c.bytes, got, c.want)
+		}
+	}
+}
+
+func TestRenderToolCallsShowsOutputCounterNextToTimer(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
+	params := ToolCallsParams{
+		ToolCalls:     []core.ToolCall{call},
+		ResultMap:     map[string]ToolResultData{},
+		PendingCalls:  []core.ToolCall{call},
+		CurrentIdx:    0,
+		SpinnerView:   "⋯",
+		Width:         100,
+		ToolStartedAt: map[string]time.Time{"tc-1": time.Now().Add(-8 * time.Second)},
+		ToolProgress:  map[string]string{"tc-1": "1.2k lines"},
+	}
+
+	rendered := stripANSI(RenderToolCalls(params))
+	if !strings.Contains(rendered, "· 8s · 1.2k lines") {
+		t.Fatalf("RenderToolCalls() = %q, want the timer and output counter together", rendered)
+	}
+}
+
+func TestRenderToolCallsHidesCounterWithoutTimer(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
+	// Output has arrived but the call is under a second old: no timer, so no
+	// counter either — a sub-second row stays clean.
+	params := ToolCallsParams{
+		ToolCalls:     []core.ToolCall{call},
+		ResultMap:     map[string]ToolResultData{},
+		PendingCalls:  []core.ToolCall{call},
+		CurrentIdx:    0,
+		SpinnerView:   "⋯",
+		Width:         100,
+		ToolStartedAt: map[string]time.Time{"tc-1": time.Now()},
+		ToolProgress:  map[string]string{"tc-1": "42 lines"},
+	}
+
+	if got := stripANSI(RenderToolCalls(params)); strings.Contains(got, "42 lines") {
+		t.Fatalf("RenderToolCalls() = %q, want no counter before the one-second timer appears", got)
+	}
+}
+
 func TestRenderToolCallsHidesTimerForSubSecondAndCompletedCalls(t *testing.T) {
 	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
 	base := ToolCallsParams{

@@ -917,6 +917,29 @@ func extractParenContent(s, fallback string) string {
 	return s[start+1 : start+end]
 }
 
+// FormatToolProgress renders a running command's cumulative output as a short
+// counter for the live row: line count once any newline has arrived, falling
+// back to a byte size for output that has not broken a line yet (a progress
+// bar, a single long token). Empty output yields "" so nothing is shown.
+func FormatToolProgress(lines int, bytes int64) string {
+	switch {
+	case lines == 1:
+		return "1 line"
+	case lines >= 1000:
+		return fmt.Sprintf("%.1fk lines", float64(lines)/1000)
+	case lines > 1:
+		return fmt.Sprintf("%d lines", lines)
+	case bytes <= 0:
+		return ""
+	case bytes < 1024:
+		return fmt.Sprintf("%d B", bytes)
+	case bytes < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+}
+
 func formatLineCount(content string) string {
 	trimmed := strings.TrimSuffix(content, "\n")
 	if trimmed == "" {

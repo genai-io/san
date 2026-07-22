@@ -24,8 +24,12 @@ type ToolExecState struct {
 	// on a running row, so a long command no longer looks stuck. Only
 	// in-flight calls appear; it is cleared with every new batch.
 	StartedAt map[string]time.Time
-	Ctx       context.Context
-	Cancel    context.CancelFunc
+	// Progress holds the latest output counter of a running command ("1.2k
+	// lines"), keyed by tool-call ID — the replaceable companion to the
+	// elapsed timer, showing output is actually flowing. Cleared with StartedAt.
+	Progress map[string]string
+	Ctx      context.Context
+	Cancel   context.CancelFunc
 }
 
 func (t *ToolExecState) Begin() context.Context {
@@ -49,12 +53,14 @@ func (t *ToolExecState) Reset() {
 	}
 	t.ClearPending()
 	t.StartedAt = nil
+	t.Progress = nil
 	t.Ctx = nil
 	t.Cancel = nil
 }
 
 func (t *ToolExecState) Track(calls []core.ToolCall) {
 	t.StartedAt = nil
+	t.Progress = nil
 	if len(calls) == 0 {
 		t.ClearPending()
 		return
@@ -79,6 +85,19 @@ func (t *ToolExecState) MarkStarted(toolCallID string) {
 		t.StartedAt = make(map[string]time.Time)
 	}
 	t.StartedAt[toolCallID] = time.Now()
+}
+
+// SetProgress records the latest output counter for a running tool call. A blank
+// text clears it (nothing to show yet).
+func (t *ToolExecState) SetProgress(toolCallID, text string) {
+	if text == "" {
+		delete(t.Progress, toolCallID)
+		return
+	}
+	if t.Progress == nil {
+		t.Progress = make(map[string]string)
+	}
+	t.Progress[toolCallID] = text
 }
 
 func (t *ToolExecState) IndexOf(toolCallID string) int {

@@ -30,6 +30,9 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	case kit.TokenLimitResultMsg:
 		return rt.OnTokenLimitResult(msg), true
 	case AgentActivityMsg:
+		if msg.Progress {
+			return m.HandleToolProgress(msg), true
+		}
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
 		}
@@ -307,6 +310,16 @@ func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
 		m.TaskActivity[msg.Index] = m.TaskActivity[msg.Index][len(m.TaskActivity[msg.Index])-maxAgentActivityHistory:]
 	}
 
+	if m.AgentToUI == nil {
+		return m.Spinner.Tick
+	}
+	return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
+}
+
+// HandleToolProgress records a running command's latest output counter and
+// keeps the animation/poll loop alive so the row redraws with the new value.
+func (m *Model) HandleToolProgress(msg AgentActivityMsg) tea.Cmd {
+	m.Tool.SetProgress(msg.ToolCallID, msg.Message)
 	if m.AgentToUI == nil {
 		return m.Spinner.Tick
 	}
