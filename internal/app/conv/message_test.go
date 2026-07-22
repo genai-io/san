@@ -3,6 +3,7 @@ package conv
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -422,6 +423,76 @@ func TestRenderToolCallsShowsRunningStateForPendingBash(t *testing.T) {
 	}
 	if strings.Contains(rendered, "running...") {
 		t.Fatalf("RenderToolCalls() = %q, should not add extra running text", rendered)
+	}
+}
+
+func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
+	params := ToolCallsParams{
+		ToolCalls:     []core.ToolCall{call},
+		ResultMap:     map[string]ToolResultData{},
+		PendingCalls:  []core.ToolCall{call},
+		CurrentIdx:    0,
+		SpinnerView:   "⋯",
+		Width:         100,
+		ToolStartedAt: map[string]time.Time{"tc-1": time.Now().Add(-12 * time.Second)},
+	}
+
+	rendered := stripANSI(RenderToolCalls(params))
+	if !strings.Contains(rendered, "⋯ Bash(npm test)") {
+		t.Fatalf("RenderToolCalls() = %q, want spinner on the tool line", rendered)
+	}
+	if !strings.Contains(rendered, "· 12s") {
+		t.Fatalf("RenderToolCalls() = %q, want an elapsed timer on the running row", rendered)
+	}
+}
+
+func TestRenderToolCallsHidesTimerForSubSecondAndCompletedCalls(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
+	base := ToolCallsParams{
+		ToolCalls:    []core.ToolCall{call},
+		PendingCalls: []core.ToolCall{call},
+		CurrentIdx:   0,
+		SpinnerView:  "⋯",
+		Width:        100,
+	}
+
+	// Under a second old: too brief to be worth a timer.
+	fresh := base
+	fresh.ResultMap = map[string]ToolResultData{}
+	fresh.ToolStartedAt = map[string]time.Time{"tc-1": time.Now()}
+	if got := stripANSI(RenderToolCalls(fresh)); strings.Contains(got, "·") {
+		t.Fatalf("RenderToolCalls() = %q, want no timer under a second", got)
+	}
+
+	// Finished: the result is in, so the row is static with no timer.
+	done := base
+	done.ResultMap = map[string]ToolResultData{"tc-1": {ToolName: "Bash", Content: "ok"}}
+	done.ToolStartedAt = map[string]time.Time{"tc-1": time.Now().Add(-time.Minute)}
+	if got := stripANSI(RenderToolCalls(done)); strings.Contains(got, "·") {
+		t.Fatalf("RenderToolCalls() = %q, want no timer once the call has completed", got)
+	}
+}
+
+func TestRenderToolCallsPutsTimerOnBashHeaderForMultilineCommand(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"line one\nline two\nline three"}`}
+	params := ToolCallsParams{
+		ToolCalls:     []core.ToolCall{call},
+		ResultMap:     map[string]ToolResultData{},
+		PendingCalls:  []core.ToolCall{call},
+		CurrentIdx:    0,
+		SpinnerView:   "⋯",
+		Width:         100,
+		ToolStartedAt: map[string]time.Time{"tc-1": time.Now().Add(-90 * time.Second)},
+	}
+
+	rendered := stripANSI(RenderToolCalls(params))
+	header := strings.SplitN(rendered, "\n", 2)[0]
+	if !strings.Contains(header, "· 1m 30s") {
+		t.Fatalf("RenderToolCalls() header = %q, want the timer on the Bash header line", header)
+	}
+	if strings.Contains(rendered, "$  line one · 1m 30s") {
+		t.Fatalf("RenderToolCalls() = %q, timer must not land on the command line", rendered)
 	}
 }
 

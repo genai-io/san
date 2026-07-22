@@ -19,8 +19,13 @@ import (
 type ToolExecState struct {
 	PendingCalls []core.ToolCall
 	CurrentIdx   int
-	Ctx          context.Context
-	Cancel       context.CancelFunc
+	// StartedAt stamps when each call began executing (its PreToolEvent),
+	// keyed by tool-call ID. The view reads it to show a live elapsed timer
+	// on a running row, so a long command no longer looks stuck. Only
+	// in-flight calls appear; it is cleared with every new batch.
+	StartedAt map[string]time.Time
+	Ctx       context.Context
+	Cancel    context.CancelFunc
 }
 
 func (t *ToolExecState) Begin() context.Context {
@@ -43,11 +48,13 @@ func (t *ToolExecState) Reset() {
 		t.Cancel()
 	}
 	t.ClearPending()
+	t.StartedAt = nil
 	t.Ctx = nil
 	t.Cancel = nil
 }
 
 func (t *ToolExecState) Track(calls []core.ToolCall) {
+	t.StartedAt = nil
 	if len(calls) == 0 {
 		t.ClearPending()
 		return
@@ -63,6 +70,15 @@ func (t *ToolExecState) MarkCurrent(toolCallID string) {
 			return
 		}
 	}
+}
+
+// MarkStarted stamps the moment a tool call began executing, so the view can
+// show how long it has been running. Called once per call, on its PreToolEvent.
+func (t *ToolExecState) MarkStarted(toolCallID string) {
+	if t.StartedAt == nil {
+		t.StartedAt = make(map[string]time.Time)
+	}
+	t.StartedAt[toolCallID] = time.Now()
 }
 
 func (t *ToolExecState) IndexOf(toolCallID string) int {

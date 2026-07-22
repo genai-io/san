@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	xansi "github.com/charmbracelet/x/ansi"
@@ -492,16 +493,19 @@ type ToolCallsParams struct {
 	TaskActivity      map[int][]string
 	PendingCalls      []core.ToolCall
 	CurrentIdx        int
-	ModelName         string
-	InputTokens       int
-	OutputTokens      int
-	Blink             int
-	AgentColors       map[string]string
-	SpinnerView       string
-	TaskOwnerMap      map[string]string
-	MDRenderer        *MDRenderer
-	Width             int
-	Interactive       bool
+	// ToolStartedAt maps a running tool call's ID to when it began executing,
+	// for the live elapsed timer on its row. Only in-flight calls appear.
+	ToolStartedAt map[string]time.Time
+	ModelName     string
+	InputTokens   int
+	OutputTokens  int
+	Blink         int
+	AgentColors   map[string]string
+	SpinnerView   string
+	TaskOwnerMap  map[string]string
+	MDRenderer    *MDRenderer
+	Width         int
+	Interactive   bool
 }
 
 // ToolResultData holds the data needed to render a tool result inline.
@@ -565,15 +569,17 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if _, hasResult := params.ResultMap[tc.ID]; hasResult {
 				icon = "●"
 			}
+			var row string
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
-				sb.WriteString(renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n")
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			} else if tc.Name == tool.ToolBash {
-				sb.WriteString(renderBashToolCall(tc.Input, params.Width, icon))
+				row = renderBashToolCall(tc.Input, params.Width, icon)
 			} else {
 				args := extractToolArgs(tc.Input)
-				sb.WriteString(renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n")
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			}
+			sb.WriteString(appendRowDetail(row, runningElapsedDetail(tc, params)))
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
@@ -618,6 +624,42 @@ func toolCallIcon(tc core.ToolCall, pendingCalls []core.ToolCall, currentIdx int
 	}
 
 	return "●"
+}
+
+// runningElapsedDetail returns a dim " · 12s" suffix for a tool call that is
+// still executing and has run at least a second — long enough to be worth
+// telling the user it is alive and how long it has taken. A call that has
+// finished (its result is in) or has not started (no start stamp) gets "".
+// The stamp map only holds in-flight calls, so membership already gates this:
+// a not-yet-current sequential call has no entry and shows nothing.
+func runningElapsedDetail(tc core.ToolCall, params ToolCallsParams) string {
+	if _, done := params.ResultMap[tc.ID]; done {
+		return ""
+	}
+	started, ok := params.ToolStartedAt[tc.ID]
+	if !ok {
+		return ""
+	}
+	elapsed := formatElapsedTime(started)
+	if elapsed == "" {
+		return ""
+	}
+	return toolResultStyle.Render(" · " + elapsed)
+}
+
+// appendRowDetail splices a trailing detail (an already-styled elapsed timer)
+// into the first line of an already-rendered tool row, right before its
+// newline — so a multi-line Bash block carries the timer on its header, not
+// buried beside the command. Newlines never sit inside an ANSI escape, so
+// slicing at the first one is safe.
+func appendRowDetail(row, detail string) string {
+	if detail == "" {
+		return row
+	}
+	if nl := strings.IndexByte(row, '\n'); nl != -1 {
+		return row[:nl] + detail + row[nl:]
+	}
+	return row + detail
 }
 
 // stripMarkdownHeading removes leading `#` markers from markdown headings.
