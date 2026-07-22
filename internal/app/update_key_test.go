@@ -46,14 +46,14 @@ func TestCtrlTCyclesThinkingEffort(t *testing.T) {
 	if !handled {
 		t.Fatal("Ctrl+T was not handled")
 	}
-	if cmd == nil {
-		t.Fatal("Ctrl+T should return a status timer command")
+	if cmd != nil {
+		t.Fatal("Ctrl+T should update the model label without a status message")
 	}
 	if m.env.ThinkingEffort != "low" {
 		t.Fatalf("ThinkingEffort = %q, want low", m.env.ThinkingEffort)
 	}
-	if m.userInput.Provider.StatusMessage != "thinking: low" {
-		t.Fatalf("StatusMessage = %q, want thinking: low", m.userInput.Provider.StatusMessage)
+	if m.userInput.Provider.StatusMessage != "" {
+		t.Fatalf("StatusMessage = %q, want empty", m.userInput.Provider.StatusMessage)
 	}
 	if m.conv.ShowTasks {
 		t.Fatal("Ctrl+T should not toggle the task panel")
@@ -86,8 +86,8 @@ func TestCtrlTUsesCachedModelReasoningMetadata(t *testing.T) {
 	}
 
 	cmd, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	if !handled || cmd == nil {
-		t.Fatal("Ctrl+T should be handled and return a status timer")
+	if !handled || cmd != nil {
+		t.Fatal("Ctrl+T should be handled without a status timer")
 	}
 	if m.env.ThinkingEffort != "ultra" {
 		t.Fatalf("ThinkingEffort = %q, want dynamic next effort ultra", m.env.ThinkingEffort)

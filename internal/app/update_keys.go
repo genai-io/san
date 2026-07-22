@@ -193,12 +193,7 @@ func (m *model) cycleThinkingEffort() tea.Cmd {
 	}
 
 	m.env.SetThinkingEffort(next)
-	status := "thinking: " + next
-	if current != "" && current == next {
-		status += " (only supported)"
-	}
-	token := m.userInput.Provider.SetStatusMessage(status)
-	return kit.StatusTimer(3*time.Second, token)
+	return nil
 }
 
 func (m *model) handleCtrlO() tea.Cmd {

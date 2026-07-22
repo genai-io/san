@@ -49,15 +49,6 @@ var (
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Error)
-
-	// A multi-line Bash command renders as an indented block below the header. The
-	// command itself is drawn in the shared dim result tone (toolResultStyle) —
-	// the same tone as the "$" prompt and the "⎿" trailer — so the whole block
-	// reads as quiet code, one step below body prose. Only the description differs:
-	// italic, so it reads as a prose caption distinct from the code.
-	bashDescStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.TextDim).
-			Italic(true)
 )
 
 // RenderToolResult renders a complete tool result with header and content.
@@ -837,12 +828,12 @@ func renderBashToolCall(input string, width int, icon string) string {
 
 	var sb strings.Builder
 
-	// Header line: ● Bash, trailed by the optional description as a dim caption.
-	// The caption may be shortened (it's metadata); the command below never is.
+	// Header line: ● Bash - description. The description may be shortened
+	// (it's metadata); the command below never is.
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	header := toolCallStyle.Render(tool.ToolBash)
 	if description != "" {
-		header += "  " + bashDescStyle.Render(kit.TruncateText(description, budget))
+		header += " - " + kit.TruncateText(description, budget)
 	}
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + "\n")
 

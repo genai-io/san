@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/lipgloss/v2"
-
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -107,16 +105,18 @@ func TestRenderContextLabel(t *testing.T) {
 	}
 }
 
-func TestRenderStableContextLabelKeepsWidth(t *testing.T) {
-	a := stripANSI(renderStableContextLabel(8_500, 272_000))
-	b := stripANSI(renderStableContextLabel(10_000, 272_000))
-
-	if lipgloss.Width(a) != lipgloss.Width(b) {
-		t.Fatalf("stable context labels should have same width: %q (%d), %q (%d)",
-			a, lipgloss.Width(a), b, lipgloss.Width(b))
+func TestRenderContextLabelStaysCompact(t *testing.T) {
+	visible := stripANSI(RenderModeStatus(OperationModeParams{
+		ModelName:   "gpt-test",
+		InputTokens: 0,
+		InputLimit:  272_000,
+		Width:       120,
+	}))
+	if !strings.Contains(visible, "ctx 0/272.0k") {
+		t.Fatalf("RenderModeStatus() = %q, want compact ctx label", visible)
 	}
-	if !strings.Contains(a, "8.5k/272.0k") || !strings.Contains(b, "10.0k/272.0k") {
-		t.Fatalf("stable labels lost expected token text: %q / %q", a, b)
+	if strings.Contains(visible, "ctx       0/272.0k") {
+		t.Fatalf("RenderModeStatus() = %q, ctx label must not pad the usage value", visible)
 	}
 }
 

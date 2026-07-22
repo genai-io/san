@@ -142,9 +142,9 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 			t.Fatalf("multi-line command should show %q in place, got %q", want, out)
 		}
 	}
-	// The description rides the header as a caption.
-	if !strings.Contains(out, "loop over files") {
-		t.Fatalf("multi-line command should show its description, got %q", out)
+	// The description stays on the header in normal text, separated by a dash.
+	if !strings.Contains(stripANSI(out), "Bash - loop over files") {
+		t.Fatalf("multi-line command should show its description on the header, got %q", out)
 	}
 	// The raw command is never crammed into the Bash(...) one-line label.
 	if strings.Contains(out, "Bash(for f") {
