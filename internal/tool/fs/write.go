@@ -141,8 +141,13 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	duration := time.Since(start)
 
 	action := "Created"
+	// The overwrite note rides the result because models weigh fresh tool
+	// results over schema text: it nudges the next modification toward Edit
+	// without blocking legitimate full rewrites.
+	overwriteNote := ""
 	if !isNewFile {
 		action = "Updated"
+		overwriteNote = ". Note: this replaced an existing file; use Edit for modifications"
 	}
 
 	// Count lines
@@ -165,7 +170,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)",
+		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)" + overwriteNote,
 		Details: toolresult.FileChangeDetails{
 			Path:         filePath,
 			IsNewFile:    isNewFile,

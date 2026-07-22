@@ -191,8 +191,12 @@ func TestWriteOverwriteRequiresFreshRead(t *testing.T) {
 	}
 
 	readForEdit(t, filePath, tmpDir)
-	if out := write().FormatForLLM(); strings.Contains(out, "Error") {
+	out := write().FormatForLLM()
+	if strings.Contains(out, "Error") {
 		t.Fatalf("overwrite after read should succeed, got: %s", out)
+	}
+	if !strings.Contains(out, "use Edit for modifications") {
+		t.Fatalf("overwrite result should nudge toward Edit, got: %s", out)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != "replaced\n" {
@@ -208,7 +212,11 @@ func TestWriteNewFileNeedsNoRead(t *testing.T) {
 		"file_path": filePath,
 		"content":   "hello\n",
 	}, tmpDir)
-	if out := result.FormatForLLM(); strings.Contains(out, "Error") {
+	out := result.FormatForLLM()
+	if strings.Contains(out, "Error") {
 		t.Fatalf("creating a new file must not require a read, got: %s", out)
+	}
+	if strings.Contains(out, "use Edit for modifications") {
+		t.Fatalf("creating a new file should not carry the overwrite note, got: %s", out)
 	}
 }

@@ -78,7 +78,7 @@ func (t *WriteTool) Schema() core.ToolSchema {
 		Description: `Writes a file to the local filesystem, overwriting any existing content.
 
 - Overwriting an existing file requires a current view of it: Read it first, unless you already created or modified it in this session with Write/Edit (your own results count — no re-read needed). If it changed on disk outside your own tool calls, Read it again first.
-- Prefer Edit for modifying existing files; use Write for new files or complete rewrites.
+- Modifying an existing file — however small the file or change — is Edit's job. Reserve Write for creating new files and wholesale regeneration where string replacements are impractical.
 - Never create documentation or README files unless explicitly requested.`,
 		Parameters: map[string]any{
 			"type": "object",
