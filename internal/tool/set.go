@@ -33,6 +33,24 @@ func IsParentOnlyTool(name string) bool {
 	return parentOnlyTools[name]
 }
 
+// TaskTrackerTools are the model-facing task tracker tools that share the one
+// process-global todo store. They stand or fall together: the task-tracking
+// prompt protocol teaches a create → update → read workflow, so it is only
+// coherent when every one of them is available.
+var TaskTrackerTools = []string{ToolTaskCreate, ToolTaskGet, ToolTaskUpdate}
+
+// TaskTrackingEnabled reports whether every task tracker tool is enabled (none
+// present in the disabled set). The system prompt gates its task-tracking
+// protocol on this, so disabling any one drops the whole protocol.
+func TaskTrackingEnabled(disabled map[string]bool) bool {
+	for _, name := range TaskTrackerTools {
+		if disabled[name] {
+			return false
+		}
+	}
+	return true
+}
+
 // Set provides tools for a conversation turn.
 // If Static is non-nil, it is returned directly (for custom agents).
 // Otherwise, tools are resolved dynamically using the config fields.

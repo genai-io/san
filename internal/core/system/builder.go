@@ -29,12 +29,13 @@ type Persona struct {
 // Options populate it; Build then constructs each part once from the resolved
 // values.
 type buildConfig struct {
-	scope    core.Scope
-	isGit    bool
-	provider string
-	env      *Environment   // volatile footer; nil when not supplied
-	persona  Persona        // per-part overrides; empty fields use the default
-	subagent *SubagentBrief // non-nil for a subagent charter
+	scope        core.Scope
+	isGit        bool
+	provider     string
+	taskTracking bool           // include the task-tracking protocol (main agent only)
+	env          *Environment   // volatile footer; nil when not supplied
+	persona      Persona        // per-part overrides; empty fields use the default
+	subagent     *SubagentBrief // non-nil for a subagent charter
 }
 
 // Build constructs a System for the given Scope and applies the options.
@@ -44,6 +45,9 @@ type buildConfig struct {
 // and environment (volatile footer). Each part is a single named section, so
 // a persona can later replace a whole part by name with one file.
 func Build(scope core.Scope, opts ...Option) core.System {
+	// Task tracking is off unless a caller opts in with WithTaskTracking. The
+	// tools ship disabled, so the prompt must not advertise them by default;
+	// the app enables the block only when every task tracker tool is enabled.
 	cfg := &buildConfig{scope: scope}
 	for _, opt := range opts {
 		opt(cfg)
@@ -74,6 +78,7 @@ func Build(scope core.Scope, opts ...Option) core.System {
 		isGit:          cfg.isGit,
 		provider:       cfg.provider,
 		canSpawnAgents: scope == core.ScopeMain,
+		taskTracking:   cfg.taskTracking,
 		override:       cfg.persona.Rules,
 	}), caller)
 
