@@ -2,7 +2,6 @@ package input
 
 import (
 	"fmt"
-	"maps"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,7 +16,6 @@ import (
 type toolItem struct {
 	Name        string
 	Description string
-	Enabled     bool
 }
 
 // toolTab identifies a save-level tab in the tool selector. Unlike the agent
@@ -42,12 +40,16 @@ type ToolToggleMsg struct {
 // keypress/frame mechanics live in the embedded tabbedList; this type owns tool
 // loading, the row layout, and the enable/disable action. It matches the agent
 // and skill overlays so the three read as one family.
+//
+// A tool's shown state is derived on the fly from disabledByLevel + the active
+// tab rather than cached on the item: because every tool appears under both
+// level tabs, a cached flag would go stale on every tab switch.
 type ToolSelector struct {
 	list         tabbedList[toolItem]
 	loadDisabled func(userLevel bool) map[string]bool
 	saveDisabled func(disabled map[string]bool, userLevel bool) error
-	// disabledByLevel holds a working copy of each level's explicit disabled
-	// entries (keyed by userLevel), loaded once per open and mutated by Toggle.
+	// disabledByLevel holds each level's explicit disabled entries (keyed by
+	// userLevel), loaded once per open and mutated by Toggle.
 	disabledByLevel map[bool]map[string]bool
 }
 
@@ -75,15 +77,15 @@ func NewToolSelector(
 	}
 }
 
-// EnterSelect activates the selector and loads every tool with its per-level
-// enabled state.
+// EnterSelect activates the selector and loads every tool.
 func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.ToolSchema) error {
 	allTools := coretool.GetToolSchemasWith(coretool.SchemaOptions{MCPTools: mcpTools})
 
-	// Pre-load both levels so switching tabs never has to touch disk.
+	// Pre-load both levels so switching tabs never has to touch disk. The loader
+	// hands back a fresh, owned map per level, so no copy is needed.
 	s.disabledByLevel = map[bool]map[string]bool{
-		false: cloneDisabled(s.loadDisabled(false)),
-		true:  cloneDisabled(s.loadDisabled(true)),
+		false: s.loadDisabled(false),
+		true:  s.loadDisabled(true),
 	}
 
 	items := make([]toolItem, 0, len(allTools))
@@ -92,17 +94,7 @@ func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.Too
 	}
 
 	s.list.load(items, width, height)
-	s.recomputeEnabled()
 	return nil
-}
-
-// cloneDisabled returns a mutable copy of a level's disabled map, never nil so
-// Toggle can write into it.
-func cloneDisabled(m map[string]bool) map[string]bool {
-	if c := maps.Clone(m); c != nil {
-		return c
-	}
-	return map[string]bool{}
 }
 
 func (s *ToolSelector) IsActive() bool { return s.list.active }
@@ -120,18 +112,6 @@ func (s *ToolSelector) effectiveDisabled(userLevel bool, name string) bool {
 	return setting.IsDefaultDisabledTool(name)
 }
 
-// recomputeEnabled refreshes every item's Enabled flag for the active tab's
-// level. Called after a tab switch, since a tool's state differs per level.
-func (s *ToolSelector) recomputeEnabled() {
-	userLevel := s.saveLevelForActiveTab()
-	for i := range s.list.items {
-		s.list.items[i].Enabled = !s.effectiveDisabled(userLevel, s.list.items[i].Name)
-	}
-	for i := range s.list.filtered {
-		s.list.filtered[i].Enabled = !s.effectiveDisabled(userLevel, s.list.filtered[i].Name)
-	}
-}
-
 // Toggle flips the enabled state of the selected tool at the active level and
 // persists it.
 func (s *ToolSelector) Toggle() tea.Cmd {
@@ -139,44 +119,32 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 		return nil
 	}
 	userLevel := s.saveLevelForActiveTab()
-
-	selected := &s.list.filtered[s.list.nav.Selected]
-	selected.Enabled = !selected.Enabled
-	for i := range s.list.items {
-		if s.list.items[i].Name == selected.Name {
-			s.list.items[i].Enabled = selected.Enabled
-			break
-		}
-	}
+	name := s.list.filtered[s.list.nav.Selected].Name
+	// A currently-disabled tool is being enabled, and vice versa.
+	enabling := s.effectiveDisabled(userLevel, name)
 
 	// A factory-default-disabled tool needs an explicit "false" entry when
 	// enabled — deleting its key would fall back to the disabled default.
 	m := s.disabledByLevel[userLevel]
 	switch {
-	case selected.Enabled && setting.IsDefaultDisabledTool(selected.Name):
-		m[selected.Name] = false
-	case selected.Enabled:
-		delete(m, selected.Name)
-	case setting.IsDefaultDisabledTool(selected.Name):
-		delete(m, selected.Name)
+	case enabling && setting.IsDefaultDisabledTool(name):
+		m[name] = false
+	case enabling:
+		delete(m, name)
+	case setting.IsDefaultDisabledTool(name):
+		delete(m, name)
 	default:
-		m[selected.Name] = true
+		m[name] = true
 	}
 	_ = s.saveDisabled(m, userLevel)
 
 	return func() tea.Msg {
-		return ToolToggleMsg{ToolName: selected.Name, Enabled: selected.Enabled}
+		return ToolToggleMsg{ToolName: name, Enabled: enabling}
 	}
 }
 
 func (s *ToolSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
-	prevTab := s.list.activeTab
-	cmd := s.list.handleKey(key, s.Toggle)
-	// A tab switch changes the level, so re-resolve every tool's shown state.
-	if s.list.activeTab != prevTab {
-		s.recomputeEnabled()
-	}
-	return cmd
+	return s.list.handleKey(key, s.Toggle)
 }
 
 // ── Rendering ──────────────────────────────────────────────────────────────────
@@ -202,6 +170,7 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 	}
 	maxNameLen = min(maxNameLen, 24)
 
+	userLevel := s.saveLevelForActiveTab()
 	descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
 	for i := startIdx; i < endIdx; i++ {
@@ -209,12 +178,12 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
-		if t.Enabled {
-			statusIcon = "●"
-			statusStyle = kit.SelectorStatusConnected()
-		} else {
+		if s.effectiveDisabled(userLevel, t.Name) {
 			statusIcon = "○"
 			statusStyle = kit.SelectorStatusNone()
+		} else {
+			statusIcon = "●"
+			statusStyle = kit.SelectorStatusConnected()
 		}
 
 		name := kit.TruncateText(t.Name, maxNameLen)

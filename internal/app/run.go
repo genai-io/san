@@ -164,7 +164,7 @@ func runPrint(userMessage, personaName string) error {
 			overlay = &p.Settings.Data
 		}
 		merged := setting.ApplyPersonaOverlay(base, overlay)
-		effectiveDisabled := setting.WithDefaultDisabledTools(merged.DisabledTools)
+		disabledTools = setting.WithDefaultDisabledTools(merged.DisabledTools)
 
 		sys := system.Build(core.ScopeMain,
 			system.WithPersona(system.Persona{
@@ -172,7 +172,7 @@ func runPrint(userMessage, personaName string) error {
 				Behavior: p.Behavior,
 				Rules:    p.Rules,
 			}),
-			system.WithTaskTracking(tool.TaskTrackingEnabled(effectiveDisabled)),
+			system.WithTaskTracking(tool.TaskTrackingEnabled(disabledTools)),
 		)
 		sysPrompt = sys.Prompt()
 
@@ -186,9 +186,9 @@ func runPrint(userMessage, personaName string) error {
 				}
 			}
 		}
-		disabledTools = merged.DisabledTools
+	} else {
+		disabledTools = setting.WithDefaultDisabledTools(nil)
 	}
-	disabledTools = setting.WithDefaultDisabledTools(disabledTools)
 
 	schemas := (&tool.Set{Disabled: disabledTools}).Tools()
 
