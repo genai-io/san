@@ -43,6 +43,7 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithGitGuidelines(true),
+					WithTaskTracking(true),
 					WithEnvironment(mainEnv),
 				}
 			},

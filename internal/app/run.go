@@ -157,12 +157,6 @@ func runPrint(userMessage, personaName string) error {
 	if personaName != "" {
 		cwd, _ := os.Getwd()
 		p, _ := persona.Default().Get(personaName)
-		sys := system.Build(core.ScopeMain, system.WithPersona(system.Persona{
-			Identity: p.Identity,
-			Behavior: p.Behavior,
-			Rules:    p.Rules,
-		}))
-		sysPrompt = sys.Prompt()
 
 		base, _ := setting.LoadForCwd(cwd)
 		var overlay *setting.Data
@@ -170,6 +164,18 @@ func runPrint(userMessage, personaName string) error {
 			overlay = &p.Settings.Data
 		}
 		merged := setting.ApplyPersonaOverlay(base, overlay)
+		effectiveDisabled := setting.WithDefaultDisabledTools(merged.DisabledTools)
+
+		sys := system.Build(core.ScopeMain,
+			system.WithPersona(system.Persona{
+				Identity: p.Identity,
+				Behavior: p.Behavior,
+				Rules:    p.Rules,
+			}),
+			system.WithTaskTracking(tool.TaskTrackingEnabled(effectiveDisabled)),
+		)
+		sysPrompt = sys.Prompt()
+
 		if merged.Model != "" {
 			if models, err := llmProvider.ListModels(ctx); err == nil {
 				for _, m := range models {

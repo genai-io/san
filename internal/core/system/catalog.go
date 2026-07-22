@@ -18,7 +18,8 @@ import (
 //	prompts/identity.txt              — who you are (the "identity" part)
 //	prompts/behavior.txt              — how you work: style + engineering (the "behavior" part)
 //	prompts/rules.txt                 — safety + tools + system reminders (the "rules" core)
-//	prompts/rules-main.txt            — rules for the main agent only (task tracking, asking the user)
+//	prompts/rules-task.txt            — task-tracking protocol (main agent, when the task tools are enabled)
+//	prompts/rules-main.txt            — rules for the main agent only (asking the user)
 //	prompts/rules-git.txt             — rules added only in a git repo (git safety)
 //	prompts/compact.txt               — conversation compactor prompt (standalone)
 //	prompts/providers/<name>.txt      — provider-specific quirks (optional, appended to rules)
@@ -46,6 +47,7 @@ var (
 	cachedBehavior      = loadEmbed("prompts/behavior.txt")
 	cachedRules         = loadEmbed("prompts/rules.txt")
 	cachedRulesDelegate = loadEmbed("prompts/rules-delegate.txt")
+	cachedRulesTask     = loadEmbed("prompts/rules-task.txt")
 	cachedRulesMain     = loadEmbed("prompts/rules-main.txt")
 	cachedRulesGit      = loadEmbed("prompts/rules-git.txt")
 	cachedCompact       = loadEmbed("prompts/compact.txt")
@@ -158,14 +160,15 @@ type rulesParams struct {
 	isGit          bool
 	provider       string
 	canSpawnAgents bool // include the agent-delegation protocol
+	taskTracking   bool // include the task-tracking protocol (main agent only)
 	override       string
 }
 
 // rulesSection renders the safety contract plus the operational protocols
 // (tools and system-reminders always; agent delegation when the agent can
-// spawn agents; task tracking and interactive questions for the main agent),
-// with git safety folded in when isGit and any provider quirks appended
-// last. Subagents get the safety + tool subset.
+// spawn agents; task tracking when its tools are enabled, and interactive
+// questions, for the main agent), with git safety folded in when isGit and
+// any provider quirks appended last. Subagents get the safety + tool subset.
 func rulesSection(p rulesParams) core.Section {
 	p.override = strings.TrimSpace(p.override)
 	source := core.Predefined
@@ -192,7 +195,12 @@ func assembleRules(p rulesParams) string {
 		blocks = append(blocks, cachedRulesDelegate)
 	}
 	if p.scope == core.ScopeMain {
-		// Task tracking + asking the user are main-agent behaviors.
+		// Task tracking + asking the user are main-agent behaviors. Task
+		// tracking is gated on the tools being enabled — when they ship
+		// disabled the prompt must not advertise them.
+		if p.taskTracking {
+			blocks = append(blocks, cachedRulesTask)
+		}
 		blocks = append(blocks, cachedRulesMain)
 	}
 	if p.isGit {
@@ -218,8 +226,9 @@ func WithPersona(p Persona) Option {
 // SwapPersona replaces the identity / behavior / rules parts on an already-built
 // main-agent system — e.g. a mid-session persona switch. Empty fields revert
 // that part to the built-in default. isGit and provider are the current
-// environment facts needed to rebuild a reverted rules part. Visible on the
-// next sys.Prompt().
+// environment facts needed to rebuild a reverted rules part. Task tracking
+// tracks the default here (the app enables it up front via Build); a persona
+// switch does not toggle tool availability. Visible on the next sys.Prompt().
 func SwapPersona(sys core.System, p Persona, isGit bool, provider string) {
 	const caller = "command:persona"
 	sys.Use(identitySection(p.Identity), caller)
@@ -242,6 +251,14 @@ func WithProvider(name string) Option {
 // WithGitGuidelines includes the git-safety rules. Off by default.
 func WithGitGuidelines(isGit bool) Option {
 	return func(cfg *buildConfig) { cfg.isGit = isGit }
+}
+
+// WithTaskTracking includes the task-tracking protocol for the main agent. Off
+// by default because the tools ship disabled; the app passes true only when
+// every task tracker tool is enabled, so the prompt never advertises tools the
+// model cannot call.
+func WithTaskTracking(enabled bool) Option {
+	return func(cfg *buildConfig) { cfg.taskTracking = enabled }
 }
 
 // Subagent identity (Scope == ScopeSubagent)

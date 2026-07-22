@@ -112,14 +112,33 @@ func TestBuildPromptEmptyOptionsExcluded(t *testing.T) {
 }
 
 func TestBuildScopeMain_HasTaskAndQuestionGuidelines(t *testing.T) {
-	sys := Build(core.ScopeMain, WithEnvironment(Environment{Cwd: "/tmp/test"}))
+	sys := Build(core.ScopeMain,
+		WithTaskTracking(true),
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
+	)
 	prompt := sys.Prompt()
 
 	if !strings.Contains(prompt, "TaskCreate") {
-		t.Error("main scope should include task guidelines")
+		t.Error("main scope with task tracking on should include task guidelines")
 	}
 	if !strings.Contains(prompt, "AskUserQuestion") {
 		t.Error("main scope should include question guidelines")
+	}
+}
+
+func TestBuildScopeMain_TaskTrackingGatedOnTools(t *testing.T) {
+	// Tools disabled: the task-tracking protocol drops out, but asking-the-user
+	// guidance (also main-only, in a separate block) must stay.
+	prompt := Build(core.ScopeMain,
+		WithEnvironment(Environment{Cwd: "/tmp/test"}),
+		WithTaskTracking(false),
+	).Prompt()
+
+	if strings.Contains(prompt, "TaskCreate") {
+		t.Error("WithTaskTracking(false) should drop the task-tracking guidance")
+	}
+	if !strings.Contains(prompt, "AskUserQuestion") {
+		t.Error("WithTaskTracking(false) must not drop the question guidance")
 	}
 }
 

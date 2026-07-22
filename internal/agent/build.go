@@ -79,6 +79,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		system.WithProvider(client.Name()),
 		system.WithPersona(p.Persona),
 		system.WithGitGuidelines(p.IsGit),
+		system.WithTaskTracking(tool.TaskTrackingEnabled(p.DisabledTools)),
 		system.WithEnvironment(system.Environment{
 			Cwd:     p.CWD,
 			IsGit:   p.IsGit,

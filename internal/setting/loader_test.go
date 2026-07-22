@@ -20,4 +20,17 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 	if !got["WebSearch"] || !got["Cron"] {
 		t.Fatalf("unexpected map: %#v", got)
 	}
+
+	// The task tracker tools ship disabled by default, and re-enabling one from
+	// the /tool panel (an explicit false) overrides that.
+	got = WithDefaultDisabledTools(nil)
+	for _, name := range []string{"TaskCreate", "TaskGet", "TaskUpdate"} {
+		if !got[name] {
+			t.Fatalf("%s should be disabled by default", name)
+		}
+	}
+	got = WithDefaultDisabledTools(map[string]bool{"TaskCreate": false})
+	if got["TaskCreate"] {
+		t.Fatal("explicit enable must override the task-tracker default")
+	}
 }

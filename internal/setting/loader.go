@@ -401,6 +401,13 @@ func sanitizePresetName(name string) string {
 // default here.
 var defaultDisabledTools = map[string]bool{
 	"Cron": true,
+	// Task tracker: the plan panel and its tools ship off by default. The
+	// prompt's task-tracking protocol is gated on these being enabled (see
+	// system.WithTaskTracking), so re-enabling one from the /tool panel brings
+	// the guidance back with it.
+	"TaskCreate": true,
+	"TaskGet":    true,
+	"TaskUpdate": true,
 }
 
 // IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
