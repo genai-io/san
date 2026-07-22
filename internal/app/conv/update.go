@@ -30,14 +30,18 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	case kit.TokenLimitResultMsg:
 		return rt.OnTokenLimitResult(msg), true
 	case AgentActivityMsg:
-		if msg.Progress {
-			return m.HandleToolProgress(msg), true
-		}
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
 		}
 		if msg.Index < 0 {
 			return m.HandleActivityTick(rt.HasRunningTasks()), true
+		}
+		// A non-agent tool (Bash) reports a single live status — its output
+		// counter — rather than a feed: store it as the row's replaceable
+		// progress instead of appending it to the activity history.
+		if msg.Index < len(m.Tool.PendingCalls) && !tool.IsAgentToolName(m.Tool.PendingCalls[msg.Index].Name) {
+			m.Tool.SetProgress(msg.ToolCallID, msg.Message)
+			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check()), true
 		}
 		return m.HandleActivity(msg), true
 	case AgentToUITickMsg:
@@ -310,16 +314,6 @@ func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
 		m.TaskActivity[msg.Index] = m.TaskActivity[msg.Index][len(m.TaskActivity[msg.Index])-maxAgentActivityHistory:]
 	}
 
-	if m.AgentToUI == nil {
-		return m.Spinner.Tick
-	}
-	return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
-}
-
-// HandleToolProgress records a running command's latest output counter and
-// keeps the animation/poll loop alive so the row redraws with the new value.
-func (m *Model) HandleToolProgress(msg AgentActivityMsg) tea.Cmd {
-	m.Tool.SetProgress(msg.ToolCallID, msg.Message)
 	if m.AgentToUI == nil {
 		return m.Spinner.Tick
 	}

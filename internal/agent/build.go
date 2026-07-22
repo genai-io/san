@@ -57,7 +57,6 @@ type BuildParams struct {
 	HookEngine       hook.Handler
 	AskUser          tool.AskUserFunc
 	ToolActivity     func(toolCallID string, msg string)
-	ToolProgress     func(toolCallID string, lines int, bytes int64)
 	// BashPromptResponder answers prompts a command raises *while it runs*
 	// (AutoPilot.BashPrompt plus the masked secret input) — a separate concern
 	// from the pre-execution gate above.
@@ -104,9 +103,6 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	}
 	if p.ToolActivity != nil {
 		adaptOpts = append(adaptOpts, tool.WithToolActivity(p.ToolActivity))
-	}
-	if p.ToolProgress != nil {
-		adaptOpts = append(adaptOpts, tool.WithToolProgress(p.ToolProgress))
 	}
 	if p.BashPromptResponder != nil {
 		adaptOpts = append(adaptOpts, tool.WithBashPromptResponderProvider(p.BashPromptResponder))

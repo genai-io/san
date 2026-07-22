@@ -447,27 +447,6 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 }
 
-func TestFormatToolProgress(t *testing.T) {
-	cases := []struct {
-		lines int
-		bytes int64
-		want  string
-	}{
-		{0, 0, ""},
-		{1, 6, "1 line"},
-		{42, 900, "42 lines"},
-		{1500, 40000, "1.5k lines"},
-		{0, 200, "200 B"},
-		{0, 2048, "2.0 KB"},
-		{0, 5 * 1024 * 1024, "5.0 MB"},
-	}
-	for _, c := range cases {
-		if got := FormatToolProgress(c.lines, c.bytes); got != c.want {
-			t.Errorf("FormatToolProgress(%d, %d) = %q, want %q", c.lines, c.bytes, got, c.want)
-		}
-	}
-}
-
 func TestRenderToolCallsShowsOutputCounterNextToTimer(t *testing.T) {
 	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
 	params := ToolCallsParams{
