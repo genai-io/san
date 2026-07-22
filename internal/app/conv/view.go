@@ -2,6 +2,7 @@ package conv
 
 import (
 	"strings"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 )
@@ -25,6 +26,12 @@ type RenderContext struct {
 	BuildingTool string
 	PendingCalls []core.ToolCall
 	CurrentIdx   int
+	// ToolStartedAt maps a running tool call's ID to when it began executing,
+	// so its row can show a live elapsed timer. Only in-flight calls appear.
+	ToolStartedAt map[string]time.Time
+	// ToolProgress maps a running command's ID to its latest output counter
+	// ("1.2k lines"), shown next to the timer. Empty for calls with no output.
+	ToolProgress map[string]string
 
 	// ── Renderer / terminal env ─────────────────────────────────
 	Width      int
@@ -251,6 +258,8 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		TaskActivity:      p.TaskActivity,
 		PendingCalls:      p.PendingCalls,
 		CurrentIdx:        p.CurrentIdx,
+		ToolStartedAt:     p.ToolStartedAt,
+		ToolProgress:      p.ToolProgress,
 		ModelName:         p.ModelName,
 		InputTokens:       p.InputTokens,
 		OutputTokens:      p.OutputTokens,

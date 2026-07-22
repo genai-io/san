@@ -36,6 +36,13 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		if msg.Index < 0 {
 			return m.HandleActivityTick(rt.HasRunningTasks()), true
 		}
+		// A non-agent tool (Bash) reports a single live status — its output
+		// counter — rather than a feed: store it as the row's replaceable
+		// progress instead of appending it to the activity history.
+		if msg.Index < len(m.Tool.PendingCalls) && !tool.IsAgentToolName(m.Tool.PendingCalls[msg.Index].Name) {
+			m.Tool.SetProgress(msg.ToolCallID, msg.Message)
+			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check()), true
+		}
 		return m.HandleActivity(msg), true
 	case AgentToUITickMsg:
 		return m.HandleActivityTick(rt.HasRunningTasks()), true
@@ -245,6 +252,7 @@ func applyPreTool(m *Model, ev core.Event) {
 	if tc, ok := ev.ToolCall(); ok {
 		m.Stream.BuildingTool = tc.Name
 		m.Tool.MarkCurrent(tc.ID)
+		m.Tool.MarkStarted(tc.ID)
 	}
 }
 

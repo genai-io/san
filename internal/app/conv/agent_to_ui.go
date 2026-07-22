@@ -10,8 +10,10 @@ import (
 )
 
 // AgentActivityMsg carries one activity line from a running agent — its model,
-// its mode, a tool it is calling, "Thinking...", or token usage. Lines
-// accumulate into the per-agent activity feed the TUI renders.
+// its mode, a tool it is calling, "Thinking...", or token usage. Agent lines
+// accumulate into the per-agent activity feed; a non-agent tool call (Bash)
+// instead sends its latest output counter, which the receiver shows inline on
+// the call's row (replacing the previous value, not appending).
 type AgentActivityMsg struct {
 	Index      int
 	ToolCallID string

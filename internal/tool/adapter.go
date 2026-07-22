@@ -126,6 +126,18 @@ func (a *toolAdapter) Execute(ctx context.Context, input map[string]any) (string
 	if a.promptResponder != nil {
 		ctx = ContextWithBashPromptResponderProvider(ctx, a.promptResponder)
 	}
+	// A running command (Bash) reports its growing output through the same
+	// activity callback agent tools use; the receiver shows it as the row's
+	// live counter rather than an activity-feed line.
+	if a.activityFn != nil {
+		if callID := core.ToolCallIDFromContext(ctx); callID != "" {
+			ctx = ContextWithBashProgress(ctx, func(lines int, bytes int64) {
+				if text := formatBashProgress(lines, bytes); text != "" {
+					a.activityFn(callID, text)
+				}
+			})
+		}
+	}
 	if IsAgentToolName(a.inner.Name()) {
 		if a.activityFn != nil {
 			if callID := core.ToolCallIDFromContext(ctx); callID != "" {
