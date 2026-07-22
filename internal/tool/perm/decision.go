@@ -55,7 +55,6 @@ var safeTools = func() map[string]bool {
 	m := map[string]bool{
 		"TaskCreate":      true,
 		"TaskGet":         true,
-		"TaskList":        true,
 		"TaskUpdate":      true,
 		"AskUserQuestion": true,
 		// Evolve only queues a background self-learning review — it writes

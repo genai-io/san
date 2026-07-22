@@ -14,15 +14,14 @@ import (
 // the main conversation's plan, and every conversation shares the one
 // process-global todo store. A subagent calling TaskCreate/TaskUpdate would
 // leak its private planning into the main panel (showing up as extra rows next
-// to the worker item that already represents it), and TaskList/TaskGet would
-// hand it back the main plan it has no business reading.
+// to the worker item that already represents it), and TaskGet would hand it
+// back the main plan it has no business reading.
 // Cron is parent-only for the same reason again: scheduling creates state
 // that outlives the worker and belongs to the session owner.
 var parentOnlyTools = map[string]bool{
 	ToolAgent:      true,
 	ToolTaskCreate: true,
 	ToolTaskUpdate: true,
-	ToolTaskList:   true,
 	ToolTaskGet:    true,
 	ToolCron:       true,
 }

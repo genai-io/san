@@ -18,7 +18,6 @@ const (
 	ToolTaskCreate      = "TaskCreate"
 	ToolTaskGet         = "TaskGet"
 	ToolTaskUpdate      = "TaskUpdate"
-	ToolTaskList        = "TaskList"
 	ToolCron            = "Cron"
 	ToolAskUserQuestion = "AskUserQuestion"
 
@@ -62,7 +61,7 @@ var builtinToolOrder = []string{
 	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolAskUserQuestion,
 	ToolSkill,
 	ToolAgent, ToolSendMessage,
-	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate, ToolTaskList,
+	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate,
 	ToolCron,
 }
 

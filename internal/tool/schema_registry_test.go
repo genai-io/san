@@ -32,7 +32,7 @@ func TestBuiltinToolsAllRegistered(t *testing.T) {
 		tool.ToolRead, tool.ToolWebFetch, tool.ToolWebSearch,
 		tool.ToolEdit, tool.ToolWrite, tool.ToolBash, tool.ToolAskUserQuestion,
 		tool.ToolSkill, tool.ToolAgent, tool.ToolSendMessage,
-		tool.ToolTaskCreate, tool.ToolTaskGet, tool.ToolTaskUpdate, tool.ToolTaskList,
+		tool.ToolTaskCreate, tool.ToolTaskGet, tool.ToolTaskUpdate,
 		tool.ToolCron,
 	} {
 		if _, ok := findSchema(schemas, name); !ok {

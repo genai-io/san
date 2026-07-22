@@ -697,6 +697,17 @@ func shortAgentName(name string) string {
 	return strings.Join(kept, " ")
 }
 
+// taskGetIsList reports whether a TaskGet call is a list-all invocation (no
+// taskId) rather than a single-task lookup.
+func taskGetIsList(input string) bool {
+	var params map[string]any
+	if err := json.Unmarshal([]byte(input), &params); err != nil {
+		return false
+	}
+	id, _ := params["taskId"].(string)
+	return id == ""
+}
+
 func extractTaskGetDisplay(input string, ownerMap map[string]string) string {
 	var params map[string]any
 	if err := json.Unmarshal([]byte(input), &params); err != nil {

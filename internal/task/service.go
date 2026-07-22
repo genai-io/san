@@ -1,6 +1,5 @@
 // Package task tracks background bash and subagent tasks for the TUI's
-// task panel and the agent's TaskOutput / TaskList tools. Exposes
-// *Manager directly.
+// task panel and the agent's TaskGet tool. Exposes *Manager directly.
 package task
 
 // Options holds all dependencies for initialization.
