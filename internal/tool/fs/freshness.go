@@ -45,6 +45,16 @@ func recordFileWritten(filePath string) {
 	recordFileRead(filePath, info)
 }
 
+// ResetReadStamps forgets every recorded read. The app calls it when the
+// conversation the model sees is replaced (/clear, loading another session),
+// so "read in this session" keeps meaning the current conversation rather
+// than the process lifetime.
+func ResetReadStamps() {
+	readStampsMu.Lock()
+	defer readStampsMu.Unlock()
+	clear(readStamps)
+}
+
 // requireFreshRead enforces read-before-modify: filePath must have been read
 // in this session, and its on-disk state must still match that read.
 func requireFreshRead(filePath string) error {

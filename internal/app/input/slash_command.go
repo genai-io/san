@@ -26,6 +26,7 @@ import (
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/fs"
 )
 
 // NoProviderMsg is the canonical "no LLM provider" notice used by any
@@ -300,6 +301,9 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 	c.env.ResetTokens()
 	c.env.Tracker.Reset()
 	c.env.ResetCronQueue()
+	// The cleared conversation no longer contains any Read results, so the
+	// read-before-modify stamps must not survive into the next one.
+	fs.ResetReadStamps()
 	// In inline mode the conversation is written to the terminal's native
 	// screen + scrollback; tea.ClearScreen only redraws the managed input frame
 	// (it clears below the cursor, not the transcript above). Physically wipe
