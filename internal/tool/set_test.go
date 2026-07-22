@@ -7,7 +7,7 @@ import "testing"
 // tools leaks its private planning into the main panel, so they must be
 // parent-only — even an explicit allow list cannot opt a subagent back in.
 func TestSubagentsCannotUseTrackerTools(t *testing.T) {
-	trackerTools := []string{ToolTaskCreate, ToolTaskUpdate, ToolTaskList, ToolTaskGet}
+	trackerTools := []string{ToolTaskCreate, ToolTaskUpdate, ToolTaskGet}
 
 	main := (&Set{}).Tools()
 	for _, name := range trackerTools {
@@ -36,7 +36,7 @@ func TestSubagentsCannotUseTrackerTools(t *testing.T) {
 // hallucinated TaskCreate call hits "unknown tool" instead of creating a row.
 func TestSubagentToolExecutorsExcludeTracker(t *testing.T) {
 	tools := AdaptToolRegistry((&Set{IsAgent: true}).Tools(), func() string { return "" })
-	for _, name := range []string{ToolTaskCreate, ToolTaskUpdate, ToolTaskList, ToolTaskGet} {
+	for _, name := range []string{ToolTaskCreate, ToolTaskUpdate, ToolTaskGet} {
 		if tools.Get(name) != nil {
 			t.Errorf("subagent must have no executor for %s", name)
 		}

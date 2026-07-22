@@ -23,7 +23,7 @@ Tips:
 - Prefer sending ALL TaskCreate calls in a single message (parallel tool calls) for speed
 - Use imperative subjects ("Fix bug", "Add tests")
 - Provide activeForm for spinner display ("Fixing bug", "Adding tests")
-- Check TaskList first to avoid duplicates
+- Check TaskGet first to avoid duplicates
 - Task IDs are sequential integers starting from 1. Use addBlockedBy to set dependencies (e.g. addBlockedBy=["1"])`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -59,22 +59,24 @@ Tips:
 func (t *TrackerGetTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "TaskGet",
-		Description: `Retrieve full task details by ID (description, status, dependencies).
+		Description: `Read tasks. Omit taskId to list every task; pass a taskId for one task's full details.
 
-When to use:
-- Before starting work on a task — get full requirements
-- To check task dependencies (what it blocks, what blocks it)
+List mode (no taskId):
+- Check overall progress, or find the next available task after finishing one
+- Returns one summary line per task (id, status, owner); work in ID order, lowest first
+- Find blocked tasks whose dependencies still need resolving
 
-Tip: Verify blockedBy is empty before beginning work.`,
+Detail mode (taskId):
+- Before starting a task — read its full requirements, status, and dependencies
+- Verify "Blocked by (open)" is empty before beginning work`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"taskId": map[string]any{
 					"type":        "string",
-					"description": "The ID of the task to retrieve",
+					"description": "The ID of the task to retrieve full details for. Omit to list all tasks instead.",
 				},
 			},
-			"required": []string{"taskId"},
 		},
 	}
 }
@@ -88,7 +90,7 @@ func (t *TrackerUpdateTool) Schema() core.ToolSchema {
 Status: pending → in_progress → completed. Use "deleted" to remove.
 - Set in_progress BEFORE starting work
 - ONLY mark completed when FULLY done (not if tests fail or partial)
-- After completing, call TaskList for next task
+- After completing, call TaskGet for the next task
 - If blocked, keep as in_progress and create a new task for the blocker
 - Close out every in_progress task before ending your turn; one left open is
   shown as stalled, since nothing is executing it any more`,
@@ -135,26 +137,6 @@ Status: pending → in_progress → completed. Use "deleted" to remove.
 				},
 			},
 			"required": []string{"taskId"},
-		},
-	}
-}
-
-// Schema returns the model-facing tool definition for TaskList.
-func (t *TrackerListTool) Schema() core.ToolSchema {
-	return core.ToolSchema{
-		Name: "TaskList",
-		Description: `List all tasks with their status and dependencies.
-
-When to use:
-- Check overall progress
-- After completing a task — find next available work
-- Find blocked tasks that need dependencies resolved
-
-Returns summary per task: id, status, owner. Use TaskGet for full details.
-Prefer working on tasks in ID order (lowest first).`,
-		Parameters: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
 		},
 	}
 }

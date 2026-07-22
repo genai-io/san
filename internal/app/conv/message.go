@@ -527,8 +527,15 @@ func RenderToolCalls(params ToolCallsParams) string {
 
 	for _, tc := range params.ToolCalls {
 		switch tc.Name {
-		case tool.ToolTaskList, tool.ToolTaskCreate, tool.ToolTaskUpdate:
+		case tool.ToolTaskCreate, tool.ToolTaskUpdate:
 			continue
+		case tool.ToolTaskGet:
+			// A bare TaskGet (no taskId) lists every task; that overview is
+			// already shown in the tracker panel, so skip the row as the old
+			// silent TaskList did. A single-task lookup still renders below.
+			if taskGetIsList(tc.Input) {
+				continue
+			}
 		}
 		if tool.IsAgentToolName(tc.Name) {
 			agent := parseAgentInput(tc.Input)

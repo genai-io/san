@@ -43,6 +43,40 @@ func TestTrackerGetTool_ShowsOwnerAndOpenBlockers(t *testing.T) {
 	}
 }
 
+func TestTrackerGetTool_WithoutTaskIDListsAll(t *testing.T) {
+	store := useTestTrackerStore(t)
+
+	done := store.Create("First", "already done", "doing first", nil)
+	if err := store.Update(done.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
+		t.Fatalf("Update(done): %v", err)
+	}
+	pending := store.Create("Second", "still open", "doing second", nil)
+	if err := store.Update(pending.ID, todo.WithOwner("Explore")); err != nil {
+		t.Fatalf("Update(pending): %v", err)
+	}
+
+	result := (&TrackerGetTool{}).Execute(context.Background(), map[string]any{}, "")
+
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
+	}
+	// Compact overview: one line per task with id/status/owner, no description.
+	for _, want := range []string{
+		"#" + done.ID + " [" + todo.StatusCompleted + "]",
+		"#" + pending.ID + " [" + todo.StatusPending + "] owner:Explore",
+	} {
+		if !strings.Contains(result.Output, want) {
+			t.Fatalf("expected output to contain %q, got %q", want, result.Output)
+		}
+	}
+	if strings.Contains(result.Output, "already done") {
+		t.Fatalf("list mode should omit descriptions, got %q", result.Output)
+	}
+	if result.Metadata.Subtitle != "1/2 done" {
+		t.Fatalf("subtitle = %q, want %q", result.Metadata.Subtitle, "1/2 done")
+	}
+}
+
 func TestTrackerUpdateTool_ParsesJSONBlockedByAndPersistsFields(t *testing.T) {
 	store := useTestTrackerStore(t)
 

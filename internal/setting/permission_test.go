@@ -963,7 +963,7 @@ func TestSafeToolAllowlist(t *testing.T) {
 	// in perm.IsSafeTool (tool/perm); this asserts the gate honors it.
 	allSafeTools := []string{
 		"Read", "WebFetch", "WebSearch", "LSP",
-		"TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
+		"TaskCreate", "TaskGet", "TaskUpdate",
 		"AskUserQuestion",
 	}
 
