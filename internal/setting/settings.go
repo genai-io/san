@@ -426,8 +426,8 @@ type SessionPermissions struct {
 	Denials         DenialTracking // Tracks denial frequency for fallback
 
 	// WorkingDirectories restricts Edit/Write operations to these directories.
-	// When non-empty, file edits outside these dirs always prompt (bypass-immune).
-	// Set automatically when entering AutoAccept mode.
+	// When non-empty, file edits outside these dirs prompt for confirmation
+	// (skipped in bypass mode). Set automatically when entering AutoAccept mode.
 	WorkingDirectories []string
 
 	// ShouldAvoidPrompts is set for headless/async subagents that cannot
@@ -564,7 +564,7 @@ type OperationMode int
 const (
 	ModeNormal            OperationMode = iota
 	ModeAutoAccept                      // auto-approve edits/writes
-	ModeBypassPermissions               // allow all (bypass-immune checks still apply)
+	ModeBypassPermissions               // allow all after deny rules (no confirmation checks)
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
 	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent

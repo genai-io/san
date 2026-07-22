@@ -62,7 +62,7 @@ func RunAgent(opts AgentRunOptions) error {
 	}
 
 	// Run through the full subagent pipeline so headless invocations get the
-	// same permission gate (deny_tools / bypass-immune / allow_tools / mode)
+	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
 	// as TUI-spawned subagents.
 	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
 	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))

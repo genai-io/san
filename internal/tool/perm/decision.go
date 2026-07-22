@@ -69,7 +69,7 @@ var safeTools = func() map[string]bool {
 
 // IsSafeTool reports whether the tool is on the safe allowlist.
 // Safe tools auto-allow under every mode (subject to deny rules and
-// bypass-immune checks).
+// confirmation safety checks).
 func IsSafeTool(name string) bool {
 	return safeTools[name]
 }

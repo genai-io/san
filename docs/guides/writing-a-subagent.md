@@ -91,7 +91,7 @@ controls what happens when a tool call would normally `ask`:
 | `explore` | Read-only; mutating tools are unavailable. |
 | `default` | Reads allowed; `ask` becomes `deny`, unless allowed by `allow_tools`. |
 | `edit` (= `acceptEdits`) | Edit/Write allowed; other gated tools, such as unrestricted Bash, are denied. |
-| `bypassPermissions` | Allows all but bypass-immune safety checks. Use only for trusted agents. |
+| `bypassPermissions` | Allows everything after `deny_tools` — no confirmation floor. Use only for trusted agents. |
 
 Subagents cannot spawn subagents. `SendMessage(to="main", ...)` follows the
 normal mode rules.

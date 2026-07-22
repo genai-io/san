@@ -516,8 +516,11 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
-// matches docs/concepts/permission-model.md: deny_tools, bypass-immune, allow_tools,
-// mode default, with Prompt collapsing to Deny because subagents cannot ask.
+// matches docs/concepts/permission-model.md: deny_tools, confirmation floor,
+// allow_tools, mode default, with Prompt collapsing to Deny because subagents
+// cannot ask. In bypassPermissions mode, the mode policy permits every
+// non-parent-only call after deny_tools, including otherwise
+// confirmation-required calls.
 //
 // One communication carve-out sits between deny and allow_tools: for a
 // mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
@@ -535,7 +538,17 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if denyRules.Matches(name, input) {
 			return false, fmt.Sprintf("tool %s is blocked by deny_tools", name)
 		}
-		if reason := setting.BypassImmuneReason(name, input); reason != "" {
+		// Bypass mode means no permission confirmation: after honoring explicit
+		// deny_tools, permit every executable worker tool. Keep the parent-only
+		// restriction below so a worker still cannot spawn agents or manipulate
+		// main-only state.
+		if opMode == setting.ModeBypassPermissions && !tool.IsParentOnlyTool(name) {
+			return true, ""
+		}
+		// Outside bypass, the confirmation floor is a hard deny: subagents
+		// cannot ask, so a destructive or sensitive call is refused even when a
+		// greedy allow_tools pattern would otherwise match it.
+		if reason := setting.ConfirmationReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
 		// Parent-only tools never reach a worker, even via allow_tools —

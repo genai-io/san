@@ -67,7 +67,7 @@ func TestPermissionGateReviewerAllowsReviewable(t *testing.T) {
 }
 
 func TestPermissionGateReviewerSkippedWhenNotReviewable(t *testing.T) {
-	// An explicit ask rule or bypass-immune escalation is a Prompt but NOT
+	// An explicit ask rule or confirmation escalation is a Prompt but NOT
 	// reviewable — the judge must never override the user's stated intent.
 	gate := NewPermissionGate(func(name string, args map[string]any) PermDecisionResult {
 		return PermDecisionResult{Decision: perm.Prompt, Reason: "ask rule: Bash(rm:*)", Reviewable: false}

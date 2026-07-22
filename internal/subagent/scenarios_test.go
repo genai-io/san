@@ -64,20 +64,24 @@ func TestPermissionScenarios(t *testing.T) {
 			want: false, wantMatch: "blocked by deny_tools",
 		},
 
-		// ── 3. bypass-immune (destructive) wins over allow ──
+		// ── 3. bypass permits destructive commands after deny_tools ──
 		{
-			name: "rm -rf in compound bash — bypass-immune blocks",
+			name: "rm -rf in compound bash — bypass allows without confirmation",
 			mode: PermissionBypass, allow: allowGitDiff,
 			tool: "Bash", input: map[string]any{"command": "git diff && rm -rf /tmp/dummy"},
-			want: false, wantMatch: "destructive command",
+			want: true,
 		},
 		{
-			// A subagent has no judge, so the recoverable git tier is floored here
-			// exactly like the unrecoverable one.
-			name: "git push --force — bypass-immune blocks even with allow Bash",
+			name: "git push --force — bypass allows without confirmation",
 			mode: PermissionBypass, allow: ToolList{{Name: "Bash"}},
 			tool: "Bash", input: map[string]any{"command": "git push --force origin main"},
-			want: false, wantMatch: "git command that discards work",
+			want: true,
+		},
+		{
+			name: "rm -rf in compound bash — non-bypass hits the confirmation floor",
+			mode: PermissionDefault, allow: allowGitDiff,
+			tool: "Bash", input: map[string]any{"command": "git diff && rm -rf /tmp/dummy"},
+			want: false, wantMatch: "blocked",
 		},
 
 		// ── 4. mode default behavior ──
@@ -118,7 +122,7 @@ func TestPermissionScenarios(t *testing.T) {
 			want: false, wantMatch: "would require approval",
 		},
 		{
-			name: "bypassPermissions — Bash unconstrained (non-destructive)",
+			name: "bypassPermissions — Bash unconstrained",
 			mode: PermissionBypass,
 			tool: "Bash", input: map[string]any{"command": "echo hi"},
 			want: true,

@@ -15,10 +15,10 @@ import (
 // granted, denied, or requires confirmation.
 type PermissionDecision struct {
 	Behavior perm.Decision
-	Reason   string // e.g. "deny rule: Read(**/.env)", "bypass-immune: .git/ directory"
+	Reason   string // e.g. "deny rule: Read(**/.env)", "confirmation: .git/ directory"
 	// Reviewable marks a Prompt the auto-review agent may judge. It is set only
-	// for the auto-review gray-zone default — never for bypass-immune or
-	// ask-rule prompts — so those always escalate to the human.
+	// for the auto-review gray-zone default — never for a confirmation safety
+	// check or an ask-rule prompt — so those always escalate to the human.
 	Reviewable bool
 }
 
@@ -34,8 +34,8 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 // Decision pipeline (inspired by Claude Code's hasPermissionsToUseTool):
 //
 //  1. Deny rules
-//  2. Bypass-immune safety checks
-//  3. BypassPermissions mode → allow (everything except steps 1-2)
+//  2. BypassPermissions mode → allow (explicit denies still reject)
+//  3. Confirmation safety checks
 //  4. Session permissions (runtime overrides)
 //  5. Ask rules
 //  6. Allow rules
@@ -61,16 +61,19 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		}
 	}
 
-	// ── Step 2: Bypass-immune safety checks ──
-	if reason, reviewable := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
+	// ── Step 2: BypassPermissions mode ──
+	// Bypass is intentionally unconditional once explicit deny rules have run:
+	// it suppresses every confirmation, including the normal safety and working
+	// directory checks below.
+	if session != nil && session.Mode == ModeBypassPermissions {
+		return decide(perm.Permit, "mode: bypass permissions")
+	}
+
+	// ── Step 3: Confirmation safety checks ──
+	if reason, reviewable := s.confirmationPromptReason(toolName, args, session); reason != "" {
 		d := decide(perm.Prompt, reason)
 		d.Reviewable = reviewable
 		return coerceAsk(d, session)
-	}
-
-	// ── Step 3: BypassPermissions mode ──
-	if session != nil && session.Mode == ModeBypassPermissions {
-		return decide(perm.Permit, "mode: bypass permissions")
 	}
 
 	// ── Step 4: Session permissions ──
@@ -99,15 +102,16 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	return coerceAsk(modeDefaultDecision(toolName, args, session), session)
 }
 
-// bypassImmunePromptReason reports why a call is held at the floor, and whether
-// the AutoPilot judge may weigh it. Only the recoverable git tier is the judge's
+// confirmationPromptReason reports why a call requires confirmation and whether
+// the AutoPilot judge may weigh it. Bypass Permissions mode runs before this
+// check and deliberately skips it. Only the recoverable git tier is the judge's
 // to weigh; every other reason here — real destruction, a sensitive path, a
 // write reaching outside the working directory — stays the human's call. The
 // tier travels with the reason rather than being re-derived, so a reason added
 // later cannot land in the judge's lap by omission.
-func (s *Data) bypassImmunePromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
-	if reason, recoverable := bypassImmuneFloor(toolName, args); reason != "" {
-		return "bypass-immune: " + reason, recoverable
+func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
+	if reason, recoverable := confirmationFloor(toolName, args); reason != "" {
+		return "confirmation: " + reason, recoverable
 	}
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
@@ -172,8 +176,9 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 // ModeDefaultForCall is ModeDefault with the parsed tool input available:
 // a provably read-only Bash invocation (search, listing, git inspection) is
 // treated like a safe tool, so it runs without prompting and stays usable in
-// read-only (explore) mode. Deny/ask rules and bypass-immune checks run
-// earlier in the pipeline and still override this.
+// read-only (explore) mode. Deny/ask rules and confirmation checks run
+// earlier in the pipeline and still override this, except that Bypass
+// Permissions deliberately skips confirmation checks after honoring deny rules.
 func ModeDefaultForCall(toolName string, args map[string]any, mode OperationMode) PermissionDecision {
 	if toolName == "Bash" {
 		if cmd, ok := args["command"].(string); ok && IsReadOnlyBashCommand(cmd) {
@@ -212,9 +217,9 @@ func coerceAsk(decision PermissionDecision, session *SessionPermissions) Permiss
 }
 
 // ResolveHookAllow checks if a hook's "allow" decision should be honored.
-// Returns false if a deny rule, bypass-immune safety check, or explicit ask
+// Returns false if a deny rule, confirmation safety check, or explicit ask
 // rule overrides the hook's decision. This implements the safety invariant:
-// deny rules > bypass-immune checks > ask rules > hook allow.
+// deny rules > confirmation safety checks > ask rules > hook allow.
 func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *SessionPermissions) bool {
 	rule := BuildRule(toolName, args)
 	for _, pattern := range s.Permissions.Deny {
@@ -222,9 +227,9 @@ func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *S
 			return false
 		}
 	}
-	// A hook cannot vouch for anything the floor holds, either tier: there is no
-	// judge in this path to weigh the recoverable one.
-	if reason, _ := s.bypassImmunePromptReason(toolName, args, session); reason != "" {
+	// A hook cannot vouch for anything a confirmation safety check holds,
+	// either tier: there is no judge in this path to weigh the recoverable one.
+	if reason, _ := s.confirmationPromptReason(toolName, args, session); reason != "" {
 		return false
 	}
 	for _, pattern := range s.Permissions.Ask {
@@ -530,19 +535,19 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 	return firstMatch, true
 }
 
-// BypassImmuneReason returns a non-empty reason if the call would hit a
-// bypass-immune safety check (sensitive file path, destructive bash command,
-// or suspicious bash). Used by the main-loop gate (checkHardBlocks) and by
-// the subagent gate, which collapses the resulting Ask into Deny.
-func BypassImmuneReason(toolName string, args map[string]any) string {
-	reason, _ := bypassImmuneFloor(toolName, args)
+// ConfirmationReason returns a non-empty reason if the call would hit a
+// confirmation safety check (sensitive file path, destructive or
+// work-discarding command). Gates that cannot ask — the subagent gate outside
+// bypass mode — turn the reason into a hard deny.
+func ConfirmationReason(toolName string, args map[string]any) string {
+	reason, _ := confirmationFloor(toolName, args)
 	return reason
 }
 
-// bypassImmuneFloor classifies a call against both tiers of the floor in one
+// confirmationFloor classifies a call against both tiers of the floor in one
 // pass: why it is held, and whether it is the recoverable tier the AutoPilot
 // judge may weigh.
-func bypassImmuneFloor(toolName string, args map[string]any) (reason string, recoverable bool) {
+func confirmationFloor(toolName string, args map[string]any) (reason string, recoverable bool) {
 	if reason := UnrecoverableReason(toolName, args); reason != "" {
 		return reason, false
 	}
@@ -552,12 +557,10 @@ func bypassImmuneFloor(toolName string, args map[string]any) (reason string, rec
 	return "", false
 }
 
-// UnrecoverableReason is the inner tier of BypassImmuneReason: the calls whose
-// effect nothing can bring back. It is what the AutoPilot judge checks, so the
-// judge may weigh a recoverable git operation against the session's intent
-// while still being unable to approve real destruction. Every gate without a
-// judge — bypass-permissions mode, subagents, hook allow-decisions — keeps
-// using BypassImmuneReason and so keeps the whole floor.
+// UnrecoverableReason is the inner tier of the confirmation floor: the calls
+// whose effect nothing can bring back. It is what the AutoPilot judge checks,
+// so the judge may weigh a recoverable git operation against the session's
+// intent while still being unable to approve real destruction.
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":

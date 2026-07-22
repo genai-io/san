@@ -72,9 +72,9 @@ TestConfig_DisabledTools_HiddenFromModel    — disabled tools hidden from LLM
 # Security
 TestIsDestructiveCommand                    — dangerous command detection (13 sub-tests)
 TestIsSensitivePath                         — sensitive path detection (13 sub-tests)
-TestSensitivePathsBypassImmune              — bypass-immune paths
+TestSensitivePathsRequireConfirmation       — sensitive paths need confirm
 TestCheckBashSecurity                       — bash security checks (13 sub-tests)
-TestBashSecurityBypassImmune                — bash security bypass-immune
+TestBashSecurityRequiresConfirmation        — bash security needs confirm
 TestDenyRulesPriorityOverSession            — deny rules override session
 TestDestructiveCommandsRequireConfirmation  — destructive commands need confirm
 TestWorkingDirectoryConstraint              — edits outside project root blocked

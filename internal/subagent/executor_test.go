@@ -434,14 +434,13 @@ func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
 		t.Fatalf("read-only Bash(git status) blocked: %s", reason)
 	}
 
-	// Cases that should be blocked: mutating pattern mismatch, or
-	// bypass-immune destructive subcommand. The pattern Bash(git diff*) is
-	// greedy so "git diff > /tmp/foo" naturally matches — users wanting
-	// tighter scope should write a more specific pattern.
+	// Cases that should be blocked: mutating pattern mismatch, or a
+	// confirmation-floor destructive suffix hidden in a compound command that
+	// the greedy Bash(git diff*) pattern would otherwise match.
 	blocked := []string{
 		"git commit -m msg",                   // mutating, pattern mismatch
-		"git diff && rm -rf /tmp/example",     // bypass-immune destructive
-		"git diff && git push --force origin", // bypass-immune destructive
+		"git diff && rm -rf /tmp/example",     // confirmation floor: destructive
+		"git diff && git push --force origin", // confirmation floor: discards work
 	}
 	for _, command := range blocked {
 		allow, _ := check(context.Background(), "Bash", map[string]any{"command": command})
@@ -532,6 +531,11 @@ func TestBypassModeAllowsEverything(t *testing.T) {
 	allow, _ := check(context.Background(), "Bash", map[string]any{"command": "git status"})
 	if !allow {
 		t.Fatal("bypass mode should allow Bash")
+	}
+	// Bypass permits confirmation-required commands too.
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "rm -rf /tmp/example"})
+	if !allow {
+		t.Fatalf("bypass mode should allow destructive Bash: %s", reason)
 	}
 	// Parent-only tools stay denied even in bypass mode — the agent model
 	// is flat, and the gate backs up the schema-level exclusion.

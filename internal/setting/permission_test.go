@@ -327,8 +327,8 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 	for _, cmd := range discarding {
 		args := map[string]any{"command": cmd}
-		if BypassImmuneReason("Bash", args) == "" {
-			t.Errorf("%q left the bypass-immune floor entirely", cmd)
+		if reason, _ := confirmationFloor("Bash", args); reason == "" {
+			t.Errorf("%q left the confirmation floor entirely", cmd)
 		}
 		if r := UnrecoverableReason("Bash", args); r != "" {
 			t.Errorf("%q read as unrecoverable (%s); the judge can never weigh it", cmd, r)
@@ -340,7 +340,7 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 
 	// A lease-guarded push never enters the tier at all.
-	if BypassImmuneReason("Bash", map[string]any{"command": "git push --force-with-lease"}) != "" {
+	if reason, _ := confirmationFloor("Bash", map[string]any{"command": "git push --force-with-lease"}); reason != "" {
 		t.Error("--force-with-lease should not be floored")
 	}
 
@@ -490,7 +490,7 @@ func Test_isSensitivePath(t *testing.T) {
 	}
 }
 
-func TestSensitivePathsBypassImmune(t *testing.T) {
+func TestSensitivePathsRequireConfirmation(t *testing.T) {
 	settings := &Data{
 		Permissions: PermissionSettings{
 			Allow: []string{"Edit(**/*.json)"}, // Allow all JSON edits
@@ -595,7 +595,7 @@ func Test_checkBashSecurity(t *testing.T) {
 	}
 }
 
-func TestBashSecurityBypassImmune(t *testing.T) {
+func TestBashSecurityRequiresConfirmation(t *testing.T) {
 	settings := &Data{}
 	session := &SessionPermissions{
 		AllowAllBash:    true,
@@ -664,12 +664,12 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		{
 			"sensitive path has reason",
 			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
-			perm.Prompt, "bypass-immune: .git/ directory",
+			perm.Prompt, "confirmation: .git/ directory",
 		},
 		{
 			"destructive has reason",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Prompt, "bypass-immune: destructive command",
+			perm.Prompt, "confirmation: destructive command",
 		},
 	}
 
@@ -764,19 +764,24 @@ func TestBypassPermissionsMode(t *testing.T) {
 			perm.Permit,
 		},
 		{
-			"bypass-immune: .git still asks",
+			"bypass permits protected path without confirmation",
 			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
-			perm.Prompt,
+			perm.Permit,
 		},
 		{
-			"bypass-immune: destructive still asks",
+			"bypass permits destructive bash without confirmation",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Prompt,
+			perm.Permit,
 		},
 		{
-			"bypass-immune: zsh dangerous still asks",
+			"bypass permits suspicious bash without confirmation",
 			"Bash", map[string]any{"command": "zmodload zsh/system"},
-			perm.Prompt,
+			perm.Permit,
+		},
+		{
+			"bypass permits writes outside working directories without confirmation",
+			"Write", map[string]any{"file_path": "/etc/san-test", "content": "x"},
+			perm.Permit,
 		},
 	}
 
