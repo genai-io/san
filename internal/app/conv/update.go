@@ -245,6 +245,7 @@ func applyPreTool(m *Model, ev core.Event) {
 	if tc, ok := ev.ToolCall(); ok {
 		m.Stream.BuildingTool = tc.Name
 		m.Tool.MarkCurrent(tc.ID)
+		m.Tool.MarkStarted(tc.ID)
 	}
 }
 
