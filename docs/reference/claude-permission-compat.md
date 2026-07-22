@@ -112,19 +112,23 @@ When specified, the LLM only sees these tools in its schema and cannot attempt t
 
 ```yaml
 # Comma-separated string
-allow_tools: Read, Glob, Grep, Bash
+allow_tools: Read, Bash
 
 # Array form
-allow_tools: [Read, Glob, Grep, Bash]
+allow_tools: [Read, Bash]
 
 # Array with patterns
 allow_tools:
   - Read
-  - Glob
-  - Grep
   - Bash(git diff*)       # Only git diff commands
   - Bash(go test*)        # Only go test commands
 ```
+
+Legacy `Glob` and `Grep` entries (from Claude Code agent definitions) are
+still accepted: San no longer ships those tools — search runs through Bash,
+where read-only commands (`rg`, `grep`, `find`, `ls`, read-only `git`, …)
+auto-permit in every mode — so the loader translates them into the
+equivalent patterned Bash rules.
 
 #### deny_tools — Denylist (Always Wins)
 
@@ -158,8 +162,6 @@ description: Reviews code for bugs and security issues
 mode: explore
 allow_tools:
   - Read
-  - Glob
-  - Grep
   - Bash(git diff*)
   - Bash(git log*)
   - Bash(git show*)
@@ -184,15 +186,11 @@ allow_tools:
   - Read
   - Write
   - Edit
-  - Glob
-  - Grep
   - Bash(go test*)
   - Bash(go build*)
   - Bash(make *)
 deny_tools:
   - Agent
-  - CronCreate
-  - EnterWorktree
 ---
 
 You are an implementation agent. Write clean, tested code...
@@ -206,7 +204,7 @@ name: agent-name
 description: "What this agent does"
 model: opus                  # inherit | sonnet | opus | haiku
 mode: explore                # explore | acceptEdits | default | bypassPermissions
-allow_tools: [Read, Glob]    # Schema filter
+allow_tools: [Read, Bash]    # Schema filter
 deny_tools: [Agent]          # Always wins
 max-steps: 100
 color: blue                  # UI display color

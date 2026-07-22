@@ -590,7 +590,7 @@ func canExecuteToolBatchInParallel(tasks []agentToolTask) bool {
 
 func isReadOnlyToolCall(name string) bool {
 	switch name {
-	case "Read", "Glob", "Grep", "WebFetch", "WebSearch", "LSP", "TaskOutput", "AgentOutput":
+	case "Read", "WebFetch", "WebSearch", "LSP":
 		return true
 	default:
 		return false

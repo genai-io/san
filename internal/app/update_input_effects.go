@@ -54,9 +54,6 @@ func (m *model) cancelPendingToolCalls() {
 		}
 	}
 	m.conv.AppendCancelledToolResults(toolCalls, func(tc core.ToolCall) string {
-		if tc.Name == "TaskOutput" {
-			return "Stopped waiting for background task output because the user sent a new message. The background task may still be running."
-		}
 		return "Tool execution interrupted because the user sent a new message."
 	}, m.TakeDecision)
 }

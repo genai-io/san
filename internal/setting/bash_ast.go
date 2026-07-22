@@ -14,6 +14,7 @@ type parsedCommand struct {
 	HasPipe    bool     // Part of a pipeline
 	RedirPaths []string // Output redirection target paths
 	InSubshell bool     // Inside $() or backticks
+	HasAssign  bool     // Carries env-var assignments (FOO=bar cmd)
 }
 
 // String returns the reconstructed command string.
@@ -237,6 +238,7 @@ func extractFromCall(call *syntax.CallExpr, inPipe, inSubshell bool) parsedComma
 		Args:       args,
 		HasPipe:    inPipe,
 		InSubshell: inSubshell,
+		HasAssign:  len(call.Assigns) > 0,
 	}
 }
 

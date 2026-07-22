@@ -3,7 +3,7 @@ package perm
 import "testing"
 
 func TestIsReadOnlyTool(t *testing.T) {
-	readOnly := []string{"Read", "Glob", "Grep", "WebFetch", "WebSearch", "LSP"}
+	readOnly := []string{"Read", "WebFetch", "WebSearch", "LSP"}
 	for _, name := range readOnly {
 		if !IsReadOnlyTool(name) {
 			t.Errorf("IsReadOnlyTool(%q) = false, want true", name)

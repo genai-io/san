@@ -10,7 +10,6 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/anthropics/anthropic-sdk-go v1.27.1
-	github.com/bmatcuk/doublestar/v4 v4.9.2
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/creack/pty v1.1.24
 	github.com/hexops/gotextdiff v1.0.3

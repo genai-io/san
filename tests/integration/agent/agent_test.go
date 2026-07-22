@@ -147,12 +147,19 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 		}
 	}
 
-	readTools := []string{"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
+	readTools := []string{"Read", "WebFetch", "WebSearch"}
 	for _, tool := range readTools {
 		decision := setting.ModeDefault(tool, setting.ModeReadOnly).Behavior
 		if decision != perm.Permit {
 			t.Errorf("tool %q: expected Permit in explore mode, got %v", tool, decision)
 		}
+	}
+
+	// Read-only bash invocations substitute for the retired Grep/Glob tools
+	// and stay available in explore mode.
+	readOnlyBash := setting.ModeDefaultForCall("Bash", map[string]any{"command": "rg -n TODO ."}, setting.ModeReadOnly).Behavior
+	if readOnlyBash != perm.Permit {
+		t.Errorf("read-only bash: expected Permit in explore mode, got %v", readOnlyBash)
 	}
 
 	// Also verify at the executor level: run an explore-mode agent with a Write tool

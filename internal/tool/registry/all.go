@@ -8,7 +8,6 @@ import (
 	_ "github.com/genai-io/san/internal/tool/fs"
 	_ "github.com/genai-io/san/internal/tool/mode"
 	_ "github.com/genai-io/san/internal/tool/skill"
-	_ "github.com/genai-io/san/internal/tool/task"
 	_ "github.com/genai-io/san/internal/tool/tasktools"
 	_ "github.com/genai-io/san/internal/tool/web"
 )

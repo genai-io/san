@@ -92,7 +92,7 @@ Requires tool use (Read tool) + LLM response.
 
 ## 6. Tool-Use Task: "Count .go files in internal/tool"
 
-Requires Glob/Bash tool call + counting + response.
+Requires a Bash tool call + counting + response.
 
 | Run | San (time / RSS) | Claude Code (time / RSS) |
 |-----|----------------------|--------------------------|

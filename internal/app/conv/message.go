@@ -434,10 +434,6 @@ func getToolExecutionDesc(toolName string) string {
 		return "Editing file..."
 	case "Bash":
 		return "Executing command..."
-	case "Glob":
-		return "Finding files..."
-	case "Grep":
-		return "Searching files..."
 	case "WebFetch":
 		return "Fetching web content..."
 	case "WebSearch":

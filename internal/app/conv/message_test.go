@@ -872,21 +872,6 @@ func TestRenderToolCallsShowsEditResult(t *testing.T) {
 	}
 }
 
-func Test_renderTaskOutputResultInlineShowsErrorText(t *testing.T) {
-	rendered := renderTaskOutputResultInline(ToolResultData{
-		ToolName: "TaskOutput",
-		IsError:  true,
-		Content:  "task not found: 10f7b381",
-	})
-
-	if !strings.Contains(rendered, "TaskOutput → Error") {
-		t.Fatalf("expected TaskOutput error header, got %q", rendered)
-	}
-	if !strings.Contains(rendered, "task not found: 10f7b381") {
-		t.Fatalf("expected TaskOutput error text, got %q", rendered)
-	}
-}
-
 func TestRenderDecision(t *testing.T) {
 	// No decision → no annotation line at all.
 	if got := renderDecision(nil); got != "" {

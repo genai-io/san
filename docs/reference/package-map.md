@@ -64,7 +64,6 @@ Configuration and supporting capabilities:
 | `internal/persona` | `feature` | Persona registry (system-prompt parts, skills, settings overlay), template, paths. |
 | `internal/search` | `feature` | Search provider implementations and factory. |
 | `internal/inspector` | `feature` | Transcript inspector server, replay, stream, embedded UI. |
-| `internal/worktree` | `feature` | Worktree operations and hook integration. |
 | `internal/reminder` | `feature` | Runtime reminder queue and provider integration. |
 | `internal/reviewer` | `feature` | Auto-review LLM judge for gray-zone permissions and bash prompts. |
 | `internal/image` | `feature` | Image handling + `core.Image` adapter; provisional — see note in `dependency-rules.md`. |

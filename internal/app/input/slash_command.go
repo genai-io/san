@@ -107,7 +107,6 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"fork":           (*SlashCommandController).handleForkCommand,
 		"resume":         (*SlashCommandController).handleResumeCommand,
 		"help":           (*SlashCommandController).handleHelpCommand,
-		"glob":           (*SlashCommandController).handleGlobCommand,
 		"tools":          (*SlashCommandController).handleToolCommand,
 		"skills":         (*SlashCommandController).handleSkillCommand,
 		"agents":         (*SlashCommandController).handleAgentCommand,
@@ -490,20 +489,6 @@ func (c *SlashCommandController) handleReloadPluginsCommand(ctx context.Context,
 		return "", nil, err
 	}
 	return "Reloaded plugins and refreshed plugin-backed skills, agents, MCP servers, and hooks.", nil, nil
-}
-
-func (c *SlashCommandController) handleGlobCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
-	if args == "" {
-		return "Usage: /glob <pattern> [path]", nil, nil
-	}
-	params := map[string]any{"pattern": args}
-	parts := strings.SplitN(args, " ", 2)
-	if len(parts) == 2 {
-		params["pattern"] = parts[0]
-		params["path"] = parts[1]
-	}
-	result := c.env.ToolSvc.Execute(ctx, "glob", params, c.env.Cwd)
-	return conv.RenderToolResult(result, c.env.Width), nil, nil
 }
 
 func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) (string, tea.Cmd, error) {

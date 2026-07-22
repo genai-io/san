@@ -57,7 +57,6 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 | [`subagent`](2-feature/subagent.md) | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
 | [`task`](2-feature/task.md) | Background task manager (bash and agent tasks). |
 | [`tool`](2-feature/tool.md) | Tool registry, schemas, permission gate, side-effect store. |
-| [`worktree`](2-feature/worktree.md) | Thin wrapper over `git worktree add/remove` for the EnterWorktree tool. |
 
 ## 3 · core
 

@@ -10,7 +10,7 @@ permission gate, side-effect plumbing, and per-call dispatch.
 
 ## Purpose
 
-Every built-in tool (Bash, Read, Edit, Write, Grep, Glob, WebFetch, …)
+Every built-in tool (Bash, Read, Edit, Write, WebFetch, …)
 registers into this package's singleton at init time. The agent loop calls
 `Execute(name, params, cwd)` to dispatch; the registry resolves the tool,
 runs the permission check (`internal/setting`), invokes the tool, and
@@ -71,7 +71,6 @@ func ResetDefaultRegistry()           // test-only
 ```
 internal/tool/execute_test.go         — dispatch and not-found behavior.
 internal/tool/schema_agent_test.go    — schema generation for the Agent tool.
-internal/tool/taskoutput_disabled_test.go — TaskOutput tool gating.
 ```
 
 ## See Also

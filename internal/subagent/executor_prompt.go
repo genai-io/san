@@ -51,15 +51,12 @@ var toolActivityParams = map[string]string{
 	"Read":       "file_path",
 	"Write":      "file_path",
 	"Edit":       "path",
-	"Glob":       "pattern",
-	"Grep":       "pattern",
 	"Bash":       "command",
 	"WebFetch":   "url",
 	"WebSearch":  "query",
 	"TaskCreate": "subject",
 	"TaskUpdate": "taskId",
 	"TaskGet":    "taskId",
-	"TaskOutput": "task_id",
 }
 
 // formatToolActivity creates an activity line for a tool call in ToolName(args) format.

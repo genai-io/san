@@ -92,6 +92,103 @@ func matchesAnyPattern(normalized string, patterns []string) bool {
 	return false
 }
 
+// readOnlyBashCommands are commands that only inspect files or system state.
+// A Bash invocation passes IsReadOnlyBashCommand when every command in the
+// chain is on this list (or is a read-only git command), subject to the
+// structural guards below. Such invocations are treated like the dedicated
+// read-only tools: auto-permitted in every mode, including read-only/explore.
+var readOnlyBashCommands = map[string]bool{
+	"rg":       true,
+	"grep":     true,
+	"egrep":    true,
+	"fgrep":    true,
+	"find":     true,
+	"fd":       true,
+	"ls":       true,
+	"tree":     true,
+	"cat":      true,
+	"head":     true,
+	"tail":     true,
+	"wc":       true,
+	"stat":     true,
+	"file":     true,
+	"du":       true,
+	"which":    true,
+	"pwd":      true,
+	"cd":       true,
+	"basename": true,
+	"dirname":  true,
+	"realpath": true,
+	"readlink": true,
+}
+
+// readOnlyBashUnsafeFlags marks flags that let an otherwise read-only command
+// execute subprocesses or write files. Matched by prefix on each argument.
+var readOnlyBashUnsafeFlags = map[string][]string{
+	"find": {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprintf", "-fls"},
+	"fd":   {"-x", "--exec", "-X", "--exec-batch"},
+	"rg":   {"--pre", "--hostname-bin"},
+	"tree": {"-o"},
+}
+
+// IsReadOnlyBashCommand reports whether a bash invocation is provably
+// read-only: every command in the chain is on the read-only list (or is a
+// read-only git command), with no output redirection (except /dev/null) and
+// no command or process substitution. Conservative by design — a parse
+// failure or any unrecognized construct means false, never a guess.
+func IsReadOnlyBashCommand(cmd string) bool {
+	// Substitution can hide arbitrary execution inside arguments, and the AST
+	// extraction does not descend into $(), backticks, <() or >().
+	if strings.Contains(cmd, "$(") || strings.Contains(cmd, "`") ||
+		strings.Contains(cmd, "<(") || strings.Contains(cmd, ">(") {
+		return false
+	}
+	if isDestructiveCommand(cmd) || checkBashSecurity(cmd) != "" {
+		return false
+	}
+	file := parseBashAST(cmd)
+	if file == nil {
+		return false
+	}
+	commands := extractCommandsAST(file)
+	if len(commands) == 0 {
+		return false
+	}
+	for _, c := range commands {
+		if !isReadOnlyParsedCommand(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func isReadOnlyParsedCommand(c parsedCommand) bool {
+	// Env-var prefixes can redirect a binary's behavior to arbitrary code
+	// (GIT_EXTERNAL_DIFF=evil git diff), so any assignment disqualifies.
+	if c.HasAssign {
+		return false
+	}
+	for _, path := range c.RedirPaths {
+		if path != "/dev/null" {
+			return false
+		}
+	}
+	if c.Name == "git" {
+		return isReadOnlyGitCommand(c)
+	}
+	if !readOnlyBashCommands[c.Name] {
+		return false
+	}
+	for _, flag := range readOnlyBashUnsafeFlags[c.Name] {
+		for _, arg := range c.Args {
+			if strings.HasPrefix(arg, flag) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // CommonAllowPatterns contains commonly allowed patterns.
 var CommonAllowPatterns = []string{
 	"Bash(git:*)",

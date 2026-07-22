@@ -26,7 +26,7 @@ Project overrides user overrides Claude-compat by `name`.
 ---
 name: test-runner
 description: Run the test suite and surface failures
-allow_tools: [Bash, Read, Grep]
+allow_tools: [Bash, Read]
 mode: bypass
 ---
 
@@ -128,7 +128,7 @@ A background subagent registers with the broker while running:
   on its next step. Delivery is best-effort.
 - **Report to main**: `SendMessage(to="main", message)` sends an interim note.
   The final answer returns automatically on completion.
-- **Stop**: `TaskStop` cancels the run. Start a new subagent to continue.
+- **Stop**: `Agent` with `signal: "stop"` and the task id cancels the run. Start a new subagent to continue.
 
 ## Trying It
 

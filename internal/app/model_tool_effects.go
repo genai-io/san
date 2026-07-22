@@ -12,7 +12,6 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/tool"
 )
 
 func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
@@ -24,14 +23,6 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 	case "Bash":
 		if newCwd := kit.MapString(resp, "cwd"); newCwd != "" {
 			m.changeCwd(newCwd)
-		}
-	case tool.ToolEnterWorktree:
-		if worktreePath := kit.MapString(resp, "worktreePath"); worktreePath != "" {
-			m.changeCwd(worktreePath)
-		}
-	case tool.ToolExitWorktree:
-		if restoredPath := kit.MapString(resp, "restoredPath"); restoredPath != "" {
-			m.changeCwd(restoredPath)
 		}
 	case "Write", "Edit":
 		if filePath := kit.MapString(resp, "filePath"); filePath != "" {

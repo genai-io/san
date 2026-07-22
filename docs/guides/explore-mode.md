@@ -12,7 +12,7 @@ This feature exists to document the contract that was previously split across th
 |----------|-------|
 | Agent type | `general-purpose` |
 | Permission mode | `explore` |
-| Tools | Read, Glob, Grep, WebFetch, WebSearch |
+| Tools | Read, Bash (read-only commands), WebFetch, WebSearch, Skill, AskUserQuestion |
 | Max turns | 100 |
 | Execution style | Foreground in explore mode |
 
@@ -22,7 +22,7 @@ This feature exists to document the contract that was previously split across th
 - The task is investigative and should not modify the workspace.
 
 **Do not use `mode=explore` when:**
-- One direct tool call is enough, such as a single `Read`, `Grep`, or `Glob`.
+- One direct tool call is enough, such as a single `Read` or an `rg` search.
 - The task needs file edits or command execution.
 - The task should run in the background from an exploration-only context.
 

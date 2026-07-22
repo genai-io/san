@@ -96,7 +96,7 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 	}
 
 	// ── Step 7/8: Mode default + headless coercion ──
-	return coerceAsk(modeDefaultDecision(toolName, session), session)
+	return coerceAsk(modeDefaultDecision(toolName, args, session), session)
 }
 
 // bypassImmunePromptReason reports why a call is held at the floor, and whether
@@ -169,12 +169,26 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 	}
 }
 
-func modeDefaultDecision(toolName string, session *SessionPermissions) PermissionDecision {
+// ModeDefaultForCall is ModeDefault with the parsed tool input available:
+// a provably read-only Bash invocation (search, listing, git inspection) is
+// treated like a safe tool, so it runs without prompting and stays usable in
+// read-only (explore) mode. Deny/ask rules and bypass-immune checks run
+// earlier in the pipeline and still override this.
+func ModeDefaultForCall(toolName string, args map[string]any, mode OperationMode) PermissionDecision {
+	if toolName == "Bash" {
+		if cmd, ok := args["command"].(string); ok && IsReadOnlyBashCommand(cmd) {
+			return decide(perm.Permit, "mode: read-only bash command")
+		}
+	}
+	return ModeDefault(toolName, mode)
+}
+
+func modeDefaultDecision(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision {
 	mode := ModeNormal
 	if session != nil {
 		mode = session.Mode
 	}
-	return ModeDefault(toolName, mode)
+	return ModeDefaultForCall(toolName, args, mode)
 }
 
 func coerceAsk(decision PermissionDecision, session *SessionPermissions) PermissionDecision {
@@ -225,7 +239,6 @@ func (s *Data) CheckPermission(toolName string, args map[string]any, session *Se
 // Different tools extract different parts of args:
 //   - Bash: "Bash(command)" where command is the shell command
 //   - Read/Write: "Read(file_path)"; Edit: "Edit(path)"
-//   - Glob/Grep: "Glob(pattern)" or "Grep(pattern)"
 //   - WebFetch: "WebFetch(domain:hostname)"
 func BuildRule(toolName string, args map[string]any) string {
 	var argStr string
@@ -246,18 +259,6 @@ func BuildRule(toolName string, args map[string]any) string {
 	case "Read", "Write", "Edit":
 		if fp, ok := filePathArg(toolName, args); ok {
 			argStr = fp
-		}
-
-	case "Glob":
-		// For Glob, use the pattern
-		if p, ok := args["pattern"].(string); ok {
-			argStr = p
-		}
-
-	case "Grep":
-		// For Grep, use the pattern
-		if p, ok := args["pattern"].(string); ok {
-			argStr = p
 		}
 
 	case "WebFetch":
