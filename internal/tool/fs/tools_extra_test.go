@@ -101,6 +101,15 @@ func TestRead_LineLimit_LargeFile(t *testing.T) {
 	})
 }
 
+// readForEdit satisfies Edit/Write's read-before-modify gate in tests.
+func readForEdit(t *testing.T, filePath, cwd string) {
+	t.Helper()
+	result := (&ReadTool{}).Execute(context.Background(), map[string]any{"file_path": filePath}, cwd)
+	if !result.Success {
+		t.Fatalf("Read before edit failed: %s", result.FormatForLLM())
+	}
+}
+
 func TestEditBatchReplacements(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "example.txt")
@@ -108,6 +117,7 @@ func TestEditBatchReplacements(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	readForEdit(t, filePath, tmpDir)
 
 	params := map[string]any{
 		"path": filePath,
@@ -123,7 +133,7 @@ func TestEditBatchReplacements(t *testing.T) {
 	if !strings.Contains(result.Output, "2 replacements, +2 -2") {
 		t.Fatalf("batch Edit output = %q", result.Output)
 	}
-	details, ok := result.Details.(toolresult.EditDetails)
+	details, ok := result.Details.(toolresult.FileChangeDetails)
 	if !ok || details.EditCount != 2 || details.AddedLines != 2 || details.RemovedLines != 2 {
 		t.Fatalf("Edit details = %#v", result.Details)
 	}
@@ -138,6 +148,7 @@ func TestEditBatchReplacements(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	readForEdit(t, filePath, tmpDir)
 	for _, test := range []struct {
 		edits []any
 		want  string

@@ -186,7 +186,7 @@ func assistantContentToBlocks(content, thinking, thinkingSignature string, toolC
 
 func toolResultToBlocks(tr *core.ToolResult) []ContentBlock {
 	block := ContentBlock{Type: "tool_result", ToolUseID: tr.ToolCallID, IsError: tr.IsError}
-	if details, ok := tr.Details.(toolresult.EditDetails); ok {
+	if details, ok := tr.Details.(toolresult.FileChangeDetails); ok {
 		block.EditDetails, _ = json.Marshal(details)
 	}
 	if tr.Content != "" {
@@ -229,7 +229,7 @@ func extractUserContent(blocks []ContentBlock, msg *core.Message) {
 		case "tool_result":
 			tr := &core.ToolResult{ToolCallID: block.ToolUseID, IsError: block.IsError}
 			if len(block.EditDetails) > 0 {
-				var details toolresult.EditDetails
+				var details toolresult.FileChangeDetails
 				if json.Unmarshal(block.EditDetails, &details) == nil {
 					tr.Details = details
 				}

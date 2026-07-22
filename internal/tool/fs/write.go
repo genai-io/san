@@ -60,6 +60,10 @@ func (t *WriteTool) PreparePermission(ctx context.Context, params map[string]any
 		// New file: use preview mode to show content directly
 		diffMeta = perm.GeneratePreview(filePath, content, true)
 	} else {
+		// Overwriting: the model must hold a current view of what it destroys.
+		if err := requireFreshRead(filePath); err != nil {
+			return nil, &tool.ToolError{Message: err.Error()}
+		}
 		// Existing file: generate actual diff to show what will change
 		oldContent, readErr := os.ReadFile(filePath)
 		if readErr != nil {
@@ -109,6 +113,20 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	_, statErr := os.Stat(filePath)
 	isNewFile := os.IsNotExist(statErr)
 
+	// Read the old content before overwriting: the freshness gate needs the
+	// model to hold a current view, and the result carries a diff against it.
+	oldContent := ""
+	if !isNewFile {
+		if err := requireFreshRead(filePath); err != nil {
+			return toolresult.NewErrorResult(t.Name(), err.Error())
+		}
+		old, readErr := os.ReadFile(filePath)
+		if readErr != nil {
+			return toolresult.NewErrorResult(t.Name(), "failed to read existing file: "+readErr.Error())
+		}
+		oldContent = string(old)
+	}
+
 	// Get optional mode parameter (default 0644).
 	// Clamp to valid permission bits — JSON numbers are decimal, so an LLM
 	// sending 755 would otherwise become octal 01363 (setgid + wrong perms).
@@ -118,6 +136,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	if err := os.WriteFile(filePath, []byte(content), mode); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
+	recordFileWritten(filePath)
 
 	duration := time.Since(start)
 
@@ -140,9 +159,18 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		writeType = "update"
 	}
 
+	changes := perm.GenerateDiff(filePath, oldContent, content)
+
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)",
+		Details: toolresult.FileChangeDetails{
+			Path:         filePath,
+			IsNewFile:    isNewFile,
+			AddedLines:   changes.AddedCount,
+			RemovedLines: changes.RemovedCount,
+			UnifiedDiff:  perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines),
+		},
 		HookResponse: map[string]any{
 			"type":            writeType,
 			"filePath":        filePath,

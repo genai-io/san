@@ -49,6 +49,12 @@ type Theme struct {
 	SuccessBg AdaptiveColor
 	ErrorBg   AdaptiveColor
 
+	// The *BgStrong pair marks the changed span inside a diff row — a step
+	// more saturated than SuccessBg/ErrorBg so the eye lands on the words
+	// that actually changed within an added/removed line.
+	SuccessBgStrong AdaptiveColor
+	ErrorBgStrong   AdaptiveColor
+
 	Border     AdaptiveColor
 	Background AdaptiveColor
 }
@@ -72,6 +78,9 @@ var CurrentTheme = Theme{
 	Warning:   AdaptiveColor{Dark: "#FCD34D", Light: "#B45309"},
 	SuccessBg: AdaptiveColor{Dark: "#16281d", Light: "#DCFCE7"},
 	ErrorBg:   AdaptiveColor{Dark: "#2b1818", Light: "#FEE2E2"},
+
+	SuccessBgStrong: AdaptiveColor{Dark: "#2F5D3E", Light: "#A7F3D0"},
+	ErrorBgStrong:   AdaptiveColor{Dark: "#5E2A2A", Light: "#FCB5B5"},
 
 	Border:     AdaptiveColor{Dark: "#52525B", Light: "#D4D4D8"},
 	Background: AdaptiveColor{Dark: "#18181B", Light: "#FAFAFA"},

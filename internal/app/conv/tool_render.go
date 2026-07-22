@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -99,33 +100,59 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderSkillResultInline(data)
 	case tool.ToolAgent, tool.ToolSendMessage:
 		return renderTaskResultInline(data, mdRenderer)
-	case "Edit":
-		return renderEditResultInline(data)
+	case "Edit", "Write":
+		return renderFileChangeResultInline(data)
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
 	}
 	return renderGenericToolResultInline(data)
 }
 
-func renderEditResultInline(data ToolResultData) string {
+// diffDefaultVisibleLines caps the diff shown under an Edit/Write result
+// before the user expands it with ctrl+o.
+const diffDefaultVisibleLines = 20
+
+func renderFileChangeResultInline(data ToolResultData) string {
 	if data.IsError {
 		// Same "failed" summary + indented reason as the generic error branch;
 		// only the redundant "Error: " prefix is dropped first.
 		data.Content = strings.TrimPrefix(data.Content, "Error: ")
 		return renderGenericToolResultInline(data)
 	}
-	details, ok := data.Details.(toolresult.EditDetails)
+	details, ok := data.Details.(toolresult.FileChangeDetails)
 	if !ok {
 		return renderGenericToolResultInline(data)
 	}
 
+	var summary string
+	switch {
+	case details.IsNewFile:
+		summary = fmt.Sprintf("new file · %d lines", details.AddedLines)
+	case details.EditCount > 0:
+		summary = fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
+	default:
+		summary = fmt.Sprintf("rewrote · +%d -%d", details.AddedLines, details.RemovedLines)
+	}
+
 	var sb strings.Builder
-	summary := fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
-	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  Edit → %s", toolResultIcon(false), summary)) + "\n")
-	if data.Expanded && details.UnifiedDiff != "" {
-		for line := range strings.SplitSeq(details.UnifiedDiff, "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  %s → %s", toolResultIcon(false), data.ToolName, summary)) + "\n")
+
+	width := data.Width
+	if width <= 0 {
+		width = 80
+	}
+	visible := diffDefaultVisibleLines
+	if data.Expanded {
+		visible = 0
+	}
+	block, hiddenCount := RenderFileDiff(perm.ParseUnifiedDiff(details.UnifiedDiff), width, visible)
+	sb.WriteString(block)
+	if hiddenCount > 0 {
+		note := fmt.Sprintf("     … %d more lines", hiddenCount)
+		if data.Interactive {
+			note += " (ctrl+o to expand)"
 		}
+		sb.WriteString(truncatedStyle.Render(note) + "\n")
 	}
 	return sb.String()
 }

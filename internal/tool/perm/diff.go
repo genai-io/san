@@ -21,7 +21,7 @@ func GenerateDiff(filePath, oldContent, newContent string) *DiffMetadata {
 	diffStr := fmt.Sprint(unifiedDiff)
 
 	// Parse the diff into structured lines
-	lines := parseDiffLines(diffStr)
+	lines := ParseUnifiedDiff(diffStr)
 
 	// Count additions and removals
 	addedCount := 0
@@ -49,14 +49,19 @@ func GenerateDiff(filePath, oldContent, newContent string) *DiffMetadata {
 // hunkHeaderRegex matches @@ -1,3 +1,4 @@ style headers
 var hunkHeaderRegex = regexp.MustCompile(`^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@`)
 
-// parseDiffLines parses unified diff text into structured DiffLine slices
-func parseDiffLines(unifiedDiff string) []DiffLine {
+// ParseUnifiedDiff parses unified diff text into structured DiffLine slices.
+func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 	if unifiedDiff == "" {
 		return nil
 	}
 
 	var lines []DiffLine
 	diffLines := strings.Split(unifiedDiff, "\n")
+	// A trailing newline splits into a final empty element; dropping it keeps
+	// it from rendering as a phantom numbered context row.
+	if len(diffLines) > 0 && diffLines[len(diffLines)-1] == "" {
+		diffLines = diffLines[:len(diffLines)-1]
+	}
 
 	var oldLineNo, newLineNo int
 
@@ -147,6 +152,17 @@ func parseDiffLines(unifiedDiff string) []DiffLine {
 	}
 
 	return lines
+}
+
+// CapUnifiedDiff truncates a unified diff to at most maxLines lines. The cap
+// is recorded as a "\"-prefixed metadata line, which ParseUnifiedDiff turns
+// into a DiffLineMetadata row the UI renders as a notice.
+func CapUnifiedDiff(diff string, maxLines int) string {
+	lines := strings.Split(diff, "\n")
+	if len(lines) <= maxLines {
+		return diff
+	}
+	return strings.Join(lines[:maxLines], "\n") + fmt.Sprintf("\n\\ diff truncated (%d more lines)", len(lines)-maxLines)
 }
 
 // GeneratePreview creates a DiffMetadata for content preview (used by Write tool)

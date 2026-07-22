@@ -5,10 +5,11 @@ import (
 	"strings"
 )
 
-// EditDetails describes an applied Edit result for UI rendering.
-type EditDetails struct {
+// FileChangeDetails describes an applied Edit or Write for UI rendering.
+type FileChangeDetails struct {
 	Path         string
-	EditCount    int
+	EditCount    int  // number of replacements (Edit only; 0 for Write)
+	IsNewFile    bool // Write created the file rather than overwriting it
 	AddedLines   int
 	RemovedLines int
 	UnifiedDiff  string

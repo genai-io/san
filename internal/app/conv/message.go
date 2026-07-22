@@ -515,6 +515,7 @@ type ToolResultData struct {
 	Interactive bool
 	Expanded    bool
 	ToolInput   string
+	Width       int
 	Details     any
 	// Decision is the auto-review decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.
@@ -591,6 +592,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.Interactive
+			resultData.Width = params.Width
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
 			sb.WriteString(renderDecision(resultData.Decision))

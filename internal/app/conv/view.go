@@ -184,6 +184,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 				IsError:     msg.ToolResult.IsError,
 				Expanded:    msg.Expanded,
 				Interactive: p.Interactive,
+				Width:       p.Width,
 				Details:     msg.ToolResult.Details,
 			}, p.MDRenderer))
 		case core.IsCompactSummary(msg.Content):

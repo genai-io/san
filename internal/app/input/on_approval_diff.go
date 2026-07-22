@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-runewidth"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -42,14 +43,6 @@ func approvalDiffAddedStyle() lipgloss.Style {
 
 func approvalDiffRemovedStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
-}
-
-func approvalDiffAddedBgStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Background(kit.CurrentTheme.SuccessBg)
-}
-
-func approvalDiffRemovedBgStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Background(kit.CurrentTheme.ErrorBg)
 }
 
 func approvalDiffContextStyle() lipgloss.Style {
@@ -142,54 +135,15 @@ func (d *approvalDiffPreview) renderUnifiedDiff(width int) string {
 	sb.WriteString(d.renderFileHeader(fmt.Sprintf("%s %s", added, removed)))
 	sb.WriteString("\n")
 
-	const prefix = 7
-	contentWidth := width - prefix
-	if contentWidth < 8 {
-		contentWidth = 8
+	maxVisible := d.maxVisible
+	if d.expanded {
+		maxVisible = 0
 	}
+	block, hiddenCount := conv.RenderFileDiff(d.diffMeta.Lines, width, maxVisible)
+	sb.WriteString(block)
 
-	lines := d.diffMeta.Lines
-	showCount := len(lines)
-	truncated := false
-	if !d.expanded && showCount > d.maxVisible {
-		showCount = d.maxVisible
-		truncated = true
-	}
-
-	removedBgStyle := approvalDiffRemovedBgStyle()
-	addedBgStyle := approvalDiffAddedBgStyle()
-	contextStyle := approvalDiffContextStyle()
-
-	for i := 0; i < showCount; i++ {
-		line := lines[i]
-
-		switch line.Type {
-		case perm.DiffLineHunk, perm.DiffLineMetadata:
-			// Skip
-
-		case perm.DiffLineContext:
-			no := fmt.Sprintf("%4d", line.OldLineNo)
-			content := approvalTruncateContent(line.Content, contentWidth)
-			sb.WriteString(contextStyle.Render(no + "   " + content))
-			sb.WriteString("\n")
-
-		case perm.DiffLineRemoved:
-			no := fmt.Sprintf("%4d", line.OldLineNo)
-			content := approvalTruncateOrPad(approvalTruncateContent(line.Content, contentWidth), contentWidth)
-			sb.WriteString(removedBgStyle.Render(approvalTruncateOrPad(no+" - "+content, width)))
-			sb.WriteString("\n")
-
-		case perm.DiffLineAdded:
-			no := fmt.Sprintf("%4d", line.NewLineNo)
-			content := approvalTruncateOrPad(approvalTruncateContent(line.Content, contentWidth), contentWidth)
-			sb.WriteString(addedBgStyle.Render(approvalTruncateOrPad(no+" + "+content, width)))
-			sb.WriteString("\n")
-		}
-	}
-
-	if truncated {
-		remaining := len(lines) - d.maxVisible
-		msg := fmt.Sprintf("... %d more lines (Ctrl+O to expand)", remaining)
+	if hiddenCount > 0 {
+		msg := fmt.Sprintf("... %d more lines (Ctrl+O to expand)", hiddenCount)
 		sb.WriteString(approvalDiffMoreStyle().Render(msg))
 		sb.WriteString("\n")
 	}
@@ -206,16 +160,4 @@ func approvalTruncateContent(content string, width int) string {
 		return runewidth.Truncate(content, width, "")
 	}
 	return content
-}
-
-func approvalTruncateOrPad(content string, width int) string {
-	displayWidth := runewidth.StringWidth(content)
-	if displayWidth > width {
-		if width > 3 {
-			return runewidth.Truncate(content, width-3, "...")
-		}
-		return runewidth.Truncate(content, width, "")
-	}
-	padding := width - displayWidth
-	return content + strings.Repeat(" ", padding)
 }

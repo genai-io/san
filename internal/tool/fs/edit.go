@@ -16,6 +16,10 @@ import (
 
 const IconEdit = "✏️"
 
+// maxStoredDiffLines caps the unified diff persisted with a result so a huge
+// rewrite doesn't bloat the session transcript; the UI shows the cap notice.
+const maxStoredDiffLines = 400
+
 // EditTool performs exact, batched string replacements on files.
 type EditTool struct{}
 
@@ -51,6 +55,9 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
+	if err := requireFreshRead(filePath); err != nil {
+		return nil, &tool.ToolError{Message: err.Error()}
+	}
 	newContent, err := applyEdits(string(content), edits)
 	if err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
@@ -77,6 +84,9 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
+	if err := requireFreshRead(filePath); err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 	oldContent := string(content)
 	newContent, err := applyEdits(oldContent, edits)
 	if err != nil {
@@ -90,18 +100,19 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err := os.WriteFile(filePath, []byte(newContent), mode); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
+	recordFileWritten(filePath)
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
 	output := fmt.Sprintf("Edited %s (%d replacements, +%d -%d)", filePath, len(edits), changes.AddedCount, changes.RemovedCount)
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  output,
-		Details: toolresult.EditDetails{
+		Details: toolresult.FileChangeDetails{
 			Path:         filePath,
 			EditCount:    len(edits),
 			AddedLines:   changes.AddedCount,
 			RemovedLines: changes.RemovedCount,
-			UnifiedDiff:  changes.UnifiedDiff,
+			UnifiedDiff:  perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines),
 		},
 		HookResponse: map[string]any{
 			"filePath":        filePath,
@@ -164,12 +175,17 @@ func applyEdits(content string, edits []editReplacement) (string, error) {
 	}
 	content = normalizeLineEndings(content)
 
+	spans := splitLineSpans(content)
 	ranges := make([]editRange, 0, len(edits))
 	for i, edit := range edits {
 		matches := editMatches(content, edit.oldString)
 		switch len(matches) {
 		case 0:
-			return "", fmt.Errorf("edits[%d]: oldText was not found; re-read the file and provide exact current text", i)
+			r, err := resolveTolerantMatch(content, spans, i, edit)
+			if err != nil {
+				return "", err
+			}
+			ranges = append(ranges, r)
 		case 1:
 			start := matches[0]
 			ranges = append(ranges, editRange{start: start, end: start + len(edit.oldString), replacement: edit.newString, editIndex: i})

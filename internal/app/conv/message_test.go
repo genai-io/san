@@ -814,7 +814,7 @@ func Test_formatToolResultSizeUsesNoOutputForEmptyContent(t *testing.T) {
 }
 
 func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
-	details := toolresult.EditDetails{
+	details := toolresult.FileChangeDetails{
 		Path:         "internal/app/view.go",
 		EditCount:    2,
 		AddedLines:   3,
@@ -825,13 +825,9 @@ func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
 	if !strings.Contains(result, "2 replacements · +3 -1") {
 		t.Fatalf("successful Edit summary = %q", result)
 	}
-	if strings.Contains(result, "-old") {
-		t.Fatalf("collapsed Edit should not show the diff, got %q", result)
-	}
-
-	expanded := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Details: details, Expanded: true}, nil))
-	if !strings.Contains(expanded, "-old") || !strings.Contains(expanded, "+new") {
-		t.Fatalf("expanded Edit should show the final diff, got %q", expanded)
+	// The diff now shows by default, in gutter-and-marker form.
+	if !strings.Contains(result, "1 - old") || !strings.Contains(result, "1 + new") {
+		t.Fatalf("Edit result should show the diff rows, got %q", result)
 	}
 
 	errResult := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Content: "Error: edits[0]: oldText was not found", IsError: true}, nil))

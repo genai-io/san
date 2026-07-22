@@ -10,7 +10,8 @@ func (t *ReadTool) Schema() core.ToolSchema {
 
 - Prefer relative paths for files inside the session working directory; absolute for targets outside it
 - Reads up to 2000 lines from the start by default; use offset/limit only for very long files
-- Output is line-numbered starting at 1
+- Output is line-numbered starting at 1. When copying text for Edit, strip the number and tab prefix; preserve all remaining whitespace exactly.
+- Lines longer than 2000 characters end with “… [line truncated]”; that marker is not part of the file and cannot be copied into an Edit.
 - Images (e.g. screenshots) are supported — read the file to view it`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -39,8 +40,10 @@ func (t *EditTool) Schema() core.ToolSchema {
 		Name: "Edit",
 		Description: `Performs exact string replacements in a file.
 
-- Requires a prior Read of the file — editing an unread file errors. If you need fresh contents, Read and wait for the result before calling Edit; don't send both in the same message.
-- oldText must match the file exactly (strip Read's line-number prefix, preserve indentation) and match exactly once — add surrounding context if it isn't unique.
+- Requires a prior Read of the file. If it changed on disk afterward, Read it again before retrying.
+- If you need fresh contents, Read and wait for its result before calling Edit; don't send both in the same message.
+- A replacement that differs only in trailing whitespace applies automatically. Any other whitespace mismatch reports the file’s actual lines for an exact retry.
+- oldText must otherwise match exactly once (strip Read's line-number prefix and preserve indentation); add context if it isn't unique.
 - All edits are checked against the original file and applied together; combine overlapping changes into one edit.`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -74,7 +77,7 @@ func (t *WriteTool) Schema() core.ToolSchema {
 		Name: "Write",
 		Description: `Writes a file to the local filesystem, overwriting any existing content.
 
-- Overwriting an existing file requires a prior Read of it — the call fails otherwise.
+- Overwriting an existing file requires a prior Read. If it changed on disk afterward, Read it again first.
 - Prefer Edit for modifying existing files; use Write for new files or complete rewrites.
 - Never create documentation or README files unless explicitly requested.`,
 		Parameters: map[string]any{

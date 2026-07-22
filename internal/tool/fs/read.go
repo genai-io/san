@@ -16,7 +16,13 @@ import (
 
 const (
 	maxReadLines  = 2000
-	maxLineLength = 500
+	maxLineLength = 2000
+
+	// lineTruncationMarker ends every line that was cut at maxLineLength. It
+	// is documented in the Read schema so the model knows the marker is not
+	// part of the file — a truncated line cannot be edited by copying the
+	// shortened text.
+	lineTruncationMarker = "… [line truncated]"
 )
 
 // ReadTool reads file contents
@@ -67,6 +73,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	n, _ := file.Read(header)
 	if n > 0 {
 		if bytes.IndexByte(header[:n], 0) >= 0 {
+			recordFileRead(filePath, info)
 			return toolresult.ToolResult{
 				Success: true,
 				Output:  "Binary file detected: " + filePath,
@@ -111,7 +118,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		// Truncate long lines (rune-aware to avoid splitting multi-byte characters)
 		if utf8.RuneCountInString(text) > maxLineLength {
 			runes := []rune(text)
-			text = string(runes[:maxLineLength]) + "..."
+			text = string(runes[:maxLineLength]) + lineTruncationMarker
 		}
 
 		lines = append(lines, toolresult.ContentLine{
@@ -125,6 +132,8 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	if err := scanner.Err(); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "error reading file: "+err.Error())
 	}
+
+	recordFileRead(filePath, info)
 
 	duration := time.Since(start)
 
