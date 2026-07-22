@@ -47,9 +47,7 @@ func TestParseAgentFileAcceptsFrontmatterAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseAgentFile: %v", err)
 	}
-	// Grep expands into the legacy Bash search rules; Bash and Read survive.
-	got := config.AllowTools.Names()
-	if len(got) == 0 || got[0] != "Bash" || config.AllowTools.HasName("Grep") {
+	if got := config.AllowTools.Names(); len(got) != 3 || got[0] != "Bash" {
 		t.Fatalf("allowed-tools alias not applied: %#v", got)
 	}
 	if config.PermissionMode != PermissionBypass {
@@ -66,9 +64,7 @@ func TestParseAgentFileAcceptsClaudeCodeToolsKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseAgentFile: %v", err)
 	}
-	// The Claude-compat key parses, with legacy Grep expanded to Bash rules.
-	got := config.AllowTools.Names()
-	if len(got) == 0 || got[0] != "Read" || config.AllowTools.HasName("Grep") || !config.AllowTools.HasName("Bash") {
+	if got := config.AllowTools.Names(); len(got) != 2 || got[0] != "Read" || got[1] != "Grep" {
 		t.Fatalf("tools alias not applied: %#v", got)
 	}
 }

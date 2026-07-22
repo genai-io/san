@@ -200,44 +200,6 @@ func (t *ToolList) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// legacySearchToolBashRules stands in for the retired Grep and Glob tools in
-// agent definitions. Search now runs through Bash (read-only commands
-// auto-permit); these patterned entries keep the Bash schema visible to
-// whitelisted agents and preserve deny intent.
-var legacySearchToolBashRules = ToolList{
-	{Name: "Bash", Pattern: "rg:*"},
-	{Name: "Bash", Pattern: "grep:*"},
-	{Name: "Bash", Pattern: "find:*"},
-	{Name: "Bash", Pattern: "ls:*"},
-}
-
-// translateLegacySearchTools rewrites Grep/Glob entries from older agent
-// definitions into the equivalent Bash search rules, deduplicating against
-// rules already present.
-func translateLegacySearchTools(t ToolList) ToolList {
-	if !t.HasName("Grep") && !t.HasName("Glob") {
-		return t
-	}
-	out := make(ToolList, 0, len(t)+len(legacySearchToolBashRules))
-	seen := make(map[ToolRule]bool, len(t))
-	add := func(r ToolRule) {
-		if !seen[r] {
-			seen[r] = true
-			out = append(out, r)
-		}
-	}
-	for _, r := range t {
-		if r.Name == "Grep" || r.Name == "Glob" {
-			for _, b := range legacySearchToolBashRules {
-				add(b)
-			}
-			continue
-		}
-		add(r)
-	}
-	return out
-}
-
 // parseRuleString accepts "Read" or "Bash(git diff*)" and returns a ToolRule.
 func parseRuleString(s string) (ToolRule, bool) {
 	s = strings.TrimSpace(s)

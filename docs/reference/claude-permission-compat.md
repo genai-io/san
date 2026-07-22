@@ -124,11 +124,12 @@ allow_tools:
   - Bash(go test*)        # Only go test commands
 ```
 
-Legacy `Glob` and `Grep` entries (from Claude Code agent definitions) are
-still accepted: San no longer ships those tools — search runs through Bash,
-where read-only commands (`rg`, `grep`, `find`, `ls`, read-only `git`, …)
-auto-permit in every mode — so the loader translates them into the
-equivalent patterned Bash rules.
+An `allow_tools` entry naming a tool San does not ship (for example `Glob`
+or `Grep` from a Claude Code agent definition) is simply inert: no schema
+matches it, so it grants nothing. If such an agent needs to search, list
+`Bash` (optionally with patterns) — read-only commands (`rg`, `grep`,
+`find`, `ls`, read-only `git`, …) auto-permit in every mode, and a
+whitelisted agent only sees the tools its list names.
 
 #### deny_tools — Denylist (Always Wins)
 
