@@ -155,8 +155,10 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	// Determine CC-compatible write type
 	writeType := "create"
+	var originalFile any // null for a new file, per the CC hook contract
 	if !isNewFile {
 		writeType = "update"
+		originalFile = oldContent
 	}
 
 	changes := perm.GenerateDiff(filePath, oldContent, content)
@@ -176,7 +178,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 			"filePath":        filePath,
 			"content":         content,
 			"structuredPatch": []any{},
-			"originalFile":    nil,
+			"originalFile":    originalFile,
 		},
 		Metadata: toolresult.ResultMetadata{
 			Title:     t.Name(),

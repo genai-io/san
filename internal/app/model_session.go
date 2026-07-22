@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/tool/fs"
 )
 
 func (m *model) InitTaskStorage() {
@@ -135,8 +136,11 @@ func (m *model) loadSessionByID(id string) error {
 	}
 
 	// This is a different persisted conversation. Do not let a stopped agent's
-	// restart snapshot override the selected transcript on the next turn.
+	// restart snapshot override the selected transcript on the next turn, and
+	// don't let the previous conversation's Reads satisfy Edit's
+	// read-before-modify gate in this one.
 	m.ResetAgentSession()
+	fs.ResetReadStamps()
 	m.services.Tracker.SetStorageDir("")
 	m.restoreSessionData(sess)
 

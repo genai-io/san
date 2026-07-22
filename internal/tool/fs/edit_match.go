@@ -85,7 +85,7 @@ func resolveTolerantMatch(content string, spans []lineSpan, editIndex int, edit 
 }
 
 func notFoundError(editIndex int) error {
-	return fmt.Errorf("edits[%d]: oldText was not found. The file has not changed since it was last read, so oldText itself does not match its content — likely a transcription slip. Re-read the target lines and copy them exactly", editIndex)
+	return fmt.Errorf("edits[%d]: oldText was not found. The file appears unchanged since it was last read (same size and mtime), so oldText likely has a transcription slip. Re-read the target lines and copy them exactly", editIndex)
 }
 
 // splitOldTextLines splits oldText for line-based matching. A trailing

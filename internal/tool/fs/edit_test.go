@@ -108,6 +108,23 @@ func TestEditRejectsStaleRead(t *testing.T) {
 	}
 }
 
+func TestResetReadStampsForgetsReads(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "reset.txt")
+	if err := os.WriteFile(filePath, []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	readForEdit(t, filePath, tmpDir)
+
+	// /clear and session switches reset the stamps: the new conversation has
+	// no Read results, so the gate must demand a fresh Read.
+	ResetReadStamps()
+	result := editOnce(filePath, "hello", "goodbye", tmpDir)
+	if !strings.Contains(result.FormatForLLM(), "has not been read in this session") {
+		t.Fatalf("edit after stamp reset must require a fresh read, got: %s", result.FormatForLLM())
+	}
+}
+
 func TestEditKeepsOwnWriteFresh(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "chain.txt")
