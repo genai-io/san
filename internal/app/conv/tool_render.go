@@ -78,18 +78,6 @@ func RenderToolResult(result toolresult.ToolResult, width int) string {
 		} else if result.Output != "" {
 			sb.WriteString(result.Output)
 		}
-	case "Glob":
-		if len(result.Files) > 0 {
-			sb.WriteString(renderFileList(result.Files, 20))
-		} else if result.Output != "" {
-			sb.WriteString(result.Output)
-		}
-	case "Grep":
-		if len(result.Lines) > 0 {
-			sb.WriteString(renderGrepResults(result.Lines, 30))
-		} else if result.Output != "" {
-			sb.WriteString(result.Output)
-		}
 	case "WebFetch":
 		if result.Output != "" {
 			lines := strings.Split(result.Output, "\n")
@@ -120,8 +108,6 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderSkillResultInline(data)
 	case tool.ToolAgent, tool.ToolSendMessage:
 		return renderTaskResultInline(data, mdRenderer)
-	case tool.ToolTaskOutput:
-		return renderTaskOutputResultInline(data)
 	case "Edit":
 		return renderEditResultInline(data)
 	case tool.ToolAskUserQuestion:
@@ -197,14 +183,7 @@ func renderHeader(meta toolresult.ResultMetadata, width int) string {
 		metaParts = append(metaParts, fmt.Sprintf("%d lines", meta.LineCount))
 	}
 	if meta.ItemCount > 0 {
-		switch meta.Title {
-		case "Glob":
-			metaParts = append(metaParts, fmt.Sprintf("%d files", meta.ItemCount))
-		case "Grep":
-			metaParts = append(metaParts, fmt.Sprintf("%d matches", meta.ItemCount))
-		default:
-			metaParts = append(metaParts, fmt.Sprintf("%d items", meta.ItemCount))
-		}
+		metaParts = append(metaParts, fmt.Sprintf("%d items", meta.ItemCount))
 	}
 	if meta.StatusCode > 0 {
 		metaParts = append(metaParts, fmt.Sprintf("%d OK", meta.StatusCode))
@@ -293,69 +272,6 @@ func renderLines(lines []toolresult.ContentLine) string {
 			sb.WriteString(content)
 			sb.WriteString("\n")
 		}
-	}
-
-	return sb.String()
-}
-
-func renderFileList(files []string, maxShow int) string {
-	if len(files) == 0 {
-		return truncatedStyle.Render("  (no files found)\n")
-	}
-
-	var sb strings.Builder
-	showCount := len(files)
-	truncated := false
-	if maxShow > 0 && showCount > maxShow {
-		showCount = maxShow
-		truncated = true
-	}
-
-	for i := 0; i < showCount; i++ {
-		sb.WriteString("  ")
-		sb.WriteString(filePathStyle.Render(files[i]))
-		sb.WriteString("\n")
-	}
-
-	if truncated {
-		remaining := len(files) - maxShow
-		sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  ... and %d more files\n", remaining)))
-	}
-
-	return sb.String()
-}
-
-func renderGrepResults(lines []toolresult.ContentLine, maxShow int) string {
-	if len(lines) == 0 {
-		return truncatedStyle.Render("  (no matches found)\n")
-	}
-
-	var sb strings.Builder
-	showCount := len(lines)
-	truncated := false
-	if maxShow > 0 && showCount > maxShow {
-		showCount = maxShow
-		truncated = true
-	}
-
-	for i := 0; i < showCount; i++ {
-		line := lines[i]
-		sb.WriteString("  ")
-		if line.File != "" {
-			sb.WriteString(filePathStyle.Render(line.File))
-			sb.WriteString(":")
-		}
-		if line.LineNo > 0 {
-			sb.WriteString(lineNumberStyle.Render(fmt.Sprintf("%d", line.LineNo)))
-			sb.WriteString(": ")
-		}
-		sb.WriteString(line.Text)
-		sb.WriteString("\n")
-	}
-
-	if truncated {
-		remaining := len(lines) - maxShow
-		sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  ... and %d more matches\n", remaining)))
 	}
 
 	return sb.String()
@@ -516,62 +432,6 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		resultLine += " (" + doneStats + ")"
 	}
 	sb.WriteString(toolResultStyle.Render(resultLine) + "\n")
-	return sb.String()
-}
-
-func renderTaskOutputResultInline(data ToolResultData) string {
-	icon := toolResultIcon(data.IsError)
-
-	var sb strings.Builder
-	content := data.Content
-
-	if data.IsError {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  TaskOutput → Error", icon)) + "\n")
-		if content != "" {
-			sb.WriteString(toolResultExpandedStyle.Render("    "+content) + "\n")
-		}
-		return sb.String()
-	}
-
-	agentName := extractField(content, "Agent: ", "")
-	status := extractField(content, "Status: ", "")
-	steps := extractIntField(content, "Steps: ")
-
-	var info []string
-	if agentName != "" {
-		info = make([]string, 0, 3)
-		info = append(info, agentName)
-	}
-	if status != "" {
-		info = append(info, status)
-	}
-	if steps > 0 {
-		info = append(info, fmt.Sprintf("%d steps", steps))
-	}
-
-	summaryText := "completed"
-	if len(info) > 0 {
-		summaryText = strings.Join(info, ", ")
-	}
-
-	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  TaskOutput → %s", icon, summaryText)) + "\n")
-
-	if _, outputContent, found := strings.Cut(content, "Output:\n"); found {
-		outputLines := strings.Split(outputContent, "\n")
-		maxLines := 10
-		if data.Expanded {
-			maxLines = len(outputLines)
-		}
-
-		for i, line := range outputLines {
-			if i >= maxLines {
-				sb.WriteString(toolResultExpandedStyle.Render("    ...") + "\n")
-				break
-			}
-			sb.WriteString(toolResultExpandedStyle.Render("    "+stripMarkdownHeading(line)) + "\n")
-		}
-	}
-
 	return sb.String()
 }
 

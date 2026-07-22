@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -39,6 +40,21 @@ func (t *AgentTool) SetExecutor(executor tool.AgentExecutor) {
 
 // PreparePermission prepares a permission request with agent metadata
 func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
+	if signal := tool.GetString(params, "signal"); signal != "" {
+		if signal != "stop" {
+			return nil, fmt.Errorf("unknown signal: %s", signal)
+		}
+		taskID := tool.GetString(params, "task_id")
+		if taskID == "" {
+			return nil, fmt.Errorf("task_id is required when signal is \"stop\"")
+		}
+		return &perm.PermissionRequest{
+			ID:          tool.GenerateRequestID(),
+			ToolName:    t.Name(),
+			Description: fmt.Sprintf("Stop background task %s", taskID),
+		}, nil
+	}
+
 	agentType := tool.GetString(params, "subagent_type")
 	if agentType == "" {
 		agentType = "general-purpose"
@@ -127,6 +143,13 @@ func (t *AgentTool) Execute(ctx context.Context, params map[string]any, cwd stri
 // is what keeps the model flat — main spawns workers, workers do not.
 func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
+
+	if signal := tool.GetString(params, "signal"); signal != "" {
+		if signal != "stop" {
+			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("unknown signal: %s", signal))
+		}
+		return t.stopTask(params, start)
+	}
 
 	agentType := tool.GetString(params, "subagent_type")
 	if agentType == "" {
@@ -240,6 +263,59 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Icon:     t.Icon(),
 			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentType, result.StepCount),
 			Duration: duration,
+		},
+	}
+}
+
+// stopTask cancels a running background task (agent worker or background
+// command). The prompt, when given, is recorded as the cancellation reason.
+func (t *AgentTool) stopTask(params map[string]any, start time.Time) toolresult.ToolResult {
+	taskID := tool.GetString(params, "task_id")
+	if taskID == "" {
+		return toolresult.NewErrorResult(t.Name(), "task_id is required when signal is \"stop\"")
+	}
+
+	bgTask, found := task.Default().Get(taskID)
+	if !found {
+		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task not found: %s", taskID))
+	}
+	if !bgTask.IsRunning() {
+		info := bgTask.GetStatus()
+		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("task already completed with status: %s", info.Status))
+	}
+
+	info := bgTask.GetStatus()
+	if err := task.Default().Kill(taskID); err != nil {
+		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to stop task: %v", err))
+	}
+	finalInfo := bgTask.GetStatus()
+
+	var output string
+	switch info.Type {
+	case task.TaskTypeBash:
+		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nType: bash\nPID: %d\nStatus: %s",
+			taskID, info.PID, finalInfo.Status)
+	case task.TaskTypeAgent:
+		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nType: agent\nAgent: %s\nSteps: %d\nStatus: %s",
+			taskID, info.AgentName, info.StepCount, finalInfo.Status)
+	default:
+		output = fmt.Sprintf("Task stopped successfully.\nTask ID: %s\nStatus: %s", taskID, finalInfo.Status)
+	}
+	if reason := tool.GetString(params, "prompt"); reason != "" {
+		output += "\nReason: " + reason
+	}
+	if finalInfo.Output != "" {
+		output += fmt.Sprintf("\n\nOutput before stop:\n%s", finalInfo.Output)
+	}
+
+	return toolresult.ToolResult{
+		Success: true,
+		Output:  output,
+		Metadata: toolresult.ResultMetadata{
+			Title:    t.Name(),
+			Icon:     t.Icon(),
+			Subtitle: fmt.Sprintf("Stopped: %s", taskID),
+			Duration: time.Since(start),
 		},
 	}
 }

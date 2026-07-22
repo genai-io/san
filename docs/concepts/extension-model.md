@@ -80,7 +80,7 @@ All markdown-defined primitives share the same general shape:
 name: my-skill              # required
 description: One-liner      # required for selectors
 namespace: optional         # only skills support this
-allowed-tools: [Read, Glob] # tool subset (subagent + skill)
+allowed-tools: [Read, Bash] # tool subset (subagent + skill)
 argument-hint: <hint>       # for slash commands
 ---
 

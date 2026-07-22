@@ -103,8 +103,6 @@ Returns a structured review with findings and recommendations.`,
 		PermissionMode: PermissionExplore,
 		AllowTools: ToolList{
 			{Name: "Read"},
-			{Name: "Glob"},
-			{Name: "Grep"},
 			{Name: "Bash", Pattern: "git diff*"},
 			{Name: "Bash", Pattern: "git log*"},
 			{Name: "Bash", Pattern: "git show*"},

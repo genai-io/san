@@ -188,9 +188,9 @@ func TestCheckPermission(t *testing.T) {
 
 		// Default behavior - read-only allowed
 		{
-			"glob default allowed",
-			"Glob",
-			map[string]any{"pattern": "*.txt"},
+			"read-only bash default allowed",
+			"Bash",
+			map[string]any{"command": "rg -n pattern ./src"},
 			nil,
 			perm.Permit,
 		},
@@ -653,8 +653,13 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		},
 		{
 			"allow rule does not cover every chained bash subcommand",
-			"Bash", map[string]any{"command": "cd /repo && git describe --tags --abbrev=0"},
+			"Bash", map[string]any{"command": "cd /repo && go build ./..."},
 			perm.Prompt, "mode: default requires confirmation",
+		},
+		{
+			"read-only chain permits at mode default",
+			"Bash", map[string]any{"command": "cd /repo && git describe --tags --abbrev=0"},
+			perm.Permit, "mode: read-only bash command",
 		},
 		{
 			"sensitive path has reason",
@@ -842,8 +847,11 @@ func TestAcceptEditsModeAllowsEditsButPromptsBash(t *testing.T) {
 	if got := settings.CheckPermission("Edit", map[string]any{"path": "/repo/main.go"}, session); got != perm.Permit {
 		t.Fatalf("acceptEdits Edit = %v, want Allow", got)
 	}
-	if got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session); got != perm.Prompt {
-		t.Fatalf("acceptEdits Bash = %v, want Ask", got)
+	if got := settings.CheckPermission("Bash", map[string]any{"command": "go build ./..."}, session); got != perm.Prompt {
+		t.Fatalf("acceptEdits mutating Bash = %v, want Ask", got)
+	}
+	if got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session); got != perm.Permit {
+		t.Fatalf("acceptEdits read-only Bash = %v, want Allow", got)
 	}
 }
 
@@ -855,7 +863,7 @@ func TestHeadlessCoercesAskToDeny(t *testing.T) {
 		AllowedPatterns:    make(map[string]bool),
 	}
 
-	got := settings.CheckPermission("Bash", map[string]any{"command": "git status"}, session)
+	got := settings.CheckPermission("Bash", map[string]any{"command": "npm install"}, session)
 	if got != perm.Reject {
 		t.Fatalf("headless Bash = %v, want Deny", got)
 	}
@@ -928,7 +936,7 @@ func TestWorkingDirectoryConstraint(t *testing.T) {
 		},
 		{
 			"bash not constrained by workdir",
-			"Bash", map[string]any{"command": "ls /etc"},
+			"Bash", map[string]any{"command": "make deploy"},
 			perm.Prompt, // Bash still asks because AllowAllBash is not set
 		},
 		{
@@ -954,7 +962,7 @@ func TestSafeToolAllowlist(t *testing.T) {
 	// All safe tools, including read-only ones. The canonical allowlist lives
 	// in perm.IsSafeTool (tool/perm); this asserts the gate honors it.
 	allSafeTools := []string{
-		"Read", "Glob", "Grep", "WebFetch", "WebSearch", "LSP",
+		"Read", "WebFetch", "WebSearch", "LSP",
 		"TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
 		"AskUserQuestion",
 		"CronList",

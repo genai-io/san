@@ -2,7 +2,6 @@ package toolresult
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
 
@@ -22,7 +21,6 @@ type ToolResult struct {
 	Error        string           // Error message if failed
 	Metadata     ResultMetadata   // Result metadata
 	Lines        []ContentLine    // Formatted content lines (optional)
-	Files        []string         // File list (for Glob)
 	SkillInfo    *SkillResultInfo // Skill-specific info (for Skill tool)
 	HookResponse any              // Structured response for PostToolUse hooks (CC-compatible)
 	Details      any              // Structured result data for UI rendering
@@ -56,34 +54,6 @@ func (r ToolResult) FormatForLLM() string {
 			sb.Grow(len(r.Lines) * 40)
 			for _, line := range r.Lines {
 				fmt.Fprintf(&sb, "%6d\t%s\n", line.LineNo, line.Text)
-			}
-		} else if r.Output != "" {
-			sb.WriteString(r.Output)
-		}
-	case "Glob":
-		if len(r.Files) > 0 {
-			sb.Grow(len(r.Files) * 40)
-			for _, f := range r.Files {
-				sb.WriteString(f)
-				sb.WriteString("\n")
-			}
-		} else if r.Output != "" {
-			sb.WriteString(r.Output)
-		}
-	case "Grep":
-		if len(r.Lines) > 0 {
-			sb.Grow(len(r.Lines) * 60)
-			for _, line := range r.Lines {
-				if line.File != "" {
-					sb.WriteString(line.File)
-					sb.WriteString(":")
-				}
-				if line.LineNo > 0 {
-					sb.WriteString(strconv.Itoa(line.LineNo))
-					sb.WriteString(":")
-				}
-				sb.WriteString(line.Text)
-				sb.WriteString("\n")
 			}
 		} else if r.Output != "" {
 			sb.WriteString(r.Output)

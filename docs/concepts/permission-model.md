@@ -36,6 +36,14 @@ The pipeline lives in `internal/setting/permission.go`. Bash gets special
 treatment: `bash_ast.go` parses the command and matches per-argv patterns
 (`Bash(git status:*)` allows `git status -uall` but not `git push`).
 
+Provably read-only Bash invocations short-circuit to allow at the
+mode-default step (`setting.IsReadOnlyBashCommand`): every command in the
+chain must be on the read-only list (`rg`, `grep`, `find`, `ls`, read-only
+`git`, …) with no output redirection, substitution, or env-var prefix.
+This replaces the retired Grep/Glob tools — search runs through Bash
+without approval prompts, in every mode including explore. Deny/ask rules
+and the bypass-immune checks still run first and override it.
+
 ## Subagent Permission Resolution
 
 The foreground and subagent gates both use `setting.ModeDefault` for

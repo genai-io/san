@@ -50,6 +50,7 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	sb.WriteString("- Use foreground by default when you need the result before continuing\n")
 	sb.WriteString("- Use run_in_background only for genuinely independent work; you will be notified when it completes\n")
 	sb.WriteString("- A running background agent can be steered mid-run with SendMessage(to=<task id>, message); it reports back when done\n")
+	sb.WriteString("- Cancel a running background task (worker or command) with signal \"stop\" and its task_id; prompt records the cancellation reason\n")
 	sb.WriteString("- Provide concrete prompts with file paths, constraints, and whether code changes are expected")
 
 	return core.ToolSchema{
@@ -94,6 +95,15 @@ var agentToolParameters = map[string]any{
 			"type":        "string",
 			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
 			"enum":        []string{"explore", "edit", "default"},
+		},
+		"task_id": map[string]any{
+			"type":        "string",
+			"description": "With signal \"stop\": the running background task to cancel.",
+		},
+		"signal": map[string]any{
+			"type":        "string",
+			"enum":        []string{"stop"},
+			"description": "Send a control signal instead of spawning: \"stop\" cancels the running background task named by task_id.",
 		},
 	},
 	"required": []string{"description", "prompt"},

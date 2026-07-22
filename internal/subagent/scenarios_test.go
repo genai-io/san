@@ -38,10 +38,16 @@ func TestPermissionScenarios(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "explore + allow git diff* — compound with git status fails per-subcommand check",
+			name: "explore + allow git diff* — compound with mutating tail fails per-subcommand check",
+			mode: PermissionExplore, allow: allowGitDiff,
+			tool: "Bash", input: map[string]any{"command": "git diff && npm run build"},
+			want: false, wantMatch: "outside the allow_tools constraint",
+		},
+		{
+			name: "explore + allow git diff* — read-only compound bypasses whitelist",
 			mode: PermissionExplore, allow: allowGitDiff,
 			tool: "Bash", input: map[string]any{"command": "git diff && git status"},
-			want: false, wantMatch: "outside the allow_tools constraint",
+			want: true,
 		},
 		{
 			name: "explore + allow git diff* — both subcommands match",
@@ -126,10 +132,44 @@ func TestPermissionScenarios(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "default mode + allow Bash(git diff*) — git status hits whitelist constraint",
+			name: "default mode + allow Bash(git diff*) — mutating command hits whitelist constraint",
 			mode: PermissionDefault, allow: allowGitDiff,
-			tool: "Bash", input: map[string]any{"command": "git status"},
+			tool: "Bash", input: map[string]any{"command": "git commit -m msg"},
 			want: false, wantMatch: "outside the allow_tools constraint",
+		},
+
+		// ── read-only bash — permitted like the dedicated read-only tools ──
+		{
+			name: "explore mode — read-only search allowed without allow_tools",
+			mode: PermissionExplore,
+			tool: "Bash", input: map[string]any{"command": "rg -n TODO internal | head -50"},
+			want: true,
+		},
+		{
+			name: "default mode — read-only git allowed without allow_tools",
+			mode: PermissionDefault,
+			tool: "Bash", input: map[string]any{"command": "git status"},
+			want: true,
+		},
+
+		// ── parent-only and Skill ──
+		{
+			name: "tracker write denied for worker even in bypass mode",
+			mode: PermissionBypass,
+			tool: "TaskCreate", input: map[string]any{"subject": "x", "description": "y"},
+			want: false, wantMatch: "reserved for the main conversation",
+		},
+		{
+			name: "cron list denied for worker despite being a safe tool",
+			mode: PermissionExplore,
+			tool: "CronList", input: map[string]any{},
+			want: false, wantMatch: "reserved for the main conversation",
+		},
+		{
+			name: "explore mode — Skill allowed without allow_tools",
+			mode: PermissionExplore,
+			tool: "Skill", input: map[string]any{"skill": "commit"},
+			want: true,
 		},
 	}
 

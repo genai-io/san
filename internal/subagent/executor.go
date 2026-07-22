@@ -552,6 +552,12 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if reason := setting.BypassImmuneReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
+		// Parent-only tools never reach a worker, even via allow_tools —
+		// checked here so the safe-tool auto-permit below cannot resurrect a
+		// hallucinated tracker or cron call.
+		if tool.IsParentOnlyTool(name) {
+			return false, fmt.Sprintf("tool %s is reserved for the main conversation", name)
+		}
 		// Communication carve-out (see doc comment): a mode-gated worker may
 		// always reach main or a peer via SendMessage. A worker with an explicit
 		// allow_tools list is governed by that list instead.
@@ -561,10 +567,26 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if allowRules.Allows(name, input) {
 			return true, ""
 		}
+		// A provably read-only Bash command (search, listing, git inspection)
+		// is as safe as the dedicated read-only tools, which also run without
+		// being listed in allow_tools. Checked after deny_tools so agents can
+		// still block Bash outright.
+		if name == "Bash" {
+			if cmd, ok := input["command"].(string); ok && setting.IsReadOnlyBashCommand(cmd) {
+				return true, ""
+			}
+		}
 		// allow_tools mentions this tool but no pattern matched — the agent
 		// declared a constrained whitelist, so deny rather than fall through.
 		if allowRules.HasName(name) {
 			return false, fmt.Sprintf("tool %s call is outside the allow_tools constraint", name)
+		}
+		// Loading a skill's instructions has no side effects of its own — the
+		// actions those instructions trigger are still gated per tool call —
+		// so Skill works in every mode, matching the skills listing already
+		// embedded in the worker's prompt.
+		if name == tool.ToolSkill {
+			return true, ""
 		}
 		switch setting.ModeDefault(name, opMode).Behavior {
 		case perm.Permit:
@@ -612,9 +634,15 @@ func modeAllowsSchema(mode PermissionMode, name string) bool {
 	case PermissionBypass, PermissionAuto:
 		return true
 	case PermissionAcceptEdits:
-		return perm.IsEditTool(name)
+		if perm.IsEditTool(name) {
+			return true
+		}
 	}
-	return false
+	// Read-only Bash invocations are permitted in every mode, so the Bash
+	// schema stays visible even to explore/read-only agents — it is their
+	// search tool. Skill stays visible for the same reason the gate permits
+	// it: the worker's prompt already lists available skills.
+	return name == "Bash" || name == tool.ToolSkill
 }
 
 // newAgentToolSet creates a tool.Set for subagents with the disallow set eagerly initialized.

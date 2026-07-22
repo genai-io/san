@@ -33,29 +33,3 @@ type QuestionResponse struct {
 
 // AskQuestionFunc requests a question response from an interactive caller.
 type AskQuestionFunc func(ctx context.Context, req *QuestionRequest) (*QuestionResponse, error)
-
-// --- Worktree types ---
-
-// EnterWorktreeRequest is sent to the TUI for user confirmation.
-type EnterWorktreeRequest struct {
-	Slug string
-}
-
-// EnterWorktreeResponse is the TUI's response.
-type EnterWorktreeResponse struct {
-	Approved      bool
-	WorktreePath  string
-	WorktreeClean func()
-}
-
-// ExitWorktreeRequest is sent to the TUI for user confirmation.
-type ExitWorktreeRequest struct {
-	Action         string
-	DiscardChanges bool
-}
-
-// ExitWorktreeResponse is the TUI's response.
-type ExitWorktreeResponse struct {
-	Approved     bool
-	RestoredPath string
-}

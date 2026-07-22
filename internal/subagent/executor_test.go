@@ -291,13 +291,13 @@ func TestFormatToolActivityNamesGeneralAgentByMode(t *testing.T) {
 	}
 }
 
-func TestFormatToolActivityFallsBackToTaskOutputID(t *testing.T) {
-	got := formatToolActivity("TaskOutput", map[string]any{
+func TestFormatToolActivityFallsBackToEmptyParensForUnmappedTool(t *testing.T) {
+	got := formatToolActivity("CustomTool", map[string]any{
 		"task_id": "task-123",
 	})
 
-	if got != "TaskOutput(task-123)" {
-		t.Fatalf("formatToolActivity() = %q, want %q", got, "TaskOutput(task-123)")
+	if got != "CustomTool()" {
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "CustomTool()")
 	}
 }
 
@@ -392,7 +392,6 @@ func TestCanEditWorkspace(t *testing.T) {
 func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 	schemas := []core.ToolSchema{
 		{Name: "Read"},
-		{Name: "Grep"},
 		{Name: "Write"},
 		{Name: "Bash"},
 		{Name: "WebSearch"},
@@ -406,8 +405,10 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)
 	}
 
+	// Bash stays visible without an allow list: read-only invocations are
+	// explore mode's search tool. Write is still filtered out.
 	got = filterSchemasForPermission(schemas, PermissionExplore, nil)
-	want = []core.ToolSchema{{Name: "Read"}, {Name: "Grep"}, {Name: "WebSearch"}}
+	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}, {Name: "WebSearch"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas without git diff = %+v, want %+v", got, want)
 	}
@@ -426,12 +427,19 @@ func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
 		}
 	}
 
-	// Cases that should be blocked: pattern mismatch, or bypass-immune
-	// destructive subcommand. The pattern Bash(git diff*) is greedy so
-	// "git diff > /tmp/foo" naturally matches — users wanting tighter
-	// scope should write a more specific pattern.
+	// Read-only bash bypasses the whitelist constraint like the dedicated
+	// read-only tools do.
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git status"})
+	if !allow {
+		t.Fatalf("read-only Bash(git status) blocked: %s", reason)
+	}
+
+	// Cases that should be blocked: mutating pattern mismatch, or
+	// bypass-immune destructive subcommand. The pattern Bash(git diff*) is
+	// greedy so "git diff > /tmp/foo" naturally matches — users wanting
+	// tighter scope should write a more specific pattern.
 	blocked := []string{
-		"git status",                          // pattern mismatch
+		"git commit -m msg",                   // mutating, pattern mismatch
 		"git diff && rm -rf /tmp/example",     // bypass-immune destructive
 		"git diff && git push --force origin", // bypass-immune destructive
 	}
@@ -442,9 +450,16 @@ func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
 		}
 	}
 
-	allow, _ := subagentPermissionFunc(PermissionExplore, nil, nil)(context.Background(), "Bash", map[string]any{"command": "git diff"})
+	// Without any agent permission, read-only bash still passes; mutating
+	// bash is denied by explore mode.
+	unlisted := subagentPermissionFunc(PermissionExplore, nil, nil)
+	allow, reason = unlisted(context.Background(), "Bash", map[string]any{"command": "git diff"})
+	if !allow {
+		t.Fatalf("read-only git diff blocked without agent permission: %s", reason)
+	}
+	allow, _ = unlisted(context.Background(), "Bash", map[string]any{"command": "go build ./..."})
 	if allow {
-		t.Fatal("git diff allowed without agent permission")
+		t.Fatal("mutating bash allowed in explore mode without agent permission")
 	}
 }
 
@@ -455,9 +470,9 @@ func TestDefaultModeRestrictsConfiguredBash(t *testing.T) {
 		t.Fatalf("configured Bash command blocked: %s", reason)
 	}
 
-	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "git status"})
+	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "npm install"})
 	if allow {
-		t.Fatal("unconfigured Bash command allowed (allow_tools whitelist constraint)")
+		t.Fatal("unconfigured mutating Bash command allowed (allow_tools whitelist constraint)")
 	}
 
 	allow, reason = check(context.Background(), "Read", map[string]any{"file_path": "README.md"})
@@ -473,10 +488,10 @@ func TestDenyToolRulesMatchPatterns(t *testing.T) {
 		t.Fatal("denied Bash command allowed")
 	}
 
-	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git diff --stat"})
-	// Default mode + no allow_tools -> Bash would Prompt -> Deny in subagent.
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "npm install"})
+	// Default mode + no allow_tools -> mutating Bash would Prompt -> Deny in subagent.
 	if allow {
-		t.Fatalf("default-mode Bash unexpectedly allowed without allow_tools: %s", reason)
+		t.Fatalf("default-mode mutating Bash unexpectedly allowed without allow_tools: %s", reason)
 	}
 }
 
@@ -487,9 +502,9 @@ func TestExploreModeAllowsConfiguredBashPattern(t *testing.T) {
 		t.Fatalf("configured bash command blocked: %s", reason)
 	}
 
-	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "git diff --stat"})
+	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "sed -i s/a/b/ config.yaml"})
 	if allow {
-		t.Fatal("unconfigured bash command allowed")
+		t.Fatal("unconfigured mutating bash command allowed")
 	}
 }
 
@@ -502,10 +517,11 @@ func TestAcceptEditsModeFiltersApprovalOnlyToolSchemas(t *testing.T) {
 		{Name: "Agent"},
 	}
 
-	// Bash needs approval so it is filtered. Agent never reaches this
-	// filter for workers — it is parent-only at the tool.Set level.
+	// Bash stays visible (read-only invocations auto-permit). Agent never
+	// reaches this filter for workers — it is parent-only at the tool.Set
+	// level.
 	got := filterSchemasForPermission(schemas, PermissionAcceptEdits, nil)
-	want := []core.ToolSchema{{Name: "Read"}, {Name: "Edit"}, {Name: "Write"}}
+	want := []core.ToolSchema{{Name: "Read"}, {Name: "Edit"}, {Name: "Write"}, {Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)
 	}
@@ -517,9 +533,11 @@ func TestBypassModeAllowsEverything(t *testing.T) {
 	if !allow {
 		t.Fatal("bypass mode should allow Bash")
 	}
+	// Parent-only tools stay denied even in bypass mode — the agent model
+	// is flat, and the gate backs up the schema-level exclusion.
 	allow, _ = check(context.Background(), "Agent", map[string]any{})
-	if !allow {
-		t.Fatal("bypass mode should allow Agent")
+	if allow {
+		t.Fatal("parent-only Agent should be denied for workers even in bypass mode")
 	}
 }
 

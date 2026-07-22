@@ -477,8 +477,8 @@ func TestCanExecuteToolBatchInParallelOnlyAllowsReadOnlyTools(t *testing.T) {
 			name: "all read only",
 			tasks: []agentToolTask{
 				{call: ToolCall{Name: "Read"}},
-				{call: ToolCall{Name: "Grep"}},
-				{call: ToolCall{Name: "Glob"}},
+				{call: ToolCall{Name: "WebFetch"}},
+				{call: ToolCall{Name: "WebSearch"}},
 			},
 			want: true,
 		},

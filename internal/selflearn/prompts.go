@@ -188,11 +188,11 @@ const reviewPreamble = `You are the self-learning reviewer for a coding agent. T
 
 // reviewToolScope reins in the inherited system prompt: the fork keeps the
 // parent's system prompt verbatim for prefix-cache parity, but the parent
-// advertises Bash/Read/Edit/Write/Glob/Grep that the fork rejects via its
+// advertises Bash/Read/Edit/Write that the fork rejects via its
 // permission policy. Without this clarifier the reviewer LLM happily emits
 // e.g. `Read('./SKILL.md')` calls that burn turns getting rejected, and the
 // 5-minute deadline expires before any real write lands.
-const reviewToolScope = `Tool scope for this review: the ONLY tools available are memory_write and skill_manage. Disregard any other tool mentioned in the system prompt above (Bash, Read, Edit, Write, Glob, Grep, etc.) — those belong to the main coding agent, not to this review pass. Calls to them will be rejected and waste the review's wall-clock budget.`
+const reviewToolScope = `Tool scope for this review: the ONLY tools available are memory_write and skill_manage. Disregard any other tool mentioned in the system prompt above (Bash, Read, Edit, Write, etc.) — those belong to the main coding agent, not to this review pass. Calls to them will be rejected and waste the review's wall-clock budget.`
 
 // memorySectionFor returns the eviction-first memory steering with the
 // store's actual cap interpolated — the model needs to know the real

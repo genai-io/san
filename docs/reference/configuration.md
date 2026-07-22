@@ -22,7 +22,7 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 ```json
 {
   "permissions": {
-    "allow": ["Read(**)", "Glob(**)"],
+    "allow": ["Read(**)", "Bash(go test:*)"],
     "deny":  ["Bash(rm -rf*)"],
     "ask":   ["Write(**)"]
   },

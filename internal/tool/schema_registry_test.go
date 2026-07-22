@@ -29,12 +29,11 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 func TestBuiltinToolsAllRegistered(t *testing.T) {
 	schemas := tool.GetToolSchemas()
 	for _, name := range []string{
-		tool.ToolRead, tool.ToolGlob, tool.ToolGrep, tool.ToolWebFetch, tool.ToolWebSearch,
-		tool.ToolEdit, tool.ToolWrite, tool.ToolBash, tool.ToolTaskStop, tool.ToolAskUserQuestion,
+		tool.ToolRead, tool.ToolWebFetch, tool.ToolWebSearch,
+		tool.ToolEdit, tool.ToolWrite, tool.ToolBash, tool.ToolAskUserQuestion,
 		tool.ToolSkill, tool.ToolAgent, tool.ToolSendMessage,
 		tool.ToolTaskCreate, tool.ToolTaskGet, tool.ToolTaskUpdate, tool.ToolTaskList,
 		tool.ToolCronCreate, tool.ToolCronDelete, tool.ToolCronList,
-		tool.ToolEnterWorktree, tool.ToolExitWorktree,
 	} {
 		if _, ok := findSchema(schemas, name); !ok {
 			t.Errorf("built-in tool %q is missing from GetToolSchemas output", name)
@@ -160,14 +159,5 @@ func TestAskUserQuestionSchemaRejectsEmptyQuestionsShape(t *testing.T) {
 	}
 	if got, ok := options["maxItems"].(int); !ok || got != 8 {
 		t.Fatalf("AskUserQuestion nested options must allow at most eight items, got %#v", options["maxItems"])
-	}
-}
-
-// TestTaskOutputAbsentFromRegisteredSet confirms the intentionally-disabled
-// TaskOutput tool never reaches the model even though its type still
-// implements tool.Tool (it is simply never registered).
-func TestTaskOutputAbsentFromRegisteredSet(t *testing.T) {
-	if _, ok := findSchema((&tool.Set{}).Tools(), tool.ToolTaskOutput); ok {
-		t.Fatalf("disabled tool %s must not appear in the tool set", tool.ToolTaskOutput)
 	}
 }

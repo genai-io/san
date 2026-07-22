@@ -63,7 +63,7 @@ block (it enqueues into the recipient's inbox and returns).
 
 A background task's **completion** is pushed automatically when its run ends.
 Main injects it immediately while idle, or at the next turn boundary during an
-active stream; it never polls `TaskOutput`. A **`SendMessage`** is best-effort:
+active stream; it never polls for output. A **`SendMessage`** is best-effort:
 a subagent that has finished (or never
 takes another step) won't see it, so it is only for steering or interim notes
 — a subagent's final result comes back on its own (the tool result for a

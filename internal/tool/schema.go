@@ -5,8 +5,6 @@ import "github.com/genai-io/san/internal/core"
 // Tool name constants used in runtime comparisons across the codebase.
 const (
 	ToolRead      = "Read"
-	ToolGlob      = "Glob"
-	ToolGrep      = "Grep"
 	ToolWebFetch  = "WebFetch"
 	ToolWebSearch = "WebSearch"
 	ToolEdit      = "Edit"
@@ -15,23 +13,15 @@ const (
 	ToolBash        = "Bash"
 	ToolAgent       = "Agent"
 	ToolSendMessage = "SendMessage"
-	ToolTaskOutput  = "TaskOutput"
-	ToolTaskStop    = "TaskStop"
 
-	// Deprecated aliases — kept for backward compatibility with cached model contexts.
-	ToolAgentOutput   = ToolTaskOutput
-	ToolAgentStop     = ToolTaskStop
-	ToolSkill         = "Skill"
-	ToolTaskCreate    = "TaskCreate"
-	ToolTaskGet       = "TaskGet"
-	ToolTaskUpdate    = "TaskUpdate"
-	ToolTaskList      = "TaskList"
-	ToolCronCreate    = "CronCreate"
-	ToolCronDelete    = "CronDelete"
-	ToolCronList      = "CronList"
-	ToolEnterWorktree = "EnterWorktree"
-	ToolExitWorktree  = "ExitWorktree"
-
+	ToolSkill           = "Skill"
+	ToolTaskCreate      = "TaskCreate"
+	ToolTaskGet         = "TaskGet"
+	ToolTaskUpdate      = "TaskUpdate"
+	ToolTaskList        = "TaskList"
+	ToolCronCreate      = "CronCreate"
+	ToolCronDelete      = "CronDelete"
+	ToolCronList        = "CronList"
 	ToolAskUserQuestion = "AskUserQuestion"
 
 	ToolEvolve = "Evolve"
@@ -71,12 +61,11 @@ type SchemaOptions struct {
 // than skipped at runtime. TestBuiltinOrderCoversEveryRegisteredTool guards
 // the reverse: a registered tool must not be missing from this order.
 var builtinToolOrder = []string{
-	ToolRead, ToolGlob, ToolGrep, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolTaskStop, ToolAskUserQuestion,
+	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolAskUserQuestion,
 	ToolSkill,
 	ToolAgent, ToolSendMessage,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate, ToolTaskList,
 	ToolCronCreate, ToolCronDelete, ToolCronList,
-	ToolEnterWorktree, ToolExitWorktree,
 }
 
 // GetToolSchemas returns core.ToolSchema definitions for all registered tools

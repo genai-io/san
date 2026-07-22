@@ -16,14 +16,24 @@ import (
 // leak its private planning into the main panel (showing up as extra rows next
 // to the worker item that already represents it), and TaskList/TaskGet would
 // hand it back the main plan it has no business reading.
+// Cron is parent-only for the same reason again: scheduling creates state
+// that outlives the worker and belongs to the session owner.
 var parentOnlyTools = map[string]bool{
-	ToolAgent:         true,
-	ToolEnterWorktree: true,
-	ToolExitWorktree:  true,
-	ToolTaskCreate:    true,
-	ToolTaskUpdate:    true,
-	ToolTaskList:      true,
-	ToolTaskGet:       true,
+	ToolAgent:      true,
+	ToolTaskCreate: true,
+	ToolTaskUpdate: true,
+	ToolTaskList:   true,
+	ToolTaskGet:    true,
+	ToolCronCreate: true,
+	ToolCronDelete: true,
+	ToolCronList:   true,
+}
+
+// IsParentOnlyTool reports whether the tool is reserved for the main
+// conversation. The subagent permission gate consults this so a
+// hallucinated call cannot slip through the safe-tool auto-permit.
+func IsParentOnlyTool(name string) bool {
+	return parentOnlyTools[name]
 }
 
 // Set provides tools for a conversation turn.
