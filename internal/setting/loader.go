@@ -244,25 +244,16 @@ func defaultData() *Data {
 	return NewData()
 }
 
-// UpdateDisabledToolsAt updates disabled tools at user level (true) or project level (false).
+// UpdateDisabledToolsAt updates disabled tools at user level (true) or project
+// level (false). It replaces the whole disabledTools block rather than routing
+// through the merging save: the caller passes the complete desired map for the
+// level, and merging would OR it with the file's previous keys so a re-enable
+// (a removed key) or a default-disabled tool toggled back off could never
+// persist. Cross-level layering still ORs on Load by design.
 func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error {
-	loader := NewLoader()
-	settings := &Data{DisabledTools: disabledTools}
-
-	var err error
-	if userLevel {
-		err = loader.SaveToUser(settings)
-	} else {
-		err = loader.SaveToProject(settings)
-	}
-	if err != nil {
-		return err
-	}
-
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
+	return updateSettingsFile(userLevel, func(d *Data) {
+		d.DisabledTools = disabledTools
+	})
 }
 
 // updateSettingsFile reads the settings file at the requested level (true =
