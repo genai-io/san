@@ -144,11 +144,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.env.LLMProvider = m.services.LLM.Provider()
 		return m, nil
 	case input.ToolToggleMsg:
-		// The selector already persisted the enable/disable; the tool registry
-		// is read live, so there's nothing to do at the app level. Return
-		// explicitly so the message doesn't leak into sub-model routing and
-		// the textarea (unlike AgentToggleMsg/SkillCycleMsg below, which do
-		// need a reaction).
+		// The selector already persisted the enable/disable to disk. Refresh the
+		// in-memory settings so DisabledTools() (read by the built-in and MCP
+		// tool filters at agent-build time) reflects it; ensureAgentSession then
+		// rebuilds on the next turn when the disabled set drifts, so the toggle
+		// takes effect without interrupting an in-flight turn.
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after tool toggle failed", zap.Error(err))
+		}
 		return m, nil
 	case input.MissionRefinedMsg:
 		// The /autopilot Mission editor's refined text arrived; hand it to the

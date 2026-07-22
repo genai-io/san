@@ -5,6 +5,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -362,6 +364,22 @@ func firstValidDuration(vals ...string) time.Duration {
 // Agent lifecycle (delegates to services.Agent)
 // ============================================================
 
+// disabledToolsSignature is a stable fingerprint of the effective disabled-tool
+// set. ensureAgentSession compares it against the live agent's build-time value
+// so a /tool enable/disable (which the built-in and MCP tool filters both read)
+// rebuilds the toolset on the next turn.
+func (m *model) disabledToolsSignature() string {
+	disabled := m.services.Setting.DisabledTools()
+	names := make([]string, 0, len(disabled))
+	for name, off := range disabled {
+		if off {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return strings.Join(names, "\x00")
+}
+
 // ensureAgentSession lazily starts the agent goroutine, preloading the
 // existing conversation. If pendingSend is non-empty and matches the
 // trailing user message in m.conv, it's dropped from the preload — the
@@ -369,12 +387,14 @@ func firstValidDuration(vals ...string) time.Duration {
 // the input twice. Pass "" when the caller hasn't yet appended the message.
 func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 	if m.services.Agent.Active() {
-		// The Evolve toolset is fixed at agent-build time. If the enabled
-		// capabilities drifted since the build (a /evolve save, an external
-		// settings edit), stop the stale session and fall through to rebuild
-		// with the current toolset — the one choke point every turn passes
-		// through, so all drift sources are covered uniformly.
-		if m.selfLearnCapabilities() == m.agentEvolveCaps {
+		// The toolset is fixed at agent-build time. If the enabled Evolve
+		// capabilities or the disabled-tool set drifted since the build (a
+		// /evolve save, a /tool toggle, an external settings edit), stop the
+		// stale session and fall through to rebuild with the current toolset —
+		// the one choke point every turn passes through, so all drift sources
+		// are covered uniformly.
+		if m.selfLearnCapabilities() == m.agentEvolveCaps &&
+			m.disabledToolsSignature() == m.agentDisabledToolsSignature {
 			return nil, nil
 		}
 		m.StopAgentSession()
@@ -392,6 +412,7 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentDisabledToolsSignature = m.disabledToolsSignature()
 
 	// Wire L1 self-learning *after* Agent.Start so the ReviewFunc can capture
 	// the live Agent + System for its fork. Builds nothing if both arms are

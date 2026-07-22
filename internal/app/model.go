@@ -123,6 +123,12 @@ type model struct {
 	// /evolve saves and external settings edits with one mechanism.
 	agentEvolveCaps evolve.Capabilities
 
+	// agentDisabledToolsSignature is the disabledToolsSignature() the live
+	// agent's toolset was built with; ensureAgentSession rebuilds when it no
+	// longer matches the current one, so a /tool enable/disable takes effect on
+	// the next turn.
+	agentDisabledToolsSignature string
+
 	// agentRestartMessages is the last live main-agent chain captured before a
 	// deliberate stop. The UI conversation is a rendering model and can be
 	// empty or temporarily divergent, so it is not authoritative for rebuilding
