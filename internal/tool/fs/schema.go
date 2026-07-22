@@ -10,8 +10,8 @@ func (t *ReadTool) Schema() core.ToolSchema {
 
 - Prefer relative paths for files inside the session working directory; absolute for targets outside it
 - Reads up to 2000 lines from the start by default; use offset/limit only for very long files
-- Output is line-numbered starting at 1. When copying text for Edit, strip the number and tab prefix; preserve all remaining whitespace exactly.
-- Lines longer than 2000 characters end with “… [line truncated]”; that marker is not part of the file and cannot be copied into an Edit.
+- Read output has a line-number and tab prefix; strip it for Edit and preserve the rest exactly
+- Lines over 2000 characters end with “… [line truncated]” and cannot be copied into an Edit
 - Images (e.g. screenshots) are supported — read the file to view it`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -40,10 +40,9 @@ func (t *EditTool) Schema() core.ToolSchema {
 		Name: "Edit",
 		Description: `Performs exact string replacements in a file.
 
-- You must know the file's current content before editing. Any observation in this session counts — a Read, a Write that created the file, or a previous Edit — so do NOT re-read a file you just created or modified. This tool errors only if you never observed the file this session, or if it changed on disk outside your own tool calls (a formatter ran, the user saved it) — then Read it again and retry.
-- If you do need fresh contents, Read and wait for its result before calling Edit; don't send both in the same message.
-- A replacement that differs only in trailing whitespace applies automatically. Any other whitespace mismatch reports the file’s actual lines for an exact retry.
-- oldText must otherwise match exactly once (strip Read's line-number prefix and preserve indentation); add context if it isn't unique.
+- Requires a current view: Read first, unless successful Write/Edit already observed the file this session. Re-read after external changes.
+- Do not Read and Edit the same file in one message.
+- oldText must match exactly once after stripping Read's line prefix and preserving whitespace. Trailing-whitespace-only mismatches apply automatically; others show the actual lines.
 - All edits are checked against the original file and applied together; combine overlapping changes into one edit.`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -77,8 +76,8 @@ func (t *WriteTool) Schema() core.ToolSchema {
 		Name: "Write",
 		Description: `Writes a file to the local filesystem, overwriting any existing content.
 
-- Overwriting an existing file requires a current view of it: Read it first, unless you already created or modified it in this session with Write/Edit (your own results count — no re-read needed). If it changed on disk outside your own tool calls, Read it again first.
-- Modifying an existing file — however small the file or change — is Edit's job. Reserve Write for creating new files and wholesale regeneration where string replacements are impractical.
+- To overwrite, Read the file first unless successful Write/Edit already observed it this session; re-read after external changes.
+- Use Edit for every existing-file change; reserve Write for new files or wholesale regeneration.
 - Never create documentation or README files unless explicitly requested.`,
 		Parameters: map[string]any{
 			"type": "object",
