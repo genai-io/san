@@ -408,6 +408,11 @@ var defaultDisabledTools = map[string]bool{
 	"TaskCreate": true,
 	"TaskGet":    true,
 	"TaskUpdate": true,
+	// Inter-agent messaging: steering a still-running background worker. Never
+	// exercised in practice (subagents run to completion and report back on
+	// their own), so it ships off; the tool's own schema documents it when a
+	// user re-enables it from the /tool panel.
+	"SendMessage": true,
 }
 
 // IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
