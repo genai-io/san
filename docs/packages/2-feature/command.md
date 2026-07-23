@@ -6,11 +6,9 @@ layer: feature
 # command
 
 Registry for slash commands: built-in handlers (`/help`, `/model`,
-`/identity`, …), dynamic provider-supplied entries, builtin prompt
-commands embedded in the binary (`/simplify`), and user-defined markdown
-commands under `commands/` directories. Resolves names, fuzzy prefixes,
-and plugin-scoped command paths; a user or project command shadows a
-builtin prompt command of the same name.
+`/identity`, …), dynamic provider-supplied entries, and user-defined
+markdown commands under `commands/` directories. Resolves names, fuzzy
+prefixes, and plugin-scoped command paths.
 
 ## Purpose
 
