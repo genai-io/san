@@ -265,15 +265,22 @@ func TestProjectCommandOverridesUser(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Cleanup(func() { os.Setenv("HOME", origHome) })
 
-	cmds := svc.loadAllCustomCommands()
-	if len(cmds) != 1 {
-		t.Fatalf("expected 1 command (project overrides user), got %d: %+v", len(cmds), cmds)
+	// The list also carries builtin prompt commands, so assert on the deploy
+	// entries specifically: exactly one, and the project copy wins.
+	var deploys []CustomCommand
+	for _, c := range svc.loadAllCustomCommands() {
+		if c.Name == "deploy" {
+			deploys = append(deploys, c)
+		}
 	}
-	if cmds[0].Description != "Project deploy" {
-		t.Errorf("description = %q, want %q (project should override user)", cmds[0].Description, "Project deploy")
+	if len(deploys) != 1 {
+		t.Fatalf("expected 1 deploy command (project overrides user), got %d: %+v", len(deploys), deploys)
 	}
-	if cmds[0].Scope != scopeProject {
-		t.Errorf("scope = %d, want %d (scopeProject)", cmds[0].Scope, scopeProject)
+	if deploys[0].Description != "Project deploy" {
+		t.Errorf("description = %q, want %q (project should override user)", deploys[0].Description, "Project deploy")
+	}
+	if deploys[0].Scope != scopeProject {
+		t.Errorf("scope = %d, want %d (scopeProject)", deploys[0].Scope, scopeProject)
 	}
 }
 
