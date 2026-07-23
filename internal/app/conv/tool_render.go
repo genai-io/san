@@ -130,15 +130,22 @@ func renderNestedReadResultInline(data ToolResultData) string {
 		return sb.String()
 	}
 
-	var sb strings.Builder
 	content := strings.TrimSuffix(data.Content, "\n")
-	if content != "" {
+	var sb strings.Builder
+	if data.Expanded && content != "" {
 		for line := range strings.SplitSeq(content, "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+			sb.WriteString(renderNestedReadBodyLine(line))
 		}
 	}
 	sb.WriteString(toolResultStyle.Render("  └ "+formatReadResultSummary(content)) + "\n")
 	return sb.String()
+}
+
+// renderNestedReadBodyLine keeps expanded Read results one level below their
+// call, avoiding the generic expanded-result padding that made Read rows appear
+// four columns farther right than their terminal summary.
+func renderNestedReadBodyLine(line string) string {
+	return toolResultStyle.Render("  "+line) + "\n"
 }
 
 func formatReadResultSummary(content string) string {
@@ -180,10 +187,16 @@ func renderBashToolResultInline(data ToolResultData) string {
 	sb.WriteString(style.Render("  └ "+summary) + "\n")
 	if (data.Expanded || data.IsError) && content != "" {
 		for line := range strings.SplitSeq(content, "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+			sb.WriteString(renderNestedBashBodyLine(line))
 		}
 	}
 	return sb.String()
+}
+
+// renderNestedBashBodyLine aligns expanded command output with the shell
+// prompt, connector, and terminal summary in a nested Bash block.
+func renderNestedBashBodyLine(line string) string {
+	return toolResultStyle.Render("  "+line) + "\n"
 }
 
 func renderNestedFileChangeResultInline(data ToolResultData) string {
@@ -203,10 +216,10 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 	}
 
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
-		block, _ := RenderStoredFileDiff(details.UnifiedDiff, width, 0)
+		block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, "  ")
 		sb.WriteString(block)
 		if details.TruncatedDiffLines > 0 {
-			sb.WriteString(truncatedStyle.Render(fmt.Sprintf("     … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+			sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 		}
 		sb.WriteString(toolResultStyle.Render("  └ "+fileChangeSummary(details)) + "\n")
 		return sb.String()

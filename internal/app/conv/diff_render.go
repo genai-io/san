@@ -22,11 +22,17 @@ import (
 // maxVisible caps the number of rendered rows (0 means no cap). The second
 // return value is how many diff rows were hidden by that cap.
 func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) {
+	return renderFileDiffIndented(lines, width, maxVisible, "     ")
+}
+
+// renderFileDiffIndented renders a diff under a caller-provided transcript
+// indent. Approval previews retain RenderFileDiff's five-column layout, while
+// nested Edit and Write results align their rows with their result trailer.
+func renderFileDiffIndented(lines []perm.DiffLine, width, maxVisible int, indent string) (string, int) {
 	if len(lines) == 0 {
 		return "", 0
 	}
 
-	const indent = "     "
 	rowWidth := max(width-lipgloss.Width(indent), 20)
 	gutterWidth := diffGutterWidth(lines)
 	emphasis := computeDiffEmphasis(lines)
@@ -231,6 +237,7 @@ type storedDiffKey struct {
 	diff       string
 	width      int
 	maxVisible int
+	indent     string
 	darkMode   bool
 }
 
@@ -250,14 +257,18 @@ var (
 // immutable. Only live-region results hit the cache, so it stays tiny; it
 // is dropped wholesale when it outgrows that working set.
 func RenderStoredFileDiff(unifiedDiff string, width, maxVisible int) (string, int) {
-	key := storedDiffKey{diff: unifiedDiff, width: width, maxVisible: maxVisible, darkMode: kit.IsDarkBackground()}
+	return renderStoredFileDiffIndented(unifiedDiff, width, maxVisible, "     ")
+}
+
+func renderStoredFileDiffIndented(unifiedDiff string, width, maxVisible int, indent string) (string, int) {
+	key := storedDiffKey{diff: unifiedDiff, width: width, maxVisible: maxVisible, indent: indent, darkMode: kit.IsDarkBackground()}
 	storedDiffMu.Lock()
 	cached, ok := storedDiffCache[key]
 	storedDiffMu.Unlock()
 	if ok {
 		return cached.block, cached.hidden
 	}
-	block, hidden := RenderFileDiff(perm.ParseUnifiedDiff(unifiedDiff), width, maxVisible)
+	block, hidden := renderFileDiffIndented(perm.ParseUnifiedDiff(unifiedDiff), width, maxVisible, indent)
 	storedDiffMu.Lock()
 	if len(storedDiffCache) >= 32 {
 		clear(storedDiffCache)
