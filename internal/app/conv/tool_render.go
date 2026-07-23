@@ -95,6 +95,11 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	}
 
 	switch toolName {
+	case tool.ToolBash:
+		if data.Nested {
+			return renderBashToolResultInline(data)
+		}
+		return renderGenericToolResultInline(data)
 	case tool.ToolSkill:
 		return renderSkillResultInline(data)
 	case tool.ToolAgent, tool.ToolSendMessage:
@@ -105,6 +110,33 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderAskUserResultInline(data)
 	}
 	return renderGenericToolResultInline(data)
+}
+
+func renderBashToolResultInline(data ToolResultData) string {
+	state := "completed"
+	content := data.Content
+	if data.IsError {
+		lines := strings.Split(content, "\n")
+		state = "failed"
+		if len(lines) > 0 && lines[0] != "" {
+			state += ": " + lines[0]
+			content = strings.Join(lines[1:], "\n")
+		}
+	}
+
+	style := toolResultStyle
+	if data.IsError {
+		style = errorStyle
+	}
+
+	var sb strings.Builder
+	sb.WriteString(style.Render("  └ " + state) + "\n")
+	if (data.Expanded || data.IsError) && content != "" {
+		for line := range strings.SplitSeq(content, "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render("  " + line) + "\n")
+		}
+	}
+	return sb.String()
 }
 
 func renderFileChangeResultInline(data ToolResultData) string {
