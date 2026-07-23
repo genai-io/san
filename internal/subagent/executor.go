@@ -516,11 +516,11 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
-// matches docs/concepts/permission-model.md: deny_tools, confirmation floor,
-// allow_tools, mode default, with Prompt collapsing to Deny because subagents
-// cannot ask. In bypassPermissions mode, the mode policy permits every
-// non-parent-only call after deny_tools, including otherwise
-// confirmation-required calls.
+// matches docs/concepts/permission-model.md: deny_tools, bypass-immune floor,
+// confirmation tier, allow_tools, mode default, with Prompt collapsing to
+// Deny because subagents cannot ask. bypassPermissions mode skips only the
+// recoverable confirmation tier — the bypass-immune floor holds in every
+// mode.
 //
 // One communication carve-out sits between deny and allow_tools: for a
 // mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
@@ -538,16 +538,21 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if denyRules.Matches(name, input) {
 			return false, fmt.Sprintf("tool %s is blocked by deny_tools", name)
 		}
-		// Bypass mode means no permission confirmation: after honoring explicit
-		// deny_tools, permit every executable worker tool. Keep the parent-only
-		// restriction below so a worker still cannot spawn agents or manipulate
-		// main-only state.
+		// Bypass-immune floor: an unrecoverable call (real destruction, a
+		// sensitive path, data exfiltration) is denied in every mode, bypass
+		// included — subagents cannot ask, so the floor is a hard deny.
+		if reason := setting.UnrecoverableReason(name, input); reason != "" {
+			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
+		}
+		// Bypass mode skips the recoverable confirmation tier: after deny_tools
+		// and the floor above, permit every executable worker tool. Keep the
+		// parent-only restriction below so a worker still cannot spawn agents
+		// or manipulate main-only state.
 		if opMode == setting.ModeBypassPermissions && !tool.IsParentOnlyTool(name) {
 			return true, ""
 		}
-		// Outside bypass, the confirmation floor is a hard deny: subagents
-		// cannot ask, so a destructive or sensitive call is refused even when a
-		// greedy allow_tools pattern would otherwise match it.
+		// Outside bypass, the recoverable tier (work-discarding git) is also a
+		// hard deny, so a greedy allow_tools pattern cannot smuggle it through.
 		if reason := setting.ConfirmationReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}

@@ -532,10 +532,15 @@ func TestBypassModeAllowsEverything(t *testing.T) {
 	if !allow {
 		t.Fatal("bypass mode should allow Bash")
 	}
-	// Bypass permits confirmation-required commands too.
-	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "rm -rf /tmp/example"})
+	// Bypass skips the recoverable confirmation tier (work-discarding git)…
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git push --force origin main"})
 	if !allow {
-		t.Fatalf("bypass mode should allow destructive Bash: %s", reason)
+		t.Fatalf("bypass mode should allow work-discarding git: %s", reason)
+	}
+	// …but the unrecoverable bypass-immune floor still holds.
+	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "rm -rf /tmp/example"})
+	if allow {
+		t.Fatal("bypass mode must still deny unrecoverable destruction")
 	}
 	// Parent-only tools stay denied even in bypass mode — the agent model
 	// is flat, and the gate backs up the schema-level exclusion.

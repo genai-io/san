@@ -42,8 +42,11 @@ chain must be on the read-only list (`rg`, `grep`, `find`, `ls`, read-only
 `git`, …) with no output redirection, substitution, or env-var prefix.
 This replaces the retired Grep/Glob tools — search runs through Bash
 without approval prompts, in every mode including explore. Deny/ask rules
-and the confirmation safety checks still run first and override it;
-`bypassPermissions` mode skips the confirmation checks entirely.
+and the safety checks still run first and override it. The safety checks
+have two tiers: the bypass-immune floor (destructive commands, sensitive
+paths, data exfiltration) holds in every mode; the recoverable
+confirmation tier (work-discarding git, out-of-working-dir writes) is
+skipped by `bypassPermissions` mode.
 
 ## Subagent Permission Resolution
 
@@ -61,8 +64,8 @@ requests that would require a user prompt.
   - `default` — reads auto-allow; everything that would ask is denied.
   - `acceptEdits` (spelled `edit` on the Agent tool) — Edit/Write
     auto-allow; other gated tools are denied.
-  - `bypassPermissions` — everything allowed after `deny_tools`;
-    parent-only tools stay blocked.
+  - `bypassPermissions` — everything allowed after `deny_tools` and the
+    bypass-immune floor; parent-only tools stay blocked.
 
 Both gates share the same mode table (`setting.ModeDefault`); the subagent
 side only swaps "prompt the user" for "deny".
