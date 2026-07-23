@@ -327,7 +327,7 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 	for _, cmd := range discarding {
 		args := map[string]any{"command": cmd}
-		if ConfirmationReason("Bash", args) == "" {
+		if RecoverableReason("Bash", args) == "" {
 			t.Errorf("%q left the confirmation tier entirely", cmd)
 		}
 		if r := UnrecoverableReason("Bash", args); r != "" {
@@ -340,7 +340,7 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 
 	// A lease-guarded push never enters the tier at all.
-	if ConfirmationReason("Bash", map[string]any{"command": "git push --force-with-lease"}) != "" {
+	if RecoverableReason("Bash", map[string]any{"command": "git push --force-with-lease"}) != "" {
 		t.Error("--force-with-lease should not be floored")
 	}
 
@@ -749,7 +749,7 @@ func TestIsRootOrHomeRemoval(t *testing.T) {
 		"rm -rf /", "rm -fr /", "rm -r /", "rm --recursive /",
 		"rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -rf ~/*",
 		"rm -rf $HOME", "rm -rf ${HOME}/",
-		"sudo rm -rf /", "git diff && rm -rf ~",
+		"sudo rm -rf /", "sudo timeout 5 rm -rf /", "git diff && rm -rf ~",
 		`echo "$(rm -rf ~)"`, "echo `rm -rf /`",
 	}
 	for _, cmd := range trips {
@@ -830,18 +830,10 @@ func TestBypassPermissionsMode(t *testing.T) {
 			perm.Permit,
 		},
 		{
+			// Input variants live in TestIsRootOrHomeRemoval; this case pins
+			// the wiring — the breaker outranks bypass in the pipeline.
 			"circuit breaker: rm -rf / still prompts in bypass",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Prompt,
-		},
-		{
-			"circuit breaker: rm -rf ~ still prompts in bypass",
-			"Bash", map[string]any{"command": "rm -rf ~"},
-			perm.Prompt,
-		},
-		{
-			"circuit breaker: substitution form still prompts in bypass",
-			"Bash", map[string]any{"command": `echo "$(rm -rf ~)"`},
 			perm.Prompt,
 		},
 	}

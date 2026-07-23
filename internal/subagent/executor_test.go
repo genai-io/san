@@ -532,7 +532,8 @@ func TestBypassModeAllowsEverything(t *testing.T) {
 	if !allow {
 		t.Fatal("bypass mode should allow Bash")
 	}
-	// Bypass skips both confirmation tiers…
+	// Bypass skips both confirmation tiers. The circuit-breaker counterpart
+	// (rm -rf ~ still denied) is pinned in TestPermissionScenarios.
 	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git push --force origin main"})
 	if !allow {
 		t.Fatalf("bypass mode should allow work-discarding git: %s", reason)
@@ -540,11 +541,6 @@ func TestBypassModeAllowsEverything(t *testing.T) {
 	allow, reason = check(context.Background(), "Bash", map[string]any{"command": "rm -rf /tmp/example"})
 	if !allow {
 		t.Fatalf("bypass mode should allow destructive bash on a subpath: %s", reason)
-	}
-	// …but the root/home-removal circuit breaker still holds.
-	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "rm -rf ~"})
-	if allow {
-		t.Fatal("bypass mode must still deny a home-directory removal")
 	}
 	// Parent-only tools stay denied even in bypass mode — the agent model
 	// is flat, and the gate backs up the schema-level exclusion.

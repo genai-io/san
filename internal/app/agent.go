@@ -207,9 +207,14 @@ func (m *model) buildAgentParams() agent.BuildParams {
 				return agent.PermReviewResult{}
 			}
 			cfg := m.liveAutopilotConfig()
-			// Defense in depth: no steer may approve an unrecoverable action, even
-			// if one somehow reaches here. The recoverable git tier is deliberately
-			// not checked — weighing it is exactly what the judge is for.
+			// Defense in depth: no steer may approve an unrecoverable action —
+			// circuit-breaker tier included — even if one somehow reaches here.
+			// The recoverable git tier is deliberately not checked — weighing it
+			// is exactly what the judge is for.
+			if r := setting.CircuitBreakerReason(name, args); r != "" {
+				m.recordDecision(ctx, false, r)
+				return agent.PermReviewResult{}
+			}
 			if r := setting.UnrecoverableReason(name, args); r != "" {
 				m.recordDecision(ctx, false, r)
 				return agent.PermReviewResult{}

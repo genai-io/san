@@ -553,10 +553,7 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		}
 		// Outside bypass, both confirmation tiers are hard denies, so a greedy
 		// allow_tools pattern cannot smuggle destruction through.
-		if reason := setting.UnrecoverableReason(name, input); reason != "" {
-			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
-		}
-		if reason := setting.ConfirmationReason(name, input); reason != "" {
+		if reason, _ := setting.ConfirmationTier(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
 		// Parent-only tools never reach a worker, even via allow_tools —

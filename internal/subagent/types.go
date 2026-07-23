@@ -30,8 +30,8 @@ const (
 	// Used for research and read-only investigation.
 	PermissionExplore PermissionMode = "explore"
 
-	// PermissionBypass: everything Allow after deny_tools and the root/home-removal circuit breaker
-	// (sensitive paths, destructive bash) which still gate the call.
+	// PermissionBypass: everything Allow after deny_tools and the
+	// root/home-removal circuit breaker, which still gate the call.
 	PermissionBypass PermissionMode = "bypassPermissions"
 
 	// PermissionDontAsk: reads auto, everything else silently Deny.

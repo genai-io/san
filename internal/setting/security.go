@@ -69,15 +69,18 @@ func isRootOrHomeRemoval(cmd string) bool {
 	}
 	for _, c := range extractCommandsAST(file) {
 		name, args := c.Name, c.Args
-		// Unwrap sudo and the neutral wrappers so "sudo rm -rf /" trips too.
+		// Unwrap sudo, and after it any neutral wrapper it exposed, so
+		// "sudo rm -rf /" and "sudo timeout 5 rm -rf /" trip too. Arg skipping
+		// reuses looksLikeCommand — the same heuristic extractFromCall applies
+		// when it strips wrappers — so the two paths cannot drift.
 		for (name == "sudo" || safeWrapperCommands[name]) && len(args) > 0 {
-			for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+			for len(args) > 0 && !looksLikeCommand(args[0]) {
 				args = args[1:]
 			}
 			if len(args) == 0 {
 				break
 			}
-			name, args = args[0], args[1:]
+			name, args = filepath.Base(args[0]), args[1:]
 		}
 		if name != "rm" {
 			continue

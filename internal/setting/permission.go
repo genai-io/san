@@ -117,11 +117,8 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 // real destruction, a sensitive path, a write reaching outside the working
 // directory — stays the human's call.
 func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
-	if reason := UnrecoverableReason(toolName, args); reason != "" {
-		return "confirmation: " + reason, false
-	}
-	if reason := ConfirmationReason(toolName, args); reason != "" {
-		return "confirmation: " + reason, true
+	if reason, recoverable := ConfirmationTier(toolName, args); reason != "" {
+		return "confirmation: " + reason, recoverable
 	}
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
@@ -240,7 +237,7 @@ func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *S
 	// A hook cannot vouch for anything a safety check holds — the circuit
 	// breaker or either confirmation tier: there is no judge in this path to
 	// weigh the recoverable one.
-	if reason := CircuitBreakerReason(toolName, args); reason != "" {
+	if CircuitBreakerReason(toolName, args) != "" {
 		return false
 	}
 	if reason, _ := s.confirmationPromptReason(toolName, args, session); reason != "" {
@@ -560,11 +557,25 @@ func CircuitBreakerReason(toolName string, args map[string]any) string {
 	return ""
 }
 
-// ConfirmationReason returns a non-empty reason if the call sits in the
-// recoverable confirmation tier (work-discarding git commands) — the tier the
-// AutoPilot judge may weigh and bypass mode skips. Gates that cannot ask —
-// the subagent gate outside bypass mode — turn the reason into a hard deny.
-func ConfirmationReason(toolName string, args map[string]any) string {
+// ConfirmationTier classifies a call against both confirmation tiers in one
+// pass: why it is held, and whether it is the recoverable tier the AutoPilot
+// judge may weigh. The tier travels with the reason rather than being
+// re-derived at each gate, so a reason added later cannot land in the judge's
+// lap by omission. Gates that cannot ask — the subagent gate outside bypass
+// mode — turn any reason into a hard deny.
+func ConfirmationTier(toolName string, args map[string]any) (reason string, recoverable bool) {
+	if reason := UnrecoverableReason(toolName, args); reason != "" {
+		return reason, false
+	}
+	if reason := RecoverableReason(toolName, args); reason != "" {
+		return reason, true
+	}
+	return "", false
+}
+
+// RecoverableReason is the recoverable confirmation tier (work-discarding git
+// commands) — the tier the AutoPilot judge may weigh and bypass mode skips.
+func RecoverableReason(toolName string, args map[string]any) string {
 	if cmd, ok := bashCommandArg(toolName, args); ok && isGitDiscardingCommand(cmd) {
 		return "git command that discards work"
 	}
@@ -575,7 +586,7 @@ func ConfirmationReason(toolName string, args map[string]any) string {
 // effect nothing can bring back. Bypass mode skips it (only the circuit
 // breaker survives bypass); in every other mode it prompts, and the AutoPilot
 // judge can never approve it — the judge may only weigh the recoverable tier
-// (ConfirmationReason).
+// (RecoverableReason).
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
