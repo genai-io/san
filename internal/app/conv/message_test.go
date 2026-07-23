@@ -122,17 +122,18 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 	}
 }
 
-func Test_renderBashToolCallSingleLineUsesDimmedPreview(t *testing.T) {
+func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
 	raw := renderBashToolCall(`{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "")
 	out := stripANSI(raw)
 	if out != "● Bash(git status) - inspect repository\n" {
 		t.Fatalf("single-line command should render as one preview row, got %q", out)
 	}
 	if raw != lipgloss.JoinHorizontal(lipgloss.Top,
-		toolResultStyle.Width(2).Render("●"),
-		toolResultStyle.Render("Bash(git status) - inspect repository"),
+		toolCallStyle.Width(2).Render("●"),
+		toolCallStyle.Render("Bash(git status)"),
+		toolResultStyle.Render(" - inspect repository"),
 	)+"\n" {
-		t.Fatalf("single-line preview should use the dimmed result style, got %q", raw)
+		t.Fatalf("single-line preview should dim only its description, got %q", raw)
 	}
 }
 
@@ -425,8 +426,12 @@ func TestRenderToolCallsTruncatesLongSingleLineBashPreview(t *testing.T) {
 	if !strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
 		t.Fatalf("RenderToolCalls() = %q, want long preview truncated with three dots", rendered)
 	}
-	if w := lipgloss.Width(strings.TrimSuffix(rendered, "\n")); w > maxToolLabelWidth(width)+lipgloss.Width("● ") {
-		t.Fatalf("preview width %d exceeds its budget", w)
+	lineWidth := lipgloss.Width(strings.TrimSuffix(rendered, "\n"))
+	if lineWidth <= maxToolLabelWidth(width)+lipgloss.Width("● ") {
+		t.Fatalf("preview width %d should use space beyond the generic tool-row budget", lineWidth)
+	}
+	if lineWidth > width {
+		t.Fatalf("preview width %d exceeds terminal width %d", lineWidth, width)
 	}
 }
 
@@ -444,8 +449,8 @@ func Test_renderBashToolCallReservesPreviewWidthForRunningDetail(t *testing.T) {
 	if strings.Count(strings.TrimSuffix(rendered, "\n"), "\n") != 0 {
 		t.Fatalf("running preview should remain on one row, got %q", rendered)
 	}
-	if w := lipgloss.Width(strings.TrimSuffix(rendered, "\n")); w > maxToolLabelWidth(width)+lipgloss.Width("● ") {
-		t.Fatalf("running preview width %d exceeds its budget", w)
+	if w := lipgloss.Width(strings.TrimSuffix(rendered, "\n")); w > width {
+		t.Fatalf("running preview width %d exceeds terminal width %d", w, width)
 	}
 }
 

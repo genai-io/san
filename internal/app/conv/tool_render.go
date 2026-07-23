@@ -1166,22 +1166,22 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 }
 
 // renderBashToolCall renders a Bash tool call so its command is always readable.
-// A non-empty single-line command uses a dimmed Bash(command) preview with the
-// optional description. Multi-line commands retain the full command block: a
-// dimmed block below a "● Bash" header, led by a shell "$" prompt. Command
-// lines soft-wrap to the width rather than truncate, so multi-line commands are
-// always visible in full.
+// A non-empty single-line command uses a normal Bash(command) preview with its
+// optional description dimmed. Multi-line commands retain the full command
+// block: a dimmed block below a "● Bash" header, led by a shell "$" prompt.
+// Command lines soft-wrap to the width rather than truncate, so multi-line
+// commands are always visible in full.
 func renderBashToolCall(input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
-		label := fmt.Sprintf("%s(%s)", tool.ToolBash, command)
+		label := toolCallStyle.Render(fmt.Sprintf("%s(%s)", tool.ToolBash, command))
 		if description = strings.Join(strings.Fields(description), " "); description != "" {
-			label += " - " + description
+			label += toolResultStyle.Render(" - " + description)
 		}
-		labelWidth := max(3, maxToolLabelWidth(width)-lipgloss.Width(detail))
+		labelWidth := max(3, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 		label = xansi.Truncate(label, labelWidth, "...")
-		iconCell := toolResultStyle.Width(2).Render(icon)
-		return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, toolResultStyle.Render(label)) + detail + "\n"
+		iconCell := toolCallStyle.Width(2).Render(icon)
+		return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 	}
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
@@ -1313,6 +1313,13 @@ func truncateToolLabel(label string, width int) string {
 		return label
 	}
 	return kit.TruncateText(label, maxWidth)
+}
+
+func bashPreviewLabelWidth(width int) int {
+	if width <= 0 {
+		return 80
+	}
+	return max(20, width-lipgloss.Width("● "))
 }
 
 func maxToolLabelWidth(width int) int {

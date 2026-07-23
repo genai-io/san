@@ -23,8 +23,8 @@ func TestBashRenderDemo(t *testing.T) {
 		input string
 	}{
 		{
-			"short single-line (compact preview)",
-			`{"command":"git status"}`,
+			"short single-line with dimmed description",
+			`{"command":"git status","description":"Inspect repository state"}`,
 		},
 		{
 			"long single-line (truncated preview)",
