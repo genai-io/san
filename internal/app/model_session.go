@@ -140,7 +140,7 @@ func (m *model) loadSessionByID(id string) error {
 	// don't let the previous conversation's Reads satisfy Edit's
 	// read-before-modify gate in this one.
 	m.ResetAgentSession()
-	fs.ResetReadStamps()
+	fs.ResetFileViews()
 	m.services.Tracker.SetStorageDir("")
 	m.restoreSessionData(sess)
 

@@ -303,7 +303,7 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 	c.env.ResetCronQueue()
 	// The cleared conversation no longer contains any Read results, so the
 	// read-before-modify stamps must not survive into the next one.
-	fs.ResetReadStamps()
+	fs.ResetFileViews()
 	// In inline mode the conversation is written to the terminal's native
 	// screen + scrollback; tea.ClearScreen only redraws the managed input frame
 	// (it clears below the cursor, not the transcript above). Physically wipe

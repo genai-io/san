@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -20,29 +19,26 @@ const IconEdit = "✏️"
 // rewrite doesn't bloat the session transcript; the UI shows the cap notice.
 const maxStoredDiffLines = 400
 
-// EditTool performs exact, batched string replacements on files.
+// EditTool performs exact string replacement on a file. The parameter shape
+// (file_path, old_string, new_string, replace_all) deliberately mirrors
+// Claude Code's Edit tool — it is the shape models know from training, which
+// matters more for call reliability than any schema documentation.
 type EditTool struct{}
 
 type editReplacement struct {
-	oldString string
-	newString string
-}
-
-type editRange struct {
-	start       int
-	end         int
-	replacement string
-	editIndex   int
+	oldString  string
+	newString  string
+	replaceAll bool
 }
 
 func (t *EditTool) Name() string        { return "Edit" }
-func (t *EditTool) Description() string { return "Edit file contents using exact string replacements" }
+func (t *EditTool) Description() string { return "Edit file contents using exact string replacement" }
 func (t *EditTool) Icon() string        { return IconEdit }
 
 func (t *EditTool) RequiresPermission() bool { return true }
 
 func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
-	filePath, edits, err := parseEditRequest(params)
+	filePath, edit, err := parseEditRequest(params)
 	if err != nil {
 		return nil, err
 	}
@@ -55,10 +51,14 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
-	if err := requireFreshRead(filePath); err != nil {
+	view, err := viewOf(filePath)
+	if err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
 	}
-	newContent, err := applyEdits(string(content), edits)
+	if view == viewNone {
+		return nil, &tool.ToolError{Message: filePath + " has not been read in this session; Read it before editing it"}
+	}
+	newContent, _, err := applyEdit(string(content), edit)
 	if err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
 	}
@@ -67,14 +67,14 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
 		FilePath:    filePath,
-		Description: fmt.Sprintf("Apply %d replacements", len(edits)),
+		Description: "Replace text in file",
 		DiffMeta:    perm.GenerateDiff(filePath, string(content), newContent),
 	}, nil
 }
 
 func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
-	filePath, edits, err := parseEditRequest(params)
+	filePath, edit, err := parseEditRequest(params)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -84,12 +84,24 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
-	if err := requireFreshRead(filePath); err != nil {
+	view, err := viewOf(filePath)
+	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
+	if view == viewNone {
+		return toolresult.NewErrorResult(t.Name(), filePath+" has not been read in this session; Read it before editing it")
+	}
+
 	oldContent := string(content)
-	newContent, err := applyEdits(oldContent, edits)
+	newContent, replaceCount, err := applyEdit(oldContent, edit)
 	if err != nil {
+		// A stale view turns a match failure ambiguous: old_string may be
+		// wrong, or the target may have been changed under the model. Name
+		// the staleness so the recovery (re-read) is obvious.
+		if view == viewStale {
+			return toolresult.NewErrorResult(t.Name(),
+				fmt.Sprintf("%s changed on disk after it was last read, and against its current content: %s. Read the file again", filePath, err.Error()))
+		}
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
@@ -103,19 +115,30 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	recordFileWritten(filePath)
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
-	output := fmt.Sprintf("Edited %s (%d replacements, +%d -%d)", filePath, len(edits), changes.AddedCount, changes.RemovedCount)
+	output := fmt.Sprintf("Edited %s (%d replacement(s), +%d -%d)", filePath, replaceCount, changes.AddedCount, changes.RemovedCount)
+	// Mirror Claude Code's result hints: on the fresh path suppress the
+	// verify-read reflex; on the stale path the edit landed cleanly but the
+	// file holds other changes the model has not seen.
+	if view == viewStale {
+		output += ". Note: the file had changed on disk since your last read — this edit applied cleanly, but the file contains other changes not in your context; Read it before edits that depend on surrounding content"
+	} else {
+		output += "; file state is current — no need to re-read"
+	}
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  output,
 		Details: toolresult.FileChangeDetails{
 			Path:         filePath,
-			EditCount:    len(edits),
+			EditCount:    replaceCount,
 			AddedLines:   changes.AddedCount,
 			RemovedLines: changes.RemovedCount,
 			UnifiedDiff:  perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines),
 		},
 		HookResponse: map[string]any{
 			"filePath":        filePath,
+			"oldString":       edit.oldString,
+			"newString":       edit.newString,
+			"replaceAll":      edit.replaceAll,
 			"originalFile":    oldContent,
 			"structuredPatch": []any{},
 			"userModified":    false,
@@ -124,101 +147,77 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	}
 }
 
-func parseEditRequest(params map[string]any) (string, []editReplacement, error) {
-	filePath, err := tool.RequireString(params, "path")
+func parseEditRequest(params map[string]any) (string, editReplacement, error) {
+	filePath, err := tool.RequireString(params, "file_path")
 	if err != nil {
-		return "", nil, err
+		return "", editReplacement{}, err
 	}
-	rawEdits, ok := params["edits"]
+	oldString, ok := params["old_string"].(string)
+	if !ok || oldString == "" {
+		return "", editReplacement{}, &tool.ToolError{Message: "old_string must be a non-empty string"}
+	}
+	newString, ok := params["new_string"].(string)
 	if !ok {
-		return "", nil, &tool.ToolError{Message: "edits is required"}
+		return "", editReplacement{}, &tool.ToolError{Message: "new_string is required (use an empty string to delete old_string)"}
 	}
-	items, ok := rawEdits.([]any)
-	if !ok || len(items) == 0 {
-		return "", nil, &tool.ToolError{Message: "edits must be a non-empty array"}
+	oldString = normalizeLineEndings(oldString)
+	newString = normalizeLineEndings(newString)
+	if newString == oldString {
+		return "", editReplacement{}, &tool.ToolError{Message: "new_string must be different from old_string"}
 	}
-
-	edits := make([]editReplacement, 0, len(items))
-	seen := make(map[string]struct{}, len(items))
-	for i, rawItem := range items {
-		item, ok := rawItem.(map[string]any)
-		if !ok {
-			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d] must be an object", i)}
-		}
-		oldString, ok := item["oldText"].(string)
-		if !ok || oldString == "" {
-			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].oldText must be a non-empty string", i)}
-		}
-		newString, ok := item["newText"].(string)
-		if !ok {
-			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].newText must be a string", i)}
-		}
-		oldString = normalizeLineEndings(oldString)
-		newString = normalizeLineEndings(newString)
-		if _, duplicate := seen[oldString]; duplicate {
-			return "", nil, &tool.ToolError{Message: fmt.Sprintf("edits[%d].oldText duplicates another edit", i)}
-		}
-		seen[oldString] = struct{}{}
-		edits = append(edits, editReplacement{oldString: oldString, newString: newString})
-	}
-	return filePath, edits, nil
+	return filePath, editReplacement{
+		oldString:  oldString,
+		newString:  newString,
+		replaceAll: tool.GetBool(params, "replace_all"),
+	}, nil
 }
 
-func applyEdits(content string, edits []editReplacement) (string, error) {
+// applyEdit performs the replacement on content, preserving a BOM and
+// Windows line endings. It returns the new content and how many occurrences
+// were replaced.
+func applyEdit(content string, edit editReplacement) (string, int, error) {
 	bom := ""
 	if after, ok := strings.CutPrefix(content, "\ufeff"); ok {
 		bom, content = "\ufeff", after
 	}
 	windowsLineEndings := strings.Contains(content, "\r\n")
 	if windowsLineEndings && strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n") {
-		return "", fmt.Errorf("file has mixed line endings; normalize it before editing")
+		return "", 0, fmt.Errorf("file has mixed line endings; normalize it before editing")
 	}
 	content = normalizeLineEndings(content)
 
-	spans := splitLineSpans(content)
-	ranges := make([]editRange, 0, len(edits))
-	for i, edit := range edits {
-		matches := editMatches(content, edit.oldString)
-		switch len(matches) {
-		case 0:
-			r, err := resolveTolerantMatch(content, spans, i, edit)
-			if err != nil {
-				return "", err
-			}
-			ranges = append(ranges, r)
-		case 1:
-			start := matches[0]
-			ranges = append(ranges, editRange{start: start, end: start + len(edit.oldString), replacement: edit.newString, editIndex: i})
-		default:
-			return "", fmt.Errorf("edits[%d]: oldText matches %d locations; include more surrounding context", i, len(matches))
-		}
+	content, replaceCount, err := replaceInContent(content, edit)
+	if err != nil {
+		return "", 0, err
 	}
 
-	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
-	for i := 1; i < len(ranges); i++ {
-		if ranges[i].start < ranges[i-1].end {
-			return "", fmt.Errorf("edits[%d] overlaps edits[%d]; combine them into one edit", ranges[i-1].editIndex, ranges[i].editIndex)
-		}
-	}
-	for i := len(ranges) - 1; i >= 0; i-- {
-		content = content[:ranges[i].start] + ranges[i].replacement + content[ranges[i].end:]
-	}
 	if windowsLineEndings {
 		content = strings.ReplaceAll(content, "\n", "\r\n")
 	}
-	return bom + content, nil
+	return bom + content, replaceCount, nil
 }
 
-func editMatches(content, oldString string) []int {
-	var matches []int
-	for offset := 0; ; {
-		index := strings.Index(content[offset:], oldString)
-		if index < 0 {
-			return matches
+func replaceInContent(content string, edit editReplacement) (string, int, error) {
+	occurrences := strings.Count(content, edit.oldString)
+	if edit.replaceAll && occurrences > 0 {
+		return strings.ReplaceAll(content, edit.oldString, edit.newString), occurrences, nil
+	}
+
+	switch occurrences {
+	case 1:
+		index := strings.Index(content, edit.oldString)
+		return content[:index] + edit.newString + content[index+len(edit.oldString):], 1, nil
+	case 0:
+		// Zero exact matches usually means a whitespace transcription slip;
+		// the tolerant ladder recovers or diagnoses it. This also serves
+		// replace_all — a unique tolerant match is the only occurrence.
+		match, err := resolveTolerantMatch(content, splitLineSpans(content), edit)
+		if err != nil {
+			return "", 0, err
 		}
-		index += offset
-		matches = append(matches, index)
-		offset = index + len(oldString)
+		return content[:match.start] + edit.newString + content[match.end:], 1, nil
+	default:
+		return "", 0, fmt.Errorf("old_string matches %d locations; add surrounding context to make it unique, or set replace_all to change every occurrence", occurrences)
 	}
 }
 
