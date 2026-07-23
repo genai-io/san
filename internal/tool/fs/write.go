@@ -144,8 +144,9 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	// The overwrite note rides the result because models weigh fresh tool
 	// results over schema text: it nudges the next modification toward Edit
 	// without blocking legitimate full rewrites.
-	// Both notes mirror Claude Code's result hints: suppress the verify-read
-	// reflex, and steer the next existing-file change toward Edit.
+	// Both notes ride the result because models weigh fresh tool results
+	// over schema text: suppress the verify-read reflex, and steer the next
+	// existing-file change toward Edit.
 	resultNote := "; file state is current — no need to re-read"
 	if !isNewFile {
 		action = "Updated"
@@ -160,9 +161,9 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		}
 	}
 
-	// Determine CC-compatible write type
+	// Fields below follow the hook payload contract (see internal/hook).
 	writeType := "create"
-	var originalFile any // null for a new file, per the CC hook contract
+	var originalFile any // null for a new file
 	if !isNewFile {
 		writeType = "update"
 		originalFile = oldContent

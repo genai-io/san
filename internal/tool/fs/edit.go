@@ -20,9 +20,9 @@ const IconEdit = "✏️"
 const maxStoredDiffLines = 400
 
 // EditTool performs exact string replacement on a file. The parameter shape
-// (file_path, old_string, new_string, replace_all) deliberately mirrors
-// Claude Code's Edit tool — it is the shape models know from training, which
-// matters more for call reliability than any schema documentation.
+// (file_path, old_string, new_string, replace_all) is the one models know
+// from training, which matters more for call reliability than any schema
+// documentation.
 type EditTool struct{}
 
 type editReplacement struct {
@@ -116,9 +116,9 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
 	output := fmt.Sprintf("Edited %s (%d replacement(s), +%d -%d)", filePath, replaceCount, changes.AddedCount, changes.RemovedCount)
-	// Mirror Claude Code's result hints: on the fresh path suppress the
-	// verify-read reflex; on the stale path the edit landed cleanly but the
-	// file holds other changes the model has not seen.
+	// On the fresh path the hint suppresses the verify-read reflex; on the
+	// stale path the edit landed cleanly but the file holds other changes
+	// the model has not seen.
 	if view == viewStale {
 		output += ". Note: the file had changed on disk since your last read — this edit applied cleanly, but the file contains other changes not in your context; Read it before edits that depend on surrounding content"
 	} else {
