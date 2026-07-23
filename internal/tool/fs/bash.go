@@ -369,17 +369,31 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 		bgTask.Complete(exitCode, err)
 	}()
 
-	// Return immediately with task ID
+	// Report how to stop the detached command. Where the platform gives the
+	// child a signalable process group (see proc.GroupLeaderPID), a later Bash
+	// call can stop it and every ordinary descendant without a control tool.
+	output := fmt.Sprintf("Task started in background.\nTask ID: %s\nPID: %d\nCommand: %s\nOutputFile: %s",
+		bgTask.ID, bgTask.PID, command, bgTask.OutputFile)
+	backgroundMeta := map[string]any{
+		"taskId":      bgTask.ID,
+		"description": description,
+		"pid":         bgTask.PID,
+		"outputFile":  bgTask.OutputFile,
+		"toolName":    t.Name(),
+	}
+	if pgid, ok := proc.GroupLeaderPID(cmd); ok {
+		output += fmt.Sprintf("\nProcess group ID: %d\n\nTo stop it while it is still running, use Bash:\nkill -TERM -- -%d\nIf it does not exit after a short wait:\nkill -KILL -- -%d",
+			pgid, pgid, pgid)
+		backgroundMeta["processGroupId"] = pgid
+	} else {
+		output += "\n\nThis platform does not provide a reliable Bash process group. Use the system process controls for PID " + fmt.Sprint(bgTask.PID) + "."
+	}
+
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  fmt.Sprintf("Task started in background.\nTask ID: %s\nPID: %d\nCommand: %s\nOutputFile: %s", bgTask.ID, bgTask.PID, command, bgTask.OutputFile),
+		Output:  output,
 		HookResponse: map[string]any{
-			"backgroundTask": map[string]any{
-				"taskId":      bgTask.ID,
-				"description": description,
-				"outputFile":  bgTask.OutputFile,
-				"toolName":    t.Name(),
-			},
+			"backgroundTask": backgroundMeta,
 		},
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),

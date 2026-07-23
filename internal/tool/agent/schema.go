@@ -46,7 +46,6 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
 	sb.WriteString("Notes:\n")
 	sb.WriteString("- Launch independent agents concurrently — multiple Agent calls in one message. Run foreground when you need the result to continue; run_in_background only for genuinely independent work (you are notified on completion).\n")
-	sb.WriteString("- Cancel a running background task with signal \"stop\" and its task_id.\n")
 	sb.WriteString("- A result summary is what the agent meant to do, not what it did — verify the actual changes before reporting work done, and summarize results back to the user yourself.")
 
 	return core.ToolSchema{
@@ -92,17 +91,32 @@ var agentToolParameters = map[string]any{
 			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
-		"task_id": map[string]any{
-			"type":        "string",
-			"description": "With signal \"stop\": the running background task to cancel.",
-		},
-		"signal": map[string]any{
-			"type":        "string",
-			"enum":        []string{"stop"},
-			"description": "Send a control signal instead of spawning: \"stop\" cancels the running background task named by task_id.",
-		},
 	},
 	"required": []string{"description", "prompt"},
+}
+
+// Schema returns the model-facing tool definition for AgentStop.
+func (t *AgentStopTool) Schema() core.ToolSchema {
+	return core.ToolSchema{
+		Name: t.Name(),
+		Description: `Stops a running background agent.
+
+Only use the exact task_id returned when that agent was started. This tool cannot stop background Bash commands; use the process-group command reported by Bash instead.`,
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"task_id": map[string]any{
+					"type":        "string",
+					"description": "The exact Task ID of the running background agent to stop.",
+				},
+				"reason": map[string]any{
+					"type":        "string",
+					"description": "Optional concise reason for stopping the agent.",
+				},
+			},
+			"required": []string{"task_id"},
+		},
+	}
 }
 
 // Schema returns the model-facing tool definition for SendMessage.

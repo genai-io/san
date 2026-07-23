@@ -37,6 +37,18 @@ func DetachSession(cmd *exec.Cmd) {
 	cmd.SysProcAttr.Setsid = true
 }
 
+// GroupLeaderPID returns the process-group ID a caller can signal (as -pgid)
+// to reach cmd and its ordinary descendants. It is meaningful once cmd was
+// configured with SetProcessGroup or DetachSession — both make the child a
+// group leader, so the PGID equals its PID. ok is false when the command has
+// not started, or on platforms without a signalable process group.
+func GroupLeaderPID(cmd *exec.Cmd) (pid int, ok bool) {
+	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
+		return 0, false
+	}
+	return cmd.Process.Pid, true
+}
+
 // TerminateGroup sends sig to the process group led by cmd. A missing process
 // (ESRCH) is treated as success because the caller's intent — "stop this
 // process" — is already satisfied.

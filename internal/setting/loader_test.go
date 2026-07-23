@@ -34,8 +34,10 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 		t.Fatal("explicit enable must override the task-tracker default")
 	}
 
-	// SendMessage (inter-agent steering) also ships disabled by default.
-	if !WithDefaultDisabledTools(nil)["SendMessage"] {
-		t.Fatal("SendMessage should be disabled by default")
+	// Inter-agent controls ship disabled by default.
+	for _, name := range []string{"SendMessage", "AgentStop"} {
+		if !WithDefaultDisabledTools(nil)[name] {
+			t.Fatalf("%s should be disabled by default", name)
+		}
 	}
 }

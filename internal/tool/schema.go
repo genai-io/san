@@ -12,6 +12,7 @@ const (
 
 	ToolBash        = "Bash"
 	ToolAgent       = "Agent"
+	ToolAgentStop   = "AgentStop"
 	ToolSendMessage = "SendMessage"
 
 	ToolSkill           = "Skill"
@@ -26,7 +27,7 @@ const (
 
 // IsAgentToolName reports whether the tool name represents an agent-like worker tool.
 func IsAgentToolName(name string) bool {
-	return name == ToolAgent || name == ToolSendMessage
+	return name == ToolAgent || name == ToolAgentStop || name == ToolSendMessage
 }
 
 // SchemaOptions configures dynamic content embedded in tool schemas.
@@ -60,7 +61,7 @@ type SchemaOptions struct {
 var builtinToolOrder = []string{
 	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolAskUserQuestion,
 	ToolSkill,
-	ToolAgent, ToolSendMessage,
+	ToolAgent, ToolAgentStop, ToolSendMessage,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate,
 	ToolCron,
 }

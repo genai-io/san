@@ -32,9 +32,8 @@ const (
 // An implementation owes one thing the compiler cannot check: a Stop-induced
 // exit must stay distinguishable from a failure, so that a task the user
 // called off is not reported as broken work to retry. How is left open,
-// because the two existing types genuinely differ — a bash child dies of an
-// opaque signal and so must record the intent up front, while an agent
-// goroutine returns context.Canceled, which says it already.
+// because the two existing types genuinely differ — a bash child reports its
+// graceful SIGTERM, while an agent goroutine returns context.Canceled.
 type BackgroundTask interface {
 	// GetID returns the unique task identifier
 	GetID() string

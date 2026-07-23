@@ -128,7 +128,7 @@ A background subagent registers with the broker while running:
   on its next step. Delivery is best-effort.
 - **Report to main**: `SendMessage(to="main", message)` sends an interim note.
   The final answer returns automatically on completion.
-- **Stop**: `Agent` with `signal: "stop"` and the task id cancels the run. Start a new subagent to continue.
+- **Stop**: `AgentStop` with the task id cancels the run. This optional tool is disabled by default; enable it with `/tool` when the model should manage running workers. Start a new subagent to continue.
 
 ## Trying It
 

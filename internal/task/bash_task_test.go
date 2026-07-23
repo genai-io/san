@@ -239,14 +239,32 @@ func TestBashTask_ImplementsBackgroundTask(t *testing.T) {
 }
 
 // A stopped child dies of the signal Stop sent it, so cmd.Wait reports
-// "signal: terminated" — indistinguishable from a crash by the error alone.
-// Recording that as failed told the main agent the work had broken rather than
-// been called off, inviting a retry of what the user had just cancelled.
+// "signal: terminated". Recording that as failed would tell the main agent
+// the work had broken rather than been called off, inviting an unwanted retry.
 func TestBashTaskStopIsNotAFailure(t *testing.T) {
 	task := newRunningBashTask(t, "stop-id", "sleep 100", "Long task")
 
 	_ = task.Stop()
 	task.Complete(signalExitCode(syscall.SIGTERM), errors.New("signal: terminated"))
+
+	if info := task.GetStatus(); info.Status != StatusStopped {
+		t.Errorf("expected status '%s', got '%s'", StatusStopped, info.Status)
+	}
+}
+
+// Bash exposes the task's process-group ID, so the model can send this same
+// SIGTERM directly from a later Bash invocation. The real *exec.ExitError
+// from that death must classify as stopped, same as a Manager.Kill call.
+func TestBashTaskDirectGracefulTerminationIsNotAFailure(t *testing.T) {
+	task := newRunningBashTask(t, "direct-stop-id", "sleep 100", "Long task")
+
+	cmd := exec.Command("sh", "-c", "kill -TERM $$")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("helper was expected to die of SIGTERM")
+	}
+
+	task.Complete(signalExitCode(syscall.SIGTERM), err)
 
 	if info := task.GetStatus(); info.Status != StatusStopped {
 		t.Errorf("expected status '%s', got '%s'", StatusStopped, info.Status)

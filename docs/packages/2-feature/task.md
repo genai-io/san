@@ -14,12 +14,13 @@ their output asynchronously.
 When the agent invokes `Bash` with `run_in_background: true` or spawns a
 subagent via `Agent`, the work is registered as a `BackgroundTask` here.
 The TUI's task panel reads from this registry; completion notifications
-flow back to the agent automatically, and the Agent tool's stop signal
-cancels a running task.
+flow back to the agent automatically. `AgentStop` cancels a running agent
+task; on Unix, a background Bash command reports its own process-group ID so
+Bash can terminate it directly.
 
 ## Contract
 
-Background task manager. Tracks bash and subagent tasks for the TUI panel and the Agent tool's stop signal. The package exposes `*Tracker` directly — no Service interface.
+Background task manager. Tracks bash and subagent tasks for the TUI panel and `AgentStop`. The package exposes `*Tracker` directly — no Service interface.
 
 ```go
 package task
