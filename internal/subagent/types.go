@@ -30,7 +30,7 @@ const (
 	// Used for research and read-only investigation.
 	PermissionExplore PermissionMode = "explore"
 
-	// PermissionBypass: everything Allow after deny_tools (parent-only tools still blocked)
+	// PermissionBypass: everything Allow after deny_tools and the bypass-immune floor
 	// (sensitive paths, destructive bash) which still gate the call.
 	PermissionBypass PermissionMode = "bypassPermissions"
 

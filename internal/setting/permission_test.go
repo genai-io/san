@@ -327,8 +327,8 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 	for _, cmd := range discarding {
 		args := map[string]any{"command": cmd}
-		if reason, _ := confirmationFloor("Bash", args); reason == "" {
-			t.Errorf("%q left the confirmation floor entirely", cmd)
+		if ConfirmationReason("Bash", args) == "" {
+			t.Errorf("%q left the confirmation tier entirely", cmd)
 		}
 		if r := UnrecoverableReason("Bash", args); r != "" {
 			t.Errorf("%q read as unrecoverable (%s); the judge can never weigh it", cmd, r)
@@ -340,7 +340,7 @@ func TestGitDiscardingTierIsFlooredButReviewable(t *testing.T) {
 	}
 
 	// A lease-guarded push never enters the tier at all.
-	if reason, _ := confirmationFloor("Bash", map[string]any{"command": "git push --force-with-lease"}); reason != "" {
+	if ConfirmationReason("Bash", map[string]any{"command": "git push --force-with-lease"}) != "" {
 		t.Error("--force-with-lease should not be floored")
 	}
 
@@ -664,12 +664,12 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		{
 			"sensitive path has reason",
 			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
-			perm.Prompt, "confirmation: .git/ directory",
+			perm.Prompt, "bypass-immune: .git/ directory",
 		},
 		{
 			"destructive has reason",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Prompt, "confirmation: destructive command",
+			perm.Prompt, "bypass-immune: destructive command",
 		},
 	}
 
@@ -742,9 +742,10 @@ func TestDenialTracking(t *testing.T) {
 func TestBypassPermissionsMode(t *testing.T) {
 	settings := &Data{}
 	session := &SessionPermissions{
-		Mode:            ModeBypassPermissions,
-		AllowedTools:    make(map[string]bool),
-		AllowedPatterns: make(map[string]bool),
+		Mode:               ModeBypassPermissions,
+		AllowedTools:       make(map[string]bool),
+		AllowedPatterns:    make(map[string]bool),
+		WorkingDirectories: []string{"/repo"},
 	}
 
 	tests := []struct {
@@ -764,24 +765,34 @@ func TestBypassPermissionsMode(t *testing.T) {
 			perm.Permit,
 		},
 		{
-			"bypass permits protected path without confirmation",
-			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			"bypass permits work-discarding git without confirmation",
+			"Bash", map[string]any{"command": "git reset --hard HEAD"},
 			perm.Permit,
 		},
 		{
-			"bypass permits destructive bash without confirmation",
-			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Permit,
-		},
-		{
-			"bypass permits suspicious bash without confirmation",
-			"Bash", map[string]any{"command": "zmodload zsh/system"},
+			"bypass permits force push without confirmation",
+			"Bash", map[string]any{"command": "git push --force origin main"},
 			perm.Permit,
 		},
 		{
 			"bypass permits writes outside working directories without confirmation",
 			"Write", map[string]any{"file_path": "/etc/san-test", "content": "x"},
 			perm.Permit,
+		},
+		{
+			"bypass-immune: protected path still prompts",
+			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			perm.Prompt,
+		},
+		{
+			"bypass-immune: destructive bash still prompts",
+			"Bash", map[string]any{"command": "rm -rf /"},
+			perm.Prompt,
+		},
+		{
+			"bypass-immune: suspicious bash still prompts",
+			"Bash", map[string]any{"command": "zmodload zsh/system"},
+			perm.Prompt,
 		},
 	}
 

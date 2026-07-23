@@ -245,7 +245,7 @@ var sensitiveFiles = map[string]string{
 }
 
 // isSensitivePath checks if a file path points to a sensitive location that
-// requires user confirmation (skipped only in bypass mode).
+// always requires user confirmation (bypass-immune floor).
 // Returns a human-readable reason if sensitive, or empty string if safe.
 func isSensitivePath(filePath string) string {
 	// Resolve symlinks to prevent bypass via symlink chains
