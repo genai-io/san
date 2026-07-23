@@ -20,6 +20,7 @@ import (
 // that outlives the worker and belongs to the session owner.
 var parentOnlyTools = map[string]bool{
 	ToolAgent:      true,
+	ToolAgentStop:  true,
 	ToolTaskCreate: true,
 	ToolTaskUpdate: true,
 	ToolTaskGet:    true,

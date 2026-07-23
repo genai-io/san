@@ -19,6 +19,11 @@ func SetProcessGroup(cmd *exec.Cmd) {}
 // this package.
 func DetachSession(cmd *exec.Cmd) {}
 
+// GroupLeaderPID reports that Windows offers no signalable process group —
+// the package does not yet use Job Objects — so callers must fall back to
+// single-process controls.
+func GroupLeaderPID(cmd *exec.Cmd) (pid int, ok bool) { return 0, false }
+
 // TerminateGroup terminates cmd's direct child process. Windows has no
 // signal-based group termination, so sig is ignored and we call Process.Kill,
 // which maps to TerminateProcess. Because we use the handle the standard

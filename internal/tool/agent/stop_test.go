@@ -2,13 +2,14 @@ package agent
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/task"
 )
 
-func TestAgentTool_StopSignalCancelsRunningTask(t *testing.T) {
+func TestAgentStopCancelsRunningAgent(t *testing.T) {
 	task.Initialize(task.Options{})
 	t.Cleanup(task.ResetDefaultTracker)
 
@@ -18,20 +19,22 @@ func TestAgentTool_StopSignalCancelsRunningTask(t *testing.T) {
 	agentTask := task.NewAgentTask("task-stop-1", "Explore Worker", "Long task", ctx, cancel)
 	task.Default().RegisterTask(agentTask)
 	defer task.Default().Remove("task-stop-1")
+	go func() {
+		<-ctx.Done()
+		agentTask.Complete(ctx.Err())
+	}()
 
-	toolInst := NewAgentTool()
+	toolInst := NewAgentStopTool()
 
 	result := toolInst.Execute(context.Background(), map[string]any{
-		"signal":      "stop",
-		"task_id":     "task-stop-1",
-		"prompt":      "No longer needed",
-		"description": "Stop worker",
+		"task_id": "task-stop-1",
+		"reason":  "No longer needed",
 	}, ".")
 
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
-	if !strings.Contains(result.Output, "Task stopped successfully.") {
+	if !strings.Contains(result.Output, "Agent stopped successfully.") {
 		t.Fatalf("unexpected output: %s", result.Output)
 	}
 	if !strings.Contains(result.Output, "Reason: No longer needed") {
@@ -42,7 +45,7 @@ func TestAgentTool_StopSignalCancelsRunningTask(t *testing.T) {
 	}
 }
 
-func TestAgentTool_StopSignalRejectsCompletedTask(t *testing.T) {
+func TestAgentStopRejectsCompletedAgent(t *testing.T) {
 	task.Initialize(task.Options{})
 	t.Cleanup(task.ResetDefaultTracker)
 
@@ -54,13 +57,10 @@ func TestAgentTool_StopSignalRejectsCompletedTask(t *testing.T) {
 	task.Default().RegisterTask(agentTask)
 	defer task.Default().Remove("task-stop-2")
 
-	toolInst := NewAgentTool()
+	toolInst := NewAgentStopTool()
 
 	result := toolInst.Execute(context.Background(), map[string]any{
-		"signal":      "stop",
-		"task_id":     "task-stop-2",
-		"prompt":      "Stop it",
-		"description": "Stop worker",
+		"task_id": "task-stop-2",
 	}, ".")
 
 	if result.Success {
@@ -71,19 +71,43 @@ func TestAgentTool_StopSignalRejectsCompletedTask(t *testing.T) {
 	}
 }
 
-func TestAgentTool_StopSignalRequiresTaskID(t *testing.T) {
-	toolInst := NewAgentTool()
+func TestAgentStopRequiresTaskID(t *testing.T) {
+	toolInst := NewAgentStopTool()
 
-	result := toolInst.Execute(context.Background(), map[string]any{
-		"signal":      "stop",
-		"prompt":      "Stop something",
-		"description": "Stop worker",
-	}, ".")
+	result := toolInst.Execute(context.Background(), map[string]any{}, ".")
 
 	if result.Success {
 		t.Fatal("expected failure without task_id")
 	}
 	if !strings.Contains(result.Error, "task_id is required") {
+		t.Fatalf("unexpected error: %s", result.Error)
+	}
+}
+
+func TestAgentStopRejectsBashTask(t *testing.T) {
+	task.Initialize(task.Options{})
+	t.Cleanup(task.ResetDefaultTracker)
+
+	cmd := exec.Command("bash", "-c", "sleep 60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start bash task: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	})
+
+	bashTask := task.Default().CreateBashTask(cmd, "sleep 60", "Long command", func() {})
+	defer task.Default().Remove(bashTask.GetID())
+
+	result := NewAgentStopTool().Execute(context.Background(), map[string]any{
+		"task_id": bashTask.GetID(),
+	}, ".")
+
+	if result.Success {
+		t.Fatal("expected bash task rejection")
+	}
+	if !strings.Contains(result.Error, "stop its process group with Bash") {
 		t.Fatalf("unexpected error: %s", result.Error)
 	}
 }

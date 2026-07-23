@@ -3,6 +3,7 @@ package task
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -116,17 +117,14 @@ func (t *BashTask) GetOutput() string {
 // counterpart to AgentTask.Complete and classifying the same three outcomes.
 //
 // A stopped run reaches cmd.Wait as an ordinary signal death ("signal:
-// terminated"), never as context.Canceled, so unlike the agent case the error
-// alone cannot tell a deliberate stop from a genuine failure. Stop records
-// that it asked, and that flag is the only thing that distinguishes them: a
-// run killed by its own timeout sets nothing and stays a failure. Without this
-// a user-requested TaskStop was recorded as failed, and the main agent could
-// retry work the user had just cancelled — the outcome StatusStopped exists to
-// prevent.
+// terminated"), never as context.Canceled. A manager-initiated stop records
+// that intent before signalling; the Bash tool also reports a process-group
+// command that can send SIGTERM directly. Treat that graceful external
+// termination as stopped too. A timeout uses SIGKILL and remains a failure.
 func (t *BashTask) Complete(exitCode int, err error) {
 	status, errMsg := StatusCompleted, ""
 	switch {
-	case t.stopRequested.Load():
+	case t.stopRequested.Load() || wasGracefullyTerminated(err):
 		status, errMsg = StatusStopped, "stopped before completion"
 	case err != nil:
 		status, errMsg = StatusFailed, err.Error()
@@ -134,6 +132,20 @@ func (t *BashTask) Complete(exitCode int, err error) {
 		status = StatusFailed
 	}
 	t.finalize(status, exitCode, errMsg)
+}
+
+// wasGracefullyTerminated reports whether the child died of SIGTERM — the
+// graceful stop delivered by the process-group command Bash hands out. It is
+// deliberately narrow: timeout and forced-stop paths use SIGKILL, and a
+// non-zero exit is Exited, not Signaled, so both remain failures. (On Windows
+// WaitStatus.Signaled is always false, so this never matches there.)
+func wasGracefullyTerminated(err error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	return ok && ws.Signaled() && ws.Signal() == syscall.SIGTERM
 }
 
 // signalExitCode renders a death by signal the way a shell does, so a reader

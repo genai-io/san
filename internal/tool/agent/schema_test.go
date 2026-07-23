@@ -42,3 +42,11 @@ func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
 		t.Error("SchemaWithAgentDirectory(\"\") must equal the directory-less agentSchema")
 	}
 }
+
+func TestAgentStopSchemaRequiresOnlyTaskID(t *testing.T) {
+	params := (&AgentStopTool{}).Schema().Parameters.(map[string]any)
+	required := params["required"].([]string)
+	if len(required) != 1 || required[0] != "task_id" {
+		t.Fatalf("AgentStop required fields = %#v, want [task_id]", required)
+	}
+}

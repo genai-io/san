@@ -112,7 +112,7 @@ func (t *BashTool) Schema() core.ToolSchema {
 - Search and discovery run through this tool (rg, find/fd, ls); pipe large output through head/wc. Provably read-only commands run without approval prompts.
 - For file contents use the dedicated tools: Read (not cat), Edit (not sed), Write (not echo/redirection).
 - No TTY and no stdin — anything awaiting interactive input hangs until timeout. Use non-interactive flags ("git commit -m", "npm init -y", "apt-get -y") or feed input via heredoc.
-- Optional timeout in ms (default 120000, max 600000). run_in_background detaches the command; you are notified when it finishes, and can cancel it via Agent with signal "stop" and its task ID.`,
+- Optional timeout in ms (default 120000, max 600000). On Unix, run_in_background detaches the command and its result includes the process-group ID plus exact Bash commands for graceful or forced termination.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
