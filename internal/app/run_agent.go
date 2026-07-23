@@ -17,7 +17,7 @@ import (
 
 // AgentRunOptions configures a one-shot headless agent run.
 type AgentRunOptions struct {
-	Type     string // agent type to run (required)
+	Type     string // optional custom subagent type; empty uses the default subagent
 	Prompt   string // task prompt (required)
 	Model    string // model override; empty uses the connected provider's model
 	MaxSteps int    // maximum LLM inference steps
@@ -26,7 +26,7 @@ type AgentRunOptions struct {
 // RunAgent executes a single agent in headless mode (no TUI).
 func RunAgent(opts AgentRunOptions) error {
 	if opts.Type == "" {
-		return fmt.Errorf("--type is required")
+		opts.Type = "subagent"
 	}
 	if opts.Prompt == "" {
 		return fmt.Errorf("--prompt is required")
@@ -43,29 +43,24 @@ func RunAgent(opts AgentRunOptions) error {
 		cancel()
 	}()
 
-	provider, modelID, err := resolveProvider(ctx)
+	resolved, store, err := resolveProviderWithStore(ctx)
 	if err != nil {
 		return err
-	}
-	if opts.Model != "" {
-		modelID = opts.Model
 	}
 
 	cwd, _ := os.Getwd()
 
-	// Initialize agent registry — loads built-ins and any user/project AGENT.md.
+	// Initialize custom subagent definitions from user, project, and plugins.
 	if err := subagent.Initialize(subagent.Options{CWD: cwd}); err != nil {
-		return fmt.Errorf("failed to initialize agent registry: %w", err)
-	}
-	if _, ok := subagent.Default().Get(opts.Type); !ok {
-		return fmt.Errorf("unknown agent type: %s", opts.Type)
+		return fmt.Errorf("failed to initialize subagent registry: %w", err)
 	}
 
 	// Run through the full subagent pipeline so headless invocations get the
 	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
 	// as TUI-spawned subagents.
-	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
-	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))
+	executor := subagent.NewExecutor(resolved.Provider, cwd, resolved.ModelID, nil)
+	executor.SetResolver(llm.NewProviderPool(store))
+	executor.SetModelStore(store, resolved.ProviderName, resolved.AuthMethod)
 
 	fmt.Printf("Agent: %s\n", opts.Type)
 	fmt.Printf("Prompt: %s\n", opts.Prompt)

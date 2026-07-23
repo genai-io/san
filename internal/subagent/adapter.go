@@ -69,11 +69,7 @@ func (a *ExecutorAdapter) GetParentModelID() string {
 // GetAgentConfig returns configuration for an agent type
 // Returns false if agent is not found or is disabled
 func (a *ExecutorAdapter) GetAgentConfig(agentType string) (tool.AgentConfigInfo, bool) {
-	if !defaultRegistry.IsEnabled(agentType) {
-		return tool.AgentConfigInfo{}, false
-	}
-
-	config, ok := defaultRegistry.Get(agentType)
+	config, ok := resolveAgentConfig(agentType)
 	if !ok {
 		return tool.AgentConfigInfo{}, false
 	}

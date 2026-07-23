@@ -189,7 +189,7 @@ func SwapPersona(sys core.System, p Persona) {
 // Tools are not listed here — the LLM sees them via the schema list. Only
 // pattern-level constraints (which are invisible in the schema) need surfacing.
 type SubagentBrief struct {
-	AgentName       string   // e.g. "code-reviewer"
+	AgentName       string   // e.g. "subagent" or a custom agent name
 	Description     string   // one-line role description
 	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
@@ -212,7 +212,11 @@ func subagentIdentitySection(b SubagentBrief) core.Section {
 
 func renderSubagentIdentity(b SubagentBrief) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "You are a %s subagent.\n", b.AgentName)
+	if b.AgentName == "" || b.AgentName == "subagent" {
+		sb.WriteString("You are a subagent.\n")
+	} else {
+		fmt.Fprintf(&sb, "You are a %s subagent.\n", b.AgentName)
+	}
 	if b.Description != "" {
 		fmt.Fprintf(&sb, "Role: %s\n", b.Description)
 	}
@@ -240,10 +244,10 @@ func renderSubagentIdentity(b SubagentBrief) string {
 func modeDescription(mode string) string {
 	switch mode {
 	case "explore":
-		return "read-only research; do not modify files or run shell commands"
+		return "read-only research; do not modify files; shell commands are limited to operations classified as read-only"
 	case "acceptEdits":
 		return "may read and edit files; other gated tools are denied automatically"
-	case "bypass":
+	case "bypass", "bypassPermissions":
 		return "permission checks bypassed; act with care on destructive operations"
 	default:
 		return "read and analysis tools only; mutating tools are denied unless an allow rule covers them"

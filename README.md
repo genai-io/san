@@ -116,7 +116,7 @@ san --resume                     # pick a past session to resume
 
 # Subcommands (run `san <command> --help` for the full list)
 san inspector                    # session transcript viewer
-san agent run --type general-purpose --prompt "..."  # run a headless agent
+san agent run --prompt "..."        # run a headless subagent
 san plugin <list|install|enable|...>          # manage plugins
 san mcp <add|list|remove|...>                 # manage MCP servers
 ```

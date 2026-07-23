@@ -2,7 +2,7 @@
 
 ## Overview
 
-`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Use it with `general-purpose` when a task requires reading, searching, and cross-referencing multiple files before answering.
+`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Use it with the implicit default `subagent` when a task requires reading, searching, and cross-referencing multiple files before answering.
 
 This feature exists to document the contract that was previously split across the general agent docs, non-mutating mode docs, and subagent notes.
 
@@ -10,7 +10,7 @@ This feature exists to document the contract that was previously split across th
 
 | Property | Value |
 |----------|-------|
-| Agent type | `general-purpose` |
+| Agent type | implicit default `subagent` |
 | Permission mode | `explore` |
 | Tools | Read, Bash (read-only commands), WebFetch, WebSearch, Skill, AskUserQuestion |
 | Max turns | 100 |
@@ -29,8 +29,8 @@ This feature exists to document the contract that was previously split across th
 ## Behavior
 
 - The agent inherits the parent model unless explicitly overridden.
-- In explore mode, the subagent tool schema only exposes non-mutating tools.
-- Explore mode must not expose `Bash`, `Write`, or `Edit`.
+- In explore mode, the subagent tool schema exposes read-only tools plus Bash, whose commands are checked individually.
+- Explore mode must not expose or permit `Write` or `Edit`; Bash is limited to commands classified as read-only.
 - The agent returns a normal agent tool result to the parent conversation; the parent conversation must continue cleanly after the result arrives.
 - Interleaved `notice` messages must not prevent the parent conversation from recognizing that the agent finished.
 

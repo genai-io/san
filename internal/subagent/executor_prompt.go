@@ -10,6 +10,22 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []string {
+	constraints := config.AllowTools.ConstrainedDisplayNames()
+	if NormalizePermissionMode(string(permMode)) != PermissionExplore ||
+		(config.AllowTools != nil && !config.AllowTools.HasName(tool.ToolBash)) {
+		return constraints
+	}
+
+	filtered := make([]string, 0, len(constraints)+1)
+	for _, constraint := range constraints {
+		if !strings.HasPrefix(constraint, tool.ToolBash+"(") {
+			filtered = append(filtered, constraint)
+		}
+	}
+	return append(filtered, "Bash limited to commands classified as read-only")
+}
+
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
 // It bundles the agent's charter (name, description, mode, tool pattern
 // constraints) plus the AGENT.md body and any preloaded skills, all of which
@@ -41,7 +57,7 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 		AgentName:       config.Name,
 		Description:     config.Description,
 		Mode:            string(permMode),
-		ToolConstraints: config.AllowTools.ConstrainedDisplayNames(),
+		ToolConstraints: effectiveToolConstraints(config, permMode),
 		CustomPrompt:    custom,
 	}
 }
@@ -137,7 +153,7 @@ func formatAgentActivity(params map[string]any) string {
 	}
 
 	if agentType == "" {
-		agentType = "general-purpose"
+		agentType = "subagent"
 	}
 	agentType = displayAgentName(agentType, PermissionMode(mode))
 	if desc == "" {
@@ -187,7 +203,7 @@ func displayAgentName(name string, mode PermissionMode) string {
 
 func isGenericAgentName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "agent", "general", "general-purpose", "explore", "explorer", "editor":
+	case "", "agent", "subagent", "general", "general-purpose", "explore", "explorer", "editor":
 		return true
 	default:
 		return false

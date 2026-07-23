@@ -175,7 +175,7 @@ func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
 func TestBuildSubagentIdentity_ReplacesDefault(t *testing.T) {
 	sys := Build(core.ScopeSubagent,
 		WithSubagentIdentity(SubagentBrief{
-			AgentName:    "code-reviewer",
+			AgentName:    "custom-reviewer",
 			Description:  "Reviews code changes for bugs.",
 			Mode:         "explore",
 			CustomPrompt: "Use git diff to inspect changes.",
@@ -184,7 +184,7 @@ func TestBuildSubagentIdentity_ReplacesDefault(t *testing.T) {
 	)
 	prompt := sys.Prompt()
 
-	if !strings.Contains(prompt, "You are a code-reviewer subagent") {
+	if !strings.Contains(prompt, "You are a custom-reviewer subagent") {
 		t.Error("subagent identity should announce agent name")
 	}
 	if !strings.Contains(prompt, `<identity mode="explore">`) {

@@ -45,7 +45,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
 	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
-		Agent:    "general-purpose",
+		Agent:    "subagent",
 		Name:     "Scout",
 		Model:    "override-model",
 		MaxSteps: 120,
@@ -76,7 +76,7 @@ func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
 	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
-		Agent:    "general-purpose",
+		Agent:    "subagent",
 		MaxSteps: 20,
 	})
 	if err != nil {
@@ -92,6 +92,9 @@ func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 	ctx := context.Background()
 
+	if _, got, _ := executor.resolveModel(ctx, "", ""); got != "parent-model" {
+		t.Fatalf("empty config model = %q, want parent", got)
+	}
 	if _, got, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-6" {
 		t.Fatalf("config model = %q, want sonnet alias", got)
 	}
@@ -162,6 +165,107 @@ func TestResolveModelResolverErrorInheritsParent(t *testing.T) {
 	}
 }
 
+func newModelStore(t *testing.T, models []llm.ModelInfo) *llm.Store {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatalf("llm.NewStore() error: %v", err)
+	}
+	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, models); err != nil {
+		t.Fatalf("CacheModels() error: %v", err)
+	}
+	return store
+}
+
+func TestResolveModelUnavailableOverrideInheritsParent(t *testing.T) {
+	executor := &Executor{
+		provider:           stubProvider{},
+		modelStore:         newModelStore(t, []llm.ModelInfo{{ID: "gpt-5.6-sol"}}),
+		parentProviderName: llm.OpenAI,
+		parentAuthMethod:   llm.AuthSubscription,
+		parentModelID:      "gpt-5.6-sol",
+	}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != executor.parentModelID {
+		t.Fatalf("resolveModel(haiku) model = %q, want parent %q", modelID, executor.parentModelID)
+	}
+}
+
+func TestResolveModelUnavailableParentProviderQualifiedOverrideInheritsParent(t *testing.T) {
+	executor := &Executor{
+		provider:           stubProvider{},
+		resolver:           &stubResolver{provider: stubProvider{}},
+		modelStore:         newModelStore(t, []llm.ModelInfo{{ID: "gpt-5.6-sol"}}),
+		parentProviderName: llm.OpenAI,
+		parentAuthMethod:   llm.AuthSubscription,
+		parentModelID:      "gpt-5.6-sol",
+	}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "openai/nonexistent-model", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != executor.parentModelID {
+		t.Fatalf("resolveModel(openai/nonexistent-model) model = %q, want parent %q", modelID, executor.parentModelID)
+	}
+}
+
+func TestResolveModelEmptyCachedCatalogInheritsParent(t *testing.T) {
+	executor := &Executor{
+		provider:           stubProvider{},
+		modelStore:         newModelStore(t, nil),
+		parentProviderName: llm.OpenAI,
+		parentAuthMethod:   llm.AuthSubscription,
+		parentModelID:      "gpt-5.6-sol",
+	}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != executor.parentModelID {
+		t.Fatalf("resolveModel(haiku) model = %q, want parent %q", modelID, executor.parentModelID)
+	}
+}
+
+func TestResolveModelAvailableOverrideIsPreserved(t *testing.T) {
+	executor := &Executor{
+		provider: stubProvider{},
+		modelStore: newModelStore(t, []llm.ModelInfo{
+			{ID: "gpt-5.6-sol"},
+			{ID: "gpt-5.6-terra"},
+		}),
+		parentProviderName: llm.OpenAI,
+		parentAuthMethod:   llm.AuthSubscription,
+		parentModelID:      "gpt-5.6-sol",
+	}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "gpt-5.6-terra", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != "gpt-5.6-terra" {
+		t.Fatalf("resolveModel() model = %q, want gpt-5.6-terra", modelID)
+	}
+}
+
+func TestResolveModelMissingCatalogLeavesOverrideUnverified(t *testing.T) {
+	executor := &Executor{provider: stubProvider{}, parentModelID: "gpt-5.6-sol"}
+
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
+	if err != nil {
+		t.Fatalf("resolveModel() error: %v", err)
+	}
+	if modelID != "claude-haiku-4-5" {
+		t.Fatalf("resolveModel() model = %q, want unresolved override to pass through", modelID)
+	}
+}
+
 func TestParseVendorModel(t *testing.T) {
 	tests := []struct {
 		ref    string
@@ -213,7 +317,7 @@ func TestShouldRetryWithParentModelOnlyForMissingDifferentModel(t *testing.T) {
 func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
-		req: tool.AgentExecRequest{Agent: "general-purpose"},
+		req: tool.AgentExecRequest{Agent: "subagent"},
 		cfg: &runConfig{
 			displayName: "Scout",
 			modelID:     "test-model",
@@ -248,19 +352,19 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 
 func TestFormatToolActivityUsesReadableAgentLabel(t *testing.T) {
 	got := formatToolActivity("Agent", map[string]any{
-		"subagent_type": "code-reviewer",
+		"subagent_type": "custom-reviewer",
 		"description":   "HA code structure",
 		"prompt":        "Inspect the codebase",
 	})
 
-	if got != "Agent - Code Reviewer: HA code structure" {
-		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - Code Reviewer: HA code structure")
+	if got != "Agent - Custom Reviewer: HA code structure" {
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - Custom Reviewer: HA code structure")
 	}
 }
 
 func TestFormatToolActivityUsesShortGeneralName(t *testing.T) {
 	got := formatToolActivity("Agent", map[string]any{
-		"subagent_type": "general-purpose",
+		"subagent_type": "subagent",
 		"description":   "update repo references",
 	})
 
@@ -276,8 +380,8 @@ func TestFormatToolActivityNamesGeneralAgentByMode(t *testing.T) {
 		desc  string
 		want  string
 	}{
-		{agent: "general-purpose", mode: "explore", desc: "inspect repo", want: "Agent - Explorer: inspect repo"},
-		{agent: "general-purpose", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
+		{agent: "subagent", mode: "explore", desc: "inspect repo", want: "Agent - Explorer: inspect repo"},
+		{agent: "subagent", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
 		{agent: "explorer", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
 	} {
 		got := formatToolActivity("Agent", map[string]any{
@@ -354,6 +458,24 @@ Use conventional commits.
 	}
 }
 
+func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
+	executor := &Executor{}
+	brief := executor.buildBrief(&AgentConfig{
+		Name: "subagent",
+		AllowTools: ToolList{
+			{Name: "Read"},
+			{Name: "Bash", Pattern: "git diff*"},
+		},
+	}, PermissionExplore)
+
+	if !slices.Contains(brief.ToolConstraints, "Bash limited to commands classified as read-only") {
+		t.Fatalf("tool constraints = %#v, want read-only Bash policy", brief.ToolConstraints)
+	}
+	if slices.Contains(brief.ToolConstraints, "Bash(git diff*)") {
+		t.Fatalf("tool constraints should describe effective policy, got %#v", brief.ToolConstraints)
+	}
+}
+
 func TestSkillsDirectoryFollowsReachableTools(t *testing.T) {
 	executor := &Executor{skillsPrompt: "- review: Review changes"}
 
@@ -412,6 +534,20 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas without git diff = %+v, want %+v", got, want)
 	}
+
+	// Explore remains read-only even when a custom definition over-requests
+	// mutating schemas. Bash stays visible because each call is classified.
+	overbroad := ToolNames("Read", "Write", "Edit", "Bash")
+	got = filterSchemasForPermission(schemas, PermissionExplore, overbroad)
+	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("filtered overbroad explore schemas = %+v, want %+v", got, want)
+	}
+
+	got = filterSchemasForPermission(schemas, PermissionExplore, ToolNames("Write"))
+	if len(got) != 0 {
+		t.Fatalf("write-only explore schema = %+v, want none", got)
+	}
 }
 
 func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
@@ -459,6 +595,37 @@ func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
 	allow, _ = unlisted(context.Background(), "Bash", map[string]any{"command": "go build ./..."})
 	if allow {
 		t.Fatal("mutating bash allowed in explore mode without agent permission")
+	}
+}
+
+func TestExploreModeCannotElevateThroughAllowTools(t *testing.T) {
+	cases := []struct {
+		name    string
+		allow   ToolList
+		tool    string
+		input   map[string]any
+		allowed bool
+	}{
+		{name: "write", allow: ToolNames("Write"), tool: "Write", input: map[string]any{"file_path": "x", "content": "x"}},
+		{name: "edit", allow: ToolNames("Edit"), tool: "Edit", input: map[string]any{"file_path": "x", "old_string": "a", "new_string": "b"}},
+		{name: "bare bash touch", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "touch x"}},
+		{name: "configured npm install", allow: ToolList{{Name: "Bash", Pattern: "npm install*"}}, tool: "Bash", input: map[string]any{"command": "npm install"}},
+		{name: "git commit", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git commit -m x"}},
+		{name: "git diff output", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git diff --output=/tmp/x"}},
+		{name: "git diff", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git diff"}, allowed: true},
+		{name: "git status", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git status"}, allowed: true},
+		{name: "git show", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git show HEAD"}, allowed: true},
+		{name: "git log", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git log --oneline"}, allowed: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			check := subagentPermissionFunc(PermissionExplore, tc.allow, nil)
+			got, reason := check(context.Background(), tc.tool, tc.input)
+			if got != tc.allowed {
+				t.Fatalf("allow = %v, want %v (reason=%q)", got, tc.allowed, reason)
+			}
+		})
 	}
 }
 
@@ -559,17 +726,19 @@ func TestNormalizePermissionModeDefaultsEmpty(t *testing.T) {
 	}
 }
 
-func TestBuiltinAgentsDefaultTo100Turns(t *testing.T) {
-	for _, agentName := range []string{"general-purpose", "code-simplifier", "code-reviewer"} {
-		t.Run(agentName, func(t *testing.T) {
-			cfg, ok := defaultRegistry.Get(agentName)
-			if !ok {
-				t.Fatalf("agent %q not found", agentName)
-			}
-			if cfg.MaxSteps != defaultMaxSteps {
-				t.Fatalf("expected %q max steps to default to %d, got %d", agentName, defaultMaxSteps, cfg.MaxSteps)
-			}
-		})
+func TestDefaultSubagentUses100Turns(t *testing.T) {
+	config, ok := resolveAgentConfig("")
+	if !ok {
+		t.Fatal("default subagent config not found")
+	}
+	if config.Name != "subagent" {
+		t.Fatalf("default subagent name = %q, want subagent", config.Name)
+	}
+	if config.MaxSteps != defaultMaxSteps {
+		t.Fatalf("default subagent max steps = %d, want %d", config.MaxSteps, defaultMaxSteps)
+	}
+	if configs := NewRegistry().ListConfigs(); len(configs) != 0 {
+		t.Fatalf("registry should have no built-in agent definitions, got %+v", configs)
 	}
 }
 
@@ -627,7 +796,7 @@ func (s *stubSystem) SetObserver(_ func(core.SystemChange)) {}
 func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
-		req:       tool.AgentExecRequest{Agent: "general-purpose"},
+		req:       tool.AgentExecRequest{Agent: "subagent"},
 		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
 		startedAt: time.Now().Add(-time.Second),
 	}
@@ -661,7 +830,7 @@ func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 func TestBuildUnfinishedAgentResultRejectsCompletedRun(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
-		req:       tool.AgentExecRequest{Agent: "general-purpose"},
+		req:       tool.AgentExecRequest{Agent: "subagent"},
 		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
 		startedAt: time.Now(),
 	}

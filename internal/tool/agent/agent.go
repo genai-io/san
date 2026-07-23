@@ -41,7 +41,7 @@ func (t *AgentTool) SetExecutor(executor tool.AgentExecutor) {
 func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
 	agentType := tool.GetString(params, "subagent_type")
 	if agentType == "" {
-		agentType = "general-purpose"
+		agentType = "subagent"
 	}
 
 	prompt, err := tool.RequireString(params, "prompt")
@@ -130,7 +130,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	agentType := tool.GetString(params, "subagent_type")
 	if agentType == "" {
-		agentType = "general-purpose"
+		agentType = "subagent"
 	}
 
 	prompt := tool.GetString(params, "prompt")

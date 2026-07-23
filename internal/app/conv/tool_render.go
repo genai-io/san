@@ -985,7 +985,7 @@ func displayAgentName(agentType, mode string) string {
 
 func isGenericAgentName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "agent", "general", "general-purpose", "explore", "explorer", "edit", "editor":
+	case "", "agent", "subagent", "general", "general-purpose", "explore", "explorer", "edit", "editor":
 		return true
 	default:
 		return false
@@ -1009,7 +1009,7 @@ func parseAgentInput(input string) agentInput {
 	}
 	agent.Valid = true
 	if agent.Type == "" {
-		agent.Type = "general-purpose"
+		agent.Type = "subagent"
 	}
 	if agent.Name == "" {
 		agent.Name = displayAgentName(agent.Type, agent.Mode)
@@ -1173,7 +1173,8 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 // commands are always visible in full.
 func renderBashToolCall(input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
-	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
+	trimmedCommand := strings.TrimSpace(command)
+	if trimmedCommand != "" && !strings.Contains(command, "\n") {
 		label := toolCallStyle.Render(fmt.Sprintf("%s(%s)", tool.ToolBash, command))
 		if description = strings.Join(strings.Fields(description), " "); description != "" {
 			label += toolResultStyle.Render(" - " + description)
@@ -1183,7 +1184,7 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 		iconCell := toolCallStyle.Width(2).Render(icon)
 		return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 	}
-	if strings.TrimSpace(command) == "" {
+	if trimmedCommand == "" {
 		command = "(no command)"
 	}
 
@@ -1197,7 +1198,8 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 	if description != "" {
 		header += " - " + description
 	}
-	sb.WriteString(renderToolLineWithIcon(header, width, icon) + detail + "\n")
+	headerRow := renderToolLineWithIcon(header, width, icon) + "\n"
+	sb.WriteString(appendRowDetail(headerRow, detail))
 
 	// Soft-wrap every command line to the available width. The first row carries
 	// the shell prompt; every later row uses the connector so the command and its

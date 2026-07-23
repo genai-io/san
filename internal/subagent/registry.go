@@ -16,14 +16,9 @@ type Registry struct {
 	cwd          string          // Current working directory
 }
 
-// NewRegistry creates a new agent registry
+// NewRegistry creates an empty registry for user, project, and plugin-defined agents.
 func NewRegistry() *Registry {
-	r := &Registry{
-		agents: make(map[string]*AgentConfig),
-	}
-	// Register built-in agents
-	r.registerBuiltins()
-	return r
+	return &Registry{agents: make(map[string]*AgentConfig)}
 }
 
 // defaultRegistry is the package-level agent registry.
@@ -54,63 +49,6 @@ func (r *Registry) ListConfigs() []*AgentConfig {
 		configs = append(configs, config)
 	}
 	return configs
-}
-
-// registerBuiltins registers the built-in agent types
-func (r *Registry) registerBuiltins() {
-	// General-purpose agent - all tools (including nested Agent)
-	r.agents["general-purpose"] = &AgentConfig{
-		Name:        "general-purpose",
-		Description: "General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks.",
-		Color:       "green",
-		WhenToUse: `Use this when the task needs multiple searches, cross-file reasoning, implementation work, or another multi-step workflow.
-For non-mutating investigation, run this agent with mode=explore. For implementation work, run it with mode=edit.`,
-		Model:          "inherit",
-		PermissionMode: PermissionDefault,
-		AllowTools:     nil,
-		MaxSteps:       100,
-		Source:         "built-in",
-	}
-
-	// code-simplifier agent - simplifies and refines code
-	r.agents["code-simplifier"] = &AgentConfig{
-		Name:        "code-simplifier",
-		Description: "Simplifies and refines code for clarity, consistency, and maintainability while preserving all functionality.",
-		Color:       "blue",
-		WhenToUse: `Use this after implementing a feature or making changes to clean up the code.
-Focuses on recently modified code unless instructed otherwise.
-Good for reducing complexity, removing duplication, improving naming, and tightening logic.
-Use it to enforce naming conventions and replace hacks with clear, maintainable, extensible implementations.`,
-		Model:          "inherit",
-		PermissionMode: PermissionAcceptEdits,
-		AllowTools:     nil,
-		DenyTools:      ToolNames("Agent", "SendMessage"),
-		MaxSteps:       100,
-		Source:         "built-in",
-	}
-
-	// code-reviewer agent - reviews code for quality issues without mutating the workspace
-	r.agents["code-reviewer"] = &AgentConfig{
-		Name:        "code-reviewer",
-		Description: "Reviews code changes for bugs, security issues, performance problems, and style violations.",
-		Color:       "yellow",
-		WhenToUse: `Use this when you want an independent review of code changes before committing or merging.
-Good for catching issues you might have missed — security vulnerabilities, edge cases, naming problems, or logic errors.
-Returns a structured review with findings and recommendations.`,
-		Model:          "inherit",
-		PermissionMode: PermissionExplore,
-		AllowTools: ToolList{
-			{Name: "Read"},
-			{Name: "Bash", Pattern: "git diff*"},
-			{Name: "Bash", Pattern: "git log*"},
-			{Name: "Bash", Pattern: "git show*"},
-			{Name: "Bash", Pattern: "git status*"},
-			{Name: "WebFetch"},
-			{Name: "WebSearch"},
-		},
-		MaxSteps: 100,
-		Source:   "built-in",
-	}
 }
 
 // InitStores initializes the user and project stores for enabled/disabled state

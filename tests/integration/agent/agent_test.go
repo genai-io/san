@@ -33,7 +33,7 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
-		Agent:       "general-purpose",
+		Agent:       "subagent",
 		Mode:        "explore",
 		Prompt:      "Find all Go files",
 		Description: "explore codebase",
@@ -82,7 +82,7 @@ func TestAgent_MaxStepsRespected(t *testing.T) {
 		t.TempDir(), "fake-model", nil,
 	)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
-		Agent:  "general-purpose",
+		Agent:  "subagent",
 		Prompt: "keep going",
 	})
 	if err != nil {
@@ -123,7 +123,7 @@ func TestAgent_ModelResolution(t *testing.T) {
 			}
 
 			_, err := executor.Run(context.Background(), tool.AgentExecRequest{
-				Agent:  "general-purpose",
+				Agent:  "subagent",
 				Prompt: "test",
 				Model:  tt.reqModel,
 			})
@@ -186,7 +186,7 @@ func TestAgent_ExploreMode_BlocksWrites(t *testing.T) {
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
-		Agent:  "general-purpose",
+		Agent:  "subagent",
 		Mode:   "explore",
 		Prompt: "try to write a file",
 	})
@@ -249,7 +249,7 @@ func TestAgent_SubagentHooks_Fire(t *testing.T) {
 
 	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", engine)
 	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
-		Agent:  "general-purpose",
+		Agent:  "subagent",
 		Prompt: "test hooks",
 	})
 	if err != nil {
@@ -289,7 +289,7 @@ func TestAgent_BackgroundExecution(t *testing.T) {
 
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 	agentTask, err := executor.RunBackground(tool.AgentExecRequest{
-		Agent:       "general-purpose",
+		Agent:       "subagent",
 		Prompt:      "background task",
 		Description: "bg test",
 	})
@@ -340,7 +340,7 @@ func TestAgent_OnActivityReceivesToolUpdates(t *testing.T) {
 	executor := subagent.NewExecutor(mp, tmpDir, "fake-model", nil)
 	var activity []string
 	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
-		Agent:  "general-purpose",
+		Agent:  "subagent",
 		Mode:   "explore",
 		Prompt: "inspect the readme",
 		OnActivity: func(msg string) {

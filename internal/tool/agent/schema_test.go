@@ -6,17 +6,17 @@ import (
 )
 
 func TestAgentSchemaEmbedsDirectory(t *testing.T) {
-	directory := "Available agent types for the Agent tool:\n\n- general-purpose: General multi-step agent\n  Tools: *\n- code-reviewer: Reviews code changes\n  Tools: Read, Glob, Grep"
+	directory := "Available agent types for the Agent tool:\n\n- project-reviewer: General multi-step review agent\n  Tools: Read, Bash(git diff*)\n- plugin:browser-user: Uses a browser\n  Tools: WebFetch"
 
 	schema := agentSchema(directory)
-	if !strings.Contains(schema.Description, "general-purpose") {
+	if !strings.Contains(schema.Description, "project-reviewer") {
 		t.Error("Agent description should embed the directory body when supplied")
 	}
-	if !strings.Contains(schema.Description, "code-reviewer") {
-		t.Error("Agent description should list every directory entry")
+	if !strings.Contains(schema.Description, "plugin:browser-user") {
+		t.Error("Agent description should list every custom directory entry")
 	}
-	if !strings.Contains(schema.Description, "When using the Agent tool, specify a subagent_type") {
-		t.Error("Agent description should retain the usage guidance after the directory")
+	if !strings.Contains(schema.Description, "Specify subagent_type only when selecting one of these custom subagents") {
+		t.Error("Agent description should retain custom-subagent guidance after the directory")
 	}
 }
 
@@ -25,8 +25,8 @@ func TestAgentSchemaOmitsDirectoryWhenEmpty(t *testing.T) {
 	if strings.Contains(schema.Description, "Available agent types") {
 		t.Error("empty directory should not produce an Available-agents block")
 	}
-	if !strings.Contains(schema.Description, "When using the Agent tool, specify a subagent_type") {
-		t.Error("usage guidance must remain even without a directory")
+	if !strings.Contains(schema.Description, "Omit subagent_type to use the default subagent") {
+		t.Error("default-subagent guidance must remain without a directory")
 	}
 }
 
@@ -40,6 +40,13 @@ func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
 	}
 	if at.SchemaWithAgentDirectory("").Description != agentSchema("").Description {
 		t.Error("SchemaWithAgentDirectory(\"\") must equal the directory-less agentSchema")
+	}
+}
+
+func TestAgentSchemaOmitsModelOverride(t *testing.T) {
+	properties := agentToolParameters["properties"].(map[string]any)
+	if _, ok := properties["model"]; ok {
+		t.Fatal("Agent schema should not expose a model override")
 	}
 }
 

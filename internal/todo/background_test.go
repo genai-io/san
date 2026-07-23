@@ -110,7 +110,7 @@ func TestCompleteWorkerTracksFailure(t *testing.T) {
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "fix-auth",
-		AgentType:   "general-purpose",
+		AgentType:   "subagent",
 		Description: "Fix auth module",
 	})
 

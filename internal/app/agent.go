@@ -635,8 +635,12 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	m.ensureMemoryContextLoaded()
 
+	store := m.services.LLM.Store()
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
-	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	executor.SetResolver(llm.NewProviderPool(store))
+	if current := m.env.CurrentModel; current != nil {
+		executor.SetModelStore(store, current.Provider, store.ResolveAuthMethod(current))
+	}
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}

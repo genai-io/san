@@ -21,6 +21,7 @@ func TestIsReadOnlyBashCommand(t *testing.T) {
 		"git status",
 		"git log --oneline -20",
 		"git diff --stat && git status",
+		"git show --stat HEAD",
 		"which rg",
 		"rg foo 2>/dev/null",
 		"stat -f%z go.sum",
@@ -40,6 +41,12 @@ func TestIsReadOnlyBashCommand(t *testing.T) {
 		"sed -i s/a/b/ file.go",
 		"git commit -m msg",
 		"git push origin main",
+		"git diff --output=/tmp/diff.txt",
+		"git diff --output /tmp/diff.txt",
+		"git show --output=/tmp/show.txt HEAD",
+		"git log --output=/tmp/log.txt",
+		"git diff --ext-diff",
+		"git diff --textconv",
 		"ls > files.txt",                     // output redirection
 		"cat foo 2>errors.log",               // stderr to a real file
 		"rg $(cat cmds.txt)",                 // command substitution

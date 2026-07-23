@@ -32,6 +32,9 @@ type ProviderResolver interface {
 type Executor struct {
 	provider            llm.Provider
 	resolver            ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
+	modelStore          *llm.Store       // optional cached provider catalog for validating same-provider overrides
+	parentProviderName  llm.Name         // canonical provider key for the parent connection
+	parentAuthMethod    llm.AuthMethod   // auth-specific catalog key for the parent connection
 	cwd                 string
 	parentModelID       string // Parent conversation's model ID (used when inheriting)
 	hooks               hook.Handler
@@ -81,6 +84,15 @@ func (e *Executor) SetProjectInstructions(instructions string) {
 // reusing the parent's provider. Unavailable routes fall back to the parent.
 func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
+}
+
+// SetModelStore supplies the cached catalog and parent connection identity used
+// to reject unsupported same-provider overrides without fetching models on the
+// agent startup path.
+func (e *Executor) SetModelStore(store *llm.Store, provider llm.Name, authMethod llm.AuthMethod) {
+	e.modelStore = store
+	e.parentProviderName = provider
+	e.parentAuthMethod = authMethod
 }
 
 // SetSkillsDirectory provides the skills directory section so subagents
@@ -147,12 +159,9 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}
-	config, ok := defaultRegistry.Get(req.Agent)
+	config, ok := resolveAgentConfig(req.Agent)
 	if !ok {
-		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
-	}
-	if !defaultRegistry.IsEnabled(req.Agent) {
-		return nil, fmt.Errorf("agent type is disabled: %s", req.Agent)
+		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -220,13 +229,35 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	return nil
 }
 
-func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
-	config, ok := defaultRegistry.Get(req.Agent)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent type: %s", req.Agent)
+func defaultAgentConfig() *AgentConfig {
+	return &AgentConfig{
+		Name:           "subagent",
+		Description:    "General-purpose subagent for research and implementation tasks.",
+		Model:          "inherit",
+		PermissionMode: PermissionAcceptEdits,
+		MaxSteps:       defaultMaxSteps,
 	}
-	if !defaultRegistry.IsEnabled(req.Agent) {
-		return nil, fmt.Errorf("agent type is disabled: %s", req.Agent)
+}
+
+// resolveAgentConfig uses one implicit subagent when no custom type is
+// requested. Named definitions remain available for user, project, and plugin
+// compatibility, but the registry carries no built-in agent catalog.
+func resolveAgentConfig(name string) (*AgentConfig, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.EqualFold(name, "subagent") {
+		return defaultAgentConfig(), true
+	}
+	if !defaultRegistry.IsEnabled(name) {
+		return nil, false
+	}
+	config, ok := defaultRegistry.Get(name)
+	return config, ok
+}
+
+func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
+	config, ok := resolveAgentConfig(req.Agent)
+	if !ok {
+		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
 	}
 
 	displayName := displayNameFor(config, req)
@@ -466,13 +497,42 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		if e.resolver == nil {
 			return e.provider, e.parentModelID, nil
 		}
+		if vendor == e.parentProviderName && modelID != e.parentModelID && !e.modelAvailable(modelID) {
+			return e.provider, e.parentModelID, nil
+		}
 		p, err := e.resolver.Resolve(ctx, vendor)
 		if err != nil || p == nil {
 			return e.provider, e.parentModelID, nil
 		}
 		return p, modelID, nil
 	}
-	return e.provider, resolveModelAlias(ref), nil
+	// A bare id or alias stays on the parent provider. If the cached catalog
+	// positively reports that provider does not offer the model, inherit instead
+	// of sending a request that may fail with an opaque 400 response.
+	modelID := resolveModelAlias(ref)
+	if modelID != e.parentModelID && !e.modelAvailable(modelID) {
+		return e.provider, e.parentModelID, nil
+	}
+	return e.provider, modelID, nil
+}
+
+// modelAvailable checks the parent provider's cached model catalog. A missing
+// store, parent connection identity, or catalog leaves the override unverified
+// and therefore allowed; only a definitive cached miss rejects it.
+func (e *Executor) modelAvailable(modelID string) bool {
+	if e.modelStore == nil || e.parentProviderName == "" || modelID == "" {
+		return true
+	}
+	models, ok := e.modelStore.GetCachedModels(e.parentProviderName, e.parentAuthMethod)
+	if !ok {
+		return true
+	}
+	for _, model := range models {
+		if model.ID == modelID {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
@@ -531,6 +591,7 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 // not gated here: the Agent tool is parent-only, so workers never see it — the
 // agent model is flat.
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
+	mode = NormalizePermissionMode(string(mode))
 	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)
 
@@ -561,6 +622,20 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		// hallucinated tracker or cron call.
 		if tool.IsParentOnlyTool(name) {
 			return false, fmt.Sprintf("tool %s is reserved for the main conversation", name)
+		}
+		// Explore is an authoritative read-only boundary. Explicit allow rules
+		// may narrow its tools but cannot elevate it to workspace mutation.
+		if mode == PermissionExplore {
+			switch {
+			case perm.IsSafeTool(name), name == tool.ToolSendMessage, name == tool.ToolSkill:
+				return true, ""
+			case name == tool.ToolBash:
+				command, _ := input["command"].(string)
+				if setting.IsReadOnlyBashCommand(command) {
+					return true, ""
+				}
+			}
+			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
 		}
 		// Communication carve-out (see doc comment): a mode-gated worker may
 		// always reach main or a peer via SendMessage. A worker with an explicit
@@ -614,7 +689,7 @@ func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, 
 	filtered := make([]core.ToolSchema, 0, len(schemas))
 	for _, schema := range schemas {
 		if whitelist {
-			if allowTools.HasName(schema.Name) {
+			if allowTools.HasName(schema.Name) && (mode != PermissionExplore || modeAllowsSchema(mode, schema.Name)) {
 				filtered = append(filtered, schema)
 			}
 			continue

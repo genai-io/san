@@ -38,10 +38,12 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	var sb strings.Builder
 	sb.WriteString("Launch a subagent for complex work that benefits from separate context or parallel execution.\n\n")
 	if agentDirectory != "" {
+		sb.WriteString("Optional custom subagent definitions:\n\n")
 		sb.WriteString(agentDirectory)
-		sb.WriteString("\n\n")
+		sb.WriteString("\n\nSpecify subagent_type only when selecting one of these custom subagents; otherwise omit it to use the default subagent.\n\n")
+	} else {
+		sb.WriteString("Omit subagent_type to use the default subagent.\n\n")
 	}
-	sb.WriteString("When using the Agent tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.\n\n")
 	sb.WriteString("Use the lightest option that fits: a single Bash or Read call → that tool directly; 3+ non-mutating searches with decisions between them → mode=explore; code changes or multi-file edits → mode=edit.\n\n")
 	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
 	sb.WriteString("Notes:\n")
@@ -68,7 +70,7 @@ var agentToolParameters = map[string]any{
 		},
 		"subagent_type": map[string]any{
 			"type":        "string",
-			"description": "The type of specialized agent to use for this task",
+			"description": "Optional custom subagent definition. Omit to use the default subagent.",
 		},
 		"name": map[string]any{
 			"type":        "string",
@@ -78,13 +80,9 @@ var agentToolParameters = map[string]any{
 			"type":        "boolean",
 			"description": "Set to true to run this agent in the background. You will be notified when it completes.",
 		},
-		"model": map[string]any{
-			"type":        "string",
-			"description": "Optional model override. If omitted or unavailable, inherits from parent conversation.",
-		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps for the agent. Built-in agents default to 100 and lower values are raised to 100.",
+			"description": "Maximum number of LLM inference steps. Subagents default to 100 and lower values are raised to 100.",
 		},
 		"mode": map[string]any{
 			"type":        "string",

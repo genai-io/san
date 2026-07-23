@@ -45,8 +45,8 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithSubagentIdentity(SubagentBrief{
-						AgentName:   "general-purpose",
-						Description: "General-purpose agent for research and multi-step tasks.",
+						AgentName:   "subagent",
+						Description: "General-purpose subagent for research and multi-step tasks.",
 						Mode:        "explore",
 					}),
 					WithEnvironment(subEnv),
@@ -59,8 +59,8 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithSubagentIdentity(SubagentBrief{
-						AgentName:    "general-purpose",
-						Description:  "General-purpose agent for research and execution.",
+						AgentName:    "subagent",
+						Description:  "General-purpose subagent for research and execution.",
 						Mode:         "default",
 						CustomPrompt: "Focus on minimal, surgical fixes.",
 					}),
@@ -160,11 +160,20 @@ func TestScenarioSubagentReadonly_NoMainOnlyGuidelines(t *testing.T) {
 		sys := Build(sc.scope, sc.opts()...)
 		prompt := sys.Prompt()
 
-		if !strings.Contains(prompt, "general-purpose subagent") {
+		if !strings.Contains(prompt, "You are a subagent") {
 			t.Error("should announce subagent identity")
 		}
 		if !strings.Contains(prompt, `mode="explore"`) {
 			t.Error("identity tag should carry explore mode attribute")
+		}
+		if !strings.Contains(prompt, "do not modify files") {
+			t.Error("explore identity should prohibit file mutation")
+		}
+		if !strings.Contains(prompt, "shell commands are limited to operations classified as read-only") {
+			t.Error("explore identity should permit only read-only shell operations")
+		}
+		if strings.Contains(prompt, "do not modify files or run shell commands") {
+			t.Error("explore identity should not prohibit all shell commands")
 		}
 		if strings.Contains(prompt, "<behavior>") {
 			t.Error("subagent should NOT have the behavior part")
@@ -180,7 +189,7 @@ func TestScenarioSubagentGeneral_NoCapabilitiesInSystemPrompt(t *testing.T) {
 		sys := Build(sc.scope, sc.opts()...)
 		prompt := sys.Prompt()
 
-		if !strings.Contains(prompt, "general-purpose subagent") {
+		if !strings.Contains(prompt, "You are a subagent") {
 			t.Error("should announce subagent identity")
 		}
 		// Skills now ride on the subagent's first user message as a

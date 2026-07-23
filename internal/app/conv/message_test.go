@@ -721,7 +721,7 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"general-purpose","description":"audit git changes","mode":"explore"}`,
+		Input: `{"subagent_type":"subagent","description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -854,7 +854,7 @@ func TestRenderToolCallsUsesActivityUsageForAgentTokens(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"general-purpose","description":"audit git changes","mode":"explore"}`,
+		Input: `{"subagent_type":"subagent","description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
