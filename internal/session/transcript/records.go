@@ -212,6 +212,7 @@ type ContentBlock struct {
 	Content     []ContentBlock  `json:"content,omitempty"`
 	IsError     bool            `json:"is_error,omitempty"`
 	EditDetails json.RawMessage `json:"edit_details,omitempty"`
+	BashDetails json.RawMessage `json:"bash_details,omitempty"`
 
 	// Source marks the provenance of injected content (e.g. "hook:UserPromptSubmit",
 	// "command:/identity", "reminder:system-reminder"). Empty for user-authored

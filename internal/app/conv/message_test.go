@@ -184,11 +184,11 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		t.Fatalf("command should follow the prompt without extra spacing: %q", rows[0])
 	}
 
-	// prompt, so command text lines up down one column and the prompt never repeats.
-	contIndent := strings.Repeat(" ", lipgloss.Width(bashPrompt))
+	// Wrapped rows use the connector so the command block stays connected to its
+	// result summary. The prompt appears only on the first row.
 	for i, row := range rows[1:] {
-		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) || strings.HasPrefix(row, nestedBodyPrefix) {
-			t.Fatalf("continuation row %d should hang under the command text, not repeat the prompt: %q", i+1, row)
+		if !strings.HasPrefix(row, nestedBodyPrefix) || strings.HasPrefix(row, bashPrompt) {
+			t.Fatalf("continuation row %d should retain the connector without repeating the prompt: %q", i+1, row)
 		}
 	}
 
@@ -198,20 +198,22 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	}
 }
 
-func Test_renderBashToolCallAvoidsConnectorOnlyRows(t *testing.T) {
+func Test_renderBashToolCallKeepsConnectorsContinuousAcrossBlankLines(t *testing.T) {
 	for _, input := range []string{
-		`{"command":"first\n"}`,
 		`{"command":"first\n\nthird"}`,
 		`{"command":"first\n   \nthird"}`,
-		`{"command":"\nfirst"}`,
 	} {
 		out := stripANSI(renderBashToolCall(input, 100, "●"))
-		if strings.Contains(out, strings.TrimSuffix(nestedBodyPrefix, " ")+"\n") {
-			t.Fatalf("blank command lines should not create connector-only rows, got %q", out)
+		if !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n"+nestedBodyPrefix+"third\n") {
+			t.Fatalf("blank command lines should retain the connector, got %q", out)
 		}
-		if !strings.Contains(out, bashPrompt+"first\n") {
-			t.Fatalf("first visible command line should retain the shell prompt, got %q", out)
-		}
+	}
+
+	if out := stripANSI(renderBashToolCall(`{"command":"first\n"}`, 100, "●")); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
+		t.Fatalf("trailing blank command line should retain the connector, got %q", out)
+	}
+	if out := stripANSI(renderBashToolCall(`{"command":"\nfirst"}`, 100, "●")); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
+		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
 	if out := stripANSI(renderBashToolCall(`{"command":"   "}`, 100, "●")); !strings.Contains(out, bashPrompt+"(no command)\n") {
 		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
@@ -923,7 +925,12 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
 		ToolCalls: []core.ToolCall{call},
 		ResultMap: map[string]ToolResultData{
-			call.ID: {ToolName: "Bash", Content: "exit status 1\nstderr detail", IsError: true},
+			call.ID: {
+				ToolName: "Bash",
+				Content:  "test output\nstderr detail\nError: exit code 1",
+				IsError:  true,
+				Details:  toolresult.BashDetails{Error: "exit code 1", LineCount: 2},
+			},
 		},
 		Width: 100,
 	}))
@@ -931,8 +938,100 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  ┊ exit status 1\n  ┊ stderr detail\n  └ failed · 2 lines\n") {
-		t.Fatalf("Bash failure should report its line count and expanded detail, got %q", rendered)
+	if !strings.Contains(rendered, "  ┊ test output\n  ┊ stderr detail\n  └ failed · exit code 1 · 2 lines\n") {
+		t.Fatalf("Bash failure should move its error into the summary without counting it as output, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Error: exit code 1") {
+		t.Fatalf("Bash failure should not repeat its model-facing error line in the output body, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsKeepsBashOutputConnectorAcrossBlankLines(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"printf output; exit 1"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {
+				ToolName: "Bash",
+				Content:  "first\n\nthird\nError: exit code 1",
+				IsError:  true,
+				Details:  toolresult.BashDetails{Error: "exit code 1", LineCount: 3},
+			},
+		},
+		Width: 100,
+	}))
+
+	if !strings.Contains(rendered, "  ┊ first\n  ┊ \n  ┊ third\n  └ failed · exit code 1 · 3 lines\n") {
+		t.Fatalf("blank Bash output lines should retain the connector, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsRestoresLegacyBashFailureSummary(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"false"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {
+				ToolName: "Bash",
+				Content:  "first\n\nthird\nError: exit code 1",
+				IsError:  true,
+			},
+		},
+		Width: 100,
+	}))
+
+	if !strings.Contains(rendered, "  ┊ first\n  ┊ \n  ┊ third\n  └ failed · exit code 1 · 3 lines\n") {
+		t.Fatalf("legacy Bash failures without details should retain the concise summary, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Error: exit code 1") {
+		t.Fatalf("legacy Bash failure should not repeat its model-facing error line, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsNestsBashFailureWithoutOutput(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"false"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {
+				ToolName: "Bash",
+				Content:  "Error: exit code 1",
+				IsError:  true,
+				Details:  toolresult.BashDetails{Error: "exit code 1"},
+			},
+		},
+		Width: 100,
+	}))
+
+	if !strings.Contains(rendered, "  $ false\n  └ failed · exit code 1\n") {
+		t.Fatalf("Bash failure without output should show only its reason in the summary, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Error:") || strings.Contains(rendered, "no output") {
+		t.Fatalf("Bash failure without output should not add a body or no-output suffix, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsSummarizesBashTimeout(t *testing.T) {
+	const reason = "command timed out after 2s — if it was waiting for interactive input, re-run with a non-interactive flag"
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"sleep 10"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {
+				ToolName: "Bash",
+				Content:  "started\nError: " + reason,
+				IsError:  true,
+				Details:  toolresult.BashDetails{Error: reason, LineCount: 1},
+			},
+		},
+		Width: 100,
+	}))
+
+	if !strings.Contains(rendered, "  ┊ started\n  └ failed · timed out after 2s · 1 line\n") {
+		t.Fatalf("Bash timeout should use a concise reason and preserve output count, got %q", rendered)
+	}
+	if strings.Contains(rendered, "Error:") || strings.Contains(rendered, "non-interactive") {
+		t.Fatalf("Bash timeout should not repeat its long model-facing diagnostic, got %q", rendered)
 	}
 }
 

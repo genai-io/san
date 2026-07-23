@@ -143,12 +143,17 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 			ToolCallID: "tc-1", ToolName: "Edit", Content: "Edited /tmp/test (1 replacements, +1 -1)",
 			Details: toolresult.FileChangeDetails{Path: "/tmp/test", EditCount: 1, AddedLines: 1, RemovedLines: 1, UnifiedDiff: "@@ -1 +1 @@\n-old\n+new"},
 		}},
+		{Role: core.RoleAssistant, ToolCalls: []core.ToolCall{{ID: "tc-2", Name: "Bash", Input: `{"command":"false"}`}}},
+		{Role: core.RoleUser, ToolResult: &core.ToolResult{
+			ToolCallID: "tc-2", ToolName: "Bash", Content: "Error: exit code 1", IsError: true,
+			Details: toolresult.BashDetails{Error: "exit code 1", LineCount: 0},
+		}},
 		{Role: core.RoleAssistant, Content: "I see the file."},
 	}
 
 	nodes := messagesToNodes(msgs, "/cwd", time.Time{}, "main")
-	if len(nodes) != 4 {
-		t.Fatalf("expected 4 nodes, got %d", len(nodes))
+	if len(nodes) != 6 {
+		t.Fatalf("expected 6 nodes, got %d", len(nodes))
 	}
 
 	// Verify node roles
@@ -164,8 +169,8 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 
 	// Round-trip back to messages
 	restored := messagesFromNodes(nodes)
-	if len(restored) != 4 {
-		t.Fatalf("expected 4 messages after roundtrip, got %d", len(restored))
+	if len(restored) != 6 {
+		t.Fatalf("expected 6 messages after roundtrip, got %d", len(restored))
 	}
 	if restored[0].Content != "hello" {
 		t.Errorf("msg[0].Content: want 'hello', got %q", restored[0].Content)
@@ -186,6 +191,13 @@ func Test_messagesToNodes_roundtrip(t *testing.T) {
 	details, ok := restored[2].ToolResult.Details.(toolresult.FileChangeDetails)
 	if !ok || details.UnifiedDiff != "@@ -1 +1 @@\n-old\n+new" {
 		t.Errorf("restored Edit details = %#v", restored[2].ToolResult.Details)
+	}
+	if restored[4].ToolResult == nil || restored[4].ToolResult.ToolName != "Bash" {
+		t.Fatalf("restored Bash result = %#v", restored[4].ToolResult)
+	}
+	bashDetails, ok := restored[4].ToolResult.Details.(toolresult.BashDetails)
+	if !ok || bashDetails.Error != "exit code 1" || bashDetails.LineCount != 0 {
+		t.Errorf("restored Bash details = %#v", restored[4].ToolResult.Details)
 	}
 }
 

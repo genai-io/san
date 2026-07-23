@@ -16,6 +16,14 @@ type FileChangeDetails struct {
 	TruncatedDiffLines int // diff lines dropped by the storage cap (0 = complete)
 }
 
+// BashDetails preserves failure metadata separately from the model-facing text.
+// The UI uses it to show the process error in the summary without counting or
+// repeating the appended "Error: ..." line as command output.
+type BashDetails struct {
+	Error     string `json:"error"`
+	LineCount int    `json:"lineCount"`
+}
+
 // ToolResult represents the result of a tool execution
 type ToolResult struct {
 	Success      bool             // Whether the tool succeeded

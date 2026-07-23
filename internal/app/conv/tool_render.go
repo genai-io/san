@@ -178,6 +178,19 @@ func renderNestedToolBodyLine(line string) string {
 	return toolResultStyle.Render(nestedBodyPrefix+line) + "\n"
 }
 
+func renderNestedToolBodyContinuous(content string) string {
+	content = strings.TrimRight(content, "\n")
+	if content == "" {
+		return ""
+	}
+
+	var sb strings.Builder
+	for line := range strings.SplitSeq(content, "\n") {
+		sb.WriteString(renderNestedToolBodyLine(line))
+	}
+	return sb.String()
+}
+
 func renderNestedToolTrailer(summary string, style lipgloss.Style) string {
 	return style.Render(nestedTrailerPrefix+summary) + "\n"
 }
@@ -239,17 +252,73 @@ func renderBashToolResultInline(data ToolResultData) string {
 	summary := formatLineCount(content)
 	style := toolResultStyle
 	if data.IsError {
-		summary = "failed · " + summary
+		content, summary = formatBashFailure(content, data.Details)
 		style = errorStyle
 	}
 
 	var sb strings.Builder
 	showBody := (data.Expanded || data.IsError) && content != ""
 	if showBody {
-		sb.WriteString(renderNestedToolBody(content))
+		sb.WriteString(renderNestedToolBodyContinuous(content))
 	}
 	sb.WriteString(renderNestedToolTrailer(summary, style))
 	return sb.String()
+}
+
+func formatBashFailure(content string, details any) (string, string) {
+	if bashDetails, ok := details.(toolresult.BashDetails); ok {
+		content = trimBashErrorSuffix(content, bashDetails.Error)
+		return content, formatBashFailureSummary(bashDetails.Error, bashDetails.LineCount)
+	}
+
+	if output, reason, ok := splitBashFailureContent(content); ok {
+		lineCount := 0
+		if strings.TrimSuffix(output, "\n") != "" {
+			lineCount = strings.Count(strings.TrimSuffix(output, "\n"), "\n") + 1
+		}
+		return output, formatBashFailureSummary(reason, lineCount)
+	}
+
+	return content, "failed · " + formatLineCount(content)
+}
+
+func formatBashFailureSummary(reason string, lineCount int) string {
+	summary := "failed"
+	if reason = formatBashFailureReason(reason); reason != "" {
+		summary += " · " + reason
+	}
+	if lineCount > 0 {
+		summary += " · " + formatLineCountValue(lineCount)
+	}
+	return summary
+}
+
+func splitBashFailureContent(content string) (output, reason string, ok bool) {
+	if reason, ok := strings.CutPrefix(content, "Error: "); ok {
+		return "", reason, true
+	}
+	const separator = "\nError: "
+	index := strings.LastIndex(content, separator)
+	if index < 0 {
+		return "", "", false
+	}
+	return content[:index], content[index+len(separator):], true
+}
+
+func trimBashErrorSuffix(content, errorMessage string) string {
+	if content == "Error: "+errorMessage {
+		return ""
+	}
+	return strings.TrimSuffix(content, "\nError: "+errorMessage)
+}
+
+func formatBashFailureReason(reason string) string {
+	const timeoutPrefix = "command timed out after "
+	if after, ok := strings.CutPrefix(reason, timeoutPrefix); ok {
+		duration, _, _ := strings.Cut(after, " — ")
+		return "timed out after " + duration
+	}
+	return reason
 }
 
 func renderNestedFileChangeResultInline(data ToolResultData) string {
@@ -1120,18 +1189,18 @@ func renderBashToolCall(input string, width int, icon string) string {
 	sb.WriteString(renderToolLineWithIcon(header, width, icon) + "\n")
 
 	// Soft-wrap every command line to the available width. The first row carries
-	// the shell prompt; later physical command lines use the same connector as
-	// result output, while soft-wrapped continuations hang under their text.
+	// the shell prompt; every later row uses the connector so the command and its
+	// result form one continuous block.
 	promptWidth := lipgloss.Width(bashPrompt)
-	contIndent := strings.Repeat(" ", promptWidth)
 	wrapWidth := budget - promptWidth
 	seenCommand := false
 	for commandLine := range strings.SplitSeq(command, "\n") {
-		// Preserve intentional blank lines between command rows as hanging rows,
-		// but skip leading whitespace so the first visible command retains "$".
+		// Preserve intentional blank lines after the command starts while keeping
+		// the connector continuous. Leading blank lines are still skipped so the
+		// first visible command retains "$".
 		if strings.TrimSpace(commandLine) == "" {
 			if seenCommand {
-				sb.WriteString(contIndent + "\n")
+				sb.WriteString(renderNestedToolBodyLine(""))
 			}
 			continue
 		}
@@ -1154,7 +1223,7 @@ func renderBashToolCall(input string, width int, icon string) string {
 				first = false
 				continue
 			}
-			sb.WriteString(contIndent + toolResultStyle.Render(segment) + "\n")
+			sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+segment) + "\n")
 		}
 	}
 	return sb.String()

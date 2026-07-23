@@ -143,7 +143,7 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 func (t *BashTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
-		if fullOutput != "" {
+		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
 			fullOutput += "\n"
 		}
 		fullOutput += errOutput
@@ -178,11 +178,13 @@ func (t *BashTool) foregroundResult(ctx context.Context, description, output, er
 	if err != nil {
 		// Check if it's a timeout
 		if ctx.Err() == context.DeadlineExceeded {
+			errorMsg := "command timed out after " + timeout.String() +
+				" — if it was waiting for interactive input, re-run with a non-interactive flag (e.g. -y, -m, BatchMode=yes) or supply input inline"
 			return toolresult.ToolResult{
-				Success: false,
-				Output:  fullOutput,
-				Error: "command timed out after " + timeout.String() +
-					" — if it was waiting for interactive input, re-run with a non-interactive flag (e.g. -y, -m, BatchMode=yes) or supply input inline",
+				Success:      false,
+				Output:       fullOutput,
+				Error:        errorMsg,
+				Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount},
 				HookResponse: hookResponse,
 				Metadata: toolresult.ResultMetadata{
 					Title:     t.Name(),
@@ -204,6 +206,7 @@ func (t *BashTool) foregroundResult(ctx context.Context, description, output, er
 			Success:      false,
 			Output:       fullOutput,
 			Error:        errorMsg,
+			Details:      toolresult.BashDetails{Error: errorMsg, LineCount: lineCount},
 			HookResponse: hookResponse,
 			Metadata: toolresult.ResultMetadata{
 				Title:     t.Name(),

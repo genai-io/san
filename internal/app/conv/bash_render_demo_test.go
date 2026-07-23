@@ -2,15 +2,20 @@ package conv
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
 )
 
 // TestBashRenderDemo prints how Bash tool calls render, for eyeballing.
-// Run:  go test ./internal/app/conv/ -run TestBashRenderDemo -v
+// Run:  SAN_BASH_RENDER_DEMO=1 go test ./internal/app/conv/ -run TestBashRenderDemo -v
 // Tweak the `width` and add your own cases to `samples`.
 func TestBashRenderDemo(t *testing.T) {
+	if os.Getenv("SAN_BASH_RENDER_DEMO") == "" {
+		t.Skip("set SAN_BASH_RENDER_DEMO=1 to print the Bash rendering demo")
+	}
+
 	const width = 70 // terminal width; block wraps at ~80% of this
 
 	samples := []struct {

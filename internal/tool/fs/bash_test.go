@@ -11,7 +11,46 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
+
+func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
+	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"command": "printf 'line one\\nline two\\n'; printf 'stderr\\n' >&2; exit 7",
+	}, t.TempDir())
+	if result.Success {
+		t.Fatal("ExecuteApproved() succeeded, want exit failure")
+	}
+	if result.Error != "exit code 7" {
+		t.Fatalf("error = %q, want exit code 7", result.Error)
+	}
+	if got := result.FormatForLLM(); got != "line one\nline two\nstderr\n\nError: exit code 7" {
+		t.Fatalf("FormatForLLM() = %q, want stdout and stderr joined without an extra blank output line", got)
+	}
+	details, ok := result.Details.(toolresult.BashDetails)
+	if !ok {
+		t.Fatalf("details = %#v, want BashDetails", result.Details)
+	}
+	if details.Error != "exit code 7" || details.LineCount != 3 {
+		t.Fatalf("details = %#v, want exit code 7 and 3 output lines", details)
+	}
+}
+
+func TestBashFailureWithoutOutputHasZeroDisplayLines(t *testing.T) {
+	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"command": "exit 3",
+	}, t.TempDir())
+	if result.Success {
+		t.Fatal("ExecuteApproved() succeeded, want exit failure")
+	}
+	details, ok := result.Details.(toolresult.BashDetails)
+	if !ok || details.Error != "exit code 3" || details.LineCount != 0 {
+		t.Fatalf("details = %#v, want exit code 3 and no output lines", result.Details)
+	}
+	if got := result.FormatForLLM(); got != "Error: exit code 3" {
+		t.Fatalf("FormatForLLM() = %q, want unchanged error text", got)
+	}
+}
 
 func TestBashToolTracksChangedDirectory(t *testing.T) {
 	cwd := t.TempDir()
