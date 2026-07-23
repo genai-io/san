@@ -62,6 +62,12 @@ func (r ToolResult) FormatForLLM() string {
 			for _, line := range r.Lines {
 				fmt.Fprintf(&sb, LineNumberFormat, line.LineNo, line.Text)
 			}
+			// A trailing note (e.g. "output truncated at line N") must reach
+			// the model along with the lines.
+			if r.Output != "" {
+				sb.WriteString(r.Output)
+				sb.WriteByte('\n')
+			}
 		} else if r.Output != "" {
 			sb.WriteString(r.Output)
 		}

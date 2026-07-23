@@ -101,6 +101,52 @@ func TestRead_LineLimit_LargeFile(t *testing.T) {
 	})
 }
 
+func TestReadCapsTotalOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "huge.txt")
+	// 400 lines x ~1KB each = ~400KB, above the 256KB output cap but far
+	// below the 2000-line cap.
+	line := strings.Repeat("x", 1024)
+	var sb strings.Builder
+	for range 400 {
+		sb.WriteString(line)
+		sb.WriteByte('\n')
+	}
+	if err := os.WriteFile(filePath, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := (&ReadTool{}).Execute(context.Background(), map[string]any{"file_path": filePath}, tmpDir)
+	if !result.Success {
+		t.Fatalf("read failed: %s", result.Error)
+	}
+	if !result.Metadata.Truncated || len(result.Lines) >= 400 {
+		t.Fatalf("read should stop at the byte cap, got %d lines, truncated=%v", len(result.Lines), result.Metadata.Truncated)
+	}
+	out := result.FormatForLLM()
+	if !strings.Contains(out, "output truncated at line") || !strings.Contains(out, "continue with offset=") {
+		t.Fatalf("truncated read must tell the model where to continue, got tail %q", out[len(out)-120:])
+	}
+}
+
+func TestReadImageFileSaysSo(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "shot.png")
+	// A null byte marks it binary; the extension marks it as an image.
+	if err := os.WriteFile(filePath, []byte{0x89, 'P', 'N', 'G', 0x00, 0x01}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := (&ReadTool{}).Execute(context.Background(), map[string]any{"file_path": filePath}, tmpDir)
+	if !result.Success {
+		t.Fatalf("read failed: %s", result.Error)
+	}
+	out := result.FormatForLLM()
+	if !strings.Contains(out, "image file") || !strings.Contains(out, "attach the image") {
+		t.Fatalf("image read should explain the gap and the alternative, got %q", out)
+	}
+}
+
 func TestReadEmptyFileSaysSo(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "empty.txt")

@@ -19,6 +19,11 @@ const (
 	maxReadLines  = 2000
 	maxLineLength = 2000
 
+	// maxReadBytes caps the total content one Read emits into the context.
+	// The line and line-length caps alone still admit ~4MB (2000 lines ×
+	// 2000 chars); a busy minified file would blow the context in one call.
+	maxReadBytes = 256 * 1024
+
 	// lineTruncationMarker ends every line that was cut at maxLineLength. It
 	// is documented in the Read schema so the model knows the marker is not
 	// part of the file — a truncated line cannot be edited by copying the
@@ -75,9 +80,15 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	if n > 0 {
 		if bytes.IndexByte(header[:n], 0) >= 0 {
 			recordFileRead(filePath, info)
+			binaryNote := "Binary file detected: " + filePath
+			if isImagePath(filePath) {
+				// Tool results are text-only for now, so be honest about the
+				// gap instead of a bare "binary" that reads like failure.
+				binaryNote = fmt.Sprintf("image file: %s (%s). Read cannot display images yet — ask the user to attach the image to a message instead", filePath, toolresult.FormatSize(info.Size()))
+			}
 			return toolresult.ToolResult{
 				Success: true,
-				Output:  "Binary file detected: " + filePath,
+				Output:  binaryNote,
 				Metadata: toolresult.ResultMetadata{
 					Title:    t.Name(),
 					Icon:     t.Icon(),
@@ -98,6 +109,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	scanner.Buffer(make([]byte, 0, bufio.MaxScanTokenSize), 1024*1024)
 	lineNo := 0
 	readCount := 0
+	emittedBytes := 0
 	truncated := false
 
 	for scanner.Scan() {
@@ -109,7 +121,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		}
 
 		// Check limit
-		if readCount >= limit {
+		if readCount >= limit || emittedBytes >= maxReadBytes {
 			truncated = true
 			break
 		}
@@ -128,6 +140,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 			Type:   toolresult.LineNormal,
 		})
 		readCount++
+		emittedBytes += len(text) + 8 // content plus the line-number prefix
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -138,14 +151,18 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 
 	duration := time.Since(start)
 
-	// An empty result renders as nothing; say what happened instead of
-	// leaving the model to guess whether the read failed.
-	emptyNote := ""
-	if len(lines) == 0 {
-		emptyNote = "file exists but is empty: " + filePath
-		if lineNo > 0 {
-			emptyNote = fmt.Sprintf("no lines at offset %d: %s has %d lines", offset, filePath, lineNo)
-		}
+	// resultNote makes states the line dump alone can't convey visible to
+	// the model: an empty result would render as nothing, and a truncated
+	// read must say where to continue.
+	resultNote := ""
+	switch {
+	case len(lines) == 0 && lineNo > 0:
+		resultNote = fmt.Sprintf("no lines at offset %d: %s has %d lines", offset, filePath, lineNo)
+	case len(lines) == 0:
+		resultNote = "file exists but is empty: " + filePath
+	case truncated:
+		lastLine := lines[len(lines)-1].LineNo
+		resultNote = fmt.Sprintf("(output truncated at line %d; continue with offset=%d)", lastLine, lastLine+1)
 	}
 
 	// Build content string for hook response
@@ -164,7 +181,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	// Build result
 	result := toolresult.ToolResult{
 		Success: true,
-		Output:  emptyNote,
+		Output:  resultNote,
 		Lines:   lines,
 		HookResponse: map[string]any{
 			"type": "text",
@@ -188,6 +205,16 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	}
 
 	return result
+}
+
+// isImagePath reports whether the file is an image by extension, matching
+// the formats the composer accepts as attachments (internal/image).
+func isImagePath(filePath string) bool {
+	switch strings.ToLower(filepath.Ext(filePath)) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp":
+		return true
+	}
+	return false
 }
 
 func init() {
