@@ -34,11 +34,13 @@ func decide(b perm.Decision, reason string) PermissionDecision {
 // Decision pipeline (inspired by Claude Code's hasPermissionsToUseTool):
 //
 //  1. Deny rules
-//  2. Bypass-immune floor — unrecoverable calls only (destructive bash,
-//     sensitive paths, data exfiltration); held even in bypass mode
+//  2. Circuit breaker — recursive removal of the filesystem root or the home
+//     directory; the one check held even in bypass mode
 //  3. BypassPermissions mode → allow everything else
-//  4. Confirmation checks — recoverable tier (work-discarding git,
-//     out-of-working-dir writes); skipped by bypass
+//  4. Confirmation checks (skipped by bypass): the unrecoverable tier
+//     (destructive bash, sensitive paths, data exfiltration — never
+//     judge-reviewable) and the recoverable tier (work-discarding git,
+//     out-of-working-dir writes — the AutoPilot judge may weigh git)
 //  5. Session permissions (runtime overrides)
 //  6. Ask rules
 //  7. Allow rules
@@ -64,12 +66,11 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		}
 	}
 
-	// ── Step 2: Bypass-immune floor ──
-	// Only the unrecoverable tier is immune to bypass: real destruction, a
-	// sensitive path, data exfiltration. Recoverable operations (the git tier
-	// below) are deliberately NOT held here, so bypass mode runs them freely.
-	if reason := UnrecoverableReason(toolName, args); reason != "" {
-		return coerceAsk(decide(perm.Prompt, "bypass-immune: "+reason), session)
+	// ── Step 2: Circuit breaker ──
+	// The one check no mode may skip: a recursive removal of the filesystem
+	// root or the home directory. A guard against model error, not policy.
+	if reason := CircuitBreakerReason(toolName, args); reason != "" {
+		return coerceAsk(decide(perm.Prompt, "circuit breaker: "+reason), session)
 	}
 
 	// ── Step 3: BypassPermissions mode ──
@@ -77,7 +78,7 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 		return decide(perm.Permit, "mode: bypass permissions")
 	}
 
-	// ── Step 4: Confirmation checks (recoverable tier) ──
+	// ── Step 4: Confirmation checks ──
 	if reason, reviewable := s.confirmationPromptReason(toolName, args, session); reason != "" {
 		d := decide(perm.Prompt, reason)
 		d.Reviewable = reviewable
@@ -111,11 +112,14 @@ func (s *Data) HasPermissionToUseTool(toolName string, args map[string]any, sess
 }
 
 // confirmationPromptReason reports why a call requires confirmation and whether
-// the AutoPilot judge may weigh it. It carries only the recoverable tier — the
-// unrecoverable floor already ran (bypass-immune, step 2), and bypass mode
-// skips this step entirely. The git tier is the judge's to weigh; a write
-// reaching outside the working directory stays the human's call.
+// the AutoPilot judge may weigh it. Bypass mode skips this step entirely. Only
+// the recoverable git tier is the judge's to weigh; every other reason here —
+// real destruction, a sensitive path, a write reaching outside the working
+// directory — stays the human's call.
 func (s *Data) confirmationPromptReason(toolName string, args map[string]any, session *SessionPermissions) (reason string, reviewable bool) {
+	if reason := UnrecoverableReason(toolName, args); reason != "" {
+		return "confirmation: " + reason, false
+	}
 	if reason := ConfirmationReason(toolName, args); reason != "" {
 		return "confirmation: " + reason, true
 	}
@@ -233,10 +237,10 @@ func (s *Data) ResolveHookAllow(toolName string, args map[string]any, session *S
 			return false
 		}
 	}
-	// A hook cannot vouch for anything a safety check holds — neither the
-	// bypass-immune floor nor the recoverable confirmation tier: there is no
-	// judge in this path to weigh the recoverable one.
-	if reason := UnrecoverableReason(toolName, args); reason != "" {
+	// A hook cannot vouch for anything a safety check holds — the circuit
+	// breaker or either confirmation tier: there is no judge in this path to
+	// weigh the recoverable one.
+	if reason := CircuitBreakerReason(toolName, args); reason != "" {
 		return false
 	}
 	if reason, _ := s.confirmationPromptReason(toolName, args, session); reason != "" {
@@ -545,6 +549,17 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 	return firstMatch, true
 }
 
+// CircuitBreakerReason returns a non-empty reason when the call is the one
+// thing no mode may run silently: a recursive removal of the filesystem root
+// or the home directory. It is the only check bypass mode cannot skip — a
+// circuit breaker against model error, not a permission policy.
+func CircuitBreakerReason(toolName string, args map[string]any) string {
+	if cmd, ok := bashCommandArg(toolName, args); ok && isRootOrHomeRemoval(cmd) {
+		return "removal targets the filesystem root or home directory"
+	}
+	return ""
+}
+
 // ConfirmationReason returns a non-empty reason if the call sits in the
 // recoverable confirmation tier (work-discarding git commands) — the tier the
 // AutoPilot judge may weigh and bypass mode skips. Gates that cannot ask —
@@ -556,10 +571,11 @@ func ConfirmationReason(toolName string, args map[string]any) string {
 	return ""
 }
 
-// UnrecoverableReason is the bypass-immune floor: the calls whose effect
-// nothing can bring back. It holds in every mode, bypass included, and the
-// AutoPilot judge can never approve it — the judge may only weigh the
-// recoverable tier (ConfirmationReason).
+// UnrecoverableReason is the unrecoverable confirmation tier: the calls whose
+// effect nothing can bring back. Bypass mode skips it (only the circuit
+// breaker survives bypass); in every other mode it prompts, and the AutoPilot
+// judge can never approve it — the judge may only weigh the recoverable tier
+// (ConfirmationReason).
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":

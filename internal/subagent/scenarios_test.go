@@ -64,18 +64,24 @@ func TestPermissionScenarios(t *testing.T) {
 			want: false, wantMatch: "blocked by deny_tools",
 		},
 
-		// ── 3. bypass skips the recoverable tier; the unrecoverable floor holds ──
+		// ── 3. bypass skips confirmation tiers; the circuit breaker holds ──
 		{
-			name: "rm -rf in compound bash — bypass-immune floor still blocks",
+			name: "rm -rf on a subpath in compound bash — bypass allows",
 			mode: PermissionBypass, allow: allowGitDiff,
 			tool: "Bash", input: map[string]any{"command": "git diff && rm -rf /tmp/dummy"},
-			want: false, wantMatch: "blocked",
+			want: true,
 		},
 		{
 			name: "git push --force — bypass allows without confirmation",
 			mode: PermissionBypass, allow: ToolList{{Name: "Bash"}},
 			tool: "Bash", input: map[string]any{"command": "git push --force origin main"},
 			want: true,
+		},
+		{
+			name: "rm -rf ~ — circuit breaker blocks even in bypass",
+			mode: PermissionBypass, allow: ToolList{{Name: "Bash"}},
+			tool: "Bash", input: map[string]any{"command": "rm -rf ~"},
+			want: false, wantMatch: "blocked",
 		},
 		{
 			name: "git push --force — non-bypass hits the confirmation tier",

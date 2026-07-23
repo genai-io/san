@@ -516,11 +516,11 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 }
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
-// matches docs/concepts/permission-model.md: deny_tools, bypass-immune floor,
-// confirmation tier, allow_tools, mode default, with Prompt collapsing to
-// Deny because subagents cannot ask. bypassPermissions mode skips only the
-// recoverable confirmation tier — the bypass-immune floor holds in every
-// mode.
+// matches docs/concepts/permission-model.md: deny_tools, circuit breaker,
+// confirmation tiers, allow_tools, mode default, with Prompt collapsing to
+// Deny because subagents cannot ask. bypassPermissions mode skips the
+// confirmation tiers — only the root/home-removal circuit breaker holds in
+// every mode.
 //
 // One communication carve-out sits between deny and allow_tools: for a
 // mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
@@ -538,21 +538,24 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		if denyRules.Matches(name, input) {
 			return false, fmt.Sprintf("tool %s is blocked by deny_tools", name)
 		}
-		// Bypass-immune floor: an unrecoverable call (real destruction, a
-		// sensitive path, data exfiltration) is denied in every mode, bypass
-		// included — subagents cannot ask, so the floor is a hard deny.
-		if reason := setting.UnrecoverableReason(name, input); reason != "" {
+		// Circuit breaker: a recursive removal of the filesystem root or the
+		// home directory is denied in every mode, bypass included — subagents
+		// cannot ask, so the breaker is a hard deny.
+		if reason := setting.CircuitBreakerReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
-		// Bypass mode skips the recoverable confirmation tier: after deny_tools
-		// and the floor above, permit every executable worker tool. Keep the
+		// Bypass mode skips both confirmation tiers: after deny_tools and the
+		// breaker above, permit every executable worker tool. Keep the
 		// parent-only restriction below so a worker still cannot spawn agents
 		// or manipulate main-only state.
 		if opMode == setting.ModeBypassPermissions && !tool.IsParentOnlyTool(name) {
 			return true, ""
 		}
-		// Outside bypass, the recoverable tier (work-discarding git) is also a
-		// hard deny, so a greedy allow_tools pattern cannot smuggle it through.
+		// Outside bypass, both confirmation tiers are hard denies, so a greedy
+		// allow_tools pattern cannot smuggle destruction through.
+		if reason := setting.UnrecoverableReason(name, input); reason != "" {
+			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
+		}
 		if reason := setting.ConfirmationReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}

@@ -43,10 +43,11 @@ chain must be on the read-only list (`rg`, `grep`, `find`, `ls`, read-only
 This replaces the retired Grep/Glob tools — search runs through Bash
 without approval prompts, in every mode including explore. Deny/ask rules
 and the safety checks still run first and override it. The safety checks
-have two tiers: the bypass-immune floor (destructive commands, sensitive
-paths, data exfiltration) holds in every mode; the recoverable
-confirmation tier (work-discarding git, out-of-working-dir writes) is
-skipped by `bypassPermissions` mode.
+are layered: the circuit breaker (a recursive removal of the filesystem
+root or the home directory) holds in every mode, bypass included; the
+confirmation tiers — unrecoverable (destructive commands, sensitive paths,
+data exfiltration) and recoverable (work-discarding git,
+out-of-working-dir writes) — are skipped by `bypassPermissions` mode.
 
 ## Subagent Permission Resolution
 
@@ -65,7 +66,7 @@ requests that would require a user prompt.
   - `acceptEdits` (spelled `edit` on the Agent tool) — Edit/Write
     auto-allow; other gated tools are denied.
   - `bypassPermissions` — everything allowed after `deny_tools` and the
-    bypass-immune floor; parent-only tools stay blocked.
+    root/home-removal circuit breaker; parent-only tools stay blocked.
 
 Both gates share the same mode table (`setting.ModeDefault`); the subagent
 side only swaps "prompt the user" for "deny".

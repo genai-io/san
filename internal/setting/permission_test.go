@@ -664,12 +664,17 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		{
 			"sensitive path has reason",
 			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
-			perm.Prompt, "bypass-immune: .git/ directory",
+			perm.Prompt, "confirmation: .git/ directory",
 		},
 		{
 			"destructive has reason",
+			"Bash", map[string]any{"command": "rm -rf /tmp/x"},
+			perm.Prompt, "confirmation: destructive command",
+		},
+		{
+			"root removal has circuit-breaker reason",
 			"Bash", map[string]any{"command": "rm -rf /"},
-			perm.Prompt, "bypass-immune: destructive command",
+			perm.Prompt, "circuit breaker: removal targets the filesystem root or home directory",
 		},
 	}
 
@@ -739,6 +744,31 @@ func TestDenialTracking(t *testing.T) {
 	}
 }
 
+func TestIsRootOrHomeRemoval(t *testing.T) {
+	trips := []string{
+		"rm -rf /", "rm -fr /", "rm -r /", "rm --recursive /",
+		"rm -rf /*", "rm -rf ~", "rm -rf ~/", "rm -rf ~/*",
+		"rm -rf $HOME", "rm -rf ${HOME}/",
+		"sudo rm -rf /", "git diff && rm -rf ~",
+		`echo "$(rm -rf ~)"`, "echo `rm -rf /`",
+	}
+	for _, cmd := range trips {
+		if !isRootOrHomeRemoval(cmd) {
+			t.Errorf("%q should trip the circuit breaker", cmd)
+		}
+	}
+
+	passes := []string{
+		"rm -rf /tmp/x", "rm -rf ~/project", "rm file.txt", "rm -rf ./build",
+		"echo rm -rf /", "ls /", "git push --force origin main",
+	}
+	for _, cmd := range passes {
+		if isRootOrHomeRemoval(cmd) {
+			t.Errorf("%q should NOT trip the circuit breaker", cmd)
+		}
+	}
+}
+
 func TestBypassPermissionsMode(t *testing.T) {
 	settings := &Data{}
 	session := &SessionPermissions{
@@ -780,18 +810,38 @@ func TestBypassPermissionsMode(t *testing.T) {
 			perm.Permit,
 		},
 		{
-			"bypass-immune: protected path still prompts",
-			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
-			perm.Prompt,
+			"bypass permits destructive bash on a subpath",
+			"Bash", map[string]any{"command": "rm -rf /tmp/example"},
+			perm.Permit,
 		},
 		{
-			"bypass-immune: destructive bash still prompts",
+			"bypass permits sudo",
+			"Bash", map[string]any{"command": "sudo systemctl restart nginx"},
+			perm.Permit,
+		},
+		{
+			"bypass permits protected path writes",
+			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			perm.Permit,
+		},
+		{
+			"bypass permits suspicious bash",
+			"Bash", map[string]any{"command": "zmodload zsh/system"},
+			perm.Permit,
+		},
+		{
+			"circuit breaker: rm -rf / still prompts in bypass",
 			"Bash", map[string]any{"command": "rm -rf /"},
 			perm.Prompt,
 		},
 		{
-			"bypass-immune: suspicious bash still prompts",
-			"Bash", map[string]any{"command": "zmodload zsh/system"},
+			"circuit breaker: rm -rf ~ still prompts in bypass",
+			"Bash", map[string]any{"command": "rm -rf ~"},
+			perm.Prompt,
+		},
+		{
+			"circuit breaker: substitution form still prompts in bypass",
+			"Bash", map[string]any{"command": `echo "$(rm -rf ~)"`},
 			perm.Prompt,
 		},
 	}

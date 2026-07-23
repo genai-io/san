@@ -56,6 +56,89 @@ func isDestructiveCommand(cmd string) bool {
 	return matchesBashPatterns(cmd, destructiveCommands)
 }
 
+// isRootOrHomeRemoval reports whether the command contains a recursive rm
+// aimed at the filesystem root or the home directory — the circuit breaker
+// that even bypass mode cannot skip (CircuitBreakerReason). Substitution
+// forms ($(rm -rf ~), backticks) are caught because extractCommandsAST
+// descends into them; a command that fails to parse falls back to a coarse
+// token scan rather than passing silently.
+func isRootOrHomeRemoval(cmd string) bool {
+	file := parseBashAST(cmd)
+	if file == nil {
+		return crudeRootOrHomeRemovalScan(cmd)
+	}
+	for _, c := range extractCommandsAST(file) {
+		name, args := c.Name, c.Args
+		// Unwrap sudo and the neutral wrappers so "sudo rm -rf /" trips too.
+		for (name == "sudo" || safeWrapperCommands[name]) && len(args) > 0 {
+			for len(args) > 0 && strings.HasPrefix(args[0], "-") {
+				args = args[1:]
+			}
+			if len(args) == 0 {
+				break
+			}
+			name, args = args[0], args[1:]
+		}
+		if name != "rm" {
+			continue
+		}
+		recursive := false
+		var targets []string
+		for _, a := range args {
+			if strings.HasPrefix(a, "-") {
+				if a == "--recursive" || (!strings.HasPrefix(a, "--") && strings.ContainsAny(a, "rR")) {
+					recursive = true
+				}
+				continue
+			}
+			targets = append(targets, a)
+		}
+		if recursive && slices.ContainsFunc(targets, isRootOrHomePath) {
+			return true
+		}
+	}
+	return false
+}
+
+// crudeRootOrHomeRemovalScan is the parse-failure fallback for
+// isRootOrHomeRemoval: a flat token scan that trades precision for never
+// letting an unparseable root/home removal through.
+func crudeRootOrHomeRemovalScan(cmd string) bool {
+	hasRM, recursive, rootHome := false, false, false
+	for _, f := range strings.Fields(cmd) {
+		switch {
+		case f == "rm" || strings.HasSuffix(f, "/rm"):
+			hasRM = true
+		case strings.HasPrefix(f, "-") && strings.ContainsAny(f, "rR"):
+			recursive = true
+		case isRootOrHomePath(f):
+			rootHome = true
+		}
+	}
+	return hasRM && recursive && rootHome
+}
+
+// isRootOrHomePath reports whether an rm target denotes the filesystem root
+// or the home directory itself (including ~/*-style glob forms). Paths BELOW
+// home ("~/project") are ordinary destructive targets, not circuit-breaker ones.
+func isRootOrHomePath(target string) bool {
+	if target == "/" || target == "/*" {
+		return true
+	}
+	t := strings.TrimSuffix(target, "/*")
+	t = strings.TrimSuffix(t, "/")
+	switch t {
+	case "~", "$HOME", "${HOME}":
+		return true
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if t == strings.TrimSuffix(home, "/") {
+			return true
+		}
+	}
+	return false
+}
+
 // isGitDiscardingCommand reports whether the command is a git operation that
 // discards work — confirmation-worthy, but recoverable, so the judge may weigh
 // it. "git push --force" is matched by parsing the flags rather than by pattern,
@@ -245,7 +328,7 @@ var sensitiveFiles = map[string]string{
 }
 
 // isSensitivePath checks if a file path points to a sensitive location that
-// always requires user confirmation (bypass-immune floor).
+// requires user confirmation (unrecoverable tier; bypass mode skips it).
 // Returns a human-readable reason if sensitive, or empty string if safe.
 func isSensitivePath(filePath string) string {
 	// Resolve symlinks to prevent bypass via symlink chains

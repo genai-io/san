@@ -564,7 +564,7 @@ type OperationMode int
 const (
 	ModeNormal            OperationMode = iota
 	ModeAutoAccept                      // auto-approve edits/writes
-	ModeBypassPermissions               // allow all except deny rules and the bypass-immune floor
+	ModeBypassPermissions               // allow all except deny rules and the root/home-removal circuit breaker
 	ModeDontAsk                         // convert ask → deny (never prompt)
 	ModeReadOnly                        // safe tools only; everything else denied (subagent explore)
 	ModeAutoPilot                       // auto-approve edits; delegate the rest to the review agent
