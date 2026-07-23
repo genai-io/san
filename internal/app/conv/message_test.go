@@ -146,6 +146,12 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 			t.Fatalf("multi-line command should show %q in place, got %q", want, out)
 		}
 	}
+	plain := stripANSI(out)
+	// Later physical command lines use the result connector, while the first
+	// line retains the shell prompt.
+	if !strings.Contains(plain, "  $ for f in a b; do\n  ┊   echo \"$f\"\n  ┊ done\n") {
+		t.Fatalf("multi-line command should connect its continuation lines, got %q", plain)
+	}
 	// The description stays on the header in normal text, separated by a dash.
 	if !strings.Contains(stripANSI(out), "Bash - loop over files") {
 		t.Fatalf("multi-line command should show its description on the header, got %q", out)
@@ -181,7 +187,7 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	// prompt, so command text lines up down one column and the prompt never repeats.
 	contIndent := strings.Repeat(" ", lipgloss.Width(bashPrompt))
 	for i, row := range rows[1:] {
-		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) {
+		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) || strings.HasPrefix(row, "  ┊ ") {
 			t.Fatalf("continuation row %d should hang under the command text, not repeat the prompt: %q", i+1, row)
 		}
 	}

@@ -1038,18 +1038,22 @@ func renderBashToolCall(input string, width int, icon string) string {
 	}
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + "\n")
 
-	// Soft-wrap the whole command to the width left of the prompt, so long lines
-	// flow onto more rows instead of being clipped. xansi.Wrap treats embedded
-	// newlines as hard breaks and breaks any run with no break point, so
-	// multi-line commands and unbroken tokens alike stay within the width — one
-	// wrap covers every line. The first row carries the "$" prompt; every later
-	// row hangs under the command text on an indent the width of that prompt.
+	// Soft-wrap every command line to the available width. The first row carries
+	// the shell prompt; later physical command lines use the same connector as
+	// result output, while soft-wrapped continuations hang under their text.
 	promptWidth := lipgloss.Width(bashPrompt)
 	contIndent := strings.Repeat(" ", promptWidth)
-	segments := strings.Split(xansi.Wrap(command, budget-promptWidth, " "), "\n")
-	sb.WriteString(toolResultStyle.Render(bashPrompt+segments[0]) + "\n")
-	for _, segment := range segments[1:] {
-		sb.WriteString(contIndent + toolResultStyle.Render(segment) + "\n")
+	commandLines := strings.Split(command, "\n")
+	for i, commandLine := range commandLines {
+		segments := strings.Split(xansi.Wrap(commandLine, budget-promptWidth, " "), "\n")
+		if i == 0 {
+			sb.WriteString(toolResultStyle.Render(bashPrompt+segments[0]) + "\n")
+		} else {
+			sb.WriteString(toolResultStyle.Render("  ┊ "+segments[0]) + "\n")
+		}
+		for _, segment := range segments[1:] {
+			sb.WriteString(contIndent + toolResultStyle.Render(segment) + "\n")
+		}
 	}
 	return sb.String()
 }
