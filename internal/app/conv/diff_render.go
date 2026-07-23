@@ -2,7 +2,9 @@ package conv
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"charm.land/lipgloss/v2"
 	"github.com/mattn/go-runewidth"
@@ -41,11 +43,10 @@ func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) 
 	rendered, hunksSeen := 0, 0
 	hidden := 0
 	for i, line := range lines {
-		// The "\ No newline at end of file" marker is unified-diff
-		// bookkeeping, not file content — under a small-file edit it would
-		// trail nearly every row. Other metadata (the stored-diff cap notice)
-		// still renders.
-		if line.Type == perm.DiffLineMetadata && line.Content == "No newline at end of file" {
+		// The no-newline marker is unified-diff bookkeeping, not file
+		// content — under a small-file edit it would trail nearly every row.
+		// Other metadata still renders as a notice.
+		if line.Type == perm.DiffLineNoNewline {
 			continue
 		}
 		if line.Type == perm.DiffLineHunk {
@@ -77,9 +78,10 @@ func RenderFileDiff(lines []perm.DiffLine, width, maxVisible int) (string, int) 
 			if no == 0 {
 				no = line.OldLineNo
 			}
+			// The prefix is digits and spaces, so its byte length is its width.
 			prefix := fmt.Sprintf("%*d   ", gutterWidth, no)
-			content := diffDisplayText(prefix + line.Content)
-			sb.WriteString(indent + lineNoStyle.Render(prefix) + contextStyle.Render(diffTruncate(content[len(prefix):], rowWidth-runewidth.StringWidth(prefix))) + "\n")
+			text := kit.TruncateText(diffDisplayText(line.Content), rowWidth-len(prefix))
+			sb.WriteString(indent + lineNoStyle.Render(prefix) + contextStyle.Render(text) + "\n")
 		}
 	}
 	return sb.String(), hidden
@@ -96,7 +98,7 @@ func diffGutterWidth(lines []perm.DiffLine) int {
 			maxNo = line.NewLineNo
 		}
 	}
-	return max(len(fmt.Sprintf("%d", maxNo)), 4)
+	return max(len(strconv.Itoa(maxNo)), 4)
 }
 
 // runeSpan is a [from,to) range in rune positions.
@@ -178,16 +180,9 @@ func renderDiffRow(prefix, content string, emphasis runeSpan, base, strong lipgl
 
 	// Truncate to the row, clamping the emphasis span with it.
 	if runewidth.StringWidth(string(full)) > rowWidth {
-		full = []rune(runewidth.Truncate(string(full), rowWidth-1, "…"))
-		if span.from > len(full) {
-			span.from = len(full)
-		}
-		if span.to > len(full) {
-			span.to = len(full)
-		}
-	}
-	if span.to <= span.from {
-		span = runeSpan{}
+		full = []rune(kit.TruncateText(string(full), rowWidth))
+		span.from = min(span.from, len(full))
+		span.to = min(span.to, len(full))
 	}
 
 	var sb strings.Builder
@@ -213,13 +208,11 @@ func diffDisplayText(s string) string {
 }
 
 // expandSpan maps a rune span on raw content to the same span on the
-// tab-expanded content.
+// tab-expanded content. Spans come from changedSpan over the same content,
+// so they are always in range.
 func expandSpan(content string, span runeSpan) runeSpan {
 	runes := []rune(content)
 	expandedAt := func(pos int) int {
-		if pos > len(runes) {
-			pos = len(runes)
-		}
 		expanded := pos
 		for _, r := range runes[:pos] {
 			if r == '\t' {
@@ -231,12 +224,45 @@ func expandSpan(content string, span runeSpan) runeSpan {
 	return runeSpan{from: expandedAt(span.from), to: expandedAt(span.to)}
 }
 
-func diffTruncate(content string, width int) string {
-	if width < 1 {
-		return ""
+// storedDiffKey identifies one memoized render of a stored unified diff.
+// darkMode participates because styles resolve against the background mode
+// at render time.
+type storedDiffKey struct {
+	diff       string
+	width      int
+	maxVisible int
+	darkMode   bool
+}
+
+type storedDiffRender struct {
+	block  string
+	hidden int
+}
+
+var (
+	storedDiffMu    sync.Mutex
+	storedDiffCache = map[storedDiffKey]storedDiffRender{}
+)
+
+// RenderStoredFileDiff parses and renders a stored unified diff, memoized:
+// the live view repaints every frame while a turn runs, and re-parsing a
+// diff per frame per visible result is pure waste — the inputs are
+// immutable. Only live-region results hit the cache, so it stays tiny; it
+// is dropped wholesale when it outgrows that working set.
+func RenderStoredFileDiff(unifiedDiff string, width, maxVisible int) (string, int) {
+	key := storedDiffKey{diff: unifiedDiff, width: width, maxVisible: maxVisible, darkMode: kit.IsDarkBackground()}
+	storedDiffMu.Lock()
+	cached, ok := storedDiffCache[key]
+	storedDiffMu.Unlock()
+	if ok {
+		return cached.block, cached.hidden
 	}
-	if runewidth.StringWidth(content) <= width {
-		return content
+	block, hidden := RenderFileDiff(perm.ParseUnifiedDiff(unifiedDiff), width, maxVisible)
+	storedDiffMu.Lock()
+	if len(storedDiffCache) >= 32 {
+		clear(storedDiffCache)
 	}
-	return runewidth.Truncate(content, width-1, "…")
+	storedDiffCache[key] = storedDiffRender{block: block, hidden: hidden}
+	storedDiffMu.Unlock()
+	return block, hidden
 }

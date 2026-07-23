@@ -72,11 +72,18 @@ func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 		}
 
 		// Handle metadata lines (e.g., "\ No newline at end of file")
-		// These should not increment line numbers
+		// These should not increment line numbers. The no-newline marker gets
+		// its own type: it is unified-diff bookkeeping renderers want to hide,
+		// and classifying it here keeps them from matching on its wording.
 		if strings.HasPrefix(line, "\\") {
+			content := strings.TrimPrefix(line, "\\ ")
+			lineType := DiffLineMetadata
+			if content == "No newline at end of file" {
+				lineType = DiffLineNoNewline
+			}
 			lines = append(lines, DiffLine{
-				Type:    DiffLineMetadata,
-				Content: strings.TrimPrefix(line, "\\ "),
+				Type:    lineType,
+				Content: content,
 			})
 			continue
 		}
@@ -154,15 +161,15 @@ func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 	return lines
 }
 
-// CapUnifiedDiff truncates a unified diff to at most maxLines lines. The cap
-// is recorded as a "\"-prefixed metadata line, which ParseUnifiedDiff turns
-// into a DiffLineMetadata row the UI renders as a notice.
-func CapUnifiedDiff(diff string, maxLines int) string {
+// CapUnifiedDiff truncates a unified diff to at most maxLines lines and
+// reports how many lines were dropped, so callers persist the count as data
+// instead of freezing presentation text into the stored diff.
+func CapUnifiedDiff(diff string, maxLines int) (string, int) {
 	lines := strings.Split(diff, "\n")
 	if len(lines) <= maxLines {
-		return diff
+		return diff, 0
 	}
-	return strings.Join(lines[:maxLines], "\n") + fmt.Sprintf("\n\\ diff truncated (%d more lines)", len(lines)-maxLines)
+	return strings.Join(lines[:maxLines], "\n"), len(lines) - maxLines
 }
 
 // GeneratePreview creates a DiffMetadata for content preview (used by Write tool)

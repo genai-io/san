@@ -1,19 +1,25 @@
 package fs
 
-import "github.com/genai-io/san/internal/core"
+import (
+	"fmt"
 
-// Schema returns the model-facing tool definition for Read.
+	"github.com/genai-io/san/internal/core"
+)
+
+// Schema returns the model-facing tool definition for Read. The limits and
+// the truncation marker are formatted from the same constants read.go
+// enforces, so the model's instructions can't drift from the behavior.
 func (t *ReadTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Read",
-		Description: `Reads a file from the local filesystem.
+		Description: fmt.Sprintf(`Reads a file from the local filesystem.
 
 - Prefer relative paths for files inside the session working directory; absolute for targets outside it
-- Reads up to 2000 lines from the start by default; use offset/limit only for very long files
+- Reads up to %d lines from the start by default; use offset/limit only for very long files
 - Read output has a line-number and tab prefix; strip it for Edit and preserve the rest exactly
-- Lines over 2000 characters end with “… [line truncated]” and cannot be copied into an Edit
+- Lines over %d characters end with “%s” and cannot be copied into an Edit
 - Do not re-read a file to verify your own Edit/Write — a failed change errors, and successful results keep your view current
-- Images (e.g. screenshots) are supported — read the file to view it`,
+- Images (e.g. screenshots) are supported — read the file to view it`, maxReadLines, maxLineLength, lineTruncationMarker),
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

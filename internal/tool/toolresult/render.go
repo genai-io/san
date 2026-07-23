@@ -7,12 +7,13 @@ import (
 
 // FileChangeDetails describes an applied Edit or Write for UI rendering.
 type FileChangeDetails struct {
-	Path         string
-	EditCount    int  // number of replacements (Edit only; 0 for Write)
-	IsNewFile    bool // Write created the file rather than overwriting it
-	AddedLines   int
-	RemovedLines int
-	UnifiedDiff  string
+	Path               string
+	EditCount          int  // number of replacements (Edit only; 0 for Write)
+	IsNewFile          bool // Write created the file rather than overwriting it
+	AddedLines         int
+	RemovedLines       int
+	UnifiedDiff        string
+	TruncatedDiffLines int // diff lines dropped by the storage cap (0 = complete)
 }
 
 // ToolResult represents the result of a tool execution
@@ -38,6 +39,11 @@ func NewErrorResult(title, errorMsg string) ToolResult {
 	}
 }
 
+// LineNumberFormat is the "line number, tab, content" shape of Read output.
+// Edit's mismatch diagnostics echo file lines in the same format, so the two
+// must stay one definition.
+const LineNumberFormat = "%6d\t%s\n"
+
 // FormatForLLM returns a plain text representation of the result for LLM consumption
 func (r ToolResult) FormatForLLM() string {
 	if !r.Success {
@@ -54,7 +60,7 @@ func (r ToolResult) FormatForLLM() string {
 		if len(r.Lines) > 0 {
 			sb.Grow(len(r.Lines) * 40)
 			for _, line := range r.Lines {
-				fmt.Fprintf(&sb, "%6d\t%s\n", line.LineNo, line.Text)
+				fmt.Fprintf(&sb, LineNumberFormat, line.LineNo, line.Text)
 			}
 		} else if r.Output != "" {
 			sb.WriteString(r.Output)

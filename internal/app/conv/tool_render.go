@@ -12,7 +12,6 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
@@ -100,7 +99,7 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderSkillResultInline(data)
 	case tool.ToolAgent, tool.ToolSendMessage:
 		return renderTaskResultInline(data, mdRenderer)
-	case "Edit", "Write":
+	case tool.ToolEdit, tool.ToolWrite:
 		return renderFileChangeResultInline(data)
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
@@ -138,10 +137,13 @@ func renderFileChangeResultInline(data ToolResultData) string {
 		width = 80
 	}
 	// The diff renders in full: scrollback freezes, so anything hidden here
-	// would be lost for good. The only bound is the 400-line cap applied when
-	// the diff was stored, which surfaces as its own notice row.
-	block, _ := RenderFileDiff(perm.ParseUnifiedDiff(details.UnifiedDiff), width, 0)
+	// would be lost for good. The only bound is the cap applied when the
+	// diff was stored, reported below from its structured count.
+	block, _ := RenderStoredFileDiff(details.UnifiedDiff, width, 0)
 	sb.WriteString(block)
+	if details.TruncatedDiffLines > 0 {
+		sb.WriteString(truncatedStyle.Render(fmt.Sprintf("     … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+	}
 	return sb.String()
 }
 

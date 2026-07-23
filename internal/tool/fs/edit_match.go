@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // Tolerant matching for Edit: when old_string has no exact match, the
@@ -56,8 +58,9 @@ type tolerantMatch struct {
 // had no exact match. It returns the matched byte range to replace
 // (trailing-whitespace rung) or an error describing the closest the file
 // gets to old_string.
-func resolveTolerantMatch(content string, spans []lineSpan, edit editReplacement) (tolerantMatch, error) {
-	oldLines, matchTrailingNewline := splitOldTextLines(edit.oldString)
+func resolveTolerantMatch(content, oldString string) (tolerantMatch, error) {
+	spans := splitLineSpans(content)
+	oldLines, matchTrailingNewline := splitOldTextLines(oldString)
 
 	// Whitespace-only old_string would "match" any run of blank lines under
 	// a trim; exact matching is the only meaningful mode for it.
@@ -115,9 +118,13 @@ func allBlank(lines []string) bool {
 // byte ranges cover the file's original text, so a replacement drops the
 // file's own whitespace along with the rest of the matched region.
 func matchTrimmedLines(content string, spans []lineSpan, oldLines []string, matchTrailingNewline bool, trimLine func(string) string) []tolerantMatch {
+	trimmedOld := make([]string, len(oldLines))
+	for i, line := range oldLines {
+		trimmedOld[i] = trimLine(line)
+	}
 	var matches []tolerantMatch
 	for i := 0; i+len(oldLines) <= len(spans); i++ {
-		if !trimmedLinesEqual(content, spans[i:i+len(oldLines)], oldLines, trimLine) {
+		if !trimmedLinesEqual(content, spans[i:i+len(oldLines)], trimmedOld, trimLine) {
 			continue
 		}
 		last := spans[i+len(oldLines)-1]
@@ -130,10 +137,10 @@ func matchTrimmedLines(content string, spans []lineSpan, oldLines []string, matc
 	return matches
 }
 
-func trimmedLinesEqual(content string, spans []lineSpan, oldLines []string, trimLine func(string) string) bool {
+func trimmedLinesEqual(content string, spans []lineSpan, trimmedOld []string, trimLine func(string) string) bool {
 	for j, span := range spans {
 		fileLine := strings.TrimSuffix(content[span.start:span.end], "\n")
-		if trimLine(fileLine) != trimLine(oldLines[j]) {
+		if trimLine(fileLine) != trimmedOld[j] {
 			return false
 		}
 	}
@@ -148,7 +155,7 @@ func echoFileLines(content string, spans []lineSpan, firstLine, lineCount int) s
 	var sb strings.Builder
 	for j := 0; j < lineCount && j < maxEchoLines; j++ {
 		span := spans[firstLine+j]
-		fmt.Fprintf(&sb, "%6d\t%s\n", firstLine+j+1, strings.TrimSuffix(content[span.start:span.end], "\n"))
+		fmt.Fprintf(&sb, toolresult.LineNumberFormat, firstLine+j+1, strings.TrimSuffix(content[span.start:span.end], "\n"))
 	}
 	if lineCount > maxEchoLines {
 		fmt.Fprintf(&sb, "... (%d more lines; Read the file for the rest)\n", lineCount-maxEchoLines)

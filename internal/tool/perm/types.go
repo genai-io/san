@@ -73,9 +73,10 @@ type DiffLine struct {
 type DiffLineType int
 
 const (
-	DiffLineContext  DiffLineType = iota // Unchanged line (context)
-	DiffLineAdded                        // Added line (+)
-	DiffLineRemoved                      // Removed line (-)
-	DiffLineHunk                         // Hunk header (@@ ... @@)
-	DiffLineMetadata                     // Metadata line (\ No newline at end of file)
+	DiffLineContext   DiffLineType = iota // Unchanged line (context)
+	DiffLineAdded                         // Added line (+)
+	DiffLineRemoved                       // Removed line (-)
+	DiffLineHunk                          // Hunk header (@@ ... @@)
+	DiffLineMetadata                      // Other \-prefixed metadata
+	DiffLineNoNewline                     // \ No newline at end of file — format bookkeeping, not content
 )

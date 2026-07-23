@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-func editOnce(filePath, oldString, newString, cwd string) interface {
-	FormatForLLM() string
-} {
+func editOnce(filePath, oldString, newString, cwd string) toolresult.ToolResult {
 	return (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"file_path":  filePath,
 		"old_string": oldString,
@@ -29,9 +29,9 @@ func TestEditReplaceAll(t *testing.T) {
 	readForEdit(t, filePath, tmpDir)
 
 	// Without replace_all the ambiguity is an error that names the way out.
-	out := editOnce(filePath, "count", "total", tmpDir).FormatForLLM()
-	if !strings.Contains(out, "matches 3 locations") || !strings.Contains(out, "replace_all") {
-		t.Fatalf("ambiguous edit should count matches and suggest replace_all, got: %s", out)
+	res := editOnce(filePath, "count", "total", tmpDir)
+	if res.Success || !strings.Contains(res.Error, "matches 3 locations") || !strings.Contains(res.Error, "replace_all") {
+		t.Fatalf("ambiguous edit should count matches and suggest replace_all, got: %+v", res)
 	}
 
 	result := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
@@ -40,8 +40,8 @@ func TestEditReplaceAll(t *testing.T) {
 		"new_string":  "total",
 		"replace_all": true,
 	}, tmpDir)
-	if out := result.FormatForLLM(); !strings.Contains(out, "3 replacement(s)") {
-		t.Fatalf("replace_all should report every occurrence, got: %s", out)
+	if !result.Success || !strings.Contains(result.Output, "3 replacement(s)") {
+		t.Fatalf("replace_all should report every occurrence, got: %+v", result)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != "total := 1\nprint(total)\nreturn total\n" {
@@ -57,9 +57,9 @@ func TestEditRejectsIdenticalStrings(t *testing.T) {
 	}
 	readForEdit(t, filePath, tmpDir)
 
-	out := editOnce(filePath, "hello", "hello", tmpDir).FormatForLLM()
-	if !strings.Contains(out, "must be different") {
-		t.Fatalf("a no-op edit must be rejected, got: %s", out)
+	res := editOnce(filePath, "hello", "hello", tmpDir)
+	if res.Success || !strings.Contains(res.Error, "must be different") {
+		t.Fatalf("a no-op edit must be rejected, got: %+v", res)
 	}
 }
 
@@ -73,10 +73,9 @@ func TestEditTrailingWhitespaceFallback(t *testing.T) {
 	}
 	readForEdit(t, filePath, tmpDir)
 
-	result := editOnce(filePath, "func main() {\n\tprintln(\"hi\")\n}\n", "func main() {\n\tprintln(\"bye\")\n}\n", tmpDir)
-	out := result.FormatForLLM()
-	if strings.Contains(out, "Error") {
-		t.Fatalf("trailing-whitespace fallback should apply, got: %s", out)
+	res := editOnce(filePath, "func main() {\n\tprintln(\"hi\")\n}\n", "func main() {\n\tprintln(\"bye\")\n}\n", tmpDir)
+	if !res.Success {
+		t.Fatalf("trailing-whitespace fallback should apply, got: %s", res.Error)
 	}
 	got, err := os.ReadFile(filePath)
 	if err != nil {
@@ -99,13 +98,15 @@ func TestEditIndentationMismatchEchoesFileLines(t *testing.T) {
 	// Model transcribed the leading tabs as spaces — must NOT be applied
 	// (new_string carries the same broken indentation), but the error must
 	// locate the lines and echo the file's real bytes.
-	result := editOnce(filePath, "    if ok {\n        println(\"hi\")\n    }", "    if ok {\n        println(\"bye\")\n    }", tmpDir)
-	out := result.FormatForLLM()
-	if !strings.Contains(out, "lines 2-4") {
-		t.Fatalf("error should locate the mismatch, got: %s", out)
+	res := editOnce(filePath, "    if ok {\n        println(\"hi\")\n    }", "    if ok {\n        println(\"bye\")\n    }", tmpDir)
+	if res.Success {
+		t.Fatal("indentation mismatch must not be applied")
 	}
-	if !strings.Contains(out, "\tif ok {") {
-		t.Fatalf("error should echo the file's actual tab-indented lines, got: %s", out)
+	if !strings.Contains(res.Error, "lines 2-4") {
+		t.Fatalf("error should locate the mismatch, got: %s", res.Error)
+	}
+	if !strings.Contains(res.Error, "\tif ok {") {
+		t.Fatalf("error should echo the file's actual tab-indented lines, got: %s", res.Error)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != content {
@@ -120,9 +121,9 @@ func TestEditRequiresReadFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := editOnce(filePath, "hello", "goodbye", tmpDir).FormatForLLM()
-	if !strings.Contains(out, "has not been read in this session") {
-		t.Fatalf("edit without read must be rejected, got: %s", out)
+	res := editOnce(filePath, "hello", "goodbye", tmpDir)
+	if res.Success || !strings.Contains(res.Error, "has not been read in this session") {
+		t.Fatalf("edit without read must be rejected, got: %+v", res)
 	}
 }
 
@@ -139,12 +140,12 @@ func TestEditStaleViewSoftApply(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out := editOnce(filePath, "beta", "BETA", tmpDir).FormatForLLM()
-	if strings.Contains(out, "Error") {
-		t.Fatalf("clean match on a stale view should apply, got: %s", out)
+	res := editOnce(filePath, "beta", "BETA", tmpDir)
+	if !res.Success {
+		t.Fatalf("clean match on a stale view should apply, got: %s", res.Error)
 	}
-	if !strings.Contains(out, "applied cleanly") || !strings.Contains(out, "changed on disk") {
-		t.Fatalf("stale apply should carry the warning note, got: %s", out)
+	if !strings.Contains(res.Output, "applied cleanly") || !strings.Contains(res.Output, "changed on disk") {
+		t.Fatalf("stale apply should carry the warning note, got: %s", res.Output)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != "alpha\nBETA\ngamma\n" {
@@ -163,15 +164,15 @@ func TestEditStaleViewMismatchNamesStaleness(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("something else entirely\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out := editOnce(filePath, "hello", "goodbye", tmpDir).FormatForLLM()
-	if !strings.Contains(out, "changed on disk after it was last read") || !strings.Contains(out, "Read the file again") {
-		t.Fatalf("stale mismatch should name the staleness and the recovery, got: %s", out)
+	res := editOnce(filePath, "hello", "goodbye", tmpDir)
+	if res.Success || !strings.Contains(res.Error, "changed on disk after it was last read") || !strings.Contains(res.Error, "Read the file again") {
+		t.Fatalf("stale mismatch should name the staleness and the recovery, got: %+v", res)
 	}
 
 	// Re-reading clears the staleness.
 	readForEdit(t, filePath, tmpDir)
-	if out := editOnce(filePath, "something else", "anything", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
-		t.Fatalf("edit after re-read should succeed, got: %s", out)
+	if res := editOnce(filePath, "something else", "anything", tmpDir); !res.Success {
+		t.Fatalf("edit after re-read should succeed, got: %s", res.Error)
 	}
 }
 
@@ -186,9 +187,9 @@ func TestResetFileViewsForgetsObservations(t *testing.T) {
 	// /clear and session switches reset the views: the new conversation has
 	// no Read results, so the gate must demand a fresh Read.
 	ResetFileViews()
-	out := editOnce(filePath, "hello", "goodbye", tmpDir).FormatForLLM()
-	if !strings.Contains(out, "has not been read in this session") {
-		t.Fatalf("edit after view reset must require a fresh read, got: %s", out)
+	res := editOnce(filePath, "hello", "goodbye", tmpDir)
+	if res.Success || !strings.Contains(res.Error, "has not been read in this session") {
+		t.Fatalf("edit after view reset must require a fresh read, got: %+v", res)
 	}
 }
 
@@ -198,22 +199,22 @@ func TestEditAfterOwnWriteNeedsNoRead(t *testing.T) {
 
 	// The exact flow from live testing: Write a new file, then Edit it
 	// repeatedly — no Read anywhere. The tool's own results are the view.
-	result := (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
+	written := (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"file_path": filePath,
 		"content":   "123",
 	}, tmpDir)
-	if out := result.FormatForLLM(); strings.Contains(out, "Error") {
-		t.Fatalf("write failed: %s", out)
+	if !written.Success {
+		t.Fatalf("write failed: %s", written.Error)
 	}
-	out := editOnce(filePath, "123", "23", tmpDir).FormatForLLM()
-	if strings.Contains(out, "Error") {
-		t.Fatalf("edit after own Write should need no Read, got: %s", out)
+	res := editOnce(filePath, "123", "23", tmpDir)
+	if !res.Success {
+		t.Fatalf("edit after own Write should need no Read, got: %s", res.Error)
 	}
-	if !strings.Contains(out, "no need to re-read") {
-		t.Fatalf("fresh edit result should suppress the verify-read reflex, got: %s", out)
+	if !strings.Contains(res.Output, "no need to re-read") {
+		t.Fatalf("fresh edit result should suppress the verify-read reflex, got: %s", res.Output)
 	}
-	if out := editOnce(filePath, "23", "5", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
-		t.Fatalf("edit after own Edit should need no Read, got: %s", out)
+	if res := editOnce(filePath, "23", "5", tmpDir); !res.Success {
+		t.Fatalf("edit after own Edit should need no Read, got: %s", res.Error)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != "5" {
@@ -235,11 +236,11 @@ func TestEditKeepsOwnWriteFresh(t *testing.T) {
 	}
 	readForEdit(t, filePath, tmpDir)
 
-	if out := editOnce(filePath, "one", "1", tmpDir).FormatForLLM(); strings.Contains(out, "Error") || strings.Contains(out, "applied cleanly") {
-		t.Fatalf("first edit should be a plain fresh apply: %s", out)
+	if res := editOnce(filePath, "one", "1", tmpDir); !res.Success || strings.Contains(res.Output, "applied cleanly") {
+		t.Fatalf("first edit should be a plain fresh apply: %+v", res)
 	}
-	if out := editOnce(filePath, "two", "2", tmpDir).FormatForLLM(); strings.Contains(out, "Error") || strings.Contains(out, "applied cleanly") {
-		t.Fatalf("second edit after own write should stay current, got: %s", out)
+	if res := editOnce(filePath, "two", "2", tmpDir); !res.Success || strings.Contains(res.Output, "applied cleanly") {
+		t.Fatalf("second edit after own write should stay current, got: %+v", res)
 	}
 }
 
@@ -250,24 +251,24 @@ func TestWriteOverwriteRequiresCurrentView(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	write := func() interface{ FormatForLLM() string } {
+	write := func() toolresult.ToolResult {
 		return (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
 			"file_path": filePath,
 			"content":   "replaced\n",
 		}, tmpDir)
 	}
 
-	if out := write().FormatForLLM(); !strings.Contains(out, "has not been read in this session") {
-		t.Fatalf("overwrite without read must be rejected, got: %s", out)
+	if res := write(); res.Success || !strings.Contains(res.Error, "has not been read in this session") {
+		t.Fatalf("overwrite without read must be rejected, got: %+v", res)
 	}
 
 	readForEdit(t, filePath, tmpDir)
-	out := write().FormatForLLM()
-	if strings.Contains(out, "Error") {
-		t.Fatalf("overwrite after read should succeed, got: %s", out)
+	res := write()
+	if !res.Success {
+		t.Fatalf("overwrite after read should succeed, got: %s", res.Error)
 	}
-	if !strings.Contains(out, "use Edit for modifications") {
-		t.Fatalf("overwrite result should nudge toward Edit, got: %s", out)
+	if !strings.Contains(res.Output, "use Edit for modifications") {
+		t.Fatalf("overwrite result should nudge toward Edit, got: %s", res.Output)
 	}
 	got, _ := os.ReadFile(filePath)
 	if string(got) != "replaced\n" {
@@ -279,18 +280,17 @@ func TestWriteNewFileNeedsNoRead(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "fresh.txt")
 
-	result := (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
+	res := (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"file_path": filePath,
 		"content":   "hello\n",
 	}, tmpDir)
-	out := result.FormatForLLM()
-	if strings.Contains(out, "Error") {
-		t.Fatalf("creating a new file must not require a read, got: %s", out)
+	if !res.Success {
+		t.Fatalf("creating a new file must not require a read, got: %s", res.Error)
 	}
-	if strings.Contains(out, "use Edit for modifications") {
-		t.Fatalf("creating a new file should not carry the overwrite note, got: %s", out)
+	if strings.Contains(res.Output, "use Edit for modifications") {
+		t.Fatalf("creating a new file should not carry the overwrite note, got: %s", res.Output)
 	}
-	if !strings.Contains(out, "no need to re-read") {
-		t.Fatalf("create result should suppress the verify-read reflex, got: %s", out)
+	if !strings.Contains(res.Output, "no need to re-read") {
+		t.Fatalf("create result should suppress the verify-read reflex, got: %s", res.Output)
 	}
 }

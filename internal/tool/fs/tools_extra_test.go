@@ -133,8 +133,8 @@ func TestEditPreservesBomAndCrlf(t *testing.T) {
 	if !ok || details.EditCount != 1 || details.AddedLines != 1 || details.RemovedLines != 1 {
 		t.Fatalf("Edit details = %#v", result.Details)
 	}
-	if out := editOnce(filePath, "second: keep", "second: new", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
-		t.Fatalf("second edit failed: %s", out)
+	if res := editOnce(filePath, "second: keep", "second: new", tmpDir); !res.Success {
+		t.Fatalf("second edit failed: %s", res.Error)
 	}
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -156,9 +156,8 @@ func TestEditPreservesBomAndCrlf(t *testing.T) {
 		{"old", "old_string matches 2 locations"},
 	} {
 		failed := editOnce(filePath, test.oldString, "replacement", tmpDir)
-		out := failed.FormatForLLM()
-		if !strings.Contains(out, test.want) {
-			t.Fatalf("invalid edit = %q, want %q", out, test.want)
+		if failed.Success || !strings.Contains(failed.Error, test.want) {
+			t.Fatalf("invalid edit = %+v, want %q", failed, test.want)
 		}
 		content, err = os.ReadFile(filePath)
 		if err != nil {

@@ -51,12 +51,8 @@ func (t *EditTool) PreparePermission(ctx context.Context, params map[string]any,
 		}
 		return nil, &tool.ToolError{Message: "failed to read file: " + err.Error()}
 	}
-	view, err := viewOf(filePath)
-	if err != nil {
+	if _, err := requireObservedView(filePath); err != nil {
 		return nil, &tool.ToolError{Message: err.Error()}
-	}
-	if view == viewNone {
-		return nil, &tool.ToolError{Message: filePath + " has not been read in this session; Read it before editing it"}
 	}
 	newContent, _, err := applyEdit(string(content), edit)
 	if err != nil {
@@ -84,12 +80,9 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to read file: "+err.Error())
 	}
-	view, err := viewOf(filePath)
+	view, err := requireObservedView(filePath)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
-	}
-	if view == viewNone {
-		return toolresult.NewErrorResult(t.Name(), filePath+" has not been read in this session; Read it before editing it")
 	}
 
 	oldContent := string(content)
@@ -115,6 +108,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	recordFileWritten(filePath)
 
 	changes := perm.GenerateDiff(filePath, oldContent, newContent)
+	storedDiff, truncatedDiffLines := perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines)
 	output := fmt.Sprintf("Edited %s (%d replacement(s), +%d -%d)", filePath, replaceCount, changes.AddedCount, changes.RemovedCount)
 	// On the fresh path the hint suppresses the verify-read reflex; on the
 	// stale path the edit landed cleanly but the file holds other changes
@@ -128,11 +122,12 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		Success: true,
 		Output:  output,
 		Details: toolresult.FileChangeDetails{
-			Path:         filePath,
-			EditCount:    replaceCount,
-			AddedLines:   changes.AddedCount,
-			RemovedLines: changes.RemovedCount,
-			UnifiedDiff:  perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines),
+			Path:               filePath,
+			EditCount:          replaceCount,
+			AddedLines:         changes.AddedCount,
+			RemovedLines:       changes.RemovedCount,
+			UnifiedDiff:        storedDiff,
+			TruncatedDiffLines: truncatedDiffLines,
 		},
 		HookResponse: map[string]any{
 			"filePath":        filePath,
@@ -205,13 +200,12 @@ func replaceInContent(content string, edit editReplacement) (string, int, error)
 
 	switch occurrences {
 	case 1:
-		index := strings.Index(content, edit.oldString)
-		return content[:index] + edit.newString + content[index+len(edit.oldString):], 1, nil
+		return strings.Replace(content, edit.oldString, edit.newString, 1), 1, nil
 	case 0:
 		// Zero exact matches usually means a whitespace transcription slip;
 		// the tolerant ladder recovers or diagnoses it. This also serves
 		// replace_all — a unique tolerant match is the only occurrence.
-		match, err := resolveTolerantMatch(content, splitLineSpans(content), edit)
+		match, err := resolveTolerantMatch(content, edit.oldString)
 		if err != nil {
 			return "", 0, err
 		}

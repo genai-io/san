@@ -140,19 +140,6 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	duration := time.Since(start)
 
-	action := "Created"
-	// The overwrite note rides the result because models weigh fresh tool
-	// results over schema text: it nudges the next modification toward Edit
-	// without blocking legitimate full rewrites.
-	// Both notes ride the result because models weigh fresh tool results
-	// over schema text: suppress the verify-read reflex, and steer the next
-	// existing-file change toward Edit.
-	resultNote := "; file state is current — no need to re-read"
-	if !isNewFile {
-		action = "Updated"
-		resultNote = ". Note: this replaced an existing file; use Edit for modifications" + resultNote
-	}
-
 	// Count lines
 	lineCount := 1
 	for _, c := range content {
@@ -161,25 +148,34 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		}
 	}
 
-	// Fields below follow the hook payload contract (see internal/hook).
+	// The notes ride the result because models weigh fresh tool results over
+	// schema text: suppress the verify-read reflex, and steer the next
+	// existing-file change toward Edit. writeType/originalFile follow the
+	// hook payload contract (see internal/hook).
+	action := "Created"
+	resultNote := "; file state is current — no need to re-read"
 	writeType := "create"
 	var originalFile any // null for a new file
 	if !isNewFile {
+		action = "Updated"
+		resultNote = ". Note: this replaced an existing file; use Edit for modifications" + resultNote
 		writeType = "update"
 		originalFile = oldContent
 	}
 
 	changes := perm.GenerateDiff(filePath, oldContent, content)
+	storedDiff, truncatedDiffLines := perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines)
 
 	return toolresult.ToolResult{
 		Success: true,
 		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)" + resultNote,
 		Details: toolresult.FileChangeDetails{
-			Path:         filePath,
-			IsNewFile:    isNewFile,
-			AddedLines:   changes.AddedCount,
-			RemovedLines: changes.RemovedCount,
-			UnifiedDiff:  perm.CapUnifiedDiff(changes.UnifiedDiff, maxStoredDiffLines),
+			Path:               filePath,
+			IsNewFile:          isNewFile,
+			AddedLines:         changes.AddedCount,
+			RemovedLines:       changes.RemovedCount,
+			UnifiedDiff:        storedDiff,
+			TruncatedDiffLines: truncatedDiffLines,
 		},
 		HookResponse: map[string]any{
 			"type":            writeType,

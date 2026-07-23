@@ -86,19 +86,31 @@ func viewOf(filePath string) (fileView, error) {
 	return viewCurrent, nil
 }
 
+// requireObservedView rejects a file the model never observed this session
+// and otherwise reports how current the observation is. Edit uses it
+// directly — it tolerates viewStale with its own soft path — so the
+// never-read policy and its model-facing message live here alone.
+func requireObservedView(filePath string) (fileView, error) {
+	view, err := viewOf(filePath)
+	if err != nil {
+		return view, err
+	}
+	if view == viewNone {
+		return view, fmt.Errorf("%s has not been read in this session; Read it before modifying it", filePath)
+	}
+	return view, nil
+}
+
 // requireCurrentView is the strict gate: the file must have been observed
 // this session and be unchanged on disk since. Write uses it for overwrites
 // — replacing a whole file from a stale view would silently destroy the
 // unseen changes, so unlike Edit there is no soft path.
 func requireCurrentView(filePath string) error {
-	view, err := viewOf(filePath)
+	view, err := requireObservedView(filePath)
 	if err != nil {
 		return err
 	}
-	switch view {
-	case viewNone:
-		return fmt.Errorf("%s has not been read in this session; Read it before modifying it", filePath)
-	case viewStale:
+	if view == viewStale {
 		return fmt.Errorf("%s has changed on disk since it was last read; Read it again and retry against its current content", filePath)
 	}
 	return nil
