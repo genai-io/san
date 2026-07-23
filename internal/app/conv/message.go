@@ -587,7 +587,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 				row = renderBashToolCall(tc.Input, params.Width, icon)
 			} else {
 				args := extractToolArgs(tc.Input)
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				label := fmt.Sprintf("%s(%s)", tc.Name, args)
+				if tc.Name == tool.ToolRead {
+					label = formatReadToolLabel(tc.Input, args)
+				}
+				row = renderToolLineWithIcon(label, params.Width, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, runningRowDetail(tc, params)))
 		}
