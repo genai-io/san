@@ -14,3 +14,4 @@ Task-oriented how-tos. For conceptual background see
 | [`writing-a-subagent`](writing-a-subagent.md) | Author a custom subagent. |
 | [`writing-a-plugin`](writing-a-plugin.md) | Bundle skills / agents / hooks / commands into a plugin. |
 | [`writing-a-provider`](writing-a-provider.md) | Add a new LLM provider. |
+| [`openai-compatible-gateways`](openai-compatible-gateways.md) | Route San through a token gateway / proxy (OneAPI, NewAPI, resellers) via a base-URL override. |
