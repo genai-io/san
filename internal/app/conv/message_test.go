@@ -162,7 +162,7 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	// text without repeating it. No gutter bar, no background fill.
 	long := `{"command":"git log --oneline --graph --all --decorate --abbrev-commit --since='2 weeks ago' | head -50"}`
 	raw := renderBashToolCall(long, 70, "●")
-	if strings.ContainsAny(raw, "│┊") || strings.Contains(raw, "48;2;") {
+	if strings.ContainsAny(raw, "│") || strings.Contains(raw, "48;2;") {
 		t.Fatalf("command block should have no bar and no background, got %q", raw)
 	}
 
@@ -896,7 +896,7 @@ func TestRenderToolCallsKeepsBashConnectorWhenOutputIsCollapsed(t *testing.T) {
 		},
 		Width: 100,
 	}))
-	if !strings.Contains(rendered, "  $ git status\n  ┊\n  └ 2 lines\n") {
+	if !strings.Contains(rendered, "  $ git status\n  └ 2 lines\n") {
 		t.Fatalf("collapsed Bash output should retain its connector, got %q", rendered)
 	}
 }
@@ -1023,8 +1023,8 @@ func TestRenderToolCallsCollapsesReadResultByDefault(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "Read(internal/app/conv/message.go) · lines 510–511") {
-		t.Fatalf("Read call should annotate its requested range, got %q", rendered)
+	if !strings.Contains(rendered, "Read(internal/app/conv/message.go)") || strings.Contains(rendered, "· lines") {
+		t.Fatalf("Read call should show only its path, got %q", rendered)
 	}
 	if strings.Contains(rendered, "type ToolResultData") {
 		t.Fatalf("collapsed Read should not render file content, got %q", rendered)
@@ -1069,19 +1069,6 @@ func TestRenderFileChangeInputPreviewHonorsNarrowWidth(t *testing.T) {
 	preview := stripANSI(renderFileChangeInputPreview(`{"content":"long"}`, 6))
 	if preview != "" {
 		t.Fatalf("narrow preview = %q, want no overflowing preview", preview)
-	}
-}
-
-func TestFormatReadToolLabelSkipsInvalidRange(t *testing.T) {
-	for _, input := range []string{
-		`{"file_path":"file.go","limit":0}`,
-		`{"file_path":"file.go","limit":-1}`,
-		`{"file_path":"file.go","offset":-1}`,
-		`{"file_path":"file.go","offset":-1,"limit":10}`,
-	} {
-		if got := formatReadToolLabel(input, "file.go"); got != "Read(file.go)" {
-			t.Fatalf("formatReadToolLabel(%s) = %q, want no range label", input, got)
-		}
 	}
 }
 

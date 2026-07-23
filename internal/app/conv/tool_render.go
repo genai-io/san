@@ -181,13 +181,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	// Keep Bash's connector visible while its output is collapsed. When output
-	// is visible, its first row carries the connector so no blank row splits the
-	// command from the result block.
 	showBody := (data.Expanded || data.IsError) && content != ""
-	if !showBody {
-		sb.WriteString(toolResultStyle.Render("  ┊") + "\n")
-	}
 	if showBody {
 		for line := range strings.SplitSeq(content, "\n") {
 			sb.WriteString(renderNestedToolBodyLine(line))
@@ -195,12 +189,6 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 	sb.WriteString(style.Render("  └ "+summary) + "\n")
 	return sb.String()
-}
-
-// renderNestedBashBodyLine aligns expanded command output with the shell
-// prompt, connector, and terminal summary in a nested Bash block.
-func renderNestedBashBodyLine(line string) string {
-	return renderNestedToolBodyLine(line)
 }
 
 func renderNestedFileChangeResultInline(data ToolResultData) string {
@@ -965,26 +953,6 @@ func extractToolArgs(input string) string {
 		}
 	}
 	return ""
-}
-
-// formatReadToolLabel adds a compact requested range only when the caller chose
-// one explicitly; the common full-file Read remains just Read(path).
-func formatReadToolLabel(input, path string) string {
-	var params struct {
-		Offset int `json:"offset"`
-		Limit  int `json:"limit"`
-	}
-	if json.Unmarshal([]byte(input), &params) != nil || params.Offset < 0 || params.Limit < 0 || (params.Offset == 0 && params.Limit == 0) {
-		return fmt.Sprintf("%s(%s)", tool.ToolRead, path)
-	}
-	start := params.Offset
-	if start <= 0 {
-		start = 1
-	}
-	if params.Limit > 0 {
-		return fmt.Sprintf("%s(%s) · lines %d–%d", tool.ToolRead, path, start, start+params.Limit-1)
-	}
-	return fmt.Sprintf("%s(%s) · lines %d–", tool.ToolRead, path, start)
 }
 
 func formatToolResultSize(toolName, content string) string {
