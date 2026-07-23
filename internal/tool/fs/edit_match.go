@@ -1,23 +1,25 @@
 package fs
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
-// Tolerant matching for Edit: when oldText has no exact match, the dominant
-// real-world cause is a whitespace transcription slip — the model dropped or
-// converted a tab while copying from Read output. Exact matching stays the
-// primary path; these fallbacks only run on a zero-match result, and they
-// only ever match whole lines.
+// Tolerant matching for Edit: when old_string has no exact match, the
+// dominant real-world cause is a whitespace transcription slip — the model
+// dropped or converted a tab while copying from Read output. Exact matching
+// stays the primary path; these fallbacks only run on a zero-match result,
+// and they only ever match whole lines.
 //
 // The ladder has two rungs:
 //  1. trailing-whitespace-insensitive — safe to apply automatically, since
 //     leading indentation (what ends up in the file) was copied correctly;
 //  2. fully whitespace-insensitive — located but NOT applied, because the
-//     provided newText carries the same broken indentation and applying it
-//     would write that indentation into the file. Instead the error echoes
-//     the file's actual lines so the next attempt can copy exact bytes.
+//     provided new_string carries the same broken indentation and applying
+//     it would write that indentation into the file. Instead the error
+//     echoes the file's actual lines so the next attempt can copy exact
+//     bytes.
 
 // lineSpan is the [start,end) byte range of one line in the file content,
 // where end includes the trailing newline when the line has one.
@@ -40,7 +42,7 @@ func splitLineSpans(content string) []lineSpan {
 	return spans
 }
 
-// tolerantMatch is one place where oldText's lines matched consecutive whole
+// tolerantMatch is one place where old_string's lines matched consecutive whole
 // file lines under a trim function. start/end are byte offsets of the file's
 // original text for that region; firstLine/lineCount address the same region
 // in line terms (firstLine is 0-based).
@@ -50,45 +52,45 @@ type tolerantMatch struct {
 	lineCount  int
 }
 
-// resolveTolerantMatch runs the fallback ladder for one edit whose oldText
-// had no exact match. It returns a range to apply (trailing-whitespace rung)
-// or an error describing the closest the file gets to oldText.
-func resolveTolerantMatch(content string, spans []lineSpan, editIndex int, edit editReplacement) (editRange, error) {
+// resolveTolerantMatch runs the fallback ladder for an edit whose old_string
+// had no exact match. It returns the matched byte range to replace
+// (trailing-whitespace rung) or an error describing the closest the file
+// gets to old_string.
+func resolveTolerantMatch(content string, spans []lineSpan, edit editReplacement) (tolerantMatch, error) {
 	oldLines, matchTrailingNewline := splitOldTextLines(edit.oldString)
 
-	// Whitespace-only oldText would "match" any run of blank lines under a
-	// trim; exact matching is the only meaningful mode for it.
+	// Whitespace-only old_string would "match" any run of blank lines under
+	// a trim; exact matching is the only meaningful mode for it.
 	if allBlank(oldLines) {
-		return editRange{}, notFoundError(editIndex)
+		return tolerantMatch{}, errOldStringNotFound
 	}
 
 	trimTrailing := func(s string) string { return strings.TrimRight(s, " \t") }
 	matches := matchTrimmedLines(content, spans, oldLines, matchTrailingNewline, trimTrailing)
 	switch len(matches) {
 	case 1:
-		m := matches[0]
-		return editRange{start: m.start, end: m.end, replacement: edit.newString, editIndex: editIndex}, nil
+		return matches[0], nil
 	case 0:
 		// Fall through to the diagnostic rung.
 	default:
-		return editRange{}, fmt.Errorf("edits[%d]: oldText matches %d locations when ignoring trailing whitespace; include more surrounding context", editIndex, len(matches))
+		return tolerantMatch{}, fmt.Errorf("old_string matches %d locations when ignoring trailing whitespace; include more surrounding context", len(matches))
 	}
 
 	matches = matchTrimmedLines(content, spans, oldLines, matchTrailingNewline, strings.TrimSpace)
 	if len(matches) == 1 {
 		m := matches[0]
-		return editRange{}, fmt.Errorf(
-			"edits[%d]: oldText does not match the file exactly, but lines %d-%d match it when indentation is ignored — the indentation in oldText is wrong. The file's actual text is (format: line number, tab, exact content):\n%sRetry with the indentation exactly as shown after the tab, in both oldText and newText.",
-			editIndex, m.firstLine+1, m.firstLine+m.lineCount, echoFileLines(content, spans, m.firstLine, m.lineCount))
+		return tolerantMatch{}, fmt.Errorf(
+			"old_string does not match the file exactly, but lines %d-%d match it when indentation is ignored — the indentation in old_string is wrong. The file's actual text is (format: line number, tab, exact content):\n%sRetry with the indentation exactly as shown after the tab, in both old_string and new_string.",
+			m.firstLine+1, m.firstLine+m.lineCount, echoFileLines(content, spans, m.firstLine, m.lineCount))
 	}
-	return editRange{}, notFoundError(editIndex)
+	return tolerantMatch{}, errOldStringNotFound
 }
 
-func notFoundError(editIndex int) error {
-	return fmt.Errorf("edits[%d]: oldText was not found. The file appears unchanged since it was last read (same size and mtime), so oldText likely has a transcription slip. Re-read the target lines and copy them exactly", editIndex)
-}
+// errOldStringNotFound is deliberately neutral about why: the caller knows
+// whether the file was fresh or stale at match time and adds that context.
+var errOldStringNotFound = errors.New("old_string was not found in the file — likely a transcription slip; re-read the target lines and copy them exactly")
 
-// splitOldTextLines splits oldText for line-based matching. A trailing
+// splitOldTextLines splits old_string for line-based matching. A trailing
 // newline is not a line of its own; it means the matched region must keep
 // the last line's newline.
 func splitOldTextLines(oldText string) (lines []string, matchTrailingNewline bool) {

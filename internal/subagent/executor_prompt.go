@@ -50,7 +50,7 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 var toolActivityParams = map[string]string{
 	"Read":       "file_path",
 	"Write":      "file_path",
-	"Edit":       "path",
+	"Edit":       "file_path",
 	"Bash":       "command",
 	"WebFetch":   "url",
 	"WebSearch":  "query",

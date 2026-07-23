@@ -61,7 +61,7 @@ func (t *WriteTool) PreparePermission(ctx context.Context, params map[string]any
 		diffMeta = perm.GeneratePreview(filePath, content, true)
 	} else {
 		// Overwriting: the model must hold a current view of what it destroys.
-		if err := requireFreshRead(filePath); err != nil {
+		if err := requireCurrentView(filePath); err != nil {
 			return nil, &tool.ToolError{Message: err.Error()}
 		}
 		// Existing file: generate actual diff to show what will change
@@ -117,7 +117,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	// model to hold a current view, and the result carries a diff against it.
 	oldContent := ""
 	if !isNewFile {
-		if err := requireFreshRead(filePath); err != nil {
+		if err := requireCurrentView(filePath); err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
 		old, readErr := os.ReadFile(filePath)
@@ -144,10 +144,12 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	// The overwrite note rides the result because models weigh fresh tool
 	// results over schema text: it nudges the next modification toward Edit
 	// without blocking legitimate full rewrites.
-	overwriteNote := ""
+	// Both notes mirror Claude Code's result hints: suppress the verify-read
+	// reflex, and steer the next existing-file change toward Edit.
+	resultNote := "; file state is current — no need to re-read"
 	if !isNewFile {
 		action = "Updated"
-		overwriteNote = ". Note: this replaced an existing file; use Edit for modifications"
+		resultNote = ". Note: this replaced an existing file; use Edit for modifications" + resultNote
 	}
 
 	// Count lines
@@ -170,7 +172,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	return toolresult.ToolResult{
 		Success: true,
-		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)" + overwriteNote,
+		Output:  action + " " + filePath + " (" + strconv.Itoa(lineCount) + " lines)" + resultNote,
 		Details: toolresult.FileChangeDetails{
 			Path:         filePath,
 			IsNewFile:    isNewFile,

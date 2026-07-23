@@ -12,6 +12,7 @@ func (t *ReadTool) Schema() core.ToolSchema {
 - Reads up to 2000 lines from the start by default; use offset/limit only for very long files
 - Read output has a line-number and tab prefix; strip it for Edit and preserve the rest exactly
 - Lines over 2000 characters end with “… [line truncated]” and cannot be copied into an Edit
+- Do not re-read a file to verify your own Edit/Write — a failed change errors, and successful results keep your view current
 - Images (e.g. screenshots) are supported — read the file to view it`,
 		Parameters: map[string]any{
 			"type": "object",
@@ -38,34 +39,33 @@ func (t *ReadTool) Schema() core.ToolSchema {
 func (t *EditTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "Edit",
-		Description: `Performs exact string replacements in a file.
+		Description: `Performs exact string replacement in a file.
 
 - Requires a current view: Read first, unless successful Write/Edit already observed the file this session. Re-read after external changes.
-- Do not Read and Edit the same file in one message.
-- oldText must match exactly once after stripping Read's line prefix and preserving whitespace. Trailing-whitespace-only mismatches apply automatically; others show the actual lines.
-- All edits are checked against the original file and applied together; combine overlapping changes into one edit.`,
+- old_string must match the file exactly after stripping Read's line-number prefix (preserve indentation) and must be unique — add surrounding context if not, or set replace_all to change every occurrence. Trailing-whitespace-only mismatches apply automatically; other whitespace slips fail with the actual lines echoed.
+- Apply several changes to one file with multiple Edit calls in one message; they run in order.
+- Do not Read and Edit the same file in one message.`,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"path": map[string]any{
+				"file_path": map[string]any{
 					"type":        "string",
 					"description": "Path to the file to modify. Relative paths are resolved from the current session working directory.",
 				},
-				"edits": map[string]any{
-					"type":        "array",
-					"description": "One or more exact replacements applied together.",
-					"minItems":    1,
-					"items": map[string]any{
-						"type": "object",
-						"properties": map[string]any{
-							"oldText": map[string]any{"type": "string", "description": "Exact unique text to replace"},
-							"newText": map[string]any{"type": "string", "description": "Replacement text"},
-						},
-						"required": []string{"oldText", "newText"},
-					},
+				"old_string": map[string]any{
+					"type":        "string",
+					"description": "The exact text to replace",
+				},
+				"new_string": map[string]any{
+					"type":        "string",
+					"description": "The replacement text (must differ from old_string)",
+				},
+				"replace_all": map[string]any{
+					"type":        "boolean",
+					"description": "Replace every occurrence of old_string (default false)",
 				},
 			},
-			"required": []string{"path", "edits"},
+			"required": []string{"file_path", "old_string", "new_string"},
 		},
 	}
 }

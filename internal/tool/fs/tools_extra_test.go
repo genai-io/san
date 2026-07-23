@@ -110,7 +110,7 @@ func readForEdit(t *testing.T, filePath, cwd string) {
 	}
 }
 
-func TestEditBatchReplacements(t *testing.T) {
+func TestEditPreservesBomAndCrlf(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "example.txt")
 	original := "\ufefftitle: old\r\nfirst: old\r\nsecond: keep\r\n"
@@ -119,23 +119,22 @@ func TestEditBatchReplacements(t *testing.T) {
 	}
 	readForEdit(t, filePath, tmpDir)
 
-	params := map[string]any{
-		"path": filePath,
-		"edits": []any{
-			map[string]any{"oldText": "title: old\n", "newText": "title: new\n"},
-			map[string]any{"oldText": "second: keep", "newText": "second: new"},
-		},
-	}
-	result := (&EditTool{}).ExecuteApproved(context.Background(), params, tmpDir)
+	// Sequential edits, the way multiple changes land under the CC-shaped
+	// schema. old_string/new_string arrive LF-normalized like model output.
+	result := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{
+		"file_path":  filePath,
+		"old_string": "title: old\n",
+		"new_string": "title: new\n",
+	}, tmpDir)
 	if !result.Success {
-		t.Fatalf("batch Edit failed: %s", result.FormatForLLM())
-	}
-	if !strings.Contains(result.Output, "2 replacements, +2 -2") {
-		t.Fatalf("batch Edit output = %q", result.Output)
+		t.Fatalf("first edit failed: %s", result.FormatForLLM())
 	}
 	details, ok := result.Details.(toolresult.FileChangeDetails)
-	if !ok || details.EditCount != 2 || details.AddedLines != 2 || details.RemovedLines != 2 {
+	if !ok || details.EditCount != 1 || details.AddedLines != 1 || details.RemovedLines != 1 {
 		t.Fatalf("Edit details = %#v", result.Details)
+	}
+	if out := editOnce(filePath, "second: keep", "second: new", tmpDir).FormatForLLM(); strings.Contains(out, "Error") {
+		t.Fatalf("second edit failed: %s", out)
 	}
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -145,28 +144,28 @@ func TestEditBatchReplacements(t *testing.T) {
 		t.Fatalf("file content = %q, want %q", got, want)
 	}
 
+	// Failed edits leave the file untouched and name the problem.
 	if err := os.WriteFile(filePath, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	readForEdit(t, filePath, tmpDir)
 	for _, test := range []struct {
-		edits []any
-		want  string
+		oldString, want string
 	}{
-		{[]any{map[string]any{"oldText": "title: old", "newText": "title: new"}, map[string]any{"oldText": "missing", "newText": "replacement"}}, "edits[1]: oldText was not found"},
-		{[]any{map[string]any{"oldText": "old", "newText": "new"}}, "edits[0]: oldText matches 2 locations"},
-		{[]any{map[string]any{"oldText": "title: old", "newText": "title: new"}, map[string]any{"oldText": "old\nfirst", "newText": "new\nfirst"}}, "edits[0] overlaps edits[1]"},
+		{"missing", "old_string was not found"},
+		{"old", "old_string matches 2 locations"},
 	} {
-		failed := (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{"path": filePath, "edits": test.edits}, tmpDir)
-		if failed.Success || !strings.Contains(failed.FormatForLLM(), test.want) {
-			t.Fatalf("invalid batch Edit = %+v, want %q", failed, test.want)
+		failed := editOnce(filePath, test.oldString, "replacement", tmpDir)
+		out := failed.FormatForLLM()
+		if !strings.Contains(out, test.want) {
+			t.Fatalf("invalid edit = %q, want %q", out, test.want)
 		}
 		content, err = os.ReadFile(filePath)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got := string(content); got != original {
-			t.Fatalf("invalid batch Edit changed file to %q", got)
+			t.Fatalf("invalid edit changed file to %q", got)
 		}
 	}
 }
