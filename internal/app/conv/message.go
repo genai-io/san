@@ -579,17 +579,19 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if _, hasResult := params.ResultMap[tc.ID]; hasResult {
 				icon = "●"
 			}
+			detail := runningRowDetail(tc, params)
 			var row string
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			} else if tc.Name == tool.ToolBash {
-				row = renderBashToolCall(tc.Input, params.Width, icon)
+				row = renderBashToolCall(tc.Input, params.Width, icon, detail)
+				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			}
-			sb.WriteString(appendRowDetail(row, runningRowDetail(tc, params)))
+			sb.WriteString(appendRowDetail(row, detail))
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {

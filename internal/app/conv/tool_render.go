@@ -1165,13 +1165,24 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
 }
 
-// renderBashToolCall renders a Bash tool call so its command is always readable
-// in full. It renders a dimmed command block below a "● Bash" header, led by a
-// shell "$" prompt, with the optional description as a caption. Command lines
-// soft-wrap to the width rather than truncate, so the full command is always
-// visible, never clipped.
-func renderBashToolCall(input string, width int, icon string) string {
+// renderBashToolCall renders a Bash tool call so its command is always readable.
+// A non-empty single-line command uses a dimmed Bash(command) preview with the
+// optional description. Multi-line commands retain the full command block: a
+// dimmed block below a "● Bash" header, led by a shell "$" prompt. Command
+// lines soft-wrap to the width rather than truncate, so multi-line commands are
+// always visible in full.
+func renderBashToolCall(input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
+	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
+		label := fmt.Sprintf("%s(%s)", tool.ToolBash, command)
+		if description = strings.Join(strings.Fields(description), " "); description != "" {
+			label += " - " + description
+		}
+		labelWidth := max(3, maxToolLabelWidth(width)-lipgloss.Width(detail))
+		label = xansi.Truncate(label, labelWidth, "...")
+		iconCell := toolResultStyle.Width(2).Render(icon)
+		return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, toolResultStyle.Render(label)) + detail + "\n"
+	}
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
 	}
@@ -1186,7 +1197,7 @@ func renderBashToolCall(input string, width int, icon string) string {
 	if description != "" {
 		header += " - " + description
 	}
-	sb.WriteString(renderToolLineWithIcon(header, width, icon) + "\n")
+	sb.WriteString(renderToolLineWithIcon(header, width, icon) + detail + "\n")
 
 	// Soft-wrap every command line to the available width. The first row carries
 	// the shell prompt; every later row uses the connector so the command and its

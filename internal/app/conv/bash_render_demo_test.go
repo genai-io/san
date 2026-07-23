@@ -23,11 +23,11 @@ func TestBashRenderDemo(t *testing.T) {
 		input string
 	}{
 		{
-			"short single-line (stays compact)",
+			"short single-line (compact preview)",
 			`{"command":"git status"}`,
 		},
 		{
-			"long single-line (wraps into block)",
+			"long single-line (truncated preview)",
 			`{"command":"git log --oneline --graph --all --decorate --abbrev-commit | head -50"}`,
 		},
 		{
