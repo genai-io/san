@@ -187,15 +187,34 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	// prompt, so command text lines up down one column and the prompt never repeats.
 	contIndent := strings.Repeat(" ", lipgloss.Width(bashPrompt))
 	for i, row := range rows[1:] {
-		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) || strings.HasPrefix(row, "  ┊ ") {
+		if !strings.HasPrefix(row, contIndent) || strings.HasPrefix(row, bashPrompt) || strings.HasPrefix(row, nestedBodyPrefix) {
 			t.Fatalf("continuation row %d should hang under the command text, not repeat the prompt: %q", i+1, row)
 		}
 	}
 
 	// The prompt and nested result markers occupy the same column.
-	resultPrefix := "  └ "
-	if strings.IndexByte(bashPrompt, '$') != strings.Index(resultPrefix, "└") {
+	if strings.IndexByte(bashPrompt, '$') != strings.Index(nestedTrailerPrefix, "└") {
 		t.Fatalf("prompt $ column must equal the result └ column")
+	}
+}
+
+func Test_renderBashToolCallAvoidsConnectorOnlyRows(t *testing.T) {
+	for _, input := range []string{
+		`{"command":"first\n"}`,
+		`{"command":"first\n\nthird"}`,
+		`{"command":"first\n   \nthird"}`,
+		`{"command":"\nfirst"}`,
+	} {
+		out := stripANSI(renderBashToolCall(input, 100, "●"))
+		if strings.Contains(out, strings.TrimSuffix(nestedBodyPrefix, " ")+"\n") {
+			t.Fatalf("blank command lines should not create connector-only rows, got %q", out)
+		}
+		if !strings.Contains(out, bashPrompt+"first\n") {
+			t.Fatalf("first visible command line should retain the shell prompt, got %q", out)
+		}
+	}
+	if out := stripANSI(renderBashToolCall(`{"command":"   "}`, 100, "●")); !strings.Contains(out, bashPrompt+"(no command)\n") {
+		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
 	}
 }
 
@@ -620,6 +639,30 @@ func TestRenderToolCallsShowsCompletedIconForResultEvenWhenPending(t *testing.T)
 	if strings.Contains(rendered, "⋯ WebFetch") {
 		t.Fatalf("RenderToolCalls() = %q, should not show spinner for completed result", rendered)
 	}
+	if strings.Count(rendered, "WebFetch") != 1 || !strings.Contains(rendered, "  └ 4 B\n") {
+		t.Fatalf("nested WebFetch should not repeat its tool name, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsNestsGenericFailureWithoutRepeatingToolName(t *testing.T) {
+	call := core.ToolCall{ID: "tc-1", Name: "WebSearch", Input: `{"query":"test"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "WebSearch", Content: "Error: request failed\n   \nretry later\n\n", IsError: true},
+		},
+		Width: 100,
+	}))
+
+	if strings.Count(rendered, "WebSearch") != 1 {
+		t.Fatalf("WebSearch should be named only in its call header, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "  ┊ request failed\n    \n  ┊ retry later\n  └ failed\n") {
+		t.Fatalf("generic failure should use the nested result layout without connector-only rows, got %q", rendered)
+	}
+	if strings.Contains(rendered, "  ┊ \n") {
+		t.Fatalf("blank output lines should not render connector-only rows, got %q", rendered)
+	}
 }
 
 func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
@@ -977,7 +1020,7 @@ func TestRenderToolCallsNestsWriteResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "+ package app") {
 		t.Fatalf("Write result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ +1\n") || strings.Index(rendered, "  └ +1") < strings.Index(rendered, "+ package app") {
+	if !strings.Contains(rendered, "  └ +1 -0\n") || strings.Index(rendered, "  └ +1 -0") < strings.Index(rendered, "+ package app") {
 		t.Fatalf("Write summary should follow its diff, got %q", rendered)
 	}
 }
@@ -997,6 +1040,30 @@ func TestRenderToolCallsNestsFileChangeResultWithoutDetails(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "Edit(internal/app/view.go)\n  └ 1 replacement(s), +1 -1\n") {
 		t.Fatalf("Edit fallback result should retain its summary, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsExtractsFallbackAfterParenthesizedPath(t *testing.T) {
+	call := core.ToolCall{ID: "edit-1", Name: "Edit", Input: `{"path":"dir/foo(bar).go","edits":[]}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "Edit", Content: "Edited dir/foo(bar).go (1 replacement(s), +1 -1)"},
+		},
+		Width: 100,
+	}))
+
+	if !strings.Contains(rendered, "  └ 1 replacement(s), +1 -1\n") {
+		t.Fatalf("Edit fallback should use the trailing summary, got %q", rendered)
+	}
+	if strings.Contains(rendered, "  └ bar\n") {
+		t.Fatalf("Edit fallback should not mistake path parentheses for its summary, got %q", rendered)
+	}
+	if got := extractTrailingParenContent("Edited dir/foo.go (1 replacement(s), +1 -1); current", "completed"); got != "1 replacement(s), +1 -1" {
+		t.Fatalf("extractTrailingParenContent() = %q, want the recognized summary", got)
+	}
+	if got := extractTrailingParenContent("Wrote dir/foo(bar).go", "completed"); got != "completed" {
+		t.Fatalf("extractTrailingParenContent() = %q, want fallback for parenthesized path", got)
 	}
 }
 
@@ -1062,8 +1129,37 @@ func TestFormatReadResultSummaryCountsNumberedRows(t *testing.T) {
 	}
 }
 
+func TestFormatReadResultSummaryDescribesAdvisoryOutput(t *testing.T) {
+	tests := map[string]string{
+		"Binary file detected: fixture.bin":                                "binary file",
+		"image file: fixture.png (1.2 KB). Read cannot display images yet": "image file",
+	}
+	for content, want := range tests {
+		if got := formatReadResultSummary(content); got != want {
+			t.Fatalf("formatReadResultSummary(%q) = %q, want %q", content, got, want)
+		}
+	}
+}
+
+func TestFormatReadResultSummaryUsesSingularLine(t *testing.T) {
+	if got := formatReadResultSummary("     1\tpackage app"); got != "1 line" {
+		t.Fatalf("formatReadResultSummary() = %q, want %q", got, "1 line")
+	}
+}
+
+func TestRenderFileChangeInputPreviewUsesFailedLegacyEdit(t *testing.T) {
+	input := `{"edits":[{"oldText":"first old","newText":"first new"},{"oldText":"second old","newText":"second new"}]}`
+	preview := stripANSI(renderFileChangeInputPreview(input, "Error: edits[1]: oldText was not found", 80))
+	if !strings.Contains(preview, "- second old") || !strings.Contains(preview, "+ second new") {
+		t.Fatalf("preview should show the failed edit, got %q", preview)
+	}
+	if strings.Contains(preview, "first old") || strings.Contains(preview, "first new") {
+		t.Fatalf("preview should not show an unrelated edit, got %q", preview)
+	}
+}
+
 func TestRenderFileChangeInputPreviewWrapsLongContent(t *testing.T) {
-	preview := stripANSI(renderFileChangeInputPreview(`{"content":"`+strings.Repeat("x", 100)+`"}`, 40))
+	preview := stripANSI(renderFileChangeInputPreview(`{"content":"`+strings.Repeat("x", 100)+`"}`, "", 40))
 	for line := range strings.SplitSeq(strings.TrimSuffix(preview, "\n"), "\n") {
 		if width := lipgloss.Width(line); width > 40 {
 			t.Fatalf("preview line width = %d, want at most 40: %q", width, line)
@@ -1072,7 +1168,7 @@ func TestRenderFileChangeInputPreviewWrapsLongContent(t *testing.T) {
 }
 
 func TestRenderFileChangeInputPreviewHonorsNarrowWidth(t *testing.T) {
-	preview := stripANSI(renderFileChangeInputPreview(`{"content":"long"}`, 6))
+	preview := stripANSI(renderFileChangeInputPreview(`{"content":"long"}`, "", 6))
 	if preview != "" {
 		t.Fatalf("narrow preview = %q, want no overflowing preview", preview)
 	}
