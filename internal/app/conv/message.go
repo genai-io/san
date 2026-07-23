@@ -518,7 +518,7 @@ type ToolResultData struct {
 	Width       int
 	Details     any
 	// Nested indicates this result is rendering immediately below its tool call.
-	// Bash uses that context to show a terminal state without repeating its name.
+	// Nested results show a terminal state without repeating the tool name.
 	Nested bool
 	// Decision is the auto-review decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.

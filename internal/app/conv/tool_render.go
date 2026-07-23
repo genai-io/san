@@ -105,6 +105,9 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	case tool.ToolAgent, tool.ToolSendMessage:
 		return renderTaskResultInline(data, mdRenderer)
 	case tool.ToolEdit, tool.ToolWrite:
+		if data.Nested {
+			return renderNestedFileChangeResultInline(data)
+		}
 		return renderFileChangeResultInline(data)
 	case tool.ToolAskUserQuestion:
 		return renderAskUserResultInline(data)
@@ -130,13 +133,74 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(style.Render("  └ " + state) + "\n")
+	sb.WriteString(style.Render("  └ "+state) + "\n")
 	if (data.Expanded || data.IsError) && content != "" {
 		for line := range strings.SplitSeq(content, "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render("  " + line) + "\n")
+			sb.WriteString(toolResultExpandedStyle.Render("  "+line) + "\n")
 		}
 	}
 	return sb.String()
+}
+
+func renderNestedFileChangeResultInline(data ToolResultData) string {
+	content := data.Content
+	state := "completed"
+	style := toolResultStyle
+
+	if data.IsError {
+		style = errorStyle
+		lines := strings.Split(strings.TrimPrefix(content, "Error: "), "\n")
+		state = "failed"
+		if len(lines) > 0 && lines[0] != "" {
+			state += ": " + lines[0]
+			content = strings.Join(lines[1:], "\n")
+		}
+	} else if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
+		state = fileChangeSummary(details)
+		content = ""
+	} else {
+		state, content = nestedFileChangeFallbackState(data)
+	}
+
+	var sb strings.Builder
+	sb.WriteString(style.Render("  └ "+state) + "\n")
+	if (data.Expanded || data.IsError) && content != "" {
+		for line := range strings.SplitSeq(content, "\n") {
+			sb.WriteString(toolResultExpandedStyle.Render("  "+line) + "\n")
+		}
+	}
+
+	if !data.IsError {
+		details, ok := data.Details.(toolresult.FileChangeDetails)
+		if !ok {
+			return sb.String()
+		}
+		width := data.Width
+		if width <= 0 {
+			width = 80
+		}
+		block, _ := RenderStoredFileDiff(details.UnifiedDiff, width, 0)
+		sb.WriteString(block)
+		if details.TruncatedDiffLines > 0 {
+			sb.WriteString(truncatedStyle.Render(fmt.Sprintf("     … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+		}
+	}
+	return sb.String()
+}
+
+func nestedFileChangeFallbackState(data ToolResultData) (state, content string) {
+	return extractParenContent(data.Content, "completed"), data.Content
+}
+
+func fileChangeSummary(details toolresult.FileChangeDetails) string {
+	switch {
+	case details.IsNewFile:
+		return fmt.Sprintf("new file · %d lines", details.AddedLines)
+	case details.EditCount > 0:
+		return fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
+	default:
+		return fmt.Sprintf("rewrote · +%d -%d", details.AddedLines, details.RemovedLines)
+	}
 }
 
 func renderFileChangeResultInline(data ToolResultData) string {
@@ -151,15 +215,7 @@ func renderFileChangeResultInline(data ToolResultData) string {
 		return renderGenericToolResultInline(data)
 	}
 
-	var summary string
-	switch {
-	case details.IsNewFile:
-		summary = fmt.Sprintf("new file · %d lines", details.AddedLines)
-	case details.EditCount > 0:
-		summary = fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
-	default:
-		summary = fmt.Sprintf("rewrote · +%d -%d", details.AddedLines, details.RemovedLines)
-	}
+	summary := fileChangeSummary(details)
 
 	var sb strings.Builder
 	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  %s → %s", toolResultIcon(false), data.ToolName, summary)) + "\n")
@@ -817,15 +873,24 @@ func formatToolResultSize(toolName, content string) string {
 }
 
 func extractParenContent(s, fallback string) string {
-	start := strings.Index(s, "(")
+	start := strings.IndexByte(s, '(')
 	if start == -1 {
 		return fallback
 	}
-	end := strings.Index(s[start:], ")")
-	if end == -1 {
-		return fallback
+
+	depth := 0
+	for i := start; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[start+1 : i]
+			}
+		}
 	}
-	return s[start+1 : start+end]
+	return fallback
 }
 
 func formatLineCount(content string) string {
