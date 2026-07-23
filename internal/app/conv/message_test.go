@@ -842,8 +842,47 @@ func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
 	}
 
 	bashErrResult := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Bash", Content: "command failed", IsError: true}, nil))
-	if !strings.Contains(bashErrResult, "\n     command failed\n") {
-		t.Fatalf("Bash error reason should align with Bash, got %q", bashErrResult)
+	if !strings.Contains(bashErrResult, "Bash → failed") {
+		t.Fatalf("standalone Bash error should retain its tool label, got %q", bashErrResult)
+	}
+}
+
+func TestRenderToolCallsNestsBashResultUnderCommand(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"git status"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "Bash", Content: "on main\nnothing to commit", Expanded: true},
+		},
+		Width: 100,
+	}))
+
+	if strings.Count(rendered, "Bash") != 1 {
+		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "Bash(git status)\n  └ completed\n") {
+		t.Fatalf("Bash result should be a nested completed state, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "      on main\n      nothing to commit\n") {
+		t.Fatalf("expanded Bash output should remain nested under its command, got %q", rendered)
+	}
+}
+
+func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"false"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "Bash", Content: "exit status 1\nstderr detail", IsError: true},
+		},
+		Width: 100,
+	}))
+
+	if strings.Count(rendered, "Bash") != 1 {
+		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "  └ failed: exit status 1\n      stderr detail\n") {
+		t.Fatalf("Bash failure and detail should be nested under its command, got %q", rendered)
 	}
 }
 

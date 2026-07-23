@@ -517,6 +517,9 @@ type ToolResultData struct {
 	ToolInput   string
 	Width       int
 	Details     any
+	// Nested indicates this result is rendering immediately below its tool call.
+	// Bash uses that context to show a terminal state without repeating its name.
+	Nested bool
 	// Decision is the auto-review decision for this call (nil if it was not
 	// judged), drawn as a colored line between the call and its result.
 	Decision *core.ReviewDecision
@@ -593,6 +596,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			resultData.ToolInput = tc.Input
 			resultData.Interactive = params.Interactive
 			resultData.Width = params.Width
+			resultData.Nested = true
 			// Decision sits between the call and its result, mirroring the
 			// order things happened: judged → ran → produced this output.
 			sb.WriteString(renderDecision(resultData.Decision))
