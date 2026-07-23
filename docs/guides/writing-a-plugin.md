@@ -1,7 +1,7 @@
 # Writing a Plugin
 
 A plugin is a single directory that bundles any combination of skills,
-subagents, slash commands, MCP servers, hooks, and env vars. Plugins are
+slash commands, MCP servers, hooks, and env vars. Plugins are
 the distribution unit: one git repo, one tarball, one `pluginspec.json`.
 
 For the system-level design see [`packages/plugin.md`](../packages/2-feature/plugin.md)
@@ -14,8 +14,6 @@ my-plugin/
 ├── pluginspec.json          # required: manifest
 ├── skills/
 │   └── <name>/SKILL.md      # any number of skills
-├── agents/
-│   └── <name>.md            # any number of subagents
 ├── commands/
 │   └── <name>.md            # any number of slash commands
 ├── mcp/
@@ -78,7 +76,7 @@ disable, uninstall, switch scope, browse the marketplace.
 ## Enable State
 
 Plugins are enabled per scope. Disabling a plugin removes its
-contributions (skills / agents / commands / MCP / hooks) without
+contributions (skills / commands / MCP / hooks) without
 deleting files. Re-enable to restore.
 
 State is persisted in `~/.san/plugins.json` and
@@ -92,7 +90,6 @@ into the relevant feature package:
 | Contribution | Consumer |
 |---|---|
 | `skills/*/SKILL.md` | `internal/skill` (via `AddPluginSkills`) |
-| `agents/*.md` | `internal/subagent` (via `AddPluginAgentPath`) |
 | `commands/*.md` | `internal/command` (via `PluginCommandPaths` callback) |
 | `mcp/servers.json` | `internal/mcp` (merged into `mcp.json`) |
 | `hooks/hooks.json` | `internal/setting` (merged into `settings.json`'s `hooks`) |
@@ -186,6 +183,6 @@ the marketplace.
 
 - [`packages/plugin.md`](../packages/2-feature/plugin.md) — loader, installer,
   marketplace internals.
-- [`writing-a-skill.md`](writing-a-skill.md), [`writing-a-subagent.md`](writing-a-subagent.md).
+- [`writing-a-skill.md`](writing-a-skill.md).
 - [`concepts/extension-model.md`](../concepts/extension-model.md) — how
-  the four primitives relate.
+  the three primitives relate.

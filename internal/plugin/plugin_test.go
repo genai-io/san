@@ -119,21 +119,6 @@ Say hello!
 		t.Fatal(err)
 	}
 
-	// Create agents directory
-	agentsDir := filepath.Join(tmpDir, "agents")
-	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	agentContent := `---
-name: test-agent
-description: A test agent
----
-You are a test agent.
-`
-	if err := os.WriteFile(filepath.Join(agentsDir, "test-agent.md"), []byte(agentContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
 	// Load the plugin
 	plugin, err := LoadPlugin(tmpDir, ScopeUser, "test-plugin@test")
 	if err != nil {
@@ -159,9 +144,6 @@ You are a test agent.
 	// Verify components were resolved
 	if len(plugin.Components.Skills) != 1 {
 		t.Errorf("Plugin skills count = %d, want 1", len(plugin.Components.Skills))
-	}
-	if len(plugin.Components.Agents) != 1 {
-		t.Errorf("Plugin agents count = %d, want 1", len(plugin.Components.Agents))
 	}
 }
 

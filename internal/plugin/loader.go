@@ -85,7 +85,6 @@ func resolveComponents(manifest *Manifest, pluginPath string) Components {
 	return Components{
 		Commands: ResolveCommands(manifest, pluginPath),
 		Skills:   ResolveSkills(manifest, pluginPath),
-		Agents:   ResolveAgents(manifest, pluginPath),
 		Hooks:    ResolveHooksConfig(manifest.Hooks, pluginPath),
 		MCP:      ResolveMCPServers(manifest.MCPServers, pluginPath),
 		LSP:      ResolveLSPServers(manifest.LSPServers, pluginPath),

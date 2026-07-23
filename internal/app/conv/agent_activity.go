@@ -210,8 +210,6 @@ type PendingToolSpinnerParams struct {
 	SpinnerView string
 	// Blink drives the agent running icon.
 	Blink int
-	// AgentColors maps agent type names to display colors.
-	AgentColors map[string]string
 	// Width is the terminal width for label truncation.
 	Width int
 	// SuppressAgentLabel avoids duplicating the active agent title when the
@@ -246,7 +244,7 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 			tc := params.PendingCalls[params.CurrentIdx]
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
-			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), configuredAgentColor(agent, params.AgentColors)) + "\n")
+			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink)) + "\n")
 		}
 		sb.WriteString(renderAgentActivity(params.TaskActivity[params.CurrentIdx]))
 		return sb.String()

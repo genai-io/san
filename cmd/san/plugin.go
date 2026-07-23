@@ -13,11 +13,11 @@ import (
 var pluginCmd = &cobra.Command{
 	Use:   "plugin",
 	Short: "Manage plugins",
-	Long: `Manage plugins for extending San with skills, agents, hooks, and MCP servers.
+	Long: `Manage plugins for extending San with skills, commands, hooks, and MCP servers.
 
 Plugins bundle multiple components:
   - Skills: Custom skills invokable via slash commands
-  - Agents: Subagent definitions
+  - Commands: Custom slash commands
   - Hooks: Event handlers
   - MCP Servers: Model Context Protocol servers
   - LSP Servers: Language Server Protocol servers
@@ -120,9 +120,6 @@ func formatPluginComponents(p *plugin.Plugin) []string {
 	var components []string
 	if n := len(p.Components.Skills); n > 0 {
 		components = append(components, fmt.Sprintf("%d skills", n))
-	}
-	if n := len(p.Components.Agents); n > 0 {
-		components = append(components, fmt.Sprintf("%d agents", n))
 	}
 	if n := len(p.Components.Commands); n > 0 {
 		components = append(components, fmt.Sprintf("%d commands", n))
@@ -313,12 +310,6 @@ var pluginInfoCmd = &cobra.Command{
 			fmt.Printf("  Skills (%d):\n", len(p.Components.Skills))
 			for _, s := range p.Components.Skills {
 				fmt.Printf("    - %s\n", s)
-			}
-		}
-		if len(p.Components.Agents) > 0 {
-			fmt.Printf("  Agents (%d):\n", len(p.Components.Agents))
-			for _, a := range p.Components.Agents {
-				fmt.Printf("    - %s\n", a)
 			}
 		}
 		if p.Components.Hooks != nil && len(p.Components.Hooks.Hooks) > 0 {

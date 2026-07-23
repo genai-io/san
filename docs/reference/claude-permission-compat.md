@@ -76,7 +76,6 @@ Spacing matters: `Bash(ls *)` matches `ls -la` but NOT `lsof`. Use `Bash(ls*)` t
 
 - `WebFetch(domain:example.com)` — domain-scoped fetch
 - `MCP(mcp__puppeteer)` — MCP server tools
-- `Agent(Explore)` — specific subagent type
 
 ## Ways to Configure
 
@@ -89,132 +88,21 @@ Spacing matters: `Bash(ls *)` matches `ls -la` but NOT `lsof`. Use `Bash(ls*)` t
    claude --disallowedTools "Bash(rm *)"
    ```
 
-## Subagent vs Main Loop Permissions
+## San Subagent Permissions
 
-Subagents do **not** inherit the main session's permission rules. They use an independent, fixed permission mode:
+San does not load `.claude/agents/*.md` definitions or their `allow_tools` /
+`deny_tools` frontmatter. The Agent tool launches one implicit worker and accepts
+only these model-facing modes:
 
-| permissionMode | Behavior | Use case |
-|----------------|----------|----------|
-| (default) ReadOnly | Read files, grep, web fetch only. No Bash or file writes. | Explore and research agents |
-| `"plan"` | Same as ReadOnly | Analysis and planning |
-| `"acceptEdits"` | Reads and file edits allowed. Bash still requires approval. | Agents that need to write code |
-| `"default"` | Permissive mode | Agents that need the full toolchain |
+| Agent mode | Behavior |
+|------------|----------|
+| `default` | Dynamically inherits the parent session's effective mode, including bypass. |
+| `explore` | Authoritative read-only ceiling; mutations stay blocked. |
+| `edit` | Reads and file edits are allowed; other calls that need approval are denied. |
 
-The main session's allow/deny rules from settings.json are **not propagated** to subagents. Even if the main session allows `Bash(npm:*)`, a subagent still cannot run Bash unless its permissionMode explicitly permits it.
-
-### Agent Definition Tool Restrictions (YAML)
-
-Custom agents are defined in `.claude/agents/*.md` with YAML frontmatter. Two fields control tool access:
-
-#### allow_tools — Schema Filter
-
-When specified, the LLM only sees these tools in its schema and cannot attempt to use others. When omitted, all tools are available.
-
-```yaml
-# Comma-separated string
-allow_tools: Read, Bash
-
-# Array form
-allow_tools: [Read, Bash]
-
-# Array with patterns
-allow_tools:
-  - Read
-  - Bash(git diff*)       # Only git diff commands
-  - Bash(go test*)        # Only go test commands
-```
-
-An `allow_tools` entry naming a tool San does not ship (for example `Glob`
-or `Grep` from a Claude Code agent definition) is simply inert: no schema
-matches it, so it grants nothing. If such an agent needs to search, list
-`Bash` (optionally with patterns) — read-only commands (`rg`, `grep`,
-`find`, `ls`, read-only `git`, …) auto-permit in every mode, and a
-whitelisted agent only sees the tools its list names.
-
-#### deny_tools — Denylist (Always Wins)
-
-Always overrides `allow_tools` and permission mode. Denied tools are removed from the LLM schema entirely.
-
-```yaml
-deny_tools:
-  - Agent
-  - SendMessage
-  - Bash(rm *)            # Block dangerous bash patterns
-```
-
-#### Evaluation Order
-
-```
-1. allow_tools filter  → not in list? blocked, LLM never sees it
-2. deny_tools filter   → always blocks, regardless of allow_tools
-3. mode rules          → explore/acceptEdits/default apply remaining checks
-4. execute or ask user
-```
-
-#### Examples
-
-**Read-only code reviewer:**
-
-```yaml
----
-name: code-reviewer
-description: Reviews code for bugs and security issues
-mode: explore
-allow_tools:
-  - Read
-  - Bash(git diff*)
-  - Bash(git log*)
-  - Bash(git show*)
-  - WebFetch
-deny_tools:
-  - Agent
-  - Write
-  - Edit
----
-
-You are a code reviewer. Analyze the code for correctness, security, and style...
-```
-
-**Implementation agent (can edit, restricted bash):**
-
-```yaml
----
-name: implementer
-description: Implements code changes
-mode: acceptEdits
-allow_tools:
-  - Read
-  - Write
-  - Edit
-  - Bash(go test*)
-  - Bash(go build*)
-  - Bash(make *)
-deny_tools:
-  - Agent
----
-
-You are an implementation agent. Write clean, tested code...
-```
-
-**Full agent definition fields:**
-
-```yaml
----
-name: agent-name
-description: "What this agent does"
-model: opus                  # inherit | sonnet | opus | haiku
-mode: explore                # explore | acceptEdits | default | bypassPermissions
-allow_tools: [Read, Bash]    # Schema filter
-deny_tools: [Agent]          # Always wins
-max-steps: 100
-color: blue                  # UI display color
-when-to-use: "When to use this agent"
-skills: []                   # Additional skills to load
-mcp-servers: []              # MCP servers for this agent
----
-
-System prompt content goes here in the markdown body...
-```
+Workers have no interactive approval channel, so an `ask` decision collapses to
+deny. The model cannot explicitly request bypass mode. See
+[`concepts/permission-model.md`](../concepts/permission-model.md).
 
 ## Bash Compound Command Injection Protection
 
@@ -239,7 +127,7 @@ Extends Claude Code's file access scope beyond the working directory:
 
 - Files in these directories become **readable** (same treatment as cwd)
 - File editing still follows the current permission mode
-- **Security boundary**: `.claude/` configuration (hooks, settings, agents, etc.) in additional directories is **not loaded** — only `.claude/skills/` is discovered
+- **Security boundary**: `.claude/` configuration (hooks, settings, etc.) in additional directories is **not loaded** — only `.claude/skills/` is discovered
 - Can be set via CLI `--add-dir ../shared-docs/`, in-session `/add-dir`, or persisted in settings.json
 
 ## Ask Approval Behavior

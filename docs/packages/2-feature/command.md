@@ -21,7 +21,7 @@ commands loaded from disk.
 
 ## Contract
 
-Slash command registry. Combines built-in handlers, dynamic providers (skill/agent surfaces), and custom markdown commands. The package exposes `*Registry` directly — no Service interface.
+Slash command registry. Combines built-in handlers, dynamic providers (currently skills), and custom markdown commands. The package exposes `*Registry` directly — no Service interface.
 
 ```go
 package command
@@ -52,7 +52,7 @@ func ResetDefaultRegistry()          // test-only
 - `registry.go` — combines three sources at query time:
   - **Built-ins** registered from `builtin/` subpackage at init.
   - **Dynamic** — `DynamicProviders` callbacks returning `Info` slices
-    (used by skill/agent slash-command surfaces).
+    (used by the skill slash-command surface).
   - **Custom** — markdown files under `~/.san/commands/` and
     `<project>/.san/commands/`, plus plugin-scoped paths returned by
     `PluginCommandPaths`.
@@ -61,8 +61,7 @@ func ResetDefaultRegistry()          // test-only
 ## Lifecycle
 
 - Construction: `Initialize(Options{CWD, DynamicProviders, PluginCommandPaths})`
-  at app startup, after `skill` and `subagent` are initialized so their
-  dynamic providers are wired in.
+  at app startup after skills are initialized so the dynamic provider is wired in.
 - Reload on plugin reload: callers re-call `Initialize` with refreshed
   provider closures.
 
@@ -76,6 +75,6 @@ internal/command/registry_test.go    — name lookup, fuzzy matching,
 ## See Also
 
 - Code: `internal/command/`
-- Related: [`packages/skill.md`](skill.md), [`packages/subagent.md`](subagent.md) (dynamic providers), [`packages/plugin.md`](plugin.md)
+- Related: [`packages/skill.md`](skill.md), [`packages/plugin.md`](plugin.md)
 - Reference: [`reference/slash-commands.md`](../../reference/slash-commands.md)
 - Layer: `feature`

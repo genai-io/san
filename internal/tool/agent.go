@@ -51,7 +51,7 @@ func GetMessagesGetter(ctx context.Context) MessagesGetter {
 type AgentExecutor interface {
 	Run(ctx context.Context, req AgentExecRequest) (*AgentExecResult, error)
 	RunBackground(req AgentExecRequest) (AgentTaskInfo, error)
-	GetAgentConfig(agentType string) (AgentConfigInfo, bool)
+	GetDefaultAgentConfig() AgentConfigInfo
 	GetParentModelID() string
 }
 
@@ -64,7 +64,6 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	Agent       string
 	Name        string
 	Prompt      string
 	Description string
@@ -104,18 +103,9 @@ type AgentTaskInfo struct {
 	OutputFile string
 }
 
-// AgentConfigInfo contains agent configuration for display. It is the single
-// projection of an agent definition, shared by the Agent tool (GetAgentConfig)
-// and the TUI agent selector.
+// AgentConfigInfo contains the default agent configuration needed for display.
 type AgentConfigInfo struct {
 	Name           string
 	Description    string
-	Color          string
-	Model          string
 	PermissionMode string
-	Tools          []string // nil = all tools
-	SourceFile     string
-	// Source indicates where the agent definition came from:
-	// "built-in", "user", "project", or "plugin". Empty defaults to project.
-	Source string
 }

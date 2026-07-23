@@ -71,7 +71,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 	// both the solid (●) and dim (◌) phases.
 	var hasSolid, hasDim bool
 	for blink := range 4 * trackerPulseTicks {
-		frame := stripANSI(renderItem(task, itemRunning, 80, 2, nil, blink, nil))
+		frame := stripANSI(renderItem(task, itemRunning, 80, 2, nil, blink))
 		if strings.Contains(frame, "●") {
 			hasSolid = true
 		}
@@ -123,9 +123,9 @@ func TestRenderTrackerListOrdersByID(t *testing.T) {
 func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	task := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 
-	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0, nil))
+	first := stripANSI(renderItem(task, itemStalled, 80, 2, nil, 0))
 	for blink := range 4 * trackerPulseTicks {
-		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink, nil)); frame != first {
+		if frame := stripANSI(renderItem(task, itemStalled, 80, 2, nil, blink)); frame != first {
 			t.Fatalf("stalled task animated across frames:\n%q\n%q", first, frame)
 		}
 	}
@@ -201,40 +201,6 @@ func TestRenderTrackerListFoldsLeadingFinished(t *testing.T) {
 	}
 	if !strings.Contains(plain, "3 completed") {
 		t.Fatalf("folded finished items should be summarized, not dropped silently:\n%s", plain)
-	}
-}
-
-// A row owned by a background agent is tinted with that agent's color; a plain
-// todo keeps the status palette. The tint changes only color, never the text.
-func TestRenderItemTintsAgentOwnedRows(t *testing.T) {
-	item := &todo.Item{ID: "1", Subject: "Audit deps", Status: todo.StatusInProgress, Owner: "explorer"}
-	colors := map[string]string{"explorer": "yellow"}
-
-	plain := renderItem(item, itemRunning, 80, 2, nil, 0, nil)
-	tinted := renderItem(item, itemRunning, 80, 2, nil, 0, colors)
-
-	if stripANSI(plain) != stripANSI(tinted) {
-		t.Fatalf("agent tint changed the row text, not just its color:\n  %q\n  %q", stripANSI(plain), stripANSI(tinted))
-	}
-	if plain == tinted {
-		t.Fatalf("agent-owned row should be tinted with the agent color, got identical output:\n%q", tinted)
-	}
-}
-
-func TestAgentForeground(t *testing.T) {
-	colors := map[string]string{"explorer": "yellow"}
-
-	if _, ok := agentForeground(&todo.Item{Owner: "explorer"}, colors); !ok {
-		t.Fatal("agent-owned item should resolve its color")
-	}
-	if _, ok := agentForeground(&todo.Item{Owner: "Explorer"}, colors); !ok {
-		t.Fatal("owner lookup should be case-insensitive")
-	}
-	if _, ok := agentForeground(&todo.Item{Owner: ""}, colors); ok {
-		t.Fatal("a plain todo (no owner) must not resolve a color")
-	}
-	if _, ok := agentForeground(&todo.Item{Owner: "ghost"}, colors); ok {
-		t.Fatal("an owner with no configured color must not resolve one")
 	}
 }
 

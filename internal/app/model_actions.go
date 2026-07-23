@@ -48,7 +48,6 @@ func (m *model) setActivePersona(name string) error {
 	// Skills (immediate): swap the in-memory persona skill set, then re-emit
 	// the skills-directory reminder so the model sees it on the next turn.
 	m.applyPersonaSkills()
-	m.applyPersonaAgents()
 	m.services.Reminder.RequeueSystemReminders()
 
 	// Prompt (immediate): hot-patch the running main agent's parts.
@@ -120,6 +119,5 @@ func (m *model) deletePersona(name string) error {
 	}
 	m.services.Persona.Reload()
 	m.applyPersonaSkills()
-	m.applyPersonaAgents()
 	return nil
 }

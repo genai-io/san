@@ -192,7 +192,6 @@ func TestRenderInstalledDetailShowsStructuredSections(t *testing.T) {
 		Enabled:     true,
 		Scope:       coreplugin.ScopeProject,
 		Skills:      1,
-		Agents:      2,
 		Hooks:       1,
 	}
 	m.actions = []pluginAction{{Label: "Disable plugin", Action: "disable"}, {Label: "Back", Action: "back"}}

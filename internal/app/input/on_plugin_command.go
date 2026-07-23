@@ -109,9 +109,6 @@ func pluginFormatComponentCounts(p *coreplugin.Plugin) []string {
 	if n := len(p.Components.Skills); n > 0 {
 		components = append(components, fmt.Sprintf("%d skills", n))
 	}
-	if n := len(p.Components.Agents); n > 0 {
-		components = append(components, fmt.Sprintf("%d agents", n))
-	}
 	if n := len(p.Components.Commands); n > 0 {
 		components = append(components, fmt.Sprintf("%d commands", n))
 	}
@@ -182,7 +179,6 @@ func pluginHandleInfo(reg *coreplugin.Registry, name string) (string, error) {
 	sb.WriteString("\nComponents:\n")
 	pluginWriteComponentCount(&sb, "Commands", len(p.Components.Commands))
 	pluginWriteComponentCount(&sb, "Skills", len(p.Components.Skills))
-	pluginWriteComponentCount(&sb, "Agents", len(p.Components.Agents))
 	if p.Components.Hooks != nil {
 		pluginWriteComponentCount(&sb, "Hook events", len(p.Components.Hooks.Hooks))
 	}
@@ -262,7 +258,7 @@ func pluginHandleInstall(reg *coreplugin.Registry, ctx context.Context, cwd stri
 	}
 
 	return fmt.Sprintf(
-		"Installed plugin '%s' to %s scope.\n\nRun /reload-plugins to refresh skills, agents, MCP servers, and hooks.",
+		"Installed plugin '%s' to %s scope.\n\nRun /reload-plugins to refresh skills, commands, MCP servers, and hooks.",
 		ref,
 		scope,
 	), nil

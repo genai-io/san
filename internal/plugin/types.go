@@ -95,9 +95,6 @@ type Components struct {
 	// Skills are paths to skill directories (containing SKILL.md)
 	Skills []string
 
-	// Agents are paths to agent markdown files
-	Agents []string
-
 	// Hooks is the parsed hooks configuration
 	Hooks *HooksConfig
 
@@ -159,7 +156,6 @@ type Manifest struct {
 	// Component path fields - can be string, []string, or inline object
 	// Use any type and resolve during loading
 	Commands   any `json:"commands,omitempty"`
-	Agents     any `json:"agents,omitempty"`
 	Skills     any `json:"skills,omitempty"`
 	Hooks      any `json:"hooks,omitempty"`
 	MCPServers any `json:"mcpServers,omitempty"`

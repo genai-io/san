@@ -5,60 +5,20 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 )
 
-func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []string {
-	constraints := config.AllowTools.ConstrainedDisplayNames()
-	if NormalizePermissionMode(string(permMode)) != PermissionExplore ||
-		(config.AllowTools != nil && !config.AllowTools.HasName(tool.ToolBash)) {
-		return constraints
+func (e *Executor) buildBrief(permMode PermissionMode) system.SubagentBrief {
+	constraints := []string(nil)
+	if permMode == PermissionExplore {
+		constraints = []string{"Bash limited to commands classified as read-only"}
 	}
-
-	filtered := make([]string, 0, len(constraints)+1)
-	for _, constraint := range constraints {
-		if !strings.HasPrefix(constraint, tool.ToolBash+"(") {
-			filtered = append(filtered, constraint)
-		}
-	}
-	return append(filtered, "Bash limited to commands classified as read-only")
-}
-
-// buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
-// It bundles the agent's charter (name, description, mode, tool pattern
-// constraints) plus the AGENT.md body and any preloaded skills, all of which
-// land in the subagent's identity slot — there is no separate "assignment"
-// section anymore.
-func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) system.SubagentBrief {
-	custom := strings.TrimSpace(config.GetSystemPrompt())
-
-	// Preloaded skills are static configuration on AgentConfig.Skills. We
-	// inline their bodies into CustomPrompt so they sit in the identity slot
-	// — they are part of "who this agent is", not a runtime invocation.
-	if len(config.Skills) > 0 && skill.DefaultIfInit() != nil {
-		var sb strings.Builder
-		if custom != "" {
-			sb.WriteString(custom)
-			sb.WriteString("\n\n")
-		}
-		for _, name := range config.Skills {
-			body := skill.Default().GetSkillInvocationPrompt(name)
-			if body != "" {
-				sb.WriteString(body)
-				sb.WriteString("\n\n")
-			}
-		}
-		custom = strings.TrimRight(sb.String(), "\n")
-	}
-
 	return system.SubagentBrief{
-		AgentName:       config.Name,
-		Description:     config.Description,
+		AgentName:       defaultAgentName,
+		Description:     defaultAgentDescription,
 		Mode:            string(permMode),
-		ToolConstraints: effectiveToolConstraints(config, permMode),
-		CustomPrompt:    custom,
+		ToolConstraints: constraints,
 	}
 }
 
@@ -142,7 +102,6 @@ func formatTaskToolActivity(toolName string, params map[string]any) string {
 }
 
 func formatAgentActivity(params map[string]any) string {
-	agentType, _ := params["subagent_type"].(string)
 	mode, _ := params["mode"].(string)
 	desc, _ := params["description"].(string)
 	if desc == "" {
@@ -152,31 +111,35 @@ func formatAgentActivity(params map[string]any) string {
 		}
 	}
 
-	if agentType == "" {
-		agentType = "subagent"
-	}
-	agentType = displayAgentName(agentType, PermissionMode(mode))
+	agentName := displayAgentName("subagent", PermissionMode(mode))
 	if desc == "" {
-		return fmt.Sprintf("Agent - %s", agentType)
+		return agentName
 	}
-	return fmt.Sprintf("Agent - %s: %s", agentType, desc)
+	return fmt.Sprintf("%s: %s", agentName, desc)
 }
 
-func displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
+func (e *Executor) displayNameFor(req tool.AgentExecRequest) string {
 	if req.Name != "" {
 		return req.Name
 	}
-	return displayAgentName(config.Name, requestPermissionMode(config, req))
+	return displayAgentName(defaultAgentName, e.requestPermissionMode(req))
 }
 
-func requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
-	// The Agent tool's mode="default" means "use the agent config's mode"
-	// (as the tool schema documents and the permission dialog previews), so
-	// only an explicit, non-"default" override replaces the config's mode.
-	if req.Mode != "" && req.Mode != "default" {
-		return NormalizePermissionMode(req.Mode)
+// requestPermissionMode resolves the model-facing mode without allowing it to
+// name privileged runtime policies. Explicit explore is a read-only ceiling;
+// edit preserves the existing accept-edits policy; default inherits the actual
+// parent session policy supplied by the app.
+func (e *Executor) requestPermissionMode(req tool.AgentExecRequest) PermissionMode {
+	switch strings.TrimSpace(req.Mode) {
+	case "explore":
+		return PermissionExplore
+	case "edit":
+		return PermissionAcceptEdits
+	case "", "default":
+		return e.currentParentPermissionMode()
+	default:
+		return PermissionMode(strings.TrimSpace(req.Mode))
 	}
-	return NormalizePermissionMode(string(config.PermissionMode))
 }
 
 func displayAgentName(name string, mode PermissionMode) string {

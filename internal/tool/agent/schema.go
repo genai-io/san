@@ -4,46 +4,12 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/tool"
 )
 
-// AgentTool describes itself with the available-agents directory embedded when
-// one is supplied at build time.
-var _ tool.AgentDirectoryAwareTool = (*AgentTool)(nil)
-
-// Schema returns the model-facing tool definition for Agent, without an
-// available-agents directory. GetToolSchemasWith injects the directory via
-// SchemaWithAgentDirectory when one is available.
+// Schema returns the model-facing tool definition for Agent.
 func (t *AgentTool) Schema() core.ToolSchema {
-	return agentSchema("")
-}
-
-// SchemaWithAgentDirectory returns the Agent schema with the available-agents
-// directory embedded in the description. It satisfies tool.AgentDirectoryAwareTool
-// so the schema follows the live agent catalog on each rebuild. An empty
-// directory yields the same result as Schema.
-func (t *AgentTool) SchemaWithAgentDirectory(agentDirectory string) core.ToolSchema {
-	return agentSchema(agentDirectory)
-}
-
-// agentSchema builds the Agent tool schema with the given agent-directory body
-// embedded directly in the description. The directory is rendered before the
-// usage notes so the LLM sees the available agent types right after the
-// opening line. An empty directory yields a directory-less description that
-// still mentions subagent_type — useful for subagent contexts where the
-// directory is intentionally omitted to discourage recursive spawning.
-func agentSchema(agentDirectory string) core.ToolSchema {
-	agentDirectory = strings.TrimSpace(agentDirectory)
-
 	var sb strings.Builder
-	sb.WriteString("Launch a subagent for complex work that benefits from separate context or parallel execution.\n\n")
-	if agentDirectory != "" {
-		sb.WriteString("Optional custom subagent definitions:\n\n")
-		sb.WriteString(agentDirectory)
-		sb.WriteString("\n\nSpecify subagent_type only when selecting one of these custom subagents; otherwise omit it to use the default subagent.\n\n")
-	} else {
-		sb.WriteString("Omit subagent_type to use the default subagent.\n\n")
-	}
+	sb.WriteString("Launch the default general-purpose subagent for complex work that benefits from separate context or parallel execution.\n\n")
 	sb.WriteString("Use the lightest option that fits: a single Bash or Read call → that tool directly; 3+ non-mutating searches with decisions between them → mode=explore; code changes or multi-file edits → mode=edit.\n\n")
 	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
 	sb.WriteString("Notes:\n")
@@ -68,10 +34,6 @@ var agentToolParameters = map[string]any{
 			"type":        "string",
 			"description": "A short (3-5 word) description of the task",
 		},
-		"subagent_type": map[string]any{
-			"type":        "string",
-			"description": "Optional custom subagent definition. Omit to use the default subagent.",
-		},
 		"name": map[string]any{
 			"type":        "string",
 			"description": "Optional short display name, usually 1-2 words. If omitted, explore mode uses Explorer and edit mode uses Editor.",
@@ -82,11 +44,11 @@ var agentToolParameters = map[string]any{
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps. Subagents default to 100 and lower values are raised to 100.",
+			"description": "Maximum number of LLM inference steps. Defaults to 500; lower values are raised to 500.",
 		},
 		"mode": map[string]any{
 			"type":        "string",
-			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
+			"description": "Permission mode for the spawned agent: explore = read-only; edit = can modify files; default = inherit the parent session's current mode.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
 	},

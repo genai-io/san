@@ -787,7 +787,6 @@ func pluginBuildComponentList(p *pluginItem) []string {
 	}
 	counts := []componentCount{
 		{"✦", "Skills", p.Skills},
-		{"⚑", "Agents", p.Agents},
 		{"⌘", "Commands", p.Commands},
 		{"↪", "Hooks", p.Hooks},
 		{"☉", "MCP Servers", p.MCP},

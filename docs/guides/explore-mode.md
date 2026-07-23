@@ -13,7 +13,7 @@ This feature exists to document the contract that was previously split across th
 | Agent type | implicit default `subagent` |
 | Permission mode | `explore` |
 | Tools | Read, Bash (read-only commands), WebFetch, WebSearch, Skill, AskUserQuestion |
-| Max turns | 100 |
+| Max steps | 500 |
 | Execution style | Foreground in explore mode |
 
 **Use `mode=explore` when:**
@@ -36,7 +36,7 @@ This feature exists to document the contract that was previously split across th
 
 ## Relationship To Other Features
 
-- [Writing a Subagent](writing-a-subagent.md) covers the generic agent system and custom agent format.
+- [Subagent package](../packages/2-feature/subagent.md) documents the implicit worker and its runtime modes.
 - `explore` is the investigative permission boundary used by subagents.
 
 ## Automated Tests

@@ -34,7 +34,7 @@ earlier in this conversation.
 ## Phase 2: Review across three lenses (one parallel batch)
 
 Use the Agent tool to launch exactly three subagent reviewers concurrently in one
-foreground batch: Reuse, Quality, and Efficiency. Omit `subagent_type` and use
+foreground batch: Reuse, Quality, and Efficiency. Use the single default Agent with
 `mode=explore` for all three. Include the complete diff text from Phase 1 directly
 in every reviewer prompt; do not ask a reviewer to run `git diff` or recover
 omitted context itself. Each returns a short list of concrete, located findings.

@@ -54,7 +54,7 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 | [`setting`](2-feature/setting.md) | Settings loader + central permission decision gate. |
 | [`selflearn`](2-feature/selflearn.md) | Background review loop that writes durable memory and agent-created skills. |
 | [`skill`](2-feature/skill.md) | Skill loader, state store, active-skills block consumed by the `skills-directory` reminder. |
-| [`subagent`](2-feature/subagent.md) | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
+| [`subagent`](2-feature/subagent.md) | Executes the single implicit worker in foreground or background. |
 | [`task`](2-feature/task.md) | Background task manager (bash and agent tasks). |
 | [`tool`](2-feature/tool.md) | Tool registry, schemas, permission gate, side-effect store. |
 

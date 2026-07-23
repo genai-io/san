@@ -12,8 +12,8 @@ import (
 // It implements the BackgroundTask interface
 type AgentTask struct {
 	ID          string     // Unique task ID
-	AgentType   string     // Agent type/config name (Explore, Plan, etc.)
-	AgentName   string     // Name of the agent type (Explore, Plan, etc.)
+	AgentType   string     // Fixed protocol identity ("subagent")
+	AgentName   string     // Display name for this run (Explorer, Editor, etc.)
 	Description string     // Brief description of the task
 	Status      TaskStatus // Current status
 	StartTime   time.Time  // When the task started

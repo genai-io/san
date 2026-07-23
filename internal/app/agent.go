@@ -78,17 +78,6 @@ func (m *model) applyPersonaSkills() {
 	m.services.Skill.ClearPersona()
 }
 
-// applyPersonaAgents restricts the visible subagents to the active persona's
-// `agents` allow-list (empty/none = all visible), or clears the restriction
-// when no persona is selected. In-memory, mirroring applyPersonaSkills.
-func (m *model) applyPersonaAgents() {
-	if p := m.activePersona(); p != nil && p.Settings != nil && len(p.Settings.Agents) > 0 {
-		m.services.Subagent.LoadPersona(p.Settings.Agents)
-		return
-	}
-	m.services.Subagent.ClearPersona()
-}
-
 func (m *model) buildAgentParams() agent.BuildParams {
 	schemas := m.services.MCP.GetToolSchemas()
 	mcpTools := mcp.AsCoreTools(schemas, mcp.NewCaller(m.services.MCP))
@@ -143,8 +132,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		CWD:     m.env.CWD,
 		CWDFunc: func() string { return m.env.CWD },
 
-		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
-		Persona:        m.personaPrompt(),
+		Persona: m.personaPrompt(),
 
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,
@@ -636,7 +624,15 @@ func (m *model) ReconfigureAgentTool() {
 	m.ensureMemoryContextLoaded()
 
 	store := m.services.LLM.Store()
-	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
+	executor := subagent.NewExecutor(
+		m.env.LLMProvider,
+		m.env.CWD,
+		m.env.GetModelID(),
+		m.services.Hook,
+	)
+	executor.SetParentPermissionMode(func() subagent.PermissionMode {
+		return subagent.PermissionModeFromOperationMode(m.env.SessionPermissions.Snapshot().Mode)
+	})
 	executor.SetResolver(llm.NewProviderPool(store))
 	if current := m.env.CurrentModel; current != nil {
 		executor.SetModelStore(store, current.Provider, store.ResolveAuthMethod(current))
@@ -646,7 +642,7 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
-	executor.SetMCP(m.services.MCP, m.services.MCP)
+	executor.SetMCP(m.services.MCP)
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }

@@ -950,9 +950,9 @@ func formatAgentLabel(agent agentInput) string {
 	}
 
 	if desc != "" {
-		return fmt.Sprintf("Agent - %s: %s", agent.Name, desc)
+		return fmt.Sprintf("%s: %s", agent.Name, desc)
 	}
-	return fmt.Sprintf("Agent - %s", agent.Name)
+	return agent.Name
 }
 
 func conciseAgentDescription(desc string) string {
@@ -993,7 +993,6 @@ func isGenericAgentName(name string) bool {
 }
 
 type agentInput struct {
-	Type        string `json:"subagent_type"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Prompt      string `json:"prompt"`
@@ -1008,11 +1007,8 @@ func parseAgentInput(input string) agentInput {
 		return agentInput{}
 	}
 	agent.Valid = true
-	if agent.Type == "" {
-		agent.Type = "subagent"
-	}
 	if agent.Name == "" {
-		agent.Name = displayAgentName(agent.Type, agent.Mode)
+		agent.Name = displayAgentName("subagent", agent.Mode)
 	}
 	return agent
 }
@@ -1255,46 +1251,10 @@ func extractBashCommand(input string) (command, description string) {
 	return params.Command, params.Description
 }
 
-func renderAgentToolLine(label string, width int, iconText string, color string) string {
-	style := agentStyle(color)
+func renderAgentToolLine(label string, width int, iconText string) string {
+	style := toolCallStyle.Foreground(kit.CurrentTheme.Success)
 	icon := style.Width(2).Render(iconText)
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, style.Render(truncateToolLabel(label, width)))
-}
-
-func agentStyle(color string) lipgloss.Style {
-	return toolCallStyle.Foreground(agentColor(color))
-}
-
-func agentColor(color string) kit.AdaptiveColor {
-	switch strings.ToLower(strings.TrimSpace(color)) {
-	case "blue":
-		return kit.CurrentTheme.Primary
-	case "yellow":
-		return kit.CurrentTheme.Warning
-	case "gray", "grey":
-		return kit.CurrentTheme.Muted
-	case "accent":
-		return kit.CurrentTheme.Accent
-	case "ai":
-		return kit.CurrentTheme.AI
-	case "green", "":
-		return kit.CurrentTheme.Success
-	default:
-		if strings.HasPrefix(color, "#") {
-			return kit.AdaptiveColor{Dark: color, Light: color}
-		}
-		return kit.CurrentTheme.Success
-	}
-}
-
-// configuredAgentColor returns the color set for this agent's type in its
-// subagent config (a name like "blue" or a "#rrggbb" hex), or "" when none is
-// set. It is later resolved to a theme color by agentColor.
-func configuredAgentColor(agent agentInput, colors map[string]string) string {
-	if len(colors) == 0 {
-		return ""
-	}
-	return colors[strings.ToLower(agent.Type)]
 }
 
 // agentBlinkTicks is the number of spinner ticks per ● / ○ swap.

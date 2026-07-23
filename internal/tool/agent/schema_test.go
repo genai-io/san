@@ -5,41 +5,24 @@ import (
 	"testing"
 )
 
-func TestAgentSchemaEmbedsDirectory(t *testing.T) {
-	directory := "Available agent types for the Agent tool:\n\n- project-reviewer: General multi-step review agent\n  Tools: Read, Bash(git diff*)\n- plugin:browser-user: Uses a browser\n  Tools: WebFetch"
-
-	schema := agentSchema(directory)
-	if !strings.Contains(schema.Description, "project-reviewer") {
-		t.Error("Agent description should embed the directory body when supplied")
+func TestAgentSchemaUsesSoleDefaultAgent(t *testing.T) {
+	schema := (&AgentTool{}).Schema()
+	if !strings.Contains(schema.Description, "default general-purpose subagent") {
+		t.Fatal("Agent schema should describe the sole default subagent")
 	}
-	if !strings.Contains(schema.Description, "plugin:browser-user") {
-		t.Error("Agent description should list every custom directory entry")
-	}
-	if !strings.Contains(schema.Description, "Specify subagent_type only when selecting one of these custom subagents") {
-		t.Error("Agent description should retain custom-subagent guidance after the directory")
+	properties := agentToolParameters["properties"].(map[string]any)
+	if _, ok := properties["subagent_type"]; ok {
+		t.Fatal("Agent schema must not expose subagent_type")
 	}
 }
 
-func TestAgentSchemaOmitsDirectoryWhenEmpty(t *testing.T) {
-	schema := agentSchema("")
-	if strings.Contains(schema.Description, "Available agent types") {
-		t.Error("empty directory should not produce an Available-agents block")
-	}
-	if !strings.Contains(schema.Description, "Omit subagent_type to use the default subagent") {
-		t.Error("default-subagent guidance must remain without a directory")
-	}
-}
-
-// TestAgentToolSchemaMatchesEmptyDirectory verifies the tool.Tool method and
-// the directory-less builder agree, so the Agent's default self-description
-// (Schema) and its zero-directory form (SchemaWithAgentDirectory) can't drift.
-func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
-	at := &AgentTool{}
-	if at.Schema().Description != agentSchema("").Description {
-		t.Error("AgentTool.Schema must equal the directory-less agentSchema")
-	}
-	if at.SchemaWithAgentDirectory("").Description != agentSchema("").Description {
-		t.Error("SchemaWithAgentDirectory(\"\") must equal the directory-less agentSchema")
+func TestAgentSchemaModeEnumExcludesBypass(t *testing.T) {
+	properties := agentToolParameters["properties"].(map[string]any)
+	mode := properties["mode"].(map[string]any)
+	enum := mode["enum"].([]string)
+	want := []string{"explore", "edit", "default"}
+	if strings.Join(enum, ",") != strings.Join(want, ",") {
+		t.Fatalf("mode enum = %v, want %v", enum, want)
 	}
 }
 

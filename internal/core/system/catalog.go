@@ -189,11 +189,10 @@ func SwapPersona(sys core.System, p Persona) {
 // Tools are not listed here — the LLM sees them via the schema list. Only
 // pattern-level constraints (which are invisible in the schema) need surfacing.
 type SubagentBrief struct {
-	AgentName       string   // e.g. "subagent" or a custom agent name
+	AgentName       string   // fixed to "subagent" for worker runs
 	Description     string   // one-line role description
-	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
+	Mode            string   // effective runtime policy (model requests only explore/edit/default)
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
-	CustomPrompt    string   // AGENT.md body
 }
 
 // WithSubagentIdentity replaces the default identity with a subagent charter.
@@ -229,11 +228,6 @@ func renderSubagentIdentity(b SubagentBrief) string {
 	if len(b.ToolConstraints) > 0 {
 		fmt.Fprintf(&sb, "Tool constraints: %s.\n", strings.Join(b.ToolConstraints, "; "))
 	}
-	if body := strings.TrimSpace(b.CustomPrompt); body != "" {
-		sb.WriteString("\n")
-		sb.WriteString(body)
-		sb.WriteByte('\n')
-	}
 	attrs := map[string]string{}
 	if b.Mode != "" {
 		attrs["mode"] = b.Mode
@@ -250,7 +244,7 @@ func modeDescription(mode string) string {
 	case "bypass", "bypassPermissions":
 		return "permission checks bypassed; act with care on destructive operations"
 	default:
-		return "read and analysis tools only; mutating tools are denied unless an allow rule covers them"
+		return "read and analysis tools only; operations that require approval are denied automatically"
 	}
 }
 

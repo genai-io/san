@@ -16,7 +16,6 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/tools` | Enable / disable tools |
 | `/plan` | Enter plan mode |
 | `/skills` | Manage skill states |
-| `/agents` | Manage agents |
 | `/tokenlimit` | View / set token budget |
 | `/compact` | Compress conversation history |
 | `/init` | Create SAN.md and config files |
@@ -196,37 +195,31 @@ sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: skill selector titled "Manage Skills"
 
-# Test 13: /agents
-tmux send-keys -t t_cmds '/agents' Enter
-sleep 1
-tmux capture-pane -t t_cmds -p
-# Expected: agent selector titled "Manage Agents"
-
-# Test 14: /mcp
+# Test 13: /mcp
 tmux send-keys -t t_cmds '/mcp' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: MCP selector titled "MCP Servers"
 
-# Test 15: /plugin
+# Test 14: /plugin
 tmux send-keys -t t_cmds '/plugin' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: plugin management panel titled "Plugin Manager"
 
-# Test 16: /memory
+# Test 15: /memory
 tmux send-keys -t t_cmds '/memory' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: loaded memory files displayed
 
-# Test 17: /resume
+# Test 16: /resume
 tmux send-keys -t t_cmds '/resume' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: session picker overlay is shown
 
-# Test 18: /tools
+# Test 17: /tools
 tmux send-keys -t t_cmds '/tools' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p

@@ -17,15 +17,9 @@ import (
 // Skills maps a skill name to "active" / "enable" / "disable". These states
 // apply in-memory while the persona is selected and are never written to
 // skills.json.
-//
-// Agents is an allow-list of subagent names: when non-empty, only those agent
-// types are visible (spawnable + shown in the agents directory) while the
-// persona is selected. Empty/omitted = all subagents visible. Like Skills, it
-// is applied in-memory and never written to the agent enable/disable stores.
 type Settings struct {
 	Description string            `json:"description,omitempty"`
 	Skills      map[string]string `json:"skills,omitempty"`
-	Agents      []string          `json:"agents,omitempty"`
 
 	// Embedded so the overlay fields (permissions, disabledTools, model, …)
 	// sit at the top level of settings.json, e.g. {"disabledTools": {...}}.

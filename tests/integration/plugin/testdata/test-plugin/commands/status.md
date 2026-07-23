@@ -12,7 +12,6 @@ Display the status of the test-plugin:
 3. Status: Active
 4. Components loaded:
    - Skills: hello
-   - Agents: test-agent
    - Commands: status
 
 Report that all plugin components are functioning normally.

@@ -11,7 +11,6 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
@@ -233,8 +232,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 		conv:      conv.NewModel(100),
 		userInput: input.New("", 100, nil, input.SelectorDeps{}),
 		services: services{
-			Subagent: subagent.NewRegistry(),
-			Tracker:  todo.NewStore(),
+			Tracker: todo.NewStore(),
 		},
 	}
 

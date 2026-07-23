@@ -8,24 +8,21 @@ layer: feature
 > English version: [`plugin.md`](plugin.md)
 
 插件的加载器、安装器、marketplace 和聚合器。一个插件就是一个包（目录），
-它可以贡献 skills、subagent 定义、斜杠命令、MCP servers、hooks 和环境
-变量——本包负责发现它们、启用/禁用它们，并把它们的贡献暴露给上层的
+它可以贡献 skills、斜杠命令、MCP servers、hooks 和环境变量——本包负责发现它们、启用/禁用它们，并把它们的贡献暴露给上层的
 feature 包。
 
 ## 用途
 
-San 的"其余一切"扩展面。插件让用户一次性安装一整套 skills + agents +
-commands + MCP servers + hooks。本包处理安装/卸载、marketplace 查找、
-加载顺序，以及那些跨切面的回调——让 `skill`、`subagent`、`command`、
-`mcp`、`hook`、`setting` 无需直接 import `plugin` 就能看到每个已启用插件
-贡献了什么。
+San 的"其余一切"扩展面。插件让用户一次性安装一整套 skills + commands +
+MCP servers + hooks。本包处理安装/卸载、marketplace 查找、加载顺序，以及
+那些跨切面的回调——让 `skill`、`command`、`mcp`、`hook`、`setting` 无需
+直接 import `plugin` 就能看到每个已启用插件贡献了什么。
 
 ## 契约
 
 本包直接暴露 `*Registry`，外加一组包级自由函数作为跨域集成面。没有
-生产者侧的接口——每个下游消费者（skill / subagent / command / mcp /
-setting）各自取用一小撮不同的自由函数，统一成一个接口只会把互不相关的
-方法凑到一起。
+生产者侧的接口——每个下游消费者（skill / command / mcp / setting）各自取用
+一小撮不同的自由函数，统一成一个接口只会把互不相关的方法凑到一起。
 
 ```go
 package plugin
@@ -58,7 +55,6 @@ func NewInstaller(reg *Registry, cwd string) *Installer
 
 // 跨域集成（包级自由函数；从包级默认 registry 读取）。
 // 每个需要插件贡献数据的消费者 import plugin 并调用其中之一：
-func GetPluginAgentPaths() []PluginPath
 func GetPluginSkillPaths() []PluginPath
 func GetPluginCommandPaths() []PluginPath
 func GetPluginMCPServers() []PluginMCPServer
@@ -93,7 +89,7 @@ func ResetDefaultRegistry()           // 仅测试
 - 构造：`Initialize(ctx, Options{CWD})` 是最早一批 `Initialize` 调用之一，
   因为每个 feature 包的 `Initialize` 都会拉 `plugin.*Paths()`。
 - 重载：启用/禁用一个插件会触发受影响 feature 包
-  （commands/skills/subagents/MCP）的重载。
+  （commands/skills/MCP）的重载。
 
 ## Marketplace 与安装流程
 
@@ -119,8 +115,8 @@ flowchart TD
     K --> L
     L --> M["写入 installed_plugins.json"]
     M --> N["LoadPlugin → Register → Enable"]
-    N --> O["解析组件：<br/>skills / agents / commands / hooks / mcp / lsp"]
-    O --> P["app 把它们交给 feature 包<br/>skill / subagent / command / mcp / hook"]
+    N --> O["解析组件：<br/>skills / commands / hooks / mcp / lsp"]
+    O --> P["app 把它们交给 feature 包<br/>skill / command / mcp / hook"]
 ```
 
 **插件 `source` 格式**（位于 `marketplace.json` 的 `plugins[]`）：
@@ -149,6 +145,6 @@ internal/plugin/marketplace_manifest_test.go — 清单 source 解析、
 ## 另见
 
 - 代码：`internal/plugin/`
-- 消费者：[`packages/skill.md`](skill.md)、[`packages/subagent.md`](subagent.md)、[`packages/command.md`](command.md)、[`packages/mcp.md`](mcp.md)、[`packages/hook.md`](hook.md)、[`packages/setting.md`](setting.md)
+- 消费者：[`packages/skill.md`](skill.md)、[`packages/command.md`](command.md)、[`packages/mcp.md`](mcp.md)、[`packages/hook.md`](hook.md)、[`packages/setting.md`](setting.md)
 - 概念：[`concepts/extension-model.md`](../../concepts/extension-model.md)
 - 层级：`feature`

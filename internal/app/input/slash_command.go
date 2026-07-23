@@ -110,7 +110,6 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"help":           (*SlashCommandController).handleHelpCommand,
 		"tools":          (*SlashCommandController).handleToolCommand,
 		"skills":         (*SlashCommandController).handleSkillCommand,
-		"agents":         (*SlashCommandController).handleAgentCommand,
 		"tokenlimit":     (*SlashCommandController).handleTokenLimitCommand,
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
@@ -508,13 +507,6 @@ func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) 
 
 func (c *SlashCommandController) handleSkillCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	if err := c.env.Input.Skill.Selector.EnterSelect(c.env.Width, c.env.Height); err != nil {
-		return "", nil, err
-	}
-	return "", nil, nil
-}
-
-func (c *SlashCommandController) handleAgentCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if err := c.env.Input.Agent.EnterSelect(c.env.Width, c.env.Height); err != nil {
 		return "", nil, err
 	}
 	return "", nil, nil

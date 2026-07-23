@@ -696,13 +696,13 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 		ToolCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"subagent_type":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
+			Input: `{"description":"HA code structure","prompt":"Inspect the codebase","mode":"explore"}`,
 		}},
 		ResultMap: map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"subagent_type":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
+			Input: `{"description":"HA code structure","prompt":"Inspect the codebase","mode":"explore"}`,
 		}},
 		CurrentIdx:  0,
 		Blink:       agentBlinkTicks,
@@ -711,7 +711,7 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: HA code structure"
+	want := agentIcon(params.Blink) + " Explorer: HA code structure"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want a single visible gap before explicit agent label", rendered)
 	}
@@ -721,7 +721,7 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"subagent","description":"audit git changes","mode":"explore"}`,
+		Input: `{"description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -734,7 +734,7 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: audit git changes"
+	want := agentIcon(params.Blink) + " Explorer: audit git changes"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want mode-based agent label", rendered)
 	}
@@ -744,7 +744,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -753,7 +753,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 		CurrentIdx:   0,
 		TaskActivity: map[int][]string{
 			0: {
-				"Mode: explore · max 100 turns",
+				"Mode: explore · max 500 steps",
 				"Thinking...",
 				"Read(internal/tool/schema_agent.go)",
 				"Grep(ContinueAgent)",
@@ -770,7 +770,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: audit git changes before review"
+	want := agentIcon(params.Blink) + " Explorer: audit git changes before review"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want agent header", rendered)
 	}
@@ -791,7 +791,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -800,7 +800,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 		CurrentIdx:   0,
 		TaskActivity: map[int][]string{
 			0: {
-				"Mode: explore · max 100 turns",
+				"Mode: explore · max 500 steps",
 				"Thinking...",
 			},
 		},
@@ -822,7 +822,7 @@ func TestRenderToolCallsUsesActivityModelForAgentSummary(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
+		Input: `{"description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -832,7 +832,7 @@ func TestRenderToolCallsUsesActivityModelForAgentSummary(t *testing.T) {
 		TaskActivity: map[int][]string{
 			0: {
 				"Model: gpt-5.5",
-				"Mode: explore · max 100 turns",
+				"Mode: explore · max 500 steps",
 				"Thinking...",
 			},
 		},
@@ -854,7 +854,7 @@ func TestRenderToolCallsUsesActivityUsageForAgentTokens(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"subagent","description":"audit git changes","mode":"explore"}`,
+		Input: `{"description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -864,7 +864,7 @@ func TestRenderToolCallsUsesActivityUsageForAgentTokens(t *testing.T) {
 		TaskActivity: map[int][]string{
 			0: {
 				"Model: kimi-k2.6",
-				"Mode: explore · max 100 turns",
+				"Mode: explore · max 500 steps",
 				"Usage: input=8300 output=272",
 				"Read(README.md)",
 				"Usage: input=9200 output=410",

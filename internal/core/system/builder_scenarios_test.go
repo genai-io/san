@@ -59,10 +59,9 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithSubagentIdentity(SubagentBrief{
-						AgentName:    "subagent",
-						Description:  "General-purpose subagent for research and execution.",
-						Mode:         "default",
-						CustomPrompt: "Focus on minimal, surgical fixes.",
+						AgentName:   "subagent",
+						Description: "General-purpose subagent for research and execution.",
+						Mode:        "default",
 					}),
 					WithEnvironment(subEnv),
 				}
