@@ -887,6 +887,20 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	}
 }
 
+func TestRenderToolCallsKeepsBashConnectorWhenOutputIsCollapsed(t *testing.T) {
+	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"git status"}`}
+	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{call},
+		ResultMap: map[string]ToolResultData{
+			call.ID: {ToolName: "Bash", Content: "on main\nnothing to commit"},
+		},
+		Width: 100,
+	}))
+	if !strings.Contains(rendered, "  $ git status\n  ┊\n  └ 2 lines\n") {
+		t.Fatalf("collapsed Bash output should retain its connector, got %q", rendered)
+	}
+}
+
 func TestRenderToolCallsDoesNotAddBashBodyForEmptyOutput(t *testing.T) {
 	call := core.ToolCall{ID: "bash-1", Name: "Bash", Input: `{"command":"true"}`}
 	rendered := stripANSI(RenderToolCalls(ToolCallsParams{

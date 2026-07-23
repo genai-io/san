@@ -181,7 +181,14 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	if (data.Expanded || data.IsError) && content != "" {
+	// Keep Bash's connector visible while its output is collapsed. When output
+	// is visible, its first row carries the connector so no blank row splits the
+	// command from the result block.
+	showBody := (data.Expanded || data.IsError) && content != ""
+	if !showBody {
+		sb.WriteString(toolResultStyle.Render("  ┊") + "\n")
+	}
+	if showBody {
 		for line := range strings.SplitSeq(content, "\n") {
 			sb.WriteString(renderNestedToolBodyLine(line))
 		}
