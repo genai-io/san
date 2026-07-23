@@ -101,6 +101,22 @@ func TestRead_LineLimit_LargeFile(t *testing.T) {
 	})
 }
 
+func TestReadEmptyFileSaysSo(t *testing.T) {
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "empty.txt")
+	if err := os.WriteFile(filePath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := (&ReadTool{}).Execute(context.Background(), map[string]any{"file_path": filePath}, tmpDir)
+	if !result.Success {
+		t.Fatalf("reading an empty file should succeed, got: %s", result.Error)
+	}
+	if !strings.Contains(result.FormatForLLM(), "file exists but is empty") {
+		t.Fatalf("empty read should say so instead of returning nothing, got %q", result.FormatForLLM())
+	}
+}
+
 // readForEdit satisfies Edit/Write's read-before-modify gate in tests.
 func readForEdit(t *testing.T, filePath, cwd string) {
 	t.Helper()

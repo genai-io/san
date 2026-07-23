@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,6 +138,16 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 
 	duration := time.Since(start)
 
+	// An empty result renders as nothing; say what happened instead of
+	// leaving the model to guess whether the read failed.
+	emptyNote := ""
+	if len(lines) == 0 {
+		emptyNote = "file exists but is empty: " + filePath
+		if lineNo > 0 {
+			emptyNote = fmt.Sprintf("no lines at offset %d: %s has %d lines", offset, filePath, lineNo)
+		}
+	}
+
 	// Build content string for hook response
 	var hookBuf strings.Builder
 	for _, l := range lines {
@@ -153,6 +164,7 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 	// Build result
 	result := toolresult.ToolResult{
 		Success: true,
+		Output:  emptyNote,
 		Lines:   lines,
 		HookResponse: map[string]any{
 			"type": "text",

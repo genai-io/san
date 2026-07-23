@@ -15,7 +15,7 @@ func (t *ReadTool) Schema() core.ToolSchema {
 		Description: fmt.Sprintf(`Reads a file from the local filesystem.
 
 - Prefer relative paths for files inside the session working directory; absolute for targets outside it
-- Reads up to %d lines from the start by default; use offset/limit only for very long files
+- Reads up to %d lines from the start by default; when you already know which part of a large file you need, read just that part with offset/limit
 - Read output has a line-number and tab prefix; strip it for Edit and preserve the rest exactly
 - Lines over %d characters end with “%s” and cannot be copied into an Edit
 - Do not re-read a file to verify your own Edit/Write — a failed change errors, and successful results keep your view current
