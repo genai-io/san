@@ -289,14 +289,17 @@ func nestedFileChangeFallbackState(data ToolResultData) (state, content string) 
 }
 
 func fileChangeSummary(details toolresult.FileChangeDetails) string {
-	switch {
-	case details.IsNewFile:
-		return fmt.Sprintf("new file · %d lines", details.AddedLines)
-	case details.EditCount > 0:
-		return fmt.Sprintf("%d replacements · +%d -%d", details.EditCount, details.AddedLines, details.RemovedLines)
-	default:
-		return fmt.Sprintf("rewrote · +%d -%d", details.AddedLines, details.RemovedLines)
+	parts := make([]string, 0, 2)
+	if details.AddedLines > 0 {
+		parts = append(parts, fmt.Sprintf("+%d", details.AddedLines))
 	}
+	if details.RemovedLines > 0 {
+		parts = append(parts, fmt.Sprintf("-%d", details.RemovedLines))
+	}
+	if len(parts) == 0 {
+		return "no changes"
+	}
+	return strings.Join(parts, " ")
 }
 
 func renderFileChangeResultInline(data ToolResultData) string {
@@ -1033,7 +1036,7 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 // command body lines up in one column with the "$" as a hanging prompt to its
 // left. The "$" aligns with the "⎿" result marker below, while the command text
 // aligns with the result's tool label (for example, "Bash").
-const bashPrompt = "  $  "
+const bashPrompt = "  $ "
 
 // renderBashToolCall renders a Bash tool call so its command is always readable
 // in full. A short single-line command keeps the compact Bash(cmd) label; a

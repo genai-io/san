@@ -124,14 +124,14 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 
 func Test_renderBashToolCallSingleLineUsesCommandBlock(t *testing.T) {
 	out := stripANSI(renderBashToolCall(`{"command":"git status"}`, 100, "●"))
-	if strings.Contains(out, "Bash(git status)") || !strings.Contains(out, "Bash\n  $  git status\n") {
+	if strings.Contains(out, "Bash(git status)") || !strings.Contains(out, "Bash\n  $ git status\n") {
 		t.Fatalf("single-line command should render in a Bash block, got %q", out)
 	}
 }
 
 func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
 	out := stripANSI(renderBashToolCall(`{}`, 100, "●"))
-	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  $  (no command)\n") {
+	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  $ (no command)\n") {
 		t.Fatalf("empty command should retain the Bash command block, got %q", out)
 	}
 }
@@ -173,7 +173,11 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	if !strings.HasPrefix(rows[0], bashPrompt) {
 		t.Fatalf("first command row should carry the %q prompt: %q", bashPrompt, rows[0])
 	}
-	// Continuations hang under the command text: a blank indent the width of the
+	// The command text starts immediately after the single space following "$".
+	if got := strings.TrimPrefix(rows[0], bashPrompt); !strings.HasPrefix(got, "git log") {
+		t.Fatalf("command should follow the prompt without extra spacing: %q", rows[0])
+	}
+
 	// prompt, so command text lines up down one column and the prompt never repeats.
 	contIndent := strings.Repeat(" ", lipgloss.Width(bashPrompt))
 	for i, row := range rows[1:] {
@@ -182,14 +186,10 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 		}
 	}
 
-	// The "$" sits in the "⎿" result column, so the two markers line up down the left.
-	resultPrefix := "  ⎿  "
-	if strings.IndexByte(bashPrompt, '$') != strings.Index(resultPrefix, "⎿") {
-		t.Fatalf("prompt $ column must equal the result ⎿ column")
-	}
-	// The command after "$" starts where the result's Bash label starts.
-	if lipgloss.Width(bashPrompt) != lipgloss.Width(resultPrefix) {
-		t.Fatalf("command indent width = %d, want result label indent %d", lipgloss.Width(bashPrompt), lipgloss.Width(resultPrefix))
+	// The prompt and nested result markers occupy the same column.
+	resultPrefix := "  └ "
+	if strings.IndexByte(bashPrompt, '$') != strings.Index(resultPrefix, "└") {
+		t.Fatalf("prompt $ column must equal the result └ column")
 	}
 }
 
@@ -422,7 +422,7 @@ func TestRenderToolCallsShowsRunningStateForPendingBash(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "⋯ Bash\n  $  find /Users/myan -name test\n") {
+	if !strings.Contains(rendered, "⋯ Bash\n  $ find /Users/myan -name test\n") {
 		t.Fatalf("RenderToolCalls() = %q, want spinner on the Bash header", rendered)
 	}
 	if strings.Contains(rendered, "running...") {
@@ -443,7 +443,7 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "⋯ Bash · 12s\n  $  npm test\n") {
+	if !strings.Contains(rendered, "⋯ Bash · 12s\n  $ npm test\n") {
 		t.Fatalf("RenderToolCalls() = %q, want spinner and timer on the Bash header", rendered)
 	}
 	if !strings.Contains(rendered, "· 12s") {
@@ -826,7 +826,7 @@ func TestRenderToolResultInlineShowsEditSummary(t *testing.T) {
 		UnifiedDiff:  "@@ -1 +1 @@\n-old\n+new",
 	}
 	result := stripANSI(RenderToolResultInline(ToolResultData{ToolName: "Edit", Details: details}, nil))
-	if !strings.Contains(result, "2 replacements · +3 -1") {
+	if !strings.Contains(result, "+3 -1") {
 		t.Fatalf("successful Edit summary = %q", result)
 	}
 	// The diff now shows by default, in gutter-and-marker form.
@@ -864,7 +864,7 @@ func TestRenderToolCallsNestsBashResultUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "Bash\n  $  git status\n  ┊ on main\n  ┊ nothing to commit\n  └ 2 lines\n") {
+	if !strings.Contains(rendered, "Bash\n  $ git status\n  ┊ on main\n  ┊ nothing to commit\n  └ 2 lines\n") {
 		t.Fatalf("Bash result should be a dotted, nested line summary followed by expanded output, got %q", rendered)
 	}
 }
@@ -927,7 +927,7 @@ func TestRenderToolCallsNestsEditResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "1 - old") || !strings.Contains(rendered, "1 + new") {
 		t.Fatalf("Edit result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ 1 replacements · +1 -1\n") || strings.Index(rendered, "  └ 1 replacements · +1 -1") < strings.Index(rendered, "1 + new") {
+	if !strings.Contains(rendered, "  └ +1 -1\n") || strings.Index(rendered, "  └ +1 -1") < strings.Index(rendered, "1 + new") {
 		t.Fatalf("Edit summary should follow the actual diff, got %q", rendered)
 	}
 	if strings.Contains(rendered, "Edited internal/app/view.go") {
@@ -957,7 +957,7 @@ func TestRenderToolCallsNestsWriteResultUnderPath(t *testing.T) {
 	if !strings.Contains(rendered, "+ package app") {
 		t.Fatalf("Write result should retain its rendered diff, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ new file · 1 lines\n") || strings.Index(rendered, "  └ new file · 1 lines") < strings.Index(rendered, "+ package app") {
+	if !strings.Contains(rendered, "  └ +1\n") || strings.Index(rendered, "  └ +1") < strings.Index(rendered, "+ package app") {
 		t.Fatalf("Write summary should follow its diff, got %q", rendered)
 	}
 }
