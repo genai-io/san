@@ -864,7 +864,7 @@ func TestRenderToolCallsNestsBashResultUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "Bash\n  $  git status\n  ┊\n  └ 2 lines\n  on main\n  nothing to commit\n") {
+	if !strings.Contains(rendered, "Bash\n  $  git status\n  ┊ on main\n  ┊ nothing to commit\n  └ 2 lines\n") {
 		t.Fatalf("Bash result should be a dotted, nested line summary followed by expanded output, got %q", rendered)
 	}
 }
@@ -882,7 +882,7 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 	if strings.Count(rendered, "Bash") != 1 {
 		t.Fatalf("Bash should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  └ failed · 2 lines\n  exit status 1\n  stderr detail\n") {
+	if !strings.Contains(rendered, "  ┊ exit status 1\n  ┊ stderr detail\n  └ failed · 2 lines\n") {
 		t.Fatalf("Bash failure should report its line count and expanded detail, got %q", rendered)
 	}
 }
@@ -921,7 +921,7 @@ func TestRenderToolCallsNestsEditResultUnderPath(t *testing.T) {
 	if strings.Count(rendered, "Edit") != 1 {
 		t.Fatalf("Edit should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  1 - old") || !strings.Contains(rendered, "  1 + new") {
+	if !strings.Contains(rendered, "  ┊    1 - old") || !strings.Contains(rendered, "  ┊    1 + new") {
 		t.Fatalf("Edit diff rows should align with the nested result trailer, got %q", rendered)
 	}
 	if !strings.Contains(rendered, "1 - old") || !strings.Contains(rendered, "1 + new") {
@@ -951,7 +951,7 @@ func TestRenderToolCallsNestsWriteResultUnderPath(t *testing.T) {
 	if strings.Count(rendered, "Write") != 1 {
 		t.Fatalf("Write should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "  1 + package app") {
+	if !strings.Contains(rendered, "  ┊    1 + package app") {
 		t.Fatalf("Write diff rows should align with the nested result trailer, got %q", rendered)
 	}
 	if !strings.Contains(rendered, "+ package app") {
@@ -993,7 +993,7 @@ func TestRenderToolCallsNestsFileChangeFailureUnderPath(t *testing.T) {
 	if strings.Count(rendered, "Edit") != 1 {
 		t.Fatalf("Edit should be named only in its call header, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "    - old") || !strings.Contains(rendered, "  └ failed\n") || !strings.Contains(rendered, "    oldText was not found") {
+	if !strings.Contains(rendered, "  ┊ - old") || !strings.Contains(rendered, "  └ failed\n") || !strings.Contains(rendered, "  ┊ oldText was not found") {
 		t.Fatalf("Edit failure should show requested input, terminal failure, and diagnostic, got %q", rendered)
 	}
 }
@@ -1030,7 +1030,7 @@ func TestRenderToolCallsExpandsReadResultAlignedWithSummary(t *testing.T) {
 		Width: 100,
 	}))
 
-	if !strings.Contains(rendered, "     510    type ToolResultData struct {\n     511        ToolName string\n  └ 2 lines\n") {
+	if !strings.Contains(rendered, "  ┊    510    type ToolResultData struct {\n  ┊    511        ToolName string\n  └ 2 lines\n") {
 		t.Fatalf("expanded Read rows should align with the nested result summary, got %q", rendered)
 	}
 }
@@ -1078,7 +1078,7 @@ func TestRenderToolCallsNestsReadFailure(t *testing.T) {
 		ResultMap: map[string]ToolResultData{call.ID: {ToolName: "Read", Content: "Error: file not found: missing", IsError: true}},
 		Width:     100,
 	}))
-	if !strings.Contains(rendered, "    file not found: missing\n  └ failed\n") {
+	if !strings.Contains(rendered, "  ┊ file not found: missing\n  └ failed\n") {
 		t.Fatalf("Read failure should end in nested failed state, got %q", rendered)
 	}
 }

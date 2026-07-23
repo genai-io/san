@@ -124,7 +124,7 @@ func renderNestedReadResultInline(data ToolResultData) string {
 	if data.IsError {
 		var sb strings.Builder
 		for line := range strings.SplitSeq(strings.TrimPrefix(data.Content, "Error: "), "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+			sb.WriteString(renderNestedToolBodyLine(line))
 		}
 		sb.WriteString(errorStyle.Render("  └ failed") + "\n")
 		return sb.String()
@@ -134,18 +134,18 @@ func renderNestedReadResultInline(data ToolResultData) string {
 	var sb strings.Builder
 	if data.Expanded && content != "" {
 		for line := range strings.SplitSeq(content, "\n") {
-			sb.WriteString(renderNestedReadBodyLine(line))
+			sb.WriteString(renderNestedToolBodyLine(line))
 		}
 	}
 	sb.WriteString(toolResultStyle.Render("  └ "+formatReadResultSummary(content)) + "\n")
 	return sb.String()
 }
 
-// renderNestedReadBodyLine keeps expanded Read results one level below their
-// call, avoiding the generic expanded-result padding that made Read rows appear
-// four columns farther right than their terminal summary.
-func renderNestedReadBodyLine(line string) string {
-	return toolResultStyle.Render("  "+line) + "\n"
+// renderNestedToolBodyLine keeps body content under the same visual connector
+// that ends at the adjacent terminal summary. The connector only appears for
+// visible content, so collapsed results stay compact.
+func renderNestedToolBodyLine(line string) string {
+	return toolResultStyle.Render("  ┊ "+line) + "\n"
 }
 
 func formatReadResultSummary(content string) string {
@@ -181,22 +181,19 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	// This short, intentionally discontinuous connector visually ties the
-	// command prompt to its result without turning the whole block into a rail.
-	sb.WriteString(toolResultStyle.Render("  ┊") + "\n")
-	sb.WriteString(style.Render("  └ "+summary) + "\n")
 	if (data.Expanded || data.IsError) && content != "" {
 		for line := range strings.SplitSeq(content, "\n") {
-			sb.WriteString(renderNestedBashBodyLine(line))
+			sb.WriteString(renderNestedToolBodyLine(line))
 		}
 	}
+	sb.WriteString(style.Render("  └ "+summary) + "\n")
 	return sb.String()
 }
 
 // renderNestedBashBodyLine aligns expanded command output with the shell
 // prompt, connector, and terminal summary in a nested Bash block.
 func renderNestedBashBodyLine(line string) string {
-	return toolResultStyle.Render("  "+line) + "\n"
+	return renderNestedToolBodyLine(line)
 }
 
 func renderNestedFileChangeResultInline(data ToolResultData) string {
@@ -209,17 +206,17 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 	if data.IsError {
 		sb.WriteString(renderFileChangeInputPreview(data.ToolInput, width))
 		for line := range strings.SplitSeq(strings.TrimPrefix(data.Content, "Error: "), "\n") {
-			sb.WriteString(toolResultExpandedStyle.Render(line) + "\n")
+			sb.WriteString(renderNestedToolBodyLine(line))
 		}
 		sb.WriteString(errorStyle.Render("  └ failed") + "\n")
 		return sb.String()
 	}
 
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
-		block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, "  ")
+		block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, "  ┊ ")
 		sb.WriteString(block)
 		if details.TruncatedDiffLines > 0 {
-			sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+			sb.WriteString(truncatedStyle.Render(fmt.Sprintf("  ┊ … diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
 		}
 		sb.WriteString(toolResultStyle.Render("  └ "+fileChangeSummary(details)) + "\n")
 		return sb.String()
@@ -280,7 +277,7 @@ func renderFileChangeInputPreview(input string, width int) string {
 		}
 		for line := range strings.SplitSeq(preview.text, "\n") {
 			for _, segment := range strings.Split(xansi.Wrap(line, previewWidth-lipgloss.Width(preview.marker)-1, " "), "\n") {
-				sb.WriteString(toolResultExpandedStyle.Render(preview.marker+" "+segment) + "\n")
+				sb.WriteString(toolResultStyle.Render("  ┊ "+preview.marker+" "+segment) + "\n")
 			}
 		}
 	}
