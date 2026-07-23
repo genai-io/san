@@ -511,6 +511,17 @@ View() 把重绘区重新画一遍，用户就看见文字逐字 token 蹦出来
 所以流式期间该消息只在重绘区；流完，一次 `tea.Println` 搬它去
 scrollback，`CommittedCount` 前进一格，重绘区不再画它。
 
+这个边界还有一条 renderer 层的顺序约束。Bubble Tea 通常只把最新的
+`View()` 放进队列，等 frame ticker 异步刷新；`tea.Println` 却会立即向
+scrollback 插入内容。San 的本地 Bubble Tea 补丁会在 `insertAbove`
+计算滚屏几何之前同步刷新队列中的 managed frame。没有这道屏障时，
+`CommittedCount` 可能已经在逻辑 View 中隐藏内容，而缩短后的 frame
+还没有真正写到终端，旧 live frame 的行就可能被永久焊进原生
+scrollback。`go.mod` 中的替代依赖固定到
+[`yanmxa/bubbletea@81ba608`](https://github.com/yanmxa/bubbletea/commit/81ba608a2d90bacdc115d6b3acc6b1c12cb44e5d)；
+等[上游 issue #1736](https://github.com/charmbracelet/bubbletea/issues/1736)
+发布等价屏障后即可移除。
+
 工具调用的 spinner 也是同样道理：工具在跑时它在重绘区，结果到了它就
 消失。
 

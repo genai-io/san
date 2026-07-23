@@ -541,6 +541,18 @@ is only in the repaint zone; once the stream finishes, exactly one
 `tea.Println` moves it to scrollback and `CommittedCount` advances so
 the repaint zone no longer redraws it.
 
+There is also a renderer-level ordering rule at this boundary. Bubble Tea
+normally queues the latest `View()` and flushes it on a frame ticker, while
+`tea.Println` inserts into scrollback immediately. San's local Bubble Tea patch
+flushes the queued managed frame synchronously before `insertAbove` calculates
+its scroll geometry. Without that barrier, `CommittedCount` can hide content
+in the logical view before the shorter frame reaches the terminal, allowing
+rows from the previous live frame to become permanently embedded in native
+scrollback. The replacement in `go.mod` is pinned to
+[`yanmxa/bubbletea@81ba608`](https://github.com/yanmxa/bubbletea/commit/81ba608a2d90bacdc115d6b3acc6b1c12cb44e5d);
+remove it once [upstream issue #1736](https://github.com/charmbracelet/bubbletea/issues/1736)
+ships an equivalent barrier.
+
 Tool-call spinners live in the repaint zone the same way: they appear
 while a tool is running and disappear once the result lands.
 
