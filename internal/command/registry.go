@@ -85,6 +85,7 @@ const (
 	scopeUserPlugin                        // ~/.san/plugins/*/commands/
 	scopeProjectPlugin                     // .san/plugins/*/commands/
 	scopeProject                           // .san/commands/
+	scopeBuiltin                           // embedded in the binary (internal/command/prompts/)
 )
 
 // CustomCommand represents a user-defined slash command from
@@ -96,6 +97,7 @@ type CustomCommand struct {
 	Description string `yaml:"description"`
 	Namespace   string `yaml:"namespace"`
 	FilePath    string
+	Body        string // embedded workflow body for builtin commands (FilePath is empty)
 	Scope       commandScope
 }
 
@@ -107,10 +109,11 @@ func (cc *CustomCommand) FullName() string {
 	return cc.Name
 }
 
-// GetInstructions reads the markdown body (excluding frontmatter) from disk.
+// GetInstructions reads the markdown body (excluding frontmatter) from disk,
+// or returns the embedded body for a builtin command.
 func (cc *CustomCommand) GetInstructions() string {
 	if cc.FilePath == "" {
-		return ""
+		return cc.Body
 	}
 	_, body, _ := markdown.ParseFrontmatterFile(cc.FilePath)
 	return body
@@ -274,8 +277,24 @@ func (s *Registry) loadAllCustomCommands() []CustomCommand {
 	if s.cachedCustomCommands != nil {
 		return s.cachedCustomCommands
 	}
-	s.cachedCustomCommands = s.loadCustomCommandsFromDisk()
+	s.cachedCustomCommands = appendBuiltinPromptCommands(s.loadCustomCommandsFromDisk())
 	return s.cachedCustomCommands
+}
+
+// appendBuiltinPromptCommands adds the workflows shipped inside the binary,
+// unless a disk command already claims the name — user, project, and plugin
+// commands override builtins.
+func appendBuiltinPromptCommands(cmds []CustomCommand) []CustomCommand {
+	taken := make(map[string]struct{}, len(cmds))
+	for _, c := range cmds {
+		taken[c.Name] = struct{}{}
+	}
+	for _, b := range builtinPromptCommands() {
+		if _, shadowed := taken[b.Name]; !shadowed {
+			cmds = append(cmds, b)
+		}
+	}
+	return cmds
 }
 
 // loadCustomCommandsFromDisk loads custom commands from all sources in priority order:
