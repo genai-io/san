@@ -55,6 +55,7 @@ func (s *ProviderSelector) switchTab(t providerTab) {
 	s.expandedProviderIdx = -1
 	s.apiKeyActive = false
 	s.closeCustomForm()
+	s.closeOllamaForm()
 	s.rebuildVisibleItems()
 }
 
@@ -64,6 +65,10 @@ func (s *ProviderSelector) PrevTab() { s.switchTab((s.activeTab + 1 + 2) % 2) }
 func (s *ProviderSelector) GoBack() bool {
 	if s.customFormActive {
 		s.closeCustomForm()
+		return true
+	}
+	if s.ollamaFormActive {
+		s.closeOllamaForm()
 		return true
 	}
 	if s.apiKeyActive {
@@ -112,6 +117,11 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	// Route to the custom provider form if active
 	if s.customFormActive {
 		return s.handleCustomFormKey(key)
+	}
+
+	// Route to the Ollama form if active
+	if s.ollamaFormActive {
+		return s.handleOllamaFormKey(key)
 	}
 
 	// Route to API key input if active
@@ -318,6 +328,12 @@ func (s *ProviderSelector) selectProvider(item providerListItem) tea.Cmd {
 	// instead of the single API-key input. Once connected, Enter refreshes as usual.
 	if len(p.AuthMethods) == 1 && s.isCustomProvider(p.Provider) && p.AuthMethods[0].Status != llm.StatusConnected {
 		s.openCustomForm()
+		return nil
+	}
+
+	// Ollama similarly uses a dedicated base-URL form (no API key needed).
+	if len(p.AuthMethods) == 1 && s.isOllamaProvider(p.Provider) && p.AuthMethods[0].Status != llm.StatusConnected {
+		s.openOllamaForm()
 		return nil
 	}
 

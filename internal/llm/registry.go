@@ -125,6 +125,17 @@ func (r *Registry) IsReady(meta Meta) bool {
 			return false
 		}
 	}
+	// No env vars means an OAuth/credential-based auth method (e.g. ChatGPT
+	// Subscription). Without stored credentials it is not ready — treat it as
+	// "not configured" rather than showing a misleading yellow "Available" icon.
+	if len(meta.EnvVars) == 0 {
+		if a := r.authenticator(meta.Provider, meta.AuthMethod); a != nil {
+			if sca, ok := a.(StoredCredentialAuthenticator); ok {
+				return sca.HasCredentials()
+			}
+		}
+		return false
+	}
 	return true
 }
 

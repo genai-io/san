@@ -15,11 +15,11 @@ import (
 // APIKeyMeta is the metadata for Ollama (keyless / local).
 // Ollama does not require an API key; we pass a placeholder so the
 // OpenAI-compatible SDK still sends Authorization: Bearer (which Ollama
-// ignores).
+// ignores). The base URL is configurable via OLLAMA_BASE_URL.
 var APIKeyMeta = llm.Meta{
 	Provider:    llm.Ollama,
 	AuthMethod:  llm.AuthAPIKey,
-	EnvVars:     nil,
+	EnvVars:     []string{"OLLAMA_BASE_URL"},
 	DisplayName: "Local (Ollama)",
 }
 

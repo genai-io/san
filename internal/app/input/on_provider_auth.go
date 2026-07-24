@@ -110,6 +110,12 @@ func (s *ProviderSelector) handleCredentialEditForProvider(item providerListItem
 		return nil
 	}
 
+	// Ollama edits its base URL via a dedicated form (no API key).
+	if s.isOllamaProvider(p.Provider) {
+		s.openOllamaForm()
+		return nil
+	}
+
 	// Single auth method: activate API key input directly
 	if len(p.AuthMethods) == 1 {
 		am := p.AuthMethods[0]

@@ -100,6 +100,11 @@ func (s *ProviderSelector) renderItemList(sb *strings.Builder) {
 			sb.WriteString(s.renderCustomForm())
 			sb.WriteString("\n")
 		}
+		// Inline Ollama form (render below the relevant item)
+		if s.ollamaFormActive && isSelected {
+			sb.WriteString(s.renderOllamaForm())
+			sb.WriteString("\n")
+		}
 
 		// Inline confirm-remove prompt (render below the relevant item)
 		if s.confirmRemoveActive && i == s.confirmRemoveItemIdx {
@@ -341,6 +346,23 @@ func (s *ProviderSelector) renderCustomForm() string {
 	return strings.Join(lines, "\n")
 }
 
+// renderOllamaForm renders the Ollama provider's single-field form (base URL)
+// below its provider row, with the validation error underneath when present.
+func (s *ProviderSelector) renderOllamaForm() string {
+	inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+	boxStyle := lipgloss.NewStyle().
+		Background(inputBg).
+		Padding(0, 1)
+
+	label := kit.DimStyle().Render("Base URL: ")
+	line := "      " + boxStyle.Render(label+s.ollamaURLInput.View())
+	if s.ollamaFormErr != "" {
+		errStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		line += "\n" + "      " + errStyle.Render(s.ollamaFormErr)
+	}
+	return line
+}
+
 func (s *ProviderSelector) renderConfirmRemove() string {
 	warnStyle := lipgloss.NewStyle().
 		Foreground(kit.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
@@ -360,6 +382,9 @@ func (s *ProviderSelector) renderConfirmRemove() string {
 func (s *ProviderSelector) renderHints() string {
 	if s.customFormActive {
 		return kit.DimStyle().Render("Tab/↑/↓ switch field · Enter save & connect · Esc cancel")
+	}
+	if s.ollamaFormActive {
+		return kit.DimStyle().Render("Enter save & connect · Esc cancel")
 	}
 	if s.apiKeyActive {
 		return kit.DimStyle().Render("Paste API key · Enter confirm · Esc cancel")

@@ -128,6 +128,11 @@ type ProviderSelector struct {
 	customFormFocus  int
 	customFormErr    string
 
+	// Inline Ollama form (base URL only); see on_provider_ollama.go
+	ollamaFormActive bool
+	ollamaURLInput   textinput.Model
+	ollamaFormErr    string
+
 	// Inline confirm-remove prompt
 	confirmRemoveActive  bool
 	confirmRemoveEnvVar  string

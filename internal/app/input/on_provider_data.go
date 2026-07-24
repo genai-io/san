@@ -23,6 +23,7 @@ func (s *ProviderSelector) Enter(ctx context.Context, width, height int) (tea.Cm
 	s.expandedProviderIdx = -1
 	s.apiKeyActive = false
 	s.closeCustomForm()
+	s.closeOllamaForm()
 	s.active = true
 	s.activeTab = providerTabModels
 	s.width = width
@@ -428,6 +429,7 @@ func (s *ProviderSelector) Cancel() {
 	s.expandedProviderIdx = -1
 	s.apiKeyActive = false
 	s.closeCustomForm()
+	s.closeOllamaForm()
 	s.store = nil
 	s.resetNavigation()
 	s.resetModelSearch()
