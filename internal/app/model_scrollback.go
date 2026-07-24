@@ -8,26 +8,26 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 )
 
-type scrollbackPrintReadyMsg struct {
-	id      uint64
-	content string
-}
+type scrollbackPrintReadyMsg struct{ id uint64 }
 
 type scrollbackPrintDoneMsg struct{ id uint64 }
 
 type pendingScrollbackPrint struct {
-	id      uint64
-	content string
+	id        uint64
+	remaining string
+	current   string
 }
 
-func printScrollback(id uint64, content string) tea.Cmd {
+func printScrollback(id uint64) tea.Cmd {
 	return func() tea.Msg {
-		return scrollbackPrintReadyMsg{id: id, content: content}
+		return scrollbackPrintReadyMsg{id: id}
 	}
 }
 
@@ -70,11 +70,13 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width         int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
-	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	rendering        bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer         *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width            int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID      uint64                   // monotonic identity for queued scrollback prints
+	pendingPrints    []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	minimizeForPrint bool                     // temporarily shrink a full-height frame before insertAbove
+	frameForPrint    *tea.View                // freeze insertAbove geometry until the print completes
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -267,36 +269,157 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 }
 
 // queueScrollbackPrint appends content to a single-flight FIFO. Only an empty
-// queue starts a print; finishScrollbackPrint starts the next item after Bubble
-// Tea has processed the current Println. Committed content never returns to the
-// managed View, so the renderer barrier cannot scroll a handoff copy, footer, or
-// later live content into native history.
+// queue starts a print; finishScrollbackPrint starts the next chunk after Bubble
+// Tea has processed the current Println. Each chunk is no taller than the rows
+// above the managed frame, so insertAbove cannot scroll live UI rows into native
+// history.
 func (m *model) queueScrollbackPrint(content string) tea.Cmd {
-	m.flush.nextPrintID++
-	pending := pendingScrollbackPrint{
-		id:      m.flush.nextPrintID,
-		content: content,
-	}
-	m.flush.pendingPrints = append(m.flush.pendingPrints, pending)
-	if len(m.flush.pendingPrints) > 1 {
+	return m.flush.queueScrollbackPrint(content)
+}
+
+func (f *flushState) queueScrollbackPrint(content string) tea.Cmd {
+	if content == "" {
 		return nil
 	}
-	return printScrollback(pending.id, pending.content)
+	f.nextPrintID++
+	pending := pendingScrollbackPrint{
+		id:        f.nextPrintID,
+		remaining: content,
+	}
+	f.pendingPrints = append(f.pendingPrints, pending)
+	if len(f.pendingPrints) > 1 {
+		return nil
+	}
+	return printScrollback(pending.id)
 }
 
 // finishScrollbackPrint completes only the in-flight queue head. A stale or
-// out-of-order done message is ignored; the next print cannot start until the
-// head's Println has been processed.
+// out-of-order done message is ignored; the next chunk or queued print cannot
+// start until the current Println has been processed.
 func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
-	if len(m.flush.pendingPrints) == 0 || m.flush.pendingPrints[0].id != id {
+	return m.flush.finishScrollbackPrint(id)
+}
+
+func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
+	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id {
 		return nil
 	}
-	m.flush.pendingPrints = m.flush.pendingPrints[1:]
-	if len(m.flush.pendingPrints) == 0 {
+	f.minimizeForPrint = false
+	f.frameForPrint = nil
+	f.pendingPrints[0].current = ""
+	if f.pendingPrints[0].remaining != "" {
+		return printScrollback(id)
+	}
+	f.pendingPrints = f.pendingPrints[1:]
+	if len(f.pendingPrints) == 0 {
 		return nil
 	}
-	next := m.flush.pendingPrints[0]
-	return printScrollback(next.id, next.content)
+	return printScrollback(f.pendingPrints[0].id)
+}
+
+func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
+	frame := m.View()
+	frameHeight := 0
+	if frame.Content != "" {
+		frameHeight = strings.Count(frame.Content, "\n") + 1
+	}
+	content, ok := m.flush.prepareScrollbackPrint(
+		id,
+		m.env.Width,
+		m.env.Height,
+		frameHeight,
+	)
+	if !ok {
+		return "", false
+	}
+	if m.flush.minimizeForPrint {
+		frame = tea.NewView("")
+	}
+	m.flush.frameForPrint = &frame
+	return content, true
+}
+
+func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeight int) (string, bool) {
+	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id || f.pendingPrints[0].current != "" {
+		return "", false
+	}
+	lines := scrollbackPhysicalLines(f.pendingPrints[0].remaining, width)
+	if len(lines) == 0 {
+		return "", false
+	}
+
+	capacity := len(lines)
+	f.minimizeForPrint = false
+	if height > 0 {
+		capacity = height - min(max(frameHeight, 0), height)
+		if capacity < 1 {
+			f.minimizeForPrint = true
+			capacity = height
+		}
+	}
+	capacity = min(capacity, len(lines))
+	f.pendingPrints[0].current = renderScrollbackLines(lines[:capacity])
+	f.pendingPrints[0].remaining = renderScrollbackLines(lines[capacity:])
+	return f.pendingPrints[0].current, true
+}
+
+func (m *model) scrollbackFrameForPrint() (tea.View, bool) {
+	if m.flush.frameForPrint == nil {
+		return tea.View{}, false
+	}
+	return *m.flush.frameForPrint, true
+}
+
+func (m *model) useMinimalScrollbackFrame() {
+	if m.flush.frameForPrint == nil {
+		return
+	}
+	frame := tea.NewView("")
+	m.flush.frameForPrint = &frame
+	m.flush.minimizeForPrint = true
+}
+
+// scrollbackPhysicalLines decomposes content exactly as Bubble Tea's
+// insertAbove accounts for it: ANSI escapes are zero-width, grapheme clusters
+// retain their terminal width, soft wraps consume rows, and a trailing newline
+// creates a final blank row.
+func scrollbackPhysicalLines(content string, width int) []uv.Line {
+	if content == "" {
+		return nil
+	}
+	height := len(strings.Split(content, "\n"))
+	bufferWidth := width
+	if bufferWidth <= 0 {
+		bufferWidth = 1
+	}
+	for line := range strings.SplitSeq(content, "\n") {
+		lineWidth := ansi.StringWidth(line)
+		if width > 0 && lineWidth > width {
+			height += lineWidth / width
+		}
+		if width <= 0 {
+			bufferWidth = max(bufferWidth, lineWidth)
+		}
+	}
+
+	buffer := uv.NewScreenBuffer(bufferWidth, height)
+	buffer.Method = ansi.GraphemeWidth
+	styled := uv.NewStyledString(content)
+	styled.Wrap = true
+	styled.Draw(buffer, buffer.Bounds())
+	return buffer.Lines
+}
+
+func renderScrollbackLines(lines []uv.Line) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	if rendered := uv.Lines(lines).Render(); rendered != "" {
+		return rendered
+	}
+	// insertAbove ignores an empty string. A reset sequence represents one
+	// physical blank row without adding visible content.
+	return ansi.ResetStyle
 }
 
 // takeWelcomeBanner freezes the startup splash into scrollback once, on the

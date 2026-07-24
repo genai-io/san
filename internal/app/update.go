@@ -273,10 +273,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:
 		// Bubble Tea's renderer barrier flushes the latest managed View before
-		// insertAbove. The View contains no queued scrollback copies, so only this
-		// payload enters native history. Sequence ensures done follows Println.
+		// insertAbove. Sequence ensures completion is observed only after this
+		// chunk has been inserted.
+		content, ok := m.prepareScrollbackPrint(msg.id)
+		if !ok {
+			return m, nil
+		}
 		return m, tea.Sequence(
-			tea.Println(msg.content),
+			tea.Println(content),
 			func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} },
 		)
 	case scrollbackPrintDoneMsg:

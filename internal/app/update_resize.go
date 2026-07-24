@@ -12,6 +12,10 @@ import (
 func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	m.env.Width = msg.Width
 	m.env.Height = msg.Height
+	// A chunk prepared before this resize used the old terminal geometry. Keep
+	// insertAbove safe by dropping the frozen managed frame; the payload may wrap
+	// differently, but no live UI rows can then be scrolled into history.
+	m.useMinimalScrollbackFrame()
 	m.userInput.SetTerminalHeight(msg.Height)
 	if ov, ok := m.activeOverlay(); ok {
 		if resizable, ok := ov.(resizableOverlay); ok {

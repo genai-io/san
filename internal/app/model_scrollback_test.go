@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/subagent"
@@ -101,8 +103,88 @@ func TestFlushStreamingBlocksCommitsThinkingParagraph(t *testing.T) {
 	if m.flush.rendering {
 		t.Fatal("flush.rendering should clear once the render has landed")
 	}
-	if len(m.flush.pendingPrints) != 1 || !strings.Contains(m.flush.pendingPrints[0].content, "first paragraph of reasoning") {
+	if len(m.flush.pendingPrints) != 1 ||
+		!strings.Contains(m.flush.pendingPrints[0].current+m.flush.pendingPrints[0].remaining, "first paragraph of reasoning") {
 		t.Fatalf("scrollback queue = %#v, want the committed block queued once", m.flush.pendingPrints)
+	}
+}
+
+func TestScrollbackPhysicalLinesMatchBubbleTeaAccounting(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		width   int
+		rows    int
+		plain   string
+	}{
+		{name: "ANSI styling", content: "\x1b[31mred\x1b[0m", width: 4, rows: 1, plain: "red"},
+		{name: "soft wrap", content: "abcde", width: 4, rows: 2, plain: "abcd\ne"},
+		{name: "exact-width wrap", content: "abcdefgh", width: 4, rows: 3, plain: "abcd\nefgh\n"},
+		{name: "wide graphemes", content: "界界界", width: 4, rows: 2, plain: "界界\n界"},
+		{name: "emoji graphemes", content: "🏳️‍🌈🏳️‍🌈🏳️‍🌈", width: 4, rows: 2, plain: "🏳️‍🌈🏳️‍🌈\n🏳️‍🌈"},
+		{name: "trailing newline", content: "a\n", width: 4, rows: 2, plain: "a\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lines := scrollbackPhysicalLines(tt.content, tt.width)
+			if len(lines) != tt.rows {
+				t.Fatalf("physical rows = %d, want %d", len(lines), tt.rows)
+			}
+			if plain := ansi.Strip(renderScrollbackLines(lines)); plain != tt.plain {
+				t.Fatalf("rendered physical lines = %q, want %q", plain, tt.plain)
+			}
+		})
+	}
+}
+
+func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
+	var flush flushState
+	content := "\x1b[31mabcdefghij\x1b[0m\nlast\n"
+	cmd := flush.queueScrollbackPrint(content)
+	if cmd == nil {
+		t.Fatal("the first chunk must start immediately")
+	}
+
+	var chunks []string
+	for cmd != nil {
+		ready := cmd().(scrollbackPrintReadyMsg)
+		content, ok := flush.prepareScrollbackPrint(ready.id, 4, 5, 3)
+		if !ok {
+			t.Fatal("ready chunk has no payload")
+		}
+		chunks = append(chunks, content)
+		cmd = flush.finishScrollbackPrint(ready.id)
+	}
+	if len(flush.pendingPrints) != 0 {
+		t.Fatalf("finished queue length = %d, want 0", len(flush.pendingPrints))
+	}
+
+	plain := ansi.Strip(strings.Join(chunks, "\n"))
+	if plain != "abcd\nefgh\nij\nlast\n" {
+		t.Fatalf("chunked content = %q, want all physical rows exactly once", plain)
+	}
+}
+
+func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{})
+	m.env.Height = 1
+	cmd := m.queueScrollbackPrint("A")
+	if cmd == nil {
+		t.Fatal("the first chunk must start immediately")
+	}
+	ready := cmd().(scrollbackPrintReadyMsg)
+	if _, ok := m.prepareScrollbackPrint(ready.id); !ok || !m.flush.minimizeForPrint {
+		t.Fatal("a full-height frame must be minimized before printing")
+	}
+	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != "" {
+		t.Fatalf("frame during print = %#v, ok=%v, want an empty frozen frame", frame, ok)
+	}
+	if next := m.finishScrollbackPrint(ready.id); next != nil {
+		t.Fatal("the one-row payload should finish in one minimized print")
+	}
+	if m.flush.minimizeForPrint || m.flush.frameForPrint != nil {
+		t.Fatal("the managed frame must be restored after the print completes")
 	}
 }
 
@@ -117,8 +199,9 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	}
 
 	first := firstCmd().(scrollbackPrintReadyMsg)
-	if first.content != "A" {
-		t.Fatalf("first print content = %q, want A", first.content)
+	firstContent, ok := m.prepareScrollbackPrint(first.id)
+	if !ok || firstContent != "A" {
+		t.Fatalf("first print content = %q, ok=%v, want A", firstContent, ok)
 	}
 	if next := m.finishScrollbackPrint(first.id + 1); next != nil {
 		t.Fatal("an out-of-order done message must not advance the queue")
@@ -132,8 +215,9 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 		t.Fatal("finishing the queue head must start the next print")
 	}
 	second := secondCmd().(scrollbackPrintReadyMsg)
-	if second.content != "B" {
-		t.Fatalf("second print content = %q, want B", second.content)
+	secondContent, ok := m.prepareScrollbackPrint(second.id)
+	if !ok || secondContent != "B" {
+		t.Fatalf("second print content = %q, ok=%v, want B", secondContent, ok)
 	}
 	if next := m.finishScrollbackPrint(second.id); next != nil {
 		t.Fatal("finishing the final print must leave no command")
@@ -145,8 +229,9 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 
 func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testing.T) {
 	m := &model{
-		env:  env{Width: 100, Height: 24, Ready: true},
-		conv: conv.NewModel(100),
+		env:       env{Width: 100, Height: 24},
+		conv:      conv.NewModel(100),
+		userInput: input.New("", 100, nil, input.SelectorDeps{}),
 		services: services{
 			Subagent: subagent.NewRegistry(),
 			Tracker:  todo.NewStore(),
@@ -208,14 +293,22 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	}
 
 	first := firstCmds[0]().(scrollbackPrintReadyMsg)
+	firstContent, ok := m.prepareScrollbackPrint(first.id)
+	if !ok {
+		t.Fatal("Bash print command has no current payload")
+	}
 	secondCmd := m.finishScrollbackPrint(first.id)
 	if secondCmd == nil {
 		t.Fatal("finishing Bash must start the queued Edit print")
 	}
 	second := secondCmd().(scrollbackPrintReadyMsg)
+	secondContent, ok := m.prepareScrollbackPrint(second.id)
+	if !ok {
+		t.Fatal("Edit print command has no current payload")
+	}
 	m.finishScrollbackPrint(second.id)
 
-	nativePayloads := first.content + "\n" + second.content
+	nativePayloads := firstContent + "\n" + secondContent
 	for _, result := range []string{"BASH_RESULT_SENTINEL", "EDIT_RESULT_SENTINEL"} {
 		if count := strings.Count(nativePayloads, result); count != 1 {
 			t.Fatalf("native payload count for %q = %d, want 1: %q", result, count, nativePayloads)
