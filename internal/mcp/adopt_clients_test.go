@@ -53,13 +53,14 @@ func connectedClient(t *testing.T, cfg ServerConfig, tr transport.Transport) *Cl
 	return c
 }
 
-func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Registry {
+func registryWithRetainedClients(configs map[string]ServerConfig, clients map[string]*Client) *Registry {
 	r := newEmptyRegistry()
 	for name, cfg := range configs {
 		r.configs[name] = cfg
 	}
 	for name, c := range clients {
 		r.clients[name] = c
+		r.retainWithoutLeases[name] = true
 	}
 	return r
 }
@@ -68,17 +69,17 @@ func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *
 // one. Replacing the registry on a cwd change used to drop its connection, so
 // every mcp__* tool disappeared from the agent for the rest of the session with
 // nothing to reconnect it — AutoConnect only runs at startup.
-func TestAdoptLiveClientsKeepsUnchangedServersConnected(t *testing.T) {
+func TestRegistryReplacementTransfersMatchingRetainedConnection(t *testing.T) {
 	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--stdio"}}
 	tr := &liveTransport{}
-	old := registryWith(
+	old := registryWithRetainedClients(
 		map[string]ServerConfig{"docs": cfg},
 		map[string]*Client{"docs": connectedClient(t, cfg, tr)},
 	)
 
 	// Same server still configured after the cwd change.
-	fresh := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
-	fresh.adoptLiveClients(old)
+	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, nil)
+	fresh.transferRetainedConnectionsFrom(old)
 
 	if _, ok := fresh.clients["docs"]; !ok {
 		t.Fatal("the live connection was not carried across; mcp__docs__* tools would vanish")
@@ -93,16 +94,16 @@ func TestAdoptLiveClientsKeepsUnchangedServersConnected(t *testing.T) {
 
 // A project-scoped server that the new project does not configure must be torn
 // down — it was previously dropped still running, leaking the subprocess.
-func TestAdoptLiveClientsDisconnectsServersTheNewProjectDropped(t *testing.T) {
+func TestRegistryReplacementDisconnectsRetainedConnectionMissingFromIncomingConfig(t *testing.T) {
 	cfg := ServerConfig{Name: "old-proj", Type: "stdio", Command: "old-server"}
 	tr := &liveTransport{}
-	old := registryWith(
+	old := registryWithRetainedClients(
 		map[string]ServerConfig{"old-proj": cfg},
 		map[string]*Client{"old-proj": connectedClient(t, cfg, tr)},
 	)
 
-	fresh := registryWith(map[string]ServerConfig{}, nil) // new project configures nothing
-	fresh.adoptLiveClients(old)
+	fresh := registryWithRetainedClients(map[string]ServerConfig{}, nil) // new project configures nothing
+	fresh.transferRetainedConnectionsFrom(old)
 
 	if _, ok := fresh.clients["old-proj"]; ok {
 		t.Error("a server the new project does not configure was adopted")
@@ -112,22 +113,67 @@ func TestAdoptLiveClientsDisconnectsServersTheNewProjectDropped(t *testing.T) {
 
 // Same name, different command: the config changed, so the old process is not
 // the server the new project asked for.
-func TestAdoptLiveClientsRejectsAChangedConfig(t *testing.T) {
+func TestRegistryReplacementDisconnectsRetainedConnectionWhoseConfigChanged(t *testing.T) {
 	oldCfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--v1"}}
 	newCfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--v2"}}
 	tr := &liveTransport{}
-	old := registryWith(
+	old := registryWithRetainedClients(
 		map[string]ServerConfig{"docs": oldCfg},
 		map[string]*Client{"docs": connectedClient(t, oldCfg, tr)},
 	)
 
-	fresh := registryWith(map[string]ServerConfig{"docs": newCfg}, nil)
-	fresh.adoptLiveClients(old)
+	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": newCfg}, nil)
+	fresh.transferRetainedConnectionsFrom(old)
 
 	if _, ok := fresh.clients["docs"]; ok {
 		t.Error("adopted a connection whose configuration no longer matches")
 	}
 	waitFor(t, "the stale server's transport to close", tr.isClosed)
+}
+
+func TestTransferredConnectionNotifiesIncomingRegistryOnly(t *testing.T) {
+	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
+	tr := &liveTransport{}
+	client := connectedClient(t, cfg, tr)
+	old := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
+	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, nil)
+
+	var oldCalls, freshCalls int
+	old.SetOnToolsChanged(func() { oldCalls++ })
+	fresh.SetOnToolsChanged(func() { freshCalls++ })
+	client.SetOnToolsChanged(old.notifyToolsChanged)
+	fresh.transferRetainedConnectionsFrom(old)
+
+	client.mu.RLock()
+	callback := client.onToolsChanged
+	client.mu.RUnlock()
+	callback()
+	if oldCalls != 0 || freshCalls != 1 {
+		t.Fatalf("tools-changed callbacks = old:%d fresh:%d, want old:0 fresh:1", oldCalls, freshCalls)
+	}
+}
+
+func TestRegistryReplacementLeavesLeaseOwnedConnectionInOutgoingRegistry(t *testing.T) {
+	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
+	tr := &liveTransport{}
+	client := connectedClient(t, cfg, tr)
+	old := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
+	old.disconnectAfterFinalLease["docs"] = true
+	delete(old.retainWithoutLeases, "docs")
+	old.leaseCountsByConnectionEpoch["docs"] = map[uint64]int{0: 1}
+
+	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, nil)
+	fresh.transferRetainedConnectionsFrom(old)
+
+	if _, ok := fresh.clients["docs"]; ok {
+		t.Fatal("new registry adopted a temporary connection still owned by an active Agent")
+	}
+	if got := old.clients["docs"]; got != client {
+		t.Fatal("old registry lost the temporary connection before its lease cleanup")
+	}
+	if tr.isClosed() {
+		t.Fatal("reload closed a temporary connection still used by an active Agent")
+	}
 }
 
 // waitFor polls cond, since the teardown of servers that did not survive runs
