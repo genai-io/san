@@ -39,10 +39,7 @@ func (t *AgentTool) SetExecutor(executor tool.AgentExecutor) {
 
 // PreparePermission prepares a permission request with agent metadata
 func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
-	agentType := tool.GetString(params, "subagent_type")
-	if agentType == "" {
-		agentType = "general-purpose"
-	}
+	agentName := tool.GetString(params, "name")
 
 	prompt, err := tool.RequireString(params, "prompt")
 	if err != nil {
@@ -57,16 +54,24 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	runBackground := tool.GetBool(params, "run_in_background")
 	requestModel := tool.GetString(params, "model")
 
+	mode, err := validRequestMode(params)
+	if err != nil {
+		return nil, err
+	}
+
 	// Check if executor is configured
 	if t.executor == nil {
 		return nil, fmt.Errorf("agent executor not configured")
 	}
 
-	// Get agent config
-	config, ok := t.executor.GetAgentConfig(agentType)
+	// Resolve the selected custom agent config, or the implicit default when name
+	// is omitted. Carry the exact config into execution so a registry reload while
+	// approval is pending cannot change what the user approved.
+	config, resolvedConfig, ok := t.executor.ResolveAgentRequest(agentName)
 	if !ok {
-		return nil, fmt.Errorf("unknown agent type: %s", agentType)
+		return nil, fmt.Errorf("unknown or disabled custom agent: %s", agentName)
 	}
+	params["_agentConfig"] = resolvedConfig
 
 	// Determine effective model for permission display.
 	effectiveModel := requestModel
@@ -94,7 +99,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			AgentName:      config.Name,
 			Description:    config.Description,
 			Model:          effectiveModel,
-			PermissionMode: effectivePermissionMode(params, config),
+			PermissionMode: effectivePermissionMode(mode, config),
 			Tools:          config.Tools,
 			Prompt:         prompt,
 			Background:     runBackground,
@@ -105,11 +110,21 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 // effectivePermissionMode returns the mode the run will actually use — the
 // request's mode override when present, the agent config's mode otherwise —
 // so the permission dialog shows what the user is approving.
-func effectivePermissionMode(params map[string]any, config tool.AgentConfigInfo) string {
-	if mode := tool.GetString(params, "mode"); mode != "" && mode != "default" {
+func effectivePermissionMode(mode string, config tool.AgentConfigInfo) string {
+	if mode != "" && mode != "default" {
 		return mode
 	}
 	return config.PermissionMode
+}
+
+func validRequestMode(params map[string]any) (string, error) {
+	mode := tool.GetString(params, "mode")
+	switch mode {
+	case "", "default", "explore", "edit":
+		return mode, nil
+	default:
+		return "", fmt.Errorf("invalid agent mode %q: must be explore, edit, or default", mode)
+	}
 }
 
 // ExecuteApproved executes the agent after user approval
@@ -128,10 +143,7 @@ func (t *AgentTool) Execute(ctx context.Context, params map[string]any, cwd stri
 func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
 
-	agentType := tool.GetString(params, "subagent_type")
-	if agentType == "" {
-		agentType = "general-purpose"
-	}
+	agentName := tool.GetString(params, "name")
 
 	prompt := tool.GetString(params, "prompt")
 	if prompt == "" {
@@ -139,10 +151,12 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	}
 
 	description := tool.GetString(params, "description")
-	agentName := tool.GetString(params, "name")
 	runBackground := tool.GetBool(params, "run_in_background")
 	model := tool.GetString(params, "model")
-	mode := tool.GetString(params, "mode")
+	mode, err := validRequestMode(params)
+	if err != nil {
+		return toolresult.NewErrorResult(t.Name(), err.Error())
+	}
 
 	var onActivity tool.ActivityFunc
 	if cb, ok := params["_onActivity"].(tool.ActivityFunc); ok {
@@ -160,11 +174,12 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
+	config, _ := params["_agentConfig"]
 	// Build request — subagents always start with fresh context. Parent agent
 	// is responsible for putting all needed background into Prompt.
 	req := tool.AgentExecRequest{
-		Agent:       agentType,
-		Name:        agentName,
+		Agent:       agentName,
+		Config:      config,
 		Prompt:      prompt,
 		Description: description,
 		Background:  runBackground,
@@ -191,7 +206,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 				"backgroundTask": map[string]any{
 					"taskId":      taskInfo.TaskID,
 					"agentName":   taskInfo.AgentName,
-					"agentType":   agentType,
+					"agentType":   configName(agentName),
 					"description": description,
 					"outputFile":  taskInfo.OutputFile,
 					"toolName":    t.Name(),
@@ -200,7 +215,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("[background] %s: %s", agentType, taskInfo.TaskID),
+				Subtitle: fmt.Sprintf("[background] %s: %s", configName(agentName), taskInfo.TaskID),
 				Duration: duration,
 			},
 		}
@@ -214,8 +229,9 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	duration := time.Since(start)
 
+	agentName = configName(agentName)
 	if !result.Success {
-		hookResponse := buildAgentHookResponse(result, agentType, prompt)
+		hookResponse := buildAgentHookResponse(result, agentName, prompt)
 		return toolresult.ToolResult{
 			Success:      false,
 			Output:       result.Content,
@@ -224,24 +240,31 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("%s: failed", agentType),
+				Subtitle: fmt.Sprintf("%s: failed", agentName),
 				Duration: duration,
 			},
 		}
 	}
 
-	hookResponse := buildAgentHookResponse(result, agentType, prompt)
+	hookResponse := buildAgentHookResponse(result, agentName, prompt)
 	return toolresult.ToolResult{
 		Success:      true,
-		Output:       formatForegroundAgentResult(agentType, result, duration),
+		Output:       formatForegroundAgentResult(agentName, result, duration),
 		HookResponse: hookResponse,
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentType, result.StepCount),
+			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentName, result.StepCount),
 			Duration: duration,
 		},
 	}
+}
+
+func configName(name string) string {
+	if name == "" {
+		return "subagent"
+	}
+	return name
 }
 
 // buildAgentHookResponse creates a CC-compatible structured response for PostToolUse hooks.

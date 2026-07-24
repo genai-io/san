@@ -51,7 +51,8 @@ func GetMessagesGetter(ctx context.Context) MessagesGetter {
 type AgentExecutor interface {
 	Run(ctx context.Context, req AgentExecRequest) (*AgentExecResult, error)
 	RunBackground(req AgentExecRequest) (AgentTaskInfo, error)
-	GetAgentConfig(agentType string) (AgentConfigInfo, bool)
+	GetAgentConfig(name string) (AgentConfigInfo, bool)
+	ResolveAgentRequest(name string) (AgentConfigInfo, any, bool)
 	GetParentModelID() string
 }
 
@@ -65,7 +66,7 @@ type MessagesGetter func() []core.Message
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
 	Agent       string
-	Name        string
+	Config      any // internal resolved configuration; never model-facing
 	Prompt      string
 	Description string
 	Background  bool
@@ -115,7 +116,7 @@ type AgentConfigInfo struct {
 	PermissionMode string
 	Tools          []string // nil = all tools
 	SourceFile     string
-	// Source indicates where the agent definition came from:
-	// "built-in", "user", "project", or "plugin". Empty defaults to project.
+	// Source indicates where the custom agent definition came from:
+	// "user", "project", or a plugin scope. Empty defaults to project.
 	Source string
 }
