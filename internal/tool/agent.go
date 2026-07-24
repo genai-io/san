@@ -52,7 +52,7 @@ type AgentExecutor interface {
 	Run(ctx context.Context, req AgentExecRequest) (*AgentExecResult, error)
 	RunBackground(req AgentExecRequest) (AgentTaskInfo, error)
 	GetAgentConfig(name string) (AgentConfigInfo, bool)
-	ResolveAgentRequest(name string) (AgentConfigInfo, any, bool)
+	ResolveAgentSelection(name string) (AgentConfigInfo, any, bool)
 	GetParentModelID() string
 }
 
@@ -65,14 +65,14 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	Agent       string
-	Config      any // internal resolved configuration; never model-facing
-	Prompt      string
-	Description string
-	Background  bool
-	Model       string
-	MaxSteps    int
-	Mode        string
+	Agent               string
+	ResolvedAgentConfig any // exact approval-time configuration; never model-facing
+	Prompt              string
+	Description         string
+	Background          bool
+	Model               string
+	MaxSteps            int
+	Mode                string
 	// TaskID is the background-task id of this run; the executor registers it
 	// with the broker so main can message the subagent while it runs. Empty
 	// for foreground runs.
