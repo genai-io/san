@@ -60,6 +60,7 @@ func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *
 	}
 	for name, c := range clients {
 		r.clients[name] = c
+		r.persistent[name] = true
 	}
 	return r
 }
@@ -128,6 +129,51 @@ func TestAdoptLiveClientsRejectsAChangedConfig(t *testing.T) {
 		t.Error("adopted a connection whose configuration no longer matches")
 	}
 	waitFor(t, "the stale server's transport to close", tr.isClosed)
+}
+
+func TestAdoptLiveClientsRebindsToolsChangedCallback(t *testing.T) {
+	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
+	tr := &liveTransport{}
+	client := connectedClient(t, cfg, tr)
+	old := registryWith(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
+	fresh := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+
+	var oldCalls, freshCalls int
+	old.SetOnToolsChanged(func() { oldCalls++ })
+	fresh.SetOnToolsChanged(func() { freshCalls++ })
+	client.SetOnToolsChanged(old.notifyToolsChanged)
+	fresh.adoptLiveClients(old)
+
+	client.mu.RLock()
+	callback := client.onToolsChanged
+	client.mu.RUnlock()
+	callback()
+	if oldCalls != 0 || freshCalls != 1 {
+		t.Fatalf("tools-changed callbacks = old:%d fresh:%d, want old:0 fresh:1", oldCalls, freshCalls)
+	}
+}
+
+func TestAdoptLiveClientsLeavesTemporaryConnectionWithLeaseOwner(t *testing.T) {
+	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
+	tr := &liveTransport{}
+	client := connectedClient(t, cfg, tr)
+	old := registryWith(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
+	old.temporary["docs"] = true
+	delete(old.persistent, "docs")
+	old.leasing["docs"] = map[uint64]int{0: 1}
+
+	fresh := registryWith(map[string]ServerConfig{"docs": cfg}, nil)
+	fresh.adoptLiveClients(old)
+
+	if _, ok := fresh.clients["docs"]; ok {
+		t.Fatal("new registry adopted a temporary connection still owned by an active Agent")
+	}
+	if got := old.clients["docs"]; got != client {
+		t.Fatal("old registry lost the temporary connection before its lease cleanup")
+	}
+	if tr.isClosed() {
+		t.Fatal("reload closed a temporary connection still used by an active Agent")
+	}
 }
 
 // waitFor polls cond, since the teardown of servers that did not survive runs

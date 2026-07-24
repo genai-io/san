@@ -63,6 +63,11 @@ func TestPluginComponents(t *testing.T) {
 		t.Errorf("Skills count = %d, want 1", len(p.Components.Skills))
 	}
 
+	// Check agents
+	if len(p.Components.Agents) != 1 {
+		t.Errorf("Agents count = %d, want 1", len(p.Components.Agents))
+	}
+
 	// Check commands
 	if len(p.Components.Commands) != 1 {
 		t.Errorf("Commands count = %d, want 1", len(p.Components.Commands))
@@ -307,5 +312,42 @@ func TestMarketplaceManager(t *testing.T) {
 	ids = manager.List()
 	if len(ids) != 0 {
 		t.Errorf("After remove, List() length = %d, want 0", len(ids))
+	}
+}
+
+func TestPluginAgentPaths(t *testing.T) {
+	if testPluginDir == "" {
+		t.Skip("Test plugin directory not found")
+	}
+
+	// Create a fresh registry
+	registry := plugin.NewRegistry()
+	ctx := context.Background()
+
+	// Load plugin
+	err := registry.LoadFromPath(ctx, testPluginDir)
+	if err != nil {
+		t.Fatalf("LoadFromPath() error = %v", err)
+	}
+
+	// Get enabled plugins
+	enabled := registry.GetEnabled()
+	if len(enabled) != 1 {
+		t.Fatalf("Expected 1 enabled plugin, got %d", len(enabled))
+	}
+
+	// Check that agent paths are resolved
+	p := enabled[0]
+	if len(p.Components.Agents) != 1 {
+		t.Errorf("Expected 1 agent path, got %d", len(p.Components.Agents))
+	}
+
+	// Verify the agent file exists
+	if len(p.Components.Agents) > 0 {
+		agentPath := p.Components.Agents[0]
+		if _, err := os.Stat(agentPath); os.IsNotExist(err) {
+			t.Errorf("Agent file does not exist: %s", agentPath)
+		}
+		t.Logf("Agent path: %s", agentPath)
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 // TestRenderPanelTabsCount confirms a tab's count is rendered only when it is
 // greater than zero — so count-less tabs (e.g. /config) show just their name
-// instead of a stray "0", while count-bearing tabs (e.g. skills) keep it.
+// instead of a stray "0", while count-bearing tabs (skills/agents) keep it.
 func TestRenderPanelTabsCount(t *testing.T) {
 	tabs := []PanelTab{
 		{Name: "withcount", Count: 7, Show: true},

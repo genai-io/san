@@ -17,6 +17,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -32,6 +33,7 @@ type services struct {
 	Hook     *hook.Engine
 	Session  *session.Setup
 	Skill    *skill.Registry
+	Subagent *subagent.Registry
 	Command  *command.Registry
 	Task     *task.Manager
 	Tracker  todo.Service
@@ -98,6 +100,7 @@ func newServices() services {
 		Hook:      hook.DefaultEngine(),
 		Session:   session.Default(),
 		Skill:     skill.Default(),
+		Subagent:  subagent.Default(),
 		Command:   command.Default(),
 		Task:      task.Default(),
 		Tracker:   todo.Default(),

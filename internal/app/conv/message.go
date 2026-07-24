@@ -499,6 +499,7 @@ type ToolCallsParams struct {
 	InputTokens  int
 	OutputTokens int
 	Blink        int
+	AgentColors  map[string]string
 	SpinnerView  string
 	TaskOwnerMap map[string]string
 	MDRenderer   *MDRenderer
@@ -543,11 +544,12 @@ func RenderToolCalls(params ToolCallsParams) string {
 		if tool.IsAgentToolName(tc.Name) {
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
+			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
 			if hasResult {
-				sb.WriteString(renderAgentToolLine(label, params.Width, "●") + "\n")
+				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
-				sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink)))
+				sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), color))
 				if !params.ToolCallsExpanded && params.Interactive {
 					sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
 				}

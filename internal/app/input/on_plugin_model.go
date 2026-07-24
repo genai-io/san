@@ -41,6 +41,7 @@ type pluginItem struct {
 	Enabled     bool
 	Path        string
 	Skills      int
+	Agents      int
 	Commands    int
 	Hooks       int
 	MCP         int

@@ -11,12 +11,17 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/fs"
 )
 
 // AgentRunOptions configures a one-shot headless agent run.
 type AgentRunOptions struct {
+	Name     string // optional custom agent name; empty uses the default agent
 	Prompt   string // task prompt (required)
 	Model    string // model override; empty uses the connected provider's model
 	MaxSteps int    // maximum LLM inference steps
@@ -46,18 +51,37 @@ func RunAgent(opts AgentRunOptions) error {
 
 	cwd, _ := os.Getwd()
 
+	if err := plugin.Initialize(ctx, plugin.Options{CWD: cwd}); err != nil {
+		return fmt.Errorf("failed to initialize plugins: %w", err)
+	}
+	skill.Initialize(skill.Options{CWD: cwd, PluginSkillPaths: pluginSkillPaths})
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+		return fmt.Errorf("failed to initialize subagent registry: %w", err)
+	}
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
+		return fmt.Errorf("failed to initialize MCP registry: %w", err)
+	}
+	fs.SetEnvProvider(plugin.PluginEnv)
+
 	// Run through the full subagent pipeline so headless invocations get the
-	// same fixed permission gate and runtime mode policy as TUI-spawned
-	// subagents.
+	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
+	// as TUI-spawned subagents.
 	executor := subagent.NewExecutor(resolved.Provider, cwd, resolved.ModelID, nil)
 	executor.SetResolver(llm.NewProviderPool(store))
 	executor.SetModelStore(store, resolved.ProviderName, resolved.AuthMethod)
+	executor.SetSkillsDirectory(skill.Default().PromptSection())
+	executor.SetMCP(mcp.DefaultRegistry(), mcp.DefaultRegistry())
 
-	fmt.Println("Agent: subagent")
+	name := opts.Name
+	if name == "" {
+		name = "subagent"
+	}
+	fmt.Printf("Agent: %s\n", name)
 	fmt.Printf("Prompt: %s\n", opts.Prompt)
 	fmt.Println("---")
 
 	req := tool.AgentExecRequest{
+		Agent:    opts.Name,
 		Prompt:   opts.Prompt,
 		Model:    opts.Model,
 		MaxSteps: opts.MaxSteps,

@@ -68,6 +68,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Provider.Selector, // fullscreen slash-command pickers
 		&m.userInput.Tool,
 		&m.userInput.Skill.Selector,
+		&m.userInput.Agent,
 		&m.userInput.Persona,
 		&m.userInput.MCP.Selector,
 		&m.userInput.Plugin,
@@ -250,6 +251,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// PostCompact. Without this nudge the LLM sees stale state until
 		// one of those fires.
 		m.services.Reminder.RequeueSystemReminders()
+		return m, nil
+	case input.AgentToggleMsg:
+		if msg.Err != nil {
+			m.conv.AddNotice("Failed to update agent: " + msg.Err.Error())
+			return m, nil
+		}
+		// Why stop on toggle: the agents directory lives in the Agent tool's
+		// description, which is frozen at agent build time. Stopping forces
+		// ensureAgentSession to rebuild on the next user turn with the new
+		// directory. Why guard on Stream.Active: stopping mid-stream would
+		// orphan in-flight tool calls and the partial assistant turn —
+		// leave the toggle pending; ensureAgentSession will see the updated
+		// store the next time it actually rebuilds.
+		if m.services.Agent.Active() && !m.conv.Stream.Active {
+			m.StopAgentSession()
+		}
 		return m, nil
 	case persistSessionDoneMsg:
 		if msg.err != nil {

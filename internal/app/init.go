@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -92,15 +93,18 @@ func initExtensions(cwd string) {
 		DynamicProviders:   []func() []command.Info{skillCommandInfos},
 		PluginCommandPaths: pluginCommandPaths,
 	})
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
+	}
 	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 }
 
 // discoverPlugins scans the working directory for plugins. Run on a cwd change
-// so the new project's plugins (and their command / MCP / hook contributions)
-// replace the previous project's before reloadProjectServices rebuilds the
-// project's feature services.
+// so the new project's plugins (and their command / agent / MCP / hook
+// contributions) replace the previous project's before reloadProjectServices
+// rebuilds the project's feature services.
 func discoverPlugins(cwd string) {
 	if err := plugin.Initialize(context.Background(), plugin.Options{CWD: cwd}); err != nil {
 		log.Logger().Warn("Failed to initialize plugin", zap.Error(err))
@@ -111,7 +115,8 @@ func discoverPlugins(cwd string) {
 // current project — its config dirs plus the active plugins' contributions —
 // and re-points the services struct at the fresh instances. Both halves live
 // here so the Initialize set and the Default()-regrab set cannot drift. The
-// five: settings, skills, commands, MCP servers, personas. Plugins themselves are not rebuilt here — discoverPlugins does that on a cwd change,
+// six: settings, skills, commands, subagents, MCP servers, personas. Plugins
+// themselves are not rebuilt here — discoverPlugins does that on a cwd change,
 // and a plugin load (--plugin-dir or /plugin install) has already done it.
 func (m *model) reloadProjectServices(cwd string) {
 	setting.Initialize(setting.Options{CWD: cwd})
@@ -128,6 +133,11 @@ func (m *model) reloadProjectServices(cwd string) {
 	})
 	m.services.Command = command.Default()
 
+	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
+		log.Logger().Warn("Failed to initialize subagent", zap.Error(err))
+	}
+	m.services.Subagent = subagent.Default()
+
 	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
@@ -142,6 +152,19 @@ func pluginCommandPaths() []command.PluginCommandPath {
 	paths := make([]command.PluginCommandPath, len(pPaths))
 	for i, p := range pPaths {
 		paths[i] = command.PluginCommandPath{
+			Path:      p.Path,
+			Namespace: p.Namespace,
+			IsProject: p.Scope == plugin.ScopeProject || p.Scope == plugin.ScopeLocal,
+		}
+	}
+	return paths
+}
+
+func pluginAgentPaths() []subagent.PluginAgentPath {
+	pPaths := plugin.GetPluginAgentPaths()
+	paths := make([]subagent.PluginAgentPath, len(pPaths))
+	for i, p := range pPaths {
+		paths[i] = subagent.PluginAgentPath{
 			Path:      p.Path,
 			Namespace: p.Namespace,
 			IsProject: p.Scope == plugin.ScopeProject || p.Scope == plugin.ScopeLocal,
@@ -190,6 +213,27 @@ func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.S
 		}
 		return result
 	}
+}
+
+type agentRegistryAdapter struct {
+	reg *subagent.Registry
+}
+
+func (a *agentRegistryAdapter) ListConfigs() []tool.AgentConfigInfo {
+	configs := a.reg.ListConfigs()
+	out := make([]tool.AgentConfigInfo, len(configs))
+	for i, cfg := range configs {
+		out[i] = subagent.ToAgentConfigInfo(cfg)
+	}
+	return out
+}
+
+func (a *agentRegistryAdapter) GetDisabledAt(userLevel bool) map[string]bool {
+	return a.reg.GetDisabledAt(userLevel)
+}
+
+func (a *agentRegistryAdapter) SetEnabled(name string, enabled bool, userLevel bool) error {
+	return a.reg.SetEnabled(name, enabled, userLevel)
 }
 
 func skillCommandInfos() []command.Info {

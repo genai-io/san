@@ -1,6 +1,7 @@
 package tool_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
@@ -73,6 +74,44 @@ func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
 		if !presented[canonical] {
 			t.Errorf("registered tool %q (canonical %q) is absent from the model-facing schema list; add it to builtinToolOrder (or exempt it deliberately)", name, canonical)
 		}
+	}
+}
+
+func TestGetToolSchemasUsesDirectoryGetter(t *testing.T) {
+	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{
+		AgentDirectory: func() string {
+			return "Available custom agents for the Agent tool:\n\n- explorer: Read-only research"
+		},
+	})
+
+	agent, ok := findSchema(schemas, tool.ToolAgent)
+	if !ok {
+		t.Fatal("Agent schema not found in GetToolSchemasWith output")
+	}
+	if !strings.Contains(agent.Description, "explorer: Read-only research") {
+		t.Errorf("Agent schema description missing directory entry, got: %s", agent.Description)
+	}
+}
+
+// TestAgentDirectoryReevaluatedPerCall verifies the AgentDirectory getter is
+// invoked on each schema build, so toggling /agents produces an updated
+// description on the next rebuild.
+func TestAgentDirectoryReevaluatedPerCall(t *testing.T) {
+	directory := "v1"
+	getter := func() string { return directory }
+
+	first, _ := findSchema(tool.GetToolSchemasWith(tool.SchemaOptions{AgentDirectory: getter}), tool.ToolAgent)
+	directory = "v2"
+	second, _ := findSchema(tool.GetToolSchemasWith(tool.SchemaOptions{AgentDirectory: getter}), tool.ToolAgent)
+
+	if !strings.Contains(first.Description, "v1") {
+		t.Error("first build should embed directory v1")
+	}
+	if !strings.Contains(second.Description, "v2") {
+		t.Error("second build should embed directory v2 (getter must run each call)")
+	}
+	if strings.Contains(second.Description, "v1") {
+		t.Error("second build should NOT contain stale v1 directory")
 	}
 }
 

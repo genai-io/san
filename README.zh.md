@@ -115,7 +115,7 @@ san --resume                     # 选择历史会话恢复
 
 # 子命令（运行 `san <command> --help` 查看完整列表）
 san inspector                    # 会话转录查看器
-san agent run --prompt "..."                  # 运行 headless agent
+san agent run --name test-runner --prompt "..."   # 运行自定义 headless agent
 san plugin <list|install|enable|...>          # 管理插件
 san mcp <add|list|remove|...>                 # 管理 MCP 服务器
 ```
@@ -126,7 +126,7 @@ san mcp <add|list|remove|...>                 # 管理 MCP 服务器
 | 切换 thinking 级别 | `Ctrl+T` 或 `/think`（可选级别因提供商而异） |
 | 切换权限模式 | `Shift+Tab`（询问 · 自动接受 · 自动审查） |
 | 搜索 / 人设 / 记忆 | `/search` · `/persona` · `/memory` |
-| 技能 / 工具 | `/skills` · `/tools` |
+| 技能 / 代理 / 工具 | `/skills` · `/agents` · `/tools` |
 | 插件 / MCP / 配置 | `/plugin` · `/mcp` · `/config` |
 | 会话 / 循环 / 其他 | `/fork` · `/compact` · `/loop` · `/glob` · `/init` · `/clear` |
 | 全部 slash 命令 | `/help` |
@@ -175,6 +175,7 @@ settings.json     # 权限、hooks、env、当前 persona
 skills.json       # 技能状态
 personas/         # persona 包：系统 prompt 片段、技能、设置
 skills/           # 自定义技能定义
+agents/           # 自定义 agent 定义
 commands/         # 自定义 slash 命令
 plugins/          # 已安装插件
 projects/         # 会话记录与索引
@@ -187,6 +188,7 @@ settings.json       # 权限、hooks、禁用工具
 mcp.json            # MCP server 定义（团队共享）
 mcp.local.json      # MCP server 定义（个人，git-ignored）
 personas/           # 项目级 persona 包（覆盖用户级）
+agents/*.md         # Subagent 定义
 skills/*/SKILL.md   # 技能
 commands/*.md       # Slash 命令
 plugins/            # 项目级插件
@@ -217,8 +219,8 @@ plugins-local/      # 本地插件（git-ignored）
 - [文档索引](docs/index.md) —— 架构、特性、运维、参考资料的入口
 - [架构](docs/concepts/architecture.md) —— 架构入口与阅读顺序
 - [包结构图](docs/reference/package-map.md) —— 包归属与依赖边界
-- [人设 Persona](docs/concepts/persona.md) —— 打包的系统 prompt、技能与设置
-- [系统 Prompt](docs/concepts/harness-channels.md) —— Slot 模型、persona、技能与 reminder 注入
+- [人设 Persona](docs/concepts/persona.md) —— 打包的系统 prompt、技能、agent 与设置
+- [系统 Prompt](docs/concepts/harness-channels.md) —— Slot 模型、persona、技能/agent 注入
 - [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
 - [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
 - [Inspector](docs/packages/2-feature/inspector.md) —— 本地 Web UI，用于转录回放与调试

@@ -59,8 +59,10 @@ slot 4   environment     cwd, git, date, platform, model — volatile,
 ```
 
 Slot constants live in `internal/core/section.go`; the default applier
-and renderers live in `internal/core/system/catalog.go`. Skills and memory are
-intentionally **not** slots — they ride on the reminder channel instead.
+and renderers live in `internal/core/system/catalog.go`. Skills, memory,
+and the agent directory are intentionally **not** slots — they ride on
+the reminder channel (skills, memory) or on tool schemas (agent
+directory) instead.
 
 See [`packages/core.md`](../packages/3-core/core.md) for the `Section` and
 `System` types.
@@ -125,8 +127,9 @@ framing, mirroring how the skills directory self-introduces.
 `reminder.WrapMemory` owns this shape.
 
 **Subagent memory is mode-dependent.** Every worker receives the skills
-directory. Edit-capable workers also receive project memory so changes follow
-project conventions; read-only workers and all workers omit user memory. See
+directory when its tool set includes `Skill`. Edit-capable workers also receive
+project memory so changes follow project conventions; read-only workers and all
+workers omit user memory. See
 `internal/subagent/executor.go` (`collectSubagentReminders`).
 
 ## Compaction

@@ -2,7 +2,7 @@
 
 ## Overview
 
-`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Use it with the implicit default `subagent` when a task requires reading, searching, and cross-referencing multiple files before answering.
+`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Omit the Agent tool's `name` field to use the implicit default agent when a task requires reading, searching, and cross-referencing multiple files before answering.
 
 This feature exists to document the contract that was previously split across the general agent docs, non-mutating mode docs, and subagent notes.
 
@@ -10,10 +10,10 @@ This feature exists to document the contract that was previously split across th
 
 | Property | Value |
 |----------|-------|
-| Agent type | implicit default `subagent` |
+| Agent selection | omit `name` for the implicit default |
 | Permission mode | `explore` |
 | Tools | Read, Bash (read-only commands), WebFetch, WebSearch, Skill, AskUserQuestion |
-| Max steps | 500 |
+| Max steps | 500 minimum |
 | Execution style | Foreground in explore mode |
 
 **Use `mode=explore` when:**
@@ -36,7 +36,7 @@ This feature exists to document the contract that was previously split across th
 
 ## Relationship To Other Features
 
-- [Subagent package](../packages/2-feature/subagent.md) documents the implicit worker and its runtime modes.
+- [Writing a Subagent](writing-a-subagent.md) covers the generic agent system and custom agent format.
 - `explore` is the investigative permission boundary used by subagents.
 
 ## Automated Tests

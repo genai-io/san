@@ -1,0 +1,139 @@
+package subagent
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func writeAgentFile(t *testing.T, dir, name, frontmatter string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\n" + frontmatter + "\n---\n\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadCustomAgentsProjectOverridesClaudeCompat(t *testing.T) {
+	SetDefaultRegistry(NewRegistry())
+	t.Cleanup(ResetDefaultRegistry)
+
+	cwd := t.TempDir()
+	writeAgentFile(t, filepath.Join(cwd, ".san", "agents"), "reviewer",
+		"name: reviewer\ndescription: san project reviewer")
+	writeAgentFile(t, filepath.Join(cwd, ".claude", "agents"), "reviewer",
+		"name: reviewer\ndescription: claude compat reviewer")
+
+	LoadCustomAgents(cwd)
+
+	config, ok := Default().Get("reviewer")
+	if !ok {
+		t.Fatal("reviewer not registered")
+	}
+	if config.Description != "san project reviewer" {
+		t.Fatalf("description = %q, want the .san definition to win", config.Description)
+	}
+}
+
+func TestParseAgentFileTrimsFrontmatterName(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "trimmed", "name: '  reviewer  '\ndescription: trims names")
+
+	config, err := parseAgentFile(filepath.Join(dir, "trimmed.md"))
+	if err != nil {
+		t.Fatalf("parseAgentFile: %v", err)
+	}
+	if config.Name != "reviewer" {
+		t.Fatalf("name = %q, want reviewer", config.Name)
+	}
+}
+
+func TestPluginAgentSourceTracksScope(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "reviewer", "name: reviewer\ndescription: plugin reviewer")
+
+	registry := NewRegistry()
+	loadCustomAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", IsProject: false}}
+	})
+	config, ok := registry.Get("example:reviewer")
+	if !ok || config.Source != "user-plugin" {
+		t.Fatalf("user plugin config = %#v, %v; want user-plugin source", config, ok)
+	}
+
+	registry = NewRegistry()
+	loadCustomAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", IsProject: true}}
+	})
+	config, ok = registry.Get("example:reviewer")
+	if !ok || config.Source != "project-plugin" {
+		t.Fatalf("project plugin config = %#v, %v; want project-plugin source", config, ok)
+	}
+}
+
+func TestPluginAgentCannotEscapeContributingNamespace(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "reviewer", "name: other:reviewer\ndescription: plugin reviewer")
+
+	registry := NewRegistry()
+	loadCustomAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", IsProject: true}}
+	})
+	if _, ok := registry.Get("other:reviewer"); ok {
+		t.Fatal("plugin agent escaped its contributing namespace")
+	}
+	if _, ok := registry.Get("example:reviewer"); !ok {
+		t.Fatal("plugin agent was not forced into its contributing namespace")
+	}
+}
+
+func TestParseAgentFileAcceptsFrontmatterAliases(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "test-runner",
+		"name: test-runner\ndescription: runs tests\nallowed-tools: [Bash, Read, Grep]\npermission-mode: bypass")
+
+	config, err := parseAgentFile(filepath.Join(dir, "test-runner.md"))
+	if err != nil {
+		t.Fatalf("parseAgentFile: %v", err)
+	}
+	if got := config.AllowTools.Names(); len(got) != 3 || got[0] != "Bash" {
+		t.Fatalf("allowed-tools alias not applied: %#v", got)
+	}
+	if config.PermissionMode != PermissionBypass {
+		t.Fatalf("permission-mode alias = %q, want bypass", config.PermissionMode)
+	}
+}
+
+func TestParseAgentFileAcceptsClaudeCodeToolsKey(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "cc-agent",
+		"name: cc-agent\ndescription: cc compat\ntools: Read, Grep")
+
+	config, err := parseAgentFile(filepath.Join(dir, "cc-agent.md"))
+	if err != nil {
+		t.Fatalf("parseAgentFile: %v", err)
+	}
+	if got := config.AllowTools.Names(); len(got) != 2 || got[0] != "Read" || got[1] != "Grep" {
+		t.Fatalf("tools alias not applied: %#v", got)
+	}
+}
+
+func TestParseAgentFileCanonicalKeysWinOverAliases(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "mixed",
+		"name: mixed\ndescription: both spellings\nallow_tools: [Read]\ntools: [Bash]\nmode: explore\npermission-mode: bypass")
+
+	config, err := parseAgentFile(filepath.Join(dir, "mixed.md"))
+	if err != nil {
+		t.Fatalf("parseAgentFile: %v", err)
+	}
+	if got := config.AllowTools.Names(); len(got) != 1 || got[0] != "Read" {
+		t.Fatalf("canonical allow_tools should win: %#v", got)
+	}
+	if config.PermissionMode != PermissionExplore {
+		t.Fatalf("canonical mode should win, got %q", config.PermissionMode)
+	}
+}

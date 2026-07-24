@@ -116,7 +116,8 @@ san --resume                     # pick a past session to resume
 
 # Subcommands (run `san <command> --help` for the full list)
 san inspector                    # session transcript viewer
-san agent run --prompt "..."        # run a headless subagent
+san agent run --prompt "..."                    # run the implicit default headless agent
+san agent run --name test-runner --prompt "..." # run an exact custom agent
 san plugin <list|install|enable|...>          # manage plugins
 san mcp <add|list|remove|...>                 # manage MCP servers
 ```
@@ -127,7 +128,7 @@ san mcp <add|list|remove|...>                 # manage MCP servers
 | Cycle thinking budget | `Ctrl+T` or `/think` (levels vary by provider) |
 | Toggle permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
 | Search / persona / memory | `/search` · `/persona` · `/memory` |
-| Skills / tools | `/skills` · `/tools` |
+| Skills / agents / tools | `/skills` · `/agents` · `/tools` |
 | Plugins / MCP / config | `/plugin` · `/mcp` · `/config` |
 | Session / loop / misc | `/fork` · `/compact` · `/loop` · `/glob` · `/init` · `/clear` |
 | All slash commands | `/help` |
@@ -176,6 +177,7 @@ settings.json     # Permissions, hooks, env, active persona
 skills.json       # Skill states
 personas/         # Persona bundles: system prompt parts, skills, settings
 skills/           # Custom skill definitions
+agents/           # Custom agent definitions
 commands/         # Custom slash commands
 plugins/          # Installed plugins
 projects/         # Session transcripts + indexes
@@ -188,6 +190,7 @@ settings.json       # Permissions, hooks, disabled tools
 mcp.json            # MCP server definitions (team shared)
 mcp.local.json      # MCP server definitions (personal, git-ignored)
 personas/           # Project-scoped persona bundles (override user-level)
+agents/*.md         # Subagent definitions
 skills/*/SKILL.md   # Skills
 commands/*.md       # Slash commands
 plugins/            # Project-level plugins
@@ -218,8 +221,8 @@ See full details: [docs/operations/benchmark.md](docs/operations/benchmark.md)
 - [Documentation Index](docs/index.md) — map of architecture, features, operations, and references
 - [Architecture](docs/concepts/architecture.md) — architecture entrypoint and reading order
 - [Package Map](docs/reference/package-map.md) — package ownership and dependency boundaries
-- [Personas](docs/concepts/persona.md) — bundled system prompt, skills, and settings
-- [System Prompt](docs/concepts/harness-channels.md) — slot model, persona, skill, and reminder injection
+- [Personas](docs/concepts/persona.md) — bundled system prompt, skills, agents, and settings
+- [System Prompt](docs/concepts/harness-channels.md) — Slot model, persona, skill/agent injection
 - [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
 - [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
 - [Inspector](docs/packages/2-feature/inspector.md) — local web UI for transcript replay and debugging

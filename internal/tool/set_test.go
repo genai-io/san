@@ -19,7 +19,14 @@ func TestSubagentsCannotUseTrackerTools(t *testing.T) {
 	agentAll := (&Set{IsAgent: true}).Tools()
 	for _, name := range trackerTools {
 		if schemasContain(agentAll, name) {
-			t.Errorf("subagent must not get %s", name)
+			t.Errorf("subagent (all tools) must not get %s", name)
+		}
+	}
+
+	agentAllow := (&Set{IsAgent: true, Allow: trackerTools}).Tools()
+	for _, name := range trackerTools {
+		if schemasContain(agentAllow, name) {
+			t.Errorf("subagent must not get %s even when it is allow-listed", name)
 		}
 	}
 }

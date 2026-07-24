@@ -1,5 +1,5 @@
 // Package plugin provides integration helpers for loading plugin components
-// into the skill, hooks, command, and MCP registries.
+// into the skill, agent, hooks, and MCP registries.
 package plugin
 
 import (
@@ -13,6 +13,11 @@ import (
 // GetPluginSkillPaths returns all skill directory paths from enabled plugins.
 func GetPluginSkillPaths() []PluginPath {
 	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Skills })
+}
+
+// GetPluginAgentPaths returns all agent file paths from enabled plugins.
+func GetPluginAgentPaths() []PluginPath {
+	return collectPluginPaths(func(p *Plugin) []string { return p.Components.Agents })
 }
 
 // GetPluginCommandPaths returns all command file paths from enabled plugins.

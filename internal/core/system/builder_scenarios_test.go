@@ -45,9 +45,10 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithSubagentIdentity(SubagentBrief{
-						AgentName:   "subagent",
-						Description: "General-purpose subagent for research and multi-step tasks.",
-						Mode:        "explore",
+						AgentName:       "subagent",
+						ImplicitDefault: true,
+						Description:     "General-purpose subagent for research and multi-step tasks.",
+						Mode:            "explore",
 					}),
 					WithEnvironment(subEnv),
 				}
@@ -59,9 +60,11 @@ func testScenarios() []scenario {
 			opts: func() []Option {
 				return []Option{
 					WithSubagentIdentity(SubagentBrief{
-						AgentName:   "subagent",
-						Description: "General-purpose subagent for research and execution.",
-						Mode:        "default",
+						AgentName:       "subagent",
+						ImplicitDefault: true,
+						Description:     "General-purpose subagent for research and execution.",
+						Mode:            "default",
+						CustomPrompt:    "Focus on minimal, surgical fixes.",
 					}),
 					WithEnvironment(subEnv),
 				}

@@ -1,12 +1,13 @@
 // Package plugin loads, installs, and enables plugin bundles that
-// contribute skills, slash commands, MCP servers, hooks, and env vars to the
-// host application.
+// contribute skills, subagent definitions, slash commands, MCP servers,
+// hooks, and env vars to the host application.
 //
-// The package exposes *Registry directly. Plugin's cross-domain outputs (skill
-// paths, command paths, MCP servers, hooks, and env vars) are consumed via the
-// package-level free functions in integration.go — each downstream consumer
-// pulls what it needs. There is no shared narrow surface for a producer-side
-// role interface.
+// The package exposes *Registry directly. Plugin's many cross-domain
+// outputs (agent paths, skill paths, command paths, MCP servers, hooks,
+// env vars) are consumed via the package-level free functions in
+// integration.go — each downstream consumer (skill / subagent / command
+// / mcp / setting) pulls what it needs. There is no shared narrow
+// surface for a producer-side role interface.
 package plugin
 
 import "context"

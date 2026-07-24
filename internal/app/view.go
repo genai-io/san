@@ -11,6 +11,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -266,6 +267,7 @@ func (m *model) renderTrackerList() string {
 		Blockers:     m.services.Tracker.OpenBlockers,
 		Executing:    m.executingTrackerItem,
 		Blink:        m.conv.Spinner.Frame(),
+		AgentColors:  m.agentColors(),
 	})
 }
 
@@ -349,12 +351,31 @@ func (m model) messageRenderParams() conv.RenderContext {
 		OutputTokens: m.env.OutputTokens,
 
 		// Decorations
+		AgentColors:  m.agentColors(),
 		TaskActivity: m.conv.TaskActivity,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 
 		// Modal interlock
 		InteractivePromptActive: m.conv.Modal.Question != nil && m.conv.Modal.Question.IsActive(),
 	}
+}
+
+func (m model) agentColors() map[string]string {
+	return buildAgentColors(m.services.Subagent.ListConfigs())
+}
+
+func buildAgentColors(configs []*subagent.AgentConfig) map[string]string {
+	if len(configs) == 0 {
+		return nil
+	}
+	colors := make(map[string]string, len(configs))
+	for _, cfg := range configs {
+		if cfg == nil || cfg.Color == "" {
+			continue
+		}
+		colors[strings.ToLower(cfg.Name)] = cfg.Color
+	}
+	return colors
 }
 
 func buildTaskOwnerMap(tasks []*todo.Item) map[string]string {

@@ -125,7 +125,7 @@ function permInputSummary(tool, input) {
     case "Skill":
       return input.skill ? "/" + input.skill : "";
     case "Agent":
-      return input.description ? "→ " + truncate(input.description, 64) : "";
+      return input.name ? "→ " + input.name : "";
     case "Glob":
     case "Grep":
       return input.pattern ? truncate(input.pattern, 48) : "";

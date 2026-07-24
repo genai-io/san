@@ -28,6 +28,20 @@ type Tool interface {
 	Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult
 }
 
+// AgentDirectoryAwareTool is an optional interface for a tool whose schema
+// embeds the available-agents directory supplied at build time. The Agent tool
+// implements it so its description follows the live agent catalog. Tools that
+// do not implement it are described solely by Schema. The name mirrors the
+// SchemaOptions.AgentDirectory it consumes, and the …AwareTool shape follows
+// the existing PermissionAwareTool / InteractiveTool optional interfaces.
+type AgentDirectoryAwareTool interface {
+	Tool
+
+	// SchemaWithAgentDirectory returns the schema with the given agent-directory
+	// body embedded in the description. An empty directory must match Schema.
+	SchemaWithAgentDirectory(agentDirectory string) core.ToolSchema
+}
+
 // PermissionAwareTool is a tool that requires user permission before execution
 type PermissionAwareTool interface {
 	Tool

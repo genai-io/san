@@ -56,6 +56,7 @@ type Model struct {
 	Secret   SecretPromptModel
 
 	// Self-contained selectors.
+	Agent     AgentSelector
 	Persona   PersonaSelector
 	Search    SearchSelector
 	Plugin    PluginSelector
@@ -108,6 +109,7 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
+	AgentRegistry   func() AgentRegistry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
 	MCPRegistry     *coremcp.Registry
@@ -132,6 +134,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 
 		Approval:  NewApproval(),
 		Secret:    NewSecretPrompt(),
+		Agent:     NewAgentSelector(deps.AgentRegistry),
 		Persona:   NewPersonaSelector(deps.PersonaRegistry, deps.Setting),
 		Search:    NewSearchSelector(deps.Setting),
 		Skill:     SkillState{Selector: NewSkillSelector(deps.SkillRegistry)},

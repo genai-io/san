@@ -175,26 +175,40 @@ func TestBuildScopeSubagent_OmitsMainOnlyGuidelines(t *testing.T) {
 func TestBuildSubagentIdentity_ReplacesDefault(t *testing.T) {
 	sys := Build(core.ScopeSubagent,
 		WithSubagentIdentity(SubagentBrief{
-			AgentName:   "subagent",
-			Description: "Reviews code changes for bugs.",
-			Mode:        "explore",
+			AgentName:    "custom-reviewer",
+			Description:  "Reviews code changes for bugs.",
+			Mode:         "explore",
+			CustomPrompt: "Use git diff to inspect changes.",
 		}),
 		WithEnvironment(Environment{Cwd: "/tmp/test"}),
 	)
 	prompt := sys.Prompt()
 
-	if !strings.Contains(prompt, "You are a subagent") {
-		t.Error("subagent identity should announce the worker role")
+	if !strings.Contains(prompt, "You are a custom-reviewer subagent") {
+		t.Error("subagent identity should announce agent name")
 	}
 	if !strings.Contains(prompt, `<identity mode="explore">`) {
 		t.Error("identity tag should carry mode attribute")
 	}
-	if !strings.Contains(prompt, "Role: Reviews code changes for bugs.") {
-		t.Error("subagent identity should include its fixed role description")
+	if !strings.Contains(prompt, "Use git diff to inspect changes.") {
+		t.Error("custom prompt body should appear inside identity")
 	}
 	// Default identity should be replaced, not duplicated.
 	if strings.Contains(prompt, "You are a coding agent") {
 		t.Error("default identity should be replaced by subagent identity")
+	}
+}
+
+func TestBuildSubagentIdentityPreservesExplicitSubagentName(t *testing.T) {
+	sys := Build(core.ScopeSubagent,
+		WithSubagentIdentity(SubagentBrief{
+			AgentName:   "subagent",
+			Description: "A custom agent with a literal name.",
+		}),
+	)
+
+	if prompt := sys.Prompt(); !strings.Contains(prompt, "You are a subagent subagent") {
+		t.Fatalf("explicit custom name was treated as the implicit default:\n%s", prompt)
 	}
 }
 

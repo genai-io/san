@@ -1,8 +1,10 @@
 # Writing a Plugin
 
 A plugin is a single directory that bundles any combination of skills,
-slash commands, MCP servers, hooks, and env vars. Plugins are
-the distribution unit: one git repo, one tarball, one `pluginspec.json`.
+subagents, slash commands, MCP servers, hooks, and env vars. Plugins are
+the distribution unit: one git repo or tarball with a
+`.san-plugin/plugin.json` manifest (`.claude-plugin/plugin.json` is also
+accepted).
 
 For the system-level design see [`packages/plugin.md`](../packages/2-feature/plugin.md)
 and [`concepts/extension-model.md`](../concepts/extension-model.md).
@@ -11,9 +13,12 @@ and [`concepts/extension-model.md`](../concepts/extension-model.md).
 
 ```
 my-plugin/
-├── pluginspec.json          # required: manifest
+├── .san-plugin/
+│   └── plugin.json            # required manifest
 ├── skills/
 │   └── <name>/SKILL.md      # any number of skills
+├── agents/
+│   └── <name>.md            # any number of subagents
 ├── commands/
 │   └── <name>.md            # any number of slash commands
 ├── mcp/
@@ -24,10 +29,10 @@ my-plugin/
     └── .env                 # env vars to merge when plugin is enabled
 ```
 
-Everything except `pluginspec.json` is optional — a plugin can contribute
-as little as one skill.
+Everything except `.san-plugin/plugin.json` is optional — a plugin can
+contribute as little as one skill.
 
-## Manifest (`pluginspec.json`)
+## Manifest (`.san-plugin/plugin.json`)
 
 ```json
 {
@@ -76,11 +81,12 @@ disable, uninstall, switch scope, browse the marketplace.
 ## Enable State
 
 Plugins are enabled per scope. Disabling a plugin removes its
-contributions (skills / commands / MCP / hooks) without
+contributions (skills / agents / commands / MCP / hooks) without
 deleting files. Re-enable to restore.
 
-State is persisted in `~/.san/plugins.json` and
-`<project>/.san/plugins.json`.
+State is persisted in the scope's settings file under `enabledPlugins`:
+`~/.san/settings.json`, `<project>/.san/settings.json`, or
+`<project>/.san/settings.local.json`.
 
 ## Contributions Push, Not Pull
 
@@ -89,10 +95,11 @@ into the relevant feature package:
 
 | Contribution | Consumer |
 |---|---|
-| `skills/*/SKILL.md` | `internal/skill` (via `AddPluginSkills`) |
-| `commands/*.md` | `internal/command` (via `PluginCommandPaths` callback) |
-| `mcp/servers.json` | `internal/mcp` (merged into `mcp.json`) |
-| `hooks/hooks.json` | `internal/setting` (merged into `settings.json`'s `hooks`) |
+| `skills/*/SKILL.md` | `internal/skill` via `GetPluginSkillPaths` |
+| `agents/*.md` | `internal/subagent` via `GetPluginAgentPaths` |
+| `commands/*.md` | `internal/command` via `GetPluginCommandPaths` |
+| `.mcp.json` or manifest `mcpServers` | `internal/mcp` via `GetPluginMCPServers` |
+| `hooks/hooks.json` | `internal/setting` via `GetPluginHooks` |
 | `env/.env` | `internal/setting` (merged into runtime env) |
 
 This means the consumer packages do not import `plugin`; they receive
@@ -102,13 +109,14 @@ contributions as data.
 
 ```
 my-plugin/
-├── pluginspec.json
+├── .san-plugin/
+│   └── plugin.json
 └── skills/
     └── say-hello/
         └── SKILL.md
 ```
 
-`pluginspec.json`:
+`.san-plugin/plugin.json`:
 
 ```json
 {
@@ -169,8 +177,11 @@ the marketplace.
 
 ## Common Pitfalls
 
-- **Forgot `pluginspec.json`.** Plugin is silently skipped at load time.
-  Check `~/.san/logs/` for the warning.
+- **Forgot `.san-plugin/plugin.json`.** Validation rejects the plugin. A
+  `.claude-plugin/plugin.json` manifest is also accepted.
+- **Plugin Agent name omitted.** Agents are namespaced automatically: an Agent
+  named `reviewer` in plugin `github-flow` is selected as
+  `name: "github-flow:reviewer"`.
 - **Skill name collisions across plugins.** Disambiguate with `namespace:`
   in the SKILL.md frontmatter (e.g. `namespace: github`, then invoked as
   `/github:create-pr`).
@@ -183,6 +194,6 @@ the marketplace.
 
 - [`packages/plugin.md`](../packages/2-feature/plugin.md) — loader, installer,
   marketplace internals.
-- [`writing-a-skill.md`](writing-a-skill.md).
+- [`writing-a-skill.md`](writing-a-skill.md), [`writing-a-subagent.md`](writing-a-subagent.md).
 - [`concepts/extension-model.md`](../concepts/extension-model.md) — how
-  the three primitives relate.
+  the four primitives relate.

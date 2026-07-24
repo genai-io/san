@@ -44,7 +44,8 @@ type RenderContext struct {
 	InputTokens  int
 	OutputTokens int
 
-	// ── Decorations (activity / ownership maps) ─────────────────
+	// ── Decorations (color / activity maps) ─────────────────────
+	AgentColors  map[string]string
 	TaskActivity map[int][]string
 	TaskOwnerMap map[string]string
 
@@ -264,6 +265,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		InputTokens:       p.InputTokens,
 		OutputTokens:      p.OutputTokens,
 		Blink:             p.Blink,
+		AgentColors:       p.AgentColors,
 		SpinnerView:       p.SpinnerView,
 		TaskOwnerMap:      p.TaskOwnerMap,
 		MDRenderer:        p.MDRenderer,
@@ -327,6 +329,7 @@ func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool
 		TaskActivity:            p.TaskActivity,
 		SpinnerView:             p.SpinnerView,
 		Blink:                   p.Blink,
+		AgentColors:             p.AgentColors,
 		Width:                   p.Width,
 		SuppressAgentLabel:      suppressAgentLabel,
 	})

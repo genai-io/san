@@ -92,9 +92,9 @@ san --continue                       # resume the last session
 |---|---|---|
 | User | `~/.san/providers.json` | Provider connections, current model |
 | User | `~/.san/settings.json` | Permissions, hooks, env, persona, search provider |
-| User | `~/.san/skills/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
+| User | `~/.san/skills/` `~/.san/agents/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
 | Project | `<project>/.san/settings.json` | Per-project overrides |
-| Project | `<project>/.san/{skills,commands}/` | Project-scoped extensions |
+| Project | `<project>/.san/{skills,agents,commands}/` | Project-scoped extensions |
 | Project | `<project>/SAN.md` or `CLAUDE.md` | Auto-loaded into the system prompt |
 
 See [`reference/configuration.md`](../reference/configuration.md) for the
@@ -103,8 +103,8 @@ full schema.
 ## What to Read Next
 
 - [Writing a skill](writing-a-skill.md) — your first user extension.
-- [Using subagents](../packages/2-feature/subagent.md) — delegate isolated work through the Agent tool.
-- [Writing a plugin](writing-a-plugin.md) — bundle skills + commands.
+- [Writing a subagent](writing-a-subagent.md) — define a parallel agent.
+- [Writing a plugin](writing-a-plugin.md) — bundle skills + agents + commands.
 - [`docs/concepts/architecture.md`](../concepts/architecture.md) — how the system is built.
 - [`reference/slash-commands.md`](../reference/slash-commands.md) —
   every `/command`.

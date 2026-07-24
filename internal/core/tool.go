@@ -29,8 +29,8 @@ type ToolSchema struct {
 
 // Tools is a mutable, queryable collection of tools.
 //
-// Can change dynamically: hooks add/remove tools, MCP servers connect or
-// disconnect, and parent agents filter child tool sets.
+// Can change dynamically: hooks add/remove tools, agent definitions
+// restrict to read-only, parent agents filter child tool sets.
 type Tools interface {
 	Get(name string) Tool
 	All() []Tool

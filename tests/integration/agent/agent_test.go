@@ -52,21 +52,21 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 	}
 }
 
-func TestAgent_RejectsRemovedTypeSelection(t *testing.T) {
-	mp := &testutil.MockProvider{Responses: []llm.CompletionResponse{{Content: "ok", StopReason: "end_turn"}}}
+func TestAgent_UnknownAgent(t *testing.T) {
+	mp := &testutil.MockProvider{}
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 
-	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "do something"})
-	if err != nil {
-		t.Fatalf("sole default agent failed: %v", err)
-	}
-	if result.AgentName != "General" {
-		t.Fatalf("default agent name = %q, want General", result.AgentName)
+	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
+		Agent:  "NonExistent",
+		Prompt: "do something",
+	})
+	if err == nil {
+		t.Fatal("expected error for unknown agent")
 	}
 }
 
 func TestAgent_MaxStepsRespected(t *testing.T) {
-	// LLM always returns tool calls to force hitting max steps
+	// LLM always returns tool calls to force hitting max steps.
 	responses := make([]llm.CompletionResponse, 505)
 	for i := range responses {
 		responses[i] = llm.CompletionResponse{

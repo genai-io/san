@@ -483,6 +483,7 @@ func (s *PluginSelector) refreshInstalledPlugins() {
 			Enabled:     p.Enabled,
 			Path:        p.Path,
 			Skills:      len(p.Components.Skills),
+			Agents:      len(p.Components.Agents),
 			Commands:    len(p.Components.Commands),
 			MCP:         len(p.Components.MCP),
 			LSP:         len(p.Components.LSP),
