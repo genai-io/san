@@ -48,7 +48,7 @@ func ClearPluginAgentPaths() {
 	additionalAgentPaths = nil
 }
 
-// LoadCustomAgents loads custom agent definitions from standard locations.
+// LoadAgents loads agent definitions from standard locations.
 // Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
 // Priority when the same agent name appears in several locations:
 //  1. .san/agents/*.md (project level, preferred)
@@ -59,7 +59,7 @@ func ClearPluginAgentPaths() {
 //
 // Registry.Register overwrites by name, so sources load lowest-priority
 // first — the highest-priority definition lands last and wins.
-func LoadCustomAgents(cwd string) {
+func LoadAgents(cwd string) {
 	homeDir, _ := os.UserHomeDir()
 
 	priorityOrdered := []agentSearchPath{
@@ -132,7 +132,7 @@ func loadAgentFromFileWithNamespace(filePath string, namespace string) {
 		}
 
 		defaultRegistry.Register(config)
-		log.Logger().Info("Loaded custom agent",
+		log.Logger().Info("Loaded agent",
 			zap.String("name", config.Name),
 			zap.String("source", filePath))
 	}

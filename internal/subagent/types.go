@@ -297,7 +297,7 @@ func parseNamedToolRule(name string, value *yaml.Node) (ToolRule, bool, error) {
 	return ToolRule{}, false, fmt.Errorf("unsupported rule for tool %q", name)
 }
 
-// AgentConfig defines a user-managed custom agent.
+// AgentConfig defines an agent.
 type AgentConfig struct {
 	Name        string `yaml:"name" json:"name"`
 	Description string `yaml:"description" json:"description"`
@@ -363,8 +363,7 @@ type AgentResult struct {
 }
 
 const (
-	defaultAgentName        = "subagent"
-	defaultAgentDescription = "General-purpose subagent for research and implementation tasks."
+	baseAgentDescription = "Subagent for research and implementation tasks."
 
 	// defaultMaxSteps is both the default and minimum number of LLM inference steps.
 	defaultMaxSteps = 500

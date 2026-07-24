@@ -71,7 +71,6 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 		LLM:       fc.LLM,
 		System:    sys,
 		Tools:     restricted,
-		AgentType: "selflearn-review",
 		CWD:       fc.CWD,
 		MaxSteps:  forkMaxSteps,
 		OutboxBuf: -1, // no outbox: this fork is headless, driven via ThinkAct

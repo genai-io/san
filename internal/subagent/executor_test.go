@@ -317,6 +317,7 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	run := &preparedRun{
 		req: tool.AgentExecRequest{},
 		cfg: &runConfig{
+			config:      &AgentConfig{Name: "Scout"},
 			displayName: "Scout",
 			modelID:     "test-model",
 		},
@@ -444,7 +445,7 @@ Use conventional commits.
 		Description:  "Reviews code changes.",
 		SystemPrompt: "Prefer minimal, surgical fixes.",
 		Skills:       []string{"git:commit"},
-	}, PermissionDefault, false)
+	}, PermissionDefault)
 
 	if !strings.Contains(brief.CustomPrompt, "Prefer minimal, surgical fixes.") {
 		t.Fatal("expected custom system prompt content in brief")
@@ -465,7 +466,7 @@ func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
 			{Name: "Read"},
 			{Name: "Bash", Pattern: "git diff*"},
 		},
-	}, PermissionExplore, false)
+	}, PermissionExplore)
 
 	if !slices.Contains(brief.ToolConstraints, "Bash limited to commands classified as read-only") {
 		t.Fatalf("tool constraints = %#v, want read-only Bash policy", brief.ToolConstraints)
@@ -725,30 +726,30 @@ func TestNormalizePermissionModeDefaultsEmpty(t *testing.T) {
 	}
 }
 
-func TestResolveAgentConfigUsesDefaultAndCustomDefinitions(t *testing.T) {
+func TestResolveAgentConfigUsesUnnamedAndNamedDefinitions(t *testing.T) {
 	old := Default()
 	SetDefaultRegistry(NewRegistry())
 	t.Cleanup(func() { SetDefaultRegistry(old) })
 
-	custom := &AgentConfig{Name: "reviewer", Description: "Reviews changes", MaxSteps: 700}
-	reservedName := &AgentConfig{Name: defaultAgentName, Description: "User-defined subagent"}
-	Default().Register(custom)
-	Default().Register(reservedName)
+	named := &AgentConfig{Name: "reviewer", Description: "Reviews changes", MaxSteps: 700}
+	literalSubagent := &AgentConfig{Name: "subagent", Description: "User-defined subagent"}
+	Default().Register(named)
+	Default().Register(literalSubagent)
 
-	implicit, ok := resolveAgentConfig("")
-	if !ok || implicit.Name != defaultAgentName {
-		t.Fatalf("implicit config = %#v, %v; want default agent", implicit, ok)
+	unnamed, ok := resolveAgentConfig("")
+	if !ok || unnamed.Name != "" {
+		t.Fatalf("unnamed config = %#v, %v; want empty name", unnamed, ok)
 	}
 	resolved, ok := resolveAgentConfig("reviewer")
-	if !ok || resolved != custom {
-		t.Fatalf("custom config = %#v, %v; want registered config", resolved, ok)
+	if !ok || resolved != named {
+		t.Fatalf("named config = %#v, %v; want registered config", resolved, ok)
 	}
-	resolved, ok = resolveAgentConfig(defaultAgentName)
-	if !ok || resolved != reservedName {
-		t.Fatalf("explicit %q config = %#v, %v; want registered config", defaultAgentName, resolved, ok)
+	resolved, ok = resolveAgentConfig("subagent")
+	if !ok || resolved != literalSubagent {
+		t.Fatalf("explicit subagent config = %#v, %v; want registered config", resolved, ok)
 	}
 	if _, ok := resolveAgentConfig("missing"); ok {
-		t.Fatal("unknown custom agent should not resolve")
+		t.Fatal("unknown agent should not resolve")
 	}
 }
 
@@ -766,7 +767,7 @@ func TestResolveAgentConfigRejectsDisabledDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := resolveAgentConfig("reviewer"); ok {
-		t.Fatal("disabled custom agent should not resolve")
+		t.Fatal("disabled agent should not resolve")
 	}
 }
 
@@ -788,19 +789,19 @@ func TestExecutorUsesRegistryCapturedAtConstruction(t *testing.T) {
 	}
 }
 
-func TestRequestPermissionModeInheritanceAndCustomConfig(t *testing.T) {
+func TestRequestPermissionModeInheritanceAndNamedConfig(t *testing.T) {
 	executor := &Executor{}
 	executor.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
 
-	if got := executor.requestPermissionMode(defaultAgentConfig(), tool.AgentExecRequest{}); got != PermissionBypass {
-		t.Fatalf("default agent mode = %q, want inherited bypass", got)
+	if got := executor.requestPermissionMode(baseAgentConfig(), tool.AgentExecRequest{}); got != PermissionBypass {
+		t.Fatalf("unnamed agent mode = %q, want inherited bypass", got)
 	}
-	custom := &AgentConfig{Name: "reviewer", PermissionMode: PermissionExplore}
-	if got := executor.requestPermissionMode(custom, tool.AgentExecRequest{Agent: "reviewer"}); got != PermissionExplore {
-		t.Fatalf("custom agent mode = %q, want configured explore", got)
+	named := &AgentConfig{Name: "reviewer", PermissionMode: PermissionExplore}
+	if got := executor.requestPermissionMode(named, tool.AgentExecRequest{Agent: "reviewer"}); got != PermissionExplore {
+		t.Fatalf("named agent mode = %q, want configured explore", got)
 	}
-	if got := executor.requestPermissionMode(custom, tool.AgentExecRequest{Agent: "reviewer", Mode: "edit"}); got != PermissionAcceptEdits {
-		t.Fatalf("custom edit override = %q, want acceptEdits", got)
+	if got := executor.requestPermissionMode(named, tool.AgentExecRequest{Agent: "reviewer", Mode: "edit"}); got != PermissionAcceptEdits {
+		t.Fatalf("named edit override = %q, want acceptEdits", got)
 	}
 }
 
@@ -819,7 +820,7 @@ func TestParentPermissionModeGetterUsesLiveSessionSnapshot(t *testing.T) {
 	executor.SetParentPermissionMode(func() PermissionMode {
 		return PermissionModeFromOperationMode(permissions.Snapshot().Mode)
 	})
-	config := defaultAgentConfig()
+	config := baseAgentConfig()
 
 	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "default"}); got != PermissionDefault {
 		t.Fatalf("initial inherited mode = %q, want default", got)
@@ -842,16 +843,16 @@ func TestPermissionModeFromOperationMode(t *testing.T) {
 	}
 }
 
-func TestDefaultSubagentUses500Steps(t *testing.T) {
+func TestUnnamedAgentUses500Steps(t *testing.T) {
 	config, ok := resolveAgentConfig("")
 	if !ok {
-		t.Fatal("default subagent config not found")
+		t.Fatal("unnamed agent config not found")
 	}
-	if config.Name != "subagent" {
-		t.Fatalf("default subagent name = %q, want subagent", config.Name)
+	if config.Name != "" {
+		t.Fatalf("unnamed agent name = %q, want empty", config.Name)
 	}
 	if config.MaxSteps != defaultMaxSteps {
-		t.Fatalf("default subagent max steps = %d, want %d", config.MaxSteps, defaultMaxSteps)
+		t.Fatalf("unnamed agent max steps = %d, want %d", config.MaxSteps, defaultMaxSteps)
 	}
 	if configs := NewRegistry().ListConfigs(); len(configs) != 0 {
 		t.Fatalf("registry should have no built-in agent definitions, got %+v", configs)
@@ -913,7 +914,7 @@ func TestBuildUnfinishedAgentResultPreservesFailedRun(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
 		req:       tool.AgentExecRequest{},
-		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
+		cfg:       &runConfig{config: &AgentConfig{Name: "Scout"}, displayName: "Scout", modelID: "test-model"},
 		startedAt: time.Now().Add(-time.Second),
 	}
 
@@ -947,7 +948,7 @@ func TestBuildUnfinishedAgentResultRejectsCompletedRun(t *testing.T) {
 	executor := &Executor{}
 	run := &preparedRun{
 		req:       tool.AgentExecRequest{},
-		cfg:       &runConfig{displayName: "Scout", modelID: "test-model"},
+		cfg:       &runConfig{config: &AgentConfig{Name: "Scout"}, displayName: "Scout", modelID: "test-model"},
 		startedAt: time.Now(),
 	}
 

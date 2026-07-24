@@ -80,7 +80,7 @@ func TestBuiltinOrderCoversEveryRegisteredTool(t *testing.T) {
 func TestGetToolSchemasUsesDirectoryGetter(t *testing.T) {
 	schemas := tool.GetToolSchemasWith(tool.SchemaOptions{
 		AgentDirectory: func() string {
-			return "Available custom agents for the Agent tool:\n\n- explorer: Read-only research"
+			return "Available agents for the Agent tool:\n\n- explorer: Read-only research"
 		},
 	})
 

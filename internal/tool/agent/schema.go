@@ -28,7 +28,7 @@ func (t *AgentTool) SchemaWithAgentDirectory(agentDirectory string) core.ToolSch
 
 // agentSchema builds the Agent tool schema with the given agent-directory body
 // embedded directly in the description. The directory is rendered before the
-// usage notes so the LLM sees the available custom agent names right after the
+// usage notes so the LLM sees the available agent names right after the
 // opening line.
 func agentSchema(agentDirectory string) core.ToolSchema {
 	agentDirectory = strings.TrimSpace(agentDirectory)
@@ -36,11 +36,9 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	var sb strings.Builder
 	sb.WriteString("Launch a subagent for complex work that benefits from separate context or parallel execution.\n\n")
 	if agentDirectory != "" {
-		sb.WriteString("Optional custom subagent definitions:\n\n")
+		sb.WriteString("Available agent definitions:\n\n")
 		sb.WriteString(agentDirectory)
-		sb.WriteString("\n\nSet name only when selecting one of these custom agents; otherwise omit it to use the default agent.\n\n")
-	} else {
-		sb.WriteString("Omit name to use the default agent.\n\n")
+		sb.WriteString("\n\n")
 	}
 	sb.WriteString("Use the lightest option that fits: a single Bash or Read call → that tool directly; 3+ non-mutating searches with decisions between them → mode=explore; code changes or multi-file edits → mode=edit.\n\n")
 	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
@@ -68,7 +66,7 @@ var agentToolParameters = map[string]any{
 		},
 		"name": map[string]any{
 			"type":        "string",
-			"description": "Optional custom agent name from the available definitions. Omit to use the default agent.",
+			"description": "Optional agent name.",
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
@@ -80,7 +78,7 @@ var agentToolParameters = map[string]any{
 		},
 		"mode": map[string]any{
 			"type":        "string",
-			"description": "Permission mode for the spawned agent: explore = read-only; edit = can modify files; default = inherit the parent session for the default agent or use the custom agent's configured mode.",
+			"description": "Permission mode for the spawned agent: explore = read-only; edit = can modify files; default = use the named definition's configured mode, or inherit the parent session when name is empty.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
 	},

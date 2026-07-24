@@ -198,16 +198,15 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	}
 	config, ok := e.resolveRequestAgentConfig(req)
 	if !ok {
-		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
+		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 	}
 
 	identity := config.Name
 	ctx, cancel := context.WithCancel(context.Background())
-	displayName := e.displayNameFor(config, req)
 
 	agentTask := task.NewAgentTask(
 		generateShortID(),
-		displayName,
+		identity,
 		req.Description,
 		ctx,
 		cancel,
@@ -272,26 +271,17 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	}
 }
 
-func selectedAgentName(name string) string {
-	if strings.TrimSpace(name) == "" {
-		return defaultAgentName
-	}
-	return name
-}
-
-func defaultAgentConfig() *AgentConfig {
+func baseAgentConfig() *AgentConfig {
 	return &AgentConfig{
-		Name:           defaultAgentName,
-		Description:    defaultAgentDescription,
+		Description:    baseAgentDescription,
 		Model:          "inherit",
 		PermissionMode: PermissionDefault,
 		MaxSteps:       defaultMaxSteps,
 	}
 }
 
-// resolveAgentConfig uses one implicit subagent when no custom name is
-// requested. Named definitions remain available for user, project, and plugin
-// compatibility, but the registry carries no built-in agent catalog.
+// resolveAgentConfig returns the unnamed base configuration when no name is
+// requested. Named definitions are resolved through the registry.
 func resolveAgentConfig(name string) (*AgentConfig, bool) {
 	return resolveAgentConfigFrom(Default(), name)
 }
@@ -299,12 +289,12 @@ func resolveAgentConfig(name string) (*AgentConfig, bool) {
 func resolveAgentConfigFrom(registry *Registry, name string) (*AgentConfig, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return defaultAgentConfig(), true
+		return baseAgentConfig(), true
 	}
 	if registry == nil {
 		return nil, false
 	}
-	return registry.ResolveEnabledCustomAgent(name)
+	return registry.ResolveEnabledAgent(name)
 }
 
 func (e *Executor) resolveAgentConfig(name string) (*AgentConfig, bool) {
@@ -322,7 +312,7 @@ func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentC
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
 	config, ok := e.resolveRequestAgentConfig(req)
 	if !ok {
-		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
+		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 	}
 
 	displayName := e.displayNameFor(config, req)
@@ -348,7 +338,7 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		modelID:     modelID,
 		maxSteps:    maxSteps,
 		displayName: displayName,
-		brief:       e.buildBrief(config, permMode, strings.TrimSpace(req.Agent) == ""),
+		brief:       e.buildBrief(config, permMode),
 		permMode:    permMode,
 	}, nil
 }
@@ -358,7 +348,7 @@ func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID stri
 		return
 	}
 	e.hooks.ExecuteAsync(hook.SubagentStart, hook.HookInput{
-		AgentType:   selectedAgentName(req.Agent),
+		AgentName:   strings.TrimSpace(req.Agent),
 		AgentID:     agentHookID,
 		Description: req.Description,
 	})
@@ -431,7 +421,6 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		LLM:         llmClient,
 		System:      sys,
 		Tools:       coreTools,
-		AgentType:   rc.config.Name,
 		CompactFunc: subagentCompactFunc(llmClient),
 		CWD:         agentCwd,
 		MaxSteps:    rc.maxSteps,
@@ -533,7 +522,7 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 	}
 
 	e.hooks.ExecuteAsync(hook.SubagentStop, hook.HookInput{
-		AgentType:            selectedAgentName(req.Agent),
+		AgentName:            strings.TrimSpace(req.Agent),
 		AgentID:              agentHookID,
 		AgentTranscriptPath:  agentTranscriptPath,
 		LastAssistantMessage: resultContent,

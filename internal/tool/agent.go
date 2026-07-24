@@ -116,7 +116,7 @@ type AgentConfigInfo struct {
 	PermissionMode string
 	Tools          []string // nil = all tools
 	SourceFile     string
-	// Source indicates where the custom agent definition came from:
+	// Source indicates where the agent definition came from:
 	// "user", "project", or a plugin scope. Empty defaults to project.
 	Source string
 }

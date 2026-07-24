@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// Registry manages custom agent definitions.
+// Registry manages agent definitions.
 type Registry struct {
 	mu           sync.RWMutex
 	agents       map[string]*AgentConfig
@@ -21,7 +21,7 @@ func NewRegistry() *Registry {
 	return &Registry{agents: make(map[string]*AgentConfig)}
 }
 
-// defaultRegistry is the package-level custom Agent registry.
+// defaultRegistry is the package-level agent registry.
 // Layer-two initialization replaces it atomically when loading definitions.
 var defaultRegistry = NewRegistry()
 
@@ -44,8 +44,8 @@ func (r *Registry) Get(name string) (*AgentConfig, bool) {
 	return config, ok
 }
 
-// ResolveEnabledCustomAgent returns an enabled custom Agent configuration by exact name.
-func (r *Registry) ResolveEnabledCustomAgent(name string) (*AgentConfig, bool) {
+// ResolveEnabledAgent returns an enabled agent configuration by exact name.
+func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -232,7 +232,7 @@ func (r *Registry) GetAgentsSection() string {
 	})
 
 	var sb strings.Builder
-	sb.WriteString("Available custom agents for the Agent tool:\n\n")
+	sb.WriteString("Available agents for the Agent tool:\n\n")
 	for i, e := range entries {
 		sb.WriteString("- " + e.name + ": " + e.desc)
 		if e.whenToUse != "" {

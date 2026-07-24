@@ -66,7 +66,7 @@ type HookInput struct {
 
 	// Agent events
 	AgentID             string `json:"agent_id,omitempty"`
-	AgentType           string `json:"agent_type,omitempty"`
+	AgentName           string `json:"agent_name,omitempty"`
 	Description         string `json:"description,omitempty"`
 	AgentTranscriptPath string `json:"agent_transcript_path,omitempty"`
 	StopHookActive      *bool  `json:"stop_hook_active,omitempty"`

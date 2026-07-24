@@ -31,7 +31,7 @@ func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []st
 // constraints) plus the AGENT.md body and any preloaded skills, all of which
 // land in the subagent's identity slot — there is no separate "assignment"
 // section anymore.
-func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode, implicitDefault bool) system.SubagentBrief {
+func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) system.SubagentBrief {
 	custom := strings.TrimSpace(config.GetSystemPrompt())
 
 	// Preloaded skills are static configuration on AgentConfig.Skills. We
@@ -55,7 +55,6 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode, impl
 
 	return system.SubagentBrief{
 		AgentName:       config.Name,
-		ImplicitDefault: implicitDefault,
 		Description:     config.Description,
 		Mode:            string(permMode),
 		ToolConstraints: effectiveToolConstraints(config, permMode),
@@ -154,10 +153,7 @@ func formatAgentActivity(params map[string]any) string {
 		}
 	}
 
-	if agentName == "" {
-		agentName = defaultAgentName
-	}
-	agentName = displayAgentName(agentName, PermissionMode(mode), strings.TrimSpace(requestedName) == "")
+	agentName = displayAgentName(agentName, PermissionMode(mode))
 	if desc == "" {
 		return fmt.Sprintf("Agent - %s", agentName)
 	}
@@ -165,13 +161,13 @@ func formatAgentActivity(params map[string]any) string {
 }
 
 func (e *Executor) displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
-	return displayAgentName(config.Name, e.requestPermissionMode(config, req), strings.TrimSpace(req.Agent) == "")
+	return displayAgentName(config.Name, e.requestPermissionMode(config, req))
 }
 
 func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
 	// Explicit explore is a read-only ceiling; edit preserves the accept-edits
-	// policy. Default inherits the parent session for the implicit agent, while
-	// custom definitions retain their configured policy.
+	// policy. An unnamed definition snapshots the parent session, while a named
+	// definition retains its configured policy.
 	switch strings.TrimSpace(req.Mode) {
 	case "explore":
 		return PermissionExplore
@@ -187,8 +183,8 @@ func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExec
 	}
 }
 
-func displayAgentName(name string, mode PermissionMode, implicitDefault bool) string {
-	if implicitDefault {
+func displayAgentName(name string, mode PermissionMode) string {
+	if strings.TrimSpace(name) == "" {
 		switch NormalizePermissionMode(string(mode)) {
 		case PermissionExplore, PermissionDontAsk:
 			return "Explorer"

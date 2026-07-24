@@ -12,8 +12,7 @@ import (
 // It implements the BackgroundTask interface
 type AgentTask struct {
 	ID          string     // Unique task ID
-	AgentType   string     // Agent type/config name (Explore, Plan, etc.)
-	AgentName   string     // Name of the agent type (Explore, Plan, etc.)
+	AgentName   string     // Exact optional agent name
 	Description string     // Brief description of the task
 	Status      TaskStatus // Current status
 	StartTime   time.Time  // When the task started
@@ -61,11 +60,11 @@ func NewAgentTask(id, agentName, description string, ctx context.Context, cancel
 }
 
 // SetIdentity stores stable agent identity metadata for continuation.
-func (t *AgentTask) SetIdentity(agentType, sessionID string) {
+func (t *AgentTask) SetIdentity(agentName, sessionID string) {
 	t.mu.Lock()
 	changed := false
-	if agentType != "" {
-		t.AgentType = agentType
+	if t.AgentName != agentName {
+		t.AgentName = agentName
 		changed = true
 	}
 	if sessionID != "" {
@@ -79,7 +78,7 @@ func (t *AgentTask) SetIdentity(agentType, sessionID string) {
 		appendOutputFile(outputFile, outputRecord{
 			Event: "agent.identity",
 			Metadata: map[string]any{
-				"agent_type": agentType,
+				"agent_name": agentName,
 				"agent_id":   sessionID,
 			},
 		})
@@ -243,7 +242,6 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		Error:          t.Error,
 		Output:         t.output.String(),
 		OutputFile:     t.OutputFile,
-		AgentType:      t.AgentType,
 		AgentName:      t.AgentName,
 		AgentSessionID: t.SessionID,
 		StepCount:      t.StepCount,

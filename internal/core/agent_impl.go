@@ -17,7 +17,6 @@ import (
 // agent is the default Agent implementation.
 type agent struct {
 	id                string
-	agentType         string
 	system            System
 	tools             Tools
 	compactFunc       func(ctx context.Context, msgs []Message) (string, error)

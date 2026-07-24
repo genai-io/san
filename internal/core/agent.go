@@ -109,7 +109,6 @@ type Config struct {
 	LLM                     LLM                                                       // required: inference backend
 	System                  System                                                    // required: system prompt layers
 	Tools                   Tools                                                     // required: available tools (wrap with tool.WithPermission for permission)
-	AgentType               string                                                    // optional: agent type identifier for hook events
 	CompactFunc             func(ctx context.Context, msgs []Message) (string, error) // optional: summarize messages for compaction
 	CWD                     string
 	MaxSteps                int           // max LLM inference steps per turn, 0 = unlimited
@@ -161,7 +160,6 @@ func NewAgent(cfg Config) Agent {
 
 	a := &agent{
 		id:                cfg.ID,
-		agentType:         cfg.AgentType,
 		system:            cfg.System,
 		tools:             cfg.Tools,
 		compactFunc:       cfg.CompactFunc,

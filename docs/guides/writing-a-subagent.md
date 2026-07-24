@@ -1,6 +1,6 @@
 # Writing a Subagent
 
-A subagent is a markdown-defined **agent type** — a system prompt + tool
+A subagent definition is a markdown-defined system prompt + tool
 subset + permission mode that the foreground agent can spawn via the
 `Agent` tool. Foreground subagents return a tool result; background ones notify
 the main conversation when done.
@@ -44,7 +44,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 
 | Field | Required | Purpose |
 |---|---|---|
-| `name` | yes | Subagent type identifier; used in the `Agent` tool's `subagent_type` field. |
+| `name` | yes | Agent definition name; pass it in the `Agent` tool's optional `name` field. |
 | `description` | yes | Helps the foreground model decide when to spawn this agent. |
 | `allow_tools` | no | Allowed tools. Defaults to all; aliases: `allowed-tools`, `tools`. |
 | `deny_tools` | no | Removes tools or `Tool(pattern)` rules. |
@@ -106,7 +106,7 @@ The foreground agent calls the `Agent` tool with:
 
 ```json
 {
-  "subagent_type": "test-runner",
+  "name": "test-runner",
   "description": "Run the unit tests for the auth package",
   "prompt": "Focus on internal/auth/*_test.go and report failures."
 }
