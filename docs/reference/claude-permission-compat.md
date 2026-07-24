@@ -216,6 +216,7 @@ max-steps: 500
 color: blue                  # UI display color
 when-to-use: "When to use this agent"
 skills: []                   # Additional skills to load
+mcp-servers: []              # MCP servers for this agent
 ---
 
 System prompt content goes here in the markdown body...

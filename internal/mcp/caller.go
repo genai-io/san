@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // Caller adapts the mcp.Tools surface into the (content, isError, err)
@@ -46,27 +47,31 @@ func ExtractContent(contents []ToolResultContent) string {
 	return strings.Join(parts, "\n")
 }
 
-// ConnectServers connects to a specific set of MCP servers via the
-// supplied Servers handle. Returns a cleanup function that disconnects
-// them.
-func ConnectServers(ctx context.Context, servers Servers, serverNames []string) (cleanup func(), errs []error) {
-	var connected []string
+// ConnectServers acquires a connection lease for each configured MCP server.
+// Concurrent custom-Agent runs share one connection; cleanup releases only this
+// invocation's leases, and a connection that existed beforehand stays connected.
+func ConnectServers(ctx context.Context, servers *Registry, serverNames []string) (cleanup func(), errs []error) {
+	type lease struct {
+		name       string
+		generation uint64
+	}
+	var acquired []lease
 	for _, name := range serverNames {
-		if _, ok := servers.GetConfig(name); !ok {
-			errs = append(errs, fmt.Errorf("MCP server not configured: %s", name))
-			continue
-		}
-		if err := servers.Connect(ctx, name); err != nil {
+		generation, err := servers.acquireServer(ctx, name)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("MCP server %s: %w", name, err))
 			continue
 		}
-		connected = append(connected, name)
+		acquired = append(acquired, lease{name: name, generation: generation})
 	}
 
+	var once sync.Once
 	cleanup = func() {
-		for _, name := range connected {
-			servers.Disconnect(name)
-		}
+		once.Do(func() {
+			for _, lease := range acquired {
+				servers.releaseServer(lease.name, lease.generation)
+			}
+		})
 	}
 	return cleanup, errs
 }

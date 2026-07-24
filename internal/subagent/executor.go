@@ -11,12 +11,14 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"go.uber.org/zap"
 )
 
 // ProviderResolver turns a vendor name into a live provider so a subagent can
@@ -43,6 +45,7 @@ type Executor struct {
 	projectInstructions  string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
 	skillsPrompt         string               // available skills section for capable subagents
 	mcpTools             mcp.Tools            // tool schemas + execution
+	mcpServers           *mcp.Registry        // connect/disconnect for per-subagent server sets
 }
 
 type SubagentSessionStore interface {
@@ -135,9 +138,12 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 	e.skillsPrompt = skillsPrompt
 }
 
-// SetMCP wires the parent's MCP tools for the subagent.
-func (e *Executor) SetMCP(tools mcp.Tools) {
+// SetMCP wires the parent's MCP access for the subagent. Tool schemas
+// and execution flow through tools; connection lifecycle for any
+// per-subagent server set flows through servers.
+func (e *Executor) SetMCP(tools mcp.Tools, servers *mcp.Registry) {
 	e.mcpTools = tools
+	e.mcpServers = servers
 }
 
 // SetSessionStore configures session persistence for subagent conversations.
@@ -362,6 +368,16 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	rc := run.cfg
 	agentCwd := run.cwd
 	cleanup := func() {}
+
+	if len(rc.config.McpServers) > 0 && e.mcpServers != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpServers, rc.config.McpServers)
+		if mcpCleanup != nil {
+			cleanup = mcpCleanup
+		}
+		for _, err := range errs {
+			log.Logger().Warn("Agent MCP server connection failed", zap.Error(err))
+		}
+	}
 
 	// Subagent system prompt deliberately omits skills and memory — those
 	// ride on the first user message as <system-reminder> blocks built by

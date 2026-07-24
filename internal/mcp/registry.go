@@ -32,18 +32,25 @@ type PluginServer struct {
 
 // Registry manages multiple MCP server connections
 type Registry struct {
-	mu         sync.RWMutex
-	clients    map[string]*Client
-	configs    map[string]ServerConfig
-	disabled   map[string]bool   // servers explicitly disabled by the user
-	connecting map[string]bool   // servers currently being connected (async)
-	connectErr map[string]string // last connection error for servers without a client
-	loader     *ConfigLoader
-	cwd        string
+	mu           sync.RWMutex
+	connectionMu sync.Mutex
+	clients      map[string]*Client
+	configs      map[string]ServerConfig
+	disabled     map[string]bool           // servers explicitly disabled by the user
+	connecting   map[string]bool           // servers currently being connected (async)
+	connectErr   map[string]string         // last connection error for servers without a client
+	leasing      map[string]map[uint64]int // active per-agent users grouped by connection generation
+	temporary    map[string]bool           // connections created solely for active leases
+	persistent   map[string]bool           // explicit connection intent, retained across reconnects
+	generation   map[string]uint64         // changes whenever a connection is replaced
+	loader       *ConfigLoader
+	cwd          string
 
 	// PluginServers returns MCP servers contributed by plugins. Injected by
 	// the app layer to avoid mcp importing plugin (same-layer dependency).
 	PluginServers func() []PluginServer
+
+	clientFactory func(ServerConfig) *Client // test seam; nil uses NewClient
 
 	// Callback when tool schemas change
 	onToolsChanged func()
@@ -60,6 +67,7 @@ type mcpState struct {
 // (reloadProjectServices) while DefaultRegistry() is read elsewhere.
 var (
 	registryMu      sync.RWMutex
+	registryAdoptMu sync.Mutex
 	defaultRegistry = newEmptyRegistry()
 )
 
@@ -79,22 +87,43 @@ func (r *Registry) adoptLiveClients(old *Registry) {
 		return
 	}
 
+	registryAdoptMu.Lock()
+	defer registryAdoptMu.Unlock()
+	old.connectionMu.Lock()
+	defer old.connectionMu.Unlock()
+	r.connectionMu.Lock()
+	defer r.connectionMu.Unlock()
+
 	old.mu.Lock()
 	adopted := make(map[string]*Client)
-	var stale []*Client
+	stale := make(map[string]*Client)
 	for name, client := range old.clients {
 		cfg, stillConfigured := r.configs[name]
+		if !old.persistent[name] {
+			continue
+		}
 		if stillConfigured && reflect.DeepEqual(cfg, old.configs[name]) && client.IsConnected() {
 			adopted[name] = client
 			continue
 		}
-		stale = append(stale, client)
+		stale[name] = client
 	}
-	old.clients = make(map[string]*Client)
+	for name, client := range adopted {
+		delete(old.clients, name)
+		delete(old.persistent, name)
+		client.SetOnToolsChanged(r.notifyToolsChanged)
+	}
+	for name := range stale {
+		delete(old.clients, name)
+		delete(old.persistent, name)
+	}
 	old.mu.Unlock()
 
 	r.mu.Lock()
 	maps.Copy(r.clients, adopted)
+	for name := range adopted {
+		r.persistent[name] = true
+	}
 	r.mu.Unlock()
 
 	if len(stale) > 0 {
@@ -113,6 +142,10 @@ func newEmptyRegistry() *Registry {
 		disabled:   make(map[string]bool),
 		connecting: make(map[string]bool),
 		connectErr: make(map[string]string),
+		leasing:    make(map[string]map[uint64]int),
+		temporary:  make(map[string]bool),
+		persistent: make(map[string]bool),
+		generation: make(map[string]uint64),
 	}
 }
 
@@ -125,6 +158,10 @@ func NewRegistryForTest(configs map[string]ServerConfig) *Registry {
 		disabled:   make(map[string]bool),
 		connecting: make(map[string]bool),
 		connectErr: make(map[string]string),
+		leasing:    make(map[string]map[uint64]int),
+		temporary:  make(map[string]bool),
+		persistent: make(map[string]bool),
+		generation: make(map[string]uint64),
 	}
 }
 
@@ -142,6 +179,10 @@ func NewRegistry(cwd string) (*Registry, error) {
 		disabled:   make(map[string]bool),
 		connecting: make(map[string]bool),
 		connectErr: make(map[string]string),
+		leasing:    make(map[string]map[uint64]int),
+		temporary:  make(map[string]bool),
+		persistent: make(map[string]bool),
+		generation: make(map[string]uint64),
 		loader:     loader,
 		cwd:        cwd,
 	}
@@ -160,18 +201,36 @@ func (r *Registry) Reload() error {
 	}
 	configs = r.mergePluginMCPConfigs(configs)
 
+	r.connectionMu.Lock()
+	var stale = make(map[string]*Client)
 	r.mu.Lock()
-	// Disconnect clients whose config was removed.
+	// Disconnect clients whose config was removed or changed. Active temporary
+	// lease-owned clients stay with their current registry until their owner
+	// releases them; reload must not invalidate an in-flight Agent run.
 	for name, client := range r.clients {
-		if _, ok := configs[name]; !ok {
-			_ = client.Disconnect()
-			delete(r.clients, name)
-			delete(r.connecting, name)
-			delete(r.connectErr, name)
+		config, ok := configs[name]
+		if !r.persistent[name] || ok && reflect.DeepEqual(config, r.configs[name]) {
+			continue
 		}
+		stale[name] = client
+		delete(r.clients, name)
+		delete(r.connecting, name)
+		delete(r.connectErr, name)
+		delete(r.leasing, name)
+		delete(r.temporary, name)
+		delete(r.persistent, name)
+		r.generation[name]++
 	}
 	r.configs = configs
 	r.mu.Unlock()
+	r.connectionMu.Unlock()
+
+	for name, client := range stale {
+		closeInBackground(name, client)
+	}
+	if len(stale) > 0 {
+		r.notifyToolsChanged()
+	}
 	return nil
 }
 
@@ -213,6 +272,8 @@ func (r *Registry) AddServer(name string, config ServerConfig, scope Scope) erro
 
 // RemoveServer removes a server configuration
 func (r *Registry) RemoveServer(name string) error {
+	r.connectionMu.Lock()
+	defer r.connectionMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -220,6 +281,7 @@ func (r *Registry) RemoveServer(name string) error {
 	if client, ok := r.clients[name]; ok {
 		_ = client.Disconnect()
 		delete(r.clients, name)
+		r.generation[name]++
 	}
 
 	// Remove from all configs
@@ -230,40 +292,136 @@ func (r *Registry) RemoveServer(name string) error {
 	delete(r.configs, name)
 	delete(r.connecting, name)
 	delete(r.connectErr, name)
+	delete(r.leasing, name)
+	delete(r.temporary, name)
+	delete(r.persistent, name)
 	return nil
 }
 
-// Connect connects to an MCP server
+// Connect connects to an MCP server and keeps the connection persistent until
+// an explicit disconnect, even if a custom Agent originally created it.
 func (r *Registry) Connect(ctx context.Context, name string) error {
+	r.connectionMu.Lock()
+	connected, err := r.connectLocked(ctx, name)
+	if err == nil {
+		r.mu.Lock()
+		r.persistent[name] = true
+		delete(r.temporary, name)
+		r.mu.Unlock()
+	}
+	r.connectionMu.Unlock()
+
+	if connected {
+		r.notifyToolsChanged()
+	}
+	return err
+}
+
+// connectLocked establishes one connection and reports whether it installed
+// the registry's current client. The caller must hold connectionMu so duplicate
+// transports cannot be created and ownership changes stay atomic.
+func (r *Registry) connectLocked(ctx context.Context, name string) (bool, error) {
 	r.mu.Lock()
 	config, ok := r.configs[name]
 	if !ok {
 		r.mu.Unlock()
-		return fmt.Errorf("server not found: %s", name)
+		return false, fmt.Errorf("server not found: %s", name)
 	}
-
-	// Already connected?
 	if client, ok := r.clients[name]; ok && client.IsConnected() {
 		r.mu.Unlock()
-		return nil
+		return false, nil
 	}
+	factory := r.clientFactory
 	r.mu.Unlock()
 
-	// Create and connect client
 	client := NewClient(config)
-	if err := client.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", name, err)
+	if factory != nil {
+		client = factory(config)
 	}
-
-	// Set up tools changed callback
+	if err := client.Connect(ctx); err != nil {
+		return false, fmt.Errorf("failed to connect to %s: %w", name, err)
+	}
 	client.SetOnToolsChanged(r.notifyToolsChanged)
 
 	r.mu.Lock()
 	r.clients[name] = client
+	if r.generation == nil {
+		r.generation = make(map[string]uint64)
+	}
+	r.generation[name]++
 	r.mu.Unlock()
+	return true, nil
+}
 
-	r.notifyToolsChanged()
-	return nil
+// acquireServer keeps a configured server connected for one custom-Agent run.
+// The first lease owns a newly-created temporary connection; later leases share
+// it. A connection that predated all leases remains persistent after release.
+func (r *Registry) acquireServer(ctx context.Context, name string) (uint64, error) {
+	r.connectionMu.Lock()
+	connected, err := r.connectLocked(ctx, name)
+	if err != nil {
+		r.connectionMu.Unlock()
+		return 0, err
+	}
+
+	r.mu.Lock()
+	if r.leasing == nil {
+		r.leasing = make(map[string]map[uint64]int)
+	}
+	generation := r.generation[name]
+	if r.leasing[name] == nil {
+		r.leasing[name] = make(map[uint64]int)
+	}
+	r.leasing[name][generation]++
+	if connected && !r.persistent[name] {
+		r.temporary[name] = true
+	}
+	r.mu.Unlock()
+	r.connectionMu.Unlock()
+
+	if connected {
+		r.notifyToolsChanged()
+	}
+	return generation, nil
+}
+
+// releaseServer drops one custom-Agent lease and disconnects only a temporary
+// connection whose final lease ended. A stale cleanup from an older connection
+// generation cannot affect a replacement connection with the same name.
+func (r *Registry) releaseServer(name string, generation uint64) {
+	r.connectionMu.Lock()
+
+	var client *Client
+
+	r.mu.Lock()
+	generationLeases := r.leasing[name]
+	if generationLeases == nil || generationLeases[generation] == 0 {
+		r.mu.Unlock()
+		r.connectionMu.Unlock()
+		return
+	}
+	if generationLeases[generation] > 1 {
+		generationLeases[generation]--
+		r.mu.Unlock()
+		r.connectionMu.Unlock()
+		return
+	}
+	delete(generationLeases, generation)
+	if len(generationLeases) == 0 {
+		delete(r.leasing, name)
+	}
+	if r.generation[name] == generation && r.temporary[name] && !r.persistent[name] {
+		client = r.clients[name]
+		delete(r.clients, name)
+		delete(r.temporary, name)
+	}
+	r.mu.Unlock()
+	r.connectionMu.Unlock()
+
+	if client != nil {
+		closeInBackground(name, client)
+		r.notifyToolsChanged()
+	}
 }
 
 // ConnectAll connects to all configured MCP servers.
@@ -296,12 +454,19 @@ func (r *Registry) ConnectAll(ctx context.Context) []error {
 // inline froze the UI for that whole time, and doing it under r.mu froze the
 // agent goroutine with it, since CallTool takes the read lock.
 func (r *Registry) Disconnect(name string) {
+	r.connectionMu.Lock()
+
 	r.mu.Lock()
 	client, ok := r.clients[name]
 	if ok {
 		delete(r.clients, name)
+		r.generation[name]++
 	}
+	delete(r.leasing, name)
+	delete(r.temporary, name)
+	delete(r.persistent, name)
 	r.mu.Unlock()
+	r.connectionMu.Unlock()
 	if !ok {
 		return
 	}
@@ -312,13 +477,25 @@ func (r *Registry) Disconnect(name string) {
 
 // DisconnectAll disconnects from all MCP servers
 func (r *Registry) DisconnectAll() {
+	r.connectionMu.Lock()
+
 	r.mu.Lock()
 	clients := r.clients
 	r.clients = make(map[string]*Client)
+	for name := range clients {
+		r.generation[name]++
+	}
+	r.leasing = make(map[string]map[uint64]int)
+	r.temporary = make(map[string]bool)
+	r.persistent = make(map[string]bool)
 	r.mu.Unlock()
+	r.connectionMu.Unlock()
 
 	for name, client := range clients {
 		closeInBackground(name, client)
+	}
+	if len(clients) > 0 {
+		r.notifyToolsChanged()
 	}
 }
 

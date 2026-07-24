@@ -654,7 +654,7 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
-	executor.SetMCP(m.services.MCP)
+	executor.SetMCP(m.services.MCP, m.services.MCP)
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }

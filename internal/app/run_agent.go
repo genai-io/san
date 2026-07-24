@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/mcp"
 	"github.com/genai-io/san/internal/plugin"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/subagent"
@@ -57,6 +58,9 @@ func RunAgent(opts AgentRunOptions) error {
 	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
 		return fmt.Errorf("failed to initialize subagent registry: %w", err)
 	}
+	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
+		return fmt.Errorf("failed to initialize MCP registry: %w", err)
+	}
 	fs.SetEnvProvider(plugin.PluginEnv)
 
 	// Run through the full subagent pipeline so headless invocations get the
@@ -66,6 +70,7 @@ func RunAgent(opts AgentRunOptions) error {
 	executor.SetResolver(llm.NewProviderPool(store))
 	executor.SetModelStore(store, resolved.ProviderName, resolved.AuthMethod)
 	executor.SetSkillsDirectory(skill.Default().PromptSection())
+	executor.SetMCP(mcp.DefaultRegistry(), mcp.DefaultRegistry())
 
 	name := opts.Name
 	if name == "" {
