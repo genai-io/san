@@ -93,7 +93,7 @@ func TestValidateCustomFormKeepsStoredAPIKey(t *testing.T) {
 	m := NewProviderSelector()
 	m.store, _ = llm.NewStore()
 	m.openCustomForm()
-	m.customFormInputs[customFormFieldBaseURL].SetValue("https://api.example.com/v1/")
+	m.customFormInputs[customFormFieldBaseURL].SetValue("https://api.example.com/v1//")
 
 	baseURL, apiKey, err := m.validateCustomForm()
 	if err != nil {
@@ -103,7 +103,7 @@ func TestValidateCustomFormKeepsStoredAPIKey(t *testing.T) {
 		t.Fatalf("empty key field should mean keep-stored, got %q", apiKey)
 	}
 	if baseURL != "https://api.example.com/v1" {
-		t.Fatalf("trailing slash should be trimmed, got %q", baseURL)
+		t.Fatalf("all trailing slashes should be trimmed, got %q", baseURL)
 	}
 }
 

@@ -96,7 +96,7 @@ func (s *ProviderSelector) focusCustomFormField(i int) {
 // validateCustomForm normalizes and validates the two fields. An empty API key
 // means "keep the stored one" and only fails when nothing is stored.
 func (s *ProviderSelector) validateCustomForm() (baseURL, apiKey string, err error) {
-	baseURL = strings.TrimSuffix(strings.TrimSpace(s.customFormInputs[customFormFieldBaseURL].Value()), "/")
+	baseURL = strings.TrimRight(strings.TrimSpace(s.customFormInputs[customFormFieldBaseURL].Value()), "/")
 	if baseURL == "" {
 		return "", "", fmt.Errorf("base URL is required")
 	}
