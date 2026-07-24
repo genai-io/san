@@ -752,6 +752,24 @@ func TestResolveAgentConfigUsesDefaultAndCustomDefinitions(t *testing.T) {
 	}
 }
 
+func TestResolveAgentConfigRejectsDisabledDefinition(t *testing.T) {
+	old := Default()
+	SetDefaultRegistry(NewRegistry())
+	t.Cleanup(func() { SetDefaultRegistry(old) })
+
+	registry := Default()
+	registry.Register(&AgentConfig{Name: "reviewer"})
+	if err := registry.InitStores(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetEnabled("reviewer", false, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := resolveAgentConfig("reviewer"); ok {
+		t.Fatal("disabled custom agent should not resolve")
+	}
+}
+
 func TestExecutorUsesRegistryCapturedAtConstruction(t *testing.T) {
 	old := Default()
 	projectA := NewRegistry()

@@ -78,6 +78,17 @@ func (m *model) applyPersonaSkills() {
 	m.services.Skill.ClearPersona()
 }
 
+// applyPersonaAgents restricts the visible subagents to the active persona's
+// `agents` allow-list (empty/none = all visible), or clears the restriction
+// when no persona is selected. In-memory, mirroring applyPersonaSkills.
+func (m *model) applyPersonaAgents() {
+	if p := m.activePersona(); p != nil && p.Settings != nil && len(p.Settings.Agents) > 0 {
+		m.services.Subagent.LoadPersona(p.Settings.Agents)
+		return
+	}
+	m.services.Subagent.ClearPersona()
+}
+
 func (m *model) buildAgentParams() agent.BuildParams {
 	schemas := m.services.MCP.GetToolSchemas()
 	mcpTools := mcp.AsCoreTools(schemas, mcp.NewCaller(m.services.MCP))
@@ -132,7 +143,8 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		CWD:     m.env.CWD,
 		CWDFunc: func() string { return m.env.CWD },
 
-		Persona: m.personaPrompt(),
+		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
+		Persona:        m.personaPrompt(),
 
 		DisabledTools: m.services.Setting.DisabledTools(),
 		MCPTools:      mcpTools,

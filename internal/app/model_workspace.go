@@ -38,6 +38,9 @@ func (m *model) ReloadProjectContext(cwd string) {
 	// feature services that depend on them and re-point at them.
 	discoverPlugins(cwd)
 	m.reloadProjectServices(cwd)
+	m.applyPersonaSkills()
+	m.applyPersonaAgents()
+	m.services.Reminder.RequeueSystemReminders()
 	m.syncSettingsToHookEngine()
 }
 
@@ -47,6 +50,7 @@ func (m *model) reloadPersonasIfChanged(filePath string) {
 	}
 	m.services.Persona.Reload()
 	m.applyPersonaSkills()
+	m.applyPersonaAgents()
 	m.ReconfigureAgentTool()
 }
 

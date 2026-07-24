@@ -162,10 +162,10 @@ Notes:
 
 ## 4. settings.json: the config overlay
 
-A persona's `settings.json` is a **`setting.Data` config overlay plus a
-persona-scoped skills-state map**. The overlay is applied as the **highest
-file-level layer** through the existing merger; the skills selection applies
-in-memory while the persona is active.
+A persona's `settings.json` is a **`setting.Data` config overlay plus two
+persona-scoped selections — a skills-state map and a subagent allow-list**. The
+overlay is applied as the **highest file-level layer** through the existing
+merger; the two selections apply in-memory while the persona is active.
 
 ```json
 {
@@ -176,6 +176,7 @@ in-memory while the persona is active.
     "git:commit": "enable",
     "deep-research": "disable"
   },
+  "agents": ["test-runner", "project-reviewer"],
   "disabledTools": { "WebSearch": false, "SomeHeavyTool": true },
   "permissions": {
     "defaultMode": "acceptEdits",
@@ -201,6 +202,7 @@ The load order (lowest → highest, see `internal/setting/settings.go`):
 | Field | Merge | What a persona can do |
 |---|---|---|
 | `skills` | per-key override | **full override**: listed skills take the persona's state; unlisted keep the lower layer |
+| `agents` | allow-list (replace) | **restrict visibility**: when non-empty, only the listed subagents are spawnable/shown; empty/omitted = all visible |
 | `disabledTools` | per-key override (`mergeMaps`) | **full override**: can disable, and can re-enable a tool a lower layer disabled (`false`) |
 | `permissions.defaultMode` | `coalesce` | persona wins if set |
 | `permissions.allow/deny/ask` | union (`mergeStringSlices`) | **add only** — can tighten with new `deny`; **cannot remove** a lower-layer rule |
@@ -210,9 +212,11 @@ The one asymmetry is deliberate and safety-biased: **a persona can tighten
 permissions but not loosen them.** It cannot silently remove a project-level
 `deny`. (`managed-settings.json` remains above personas and is never overridable.)
 
-`skills` is a **persona-scoped selection applied in-memory** while the persona
-is active. It is not part of the layered config merge and is never written to
-`skills.json`.
+`skills` and `agents` are **persona-scoped selections applied in-memory** while
+the persona is active — they are not part of the layered config merge and are
+never written to `skills.json` or the agent enable/disable stores. The `agents`
+allow-list composes with those stores: an agent must be on the allow-list *and*
+not disabled to be visible.
 
 The overlay also ignores any `persona` selector inside a persona's own
 `settings.json` — a persona cannot re-select the active persona, which would be
@@ -244,6 +248,7 @@ rebuild.
 |---|---|---|
 | system prompt | immediate | `SwapPersona(sys)` → replaces parts by name |
 | skills (in-memory) | immediate | registry overlay + `RequeueSystemReminders()` |
+| subagent allow-list | enforcement immediate; prompt listing next rebuild | registry allow-list gates spawns live; the agents directory re-renders on the next `buildAgent` |
 | tools / permissions | next agent rebuild | recomputed overlay read at the next `buildAgent` |
 
 The UI tells the user which parts went live and which await a rebuild, so a
@@ -302,7 +307,7 @@ plain alias of `/persona`.
 | D3 | Persona skill state | in-memory, persona-lifetime (not `skills.json`) | clean switch; no pollution of global toggles |
 | D4 | System prompt parts | 4: `identity` / `behavior` / `rules` / `environment` | first-principles who/how/what-rules/where |
 | D5 | Part override | every prose part replaceable by file; missing file → default | uniform, no special cases |
-| D6 | `settings.json` | reuse `setting.Data` overlay + `skills` map | free reuse of `merger.go`; skill selection stays in-memory |
+| D6 | `settings.json` | reuse `setting.Data` overlay + `skills` map + `agents` allow-list | free reuse of `merger.go`; visibility selections stay in-memory |
 | D7 | tools/permissions timing | next agent rebuild (prompt + skills immediate) | low risk; avoids hot-swapping the live tool set |
 | D8 | Permission override | `deny` is add-only (tighten, never loosen) | safety: a persona can't strip project-level denies |
 | D9 | Naming | `behavior` + `rules` (not `conduct` / `guidelines`) | self-style vs imposed-rules, plain words |
@@ -315,9 +320,10 @@ Not yet supported; natural extensions if a need appears:
 
 - **Optional `system/context.md`** for appended static context (distinct from the
   live, computed `environment` block).
-- **Subagent personas** — let the implicit worker run *as* a persona, receiving
-  persona-specific prompt parts and skills. Today personas are a main-agent
-  concept.
+- **Subagent personas** — let a subagent run *as* a persona. A persona already
+  controls *which* subagents are visible (the `agents` allow-list, §4); this is
+  the inverse — giving a spawned subagent a persona's prompt and skills. Today
+  subagents keep their own charter mechanism; personas are a main-agent concept.
 - **`permissions.replace` escape hatch** to let a persona fully take over
   permissions (D8 is add-only).
 - **Plugin-provided personas** — personas shipped inside a plugin, like plugin

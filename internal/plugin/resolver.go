@@ -112,6 +112,12 @@ func ResolveSkills(manifest *Manifest, pluginPath string) []string {
 	return skills
 }
 
+// ResolveAgents resolves agent file paths from the plugin.
+func ResolveAgents(manifest *Manifest, pluginPath string) []string {
+	paths := ResolvePaths(manifest.Agents, pluginPath, []string{"agents"})
+	return collectMarkdownFiles(paths)
+}
+
 // collectMarkdownFiles collects markdown files from a list of paths.
 // Each path can be a file or directory.
 func collectMarkdownFiles(paths []string) []string {

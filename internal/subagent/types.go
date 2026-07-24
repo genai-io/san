@@ -327,7 +327,6 @@ type AgentConfig struct {
 	SystemPrompt string   `yaml:"system-prompt,omitempty" json:"system_prompt,omitempty"`
 	MaxSteps     int      `yaml:"max-steps" json:"max_steps"`
 	Source       string   `yaml:"-" json:"source,omitempty"`
-	McpServers   []string `yaml:"mcp-servers,omitempty" json:"mcp_servers,omitempty"`
 	SourceFile   string   `yaml:"-" json:"-"`
 
 	systemPromptOnce sync.Once `yaml:"-" json:"-"`

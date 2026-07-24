@@ -51,16 +51,17 @@ func TestParseDir_LoadsParts(t *testing.T) {
 	}
 }
 
-func TestParseDir_IgnoresRemovedAgentAllowList(t *testing.T) {
+func TestParseDir_ParsesAgentAllowList(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "p")
 	writeFile(t, filepath.Join(dir, "settings.json"),
-		`{"description":"x","agents":["explorer","code-reviewer"]}`)
+		`{"description":"x","agents":["explorer","project-reviewer"]}`)
 	p, ok := parseDir(dir)
 	if !ok {
 		t.Fatal("expected persona to load")
 	}
-	if p.Settings == nil || p.Settings.Description != "x" {
-		t.Errorf("settings not parsed after ignoring legacy agents field: %+v", p.Settings)
+	if p.Settings == nil || len(p.Settings.Agents) != 2 ||
+		p.Settings.Agents[0] != "explorer" || p.Settings.Agents[1] != "project-reviewer" {
+		t.Errorf("agents allow-list not parsed: %+v", p.Settings)
 	}
 }
 

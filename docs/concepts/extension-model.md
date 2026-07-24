@@ -1,73 +1,96 @@
 # Extension Model
 
-San is built so users can extend it without touching Go. There are **three
-extension primitives** plus a **plugin source** that packages them. Each
-primitive is a small markdown-or-process artifact placed in a known location.
+San is built so users can extend it without touching Go. There are
+**four extension primitives** plus a **plugin source** that packages them.
+Each primitive is a small markdown-or-process artifact the user puts in a
+known directory; San discovers it at startup and exposes it through a
+runtime registry.
 
 | Primitive | What it is | Package | Where it lives |
 |---|---|---|---|
-| **Skill** | A markdown capability the model can discover and invoke. | [`skill`](../packages/2-feature/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
-| **Slash Command** | A markdown file that injects a parameterized prompt. | [`command`](../packages/2-feature/command.md) | `~/.san/commands/<name>.md` and project equivalents |
+| **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/2-feature/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
+| **Subagent** | A markdown-defined custom agent with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/2-feature/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
+| **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/2-feature/command.md) | `~/.san/commands/<name>.md` and project equivalents |
 | **Hook** | A shell command, HTTP endpoint, LLM call, or in-process callback fired at a named event. | [`hook`](../packages/2-feature/hook.md) | `settings.json` (`hooks` field) |
 
-Tools are the inbound capability surface: built-ins live in [`tool`](../packages/2-feature/tool.md), and MCP contributes external tools through [`mcp`](../packages/2-feature/mcp.md).
+Plus the inbound side:
 
-Subagents are runtime workers, not an extension primitive. The `Agent` tool
-launches one implicit general-purpose worker; San does not load selectable agent
-definitions from user, project, persona, or plugin directories. See
-[`subagent`](../packages/2-feature/subagent.md).
+| Primitive | What it is | Package |
+|---|---|---|
+| **Tool** | A capability the agent calls. Built-in or contributed by MCP. | [`tool`](../packages/2-feature/tool.md), [`mcp`](../packages/2-feature/mcp.md) |
 
 ## Plugin is a Source, Not a Primitive
 
-A **plugin** bundles any combination of skills, commands, MCP servers, hooks,
-and environment variables. Skills and commands can also live standalone under
-`~/.san/*` or `<project>/.san/*`.
+A **plugin** is a *bundle* of any combination of the above. It is a single
+directory the user installs; the plugin contributes some skills, some
+agents, some commands, some MCP servers, some hooks, and optionally env
+vars. The four primitives can also live without a plugin — they exist
+standalone under `~/.san/*` or `<project>/.san/*`.
 
-```text
-       ┌──────────────────────────────────────┐
-       │               Plugin                 │
-       │  skills · commands · MCP · hooks     │
-       └───────────┬──────────┬───────────────┘
-                   ▼          ▼
-                 skill     command       + MCP, hooks, env
-                   ▲          ▲
-       ┌───────────┴──────────┴───────────────┐
-       │ ~/.san/<surface>/ + project scope    │
-       └──────────────────────────────────────┘
+So the right mental model:
+
+```
+       ┌────────────────────────────────────────┐
+       │                Plugin                  │
+       │   (one directory, version-pinnable)    │
+       └──────┬────────┬───────┬──────┬─────────┘
+              │        │       │      │
+              ▼        ▼       ▼      ▼
+          skill    agent   command   mcp    + hooks, env
+              ▲        ▲       ▲      ▲
+              │        │       │      │
+       ┌──────┴────────┴───────┴──────┴─────────┐
+       │     ~/.san/<surface>/  + project       │
+       │     (loose files, no plugin needed)    │
+       └────────────────────────────────────────┘
 ```
 
-[`plugin`](../packages/2-feature/plugin.md) discovers plugins and pushes each
-contribution to its consuming package. Consumers do not import plugin state
-through a shared extension registry.
+[`plugin`](../packages/2-feature/plugin.md) discovers plugins and **pushes** the
+per-primitive contributions to each consuming package at startup via
+callbacks (see `Options.PluginSkillPaths`, `Options.PluginAgentPaths`,
+etc.). The consumer doesn't import `plugin`.
 
 ## Discovery Order
 
-Markdown extension primitives resolve this precedence chain:
+Agent definitions use this precedence, from highest to lowest:
 
-```text
-project (.san/<surface>/)
-    overrides
-project plugins (.san/plugins/*/...)
-    overrides
-user (~/.san/<surface>/)
-    overrides
-user plugins (~/.san/plugins/*/...)
-    overrides
-Claude-compatible sources where supported
+```
+project .san/agents/
+user ~/.san/agents/
+project .claude/agents/
+user ~/.claude/agents/
+plugin agents
 ```
 
-Higher-priority entries shadow lower ones by name (or by `name:path` for skill
-namespaces). Enable state is persisted per scope.
+Loose definitions shadow lower-priority entries by case-insensitive exact name.
+Plugin Agents are namespaced as `<plugin-name>:<agent-name>`, so they do not
+shadow loose definitions. Enable state is persisted per user or project scope.
 
 ## Frontmatter Convention
 
-Markdown-defined skills and commands use YAML frontmatter followed by prompt or
-instruction content. Exact fields vary by primitive; see the package docs for
-[`skill`](../packages/2-feature/skill.md) and
+All markdown-defined primitives share the same general shape:
+
+```markdown
+---
+name: my-skill              # required
+description: One-liner      # required for selectors
+namespace: optional         # only skills support this
+allowed-tools: [Read, Bash] # tool subset (subagent + skill)
+argument-hint: <hint>       # for slash commands
+---
+
+The body of the file becomes the prompt / instruction content.
+```
+
+Exact frontmatter fields vary by primitive — see the per-package docs:
+[`skill`](../packages/2-feature/skill.md), [`subagent`](../packages/2-feature/subagent.md),
 [`command`](../packages/2-feature/command.md).
 
 ## See Also
 
-- [`harness-channels`](harness-channels.md) — how skills and reminders reach the model.
-- [`permission-model`](permission-model.md) — main and subagent permission modes.
-- [`plugin`](../packages/2-feature/plugin.md) — install, marketplace, and enable mechanics.
+- [`concepts/harness-channels.md`](harness-channels.md) — how skill /
+  reminder content reaches the model.
+- [`concepts/permission-model.md`](permission-model.md) — how a
+  subagent's `allowed-tools` interacts with the permission gate.
+- [`packages/plugin.md`](../packages/2-feature/plugin.md) — install / marketplace /
+  enable mechanics.

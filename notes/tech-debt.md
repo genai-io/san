@@ -45,7 +45,8 @@ This file tracks structural follow-ups that are not tied to a single feature.
 ### Documentation gaps (resolved 2026-05-18 in the docs/restructure branch)
 
 - ~~`docs/guides/` only contains `explore-mode.md`.~~ Added
-  `getting-started.md`, `writing-a-skill.md`, and `writing-a-plugin.md`.
+  `getting-started.md`, `writing-a-skill.md`, `writing-a-subagent.md`,
+  `writing-a-plugin.md`.
 - ~~`docs/design/decisions/` is empty.~~ Added
   `0001-layered-package-architecture.md`.
 - ~~Infrastructure packages (`log`, `secret`, `filecache`, `markdown`)

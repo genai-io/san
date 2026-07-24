@@ -696,13 +696,13 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 		ToolCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"description":"HA code structure","prompt":"Inspect the codebase","mode":"explore"}`,
+			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		ResultMap: map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"description":"HA code structure","prompt":"Inspect the codebase","mode":"explore"}`,
+			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		CurrentIdx:  0,
 		Blink:       agentBlinkTicks,
@@ -711,7 +711,7 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Explorer: HA code structure"
+	want := agentIcon(params.Blink) + " Agent - Explore: HA code structure"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want a single visible gap before explicit agent label", rendered)
 	}
@@ -734,9 +734,32 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Explorer: audit git changes"
+	want := agentIcon(params.Blink) + " Agent - Explorer: audit git changes"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want mode-based agent label", rendered)
+	}
+}
+
+func TestRenderToolCallsPreservesLiteralSubagentName(t *testing.T) {
+	call := core.ToolCall{
+		ID:    "tc-literal",
+		Name:  "Agent",
+		Input: `{"name":"subagent","description":"audit git changes","mode":"explore"}`,
+	}
+	params := ToolCallsParams{
+		ToolCalls:    []core.ToolCall{call},
+		ResultMap:    map[string]ToolResultData{},
+		PendingCalls: []core.ToolCall{call},
+		CurrentIdx:   0,
+		Blink:        agentBlinkTicks,
+		SpinnerView:  "◓",
+		Width:        100,
+	}
+
+	rendered := stripANSI(RenderToolCalls(params))
+	want := agentIcon(params.Blink) + " Agent - Subagent: audit git changes"
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("RenderToolCalls() = %q, want exact custom agent label", rendered)
 	}
 }
 
@@ -744,7 +767,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"name":"Explore","description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -770,7 +793,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Explorer: audit git changes before review"
+	want := agentIcon(params.Blink) + " Agent - Explore: audit git changes before review"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want agent header", rendered)
 	}
@@ -791,7 +814,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -822,7 +845,7 @@ func TestRenderToolCallsUsesActivityModelForAgentSummary(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
+		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},

@@ -54,8 +54,8 @@ out-of-working-dir writes) — are skipped by `bypassPermissions` mode.
 The foreground and subagent gates both use `setting.ModeDefault` for
 mode-specific default decisions, but otherwise have separate pipelines:
 foreground requests may use settings, session rules, hooks, and the approval
-bridge, while subagents use only their effective mode and deny requests that
-would require a user prompt.
+bridge, while subagents apply their `deny_tools`/`allow_tools` rules and deny
+requests that would require a user prompt.
 
 - Foreground: yes. `agent.PermissionBridge` synchronously waits for the
   TUI approval, then routes the answer back into the running tool call.
@@ -65,8 +65,8 @@ would require a user prompt.
   - `default` — reads auto-allow; everything that would ask is denied.
   - `acceptEdits` (spelled `edit` on the Agent tool) — Edit/Write
     auto-allow; other gated tools are denied.
-  - `bypassPermissions` — everything allowed after the root/home-removal
-    circuit breaker; parent-only tools stay blocked.
+  - `bypassPermissions` — everything allowed after `deny_tools` and the
+    root/home-removal circuit breaker; parent-only tools stay blocked.
 
 Both gates share the same mode table (`setting.ModeDefault`); the subagent
 side only swaps "prompt the user" for "deny".
