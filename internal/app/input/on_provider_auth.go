@@ -20,6 +20,16 @@ import (
 
 // HandlePaste inserts bracketed-paste content into the API key input when it's active.
 func (s *ProviderSelector) HandlePaste(content string) tea.Cmd {
+	if s.customFormActive {
+		content = strings.NewReplacer("\r", "", "\n", "").Replace(content)
+		content = strings.TrimSpace(content)
+		if content == "" {
+			return nil
+		}
+		s.customFormInputs[s.customFormFocus].SetValue(content)
+		s.customFormInputs[s.customFormFocus].CursorEnd()
+		return nil
+	}
 	if !s.apiKeyActive {
 		return nil
 	}
@@ -93,6 +103,12 @@ func (s *ProviderSelector) handleCredentialEditForProvider(item providerListItem
 		return nil
 	}
 	p := item.Provider
+
+	// The custom provider edits all three fields (ID / baseURL / apiKey) in its form.
+	if s.isCustomProvider(p.Provider) {
+		s.openCustomForm()
+		return nil
+	}
 
 	// Single auth method: activate API key input directly
 	if len(p.AuthMethods) == 1 {

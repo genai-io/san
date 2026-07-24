@@ -32,6 +32,8 @@ func DefaultModel(providerName string, authMethod string) string {
 	case "sensenova":
 		return "sensenova-6.7-flash-lite"
 	default:
-		return "claude-sonnet-4-20250514"
+		// Unknown provider (e.g. a user-defined custom provider) — there is no
+		// sensible default; the caller must require an explicit selection.
+		return ""
 	}
 }
