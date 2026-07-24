@@ -34,17 +34,14 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 	agentDirectory = strings.TrimSpace(agentDirectory)
 
 	var sb strings.Builder
-	sb.WriteString("Launch a subagent only when the work genuinely benefits from an independent context, parallel execution, or a larger scope that can be delivered independently.\n\n")
+	sb.WriteString("Launch a subagent only when separate context or parallel execution materially helps. Handle clear, bounded work directly, even when it requires multiple tool calls.\n\n")
 	if agentDirectory != "" {
 		sb.WriteString("Available agent definitions:\n\n")
 		sb.WriteString(agentDirectory)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("Do the work directly when its scope is clear and you can complete it in the main context, even if that takes multiple Read or Bash calls. Do not delegate based on mechanical thresholds such as a number of searches, code changes, or multi-file edits. If the user explicitly requests an Agent-based skill or workflow, follow that requirement.\n\n")
-	sb.WriteString("When a subagent is warranted, choose explore for read-only investigation and edit for work that must modify files. Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
-	sb.WriteString("Notes:\n")
-	sb.WriteString("- Launch independent agents concurrently — multiple Agent calls in one message. Run foreground when you need the result to continue; run_in_background only for genuinely independent work (you are notified on completion).\n")
-	sb.WriteString("- A result summary is what the agent meant to do, not what it did — verify the actual changes before reporting work done, and summarize results back to the user yourself.")
+	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Use explore for read-only investigation and edit for file changes.\n\n")
+	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Verify the result before reporting it.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
