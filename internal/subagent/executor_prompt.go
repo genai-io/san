@@ -10,12 +10,28 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []string {
+	constraints := config.AllowTools.ConstrainedDisplayNames()
+	if NormalizePermissionMode(string(permMode)) != PermissionExplore ||
+		(config.AllowTools != nil && !config.AllowTools.HasName(tool.ToolBash)) {
+		return constraints
+	}
+
+	filtered := make([]string, 0, len(constraints)+1)
+	for _, constraint := range constraints {
+		if !strings.HasPrefix(constraint, tool.ToolBash+"(") {
+			filtered = append(filtered, constraint)
+		}
+	}
+	return append(filtered, "Bash limited to commands classified as read-only")
+}
+
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
 // It bundles the agent's charter (name, description, mode, tool pattern
 // constraints) plus the AGENT.md body and any preloaded skills, all of which
 // land in the subagent's identity slot — there is no separate "assignment"
 // section anymore.
-func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) system.SubagentBrief {
+func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode, implicitDefault bool) system.SubagentBrief {
 	custom := strings.TrimSpace(config.GetSystemPrompt())
 
 	// Preloaded skills are static configuration on AgentConfig.Skills. We
@@ -39,9 +55,10 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 
 	return system.SubagentBrief{
 		AgentName:       config.Name,
+		ImplicitDefault: implicitDefault,
 		Description:     config.Description,
 		Mode:            string(permMode),
-		ToolConstraints: config.AllowTools.ConstrainedDisplayNames(),
+		ToolConstraints: effectiveToolConstraints(config, permMode),
 		CustomPrompt:    custom,
 	}
 }
@@ -126,7 +143,8 @@ func formatTaskToolActivity(toolName string, params map[string]any) string {
 }
 
 func formatAgentActivity(params map[string]any) string {
-	agentType, _ := params["subagent_type"].(string)
+	requestedName, _ := params["name"].(string)
+	agentName := requestedName
 	mode, _ := params["mode"].(string)
 	desc, _ := params["description"].(string)
 	if desc == "" {
@@ -136,35 +154,41 @@ func formatAgentActivity(params map[string]any) string {
 		}
 	}
 
-	if agentType == "" {
-		agentType = "general-purpose"
+	if agentName == "" {
+		agentName = defaultAgentName
 	}
-	agentType = displayAgentName(agentType, PermissionMode(mode))
+	agentName = displayAgentName(agentName, PermissionMode(mode), strings.TrimSpace(requestedName) == "")
 	if desc == "" {
-		return fmt.Sprintf("Agent - %s", agentType)
+		return fmt.Sprintf("Agent - %s", agentName)
 	}
-	return fmt.Sprintf("Agent - %s: %s", agentType, desc)
+	return fmt.Sprintf("Agent - %s: %s", agentName, desc)
 }
 
-func displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
-	if req.Name != "" {
-		return req.Name
-	}
-	return displayAgentName(config.Name, requestPermissionMode(config, req))
+func (e *Executor) displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
+	return displayAgentName(config.Name, e.requestPermissionMode(config, req), strings.TrimSpace(req.Agent) == "")
 }
 
-func requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
-	// The Agent tool's mode="default" means "use the agent config's mode"
-	// (as the tool schema documents and the permission dialog previews), so
-	// only an explicit, non-"default" override replaces the config's mode.
-	if req.Mode != "" && req.Mode != "default" {
-		return NormalizePermissionMode(req.Mode)
+func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
+	// Explicit explore is a read-only ceiling; edit preserves the accept-edits
+	// policy. Default inherits the parent session for the implicit agent, while
+	// custom definitions retain their configured policy.
+	switch strings.TrimSpace(req.Mode) {
+	case "explore":
+		return PermissionExplore
+	case "edit":
+		return PermissionAcceptEdits
+	case "", "default":
+		if strings.TrimSpace(req.Agent) == "" {
+			return e.currentParentPermissionMode()
+		}
+		return NormalizePermissionMode(string(config.PermissionMode))
+	default:
+		return PermissionMode(strings.TrimSpace(req.Mode))
 	}
-	return NormalizePermissionMode(string(config.PermissionMode))
 }
 
-func displayAgentName(name string, mode PermissionMode) string {
-	if isGenericAgentName(name) {
+func displayAgentName(name string, mode PermissionMode, implicitDefault bool) string {
+	if implicitDefault {
 		switch NormalizePermissionMode(string(mode)) {
 		case PermissionExplore, PermissionDontAsk:
 			return "Explorer"
@@ -183,15 +207,6 @@ func displayAgentName(name string, mode PermissionMode) string {
 		}
 	}
 	return shortAgentName(name)
-}
-
-func isGenericAgentName(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "agent", "general", "general-purpose", "explore", "explorer", "editor":
-		return true
-	default:
-		return false
-	}
 }
 
 func shortAgentName(name string) string {

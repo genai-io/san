@@ -38,10 +38,10 @@ func TestPermissionScenarios(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "explore + allow git diff* — compound with mutating tail fails per-subcommand check",
+			name: "explore + allow git diff* — compound with mutating tail remains blocked",
 			mode: PermissionExplore, allow: allowGitDiff,
 			tool: "Bash", input: map[string]any{"command": "git diff && npm run build"},
-			want: false, wantMatch: "outside the allow_tools constraint",
+			want: false, wantMatch: "denied in Explore",
 		},
 		{
 			name: "explore + allow git diff* — read-only compound bypasses whitelist",

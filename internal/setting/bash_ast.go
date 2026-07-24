@@ -452,6 +452,9 @@ func isLiteralCdCommand(cmd parsedCommand) bool {
 
 func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	subcommand, rest := gitSubcommandAndArgs(cmd.Args)
+	if hasUnsafeReadOnlyGitFlag(rest) {
+		return false
+	}
 	if readOnlyGitSubcommands[subcommand] {
 		return true
 	}
@@ -466,6 +469,16 @@ func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	default:
 		return false
 	}
+}
+
+func hasUnsafeReadOnlyGitFlag(args []string) bool {
+	for _, arg := range args {
+		switch {
+		case arg == "--output", strings.HasPrefix(arg, "--output="), arg == "--ext-diff", arg == "--textconv":
+			return true
+		}
+	}
+	return false
 }
 
 func gitSubcommandAndArgs(args []string) (string, []string) {
