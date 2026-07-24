@@ -2,8 +2,8 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,24 +27,17 @@ func TestLeaseReleaseDoesNotDisconnectPreexistingRetainedConnection(t *testing.T
 
 type connectionLifecycleTransport struct {
 	liveTransport
-	closeCalls int
-}
-
-func (t *connectionLifecycleTransport) Send(_ context.Context, req *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
-	result := json.RawMessage(`{}`)
-	return &transport.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
+	closeCalls atomic.Int32
 }
 
 func (t *connectionLifecycleTransport) Close() error {
 	t.liveTransport.Close()
-	t.closeCalls++
+	t.closeCalls.Add(1)
 	return nil
 }
 
 func (t *connectionLifecycleTransport) closeCount() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.closeCalls
+	return int(t.closeCalls.Load())
 }
 
 func TestConcurrentLeaseAcquisitionSharesOneConnectionUntilFinalRelease(t *testing.T) {

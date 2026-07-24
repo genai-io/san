@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
@@ -16,8 +17,8 @@ type liveTransport struct {
 }
 
 func (t *liveTransport) Start(context.Context) error { return nil }
-func (t *liveTransport) Send(context.Context, *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
-	return &transport.JSONRPCResponse{}, nil
+func (t *liveTransport) Send(_ context.Context, req *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
+	return &transport.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: json.RawMessage(`{}`)}, nil
 }
 func (t *liveTransport) SendNotification(context.Context, *transport.JSONRPCNotification) error {
 	return nil
