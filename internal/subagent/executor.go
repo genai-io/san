@@ -138,8 +138,11 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 	e.skillsPrompt = skillsPrompt
 }
 
-// SetMCPDependencies wires MCP tool access separately from the concrete
-// registry used to lease per-Agent server connections.
+// SetMCPDependencies wires MCP tool access and the per-Agent connection lease
+// registry. The registry is a concrete *mcp.Registry rather than the mcp.Servers
+// interface because lease operations (acquireConnectionLease/releaseConnectionLease)
+// are unexported lifecycle details not exposed on Servers — adding them would
+// leak internal ownership semantics to every Servers consumer.
 func (e *Executor) SetMCPDependencies(tools mcp.Tools, connectionRegistry *mcp.Registry) {
 	e.mcpTools = tools
 	e.mcpConnectionRegistry = connectionRegistry

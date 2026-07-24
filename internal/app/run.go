@@ -244,7 +244,7 @@ func resolveProviderWithStore(ctx context.Context) (llm.ResolvedProvider, *llm.S
 	if modelID == "" {
 		// Providers without a built-in default model (e.g. a custom provider)
 		// need an explicit selection.
-		return nil, "", fmt.Errorf("no model selected for %s. Run 'san' and use /model to select one", resolved.Provider.Name())
+		return llm.ResolvedProvider{}, nil, fmt.Errorf("no model selected for %s. Run 'san' and use /model to select one", resolved.Provider.Name())
 	}
 	return resolved, store, nil
 }
