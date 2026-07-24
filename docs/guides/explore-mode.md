@@ -2,7 +2,7 @@
 
 ## Overview
 
-`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Use it with `general-purpose` when a task requires reading, searching, and cross-referencing multiple files before answering.
+`explore` is the subagent permission mode for fast, non-mutating codebase investigation. Use it when a task requires reading, searching, and cross-referencing multiple files before answering.
 
 This feature exists to document the contract that was previously split across the general agent docs, non-mutating mode docs, and subagent notes.
 
@@ -10,7 +10,7 @@ This feature exists to document the contract that was previously split across th
 
 | Property | Value |
 |----------|-------|
-| Agent type | `general-purpose` |
+| Agent name | Optional |
 | Permission mode | `explore` |
 | Tools | Read, Bash (read-only commands), WebFetch, WebSearch, Skill, AskUserQuestion |
 | Max turns | 100 |
@@ -36,7 +36,7 @@ This feature exists to document the contract that was previously split across th
 
 ## Relationship To Other Features
 
-- [Writing a Subagent](writing-a-subagent.md) covers the generic agent system and custom agent format.
+- [Writing a Subagent](writing-a-subagent.md) covers the agent system and agent definition format.
 - `explore` is the investigative permission boundary used by subagents.
 
 ## Automated Tests

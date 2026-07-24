@@ -9,7 +9,7 @@ runtime registry.
 | Primitive | What it is | Package | Where it lives |
 |---|---|---|---|
 | **Skill** | A markdown file the model can be made aware of, or invoke via slash command. | [`skill`](../packages/2-feature/skill.md) | `~/.san/skills/<name>/SKILL.md` and project equivalents |
-| **Subagent** | A markdown-defined agent type with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/2-feature/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
+| **Subagent** | A markdown-defined agent with its own system prompt and tool subset; spawned via the `Agent` tool. | [`subagent`](../packages/2-feature/subagent.md) | `~/.san/agents/<name>.md` and project equivalents |
 | **Slash Command** | A markdown file that injects a parameterized prompt; invoked from the input box. | [`command`](../packages/2-feature/command.md) | `~/.san/commands/<name>.md` and project equivalents |
 | **Hook** | A shell command, HTTP endpoint, LLM call, or in-process callback fired at a named event. | [`hook`](../packages/2-feature/hook.md) | `settings.json` (`hooks` field) |
 

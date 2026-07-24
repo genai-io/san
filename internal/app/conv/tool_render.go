@@ -963,37 +963,20 @@ func conciseAgentDescription(desc string) string {
 	return kit.TruncateText(desc, 60)
 }
 
-func displayAgentName(agentType, mode string) string {
-	if isGenericAgentName(agentType) {
+func displayAgentName(agentName, mode string) string {
+	if strings.TrimSpace(agentName) == "" {
 		switch strings.ToLower(strings.TrimSpace(mode)) {
 		case "explore":
 			return "Explorer"
 		case "edit":
 			return "Editor"
 		}
-		switch strings.ToLower(strings.TrimSpace(agentType)) {
-		case "explore", "explorer":
-			return "Explorer"
-		case "edit", "editor":
-			return "Editor"
-		default:
-			return "General"
-		}
+		return "General"
 	}
-	return shortAgentName(agentType)
-}
-
-func isGenericAgentName(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "agent", "general", "general-purpose", "explore", "explorer", "edit", "editor":
-		return true
-	default:
-		return false
-	}
+	return shortAgentName(agentName)
 }
 
 type agentInput struct {
-	Type        string `json:"subagent_type"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Prompt      string `json:"prompt"`
@@ -1008,11 +991,8 @@ func parseAgentInput(input string) agentInput {
 		return agentInput{}
 	}
 	agent.Valid = true
-	if agent.Type == "" {
-		agent.Type = "general-purpose"
-	}
 	if agent.Name == "" {
-		agent.Name = displayAgentName(agent.Type, agent.Mode)
+		agent.Name = displayAgentName("", agent.Mode)
 	}
 	return agent
 }
@@ -1285,14 +1265,14 @@ func agentColor(color string) kit.AdaptiveColor {
 	}
 }
 
-// configuredAgentColor returns the color set for this agent's type in its
-// subagent config (a name like "blue" or a "#rrggbb" hex), or "" when none is
+// configuredAgentColor returns the color set for this agent's name in its
+// configuration (a name like "blue" or a "#rrggbb" hex), or "" when none is
 // set. It is later resolved to a theme color by agentColor.
 func configuredAgentColor(agent agentInput, colors map[string]string) string {
 	if len(colors) == 0 {
 		return ""
 	}
-	return colors[strings.ToLower(agent.Type)]
+	return colors[strings.ToLower(agent.Name)]
 }
 
 // agentBlinkTicks is the number of spinner ticks per ● / ○ swap.

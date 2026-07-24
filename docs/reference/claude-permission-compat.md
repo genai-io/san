@@ -76,7 +76,7 @@ Spacing matters: `Bash(ls *)` matches `ls -la` but NOT `lsof`. Use `Bash(ls*)` t
 
 - `WebFetch(domain:example.com)` — domain-scoped fetch
 - `MCP(mcp__puppeteer)` — MCP server tools
-- `Agent(Explore)` — specific subagent type
+- `Agent(Explore)` — specific agent name
 
 ## Ways to Configure
 
@@ -104,7 +104,7 @@ The main session's allow/deny rules from settings.json are **not propagated** to
 
 ### Agent Definition Tool Restrictions (YAML)
 
-Custom agents are defined in `.claude/agents/*.md` with YAML frontmatter. Two fields control tool access:
+Agent definitions live in `.claude/agents/*.md` with YAML frontmatter. Two fields control tool access:
 
 #### allow_tools — Schema Filter
 

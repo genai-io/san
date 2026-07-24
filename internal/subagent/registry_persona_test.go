@@ -14,7 +14,7 @@ func TestLoadPersona_AllowListRestrictsVisibility(t *testing.T) {
 	r.Register(&AgentConfig{Name: "implementer", Description: "Implements changes"})
 
 	if !r.IsEnabled("reviewer") || !r.IsEnabled("implementer") {
-		t.Fatal("custom agents should be enabled with no persona allow-list")
+		t.Fatal("agents should be enabled with no persona allow-list")
 	}
 
 	// One-agent allow-list: only it stays visible.
@@ -37,13 +37,13 @@ func TestLoadPersona_AllowListRestrictsVisibility(t *testing.T) {
 		t.Fatalf("selector configs = %#v, want only reviewer", configs)
 	}
 
-	// The implicit default is not a registered custom agent and remains
-	// available when a persona restricts the custom catalog.
+	// The unnamed base configuration remains available when a persona restricts
+	// the registry.
 	old := Default()
 	SetDefaultRegistry(r)
 	t.Cleanup(func() { SetDefaultRegistry(old) })
-	if config, ok := resolveAgentConfig(""); !ok || config.Name != defaultAgentName {
-		t.Fatalf("implicit default config = %#v, %v", config, ok)
+	if config, ok := resolveAgentConfig(""); !ok || config.Name != "" {
+		t.Fatalf("unnamed config = %#v, %v", config, ok)
 	}
 
 	// Case-insensitive + whitespace-trimmed.
@@ -62,6 +62,6 @@ func TestLoadPersona_AllowListRestrictsVisibility(t *testing.T) {
 	r.LoadPersona([]string{"reviewer"})
 	r.ClearPersona()
 	if !r.IsEnabled("reviewer") || !r.IsEnabled("implementer") {
-		t.Error("ClearPersona should make all custom agents visible again")
+		t.Error("ClearPersona should make all agents visible again")
 	}
 }

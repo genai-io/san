@@ -64,12 +64,11 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		return nil, fmt.Errorf("agent executor not configured")
 	}
 
-	// Resolve the selected custom agent config, or the implicit default when name
-	// is omitted. Carry the exact config into execution so a registry reload while
-	// approval is pending cannot change what the user approved.
+	// Resolve the agent definition and carry the exact config into execution so a
+	// registry reload while approval is pending cannot change what was approved.
 	config, resolvedConfig, ok := t.executor.ResolveAgentSelection(agentName)
 	if !ok {
-		return nil, fmt.Errorf("unknown or disabled custom agent: %s", agentName)
+		return nil, fmt.Errorf("unknown or disabled agent: %s", agentName)
 	}
 	params["_resolvedAgentConfig"] = resolvedConfig
 
@@ -86,7 +85,8 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	}
 
 	// Build description
-	desc := fmt.Sprintf("Spawn %s agent: %s", config.Name, description)
+	displayName := displayAgentLabel(config.Name, mode)
+	desc := fmt.Sprintf("Spawn %s agent: %s", displayName, description)
 	if runBackground {
 		desc += " (background)"
 	}
@@ -201,12 +201,11 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.ToolResult{
 			Success: true,
 			Output: fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s"+backgroundLaunchSuffix,
-				taskInfo.TaskID, taskInfo.AgentName, description),
+				taskInfo.TaskID, displayAgentLabel(agentName, mode), description),
 			HookResponse: map[string]any{
 				"backgroundTask": map[string]any{
 					"taskId":      taskInfo.TaskID,
-					"agentName":   taskInfo.AgentName,
-					"agentType":   agentTypeLabel(agentName),
+					"agentName":   agentName,
 					"description": description,
 					"outputFile":  taskInfo.OutputFile,
 					"toolName":    t.Name(),
@@ -215,7 +214,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("[background] %s: %s", agentTypeLabel(agentName), taskInfo.TaskID),
+				Subtitle: fmt.Sprintf("[background] %s: %s", displayAgentLabel(agentName, mode), taskInfo.TaskID),
 				Duration: duration,
 			},
 		}
@@ -229,7 +228,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	duration := time.Since(start)
 
-	agentName = agentTypeLabel(agentName)
+	displayName := displayAgentLabel(agentName, mode)
 	if !result.Success {
 		hookResponse := buildAgentHookResponse(result, agentName, prompt)
 		return toolresult.ToolResult{
@@ -240,7 +239,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("%s: failed", agentName),
+				Subtitle: fmt.Sprintf("%s: failed", displayName),
 				Duration: duration,
 			},
 		}
@@ -249,26 +248,33 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	hookResponse := buildAgentHookResponse(result, agentName, prompt)
 	return toolresult.ToolResult{
 		Success:      true,
-		Output:       formatForegroundAgentResult(agentName, result, duration),
+		Output:       formatForegroundAgentResult(displayName, result, duration),
 		HookResponse: hookResponse,
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d steps)", agentName, result.StepCount),
+			Subtitle: fmt.Sprintf("%s: done (%d steps)", displayName, result.StepCount),
 			Duration: duration,
 		},
 	}
 }
 
-func agentTypeLabel(name string) string {
-	if name == "" {
-		return "subagent"
+func displayAgentLabel(name, mode string) string {
+	if name != "" {
+		return name
 	}
-	return name
+	switch mode {
+	case "explore":
+		return "Explorer"
+	case "edit":
+		return "Editor"
+	default:
+		return "General"
+	}
 }
 
-// buildAgentHookResponse creates a CC-compatible structured response for PostToolUse hooks.
-func buildAgentHookResponse(result *tool.AgentExecResult, agentType, prompt string) map[string]any {
+// buildAgentHookResponse creates a structured response for PostToolUse hooks.
+func buildAgentHookResponse(result *tool.AgentExecResult, agentName, prompt string) map[string]any {
 	status := "completed"
 	if !result.Success {
 		status = "error"
@@ -276,7 +282,7 @@ func buildAgentHookResponse(result *tool.AgentExecResult, agentType, prompt stri
 
 	return map[string]any{
 		"agentId":           result.AgentID,
-		"agentType":         agentType,
+		"agentName":         agentName,
 		"outputFile":        result.OutputFile,
 		"content":           result.Content,
 		"status":            status,

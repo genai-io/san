@@ -96,7 +96,6 @@ type TaskInfo struct {
 	ExitCode int
 
 	// Agent-specific fields
-	AgentType      string
 	AgentName      string
 	AgentSessionID string
 	StepCount      int

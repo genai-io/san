@@ -35,7 +35,7 @@ func IsParentOnlyTool(name string) bool {
 }
 
 // Set provides tools for a conversation turn.
-// If Static is non-nil, it is returned directly (for custom agents).
+// If Static is non-nil, it is returned directly (for fixed agent tool sets).
 // Otherwise, tools are resolved dynamically using the config fields.
 type Set struct {
 	Static         []core.ToolSchema        // fixed tool list (overrides dynamic)

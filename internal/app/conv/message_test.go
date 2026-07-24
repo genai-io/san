@@ -696,13 +696,13 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 		ToolCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"subagent_type":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
+			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		ResultMap: map[string]ToolResultData{},
 		PendingCalls: []core.ToolCall{{
 			ID:    "tc-1",
 			Name:  "Agent",
-			Input: `{"subagent_type":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
+			Input: `{"name":"Explore","description":"HA code structure","prompt":"Inspect the codebase"}`,
 		}},
 		CurrentIdx:  0,
 		Blink:       agentBlinkTicks,
@@ -711,17 +711,17 @@ func TestRenderToolCallsShowsGapForPendingAgent(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: HA code structure"
+	want := agentIcon(params.Blink) + " Agent - Explore: HA code structure"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want a single visible gap before explicit agent label", rendered)
 	}
 }
 
-func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
+func TestRenderToolCallsPreservesAgentName(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"general-purpose","description":"audit git changes","mode":"explore"}`,
+		Input: `{"name":"general-purpose","description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -734,9 +734,9 @@ func TestRenderToolCallsNamesGeneralAgentByMode(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: audit git changes"
+	want := agentIcon(params.Blink) + " Agent - general-purpose: audit git changes"
 	if !strings.Contains(rendered, want) {
-		t.Fatalf("RenderToolCalls() = %q, want mode-based agent label", rendered)
+		t.Fatalf("RenderToolCalls() = %q, want named agent label", rendered)
 	}
 }
 
@@ -744,7 +744,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"name":"Explore","description":"audit git changes before review","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -770,7 +770,7 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	want := agentIcon(params.Blink) + " Agent - Explorer: audit git changes before review"
+	want := agentIcon(params.Blink) + " Agent - Explore: audit git changes before review"
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want agent header", rendered)
 	}
@@ -791,7 +791,7 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
+		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -822,7 +822,7 @@ func TestRenderToolCallsUsesActivityModelForAgentSummary(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
+		Input: `{"name":"Explore","description":"audit git changes","prompt":"Inspect the codebase","mode":"explore","model":"sonnet"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},
@@ -854,7 +854,7 @@ func TestRenderToolCallsUsesActivityUsageForAgentTokens(t *testing.T) {
 	call := core.ToolCall{
 		ID:    "tc-1",
 		Name:  "Agent",
-		Input: `{"subagent_type":"general-purpose","description":"audit git changes","mode":"explore"}`,
+		Input: `{"name":"general-purpose","description":"audit git changes","mode":"explore"}`,
 	}
 	params := ToolCallsParams{
 		ToolCalls:    []core.ToolCall{call},

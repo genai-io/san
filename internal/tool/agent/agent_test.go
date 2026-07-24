@@ -20,25 +20,25 @@ func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	e.runReq = req
-	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: agentTypeLabel(req.Agent)}, nil
+	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent}, nil
 }
 func (e *recordingExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, false
 	}
-	return tool.AgentConfigInfo{Name: agentTypeLabel(name), PermissionMode: "default"}, true
+	return tool.AgentConfigInfo{Name: name, PermissionMode: "default"}, true
 }
 func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, nil, false
 	}
-	return tool.AgentConfigInfo{Name: agentTypeLabel(name), PermissionMode: "default"}, e.resolvedConfig, true
+	return tool.AgentConfigInfo{Name: name, PermissionMode: "default"}, e.resolvedConfig, true
 }
 func (e *recordingExecutor) GetParentModelID() string { return "parent-model" }
 
-func TestAgentToolUsesNameForCustomAgentSelection(t *testing.T) {
+func TestAgentToolUsesOptionalName(t *testing.T) {
 	executor := &recordingExecutor{configOK: true}
 	agentTool := NewAgentTool()
 	agentTool.SetExecutor(executor)
@@ -86,7 +86,7 @@ func TestAgentToolApprovedParamsCarryResolvedConfiguration(t *testing.T) {
 	}
 }
 
-func TestAgentToolOmittedNameUsesImplicitDefault(t *testing.T) {
+func TestAgentToolOmittedNameStaysEmpty(t *testing.T) {
 	executor := &recordingExecutor{configOK: true}
 	agentTool := NewAgentTool()
 	agentTool.SetExecutor(executor)
@@ -96,7 +96,7 @@ func TestAgentToolOmittedNameUsesImplicitDefault(t *testing.T) {
 		t.Fatalf("PreparePermission() error: %v", err)
 	}
 	if executor.selectedAgentName != "" {
-		t.Fatalf("omitted name lookup = %q, want empty implicit-default selector", executor.selectedAgentName)
+		t.Fatalf("omitted name lookup = %q, want empty", executor.selectedAgentName)
 	}
 	agentTool.Execute(context.Background(), params, ".")
 	if executor.runReq.Agent != "" {

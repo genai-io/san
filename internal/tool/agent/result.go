@@ -17,10 +17,10 @@ const maxResultActivityLines = 30
 // formatForegroundAgentResult renders a finished subagent's result for the
 // parent's tool result: a short header, a capped tail of the tool trace, then
 // the subagent's final message.
-func formatForegroundAgentResult(agentType string, result *tool.AgentExecResult, duration time.Duration) string {
+func formatForegroundAgentResult(agentName string, result *tool.AgentExecResult, duration time.Duration) string {
 	displayName := result.AgentName
 	if displayName == "" {
-		displayName = agentType
+		displayName = agentName
 	}
 	agentDuration := result.Duration
 	if agentDuration == 0 {

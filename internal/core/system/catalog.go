@@ -189,8 +189,7 @@ func SwapPersona(sys core.System, p Persona) {
 // Tools are not listed here — the LLM sees them via the schema list. Only
 // pattern-level constraints (which are invisible in the schema) need surfacing.
 type SubagentBrief struct {
-	AgentName       string   // exact custom name, or an internal label for the implicit default
-	ImplicitDefault bool     // true only when the request omitted name
+	AgentName       string   // exact optional name
 	Description     string   // one-line role description
 	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
@@ -213,7 +212,7 @@ func subagentIdentitySection(b SubagentBrief) core.Section {
 
 func renderSubagentIdentity(b SubagentBrief) string {
 	var sb strings.Builder
-	if b.ImplicitDefault || b.AgentName == "" {
+	if b.AgentName == "" {
 		sb.WriteString("You are a subagent.\n")
 	} else {
 		fmt.Fprintf(&sb, "You are a %s subagent.\n", b.AgentName)
