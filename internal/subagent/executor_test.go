@@ -15,7 +15,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
-	_ "github.com/genai-io/san/internal/tool/registry"
+	_ "github.com/genai-io/san/internal/tool/registry" // registers built-in schemas used by tool.Set.Tools
 )
 
 // llm.ParseVendorModel gates "vendor/model" routing on registered providers, so
@@ -776,6 +776,27 @@ func TestResolveAgentConfigRejectsDisabledDefinition(t *testing.T) {
 	}
 	if _, ok := resolveAgentConfig("reviewer"); ok {
 		t.Fatal("disabled agent should not resolve")
+	}
+}
+
+func TestSubagentToolSetOwnsFilterInputs(t *testing.T) {
+	allow := []string{tool.ToolRead}
+	disallow := []string{tool.ToolSendMessage}
+	disabled := map[string]bool{tool.ToolWrite: true}
+	set := newAgentToolSet(allow, disallow, disabled, nil)
+
+	allow[0] = tool.ToolWrite
+	disallow[0] = tool.ToolRead
+	disabled[tool.ToolWrite] = false
+
+	if len(set.Allow) != 1 || set.Allow[0] != tool.ToolRead {
+		t.Fatalf("tool set retained caller-owned allow slice: %v", set.Allow)
+	}
+	if len(set.Disallow) != 1 || set.Disallow[0] != tool.ToolSendMessage {
+		t.Fatalf("tool set retained caller-owned disallow slice: %v", set.Disallow)
+	}
+	if !set.Disabled[tool.ToolWrite] {
+		t.Fatalf("tool set retained caller-owned disabled map: %v", set.Disabled)
 	}
 }
 

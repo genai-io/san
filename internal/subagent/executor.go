@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 
@@ -817,7 +818,7 @@ func modeAllowsSchema(mode PermissionMode, name string) bool {
 // exclusions eagerly initialized.
 func newAgentToolSet(allow, disallow []string, disabled map[string]bool, mcpGetter func() []core.ToolSchema) *tool.Set {
 	s := &tool.Set{
-		Allow: allow, Disallow: disallow, Disabled: maps.Clone(disabled),
+		Allow: slices.Clone(allow), Disallow: slices.Clone(disallow), Disabled: maps.Clone(disabled),
 		MCP: mcpGetter, IsAgent: true,
 	}
 	s.InitDisallowSet()
