@@ -54,6 +54,7 @@ func (s *ProviderSelector) switchTab(t providerTab) {
 	s.resetConnectionResult()
 	s.expandedProviderIdx = -1
 	s.apiKeyActive = false
+	s.closeCustomForm()
 	s.rebuildVisibleItems()
 }
 
@@ -61,6 +62,10 @@ func (s *ProviderSelector) NextTab() { s.switchTab((s.activeTab + 1) % 2) }
 func (s *ProviderSelector) PrevTab() { s.switchTab((s.activeTab + 1 + 2) % 2) }
 
 func (s *ProviderSelector) GoBack() bool {
+	if s.customFormActive {
+		s.closeCustomForm()
+		return true
+	}
 	if s.apiKeyActive {
 		s.apiKeyActive = false
 		return true
@@ -104,6 +109,11 @@ func (s *ProviderSelector) appendModelSearch(text string) {
 }
 
 func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
+	// Route to the custom provider form if active
+	if s.customFormActive {
+		return s.handleCustomFormKey(key)
+	}
+
 	// Route to API key input if active
 	if s.apiKeyActive {
 		return s.handleAPIKeyInput(key)
@@ -303,6 +313,13 @@ func (s *ProviderSelector) selectProvider(item providerListItem) tea.Cmd {
 		return nil
 	}
 	p := item.Provider
+
+	// The custom provider needs ID + baseURL + apiKey, so it gets its own form
+	// instead of the single API-key input. Once connected, Enter refreshes as usual.
+	if len(p.AuthMethods) == 1 && s.isCustomProvider(p.Provider) && p.AuthMethods[0].Status != llm.StatusConnected {
+		s.openCustomForm()
+		return nil
+	}
 
 	if len(p.AuthMethods) == 1 {
 		am := p.AuthMethods[0]

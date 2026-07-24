@@ -95,6 +95,12 @@ func (s *ProviderSelector) renderItemList(sb *strings.Builder) {
 			sb.WriteString("\n")
 		}
 
+		// Inline custom provider form (render below the relevant item)
+		if s.customFormActive && isSelected {
+			sb.WriteString(s.renderCustomForm())
+			sb.WriteString("\n")
+		}
+
 		// Inline confirm-remove prompt (render below the relevant item)
 		if s.confirmRemoveActive && i == s.confirmRemoveItemIdx {
 			sb.WriteString(s.renderConfirmRemove())
@@ -312,6 +318,29 @@ func (s *ProviderSelector) renderAPIKeyInput() string {
 	return "      " + boxStyle.Render(inputView)
 }
 
+// renderCustomForm renders the custom provider's two-field form (baseURL and
+// apiKey) below its provider row, one labeled input per line, with the
+// validation error underneath when present.
+func (s *ProviderSelector) renderCustomForm() string {
+	labels := [customFormFieldCount]string{"Base URL", "API Key"}
+
+	inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
+	boxStyle := lipgloss.NewStyle().
+		Background(inputBg).
+		Padding(0, 1)
+
+	lines := make([]string, 0, customFormFieldCount+1)
+	for i, input := range s.customFormInputs {
+		label := kit.DimStyle().Render(fmt.Sprintf("%-9s", labels[i]+":"))
+		lines = append(lines, "      "+boxStyle.Render(label+input.View()))
+	}
+	if s.customFormErr != "" {
+		errStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		lines = append(lines, "      "+errStyle.Render(s.customFormErr))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (s *ProviderSelector) renderConfirmRemove() string {
 	warnStyle := lipgloss.NewStyle().
 		Foreground(kit.AdaptiveColor{Dark: "#F87171", Light: "#DC2626"})
@@ -329,6 +358,9 @@ func (s *ProviderSelector) renderConfirmRemove() string {
 // ── Footer hints ────────────────────────────────────────────────────────────
 
 func (s *ProviderSelector) renderHints() string {
+	if s.customFormActive {
+		return kit.DimStyle().Render("Tab/↑/↓ switch field · Enter save & connect · Esc cancel")
+	}
 	if s.apiKeyActive {
 		return kit.DimStyle().Render("Paste API key · Enter confirm · Esc cancel")
 	}

@@ -44,6 +44,14 @@ type tokenLimitOverride struct {
 	OutputTokenLimit int `json:"outputTokenLimit"`
 }
 
+// CustomProviderConfig stores the user-defined OpenAI-compatible provider added
+// via the /model Providers tab. The API key is not kept here — it lives in the
+// secret store under the provider's env var.
+type CustomProviderConfig struct {
+	ID      string `json:"id"`
+	BaseURL string `json:"baseURL"`
+}
+
 // storeData is the persisted data structure
 type storeData struct {
 	Connections     map[string]ConnectionInfo     `json:"connections"`               // key: provider
@@ -52,6 +60,7 @@ type storeData struct {
 	SearchProvider  *string                       `json:"searchProvider,omitempty"`  // search provider name (exa, serper, brave)
 	TokenLimits     map[string]tokenLimitOverride `json:"tokenLimits,omitempty"`     // key: modelID
 	ThinkingEfforts map[string]string             `json:"thinkingEfforts,omitempty"` // key: modelID; value: provider-native effort label
+	CustomProvider  *CustomProviderConfig         `json:"customProvider,omitempty"`  // user-defined OpenAI-compatible provider
 }
 
 // Store manages provider configuration persistence
@@ -538,4 +547,26 @@ func (s *Store) GetTokenLimit(modelID string) (inputLimit, outputLimit int, ok b
 		return 0, 0, false
 	}
 	return override.InputTokenLimit, override.OutputTokenLimit, true
+}
+
+// CustomProvider returns the stored custom provider config, or nil when the
+// user hasn't defined one. Returns a copy so callers can't mutate the store.
+func (s *Store) CustomProvider() *CustomProviderConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.data.CustomProvider == nil {
+		return nil
+	}
+	cfg := *s.data.CustomProvider
+	return &cfg
+}
+
+// SetCustomProvider saves the custom provider config.
+func (s *Store) SetCustomProvider(cfg CustomProviderConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.data.CustomProvider = &cfg
+	return s.save()
 }

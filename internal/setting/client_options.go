@@ -1,5 +1,7 @@
 package setting
 
+import "github.com/genai-io/san/internal/secret"
+
 const (
 	DefaultMaxTokens    = 8192
 	DefaultSystemPrompt = "You are a helpful AI coding assistant."
@@ -31,7 +33,18 @@ func DefaultModel(providerName string, authMethod string) string {
 		return "deepseek-v4-flash"
 	case "sensenova":
 		return "sensenova-6.7-flash-lite"
+	case "ollama":
+		return "llama4"
+	case "mimo":
+		return "xiaomi/mimo-v2.5-pro"
+	case "volcengine":
+		// Volcengine has no static catalog; the user picks the model via
+		// VOLCENGINE_MODEL. Empty means the caller must require an explicit
+		// selection.
+		return secret.Resolve("VOLCENGINE_MODEL")
 	default:
-		return "claude-sonnet-4-20250514"
+		// Unknown provider (e.g. a user-defined custom provider) — there is no
+		// sensible default; the caller must require an explicit selection.
+		return ""
 	}
 }
