@@ -3,8 +3,37 @@ package conv
 import (
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/genai-io/san/internal/core"
 )
+
+type postToolRuntime struct {
+	Runtime
+	drainCalls int
+}
+
+func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult { return &tr }
+func (r *postToolRuntime) TakeDecision(string) *core.ReviewDecision         { return nil }
+func (r *postToolRuntime) DrainQueuedAtStep() tea.Cmd {
+	r.drainCalls++
+	return nil
+}
+
+func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
+	m := NewModel(80)
+	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Bash"}})
+	rt := &postToolRuntime{}
+
+	applyPostTool(rt, &m, core.PostToolEvent(core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}))
+	if rt.drainCalls != 0 {
+		t.Fatalf("drained pending input after first tool result; calls = %d", rt.drainCalls)
+	}
+	applyPostTool(rt, &m, core.PostToolEvent(core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"}))
+	if rt.drainCalls != 1 {
+		t.Fatalf("drain calls after complete tool batch = %d, want 1", rt.drainCalls)
+	}
+}
 
 func TestHandleActivityWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
@@ -44,7 +73,9 @@ func TestMarkToolCallCompleteAdvancesAndClearsPendingState(t *testing.T) {
 		t.Fatalf("CurrentIdx = %d, want 0", state.CurrentIdx)
 	}
 
-	state.MarkComplete("tc-1")
+	if complete := state.MarkComplete("tc-1"); complete {
+		t.Fatal("first tool must not complete the batch")
+	}
 	if state.CurrentIdx != 1 {
 		t.Fatalf("CurrentIdx = %d, want 1", state.CurrentIdx)
 	}
@@ -52,7 +83,9 @@ func TestMarkToolCallCompleteAdvancesAndClearsPendingState(t *testing.T) {
 		t.Fatalf("PendingCalls length = %d, want 2", len(state.PendingCalls))
 	}
 
-	state.MarkComplete("tc-2")
+	if complete := state.MarkComplete("tc-2"); !complete {
+		t.Fatal("last tool must complete the batch")
+	}
 	if state.PendingCalls != nil {
 		t.Fatalf("PendingCalls = %#v, want nil", state.PendingCalls)
 	}

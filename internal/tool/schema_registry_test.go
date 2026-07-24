@@ -22,6 +22,15 @@ func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) 
 	return core.ToolSchema{}, false
 }
 
+func TestManageableToolsIncludeConditionalEvolve(t *testing.T) {
+	if _, ok := findSchema(tool.GetToolSchemas(), tool.ToolEvolve); ok {
+		t.Fatal("Evolve must remain conditional in the model-facing default schemas")
+	}
+	if _, ok := findSchema(tool.GetManageableToolSchemasWith(tool.SchemaOptions{}), tool.ToolEvolve); !ok {
+		t.Fatal("Evolve is missing from the /tools-manageable schema set")
+	}
+}
+
 // TestBuiltinToolsAllRegistered guards the invariant the self-describing
 // refactor establishes: every name in the presentation order resolves to a
 // registered tool that describes itself, so a tool can't silently vanish from

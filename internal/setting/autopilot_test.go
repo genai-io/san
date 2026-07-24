@@ -30,6 +30,26 @@ func TestAutoPilotSettingsKey(t *testing.T) {
 	}
 }
 
+func TestSuggestDefaultsOnAndExplicitOffPersists(t *testing.T) {
+	if !(SteerSettings{}).SuggestOn() {
+		t.Fatal("unset suggest steer should default on")
+	}
+
+	var d Data
+	if err := json.Unmarshal([]byte(`{"autoPilot":{"steers":{"suggest":false}}}`), &d); err != nil {
+		t.Fatalf("unmarshal explicit suggest:false: %v", err)
+	}
+	if d.AutoPilot.Steers.SuggestOn() {
+		t.Fatal("explicit suggest:false should disable automatic input hints")
+	}
+	if d.AutoPilot.Steers.Suggest == nil {
+		t.Fatal("explicit suggest:false was not preserved")
+	}
+	if mergeSettings(NewData(), &d).AutoPilot.Steers.SuggestOn() {
+		t.Fatal("merge dropped explicit suggest:false")
+	}
+}
+
 // The permission steer defaults on (autopilot's baseline) and only an explicit
 // false turns it off; steers survive a Clone and a same-level merge (the
 // regression that made the whole autoPilot block read back as zero).
@@ -50,7 +70,7 @@ func TestAutoPilotSteersRoundTrip(t *testing.T) {
 	if clone.AutoPilot.Mission != "ship it" {
 		t.Errorf("clone dropped mission: %q", clone.AutoPilot.Mission)
 	}
-	if !clone.AutoPilot.Steers.Suggest {
+	if !clone.AutoPilot.Steers.SuggestOn() {
 		t.Error("clone dropped suggest steer")
 	}
 	if !clone.AutoPilot.Steers.TurnEnd {
@@ -67,7 +87,7 @@ func TestAutoPilotSteersRoundTrip(t *testing.T) {
 	}
 
 	merged := mergeSettings(&d, NewData())
-	if merged.AutoPilot.Mission != "ship it" || !merged.AutoPilot.Steers.TurnEnd || !merged.AutoPilot.Steers.Suggest {
+	if merged.AutoPilot.Mission != "ship it" || !merged.AutoPilot.Steers.TurnEnd || !merged.AutoPilot.Steers.SuggestOn() {
 		t.Error("merge dropped the autoPilot block")
 	}
 }
@@ -119,9 +139,10 @@ func TestAutoPilotDrivingConfiguration(t *testing.T) {
 		t.Error("EngageDriving overrode an explicit permission:false")
 	}
 
-	cfg.Steers.Suggest = true
+	on := true
+	cfg.Steers.Suggest = &on
 	cfg.StopDriving()
-	if cfg.Steers.Suggest || cfg.Steers.Question || cfg.Steers.TurnEnd {
+	if cfg.Steers.SuggestOn() || cfg.Steers.Question || cfg.Steers.TurnEnd {
 		t.Errorf("StopDriving left the copilot driving: %+v", cfg.Steers)
 	}
 	if !cfg.Steers.BashPrompt || !cfg.Steers.Skill {

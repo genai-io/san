@@ -79,7 +79,7 @@ func NewToolSelector(
 
 // EnterSelect activates the selector and loads every tool.
 func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.ToolSchema) error {
-	allTools := coretool.GetToolSchemasWith(coretool.SchemaOptions{MCPTools: mcpTools})
+	allTools := coretool.GetManageableToolSchemasWith(coretool.SchemaOptions{MCPTools: mcpTools})
 
 	// Pre-load both levels so switching tabs never has to touch disk. The loader
 	// hands back a fresh, owned map per level, so no copy is needed.
