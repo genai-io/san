@@ -49,6 +49,7 @@ func connectedRegistry(t *testing.T, servers map[string]transport.Transport) *Re
 		c.mu.Unlock()
 		r.configs[name] = cfg
 		r.clients[name] = c
+		r.retainWithoutLeases[name] = true
 	}
 	return r
 }
@@ -112,6 +113,37 @@ func TestDisconnectAllDoesNotBlockPerServer(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Errorf("transport %d was never torn down", i)
 		}
+	}
+}
+
+func TestDisconnectAllNotifiesToolsChanged(t *testing.T) {
+	tr := newSlowTransport(0)
+	r := connectedRegistry(t, map[string]transport.Transport{"shared": tr})
+	notified := make(chan struct{}, 1)
+	r.SetOnToolsChanged(func() { notified <- struct{}{} })
+
+	r.DisconnectAll()
+	select {
+	case <-notified:
+	case <-time.After(time.Second):
+		t.Fatal("DisconnectAll did not notify tool-schema subscribers")
+	}
+}
+
+func TestToolsChangedCallbackCanReenterConnectionLifecycle(t *testing.T) {
+	tr := newSlowTransport(0)
+	r := connectedRegistry(t, map[string]transport.Transport{"shared": tr})
+	done := make(chan struct{})
+	r.SetOnToolsChanged(func() {
+		r.DisconnectAll()
+		close(done)
+	})
+
+	r.Disconnect("shared")
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tools-changed callback deadlocked reentering the lifecycle API")
 	}
 }
 

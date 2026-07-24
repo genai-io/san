@@ -42,10 +42,9 @@ type Tools interface {
 // configured servers, connect or disconnect them individually or in
 // bulk, and read per-server config. Implemented by *Registry.
 //
-// Consumers: the ConnectServers free function (which the subagent
-// executor uses to bring up a curated server set per invocation). The
-// TUI /mcp selector needs methods beyond this interface (RemoveServer,
-// SetDisabled, SetConnectError, …) and depends on *Registry directly.
+// The TUI /mcp selector consumes this interface. Per-Agent connection leases
+// intentionally require *Registry because their epoch-aware operations are
+// internal lifecycle details, not ordinary connection ownership.
 type Servers interface {
 	List() []Server
 	Connect(ctx context.Context, name string) error
@@ -87,7 +86,7 @@ func Initialize(opts Options) error {
 	// the old project and the new one — tearing it down would drop every
 	// mcp__* tool from the agent mid-session, with nothing to reconnect it
 	// (AutoConnect only runs at startup).
-	reg.adoptLiveClients(DefaultRegistry())
+	reg.transferRetainedConnectionsFrom(DefaultRegistry())
 	setDefaultRegistry(reg)
 	return nil
 }

@@ -45,7 +45,7 @@ type Executor struct {
 	projectInstructions        string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
 	mcpTools                   mcp.Tools            // tool schemas + execution
-	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
+	mcpConnectionRegistry      *mcp.Registry        // per-Agent connection leases
 }
 
 type SubagentSessionStore interface {
@@ -138,12 +138,11 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 	e.skillsPrompt = skillsPrompt
 }
 
-// SetMCP wires the parent's MCP access for the subagent. Tool schemas
-// and execution flow through tools; connection lifecycle for any
-// per-subagent server set flows through servers.
-func (e *Executor) SetMCP(tools mcp.Tools, servers mcp.Servers) {
+// SetMCPDependencies wires MCP tool access separately from the concrete
+// registry used to lease per-Agent server connections.
+func (e *Executor) SetMCPDependencies(tools mcp.Tools, connectionRegistry *mcp.Registry) {
 	e.mcpTools = tools
-	e.mcpServers = servers
+	e.mcpConnectionRegistry = connectionRegistry
 }
 
 // SetSessionStore configures session persistence for subagent conversations.
@@ -357,14 +356,14 @@ func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID stri
 func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec func(string, map[string]any), onEvent func(core.Event)) (core.Agent, func(), error) {
 	rc := run.cfg
 	agentCwd := run.cwd
-	cleanup := func() {}
+	releaseMCPLeases := func() {}
 
-	if len(rc.config.McpServers) > 0 && e.mcpServers != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpServers, rc.config.McpServers)
-		if mcpCleanup != nil {
-			cleanup = mcpCleanup
+	if len(rc.config.McpServers) > 0 && e.mcpConnectionRegistry != nil {
+		releaseAcquiredMCPLeases, leaseAcquireErrors := mcp.AcquireServerConnectionLeases(ctx, e.mcpConnectionRegistry, rc.config.McpServers)
+		if releaseAcquiredMCPLeases != nil {
+			releaseMCPLeases = releaseAcquiredMCPLeases
 		}
-		for _, err := range errs {
+		for _, err := range leaseAcquireErrors {
 			log.Logger().Warn("Agent MCP server connection failed", zap.Error(err))
 		}
 	}
@@ -428,7 +427,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		OnEvent:     onEvent,
 	})
 
-	return ag, cleanup, nil
+	return ag, releaseMCPLeases, nil
 }
 
 // subagentCompactFunc summarizes the conversation on the run's own model so
