@@ -280,8 +280,9 @@ func baseAgentConfig() *AgentConfig {
 	}
 }
 
-// resolveAgentConfig returns the unnamed base configuration when no name is
-// requested. Named definitions are resolved through the registry.
+// resolveAgentConfig returns the base configuration for an omitted or unknown
+// name. A matching enabled definition overrides the base configuration; a
+// matching disabled definition is rejected instead of silently bypassed.
 func resolveAgentConfig(name string) (*AgentConfig, bool) {
 	return resolveAgentConfigFrom(Default(), name)
 }
@@ -292,9 +293,22 @@ func resolveAgentConfigFrom(registry *Registry, name string) (*AgentConfig, bool
 		return baseAgentConfig(), true
 	}
 	if registry == nil {
-		return nil, false
+		return displayOnlyAgentConfig(name), true
 	}
-	return registry.ResolveEnabledAgent(name)
+	if config, exists, enabled := registry.LookupAgent(name); exists {
+		return config, enabled
+	}
+	return displayOnlyAgentConfig(name), true
+}
+
+// displayOnlyAgentConfig preserves an unknown requested name for identity and
+// UI display while otherwise using the base agent template. In particular it
+// has no custom prompt, skills, tool rules, model override, or mode override.
+func displayOnlyAgentConfig(name string) *AgentConfig {
+	config := baseAgentConfig()
+	config.Name = strings.TrimSpace(name)
+	config.displayOnly = true
+	return config
 }
 
 func (e *Executor) resolveAgentConfig(name string) (*AgentConfig, bool) {

@@ -70,7 +70,7 @@ func (a *ExecutorAdapter) ResolveAgentSelection(name string) (tool.AgentConfigIn
 		return tool.AgentConfigInfo{}, nil, false
 	}
 	info := ToAgentConfigInfo(config)
-	if strings.TrimSpace(name) == "" {
+	if strings.TrimSpace(name) == "" || config.displayOnly {
 		info.PermissionMode = string(a.Executor.currentParentPermissionMode())
 	}
 	return info, config, true

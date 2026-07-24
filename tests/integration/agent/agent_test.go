@@ -52,16 +52,23 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 	}
 }
 
-func TestAgent_UnknownAgent(t *testing.T) {
-	mp := &testutil.MockProvider{}
+func TestAgent_UnknownNameUsesDefaultTemplate(t *testing.T) {
+	mp := &testutil.MockProvider{
+		Responses: []llm.CompletionResponse{
+			{Content: "completed with default template", StopReason: "end_turn"},
+		},
+	}
 	executor := subagent.NewExecutor(mp, t.TempDir(), "fake-model", nil)
 
-	_, err := executor.Run(context.Background(), tool.AgentExecRequest{
+	result, err := executor.Run(context.Background(), tool.AgentExecRequest{
 		Agent:  "NonExistent",
 		Prompt: "do something",
 	})
-	if err == nil {
-		t.Fatal("expected error for unknown agent")
+	if err != nil {
+		t.Fatalf("unknown display name should use the default template: %v", err)
+	}
+	if !result.Success || result.AgentName != "NonExistent" {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 

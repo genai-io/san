@@ -104,15 +104,31 @@ func TestAgentToolOmittedNameStaysEmpty(t *testing.T) {
 	}
 }
 
-func TestAgentToolRejectsUnknownOrDisabledNameBeforePermission(t *testing.T) {
+func TestAgentToolAcceptsUnknownNameAsDisplayLabel(t *testing.T) {
+	fallbackConfig := &struct{ Template string }{Template: "default"}
+	executor := &recordingExecutor{configOK: true, resolvedConfig: fallbackConfig}
 	agentTool := NewAgentTool()
-	agentTool.SetExecutor(&recordingExecutor{})
-	_, err := agentTool.PreparePermission(context.Background(), map[string]any{
-		"name":        "missing",
-		"description": "Inspect code",
-		"prompt":      "Find references",
-	}, ".")
-	if err == nil {
-		t.Fatal("unknown or disabled custom name should fail")
+	agentTool.SetExecutor(executor)
+	params := map[string]any{
+		"name":              "autopilot-suggestion",
+		"description":       "Trace autopilot suggestions",
+		"prompt":            "Trace the suggestion flow",
+		"run_in_background": true,
+	}
+
+	permission, err := agentTool.PreparePermission(context.Background(), params, ".")
+	if err != nil {
+		t.Fatalf("display-only name should be accepted: %v", err)
+	}
+	if permission.AgentMeta.AgentName != "autopilot-suggestion" {
+		t.Fatalf("permission agent name = %q", permission.AgentMeta.AgentName)
+	}
+
+	result := agentTool.ExecuteApproved(context.Background(), params, ".")
+	if !result.Success {
+		t.Fatalf("background display-only agent failed: %s", result.Error)
+	}
+	if executor.runReq.Agent != "autopilot-suggestion" || executor.runReq.ResolvedAgentConfig != fallbackConfig {
+		t.Fatalf("execution request = %#v", executor.runReq)
 	}
 }

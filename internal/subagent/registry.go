@@ -44,17 +44,25 @@ func (r *Registry) Get(name string) (*AgentConfig, bool) {
 	return config, ok
 }
 
-// ResolveEnabledAgent returns an enabled agent configuration by exact name.
-func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
+// LookupAgent returns an agent definition together with whether it exists and
+// is enabled. Keeping the two states separate lets callers reject an explicitly
+// disabled definition while treating an unknown name as a display-only label.
+func (r *Registry) LookupAgent(name string) (config *AgentConfig, exists, enabled bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	lowerName := strings.ToLower(strings.TrimSpace(name))
-	config, ok := r.agents[lowerName]
-	if !ok || r.isDisabledInternal(lowerName) {
-		return nil, false
+	config, exists = r.agents[lowerName]
+	if !exists {
+		return nil, false, false
 	}
-	return config, true
+	return config, true, !r.isDisabledInternal(lowerName)
+}
+
+// ResolveEnabledAgent returns an enabled agent configuration by exact name.
+func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
+	config, exists, enabled := r.LookupAgent(name)
+	return config, exists && enabled
 }
 
 // ListConfigs returns all registered agent configurations that are visible

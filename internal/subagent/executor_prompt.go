@@ -174,7 +174,7 @@ func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExec
 	case "edit":
 		return PermissionAcceptEdits
 	case "", "default":
-		if strings.TrimSpace(req.Agent) == "" {
+		if strings.TrimSpace(req.Agent) == "" || config.displayOnly {
 			return e.currentParentPermissionMode()
 		}
 		return NormalizePermissionMode(string(config.PermissionMode))

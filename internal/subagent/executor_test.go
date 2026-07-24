@@ -748,8 +748,15 @@ func TestResolveAgentConfigUsesUnnamedAndNamedDefinitions(t *testing.T) {
 	if !ok || resolved != literalSubagent {
 		t.Fatalf("explicit subagent config = %#v, %v; want registered config", resolved, ok)
 	}
-	if _, ok := resolveAgentConfig("missing"); ok {
-		t.Fatal("unknown agent should not resolve")
+	resolved, ok = resolveAgentConfig("missing")
+	if !ok {
+		t.Fatal("unknown agent name should resolve through the base template")
+	}
+	if resolved.Name != "missing" || !resolved.displayOnly {
+		t.Fatalf("unknown agent config = %#v; want display-only name", resolved)
+	}
+	if resolved.SystemPrompt != "" || len(resolved.Skills) != 0 || resolved.AllowTools != nil || resolved.DenyTools != nil {
+		t.Fatalf("display-only config inherited custom behavior: %#v", resolved)
 	}
 }
 
@@ -795,6 +802,10 @@ func TestRequestPermissionModeInheritanceAndNamedConfig(t *testing.T) {
 
 	if got := executor.requestPermissionMode(baseAgentConfig(), tool.AgentExecRequest{}); got != PermissionBypass {
 		t.Fatalf("unnamed agent mode = %q, want inherited bypass", got)
+	}
+	displayOnly := displayOnlyAgentConfig("autopilot-suggestion")
+	if got := executor.requestPermissionMode(displayOnly, tool.AgentExecRequest{Agent: "autopilot-suggestion"}); got != PermissionBypass {
+		t.Fatalf("display-only agent mode = %q, want inherited bypass", got)
 	}
 	named := &AgentConfig{Name: "reviewer", PermissionMode: PermissionExplore}
 	if got := executor.requestPermissionMode(named, tool.AgentExecRequest{Agent: "reviewer"}); got != PermissionExplore {

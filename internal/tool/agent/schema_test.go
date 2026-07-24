@@ -43,14 +43,17 @@ func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
 	}
 }
 
-func TestAgentSchemaUsesOptionalName(t *testing.T) {
+func TestAgentSchemaExplainsNameResolution(t *testing.T) {
 	properties := agentToolParameters["properties"].(map[string]any)
 	name, ok := properties["name"].(map[string]any)
 	if !ok {
 		t.Fatal("Agent schema should expose name")
 	}
-	if name["description"] != "Optional agent name." {
-		t.Fatalf("name description = %q", name["description"])
+	description, _ := name["description"].(string)
+	for _, want := range []string{"available agent definition", "display label", "default agent template", "no custom agent prompt"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("name description %q should contain %q", description, want)
+		}
 	}
 }
 

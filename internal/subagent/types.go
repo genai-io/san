@@ -330,6 +330,10 @@ type AgentConfig struct {
 	McpServers   []string `yaml:"mcp-servers,omitempty" json:"mcp_servers,omitempty"`
 	SourceFile   string   `yaml:"-" json:"-"`
 
+	// displayOnly marks a runtime-only base-template config whose Name is just a
+	// UI label. It is never loaded from an agent definition.
+	displayOnly bool
+
 	systemPromptOnce sync.Once `yaml:"-" json:"-"`
 }
 
