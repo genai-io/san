@@ -28,20 +28,20 @@ func (t *AgentTool) SchemaWithAgentDirectory(agentDirectory string) core.ToolSch
 
 // agentSchema builds the Agent tool schema with the given agent-directory body
 // embedded directly in the description. The directory is rendered before the
-// usage notes so the LLM sees the available agent types right after the
-// opening line. An empty directory yields a directory-less description that
-// still mentions subagent_type — useful for subagent contexts where the
-// directory is intentionally omitted to discourage recursive spawning.
+// usage notes so the LLM sees the available custom agent names right after the
+// opening line.
 func agentSchema(agentDirectory string) core.ToolSchema {
 	agentDirectory = strings.TrimSpace(agentDirectory)
 
 	var sb strings.Builder
 	sb.WriteString("Launch a subagent for complex work that benefits from separate context or parallel execution.\n\n")
 	if agentDirectory != "" {
+		sb.WriteString("Optional custom subagent definitions:\n\n")
 		sb.WriteString(agentDirectory)
-		sb.WriteString("\n\n")
+		sb.WriteString("\n\nSet name only when selecting one of these custom agents; otherwise omit it to use the default agent.\n\n")
+	} else {
+		sb.WriteString("Omit name to use the default agent.\n\n")
 	}
-	sb.WriteString("When using the Agent tool, specify a subagent_type parameter to select which agent type to use. If omitted, the general-purpose agent is used.\n\n")
 	sb.WriteString("Use the lightest option that fits: a single Bash or Read call → that tool directly; 3+ non-mutating searches with decisions between them → mode=explore; code changes or multi-file edits → mode=edit.\n\n")
 	sb.WriteString("Brief the agent like a colleague who just walked in — it has not seen this conversation. Write a self-contained prompt: the goal and why, what you've ruled out, relevant paths and constraints; for lookups the exact command, for investigations the question. Never delegate understanding: \"based on your findings, fix the bug\" pushes synthesis onto the agent.\n\n")
 	sb.WriteString("Notes:\n")
@@ -66,29 +66,21 @@ var agentToolParameters = map[string]any{
 			"type":        "string",
 			"description": "A short (3-5 word) description of the task",
 		},
-		"subagent_type": map[string]any{
-			"type":        "string",
-			"description": "The type of specialized agent to use for this task",
-		},
 		"name": map[string]any{
 			"type":        "string",
-			"description": "Optional short display name, usually 1-2 words. If omitted, explore mode uses Explorer and edit mode uses Editor.",
+			"description": "Optional custom agent name from the available definitions. Omit to use the default agent.",
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
 			"description": "Set to true to run this agent in the background. You will be notified when it completes.",
 		},
-		"model": map[string]any{
-			"type":        "string",
-			"description": "Optional model override. If omitted or unavailable, inherits from parent conversation.",
-		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps for the agent. Built-in agents default to 100 and lower values are raised to 100.",
+			"description": "Maximum number of LLM inference steps. Defaults to 500; lower values are raised to 500.",
 		},
 		"mode": map[string]any{
 			"type":        "string",
-			"description": "Permission mode for spawned agent: explore = read-only, edit = can modify files, default = agent config's mode.",
+			"description": "Permission mode for the spawned agent: explore = read-only; edit = can modify files; default = inherit the parent session for the default agent or use the custom agent's configured mode.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
 	},

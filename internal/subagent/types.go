@@ -297,7 +297,7 @@ func parseNamedToolRule(name string, value *yaml.Node) (ToolRule, bool, error) {
 	return ToolRule{}, false, fmt.Errorf("unsupported rule for tool %q", name)
 }
 
-// AgentConfig defines the configuration for an agent type.
+// AgentConfig defines a user-managed custom agent.
 type AgentConfig struct {
 	Name        string `yaml:"name" json:"name"`
 	Description string `yaml:"description" json:"description"`
@@ -362,8 +362,13 @@ type AgentResult struct {
 	Error          string
 }
 
-// defaultMaxSteps is the default maximum number of LLM inference steps.
-const defaultMaxSteps = 100
+const (
+	defaultAgentName        = "subagent"
+	defaultAgentDescription = "General-purpose subagent for research and implementation tasks."
+
+	// defaultMaxSteps is both the default and minimum number of LLM inference steps.
+	defaultMaxSteps = 500
+)
 
 // modelAliases maps short model aliases to current-generation model ids.
 // Un-dated ids resolve on Anthropic-family providers (API and Vertex both
