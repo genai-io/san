@@ -23,8 +23,7 @@ type AgentRegistry interface {
 type agentTab int
 
 const (
-	agentTabBuiltin agentTab = iota
-	agentTabProject
+	agentTabProject agentTab = iota
 	agentTabUser
 )
 
@@ -34,7 +33,7 @@ type agentItem struct {
 	Model          string
 	PermissionMode string
 	Tools          string
-	Source         string // "built-in", "user", "project", "plugin"
+	Source         string // "user", "project", or plugin scope
 	PluginName     string // populated when Source == "plugin" or name has "ns:" prefix
 	Enabled        bool
 }
@@ -43,28 +42,26 @@ type agentItem struct {
 type AgentToggleMsg struct {
 	AgentName string
 	Enabled   bool
+	Err       error
 }
 
 // AgentSelector holds the state for the agent selector overlay. The tab/filter/
 // keypress/frame mechanics live in the embedded tabbedList; this type owns
 // agent loading, the row layout, and the enable/disable action.
 type AgentSelector struct {
-	registry AgentRegistry
-	list     tabbedList[agentItem]
+	registryProvider func() AgentRegistry
+	list             tabbedList[agentItem]
 }
 
-func NewAgentSelector(reg AgentRegistry) AgentSelector {
+func NewAgentSelector(registryProvider func() AgentRegistry) AgentSelector {
 	return AgentSelector{
-		registry: reg,
+		registryProvider: registryProvider,
 		list: tabbedList[agentItem]{
 			tabs: []tabSpec{
-				{name: "Built-in", disableIfEmpty: true},
 				{name: "Project"},
 				{name: "User"},
 			},
-			// Project first, then User, then Built-in (built-in agents are
-			// rarely the thing the user came to toggle).
-			preferred:   []int{int(agentTabProject), int(agentTabUser), int(agentTabBuiltin)},
+			preferred:   []int{int(agentTabProject), int(agentTabUser)},
 			noun:        "agents",
 			placeholder: "Type to filter agents...",
 			hints:       []string{"↑/↓ navigate", "Enter toggle", "←/→/Tab switch tab", "Esc cancel"},
@@ -77,10 +74,11 @@ func NewAgentSelector(reg AgentRegistry) AgentSelector {
 
 // EnterSelect activates the selector and loads agents from the registry.
 func (s *AgentSelector) EnterSelect(width, height int) error {
-	allConfigs := s.registry.ListConfigs()
+	registry := s.registryProvider()
+	allConfigs := registry.ListConfigs()
 	disabledByLevel := map[bool]map[string]bool{
-		false: s.registry.GetDisabledAt(false),
-		true:  s.registry.GetDisabledAt(true),
+		false: registry.GetDisabledAt(false),
+		true:  registry.GetDisabledAt(true),
 	}
 
 	agents := make([]agentItem, 0, len(allConfigs))
@@ -91,9 +89,9 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 			pluginName = cfg.Name[:idx]
 		}
 		source := cfg.Source
-		// Disabled state lookup uses the user-level map for built-in/user
-		// agents, project-level map for project agents.
-		userLevel := source == "user" || source == "built-in"
+		// Disabled state lookup uses the user-level map for user agents and the
+		// project-level map for project and plugin agents.
+		userLevel := source == "user" || source == "user-plugin"
 		agents = append(agents, agentItem{
 			Name:           cfg.Name,
 			Description:    cfg.Description,
@@ -140,8 +138,6 @@ func (s *AgentSelector) IsActive() bool { return s.list.active }
 // (a "user-plugin" source is treated as User; bare "plugin" defaults to Project).
 func agentMatchesTab(a agentItem, tab int) bool {
 	switch agentTab(tab) {
-	case agentTabBuiltin:
-		return a.Source == "built-in"
 	case agentTabProject:
 		return a.Source == "project" || a.Source == "plugin" || a.Source == "project-plugin"
 	case agentTabUser:
@@ -150,10 +146,9 @@ func agentMatchesTab(a agentItem, tab int) bool {
 	return false
 }
 
-func (s *AgentSelector) saveLevelForActiveTab() bool {
-	// Built-in and User tabs persist disable-state at the user level;
-	// Project tab persists at the project level.
-	return s.list.activeTab != int(agentTabProject)
+func (s *AgentSelector) activeTabUsesUserStore() bool {
+	// User agents persist at user level; Project agents persist at project level.
+	return s.list.activeTab == int(agentTabUser)
 }
 
 func (s *AgentSelector) Toggle() tea.Cmd {
@@ -161,16 +156,21 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 		return nil
 	}
 	selected := &s.list.filtered[s.list.nav.Selected]
-	selected.Enabled = !selected.Enabled
+	enabled := !selected.Enabled
+	if err := s.registryProvider().SetEnabled(selected.Name, enabled, s.activeTabUsesUserStore()); err != nil {
+		return func() tea.Msg {
+			return AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled, Err: err}
+		}
+	}
+	selected.Enabled = enabled
 	for i := range s.list.items {
 		if s.list.items[i].Name == selected.Name {
-			s.list.items[i].Enabled = selected.Enabled
+			s.list.items[i].Enabled = enabled
 			break
 		}
 	}
-	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.saveLevelForActiveTab())
 	return func() tea.Msg {
-		return AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled}
+		return AgentToggleMsg{AgentName: selected.Name, Enabled: enabled}
 	}
 }
 
@@ -231,11 +231,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		// Reserve room for an inline source badge on the right.
 		badgeText := ""
-		switch {
-		case a.PluginName != "":
+		if a.PluginName != "" {
 			badgeText = "[Plugin: " + a.PluginName + "]"
-		case a.Source == "built-in":
-			badgeText = "[Built-in]"
 		}
 
 		// Width budget for one row, accounting for the panel's Padding(1, 2)
