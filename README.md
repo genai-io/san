@@ -116,7 +116,7 @@ san --resume                     # pick a past session to resume
 
 # Subcommands (run `san <command> --help` for the full list)
 san inspector                    # session transcript viewer
-san agent run --type general-purpose --prompt "..."  # run a headless agent
+san agent run --prompt "..."                     # run a headless agent
 san plugin <list|install|enable|...>          # manage plugins
 san mcp <add|list|remove|...>                 # manage MCP servers
 ```
@@ -176,7 +176,7 @@ settings.json     # Permissions, hooks, env, active persona
 skills.json       # Skill states
 personas/         # Persona bundles: system prompt parts, skills, settings
 skills/           # Custom skill definitions
-agents/           # Custom agent definitions
+agents/           # Agent definitions
 commands/         # Custom slash commands
 plugins/          # Installed plugins
 projects/         # Session transcripts + indexes

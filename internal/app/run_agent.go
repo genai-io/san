@@ -17,7 +17,7 @@ import (
 
 // AgentRunOptions configures a one-shot headless agent run.
 type AgentRunOptions struct {
-	Type     string // agent type to run (required)
+	Name     string // optional agent name
 	Prompt   string // task prompt (required)
 	Model    string // model override; empty uses the connected provider's model
 	MaxSteps int    // maximum LLM inference steps
@@ -25,9 +25,6 @@ type AgentRunOptions struct {
 
 // RunAgent executes a single agent in headless mode (no TUI).
 func RunAgent(opts AgentRunOptions) error {
-	if opts.Type == "" {
-		return fmt.Errorf("--type is required")
-	}
 	if opts.Prompt == "" {
 		return fmt.Errorf("--prompt is required")
 	}
@@ -57,8 +54,10 @@ func RunAgent(opts AgentRunOptions) error {
 	if err := subagent.Initialize(subagent.Options{CWD: cwd}); err != nil {
 		return fmt.Errorf("failed to initialize agent registry: %w", err)
 	}
-	if _, ok := subagent.Default().Get(opts.Type); !ok {
-		return fmt.Errorf("unknown agent type: %s", opts.Type)
+	if opts.Name != "" {
+		if _, ok := subagent.Default().Get(opts.Name); !ok {
+			return fmt.Errorf("unknown agent: %s", opts.Name)
+		}
 	}
 
 	// Run through the full subagent pipeline so headless invocations get the
@@ -67,12 +66,14 @@ func RunAgent(opts AgentRunOptions) error {
 	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
 	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))
 
-	fmt.Printf("Agent: %s\n", opts.Type)
+	if opts.Name != "" {
+		fmt.Printf("Agent: %s\n", opts.Name)
+	}
 	fmt.Printf("Prompt: %s\n", opts.Prompt)
 	fmt.Println("---")
 
 	req := tool.AgentExecRequest{
-		Agent:    opts.Type,
+		Agent:    opts.Name,
 		Prompt:   opts.Prompt,
 		Model:    opts.Model,
 		MaxSteps: opts.MaxSteps,

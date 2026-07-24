@@ -44,8 +44,8 @@ func TestAgent_GeneralExploreMode(t *testing.T) {
 	if !result.Success {
 		t.Errorf("expected success, got error: %s", result.Error)
 	}
-	if result.AgentName != "Explorer" {
-		t.Errorf("expected agent name 'Explorer', got %q", result.AgentName)
+	if result.AgentName != "" {
+		t.Errorf("expected unnamed agent, got %q", result.AgentName)
 	}
 	if result.Content != "Explored the codebase" {
 		t.Errorf("unexpected content: %q", result.Content)

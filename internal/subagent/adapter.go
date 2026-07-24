@@ -81,8 +81,7 @@ func (a *ExecutorAdapter) GetParentModelID() string {
 	return a.Executor.GetParentModelID()
 }
 
-// GetAgentConfig returns configuration for a selected custom agent name, or
-// the implicit default agent when name is empty.
+// GetAgentConfig returns configuration for an optional agent name.
 func (a *ExecutorAdapter) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	info, _, ok := a.ResolveAgentSelection(name)
 	return info, ok

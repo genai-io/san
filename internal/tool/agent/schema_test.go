@@ -6,27 +6,27 @@ import (
 )
 
 func TestAgentSchemaEmbedsDirectory(t *testing.T) {
-	directory := "Available custom agents for the Agent tool:\n\n- project-reviewer: General multi-step review agent\n  Tools: Read, Bash(git diff*)\n- plugin:browser-user: Uses a browser\n  Tools: WebFetch"
+	directory := "Available agents for the Agent tool:\n\n- project-reviewer: General multi-step review agent\n  Tools: Read, Bash(git diff*)\n- plugin:browser-user: Uses a browser\n  Tools: WebFetch"
 
 	schema := agentSchema(directory)
 	if !strings.Contains(schema.Description, "project-reviewer") {
 		t.Error("Agent description should embed the directory body when supplied")
 	}
 	if !strings.Contains(schema.Description, "plugin:browser-user") {
-		t.Error("Agent description should list every custom directory entry")
+		t.Error("Agent description should list every directory entry")
 	}
-	if !strings.Contains(schema.Description, "Set name only when selecting one of these custom agents") {
-		t.Error("Agent description should retain custom-agent guidance after the directory")
+	if !strings.Contains(schema.Description, "Available agent definitions") {
+		t.Error("Agent description should label the available definitions")
 	}
 }
 
 func TestAgentSchemaOmitsDirectoryWhenEmpty(t *testing.T) {
 	schema := agentSchema("")
-	if strings.Contains(schema.Description, "Available custom agents") {
-		t.Error("empty directory should not produce an Available-agents block")
+	if strings.Contains(schema.Description, "Available agent definitions") {
+		t.Error("empty directory should not produce an available-agents block")
 	}
-	if !strings.Contains(schema.Description, "Omit name to use the default agent") {
-		t.Error("default-agent guidance must remain without a directory")
+	if strings.Contains(schema.Description, "Omit name") {
+		t.Error("schema should not prescribe omitted-name behavior")
 	}
 }
 
@@ -43,13 +43,14 @@ func TestAgentToolSchemaMatchesEmptyDirectory(t *testing.T) {
 	}
 }
 
-func TestAgentSchemaUsesNameWithoutSubagentType(t *testing.T) {
+func TestAgentSchemaUsesOptionalName(t *testing.T) {
 	properties := agentToolParameters["properties"].(map[string]any)
-	if _, ok := properties["name"]; !ok {
-		t.Fatal("Agent schema should expose name for custom agent selection")
+	name, ok := properties["name"].(map[string]any)
+	if !ok {
+		t.Fatal("Agent schema should expose name")
 	}
-	if _, ok := properties["subagent_type"]; ok {
-		t.Fatal("Agent schema must not expose subagent_type")
+	if name["description"] != "Optional agent name." {
+		t.Fatalf("name description = %q", name["description"])
 	}
 }
 

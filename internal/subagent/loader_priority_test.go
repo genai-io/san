@@ -17,7 +17,7 @@ func writeAgentFile(t *testing.T, dir, name, frontmatter string) {
 	}
 }
 
-func TestLoadCustomAgentsProjectOverridesClaudeCompat(t *testing.T) {
+func TestLoadAgentsProjectOverridesClaudeCompat(t *testing.T) {
 	SetDefaultRegistry(NewRegistry())
 	t.Cleanup(ResetDefaultRegistry)
 
@@ -27,7 +27,7 @@ func TestLoadCustomAgentsProjectOverridesClaudeCompat(t *testing.T) {
 	writeAgentFile(t, filepath.Join(cwd, ".claude", "agents"), "reviewer",
 		"name: reviewer\ndescription: claude compat reviewer")
 
-	LoadCustomAgents(cwd)
+	LoadAgents(cwd)
 
 	config, ok := defaultRegistry.Get("reviewer")
 	if !ok {

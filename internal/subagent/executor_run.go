@@ -209,7 +209,7 @@ func (e *Executor) finalizeResult(run *preparedRun, result *core.Result, success
 
 	return &AgentResult{
 		AgentID:        agentSessionID,
-		AgentName:      run.cfg.displayName,
+		AgentName:      run.cfg.config.Name,
 		TranscriptPath: agentTranscriptPath,
 		Model:          run.cfg.modelID,
 		Success:        success,

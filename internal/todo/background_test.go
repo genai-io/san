@@ -23,7 +23,6 @@ func TestTrackWorkerCreatesEntry(t *testing.T) {
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
-		AgentType:   "Explore",
 		Description: "Directory structure audit",
 	})
 
@@ -80,7 +79,6 @@ func TestCompleteWorkerUpdatesStatus(t *testing.T) {
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "dir-audit",
-		AgentType:   "Explore",
 		Description: "Directory audit",
 	})
 
@@ -110,7 +108,6 @@ func TestCompleteWorkerTracksFailure(t *testing.T) {
 		ID:          "bg-1",
 		Type:        task.TaskTypeAgent,
 		AgentName:   "fix-auth",
-		AgentType:   "subagent",
 		Description: "Fix auth module",
 	})
 

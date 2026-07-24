@@ -210,7 +210,7 @@ type PendingToolSpinnerParams struct {
 	SpinnerView string
 	// Blink drives the agent running icon.
 	Blink int
-	// AgentColors maps agent type names to display colors.
+	// AgentColors maps agent names to display colors.
 	AgentColors map[string]string
 	// Width is the terminal width for label truncation.
 	Width int

@@ -5,8 +5,8 @@ layer: feature
 
 # subagent
 
-Registry of custom agent **types** (markdown-defined personas with their
-own system prompt, tool subset, and permission mode) plus the **Executor**
+Registry of agent definitions (markdown-defined personas with their own
+system prompt, tool subset, and permission mode) plus the **Executor**
 that spawns foreground or background `core.Agent` instances from within the
 main agent's tool loop.
 
@@ -44,8 +44,7 @@ the concrete `*hook.Engine`.
 ```go
 package subagent
 
-// Registry is an opaque handle to the agent type registry. The type is
-// exported so callers can hold and pass *Registry values; all fields
+// Registry is an opaque handle to the agent registry. It is exported so callers can hold and pass *Registry values; all fields
 // are unexported so internal state is reached only through methods.
 type Registry struct { /* internal fields */ }
 

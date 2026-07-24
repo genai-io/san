@@ -203,12 +203,12 @@ func TestBuildSubagentIdentityPreservesExplicitSubagentName(t *testing.T) {
 	sys := Build(core.ScopeSubagent,
 		WithSubagentIdentity(SubagentBrief{
 			AgentName:   "subagent",
-			Description: "A custom agent with a literal name.",
+			Description: "An agent with a literal name.",
 		}),
 	)
 
 	if prompt := sys.Prompt(); !strings.Contains(prompt, "You are a subagent subagent") {
-		t.Fatalf("explicit custom name was treated as the implicit default:\n%s", prompt)
+		t.Fatalf("explicit name was not preserved:\n%s", prompt)
 	}
 }
 

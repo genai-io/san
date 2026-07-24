@@ -96,8 +96,8 @@ func TrackWorker(svc Service, info task.TaskInfo) {
 
 	item := svc.Create(workerSubject(info), info.Description, "", metadata)
 	opts := []UpdateOption{WithStatus(StatusInProgress)}
-	if info.AgentType != "" {
-		opts = append(opts, WithOwner(info.AgentType))
+	if info.AgentName != "" {
+		opts = append(opts, WithOwner(info.AgentName))
 	}
 	_ = svc.Update(item.ID, opts...)
 }
@@ -140,8 +140,6 @@ func workerSubject(info task.TaskInfo) string {
 		return desc
 	case name != "":
 		return name
-	case info.AgentType != "":
-		return info.AgentType
 	// A bash worker names no agent, so its command is the only description of
 	// itself it carries. Better than falling through to the opaque task ID.
 	case info.Command != "":

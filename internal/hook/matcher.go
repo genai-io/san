@@ -53,7 +53,7 @@ func getMatchValue(event EventType, input HookInput) string {
 	case Setup:
 		return input.Trigger
 	case SubagentStart, SubagentStop:
-		return input.AgentType
+		return input.AgentName
 	case TaskCreated, TaskCompleted:
 		return input.TaskSubject
 	case ConfigChange:
