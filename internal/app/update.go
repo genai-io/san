@@ -133,6 +133,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ctrlOSingleTickMsg:
 		return m, m.handleCtrlOSingleTick()
 	case input.PromptSuggestionMsg:
+		// A request can finish just after the user switched Suggest off. The
+		// setting is the final authority, so a stale completion cannot restore
+		// ghost text after Clear cancelled it.
+		if !m.env.AutoPilot.Steers.SuggestOn() {
+			m.userInput.PromptSuggestion.Clear()
+			return m, nil
+		}
 		input.HandlePromptSuggestion(&m.userInput, m.conv.Stream.Active, m.userInput.Textarea.Value(), msg)
 		return m, nil
 	case kit.DismissedMsg:
@@ -188,6 +195,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the default for new sessions.
 		m.env.AutoPilot = msg.Config.Clone()
 		m.persistAutopilotDefault()
+		// Suggest is the input hint's feature switch. Clear both visible and
+		// in-flight hints immediately when it is turned off.
+		if !m.env.AutoPilot.Steers.SuggestOn() {
+			m.userInput.PromptSuggestion.Clear()
+		}
 		m.conv.AddNotice("Autopilot config saved")
 		return m, nil
 	case input.GoalSetMsg:
@@ -203,6 +215,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (which only lands the mode and, with Suggest on, proposes a step).
 		m.env.AutoPilot = msg.Config.Clone()
 		m.persistAutopilotDefault()
+		if !m.env.AutoPilot.Steers.SuggestOn() {
+			m.userInput.PromptSuggestion.Clear()
+		}
 		m.enterAutoPilotMode()
 		m.conv.AddNotice("Autopilot engaged")
 		return m, m.autopilotKickCmd()

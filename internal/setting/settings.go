@@ -106,9 +106,11 @@ type AutoPilotSettings struct {
 // the agent event that hands control over. (The mission kick-off is an explicit
 // action — the panel's Start button — not a persisted steer.)
 type SteerSettings struct {
-	// Suggest fills the input hint with the copilot's proposed next step toward
-	// the mission — the gentlest steer: it suggests, the human accepts and sends.
-	Suggest bool `json:"suggest,omitempty"`
+	// Suggest is the feature switch for the input hint (on by default, in and
+	// out of AutoPilot mode): while a mission is driven it proposes the next
+	// step toward it, otherwise it predicts the human's next input. Tri-state
+	// keeps an explicit off distinct from the default-on zero value.
+	Suggest *bool `json:"suggest,omitempty"`
 	// Permission auto-approves gray-zone tool calls. Tri-state so the baseline
 	// can default on while an explicit off still persists: nil = on (autopilot's
 	// whole point), false = escalate every gray-zone prompt to the human.
@@ -124,6 +126,10 @@ type SteerSettings struct {
 	// TurnEnd auto-continues a finished turn toward the mission.
 	TurnEnd bool `json:"turnEnd,omitempty"`
 }
+
+// SuggestOn reports whether automatic input hints are enabled. Unset defaults
+// on; an explicit false from the AutoPilot panel disables them persistently.
+func (s SteerSettings) SuggestOn() bool { return s.Suggest == nil || *s.Suggest }
 
 // PermissionOn reports whether the permission steer is active. It defaults on
 // because gray-zone approval is the baseline of autopilot; an explicit false
@@ -162,7 +168,8 @@ func (a *AutoPilotSettings) EngageDriving() {
 // leaving the passive safety steers exactly as configured — the wind-down for a
 // mission that ended without a goal to rewind to.
 func (a *AutoPilotSettings) StopDriving() {
-	a.Steers.Suggest = false
+	off := false
+	a.Steers.Suggest = &off
 	a.Steers.Question = false
 	a.Steers.TurnEnd = false
 }
@@ -181,6 +188,10 @@ func (a AutoPilotSettings) ResolvedMaxContinuations() int {
 // Clone returns a deep copy, duplicating the tri-state permission pointer so
 // callers can mutate the copy without touching the original.
 func (a AutoPilotSettings) Clone() AutoPilotSettings {
+	if p := a.Steers.Suggest; p != nil {
+		v := *p
+		a.Steers.Suggest = &v
+	}
 	if p := a.Steers.Permission; p != nil {
 		v := *p
 		a.Steers.Permission = &v
@@ -193,7 +204,7 @@ func (a AutoPilotSettings) Clone() AutoPilotSettings {
 func (a AutoPilotSettings) IsZero() bool {
 	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
 		a.Mission == "" && a.MaxContinuations == 0 &&
-		!a.Steers.Suggest && a.Steers.Permission == nil &&
+		a.Steers.Suggest == nil && a.Steers.Permission == nil &&
 		!a.Steers.BashPrompt && !a.Steers.Skill && !a.Steers.Question && !a.Steers.TurnEnd
 }
 
@@ -206,7 +217,7 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.SystemPromptFile == b.SystemPromptFile &&
 		a.Mission == b.Mission &&
 		a.MaxContinuations == b.MaxContinuations &&
-		a.Steers.Suggest == b.Steers.Suggest &&
+		a.Steers.SuggestOn() == b.Steers.SuggestOn() &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&
 		a.Steers.Skill == b.Steers.Skill &&

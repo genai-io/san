@@ -73,6 +73,34 @@ func GetToolSchemas() []core.ToolSchema {
 	return GetToolSchemasWith(SchemaOptions{})
 }
 
+// manageableExtraToolOrder is the canonical order for conditional registered
+// tools that stay out of the model's default schema set but must remain visible
+// in /tools so users can enable or disable them. Their runtime gates still
+// decide whether they are otherwise active.
+var manageableExtraToolOrder = []string{
+	ToolEvolve,
+}
+
+// GetManageableToolSchemasWith returns every tool the /tools panel can manage.
+// It starts with the normal built-in and MCP schemas, then adds conditional
+// registered tools such as Evolve without making them unconditional model tools.
+func GetManageableToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
+	tools := GetToolSchemasWith(opts)
+	present := make(map[string]bool, len(tools))
+	for _, schema := range tools {
+		present[schema.Name] = true
+	}
+	for _, name := range manageableExtraToolOrder {
+		if present[name] {
+			continue
+		}
+		if t, ok := Get(name); ok {
+			tools = append(tools, t.Schema())
+		}
+	}
+	return tools
+}
+
 // GetToolSchemasWith returns tool schemas with dynamic content from opts.
 // Built-in schemas are sourced from each registered tool's Schema (the single
 // source of truth), in builtinToolOrder; the Agent tool's description embeds

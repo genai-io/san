@@ -690,6 +690,10 @@ func (m *model) retireAutopilotMission() {
 		m.env.AutoPilot.StopDriving()
 	}
 	m.env.AutoPilot.Mission = ""
+	// A displayed or in-flight hint may point at the mission that just ended.
+	// Clear it; a later lifecycle trigger can generate a generic hint if Suggest
+	// remains enabled after the wind-down.
+	m.userInput.PromptSuggestion.Clear()
 	m.rebuildAutopilotReviewer()
 }
 

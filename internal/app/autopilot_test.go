@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/setting"
@@ -156,8 +157,9 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 // the user actually configured — otherwise Bash and Skill stay on behind them.
 func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	suggestOn := true
 	configured := setting.AutoPilotSettings{
-		Steers:           setting.SteerSettings{Suggest: true},
+		Steers:           setting.SteerSettings{Suggest: &suggestOn},
 		MaxContinuations: 5,
 	}
 	// What startGoal leaves behind: the pre-goal snapshot plus the driving set.
@@ -171,7 +173,7 @@ func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
 	if m.env.AutoPilot.Mission != "" {
 		t.Errorf("mission = %q, want it cleared", m.env.AutoPilot.Mission)
 	}
-	if got := m.env.AutoPilot; got.Steers != configured.Steers || got.MaxContinuations != configured.MaxContinuations {
+	if got := m.env.AutoPilot; !got.Equal(configured) {
 		t.Errorf("stand-down left %+v, want the pre-goal config %+v", got, configured)
 	}
 	if m.beforeGoal != nil {
@@ -183,17 +185,65 @@ func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
 // without touching safety steers the user set for themselves.
 func TestMissionRetireLeavesConfiguredSafetySteers(t *testing.T) {
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.userInput.PromptSuggestion.Text = "stale mission hint"
+	suggestOn := true
 	m.env.AutoPilot = setting.AutoPilotSettings{
 		Mission: "ship it",
-		Steers:  setting.SteerSettings{BashPrompt: true, Suggest: true, TurnEnd: true},
+		Steers:  setting.SteerSettings{BashPrompt: true, Suggest: &suggestOn, TurnEnd: true},
 	}
 
 	m.retireAutopilotMission()
 	if !m.env.AutoPilot.Steers.BashPrompt {
 		t.Error("retire flipped off a Bash steer the user configured")
 	}
-	if m.env.AutoPilot.Steers.Suggest || m.env.AutoPilot.Steers.TurnEnd {
+	if m.env.AutoPilot.Steers.SuggestOn() || m.env.AutoPilot.Steers.TurnEnd {
 		t.Error("retire left a driving steer on")
+	}
+	if m.userInput.PromptSuggestion.Text != "" {
+		t.Error("retire left a stale mission suggestion on screen")
+	}
+}
+
+// The Suggest steer is the input hint's feature switch in every mode: when
+// explicitly off the hint never fires — including outside AutoPilot, where
+// generic prediction used to be unconditional.
+func TestPromptSuggestionGatedOnSuggestSteerInEveryMode(t *testing.T) {
+	newModel := func(suggest bool, mode setting.OperationMode) *model {
+		m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+		m.services.LLM = &llm.Conn{}
+		m.env.LLMProvider = &autopilotStubProvider{}
+		m.env.OperationMode = mode
+		m.env.AutoPilot.Steers.Suggest = &suggest
+		m.conv.Messages = []core.ChatMessage{
+			{Role: core.RoleAssistant, Content: "Done."},
+			{Role: core.RoleUser, Content: "Next."},
+			{Role: core.RoleAssistant, Content: "Also done."},
+		}
+		return m
+	}
+
+	if cmd := newModel(false, setting.ModeNormal).startPromptSuggestion(); cmd != nil {
+		t.Error("suggest steer off: the hint still fired outside AutoPilot")
+	}
+	if cmd := newModel(false, setting.ModeAutoPilot).startPromptSuggestion(); cmd != nil {
+		t.Error("suggest steer off: the hint still fired in AutoPilot mode")
+	}
+	if cmd := newModel(true, setting.ModeNormal).startPromptSuggestion(); cmd == nil {
+		t.Error("suggest steer on: no hint outside AutoPilot")
+	}
+}
+
+func TestAutopilotSaveWithSuggestOffClearsPromptSuggestion(t *testing.T) {
+	off := false
+	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.userInput.PromptSuggestion.Text = "stale hint"
+
+	_, _ = m.Update(input.AutopilotSavedMsg{Config: setting.AutoPilotSettings{
+		Steers: setting.SteerSettings{Suggest: &off},
+	}})
+
+	if m.userInput.PromptSuggestion.Text != "" {
+		t.Fatal("saving Suggest off left stale prompt suggestion text")
 	}
 }
 

@@ -109,7 +109,7 @@ func (t *ToolExecState) IndexOf(toolCallID string) int {
 	return -1
 }
 
-func (t *ToolExecState) MarkComplete(toolCallID string) {
+func (t *ToolExecState) MarkComplete(toolCallID string) bool {
 	completedIdx := -1
 	for i, tc := range t.PendingCalls {
 		if tc.ID == toolCallID {
@@ -118,14 +118,16 @@ func (t *ToolExecState) MarkComplete(toolCallID string) {
 		}
 	}
 	if completedIdx == -1 {
-		return
+		return false
 	}
 
-	if completedIdx >= len(t.PendingCalls)-1 {
+	batchComplete := completedIdx >= len(t.PendingCalls)-1
+	if batchComplete {
 		t.ClearPending()
-		return
+		return true
 	}
 	t.CurrentIdx = completedIdx + 1
+	return false
 }
 
 func (t *ToolExecState) ClearPending() {

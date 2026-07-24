@@ -265,7 +265,7 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 	if tool.IsAgentToolName(tr.ToolName) {
 		m.TaskActivity = nil
 	}
-	m.Tool.MarkComplete(tr.ToolCallID)
+	batchComplete := m.Tool.MarkComplete(tr.ToolCallID)
 	// A tool that completed just before the user pressed Esc may have its
 	// PostToolEvent still buffered in the outbox when handleStreamCancel
 	// runs — cancelPendingToolCalls then writes a cancelled-result row for
@@ -287,12 +287,14 @@ func applyPostTool(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		// here — the handoff map keeps only in-flight calls.
 		Decision: rt.TakeDecision(tr.ToolCallID),
 	})
-	// A completed tool means the turn continues (the agent loops to its next
-	// drainInbox), so this is a step boundary: release the head queued user
-	// message to the agent now. It stays editable until this release and the
-	// agent ingests it at a following step. One release per step (see
-	// DrainQueuedAtStep).
-	return rt.DrainQueuedAtStep()
+	// Release queued input only after every tool call in this response has
+	// completed. Releasing after the first result inserts the user's pending
+	// message between sibling tool rows; waiting preserves the visible order:
+	// complete tool output first, then the pending message.
+	if batchComplete {
+		return rt.DrainQueuedAtStep()
+	}
+	return nil
 }
 
 // --- Activity handling (operates on output Model directly) ---

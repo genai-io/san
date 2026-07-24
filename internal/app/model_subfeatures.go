@@ -27,14 +27,15 @@ Reply with ONLY that instruction (a few words to one sentence): no quotes, no ex
 
 // startPromptSuggestion fires the input hint. AutoPilot owns the whole decision
 // here, reading its live config directly so the hint holds no autopilot state:
-// with the Suggest steer off it stays silent (no nudge); with a mission set it
-// proposes the next step toward it; otherwise it falls back to predicting the
-// human's next input.
+// the Suggest steer is the feature switch — on by default. With it off, the
+// hint never runs, in or out of AutoPilot mode. With it on, a mission driven
+// under AutoPilot proposes the next step toward it; otherwise it falls back to
+// predicting the human's next input.
 func (m *model) startPromptSuggestion() tea.Cmd {
 	if m.env.LLMProvider == nil {
 		return nil
 	}
-	if m.autopilotEngaged() && !m.env.AutoPilot.Steers.Suggest {
+	if !m.env.AutoPilot.Steers.SuggestOn() {
 		return nil
 	}
 	if mission := m.autopilotSuggestMission(); mission != "" {
@@ -70,7 +71,7 @@ func (m *model) promptSuggestionDeps() input.PromptSuggestionDeps {
 // "". Read fresh from env every call, so clearing the mission (End completion /
 // ctrl+r / panel) takes effect immediately.
 func (m *model) autopilotSuggestMission() string {
-	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.Suggest {
+	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.SuggestOn() {
 		return ""
 	}
 	return strings.TrimSpace(m.env.AutoPilot.Mission)

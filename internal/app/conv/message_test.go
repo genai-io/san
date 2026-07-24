@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,37 @@ func Test_renderBashToolCallKeepsConnectorsContinuousAcrossBlankLines(t *testing
 	}
 }
 
+func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testing.T) {
+	command := "gh pr view 414 --repo genai-io/san --json number,title,state,url,author,baseRefName,headRefName,headRepositoryOwner,body,comments,reviews,reviewRequests,statusCheckRollup"
+	input := `{"command":` + strconv.Quote(command) + `,"description":"Inspect pull request details and review status"}`
+	const width = 80
+
+	rendered := stripANSI(renderBashToolCall(input, width, "●", ""))
+	if !strings.HasPrefix(rendered, "● Bash - Inspect pull request details and review status\n") {
+		t.Fatalf("oversized command should use a Bash header, got %q", rendered)
+	}
+	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
+		t.Fatalf("oversized command must not be abbreviated, got %q", rendered)
+	}
+	var reconstructed strings.Builder
+	for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")[1:] {
+		switch {
+		case strings.HasPrefix(line, bashPrompt):
+			reconstructed.WriteString(strings.TrimPrefix(line, bashPrompt))
+		case strings.HasPrefix(line, nestedBodyPrefix):
+			reconstructed.WriteString(strings.TrimPrefix(line, nestedBodyPrefix))
+		default:
+			t.Fatalf("unexpected command block row %q", line)
+		}
+		if w := lipgloss.Width(line); w > width {
+			t.Fatalf("command row width %d exceeds terminal width %d: %q", w, width, line)
+		}
+	}
+	if got := strings.ReplaceAll(reconstructed.String(), " ", ""); got != strings.ReplaceAll(command, " ", "") {
+		t.Fatalf("wrapped command lost content: got %q, want %q", reconstructed.String(), command)
+	}
+}
+
 func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:        "claude-sonnet-4-6",
@@ -404,7 +436,7 @@ func TestRenderQueuePreviewEditingShowsFocusBarAndKeys(t *testing.T) {
 	}
 }
 
-func TestRenderToolCallsTruncatesLongSingleLineBashPreview(t *testing.T) {
+func TestRenderToolCallsWrapsLongSingleLineBashCommandWithoutTruncating(t *testing.T) {
 	const width = 100
 	params := ToolCallsParams{
 		ToolCalls: []core.ToolCall{{
@@ -417,25 +449,25 @@ func TestRenderToolCallsTruncatesLongSingleLineBashPreview(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.HasPrefix(rendered, "● Bash(cd /Users/myan/Workspace/ideas/san") {
-		t.Fatalf("RenderToolCalls() = %q, want a compact Bash preview", rendered)
+	fullCommand := "Bash(cd /Users/myan/Workspace/ideas/san && git describe --tags --abbrev=0 2>/dev/null)"
+	if !strings.HasPrefix(rendered, "● "+fullCommand) {
+		t.Fatalf("RenderToolCalls() = %q, want the complete Bash command", rendered)
 	}
 	if strings.Count(strings.TrimSuffix(rendered, "\n"), "\n") != 0 {
-		t.Fatalf("RenderToolCalls() = %q, want a single preview row", rendered)
+		t.Fatalf("a command that fits should remain on one row, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
-		t.Fatalf("RenderToolCalls() = %q, want long preview truncated with three dots", rendered)
+	if !strings.Contains(rendered, "...") {
+		t.Fatalf("RenderToolCalls() = %q, long description may be abbreviated", rendered)
 	}
-	lineWidth := lipgloss.Width(strings.TrimSuffix(rendered, "\n"))
-	if lineWidth <= maxToolLabelWidth(width)+lipgloss.Width("● ") {
-		t.Fatalf("preview width %d should use space beyond the generic tool-row budget", lineWidth)
+	if strings.Contains(rendered, "abbrev=0...") || strings.Contains(rendered, "abbrev=0…") {
+		t.Fatalf("RenderToolCalls() = %q, command itself was abbreviated", rendered)
 	}
-	if lineWidth > width {
-		t.Fatalf("preview width %d exceeds terminal width %d", lineWidth, width)
+	if lineWidth := lipgloss.Width(strings.TrimSuffix(rendered, "\n")); lineWidth > width {
+		t.Fatalf("rendered line width %d exceeds terminal width %d", lineWidth, width)
 	}
 }
 
-func Test_renderBashToolCallReservesPreviewWidthForRunningDetail(t *testing.T) {
+func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testing.T) {
 	const width = 70
 	detail := toolResultStyle.Render(" · 12s · 1.2k lines")
 	rendered := stripANSI(renderBashToolCall(
@@ -443,14 +475,19 @@ func Test_renderBashToolCallReservesPreviewWidthForRunningDetail(t *testing.T) {
 		width, "⋯", detail,
 	))
 
-	if !strings.Contains(rendered, "... · 12s · 1.2k lines\n") {
-		t.Fatalf("running preview should truncate before its detail, got %q", rendered)
+	if !strings.HasPrefix(rendered, "⋯ Bash - inspect repository history · 12s · 1.2k lines\n") {
+		t.Fatalf("running command should move to a block when the full label does not fit, got %q", rendered)
 	}
-	if strings.Count(strings.TrimSuffix(rendered, "\n"), "\n") != 0 {
-		t.Fatalf("running preview should remain on one row, got %q", rendered)
+	if !strings.Contains(rendered, bashPrompt+"git log --oneline --graph --all --decorate --abbrev-commit\n") {
+		t.Fatalf("running command was truncated instead of rendered in full, got %q", rendered)
 	}
-	if w := lipgloss.Width(strings.TrimSuffix(rendered, "\n")); w > width {
-		t.Fatalf("running preview width %d exceeds terminal width %d", w, width)
+	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
+		t.Fatalf("running command must not be abbreviated, got %q", rendered)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(rendered, "\n"), "\n") {
+		if w := lipgloss.Width(line); w > width {
+			t.Fatalf("running command line width %d exceeds terminal width %d: %q", w, width, line)
+		}
 	}
 }
 

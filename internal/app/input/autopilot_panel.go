@@ -372,7 +372,7 @@ func (p *AutopilotSelector) rows() []apRow {
 		{kind: apRowEntry, label: "Mission", desc: "what to achieve", open: apMission, summary: missionSummary},
 		{kind: apRowSpacer},
 		{kind: apRowSection, label: "Steer"},
-		{kind: apRowSteer, label: "Suggest", desc: "propose the next step", get: getSuggest, toggle: toggleSuggest},
+		{kind: apRowSteer, label: "Suggest", desc: "enable automatic input hints", get: getSuggest, toggle: toggleSuggest},
 		{kind: apRowSteer, label: "Permission", desc: "auto-approve gray zone", get: getPermission, toggle: togglePermission},
 		{kind: apRowSteer, label: "Bash", desc: "answer command prompts", get: getBash, toggle: toggleBash},
 		{kind: apRowSteer, label: "Skill", desc: "approve skill loads", get: getSkill, toggle: toggleSkill},
@@ -414,14 +414,17 @@ func apStep(rows []apRow, start, step, fallback int) int {
 
 // ── Steer accessors ─────────────────────────────────────────────────────
 
-func getSuggest(s setting.AutoPilotSettings) bool    { return s.Steers.Suggest }
+func getSuggest(s setting.AutoPilotSettings) bool    { return s.Steers.SuggestOn() }
 func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.PermissionOn() }
 func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
 func getSkill(s setting.AutoPilotSettings) bool      { return s.Steers.Skill }
 func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
 func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
 
-func toggleSuggest(s *setting.AutoPilotSettings)  { s.Steers.Suggest = !s.Steers.Suggest }
+func toggleSuggest(s *setting.AutoPilotSettings) {
+	on := !s.Steers.SuggestOn()
+	s.Steers.Suggest = &on
+}
 func toggleBash(s *setting.AutoPilotSettings)     { s.Steers.BashPrompt = !s.Steers.BashPrompt }
 func toggleSkill(s *setting.AutoPilotSettings)    { s.Steers.Skill = !s.Steers.Skill }
 func toggleQuestion(s *setting.AutoPilotSettings) { s.Steers.Question = !s.Steers.Question }

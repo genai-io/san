@@ -32,8 +32,8 @@ func mergeSettings(base, overlay *Data) *Data {
 }
 
 // mergeAutoPilot does a field-level merge of the autopilot config: strings and
-// the continuation cap coalesce (overlay's non-zero wins), steer bools OR
-// (enable-anywhere wins), and the tri-state permission steer coalesces (overlay's
+// the continuation cap coalesce (overlay's non-zero wins), ordinary steer bools
+// OR (enable-anywhere wins), and tri-state default-on steers coalesce (overlay's
 // explicit value wins, else base's, else nil = default on). Without this the
 // entire autoPilot block is dropped on every Load and every save.
 func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
@@ -44,7 +44,7 @@ func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 		Mission:          coalesce(overlay.Mission, base.Mission),
 		MaxContinuations: coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
 		Steers: SteerSettings{
-			Suggest:    overlay.Steers.Suggest || base.Steers.Suggest,
+			Suggest:    coalesceBool(overlay.Steers.Suggest, base.Steers.Suggest),
 			Permission: coalesceBool(overlay.Steers.Permission, base.Steers.Permission),
 			BashPrompt: overlay.Steers.BashPrompt || base.Steers.BashPrompt,
 			Skill:      overlay.Steers.Skill || base.Steers.Skill,

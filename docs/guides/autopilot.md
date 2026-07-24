@@ -7,8 +7,8 @@ copilot model cruises the session, keeping routine work moving and handing
 control back only when something genuinely needs you. It acts through a set of
 independently enabled **steers** — proposing the next step, approving gray-zone
 tool calls, answering a command's interactive prompts, answering
-`AskUserQuestion`, and continuing finished turns toward a mission. Only
-gray-zone permission judging is on by default.
+`AskUserQuestion`, and continuing finished turns toward a mission. Automatic
+input suggestions and gray-zone permission judging are on by default.
 
 Enter Autopilot mode with `shift+tab` (cycle until the amber
 `⏵⏵ autopilot on`), and configure it with the `/autopilot` panel. A resumed
@@ -19,11 +19,12 @@ everything below.
 ## The six steers
 
 Steers are à-la-carte toggles, ordered by increasing autonomy. None fire unless
-Autopilot mode is engaged.
+Autopilot mode is engaged, except Suggest: its toggle controls automatic input
+hints in every mode.
 
 | Steer | Default | What it does |
 |---|---|---|
-| **Suggest** | off | Shows a next-step suggestion in the input box. When a mission is set, the suggestion follows the mission; otherwise it uses the generic input prediction. `tab` accepts the suggestion, and `enter` sends it. Suggest only fills the hint text and never submits on its own; when off, this hint is hidden. |
+| **Suggest** | **on** | Controls automatic input hints in every mode. Off means no hint is generated; on shows a next-input suggestion. When Autopilot is driving a mission, the suggestion follows that mission; otherwise it uses generic input prediction. `tab` accepts the suggestion, and `enter` sends it. It never submits on its own. |
 | **Permission** | **on** | Auto-approves gray-zone tool calls the static rules couldn't resolve, judging reversibility, blast radius, and data exfiltration. In a git working tree it counts history as the safety net: changes to tracked files are routine, and git's own sharp edges (`reset --hard`, `clean -f`, `stash drop`, force-push, `branch -D`) are weighed against the session's intent rather than blocked outright. It still escalates what leaves the tree — untracked files elsewhere, paths outside the project, a shared default branch. Fails closed: any error escalates to you. |
 | **Bash** | off | Answers an already-approved command's interactive prompt (`Continue? [Y/n]`) when the answer just continues the approved action; skips anything that would widen scope. |
 | **Skill** | off | Approves the copilot's skill loads outright, without the judge — a deliberate "trust skills" toggle, separate from Permission because the judge tends to escalate a skill load (it can run scripts). Off ⇒ skill loads fall to the Permission judge (or you). |
