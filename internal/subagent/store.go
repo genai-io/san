@@ -84,21 +84,28 @@ func (s *AgentStore) IsDisabled(name string) bool {
 // SetDisabled sets the disabled state for an agent and persists to disk.
 func (s *AgentStore) SetDisabled(name string, disabled bool) error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	wasDisabled := s.disabled[name]
 	if disabled {
 		s.disabled[name] = true
 	} else {
 		delete(s.disabled, name)
 	}
-	// Snapshot while still holding the write lock so no concurrent
-	// modification can slip in before we read the state to persist.
+
 	snapshot := make([]string, 0, len(s.disabled))
 	for n := range s.disabled {
 		snapshot = append(snapshot, n)
 	}
-	path := s.path
-	s.mu.Unlock()
-
-	return persistDisabled(path, snapshot)
+	if err := persistDisabled(s.path, snapshot); err != nil {
+		if wasDisabled {
+			s.disabled[name] = true
+		} else {
+			delete(s.disabled, name)
+		}
+		return err
+	}
+	return nil
 }
 
 // GetDisabled returns a copy of the disabled agents map

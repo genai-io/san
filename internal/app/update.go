@@ -253,6 +253,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.services.Reminder.RequeueSystemReminders()
 		return m, nil
 	case input.AgentToggleMsg:
+		if msg.Err != nil {
+			m.conv.AddNotice("Failed to update agent: " + msg.Err.Error())
+			return m, nil
+		}
 		// Why stop on toggle: the agents directory lives in the Agent tool's
 		// description, which is frozen at agent build time. Stopping forces
 		// ensureAgentSession to rebuild on the next user turn with the new

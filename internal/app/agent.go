@@ -78,10 +78,11 @@ func (m *model) applyPersonaSkills() {
 	m.services.Skill.ClearPersona()
 }
 
-// applyPersonaAgents restricts the visible subagents to the active persona's
-// `agents` allow-list (empty/none = all visible), or clears the restriction
-// when no persona is selected. In-memory, mirroring applyPersonaSkills.
-func (m *model) applyPersonaAgents() {
+// applyPersonaAgentAllowlist restricts visible Agents to the active
+// persona's `agents` allow-list (empty/none = all visible), or clears the
+// restriction when no persona is selected. In-memory, mirroring
+// applyPersonaSkills.
+func (m *model) applyPersonaAgentAllowlist() {
 	if p := m.activePersona(); p != nil && p.Settings != nil && len(p.Settings.Agents) > 0 {
 		m.services.Subagent.LoadPersona(p.Settings.Agents)
 		return
@@ -635,8 +636,20 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	m.ensureMemoryContextLoaded()
 
-	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
-	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	store := m.services.LLM.Store()
+	executor := subagent.NewExecutor(
+		m.env.LLMProvider,
+		m.env.CWD,
+		m.env.GetModelID(),
+		m.services.Hook,
+	)
+	executor.SetParentPermissionMode(func() subagent.PermissionMode {
+		return subagent.PermissionModeFromOperationMode(m.env.SessionPermissions.Snapshot().Mode)
+	})
+	executor.SetResolver(llm.NewProviderPool(store))
+	if current := m.env.CurrentModel; current != nil {
+		executor.SetModelStore(store, current.Provider, store.ResolveAuthMethod(current))
+	}
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}

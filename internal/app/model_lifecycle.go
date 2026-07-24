@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -38,7 +39,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.ensureMemoryContextLoaded()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
-	m.applyPersonaAgents()
+	m.applyPersonaAgentAllowlist()
 	m.wireReminderProviders()
 	m.InitTaskStorage()
 	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
@@ -56,7 +57,9 @@ func newBaseModel() model {
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
-			AgentRegistry:   &agentRegistryAdapter{svc.Subagent},
+			AgentRegistry: func() input.AgentRegistry {
+				return &agentRegistryAdapter{reg: subagent.Default()}
+			},
 			PersonaRegistry: svc.Persona,
 			SkillRegistry:   svc.Skill,
 			MCPRegistry:     svc.MCP,
@@ -147,7 +150,7 @@ func (m *model) ReloadAfterPluginChange() error {
 	m.syncSettingsToHookEngine()
 	m.ReconfigureAgentTool()
 	m.applyPersonaSkills()
-	m.applyPersonaAgents()
+	m.applyPersonaAgentAllowlist()
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
 	// in the next user message instead of waiting for SessionStart/PostCompact.

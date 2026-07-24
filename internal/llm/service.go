@@ -48,9 +48,10 @@ func Initialize(opts Options) {
 // resolution fell back to a connection without a saved model — in that case the
 // caller picks a model (see setting.DefaultModel).
 type ResolvedProvider struct {
-	Provider   Provider
-	ModelID    string
-	AuthMethod AuthMethod
+	Provider     Provider
+	ProviderName Name
+	ModelID      string
+	AuthMethod   AuthMethod
 }
 
 // ResolveProvider connects to the best available provider recorded in the
@@ -64,12 +65,12 @@ func ResolveProvider(ctx context.Context, store *Store) (ResolvedProvider, bool)
 	}
 	if cm := store.GetCurrentModel(); cm != nil {
 		if p, err := GetProvider(ctx, cm.Provider, cm.AuthMethod); err == nil {
-			return ResolvedProvider{Provider: p, ModelID: cm.ModelID, AuthMethod: cm.AuthMethod}, true
+			return ResolvedProvider{Provider: p, ProviderName: cm.Provider, ModelID: cm.ModelID, AuthMethod: cm.AuthMethod}, true
 		}
 	}
 	for providerName, conn := range store.GetConnections() {
 		if p, err := GetProvider(ctx, Name(providerName), conn.AuthMethod); err == nil {
-			return ResolvedProvider{Provider: p, AuthMethod: conn.AuthMethod}, true
+			return ResolvedProvider{Provider: p, ProviderName: Name(providerName), AuthMethod: conn.AuthMethod}, true
 		}
 	}
 	return ResolvedProvider{}, false

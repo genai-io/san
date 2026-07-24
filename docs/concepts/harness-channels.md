@@ -126,10 +126,10 @@ alone carries no instruction to follow it; the preamble supplies that
 framing, mirroring how the skills directory self-introduces.
 `reminder.WrapMemory` owns this shape.
 
-**Subagents do not receive memory.** Only the long-lived main loop agent
-gets `memory-user` / `memory-project`. A subagent is a one-shot worker
-bounded by its own charter, so it carries the skills directory (to invoke
-capabilities) but not the human's project/user instructions. See
+**Subagent memory is mode-dependent.** Every worker receives the skills
+directory when its tool set includes `Skill`. Edit-capable workers also receive
+project memory so changes follow project conventions; read-only workers and all
+workers omit user memory. See
 `internal/subagent/executor.go` (`collectSubagentReminders`).
 
 ## Compaction

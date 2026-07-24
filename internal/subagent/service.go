@@ -14,7 +14,10 @@
 // free function (in executor.go), not through any method on *Registry.
 package subagent
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 // Options holds all dependencies for initialization.
 type Options struct {
@@ -24,19 +27,12 @@ type Options struct {
 
 // Initialize loads agents from all sources and initializes state stores.
 func Initialize(opts Options) error {
-	ClearPluginAgentPaths()
-
-	if opts.PluginAgentPaths != nil {
-		for _, pp := range opts.PluginAgentPaths() {
-			AddPluginAgentPath(pp.Path, pp.Namespace)
-		}
-	}
-
-	LoadAgents(opts.CWD)
-
-	if err := defaultRegistry.InitStores(opts.CWD); err != nil {
+	registry := NewRegistry()
+	loadAgents(opts.CWD, registry, opts.PluginAgentPaths)
+	if err := registry.InitStores(opts.CWD); err != nil {
 		return fmt.Errorf("failed to initialize agent stores: %w", err)
 	}
+	setDefaultRegistry(registry)
 	return nil
 }
 
@@ -44,6 +40,8 @@ func Initialize(opts Options) error {
 // initialized to an empty state at package load and populated by
 // Initialize().
 func Default() *Registry {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
 	return defaultRegistry
 }
 
@@ -51,14 +49,24 @@ func Default() *Registry {
 // tests. A nil argument restores a fresh empty *Registry.
 func SetDefaultRegistry(r *Registry) {
 	if r == nil {
-		defaultRegistry = NewRegistry()
-		return
+		r = NewRegistry()
 	}
-	defaultRegistry = r
+	setDefaultRegistry(r)
 }
 
 // ResetDefaultRegistry restores a fresh empty *Registry. Intended for
 // tests.
 func ResetDefaultRegistry() {
+	setDefaultRegistry(NewRegistry())
+}
+
+var (
+	registryMu      sync.RWMutex
 	defaultRegistry = NewRegistry()
+)
+
+func setDefaultRegistry(registry *Registry) {
+	registryMu.Lock()
+	defer registryMu.Unlock()
+	defaultRegistry = registry
 }

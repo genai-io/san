@@ -21,10 +21,6 @@ func NewRegistry() *Registry {
 	return &Registry{agents: make(map[string]*AgentConfig)}
 }
 
-// defaultRegistry is the package-level agent registry.
-// Layer-two initialization replaces it atomically when loading definitions.
-var defaultRegistry = NewRegistry()
-
 // Register adds an agent configuration to the registry
 func (r *Registry) Register(config *AgentConfig) {
 	config.Name = strings.TrimSpace(config.Name)
@@ -44,7 +40,7 @@ func (r *Registry) Get(name string) (*AgentConfig, bool) {
 	return config, ok
 }
 
-// ResolveEnabledAgent returns an enabled agent configuration by exact name.
+// ResolveEnabledAgent returns an enabled Agent configuration by exact name.
 func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
