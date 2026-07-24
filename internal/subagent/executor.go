@@ -30,22 +30,22 @@ type ProviderResolver interface {
 
 // Executor runs agent LLM loops
 type Executor struct {
-	provider             llm.Provider
-	registry             *Registry
-	resolver             ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
-	modelStore           *llm.Store       // optional cached provider catalog for validating same-provider overrides
-	parentProviderName   llm.Name         // canonical provider key for the parent connection
-	parentAuthMethod     llm.AuthMethod   // auth-specific catalog key for the parent connection
-	cwd                  string
-	parentModelID        string // Parent conversation's model ID (used when inheriting)
-	parentPermissionMode func() PermissionMode
-	hooks                hook.Handler
-	sessionStore         SubagentSessionStore // Optional: when set, subagent sessions are persisted
-	parentSessionID      string               // Parent session ID for linking subagent sessions
-	projectInstructions  string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
-	skillsPrompt         string               // available skills section for capable subagents
-	mcpTools             mcp.Tools            // tool schemas + execution
-	mcpServers           mcp.Servers          // connect/disconnect for per-subagent server sets
+	provider                   llm.Provider
+	registry                   *Registry
+	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
+	modelStore                 *llm.Store       // optional cached provider catalog for validating same-provider overrides
+	parentProviderName         llm.Name         // canonical provider key for the parent connection
+	parentAuthMethod           llm.AuthMethod   // auth-specific catalog key for the parent connection
+	cwd                        string
+	parentModelID              string // Parent conversation's model ID (used when inheriting)
+	parentPermissionModeGetter func() PermissionMode
+	hooks                      hook.Handler
+	sessionStore               SubagentSessionStore // Optional: when set, subagent sessions are persisted
+	parentSessionID            string               // Parent session ID for linking subagent sessions
+	projectInstructions        string               // project memory (CLAUDE.md/AGENTS.md) for edit-capable subagents
+	skillsPrompt               string               // available skills section for capable subagents
+	mcpTools                   mcp.Tools            // tool schemas + execution
+	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
 }
 
 type SubagentSessionStore interface {
@@ -98,14 +98,14 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 // It is evaluated for every run so mode="default" follows mode changes made
 // after the executor was configured, including entering bypass mode.
 func (e *Executor) SetParentPermissionMode(getMode func() PermissionMode) {
-	e.parentPermissionMode = getMode
+	e.parentPermissionModeGetter = getMode
 }
 
 func (e *Executor) currentParentPermissionMode() PermissionMode {
-	if e.parentPermissionMode == nil {
+	if e.parentPermissionModeGetter == nil {
 		return PermissionDefault
 	}
-	return NormalizePermissionMode(string(e.parentPermissionMode()))
+	return NormalizePermissionMode(string(e.parentPermissionModeGetter()))
 }
 
 // SetProjectInstructions provides the project's instruction memory
@@ -304,7 +304,7 @@ func resolveAgentConfigFrom(registry *Registry, name string) (*AgentConfig, bool
 	if registry == nil {
 		return nil, false
 	}
-	return registry.Resolve(name)
+	return registry.ResolveEnabledCustomAgent(name)
 }
 
 func (e *Executor) resolveAgentConfig(name string) (*AgentConfig, bool) {
@@ -312,8 +312,8 @@ func (e *Executor) resolveAgentConfig(name string) (*AgentConfig, bool) {
 }
 
 func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentConfig, bool) {
-	if req.Config != nil {
-		config, ok := req.Config.(*AgentConfig)
+	if req.ResolvedAgentConfig != nil {
+		config, ok := req.ResolvedAgentConfig.(*AgentConfig)
 		return config, ok && config != nil
 	}
 	return e.resolveAgentConfig(req.Agent)
@@ -562,7 +562,7 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		if e.resolver == nil {
 			return e.provider, e.parentModelID, nil
 		}
-		if vendor == e.parentProviderName && modelID != e.parentModelID && !e.modelAvailable(modelID) {
+		if vendor == e.parentProviderName && modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
 			return e.provider, e.parentModelID, nil
 		}
 		p, err := e.resolver.Resolve(ctx, vendor)
@@ -575,16 +575,16 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 	// positively reports that provider does not offer the model, inherit instead
 	// of sending a request that may fail with an opaque 400 response.
 	modelID := resolveModelAlias(ref)
-	if modelID != e.parentModelID && !e.modelAvailable(modelID) {
+	if modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
 		return e.provider, e.parentModelID, nil
 	}
 	return e.provider, modelID, nil
 }
 
-// modelAvailable checks the parent provider's cached model catalog. A missing
+// cachedCatalogAllowsModel rejects only a definitive cached miss. A missing
 // store, parent connection identity, or catalog leaves the override unverified
-// and therefore allowed; only a definitive cached miss rejects it.
-func (e *Executor) modelAvailable(modelID string) bool {
+// and therefore allowed.
+func (e *Executor) cachedCatalogAllowsModel(modelID string) bool {
 	if e.modelStore == nil || e.parentProviderName == "" || modelID == "" {
 		return true
 	}
