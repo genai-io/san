@@ -54,7 +54,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	runBackground := tool.GetBool(params, "run_in_background")
 	requestModel := tool.GetString(params, "model")
 
-	mode, err := validRequestMode(params)
+	mode, err := parseAndValidateRequestMode(params)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,11 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	// Resolve the selected custom agent config, or the implicit default when name
 	// is omitted. Carry the exact config into execution so a registry reload while
 	// approval is pending cannot change what the user approved.
-	config, resolvedConfig, ok := t.executor.ResolveAgentRequest(agentName)
+	config, resolvedConfig, ok := t.executor.ResolveAgentSelection(agentName)
 	if !ok {
 		return nil, fmt.Errorf("unknown or disabled custom agent: %s", agentName)
 	}
-	params["_agentConfig"] = resolvedConfig
+	params["_resolvedAgentConfig"] = resolvedConfig
 
 	// Determine effective model for permission display.
 	effectiveModel := requestModel
@@ -117,7 +117,7 @@ func effectivePermissionMode(mode string, config tool.AgentConfigInfo) string {
 	return config.PermissionMode
 }
 
-func validRequestMode(params map[string]any) (string, error) {
+func parseAndValidateRequestMode(params map[string]any) (string, error) {
 	mode := tool.GetString(params, "mode")
 	switch mode {
 	case "", "default", "explore", "edit":
@@ -153,7 +153,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	description := tool.GetString(params, "description")
 	runBackground := tool.GetBool(params, "run_in_background")
 	model := tool.GetString(params, "model")
-	mode, err := validRequestMode(params)
+	mode, err := parseAndValidateRequestMode(params)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -174,20 +174,20 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
 	}
 
-	config, _ := params["_agentConfig"]
+	resolvedAgentConfig, _ := params["_resolvedAgentConfig"]
 	// Build request — subagents always start with fresh context. Parent agent
 	// is responsible for putting all needed background into Prompt.
 	req := tool.AgentExecRequest{
-		Agent:       agentName,
-		Config:      config,
-		Prompt:      prompt,
-		Description: description,
-		Background:  runBackground,
-		Model:       model,
-		MaxSteps:    maxSteps,
-		Mode:        mode,
-		OnActivity:  onActivity,
-		OnQuestion:  onQuestion,
+		Agent:               agentName,
+		ResolvedAgentConfig: resolvedAgentConfig,
+		Prompt:              prompt,
+		Description:         description,
+		Background:          runBackground,
+		Model:               model,
+		MaxSteps:            maxSteps,
+		Mode:                mode,
+		OnActivity:          onActivity,
+		OnQuestion:          onQuestion,
 	}
 
 	// Handle background execution
@@ -206,7 +206,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 				"backgroundTask": map[string]any{
 					"taskId":      taskInfo.TaskID,
 					"agentName":   taskInfo.AgentName,
-					"agentType":   configName(agentName),
+					"agentType":   agentTypeLabel(agentName),
 					"description": description,
 					"outputFile":  taskInfo.OutputFile,
 					"toolName":    t.Name(),
@@ -215,7 +215,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("[background] %s: %s", configName(agentName), taskInfo.TaskID),
+				Subtitle: fmt.Sprintf("[background] %s: %s", agentTypeLabel(agentName), taskInfo.TaskID),
 				Duration: duration,
 			},
 		}
@@ -229,7 +229,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	duration := time.Since(start)
 
-	agentName = configName(agentName)
+	agentName = agentTypeLabel(agentName)
 	if !result.Success {
 		hookResponse := buildAgentHookResponse(result, agentName, prompt)
 		return toolresult.ToolResult{
@@ -260,7 +260,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	}
 }
 
-func configName(name string) string {
+func agentTypeLabel(name string) string {
 	if name == "" {
 		return "subagent"
 	}
