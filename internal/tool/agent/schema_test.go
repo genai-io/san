@@ -5,12 +5,18 @@ import (
 	"testing"
 )
 
-func TestAgentSchemaUsesSoleDefaultAgent(t *testing.T) {
-	schema := (&AgentTool{}).Schema()
-	if !strings.Contains(schema.Description, "default general-purpose subagent") {
-		t.Fatal("Agent schema should describe the sole default subagent")
+func TestAgentSchemaUsesDefaultGuidance(t *testing.T) {
+	schema := agentSchema()
+	if !strings.Contains(schema.Description, "Omit name to use the default agent") {
+		t.Error("default-agent guidance must remain in the Agent schema")
 	}
+}
+
+func TestAgentSchemaUsesNameWithoutSubagentType(t *testing.T) {
 	properties := agentToolParameters["properties"].(map[string]any)
+	if _, ok := properties["name"]; !ok {
+		t.Fatal("Agent schema should expose name for custom agent selection")
+	}
 	if _, ok := properties["subagent_type"]; ok {
 		t.Fatal("Agent schema must not expose subagent_type")
 	}

@@ -29,6 +29,7 @@ type ProviderResolver interface {
 // Executor runs agent LLM loops
 type Executor struct {
 	provider             llm.Provider
+	registry             *Registry
 	resolver             ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
 	modelStore           *llm.Store       // optional cached provider catalog for validating same-provider overrides
 	parentProviderName   llm.Name         // canonical provider key for the parent connection
@@ -49,6 +50,7 @@ type SubagentSessionStore interface {
 }
 
 type runConfig struct {
+	config      *AgentConfig
 	provider    llm.Provider // provider this run talks to (parent's, or a routed vendor)
 	modelID     string
 	maxSteps    int
@@ -82,6 +84,7 @@ func PermissionModeFromOperationMode(mode setting.OperationMode) PermissionMode 
 func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hookEngine hook.Handler) *Executor {
 	return &Executor{
 		provider:      llmProvider,
+		registry:      Default(),
 		cwd:           cwd,
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
@@ -187,8 +190,14 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}
+	config, ok := e.resolveRequestAgentConfig(req)
+	if !ok {
+		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
+	}
+
+	identity := config.Name
 	ctx, cancel := context.WithCancel(context.Background())
-	displayName := e.displayNameFor(req)
+	displayName := e.displayNameFor(config, req)
 
 	agentTask := task.NewAgentTask(
 		generateShortID(),
@@ -197,7 +206,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		ctx,
 		cancel,
 	)
-	agentTask.SetIdentity("subagent", "")
+	agentTask.SetIdentity(identity, "")
 
 	task.Default().RegisterTask(agentTask)
 
@@ -219,7 +228,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 				if result.Content != "" {
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
 				}
-				agentTask.SetIdentity("subagent", result.AgentID)
+				agentTask.SetIdentity(identity, result.AgentID)
 				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
 			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
@@ -231,7 +240,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 			agentTask.AppendOutput([]byte(result.Content))
 		}
 
-		agentTask.SetIdentity("subagent", result.AgentID)
+		agentTask.SetIdentity(identity, result.AgentID)
 		agentTask.SetOutputFile(result.TranscriptPath)
 		agentTask.UpdateProgress(result.StepCount, result.TokenUsage.InputTokens+result.TokenUsage.OutputTokens)
 
@@ -257,26 +266,83 @@ func (e *Executor) validateRequest(req tool.AgentExecRequest) error {
 	}
 }
 
+func selectedAgentName(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return defaultAgentName
+	}
+	return name
+}
+
+func defaultAgentConfig() *AgentConfig {
+	return &AgentConfig{
+		Name:           defaultAgentName,
+		Description:    defaultAgentDescription,
+		Model:          "inherit",
+		PermissionMode: PermissionDefault,
+		MaxSteps:       defaultMaxSteps,
+	}
+}
+
+// resolveAgentConfig uses one implicit subagent when no custom name is
+// requested. Named definitions remain available for user, project, and plugin
+// compatibility, but the registry carries no built-in agent catalog.
+func resolveAgentConfig(name string) (*AgentConfig, bool) {
+	return resolveAgentConfigFrom(Default(), name)
+}
+
+func resolveAgentConfigFrom(registry *Registry, name string) (*AgentConfig, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return defaultAgentConfig(), true
+	}
+	if registry == nil {
+		return nil, false
+	}
+	return registry.Resolve(name)
+}
+
+func (e *Executor) resolveAgentConfig(name string) (*AgentConfig, bool) {
+	return resolveAgentConfigFrom(e.registry, name)
+}
+
+func (e *Executor) resolveRequestAgentConfig(req tool.AgentExecRequest) (*AgentConfig, bool) {
+	if req.Config != nil {
+		config, ok := req.Config.(*AgentConfig)
+		return config, ok && config != nil
+	}
+	return e.resolveAgentConfig(req.Agent)
+}
+
 func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecRequest) (*runConfig, error) {
-	displayName := e.displayNameFor(req)
-	permMode := e.requestPermissionMode(req)
+	config, ok := e.resolveRequestAgentConfig(req)
+	if !ok {
+		return nil, fmt.Errorf("unknown or disabled custom agent: %s", req.Agent)
+	}
+
+	displayName := e.displayNameFor(config, req)
+
+	permMode := e.requestPermissionMode(config, req)
 
 	maxSteps := defaultMaxSteps
+	if config.MaxSteps > maxSteps {
+		maxSteps = config.MaxSteps
+	}
 	if req.MaxSteps > maxSteps {
 		maxSteps = req.MaxSteps
 	}
 
-	provider, modelID, err := e.resolveModel(ctx, req.Model)
+	provider, modelID, err := e.resolveModel(ctx, req.Model, config.Model)
 	if err != nil {
 		return nil, err
 	}
 
 	return &runConfig{
+		config:      config,
 		provider:    provider,
 		modelID:     modelID,
 		maxSteps:    maxSteps,
 		displayName: displayName,
-		brief:       e.buildBrief(permMode),
+		brief:       e.buildBrief(config, permMode, strings.TrimSpace(req.Agent) == ""),
 		permMode:    permMode,
 	}, nil
 }
@@ -286,7 +352,7 @@ func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID stri
 		return
 	}
 	e.hooks.ExecuteAsync(hook.SubagentStart, hook.HookInput{
-		AgentType:   "subagent",
+		AgentType:   selectedAgentName(req.Agent),
 		AgentID:     agentHookID,
 		Description: req.Description,
 	})
@@ -299,7 +365,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	// Subagent system prompt deliberately omits skills and memory — those
 	// ride on the first user message as <system-reminder> blocks built by
-	// loadConversation, keeping subagents on the same harness channel pattern.
+	// loadConversation, keeping subagents on the same harness channel
+	// pattern as the main agent.
 	sys := system.Build(core.ScopeSubagent,
 		system.WithSubagentIdentity(rc.brief),
 		system.WithEnvironment(system.Environment{Cwd: agentCwd}),
@@ -310,8 +377,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	if e.mcpTools != nil {
 		mcpGetter = e.mcpTools.GetToolSchemas
 	}
-	toolSet := newAgentToolSet(mcpGetter)
-	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode)
+	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), mcpGetter)
+	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
 	var ag core.Agent
 	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {
@@ -340,7 +407,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	}
 
 	// Wrap tools with permission decorator
-	permFn := subagentPermissionFunc(rc.permMode)
+	permFn := subagentPermissionFunc(rc.permMode, rc.config.AllowTools, rc.config.DenyTools)
 	coreTools = tool.WithPermission(coreTools, permFn)
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
@@ -348,7 +415,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		LLM:         llmClient,
 		System:      sys,
 		Tools:       coreTools,
-		AgentType:   "subagent",
+		AgentType:   rc.config.Name,
 		CompactFunc: subagentCompactFunc(llmClient),
 		CWD:         agentCwd,
 		MaxSteps:    rc.maxSteps,
@@ -380,7 +447,7 @@ func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Messag
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
 	// Harness-managed reminders ride on the first user message as
 	// <system-reminder> blocks, matching the main agent's pattern.
-	reminders := e.collectSubagentReminders(rc.permMode)
+	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode, rc.config.AllowTools)
 	prompt := reminder.AttachToContent(req.Prompt, reminders)
 	ag.Append(ctx, core.UserMessage(prompt, nil))
 	return nil
@@ -392,9 +459,10 @@ func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runC
 // project's instruction memory, so their edits follow project conventions.
 // User memory stays with the main loop: a subagent is a one-shot worker
 // bounded by its own charter.
-func (e *Executor) collectSubagentReminders(mode PermissionMode) []string {
-	reminders := wrapNonEmpty(e.skillsPrompt)
-	if canEditWorkspace(mode) {
+func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode, allow ToolList) []string {
+	var reminders []string
+	reminders = append(reminders, wrapNonEmpty(skills)...)
+	if canEditWorkspace(mode, allow) {
 		reminders = append(reminders, wrapNonEmpty(reminder.WrapMemory("project", e.projectInstructions))...)
 	}
 	return reminders
@@ -407,15 +475,22 @@ func wrapNonEmpty(body string) []string {
 	return nil
 }
 
-// canEditWorkspace reports whether the effective mode can change files — the
-// signal for whether project conventions should be handed to the subagent.
-func canEditWorkspace(mode PermissionMode) bool {
+// canEditWorkspace reports whether the subagent can change files in the
+// workspace — the signal for whether project conventions are worth handing it.
+// True when the permission mode auto-accepts mutations (edit/bypass), or when
+// an explicit allow_tools rule grants an edit-class tool (Edit/Write/…) even
+// under a mode, such as default, that would otherwise deny them.
+func canEditWorkspace(mode PermissionMode, allow ToolList) bool {
 	switch operationMode(mode) {
 	case setting.ModeAutoAccept, setting.ModeBypassPermissions:
 		return true
-	default:
-		return false
 	}
+	for _, name := range allow.Names() {
+		if perm.IsEditTool(name) {
+			return true
+		}
+	}
+	return false
 }
 
 func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
@@ -442,7 +517,7 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 	}
 
 	e.hooks.ExecuteAsync(hook.SubagentStop, hook.HookInput{
-		AgentType:            "subagent",
+		AgentType:            selectedAgentName(req.Agent),
 		AgentID:              agentHookID,
 		AgentTranscriptPath:  agentTranscriptPath,
 		LastAssistantMessage: resultContent,
@@ -450,15 +525,20 @@ func (e *Executor) fireSubagentStop(req tool.AgentExecRequest, agentHookID, agen
 	})
 }
 
-// resolveModel picks the provider and model id for a run. An empty request or
-// "inherit" uses the parent conversation model.
+// resolveModel picks the provider and model id for a run, by priority:
+// 1. Explicit request override (req.Model)
+// 2. Agent configuration (config.Model)
+// 3. Parent conversation model ("inherit" or empty)
 //
 // An explicit "vendor/model" override routes to that vendor through the
 // resolver only when a linked provider can be resolved. Otherwise it falls
-// back to the parent conversation. Every other form — an alias or a bare model
-// id — stays on the parent's provider, preserving prior behavior.
-func (e *Executor) resolveModel(ctx context.Context, requestModel string) (llm.Provider, string, error) {
+// back to the parent conversation. Every other form — an alias, a bare model
+// id, or "inherit" — stays on the parent's provider, preserving prior behavior.
+func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel string) (llm.Provider, string, error) {
 	ref := strings.TrimSpace(requestModel)
+	if ref == "" {
+		ref = strings.TrimSpace(configModel)
+	}
 	if ref == "" || ref == "inherit" {
 		return e.provider, e.parentModelID, nil
 	}
@@ -531,28 +611,69 @@ func operationMode(mode PermissionMode) setting.OperationMode {
 	}
 }
 
-// subagentPermissionFunc returns the fixed subagent permission gate. It uses the
-// shared mode defaults but converts any interactive Prompt decision to Deny.
-// Bypass skips confirmation tiers, while the root/home-removal circuit breaker
-// and parent-only tool boundary always hold.
-func subagentPermissionFunc(mode PermissionMode) perm.PermissionFunc {
+// skillsDirectoryFor returns the skills section body for the agent, gated on
+// its tool allow list — a subagent without the Skill tool gets no skills
+// section.
+func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
+	if config == nil {
+		return ""
+	}
+	if config.AllowTools == nil || config.AllowTools.HasName("Skill") {
+		return e.skillsPrompt
+	}
+	return ""
+}
+
+// subagentPermissionFunc returns the subagent permission gate. The pipeline
+// matches docs/concepts/permission-model.md: deny_tools, circuit breaker,
+// confirmation tiers, allow_tools, mode default, with Prompt collapsing to
+// Deny because subagents cannot ask. bypassPermissions mode skips the
+// confirmation tiers — only the root/home-removal circuit breaker holds in
+// every mode.
+//
+// One communication carve-out sits between deny and allow_tools: for a
+// mode-gated worker (no explicit allow_tools list) SendMessage is permitted in
+// every mode, so even a read-only or default worker can report to main or
+// answer a peer — it only moves text between agents and never touches the
+// workspace. deny_tools still blocks it, and an explicit allow_tools list is
+// honored as written (leave SendMessage out to silence a worker). Spawning is
+// not gated here: the Agent tool is parent-only, so workers never see it — the
+// agent model is flat.
+func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
 	mode = NormalizePermissionMode(string(mode))
 	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)
 
 	return func(_ context.Context, name string, input map[string]any) (bool, string) {
+		if denyRules.Matches(name, input) {
+			return false, fmt.Sprintf("tool %s is blocked by deny_tools", name)
+		}
+		// Circuit breaker: a recursive removal of the filesystem root or the
+		// home directory is denied in every mode, bypass included — subagents
+		// cannot ask, so the breaker is a hard deny.
 		if reason := setting.CircuitBreakerReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
-		if tool.IsParentOnlyTool(name) {
-			return false, fmt.Sprintf("tool %s is reserved for the main conversation", name)
-		}
-		if opMode == setting.ModeBypassPermissions {
+		// Bypass mode skips both confirmation tiers: after deny_tools and the
+		// breaker above, permit every executable worker tool. Keep the
+		// parent-only restriction below so a worker still cannot spawn agents
+		// or manipulate main-only state.
+		if opMode == setting.ModeBypassPermissions && !tool.IsParentOnlyTool(name) {
 			return true, ""
 		}
+		// Outside bypass, both confirmation tiers are hard denies, so a greedy
+		// allow_tools pattern cannot smuggle destruction through.
 		if reason, _ := setting.ConfirmationTier(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
+		// Parent-only tools never reach a worker, even via allow_tools —
+		// checked here so the safe-tool auto-permit below cannot resurrect a
+		// hallucinated tracker or cron call.
+		if tool.IsParentOnlyTool(name) {
+			return false, fmt.Sprintf("tool %s is reserved for the main conversation", name)
+		}
+		// Explore is an authoritative read-only boundary. Explicit allow rules
+		// may narrow its tools but cannot elevate it to workspace mutation.
 		if mode == PermissionExplore {
 			switch {
 			case perm.IsSafeTool(name), name == tool.ToolSendMessage, name == tool.ToolSkill:
@@ -565,31 +686,63 @@ func subagentPermissionFunc(mode PermissionMode) perm.PermissionFunc {
 			}
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
 		}
-		if name == tool.ToolSendMessage || name == tool.ToolSkill {
+		// Communication carve-out (see doc comment): a mode-gated worker may
+		// always reach main or a peer via SendMessage. A worker with an explicit
+		// allow_tools list is governed by that list instead.
+		if name == tool.ToolSendMessage && allowRules == nil {
 			return true, ""
 		}
-		if name == tool.ToolBash {
-			if command, ok := input["command"].(string); ok && setting.IsReadOnlyBashCommand(command) {
+		if allowRules.Allows(name, input) {
+			return true, ""
+		}
+		// A provably read-only Bash command (search, listing, git inspection)
+		// is as safe as the dedicated read-only tools, which also run without
+		// being listed in allow_tools. Checked after deny_tools so agents can
+		// still block Bash outright.
+		if name == "Bash" {
+			if cmd, ok := input["command"].(string); ok && setting.IsReadOnlyBashCommand(cmd) {
 				return true, ""
 			}
+		}
+		// allow_tools mentions this tool but no pattern matched — the agent
+		// declared a constrained whitelist, so deny rather than fall through.
+		if allowRules.HasName(name) {
+			return false, fmt.Sprintf("tool %s call is outside the allow_tools constraint", name)
+		}
+		// Loading a skill's instructions has no side effects of its own — the
+		// actions those instructions trigger are still gated per tool call —
+		// so Skill works in every mode, matching the skills listing already
+		// embedded in the worker's prompt.
+		if name == tool.ToolSkill {
+			return true, ""
 		}
 		switch setting.ModeDefault(name, opMode).Behavior {
 		case perm.Permit:
 			return true, ""
 		case perm.Reject:
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
-		default:
+		default: // perm.Prompt — subagents cannot ask
 			return false, fmt.Sprintf("tool %s would require approval; subagent in %s mode denies it", name, display)
 		}
 	}
 }
 
-// filterSchemasForPermission narrows the model-visible tools to those usable
-// under the effective mode. The permission gate remains authoritative.
-func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode) []core.ToolSchema {
+// filterSchemasForPermission narrows the LLM-visible tool set to what the
+// agent can actually use under its mode + allow_tools. UX hint only — the
+// permission gate is still authoritative. A non-nil allowTools acts as a
+// whitelist regardless of mode.
+func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, allowTools ToolList) []core.ToolSchema {
 	mode = NormalizePermissionMode(string(mode))
+	whitelist := allowTools != nil
+
 	filtered := make([]core.ToolSchema, 0, len(schemas))
 	for _, schema := range schemas {
+		if whitelist {
+			if allowTools.HasName(schema.Name) && (mode != PermissionExplore || modeAllowsSchema(mode, schema.Name)) {
+				filtered = append(filtered, schema)
+			}
+			continue
+		}
 		if modeAllowsSchema(mode, schema.Name) {
 			filtered = append(filtered, schema)
 		}
@@ -598,6 +751,10 @@ func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode) 
 }
 
 func modeAllowsSchema(mode PermissionMode, name string) bool {
+	// SendMessage is a communication tool, kept visible in every mode so a
+	// mode-gated worker can report to main (the gate permits it — see
+	// subagentPermissionFunc). A worker with an explicit allow_tools list takes
+	// the whitelist branch in filterSchemasForPermission instead of this one.
 	if perm.IsSafeTool(name) || name == tool.ToolSendMessage {
 		return true
 	}
@@ -609,11 +766,18 @@ func modeAllowsSchema(mode PermissionMode, name string) bool {
 			return true
 		}
 	}
-	return name == tool.ToolBash || name == tool.ToolSkill
+	// Read-only Bash invocations are permitted in every mode, so the Bash
+	// schema stays visible even to explore/read-only agents — it is their
+	// search tool. Skill stays visible for the same reason the gate permits
+	// it: the worker's prompt already lists available skills.
+	return name == "Bash" || name == tool.ToolSkill
 }
 
-func newAgentToolSet(mcpGetter func() []core.ToolSchema) *tool.Set {
-	return &tool.Set{MCP: mcpGetter, IsAgent: true}
+// newAgentToolSet creates a tool.Set for subagents with the disallow set eagerly initialized.
+func newAgentToolSet(allow, disallow []string, mcpGetter func() []core.ToolSchema) *tool.Set {
+	s := &tool.Set{Allow: allow, Disallow: disallow, MCP: mcpGetter, IsAgent: true}
+	s.InitDisallowSet()
+	return s
 }
 
 // generateShortID creates a short random hex ID for background tasks.

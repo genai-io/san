@@ -189,10 +189,12 @@ func SwapPersona(sys core.System, p Persona) {
 // Tools are not listed here — the LLM sees them via the schema list. Only
 // pattern-level constraints (which are invisible in the schema) need surfacing.
 type SubagentBrief struct {
-	AgentName       string   // fixed to "subagent" for worker runs
+	AgentName       string   // exact custom name, or an internal label for the implicit default
+	ImplicitDefault bool     // true only when the request omitted name
 	Description     string   // one-line role description
-	Mode            string   // effective runtime policy (model requests only explore/edit/default)
+	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
+	CustomPrompt    string   // AGENT.md body
 }
 
 // WithSubagentIdentity replaces the default identity with a subagent charter.
@@ -211,7 +213,7 @@ func subagentIdentitySection(b SubagentBrief) core.Section {
 
 func renderSubagentIdentity(b SubagentBrief) string {
 	var sb strings.Builder
-	if b.AgentName == "" || b.AgentName == "subagent" {
+	if b.ImplicitDefault || b.AgentName == "" {
 		sb.WriteString("You are a subagent.\n")
 	} else {
 		fmt.Fprintf(&sb, "You are a %s subagent.\n", b.AgentName)
@@ -227,6 +229,11 @@ func renderSubagentIdentity(b SubagentBrief) string {
 	}
 	if len(b.ToolConstraints) > 0 {
 		fmt.Fprintf(&sb, "Tool constraints: %s.\n", strings.Join(b.ToolConstraints, "; "))
+	}
+	if body := strings.TrimSpace(b.CustomPrompt); body != "" {
+		sb.WriteString("\n")
+		sb.WriteString(body)
+		sb.WriteByte('\n')
 	}
 	attrs := map[string]string{}
 	if b.Mode != "" {
@@ -244,7 +251,7 @@ func modeDescription(mode string) string {
 	case "bypass", "bypassPermissions":
 		return "permission checks bypassed; act with care on destructive operations"
 	default:
-		return "read and analysis tools only; operations that require approval are denied automatically"
+		return "read and analysis tools only; mutating tools are denied unless an allow rule covers them"
 	}
 }
 

@@ -3,6 +3,8 @@ package subagent
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -43,22 +46,21 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
 	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
-		Name:     "Scout",
 		Model:    "override-model",
-		MaxSteps: 600,
+		MaxSteps: 700,
 		Mode:     "edit",
 	})
 	if err != nil {
 		t.Fatalf("prepareRunConfig() error: %v", err)
 	}
 
-	if rc.displayName != "Scout" {
-		t.Fatalf("expected display name override, got %q", rc.displayName)
+	if rc.displayName != "Editor" {
+		t.Fatalf("expected mode-based display name, got %q", rc.displayName)
 	}
 	if rc.modelID != "override-model" {
 		t.Fatalf("expected model override, got %q", rc.modelID)
 	}
-	if rc.maxSteps != 600 {
+	if rc.maxSteps != 700 {
 		t.Fatalf("expected max steps override, got %d", rc.maxSteps)
 	}
 	if rc.permMode != PermissionAcceptEdits {
@@ -69,7 +71,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	}
 }
 
-func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
+func TestPrepareRunConfigDoesNotLowerMinimumMaxSteps(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
 	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
@@ -84,17 +86,20 @@ func TestPrepareRunConfigDoesNotLowerBuiltinMaxSteps(t *testing.T) {
 	}
 }
 
-func TestResolveModelUsesRequestOrParent(t *testing.T) {
+func TestResolveModelUsesConfigBeforeParent(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 	ctx := context.Background()
 
-	if _, got, _ := executor.resolveModel(ctx, ""); got != "parent-model" {
-		t.Fatalf("empty request model = %q, want parent", got)
+	if _, got, _ := executor.resolveModel(ctx, "", ""); got != "parent-model" {
+		t.Fatalf("empty config model = %q, want parent", got)
 	}
-	if _, got, _ := executor.resolveModel(ctx, "inherit"); got != "parent-model" {
+	if _, got, _ := executor.resolveModel(ctx, "", "sonnet"); got != "claude-sonnet-4-6" {
+		t.Fatalf("config model = %q, want sonnet alias", got)
+	}
+	if _, got, _ := executor.resolveModel(ctx, "", "inherit"); got != "parent-model" {
 		t.Fatalf("inherit model = %q, want parent", got)
 	}
-	if _, got, _ := executor.resolveModel(ctx, "override-model"); got != "override-model" {
+	if _, got, _ := executor.resolveModel(ctx, "override-model", "sonnet"); got != "override-model" {
 		t.Fatalf("request override = %q, want override", got)
 	}
 }
@@ -121,7 +126,7 @@ func TestResolveModelRoutesQualifiedRefToResolver(t *testing.T) {
 	stub := &stubResolver{provider: stubProvider{}}
 	executor := &Executor{parentModelID: "parent-model", resolver: stub}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4")
+	_, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -136,7 +141,7 @@ func TestResolveModelRoutesQualifiedRefToResolver(t *testing.T) {
 func TestResolveModelQualifiedRefWithoutResolverInheritsParent(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"} // no resolver wired
 
-	provider, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4")
+	provider, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -149,7 +154,7 @@ func TestResolveModelResolverErrorInheritsParent(t *testing.T) {
 	stub := &stubResolver{err: errors.New("provider \"deepseek\" is not connected")}
 	executor := &Executor{parentModelID: "parent-model", resolver: stub}
 
-	provider, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4")
+	provider, modelID, err := executor.resolveModel(context.Background(), "deepseek/deepseek-v4", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -180,7 +185,7 @@ func TestResolveModelUnavailableOverrideInheritsParent(t *testing.T) {
 		parentModelID:      "gpt-5.6-sol",
 	}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "haiku")
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -199,7 +204,7 @@ func TestResolveModelUnavailableParentProviderQualifiedOverrideInheritsParent(t 
 		parentModelID:      "gpt-5.6-sol",
 	}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "openai/nonexistent-model")
+	_, modelID, err := executor.resolveModel(context.Background(), "openai/nonexistent-model", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -217,7 +222,7 @@ func TestResolveModelEmptyCachedCatalogInheritsParent(t *testing.T) {
 		parentModelID:      "gpt-5.6-sol",
 	}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "haiku")
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -238,7 +243,7 @@ func TestResolveModelAvailableOverrideIsPreserved(t *testing.T) {
 		parentModelID:      "gpt-5.6-sol",
 	}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "gpt-5.6-terra")
+	_, modelID, err := executor.resolveModel(context.Background(), "gpt-5.6-terra", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -250,7 +255,7 @@ func TestResolveModelAvailableOverrideIsPreserved(t *testing.T) {
 func TestResolveModelMissingCatalogLeavesOverrideUnverified(t *testing.T) {
 	executor := &Executor{provider: stubProvider{}, parentModelID: "gpt-5.6-sol"}
 
-	_, modelID, err := executor.resolveModel(context.Background(), "haiku")
+	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
 	if err != nil {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
@@ -343,26 +348,43 @@ func TestBuildUnfinishedAgentResultUsesPreparedRunMetadata(t *testing.T) {
 	}
 }
 
-func TestFormatToolActivityUsesDefaultAgentLabel(t *testing.T) {
+func TestFormatToolActivityUsesReadableAgentLabel(t *testing.T) {
 	got := formatToolActivity("Agent", map[string]any{
-		"description": "update repo references",
+		"name":        "custom-reviewer",
+		"description": "HA code structure",
+		"prompt":      "Inspect the codebase",
 	})
 
-	if got != "General: update repo references" {
-		t.Fatalf("formatToolActivity() = %q, want %q", got, "General: update repo references")
+	if got != "Agent - Custom Reviewer: HA code structure" {
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - Custom Reviewer: HA code structure")
 	}
 }
 
-func TestFormatToolActivityNamesDefaultAgentByMode(t *testing.T) {
+func TestFormatToolActivityPreservesLiteralSubagentName(t *testing.T) {
+	got := formatToolActivity("Agent", map[string]any{
+		"name":        "subagent",
+		"description": "update repo references",
+	})
+
+	if got != "Agent - Subagent: update repo references" {
+		t.Fatalf("formatToolActivity() = %q, want %q", got, "Agent - Subagent: update repo references")
+	}
+}
+
+func TestFormatToolActivityNamesGeneralAgentByMode(t *testing.T) {
 	for _, tc := range []struct {
-		mode string
-		desc string
-		want string
+		agent string
+		mode  string
+		desc  string
+		want  string
 	}{
-		{mode: "explore", desc: "inspect repo", want: "Explorer: inspect repo"},
-		{mode: "edit", desc: "update files", want: "Editor: update files"},
+		{agent: "", mode: "explore", desc: "inspect repo", want: "Agent - Explorer: inspect repo"},
+		{agent: "", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
+		{agent: "subagent", mode: "explore", desc: "inspect repo", want: "Agent - Subagent: inspect repo"},
+		{agent: "explorer", mode: "acceptEdits", desc: "update files", want: "Agent - Explorer: update files"},
 	} {
 		got := formatToolActivity("Agent", map[string]any{
+			"name":        tc.agent,
 			"description": tc.desc,
 			"mode":        tc.mode,
 		})
@@ -382,58 +404,108 @@ func TestFormatToolActivityFallsBackToEmptyParensForUnmappedTool(t *testing.T) {
 	}
 }
 
-func TestDefaultBriefIncludesIdentity(t *testing.T) {
-	executor := &Executor{}
-	brief := executor.buildBrief(PermissionDefault)
+func TestBuildSystemPrompt_IncludesAdditionalInstructionsAndPreloadedSkills(t *testing.T) {
+	prev := skill.DefaultIfInit()
+	t.Cleanup(func() { skill.SetDefaultRegistry(prev) })
 
-	if brief.AgentName != defaultAgentName || brief.Description != defaultAgentDescription {
-		t.Fatalf("brief identity = %#v", brief)
+	tmpDir := t.TempDir()
+	skillFile := filepath.Join(tmpDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte(`---
+name: commit
+description: Write commit messages
+---
+Use conventional commits.
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(skill): %v", err)
+	}
+
+	userStore, err := skill.NewStore(filepath.Join(tmpDir, "user-skills.json"))
+	if err != nil {
+		t.Fatalf("NewStore(user): %v", err)
+	}
+	projectStore, err := skill.NewStore(filepath.Join(tmpDir, "project-skills.json"))
+	if err != nil {
+		t.Fatalf("NewStore(project): %v", err)
+	}
+
+	skill.SetDefaultRegistry(skill.NewRegistryForTest(map[string]*skill.Skill{
+		"git:commit": {
+			Name:      "commit",
+			Namespace: "git",
+			FilePath:  skillFile,
+			SkillDir:  tmpDir,
+			State:     skill.StateActive,
+		},
+	}, userStore, projectStore))
+
+	executor := &Executor{}
+	brief := executor.buildBrief(&AgentConfig{
+		Name:         "Reviewer",
+		Description:  "Reviews code changes.",
+		SystemPrompt: "Prefer minimal, surgical fixes.",
+		Skills:       []string{"git:commit"},
+	}, PermissionDefault, false)
+
+	if !strings.Contains(brief.CustomPrompt, "Prefer minimal, surgical fixes.") {
+		t.Fatal("expected custom system prompt content in brief")
+	}
+	if !strings.Contains(brief.CustomPrompt, `<skill-invocation name="git:commit">`) {
+		t.Fatal("expected preloaded skill invocation block in brief")
+	}
+	if !strings.Contains(brief.CustomPrompt, "Use conventional commits.") {
+		t.Fatal("expected skill instructions in brief")
 	}
 }
 
 func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
 	executor := &Executor{}
-	brief := executor.buildBrief(PermissionExplore)
+	brief := executor.buildBrief(&AgentConfig{
+		Name: "subagent",
+		AllowTools: ToolList{
+			{Name: "Read"},
+			{Name: "Bash", Pattern: "git diff*"},
+		},
+	}, PermissionExplore, false)
 
 	if !slices.Contains(brief.ToolConstraints, "Bash limited to commands classified as read-only") {
 		t.Fatalf("tool constraints = %#v, want read-only Bash policy", brief.ToolConstraints)
 	}
+	if slices.Contains(brief.ToolConstraints, "Bash(git diff*)") {
+		t.Fatalf("tool constraints should describe effective policy, got %#v", brief.ToolConstraints)
+	}
 }
 
-func TestSubagentRemindersFollowEffectiveMode(t *testing.T) {
-	executor := &Executor{
-		skillsPrompt:        "- review: Review changes",
-		projectInstructions: "Follow project conventions.",
-	}
+func TestSkillsDirectoryFollowsReachableTools(t *testing.T) {
+	executor := &Executor{skillsPrompt: "- review: Review changes"}
 
-	explore := strings.Join(executor.collectSubagentReminders(PermissionExplore), "\n")
-	if !strings.Contains(explore, "Review changes") {
-		t.Fatalf("explore reminders should include skills: %q", explore)
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: nil}); got == "" {
+		t.Fatal("nil AllowTools should expose the skills directory")
 	}
-	if strings.Contains(explore, "Follow project conventions") {
-		t.Fatalf("explore reminders should omit edit instructions: %q", explore)
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: ToolNames("Read", "Skill")}); got == "" {
+		t.Fatal("Skill-capable agent should expose the skills directory")
 	}
-
-	edit := strings.Join(executor.collectSubagentReminders(PermissionAcceptEdits), "\n")
-	if !strings.Contains(edit, "Review changes") || !strings.Contains(edit, "Follow project conventions") {
-		t.Fatalf("edit reminders should include skills and project instructions: %q", edit)
+	if got := executor.skillsDirectoryFor(&AgentConfig{AllowTools: ToolNames("Read")}); got != "" {
+		t.Fatalf("agent without the Skill tool should not expose skills, got %q", got)
 	}
 }
 
 func TestCanEditWorkspace(t *testing.T) {
 	cases := []struct {
-		name string
-		mode PermissionMode
-		want bool
+		name  string
+		mode  PermissionMode
+		allow ToolList
+		want  bool
 	}{
-		{"edit mode can edit", PermissionAcceptEdits, true},
-		{"bypass mode can edit", PermissionBypass, true},
-		{"explore mode is read-only", PermissionExplore, false},
-		{"default mode cannot edit", PermissionDefault, false},
+		{"edit mode can edit", PermissionAcceptEdits, nil, true},
+		{"bypass mode can edit", PermissionBypass, nil, true},
+		{"explore mode is read-only", PermissionExplore, nil, false},
+		{"default mode alone cannot edit", PermissionDefault, nil, false},
+		{"default with read-only allow list cannot edit", PermissionDefault, ToolNames("Read", "Grep"), false},
+		{"default with an edit tool in the allow list can edit", PermissionDefault, ToolNames("Read", "Edit"), true},
 	}
 	for _, tc := range cases {
-		if got := canEditWorkspace(tc.mode); got != tc.want {
-			t.Errorf("%s: canEditWorkspace(%q) = %v, want %v", tc.name, tc.mode, got, tc.want)
+		if got := canEditWorkspace(tc.mode, tc.allow); got != tc.want {
+			t.Errorf("%s: canEditWorkspace(%q, %v) = %v, want %v", tc.name, tc.mode, tc.allow.Names(), got, tc.want)
 		}
 	}
 }
@@ -446,33 +518,108 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 		{Name: "WebSearch"},
 	}
 
-	got := filterSchemasForPermission(schemas, PermissionExplore)
-	want := []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}, {Name: "WebSearch"}}
+	allowedBash := ToolList{{Name: "Bash", Pattern: "git diff*"}}
+
+	got := filterSchemasForPermission(schemas, PermissionExplore, allowedBash)
+	want := []core.ToolSchema{{Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)
 	}
+
+	// Bash stays visible without an allow list: read-only invocations are
+	// explore mode's search tool. Write is still filtered out.
+	got = filterSchemasForPermission(schemas, PermissionExplore, nil)
+	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}, {Name: "WebSearch"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("filtered schemas without git diff = %+v, want %+v", got, want)
+	}
+
+	// Explore remains read-only even when a custom definition over-requests
+	// mutating schemas. Bash stays visible because each call is classified.
+	overbroad := ToolNames("Read", "Write", "Edit", "Bash")
+	got = filterSchemasForPermission(schemas, PermissionExplore, overbroad)
+	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("filtered overbroad explore schemas = %+v, want %+v", got, want)
+	}
+
+	got = filterSchemasForPermission(schemas, PermissionExplore, ToolNames("Write"))
+	if len(got) != 0 {
+		t.Fatalf("write-only explore schema = %+v, want none", got)
+	}
 }
 
-func TestExploreModeIsReadOnlyCeiling(t *testing.T) {
-	check := subagentPermissionFunc(PermissionExplore)
+func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
+	check := subagentPermissionFunc(PermissionExplore, ToolList{{Name: "Bash", Pattern: "git diff*"}}, nil)
+	for _, command := range []string{
+		"git diff",
+		"git diff --stat",
+		"git diff --cached -- internal/subagent/executor.go",
+	} {
+		allow, reason := check(context.Background(), "Bash", map[string]any{"command": command})
+		if !allow {
+			t.Fatalf("Bash(%q) blocked: %s", command, reason)
+		}
+	}
+
+	// Read-only bash bypasses the whitelist constraint like the dedicated
+	// read-only tools do.
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git status"})
+	if !allow {
+		t.Fatalf("read-only Bash(git status) blocked: %s", reason)
+	}
+
+	// Cases that should be blocked: mutating pattern mismatch, or a
+	// confirmation-floor destructive suffix hidden in a compound command that
+	// the greedy Bash(git diff*) pattern would otherwise match.
+	blocked := []string{
+		"git commit -m msg",                   // mutating, pattern mismatch
+		"git diff && rm -rf /tmp/example",     // confirmation floor: destructive
+		"git diff && git push --force origin", // confirmation floor: discards work
+	}
+	for _, command := range blocked {
+		allow, _ := check(context.Background(), "Bash", map[string]any{"command": command})
+		if allow {
+			t.Fatalf("Bash(%q) allowed, want blocked", command)
+		}
+	}
+
+	// Without any agent permission, read-only bash still passes; mutating
+	// bash is denied by explore mode.
+	unlisted := subagentPermissionFunc(PermissionExplore, nil, nil)
+	allow, reason = unlisted(context.Background(), "Bash", map[string]any{"command": "git diff"})
+	if !allow {
+		t.Fatalf("read-only git diff blocked without agent permission: %s", reason)
+	}
+	allow, _ = unlisted(context.Background(), "Bash", map[string]any{"command": "go build ./..."})
+	if allow {
+		t.Fatal("mutating bash allowed in explore mode without agent permission")
+	}
+}
+
+func TestExploreModeCannotElevateThroughAllowTools(t *testing.T) {
 	cases := []struct {
 		name    string
+		allow   ToolList
 		tool    string
 		input   map[string]any
 		allowed bool
 	}{
-		{name: "read", tool: "Read", input: map[string]any{"file_path": "README.md"}, allowed: true},
-		{name: "write", tool: "Write", input: map[string]any{"file_path": "x", "content": "x"}},
-		{name: "edit", tool: "Edit", input: map[string]any{"file_path": "x", "old_string": "a", "new_string": "b"}},
-		{name: "mutating bash", tool: "Bash", input: map[string]any{"command": "touch x"}},
-		{name: "git diff output", tool: "Bash", input: map[string]any{"command": "git diff --output=/tmp/x"}},
-		{name: "git diff", tool: "Bash", input: map[string]any{"command": "git diff"}, allowed: true},
-		{name: "git status", tool: "Bash", input: map[string]any{"command": "git status"}, allowed: true},
-		{name: "git show", tool: "Bash", input: map[string]any{"command": "git show HEAD"}, allowed: true},
+		{name: "write", allow: ToolNames("Write"), tool: "Write", input: map[string]any{"file_path": "x", "content": "x"}},
+		{name: "edit", allow: ToolNames("Edit"), tool: "Edit", input: map[string]any{"file_path": "x", "old_string": "a", "new_string": "b"}},
+		{name: "bare bash touch", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "touch x"}},
+		{name: "configured npm install", allow: ToolList{{Name: "Bash", Pattern: "npm install*"}}, tool: "Bash", input: map[string]any{"command": "npm install"}},
+		{name: "git commit", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git commit -m x"}},
+		{name: "git diff output", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git diff --output=/tmp/x"}},
+		{name: "git diff", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git diff"}, allowed: true},
+		{name: "git status", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git status"}, allowed: true},
+		{name: "git show", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git show HEAD"}, allowed: true},
+		{name: "git log", allow: ToolNames("Bash"), tool: "Bash", input: map[string]any{"command": "git log --oneline"}, allowed: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			check := subagentPermissionFunc(PermissionExplore, tc.allow, nil)
 			got, reason := check(context.Background(), tc.tool, tc.input)
 			if got != tc.allowed {
 				t.Fatalf("allow = %v, want %v (reason=%q)", got, tc.allowed, reason)
@@ -481,21 +628,48 @@ func TestExploreModeIsReadOnlyCeiling(t *testing.T) {
 	}
 }
 
-func TestDefaultModeUsesSharedPermissionDefaults(t *testing.T) {
-	check := subagentPermissionFunc(PermissionDefault)
-	allow, reason := check(context.Background(), "Read", map[string]any{"file_path": "README.md"})
+func TestDefaultModeRestrictsConfiguredBash(t *testing.T) {
+	check := subagentPermissionFunc(PermissionDefault, ToolList{{Name: "Bash", Pattern: "git diff*"}}, nil)
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git diff --stat"})
 	if !allow {
-		t.Fatalf("Read blocked: %s", reason)
-	}
-
-	allow, reason = check(context.Background(), "Bash", map[string]any{"command": "git status"})
-	if !allow {
-		t.Fatalf("read-only Bash blocked: %s", reason)
+		t.Fatalf("configured Bash command blocked: %s", reason)
 	}
 
 	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "npm install"})
 	if allow {
-		t.Fatal("mutating Bash should collapse approval to deny")
+		t.Fatal("unconfigured mutating Bash command allowed (allow_tools whitelist constraint)")
+	}
+
+	allow, reason = check(context.Background(), "Read", map[string]any{"file_path": "README.md"})
+	if !allow {
+		t.Fatalf("non-Bash default mode tool blocked: %s", reason)
+	}
+}
+
+func TestDenyToolRulesMatchPatterns(t *testing.T) {
+	check := subagentPermissionFunc(PermissionDefault, nil, ToolList{{Name: "Bash", Pattern: "git status"}})
+	allow, _ := check(context.Background(), "Bash", map[string]any{"command": "git status"})
+	if allow {
+		t.Fatal("denied Bash command allowed")
+	}
+
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "npm install"})
+	// Default mode + no allow_tools -> mutating Bash would Prompt -> Deny in subagent.
+	if allow {
+		t.Fatalf("default-mode mutating Bash unexpectedly allowed without allow_tools: %s", reason)
+	}
+}
+
+func TestExploreModeAllowsConfiguredBashPattern(t *testing.T) {
+	check := subagentPermissionFunc(PermissionExplore, ToolList{{Name: "Bash", Pattern: "git show*"}}, nil)
+	allow, reason := check(context.Background(), "Bash", map[string]any{"command": "git show --stat HEAD"})
+	if !allow {
+		t.Fatalf("configured bash command blocked: %s", reason)
+	}
+
+	allow, _ = check(context.Background(), "Bash", map[string]any{"command": "sed -i s/a/b/ config.yaml"})
+	if allow {
+		t.Fatal("unconfigured mutating bash command allowed")
 	}
 }
 
@@ -511,7 +685,7 @@ func TestAcceptEditsModeFiltersApprovalOnlyToolSchemas(t *testing.T) {
 	// Bash stays visible (read-only invocations auto-permit). Agent never
 	// reaches this filter for workers — it is parent-only at the tool.Set
 	// level.
-	got := filterSchemasForPermission(schemas, PermissionAcceptEdits)
+	got := filterSchemasForPermission(schemas, PermissionAcceptEdits, nil)
 	want := []core.ToolSchema{{Name: "Read"}, {Name: "Edit"}, {Name: "Write"}, {Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)
@@ -519,7 +693,7 @@ func TestAcceptEditsModeFiltersApprovalOnlyToolSchemas(t *testing.T) {
 }
 
 func TestBypassModeAllowsEverything(t *testing.T) {
-	check := subagentPermissionFunc(PermissionBypass)
+	check := subagentPermissionFunc(PermissionBypass, nil, nil)
 	allow, _ := check(context.Background(), "Bash", map[string]any{"command": "git status"})
 	if !allow {
 		t.Fatal("bypass mode should allow Bash")
@@ -551,26 +725,73 @@ func TestNormalizePermissionModeDefaultsEmpty(t *testing.T) {
 	}
 }
 
-func TestRequestPermissionModeInheritanceAndCeiling(t *testing.T) {
-	tests := []struct {
-		name   string
-		parent PermissionMode
-		mode   string
-		want   PermissionMode
-	}{
-		{name: "default inherits bypass", parent: PermissionBypass, mode: "default", want: PermissionBypass},
-		{name: "empty inherits accept edits", parent: PermissionAcceptEdits, want: PermissionAcceptEdits},
-		{name: "explore caps bypass", parent: PermissionBypass, mode: "explore", want: PermissionExplore},
-		{name: "edit remains accept edits", parent: PermissionBypass, mode: "edit", want: PermissionAcceptEdits},
-		{name: "headless safe default", parent: PermissionDefault, mode: "default", want: PermissionDefault},
+func TestResolveAgentConfigUsesDefaultAndCustomDefinitions(t *testing.T) {
+	old := Default()
+	SetDefaultRegistry(NewRegistry())
+	t.Cleanup(func() { SetDefaultRegistry(old) })
+
+	custom := &AgentConfig{Name: "reviewer", Description: "Reviews changes", MaxSteps: 700}
+	reservedName := &AgentConfig{Name: defaultAgentName, Description: "User-defined subagent"}
+	Default().Register(custom)
+	Default().Register(reservedName)
+
+	implicit, ok := resolveAgentConfig("")
+	if !ok || implicit.Name != defaultAgentName {
+		t.Fatalf("implicit config = %#v, %v; want default agent", implicit, ok)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			executor := &Executor{parentPermissionMode: func() PermissionMode { return tt.parent }}
-			if got := executor.requestPermissionMode(tool.AgentExecRequest{Mode: tt.mode}); got != tt.want {
-				t.Fatalf("requestPermissionMode() = %q, want %q", got, tt.want)
-			}
-		})
+	resolved, ok := resolveAgentConfig("reviewer")
+	if !ok || resolved != custom {
+		t.Fatalf("custom config = %#v, %v; want registered config", resolved, ok)
+	}
+	resolved, ok = resolveAgentConfig(defaultAgentName)
+	if !ok || resolved != reservedName {
+		t.Fatalf("explicit %q config = %#v, %v; want registered config", defaultAgentName, resolved, ok)
+	}
+	if _, ok := resolveAgentConfig("missing"); ok {
+		t.Fatal("unknown custom agent should not resolve")
+	}
+}
+
+func TestExecutorUsesRegistryCapturedAtConstruction(t *testing.T) {
+	old := Default()
+	projectA := NewRegistry()
+	projectA.Register(&AgentConfig{Name: "reviewer", Description: "Project A"})
+	SetDefaultRegistry(projectA)
+	t.Cleanup(func() { SetDefaultRegistry(old) })
+
+	executor := NewExecutor(nil, "/project-a", "model", nil)
+	projectB := NewRegistry()
+	projectB.Register(&AgentConfig{Name: "reviewer", Description: "Project B"})
+	SetDefaultRegistry(projectB)
+
+	config, ok := executor.resolveAgentConfig("reviewer")
+	if !ok || config.Description != "Project A" {
+		t.Fatalf("executor resolved %#v, %v; want its captured Project A registry", config, ok)
+	}
+}
+
+func TestRequestPermissionModeInheritanceAndCustomConfig(t *testing.T) {
+	executor := &Executor{}
+	executor.SetParentPermissionMode(func() PermissionMode { return PermissionBypass })
+
+	if got := executor.requestPermissionMode(defaultAgentConfig(), tool.AgentExecRequest{}); got != PermissionBypass {
+		t.Fatalf("default agent mode = %q, want inherited bypass", got)
+	}
+	custom := &AgentConfig{Name: "reviewer", PermissionMode: PermissionExplore}
+	if got := executor.requestPermissionMode(custom, tool.AgentExecRequest{Agent: "reviewer"}); got != PermissionExplore {
+		t.Fatalf("custom agent mode = %q, want configured explore", got)
+	}
+	if got := executor.requestPermissionMode(custom, tool.AgentExecRequest{Agent: "reviewer", Mode: "edit"}); got != PermissionAcceptEdits {
+		t.Fatalf("custom edit override = %q, want acceptEdits", got)
+	}
+}
+
+func TestValidateRequestRejectsInjectedBypassMode(t *testing.T) {
+	executor := &Executor{}
+	for _, mode := range []string{"bypass", "bypassPermissions", "acceptEdits", "readonly"} {
+		if err := executor.validateRequest(tool.AgentExecRequest{Prompt: "task", Mode: mode}); err == nil {
+			t.Fatalf("validateRequest(mode=%q) unexpectedly allowed non-schema mode", mode)
+		}
 	}
 }
 
@@ -580,25 +801,17 @@ func TestParentPermissionModeGetterUsesLiveSessionSnapshot(t *testing.T) {
 	executor.SetParentPermissionMode(func() PermissionMode {
 		return PermissionModeFromOperationMode(permissions.Snapshot().Mode)
 	})
+	config := defaultAgentConfig()
 
-	if got := executor.requestPermissionMode(tool.AgentExecRequest{Mode: "default"}); got != PermissionDefault {
+	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "default"}); got != PermissionDefault {
 		t.Fatalf("initial inherited mode = %q, want default", got)
 	}
 	permissions.SetMode(setting.ModeBypassPermissions)
-	if got := executor.requestPermissionMode(tool.AgentExecRequest{Mode: "default"}); got != PermissionBypass {
+	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "default"}); got != PermissionBypass {
 		t.Fatalf("updated inherited mode = %q, want bypass", got)
 	}
-	if got := executor.requestPermissionMode(tool.AgentExecRequest{Mode: "explore"}); got != PermissionExplore {
+	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "explore"}); got != PermissionExplore {
 		t.Fatalf("explicit explore mode = %q, want read-only ceiling", got)
-	}
-}
-
-func TestValidateRequestRejectsInjectedBypassMode(t *testing.T) {
-	executor := &Executor{}
-	for _, mode := range []string{"bypass", "bypassPermissions", "acceptEdits", "readonly"} {
-		if err := executor.validateRequest(tool.AgentExecRequest{Prompt: "work", Mode: mode}); err == nil {
-			t.Fatalf("validateRequest(mode=%q) unexpectedly allowed non-schema mode", mode)
-		}
 	}
 }
 
@@ -612,8 +825,18 @@ func TestPermissionModeFromOperationMode(t *testing.T) {
 }
 
 func TestDefaultSubagentUses500Steps(t *testing.T) {
-	if defaultMaxSteps != 500 {
-		t.Fatalf("default subagent max steps = %d, want 500", defaultMaxSteps)
+	config, ok := resolveAgentConfig("")
+	if !ok {
+		t.Fatal("default subagent config not found")
+	}
+	if config.Name != "subagent" {
+		t.Fatalf("default subagent name = %q, want subagent", config.Name)
+	}
+	if config.MaxSteps != defaultMaxSteps {
+		t.Fatalf("default subagent max steps = %d, want %d", config.MaxSteps, defaultMaxSteps)
+	}
+	if configs := NewRegistry().ListConfigs(); len(configs) != 0 {
+		t.Fatalf("registry should have no built-in agent definitions, got %+v", configs)
 	}
 }
 

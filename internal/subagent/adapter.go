@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"context"
+	"strings"
 
 	"github.com/genai-io/san/internal/tool"
 )
@@ -61,16 +62,47 @@ func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTa
 	}, nil
 }
 
+// ResolveAgentRequest returns the display projection and exact configuration
+// selected for a request so permission preparation can bind execution to it.
+func (a *ExecutorAdapter) ResolveAgentRequest(name string) (tool.AgentConfigInfo, any, bool) {
+	config, ok := a.Executor.resolveAgentConfig(name)
+	if !ok {
+		return tool.AgentConfigInfo{}, nil, false
+	}
+	info := ToAgentConfigInfo(config)
+	if strings.TrimSpace(name) == "" {
+		info.PermissionMode = string(a.Executor.currentParentPermissionMode())
+	}
+	return info, config, true
+}
+
 // GetParentModelID returns the parent conversation's model ID
 func (a *ExecutorAdapter) GetParentModelID() string {
 	return a.Executor.GetParentModelID()
 }
 
-// GetDefaultAgentConfig returns display metadata for the sole default agent.
-func (a *ExecutorAdapter) GetDefaultAgentConfig() tool.AgentConfigInfo {
+// GetAgentConfig returns configuration for a selected custom agent name, or
+// the implicit default agent when name is empty.
+func (a *ExecutorAdapter) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+	info, _, ok := a.ResolveAgentRequest(name)
+	return info, ok
+}
+
+// ToAgentConfigInfo projects an agent definition into the display info shared by
+// the Agent tool and the TUI agent selector.
+func ToAgentConfigInfo(c *AgentConfig) tool.AgentConfigInfo {
+	var tools []string
+	if c.AllowTools != nil {
+		tools = c.AllowTools.DisplayNames()
+	}
 	return tool.AgentConfigInfo{
-		Name:           defaultAgentName,
-		Description:    defaultAgentDescription,
-		PermissionMode: string(a.Executor.currentParentPermissionMode()),
+		Name:           c.Name,
+		Description:    c.Description,
+		Color:          c.Color,
+		Model:          c.Model,
+		PermissionMode: string(c.PermissionMode),
+		Tools:          tools,
+		SourceFile:     c.SourceFile,
+		Source:         c.Source,
 	}
 }

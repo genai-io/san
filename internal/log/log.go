@@ -150,13 +150,13 @@ func getTurnPrefix(turn int) string {
 // Each agent gets its own tracker, supporting parallel execution.
 type AgentTurnTracker struct {
 	parentPrefix string // e.g., "main-002" or "main-002:explore-003"
-	agentName    string // e.g., "code-simplifier", "explore"
+	agentName    string // e.g., "project-reviewer", "explore"
 	turnCount    int
 	mu           sync.Mutex
 }
 
 // NewAgentTurnTracker creates a tracker for an agent loop.
-// agentName is the name of the agent (e.g., "code-simplifier").
+// agentName is the name of the agent (e.g., "project-reviewer").
 // parentTracker is nil for first-level agents, or the parent's tracker for nested agents.
 func NewAgentTurnTracker(agentName string, parentTracker *AgentTurnTracker) *AgentTurnTracker {
 	mu.Lock()
@@ -215,8 +215,8 @@ func (t *AgentTurnTracker) CurrentTurn() int {
 // Format: {parentPrefix}:{agentName}-{turn}
 // Examples:
 //   - Main loop turn 5: "main-005" (use GetTurnPrefix directly)
-//   - Agent "code-simplifier" spawned at main turn 5, sub-turn 3: "main-005:code-simplifier-003"
-//   - Nested "explore" agent: "main-005:code-simplifier-003:explore-001"
+//   - Agent "project-reviewer" spawned at main turn 5, sub-turn 3: "main-005:project-reviewer-003"
+//   - Nested "explore" agent: "main-005:project-reviewer-003:explore-001"
 func (t *AgentTurnTracker) GetTurnPrefix(turn int) string {
 	return fmt.Sprintf("%s:%s-%03d", t.parentPrefix, t.agentName, turn)
 }
