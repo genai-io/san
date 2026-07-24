@@ -26,16 +26,8 @@ func TestLeaseReleaseDoesNotDisconnectPreexistingRetainedConnection(t *testing.T
 }
 
 type connectionLifecycleTransport struct {
-	mu         sync.Mutex
-	alive      bool
+	liveTransport
 	closeCalls int
-}
-
-func (t *connectionLifecycleTransport) Start(context.Context) error {
-	t.mu.Lock()
-	t.alive = true
-	t.mu.Unlock()
-	return nil
 }
 
 func (t *connectionLifecycleTransport) Send(_ context.Context, req *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
@@ -43,25 +35,11 @@ func (t *connectionLifecycleTransport) Send(_ context.Context, req *transport.JS
 	return &transport.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
 }
 
-func (t *connectionLifecycleTransport) SendNotification(context.Context, *transport.JSONRPCNotification) error {
-	return nil
-}
-
 func (t *connectionLifecycleTransport) Close() error {
-	t.mu.Lock()
-	t.alive = false
+	t.liveTransport.Close()
 	t.closeCalls++
-	t.mu.Unlock()
 	return nil
 }
-
-func (t *connectionLifecycleTransport) IsAlive() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.alive
-}
-
-func (t *connectionLifecycleTransport) SetNotificationHandler(transport.NotificationHandler) {}
 
 func (t *connectionLifecycleTransport) closeCount() int {
 	t.mu.Lock()
@@ -208,7 +186,7 @@ func TestDeadConnectionReplacementKeepsLeaseCountsSeparatedByConnectionEpoch(t *
 		t.Fatalf("first AcquireServerConnectionLeases() errors = %v", errs)
 	}
 	firstTransport.mu.Lock()
-	firstTransport.alive = false
+	firstTransport.closed = true
 	firstTransport.mu.Unlock()
 	second, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 	if len(errs) != 0 {
@@ -242,7 +220,7 @@ func TestExplicitRetentionIntentAppliesToLeaseTriggeredReplacement(t *testing.T)
 		t.Fatalf("persistent Connect() error = %v", err)
 	}
 	firstTransport.mu.Lock()
-	firstTransport.alive = false
+	firstTransport.closed = true
 	firstTransport.mu.Unlock()
 	cleanup, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 	if len(errs) != 0 {

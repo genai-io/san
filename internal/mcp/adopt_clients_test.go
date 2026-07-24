@@ -60,7 +60,7 @@ func registryWithRetainedClients(configs map[string]ServerConfig, clients map[st
 	}
 	for name, c := range clients {
 		r.clients[name] = c
-		r.retainWithoutLeases[name] = true
+		r.getOrCreateConnectionState(name).retainWithoutLeases = true
 	}
 	return r
 }
@@ -158,9 +158,9 @@ func TestRegistryReplacementLeavesLeaseOwnedConnectionInOutgoingRegistry(t *test
 	tr := &liveTransport{}
 	client := connectedClient(t, cfg, tr)
 	old := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
-	old.disconnectAfterFinalLease["docs"] = true
-	delete(old.retainWithoutLeases, "docs")
-	old.leaseCountsByConnectionEpoch["docs"] = map[uint64]int{0: 1}
+	old.getOrCreateConnectionState("docs").disconnectAfterFinalLease = true
+	s := old.connectionStates["docs"]; if s != nil { s.retainWithoutLeases = false }
+	old.getOrCreateConnectionState("docs").leaseCountsByEpoch = map[uint64]int{0: 1}
 
 	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, nil)
 	fresh.transferRetainedConnectionsFrom(old)
