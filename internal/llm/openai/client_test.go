@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -200,6 +201,56 @@ func TestStreamResponsesIncludesReasoningSummaryAndEmitsThinking(t *testing.T) {
 	}
 	if !foundThinking {
 		t.Fatal("expected reasoning summary delta to emit a thinking chunk")
+	}
+}
+
+func TestResponseErrorCodeRetryability(t *testing.T) {
+	tests := []struct {
+		code      string
+		retryable bool
+	}{
+		{code: "server_error", retryable: true},
+		{code: "rate_limit_exceeded", retryable: true},
+		{code: "vector_store_timeout", retryable: true},
+		{code: "invalid_prompt"},
+		{code: "image_content_policy_violation"},
+		{code: "unknown_error"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.code, func(t *testing.T) {
+			if got := retryableResponseErrorCode(tc.code); got != tc.retryable {
+				t.Fatalf("retryableResponseErrorCode(%q) = %v, want %v", tc.code, got, tc.retryable)
+			}
+		})
+	}
+}
+
+func TestResponsesInBandErrorCarriesRetryMarker(t *testing.T) {
+	tests := []struct {
+		name      string
+		code      string
+		retryable bool
+	}{
+		{name: "transient", code: "server_error", retryable: true},
+		{name: "semantic", code: "invalid_prompt"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stream := "data: {\"type\":\"error\",\"code\":\"" + tc.code + "\",\"message\":\"failed\",\"param\":\"\",\"sequence_number\":1}\n\n"
+			chunks := drain(newTestClient(&captureStreamingTransport{stream: stream}).Stream(
+				context.Background(),
+				llm.CompletionOptions{Model: "gpt-5.4", Messages: []core.Message{{Role: core.RoleUser, Content: "hi"}}},
+			))
+			if len(chunks) != 1 || chunks[0].Type != llm.ChunkTypeError {
+				t.Fatalf("chunks = %#v, want one error chunk", chunks)
+			}
+			var retryable core.RetryableError
+			if got := errors.As(chunks[0].Error, &retryable); got != tc.retryable {
+				t.Fatalf("retryable = %v, want %v", got, tc.retryable)
+			}
+		})
 	}
 }
 

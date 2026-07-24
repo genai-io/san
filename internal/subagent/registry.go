@@ -44,8 +44,8 @@ func (r *Registry) Get(name string) (*AgentConfig, bool) {
 	return config, ok
 }
 
-// Resolve returns an enabled custom agent configuration by exact name.
-func (r *Registry) Resolve(name string) (*AgentConfig, bool) {
+// ResolveEnabledCustomAgent returns an enabled custom Agent configuration by exact name.
+func (r *Registry) ResolveEnabledCustomAgent(name string) (*AgentConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

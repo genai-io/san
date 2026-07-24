@@ -31,15 +31,27 @@ func IsAuthError(err error) bool {
 	return ok
 }
 
-// NormalizeAPIError converts OpenAI-compatible auth failures into actionable
-// provider-specific guidance while preserving all other errors as-is.
+type normalizedError struct {
+	message string
+	cause   error
+}
+
+func (e normalizedError) Error() string { return e.message }
+func (e normalizedError) Unwrap() error { return e.cause }
+
+func normalize(message string, cause error) error {
+	return normalizedError{message: message, cause: cause}
+}
+
+// NormalizeAPIError converts OpenAI-compatible errors into clearer display
+// messages while retaining the original error chain for status classification.
 func NormalizeAPIError(providerName string, err error) error {
 	apierr, ok := asAuthError(err)
 	if !ok {
 		var generic *openai.Error
 		if errors.As(err, &generic) {
 			if msg := apiErrorMessage(generic); msg != "" {
-				return fmt.Errorf("%s: %s", err, msg)
+				return normalize(msg, err)
 			}
 		}
 		return err
@@ -50,15 +62,15 @@ func NormalizeAPIError(providerName string, err error) error {
 
 	if envVar == "" {
 		if msg == "" {
-			return fmt.Errorf("%s authentication failed; reconnect the provider with /model", providerLabel)
+			return normalize(fmt.Sprintf("%s authentication failed; reconnect the provider with /model", providerLabel), err)
 		}
-		return fmt.Errorf("%s authentication failed: %s. Reconnect the provider with /model", providerLabel, msg)
+		return normalize(fmt.Sprintf("%s authentication failed: %s. Reconnect the provider with /model", providerLabel, msg), err)
 	}
 
 	if msg == "" {
-		return fmt.Errorf("%s authentication failed; check %s and reconnect the provider with /model", providerLabel, envVar)
+		return normalize(fmt.Sprintf("%s authentication failed; check %s and reconnect the provider with /model", providerLabel, envVar), err)
 	}
-	return fmt.Errorf("%s authentication failed: %s. Check %s and reconnect the provider with /model", providerLabel, msg, envVar)
+	return normalize(fmt.Sprintf("%s authentication failed: %s. Check %s and reconnect the provider with /model", providerLabel, msg, envVar), err)
 }
 
 func apiErrorMessage(apierr *openai.Error) string {

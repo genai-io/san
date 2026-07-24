@@ -121,7 +121,7 @@ func (l *Client) Infer(ctx context.Context, req core.InferRequest) (<-chan core.
 			case ChunkTypeError:
 				// Classify here so the agent loop can decide whether to
 				// retry without importing the provider SDKs.
-				send(core.Chunk{Err: llmerr.Wrap(sc.Error)})
+				send(core.Chunk{Err: llmerr.WrapStream(sc.Error)})
 				return
 			}
 		}
@@ -187,7 +187,7 @@ func (l *Client) Complete(ctx context.Context,
 			return resp, nil
 		}
 		var re core.RetryableError
-		if !errors.As(llmerr.Wrap(err), &re) || attempt == completeMaxAttempts {
+		if !errors.As(llmerr.WrapStream(err), &re) || attempt == completeMaxAttempts {
 			return resp, err
 		}
 		if werr := core.BackoffSleep(ctx, attempt, re.RetryAfter()); werr != nil {

@@ -62,9 +62,9 @@ func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTa
 	}, nil
 }
 
-// ResolveAgentRequest returns the display projection and exact configuration
+// ResolveAgentSelection returns the display projection and exact configuration
 // selected for a request so permission preparation can bind execution to it.
-func (a *ExecutorAdapter) ResolveAgentRequest(name string) (tool.AgentConfigInfo, any, bool) {
+func (a *ExecutorAdapter) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	config, ok := a.Executor.resolveAgentConfig(name)
 	if !ok {
 		return tool.AgentConfigInfo{}, nil, false
@@ -84,7 +84,7 @@ func (a *ExecutorAdapter) GetParentModelID() string {
 // GetAgentConfig returns configuration for a selected custom agent name, or
 // the implicit default agent when name is empty.
 func (a *ExecutorAdapter) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
-	info, _, ok := a.ResolveAgentRequest(name)
+	info, _, ok := a.ResolveAgentSelection(name)
 	return info, ok
 }
 

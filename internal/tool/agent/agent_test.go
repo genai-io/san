@@ -8,10 +8,10 @@ import (
 )
 
 type recordingExecutor struct {
-	configName     string
-	configOK       bool
-	resolvedConfig any
-	runReq         tool.AgentExecRequest
+	selectedAgentName string
+	configOK          bool
+	resolvedConfig    any
+	runReq            tool.AgentExecRequest
 }
 
 func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
@@ -20,21 +20,21 @@ func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	e.runReq = req
-	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: configName(req.Agent)}, nil
+	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: agentTypeLabel(req.Agent)}, nil
 }
 func (e *recordingExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
-	e.configName = name
+	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, false
 	}
-	return tool.AgentConfigInfo{Name: configName(name), PermissionMode: "default"}, true
+	return tool.AgentConfigInfo{Name: agentTypeLabel(name), PermissionMode: "default"}, true
 }
-func (e *recordingExecutor) ResolveAgentRequest(name string) (tool.AgentConfigInfo, any, bool) {
-	e.configName = name
+func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
+	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, nil, false
 	}
-	return tool.AgentConfigInfo{Name: configName(name), PermissionMode: "default"}, e.resolvedConfig, true
+	return tool.AgentConfigInfo{Name: agentTypeLabel(name), PermissionMode: "default"}, e.resolvedConfig, true
 }
 func (e *recordingExecutor) GetParentModelID() string { return "parent-model" }
 
@@ -51,8 +51,8 @@ func TestAgentToolUsesNameForCustomAgentSelection(t *testing.T) {
 	if _, err := agentTool.PreparePermission(context.Background(), params, "."); err != nil {
 		t.Fatalf("PreparePermission() error: %v", err)
 	}
-	if executor.configName != "project-reviewer" {
-		t.Fatalf("config lookup name = %q, want project-reviewer", executor.configName)
+	if executor.selectedAgentName != "project-reviewer" {
+		t.Fatalf("config lookup name = %q, want project-reviewer", executor.selectedAgentName)
 	}
 
 	result := agentTool.Execute(context.Background(), params, ".")
@@ -81,8 +81,8 @@ func TestAgentToolApprovedParamsCarryResolvedConfiguration(t *testing.T) {
 	if !result.Success {
 		t.Fatalf("ExecuteApproved() failed: %s", result.Error)
 	}
-	if executor.runReq.Config != config {
-		t.Fatalf("execution config = %#v, want approved snapshot %#v", executor.runReq.Config, config)
+	if executor.runReq.ResolvedAgentConfig != config {
+		t.Fatalf("execution config = %#v, want approved snapshot %#v", executor.runReq.ResolvedAgentConfig, config)
 	}
 }
 
@@ -95,8 +95,8 @@ func TestAgentToolOmittedNameUsesImplicitDefault(t *testing.T) {
 	if _, err := agentTool.PreparePermission(context.Background(), params, "."); err != nil {
 		t.Fatalf("PreparePermission() error: %v", err)
 	}
-	if executor.configName != "" {
-		t.Fatalf("omitted name lookup = %q, want empty implicit-default selector", executor.configName)
+	if executor.selectedAgentName != "" {
+		t.Fatalf("omitted name lookup = %q, want empty implicit-default selector", executor.selectedAgentName)
 	}
 	agentTool.Execute(context.Background(), params, ".")
 	if executor.runReq.Agent != "" {
