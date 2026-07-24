@@ -49,11 +49,9 @@ func TestAgentSchemaExplainsNameResolution(t *testing.T) {
 	if !ok {
 		t.Fatal("Agent schema should expose name")
 	}
-	description, _ := name["description"].(string)
-	for _, want := range []string{"available agent definition", "display label", "default agent template", "no custom agent prompt"} {
-		if !strings.Contains(description, want) {
-			t.Fatalf("name description %q should contain %q", description, want)
-		}
+	want := "Choose an available agent, or name a new general-purpose agent for this task. New names are for display only."
+	if description := name["description"]; description != want {
+		t.Fatalf("name description = %q, want %q", description, want)
 	}
 }
 

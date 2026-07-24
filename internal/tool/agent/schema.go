@@ -66,7 +66,7 @@ var agentToolParameters = map[string]any{
 		},
 		"name": map[string]any{
 			"type":        "string",
-			"description": "Optional agent name. Use an available agent definition's exact name to apply its configured prompt and settings. Any other name is only a display label and uses the default agent template with no custom agent prompt. Omit it to use the default template and standard display name.",
+			"description": "Choose an available agent, or name a new general-purpose agent for this task. New names are for display only.",
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
