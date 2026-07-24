@@ -176,7 +176,7 @@ merger; the two selections apply in-memory while the persona is active.
     "git:commit": "enable",
     "deep-research": "disable"
   },
-  "agents": ["general-purpose", "code-reviewer"],
+  "agents": ["test-runner", "project-reviewer"],
   "disabledTools": { "WebSearch": false, "SomeHeavyTool": true },
   "permissions": {
     "defaultMode": "acceptEdits",

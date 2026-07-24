@@ -109,7 +109,7 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
-	AgentRegistry   AgentRegistry
+	AgentRegistry   func() AgentRegistry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
 	MCPRegistry     *coremcp.Registry

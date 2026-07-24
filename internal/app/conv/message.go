@@ -581,17 +581,19 @@ func RenderToolCalls(params ToolCallsParams) string {
 			}
 			detail := runningRowDetail(tc, params)
 			var row string
-			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
-				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
-			} else if tc.Name == tool.ToolBash {
+			if tc.Name == tool.ToolBash {
 				row = renderBashToolCall(tc.Input, params.Width, icon, detail)
-				detail = ""
 			} else {
-				args := extractToolArgs(tc.Input)
+				var args string
+				if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
+					args = extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
+				} else {
+					args = extractToolArgs(tc.Input)
+				}
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				row = appendRowDetail(row, detail)
 			}
-			sb.WriteString(appendRowDetail(row, detail))
+			sb.WriteString(row)
 		}
 
 		if resultData, ok := params.ResultMap[tc.ID]; ok {
