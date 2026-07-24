@@ -220,19 +220,23 @@ func runPrint(userMessage, personaName string) error {
 // interactive startup path; when resolution falls back to a connection without
 // a saved current model, it fills that provider's default model id.
 func resolveProvider(ctx context.Context) (llm.Provider, string, error) {
+	resolved, _, err := resolveProviderWithStore(ctx)
+	return resolved.Provider, resolved.ModelID, err
+}
+
+func resolveProviderWithStore(ctx context.Context) (llm.ResolvedProvider, *llm.Store, error) {
 	store, err := llm.NewStore()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to load store: %w", err)
+		return llm.ResolvedProvider{}, nil, fmt.Errorf("failed to load store: %w", err)
 	}
 	resolved, ok := llm.ResolveProvider(ctx, store)
 	if !ok {
-		return nil, "", fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
+		return llm.ResolvedProvider{}, nil, fmt.Errorf("no provider connected. Run 'san' and use /model to connect")
 	}
-	modelID := resolved.ModelID
-	if modelID == "" {
-		modelID = setting.DefaultModel(resolved.Provider.Name(), string(resolved.AuthMethod))
+	if resolved.ModelID == "" {
+		resolved.ModelID = setting.DefaultModel(resolved.Provider.Name(), string(resolved.AuthMethod))
 	}
-	return resolved.Provider, modelID, nil
+	return resolved, store, nil
 }
 
 // validatePersona ensures the named persona exists on disk, early in startup,

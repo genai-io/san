@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
@@ -15,72 +14,59 @@ import (
 
 // PluginAgentPath represents a plugin agent path with namespace metadata.
 type PluginAgentPath struct {
-	Path      string
-	Namespace string
+	Path             string
+	Namespace        string
+	UsesProjectScope bool
 }
 
 // agentSearchPath represents an agent search location with optional namespace.
 type agentSearchPath struct {
-	path      string
-	namespace string // Default namespace for agents in this path (from plugin)
+	path        string
+	namespace   string // Default namespace for agents in this path (from plugin)
+	agentSource string
 }
 
-// additionalAgentPaths stores plugin agent paths.
-var (
-	additionalAgentPaths   []agentSearchPath
-	additionalAgentPathsMu sync.Mutex
-)
-
-// AddPluginAgentPath adds a plugin agent path to be searched.
-func AddPluginAgentPath(path, namespace string) {
-	additionalAgentPathsMu.Lock()
-	defer additionalAgentPathsMu.Unlock()
-	additionalAgentPaths = append(additionalAgentPaths, agentSearchPath{
-		path:      path,
-		namespace: namespace,
-	})
-}
-
-// ClearPluginAgentPaths clears all plugin agent paths.
-func ClearPluginAgentPaths() {
-	additionalAgentPathsMu.Lock()
-	defer additionalAgentPathsMu.Unlock()
-	additionalAgentPaths = nil
-}
-
-// LoadAgents loads agent definitions from standard locations.
-// Note: .claude/plugins/ loading is removed - plugins are handled by the plugin system.
-// Priority when the same agent name appears in several locations:
-//  1. .san/agents/*.md (project level, preferred)
-//  2. ~/.san/agents/*.md (user level, preferred)
-//  3. .claude/agents/*.md (project level, Claude Code compatible)
-//  4. ~/.claude/agents/*.md (user level, Claude Code compatible)
-//  5. Plugin agent paths
-//
-// Registry.Register overwrites by name, so sources load lowest-priority
-// first — the highest-priority definition lands last and wins.
+// LoadAgents replaces the package registry with custom definitions from
+// the standard locations. Production initialization uses loadAgents so it
+// can include plugin paths and install the complete registry atomically.
 func LoadAgents(cwd string) {
+	registry := NewRegistry()
+	loadAgents(cwd, registry, nil)
+	setDefaultRegistry(registry)
+}
+
+func loadAgents(cwd string, registry *Registry, pluginPaths func() []PluginAgentPath) {
 	homeDir, _ := os.UserHomeDir()
 
-	priorityOrdered := []agentSearchPath{
+	searchPathsByDescendingPriority := []agentSearchPath{
 		{path: filepath.Join(confdir.Dir(cwd), "agents")},
 		{path: filepath.Join(confdir.Dir(homeDir), "agents")},
 		{path: filepath.Join(cwd, ".claude", "agents")},
 		{path: filepath.Join(homeDir, ".claude", "agents")},
 	}
-	additionalAgentPathsMu.Lock()
-	priorityOrdered = append(priorityOrdered, additionalAgentPaths...)
-	additionalAgentPathsMu.Unlock()
+	if pluginPaths != nil {
+		for _, pluginPath := range pluginPaths() {
+			agentSource := "user-plugin"
+			if pluginPath.UsesProjectScope {
+				agentSource = "project-plugin"
+			}
+			searchPathsByDescendingPriority = append(searchPathsByDescendingPriority, agentSearchPath{
+				path:        pluginPath.Path,
+				namespace:   pluginPath.Namespace,
+				agentSource: agentSource,
+			})
+		}
+	}
 
-	for i := len(priorityOrdered) - 1; i >= 0; i-- {
-		sp := priorityOrdered[i]
-		loadAgentsFromDirWithNamespace(sp.path, sp.namespace)
+	for index := len(searchPathsByDescendingPriority) - 1; index >= 0; index-- {
+		searchPath := searchPathsByDescendingPriority[index]
+		loadAgentsFromPath(registry, searchPath.path, searchPath.namespace, searchPath.agentSource)
 	}
 }
 
-// loadAgentsFromDirWithNamespace loads agents with an optional namespace prefix.
-// The path can be either a directory (scanned for .md files) or a direct file path.
-func loadAgentsFromDirWithNamespace(path string, namespace string) {
+// loadAgentsFromPath loads Agents from a directory or direct markdown file,
+// applying the supplied namespace and source classification.
+func loadAgentsFromPath(registry *Registry, path, namespace, sourceOverride string) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return
@@ -89,7 +75,7 @@ func loadAgentsFromDirWithNamespace(path string, namespace string) {
 	// If path is a file, load it directly
 	if !info.IsDir() {
 		if strings.HasSuffix(path, ".md") {
-			loadAgentFromFileWithNamespace(path, namespace)
+			loadAgentFile(registry, path, namespace, sourceOverride)
 		}
 		return
 	}
@@ -111,12 +97,12 @@ func loadAgentsFromDirWithNamespace(path string, namespace string) {
 		}
 
 		filePath := filepath.Join(path, name)
-		loadAgentFromFileWithNamespace(filePath, namespace)
+		loadAgentFile(registry, filePath, namespace, sourceOverride)
 	}
 }
 
-// loadAgentFromFileWithNamespace loads an agent with optional namespace.
-func loadAgentFromFileWithNamespace(filePath string, namespace string) {
+// loadAgentFile loads one Agent definition and applies optional plugin metadata.
+func loadAgentFile(registry *Registry, filePath, namespace, sourceOverride string) {
 	config, err := parseAgentFile(filePath)
 	if err != nil {
 		log.Logger().Debug("Failed to parse agent file",
@@ -126,12 +112,18 @@ func loadAgentFromFileWithNamespace(filePath string, namespace string) {
 	}
 
 	if config != nil {
-		if namespace != "" && !strings.Contains(config.Name, ":") {
-			config.Name = namespace + ":" + config.Name
-			config.Source = "plugin"
+		if namespace != "" {
+			localName := config.Name
+			if _, suffix, ok := strings.Cut(localName, ":"); ok {
+				localName = suffix
+			}
+			config.Name = namespace + ":" + localName
+		}
+		if sourceOverride != "" {
+			config.Source = sourceOverride
 		}
 
-		defaultRegistry.Register(config)
+		registry.Register(config)
 		log.Logger().Info("Loaded agent",
 			zap.String("name", config.Name),
 			zap.String("source", filePath))
@@ -186,6 +178,7 @@ func parseAgentFile(filePath string) (*AgentConfig, error) {
 
 	config.PermissionMode = NormalizePermissionMode(string(config.PermissionMode))
 
+	config.Name = strings.TrimSpace(config.Name)
 	if config.Name == "" {
 		config.Name = strings.TrimSuffix(filepath.Base(filePath), ".md")
 	}

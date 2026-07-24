@@ -26,15 +26,23 @@ lane and don't report correctness bugs or propose structural rewrites here.
 
 ## Phase 1: Identify changes
 
-Run `git diff` (or `git diff HEAD` when changes are staged). With no git changes,
-review the most recently modified files the user named or that you edited earlier
-in this conversation.
+Obtain the complete changed-code diff exactly once in the main conversation. Use
+`git diff HEAD` so staged and unstaged changes are reviewed together. With no git
+changes, review the most recently modified files the user named or that you edited
+earlier in this conversation.
 
-## Phase 2: Review across three lenses (in parallel)
+## Phase 2: Review across three lenses (one parallel batch)
 
-Use the Agent tool to launch three reviewers concurrently in one message
-(foreground). Give each the full diff. Each returns a short list of concrete,
-located findings.
+Use the Agent tool to launch exactly three subagent reviewers concurrently in one
+foreground batch: Reuse, Quality, and Efficiency. Omit `name` to use the default
+agent and set `mode=explore` for all three. Include the complete diff text from
+Phase 1 directly in every reviewer prompt; do not ask a reviewer to run `git diff` or recover
+omitted context itself. Each returns a short list of concrete, located findings.
+
+Launch no second reviewer batch. If a reviewer reports a missing tool, capability,
+or context failure, record that reviewer as unavailable and continue with the
+other results and your own review. Do not retry it, select another agent, or delegate
+the same lens again.
 
 - **Reuse.** New code that duplicates an existing helper or utility; hand-rolled
   logic (string munging, path handling, env checks, type guards) that the

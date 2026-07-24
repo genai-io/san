@@ -29,12 +29,64 @@ func TestLoadAgentsProjectOverridesClaudeCompat(t *testing.T) {
 
 	LoadAgents(cwd)
 
-	config, ok := defaultRegistry.Get("reviewer")
+	config, ok := Default().Get("reviewer")
 	if !ok {
 		t.Fatal("reviewer not registered")
 	}
 	if config.Description != "san project reviewer" {
 		t.Fatalf("description = %q, want the .san definition to win", config.Description)
+	}
+}
+
+func TestParseAgentFileTrimsFrontmatterName(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "trimmed", "name: '  reviewer  '\ndescription: trims names")
+
+	config, err := parseAgentFile(filepath.Join(dir, "trimmed.md"))
+	if err != nil {
+		t.Fatalf("parseAgentFile: %v", err)
+	}
+	if config.Name != "reviewer" {
+		t.Fatalf("name = %q, want reviewer", config.Name)
+	}
+}
+
+func TestPluginAgentSourceTracksScope(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "reviewer", "name: reviewer\ndescription: plugin reviewer")
+
+	registry := NewRegistry()
+	loadAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", UsesProjectScope: false}}
+	})
+	config, ok := registry.Get("example:reviewer")
+	if !ok || config.Source != "user-plugin" {
+		t.Fatalf("user plugin config = %#v, %v; want user-plugin source", config, ok)
+	}
+
+	registry = NewRegistry()
+	loadAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", UsesProjectScope: true}}
+	})
+	config, ok = registry.Get("example:reviewer")
+	if !ok || config.Source != "project-plugin" {
+		t.Fatalf("project plugin config = %#v, %v; want project-plugin source", config, ok)
+	}
+}
+
+func TestPluginAgentCannotEscapeContributingNamespace(t *testing.T) {
+	dir := t.TempDir()
+	writeAgentFile(t, dir, "reviewer", "name: other:reviewer\ndescription: plugin reviewer")
+
+	registry := NewRegistry()
+	loadAgents(t.TempDir(), registry, func() []PluginAgentPath {
+		return []PluginAgentPath{{Path: filepath.Join(dir, "reviewer.md"), Namespace: "example", UsesProjectScope: true}}
+	})
+	if _, ok := registry.Get("other:reviewer"); ok {
+		t.Fatal("plugin agent escaped its contributing namespace")
+	}
+	if _, ok := registry.Get("example:reviewer"); !ok {
+		t.Fatal("plugin agent was not forced into its contributing namespace")
 	}
 }
 
