@@ -97,7 +97,7 @@ func (s *Set) agentAllTools() []core.ToolSchema {
 	})
 	filtered := make([]core.ToolSchema, 0, len(allTools))
 	for _, t := range allTools {
-		if !parentOnlyTools[t.Name] && !s.isDisallowed(t.Name) {
+		if !parentOnlyTools[t.Name] && !s.Disabled[t.Name] && !s.isDisallowed(t.Name) {
 			filtered = append(filtered, t)
 		}
 	}
@@ -119,7 +119,7 @@ func (s *Set) agentTools() []core.ToolSchema {
 
 	filtered := make([]core.ToolSchema, 0, len(s.Allow))
 	for _, t := range allTools {
-		if allowSet[strings.ToLower(t.Name)] && !parentOnlyTools[t.Name] && !s.isDisallowed(t.Name) {
+		if allowSet[strings.ToLower(t.Name)] && !parentOnlyTools[t.Name] && !s.Disabled[t.Name] && !s.isDisallowed(t.Name) {
 			filtered = append(filtered, t)
 		}
 	}
@@ -127,7 +127,7 @@ func (s *Set) agentTools() []core.ToolSchema {
 	// Include MCP tools that match the allow list
 	if s.MCP != nil {
 		for _, t := range s.MCP() {
-			if allowSet[strings.ToLower(t.Name)] && !s.isDisallowed(t.Name) {
+			if allowSet[strings.ToLower(t.Name)] && !s.Disabled[t.Name] && !s.isDisallowed(t.Name) {
 				filtered = append(filtered, t)
 			}
 		}

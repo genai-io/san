@@ -404,6 +404,9 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 		m.StopAgentSession()
 	}
 
+	// Rebuild the subagent executor alongside the main agent so it inherits the
+	// same effective disabled-tool snapshot after settings/persona drift.
+	m.ReconfigureAgentTool()
 	params := m.buildAgentParams()
 	coreMessages := m.seedAgentMessages(pendingSend)
 
@@ -643,6 +646,7 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
 	executor.SetMCPDependencies(m.services.MCP, m.services.MCP)
+	executor.SetDisabledTools(m.services.Setting.DisabledTools())
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }

@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"strings"
+	"sync"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
@@ -46,6 +48,8 @@ type Executor struct {
 	skillsPrompt               string               // available skills section for capable subagents
 	mcpTools                   mcp.Tools            // tool schemas + execution
 	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
+	disabledToolsMu            sync.RWMutex
+	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 }
 
 type SubagentSessionStore interface {
@@ -146,6 +150,21 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 func (e *Executor) SetMCPDependencies(tools mcp.Tools, connectionRegistry *mcp.Registry) {
 	e.mcpTools = tools
 	e.mcpServers = connectionRegistry
+}
+
+// SetDisabledTools supplies the effective global disabled-tool policy inherited
+// by subsequently built subagents. The map is copied so settings reloads and
+// concurrent runs cannot mutate a tool set while it is being constructed.
+func (e *Executor) SetDisabledTools(disabled map[string]bool) {
+	e.disabledToolsMu.Lock()
+	e.disabledTools = maps.Clone(disabled)
+	e.disabledToolsMu.Unlock()
+}
+
+func (e *Executor) disabledToolsSnapshot() map[string]bool {
+	e.disabledToolsMu.RLock()
+	defer e.disabledToolsMu.RUnlock()
+	return maps.Clone(e.disabledTools)
 }
 
 // SetSessionStore configures session persistence for subagent conversations.
@@ -399,7 +418,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	if e.mcpTools != nil {
 		mcpGetter = e.mcpTools.GetToolSchemas
 	}
-	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), mcpGetter)
+	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
 	var ag core.Agent
 	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
@@ -794,9 +813,13 @@ func modeAllowsSchema(mode PermissionMode, name string) bool {
 	return name == "Bash" || name == tool.ToolSkill
 }
 
-// newAgentToolSet creates a tool.Set for subagents with the disallow set eagerly initialized.
-func newAgentToolSet(allow, disallow []string, mcpGetter func() []core.ToolSchema) *tool.Set {
-	s := &tool.Set{Allow: allow, Disallow: disallow, MCP: mcpGetter, IsAgent: true}
+// newAgentToolSet creates a tool.Set for subagents with global and per-agent
+// exclusions eagerly initialized.
+func newAgentToolSet(allow, disallow []string, disabled map[string]bool, mcpGetter func() []core.ToolSchema) *tool.Set {
+	s := &tool.Set{
+		Allow: allow, Disallow: disallow, Disabled: maps.Clone(disabled),
+		MCP: mcpGetter, IsAgent: true,
+	}
 	s.InitDisallowSet()
 	return s
 }
