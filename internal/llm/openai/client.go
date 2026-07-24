@@ -14,6 +14,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/llm/llmerr"
 	"github.com/genai-io/san/internal/llm/openaicompat"
 	streamutil "github.com/genai-io/san/internal/llm/stream"
 	"github.com/genai-io/san/internal/log"
@@ -272,7 +273,13 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 					if resp.Error.Message != "" {
 						errMsg = resp.Error.Message
 					}
-					state.Fail(ctx, ch, fmt.Errorf("responses API failed: %s", errMsg))
+					err := fmt.Errorf("responses API failed: %s", errMsg)
+					if retryableResponseError(resp.Error.Code) {
+						err = llmerr.MarkRetryable(err)
+					} else {
+						err = llmerr.MarkNonRetryable(err)
+					}
+					state.Fail(ctx, ch, err)
 					return
 				default:
 					state.Response.StopReason = core.StopReason(resp.Status)
@@ -280,7 +287,13 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 
 			case "error":
 				errEvent := event.AsError()
-				state.Fail(ctx, ch, fmt.Errorf("responses API error: %s", errEvent.Message))
+				err := fmt.Errorf("responses API error: %s", errEvent.Message)
+				if retryableResponseErrorCode(errEvent.Code) {
+					err = llmerr.MarkRetryable(err)
+				} else {
+					err = llmerr.MarkNonRetryable(err)
+				}
+				state.Fail(ctx, ch, err)
 				return
 			}
 		}
@@ -296,6 +309,21 @@ func (c *Client) streamResponses(ctx context.Context, opts llm.CompletionOptions
 	}()
 
 	return ch
+}
+
+func retryableResponseError(code responses.ResponseErrorCode) bool {
+	return retryableResponseErrorCode(string(code))
+}
+
+func retryableResponseErrorCode(code string) bool {
+	switch code {
+	case string(responses.ResponseErrorCodeServerError),
+		string(responses.ResponseErrorCodeRateLimitExceeded),
+		string(responses.ResponseErrorCodeVectorStoreTimeout):
+		return true
+	default:
+		return false
+	}
 }
 
 // ListModels returns the available models for OpenAI using the API

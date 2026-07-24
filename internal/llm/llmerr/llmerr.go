@@ -1,10 +1,11 @@
 // Package llmerr classifies LLM provider/stream errors so the agent loop can
 // decide whether a failure is worth retrying. It maps each provider SDK's error
-// type onto a small, provider-agnostic taxonomy and exposes a single Wrap entry
-// point that tags retryable errors with core.RetryableError.
+// type onto a small, provider-agnostic taxonomy and exposes phase-aware wrapping
+// entry points that tag retryable errors with core.RetryableError.
 package llmerr
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -24,23 +25,61 @@ import (
 type class int
 
 const (
-	fatal       class = iota // never retry: bad request, auth, not-found, content policy, context window
+	unknown     class = iota // no typed provider or transport signal
+	knownFatal               // never retry: cancellation, bad request, auth, not-found, content policy
 	retryable                // transient: 408/409, all 5xx (incl. 529), connection/network errors
 	rateLimited              // 429 — retry, honoring Retry-After when present
 )
 
-// Wrap classifies err and tags it for the turn loop: retryable failures
-// satisfy core.RetryableError (carrying any Retry-After hint), a prompt that
-// overflowed the context window satisfies core.ContextExceededError. Anything
-// else — and nil — is returned unchanged, so it satisfies neither and the turn
-// loop surfaces it immediately. The original error always stays in the chain.
+// Wrap conservatively classifies an error from a regular/non-streaming
+// operation. Unknown errors are returned unchanged and remain fatal.
 func Wrap(err error) error {
+	return wrap(err, false)
+}
+
+// WrapStream classifies a terminal streaming error. Streaming transports can
+// lose their typed error at the SDK boundary, so only an otherwise unknown
+// terminal error is additionally considered retryable. Known fatal errors keep
+// their conservative classification.
+func WrapStream(err error) error {
+	return wrap(err, true)
+}
+
+// MarkRetryable marks a provider error as a known transient failure. Providers
+// use this for structured in-band API errors whose retryability would otherwise
+// be lost at the generic stream boundary.
+func MarkRetryable(err error) error {
 	if err == nil {
 		return nil
 	}
-	// Checked before classify: an overflowed prompt arrives as a 400/422,
-	// which classify buckets as fatal, and it needs its own tag so the loop
-	// compacts instead of giving up.
+	var retryable core.RetryableError
+	if errors.As(err, &retryable) {
+		return err
+	}
+	return retryErr{err: err}
+}
+
+// MarkNonRetryable marks a provider error as a known semantic/API failure.
+// Providers use this to distinguish in-band API errors from opaque transport
+// termination errors without relying on provider error text.
+func MarkNonRetryable(err error) error {
+	if err == nil {
+		return nil
+	}
+	return nonRetryableErr{err: err}
+}
+
+func wrap(err error, retryUnknown bool) error {
+	if err == nil {
+		return nil
+	}
+	// Cancellation wins over message-based context overflow detection and every
+	// retryable transport classification, including when wrapped.
+	if errors.Is(err, context.Canceled) {
+		return err
+	}
+	// An overflowed prompt commonly arrives as a typed 400/422. Tag it before
+	// status classification so the loop compacts instead of giving up.
 	if isContextExceeded(err) {
 		return contextErr{err: err}
 	}
@@ -49,9 +88,23 @@ func Wrap(err error) error {
 		return retryErr{err: err}
 	case rateLimited:
 		return retryErr{err: err, after: after}
-	default:
-		return err
+	case unknown:
+		if retryUnknown {
+			return retryErr{err: err}
+		}
 	}
+	return err
+}
+
+type nonRetryableErr struct{ err error }
+
+func (e nonRetryableErr) Error() string { return e.err.Error() }
+func (e nonRetryableErr) Unwrap() error { return e.err }
+func (e nonRetryableErr) nonRetryable() {}
+
+type nonRetryableError interface {
+	error
+	nonRetryable()
 }
 
 // contextExceededSignatures are the ways providers say "this prompt exceeds
@@ -108,6 +161,16 @@ var _ core.RetryableError = retryErr{}
 // classify maps err onto the taxonomy, returning a Retry-After hint when the
 // provider supplied one (429 responses); 0 otherwise.
 func classify(err error) (class, time.Duration) {
+	// Cancellation is a known fatal classification. Check it explicitly here as
+	// well as in wrap so classify cannot collapse it into unknown.
+	if errors.Is(err, context.Canceled) {
+		return knownFatal, 0
+	}
+	var nonRetryable nonRetryableError
+	if errors.As(err, &nonRetryable) {
+		return knownFatal, 0
+	}
+
 	// Provider SDK typed errors carry an HTTP status — the most reliable
 	// signal. (openai.Error.Code is a string, so use .StatusCode.)
 	var anthErr *anthropic.Error
@@ -132,7 +195,7 @@ func classify(err error) (class, time.Duration) {
 		return retryable, 0
 	}
 
-	return fatal, 0
+	return unknown, 0
 }
 
 // fromStatus classifies an HTTP status code and extracts Retry-After for 429.
@@ -147,7 +210,7 @@ func fromStatus(code int, resp *http.Response) (class, time.Duration) {
 	default:
 		// 400/401/403/404/422, content policy, model-not-found, and
 		// context-window-exceeded all land here: retrying cannot help.
-		return fatal, 0
+		return knownFatal, 0
 	}
 }
 
@@ -157,10 +220,11 @@ func fromStatus(code int, resp *http.Response) (class, time.Duration) {
 //
 // net.Error intentionally also matches a per-request timeout
 // (context.DeadlineExceeded satisfies net.Error): a request that timed out is
-// worth retrying. A user interrupt (context.Canceled) is NOT a net.Error and
-// stays fatal — and the turn loop checks the caller ctx before classifying, so
-// a cancel never reaches here.
+// worth retrying. A user interrupt (context.Canceled) always stays fatal.
 func isNetworkError(err error) bool {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}

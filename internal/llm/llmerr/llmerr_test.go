@@ -3,6 +3,7 @@ package llmerr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -137,6 +138,76 @@ func TestWrapClassification(t *testing.T) {
 				t.Fatalf("RetryAfter = %v, want %v", after, tc.wantAfter)
 			}
 		})
+	}
+}
+
+func TestWrapAndWrapStreamClassification(t *testing.T) {
+	issueGoAway := errors.New(`http2: server sent GOAWAY and closed the connection; LastStreamID=7, ErrCode=NO_ERROR, debug=""`)
+	issueStream := errors.New("stream error: stream ID 11; INTERNAL_ERROR; received from peer")
+	apiErr := func(code int, message string) error {
+		return &openai.Error{
+			StatusCode: code,
+			Message:    message,
+			Request:    dummyReq(),
+			Response:   httpResp(code, nil),
+		}
+	}
+	contextOverflow := errors.New("maximum context length exceeded")
+
+	tests := []struct {
+		name            string
+		err             error
+		wantWrapRetry   bool
+		wantStreamRetry bool
+		wantContext     bool
+	}{
+		{name: "issue GOAWAY text", err: issueGoAway, wantStreamRetry: true},
+		{name: "issue stream text", err: issueStream, wantStreamRetry: true},
+		{name: "ordinary opaque", err: errors.New("something opaque"), wantStreamRetry: true},
+		{name: "wrapped opaque", err: fmt.Errorf("reading response: %w", errors.New("opaque cause")), wantStreamRetry: true},
+		{name: "marked non-retryable", err: MarkNonRetryable(errors.New("semantic stream failure"))},
+		{name: "marked retryable", err: MarkRetryable(errors.New("transient stream failure")), wantWrapRetry: true, wantStreamRetry: true},
+		{name: "provider 400", err: apiErr(400, "bad request"), wantWrapRetry: false, wantStreamRetry: false},
+		{name: "provider 401", err: apiErr(401, "unauthorized"), wantWrapRetry: false, wantStreamRetry: false},
+		{name: "provider 429", err: apiErr(429, "rate limited"), wantWrapRetry: true, wantStreamRetry: true},
+		{name: "provider 503", err: apiErr(503, "unavailable"), wantWrapRetry: true, wantStreamRetry: true},
+		{name: "EOF", err: io.EOF, wantWrapRetry: true, wantStreamRetry: true},
+		{name: "net timeout", err: fakeTimeout{}, wantWrapRetry: true, wantStreamRetry: true},
+		{name: "context canceled", err: context.Canceled},
+		{name: "wrapped context canceled", err: fmt.Errorf("stopped: %w", context.Canceled)},
+		{name: "deadline exceeded", err: context.DeadlineExceeded, wantWrapRetry: true, wantStreamRetry: true},
+		{name: "context exceeded", err: contextOverflow, wantContext: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, variant := range []struct {
+				name          string
+				got           error
+				wantRetryable bool
+			}{
+				{name: "Wrap", got: Wrap(tc.err), wantRetryable: tc.wantWrapRetry},
+				{name: "WrapStream", got: WrapStream(tc.err), wantRetryable: tc.wantStreamRetry},
+			} {
+				t.Run(variant.name, func(t *testing.T) {
+					_, gotRetryable := retryInfo(variant.got)
+					if gotRetryable != variant.wantRetryable {
+						t.Fatalf("retryable = %v, want %v", gotRetryable, variant.wantRetryable)
+					}
+					var gotContext core.ContextExceededError
+					if errors.As(variant.got, &gotContext) != tc.wantContext {
+						t.Fatalf("context exceeded = %v, want %v", gotContext != nil, tc.wantContext)
+					}
+					if !errors.Is(variant.got, tc.err) {
+						t.Fatal("original error is not preserved in chain")
+					}
+				})
+			}
+		})
+	}
+
+	if WrapStream(nil) != nil {
+		t.Fatal("WrapStream(nil) must return nil")
 	}
 }
 
