@@ -18,14 +18,10 @@ import (
 )
 
 // One MCP server, and San's business with it: when a connection is made and
-// dropped, and what the /mcp listing shows.
-//
-// The protocol is sdk-go's. pkg/agent/mcp hands back core.Tool values, the
-// same type the rest of San's tools already are.
+// dropped, and what the /mcp listing shows. The protocol is sdk-go's.
 
-// conn is one live session, as this package uses it. The real one is the SDK's;
-// the registry's tests supply their own, because leases and epochs are what
-// they are about and a server per case would test the SDK's transport instead.
+// conn is one live session. The real one is the SDK's; the registry's tests
+// supply their own, since leases and epochs are what they are about.
 type conn interface {
 	Tools(ctx context.Context) ([]core.Tool, error)
 	Resources(ctx context.Context) ([]sdkmcp.Resource, error)
@@ -34,8 +30,7 @@ type conn interface {
 	Close() error
 }
 
-// Client is one MCP server as San holds it: connected or not, with what it
-// last said it offers.
+// Client is one MCP server as San holds it.
 type Client struct {
 	config ServerConfig
 
@@ -51,15 +46,13 @@ type Client struct {
 	onToolsChanged func()
 }
 
-// NewClient returns a client for one configured server. Nothing is reached
-// until Connect.
+// NewClient returns a client for one server. Nothing is reached until Connect.
 func NewClient(config ServerConfig) *Client {
 	return &Client{config: config, dial: dialSDK(config)}
 }
 
-// dialSDK opens the real session. Tool names come back unqualified: San
-// assembles mcp__server__tool in the registry, where its permission rules and
-// transcripts have always matched on it.
+// dialSDK opens the real session. Tool names come back unqualified: the
+// registry assembles mcp__server__tool, where San has always matched on it.
 func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 	return func(ctx context.Context, onToolsChanged func()) (conn, error) {
 		server := sdkmcp.Server{
@@ -86,8 +79,7 @@ func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 	}
 }
 
-// serverLog is one server's stderr, as a line in San's log — a server that
-// cannot start says why there and nowhere else.
+// serverLog is one server's stderr, as a line in San's log.
 type serverLog struct{ name string }
 
 func (l serverLog) Write(p []byte) (int, error) {
@@ -97,15 +89,15 @@ func (l serverLog) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// sdkSession is the SDK's client under the three questions this package asks.
+// sdkSession is the SDK's client under what this package asks.
 type sdkSession struct{ *sdkmcp.Client }
 
 func (s sdkSession) Tools(ctx context.Context) ([]core.Tool, error) {
 	return s.Client.Tools(ctx)
 }
 
-// Connect opens the session and reads what the server offers. Connecting one
-// already connected is a no-op, not a second process.
+// Connect opens the session and reads what the server offers. Already
+// connected is a no-op, not a second process.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	if c.session != nil && c.session.Alive() {
@@ -131,8 +123,8 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-// refresh re-reads what the server offers, outside the lock: a slow server must
-// not hold up whoever is asking whether this one is connected.
+// refresh re-reads what the server offers, outside the lock so a slow server
+// does not block whoever is asking whether this one is connected.
 func (c *Client) refresh(ctx context.Context) error {
 	session := c.conn()
 	if session == nil {
@@ -155,8 +147,7 @@ func (c *Client) refresh(ctx context.Context) error {
 	return nil
 }
 
-// Disconnect ends the session. Disconnecting a client that is not connected is
-// a no-op.
+// Disconnect ends the session; not connected is a no-op.
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
 	session := c.session
@@ -169,8 +160,7 @@ func (c *Client) Disconnect() error {
 	return session.Close()
 }
 
-// IsConnected reports whether the session is up, which is what tells the
-// registry to open a new one.
+// IsConnected reports whether the session is up.
 func (c *Client) IsConnected() bool {
 	session := c.conn()
 	return session != nil && session.Alive()
@@ -190,8 +180,8 @@ func (c *Client) ListTools(ctx context.Context) ([]MCPTool, error) {
 	return c.GetCachedTools(), nil
 }
 
-// GetCachedTools is what the server last said it offers. The /mcp listing and
-// the tool picker draw from this, so neither blocks on a server.
+// GetCachedTools is what the server last said it offers, so the /mcp listing
+// and the tool picker never block on one.
 func (c *Client) GetCachedTools() []MCPTool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -208,7 +198,7 @@ func (c *Client) GetCachedTools() []MCPTool {
 	return out
 }
 
-// CallTool runs one of this server's tools, by the name the server calls it.
+// CallTool runs one of this server's tools, by the server's own name for it.
 func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]any) (*ToolResult, error) {
 	tool, ok := c.tool(name)
 	if !ok {
@@ -244,8 +234,8 @@ func (c *Client) tool(name string) (core.Tool, bool) {
 	return nil, false
 }
 
-// toolResultContent is what the server returned, in the shape San's interface
-// draws. A block it cannot draw is named rather than dropped.
+// toolResultContent is what the server returned, in the shape San draws. A
+// block it cannot draw is named rather than dropped.
 func toolResultContent(content ai.Content) []ToolResultContent {
 	out := make([]ToolResultContent, 0, len(content))
 	for _, b := range content {
@@ -288,24 +278,21 @@ func (c *Client) GetCachedResources() []MCPResource {
 	return out
 }
 
-// SetOnToolsChanged installs the callback for a server that says its tool list
-// has changed. Before or after Connect both work: the session calls back
-// through the client, which reads the field when the notification arrives.
+// SetOnToolsChanged installs the callback for a tool list that changed. Before
+// or after Connect both work.
 func (c *Client) SetOnToolsChanged(callback func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onToolsChanged = callback
 }
 
-// toolsChangedTimeout bounds the re-read a change notification triggers. A
-// server that announces a change and then stops answering is the likely shape,
-// and an unbounded read against one leaks its goroutine for good.
+// toolsChangedTimeout bounds the re-read a change notification triggers: a
+// server that announces a change and then stops answering leaks a goroutine.
 const toolsChangedTimeout = 30 * time.Second
 
-// notifyToolsChanged re-reads the server's tools and then tells whoever asked.
-// The re-read is the point: a callback that only says "something changed"
-// leaves every consumer to ask again, at once. A failed one tells no one,
-// leaving the last good list in place rather than an empty one.
+// notifyToolsChanged re-reads the tools, then tells whoever asked — otherwise
+// every consumer asks again at once. A failed re-read tells no one, leaving the
+// last good list in place.
 func (c *Client) notifyToolsChanged() {
 	ctx, cancel := context.WithTimeout(context.Background(), toolsChangedTimeout)
 	defer cancel()
@@ -320,14 +307,14 @@ func (c *Client) notifyToolsChanged() {
 	}
 }
 
-// Config is the configuration this client was built from.
+// Config is what this client was built from.
 func (c *Client) Config() ServerConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.config
 }
 
-// ToServer is this server as the /mcp listing shows it.
+// ToServer is this server as /mcp shows it.
 func (c *Client) ToServer() Server {
 	c.mu.RLock()
 	status := c.statusLocked()
@@ -347,7 +334,7 @@ func (c *Client) ToServer() Server {
 }
 
 // statusLocked separates a client that never connected from one whose session
-// has since died — the second is worth a reconnect and the first is not.
+// has died, which is worth a reconnect.
 func (c *Client) statusLocked() ServerStatus {
 	switch {
 	case c.session == nil:
