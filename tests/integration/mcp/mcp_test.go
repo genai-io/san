@@ -349,7 +349,7 @@ func TestRealMCP_Everything(t *testing.T) {
 	}
 
 	// --- Resources ---
-	resources := client.GetCachedResources()
+	resources := client.ToServer().Resources
 	t.Logf("resources: %d", len(resources))
 	if len(resources) == 0 {
 		t.Error("expected at least 1 resource from server-everything")

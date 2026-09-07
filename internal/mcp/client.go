@@ -172,14 +172,6 @@ func (c *Client) conn() conn {
 	return c.session
 }
 
-// ListTools re-reads what the server offers.
-func (c *Client) ListTools(ctx context.Context) ([]MCPTool, error) {
-	if err := c.refresh(ctx); err != nil {
-		return nil, err
-	}
-	return c.GetCachedTools(), nil
-}
-
 // GetCachedTools is what the server last said it offers, so the /mcp listing
 // and the tool picker never block on one.
 func (c *Client) GetCachedTools() []MCPTool {
@@ -269,15 +261,6 @@ func toMCPPrompts(in []sdkmcp.Prompt) []MCPPrompt {
 	return out
 }
 
-// GetCachedResources is what the server last said it offers to read.
-func (c *Client) GetCachedResources() []MCPResource {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	out := make([]MCPResource, len(c.resources))
-	copy(out, c.resources)
-	return out
-}
-
 // SetOnToolsChanged installs the callback for a tool list that changed. Before
 // or after Connect both work.
 func (c *Client) SetOnToolsChanged(callback func()) {
@@ -305,13 +288,6 @@ func (c *Client) notifyToolsChanged() {
 	if callback != nil {
 		callback()
 	}
-}
-
-// Config is what this client was built from.
-func (c *Client) Config() ServerConfig {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.config
 }
 
 // ToServer is this server as /mcp shows it.
@@ -344,6 +320,3 @@ func (c *Client) statusLocked() ServerStatus {
 	}
 	return StatusError
 }
-
-// MarshalJSON implements json.Marshaler for debugging.
-func (c *Client) MarshalJSON() ([]byte, error) { return json.Marshal(c.ToServer()) }
