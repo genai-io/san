@@ -3,6 +3,18 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.7] - 2026-09-07
+
+### Changed
+- Refactor(tool)!: permission is a gate, and five defects running it found ([@yanmxa](https://github.com/yanmxa) in [#504](https://github.com/genai-io/san/pull/504))
+- Refactor(core)!: the loop's events are San's, not a translation of them ([@yanmxa](https://github.com/yanmxa) in [#503](https://github.com/genai-io/san/pull/503))
+- Refactor(core)!: the response is ai.Response, so nothing flattens it back ([@yanmxa](https://github.com/yanmxa) in [#502](https://github.com/genai-io/san/pull/502))
+- Refactor(core)!: the loop is the SDK's ([@yanmxa](https://github.com/yanmxa) in [#500](https://github.com/genai-io/san/pull/500))
+- Refactor(core)!: the tool vocabulary is the SDK's ([@yanmxa](https://github.com/yanmxa) in [#499](https://github.com/genai-io/san/pull/499))
+- Reach the model through one stream, not three ([@yanmxa](https://github.com/yanmxa) in [#495](https://github.com/genai-io/san/pull/495))
+### Fixed
+- Fix(app)!: the overflow guard stopped protecting the context window ([@yanmxa](https://github.com/yanmxa) in [#505](https://github.com/genai-io/san/pull/505))
+- Three scrollback rendering defects found verifying #495 ([@yanmxa](https://github.com/yanmxa) in [#497](https://github.com/genai-io/san/pull/497))
 ## [v1.22.6] - 2026-08-31
 
 ### Added
