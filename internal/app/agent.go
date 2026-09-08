@@ -114,6 +114,39 @@ func (m *model) promptParams() agent.BuildParams {
 	}
 }
 
+// syncMCPTools replaces the mcp__* tools in the running agent's registry with
+// what the servers now advertise. A server that loads tools lazily, or gates
+// them behind a login, changes its list while connected, and the registry is
+// what the loop reads at every step — so the next step sees the change without
+// the agent being rebuilt.
+//
+// It runs on the MCP session's own goroutine, which is why it touches only
+// services: core.Tools locks, and so do Session.Tools and DisabledTools.
+func (m *model) syncMCPTools() {
+	tools := m.services.Agent.Tools()
+	if tools == nil {
+		return // no agent yet — whatever it is built with will be current
+	}
+	disabled := m.services.Setting.DisabledTools()
+
+	live := make(map[string]bool)
+	for _, t := range mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)) {
+		name := t.Schema().Name
+		// The /tool panel's disable applies to MCP tools here for the same
+		// reason agent.BuildParams applies it when the agent is built.
+		if disabled[name] {
+			continue
+		}
+		live[name] = true
+		tools.Add(t, "mcp:"+name)
+	}
+	for _, schema := range tools.Schemas() {
+		if mcp.IsMCPTool(schema.Name) && !live[schema.Name] {
+			tools.Remove(schema.Name, "mcp:"+schema.Name)
+		}
+	}
+}
+
 func (m *model) buildAgentParams() agent.BuildParams {
 	params := m.promptParams()
 
