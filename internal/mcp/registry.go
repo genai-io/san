@@ -683,7 +683,7 @@ func (r *Registry) GetToolSchemas() []core.ToolSchema {
 			tools = append(tools, core.ToolSchema{
 				Name:        fmt.Sprintf("mcp__%s__%s", serverName, mcpTool.Name),
 				Description: mcpTool.Description,
-				Definition:  parseInputSchema(mcpTool.InputSchema),
+				Definition:  schemaOrEmpty(mcpTool.InputSchema),
 			})
 		}
 	}
@@ -691,16 +691,13 @@ func (r *Registry) GetToolSchemas() []core.ToolSchema {
 	return tools
 }
 
-// parseInputSchema parses the input schema or returns a default empty schema
-func parseInputSchema(raw json.RawMessage) any {
-	if len(raw) == 0 {
+// schemaOrEmpty is a tool's input schema, or the empty one for a tool that
+// states none.
+func schemaOrEmpty(def any) any {
+	if def == nil {
 		return emptySchema
 	}
-	var schema map[string]any
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		return emptySchema
-	}
-	return schema
+	return def
 }
 
 // CallTool calls a tool on an MCP server

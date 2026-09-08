@@ -220,8 +220,8 @@ func Test_parseMCPToolName(t *testing.T) {
 // survive connecting and be gone again after disconnecting.
 func TestMCP_ResourceListing(t *testing.T) {
 	client := NewClient(ServerConfig{Command: "echo"})
-	if got := client.ToServer().Resources; len(got) != 0 {
-		t.Errorf("a client that has not connected reports %d resources, want none", len(got))
+	if got := client.ToServer().ResourceCount; got != 0 {
+		t.Errorf("a client that has not connected reports %d resources, want none", got)
 	}
 
 	session := newFakeSession()
@@ -234,22 +234,15 @@ func TestMCP_ResourceListing(t *testing.T) {
 		t.Fatalf("Connect: %v", err)
 	}
 
-	cached := client.ToServer().Resources
-	if len(cached) != 2 {
-		t.Fatalf("cached resources = %d, want 2", len(cached))
-	}
-	if cached[0].URI != "file:///tmp/test.txt" || cached[0].Name != "test.txt" {
-		t.Errorf("first resource = %+v", cached[0])
-	}
-	if cached[1].MimeType != "application/json" {
-		t.Errorf("second resource media type = %q", cached[1].MimeType)
+	if got := client.ToServer().ResourceCount; got != 2 {
+		t.Fatalf("cached resources = %d, want 2", got)
 	}
 
 	if err := client.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
-	if got := client.ToServer().Resources; len(got) != 0 {
-		t.Errorf("a disconnected client still reports %d resources", len(got))
+	if got := client.ToServer().ResourceCount; got != 0 {
+		t.Errorf("a disconnected client still reports %d resources", got)
 	}
 }
 

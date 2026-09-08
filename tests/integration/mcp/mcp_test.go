@@ -308,7 +308,7 @@ func TestRealMCP_Everything(t *testing.T) {
 			if tool.Description == "" {
 				t.Error("echo tool should have a description")
 			}
-			if len(tool.InputSchema) == 0 {
+			if tool.InputSchema == nil {
 				t.Error("echo tool should have an input schema")
 			}
 			break
@@ -349,16 +349,16 @@ func TestRealMCP_Everything(t *testing.T) {
 	}
 
 	// --- Resources ---
-	resources := client.ToServer().Resources
-	t.Logf("resources: %d", len(resources))
-	if len(resources) == 0 {
+	resources := client.ToServer().ResourceCount
+	t.Logf("resources: %d", resources)
+	if resources == 0 {
 		t.Error("expected at least 1 resource from server-everything")
 	}
 
 	// --- Prompts ---
-	prompts := client.ToServer().Prompts
-	t.Logf("prompts: %d", len(prompts))
-	if len(prompts) == 0 {
+	prompts := client.ToServer().PromptCount
+	t.Logf("prompts: %d", prompts)
+	if prompts == 0 {
 		t.Error("expected at least 1 prompt from server-everything")
 	}
 
