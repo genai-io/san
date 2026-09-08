@@ -1,6 +1,6 @@
 module github.com/genai-io/san
 
-go 1.25.8
+go 1.26.0
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -14,13 +14,13 @@ require (
 	github.com/genai-io/sdk-go v0.5.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
-	github.com/mattn/go-runewidth v0.0.28
+	github.com/mattn/go-runewidth v0.0.29
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.28.0
 	golang.org/x/term v0.45.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
-	mvdan.cc/sh/v3 v3.13.1
+	mvdan.cc/sh/v3 v3.14.0
 )
 
 require (
