@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
-	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/core"
@@ -15,11 +14,10 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 )
 
-type stubTool struct{ name string }
-
-func (s stubTool) Schema() core.ToolSchema { return core.ToolSchema{Name: s.name} }
-func (s stubTool) Run(context.Context, ai.ToolCall) (sdkagent.Result, error) {
-	return sdkagent.TextResult("ok"), nil
+func namedTool(name string) core.Tool {
+	return sdkagent.ToolFunc(name, "", func(context.Context, struct{}) (sdkagent.Result, error) {
+		return sdkagent.TextResult("ok"), nil
+	})
 }
 
 // A server whose tools changed has to reach the agent that is running, not just
@@ -38,8 +36,8 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	if tools == nil {
 		t.Fatal("a started session has no toolset")
 	}
-	tools.Add(stubTool{name: "mcp__gone__read"}, "mcp:test")
-	tools.Add(stubTool{name: "Read"}, "builtin:test")
+	tools.Add(namedTool("mcp__gone__read"), "mcp:test")
+	tools.Add(namedTool("Read"), "builtin:test")
 
 	m := &model{services: services{
 		Agent:   sess,
@@ -60,7 +58,10 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 	}
 }
 
-// No agent yet is not an error: whatever it is built with will be current.
+// MCP connects in Init and the agent starts on the first submit, so a server
+// that announces a change in between finds no toolset at all. Without the nil
+// guard that is a panic on the MCP session's goroutine, which takes San with
+// it — the ordinary startup path, not an edge.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	m := &model{services: services{
 		Agent:   &agent.Session{},
