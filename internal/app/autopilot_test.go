@@ -4,6 +4,7 @@ import (
 	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"strings"
@@ -21,31 +22,38 @@ type autopilotStubProvider struct {
 	// replies, when set, is served one entry per call so a test can stage a
 	// failed attempt followed by a good one; the last entry repeats.
 	replies []string
-	calls   int
-	// lastOptions records what the steer actually sent, for prompt assertions.
-	lastOptions llm.CompletionOptions
+
+	driver *aitest.Driver
 }
 
 func (s *autopilotStubProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(s, ai.Model{ID: "stub", API: "stub"}), nil
+	if s.driver == nil {
+		s.driver = aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+			content := s.content
+			if len(s.replies) > 0 {
+				content = s.replies[min(s.driver.Calls()-1, len(s.replies)-1)]
+			}
+			return aitest.Says(content)(ctx, req)
+		})
+	}
+	return s.driver.Client(), nil
 }
 
-func (s *autopilotStubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+// lastOptions is what the steer actually sent, for prompt assertions.
+func (s *autopilotStubProvider) lastOptions() llm.CompletionOptions {
+	req := s.driver.Last()
 	msgs := make([]core.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
 		msgs = append(msgs, core.Message{Role: m.Role, Content: m.Content})
 	}
-	s.lastOptions = llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs}
-	content := s.content
-	if len(s.replies) > 0 {
-		content = s.replies[min(s.calls, len(s.replies)-1)]
+	return llm.CompletionOptions{SystemPrompt: req.System, Messages: msgs}
+}
+
+func (s *autopilotStubProvider) calls() int {
+	if s.driver == nil {
+		return 0
 	}
-	s.calls++
-	return func(yield func(ai.Delta, error) bool) {
-		yield(ai.Delta{Block: ai.TextBlock(content)}, nil)
-		yield(ai.Delta{EndBlock: true}, nil)
-		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
-	}
+	return s.driver.Calls()
 }
 
 func (s *autopilotStubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
@@ -132,8 +140,8 @@ func TestAutopilotDecideContinueRetriesAnUnusableReply(t *testing.T) {
 	if !cont || done || instruction != "Run the tests." {
 		t.Fatalf("got cont=%v done=%v instruction=%q, want the retried decision", cont, done, instruction)
 	}
-	if provider.calls != 2 {
-		t.Errorf("provider calls = %d, want 2 (one failure, one retry)", provider.calls)
+	if provider.calls() != 2 {
+		t.Errorf("provider calls = %d, want 2 (one failure, one retry)", provider.calls())
 	}
 }
 
@@ -144,8 +152,8 @@ func TestAutopilotDecideContinueGivesUpAfterAttemptsAreSpent(t *testing.T) {
 	if _, _, _, err := autopilotDecideContinue(context.Background(), provider, "model", "system", "mission", "evidence", ""); err == nil {
 		t.Fatal("autopilotDecideContinue() err = nil, want the last parse failure")
 	}
-	if provider.calls != autopilotSteerAttempts {
-		t.Errorf("provider calls = %d, want %d", provider.calls, autopilotSteerAttempts)
+	if provider.calls() != autopilotSteerAttempts {
+		t.Errorf("provider calls = %d, want %d", provider.calls(), autopilotSteerAttempts)
 	}
 }
 
@@ -157,7 +165,7 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 		"the previous turn hit its step limit"); err != nil {
 		t.Fatalf("autopilotDecideContinue() err = %v", err)
 	}
-	sent := provider.lastOptions.Messages[0].Text()
+	sent := provider.lastOptions().Messages[0].Text()
 	if !strings.Contains(sent, "the previous turn hit its step limit") {
 		t.Errorf("prompt missing the stop situation:\n%s", sent)
 	}

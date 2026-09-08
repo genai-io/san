@@ -1,9 +1,8 @@
 package core
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"errors"
@@ -43,44 +42,13 @@ func TestBackoffSleepHonorsCancel(t *testing.T) {
 	}
 }
 
-// scriptedLLM fails the first `failures` Infer calls with failErr, then
-// completes with a text-only end_turn response.
-type scriptedLLM struct {
-	failErr  error
-	failures int
-	calls    int
-}
-
-func (s *scriptedLLM) Name() string { return "scripted" }
-
-func (s *scriptedLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	s.calls++
-	fail := s.calls <= s.failures
-	return func(yield func(ai.Delta, error) bool) {
-		if fail {
-			yield(ai.Delta{}, s.failErr)
-			return
-		}
-		for _, d := range deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}) {
-			if !yield(d, nil) {
-				return
-			}
-		}
+// failsThenAnswers is an endpoint that is down for n calls and then works.
+func failsThenAnswers(err error, n int) *aitest.Driver {
+	turns := make([]aitest.Turn, 0, n+1)
+	for range n {
+		turns = append(turns, aitest.Fails(err))
 	}
-}
-
-// hangLLM never produces a chunk; it unblocks only when the per-inference ctx
-// is canceled (by the idle-timeout watchdog).
-type hangLLM struct{ calls int }
-
-func (h *hangLLM) Name() string { return "hang" }
-
-func (h *hangLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
-	h.calls++
-	return func(yield func(ai.Delta, error) bool) {
-		<-ctx.Done()
-		yield(ai.Delta{}, ctx.Err())
-	}
+	return aitest.New(append(turns, aitest.Says("ok"))...)
 }
 
 func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Duration) *agent {
@@ -110,7 +78,7 @@ func newRetryAgent(t *testing.T, d ai.Driver, maxRetries int, timeout time.Durat
 var stalled = &ai.Error{Kind: ai.KindNetwork, Message: "stream stalled"}
 
 func TestThinkActRetriesTransientStreamError(t *testing.T) {
-	llm := &scriptedLLM{failErr: stalled, failures: 2}
+	llm := failsThenAnswers(stalled, 2)
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -123,13 +91,13 @@ func TestThinkActRetriesTransientStreamError(t *testing.T) {
 	if result.Content != "ok" {
 		t.Fatalf("content = %q, want ok", result.Content)
 	}
-	if llm.calls != 3 {
-		t.Fatalf("Infer calls = %d, want 3 (2 failures + 1 success)", llm.calls)
+	if llm.Calls() != 3 {
+		t.Fatalf("Infer calls = %d, want 3 (2 failures + 1 success)", llm.Calls())
 	}
 }
 
 func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
-	llm := &scriptedLLM{failErr: stalled, failures: 99}
+	llm := aitest.Always(aitest.Fails(stalled))
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -138,16 +106,17 @@ func TestThinkActSurfacesErrorAfterMaxRetries(t *testing.T) {
 	if _, err := a.ThinkAct(ctx); err == nil {
 		t.Fatal("ThinkAct should surface the error after exhausting retries")
 	}
-	if llm.calls != 3 { // 1 initial + 2 retries
-		t.Fatalf("Infer calls = %d, want 3", llm.calls)
+	if llm.Calls() != 3 { // 1 initial + 2 retries
+		t.Fatalf("Infer calls = %d, want 3", llm.Calls())
 	}
 }
 
 func TestThinkActDoesNotRetryFatalError(t *testing.T) {
 	// A 400 as the driver hands it over — typed, so ai.IsRetryable leaves it
 	// fatal.
-	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindInvalidRequest, Status: 400,
-		Message: "bad request"}, failures: 99}
+	llm := aitest.Always(aitest.Fails(&ai.Error{
+		Kind: ai.KindInvalidRequest, Status: 400, Message: "bad request",
+	}))
 	a := newRetryAgent(t, llm, 3, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -156,8 +125,8 @@ func TestThinkActDoesNotRetryFatalError(t *testing.T) {
 	if _, err := a.ThinkAct(ctx); err == nil {
 		t.Fatal("ThinkAct should surface a fatal error")
 	}
-	if llm.calls != 1 {
-		t.Fatalf("Infer calls = %d, want 1 (no retry on fatal)", llm.calls)
+	if llm.Calls() != 1 {
+		t.Fatalf("Infer calls = %d, want 1 (no retry on fatal)", llm.Calls())
 	}
 }
 
@@ -166,8 +135,7 @@ func TestThinkActDoesNotRetryFatalError(t *testing.T) {
 // as the failure leaves the stream — without that, a provider's 429 read as
 // fatal and the turn died on a blip it was built to ride out.
 func TestThinkActRetriesAProviderRateLimit(t *testing.T) {
-	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindRateLimit, Status: 429,
-		Message: "slow down"}, failures: 2}
+	llm := failsThenAnswers(&ai.Error{Kind: ai.KindRateLimit, Status: 429, Message: "slow down"}, 2)
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -180,15 +148,15 @@ func TestThinkActRetriesAProviderRateLimit(t *testing.T) {
 	if result.Content != "ok" {
 		t.Fatalf("content = %q, want ok", result.Content)
 	}
-	if llm.calls != 3 {
-		t.Fatalf("Infer calls = %d, want 3 (2 rate limits + 1 success)", llm.calls)
+	if llm.Calls() != 3 {
+		t.Fatalf("Infer calls = %d, want 3 (2 rate limits + 1 success)", llm.Calls())
 	}
 }
 
 // A terminal failure the SDK could not type is a transport failure, which is
 // the one place the stream rule differs from the completed-call rule.
 func TestThinkActRetriesAnOpaqueStreamFailure(t *testing.T) {
-	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindNetwork, Message: "unexpected EOF"}, failures: 1}
+	llm := failsThenAnswers(&ai.Error{Kind: ai.KindNetwork, Message: "unexpected EOF"}, 1)
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -197,8 +165,8 @@ func TestThinkActRetriesAnOpaqueStreamFailure(t *testing.T) {
 	if _, err := a.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct returned error after retries: %v", err)
 	}
-	if llm.calls != 2 {
-		t.Fatalf("Infer calls = %d, want 2 (1 failure + 1 success)", llm.calls)
+	if llm.Calls() != 2 {
+		t.Fatalf("Infer calls = %d, want 2 (1 failure + 1 success)", llm.Calls())
 	}
 }
 
@@ -207,8 +175,9 @@ func TestThinkActRetriesAnOpaqueStreamFailure(t *testing.T) {
 // shrinking it. Deliberately not also retryable — one compaction, then the
 // call goes out again.
 func TestThinkActCompactsOnProviderContextOverflow(t *testing.T) {
-	llm := &scriptedLLM{failErr: &ai.Error{Kind: ai.KindContextExceeded, Status: 400,
-		Message: "prompt is too long"}, failures: 1}
+	llm := failsThenAnswers(&ai.Error{
+		Kind: ai.KindContextExceeded, Status: 400, Message: "prompt is too long",
+	}, 1)
 	compacted := 0
 	ag := NewAgent(Config{
 		ID:     "test",
@@ -237,13 +206,13 @@ func TestThinkActCompactsOnProviderContextOverflow(t *testing.T) {
 	if compacted != 1 {
 		t.Fatalf("compactions = %d, want 1", compacted)
 	}
-	if llm.calls != 2 {
-		t.Fatalf("Infer calls = %d, want 2 (overflow, compact, retry)", llm.calls)
+	if llm.Calls() != 2 {
+		t.Fatalf("Infer calls = %d, want 2 (overflow, compact, retry)", llm.Calls())
 	}
 }
 
 func TestStreamInferIdleTimeoutRetries(t *testing.T) {
-	llm := &hangLLM{}
+	llm := aitest.Always(aitest.Hangs())
 	a := newRetryAgent(t, llm, 1, 40*time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -252,8 +221,8 @@ func TestStreamInferIdleTimeoutRetries(t *testing.T) {
 	if _, err := a.ThinkAct(ctx); err == nil {
 		t.Fatal("ThinkAct should fail once a stalled stream exhausts retries")
 	}
-	if llm.calls != 2 { // 1 initial + 1 retry, each stalls
-		t.Fatalf("Infer calls = %d, want 2 (idle-timeout retry)", llm.calls)
+	if llm.Calls() != 2 { // 1 initial + 1 retry, each stalls
+		t.Fatalf("Infer calls = %d, want 2 (idle-timeout retry)", llm.Calls())
 	}
 }
 
@@ -264,7 +233,7 @@ func TestStreamInferIdleTimeoutRetries(t *testing.T) {
 // finalizeResult is the concrete casualty: no Result means the transcript is
 // never written to disk.
 func TestThinkActReturnsResultWhenRetriesAreExhausted(t *testing.T) {
-	llm := &scriptedLLM{failErr: stalled, failures: 99}
+	llm := aitest.Always(aitest.Fails(stalled))
 	a := newRetryAgent(t, llm, 2, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -1,9 +1,8 @@
 package reviewer
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"encoding/json"
@@ -47,26 +46,27 @@ func Test_parseVerdict(t *testing.T) {
 
 // stubProvider returns a canned completion for testing Permission without a network call.
 type stubProvider struct {
-	content          string
-	err              error
-	lastSystemPrompt string
+	content string
+	err     error
+	driver  *aitest.Driver
 }
 
 func (s *stubProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(s, ai.Model{ID: "stub", API: "stub"}), nil
+	turn := aitest.Says(s.content)
+	if s.err != nil {
+		turn = aitest.Fails(s.err)
+	}
+	s.driver = aitest.Always(turn)
+	return s.driver.Client(), nil
 }
 
-func (s *stubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-	s.lastSystemPrompt = req.System
-	return func(yield func(ai.Delta, error) bool) {
-		if s.err != nil {
-			yield(ai.Delta{}, s.err)
-			return
-		}
-		yield(ai.Delta{Block: ai.TextBlock(s.content)}, nil)
-		yield(ai.Delta{EndBlock: true}, nil)
-		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
+// lastSystem is the system prompt that reached the endpoint, which is what
+// these tests are about.
+func (s *stubProvider) lastSystem() string {
+	if s.driver == nil || s.driver.Last() == nil {
+		return ""
 	}
+	return s.driver.Last().System
 }
 
 func (s *stubProvider) ListModels(_ context.Context) ([]llm.ModelInfo, error) { return nil, nil }
@@ -204,8 +204,8 @@ func Test_SteeringInstructionsAreGuarded(t *testing.T) {
 
 	// The built-in system prompt is used until overridden.
 	_, _ = r.Permission(context.Background(), req)
-	if s.lastSystemPrompt != ComposeSystemPrompt(defaultSteeringInstructions) {
-		t.Errorf("Permission used %q, want the built-in system prompt", s.lastSystemPrompt)
+	if s.lastSystem() != ComposeSystemPrompt(defaultSteeringInstructions) {
+		t.Errorf("Permission used %q, want the built-in system prompt", s.lastSystem())
 	}
 
 	// A custom steering prompt is wrapped in the immutable policy rather than
@@ -213,18 +213,18 @@ func Test_SteeringInstructionsAreGuarded(t *testing.T) {
 	r.SetSteeringInstructions("MY CUSTOM SYSTEM PROMPT")
 	_, _ = r.Permission(context.Background(), req)
 	wantCustom := ComposeSystemPrompt("MY CUSTOM SYSTEM PROMPT")
-	if s.lastSystemPrompt != wantCustom {
-		t.Errorf("Permission used %q, want guarded custom prompt %q", s.lastSystemPrompt, wantCustom)
+	if s.lastSystem() != wantCustom {
+		t.Errorf("Permission used %q, want guarded custom prompt %q", s.lastSystem(), wantCustom)
 	}
-	if !strings.Contains(s.lastSystemPrompt, immutableSystemPolicy) {
-		t.Errorf("custom prompt dropped immutable policy: %q", s.lastSystemPrompt)
+	if !strings.Contains(s.lastSystem(), immutableSystemPolicy) {
+		t.Errorf("custom prompt dropped immutable policy: %q", s.lastSystem())
 	}
 
 	// BashPrompt shares the same customizable steering instructions — only the per-call
 	// task differs, and that rides in the user message.
 	_, _ = r.BashPrompt(context.Background(), "", "apt-get install foo", "Continue? [Y/n]")
-	if s.lastSystemPrompt != wantCustom {
-		t.Errorf("BashPrompt used %q, want the shared custom system prompt", s.lastSystemPrompt)
+	if s.lastSystem() != wantCustom {
+		t.Errorf("BashPrompt used %q, want the shared custom system prompt", s.lastSystem())
 	}
 
 	// A blank override keeps the current prompt (unreadable config → built-in).

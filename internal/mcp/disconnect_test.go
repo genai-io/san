@@ -1,54 +1,21 @@
 package mcp
 
 import (
-	"context"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/mcp/transport"
 )
 
 // slowTransport takes as long to close as a wedged stdio server: Close waits on
 // the read loop (2s) and then the child's exit (5s).
-type slowTransport struct {
-	closeDelay time.Duration
-	closed     chan struct{}
-}
-
-func newSlowTransport(d time.Duration) *slowTransport {
-	return &slowTransport{closeDelay: d, closed: make(chan struct{})}
-}
-
-func (t *slowTransport) Start(context.Context) error { return nil }
-func (t *slowTransport) Send(context.Context, *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
-	return &transport.JSONRPCResponse{}, nil
-}
-func (t *slowTransport) SendNotification(context.Context, *transport.JSONRPCNotification) error {
-	return nil
-}
-func (t *slowTransport) Close() error {
-	time.Sleep(t.closeDelay)
-	close(t.closed)
-	return nil
-}
-func (t *slowTransport) IsAlive() bool                                        { return true }
-func (t *slowTransport) SetNotificationHandler(transport.NotificationHandler) {}
-
-// Local fixtures: deliberately not shared with other test files in this
-// package, so this change stays independent of any other in-flight one.
-func connectedRegistry(t *testing.T, servers map[string]transport.Transport) *Registry {
+// connectedRegistry is a registry holding already-connected clients, each
+// reaching a fake session rather than a server.
+func connectedRegistry(t *testing.T, servers map[string]*fakeSession) *Registry {
 	t.Helper()
 	r := newEmptyRegistry()
-	for name, tr := range servers {
+	for name, session := range servers {
 		cfg := ServerConfig{Name: name, Type: "stdio", Command: name}
-		c := NewClient(cfg)
-		c.TransportFactory = func() (transport.Transport, error) { return tr, nil }
-		c.mu.Lock()
-		c.transport = tr
-		c.connected = true
-		c.mu.Unlock()
 		r.configs[name] = cfg
-		r.clients[name] = c
+		r.clients[name] = connectedClient(t, cfg, session)
 		r.getOrCreateConnectionState(name).retainWithoutLeases = true
 	}
 	return r
@@ -59,8 +26,8 @@ func connectedRegistry(t *testing.T, servers map[string]transport.Transport) *Re
 // server the UI processed no keys and repainted nothing, and the agent
 // goroutine blocked with it — CallTool takes the read lock.
 func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
-	tr := newSlowTransport(500 * time.Millisecond)
-	r := connectedRegistry(t, map[string]transport.Transport{"wedged": tr})
+	tr := newSlowSession(500 * time.Millisecond)
+	r := connectedRegistry(t, map[string]*fakeSession{"wedged": tr})
 
 	start := time.Now()
 	r.Disconnect("wedged")
@@ -83,20 +50,20 @@ func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
 	}
 
 	select {
-	case <-tr.closed:
+	case <-tr.done():
 	case <-time.After(2 * time.Second):
-		t.Error("the transport was never torn down")
+		t.Error("the session was never torn down")
 	}
 }
 
 // DisconnectAll had the same shape, serialized across every server under one
 // deferred lock.
 func TestDisconnectAllDoesNotBlockPerServer(t *testing.T) {
-	servers := map[string]transport.Transport{}
-	transports := make([]*slowTransport, 0, 3)
+	servers := map[string]*fakeSession{}
+	sessions := make([]*fakeSession, 0, 3)
 	for _, name := range []string{"a", "b", "c"} {
-		tr := newSlowTransport(300 * time.Millisecond)
-		transports = append(transports, tr)
+		tr := newSlowSession(300 * time.Millisecond)
+		sessions = append(sessions, tr)
 		servers[name] = tr
 	}
 	r := connectedRegistry(t, servers)
@@ -107,9 +74,9 @@ func TestDisconnectAllDoesNotBlockPerServer(t *testing.T) {
 		t.Errorf("DisconnectAll blocked for %v", elapsed)
 	}
 
-	for i, tr := range transports {
+	for i, tr := range sessions {
 		select {
-		case <-tr.closed:
+		case <-tr.done():
 		case <-time.After(2 * time.Second):
 			t.Errorf("transport %d was never torn down", i)
 		}

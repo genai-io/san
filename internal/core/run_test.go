@@ -11,6 +11,7 @@ import (
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
 // A SigCompact applies an in-place compaction (replacing the chain with the
@@ -20,7 +21,7 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:      "test",
-		Client:  testClient(newBlockingLLM(1)),
+		Client:  testClient(aitest.Always(aitest.Hangs())),
 		System:  NewSystem(),
 		Tools:   NewTools(),
 		OnEvent: func(e Event) { captured = append(captured, e) },
@@ -68,15 +69,29 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 	}
 }
 
-// blockingLLM blocks Infer until the caller pushes a release signal. The
-// release channel is buffered so the test can enqueue signals without
-// racing the agent goroutine's read of the field.
-type blockingLLM struct {
-	release chan struct{}
+// released is a model that says nothing until the caller pushes a release
+// signal. The channel is buffered so the test can enqueue signals without
+// racing the agent goroutine's read of it.
+func released(release <-chan struct{}) aitest.Turn {
+	return func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		return func(yield func(ai.Delta, error) bool) {
+			select {
+			case <-ctx.Done():
+				yield(ai.Delta{}, ctx.Err())
+			case <-release:
+				for d, err := range aitest.Says("released")(ctx, req) {
+					if !yield(d, err) {
+						return
+					}
+				}
+			}
+		}
+	}
 }
 
 func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
-	llm := newBlockingLLM(4)
+	release := make(chan struct{}, 4)
+	llm := aitest.Always(released(release))
 	ag := NewAgent(Config{
 		ID:     "test",
 		Client: testClient(llm),
@@ -123,7 +138,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	waitFor(t, "second turn to enter Infer", func() bool {
 		return ag.(*agent).turn.Load() != nil
 	})
-	llm.release <- struct{}{}
+	release <- struct{}{}
 
 	// Wait for the second turn to drain fully before sending SigStop so
 	// the test asserts the resume path actually executed, rather than
@@ -148,7 +163,8 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 // next runOneTurn must see the latch and bail. Driven through runOneTurn
 // directly because that window is only a few instructions wide.
 func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
-	llm := newBlockingLLM(4)
+	release := make(chan struct{}, 4)
+	llm := aitest.Always(released(release))
 	ag := NewAgent(Config{
 		ID:     "test",
 		Client: testClient(llm),
@@ -188,8 +204,9 @@ func TestInterruptBetweenTurnsIsLatched(t *testing.T) {
 // the agent sits idle in waitForInput left the latch set with no turn to
 // consume it — and the next user message was dropped without inferring.
 func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
-	llm := newBlockingLLM(4)
-	llm.release <- struct{}{}
+	release := make(chan struct{}, 4)
+	llm := aitest.Always(released(release))
+	release <- struct{}{}
 	ag := NewAgent(Config{
 		ID:     "test",
 		Client: testClient(llm),
@@ -212,10 +229,10 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 
 	ag.Inbox() <- Inbound{Msg: UserMessage("answer me", nil)}
 
-	// blockingLLM only replies once its release token is read, so a consumed
+	// The model only replies once its release token is read, so a consumed
 	// token proves Infer was reached.
 	waitFor(t, "the message after an idle interrupt to reach inference", func() bool {
-		return len(llm.release) == 0
+		return len(release) == 0
 	})
 
 	ag.Inbox() <- Inbound{Signal: SigStop}
@@ -233,7 +250,7 @@ func TestCompactRecordsSummaryAppendAndBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:     "test",
-		Client: testClient(newBlockingLLM(1)),
+		Client: testClient(aitest.Always(aitest.Hangs())),
 		System: NewSystem(),
 		Tools:  NewTools(),
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
@@ -303,7 +320,7 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:       "test",
-		Client:   testClient(&talkingLLM{text: "done"}),
+		Client:   testClient(aitest.Always(talks("done"))),
 		System:   NewSystem(),
 		Tools:    NewTools(),
 		MaxSteps: 1,
@@ -369,7 +386,7 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 	t.Helper()
 	ag := NewAgent(Config{
 		ID:     "test",
-		Client: testClient(newBlockingLLM(1)),
+		Client: testClient(aitest.Always(aitest.Hangs())),
 		System: NewSystem(),
 		Tools:  NewTools(),
 	})
@@ -382,27 +399,6 @@ func newAgentForPromptSizing(t *testing.T) *agent {
 
 // Nothing to clear any more: the size is measured fresh at each boundary,
 // so a just-shortened conversation cannot still read as full.
-
-func newBlockingLLM(capacity int) *blockingLLM {
-	return &blockingLLM{release: make(chan struct{}, capacity)}
-}
-
-func (b *blockingLLM) Name() string { return "blocking" }
-
-func (b *blockingLLM) Stream(ctx context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
-	return func(yield func(ai.Delta, error) bool) {
-		select {
-		case <-ctx.Done():
-			yield(ai.Delta{}, ctx.Err())
-		case <-b.release:
-			for _, d := range deltas(ai.Response{Content: ai.TextContent("released"), StopReason: ai.StopEndTurn}) {
-				if !yield(d, nil) {
-					return
-				}
-			}
-		}
-	}
-}
 
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
@@ -428,7 +424,7 @@ func TestOnlyTheToolsThatMayTouchAnythingAreMarkedSequential(t *testing.T) {
 		namedTool("Edit"), namedTool("Bash"), namedTool("Write"),
 	}
 	ag := NewAgent(Config{
-		ID: "test", Client: testClient(newBlockingLLM(1)),
+		ID: "test", Client: testClient(aitest.Always(aitest.Hangs())),
 		System: NewSystem(), Tools: NewTools(tools...),
 	}).(*agent)
 
@@ -493,23 +489,6 @@ func (c cancelOnRunTool) Run(ctx context.Context, _ ai.ToolCall) (sdkagent.Resul
 	return sdkagent.TextResult("ok"), nil
 }
 
-// batchLLM answers with three side-effecting calls, so execTools runs the
-// batch sequentially.
-type batchLLM struct{}
-
-func (batchLLM) Name() string { return "batch" }
-
-func (batchLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	return yieldAll(deltas(ai.Response{
-		StopReason: ai.StopToolUse,
-		Content: ai.Content{
-			ai.ToolCallBlock(ToolCall{ID: "c1", Name: "first", Input: "{}"}),
-			ai.ToolCallBlock(ToolCall{ID: "c2", Name: "second", Input: "{}"}),
-			ai.ToolCallBlock(ToolCall{ID: "c3", Name: "third", Input: "{}"}),
-		},
-	}))
-}
-
 // A cancel landing mid-batch must stop the rest of the batch, not just the
 // call it interrupted.
 func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
@@ -518,7 +497,11 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	defer cancel()
 
 	ag := NewAgent(Config{
-		ID: "test", Client: testClient(batchLLM{}), System: NewSystem(),
+		ID: "test", Client: testClient(aitest.Always(aitest.Asks(
+			ToolCall{ID: "c1", Name: "first", Input: "{}"},
+			ToolCall{ID: "c2", Name: "second", Input: "{}"},
+			ToolCall{ID: "c3", Name: "third", Input: "{}"},
+		))), System: NewSystem(),
 		Tools: NewTools(
 			cancelOnRunTool{name: "first", ran: &ran, ranOnDead: &ranOnDead, onRun: cancel},
 			cancelOnRunTool{name: "second", ran: &ran, ranOnDead: &ranOnDead},
@@ -545,23 +528,12 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 
 // --- what the application keeps saying about every call ---
 
-// requestRecordingDriver keeps the request it was handed, which is the only
-// place the settings above it can be observed.
-type requestRecordingDriver struct{ req *ai.Request }
-
-func (requestRecordingDriver) Name() string { return "recording" }
-
-func (d *requestRecordingDriver) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-	d.req = req
-	return yieldAll(deltas(ai.Response{Content: ai.TextContent("ok"), StopReason: ai.StopEndTurn}))
-}
-
 // The reasoning rung and the output cap are the application's, not the
 // client's: a person changes the rung mid-session and it has to be on the next
 // call. Without this the /model picker, its shortcut and its stored value were
 // all decoration — nothing put them on the wire.
 func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
-	driver := &requestRecordingDriver{}
+	driver := aitest.Always(aitest.Says("ok"))
 	effort := ai.EffortLow
 	ag := NewAgent(Config{
 		ID:          "test",
@@ -582,11 +554,11 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
-	if driver.req.MaxTokens != 1234 {
-		t.Errorf("MaxTokens = %d, want 1234", driver.req.MaxTokens)
+	if driver.Last().MaxTokens != 1234 {
+		t.Errorf("MaxTokens = %d, want 1234", driver.Last().MaxTokens)
 	}
-	if driver.req.Effort != ai.EffortLow {
-		t.Errorf("Effort = %q, want low", driver.req.Effort)
+	if driver.Last().Effort != ai.EffortLow {
+		t.Errorf("Effort = %q, want low", driver.Last().Effort)
 	}
 
 	// Asked for again on the next call, so a mid-session change lands.
@@ -595,15 +567,15 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
-	if driver.req.Effort != ai.EffortHigh {
-		t.Errorf("Effort after the change = %q, want high", driver.req.Effort)
+	if driver.Last().Effort != ai.EffortHigh {
+		t.Errorf("Effort after the change = %q, want high", driver.Last().Effort)
 	}
 }
 
 // Which client answers is a per-turn question — Copilot's headers depend on
 // what the turn sends — so the loop asks with the conversation in hand.
 func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
-	driver := &requestRecordingDriver{}
+	driver := aitest.Always(aitest.Says("ok"))
 	client := ai.NewClientWithDriver(driver, ai.Model{ID: "stub", API: "stub"})
 	var asked [][]Message
 	ag := NewAgent(Config{
@@ -690,7 +662,7 @@ func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
 		ID:         "test",
-		Client:     testClient(&talkingLLM{text: "done"}),
+		Client:     testClient(aitest.Always(talks("done"))),
 		System:     NewSystem(),
 		Tools:      NewTools(),
 		MaxSteps:   1,

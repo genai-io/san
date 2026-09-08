@@ -41,9 +41,9 @@ func (m *model) contextUsage() conv.ContextUsage {
 		m.addUnstartedAgentUsage(&usage)
 		messages = m.seedAgentMessages("")
 	} else {
-		usage.SystemPrompt = kit.EstimateTokens(sys.Prompt())
+		usage.SystemPrompt = ai.EstimateTokens(sys.Prompt())
 		for _, t := range tools.All() {
-			size := kit.EstimateTokens(toolSchemaWire(t.Schema()))
+			size := ai.EstimateTokens(toolSchemaWire(t.Schema()))
 			if mcp.IsMCPTool(t.Schema().Name) {
 				usage.MCPTools += size
 				continue
@@ -124,14 +124,14 @@ func (m *model) measuredPromptPrefix(usage conv.ContextUsage) int {
 func (m *model) addUnstartedAgentUsage(usage *conv.ContextUsage) {
 	params := m.promptParams()
 
-	usage.SystemPrompt = kit.EstimateTokens(params.System().Prompt())
+	usage.SystemPrompt = ai.EstimateTokens(params.System().Prompt())
 	for _, schema := range params.Schemas() {
-		usage.Tools += kit.EstimateTokens(toolSchemaWire(schema))
+		usage.Tools += ai.EstimateTokens(toolSchemaWire(schema))
 	}
 	// MCP tools arrive as ready-made core.Tools rather than schemas, so they sit
 	// outside Schemas() and are counted off the same list params already carries.
 	for _, t := range params.MCPTools {
-		usage.MCPTools += kit.EstimateTokens(toolSchemaWire(t.Schema()))
+		usage.MCPTools += ai.EstimateTokens(toolSchemaWire(t.Schema()))
 	}
 }
 
@@ -139,9 +139,9 @@ func (m *model) addUnstartedAgentUsage(usage *conv.ContextUsage) {
 // block is credited to the provider that emitted it, and whatever is left over
 // counts as conversation.
 func addContextUsage(usage *conv.ContextUsage, text string) {
-	conversation := kit.EstimateTokens(text)
+	conversation := ai.EstimateTokens(text)
 	for _, block := range reminder.Blocks(text) {
-		size := kit.EstimateTokens(block.Text)
+		size := ai.EstimateTokens(block.Text)
 		switch block.Source {
 		case reminder.ProviderSkillsDirectory:
 			usage.Skills += size

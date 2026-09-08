@@ -4,6 +4,7 @@ import (
 	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"testing"
@@ -23,16 +24,12 @@ type restartStubProvider struct {
 }
 
 func (p *restartStubProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
-}
-
-func (p *restartStubProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-	p.requests <- flattenAI(req.Messages)
-	return func(yield func(ai.Delta, error) bool) {
-		yield(ai.Delta{Block: ai.TextBlock("ok")}, nil)
-		yield(ai.Delta{EndBlock: true}, nil)
-		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
-	}
+	// Announcing each request as it goes out is what lets the test wait for
+	// the restarted agent to reach inference rather than poll for it.
+	return aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		p.requests <- flattenAI(req.Messages)
+		return aitest.Says("ok")(ctx, req)
+	}).Client(), nil
 }
 
 // flattenAI recovers just enough of San's shape for this test's assertion.

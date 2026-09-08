@@ -1,8 +1,6 @@
 package subagent
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -973,15 +971,6 @@ func TestPersistSubagentSessionUsesSessionStore(t *testing.T) {
 	if len(store.saveMessages) != 1 || store.saveMessages[0].Text() != "hello" {
 		t.Fatalf("unexpected saved messages: %+v", store.saveMessages)
 	}
-}
-
-// stubLLM is a minimal core.LLM for tests that don't call inference.
-type stubLLM struct{}
-
-func (s *stubLLM) Name() string { return "stub" }
-
-func (s *stubLLM) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	return func(func(ai.Delta, error) bool) {}
 }
 
 // stubSystem is a minimal core.System for tests.

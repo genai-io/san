@@ -1,58 +1,10 @@
 package mcp
 
 import (
-	"context"
 	"maps"
-	"sync"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/mcp/transport"
 )
-
-// liveTransport stands in for a running MCP server: alive until Close.
-type liveTransport struct {
-	mu     sync.Mutex
-	closed bool
-}
-
-func (t *liveTransport) Start(context.Context) error { return nil }
-func (t *liveTransport) Send(context.Context, *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
-	return &transport.JSONRPCResponse{}, nil
-}
-func (t *liveTransport) SendNotification(context.Context, *transport.JSONRPCNotification) error {
-	return nil
-}
-func (t *liveTransport) Close() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.closed = true
-	return nil
-}
-func (t *liveTransport) IsAlive() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return !t.closed
-}
-func (t *liveTransport) SetNotificationHandler(transport.NotificationHandler) {}
-
-func (t *liveTransport) isClosed() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.closed
-}
-
-// connectedClient builds a Client already in the connected state, backed by tr.
-func connectedClient(t *testing.T, cfg ServerConfig, tr transport.Transport) *Client {
-	t.Helper()
-	c := NewClient(cfg)
-	c.TransportFactory = func() (transport.Transport, error) { return tr, nil }
-	c.mu.Lock()
-	c.transport = tr
-	c.connected = true
-	c.mu.Unlock()
-	return c
-}
 
 func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Registry {
 	r := newEmptyRegistry()
@@ -74,7 +26,7 @@ func registryWithRetainedClients(configs map[string]ServerConfig, clients map[st
 // nothing to reconnect it — AutoConnect only runs at startup.
 func TestAdoptLiveClientsKeepsUnchangedServersConnected(t *testing.T) {
 	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--stdio"}}
-	tr := &liveTransport{}
+	tr := newFakeSession()
 	old := registryWith(
 		map[string]ServerConfig{"docs": cfg},
 		map[string]*Client{"docs": connectedClient(t, cfg, tr)},
@@ -99,7 +51,7 @@ func TestAdoptLiveClientsKeepsUnchangedServersConnected(t *testing.T) {
 // down — it was previously dropped still running, leaking the subprocess.
 func TestAdoptLiveClientsDisconnectsServersTheNewProjectDropped(t *testing.T) {
 	cfg := ServerConfig{Name: "old-proj", Type: "stdio", Command: "old-server"}
-	tr := &liveTransport{}
+	tr := newFakeSession()
 	old := registryWith(
 		map[string]ServerConfig{"old-proj": cfg},
 		map[string]*Client{"old-proj": connectedClient(t, cfg, tr)},
@@ -119,7 +71,7 @@ func TestAdoptLiveClientsDisconnectsServersTheNewProjectDropped(t *testing.T) {
 func TestAdoptLiveClientsRejectsAChangedConfig(t *testing.T) {
 	oldCfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--v1"}}
 	newCfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server", Args: []string{"--v2"}}
-	tr := &liveTransport{}
+	tr := newFakeSession()
 	old := registryWith(
 		map[string]ServerConfig{"docs": oldCfg},
 		map[string]*Client{"docs": connectedClient(t, oldCfg, tr)},
@@ -136,7 +88,7 @@ func TestAdoptLiveClientsRejectsAChangedConfig(t *testing.T) {
 
 func TestTransferredConnectionNotifiesIncomingRegistryOnly(t *testing.T) {
 	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
-	tr := &liveTransport{}
+	tr := newFakeSession()
 	client := connectedClient(t, cfg, tr)
 	old := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
 	fresh := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, nil)
@@ -158,7 +110,7 @@ func TestTransferredConnectionNotifiesIncomingRegistryOnly(t *testing.T) {
 
 func TestRegistryReplacementLeavesLeaseOwnedConnectionInOutgoingRegistry(t *testing.T) {
 	cfg := ServerConfig{Name: "docs", Type: "stdio", Command: "docs-server"}
-	tr := &liveTransport{}
+	tr := newFakeSession()
 	client := connectedClient(t, cfg, tr)
 	old := registryWithRetainedClients(map[string]ServerConfig{"docs": cfg}, map[string]*Client{"docs": client})
 	old.getOrCreateConnectionState("docs").disconnectAfterFinalLease = true

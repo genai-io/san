@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
@@ -28,13 +27,13 @@ func TestAddContextUsageAttributesRemindersOnce(t *testing.T) {
 	var usage conv.ContextUsage
 	addContextUsage(&usage, turn)
 
-	if usage.Skills != kit.EstimateTokens(skills) {
-		t.Errorf("Skills = %d, want %d", usage.Skills, kit.EstimateTokens(skills))
+	if usage.Skills != ai.EstimateTokens(skills) {
+		t.Errorf("Skills = %d, want %d", usage.Skills, ai.EstimateTokens(skills))
 	}
-	if usage.MemoryFiles != kit.EstimateTokens(memory) {
-		t.Errorf("MemoryFiles = %d, want %d", usage.MemoryFiles, kit.EstimateTokens(memory))
+	if usage.MemoryFiles != ai.EstimateTokens(memory) {
+		t.Errorf("MemoryFiles = %d, want %d", usage.MemoryFiles, ai.EstimateTokens(memory))
 	}
-	if whole := kit.EstimateTokens(turn); usage.Messages >= whole {
+	if whole := ai.EstimateTokens(turn); usage.Messages >= whole {
 		t.Errorf("Messages = %d counts the reminders again; the whole turn is only %d", usage.Messages, whole)
 	}
 	if usage.Messages == 0 {
@@ -53,7 +52,7 @@ func TestAddContextUsageKeepsNoticesInMessages(t *testing.T) {
 	if usage.Skills != 0 || usage.MemoryFiles != 0 {
 		t.Errorf("an unsourced notice was filed as skills=%d memory=%d", usage.Skills, usage.MemoryFiles)
 	}
-	if want := kit.EstimateTokens(turn); usage.Messages != want {
+	if want := ai.EstimateTokens(turn); usage.Messages != want {
 		t.Errorf("Messages = %d, want the whole turn %d", usage.Messages, want)
 	}
 }

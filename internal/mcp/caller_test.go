@@ -2,17 +2,14 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/mcp/transport"
 )
 
 func TestLeaseReleaseDoesNotDisconnectPreexistingRetainedConnection(t *testing.T) {
-	tr := newSlowTransport(0)
-	registry := connectedRegistry(t, map[string]transport.Transport{"shared": tr})
+	tr := newSlowSession(0)
+	registry := connectedRegistry(t, map[string]*fakeSession{"shared": tr})
 
 	cleanup, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 	if len(errs) != 0 {
@@ -25,40 +22,16 @@ func TestLeaseReleaseDoesNotDisconnectPreexistingRetainedConnection(t *testing.T
 	}
 }
 
-type connectionLifecycleTransport struct {
-	liveTransport
-	closeCalls int
-}
-
-func (t *connectionLifecycleTransport) Send(_ context.Context, req *transport.JSONRPCRequest) (*transport.JSONRPCResponse, error) {
-	result := json.RawMessage(`{}`)
-	return &transport.JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
-}
-
-func (t *connectionLifecycleTransport) Close() error {
-	t.liveTransport.Close()
-	t.mu.Lock()
-	t.closeCalls++
-	t.mu.Unlock()
-	return nil
-}
-
-func (t *connectionLifecycleTransport) closeCount() int {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.closeCalls
-}
-
 func TestConcurrentLeaseAcquisitionSharesOneConnectionUntilFinalRelease(t *testing.T) {
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	tr := &connectionLifecycleTransport{}
+	tr := newFakeSession()
 	var factoryCalls int
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
 		factoryCalls++
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
@@ -113,10 +86,10 @@ func TestExplicitConnectRetainsLeaseCreatedConnectionAfterFinalRelease(t *testin
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	tr := &connectionLifecycleTransport{}
+	tr := newFakeSession()
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
@@ -141,10 +114,10 @@ func TestLeaseSetReleaseIsIdempotent(t *testing.T) {
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	tr := &connectionLifecycleTransport{}
+	tr := newFakeSession()
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
@@ -170,14 +143,14 @@ func TestDeadConnectionReplacementKeepsLeaseCountsSeparatedByConnectionEpoch(t *
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	firstTransport := &connectionLifecycleTransport{}
-	secondTransport := &connectionLifecycleTransport{}
-	transports := []transport.Transport{firstTransport, secondTransport}
+	firstSession := newFakeSession()
+	secondSession := newFakeSession()
+	sessions := []*fakeSession{firstSession, secondSession}
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
-		tr := transports[0]
-		transports = transports[1:]
+		tr := sessions[0]
+		sessions = sessions[1:]
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
@@ -185,9 +158,9 @@ func TestDeadConnectionReplacementKeepsLeaseCountsSeparatedByConnectionEpoch(t *
 	if len(errs) != 0 {
 		t.Fatalf("first AcquireServerConnectionLeases() errors = %v", errs)
 	}
-	firstTransport.mu.Lock()
-	firstTransport.closed = true
-	firstTransport.mu.Unlock()
+	firstSession.mu.Lock()
+	firstSession.closed = true
+	firstSession.mu.Unlock()
 	second, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 	if len(errs) != 0 {
 		t.Fatalf("replacement AcquireServerConnectionLeases() errors = %v", errs)
@@ -198,30 +171,30 @@ func TestDeadConnectionReplacementKeepsLeaseCountsSeparatedByConnectionEpoch(t *
 	if _, ok := registry.GetClient("shared"); ok {
 		t.Fatal("generation-specific lease cleanup leaked the replacement connection")
 	}
-	waitFor(t, "the replacement transport to close", func() bool { return secondTransport.closeCount() == 1 })
+	waitFor(t, "the replacement session to close", func() bool { return secondSession.closeCount() == 1 })
 }
 
 func TestExplicitRetentionIntentAppliesToLeaseTriggeredReplacement(t *testing.T) {
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	firstTransport := &connectionLifecycleTransport{}
-	secondTransport := &connectionLifecycleTransport{}
-	transports := []transport.Transport{firstTransport, secondTransport}
+	firstSession := newFakeSession()
+	secondSession := newFakeSession()
+	sessions := []*fakeSession{firstSession, secondSession}
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
-		tr := transports[0]
-		transports = transports[1:]
+		tr := sessions[0]
+		sessions = sessions[1:]
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
 	if err := registry.Connect(context.Background(), "shared"); err != nil {
 		t.Fatalf("persistent Connect() error = %v", err)
 	}
-	firstTransport.mu.Lock()
-	firstTransport.closed = true
-	firstTransport.mu.Unlock()
+	firstSession.mu.Lock()
+	firstSession.closed = true
+	firstSession.mu.Unlock()
 	cleanup, errs := AcquireServerConnectionLeases(context.Background(), registry, []string{"shared"})
 	if len(errs) != 0 {
 		t.Fatalf("AcquireServerConnectionLeases() errors = %v", errs)
@@ -231,7 +204,7 @@ func TestExplicitRetentionIntentAppliesToLeaseTriggeredReplacement(t *testing.T)
 	if _, ok := registry.GetClient("shared"); !ok {
 		t.Fatal("lease cleanup disconnected a replacement with persistent ownership")
 	}
-	if secondTransport.closeCount() != 0 {
+	if secondSession.closeCount() != 0 {
 		t.Fatal("lease cleanup closed a persistently owned replacement")
 	}
 }
@@ -240,14 +213,14 @@ func TestOldEpochLeaseReleaseCannotDisconnectCurrentConnection(t *testing.T) {
 	registry := NewRegistryForTest(map[string]ServerConfig{
 		"shared": {Name: "shared", Type: TransportSTDIO, Command: "shared"},
 	})
-	first := &connectionLifecycleTransport{}
-	second := &connectionLifecycleTransport{}
-	transports := []transport.Transport{first, second}
+	first := newFakeSession()
+	second := newFakeSession()
+	sessions := []*fakeSession{first, second}
 	registry.newClientForConfig = func(cfg ServerConfig) *Client {
-		tr := transports[0]
-		transports = transports[1:]
+		tr := sessions[0]
+		sessions = sessions[1:]
 		client := NewClient(cfg)
-		client.TransportFactory = func() (transport.Transport, error) { return tr, nil }
+		client.dial = dialing(tr)
 		return client
 	}
 
@@ -265,7 +238,7 @@ func TestOldEpochLeaseReleaseCannotDisconnectCurrentConnection(t *testing.T) {
 	if !ok || client == nil {
 		t.Fatal("stale lease cleanup removed the replacement connection")
 	}
-	if !second.IsAlive() {
+	if !second.Alive() {
 		t.Fatal("stale lease cleanup closed the replacement transport")
 	}
 }

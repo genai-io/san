@@ -4,6 +4,7 @@ import (
 	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"errors"
@@ -14,35 +15,43 @@ import (
 
 // --- mock provider for LLM tests ---
 
+// mockLLMProvider serves a queued sequence of answers, one per call, and says
+// so once the queue is dry. What a provider owns is reaching the endpoint; the
+// model behind it is the SDK's test double.
 type mockLLMProvider struct {
 	responses []CompletionResponse
 	callIdx   int
 	models    []ModelInfo
 	listErr   error
-	lastOpts  CompletionOptions
 	listCalls int
+
+	driver *aitest.Driver
 }
 
 func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(m, ai.Model{ID: "mock", API: "mock"}), nil
+	if m.driver == nil {
+		m.driver = aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+			resp := CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
+			if m.callIdx < len(m.responses) {
+				resp = m.responses[m.callIdx]
+				m.callIdx++
+			}
+			return aitest.Replies(ai.Response{
+				Content:    resp.Content,
+				StopReason: ai.StopEndTurn,
+				Usage:      ai.Usage{Input: resp.Usage.Input, Output: resp.Usage.Output},
+			})(ctx, req)
+		})
+	}
+	return m.driver.Client(), nil
 }
 
-func (m *mockLLMProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-	m.lastOpts = CompletionOptions{SystemPrompt: req.System}
-	resp := CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
-	if m.callIdx < len(m.responses) {
-		resp = m.responses[m.callIdx]
-		m.callIdx++
+// lastSystem is the system prompt that reached the endpoint.
+func (m *mockLLMProvider) lastSystem() string {
+	if m.driver == nil || m.driver.Last() == nil {
+		return ""
 	}
-	return func(yield func(ai.Delta, error) bool) {
-		if resp.Content.Text() != "" {
-			yield(ai.Delta{Block: ai.TextBlock(resp.Content.Text())}, nil)
-			yield(ai.Delta{EndBlock: true}, nil)
-		}
-		yield(ai.Delta{StopReason: ai.StopEndTurn, Usage: &ai.Usage{
-			Input: resp.Usage.Input, Output: resp.Usage.Output,
-		}}, nil)
-	}
+	return m.driver.Last().System
 }
 
 func (m *mockLLMProvider) ListModels(_ context.Context) ([]ModelInfo, error) {
@@ -349,26 +358,18 @@ func (streamErrorProvider) ListModels(context.Context) ([]ModelInfo, error) { re
 func (streamErrorProvider) Name() string                                    { return "stream-error" }
 
 type retryThenSuccessProvider struct {
-	calls int
+	driver *aitest.Driver
 }
 
 func (p *retryThenSuccessProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
-}
-
-func (p *retryThenSuccessProvider) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	p.calls++
-	first := p.calls == 1
-	return func(yield func(ai.Delta, error) bool) {
-		if first {
-			// An overloaded endpoint: retryable, so the next attempt runs.
-			yield(ai.Delta{}, &ai.Error{Kind: ai.KindOverloaded, Message: "overloaded"})
-			return
-		}
-		yield(ai.Delta{Block: ai.TextBlock("recovered")}, nil)
-		yield(ai.Delta{EndBlock: true}, nil)
-		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
+	if p.driver == nil {
+		// An overloaded endpoint is retryable, so the next attempt runs.
+		p.driver = aitest.New(
+			aitest.Fails(&ai.Error{Kind: ai.KindOverloaded, Message: "overloaded"}),
+			aitest.Says("recovered"),
+		)
 	}
+	return p.driver.Client(), nil
 }
 
 func (*retryThenSuccessProvider) ListModels(context.Context) ([]ModelInfo, error) { return nil, nil }
@@ -385,8 +386,8 @@ func TestCompleteRetriesOpaqueStreamError(t *testing.T) {
 	if resp.Content.Text() != "recovered" {
 		t.Fatalf("Complete() content = %q, want recovered", resp.Content.Text())
 	}
-	if provider.calls != 2 {
-		t.Fatalf("Stream() calls = %d, want 2", provider.calls)
+	if provider.driver.Calls() != 2 {
+		t.Fatalf("Stream() calls = %d, want 2", provider.driver.Calls())
 	}
 }
 

@@ -1,9 +1,8 @@
 package agent
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"testing"
@@ -13,17 +12,12 @@ import (
 )
 
 // stubProvider is a minimal llm.Provider that ends every turn immediately, so a
-// Session can start without a real backend.
+// Session can start without a real backend. What it owns is reaching the
+// endpoint; the model behind it is the SDK's test double.
 type stubProvider struct{}
 
-func (p stubProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(p, ai.Model{ID: "stub", API: "stub"}), nil
-}
-
-func (stubProvider) Stream(context.Context, *ai.Request) iter.Seq2[ai.Delta, error] {
-	return func(yield func(ai.Delta, error) bool) {
-		yield(ai.Delta{StopReason: ai.StopEndTurn}, nil)
-	}
+func (stubProvider) Client(string, map[string]string) (*ai.Client, error) {
+	return aitest.Always(aitest.Replies(ai.Response{StopReason: ai.StopEndTurn})).Client(), nil
 }
 func (stubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (stubProvider) Name() string                                        { return "stub" }

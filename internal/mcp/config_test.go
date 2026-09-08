@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	sdkmcp "github.com/genai-io/sdk-go/pkg/agent/mcp"
 )
 
 func TestConfigLoader_SaveAndLoad(t *testing.T) {
@@ -213,36 +216,40 @@ func Test_parseMCPToolName(t *testing.T) {
 	}
 }
 
+// What a server offers to read is shown beside its tools in /mcp, so it has to
+// survive connecting and be gone again after disconnecting.
 func TestMCP_ResourceListing(t *testing.T) {
-	// Create a client; before connect, cached resources should be empty
 	client := NewClient(ServerConfig{Command: "echo"})
-
-	resources := client.GetCachedResources()
-	if len(resources) != 0 {
-		t.Errorf("expected empty cached resources before connect, got %d", len(resources))
+	if got := client.ToServer().Resources; len(got) != 0 {
+		t.Errorf("a client that has not connected reports %d resources, want none", len(got))
 	}
 
-	// Inject resources directly (same package) to simulate a connected state
-	client.mu.Lock()
-	client.connected = true
-	client.resources = []MCPResource{
-		{URI: "file:///tmp/test.txt", Name: "test.txt", MimeType: "text/plain"},
-		{URI: "file:///tmp/data.json", Name: "data.json", MimeType: "application/json"},
+	session := newFakeSession()
+	session.resources = []sdkmcp.Resource{
+		{URI: "file:///tmp/test.txt", Name: "test.txt", MediaType: "text/plain"},
+		{URI: "file:///tmp/data.json", Name: "data.json", MediaType: "application/json"},
 	}
-	client.mu.Unlock()
+	client.dial = dialing(session)
+	if err := client.Connect(context.Background()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
 
-	cached := client.GetCachedResources()
+	cached := client.ToServer().Resources
 	if len(cached) != 2 {
-		t.Fatalf("expected 2 cached resources, got %d", len(cached))
+		t.Fatalf("cached resources = %d, want 2", len(cached))
 	}
-	if cached[0].URI != "file:///tmp/test.txt" {
-		t.Errorf("expected URI 'file:///tmp/test.txt', got %q", cached[0].URI)
+	if cached[0].URI != "file:///tmp/test.txt" || cached[0].Name != "test.txt" {
+		t.Errorf("first resource = %+v", cached[0])
 	}
 	if cached[1].MimeType != "application/json" {
-		t.Errorf("expected MimeType 'application/json', got %q", cached[1].MimeType)
+		t.Errorf("second resource media type = %q", cached[1].MimeType)
 	}
-	if cached[0].Name != "test.txt" {
-		t.Errorf("expected Name 'test.txt', got %q", cached[0].Name)
+
+	if err := client.Disconnect(); err != nil {
+		t.Fatalf("Disconnect: %v", err)
+	}
+	if got := client.ToServer().Resources; len(got) != 0 {
+		t.Errorf("a disconnected client still reports %d resources", len(got))
 	}
 }
 

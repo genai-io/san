@@ -6,6 +6,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"sync"
@@ -18,9 +19,10 @@ import (
 // it a real vendor, which is what makes a test of the loop a test of the loop
 // and not of a stub in the middle.
 //
-// It implements llm.Provider and nothing more. A double that mirrors the
-// contract it stands in for cannot drift from it; one that grows its own
-// convenience methods starts testing itself.
+// It implements llm.Provider and nothing more — Client, ListModels, Name. What
+// a provider owns is reaching the endpoint; the model behind it is the SDK's
+// own double. A fake that mirrors the contract it stands in for cannot drift
+// from it; one that grows its own convenience methods starts testing itself.
 //
 //	fake := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
 //	    {Content: "hello", StopReason: "end_turn"},
@@ -47,16 +49,24 @@ type FakeProvider struct {
 
 	mu        sync.Mutex
 	callCount int
+	driver    *aitest.Driver
 }
 
-// Stream answers the next queued response as a single done chunk.
+// Client hands over the SDK client this provider answers through.
 func (f *FakeProvider) Client(string, map[string]string) (*ai.Client, error) {
-	return ai.NewClientWithDriver(f, ai.Model{ID: "stub", API: "stub"}), nil
+	f.mu.Lock()
+	if f.driver == nil {
+		f.driver = aitest.Always(f.answer)
+	}
+	driver := f.driver
+	f.mu.Unlock()
+	return driver.Client(), nil
 }
 
-// Stream is the ai.Driver method: this double fakes the protocol now, which is
-// the seam pkg/ai already has and the one five real drivers sit behind.
-func (f *FakeProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+// answer is one call: record what was asked, then take the head of the queue.
+// It is an aitest.Turn, which is handed the request — Sent would say the same
+// afterwards, but Calls is what the suites read and it is read in San's shape.
+func (f *FakeProvider) answer(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
 	f.mu.Lock()
 	msgs := make([]core.Message, 0, len(req.Messages))
 	for _, m := range req.Messages {
@@ -73,17 +83,10 @@ func (f *FakeProvider) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.D
 	}
 	f.mu.Unlock()
 
-	return func(yield func(ai.Delta, error) bool) {
-		if fail {
-			yield(ai.Delta{}, errValue)
-			return
-		}
-		for _, d := range FakeDeltas(resp) {
-			if !yield(d, nil) {
-				return
-			}
-		}
+	if fail {
+		return aitest.Fails(errValue)(ctx, req)
 	}
+	return aitest.Replies(resp)(ctx, req)
 }
 
 // ListModels reports nothing: a queue serves whatever model it is asked for.

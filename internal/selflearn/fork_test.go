@@ -4,6 +4,7 @@ import (
 	"iter"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"strings"
@@ -13,45 +14,21 @@ import (
 	"github.com/genai-io/san/internal/core"
 )
 
-// scriptedLLM returns a queued sequence of responses, one per Infer call,
-// and records the last request so tests can assert on the assembled prompt.
-type scriptedLLM struct {
-	mu        sync.Mutex
-	responses []ai.Response
-	lastReq   *ai.Request
-	calls     int
-}
-
-func (s *scriptedLLM) Name() string { return "scripted" }
-
-func (s *scriptedLLM) Stream(_ context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-	s.mu.Lock()
-	s.lastReq = req
-	s.calls++
-	r := ai.Response{Content: ai.TextContent("Nothing to save."), StopReason: ai.StopEndTurn}
-	if len(s.responses) > 0 {
-		r = s.responses[0]
-		s.responses = s.responses[1:]
-	}
-	s.mu.Unlock()
-
-	return func(yield func(ai.Delta, error) bool) {
-		if r.Content.Text() != "" {
-			if !yield(ai.Delta{Block: ai.TextBlock(r.Content.Text())}, nil) || !yield(ai.Delta{EndBlock: true}, nil) {
-				return
-			}
+// scripted answers with a queued sequence of responses, one per call, and
+// falls back to a refusal once the queue is dry. The driver keeps every request
+// it was handed, which is how these tests assert on the assembled prompt.
+func scripted(responses ...ai.Response) *aitest.Driver {
+	var mu sync.Mutex
+	queue := responses
+	return aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
+		mu.Lock()
+		r := ai.Response{Content: ai.TextContent("Nothing to save."), StopReason: ai.StopEndTurn}
+		if len(queue) > 0 {
+			r, queue = queue[0], queue[1:]
 		}
-		for _, c := range r.Content.ToolCalls() {
-			if !yield(ai.Delta{Block: ai.ToolCallBlock(ai.ToolCall{ID: c.ID, Name: c.Name, Input: c.Input})}, nil) {
-				return
-			}
-		}
-		stop := ai.StopEndTurn
-		if len(r.Content.ToolCalls()) > 0 {
-			stop = ai.StopToolUse
-		}
-		yield(ai.Delta{StopReason: stop}, nil)
-	}
+		mu.Unlock()
+		return aitest.Replies(r)(ctx, req)
+	})
 }
 
 // TestTrimTrailingPendingMessages guards against the "messages must
@@ -146,13 +123,13 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	store := newTestStore(t)
 	mgr := NewSkillManager("/work/project-x", AllowAllSkillActions())
 
-	llm := &scriptedLLM{responses: []ai.Response{
+	llm := scripted([]ai.Response{
 		{
 			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: "call-1", Name: "memory_write", Input: `{"action":"add","content":"the user prefers tabs"}`})},
 			StopReason: ai.StopToolUse,
 		},
 		{Content: ai.TextContent("Saved 1 memory entry."), StopReason: ai.StopEndTurn},
-	}}
+	}...)
 
 	parentSys := core.NewSystem()
 	parentSys.Use(core.Section{
@@ -184,12 +161,12 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	if got, ok := readBackMemory(t); !ok || !strings.Contains(got, "prefers tabs") {
 		t.Fatalf("memory not written: got=%q ok=%v", got, ok)
 	}
-	if !strings.Contains(llm.lastReq.System, "PARENT-SYSTEM-MARKER") {
-		t.Fatalf("fork did not inherit the parent system prompt; system=%q", llm.lastReq.System)
+	if !strings.Contains(llm.Last().System, "PARENT-SYSTEM-MARKER") {
+		t.Fatalf("fork did not inherit the parent system prompt; system=%q", llm.Last().System)
 	}
 	// The fork must only ever be offered its two write tools.
-	if len(llm.lastReq.Tools) != 2 {
-		t.Fatalf("fork tool count = %d, want 2", len(llm.lastReq.Tools))
+	if len(llm.Last().Tools) != 2 {
+		t.Fatalf("fork tool count = %d, want 2", len(llm.Last().Tools))
 	}
 }
 

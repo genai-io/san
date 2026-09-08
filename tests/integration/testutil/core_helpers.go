@@ -1,9 +1,8 @@
 package testutil
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"testing"
@@ -37,68 +36,30 @@ func DenyAllPermission() perm.PermissionFunc {
 	}
 }
 
-// FakeLLM answers with queued responses. It fakes the protocol rather than an
-// abstraction over it: a driver is what pkg/ai asks for, and what five real
-// implementations sit behind.
-type FakeLLM struct {
-	Responses []llm.CompletionResponse
-	callIdx   int
+// queued is a model that answers with these responses, one per call, and says
+// so once the queue is dry. A CompletionResponse is an ai.Response, so there is
+// nothing to render: aitest.Replies walks the block sequence it already is.
+func queued(responses []llm.CompletionResponse) *aitest.Driver {
+	turns := make([]aitest.Turn, 0, len(responses))
+	for _, r := range responses {
+		turns = append(turns, aitest.Replies(r))
+	}
+	return aitest.New(turns...)
 }
 
-func (f *FakeLLM) Name() string { return "fake" }
-
-func (f *FakeLLM) Stream(_ context.Context, _ *ai.Request) iter.Seq2[ai.Delta, error] {
-	resp := llm.CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
-	if f.callIdx < len(f.Responses) {
-		resp = f.Responses[f.callIdx]
-		f.callIdx++
-	}
-	return func(yield func(ai.Delta, error) bool) {
-		for _, delta := range FakeDeltas(resp) {
-			if !yield(delta, nil) {
-				return
-			}
-		}
-	}
-}
-
-// FakeDeltas renders one answer as the stream a driver would produce. The
-// answer is already an ordered block sequence, so this walks it rather than
-// reassembling one from parallel fields.
-func FakeDeltas(r llm.CompletionResponse) []ai.Delta {
-	var out []ai.Delta
-	calls := 0
-	for _, b := range r.Content {
-		switch b.Type {
-		case ai.BlockToolCall:
-			calls++
-			out = append(out, ai.Delta{Block: b})
-		default:
-			out = append(out, ai.Delta{Block: b}, ai.Delta{EndBlock: true})
-		}
-	}
-	stop := ai.StopEndTurn
-	if calls > 0 {
-		stop = ai.StopToolUse
-	}
-	return append(out, ai.Delta{StopReason: stop, Usage: &ai.Usage{
-		Input: r.Usage.Input, Output: r.Usage.Output,
-	}})
-}
-
-// stubClient wraps a fake driver as the per-turn client an agent is built on.
-// The same client answers every turn: only a real endpoint varies its headers
-// with what the turn sends.
-func stubClient(d ai.Driver) func([]core.Message) (*ai.Client, error) {
-	client := ai.NewClientWithDriver(d, ai.Model{ID: "stub", API: "stub"})
+// stubClient wraps a driver as the per-turn client an agent is built on. The
+// same client answers every turn: only a real endpoint varies its headers with
+// what the turn sends.
+func stubClient(d *aitest.Driver) func([]core.Message) (*ai.Client, error) {
+	client := d.Client()
 	return func([]core.Message) (*ai.Client, error) { return client, nil }
 }
 
-// NewTestAgent creates a core.Agent backed by a FakeLLM with queued responses.
+// NewTestAgent creates a core.Agent backed by a model with queued responses.
 // All globally registered tools (including dynamically registered fakes) are included.
-func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
+func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
 	t.Helper()
-	fakeLLM := &FakeLLM{Responses: responses}
+	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",
@@ -129,9 +90,9 @@ func buildAllRegisteredTools(cwd string) core.Tools {
 }
 
 // NewTestAgentWithPermission creates a core.Agent with a permission function wrapping tools.
-func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
+func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
 	t.Helper()
-	fakeLLM := &FakeLLM{Responses: responses}
+	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:       "test-agent",
@@ -144,9 +105,9 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 }
 
 // NewTestAgentWithMaxSteps creates a core.Agent with a specific max steps limit.
-func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) (core.Agent, *FakeLLM) {
+func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
 	t.Helper()
-	fakeLLM := &FakeLLM{Responses: responses}
+	fakeLLM := queued(responses)
 	cwd := t.TempDir()
 	return core.NewAgent(core.Config{
 		ID:     "test-agent",

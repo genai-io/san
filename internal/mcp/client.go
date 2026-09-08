@@ -4,509 +4,319 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
-	"sync/atomic"
+	"time"
 
-	"github.com/genai-io/san/internal/mcp/transport"
+	"go.uber.org/zap"
+
+	sdkmcp "github.com/genai-io/sdk-go/pkg/agent/mcp"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
+	"github.com/genai-io/san/internal/core"
+	glog "github.com/genai-io/san/internal/log"
 )
 
-const (
-	// ProtocolVersion is the MCP protocol version this client supports
-	ProtocolVersion = "2024-11-05"
+// One MCP server, and San's business with it: when a connection is made and
+// dropped, and what the /mcp listing shows. The protocol is sdk-go's.
 
-	// ClientName is the name of this MCP client
-	ClientName = "san"
-
-	// ClientVersion is the version of this MCP client
-	ClientVersion = "1.0.0"
-)
-
-var requestIDCounter atomic.Uint64
-
-// nextRequestID generates a unique request ID
-func nextRequestID() uint64 {
-	return requestIDCounter.Add(1)
+// conn is one live session. The real one is the SDK's; the registry's tests
+// supply their own, since leases and epochs are what they are about.
+type conn interface {
+	Tools(ctx context.Context) ([]core.Tool, error)
+	Resources(ctx context.Context) ([]sdkmcp.Resource, error)
+	Prompts(ctx context.Context) ([]sdkmcp.Prompt, error)
+	Alive() bool
+	Close() error
 }
 
-// Client is an MCP client that connects to a single MCP server
+// Client is one MCP server as San holds it.
 type Client struct {
-	config    ServerConfig
-	transport transport.Transport
+	config ServerConfig
 
-	// TransportFactory overrides the default transport creation.
-	// When set, Connect() uses this instead of createTransport().
-	// This allows tests to inject a fake transport.
-	TransportFactory func() (transport.Transport, error)
+	// dial opens the session. Tests replace it; see conn.
+	dial func(ctx context.Context, onToolsChanged func()) (conn, error)
 
-	mu           sync.RWMutex
-	connected    bool
-	capabilities ServerCapabilities
-	serverInfo   ServerInfo
-	tools        []MCPTool
-	resources    []MCPResource
-	prompts      []MCPPrompt
+	mu        sync.RWMutex
+	session   conn
+	tools     []core.Tool
+	resources []MCPResource
+	prompts   []MCPPrompt
 
-	// Callbacks for dynamic updates
 	onToolsChanged func()
 }
 
-// NewClient creates a new MCP client for the given server configuration
+// NewClient returns a client for one server. Nothing is reached until Connect.
 func NewClient(config ServerConfig) *Client {
-	return &Client{
-		config: config,
+	return &Client{config: config, dial: dialSDK(config)}
+}
+
+// dialSDK opens the real session. Tool names come back unqualified: the
+// registry assembles mcp__server__tool, where San has always matched on it.
+func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
+	return func(ctx context.Context, onToolsChanged func()) (conn, error) {
+		server := sdkmcp.Server{
+			Command: config.Command,
+			Args:    config.Args,
+			Env:     config.Env,
+			URL:     config.URL,
+			Headers: config.Headers,
+			SSE:     config.GetType() == TransportSSE,
+			// San is full-screen, so this cannot go to the terminal.
+			Stderr: serverLog{name: config.Name},
+		}
+		var opts []sdkmcp.Option
+		if onToolsChanged != nil {
+			// The SDK hands the callback its own client; San's re-read goes
+			// through this one, which is the same session under San's cache.
+			opts = append(opts, sdkmcp.OnToolsChanged(func(*sdkmcp.Client) { onToolsChanged() }))
+		}
+		c, err := sdkmcp.Connect(ctx, server, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return sdkSession{c}, nil
 	}
 }
 
-// newRequest creates a new JSON-RPC request
-func newRequest(method string, params any) *transport.JSONRPCRequest {
-	return &transport.JSONRPCRequest{
-		JSONRPC: "2.0",
-		ID:      nextRequestID(),
-		Method:  method,
-		Params:  params,
+// serverLog is one server's stderr, as a line in San's log.
+type serverLog struct{ name string }
+
+func (l serverLog) Write(p []byte) (int, error) {
+	if line := strings.TrimRight(string(p), "\n"); line != "" {
+		glog.Logger().Debug("mcp server output", zap.String("server", l.name), zap.String("line", line))
 	}
+	return len(p), nil
 }
 
-// newNotification creates a new JSON-RPC notification
-func newNotification(method string, params any) *transport.JSONRPCNotification {
-	return &transport.JSONRPCNotification{
-		JSONRPC: "2.0",
-		Method:  method,
-		Params:  params,
-	}
+// sdkSession is the SDK's client under what this package asks.
+type sdkSession struct{ *sdkmcp.Client }
+
+func (s sdkSession) Tools(ctx context.Context) ([]core.Tool, error) {
+	return s.Client.Tools(ctx)
 }
 
-// parseResponse parses a JSON-RPC response and unmarshals the result
-func parseResponse(resp *transport.JSONRPCResponse, target any) error {
-	if resp.Error != nil {
-		return fmt.Errorf("JSON-RPC error %d: %s", resp.Error.Code, resp.Error.Message)
-	}
-	if target == nil {
-		return nil
-	}
-	return json.Unmarshal(resp.Result, target)
-}
-
-// createTransport creates the appropriate transport based on config type
-func (c *Client) createTransport() (transport.Transport, error) {
-	switch c.config.GetType() {
-	case TransportSTDIO:
-		return transport.NewSTDIOTransport(transport.STDIOConfig{
-			Command: c.config.Command,
-			Args:    c.config.Args,
-			Env:     c.config.Env,
-		}), nil
-	case TransportHTTP:
-		return transport.NewHTTPTransport(transport.HTTPConfig{
-			URL:     c.config.URL,
-			Headers: c.config.Headers,
-		}), nil
-	case TransportSSE:
-		return transport.NewSSETransport(transport.SSEConfig{
-			URL:     c.config.URL,
-			Headers: c.config.Headers,
-		}), nil
-	default:
-		return nil, fmt.Errorf("unknown transport type: %s", c.config.GetType())
-	}
-}
-
-// Connect establishes a connection to the MCP server
+// Connect opens the session and reads what the server offers. Already
+// connected is a no-op, not a second process.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.connected {
+	if c.session != nil && c.session.Alive() {
+		c.mu.Unlock()
 		return nil
 	}
+	dial := c.dial
+	c.mu.Unlock()
 
-	var trans transport.Transport
-	var err error
-	if c.TransportFactory != nil {
-		trans, err = c.TransportFactory()
-	} else {
-		trans, err = c.createTransport()
-	}
+	session, err := dial(ctx, c.notifyToolsChanged)
 	if err != nil {
 		return err
 	}
-	c.transport = trans
 
-	// Start transport
-	if err := c.transport.Start(ctx); err != nil {
-		return fmt.Errorf("failed to start transport: %w", err)
+	c.mu.Lock()
+	c.session = session
+	c.mu.Unlock()
+
+	if err := c.refresh(ctx); err != nil {
+		_ = c.Disconnect()
+		return err
 	}
-
-	// Set up notification handler
-	c.transport.SetNotificationHandler(c.handleNotification)
-
-	// Send initialize request
-	initParams := InitializeParams{
-		ProtocolVersion: ProtocolVersion,
-		Capabilities:    ClientCapabilities{},
-		ClientInfo: ClientInfo{
-			Name:    ClientName,
-			Version: ClientVersion,
-		},
-	}
-
-	req := newRequest(MethodInitialize, initParams)
-	resp, err := c.transport.Send(ctx, req)
-	if err != nil {
-		_ = c.transport.Close()
-		return fmt.Errorf("initialize request failed: %w", err)
-	}
-
-	var initResult InitializeResult
-	if err := parseResponse(resp, &initResult); err != nil {
-		_ = c.transport.Close()
-		return fmt.Errorf("failed to parse initialize response: %w", err)
-	}
-
-	c.capabilities = initResult.Capabilities
-	c.serverInfo = initResult.ServerInfo
-
-	// Send initialized notification
-	notif := newNotification(MethodInitialized, nil)
-	if err := c.transport.SendNotification(ctx, notif); err != nil {
-		_ = c.transport.Close()
-		return fmt.Errorf("failed to send initialized notification: %w", err)
-	}
-
-	c.connected = true
-
-	// Fetch initial tool list
-	if c.capabilities.Tools != nil {
-		if tools, err := c.listToolsLocked(ctx); err == nil {
-			c.tools = tools
-		}
-	}
-
-	// Fetch initial resource list
-	if c.capabilities.Resources != nil {
-		if resources, err := c.listResourcesLocked(ctx); err == nil {
-			c.resources = resources
-		}
-	}
-
-	// Fetch initial prompt list
-	if c.capabilities.Prompts != nil {
-		if prompts, err := c.listPromptsLocked(ctx); err == nil {
-			c.prompts = prompts
-		}
-	}
-
 	return nil
 }
 
-// Disconnect closes the connection to the MCP server
+// refresh re-reads what the server offers, outside the lock so a slow server
+// does not block whoever is asking whether this one is connected.
+func (c *Client) refresh(ctx context.Context) error {
+	session := c.conn()
+	if session == nil {
+		return fmt.Errorf("not connected")
+	}
+	tools, err := session.Tools(ctx)
+	if err != nil {
+		return err
+	}
+	// A server need not offer resources or prompts, and saying so is not a
+	// failure worth dropping the connection over.
+	resources, _ := session.Resources(ctx)
+	prompts, _ := session.Prompts(ctx)
+
+	c.mu.Lock()
+	c.tools = tools
+	c.resources = toMCPResources(resources)
+	c.prompts = toMCPPrompts(prompts)
+	c.mu.Unlock()
+	return nil
+}
+
+// Disconnect ends the session; not connected is a no-op.
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	session := c.session
+	c.session, c.tools, c.resources, c.prompts = nil, nil, nil, nil
+	c.mu.Unlock()
 
-	if !c.connected {
+	if session == nil {
 		return nil
 	}
-
-	c.connected = false
-	if c.transport != nil {
-		return c.transport.Close()
-	}
-	return nil
+	return session.Close()
 }
 
-// IsConnected returns true if the client is connected
+// IsConnected reports whether the session is up.
 func (c *Client) IsConnected() bool {
+	session := c.conn()
+	return session != nil && session.Alive()
+}
+
+func (c *Client) conn() conn {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.connected && c.transport != nil && c.transport.IsAlive()
+	return c.session
 }
 
-// GetServerInfo returns information about the connected server
-func (c *Client) GetServerInfo() ServerInfo {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.serverInfo
-}
-
-// GetCapabilities returns the server's capabilities
-func (c *Client) GetCapabilities() ServerCapabilities {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.capabilities
-}
-
-// ListTools returns the tools available from the server
-func (c *Client) ListTools(ctx context.Context) ([]MCPTool, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.listToolsLocked(ctx)
-}
-
-func (c *Client) listToolsLocked(ctx context.Context) ([]MCPTool, error) {
-	if !c.connected {
-		return nil, fmt.Errorf("not connected")
-	}
-
-	req := newRequest(MethodToolsList, nil)
-	resp, err := c.transport.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("tools/list request failed: %w", err)
-	}
-
-	var result ToolsListResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tools/list response: %w", err)
-	}
-
-	c.tools = result.Tools
-	return result.Tools, nil
-}
-
-// GetCachedTools returns a copy of the cached tools without making an API call.
+// GetCachedTools is what the server last said it offers, so the /mcp listing
+// and the tool picker never block on one.
 func (c *Client) GetCachedTools() []MCPTool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make([]MCPTool, len(c.tools))
-	copy(out, c.tools)
+
+	out := make([]MCPTool, 0, len(c.tools))
+	for _, t := range c.tools {
+		schema := t.Schema()
+		tool := MCPTool{Name: schema.Name, Description: schema.Description}
+		if raw, err := json.Marshal(schema.Definition); err == nil {
+			tool.InputSchema = raw
+		}
+		out = append(out, tool)
+	}
 	return out
 }
 
-// getTransport returns the transport if connected, or an error
-func (c *Client) getTransport() (transport.Transport, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if !c.connected {
-		return nil, fmt.Errorf("not connected")
-	}
-	return c.transport, nil
-}
-
-// CallTool calls a tool on the MCP server
+// CallTool runs one of this server's tools, by the server's own name for it.
 func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]any) (*ToolResult, error) {
-	trans, err := c.getTransport()
+	tool, ok := c.tool(name)
+	if !ok {
+		if !c.IsConnected() {
+			return nil, fmt.Errorf("not connected")
+		}
+		return nil, fmt.Errorf("MCP server %s does not offer %s", c.config.Name, name)
+	}
+
+	input, err := json.Marshal(arguments)
 	if err != nil {
 		return nil, err
 	}
 
-	params := ToolsCallParams{
-		Name:      name,
-		Arguments: arguments,
+	// A tool that failed is not a failed call: the model is told what the
+	// server said, so it can correct itself.
+	result, runErr := tool.Run(ctx, ai.ToolCall{Name: name, Input: string(input)})
+	out := &ToolResult{Content: toolResultContent(result.Content), IsError: runErr != nil}
+	if runErr != nil && len(out.Content) == 0 {
+		out.Content = []ToolResultContent{{Type: "text", Text: runErr.Error()}}
 	}
-
-	req := newRequest(MethodToolsCall, params)
-	resp, err := trans.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("tools/call request failed: %w", err)
-	}
-
-	var result ToolResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse tools/call response: %w", err)
-	}
-
-	return &result, nil
+	return out, nil
 }
 
-// ListResources returns the resources available from the server
-func (c *Client) ListResources(ctx context.Context) ([]MCPResource, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.listResourcesLocked(ctx)
-}
-
-func (c *Client) listResourcesLocked(ctx context.Context) ([]MCPResource, error) {
-	if !c.connected {
-		return nil, fmt.Errorf("not connected")
-	}
-
-	req := newRequest(MethodResourcesList, nil)
-	resp, err := c.transport.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("resources/list request failed: %w", err)
-	}
-
-	var result ResourcesListResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse resources/list response: %w", err)
-	}
-
-	c.resources = result.Resources
-	return result.Resources, nil
-}
-
-// GetCachedResources returns a copy of the cached resources without making an API call.
-func (c *Client) GetCachedResources() []MCPResource {
+func (c *Client) tool(name string) (core.Tool, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	out := make([]MCPResource, len(c.resources))
-	copy(out, c.resources)
+	for _, t := range c.tools {
+		if t.Schema().Name == name {
+			return t, true
+		}
+	}
+	return nil, false
+}
+
+// toolResultContent is what the server returned, in the shape San draws. A
+// block it cannot draw is named rather than dropped.
+func toolResultContent(content ai.Content) []ToolResultContent {
+	out := make([]ToolResultContent, 0, len(content))
+	for _, b := range content {
+		switch b.Type {
+		case ai.BlockText:
+			out = append(out, ToolResultContent{Type: "text", Text: b.Text})
+		case ai.BlockImage:
+			if b.Image != nil {
+				out = append(out, ToolResultContent{Type: "image", Data: b.Image.Data, MimeType: b.Image.MediaType})
+			}
+		default:
+			out = append(out, ToolResultContent{Type: "text", Text: fmt.Sprintf("(%s)", b.Type)})
+		}
+	}
 	return out
 }
 
-// ReadResource reads a resource from the MCP server
-func (c *Client) ReadResource(ctx context.Context, uri string) ([]ResourceContent, error) {
-	trans, err := c.getTransport()
-	if err != nil {
-		return nil, err
+func toMCPResources(in []sdkmcp.Resource) []MCPResource {
+	out := make([]MCPResource, 0, len(in))
+	for _, r := range in {
+		out = append(out, MCPResource{URI: r.URI, Name: r.Name, Description: r.Description, MimeType: r.MediaType})
 	}
-
-	params := ResourcesReadParams{URI: uri}
-	req := newRequest(MethodResourcesRead, params)
-	resp, err := trans.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("resources/read request failed: %w", err)
-	}
-
-	var result ResourcesReadResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse resources/read response: %w", err)
-	}
-
-	return result.Contents, nil
-}
-
-// ListPrompts returns the prompts available from the server
-func (c *Client) ListPrompts(ctx context.Context) ([]MCPPrompt, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.listPromptsLocked(ctx)
-}
-
-func (c *Client) listPromptsLocked(ctx context.Context) ([]MCPPrompt, error) {
-	if !c.connected {
-		return nil, fmt.Errorf("not connected")
-	}
-
-	req := newRequest(MethodPromptsList, nil)
-	resp, err := c.transport.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("prompts/list request failed: %w", err)
-	}
-
-	var result PromptsListResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse prompts/list response: %w", err)
-	}
-
-	c.prompts = result.Prompts
-	return result.Prompts, nil
-}
-
-// GetCachedPrompts returns a copy of the cached prompts without making an API call.
-func (c *Client) GetCachedPrompts() []MCPPrompt {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	out := make([]MCPPrompt, len(c.prompts))
-	copy(out, c.prompts)
 	return out
 }
 
-// GetPrompt retrieves a specific prompt with the given arguments
-func (c *Client) GetPrompt(ctx context.Context, name string, arguments map[string]string) (*PromptResult, error) {
-	trans, err := c.getTransport()
-	if err != nil {
-		return nil, err
+func toMCPPrompts(in []sdkmcp.Prompt) []MCPPrompt {
+	out := make([]MCPPrompt, 0, len(in))
+	for _, p := range in {
+		out = append(out, MCPPrompt{Name: p.Name, Description: p.Description})
 	}
-
-	params := PromptsGetParams{
-		Name:      name,
-		Arguments: arguments,
-	}
-
-	req := newRequest(MethodPromptsGet, params)
-	resp, err := trans.Send(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("prompts/get request failed: %w", err)
-	}
-
-	var result PromptResult
-	if err := parseResponse(resp, &result); err != nil {
-		return nil, fmt.Errorf("failed to parse prompts/get response: %w", err)
-	}
-
-	return &result, nil
+	return out
 }
 
-// Ping sends a ping to check if the server is responsive
-func (c *Client) Ping(ctx context.Context) error {
-	trans, err := c.getTransport()
-	if err != nil {
-		return err
-	}
-
-	req := newRequest(MethodPing, nil)
-	resp, err := trans.Send(ctx, req)
-	if err != nil {
-		return fmt.Errorf("ping failed: %w", err)
-	}
-
-	return parseResponse(resp, nil)
-}
-
-// SetOnToolsChanged sets a callback for when tools list changes
+// SetOnToolsChanged installs the callback for a tool list that changed. Before
+// or after Connect both work.
 func (c *Client) SetOnToolsChanged(callback func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.onToolsChanged = callback
 }
 
-// handleNotification processes incoming notifications from the server.
-// Runs in a goroutine to avoid deadlocking when Connect() holds mu.
-func (c *Client) handleNotification(method string, _ []byte) {
-	if method != MethodToolsListChanged {
+// toolsChangedTimeout bounds the re-read a change notification triggers: a
+// server that announces a change and then stops answering leaks a goroutine.
+const toolsChangedTimeout = 30 * time.Second
+
+// notifyToolsChanged re-reads the tools, then tells whoever asked — otherwise
+// every consumer asks again at once. A failed re-read tells no one, leaving the
+// last good list in place.
+func (c *Client) notifyToolsChanged() {
+	ctx, cancel := context.WithTimeout(context.Background(), toolsChangedTimeout)
+	defer cancel()
+	if err := c.refresh(ctx); err != nil {
 		return
 	}
-
-	go func() {
-		ctx := context.Background()
-		if _, err := c.ListTools(ctx); err != nil {
-			return // Tool list refresh failed; will retry on next notification
-		}
-
-		c.mu.RLock()
-		callback := c.onToolsChanged
-		c.mu.RUnlock()
-
-		if callback != nil {
-			callback()
-		}
-	}()
+	c.mu.RLock()
+	callback := c.onToolsChanged
+	c.mu.RUnlock()
+	if callback != nil {
+		callback()
+	}
 }
 
-// Config returns the server configuration
-func (c *Client) Config() ServerConfig {
-	return c.config
-}
-
-// ToServer converts the client state to a Server struct for display
+// ToServer is this server as /mcp shows it.
 func (c *Client) ToServer() Server {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	status := c.statusLocked()
+	resources := make([]MCPResource, len(c.resources))
+	copy(resources, c.resources)
+	prompts := make([]MCPPrompt, len(c.prompts))
+	copy(prompts, c.prompts)
+	c.mu.RUnlock()
 
 	return Server{
-		Config:       c.config,
-		Status:       c.getStatusLocked(),
-		Capabilities: c.capabilities,
-		ServerInfo:   c.serverInfo,
-		Tools:        c.tools,
-		Resources:    c.resources,
-		Prompts:      c.prompts,
+		Config:    c.config,
+		Status:    status,
+		Tools:     c.GetCachedTools(),
+		Resources: resources,
+		Prompts:   prompts,
 	}
 }
 
-// getStatusLocked returns the current connection status (must be called with lock held)
-func (c *Client) getStatusLocked() ServerStatus {
-	if !c.connected {
+// statusLocked separates a client that never connected from one whose session
+// has died, which is worth a reconnect.
+func (c *Client) statusLocked() ServerStatus {
+	switch {
+	case c.session == nil:
 		return StatusDisconnected
-	}
-	if c.transport != nil && c.transport.IsAlive() {
+	case c.session.Alive():
 		return StatusConnected
 	}
 	return StatusError
-}
-
-// MarshalJSON implements json.Marshaler for debugging
-func (c *Client) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.ToServer())
 }
