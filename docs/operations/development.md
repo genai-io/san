@@ -67,5 +67,5 @@ the CI pin, so a contributor on a newer Go than CI can see findings CI does not
 affected). To reproduce exactly what CI sees:
 
 ```bash
-GOTOOLCHAIN=go1.25.13 make vulncheck
+GOTOOLCHAIN=go1.26.8 make vulncheck
 ```

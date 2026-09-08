@@ -26,7 +26,7 @@ changes are skipped — format those manually with `make format`.
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - An LLM API key (Anthropic, OpenAI, or Google)
 
 ### Project Structure
