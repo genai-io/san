@@ -144,6 +144,7 @@ func (m *model) reloadProjectServices(cwd string) {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
 	m.services.MCP = mcp.DefaultRegistry()
+	m.services.MCP.SetOnToolsChanged(m.syncMCPTools)
 
 	persona.Initialize(cwd)
 	m.services.Persona = persona.Default()
