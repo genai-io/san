@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
@@ -20,7 +18,6 @@ import (
 // model behind it is the SDK's test double.
 type mockLLMProvider struct {
 	responses []CompletionResponse
-	callIdx   int
 	models    []ModelInfo
 	listErr   error
 	listCalls int
@@ -30,18 +27,15 @@ type mockLLMProvider struct {
 
 func (m *mockLLMProvider) Client(string, map[string]string) (*ai.Client, error) {
 	if m.driver == nil {
-		m.driver = aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-			resp := CompletionResponse{Content: ai.TextContent("no more responses"), StopReason: ai.StopEndTurn}
-			if m.callIdx < len(m.responses) {
-				resp = m.responses[m.callIdx]
-				m.callIdx++
-			}
-			return aitest.Replies(ai.Response{
-				Content:    resp.Content,
-				StopReason: ai.StopEndTurn,
-				Usage:      ai.Usage{Input: resp.Usage.Input, Output: resp.Usage.Output},
-			})(ctx, req)
-		})
+		turns := make([]aitest.Turn, 0, len(m.responses))
+		for _, r := range m.responses {
+			turns = append(turns, aitest.Replies(ai.Response{
+				Content:    r.Content,
+				StopReason: r.StopReason,
+				Usage:      ai.Usage{Input: r.Usage.Input, Output: r.Usage.Output},
+			}))
+		}
+		m.driver = aitest.New(turns...)
 	}
 	return m.driver.Client(), nil
 }

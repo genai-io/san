@@ -12,7 +12,7 @@ import (
 )
 
 func TestAgent_SingleTurn_EndTurn(t *testing.T) {
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.EndTurnResponse("hello world"),
 	)
 
@@ -38,7 +38,7 @@ func TestAgent_SingleTurn_EndTurn(t *testing.T) {
 func TestAgent_MultiTurn_ToolUse(t *testing.T) {
 	testutil.RegisterFakeTool(t, "MyTool", "tool output")
 
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.ToolCallResponse("MyTool", "tc1", `{}`),
 		testutil.EndTurnResponse("done after tool"),
 	)
@@ -83,7 +83,7 @@ func TestAgent_MaxSteps(t *testing.T) {
 		responses[i] = testutil.ToolCallResponse("AlwaysTool", "tc", `{}`)
 	}
 
-	ag, _ := testutil.NewTestAgentWithMaxSteps(t, 3, responses...)
+	ag := testutil.NewTestAgentWithMaxSteps(t, 3, responses...)
 
 	result, err := testutil.RunAgent(context.Background(), ag, "go")
 	if err != nil {
@@ -99,7 +99,7 @@ func TestAgent_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.EndTurnResponse("should not reach"),
 	)
 
@@ -110,7 +110,7 @@ func TestAgent_ContextCancellation(t *testing.T) {
 }
 
 func TestAgent_UnknownTool(t *testing.T) {
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.ToolCallResponse("NonExistent", "tc1", `{}`),
 		testutil.EndTurnResponse("recovered"),
 	)
@@ -140,7 +140,7 @@ func TestAgent_MultipleToolCalls(t *testing.T) {
 	testutil.RegisterFakeTool(t, "ToolA", "result A")
 	testutil.RegisterFakeTool(t, "ToolB", "result B")
 
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.MultiToolCallResponse(
 			core.ToolCall{ID: "tc1", Name: "ToolA", Input: `{}`},
 			core.ToolCall{ID: "tc2", Name: "ToolB", Input: `{}`},
@@ -171,7 +171,7 @@ func TestAgent_MultipleToolCalls(t *testing.T) {
 func TestAgent_TokenAccumulation(t *testing.T) {
 	testutil.RegisterFakeTool(t, "Tick", "ok")
 
-	ag, _ := testutil.NewTestAgent(t,
+	ag := testutil.NewTestAgent(t,
 		testutil.ToolCallResponse("Tick", "tc1", `{}`),
 		testutil.ToolCallResponse("Tick", "tc2", `{}`),
 		testutil.EndTurnResponseWithUsage("done", 20, 10),

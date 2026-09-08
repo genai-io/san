@@ -21,12 +21,7 @@ type fakeSession struct {
 	// closeDelay is how long a teardown takes, for the tests about not
 	// blocking on one.
 	closeDelay time.Duration
-	// dead makes a session that connects and is immediately not alive, which
-	// is what the registry replaces.
-	dead bool
-
-	tools     []core.Tool
-	resources []sdkmcp.Resource
+	resources  []sdkmcp.Resource
 
 	mu         sync.Mutex
 	closed     bool
@@ -42,16 +37,13 @@ func newSlowSession(d time.Duration) *fakeSession {
 	return s
 }
 
-func (s *fakeSession) Tools(context.Context) ([]core.Tool, error) { return s.tools, nil }
+func (s *fakeSession) Tools(context.Context) ([]core.Tool, error) { return nil, nil }
 
 func (s *fakeSession) Resources(context.Context) ([]sdkmcp.Resource, error) { return s.resources, nil }
 
 func (s *fakeSession) Prompts(context.Context) ([]sdkmcp.Prompt, error) { return nil, nil }
 
 func (s *fakeSession) Alive() bool {
-	if s.dead {
-		return false
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return !s.closed
