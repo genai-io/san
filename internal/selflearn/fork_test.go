@@ -1,35 +1,15 @@
 package selflearn
 
 import (
-	"iter"
-
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 
 	"context"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
 )
-
-// scripted answers with a queued sequence of responses, one per call, and
-// falls back to a refusal once the queue is dry. The driver keeps every request
-// it was handed, which is how these tests assert on the assembled prompt.
-func scripted(responses ...ai.Response) *aitest.Driver {
-	var mu sync.Mutex
-	queue := responses
-	return aitest.Always(func(ctx context.Context, req *ai.Request) iter.Seq2[ai.Delta, error] {
-		mu.Lock()
-		r := ai.Response{Content: ai.TextContent("Nothing to save."), StopReason: ai.StopEndTurn}
-		if len(queue) > 0 {
-			r, queue = queue[0], queue[1:]
-		}
-		mu.Unlock()
-		return aitest.Replies(r)(ctx, req)
-	})
-}
 
 // TestTrimTrailingPendingMessages guards against the "messages must
 // alternate" provider rejection: when the snapshot ends with a tool_result
@@ -123,13 +103,10 @@ func TestRunReviewWritesMemoryAndInheritsSystem(t *testing.T) {
 	store := newTestStore(t)
 	mgr := NewSkillManager("/work/project-x", AllowAllSkillActions())
 
-	llm := scripted([]ai.Response{
-		{
-			Content:    ai.Content{ai.ToolCallBlock(core.ToolCall{ID: "call-1", Name: "memory_write", Input: `{"action":"add","content":"the user prefers tabs"}`})},
-			StopReason: ai.StopToolUse,
-		},
-		{Content: ai.TextContent("Saved 1 memory entry."), StopReason: ai.StopEndTurn},
-	}...)
+	llm := aitest.New(
+		aitest.Asks(core.ToolCall{ID: "call-1", Name: "memory_write", Input: `{"action":"add","content":"the user prefers tabs"}`}),
+		aitest.Says("Saved 1 memory entry."),
+	)
 
 	parentSys := core.NewSystem()
 	parentSys.Use(core.Section{

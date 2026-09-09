@@ -82,11 +82,11 @@ func handleMCPList(reg *coremcp.Registry) (string, error) {
 			if len(srv.Tools) > 0 {
 				fmt.Fprintf(&sb, "    Tools: %d\n", len(srv.Tools))
 			}
-			if len(srv.Resources) > 0 {
-				fmt.Fprintf(&sb, "    Resources: %d\n", len(srv.Resources))
+			if srv.ResourceCount > 0 {
+				fmt.Fprintf(&sb, "    Resources: %d\n", srv.ResourceCount)
 			}
-			if len(srv.Prompts) > 0 {
-				fmt.Fprintf(&sb, "    Prompts: %d\n", len(srv.Prompts))
+			if srv.PromptCount > 0 {
+				fmt.Fprintf(&sb, "    Prompts: %d\n", srv.PromptCount)
 			}
 		}
 

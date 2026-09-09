@@ -37,11 +37,12 @@ type Client struct {
 	// dial opens the session. Tests replace it; see conn.
 	dial func(ctx context.Context, onToolsChanged func()) (conn, error)
 
-	mu        sync.RWMutex
-	session   conn
-	tools     []core.Tool
-	resources []MCPResource
-	prompts   []MCPPrompt
+	mu      sync.RWMutex
+	session conn
+	tools   []core.Tool
+	// Nothing reads a resource or a prompt here; /mcp says how many there are.
+	resourceCount int
+	promptCount   int
 
 	onToolsChanged func()
 }
@@ -65,17 +66,9 @@ func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 			// San is full-screen, so this cannot go to the terminal.
 			Stderr: serverLog{name: config.Name},
 		}
-		var opts []sdkmcp.Option
-		if onToolsChanged != nil {
-			// The SDK hands the callback its own client; San's re-read goes
-			// through this one, which is the same session under San's cache.
-			opts = append(opts, sdkmcp.OnToolsChanged(func(*sdkmcp.Client) { onToolsChanged() }))
-		}
-		c, err := sdkmcp.Connect(ctx, server, opts...)
-		if err != nil {
-			return nil, err
-		}
-		return sdkSession{c}, nil
+		// The SDK hands the callback its own client; San's re-read goes through
+		// this one, which is the same session under San's cache.
+		return sdkmcp.Connect(ctx, server, sdkmcp.OnToolsChanged(func(*sdkmcp.Client) { onToolsChanged() }))
 	}
 }
 
@@ -87,13 +80,6 @@ func (l serverLog) Write(p []byte) (int, error) {
 		glog.Logger().Debug("mcp server output", zap.String("server", l.name), zap.String("line", line))
 	}
 	return len(p), nil
-}
-
-// sdkSession is the SDK's client under what this package asks.
-type sdkSession struct{ *sdkmcp.Client }
-
-func (s sdkSession) Tools(ctx context.Context) ([]core.Tool, error) {
-	return s.Client.Tools(ctx)
 }
 
 // Connect opens the session and reads what the server offers. Already
@@ -141,8 +127,7 @@ func (c *Client) refresh(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.tools = tools
-	c.resources = toMCPResources(resources)
-	c.prompts = toMCPPrompts(prompts)
+	c.resourceCount, c.promptCount = len(resources), len(prompts)
 	c.mu.Unlock()
 	return nil
 }
@@ -151,7 +136,8 @@ func (c *Client) refresh(ctx context.Context) error {
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
 	session := c.session
-	c.session, c.tools, c.resources, c.prompts = nil, nil, nil, nil
+	c.session, c.tools = nil, nil
+	c.resourceCount, c.promptCount = 0, 0
 	c.mu.Unlock()
 
 	if session == nil {
@@ -181,11 +167,7 @@ func (c *Client) GetCachedTools() []MCPTool {
 	out := make([]MCPTool, 0, len(c.tools))
 	for _, t := range c.tools {
 		schema := t.Schema()
-		tool := MCPTool{Name: schema.Name, Description: schema.Description}
-		if raw, err := json.Marshal(schema.Definition); err == nil {
-			tool.InputSchema = raw
-		}
-		out = append(out, tool)
+		out = append(out, MCPTool{Name: schema.Name, Description: schema.Description, InputSchema: schema.Definition})
 	}
 	return out
 }
@@ -245,22 +227,6 @@ func toolResultContent(content ai.Content) []ToolResultContent {
 	return out
 }
 
-func toMCPResources(in []sdkmcp.Resource) []MCPResource {
-	out := make([]MCPResource, 0, len(in))
-	for _, r := range in {
-		out = append(out, MCPResource{URI: r.URI, Name: r.Name, Description: r.Description, MimeType: r.MediaType})
-	}
-	return out
-}
-
-func toMCPPrompts(in []sdkmcp.Prompt) []MCPPrompt {
-	out := make([]MCPPrompt, 0, len(in))
-	for _, p := range in {
-		out = append(out, MCPPrompt{Name: p.Name, Description: p.Description})
-	}
-	return out
-}
-
 // SetOnToolsChanged installs the callback for a tool list that changed. Before
 // or after Connect both work.
 func (c *Client) SetOnToolsChanged(callback func()) {
@@ -294,18 +260,15 @@ func (c *Client) notifyToolsChanged() {
 func (c *Client) ToServer() Server {
 	c.mu.RLock()
 	status := c.statusLocked()
-	resources := make([]MCPResource, len(c.resources))
-	copy(resources, c.resources)
-	prompts := make([]MCPPrompt, len(c.prompts))
-	copy(prompts, c.prompts)
+	resources, prompts := c.resourceCount, c.promptCount
 	c.mu.RUnlock()
 
 	return Server{
-		Config:    c.config,
-		Status:    status,
-		Tools:     c.GetCachedTools(),
-		Resources: resources,
-		Prompts:   prompts,
+		Config:        c.config,
+		Status:        status,
+		Tools:         c.GetCachedTools(),
+		ResourceCount: resources,
+		PromptCount:   prompts,
 	}
 }
 

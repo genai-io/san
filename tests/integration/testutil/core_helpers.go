@@ -57,7 +57,7 @@ func stubClient(d *aitest.Driver) func([]core.Message) (*ai.Client, error) {
 
 // NewTestAgent creates a core.Agent backed by a model with queued responses.
 // All globally registered tools (including dynamically registered fakes) are included.
-func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
+func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) core.Agent {
 	t.Helper()
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
@@ -68,7 +68,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) (core.Agent
 		Tools:  buildAllRegisteredTools(cwd),
 
 		MaxSteps: 100,
-	}), fakeLLM
+	})
 }
 
 // buildAllRegisteredTools creates a core.Tools wrapping ALL tools in the global registry,
@@ -90,7 +90,7 @@ func buildAllRegisteredTools(cwd string) core.Tools {
 }
 
 // NewTestAgentWithPermission creates a core.Agent with a permission function wrapping tools.
-func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
+func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, responses ...llm.CompletionResponse) core.Agent {
 	t.Helper()
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
@@ -101,11 +101,11 @@ func NewTestAgentWithPermission(t *testing.T, permFn perm.PermissionFunc, respon
 		Tools:    buildAllRegisteredTools(cwd),
 		Gate:     tool.Permission(permFn),
 		MaxSteps: 100,
-	}), fakeLLM
+	})
 }
 
 // NewTestAgentWithMaxSteps creates a core.Agent with a specific max steps limit.
-func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) (core.Agent, *aitest.Driver) {
+func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.CompletionResponse) core.Agent {
 	t.Helper()
 	fakeLLM := queued(responses)
 	cwd := t.TempDir()
@@ -116,7 +116,7 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 		Tools:  buildAllRegisteredTools(cwd),
 
 		MaxSteps: maxSteps,
-	}), fakeLLM
+	})
 }
 
 // BuildTestTools adapts all globally registered tools into a core.Tools for use in tests.

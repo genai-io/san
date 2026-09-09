@@ -3,8 +3,6 @@
 // are sdk-go's — see client.go.
 package mcp
 
-import "encoding/json"
-
 // TransportType defines the type of MCP transport
 type TransportType string
 
@@ -62,23 +60,9 @@ type MCPConfig struct {
 
 // MCPTool represents a tool exposed by an MCP server
 type MCPTool struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"inputSchema,omitempty"`
-}
-
-// MCPResource represents a resource exposed by an MCP server
-type MCPResource struct {
-	URI         string `json:"uri"`
-	Name        string `json:"name,omitempty"`
-	Description string `json:"description,omitempty"`
-	MimeType    string `json:"mimeType,omitempty"`
-}
-
-// MCPPrompt represents a prompt template exposed by an MCP server
-type MCPPrompt struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	InputSchema any    `json:"inputSchema,omitempty"`
 }
 
 // ToolResult represents the result of calling an MCP tool
@@ -108,10 +92,12 @@ const (
 
 // Server represents a connected MCP server with its current state
 type Server struct {
-	Config    ServerConfig  `json:"config"`
-	Status    ServerStatus  `json:"status"`
-	Error     string        `json:"error,omitempty"`
-	Tools     []MCPTool     `json:"tools,omitempty"`
-	Resources []MCPResource `json:"resources,omitempty"`
-	Prompts   []MCPPrompt   `json:"prompts,omitempty"`
+	Config ServerConfig `json:"config"`
+	Status ServerStatus `json:"status"`
+	Error  string       `json:"error,omitempty"`
+	Tools  []MCPTool    `json:"tools,omitempty"`
+	// What the server offers to read and to fill in, as counts: /mcp says how
+	// many, and nothing here reads one.
+	ResourceCount int `json:"resourceCount,omitempty"`
+	PromptCount   int `json:"promptCount,omitempty"`
 }
