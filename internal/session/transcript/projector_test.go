@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/todo"
 )
 
 func TestProjectStartAndAppendMessages(t *testing.T) {
@@ -83,10 +81,11 @@ func TestProjectAutoPilotRoundTrip(t *testing.T) {
 
 func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 14, 10, 0, 0, time.UTC)
-	task := todo.Item{
+	task := TrackerItemView{
 		ID:              "1",
 		Subject:         "Refactor",
-		Status:          todo.StatusInProgress,
+		Status:          "in_progress",
+		Metadata:        map[string]any{"task_id": "bg-1"},
 		CreatedAt:       taskTime,
 		UpdatedAt:       taskTime,
 		StatusChangedAt: taskTime,
@@ -94,13 +93,16 @@ func TestProjectTasksAndWorktreePatches(t *testing.T) {
 	wt := &WorktreeState{OriginalCwd: "/repo", WorktreePath: "/repo/.wt/1", WorktreeName: "fix-1"}
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]todo.Item{task}), PatchWorktree(wt)}}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTasks([]TrackerItemView{task}), PatchWorktree(wt)}}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
 	}
 	if len(transcript.State.Tasks) != 1 || transcript.State.Tasks[0].Subject != "Refactor" {
 		t.Fatalf("unexpected tasks: %+v", transcript.State.Tasks)
+	}
+	if transcript.State.Tasks[0].Metadata["task_id"] != "bg-1" {
+		t.Fatalf("task metadata was not projected: %+v", transcript.State.Tasks[0].Metadata)
 	}
 	if transcript.State.Worktree == nil || transcript.State.Worktree.WorktreeName != "fix-1" {
 		t.Fatalf("unexpected worktree: %+v", transcript.State.Worktree)

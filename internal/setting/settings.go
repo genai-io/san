@@ -407,6 +407,7 @@ type HookCmd struct {
 	If             string            `json:"if,omitempty"`
 	Shell          string            `json:"shell,omitempty"`
 	Model          string            `json:"model,omitempty"`
+	Interactive    bool              `json:"interactive,omitempty"`
 	Async          bool              `json:"async,omitempty"`
 	AsyncRewake    bool              `json:"asyncRewake,omitempty"`
 	Timeout        int               `json:"timeout,omitempty"`

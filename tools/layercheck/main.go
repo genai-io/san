@@ -60,12 +60,16 @@ func main() {
 	for _, p := range pkgs {
 		fromRel, fromLayer, ok := lookupLayer(layerOf, p.ImportPath)
 		if !ok {
-			continue // not one of ours, or unmapped
+			if after, scoped := scopedPackagePath(p.ImportPath); scoped {
+				unknown[after] = true
+			}
+			continue
 		}
-		for _, imp := range p.Imports {
+		imports := append(append(append([]string(nil), p.Imports...), p.TestImports...), p.XTestImports...)
+		for _, imp := range imports {
 			toRel, toLayer, ok := lookupLayer(layerOf, imp)
 			if !ok {
-				if after, ok0 := strings.CutPrefix(imp, repoModule+"/"); ok0 {
+				if after, scoped := scopedPackagePath(imp); scoped {
 					unknown[after] = true
 				}
 				continue
@@ -109,6 +113,17 @@ func main() {
 		fmt.Printf("  %s (%s) -> %s (%s)\n", v.from, v.fromLayer, v.to, v.toLayer)
 	}
 	os.Exit(1)
+}
+
+// scopedPackagePath returns repository-relative packages governed by this
+// checker. Test helpers and tools outside internal/ and cmd/ have no layer in
+// the architecture map and are intentionally outside its scope.
+func scopedPackagePath(absPath string) (string, bool) {
+	rel, own := strings.CutPrefix(absPath, repoModule+"/")
+	if !own {
+		return "", false
+	}
+	return rel, strings.HasPrefix(rel, "internal/") || strings.HasPrefix(rel, "cmd/")
 }
 
 // loadLayerMap reads docs/reference/package-map.md and returns the package
@@ -177,13 +192,15 @@ func codeCell(cell string) (string, bool) {
 
 // pkgInfo is the subset of `go list -json` output that we need.
 type pkgInfo struct {
-	ImportPath string
-	Imports    []string
+	ImportPath   string
+	Imports      []string
+	TestImports  []string
+	XTestImports []string
 }
 
 // loadPackages calls `go list -json ./internal/... ./cmd/...` and decodes the
-// concatenated JSON stream into a slice. Test packages are excluded via the
-// default behavior of `go list`; we don't enumerate test imports.
+// concatenated JSON stream into a slice. TestImports and XTestImports are
+// checked alongside production imports so tests cannot bypass layer rules.
 func loadPackages() ([]pkgInfo, error) {
 	cmd := exec.Command("go", "list", "-json", "./internal/...", "./cmd/...")
 	out, err := cmd.Output()

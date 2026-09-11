@@ -121,9 +121,11 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	content, providerImages := m.adaptTurnForProvider(msg.Content, msg.Images)
 	msg.Content = content
 	msg.AutopilotNote = autopilotNote
-	m.conv.Append(msg)
+	msg = m.conv.Append(msg)
 	m.userInput.Reset()
-	return m.SubmitToAgent(msg.Content, providerImages)
+	providerMsg := core.UserMessage(msg.Content, providerImages)
+	providerMsg.ID = msg.ID
+	return m.SubmitToAgent(providerMsg)
 }
 
 // runSlashCommandIfMatched returns (cmd, true) if `raw` is a slash command
@@ -223,19 +225,24 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 	return cmd
 }
 
-// SubmitToAgent is the single exit point for "send this content to the
+// SubmitToAgent is the single exit point for "send this message to the
 // agent" — user Enter, slash command output, skill button, cron fire,
 // hook continuation, hub notification. Ensures the agent session is up,
-// pushes content+images onto its inbox, returns the outbox-poll cmd.
+// pushes the already-identified message onto its inbox, returns the
+// outbox-poll cmd.
 // On no-provider or ensureAgentSession failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
-func (m *model) SubmitToAgent(content string, images []core.Attachment) tea.Cmd {
+func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
+	if msg.ID == "" {
+		msg.ID = core.NewMessageID()
+	}
+	content := msg.Text()
 	log.QueueLog("SubmitToAgent: %q", truncate(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}
 
-	startCmd, err := m.ensureAgentSession(content)
+	startCmd, err := m.ensureAgentSession(msg.ID)
 	if err != nil {
 		m.conv.AddNotice("Failed to start agent: " + err.Error())
 		return tea.Batch(m.CommitMessages()...)
@@ -243,7 +250,7 @@ func (m *model) SubmitToAgent(content string, images []core.Attachment) tea.Cmd 
 
 	m.env.DetectThinkingKeywords(content)
 
-	sendCmd := m.sendToAgent(content, images)
+	sendCmd := m.sendToAgent(msg)
 	if startCmd != nil {
 		return tea.Batch(startCmd, sendCmd)
 	}
@@ -266,9 +273,10 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}
-	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg})
+	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg})
 	if pluginRoot != "" {
 		m.services.Agent.SetPluginRoot(pluginRoot)
 	}
-	return m.SubmitToAgent(fullMsg, nil)
+	msg, _ := chat.ToMessage()
+	return m.SubmitToAgent(msg)
 }

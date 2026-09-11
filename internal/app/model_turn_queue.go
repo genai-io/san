@@ -25,8 +25,9 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if msg.Blocked {
 		log.QueueLog("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason
-		m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg})
-		return m.sendToAgent(blockMsg, nil)
+		chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg})
+		providerMsg, _ := chat.ToMessage()
+		return m.sendToAgent(providerMsg)
 	}
 	log.QueueLog("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
@@ -90,18 +91,15 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
 	content, providerImages := m.adaptTurnForProvider(content, images)
-	m.conv.Append(core.ChatMessage{
+	chat := m.conv.Append(core.ChatMessage{
 		Role:           core.ChatUser,
 		Content:        content,
 		DisplayContent: displayContent,
 		Images:         images,
 	})
-	svc := m.services.Agent
-	send := func() tea.Msg {
-		svc.Send(content, providerImages)
-		return nil
-	}
-	return tea.Batch(append(m.CommitMessages(), send)...), true
+	providerMsg := core.UserMessage(content, providerImages)
+	providerMsg.ID = chat.ID
+	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(providerMsg))...), true
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {
@@ -172,7 +170,7 @@ func (m *model) injectIntoRunningTurn(n mainNotice) tea.Cmd {
 	m.showNoticeLine(n)
 	cmds := m.CommitMessages()
 	if n.Content != "" { // display-only notices have nothing for the model to read
-		cmds = append(cmds, m.sendToAgent(n.Content, nil))
+		cmds = append(cmds, m.sendToAgent(core.UserMessage(n.Content, nil)))
 	}
 	return tea.Batch(cmds...)
 }
@@ -184,7 +182,7 @@ func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.SubmitToAgent(n.Content, nil)
+	return m.SubmitToAgent(core.UserMessage(n.Content, nil))
 }
 
 func (m *model) showNoticeLine(n mainNotice) {
@@ -246,22 +244,27 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // handles provider/agent state.
 func (m *model) injectCronPrompt(prompt string) tea.Cmd {
 	m.conv.AddNotice("Scheduled task fired")
-	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt})
-	return m.SubmitToAgent(prompt, nil)
+	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt})
+	msg, _ := chat.ToMessage()
+	return m.SubmitToAgent(msg)
 }
 
 // injectAsyncHookContinuation surfaces an async hook's follow-up: the hook
-// pushed one or more context lines + a continuation prompt; we display the
-// context as user messages and submit the continuation to the agent.
+// pushed one or more context lines + a continuation prompt. They form one
+// displayed and delivered user turn so an already-running agent receives the
+// hook findings as well as the instruction to continue.
 func (m *model) injectAsyncHookContinuation(item trigger.AsyncHookRewake) tea.Cmd {
 	if item.Notice != "" {
 		m.conv.AddNotice(item.Notice)
 	}
-	if len(item.Context) == 0 {
+	parts := append([]string(nil), item.Context...)
+	if item.ContinuationPrompt != "" {
+		parts = append(parts, item.ContinuationPrompt)
+	}
+	if len(parts) == 0 {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	for _, ctx := range item.Context {
-		m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: ctx})
-	}
-	return m.SubmitToAgent(item.ContinuationPrompt, nil)
+	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: strings.Join(parts, "\n\n")})
+	msg, _ := chat.ToMessage()
+	return m.SubmitToAgent(msg)
 }

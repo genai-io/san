@@ -54,6 +54,10 @@ var _ BackgroundTask = (*BashTask)(nil)
 
 // NewBashTask creates a new bash task
 func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc) *BashTask {
+	return newBashTask(id, command, description, cmd, cancel, "")
+}
+
+func newBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc, outputPath string) *BashTask {
 	task := &BashTask{
 		ID:          id,
 		Command:     command,
@@ -61,7 +65,7 @@ func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.
 		status:      StatusRunning,
 		PID:         cmd.Process.Pid,
 		StartTime:   time.Now(),
-		OutputFile:  initOutputFile(id),
+		OutputFile:  initializeOutputFile(outputPath),
 		cmd:         cmd,
 		cancel:      cancel,
 		done:        make(chan struct{}),

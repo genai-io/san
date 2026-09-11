@@ -9,6 +9,10 @@ make lint
 make format
 ```
 
+Build targets do not rewrite source files. `make format` is the explicit
+mutating command; `make release` runs `format-check` and fails when the tree
+needs formatting.
+
 ## Sandbox-Friendly Test Command
 
 Some environments block writes to the default Go build cache. Use a writable
@@ -35,7 +39,7 @@ make install-format-tools
 | `go vet` | the standard suspicious-construct set |
 | `make format-check` | files `gofmt` / `goimports` would rewrite |
 | `make lint-go` | the linters configured in `.golangci.yml` |
-| `make lint-layers` | imports that violate the layer order |
+| `make lint-layers` | production or test imports that violate the layer order, plus packages missing from the map |
 
 `make lint-go` installs `golangci-lint` on first use; `make install-lint-tools`
 does it ahead of time. The configured linters report defects rather than style,

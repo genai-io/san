@@ -49,6 +49,7 @@ type TrackerItemView struct {
 	ActiveForm      string
 	Status          string
 	Owner           string
+	Metadata        map[string]any
 	Blocks          []string
 	BlockedBy       []string
 	CreatedAt       time.Time

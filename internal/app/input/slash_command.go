@@ -77,7 +77,7 @@ type SlashCommandEnv struct {
 	// Model-level action callbacks. These compose multiple services or
 	// touch UI state on `m`, so commands invoke them via the model.
 	CommitMessages          func() []tea.Cmd
-	SubmitToAgent           func(content string, images []core.Attachment) tea.Cmd
+	SubmitToAgent           func(core.Message) tea.Cmd
 	HandleSkillInvocation   func() tea.Cmd
 	StartExternalEditor     func(path string) tea.Cmd
 	ReloadAfterPluginChange func() error
@@ -600,8 +600,9 @@ func (c *SlashCommandController) handleLoopCommand(_ context.Context, args strin
 		*c.env.Conversation = conv.NewConversation()
 	}
 	c.env.Conversation.AddNotice(fmt.Sprintf("Scheduled recurring task %s (%s, cron `%s`).%s Auto-expires after 7 days. Executing now.", job.ID, parsed.Human, parsed.Cron, parsed.Note))
-	c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: parsed.Prompt})
-	return "", c.env.SubmitToAgent(parsed.Prompt, nil), nil
+	chat := c.env.Conversation.Append(core.ChatMessage{Role: core.ChatUser, Content: parsed.Prompt})
+	msg, _ := chat.ToMessage()
+	return "", c.env.SubmitToAgent(msg), nil
 }
 
 func handleLoopAdminCommand(cronSvc *cron.Scheduler, args string) (string, bool, error) {

@@ -85,7 +85,10 @@ equivalent.
   (one record per inference / tool call / hook / system mutation) into
   the `transcript` subpackage's filesystem store.
 - `transcript/` (subpackage) — record types, JSONL store, projector that
-  reconstructs `Snapshot` from event log.
+  reconstructs transcript-owned views from the event log. It does not import
+  the `todo` domain package.
+- `task_views.go` — adapts `todo.Item` at the session boundary and preserves
+  task metadata and slice ownership in both directions.
 - `chat_convert.go`, `message_convert.go`, `node_convert.go` — translate
   `core.Message` between the conversation view-model, transcript content
   blocks, and transcript nodes.

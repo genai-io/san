@@ -29,7 +29,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "deepseek-chat"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	t.Cleanup(sess.Stop)
+	t.Cleanup(func() { _ = sess.Stop() })
 
 	m := &model{
 		services: services{
