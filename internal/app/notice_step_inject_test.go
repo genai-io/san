@@ -40,7 +40,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	t.Cleanup(sess.Stop)
+	t.Cleanup(func() { _ = sess.Stop() })
 
 	return &model{
 		services: services{

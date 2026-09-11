@@ -215,7 +215,7 @@ func (s *Store) Save(sess *Snapshot) error {
 		Tag:        sess.Metadata.Tag,
 		Mode:       sess.Metadata.Mode,
 		AutoPilot:  sess.Metadata.AutoPilot,
-		Tasks:      transcript.TrackerItemViewsFromItems(sess.Tasks),
+		Tasks:      trackerItemViewsFromItems(sess.Tasks),
 	}
 	if s.lastEmittedState == nil {
 		s.lastEmittedState = make(map[string]transcript.State)
@@ -349,7 +349,7 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 	sess := &Snapshot{
 		Metadata: transcript.MetadataFromTranscript(tx),
 		Messages: messagesFromNodes(tx.Messages),
-		Tasks:    transcript.TrackerItemsFromView(tx.State.Tasks),
+		Tasks:    trackerItemsFromViews(tx.State.Tasks),
 	}
 
 	if sess.Metadata.Title == "" {

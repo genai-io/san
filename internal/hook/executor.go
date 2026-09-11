@@ -28,7 +28,7 @@ func (e *Engine) executeMatchedHook(ctx context.Context, hook matchedHook, input
 
 	switch normalizedHookType(*hook.Command) {
 	case "command":
-		if e.getPromptCallback() != nil {
+		if hook.Command.Interactive && e.getPromptCallback() != nil {
 			return e.executeCommandBidirectional(ctx, *hook.Command, input)
 		}
 		return e.executeCommand(ctx, *hook.Command, input)

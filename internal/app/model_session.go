@@ -185,7 +185,8 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
-	if m.services.Tracker.GetStorageDir() != "" {
+	if dir := m.services.Tracker.GetStorageDir(); dir != "" {
+		m.setTaskOutputDir(dir)
 		return
 	}
 
@@ -255,6 +256,11 @@ func (m *model) forkSession() (string, error) {
 	// NewRecorder invalidates its cache on exactly that mismatch.
 	m.StopAgentSession()
 	m.setTrackerStorageDir("")
+	if err := m.services.Task.SetOutputDir(""); err != nil {
+		return "", fmt.Errorf("detach task output storage: %w", err)
+	}
+	m.initTaskStorage(forked.Metadata.ID)
+	m.services.Tracker.Import(forked.Tasks)
 	return originalID, nil
 }
 

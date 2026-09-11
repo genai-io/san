@@ -53,6 +53,10 @@ not by lower layers importing higher layers.
 8. Provider implementations should register with `internal/llm`; product logic
    should not depend directly on concrete provider packages.
 
+`tools/layercheck` applies these rules to production, internal-test, and
+external-test imports. It also rejects repository packages that have no entry
+in `package-map.md` within the checker scope (`internal/...` and `cmd/...`).
+
 ## Preferred Techniques
 
 - Define interfaces at the consumer side.

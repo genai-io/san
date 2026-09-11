@@ -4,16 +4,15 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/todo"
 )
 
 func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 13, 0, 0, 0, time.UTC)
-	task := todo.Item{
+	task := TrackerItemView{
 		ID:              "1",
 		Subject:         "Refactor",
-		Status:          todo.StatusInProgress,
+		Status:          "in_progress",
+		Metadata:        map[string]any{"task_id": "bg-1"},
 		CreatedAt:       taskTime,
 		UpdatedAt:       taskTime,
 		StatusChangedAt: taskTime,
@@ -36,12 +35,12 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 		}
 	}
 
-	taskPatch := PatchTasks([]todo.Item{task})
-	var decodedTasks []todo.Item
+	taskPatch := PatchTasks([]TrackerItemView{task})
+	var decodedTasks []TrackerItemView
 	if err := json.Unmarshal(taskPatch.Value, &decodedTasks); err != nil {
 		t.Fatalf("Unmarshal(task patch): %v", err)
 	}
-	if len(decodedTasks) != 1 || decodedTasks[0].Subject != "Refactor" {
+	if len(decodedTasks) != 1 || decodedTasks[0].Subject != "Refactor" || decodedTasks[0].Metadata["task_id"] != "bg-1" {
 		t.Fatalf("unexpected task patch payload: %+v", decodedTasks)
 	}
 

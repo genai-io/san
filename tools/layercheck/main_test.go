@@ -50,3 +50,12 @@ func TestLookupLayerInheritsNearestAncestor(t *testing.T) {
 		t.Fatalf("lookupLayer() = (%q, %q), want (internal/app/input, app)", rel, layer)
 	}
 }
+
+func TestScopedPackagePathIgnoresRepositoryTestHelpers(t *testing.T) {
+	if rel, ok := scopedPackagePath(repoModule + "/tests/integration/testutil"); ok {
+		t.Fatalf("test helper unexpectedly in layer scope: %q", rel)
+	}
+	if rel, ok := scopedPackagePath(repoModule + "/internal/newfeature"); !ok || rel != "internal/newfeature" {
+		t.Fatalf("internal package scope = (%q, %v)", rel, ok)
+	}
+}

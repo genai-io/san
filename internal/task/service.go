@@ -43,8 +43,3 @@ func ResetDefaultTracker() {
 }
 
 var defaultManager = NewManager()
-
-// SetOutputDir on *Manager delegates to the package-level setOutputDir.
-func (m *Manager) SetOutputDir(dir string) error {
-	return setOutputDir(dir)
-}
