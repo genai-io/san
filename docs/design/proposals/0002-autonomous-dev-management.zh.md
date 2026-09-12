@@ -1,4 +1,6 @@
-# ADR-0002: 自主开发管理团队
+# PROP-0002：自主开发管理团队
+
+> 英文版：[`0002-autonomous-dev-management.md`](0002-autonomous-dev-management.md)
 
 ## 状态
 
@@ -21,7 +23,7 @@
 每个团队是一组为特定项目协同工作的 Persona。
 
 每个 Persona 就是一个 Persona 目录，
-格式遵循 [`persona-system.md`](../../notes/active/persona-system.md) 的设计规范。
+格式遵循 `notes/active/persona-system.md` 的设计规范。
 
 ```
 genai-io（Org，已存在）
@@ -430,7 +432,7 @@ Leader → 管理员: "2 个 P0 Bug 已全部修复并发布"
 
 ### 1. Persona 目录
 
-Persona 遵循 [`persona-system.md`](../../notes/active/persona-system.md) 中定义的 persona 规范。
+Persona 遵循 `notes/active/persona-system.md` 中定义的 persona 规范。
 每个 Persona 是一个文件夹，包含 `system/`（拆为 identity/behavior/rules/environment 四部分）、
 `skills/`、`settings.json`。缺失部分自动回退到 San 内置默认值。
 
@@ -610,9 +612,9 @@ Task 完成 → Persona 写复盘记录 → 发现可改进项
 
 ## 参考资料
 
-- [`persona-system.md`](../../notes/active/persona-system.md) — Persona 目录遵循的 persona 设计规范
-- [`core.Agent`](../../packages/core.md) — 底层 Agent 原语
-- [`packages/subagent.md`](../../packages/subagent.md) — 子 Agent 机制
-- [`packages/skill.md`](../../packages/skill.md) — 技能加载
+- `notes/active/persona-system.md` — Persona 目录遵循的 persona 设计规范
+- [`core.Agent`](../../packages/3-core/core.md) — 底层 Agent 原语
+- [`packages/subagent.md`](../../packages/2-feature/subagent.md) — 子 Agent 机制
+- [`packages/skill.md`](../../packages/2-feature/skill.md) — 技能加载
 - [`concepts/permission-model.md`](../../concepts/permission-model.md) — 权限模型
-- [`ADR-0001`](0001-layered-package-architecture.md) — 分层包架构
+- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — 分层包架构

@@ -43,6 +43,7 @@ explanations here.
 ### Know why a decision was made
 
 - `design/principles.md` — engineering principles for structure and docs.
+- `design/proposals/` — design proposals for work not yet built.
 - `design/decisions/` — architecture decision records (ADRs).
 
 ## Work-in-Progress Plans
@@ -53,10 +54,16 @@ Plans live at the repo root under `notes/` (not in `docs/`):
 - `notes/completed/` — completed plans kept for historical context.
 - `notes/tech-debt.md` — known structural debt and follow-up candidates.
 
+A `notes/` plan is an execution checklist: what is being done, in what order,
+what is finished. A `design/proposals/` page is the argument for doing it at
+all — motivation, alternatives, risks, open questions. A sizable feature
+usually has both.
+
 ## Update Policy
 
 When code changes, update the relevant package page in `packages/` in the
 same pull request. When a new top-level package is added or a package
 moves, update `reference/package-map.md` and `reference/dependency-rules.md`
-together. New cross-cutting concept ⇒ a page in `concepts/`. New decision
+together. New cross-cutting concept ⇒ a page in `concepts/`. Design for work not yet
+built ⇒ a proposal in `design/proposals/`; once it ships, the durable part
 ⇒ an ADR in `design/decisions/`.

@@ -1,8 +1,10 @@
-# ADR-0002: Autonomous Development Management Team
+# PROP-0002: Autonomous Development Management Team
+
+> 中文版：[`0002-autonomous-dev-management.zh.md`](0002-autonomous-dev-management.zh.md)
 
 ## Status
 
-Proposed — 2026-06-11.
+Draft — 2026-06-11.
 
 ## Context
 
@@ -23,7 +25,7 @@ Under the existing Org (`genai-io`), create a **new, separate Repo**
 Each team is a collection of Personas that collaborate on a specific project.
 
 Each Persona follows the
-[`persona-system.md`](../../notes/active/persona-system.md) design spec.
+`notes/active/persona-system.md` design spec.
 
 ```
 genai-io（Org, existing）
@@ -441,7 +443,7 @@ Leader → Admin: "2 P0 bugs fixed and shipped"
 ### 1. Persona directory
 
 Each Persona follows the persona spec defined in
-[`persona-system.md`](../../notes/active/persona-system.md). A Persona is a
+`notes/active/persona-system.md`. A Persona is a
 folder containing `system/` (split into identity/behavior/rules/environment),
 `skills/`, and `settings.json`. Missing parts fall back to San's built-in defaults.
 
@@ -630,9 +632,9 @@ directly adopt them or use them as design references.
 
 ## References
 
-- [`persona-system.md`](../../notes/active/persona-system.md) — persona design spec that Persona directories follow
-- [`core.Agent`](../../packages/core.md) — underlying agent primitive
-- [`packages/subagent.md`](../../packages/subagent.md) — sub-agent mechanism
-- [`packages/skill.md`](../../packages/skill.md) — skill loading
+- `notes/active/persona-system.md` — persona design spec that Persona directories follow
+- [`core.Agent`](../../packages/3-core/core.md) — underlying agent primitive
+- [`packages/subagent.md`](../../packages/2-feature/subagent.md) — sub-agent mechanism
+- [`packages/skill.md`](../../packages/2-feature/skill.md) — skill loading
 - [`concepts/permission-model.md`](../../concepts/permission-model.md) — permission model
-- [`ADR-0001`](0001-layered-package-architecture.md) — layered package architecture
+- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — layered package architecture

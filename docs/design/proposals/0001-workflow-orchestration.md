@@ -1,10 +1,14 @@
-# ADR-0003: Workflow orchestration for subagents
+# PROP-0001: Workflow orchestration for subagents
 
 ## Status
 
-Proposed — 2026-09-11.
+Draft — 2026-09-11. No code accompanies this proposal.
 
-## Context
+Once built, the behaviour belongs in `concepts/workflow.md`; this page stays
+as the record of how the design was arrived at. Whether any of it also needs
+an ADR is a question for that point, not this one.
+
+## Motivation
 
 San can already fan out. The main agent issues several `Agent` calls in one
 turn, and `subagent.Executor.RunBackground` gives each of them a task, a
@@ -39,11 +43,30 @@ call, `pkg/agent` runs the loop around it. Grepping `pkg/` for
 `workflow|orchestrat|subagent|handoff` returns nothing. The rung above
 `agent.Agent` — many loops in an order — is empty, in the SDK and in San.
 
-## Decision
+## Goals
 
-Add workflow orchestration: a declarative acyclic graph whose nodes are
-subagent turns, defined in markdown, executable from a saved file or from a
-model-authored tool call.
+- A workflow is a file: reviewable, diffable, re-runnable, and identical
+  whether a person or the model authored it.
+- Dependencies are structural, so a long turn cannot forget an ordering.
+- Orchestration stays out of the main conversation's context.
+- Worst-case cost is computable before launch, and stated at approval time.
+- Every node passes the permission gate an ordinary subagent passes.
+
+## Non-Goals
+
+- **Unbounded cycles.** A bounded back edge is supported; an open loop is not.
+- **An expression language** for conditions. String equality only.
+- **Shared mutable state** across nodes, in the LangGraph sense.
+- **A second evaluator-optimizer** inside a node: one node is already a loop.
+- **`for_each` inside a loop body** — dynamic x iteration is a cartesian
+  explosion.
+- **Replacing the `Agent` tool.** Ad-hoc fan-out in a single turn stays the
+  right answer for work that is not worth saving.
+
+## Design
+
+A declarative acyclic graph whose nodes are subagent turns, defined in
+markdown, executable from a saved file or from a model-authored tool call.
 
 ### 1. Argo-shaped, not LangGraph-shaped
 
@@ -58,7 +81,7 @@ layer produces a worse copy: every lap re-composes a prompt and loses the
 context the previous lap built.
 
 What is rejected is not the back edge — it is the *unbounded* back edge. See
-decision 6.
+Design 6.
 
 ### 2. A node is one subagent turn
 
@@ -104,8 +127,8 @@ a composition of them, not a feature to support separately.
 | Routing | one classifying node, N mutually exclusive conditionals |
 | Parallelization (sectioning) | fan-out, then converge |
 | Parallelization (voting) | the same, with *heterogeneous* branches |
-| Orchestrator–workers | `for_each` (decision 6) |
-| Evaluator–optimizer | a bounded back edge (decision 6) |
+| Orchestrator–workers | `for_each` (Design 6) |
+| Evaluator–optimizer | a bounded back edge (Design 6) |
 
 Voting deserves a note. Running one prompt three times on one model produces
 three highly correlated judgements, not three samples; a majority vote over
@@ -328,19 +351,18 @@ node executor exist from the first day — a bare `agent.New` in the SDK, and
 San's gated `subagent.Executor` — so the seam is load-bearing rather than
 speculative.
 
-## Consequences
+## Alternatives considered
 
-**Gained**
+| Alternative | Why not |
+| --- | --- |
+| A JS script with `agent()` / `parallel()` / `pipeline()` primitives, as Claude Code's Workflow tool does | Needs an embedded JS runtime and a sandbox in Go. Buys arbitrary control flow the declarative graph covers at a fraction of the cost. |
+| LangGraph's cyclic `StateGraph` with shared state | Cycles duplicate what a node already is. Shared state is worse here than in ordinary programs: state is fed into prompts, so "any node may read any field" is context pollution nobody wrote down. |
+| A `repeat: N` quantifier for voting | Replicates identical configuration, which is the half of voting that carries no information. Useful multi-way judgement is heterogeneous, and sectioning already expresses it. |
+| A structured JSON `nodes` array as the tool schema | Marginally safer for a model to emit, at the cost of a second dialect diverging from the file format. |
+| `when:` on each downstream node instead of labelled edges | Scatters one routing decision across N nodes with no way to check exhaustiveness. |
+| Leaving orchestrator-workers to the main agent | Works, but every worker result lands in the main context to produce one summary. |
 
-- A workflow is a file: reviewable, diffable, shareable, and identical
-  whether a person or the model wrote it.
-- Orchestration leaves the main context. Fanning out to eight workers costs
-  the main conversation one summary instead of eight results.
-- Dependencies become structural. The graph cannot forget an ordering the
-  way a long turn can.
-- Cost is bounded before launch, so the permission dialog can state it.
-
-**Paid**
+## Risks and trade-offs
 
 - A second execution surface next to the `Agent` tool, with its own failure
   modes and its own rendering.
@@ -353,13 +375,7 @@ speculative.
   call would have done. The tool description has to push back, the way the
   `Agent` tool's does.
 
-**Rejected, and staying rejected**
-
-Unbounded cycles; an expression language for conditions (string equality
-only); shared mutable state across nodes; a second implementation of
-evaluator–optimizer inside a node; `for_each` inside a loop body.
-
-## Implementation Plan
+## Implementation plan
 
 | Phase | Scope | Size |
 | --- | --- | --- |
@@ -381,10 +397,27 @@ evaluator–optimizer inside a node; `for_each` inside a loop body.
 | `docs/reference/package-map.md` | register the new package, or `make lint` fails |
 | `docs/concepts/workflow.md` | written with P1, describing what exists |
 
+## Open questions
+
+- **How strict is the mermaid subset?** A user will write valid mermaid the
+  parser rejects — subgraphs, node shapes, `direction`. Reject loudly with a
+  pointer to what is supported, or silently ignore the unsupported syntax?
+  Leaning: reject, because a silently dropped edge is a silently wrong graph.
+- **Does the `end_turn`-but-unfinished blind spot need a mechanical guard?**
+  A per-node `expect:` assertion is one option, and the beginning of a
+  slippery slope back toward an expression language.
+- **What does `{{x}}` render to when `x` failed and `continue_on_error` let
+  the graph continue?** Empty string loses the diagnosis; the error text may
+  mislead a downstream node into treating it as content.
+- **Is P4's lane graph ever needed?** Decide after P1 has run real
+  workflows, not before.
+- **Should a workflow be resumable?** Deferred entirely. Nothing here
+  persists partial state, so a cancelled workflow restarts from the top.
+
 ## References
 
-- [`ADR-0001`](0001-layered-package-architecture.md) — layering and the
-  package-map requirement this feature must satisfy.
+- [`ADR-0001`](../decisions/0001-layered-package-architecture.md) — layering
+  and the package-map requirement this feature must satisfy.
 - [`concepts/permission-model.md`](../../concepts/permission-model.md) — the
   gate every node passes through.
 - [`concepts/extension-model.md`](../../concepts/extension-model.md) — how
@@ -392,7 +425,7 @@ evaluator–optimizer inside a node; `for_each` inside a loop body.
 - [`reference/package-map.md`](../../reference/package-map.md) — where
   `internal/workflow` must be registered.
 - Anthropic, *Building Effective Agents* — the pattern vocabulary used in
-  decision 3, and its distinction between workflows and agents.
+  Design 3, and its distinction between workflows and agents.
 - Argo Workflows — `dependencies`, `when`, `withParam`, `templateRef`.
 - `genai-io/sdk-go` `docs/agent.md` — turn and inference vocabulary, the
   eight stop reasons, and the package's stated scope boundaries.
