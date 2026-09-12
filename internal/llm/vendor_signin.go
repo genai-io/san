@@ -15,6 +15,7 @@ import (
 	sdkprovider "github.com/genai-io/sdk-go/pkg/ai/provider"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/proc"
 )
 
 // Signing in to the two vendors that authenticate a person rather than a
@@ -132,6 +133,7 @@ type authenticator struct{ vendorID string }
 
 func (a authenticator) Login(ctx context.Context, onPrompt func(LoginPrompt)) error {
 	interaction := oauth.InteractionFunc(func(_ context.Context, p oauth.Prompt) error {
+		_ = proc.OpenURL(p.URL)
 		if onPrompt != nil {
 			onPrompt(LoginPrompt{URL: p.URL, UserCode: p.UserCode})
 		}
