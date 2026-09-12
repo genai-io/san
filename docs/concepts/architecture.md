@@ -99,6 +99,7 @@ is added.
 | A cross-cutting concept (extension model, prompt slots, permissions) | [`concepts/`](./) |
 | A fact (slash command list, config field, env var, token limits) | [`reference/`](../reference/) |
 | Why a decision was made | [`decisions/`](../design/decisions/) |
+| A design not yet built | [`proposals/`](../design/proposals/) |
 | How to accomplish a task | [`guides/`](../guides/) |
 | Build, test, release the repo | [`operations/`](../operations/) |
 
