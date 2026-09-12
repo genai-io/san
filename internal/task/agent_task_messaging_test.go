@@ -10,7 +10,7 @@ func newRunningAgentTask(t *testing.T, id string) *AgentTask {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	return NewAgentTask(id, "Worker", "test task", ctx, cancel)
+	return NewAgentTask(id, "Worker", "test task", ctx, cancel, "")
 }
 
 func TestAgentTaskCompleteDistinguishesStopFromFailure(t *testing.T) {

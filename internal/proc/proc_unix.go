@@ -8,25 +8,12 @@ import (
 	"syscall"
 )
 
-// SetProcessGroup configures cmd so the spawned process becomes the leader of
-// a new process group, allowing TerminateGroup to deliver a signal to the
-// whole group.
-func SetProcessGroup(cmd *exec.Cmd) {
-	if cmd == nil {
-		return
-	}
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &syscall.SysProcAttr{}
-	}
-	cmd.SysProcAttr.Setpgid = true
-}
-
 // DetachSession configures cmd so the spawned process starts in a new session
 // with no controlling terminal. Programs that try to read from /dev/tty — a
 // password/confirmation prompt, an editor, ssh — then fail fast with ENXIO
 // instead of stealing the parent TUI's terminal and hanging. The session
 // leader is also a new process-group leader (pgid == pid), so TerminateGroup
-// still reaches the whole group; there is no need to also call SetProcessGroup.
+// reaches the whole group.
 func DetachSession(cmd *exec.Cmd) {
 	if cmd == nil {
 		return
@@ -39,8 +26,8 @@ func DetachSession(cmd *exec.Cmd) {
 
 // GroupLeaderPID returns the process-group ID a caller can signal (as -pgid)
 // to reach cmd and its ordinary descendants. It is meaningful once cmd was
-// configured with SetProcessGroup or DetachSession — both make the child a
-// group leader, so the PGID equals its PID. ok is false when the command has
+// configured with DetachSession, which makes the child a group leader, so
+// the PGID equals its PID. ok is false when the command has
 // not started, or on platforms without a signalable process group.
 func GroupLeaderPID(cmd *exec.Cmd) (pid int, ok bool) {
 	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {

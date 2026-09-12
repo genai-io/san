@@ -64,14 +64,14 @@ func (s *Store) SetStorageDir(dir string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	previousDir := s.storageDir
-	s.storageDir = dir
 	if dir == "" {
+		s.storageDir = ""
 		return nil
 	}
 
+	// Prepare the directory before adopting it, so a failure leaves the
+	// store on its previous directory with its items intact.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		s.storageDir = previousDir
 		return fmt.Errorf("failed to create item storage dir: %w", err)
 	}
 
@@ -79,13 +79,14 @@ func (s *Store) SetStorageDir(dir string) error {
 	lockPath := filepath.Join(dir, ".lock")
 	if _, err := os.Stat(lockPath); os.IsNotExist(err) {
 		if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
-			s.storageDir = previousDir
 			return fmt.Errorf("failed to create item storage lock file: %w", err)
 		}
 	}
 
 	// Load existing items from disk, then reconcile: this is the moment a
 	// fresh process adopts state written by a process that no longer exists.
+	previousDir := s.storageDir
+	s.storageDir = dir
 	if err := s.loadFromDisk(); err != nil {
 		s.storageDir = previousDir
 		return err

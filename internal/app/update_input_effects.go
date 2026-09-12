@@ -6,12 +6,10 @@ package app
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/image"
-	"github.com/genai-io/san/internal/log"
 )
 
 // InterruptReminder is enqueued on the reminder service when the user
@@ -76,9 +74,7 @@ func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 }
 
 func (m *model) QuitWithCancel() (tea.Cmd, bool) {
-	if err := m.services.Agent.Stop(); err != nil {
-		log.Logger().Warn("agent session did not stop during quit", zap.Error(err))
-	}
+	m.services.Agent.Stop()
 	m.conv.Stream.Stop()
 	if m.conv.Tool.Cancel != nil {
 		m.conv.Tool.Cancel()

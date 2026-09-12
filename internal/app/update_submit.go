@@ -233,9 +233,6 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // On no-provider or ensureAgentSession failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
-	if msg.ID == "" {
-		msg.ID = core.NewMessageID()
-	}
 	content := msg.Text()
 	log.QueueLog("SubmitToAgent: %q", truncate(content, 60))
 	if m.env.LLMProvider == nil {
@@ -273,10 +270,9 @@ func (m *model) HandleSkillInvocation() tea.Cmd {
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}
-	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg})
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: fullMsg, DisplayContent: displayMsg}).ToMessage()
 	if pluginRoot != "" {
 		m.services.Agent.SetPluginRoot(pluginRoot)
 	}
-	msg, _ := chat.ToMessage()
 	return m.SubmitToAgent(msg)
 }

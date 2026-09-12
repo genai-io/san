@@ -530,7 +530,9 @@ func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Messa
 	return stripped
 }
 
-type agentSendResultMsg struct{ err error }
+// agentSendFailedMsg reports a message the agent never accepted; a delivered
+// message needs no round trip.
+type agentSendFailedMsg struct{ err error }
 
 func (m *model) sendToAgent(msg core.Message) tea.Cmd {
 	if !m.services.Agent.Active() {
@@ -539,7 +541,10 @@ func (m *model) sendToAgent(msg core.Message) tea.Cmd {
 	svc := m.services.Agent
 	msg = m.attachPendingReminders(msg)
 	return func() tea.Msg {
-		return agentSendResultMsg{err: svc.Send(context.Background(), msg)}
+		if err := svc.Send(msg); err != nil {
+			return agentSendFailedMsg{err: err}
+		}
+		return nil
 	}
 }
 
@@ -607,9 +612,7 @@ func (m *model) StopAgentSession() {
 	if messages := m.services.Agent.Messages(); len(messages) > 0 {
 		m.agentRestartMessages = messages
 	}
-	if err := m.services.Agent.Stop(); err != nil {
-		log.Logger().Warn("agent session did not stop before deadline", zap.Error(err))
-	}
+	m.services.Agent.Stop()
 	m.teardownSelfLearn()
 }
 
@@ -618,9 +621,7 @@ func (m *model) StopAgentSession() {
 // replaced (for example /clear and /resume).
 func (m *model) ResetAgentSession() {
 	m.agentRestartMessages = nil
-	if err := m.services.Agent.Stop(); err != nil {
-		log.Logger().Warn("agent session reset did not stop before deadline", zap.Error(err))
-	}
+	m.services.Agent.Stop()
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.
@@ -756,7 +757,6 @@ func (m *model) ReconfigureAgentTool() {
 	m.ensureMemoryContextLoaded()
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
-	executor.SetTaskManager(m.services.Task)
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())

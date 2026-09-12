@@ -7,7 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
 )
 
 var (
@@ -21,16 +24,14 @@ type sessionRun struct {
 	done   chan struct{}
 }
 
-type agentBuilder func(BuildParams) (core.Agent, *PermissionGate, error)
-
 type Session struct {
 	mu                 sync.RWMutex
 	run                *sessionRun
 	permGate           *PermissionGate
 	pendingPermRequest *PermGateRequest
 	pluginRoot         string // see SetPluginRoot
-	lastRunErr         error
-	build              agentBuilder
+	// build is set by tests to substitute the agent; nil means buildAgent.
+	build func(BuildParams) (core.Agent, *PermissionGate, error)
 }
 
 func (s *Session) Start(params BuildParams, messages []core.Message) error {
@@ -58,32 +59,37 @@ func (s *Session) Start(params BuildParams, messages []core.Message) error {
 	run := &sessionRun{agent: ag, cancel: cancel, done: make(chan struct{})}
 	s.run = run
 	s.permGate = pg
-	s.lastRunErr = nil
 	go s.execute(run, ctx)
 
 	return nil
 }
 
+// execute owns the run generation: the session stays active until Run returns,
+// so a stop and a restart can never overlap. Run's error already reaches the
+// app as a core.AgentStopped event.
 func (s *Session) execute(run *sessionRun, ctx context.Context) {
-	err := run.agent.Run(ctx)
+	_ = run.agent.Run(ctx)
 
 	s.mu.Lock()
-	if s.run == run {
-		s.lastRunErr = err
-		s.clearRunLocked()
-	}
+	s.run = nil
+	s.permGate = nil
+	s.pendingPermRequest = nil
+	s.pluginRoot = ""
 	close(run.done)
 	s.mu.Unlock()
 }
 
 const sessionStopTimeout = 2 * time.Second
 
-// Stop performs a bounded graceful shutdown. Callers that need a different
-// deadline should use StopContext.
-func (s *Session) Stop() error {
+// Stop performs a bounded graceful shutdown; a run that outlives the deadline
+// is logged and stays active. Callers that need a different deadline use
+// StopContext.
+func (s *Session) Stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), sessionStopTimeout)
 	defer cancel()
-	return s.StopContext(ctx)
+	if err := s.StopContext(ctx); err != nil {
+		log.Logger().Warn("agent session did not stop before deadline", zap.Error(err))
+	}
 }
 
 // StopContext cancels the active run and waits for that exact generation to
@@ -111,13 +117,6 @@ func (s *Session) StopContext(ctx context.Context) error {
 	}
 }
 
-func (s *Session) clearRunLocked() {
-	s.run = nil
-	s.permGate = nil
-	s.pendingPermRequest = nil
-	s.pluginRoot = ""
-}
-
 func (s *Session) Active() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -138,20 +137,18 @@ func (s *Session) Messages() []core.Message {
 	return run.agent.Messages()
 }
 
-// Send delivers an already-identified message to the active agent. Callers
-// should create the Message once at the input boundary and reuse its ID for
-// the TUI projection and transcript.
-func (s *Session) Send(ctx context.Context, msg core.Message) error {
+// Send delivers a message to the active agent. Callers create the Message once
+// at the input boundary so the TUI projection, the inbox, and the transcript
+// share one ID; a message without one is stamped by the agent loop.
+func (s *Session) Send(msg core.Message) error {
 	s.mu.RLock()
 	run := s.run
 	s.mu.RUnlock()
 	if run == nil {
 		return ErrSessionInactive
 	}
-	if msg.ID == "" {
-		msg.ID = core.NewMessageID()
-	}
 
+	// A closed done channel would otherwise race the inbox send.
 	select {
 	case <-run.done:
 		return ErrSessionStopped
@@ -159,16 +156,9 @@ func (s *Session) Send(ctx context.Context, msg core.Message) error {
 	}
 	select {
 	case run.agent.Inbox() <- core.Inbound{Msg: msg}:
-		select {
-		case <-run.done:
-			return ErrSessionStopped
-		default:
-			return nil
-		}
+		return nil
 	case <-run.done:
 		return ErrSessionStopped
-	case <-ctx.Done():
-		return ctx.Err()
 	}
 }
 
@@ -278,14 +268,6 @@ func (s *Session) Tools() core.Tools {
 		return nil
 	}
 	return s.run.agent.Tools()
-}
-
-// LastRunError returns the most recent Run result. It is primarily useful for
-// diagnostics after an unexpected runner exit; Start clears it.
-func (s *Session) LastRunError() error {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.lastRunErr
 }
 
 // SetPluginRoot scopes the next agent turn to a plugin. The slash command

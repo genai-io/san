@@ -44,7 +44,7 @@ scrollback) plus `View()` (bottom UI strip).
    │     │                │             │             │           │
    │     └────────────────┼─────────────┴─────────────┘           │
    │                      ▼                                       │
-   │               SubmitToAgent(content, images)                 │
+   │               SubmitToAgent(msg)                             │
    │                      │                                       │
    │                      ▼ agent.Send (push to inbox)            │
    └──────────────────────┼───────────────────────────────────────┘
@@ -156,7 +156,7 @@ routeKeypress → handleTextareaShortcut
                   │     Clears textarea + pending images so the user can
                   │     start the next message.
                   │
-                  └─ SubmitToAgent(msg.Content, msg.Images)
+                  └─ SubmitToAgent(msg)   ← same ID as the conv row
                         Pushes `msg` onto the agent's INBOX (a separate
                         Go channel). The agent's own loop will read it,
                         append it to its internal history, then call the
@@ -212,7 +212,7 @@ mutates UI through callbacks (e.g. `env.PersistSession`), and returns
 a short `result` string the controller wraps as a notice.
 
 Some slash commands (`/loop`, `/init`) end up calling
-`env.SubmitToAgent(prompt, nil)` to hand off to the agent — they
+`env.SubmitToAgent(msg)` to hand off to the agent — they
 rejoin Path A at the SubmitToAgent step.
 
 ## Path C — Background trigger

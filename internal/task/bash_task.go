@@ -52,12 +52,8 @@ type BashTask struct {
 // Verify BashTask implements BackgroundTask
 var _ BackgroundTask = (*BashTask)(nil)
 
-// NewBashTask creates a new bash task
-func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc) *BashTask {
-	return newBashTask(id, command, description, cmd, cancel, "")
-}
-
-func newBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc, outputPath string) *BashTask {
+// NewBashTask creates a new bash task; outputPath "" keeps output in memory.
+func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc, outputPath string) *BashTask {
 	task := &BashTask{
 		ID:          id,
 		Command:     command,
@@ -65,7 +61,7 @@ func newBashTask(id, command, description string, cmd *exec.Cmd, cancel context.
 		status:      StatusRunning,
 		PID:         cmd.Process.Pid,
 		StartTime:   time.Now(),
-		OutputFile:  initializeOutputFile(outputPath),
+		OutputFile:  initOutputFile(outputPath),
 		cmd:         cmd,
 		cancel:      cancel,
 		done:        make(chan struct{}),

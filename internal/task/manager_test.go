@@ -132,7 +132,7 @@ func TestManager_RegisterTask(t *testing.T) {
 	cmd.Start()
 
 	// Create task manually and register
-	task := NewBashTask("manual-id", "echo test", "Manual task", cmd, cancel)
+	task := NewBashTask("manual-id", "echo test", "Manual task", cmd, cancel, "")
 	m.RegisterTask(task)
 
 	retrieved, ok := m.Get("manual-id")

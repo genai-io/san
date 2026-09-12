@@ -185,8 +185,7 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
-	if dir := m.services.Tracker.GetStorageDir(); dir != "" {
-		m.setTaskOutputDir(dir)
+	if m.services.Tracker.GetStorageDir() != "" {
 		return
 	}
 
@@ -255,10 +254,10 @@ func (m *model) forkSession() (string, error) {
 	// ensureAgentSession rebuilds with a Recorder bound to the new id, since
 	// NewRecorder invalidates its cache on exactly that mismatch.
 	m.StopAgentSession()
+	// Same storage switch as loadSessionByID: clear the tracker so
+	// initTaskStorage adopts the fork's directory, then re-import the tasks
+	// that SetStorageDir's disk load replaced.
 	m.setTrackerStorageDir("")
-	if err := m.services.Task.SetOutputDir(""); err != nil {
-		return "", fmt.Errorf("detach task output storage: %w", err)
-	}
 	m.initTaskStorage(forked.Metadata.ID)
 	m.services.Tracker.Import(forked.Tasks)
 	return originalID, nil

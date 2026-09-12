@@ -48,7 +48,6 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		StartExternalEditor:     m.StartExternalEditor,
 		ReloadAfterPluginChange: m.ReloadAfterPluginChange,
 		PersistSession:          m.PersistSession,
-		InitTaskStorage:         m.InitTaskStorage,
 		ReconfigureAgentTool:    m.ReconfigureAgentTool,
 		StopAgentSession:        m.StopAgentSession,
 		ResetAgentSession:       m.ResetAgentSession,

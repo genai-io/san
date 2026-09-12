@@ -25,8 +25,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if msg.Blocked {
 		log.QueueLog("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason
-		chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg})
-		providerMsg, _ := chat.ToMessage()
+		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg}).ToMessage()
 		return m.sendToAgent(providerMsg)
 	}
 	log.QueueLog("handleStopHookResult: hooks done, persisting")
@@ -244,8 +243,7 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // handles provider/agent state.
 func (m *model) injectCronPrompt(prompt string) tea.Cmd {
 	m.conv.AddNotice("Scheduled task fired")
-	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt})
-	msg, _ := chat.ToMessage()
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: prompt}).ToMessage()
 	return m.SubmitToAgent(msg)
 }
 
@@ -257,14 +255,13 @@ func (m *model) injectAsyncHookContinuation(item trigger.AsyncHookRewake) tea.Cm
 	if item.Notice != "" {
 		m.conv.AddNotice(item.Notice)
 	}
-	parts := append([]string(nil), item.Context...)
+	parts := item.Context
 	if item.ContinuationPrompt != "" {
 		parts = append(parts, item.ContinuationPrompt)
 	}
 	if len(parts) == 0 {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: strings.Join(parts, "\n\n")})
-	msg, _ := chat.ToMessage()
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: strings.Join(parts, "\n\n")}).ToMessage()
 	return m.SubmitToAgent(msg)
 }
