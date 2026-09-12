@@ -25,7 +25,7 @@ const (
 	// codexClientVersion is the Codex CLI release this client presents itself
 	// as. The backend returns the lineup for the version it is told; bump it
 	// if the list ever goes stale.
-	codexClientVersion = "0.144.0"
+	codexClientVersion = "0.154.0"
 
 	// codexListTimeout bounds the catalog request, so a slow endpoint delays
 	// the model picker rather than wedging it.
