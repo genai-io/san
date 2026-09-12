@@ -108,7 +108,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		}
 	}
 
-	if err := sess.Send(context.Background(), core.UserMessage("background result", nil)); err != nil {
+	if err := sess.Send(core.UserMessage("background result", nil)); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	select {

@@ -24,7 +24,7 @@ func newRunningBashTask(t *testing.T, id, command, description string) *BashTask
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start helper process: %v", err)
 	}
-	return NewBashTask(id, command, description, cmd, cancel)
+	return NewBashTask(id, command, description, cmd, cancel, "")
 }
 
 func TestBashTask_Complete(t *testing.T) {
@@ -280,7 +280,7 @@ func TestBashTaskTimeoutRemainsAFailure(t *testing.T) {
 	cmd := exec.Command("echo", "test")
 	cmd.Start()
 
-	task := NewBashTask("timeout-id", "sleep 100", "Long task", cmd, cancel)
+	task := NewBashTask("timeout-id", "sleep 100", "Long task", cmd, cancel, "")
 
 	<-ctx.Done()
 	task.Complete(signalExitCode(syscall.SIGKILL), errors.New("signal: killed"))
@@ -299,7 +299,7 @@ func TestBashTaskStopDoesNotCancelTheRun(t *testing.T) {
 	}
 
 	cancelled := false
-	task := NewBashTask("graceful-id", "sleep 100", "Long task", cmd, func() { cancelled = true })
+	task := NewBashTask("graceful-id", "sleep 100", "Long task", cmd, func() { cancelled = true }, "")
 
 	_ = task.Stop()
 
@@ -320,7 +320,7 @@ func TestKillCancelsWhenACancelFuncIsPresent(t *testing.T) {
 	}
 
 	cancelled := false
-	task := NewBashTask("kill-id", "sleep 100", "Long task", cmd, func() { cancelled = true })
+	task := NewBashTask("kill-id", "sleep 100", "Long task", cmd, func() { cancelled = true }, "")
 
 	_ = task.Kill()
 
@@ -337,7 +337,7 @@ func TestStopRefusedAfterReap(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start helper process: %v", err)
 	}
-	task := NewBashTask("reaped-id", "true", "done task", cmd, func() {})
+	task := NewBashTask("reaped-id", "true", "done task", cmd, func() {}, "")
 
 	if err := cmd.Wait(); err != nil {
 		t.Fatalf("wait: %v", err)

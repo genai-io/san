@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func initializeOutputFile(path string) string {
+func initOutputFile(path string) string {
 	if path == "" {
 		return ""
 	}

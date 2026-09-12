@@ -767,22 +767,11 @@ func (s *Data) Clone() *Data {
 			clonedHooks[i].Matcher = hook.Matcher
 			clonedHooks[i].Hooks = make([]HookCmd, len(hook.Hooks))
 			for j, cmd := range hook.Hooks {
-				clonedHooks[i].Hooks[j] = HookCmd{
-					Type:           cmd.Type,
-					Command:        cmd.Command,
-					Prompt:         cmd.Prompt,
-					URL:            cmd.URL,
-					If:             cmd.If,
-					Shell:          cmd.Shell,
-					Model:          cmd.Model,
-					Async:          cmd.Async,
-					AsyncRewake:    cmd.AsyncRewake,
-					Timeout:        cmd.Timeout,
-					StatusMessage:  cmd.StatusMessage,
-					Once:           cmd.Once,
-					Headers:        maps.Clone(cmd.Headers),
-					AllowedEnvVars: append([]string(nil), cmd.AllowedEnvVars...),
-				}
+				// Value copy, so a new HookCmd field cannot be forgotten here;
+				// only the reference fields need their own storage.
+				cmd.Headers = maps.Clone(cmd.Headers)
+				cmd.AllowedEnvVars = slices.Clone(cmd.AllowedEnvVars)
+				clonedHooks[i].Hooks[j] = cmd
 			}
 		}
 		dst.Hooks[event] = clonedHooks

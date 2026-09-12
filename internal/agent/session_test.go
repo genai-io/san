@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
@@ -52,16 +51,14 @@ func TestSessionMessagesNilWhenInactive(t *testing.T) {
 	}
 }
 
+// controlledAgent is a core.Agent whose Run exits only when the test says so.
+// ignoreContext models a runner that outlives its cancellation.
 type controlledAgent struct {
 	inbox         chan core.Inbound
 	outbox        chan core.Event
 	started       chan struct{}
 	release       chan struct{}
 	ignoreContext bool
-	runErr        error
-
-	mu       sync.Mutex
-	messages []core.Message
 }
 
 func newControlledAgent(ignoreContext bool) *controlledAgent {
@@ -74,28 +71,14 @@ func newControlledAgent(ignoreContext bool) *controlledAgent {
 	}
 }
 
-func (a *controlledAgent) ID() string          { return "controlled" }
-func (a *controlledAgent) System() core.System { return nil }
-func (a *controlledAgent) Tools() core.Tools   { return nil }
-func (a *controlledAgent) Inbox() chan<- core.Inbound {
-	return a.inbox
-}
-func (a *controlledAgent) Outbox() <-chan core.Event { return a.outbox }
-func (a *controlledAgent) Messages() []core.Message {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return append([]core.Message(nil), a.messages...)
-}
-func (a *controlledAgent) SetMessages(messages []core.Message) {
-	a.mu.Lock()
-	a.messages = append([]core.Message(nil), messages...)
-	a.mu.Unlock()
-}
-func (a *controlledAgent) Append(_ context.Context, msg core.Message) {
-	a.mu.Lock()
-	a.messages = append(a.messages, msg)
-	a.mu.Unlock()
-}
+func (a *controlledAgent) ID() string                                     { return "controlled" }
+func (a *controlledAgent) System() core.System                            { return nil }
+func (a *controlledAgent) Tools() core.Tools                              { return nil }
+func (a *controlledAgent) Inbox() chan<- core.Inbound                     { return a.inbox }
+func (a *controlledAgent) Outbox() <-chan core.Event                      { return a.outbox }
+func (a *controlledAgent) Messages() []core.Message                       { return nil }
+func (a *controlledAgent) SetMessages([]core.Message)                     {}
+func (a *controlledAgent) Append(context.Context, core.Message)           {}
 func (a *controlledAgent) ThinkAct(context.Context) (*core.Result, error) { return nil, nil }
 func (a *controlledAgent) Run(ctx context.Context) error {
 	close(a.started)
@@ -107,7 +90,7 @@ func (a *controlledAgent) Run(ctx context.Context) error {
 		case <-a.release:
 		}
 	}
-	return a.runErr
+	return nil
 }
 func (a *controlledAgent) InterruptCurrentTurn() <-chan struct{} {
 	done := make(chan struct{})
@@ -122,17 +105,6 @@ func sessionWithAgents(agents ...*controlledAgent) *Session {
 		next++
 		return ag, nil, nil
 	}}
-}
-
-func waitSessionInactive(t *testing.T, sess *Session) {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for sess.Active() && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if sess.Active() {
-		t.Fatal("session remained active after its runner exited")
-	}
 }
 
 func TestSessionStopWaitsForExactRunBeforeRestart(t *testing.T) {
@@ -157,14 +129,15 @@ func TestSessionStopWaitsForExactRunBeforeRestart(t *testing.T) {
 	}
 
 	close(first.release)
-	waitSessionInactive(t, sess)
+	sess.Stop() // returns once the released runner has retired
+	if sess.Active() {
+		t.Fatal("session remained active after its runner exited")
+	}
 	if err := sess.Start(BuildParams{}, nil); err != nil {
 		t.Fatalf("Start second after first exited: %v", err)
 	}
 	<-second.started
-	if err := sess.Stop(); err != nil {
-		t.Fatalf("Stop second: %v", err)
-	}
+	sess.Stop()
 }
 
 func TestSessionSendPreservesMessageIdentity(t *testing.T) {
@@ -176,33 +149,29 @@ func TestSessionSendPreservesMessageIdentity(t *testing.T) {
 	<-ag.started
 
 	want := core.Message{ID: "ui-message-1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
-	if err := sess.Send(context.Background(), want); err != nil {
+	if err := sess.Send(want); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 	got := (<-ag.inbox).Msg
 	if got.ID != want.ID || got.Text() != want.Text() {
 		t.Fatalf("delivered message = %+v, want ID %q and content %q", got, want.ID, want.Text())
 	}
-	if err := sess.Stop(); err != nil {
-		t.Fatalf("Stop: %v", err)
-	}
+	sess.Stop()
 }
 
-func TestSessionUnexpectedExitClearsLifecycleAndReportsError(t *testing.T) {
-	wantErr := errors.New("runner failed")
+func TestSessionUnexpectedExitClearsLifecycle(t *testing.T) {
 	ag := newControlledAgent(true)
-	ag.runErr = wantErr
 	sess := sessionWithAgents(ag)
 	if err := sess.Start(BuildParams{}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	<-ag.started
 	close(ag.release)
-	waitSessionInactive(t, sess)
-	if !errors.Is(sess.LastRunError(), wantErr) {
-		t.Fatalf("LastRunError = %v, want %v", sess.LastRunError(), wantErr)
+	sess.Stop()
+	if sess.Active() {
+		t.Fatal("session remained active after its runner exited")
 	}
-	if err := sess.Send(context.Background(), core.Message{}); !errors.Is(err, ErrSessionInactive) {
+	if err := sess.Send(core.Message{}); !errors.Is(err, ErrSessionInactive) {
 		t.Fatalf("Send after exit error = %v, want ErrSessionInactive", err)
 	}
 }

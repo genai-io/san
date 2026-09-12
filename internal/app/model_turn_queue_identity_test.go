@@ -20,13 +20,8 @@ func TestAsyncHookContinuationKeepsContextInDeliveredTurn(t *testing.T) {
 		Context:            []string{"policy finding", "tool detail"},
 		ContinuationPrompt: "Re-evaluate the plan",
 	})
-	rawResult := cmd()
-	result, ok := rawResult.(agentSendResultMsg)
-	if !ok {
-		t.Fatalf("continuation command result = %T, want agentSendResultMsg", rawResult)
-	}
-	if result.err != nil {
-		t.Fatalf("deliver continuation: %v", result.err)
+	if result := cmd(); result != nil {
+		t.Fatalf("deliver continuation: %+v", result)
 	}
 
 	var got core.ChatMessage

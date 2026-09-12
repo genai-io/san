@@ -135,7 +135,6 @@ group/session and terminating that group where the platform supports it.
 ```go
 package proc
 
-func SetProcessGroup(cmd *exec.Cmd)
 func DetachSession(cmd *exec.Cmd)
 func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
 ```

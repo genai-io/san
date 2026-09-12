@@ -58,7 +58,7 @@ func TestProjectedTypesDoNotExposeJSONTags(t *testing.T) {
 	}
 }
 
-func TestMetadataAndTaskViewHelpers(t *testing.T) {
+func TestMetadataHelpers(t *testing.T) {
 	now := time.Date(2026, 4, 6, 12, 30, 0, 0, time.UTC)
 	meta := MetadataFromTranscript(&Transcript{
 		ID:        "tx-1",
@@ -91,5 +91,4 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 	if itemMeta.ID != "tx-2" || itemMeta.Cwd != "/tmp/from-list" || itemMeta.MessageCount != 3 {
 		t.Fatalf("unexpected list metadata projection: %+v", itemMeta)
 	}
-
 }

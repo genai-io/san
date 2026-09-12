@@ -303,6 +303,9 @@ func parseHooksMap(m map[string]any, pluginPath string) *HooksConfig {
 					if m, ok := hookMap["model"].(string); ok {
 						cmd.Model = m
 					}
+					if i, ok := hookMap["interactive"].(bool); ok {
+						cmd.Interactive = i
+					}
 					if a, ok := hookMap["async"].(bool); ok {
 						cmd.Async = a
 					}

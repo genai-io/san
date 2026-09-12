@@ -9,14 +9,10 @@ import (
 	"syscall"
 )
 
-// SetProcessGroup is a no-op on Windows: the syscall package does not expose
-// Setpgid, and adding Job Object support is out of scope for this package.
-// Callers should not assume grandchild cleanup works on Windows.
-func SetProcessGroup(cmd *exec.Cmd) {}
-
 // DetachSession is a no-op on Windows: there is no controlling-terminal /
-// /dev/tty concept to detach from, and session creation is out of scope for
-// this package.
+// /dev/tty concept to detach from, and neither session creation nor Job
+// Object support is in scope for this package. Callers should not assume
+// grandchild cleanup works on Windows.
 func DetachSession(cmd *exec.Cmd) {}
 
 // GroupLeaderPID reports that Windows offers no signalable process group —

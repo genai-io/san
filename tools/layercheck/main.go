@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -55,22 +56,26 @@ func main() {
 	}
 
 	var violations []violation
+	// Every listed package must have a layer; imports are checked only when
+	// they point at a listed package, so test helpers and tools outside the
+	// checker's `go list` scope stay out of the architecture map.
 	unknown := map[string]bool{}
+	listed := make(map[string]bool, len(pkgs))
+	for _, p := range pkgs {
+		listed[p.ImportPath] = true
+	}
 
 	for _, p := range pkgs {
 		fromRel, fromLayer, ok := lookupLayer(layerOf, p.ImportPath)
 		if !ok {
-			if after, scoped := scopedPackagePath(p.ImportPath); scoped {
-				unknown[after] = true
-			}
+			unknown[strings.TrimPrefix(p.ImportPath, repoModule+"/")] = true
 			continue
 		}
-		imports := append(append(append([]string(nil), p.Imports...), p.TestImports...), p.XTestImports...)
-		for _, imp := range imports {
+		for _, imp := range slices.Concat(p.Imports, p.TestImports, p.XTestImports) {
 			toRel, toLayer, ok := lookupLayer(layerOf, imp)
 			if !ok {
-				if after, scoped := scopedPackagePath(imp); scoped {
-					unknown[after] = true
+				if listed[imp] {
+					unknown[strings.TrimPrefix(imp, repoModule+"/")] = true
 				}
 				continue
 			}
@@ -113,17 +118,6 @@ func main() {
 		fmt.Printf("  %s (%s) -> %s (%s)\n", v.from, v.fromLayer, v.to, v.toLayer)
 	}
 	os.Exit(1)
-}
-
-// scopedPackagePath returns repository-relative packages governed by this
-// checker. Test helpers and tools outside internal/ and cmd/ have no layer in
-// the architecture map and are intentionally outside its scope.
-func scopedPackagePath(absPath string) (string, bool) {
-	rel, own := strings.CutPrefix(absPath, repoModule+"/")
-	if !own {
-		return "", false
-	}
-	return rel, strings.HasPrefix(rel, "internal/") || strings.HasPrefix(rel, "cmd/")
 }
 
 // loadLayerMap reads docs/reference/package-map.md and returns the package

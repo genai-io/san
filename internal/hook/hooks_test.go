@@ -1545,11 +1545,3 @@ cat > `+captureFile+`
 		t.Fatalf("expected source=resume, got %v", parsed["source"])
 	}
 }
-
-// interactive gives a hook that talks back enough room to say its first word.
-//
-// The engine closes a hook's stdin when it has been quiet for a moment, so
-// that a hook reading to EOF is not left waiting forever. An interactive hook
-// is supposed to beat that timer, and on an idle machine it does — but a test
-// cannot control how loaded the machine is, and one that races a wall clock is
-// a test that fails for reasons that have nothing to do with what it checks.

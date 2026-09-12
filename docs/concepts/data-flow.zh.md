@@ -40,7 +40,7 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
    │     │                │             │             │           │
    │     └────────────────┼─────────────┴─────────────┘           │
    │                      ▼                                       │
-   │               SubmitToAgent(content, images)                 │
+   │               SubmitToAgent(msg)                             │
    │                      │                                       │
    │                      ▼ agent.Send (push to inbox)            │
    └──────────────────────┼───────────────────────────────────────┘
@@ -148,7 +148,7 @@ routeKeypress → handleTextareaShortcut
                   │     清空 textarea + 待发送的图片，用户可以开始
                   │     下一条消息。
                   │
-                  └─ SubmitToAgent(msg.Content, msg.Images)
+                  └─ SubmitToAgent(msg)   ← 与 conv 行共用同一个 ID
                         把 `msg` 推到 agent 的 **INBOX**（一个独立的
                         Go channel）。agent 自己的 loop 会读它，加到
                         内部 history，然后调 LLM。两个调用都需要的
@@ -201,8 +201,8 @@ handleSubmit → dispatchSubmission
 （如 `env.PersistSession`）触发副作用，返回一个简短的 `result` 字符串，
 由 controller 包装成 notice 显示。
 
-部分 slash 命令（`/loop`、`/init` 等）会调 `env.SubmitToAgent(prompt,
-nil)` 把内容交给 agent——它们在 SubmitToAgent 这一步重新汇合到 Path A。
+部分 slash 命令（`/loop`、`/init` 等）会调 `env.SubmitToAgent(msg)`
+把内容交给 agent——它们在 SubmitToAgent 这一步重新汇合到 Path A。
 
 ## Path C —— 后台触发器
 

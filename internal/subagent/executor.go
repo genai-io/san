@@ -49,7 +49,6 @@ type Executor struct {
 	skillsPrompt               string               // available skills section for capable subagents
 	mcpTools                   mcp.Tools            // tool schemas + execution
 	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
-	tasks                      *task.Manager        // background task ownership/output store
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 }
@@ -97,14 +96,7 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 		cwd:           cwd,
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
-		tasks:         task.Default(),
 	}
-}
-
-// SetTaskManager scopes background-agent task registration and output files to
-// the manager owned by the composition root.
-func (e *Executor) SetTaskManager(manager *task.Manager) {
-	e.tasks = manager
 }
 
 // SetParentPermissionMode provides the parent session's live permission mode.
@@ -226,9 +218,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
 	}
-	if e.tasks == nil {
-		return nil, fmt.Errorf("background task manager not configured")
-	}
 	config, ok := e.resolveRequestAgentConfig(req)
 	if !ok {
 		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
@@ -237,7 +226,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	identity := config.Name
 	ctx, cancel := context.WithCancel(context.Background())
 
-	agentTask := e.tasks.CreateAgentTask(
+	agentTask := task.Default().CreateAgentTask(
 		generateShortID(),
 		identity,
 		req.Description,

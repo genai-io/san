@@ -41,24 +41,16 @@ func NewManager() *Manager {
 // CreateBashTask creates and registers a new bash task
 func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
 	id := generateID()
-	m.mu.Lock()
-	task := newBashTask(id, command, description, cmd, cancel, m.outputPathLocked(id))
-	m.tasks[id] = task
-	m.mu.Unlock()
-
-	notifyTaskCreated(task.GetStatus())
+	task := NewBashTask(id, command, description, cmd, cancel, m.outputPath(id))
+	m.RegisterTask(task)
 	return task
 }
 
 // CreateAgentTask creates and registers an agent-backed background task using
 // this manager's output store.
 func (m *Manager) CreateAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
-	m.mu.Lock()
-	task := newAgentTask(id, agentName, description, ctx, cancel, m.outputPathLocked(id))
-	m.tasks[id] = task
-	m.mu.Unlock()
-
-	notifyTaskCreated(task.GetStatus())
+	task := NewAgentTask(id, agentName, description, ctx, cancel, m.outputPath(id))
+	m.RegisterTask(task)
 	return task
 }
 
@@ -76,14 +68,19 @@ func (m *Manager) SetOutputDir(dir string) error {
 	return nil
 }
 
-func (m *Manager) outputPathLocked(taskID string) string {
-	if m.outputDir == "" || taskID == "" {
+// outputPath is where a task's log lives, or "" when output is not persisted.
+// The task creates the file itself, outside the registry lock.
+func (m *Manager) outputPath(taskID string) string {
+	m.mu.RLock()
+	dir := m.outputDir
+	m.mu.RUnlock()
+	if dir == "" || taskID == "" {
 		return ""
 	}
-	return filepath.Join(m.outputDir, taskID+".log")
+	return filepath.Join(dir, taskID+".log")
 }
 
-// RegisterTask registers an existing task (used for agent tasks)
+// RegisterTask registers an existing task
 func (m *Manager) RegisterTask(task BackgroundTask) {
 	m.mu.Lock()
 	m.tasks[task.GetID()] = task

@@ -31,13 +31,12 @@ package agent
 type Session struct { /* internal fields */ }
 
 func (s *Session) Start(params BuildParams, messages []core.Message) error
-func (s *Session) Stop() error
+func (s *Session) Stop()
 func (s *Session) StopContext(ctx context.Context) error
 func (s *Session) Active() bool
-func (s *Session) Send(ctx context.Context, msg core.Message) error
+func (s *Session) Send(msg core.Message) error
 func (s *Session) Outbox() <-chan core.Event
 func (s *Session) PermissionGate() *PermissionGate
-func (s *Session) LastRunError() error
 
 // Package-level access
 func Initialize(opts Options)
@@ -66,17 +65,18 @@ func ResetDefaultSession()         // test-only
 - Per-session: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
 - Termination: `StopContext` cancels and waits for the exact run generation;
-  `Stop` applies a bounded default deadline. `Active()` changes only after the
-  run goroutine exits.
-- Sending: callers pass the already-identified `core.Message`. `Send` selects
-  over the inbox, caller context, and run completion, and reports delivery
-  failures instead of silently dropping input.
+  `Stop` applies a bounded default deadline and logs a run that outlives it.
+  `Active()` changes only after the run goroutine exits. A run's error reaches
+  the app as `core.AgentStopped`.
+- Sending: callers pass the `core.Message` built from the conv row so both
+  share one ID. `Send` selects over the inbox and run completion, and reports
+  delivery failures instead of silently dropping input.
 
 ## Tests
 
 ```
 internal/agent/session_test.go — lifecycle serialization, message identity,
-                                 and unexpected-runner failures.
+                                 and unexpected runner exits.
 ```
 
 A unit test for `BuildParams → core.Config` translation is missing and

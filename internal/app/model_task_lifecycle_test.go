@@ -34,8 +34,7 @@ func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := task.NewAgentTask("bg-1", "Explore", "Audit deps", ctx, cancel)
-	task.Default().RegisterTask(worker)
+	worker := task.Default().CreateAgentTask("bg-1", "Explore", "Audit deps", ctx, cancel)
 	worker.Complete(nil)
 
 	items := todo.Default().List()
