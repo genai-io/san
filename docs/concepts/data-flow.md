@@ -44,7 +44,7 @@ scrollback) plus `View()` (bottom UI strip).
    │     │                │             │             │           │
    │     └────────────────┼─────────────┴─────────────┘           │
    │                      ▼                                       │
-   │               SubmitToAgent(content, images)                 │
+   │               SubmitToAgent(msg)                             │
    │                      │                                       │
    │                      ▼ agent.Send (push to inbox)            │
    └──────────────────────┼───────────────────────────────────────┘
@@ -156,7 +156,7 @@ routeKeypress → handleTextareaShortcut
                   │     Clears textarea + pending images so the user can
                   │     start the next message.
                   │
-                  └─ SubmitToAgent(msg.Content, msg.Images)
+                  └─ SubmitToAgent(msg)   ← same ID as the conv row
                         Pushes `msg` onto the agent's INBOX (a separate
                         Go channel). The agent's own loop will read it,
                         append it to its internal history, then call the
@@ -212,7 +212,7 @@ mutates UI through callbacks (e.g. `env.PersistSession`), and returns
 a short `result` string the controller wraps as a notice.
 
 Some slash commands (`/loop`, `/init`) end up calling
-`env.SubmitToAgent(prompt, nil)` to hand off to the agent — they
+`env.SubmitToAgent(msg)` to hand off to the agent — they
 rejoin Path A at the SubmitToAgent step.
 
 ## Path C — Background trigger
@@ -325,19 +325,21 @@ actually responds. The "payload" varies by producer:
 | Producer | Payload sent to agent |
 | --- | --- |
 | Cron | The cron job's `Prompt` string (what the user wrote when scheduling) |
-| Async hook | The hook's `ContinuationPrompt` field |
+| Async hook | Context findings plus `ContinuationPrompt`, combined into one user turn |
 | Subagent done | `Content` from the merged `mainNotice` — usually the subagent's final output |
 
 ```
 each inject*
    ├─ conv.AddNotice(...)                          ◄── "Scheduled task fired", etc.
    ├─ conv.Append(ChatMessage{Role: user, ...})    ◄── shows in scrollback
-   └─ SubmitToAgent(<payload>, nil)                ◄── kicks off the next turn
+   └─ SubmitToAgent(core.Message)                  ◄── kicks off the next turn
 ```
 
 All three converge on **SubmitToAgent**. Same provider check, same
 `ensureAgentSession`, same `sendToAgent` push. There is no other way
-to reach the agent's inbox from the TUI.
+to reach the agent's inbox from the TUI. The conversation projection and the
+agent input share the same message ID; restart preloading removes the pending
+message by ID rather than by matching its text.
 
 ### End-to-end trace: subagent done → main agent inbox
 
@@ -385,12 +387,12 @@ goroutines are involved; each `─ ─ ─►` is a handoff across one.
                                           ▼
                                       ⑩ injectNotices(merged)
                                           ├─ conv.AddNotice("…completed")
-                                          └─ SubmitToAgent(content, nil)
+                                          └─ SubmitToAgent(message)
                                           │   update_submit.go
                                           ├─ check LLMProvider
                                           ├─ ensureAgentSession
                                           ▼
-                                      ⑪ sendToAgent(content, images)
+                                      ⑪ sendToAgent(message)
                                           │   agent.go
                                           ├─ attachPendingReminders
                                           ▼

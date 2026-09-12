@@ -435,11 +435,11 @@ func (m *model) disabledToolsSignature() string {
 }
 
 // ensureAgentSession lazily starts the agent goroutine, preloading the
-// existing conversation. If pendingSend is non-empty and matches the
-// trailing user message in m.conv, it's dropped from the preload — the
+// existing conversation. If pendingMessageID is non-empty and matches the
+// trailing user message in m.conv, it is dropped from the preload — the
 // caller is about to re-deliver it via sendToAgent and we'd otherwise see
-// the input twice. Pass "" when the caller hasn't yet appended the message.
-func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
+// the input twice. Pass "" when the caller has not appended the message.
+func (m *model) ensureAgentSession(pendingMessageID string) (tea.Cmd, error) {
 	if m.services.Agent.Active() {
 		// The toolset is fixed at agent-build time. If the enabled Evolve
 		// capabilities or the disabled-tool set drifted since the build (a
@@ -458,7 +458,7 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 	// same effective disabled-tool snapshot after settings/persona drift.
 	m.ReconfigureAgentTool()
 	params := m.buildAgentParams()
-	coreMessages := m.seedAgentMessages(pendingSend)
+	coreMessages := m.seedAgentMessages(pendingMessageID)
 
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
@@ -491,14 +491,14 @@ func (m *model) ensureAgentSession(pendingSend string) (tea.Cmd, error) {
 // that snapshot wins over the UI rendering model, whose rows may have been
 // committed, cleared, or assigned different IDs. Cold starts and restored
 // sessions have no snapshot and therefore seed from the UI conversation.
-func (m *model) seedAgentMessages(pendingSend string) []core.Message {
+func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
 	coreMessages := m.agentRestartMessages
 	if len(coreMessages) == 0 {
 		coreMessages = m.conv.ConvertToProvider()
 	}
-	if pendingSend != "" && len(coreMessages) > 0 {
+	if pendingMessageID != "" && len(coreMessages) > 0 {
 		last := coreMessages[len(coreMessages)-1]
-		if last.Role == ai.RoleUser && last.Text() == pendingSend {
+		if last.Role == ai.RoleUser && last.ID == pendingMessageID {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}
@@ -530,14 +530,20 @@ func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Messa
 	return stripped
 }
 
-func (m *model) sendToAgent(content string, images []core.Attachment) tea.Cmd {
+// agentSendFailedMsg reports a message the agent never accepted; a delivered
+// message needs no round trip.
+type agentSendFailedMsg struct{ err error }
+
+func (m *model) sendToAgent(msg core.Message) tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
 	svc := m.services.Agent
-	content = m.attachPendingReminders(content)
+	msg = m.attachPendingReminders(msg)
 	return func() tea.Msg {
-		svc.Send(content, images)
+		if err := svc.Send(msg); err != nil {
+			return agentSendFailedMsg{err: err}
+		}
 		return nil
 	}
 }
@@ -546,12 +552,19 @@ func (m *model) sendToAgent(content string, images []core.Attachment) tea.Cmd {
 // <system-reminder> blocks to the user message content. The harness uses this
 // channel to deliver session/project context (skills, memory, one-time notices)
 // without invalidating the system-prompt cache prefix.
-func (m *model) attachPendingReminders(content string) string {
+func (m *model) attachPendingReminders(msg core.Message) core.Message {
 	pending := m.services.Reminder.Drain()
 	if len(pending) == 0 {
-		return content
+		return msg
 	}
-	return reminder.AttachToContent(content, pending)
+	content := ai.TextContent(reminder.AttachToContent(msg.Text(), pending))
+	for _, block := range msg.Content {
+		if block.Type != ai.BlockText {
+			content = append(content, block)
+		}
+	}
+	msg.Content = content
+	return msg
 }
 
 // wireReminderProviders registers the harness providers that emit on
@@ -593,7 +606,7 @@ func (m *model) wireReminderProviders() {
 }
 
 func (m *model) StopAgentSession() {
-	// Capture before Stop clears Session.agent. This also covers stops that
+	// Capture before Stop retires the active run. This also covers stops that
 	// happen before ensureAgentSession runs (agent toggles, provider changes,
 	// terminal outbox events), which the old rebuild-local carry-over missed.
 	if messages := m.services.Agent.Messages(); len(messages) > 0 {

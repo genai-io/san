@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -55,18 +56,26 @@ func main() {
 	}
 
 	var violations []violation
+	// Every listed package must have a layer; imports are checked only when
+	// they point at a listed package, so test helpers and tools outside the
+	// checker's `go list` scope stay out of the architecture map.
 	unknown := map[string]bool{}
+	listed := make(map[string]bool, len(pkgs))
+	for _, p := range pkgs {
+		listed[p.ImportPath] = true
+	}
 
 	for _, p := range pkgs {
 		fromRel, fromLayer, ok := lookupLayer(layerOf, p.ImportPath)
 		if !ok {
-			continue // not one of ours, or unmapped
+			unknown[strings.TrimPrefix(p.ImportPath, repoModule+"/")] = true
+			continue
 		}
-		for _, imp := range p.Imports {
+		for _, imp := range slices.Concat(p.Imports, p.TestImports, p.XTestImports) {
 			toRel, toLayer, ok := lookupLayer(layerOf, imp)
 			if !ok {
-				if after, ok0 := strings.CutPrefix(imp, repoModule+"/"); ok0 {
-					unknown[after] = true
+				if listed[imp] {
+					unknown[strings.TrimPrefix(imp, repoModule+"/")] = true
 				}
 				continue
 			}
@@ -177,13 +186,15 @@ func codeCell(cell string) (string, bool) {
 
 // pkgInfo is the subset of `go list -json` output that we need.
 type pkgInfo struct {
-	ImportPath string
-	Imports    []string
+	ImportPath   string
+	Imports      []string
+	TestImports  []string
+	XTestImports []string
 }
 
 // loadPackages calls `go list -json ./internal/... ./cmd/...` and decodes the
-// concatenated JSON stream into a slice. Test packages are excluded via the
-// default behavior of `go list`; we don't enumerate test imports.
+// concatenated JSON stream into a slice. TestImports and XTestImports are
+// checked alongside production imports so tests cannot bypass layer rules.
 func loadPackages() ([]pkgInfo, error) {
 	cmd := exec.Command("go", "list", "-json", "./internal/...", "./cmd/...")
 	out, err := cmd.Output()

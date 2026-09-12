@@ -40,7 +40,7 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
    │     │                │             │             │           │
    │     └────────────────┼─────────────┴─────────────┘           │
    │                      ▼                                       │
-   │               SubmitToAgent(content, images)                 │
+   │               SubmitToAgent(msg)                             │
    │                      │                                       │
    │                      ▼ agent.Send (push to inbox)            │
    └──────────────────────┼───────────────────────────────────────┘
@@ -148,7 +148,7 @@ routeKeypress → handleTextareaShortcut
                   │     清空 textarea + 待发送的图片，用户可以开始
                   │     下一条消息。
                   │
-                  └─ SubmitToAgent(msg.Content, msg.Images)
+                  └─ SubmitToAgent(msg)   ← 与 conv 行共用同一个 ID
                         把 `msg` 推到 agent 的 **INBOX**（一个独立的
                         Go channel）。agent 自己的 loop 会读它，加到
                         内部 history，然后调 LLM。两个调用都需要的
@@ -201,8 +201,8 @@ handleSubmit → dispatchSubmission
 （如 `env.PersistSession`）触发副作用，返回一个简短的 `result` 字符串，
 由 controller 包装成 notice 显示。
 
-部分 slash 命令（`/loop`、`/init` 等）会调 `env.SubmitToAgent(prompt,
-nil)` 把内容交给 agent——它们在 SubmitToAgent 这一步重新汇合到 Path A。
+部分 slash 命令（`/loop`、`/init` 等）会调 `env.SubmitToAgent(msg)`
+把内容交给 agent——它们在 SubmitToAgent 这一步重新汇合到 Path A。
 
 ## Path C —— 后台触发器
 
@@ -305,19 +305,20 @@ Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 | 生产者 | 真正发给 agent 的内容 |
 | --- | --- |
 | Cron | cron 任务的 `Prompt` 字符串（用户排程时写的内容）|
-| 异步 hook | hook 的 `ContinuationPrompt` 字段 |
+| 异步 hook | context findings 与 `ContinuationPrompt` 合并成一个 user turn |
 | Subagent 完成 | merged `hub.Message` 的 `Data` 字段——通常是 subagent 的最终输出 |
 
 ```
 每个 inject*
    ├─ conv.AddNotice(...)                          ◄── "Scheduled task fired" 等
    ├─ conv.Append(ChatMessage{Role: user, ...})    ◄── 显示在 scrollback
-   └─ SubmitToAgent(<payload>, nil)                ◄── 启动下一回合
+   └─ SubmitToAgent(core.Message)                  ◄── 启动下一回合
 ```
 
 三条路径都汇聚到 **SubmitToAgent**。一样的 provider 检查、一样的
 `ensureAgentSession`、一样的 `sendToAgent` 推入。**没有别的途径**
-能进 agent 的 inbox。
+能进 agent 的 inbox。conversation projection 与 agent input 复用同一个
+message ID；重启时按 ID 去掉待发送消息，不再靠文本内容碰运气匹配。
 
 ### 端到端走一遍：subagent 完成 → 主 agent inbox
 
@@ -365,12 +366,12 @@ inbox 触发下一轮，中间发生的就是这一串。**涉及三条 goroutin
                                           ▼
                                       ⑩ injectNotification(merged)
                                           ├─ conv.AddNotice("…completed")
-                                          └─ SubmitToAgent(content, nil)
+                                          └─ SubmitToAgent(message)
                                           │   update_submit.go
                                           ├─ 检查 LLMProvider
                                           ├─ ensureAgentSession
                                           ▼
-                                      ⑪ sendToAgent(content, images)
+                                      ⑪ sendToAgent(message)
                                           │   agent.go
                                           ├─ attachPendingReminders
                                           ▼

@@ -4,47 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 )
 
-var (
-	outputDirMu sync.RWMutex
-	outputDir   string
-)
-
-// SetOutputDir configures the directory used for stable task output files.
-// It delegates to the internal implementation, keeping backward compatibility
-// for callers that call task.SetOutputDir() directly.
-func SetOutputDir(dir string) error {
-	return setOutputDir(dir)
-}
-
-// setOutputDir is the internal implementation.
-func setOutputDir(dir string) error {
-	outputDirMu.Lock()
-	defer outputDirMu.Unlock()
-
-	outputDir = dir
-	if dir == "" {
-		return nil
-	}
-	return os.MkdirAll(dir, 0o755)
-}
-
-// OutputPath returns the stable output file path for a task ID.
-func OutputPath(taskID string) string {
-	outputDirMu.RLock()
-	dir := outputDir
-	outputDirMu.RUnlock()
-	if dir == "" || taskID == "" {
-		return ""
-	}
-	return filepath.Join(dir, taskID+".log")
-}
-
-func initOutputFile(taskID string) string {
-	path := OutputPath(taskID)
+func initOutputFile(path string) string {
 	if path == "" {
 		return ""
 	}

@@ -2,79 +2,125 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/log"
 )
+
+var (
+	ErrSessionInactive = errors.New("agent session is not active")
+	ErrSessionStopped  = errors.New("agent session stopped before the message was accepted")
+)
+
+type sessionRun struct {
+	agent  core.Agent
+	cancel context.CancelFunc
+	done   chan struct{}
+}
 
 type Session struct {
 	mu                 sync.RWMutex
-	agent              core.Agent
+	run                *sessionRun
 	permGate           *PermissionGate
-	cancel             context.CancelFunc
 	pendingPermRequest *PermGateRequest
 	pluginRoot         string // see SetPluginRoot
+	// build is set by tests to substitute the agent; nil means buildAgent.
+	build func(BuildParams) (core.Agent, *PermissionGate, error)
 }
 
 func (s *Session) Start(params BuildParams, messages []core.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.agent != nil {
+	if s.run != nil {
 		return fmt.Errorf("agent session already active")
 	}
 
-	ag, pg, err := buildAgent(params)
+	builder := s.build
+	if builder == nil {
+		builder = buildAgent
+	}
+	ag, pg, err := builder(params)
 	if err != nil {
 		return err
 	}
-	s.agent = ag
-	s.permGate = pg
 
 	if len(messages) > 0 {
-		s.agent.SetMessages(messages)
+		ag.SetMessages(messages)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	// Capture this build's agent. Stop clears s.agent immediately, and a rapid
-	// stop/restart can otherwise make this goroutine dereference nil or run the
-	// replacement agent under the previous build's cancelled context.
-	go func() { _ = ag.Run(ctx) }()
+	run := &sessionRun{agent: ag, cancel: cancel, done: make(chan struct{})}
+	s.run = run
+	s.permGate = pg
+	go s.execute(run, ctx)
 
 	return nil
 }
 
-func (s *Session) Stop() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.stopLocked()
-}
+// execute owns the run generation: the session stays active until Run returns,
+// so a stop and a restart can never overlap. Run's error already reaches the
+// app as a core.AgentStopped event.
+func (s *Session) execute(run *sessionRun, ctx context.Context) {
+	_ = run.agent.Run(ctx)
 
-func (s *Session) stopLocked() {
-	if s.agent == nil {
-		return
-	}
-	if s.cancel != nil {
-		s.cancel()
-		s.cancel = nil
-	}
-	select {
-	case s.agent.Inbox() <- core.Inbound{Signal: core.SigStop}:
-	default:
-	}
-	s.agent = nil
+	s.mu.Lock()
+	s.run = nil
 	s.permGate = nil
 	s.pendingPermRequest = nil
 	s.pluginRoot = ""
+	close(run.done)
+	s.mu.Unlock()
+}
+
+const sessionStopTimeout = 2 * time.Second
+
+// Stop performs a bounded graceful shutdown; a run that outlives the deadline
+// is logged and stays active. Callers that need a different deadline use
+// StopContext.
+func (s *Session) Stop() {
+	ctx, cancel := context.WithTimeout(context.Background(), sessionStopTimeout)
+	defer cancel()
+	if err := s.StopContext(ctx); err != nil {
+		log.Logger().Warn("agent session did not stop before deadline", zap.Error(err))
+	}
+}
+
+// StopContext cancels the active run and waits for that exact generation to
+// finish. The run remains active until Run returns, so a concurrent Start can
+// never overlap the previous agent's teardown.
+func (s *Session) StopContext(ctx context.Context) error {
+	s.mu.RLock()
+	run := s.run
+	s.mu.RUnlock()
+	if run == nil {
+		return nil
+	}
+
+	run.cancel()
+	select {
+	case run.agent.Inbox() <- core.Inbound{Signal: core.SigStop}:
+	default:
+	}
+
+	select {
+	case <-run.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Session) Active() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.agent != nil
+	return s.run != nil
 }
 
 // Messages returns a snapshot of the running agent's conversation chain, or nil
@@ -83,22 +129,37 @@ func (s *Session) Active() bool {
 // a mid-conversation rebuild never drops the conversation.
 func (s *Session) Messages() []core.Message {
 	s.mu.RLock()
-	ag := s.agent
+	run := s.run
 	s.mu.RUnlock()
-	if ag == nil {
+	if run == nil {
 		return nil
 	}
-	return ag.Messages()
+	return run.agent.Messages()
 }
 
-func (s *Session) Send(content string, images []core.Attachment) {
+// Send delivers a message to the active agent. Callers create the Message once
+// at the input boundary so the TUI projection, the inbox, and the transcript
+// share one ID; a message without one is stamped by the agent loop.
+func (s *Session) Send(msg core.Message) error {
 	s.mu.RLock()
-	ag := s.agent
+	run := s.run
 	s.mu.RUnlock()
-	if ag == nil {
-		return
+	if run == nil {
+		return ErrSessionInactive
 	}
-	ag.Inbox() <- core.Inbound{Msg: core.UserMessage(content, images)}
+
+	// A closed done channel would otherwise race the inbox send.
+	select {
+	case <-run.done:
+		return ErrSessionStopped
+	default:
+	}
+	select {
+	case run.agent.Inbox() <- core.Inbound{Msg: msg}:
+		return nil
+	case <-run.done:
+		return ErrSessionStopped
+	}
 }
 
 // Compact asks the running agent to compact in place using the precomputed
@@ -109,13 +170,17 @@ func (s *Session) Send(content string, images []core.Attachment) {
 // boundary on its own goroutine.
 func (s *Session) Compact(summary string) bool {
 	s.mu.RLock()
-	ag := s.agent
+	run := s.run
 	s.mu.RUnlock()
-	if ag == nil {
+	if run == nil {
 		return false
 	}
-	ag.Inbox() <- core.Inbound{Signal: core.SigCompact, Summary: summary}
-	return true
+	select {
+	case run.agent.Inbox() <- core.Inbound{Signal: core.SigCompact, Summary: summary}:
+		return true
+	case <-run.done:
+		return false
+	}
 }
 
 // interruptDrainTimeout caps how long InterruptTurn waits for the agent
@@ -139,12 +204,12 @@ const interruptDrainTimeout = 250 * time.Millisecond
 // → SetPendingPermission between the clear and the cancel.
 func (s *Session) InterruptTurn() {
 	s.mu.RLock()
-	ag := s.agent
+	run := s.run
 	s.mu.RUnlock()
-	if ag == nil {
+	if run == nil {
 		return
 	}
-	done := ag.InterruptCurrentTurn()
+	done := run.agent.InterruptCurrentTurn()
 	timer := time.NewTimer(interruptDrainTimeout)
 	defer timer.Stop()
 	select {
@@ -159,10 +224,10 @@ func (s *Session) InterruptTurn() {
 func (s *Session) Outbox() <-chan core.Event {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.agent == nil {
+	if s.run == nil {
 		return nil
 	}
-	return s.agent.Outbox()
+	return s.run.agent.Outbox()
 }
 
 func (s *Session) PermissionGate() *PermissionGate {
@@ -186,10 +251,10 @@ func (s *Session) SetPendingPermission(req *PermGateRequest) {
 func (s *Session) System() core.System {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.agent == nil {
+	if s.run == nil {
 		return nil
 	}
-	return s.agent.System()
+	return s.run.agent.System()
 }
 
 // Tools returns the running agent's toolset, or nil when no agent is active.
@@ -199,10 +264,10 @@ func (s *Session) System() core.System {
 func (s *Session) Tools() core.Tools {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.agent == nil {
+	if s.run == nil {
 		return nil
 	}
-	return s.agent.Tools()
+	return s.run.agent.Tools()
 }
 
 // SetPluginRoot scopes the next agent turn to a plugin. The slash command

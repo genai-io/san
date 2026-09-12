@@ -226,7 +226,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	identity := config.Name
 	ctx, cancel := context.WithCancel(context.Background())
 
-	agentTask := task.NewAgentTask(
+	agentTask := task.Default().CreateAgentTask(
 		generateShortID(),
 		identity,
 		req.Description,
@@ -234,8 +234,6 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		cancel,
 	)
 	agentTask.SetIdentity(identity, "")
-
-	task.Default().RegisterTask(agentTask)
 
 	req.TaskID = agentTask.GetID()
 	req.OnActivity = func(msg string) {

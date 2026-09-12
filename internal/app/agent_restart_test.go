@@ -72,7 +72,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 	// SubmitToAgent asks for a replacement. It is sent through the inbox after
 	// Start, so it must not displace the preserved seed.
 	m.conv.Append(core.ChatMessage{ID: "ui-completion", Role: core.ChatUser, Content: "background result"})
-	got := m.seedAgentMessages("background result")
+	got := m.seedAgentMessages("ui-completion")
 	if len(got) != len(live) {
 		t.Fatalf("seedAgentMessages() len = %d, want %d: %+v", len(got), len(live), got)
 	}
@@ -108,7 +108,9 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		}
 	}
 
-	sess.Send("background result", nil)
+	if err := sess.Send(core.UserMessage("background result", nil)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
 	select {
 	case request := <-provider.requests:
 		if len(request) != 3 {
@@ -153,7 +155,7 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 	m.ResetAgentSession()
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
-	if got := m.seedAgentMessages("new session"); len(got) != 0 {
+	if got := m.seedAgentMessages("new-u1"); len(got) != 0 {
 		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
 	}
 }

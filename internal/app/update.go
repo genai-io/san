@@ -334,6 +334,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("async session persist failed", zap.Error(msg.err))
 		}
 		return m, nil
+	case agentSendFailedMsg:
+		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
+		m.conv.AddNotice("Failed to send message: " + msg.err.Error())
+		return m, tea.Batch(m.CommitMessages()...)
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:

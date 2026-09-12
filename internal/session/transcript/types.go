@@ -42,18 +42,22 @@ type State struct {
 	Worktree *WorktreeState
 }
 
+// TrackerItemView is the persisted shape of a todo.Item. It mirrors that struct
+// field for field so the session layer converts by plain struct conversion,
+// and carries the same JSON tags so PatchTasks payloads keep their wire form.
 type TrackerItemView struct {
-	ID              string
-	Subject         string
-	Description     string
-	ActiveForm      string
-	Status          string
-	Owner           string
-	Blocks          []string
-	BlockedBy       []string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	StatusChangedAt time.Time
+	ID              string         `json:"id"`
+	Subject         string         `json:"subject"`
+	Description     string         `json:"description"`
+	ActiveForm      string         `json:"activeForm,omitempty"`
+	Status          string         `json:"status"`
+	Owner           string         `json:"owner,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
+	Blocks          []string       `json:"blocks"`
+	BlockedBy       []string       `json:"blockedBy"`
+	CreatedAt       time.Time      `json:"createdAt"`
+	UpdatedAt       time.Time      `json:"updatedAt"`
+	StatusChangedAt time.Time      `json:"statusChangedAt"`
 }
 
 type ListItem struct {

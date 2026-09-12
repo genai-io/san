@@ -64,11 +64,13 @@ func (s *Store) SetStorageDir(dir string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.storageDir = dir
 	if dir == "" {
+		s.storageDir = ""
 		return nil
 	}
 
+	// Prepare the directory before adopting it, so a failure leaves the
+	// store on its previous directory with its items intact.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create item storage dir: %w", err)
 	}
@@ -83,7 +85,10 @@ func (s *Store) SetStorageDir(dir string) error {
 
 	// Load existing items from disk, then reconcile: this is the moment a
 	// fresh process adopts state written by a process that no longer exists.
+	previousDir := s.storageDir
+	s.storageDir = dir
 	if err := s.loadFromDisk(); err != nil {
+		s.storageDir = previousDir
 		return err
 	}
 	s.demoteOrphanedItems()

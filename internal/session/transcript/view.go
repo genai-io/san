@@ -1,10 +1,6 @@
 package transcript
 
-import (
-	"time"
-
-	"github.com/genai-io/san/internal/todo"
-)
+import "time"
 
 type MetadataView struct {
 	ID              string
@@ -53,44 +49,4 @@ func MetadataFromListItem(item ListItem, cwd string) MetadataView {
 		Cwd:          cwd,
 		MessageCount: item.MessageCount,
 	}
-}
-
-func TrackerItemsFromView(items []TrackerItemView) []todo.Item {
-	out := make([]todo.Item, 0, len(items))
-	for _, item := range items {
-		out = append(out, todo.Item{
-			ID:              item.ID,
-			Subject:         item.Subject,
-			Description:     item.Description,
-			ActiveForm:      item.ActiveForm,
-			Status:          item.Status,
-			Owner:           item.Owner,
-			Blocks:          append([]string(nil), item.Blocks...),
-			BlockedBy:       append([]string(nil), item.BlockedBy...),
-			CreatedAt:       item.CreatedAt,
-			UpdatedAt:       item.UpdatedAt,
-			StatusChangedAt: item.StatusChangedAt,
-		})
-	}
-	return out
-}
-
-func TrackerItemViewsFromItems(items []todo.Item) []TrackerItemView {
-	out := make([]TrackerItemView, 0, len(items))
-	for _, item := range items {
-		out = append(out, TrackerItemView{
-			ID:              item.ID,
-			Subject:         item.Subject,
-			Description:     item.Description,
-			ActiveForm:      item.ActiveForm,
-			Status:          item.Status,
-			Owner:           item.Owner,
-			Blocks:          append([]string(nil), item.Blocks...),
-			BlockedBy:       append([]string(nil), item.BlockedBy...),
-			CreatedAt:       item.CreatedAt,
-			UpdatedAt:       item.UpdatedAt,
-			StatusChangedAt: item.StatusChangedAt,
-		})
-	}
-	return out
 }

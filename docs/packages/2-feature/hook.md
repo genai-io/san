@@ -118,6 +118,22 @@ methods don't earn an interface; TEMPLATE Rule 3.
 - Concurrency: all `Set*` methods are mutex-guarded reads/writes; hook
   execution reads under RLock.
 
+### Interactive command hooks
+
+Command hooks are non-interactive by default: San supplies one JSON value on
+stdin and closes it, so scripts that read until EOF finish deterministically.
+Set `"interactive": true` only for a command that implements the line-based
+prompt protocol:
+
+```json
+{"type":"command","command":"./confirm.sh","interactive":true}
+```
+
+The script reads the initial input line, emits each `PromptRequest` as one JSON
+line, and reads one `PromptResponse` line. Its stdin remains open until the
+script exits, the user cancels, or the hook timeout expires. Both command modes
+run without the TUI's controlling terminal.
+
 ## Tests
 
 ```

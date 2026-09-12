@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-
-	"github.com/genai-io/san/internal/todo"
 )
 
 func Project(records []Record) (*Transcript, error) {
@@ -152,11 +150,11 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 			}
 			state.AutoPilot = v
 		case PatchPathTasks:
-			var tasks []todo.Item
+			var tasks []TrackerItemView
 			if err := json.Unmarshal(op.Value, &tasks); err != nil {
 				return fmt.Errorf("patch %s: %w", op.Path, err)
 			}
-			state.Tasks = TrackerItemViewsFromItems(tasks)
+			state.Tasks = tasks
 		case PatchPathWorktree:
 			if string(op.Value) == "null" {
 				state.Worktree = nil

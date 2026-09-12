@@ -39,15 +39,6 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Stdin = bytes.NewReader(inputJSON)
 	cmd.Env = e.buildEnv(ctx, input)
-	proc.SetProcessGroup(cmd)
-	cmd.Cancel = func() error {
-		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
-		return nil
-	}
-	// Backstop: if a grandchild keeps the stdout/stderr pipe open after the
-	// shell is killed (common on Windows where we can't group-kill), give Wait
-	// a bounded time to drain before exec force-closes the pipes.
-	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -117,12 +108,6 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 	cwd := e.getCwd()
 	cmd := buildShellCommand(ctx, hookCmd, cwd)
 	cmd.Env = e.buildEnv(ctx, input)
-	proc.SetProcessGroup(cmd)
-	cmd.Cancel = func() error {
-		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
-		return nil
-	}
-	cmd.WaitDelay = 5 * time.Second
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
@@ -147,22 +132,12 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 		return outcome
 	}
 
-	// Auto-close stdin if the hook doesn't produce output quickly.
-	// Hooks using `cat` (reads until EOF) will deadlock without this.
-	// Interactive hooks (prompt-response) produce output before needing
-	// more stdin, so the timer is cancelled in time.
-	stdinTimer := time.AfterFunc(e.stdinIdleOrDefault(), func() {
-		stdinPipe.Close()
-	})
-	defer stdinTimer.Stop()
-
 	scanner := bufio.NewScanner(stdoutPipe)
 	var finalOutput string
 	firstLine := true
 	promptCallback := e.getPromptCallback()
 
 	for scanner.Scan() {
-		stdinTimer.Stop()
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
@@ -212,17 +187,29 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 	return e.parseOutput(finalOutput, outcome)
 }
 
+// buildShellCommand prepares a hook process. Hook commands talk through
+// configured pipes, never the TUI's controlling terminal — an interactive hook
+// means the JSON line protocol, not terminal ownership — so the child is
+// detached, and cancellation reaches its whole process group.
 func buildShellCommand(ctx context.Context, hookCmd setting.HookCmd, cwd string) *exec.Cmd {
+	var cmd *exec.Cmd
 	switch strings.ToLower(strings.TrimSpace(hookCmd.Shell)) {
 	case "powershell", "pwsh":
-		cmd := exec.CommandContext(ctx, "pwsh", "-NoProfile", "-Command", hookCmd.Command)
-		cmd.Dir = cwd
-		return cmd
+		cmd = exec.CommandContext(ctx, "pwsh", "-NoProfile", "-Command", hookCmd.Command)
 	default:
-		cmd := exec.CommandContext(ctx, "sh", "-c", hookCmd.Command)
-		cmd.Dir = cwd
-		return cmd
+		cmd = exec.CommandContext(ctx, "sh", "-c", hookCmd.Command)
 	}
+	cmd.Dir = cwd
+	proc.DetachSession(cmd)
+	cmd.Cancel = func() error {
+		_ = proc.TerminateGroup(cmd, syscall.SIGKILL)
+		return nil
+	}
+	// Backstop: if a grandchild keeps the stdout/stderr pipe open after the
+	// shell is killed (common on Windows where we can't group-kill), give Wait
+	// a bounded time to drain before exec force-closes the pipes.
+	cmd.WaitDelay = 5 * time.Second
+	return cmd
 }
 
 func handleBlockingExit(stderr *bytes.Buffer) HookOutcome {

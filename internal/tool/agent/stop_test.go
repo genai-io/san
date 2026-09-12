@@ -16,8 +16,7 @@ func TestAgentStopCancelsRunningAgent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	agentTask := task.NewAgentTask("task-stop-1", "Explore Worker", "Long task", ctx, cancel)
-	task.Default().RegisterTask(agentTask)
+	agentTask := task.Default().CreateAgentTask("task-stop-1", "Explore Worker", "Long task", ctx, cancel)
 	defer task.Default().Remove("task-stop-1")
 	go func() {
 		<-ctx.Done()
@@ -52,9 +51,8 @@ func TestAgentStopRejectsCompletedAgent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	agentTask := task.NewAgentTask("task-stop-2", "Explore Worker", "Done task", ctx, cancel)
+	agentTask := task.Default().CreateAgentTask("task-stop-2", "Explore Worker", "Done task", ctx, cancel)
 	agentTask.Complete(nil)
-	task.Default().RegisterTask(agentTask)
 	defer task.Default().Remove("task-stop-2")
 
 	toolInst := NewAgentStopTool()

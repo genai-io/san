@@ -3,23 +3,22 @@ package task
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestAgentTaskInitializesStableOutputFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := SetOutputDir(tmpDir); err != nil {
+	manager := NewManager()
+	if err := manager.SetOutputDir(tmpDir); err != nil {
 		t.Fatalf("SetOutputDir() error: %v", err)
 	}
-	t.Cleanup(func() {
-		_ = SetOutputDir("")
-	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	task := NewAgentTask("task-output-1", "Explore", "Inspect code", ctx, cancel)
+	task := manager.CreateAgentTask("task-output-1", "Explore", "Inspect code", ctx, cancel)
 	if task.OutputFile == "" {
 		t.Fatal("expected output file path to be assigned")
 	}
@@ -30,17 +29,15 @@ func TestAgentTaskInitializesStableOutputFile(t *testing.T) {
 
 func TestAgentTaskAppendOutputWritesToOutputFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	if err := SetOutputDir(tmpDir); err != nil {
+	manager := NewManager()
+	if err := manager.SetOutputDir(tmpDir); err != nil {
 		t.Fatalf("SetOutputDir() error: %v", err)
 	}
-	t.Cleanup(func() {
-		_ = SetOutputDir("")
-	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	task := NewAgentTask("task-output-2", "Explore", "Inspect code", ctx, cancel)
+	task := manager.CreateAgentTask("task-output-2", "Explore", "Inspect code", ctx, cancel)
 	task.AppendOutput([]byte("first line\n"))
 	task.AppendProgress("Read(main.go)")
 
@@ -53,5 +50,30 @@ func TestAgentTaskAppendOutputWritesToOutputFile(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("output file missing %q: %q", want, text)
 		}
+	}
+}
+
+func TestManagersKeepOutputDirectoriesIndependent(t *testing.T) {
+	firstDir := t.TempDir()
+	secondDir := t.TempDir()
+	first := NewManager()
+	second := NewManager()
+	if err := first.SetOutputDir(firstDir); err != nil {
+		t.Fatalf("first SetOutputDir: %v", err)
+	}
+	if err := second.SetOutputDir(secondDir); err != nil {
+		t.Fatalf("second SetOutputDir: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	firstTask := first.CreateAgentTask("first", "Explore", "first", ctx, cancel)
+	secondTask := second.CreateAgentTask("second", "Explore", "second", ctx, cancel)
+
+	if filepath.Dir(firstTask.OutputFile) != firstDir {
+		t.Fatalf("first output = %q, want directory %q", firstTask.OutputFile, firstDir)
+	}
+	if filepath.Dir(secondTask.OutputFile) != secondDir {
+		t.Fatalf("second output = %q, want directory %q", secondTask.OutputFile, secondDir)
 	}
 }

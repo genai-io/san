@@ -21,40 +21,39 @@ same `Send` path used by user input.
 
 ## Contract
 
-Foreground agent task lifecycle. Holds the single core.Agent + permission bridge for the running task. The package exposes `*Task` directly — no Service interface.
+Foreground agent lifecycle. `Session` owns exactly one run generation plus its
+permission gate. The package exposes the concrete `*Session`; no producer-side
+service interface is required.
 
 ```go
 package agent
 
-// Task is the opaque handle. Type exported; fields unexported.
-type Task struct { /* internal fields */ }
+type Session struct { /* internal fields */ }
 
-func (s *Task) Start(params BuildParams, messages []core.Message) error
-func (s *Task) Stop()
-func (s *Task) Active() bool
-func (s *Task) Send(content string, images []core.Image)
-func (s *Task) Outbox() <-chan core.Event
-func (s *Task) PermissionBridge() *PermissionBridge
-func (s *Task) PendingPermission() *PermBridgeRequest
-func (s *Task) SetPendingPermission(req *PermBridgeRequest)
-func (s *Task) System() core.System
+func (s *Session) Start(params BuildParams, messages []core.Message) error
+func (s *Session) Stop()
+func (s *Session) StopContext(ctx context.Context) error
+func (s *Session) Active() bool
+func (s *Session) Send(msg core.Message) error
+func (s *Session) Outbox() <-chan core.Event
+func (s *Session) PermissionGate() *PermissionGate
 
 // Package-level access
 func Initialize(opts Options)
-func Default() *Task
-func SetDefaultTask(s *Task)  // test-only
-func ResetDefaultTask()          // test-only
+func Default() *Session
+func SetDefaultSession(s *Session) // test-only
+func ResetDefaultSession()         // test-only
 ```
 
 
 ## Internals
 
-- `service` (`session.go`) is the only implementation. It tracks one
-  `*core.Agent` plus its cancellation context, a `PermissionBridge`, and a
-  pending `PermBridgeRequest` (TUI approval handshake).
+- `session.go` tracks one `sessionRun` (`core.Agent`, cancel, done) plus its
+  `PermissionGate`. A generation is not cleared until `Run` returns, so a
+  stop and restart cannot overlap.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
-- `permission.go` owns the bridge: a thread-safe channel pair that turns
+- `permission.go` owns the gate: a thread-safe channel pair that turns
   asynchronous permission asks into synchronous TUI approval modals.
 - No persistence here — session/transcript state lives in
   [`packages/session.md`](session.md).
@@ -65,18 +64,19 @@ func ResetDefaultTask()          // test-only
   singleton.
 - Per-session: `Start(params, messages)` builds a `core.Agent` and launches
   its `Run` goroutine. The agent's outbox is the only return channel.
-- Termination: `Stop()` cancels the run context. Outbox closes via
-  `core.Agent` shutdown. `Active()` flips to false.
-- Reentrancy: methods are guarded by a mutex; concurrent `Send` from the
-  user-input goroutine and the cron/trigger goroutines is the design
-  intent.
+- Termination: `StopContext` cancels and waits for the exact run generation;
+  `Stop` applies a bounded default deadline and logs a run that outlives it.
+  `Active()` changes only after the run goroutine exits. A run's error reaches
+  the app as `core.AgentStopped`.
+- Sending: callers pass the `core.Message` built from the conv row so both
+  share one ID. `Send` selects over the inbox and run completion, and reports
+  delivery failures instead of silently dropping input.
 
 ## Tests
 
 ```
-internal/agent/                — no package-level test file today.
-                                  Coverage is exercised end-to-end via
-                                  internal/app and integration tests.
+internal/agent/session_test.go — lifecycle serialization, message identity,
+                                 and unexpected runner exits.
 ```
 
 A unit test for `BuildParams → core.Config` translation is missing and

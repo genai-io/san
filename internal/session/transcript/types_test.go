@@ -4,8 +4,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/genai-io/san/internal/todo"
 )
 
 func TestTranscriptTypesCarryProjectedState(t *testing.T) {
@@ -60,7 +58,7 @@ func TestProjectedTypesDoNotExposeJSONTags(t *testing.T) {
 	}
 }
 
-func TestMetadataAndTaskViewHelpers(t *testing.T) {
+func TestMetadataHelpers(t *testing.T) {
 	now := time.Date(2026, 4, 6, 12, 30, 0, 0, time.UTC)
 	meta := MetadataFromTranscript(&Transcript{
 		ID:        "tx-1",
@@ -92,25 +90,5 @@ func TestMetadataAndTaskViewHelpers(t *testing.T) {
 	}, "/tmp/from-list")
 	if itemMeta.ID != "tx-2" || itemMeta.Cwd != "/tmp/from-list" || itemMeta.MessageCount != 3 {
 		t.Fatalf("unexpected list metadata projection: %+v", itemMeta)
-	}
-
-	taskTime := now.Add(2 * time.Minute)
-	tasks := []todo.Item{{
-		ID:              "1",
-		Subject:         "Refactor",
-		Description:     "Move projection helpers",
-		ActiveForm:      "Refactoring",
-		Status:          todo.StatusInProgress,
-		Owner:           "main",
-		Blocks:          []string{"2"},
-		BlockedBy:       []string{"3"},
-		CreatedAt:       taskTime,
-		UpdatedAt:       taskTime,
-		StatusChangedAt: taskTime,
-	}}
-	views := TrackerItemViewsFromItems(tasks)
-	roundTrip := TrackerItemsFromView(views)
-	if !reflect.DeepEqual(roundTrip, tasks) {
-		t.Fatalf("task roundtrip mismatch:\n got: %+v\nwant: %+v", roundTrip, tasks)
 	}
 }

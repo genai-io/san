@@ -35,15 +35,15 @@ type AgentTask struct {
 // Verify AgentTask implements BackgroundTask
 var _ BackgroundTask = (*AgentTask)(nil)
 
-// NewAgentTask creates a new agent task
-func NewAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
+// NewAgentTask creates a new agent task; outputPath "" keeps output in memory.
+func NewAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc, outputPath string) *AgentTask {
 	task := &AgentTask{
 		ID:          id,
 		AgentName:   agentName,
 		Description: description,
 		Status:      StatusRunning,
 		StartTime:   time.Now(),
-		OutputFile:  initOutputFile(id),
+		OutputFile:  initOutputFile(outputPath),
 		ctx:         ctx,
 		cancel:      cancel,
 		done:        make(chan struct{}),

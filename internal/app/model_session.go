@@ -254,7 +254,12 @@ func (m *model) forkSession() (string, error) {
 	// ensureAgentSession rebuilds with a Recorder bound to the new id, since
 	// NewRecorder invalidates its cache on exactly that mismatch.
 	m.StopAgentSession()
+	// Same storage switch as loadSessionByID: clear the tracker so
+	// initTaskStorage adopts the fork's directory, then re-import the tasks
+	// that SetStorageDir's disk load replaced.
 	m.setTrackerStorageDir("")
+	m.initTaskStorage(forked.Metadata.ID)
+	m.services.Tracker.Import(forked.Tasks)
 	return originalID, nil
 }
 

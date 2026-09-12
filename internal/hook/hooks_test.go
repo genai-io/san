@@ -1142,6 +1142,36 @@ echo '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"be
 
 // === Reverse Control #6: Bidirectional Prompt Protocol ===
 
+func TestHooks_NonInteractiveCommandClosesStdinWithPromptCallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "noninteractive.sh")
+	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
+cat >/dev/null
+echo '{"systemMessage":"stdin closed"}'
+`), 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	settings := setting.NewData()
+	settings.Hooks["PreToolUse"] = []setting.Hook{
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Timeout: 2}}},
+	}
+	engine := NewEngine(settings, "test-session", tmpDir, "")
+	engine.SetPromptCallback(func(PromptRequest) (PromptResponse, bool) {
+		t.Fatal("non-interactive hook invoked prompt callback")
+		return PromptResponse{}, true
+	})
+
+	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Read"})
+	if outcome.Error != nil {
+		t.Fatalf("Execute: %v", outcome.Error)
+	}
+	if outcome.AdditionalContext != "stdin closed" {
+		t.Fatalf("AdditionalContext = %q, want stdin closed", outcome.AdditionalContext)
+	}
+}
+
 func TestHooks_BidirectionalPrompt_SingleRound(t *testing.T) {
 	tmpDir := t.TempDir()
 	// Script sends a PromptRequest, reads the response, then outputs final JSON
@@ -1167,11 +1197,10 @@ fi
 
 	settings := setting.NewData()
 	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath}}},
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
 	}
 
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	interactive(engine)
 
 	// Set up a prompt callback that auto-approves
 	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
@@ -1220,11 +1249,10 @@ fi
 
 	settings := setting.NewData()
 	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath}}},
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
 	}
 
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	interactive(engine)
 	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
 		return PromptResponse{PromptResponse: "confirm", Selected: "no"}, false
 	})
@@ -1255,11 +1283,10 @@ echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"
 
 	settings := setting.NewData()
 	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath}}},
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
 	}
 
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	interactive(engine)
 	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
 		// User cancels the prompt
 		return PromptResponse{}, true
@@ -1301,11 +1328,10 @@ fi
 
 	settings := setting.NewData()
 	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath}}},
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
 	}
 
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	interactive(engine)
 
 	callCount := 0
 	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
@@ -1348,11 +1374,10 @@ echo "async_done" > `+markerFile+`
 
 	settings := setting.NewData()
 	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath}}},
+		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
 	}
 
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	interactive(engine)
 	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
 		t.Error("prompt callback should NOT be called for async-detached hooks")
 		return PromptResponse{}, true
@@ -1520,12 +1545,3 @@ cat > `+captureFile+`
 		t.Fatalf("expected source=resume, got %v", parsed["source"])
 	}
 }
-
-// interactive gives a hook that talks back enough room to say its first word.
-//
-// The engine closes a hook's stdin when it has been quiet for a moment, so
-// that a hook reading to EOF is not left waiting forever. An interactive hook
-// is supposed to beat that timer, and on an idle machine it does — but a test
-// cannot control how loaded the machine is, and one that races a wall clock is
-// a test that fails for reasons that have nothing to do with what it checks.
-func interactive(e *Engine) { e.stdinIdle = 10 * time.Second }
