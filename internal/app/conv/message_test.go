@@ -127,13 +127,13 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
 	raw := renderBashToolCall(`{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "")
 	out := stripANSI(raw)
-	if out != "● Bash(git status) - inspect repository\n" {
+	if out != "● Bash(git status) (inspect repository)\n" {
 		t.Fatalf("single-line command should render as one preview row, got %q", out)
 	}
 	if raw != lipgloss.JoinHorizontal(lipgloss.Top,
 		toolCallStyle.Width(2).Render("●"),
 		toolCallStyle.Render("Bash(git status)"),
-		toolResultStyle.Render(" - inspect repository"),
+		toolResultStyle.Render(" (inspect repository)"),
 	)+"\n" {
 		t.Fatalf("single-line preview should dim only its description, got %q", raw)
 	}
@@ -163,7 +163,7 @@ func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 		t.Fatalf("multi-line command should connect its continuation lines, got %q", plain)
 	}
 	// The description stays on the header in normal text, separated by a dash.
-	if !strings.Contains(stripANSI(out), "Bash - loop over files") {
+	if !strings.Contains(stripANSI(out), "Bash (loop over files)") {
 		t.Fatalf("multi-line command should show its description on the header, got %q", out)
 	}
 	// The raw command is never crammed into the Bash(...) one-line label.
@@ -236,7 +236,7 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 	const width = 80
 
 	rendered := stripANSI(renderBashToolCall(input, width, "●", ""))
-	if !strings.HasPrefix(rendered, "● Bash - Inspect pull request details and review status\n") {
+	if !strings.HasPrefix(rendered, "● Bash (Inspect pull request details and review status)\n") {
 		t.Fatalf("oversized command should use a Bash header, got %q", rendered)
 	}
 	if strings.Contains(rendered, "...") || strings.Contains(rendered, "…") {
@@ -476,7 +476,7 @@ func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testi
 		width, "⋯", detail,
 	))
 
-	if !strings.HasPrefix(rendered, "⋯ Bash - inspect repository history · 12s · 1.2k lines\n") {
+	if !strings.HasPrefix(rendered, "⋯ Bash (inspect repository history) · 12s · 1.2k lines\n") {
 		t.Fatalf("running command should move to a block when the full label does not fit, got %q", rendered)
 	}
 	if !strings.Contains(rendered, bashPrompt+"git log --oneline --graph --all --decorate --abbrev-commit\n") {

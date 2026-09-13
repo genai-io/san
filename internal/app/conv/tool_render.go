@@ -1146,6 +1146,16 @@ func formatLineCountValue(lineCount int) string {
 	return fmt.Sprintf("%d lines", lineCount)
 }
 
+// renderBashDescription dims the description in parentheses after the Bash
+// label, shortening the text — never the closing paren — to fit width.
+func renderBashDescription(description string, width int) string {
+	inner := width - lipgloss.Width(" ()")
+	if description == "" || inner <= 0 {
+		return ""
+	}
+	return toolResultStyle.Render(" (" + xansi.Truncate(description, inner, "...") + ")")
+}
+
 func renderToolLine(label string, width int) string {
 	return renderToolLineWithIcon(label, width, "●")
 }
@@ -1169,12 +1179,7 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 		commandLabel := fmt.Sprintf("%s(%s)", tool.ToolBash, command)
 		if lipgloss.Width(commandLabel) <= labelWidth {
 			label := toolCallStyle.Render(commandLabel)
-			if description != "" {
-				descriptionWidth := labelWidth - lipgloss.Width(commandLabel)
-				if descriptionWidth > 0 {
-					label += xansi.Truncate(toolResultStyle.Render(" - "+description), descriptionWidth, "...")
-				}
-			}
+			label += renderBashDescription(description, labelWidth-lipgloss.Width(commandLabel))
 			iconCell := toolCallStyle.Width(2).Render(icon)
 			return lipgloss.JoinHorizontal(lipgloss.Top, iconCell, label) + detail + "\n"
 		}
@@ -1185,15 +1190,9 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 
 	var sb strings.Builder
 
-	// Header line: ● Bash - description · running detail. Only the description
+	// Header line: ● Bash (description) · running detail. Only the description
 	// may be shortened; the command is rendered separately below.
-	header := toolCallStyle.Render(tool.ToolBash)
-	if description != "" {
-		descriptionWidth := labelWidth - lipgloss.Width(tool.ToolBash)
-		if descriptionWidth > 0 {
-			header += xansi.Truncate(toolResultStyle.Render(" - "+description), descriptionWidth, "...")
-		}
-	}
+	header := toolCallStyle.Render(tool.ToolBash) + renderBashDescription(description, labelWidth-lipgloss.Width(tool.ToolBash))
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
