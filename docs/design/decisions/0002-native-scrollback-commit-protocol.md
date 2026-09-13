@@ -72,6 +72,26 @@ chunking, resize — keeps all of them or it is wrong.
    Overlays render in the alternate screen (#517); a print whose turn comes
    while an overlay owns the frame waits and restarts when it closes.
 
+6. **A resize redraw reaches the frame's top through the rows the terminal
+   rewrapped.** The redraw moves up by the cursor's row *within* the frame,
+   which is the physical distance only while every frame row is one terminal
+   row; a narrowing rewraps the wide rows above the cursor, so the fork's
+   `skipReflowedRows` first moves past the rows the rewrap added. Every
+   terminal San targets rewraps — tmux has since 1.8 — so the only exemption
+   is GNU screen, which truncates instead. A short move leaves the old
+   frame's top rows on screen and each narrowing pushes the frame one row
+   further down.
+
+   Known limit: xterm.js (VS Code, Orca) does not keep the cursor on its
+   logical row across a rewrap — every wide row *below* the cursor that
+   splits pushes the cursor one row down, and the row it lands on is exempt
+   from splitting. With the input strip's rule and status line below the
+   prompt that is exactly one row per narrowing, so the redraw there still
+   lands one row short. Nothing observable from the application separates
+   this from a terminal that keeps the cursor put, short of asking the
+   terminal where the cursor is after the resize; the count is not a
+   heuristic to tune per terminal.
+
 Terminal behaviour that is *not* a San bug, so nobody "fixes" it again:
 tmux with its default `scroll-on-clear on` treats an erase-below issued at
 the home position as a clear and pushes the whole screen into history, so a
@@ -107,4 +127,6 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   — the native-history gate.
 - bubbletea fork branches `agent/flush-before-insert-above`,
   `agent/reflow-aware-resize-erase`, `agent/erase-from-frame-top-on-shrink`.
+- xterm.js `Buffer._reflowSmaller`: the cursor bump per split and the
+  cursor-line exemption behind the known limit in invariant 6.
 - charmbracelet/bubbletea#1736; genai-io/san#314, #497, #517.
