@@ -36,6 +36,7 @@ sizable feature usually has both a proposal and a notes plan.
 | Page | Status | What it settled |
 |---|---|---|
 | [`0001-layered-package-architecture`](decisions/0001-layered-package-architecture.md) | Accepted | Five layers, enforced dependency direction, one contract page per package. |
+| [`0002-native-scrollback-commit-protocol`](decisions/0002-native-scrollback-commit-protocol.md) | Accepted | The invariants that keep live frame rows out of native scrollback, and the one site that enforces each. |
 
 ## Principles
 

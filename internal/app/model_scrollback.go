@@ -6,7 +6,10 @@
 // The frame rule everything here obeys: insertAbove prints above the managed
 // frame, and the inline renderer only redraws the frame's current extent — so
 // what the frame holds then stays on screen, and any row it stops holding is
-// left behind. Both are permanent; scrollback cannot be rewritten.
+// left behind. Both are permanent; scrollback cannot be rewritten. The full
+// protocol — the invariants and the one site that enforces each — is
+// docs/design/decisions/0002-native-scrollback-commit-protocol.md; read it
+// before changing how a print measures, freezes, or shrinks the frame.
 package app
 
 import (
@@ -361,19 +364,32 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 		return "", false
 	}
 	if frameFillsScreen(frameHeight, m.env.Height) {
-		frame = tea.NewView("")
+		frame = minimalScrollbackFrame()
 	}
 	m.flush.frameForPrint = &frame
 	return content, true
 }
 
 // frameFillsScreen reports that the frame leaves no room above it. The print
-// then has nowhere to insert, so it shrinks the frame to nothing for the
+// then has nowhere to insert, so it shrinks the frame to one row for the
 // duration — both halves of prepareScrollbackPrint read the answer here rather
 // than one telling the other.
 func frameFillsScreen(frameHeight, height int) bool {
 	return height > 0 && frameHeight >= height
 }
+
+// minimalScrollbackFrame is the one-row frame a print runs under when the real
+// frame leaves no room above it. One row, not zero: a zero-height frame makes
+// the renderer's inline erase start at the cursor's row instead of the frame's
+// top row, so the rows of the previously painted frame above the cursor
+// survive, and the print's scroll then pushes them into native history as a
+// stale copy.
+func minimalScrollbackFrame() tea.View {
+	return tea.NewView(" ")
+}
+
+// minimalScrollbackFrameHeight is the rows minimalScrollbackFrame occupies.
+const minimalScrollbackFrameHeight = 1
 
 func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeight int) (string, bool) {
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id || f.pendingPrints[0].current != "" {
@@ -387,10 +403,11 @@ func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeigh
 
 	capacity := len(lines)
 	if height > 0 {
-		capacity = height - min(max(frameHeight, 0), height)
 		if frameFillsScreen(frameHeight, height) {
-			capacity = height
+			frameHeight = minimalScrollbackFrameHeight
 		}
+		// At least one row per chunk, or a one-row terminal never drains.
+		capacity = max(1, height-min(max(frameHeight, 0), height))
 	}
 	capacity = min(capacity, len(lines))
 	f.pendingPrints[0].current = renderScrollbackLines(lines[:capacity])
@@ -409,7 +426,7 @@ func (m *model) useMinimalScrollbackFrame() {
 	if m.flush.frameForPrint == nil {
 		return
 	}
-	frame := tea.NewView("")
+	frame := minimalScrollbackFrame()
 	m.flush.frameForPrint = &frame
 }
 

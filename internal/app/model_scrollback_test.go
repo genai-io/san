@@ -192,8 +192,8 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	if _, ok := m.prepareScrollbackPrint(ready.id); !ok {
 		t.Fatal("a full-height frame must still prepare a print")
 	}
-	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != "" {
-		t.Fatalf("frame during print = %#v, ok=%v, want an empty frozen frame", frame, ok)
+	if frame, ok := m.scrollbackFrameForPrint(); !ok || frame.Content != minimalScrollbackFrame().Content {
+		t.Fatalf("frame during print = %#v, ok=%v, want the one-row frozen frame", frame, ok)
 	}
 	if next := m.finishScrollbackPrint(ready.id); next != nil {
 		t.Fatal("the one-row payload should finish in one minimized print")

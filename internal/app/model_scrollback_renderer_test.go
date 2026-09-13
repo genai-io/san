@@ -179,12 +179,17 @@ type nativeHistoryModel struct {
 	model
 	started   bool
 	committed chan struct{}
+	// printFrameHeight is the frame height the model reports when it prepares
+	// a print — what prepareScrollbackPrint would measure from the latest
+	// View, which need not match the frame the terminal actually shows.
+	printFrameHeight int
 }
 
 func newNativeHistoryModel() *nativeHistoryModel {
 	return &nativeHistoryModel{
-		model:     model{env: env{Width: nativeHistoryWidth, Height: nativeHistoryHeight}},
-		committed: make(chan struct{}, 1),
+		model:            model{env: env{Width: nativeHistoryWidth, Height: nativeHistoryHeight}},
+		committed:        make(chan struct{}, 1),
+		printFrameHeight: nativeFrameHeight,
 	}
 }
 
@@ -214,13 +219,13 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.id,
 			nativeHistoryWidth,
 			nativeHistoryHeight,
-			nativeFrameHeight,
+			m.printFrameHeight,
 		)
 		if !ok {
 			return m, nil
 		}
-		if frameFillsScreen(nativeFrameHeight, nativeHistoryHeight) {
-			frame = tea.NewView("")
+		if frameFillsScreen(m.printFrameHeight, nativeHistoryHeight) {
+			frame = minimalScrollbackFrame()
 		}
 		m.flush.frameForPrint = &frame
 		return m, tea.Sequence(
@@ -307,8 +312,25 @@ func (t *terminalHistoryState) Write(p []byte) (int, error) {
 // split before Println. Otherwise insertAbove scrolls the live Thinking/input/
 // footer rows through the terminal top and irreversibly adds them to history.
 func TestConsecutiveTallScrollbackCommitsPreserveNativeHistory(t *testing.T) {
-	terminal := newTerminalHistoryState(nativeHistoryWidth, nativeHistoryHeight)
+	runNativeHistoryCommits(t, newNativeHistoryModel())
+}
+
+// The frame a print measures comes from the latest View, which can be far
+// taller than the frame the terminal still shows — a tool result lands in the
+// View before its frame is ever painted. When that measured frame fills the
+// screen the print runs under a one-row frame, and the renderer's flush of
+// that frame must erase the painted one from its top row; erasing from the
+// cursor's row leaves the painted frame's upper rows on screen, and the
+// print's scroll then pushes them into history as a stale copy.
+func TestFullScreenFrameCommitLeavesNoStaleFrameInNativeHistory(t *testing.T) {
 	m := newNativeHistoryModel()
+	m.printFrameHeight = nativeHistoryHeight
+	runNativeHistoryCommits(t, m)
+}
+
+func runNativeHistoryCommits(t *testing.T, m *nativeHistoryModel) {
+	t.Helper()
+	terminal := newTerminalHistoryState(nativeHistoryWidth, nativeHistoryHeight)
 	program := tea.NewProgram(
 		m,
 		tea.WithInput(nil),
@@ -362,7 +384,7 @@ func TestConsecutiveTallScrollbackCommitsPreserveNativeHistory(t *testing.T) {
 	// shutdown newlines can scroll the managed frame.
 	history, screen := terminal.snapshot()
 	all := history + "\n" + screen
-	for _, live := range []string{nativeThinking, nativeInput, nativeFooter, nativePadding} {
+	for _, live := range []string{nativeThinking, nativeInput, nativeFooter, nativePadding, "OLD-LIVE"} {
 		if strings.Contains(history, live) {
 			t.Fatalf("native history contains managed-frame row %q:\n%s", live, history)
 		}
