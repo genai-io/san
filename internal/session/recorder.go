@@ -206,16 +206,19 @@ func (r *Recorder) onAppend(msg core.Message) {
 	// Route through the same MessageToBlocks converter Store.Save uses, so the
 	// dedupe key (message ID) maps to byte-identical content from either writer.
 	// A tool result is a RoleUser message with a non-nil ToolResult; it
-	// serializes as a "user" turn carrying tool_result blocks.
+	// serializes as a "user" turn carrying tool_result blocks — one per row,
+	// so a turn answering parallel calls keeps every result in its record.
 	// The agent's message is the conversation; the transcript is the view of
-	// it. ToChat is that view with nothing drawn on it yet, which is exactly
-	// what an agent-side message is.
-	chat := core.ChatOf(msg)
-	content := MessageToBlocks(chat)
+	// it. ChatRowsOf is that view with nothing drawn on it yet, which is
+	// exactly what an agent-side message is.
+	var content []ContentBlock
+	for _, row := range core.ChatRowsOf(msg) {
+		content = append(content, MessageToBlocks(row)...)
+	}
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
-	role := transcriptRole(chat.Role)
+	role := transcriptRole(core.ChatRole(msg.Role))
 
 	r.mu.Lock()
 	parent := r.lastMessageID

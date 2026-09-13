@@ -13,6 +13,10 @@ import (
 // produce byte-identical content for a given message ID. Only user/assistant
 // messages become nodes (control signals are not model-visible); each node's
 // timestamp is derived from createdAt so a re-save is deterministic.
+//
+// Rows that share an ID are the results of one parallel-call turn (see
+// core.ChatRowsOf); they fold back into that turn's single node, the inverse
+// of the split messagesFromNodes makes.
 func messagesToNodes(msgs []core.ChatMessage, defaultCwd string, createdAt time.Time, gitBranch string) []transcript.Node {
 	nodes := make([]transcript.Node, 0, len(msgs))
 	var prevID string
@@ -25,6 +29,11 @@ func messagesToNodes(msgs []core.ChatMessage, defaultCwd string, createdAt time.
 		id := msg.ID
 		if id == "" {
 			id = core.NewMessageID()
+		}
+		if id == prevID && msg.ToolResult != nil {
+			last := &nodes[len(nodes)-1]
+			last.Content = append(last.Content, MessageToBlocks(msg)...)
+			continue
 		}
 		nodes = append(nodes, transcript.Node{
 			ID:        id,
@@ -64,16 +73,35 @@ func messagesFromNodes(nodes []transcript.Node) []core.ChatMessage {
 			msgs = append(msgs, msg)
 			continue
 		}
-		msg := core.ChatMessage{Role: core.ChatUser, ID: node.ID}
-		extractUserContent(node.Content, &msg)
-		if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
-			if name, ok := toolNameByID[msg.ToolResult.ToolCallID]; ok {
-				msg.ToolResult.ToolName = name
+		// A parallel-call turn is one node carrying a tool_result block per
+		// call; the conversation shows each result as its own row.
+		for _, blocks := range splitToolResults(node.Content) {
+			msg := core.ChatMessage{Role: core.ChatUser, ID: node.ID}
+			extractUserContent(blocks, &msg)
+			if msg.ToolResult != nil && msg.ToolResult.ToolName == "" {
+				if name, ok := toolNameByID[msg.ToolResult.ToolCallID]; ok {
+					msg.ToolResult.ToolName = name
+				}
 			}
+			msgs = append(msgs, msg)
 		}
-		msgs = append(msgs, msg)
 	}
 	return msgs
+}
+
+// splitToolResults returns the node content as one row's worth of blocks per
+// tool_result, or the content whole when it carries at most one.
+func splitToolResults(content []ContentBlock) [][]ContentBlock {
+	var rows [][]ContentBlock
+	for _, block := range content {
+		if block.Type == "tool_result" {
+			rows = append(rows, []ContentBlock{block})
+		}
+	}
+	if len(rows) <= 1 {
+		return [][]ContentBlock{content}
+	}
+	return rows
 }
 
 // transcriptRole maps a wire role onto the transcript's role string. Only

@@ -365,7 +365,7 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 func chatOf(msgs []core.Message) []core.ChatMessage {
 	out := make([]core.ChatMessage, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, core.ChatOf(m))
+		out = append(out, core.ChatRowsOf(m)...)
 	}
 	return out
 }

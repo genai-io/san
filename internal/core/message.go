@@ -254,6 +254,10 @@ func (c ChatMessage) assistantContent() ai.Content {
 // ChatOf projects a conversation turn onto the flat fields the interface
 // reads, with no display state set. The mirror of ToMessage, and the reason
 // both live here: a block kind that gains a field has one place to gain it.
+//
+// A ChatMessage holds one tool result, so a turn answering several parallel
+// calls does not fit in one; ChatOf keeps the last result and ChatRowsOf is
+// the projection that keeps them all.
 func ChatOf(m Message) ChatMessage {
 	c := ChatMessage{ID: m.ID, Role: ChatRole(m.Role), Content: m.Text()}
 	for _, block := range m.Content {
@@ -283,6 +287,21 @@ func ChatOf(m Message) ChatMessage {
 		}
 	}
 	return c
+}
+
+// ChatRowsOf projects a turn onto conversation rows: one per tool result, all
+// carrying the turn's ID, so a parallel-call answer is shown and persisted
+// whole. Every other turn is the single row ChatOf gives.
+func ChatRowsOf(m Message) []ChatMessage {
+	results := m.ToolResults()
+	if len(results) <= 1 {
+		return []ChatMessage{ChatOf(m)}
+	}
+	rows := make([]ChatMessage, 0, len(results))
+	for i := range results {
+		rows = append(rows, ChatMessage{ID: m.ID, Role: ChatRole(m.Role), ToolResult: &results[i]})
+	}
+	return rows
 }
 
 // Attachment is a picture a person attached, and where it came from.
