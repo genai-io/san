@@ -11,7 +11,7 @@ LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILDT
 export CGO_ENABLED := 0
 GOFILES := $(shell find . -path './vendor' -prune -o -path './.git' -prune -o -name '*.go' -print)
 GOIMPORTS_VERSION := v0.43.0
-GOLANGCI_VERSION := v2.12.2
+GOLANGCI_VERSION := v2.13.2
 GOVULNCHECK_VERSION := v1.7.0
 
 .PHONY: build build-all install clean release release-push test cover format format-check lint lint-go install-format-tools install-lint-tools check-format-tools check-lint-tools
