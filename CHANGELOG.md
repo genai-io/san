@@ -3,6 +3,24 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.8] - 2026-09-14
+
+### Changed
+- Simplify MCP resource and prompt counts and reuse SDK test helpers ([@yanmxa](https://github.com/yanmxa) in [#510](https://github.com/genai-io/san/pull/510))
+- Document the subagent workflow orchestration proposal ([@yanmxa](https://github.com/yanmxa) in [#513](https://github.com/genai-io/san/pull/513))
+- Separate design proposals from decision records and consolidate translated documentation ([@yanmxa](https://github.com/yanmxa) in [#514](https://github.com/genai-io/san/pull/514))
+- Build and lint with Go 1.27.1 ([@yanmxa](https://github.com/yanmxa) in [#516](https://github.com/genai-io/san/pull/516))
+
+### Fixed
+- Refresh the running agent's tools when an MCP server announces changes ([@yanmxa](https://github.com/yanmxa) in [#509](https://github.com/genai-io/san/pull/509))
+- Open the sign-in page in the browser and report the current Codex client version ([@mannsion](https://github.com/mannsion) in [#515](https://github.com/genai-io/san/pull/515))
+- Render every overlay in the alternate screen so closing a picker restores the transcript cleanly ([@yanmxa](https://github.com/yanmxa) in [#517](https://github.com/genai-io/san/pull/517))
+- Serialize agent generations and preserve hook context, forked todos, and task metadata ([@yanmxa](https://github.com/yanmxa) in [#518](https://github.com/genai-io/san/pull/518))
+- Persist every parallel tool-call result in session and subagent transcripts ([@yanmxa](https://github.com/yanmxa) in [#519](https://github.com/genai-io/san/pull/519))
+- Use the resumed session's identity for hooks and task storage ([@yanmxa](https://github.com/yanmxa) in [#520](https://github.com/genai-io/san/pull/520))
+- Keep Bash descriptions in balanced parentheses ([@yanmxa](https://github.com/yanmxa) in [#522](https://github.com/genai-io/san/pull/522))
+- Prevent shrinking frames from duplicating scrollback and erase rewrapped rows correctly under tmux ([@yanmxa](https://github.com/yanmxa) in [#523](https://github.com/genai-io/san/pull/523))
+
 ## [v1.22.7] - 2026-09-07
 
 ### Changed
