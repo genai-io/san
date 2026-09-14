@@ -101,7 +101,7 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		switch toolName {
 		case tool.ToolBash, tool.ToolEdit, tool.ToolWrite:
 		default:
-			return renderNestedFailure(data.Content)
+			return renderNestedFailure(data.Content, data.Width)
 		}
 	}
 
@@ -143,13 +143,13 @@ const (
 
 func renderNestedReadResultInline(data ToolResultData) string {
 	if data.IsError {
-		return renderNestedFailure(data.Content)
+		return renderNestedFailure(data.Content, data.Width)
 	}
 
 	content := strings.TrimSuffix(data.Content, "\n")
 	var sb strings.Builder
 	if data.Expanded {
-		sb.WriteString(renderNestedToolBody(content))
+		sb.WriteString(renderNestedToolBody(content, data.Width))
 	}
 	sb.WriteString(renderNestedToolTrailer(formatReadResultSummary(content), toolResultStyle))
 	return sb.String()
@@ -157,7 +157,7 @@ func renderNestedReadResultInline(data ToolResultData) string {
 
 // renderNestedToolBody keeps visible content under the same connector that
 // ends at the adjacent terminal summary. Empty content adds no decorative row.
-func renderNestedToolBody(content string) string {
+func renderNestedToolBody(content string, width int) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return ""
@@ -170,7 +170,7 @@ func renderNestedToolBody(content string) string {
 			sb.WriteString(strings.Repeat(" ", lipgloss.Width(nestedBodyPrefix)) + "\n")
 			continue
 		}
-		sb.WriteString(renderNestedToolBodyLine(line))
+		sb.WriteString(renderNestedToolBodyLine(line, width))
 	}
 	return sb.String()
 }
@@ -187,11 +187,30 @@ func visibleLine(line string) string {
 	return line
 }
 
-func renderNestedToolBodyLine(line string) string {
-	return toolResultStyle.Render(nestedBodyPrefix+visibleLine(line)) + "\n"
+func renderNestedToolBodyLine(line string, width int) string {
+	return renderGutteredLine(nestedBodyPrefix, visibleLine(line), width)
 }
 
-func renderNestedToolBodyContinuous(content string) string {
+// renderGutteredLine soft-wraps one row to the terminal width so every
+// continuation row keeps the "┊" gutter. Left to the terminal, a wrapped row
+// restarts at column 0 and the connector breaks. Tabs expand to lipgloss's
+// tab width up front so the wrap budget matches what Render will draw.
+func renderGutteredLine(prefix, line string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+	line = strings.ReplaceAll(line, "\t", "    ")
+	wrapWidth := max(1, width-lipgloss.Width(nestedBodyPrefix))
+
+	var sb strings.Builder
+	for segment := range strings.SplitSeq(xansi.Wrap(line, wrapWidth, " "), "\n") {
+		sb.WriteString(toolResultStyle.Render(prefix+segment) + "\n")
+		prefix = nestedBodyPrefix
+	}
+	return sb.String()
+}
+
+func renderNestedToolBodyContinuous(content string, width int) string {
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		return ""
@@ -199,7 +218,7 @@ func renderNestedToolBodyContinuous(content string) string {
 
 	var sb strings.Builder
 	for line := range strings.SplitSeq(content, "\n") {
-		sb.WriteString(renderNestedToolBodyLine(line))
+		sb.WriteString(renderNestedToolBodyLine(line, width))
 	}
 	return sb.String()
 }
@@ -208,20 +227,20 @@ func renderNestedToolTrailer(summary string, style lipgloss.Style) string {
 	return style.Render(nestedTrailerPrefix+summary) + "\n"
 }
 
-func renderNestedFailure(content string) string {
+func renderNestedFailure(content string, width int) string {
 	content = strings.TrimPrefix(content, "Error: ")
-	return renderNestedToolBody(content) + renderNestedToolTrailer("failed", errorStyle)
+	return renderNestedToolBody(content, width) + renderNestedToolTrailer("failed", errorStyle)
 }
 
 func renderNestedGenericToolResultInline(data ToolResultData) string {
 	if data.IsError {
-		return renderNestedFailure(data.Content)
+		return renderNestedFailure(data.Content, data.Width)
 	}
 
 	content := strings.TrimSuffix(data.Content, "\n")
 	var sb strings.Builder
 	if data.Expanded {
-		sb.WriteString(renderNestedToolBody(content))
+		sb.WriteString(renderNestedToolBody(content, data.Width))
 	}
 	toolName := data.ToolName
 	if toolName == "" {
@@ -272,7 +291,7 @@ func renderBashToolResultInline(data ToolResultData) string {
 	var sb strings.Builder
 	showBody := (data.Expanded || data.IsError) && content != ""
 	if showBody {
-		sb.WriteString(renderNestedToolBodyContinuous(content))
+		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
 	}
 	sb.WriteString(renderNestedToolTrailer(summary, style))
 	return sb.String()
@@ -343,7 +362,7 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 	var sb strings.Builder
 	if data.IsError {
 		sb.WriteString(renderFileChangeInputPreview(data.ToolInput, data.Content, width))
-		sb.WriteString(renderNestedFailure(data.Content))
+		sb.WriteString(renderNestedFailure(data.Content, width))
 		return sb.String()
 	}
 
@@ -1199,12 +1218,6 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 	// Soft-wrap every command line to the terminal width. The first row carries
 	// the shell prompt; every later row uses the connector so the command and its
 	// result form one continuous block. No command text is replaced by ellipses.
-	budget := width
-	if budget <= 0 {
-		budget = 80
-	}
-	promptWidth := lipgloss.Width(bashPrompt)
-	wrapWidth := max(1, budget-promptWidth)
 	seenCommand := false
 	for commandLine := range strings.SplitSeq(command, "\n") {
 		// Preserve intentional blank lines after the command starts while keeping
@@ -1212,7 +1225,7 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 		// first visible command retains "$".
 		if strings.TrimSpace(commandLine) == "" {
 			if seenCommand {
-				sb.WriteString(renderNestedToolBodyLine(""))
+				sb.WriteString(renderNestedToolBodyLine("", width))
 			}
 			continue
 		}
@@ -1222,21 +1235,7 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 			prefix = nestedBodyPrefix
 		}
 		seenCommand = true
-
-		if lipgloss.Width(commandLine) <= wrapWidth {
-			sb.WriteString(toolResultStyle.Render(prefix+commandLine) + "\n")
-			continue
-		}
-
-		first := true
-		for segment := range strings.SplitSeq(xansi.Wrap(commandLine, wrapWidth, " "), "\n") {
-			if first {
-				sb.WriteString(toolResultStyle.Render(prefix+segment) + "\n")
-				first = false
-				continue
-			}
-			sb.WriteString(toolResultStyle.Render(nestedBodyPrefix+segment) + "\n")
-		}
+		sb.WriteString(renderGutteredLine(prefix, commandLine, width))
 	}
 	return sb.String()
 }
