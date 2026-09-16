@@ -182,16 +182,18 @@ func (m *model) adaptTurnForProvider(content string, images []core.Attachment) (
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("[Attached image(s) — this model cannot view images directly. The files are on disk; use an available tool (e.g. an MCP image-description tool) to inspect them if you need their contents.]\n")
+	// A pasted image gets its file in the session's blob dir: the path below is
+	// inlined into content conv persists and replays, so the file has to keep
+	// resolving for as long as the transcript can be resumed.
+	imagesDir := ""
+	if err := m.services.Session.EnsureStore(m.env.CWD); err == nil {
+		imagesDir = m.services.Session.GetStore().ImagesDir(m.services.Session.ID())
+	}
 	for i, img := range images {
-		path, temp, err := image.EnsureFilePath(img)
+		path, err := image.EnsureFilePath(img, imagesDir)
 		if err != nil {
 			// Nothing on disk to point at — the name is all the model gets.
 			path = img.FileName
-		}
-		if temp {
-			// The path below is inlined into content conv persists and replays, so
-			// the file has to outlive this turn — see removeTempImageFiles.
-			m.tempImageFiles = append(m.tempImageFiles, path)
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}

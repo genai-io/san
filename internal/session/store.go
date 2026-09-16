@@ -137,6 +137,7 @@ func (s *Store) Delete(id string) error {
 		return err
 	}
 	_ = os.RemoveAll(s.toolResultsDir(id))
+	_ = os.RemoveAll(s.ImagesDir(id))
 	return nil
 }
 
@@ -326,6 +327,15 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 
 func (s *Store) toolResultsDir(sessionID string) string {
 	return filepath.Join(s.projectDir, "blobs", "tool-result", sessionID)
+}
+
+// ImagesDir is where a session's pasted images are written when a text-only
+// model has to be handed a path instead of the picture. That path is inlined
+// into a turn the transcript replays, so the file has to live as long as the
+// transcript does — next to the session's spilled tool results, gone with
+// them in Delete.
+func (s *Store) ImagesDir(sessionID string) string {
+	return filepath.Join(s.projectDir, "blobs", "image", sessionID)
 }
 
 func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, error) {

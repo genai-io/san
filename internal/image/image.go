@@ -4,7 +4,9 @@ package image
 import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -84,36 +86,34 @@ func newImage(mediaType, fileName, path string, data []byte) core.Attachment {
 	}
 }
 
-// EnsureFilePath returns a filesystem path for an image, writing the file when
-// the image doesn't have one — so a tool handed the path (an MCP image
-// describer, say) can always open it. An image loaded from disk keeps its own
-// path and temp is false. A clipboard paste has no backing file, so its bytes
-// go to a temp file and temp is true: that one belongs to the caller, who must
-// os.Remove it once the model is done with it.
-func EnsureFilePath(img core.Attachment) (path string, temp bool, err error) {
+// EnsureFilePath returns a filesystem path for an image, so a tool handed the
+// path (an MCP image describer, say) can always open it. An image loaded from
+// disk keeps its own path. A clipboard paste has no backing file, so its bytes
+// are written under dir, named by their hash: pasting the same picture twice
+// lands on one file, and the name says nothing about when it was pasted.
+func EnsureFilePath(img core.Attachment, dir string) (string, error) {
 	if img.Path != "" {
-		return img.Path, false, nil
+		return img.Path, nil
 	}
 	if img.Data == "" {
-		return "", false, fmt.Errorf("image %s has neither a path nor data", img.FileName)
+		return "", fmt.Errorf("image %s has neither a path nor data", img.FileName)
 	}
 	data, err := base64.StdEncoding.DecodeString(img.Data)
 	if err != nil {
-		return "", false, fmt.Errorf("decoding image data: %w", err)
+		return "", fmt.Errorf("decoding image data: %w", err)
 	}
-	f, err := os.CreateTemp("", "san-image-*"+extForMediaType(img.MediaType))
-	if err != nil {
-		return "", false, err
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
 	}
-	defer f.Close()
-	if _, err := f.Write(data); err != nil {
-		os.Remove(f.Name())
-		return "", false, err
+	sum := sha256.Sum256(data)
+	path := filepath.Join(dir, hex.EncodeToString(sum[:8])+extForMediaType(img.MediaType))
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", err
 	}
-	return f.Name(), true, nil
+	return path, nil
 }
 
-// extForMediaType picks the file extension a temp image should carry. It does
+// extForMediaType picks the file extension a pasted image should carry. It does
 // not reverse supportedTypes: two extensions map to image/jpeg there, and Go
 // randomises map iteration, so the same image would land on .jpg or .jpeg from
 // run to run.

@@ -15,14 +15,17 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 )
 
 // textOnlyModel returns a model whose session is live on a text-only provider,
-// with a queue ready to accept items.
+// with a queue ready to accept items and a session store under a scratch HOME
+// for the files a pasted image needs.
 func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
 	sess := &agent.Session{}
@@ -38,6 +41,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),
 			Reminder: reminder.NewService(),
+			Session:  &session.Setup{SessionID: "sess-1"},
 		},
 		conv: conv.NewModel(80),
 	}
@@ -232,10 +236,10 @@ func TestQueuedLeadingImageFailureStillConsumesThePath(t *testing.T) {
 }
 
 // The inlined path is written into content that conv persists and replays, so
-// the file behind it has to outlive the turn: a follow-up question reaches a
-// model reading that same path back out of its own history. It goes at quit
-// instead.
-func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
+// the file behind it has to outlive not just the turn but the process: a
+// --continue replays the same path from a fresh one. It lives with the
+// session's other blobs and goes when the session does.
+func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	pasted := core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}}
 
@@ -243,20 +247,24 @@ func TestTempImageFileOutlivesTheTurnThatWroteIt(t *testing.T) {
 	if len(providerImages) != 0 {
 		t.Fatalf("provider images = %+v, want none", providerImages)
 	}
-	if len(m.tempImageFiles) != 1 {
-		t.Fatalf("temp files = %+v, want the pasted image materialized", m.tempImageFiles)
+	store := m.services.Session.GetStore()
+	entries, err := os.ReadDir(store.ImagesDir("sess-1"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("session image dir holds %v, %v; want the one pasted file", entries, err)
 	}
-	path := m.tempImageFiles[0]
-	if !strings.Contains(content, path) {
-		t.Fatalf("content = %q, want the temp path inlined", content)
+	path := filepath.Join(store.ImagesDir("sess-1"), entries[0].Name())
+	if !strings.Contains(content, "[Image #1: "+path+"]") {
+		t.Fatalf("content = %q, want the session-blob path %q inlined", content, path)
 	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("stat %s: %v — the path is in the persisted content already", path, err)
+	if got, _ := os.ReadFile(path); string(got) != "fake" {
+		t.Fatalf("read %s = %q; want the pasted bytes", path, got)
 	}
 
-	m.removeTempImageFiles()
+	if err := store.Delete("sess-1"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("stat %s after quit = %v, want it removed", path, err)
+		t.Fatalf("stat %s after deleting the session = %v, want it gone with the transcript", path, err)
 	}
 }
 
