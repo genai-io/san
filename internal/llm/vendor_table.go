@@ -10,10 +10,11 @@ import (
 
 	"github.com/genai-io/san/internal/secret"
 
-	// The four wire protocols San's vendors speak.
+	// The wire protocols San's vendors speak, and the two Vertex deployments of them.
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/anthropic"
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/anthropic/vertex"
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/google"
+	_ "github.com/genai-io/sdk-go/pkg/ai/driver/google/vertex"
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/openai/chat"
 	_ "github.com/genai-io/sdk-go/pkg/ai/driver/openai/responses"
 )
@@ -62,7 +63,10 @@ var vendorEntries = []vendorEntry{
 		vendorID: "anthropic",
 	},
 	{
-		meta:      Meta{Provider: Anthropic, AuthMethod: AuthVertex, EnvVars: []string{"CLOUD_ML_REGION", "ANTHROPIC_VERTEX_PROJECT_ID"}, DisplayName: "Vertex AI"},
+		// EnvVars is what a connection requires, which for Vertex is the project
+		// alone: the region (CLOUD_ML_REGION) is optional, defaults to global, and
+		// is still read when set — it is just not demanded before connecting.
+		meta:      Meta{Provider: Anthropic, AuthMethod: AuthVertex, EnvVars: []string{"ANTHROPIC_VERTEX_PROJECT_ID"}, DisplayName: "Vertex AI"},
 		vendorID:  "anthropic-vertex",
 		configure: configureVertex,
 	},
@@ -83,6 +87,12 @@ var vendorEntries = []vendorEntry{
 	{
 		meta:     Meta{Provider: Google, AuthMethod: AuthAPIKey, EnvVars: []string{"GOOGLE_API_KEY"}, DisplayName: "Direct API"},
 		vendorID: "google",
+	},
+	{
+		// As above: GOOGLE_CLOUD_LOCATION is optional and read when set.
+		meta:      Meta{Provider: Google, AuthMethod: AuthVertex, EnvVars: []string{"GOOGLE_CLOUD_PROJECT"}, DisplayName: "Vertex AI"},
+		vendorID:  "google-vertex",
+		configure: configureVertex,
 	},
 	{
 		meta:     Meta{Provider: DeepSeek, AuthMethod: AuthAPIKey, EnvVars: []string{"DEEPSEEK_API_KEY"}, DisplayName: "Direct API"},
@@ -205,13 +215,13 @@ func vendorAPIKey(vendor catalog.Vendor) string {
 // The entries that need more than a key and a host
 // ---------------------------------------------------------------------------
 
-// configureVertex points the Anthropic Messages protocol at a Vertex AI
-// deployment. There is no key: the driver authenticates with Google
-// Application Default Credentials.
+// configureVertex points a protocol at a Vertex AI deployment — Claude and
+// Gemini alike, each row naming its own project variable. There is no key: the
+// driver authenticates with Google Application Default Credentials.
 func configureVertex(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
 	project := secret.Resolve(vendor.DeploymentEnv["project"])
 	if project == "" {
-		return fmt.Errorf("llm: set ANTHROPIC_VERTEX_PROJECT_ID to the Google Cloud project serving the model")
+		return fmt.Errorf("llm: set %s to the Google Cloud project serving the model", vendor.DeploymentEnv["project"])
 	}
 	cfg.APIKey = ""
 	cfg.ProtocolConfig = ai.VertexConfig{

@@ -40,7 +40,7 @@ for Anthropic). Supported providers and the env var each one reads:
 |---|---|
 | Anthropic | `ANTHROPIC_API_KEY` (or Vertex AI) |
 | OpenAI | `OPENAI_API_KEY` |
-| Google | `GOOGLE_API_KEY` |
+| Google | `GOOGLE_API_KEY` (or Vertex AI) |
 | Moonshot | `MOONSHOT_API_KEY` |
 | Alibaba | `DASHSCOPE_API_KEY` |
 | MiniMax | `MINIMAX_API_KEY` |
