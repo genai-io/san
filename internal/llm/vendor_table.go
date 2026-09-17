@@ -216,18 +216,17 @@ func vendorAPIKey(vendor catalog.Vendor) string {
 // ---------------------------------------------------------------------------
 
 // configureVertex points a protocol at a Vertex AI deployment — Claude and
-// Gemini alike, each row naming its own project variable. There is no key: the
-// driver authenticates with Google Application Default Credentials.
+// Gemini alike. There is no key: the driver authenticates with Google
+// Application Default Credentials, and the row's own Deployment reads the
+// project and region, through San's secret store rather than the environment
+// alone.
 func configureVertex(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
-	project := secret.Resolve(vendor.DeploymentEnv["project"])
-	if project == "" {
-		return fmt.Errorf("llm: set %s to the Google Cloud project serving the model", vendor.DeploymentEnv["project"])
+	deployment, err := vendor.Deployment(vendor.DeploymentEnv, secret.Resolve)
+	if err != nil {
+		return fmt.Errorf("llm: %w", err)
 	}
 	cfg.APIKey = ""
-	cfg.ProtocolConfig = ai.VertexConfig{
-		Project: project,
-		Region:  secret.Resolve(vendor.DeploymentEnv["region"]),
-	}
+	cfg.ProtocolConfig = deployment
 	return nil
 }
 
