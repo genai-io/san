@@ -29,7 +29,7 @@ install.
 One-time setup, or rotation:
 
 ```bash
-go run ./tools/releasesign gen ~/san-release.key   # prints the public key
+go run ./tools/releasekey gen ~/san-release.key   # prints the public key
 gh secret set SAN_RELEASE_SIGNING_KEY --repo genai-io/san < ~/san-release.key
 ```
 

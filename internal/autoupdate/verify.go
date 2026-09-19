@@ -3,7 +3,7 @@ package autoupdate
 // Every release ships SHA256SUMS — one "<hex>  <asset>" line per archive —
 // and SHA256SUMS.sig, the ed25519 signature the release workflow makes over
 // that file with the key it holds as SAN_RELEASE_SIGNING_KEY (see
-// tools/releasesign). A client trusts an archive only when the signature
+// tools/releasekey). A client trusts an archive only when the signature
 // verifies against the public key built into this binary and the archive
 // hashes to the listed sum. TLS to github.com proves who served the bytes;
 // the signature proves who published them.
