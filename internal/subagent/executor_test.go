@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
-	_ "github.com/genai-io/san/internal/tool/registry" // registers built-in schemas used by tool.Set.Tools
+	_ "github.com/genai-io/san/internal/tool/register" // registers built-in schemas used by tool.Set.Tools
 )
 
 // llm.ParseVendorModel gates "vendor/model" routing on registered providers, so

@@ -1,4 +1,4 @@
-package mode
+package ask
 
 import "github.com/genai-io/san/internal/core"
 

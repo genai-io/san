@@ -12,9 +12,9 @@ assignment for each package.
 | --- | --- | --- |
 | `cmd` | `cmd/*` | Process entrypoints, flag parsing, service wiring. |
 | `app` | `internal/app` and its subpackages | TUI shell, model composition, event routing. |
-| `feature` | Business-domain packages: agent, session, hook, skill, plugin, mcp, command, tool, subagent, task, cron, identity, inspector, llm, search, worktree, setting, reminder, image | Cohesive product capabilities with their own state and lifecycle. |
+| `feature` | Business-domain packages: agent, broker, llm, tool, session, task, todo, subagent, cron, selflearn, command, skill, plugin, mcp, hook, setting, persona, search, inspector, reminder, reviewer, image | Cohesive product capabilities with their own state and lifecycle. |
 | `core` | `internal/core` | Stable contracts shared across feature packages. |
-| `infrastructure` | `log`, `secret`, `filecache`, `markdown` | Stateless helpers usable by any layer above. |
+| `infrastructure` | `log`, `secret`, `filecache`, `markdown`, `proc`, `confdir`, `atomicfile`, `autoupdate` | Stateless helpers usable by any layer above. |
 
 `internal/image` is provisionally classified as `feature` because it
 currently produces `core.Image` values directly. The pure-infra
@@ -48,8 +48,8 @@ not by lower layers importing higher layers.
    composition belongs in `internal/app` or a narrow integration function.
 6. Tool implementation packages under `internal/tool/*` should remain adapters.
    Complex behavior belongs in the feature package that owns the capability.
-7. Infrastructure helpers such as `log`, `secret`, `markdown`, and `filecache`
-   should not import feature packages.
+7. Infrastructure helpers (`log`, `secret`, `markdown`, `filecache`, `proc`,
+   `confdir`, `atomicfile`, `autoupdate`) should not import feature packages.
 8. Provider implementations should register with `internal/llm`; product logic
    should not depend directly on concrete provider packages.
 

@@ -1,4 +1,6 @@
-package tasktools
+// Package todo exposes the TaskCreate / TaskGet / TaskUpdate tools over the
+// agent's to-do tracker in internal/todo.
+package todo
 
 import (
 	"context"

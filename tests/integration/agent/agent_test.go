@@ -17,7 +17,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
-	_ "github.com/genai-io/san/internal/tool/registry"
+	_ "github.com/genai-io/san/internal/tool/register"
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )

@@ -1,4 +1,6 @@
-package mode
+// Package ask exposes the AskUserQuestion tool: the agent pauses the turn to
+// put a short multiple-choice question to the user.
+package ask
 
 import (
 	"context"

@@ -10,7 +10,7 @@ import (
 	// Register the built-in tools so schemas resolve from the live registry —
 	// the same wiring the app uses. Without this blank import GetToolSchemas
 	// would find no registered tools.
-	_ "github.com/genai-io/san/internal/tool/registry"
+	_ "github.com/genai-io/san/internal/tool/register"
 )
 
 func findSchema(schemas []core.ToolSchema, name string) (core.ToolSchema, bool) {

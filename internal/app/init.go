@@ -28,7 +28,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
-	_ "github.com/genai-io/san/internal/tool/registry"
+	_ "github.com/genai-io/san/internal/tool/register"
 )
 
 var appCwd string
