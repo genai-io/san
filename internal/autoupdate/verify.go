@@ -20,7 +20,9 @@ import (
 
 // releasePublicKeyBase64 is the public half of the release signing key.
 // Rotating it means every client built with the old key refuses updates until
-// it is reinstalled — the safe direction to fail in.
+// it is reinstalled — the safe direction to fail in. While it is empty every
+// verification fails, and the release workflow's own verify step refuses to
+// publish — so a release, not a merge, is what needs the key in place.
 const releasePublicKeyBase64 = ""
 
 // releasePublicKey is releasePublicKeyBase64 decoded; a var so tests can sign

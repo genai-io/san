@@ -22,7 +22,9 @@ the signature verifies against the public key built into the binary
 hashes to the listed sum.
 
 The workflow verifies its own signature against the built-in key before
-publishing, so a secret that does not match the code fails the release.
+publishing, so a missing secret, an empty built-in key, or a secret that does
+not match the code fails the release rather than shipping one no client will
+install.
 
 One-time setup, or rotation:
 

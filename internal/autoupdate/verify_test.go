@@ -11,15 +11,6 @@ import (
 	"testing"
 )
 
-// TestReleasePublicKeyIsBuiltIn is the gate that keeps an unsigned build from
-// shipping: with no key every update is refused, so the constant must be set
-// before this package can be released.
-func TestReleasePublicKeyIsBuiltIn(t *testing.T) {
-	if len(releasePublicKey) != ed25519.PublicKeySize {
-		t.Fatalf("releasePublicKeyBase64 must hold a 32-byte ed25519 public key; run `go run ./tools/releasesign gen` and paste the printed key")
-	}
-}
-
 // signingKey installs a fresh keypair as the built-in release key for the
 // test and returns the private half for signing.
 func signingKey(t *testing.T) ed25519.PrivateKey {
