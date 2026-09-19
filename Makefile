@@ -138,6 +138,7 @@ release: format-check
 	cd $(BINDIR) && cp $(BINARY)_linux_arm64 $(BINARY) && tar -czf $(BINARY)_linux_arm64.tar.gz $(BINARY) && rm $(BINARY)
 	cd $(BINDIR) && cp $(BINARY)_windows_amd64.exe $(BINARY).exe && zip $(BINARY)_windows_amd64.zip $(BINARY).exe && rm $(BINARY).exe
 	cd $(BINDIR) && cp $(BINARY)_windows_arm64.exe $(BINARY).exe && zip $(BINARY)_windows_arm64.zip $(BINARY).exe && rm $(BINARY).exe
+	cd $(BINDIR) && shasum -a 256 $(BINARY)_*.tar.gz $(BINARY)_*.zip > SHA256SUMS
 
 release-push:
 	@test -n "$(VERSION)" || { echo "VERSION is required, e.g. make release-push VERSION=v1.15.2"; exit 1; }

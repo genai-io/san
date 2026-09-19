@@ -13,6 +13,8 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -24,14 +26,17 @@ import (
 	"time"
 )
 
-// latestURL redirects to the newest release tag; a HEAD request reads the
-// version off the Location header without touching the rate-limited API.
-// A var so tests can point it at a local server.
-var latestURL = "https://github.com/genai-io/san/releases/latest"
+// Vars so tests can serve a release from a local server. latestURL redirects
+// to the newest release tag; a HEAD request reads the version off the
+// Location header without touching the rate-limited API. downloadURL takes
+// the version and an asset name.
+var (
+	latestURL   = "https://github.com/genai-io/san/releases/latest"
+	downloadURL = "https://github.com/genai-io/san/releases/download/v%s/%s"
+)
 
 const (
-	tagPrefix   = "https://github.com/genai-io/san/releases/tag/v"
-	downloadURL = "https://github.com/genai-io/san/releases/download/v%s/%s"
+	tagPrefix = "https://github.com/genai-io/san/releases/tag/v"
 
 	backupSuffix = ".bak"
 	tempPrefix   = ".san-update-"
@@ -159,9 +164,24 @@ func Install(ctx context.Context, version string, progress func(written, total i
 	}
 	defer os.RemoveAll(tmpDir)
 
+	// The signed checksum list comes first: a release that does not verify
+	// costs nothing more than these two small fetches.
+	sums, err := fetchChecksums(ctx, version)
+	if err != nil {
+		return err
+	}
+	want, ok := sums[assetName]
+	if !ok {
+		return fmt.Errorf("release v%s lists no checksum for %s", version, assetName)
+	}
+
 	archive := filepath.Join(tmpDir, assetName)
-	if err := download(ctx, fmt.Sprintf(downloadURL, version, assetName), archive, progress); err != nil {
+	got, err := download(ctx, fmt.Sprintf(downloadURL, version, assetName), archive, progress)
+	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
+	}
+	if got != want {
+		return fmt.Errorf("%s checksum mismatch: downloaded %s, release lists %s", assetName, got, want)
 	}
 	newBin := filepath.Join(tmpDir, binName)
 	if runtime.GOOS == "windows" {
@@ -227,25 +247,41 @@ func Cleanup() {
 	}
 }
 
-func download(ctx context.Context, url, dest string, progress func(written, total int64)) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// download writes url to dest and returns the SHA-256 of what it wrote, so
+// the checksum is taken from the bytes on disk without a second pass.
+func download(ctx context.Context, url, dest string, progress func(written, total int64)) (string, error) {
+	resp, err := get(ctx, url)
 	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download returned %s", resp.Status)
-	}
 
 	var body io.Reader = resp.Body
 	if progress != nil {
 		body = &progressReader{r: resp.Body, total: resp.ContentLength, report: progress}
 	}
-	return writeFile(dest, body, 0o644)
+	sum := sha256.New()
+	if err := writeFile(dest, io.TeeReader(body, sum), 0o644); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+// get issues a GET and returns the response only when it is a 200.
+func get(ctx context.Context, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+	return resp, nil
 }
 
 // progressReader reports the running byte count after every chunk.

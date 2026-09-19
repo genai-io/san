@@ -161,6 +161,7 @@ func Latest(ctx context.Context) (string, error)
 func Newer(a, b string) bool
 func IsRelease(v string) bool
 func Install(ctx context.Context, version string, progress func(written, total int64)) error
+func VerifyChecksums(sums, sig []byte) (map[string]string, error)
 func Cleanup()
 ```
 
@@ -179,6 +180,12 @@ func Cleanup()
   lets the caller skip the network for one. `Install` extracts only the
   archive entry named `san`/`san.exe`, beside the binary, and fails before any
   network traffic when that directory is not writable.
+- Nothing is installed that the project did not publish: `Install` first
+  fetches the release's `SHA256SUMS` and `SHA256SUMS.sig`, verifies the
+  ed25519 signature against the public key built into the binary
+  (`verify.go`), then hashes the archive as it downloads and refuses a
+  mismatch. TLS proves who served the bytes; the signature proves who
+  published them. Key setup and rotation: [`../../operations/release.md`](../../operations/release.md).
 - On POSIX the swap is one atomic rename, so the path always names a whole
   binary; Windows cannot replace a running executable, so there the old one is
   moved aside first. `Cleanup`, run in the background at every TUI launch,

@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,7 +102,7 @@ func TestDownloadReportsProgress(t *testing.T) {
 
 	dest := filepath.Join(t.TempDir(), "san.tar.gz")
 	var written, total int64
-	err := download(context.Background(), srv.URL, dest, func(w, tot int64) { written, total = w, tot })
+	sum, err := download(context.Background(), srv.URL, dest, func(w, tot int64) { written, total = w, tot })
 	if err != nil {
 		t.Fatalf("download() error: %v", err)
 	}
@@ -111,6 +113,9 @@ func TestDownloadReportsProgress(t *testing.T) {
 	if written != int64(len(content)) || total != int64(len(content)) {
 		t.Errorf("progress = (%d, %d), want (%d, %d)", written, total, len(content), len(content))
 	}
+	if want := fmt.Sprintf("%x", sha256.Sum256(content)); sum != want {
+		t.Errorf("sha256 = %s, want %s", sum, want)
+	}
 }
 
 func TestDownloadHTTPError(t *testing.T) {
@@ -118,7 +123,7 @@ func TestDownloadHTTPError(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	if err := download(context.Background(), srv.URL, filepath.Join(t.TempDir(), "x"), nil); err == nil {
+	if _, err := download(context.Background(), srv.URL, filepath.Join(t.TempDir(), "x"), nil); err == nil {
 		t.Fatal("expected error for 404, got nil")
 	}
 }
