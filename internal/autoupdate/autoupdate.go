@@ -188,26 +188,30 @@ func executable() (string, error) {
 	return exe, nil
 }
 
-// swap moves newBin into exe's place, keeping the old binary as exe.bak until
-// the move succeeds. A running process keeps its handle on the renamed file,
-// which is what lets the swap happen underneath a live session.
+// swap moves newBin into exe's place. On POSIX that is one atomic rename:
+// the path always names either the old binary or the new one, the running
+// process keeps its inode, and a failure leaves the old file untouched.
+// Windows cannot replace a running executable, but it can rename it, so
+// there the old binary is moved aside first and Cleanup removes it on the
+// next launch.
 func swap(exe, newBin string) error {
 	backup := exe + backupSuffix
-	if err := os.Rename(exe, backup); err != nil {
-		return fmt.Errorf("cannot backup current binary: %w", err)
+	if runtime.GOOS == "windows" {
+		if err := os.Rename(exe, backup); err != nil {
+			return fmt.Errorf("cannot move current binary aside: %w", err)
+		}
 	}
 	if err := os.Rename(newBin, exe); err != nil {
-		_ = os.Rename(backup, exe)
+		if runtime.GOOS == "windows" {
+			_ = os.Rename(backup, exe)
+		}
 		return fmt.Errorf("cannot install update: %w", err)
 	}
-	// On Windows the running process still holds the backup open, so this
-	// fails there and Cleanup removes it on the next launch.
-	_ = os.Remove(backup)
 	return nil
 }
 
-// Cleanup removes what an earlier update left behind: the renamed-out old
-// binary and download directories abandoned by a session that exited
+// Cleanup removes what an earlier update left behind: the old binary Windows
+// moved aside, and download directories abandoned by a session that exited
 // mid-install. Called once at startup.
 func Cleanup() {
 	exe, err := executable()

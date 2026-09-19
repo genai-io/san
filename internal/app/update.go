@@ -116,6 +116,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateInstalledMsg:
 		m.updateInstalled = string(msg)
 		return m, nil
+	case updateFailedMsg:
+		m.updateFailed = msg
+		return m, nil
 	case tea.KeyPressMsg:
 		if c, ok := m.routeKeypress(msg); ok {
 			return m, c

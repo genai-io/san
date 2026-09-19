@@ -13,7 +13,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/genai-io/san/internal/app"
-	"github.com/genai-io/san/internal/autoupdate"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -63,8 +62,6 @@ func init() {
 
 func main() {
 	defer func() { _ = log.Sync() }()
-
-	autoupdate.Cleanup()
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

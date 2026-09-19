@@ -105,8 +105,12 @@ type model struct {
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
 
-	// updateInstalled holds the last updateInstalledMsg; "" until one arrives.
+	// updateInstalled / updateFailed record the background auto-update's
+	// outcome: the release now on disk (the status line asks for a restart),
+	// or the release that could not be installed (a warning at exit points to
+	// `san update`). Zero until the command reports.
 	updateInstalled string
+	updateFailed    updateFailedMsg
 
 	// autopilotRecoveries counts consecutive attempts to revive a run after a
 	// turn died on an error, bounding a retry loop into a sustained outage. Any

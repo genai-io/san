@@ -215,7 +215,7 @@ func TestExtractZipRejectsInvalidArchive(t *testing.T) {
 	}
 }
 
-func TestSwapKeepsOldBinaryUntilNewOneIsInPlace(t *testing.T) {
+func TestSwapReplacesInPlaceAndLeavesTheOldBinaryOnFailure(t *testing.T) {
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "san")
 	os.WriteFile(exe, []byte("old"), 0o755)
@@ -228,16 +228,19 @@ func TestSwapKeepsOldBinaryUntilNewOneIsInPlace(t *testing.T) {
 	if data, _ := os.ReadFile(exe); string(data) != "new" {
 		t.Errorf("exe = %q, want %q", data, "new")
 	}
-	if _, err := os.Stat(exe + backupSuffix); !os.IsNotExist(err) {
-		t.Error("backup should be removed after a successful swap")
+	if _, err := os.Stat(newBin); !os.IsNotExist(err) {
+		t.Error("new binary should have been moved, not copied")
 	}
 
-	// A missing new binary restores the old one.
+	// A missing new binary leaves the current one exactly where it was.
 	if err := swap(exe, filepath.Join(dir, "missing")); err == nil {
 		t.Fatal("expected error for missing new binary")
 	}
 	if data, _ := os.ReadFile(exe); string(data) != "new" {
-		t.Errorf("exe after failed swap = %q, want the previous binary restored", data)
+		t.Errorf("exe after failed swap = %q, want the current binary untouched", data)
+	}
+	if _, err := os.Stat(exe + backupSuffix); !os.IsNotExist(err) {
+		t.Error("no backup should linger after a failed swap")
 	}
 }
 

@@ -165,21 +165,25 @@ func Cleanup()
 ```
 
 - `san update` calls it interactively, wherever the binary lives. The TUI
-  calls it once at startup in the background — only when `Managed()` says the
-  binary is in `InstallDir()` (`~/.local/bin`, or `%LOCALAPPDATA%\san\bin` on
-  Windows), so a Homebrew, `go install`, package-manager, or dev-build binary
-  is never replaced behind its owner's back — and on success shows
-  `✓ vX.Y.Z installed · restart to update` in the status line.
-  `SAN_DISABLE_AUTOUPDATE=1` turns the background check off; `san update`
-  still works.
+  calls it once per launch on a background goroutine — the startup path pays
+  nothing — and only when `Managed()` says the binary is in `InstallDir()`
+  (`~/.local/bin`, or `%LOCALAPPDATA%\san\bin` on Windows), so a Homebrew,
+  `go install`, package-manager, or dev-build binary is never replaced behind
+  its owner's back. Success shows `✓ vX.Y.Z installed · restart to update` in
+  the status line; a failed install is one warning line at exit pointing to
+  `san update`; a failed version check (offline) is silent. The session
+  itself is never touched. `SAN_DISABLE_AUTOUPDATE=1` turns the check off;
+  `san update` still works.
 - `Newer` only accepts plain `X.Y.Z`, so a dev build (`git describe` suffix,
   bare hash) is never replaced and a release never downgrades; `IsRelease`
   lets the caller skip the network for one. `Install` extracts only the
   archive entry named `san`/`san.exe`, beside the binary, and fails before any
   network traffic when that directory is not writable.
-- `Cleanup` runs at every launch: it removes the renamed-out old binary
-  (Windows cannot delete it while it is still running) and download
-  directories abandoned by a session that quit mid-install.
+- On POSIX the swap is one atomic rename, so the path always names a whole
+  binary; Windows cannot replace a running executable, so there the old one is
+  moved aside first. `Cleanup`, run in the background at every TUI launch,
+  removes that moved-aside binary and download directories abandoned by a
+  session that quit mid-install.
 - Code: `internal/autoupdate/`.
 
 ## See Also

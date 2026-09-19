@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	agentpkg "github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
@@ -120,6 +121,14 @@ func printExitMessage(m *model) {
 		fmt.Println()
 		fmt.Println(dim.Render("Resume this session with:"))
 		fmt.Println(dim.Render(command))
+		fmt.Println()
+	}
+	// The one auto-update outcome the user should hear about, and the one
+	// moment it cannot interrupt anything.
+	if f := m.updateFailed; f.version != "" {
+		warn := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
+		fmt.Println(warn.Render(fmt.Sprintf("Auto-update to v%s failed: %v", f.version, f.err)))
+		fmt.Println(warn.Render("Run `san update` to retry."))
 		fmt.Println()
 	}
 }
