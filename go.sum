@@ -28,8 +28,8 @@ github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg
 github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/andybalholm/cascadia v1.3.2 h1:3Xi6Dw5lHF15JtdcmAHD3i1+T8plmv7BQ/nsViSLyss=
 github.com/andybalholm/cascadia v1.3.2/go.mod h1:7gtRlve5FxPPgIgX36uWBX58OdBsSS6lUvCFb+h7KvU=
-github.com/anthropics/anthropic-sdk-go v1.71.0 h1:DK9xG3s5t+xUIOp+R+1LIRjkU/wG57YyQO3630+gYOE=
-github.com/anthropics/anthropic-sdk-go v1.71.0/go.mod h1:x+lPk/cCl48uRegeP0hlYYBN1b7bEBTveInIMgLicnY=
+github.com/anthropics/anthropic-sdk-go v1.72.0 h1:T0qQWWfygiL24lqEQaffRXCvEeno3yiv/mFzUdY1E88=
+github.com/anthropics/anthropic-sdk-go v1.72.0/go.mod h1:x+lPk/cCl48uRegeP0hlYYBN1b7bEBTveInIMgLicnY=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/autarch/testify v1.2.2 h1:9Q9V6zqhP7R6dv+zRUddv6kXKLo6ecQhnFRFWM71i1c=
@@ -85,8 +85,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKKDTrHmbYxI7CYi+/hbdiDT2m4Hj+t0ikCjsrQ=
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
-github.com/genai-io/sdk-go v0.5.1-0.20260917135035-b748b24fd652 h1:7r5V2k3rdkDGhvjzn7ZGOkSugkTdzUi4J9FeVLdXRgs=
-github.com/genai-io/sdk-go v0.5.1-0.20260917135035-b748b24fd652/go.mod h1:VBsf9pypQdzFBJvfWi1rVoF6Xf3lQm0oBWc4ybFJhbU=
+github.com/genai-io/sdk-go v0.6.0 h1:trYckWW5PRBG468zhS3I4sDYotRnQafj1vBu1yiCcZY=
+github.com/genai-io/sdk-go v0.6.0/go.mod h1:0kVnly3A11MPPnEtXpfhKqxqVHGrBadEqvMWGlRMI+0=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=

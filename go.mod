@@ -11,7 +11,7 @@ require (
 	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/creack/pty v1.1.24
-	github.com/genai-io/sdk-go v0.5.1-0.20260917135035-b748b24fd652
+	github.com/genai-io/sdk-go v0.6.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-runewidth v0.0.30
@@ -26,7 +26,7 @@ require (
 require (
 	github.com/Netflix/go-expect v0.0.0-20180615182759-c93bf25de8e8 // indirect
 	github.com/PuerkitoBio/goquery v1.9.2 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.71.0 // indirect
+	github.com/anthropics/anthropic-sdk-go v1.72.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
