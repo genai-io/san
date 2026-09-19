@@ -54,7 +54,7 @@ func (s *ProviderSelector) openCustomForm() {
 	keyInput.SetWidth(40)
 	keyInput.EchoMode = textinput.EchoPassword
 
-	s.apiKeyActive = false
+	s.closeCredentialForm()
 	s.customFormInputs = [customFormFieldCount]textinput.Model{urlInput, keyInput}
 	s.customFormFocus = customFormFieldBaseURL
 	s.customFormErr = ""

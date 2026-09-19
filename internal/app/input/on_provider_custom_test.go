@@ -228,7 +228,7 @@ func TestSelectProviderOpensCustomForm(t *testing.T) {
 	if !m.customFormActive {
 		t.Fatal("Enter on the custom provider should open the form")
 	}
-	if m.apiKeyActive {
+	if m.credForm.active {
 		t.Fatal("custom provider should not open the single API-key input")
 	}
 }

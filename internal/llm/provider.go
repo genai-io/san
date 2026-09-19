@@ -53,10 +53,17 @@ const (
 // Meta is what the registry knows about one provider/auth-method pair: what it
 // is called, and what it needs to work.
 type Meta struct {
-	Provider    ProviderID
-	AuthMethod  AuthMethod
-	EnvVars     []string // credentials, read through the secret store
-	DisplayName string   // per-auth-method name, e.g. "Direct API", "Vertex AI"
+	Provider   ProviderID
+	AuthMethod AuthMethod
+	EnvVars    []string // what a connection requires, read through the secret store
+	// OptionalEnvVars are read when set and never demanded — the Vertex
+	// region. The credential form offers them as rows the user may leave blank.
+	OptionalEnvVars []string
+	DisplayName     string // per-auth-method name, e.g. "Direct API", "Vertex AI"
+	// Hint is the one line shown above the credential form when entering the
+	// variables alone is not the whole story — Vertex authenticates through
+	// gcloud, not through anything typed here.
+	Hint string
 }
 
 // ProviderDisplay is how a provider is presented, shared by its auth methods.

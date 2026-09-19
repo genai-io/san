@@ -63,10 +63,14 @@ var vendorEntries = []vendorEntry{
 		vendorID: "anthropic",
 	},
 	{
-		// EnvVars is what a connection requires, which for Vertex is the project
-		// alone: the region (CLOUD_ML_REGION) is optional, defaults to global, and
-		// is still read when set — it is just not demanded before connecting.
-		meta:      Meta{Provider: Anthropic, AuthMethod: AuthVertex, EnvVars: []string{"ANTHROPIC_VERTEX_PROJECT_ID"}, DisplayName: "Vertex AI"},
+		// A connection requires the project alone: the region is optional,
+		// defaults to global, and is still read when set.
+		meta: Meta{
+			Provider: Anthropic, AuthMethod: AuthVertex, DisplayName: "Vertex AI",
+			EnvVars:         []string{"ANTHROPIC_VERTEX_PROJECT_ID"},
+			OptionalEnvVars: []string{"CLOUD_ML_REGION"},
+			Hint:            vertexHint,
+		},
 		vendorID:  "anthropic-vertex",
 		configure: configureVertex,
 	},
@@ -89,8 +93,12 @@ var vendorEntries = []vendorEntry{
 		vendorID: "google",
 	},
 	{
-		// As above: GOOGLE_CLOUD_LOCATION is optional and read when set.
-		meta:      Meta{Provider: Google, AuthMethod: AuthVertex, EnvVars: []string{"GOOGLE_CLOUD_PROJECT"}, DisplayName: "Vertex AI"},
+		meta: Meta{
+			Provider: Google, AuthMethod: AuthVertex, DisplayName: "Vertex AI",
+			EnvVars:         []string{"GOOGLE_CLOUD_PROJECT"},
+			OptionalEnvVars: []string{"GOOGLE_CLOUD_LOCATION"},
+			Hint:            vertexHint,
+		},
 		vendorID:  "google-vertex",
 		configure: configureVertex,
 	},
@@ -214,6 +222,10 @@ func vendorAPIKey(vendor catalog.Vendor) string {
 // ---------------------------------------------------------------------------
 // The entries that need more than a key and a host
 // ---------------------------------------------------------------------------
+
+// vertexHint is what the credential form says above a Vertex deployment: the
+// rows name a project and a region, and the credential comes from elsewhere.
+const vertexHint = "Signs in with Google Application Default Credentials — run `gcloud auth application-default login` first. Region defaults to global."
 
 // configureVertex points a protocol at a Vertex AI deployment — Claude and
 // Gemini alike. There is no key: the driver authenticates with Google

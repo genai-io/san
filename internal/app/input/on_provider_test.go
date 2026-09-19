@@ -133,7 +133,7 @@ func TestCancelClearsTransientState(t *testing.T) {
 	m.filteredModels = []providerModelItem{{ID: "gpt-5"}}
 	m.visibleItems = []providerListItem{{Kind: providerItemModel}}
 	m.expandedProviderIdx = 1
-	m.apiKeyActive = true
+	m.credForm.active = true
 	m.selectedIdx = 2
 	m.scrollOffset = 3
 	m.searchQuery = "gpt"
@@ -152,7 +152,7 @@ func TestCancelClearsTransientState(t *testing.T) {
 	if len(m.allModels) != 0 || len(m.filteredModels) != 0 || len(m.visibleItems) != 0 {
 		t.Fatal("Cancel should clear model/item lists")
 	}
-	if m.expandedProviderIdx != -1 || m.apiKeyActive {
+	if m.expandedProviderIdx != -1 || m.credForm.active {
 		t.Fatal("Cancel should reset expansion and API key state")
 	}
 	if m.selectedIdx != 0 || m.scrollOffset != 0 {
@@ -193,12 +193,12 @@ func TestGoBackCollapsesAuthMethods(t *testing.T) {
 
 func TestGoBackCancelsAPIKeyInput(t *testing.T) {
 	m := NewProviderSelector()
-	m.apiKeyActive = true
+	m.credForm.active = true
 
 	if !m.GoBack() {
 		t.Fatal("GoBack should return true when API key input is active")
 	}
-	if m.apiKeyActive {
+	if m.credForm.active {
 		t.Fatal("GoBack should cancel API key input")
 	}
 }

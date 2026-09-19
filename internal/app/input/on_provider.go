@@ -57,11 +57,13 @@ type providerProviderItem struct {
 
 // providerAuthMethodItem represents an auth method in the second level.
 type providerAuthMethodItem struct {
-	Provider    llm.ProviderID
-	AuthMethod  llm.AuthMethod
-	DisplayName string
-	Status      llm.Status
-	EnvVars     []string
+	Provider        llm.ProviderID
+	AuthMethod      llm.AuthMethod
+	DisplayName     string
+	Status          llm.Status
+	EnvVars         []string
+	OptionalEnvVars []string
+	Hint            string
 }
 
 // providerModelItem represents a model in the provider selector.
@@ -124,12 +126,8 @@ type ProviderSelector struct {
 	// Providers tab: expanded provider
 	expandedProviderIdx int // index into allProviders; -1 = none
 
-	// Inline API-key input
-	apiKeyInput       textinput.Model
-	apiKeyActive      bool
-	apiKeyEnvVar      string
-	apiKeyProviderIdx int // index into allProviders
-	apiKeyAuthIdx     int // index into that provider's AuthMethods
+	// Inline credential form (one row per env var); see on_provider_auth.go
+	credForm credentialForm
 
 	// Inline custom provider form (baseURL / apiKey); see on_provider_custom.go
 	customFormActive bool

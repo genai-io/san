@@ -2,8 +2,10 @@ package input
 
 import (
 	"os"
+	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/llm"
@@ -54,11 +56,11 @@ func TestHandleCredentialEditForSingleAuthMethod(t *testing.T) {
 		t.Fatal("handleCredentialEdit should not return a command for single auth method")
 	}
 
-	if !m.apiKeyActive {
+	if !m.credForm.active {
 		t.Fatal("handleCredentialEdit should activate API key input for connected providers")
 	}
-	if m.apiKeyEnvVar != "OPENAI_API_KEY" {
-		t.Fatalf("got env var %q, want OPENAI_API_KEY", m.apiKeyEnvVar)
+	if m.credForm.vars[0] != "OPENAI_API_KEY" {
+		t.Fatalf("got env var %q, want OPENAI_API_KEY", m.credForm.vars[0])
 	}
 }
 
@@ -119,11 +121,11 @@ func TestHandleCredentialEditForMultipleAuthMethods(t *testing.T) {
 	if cmd != nil {
 		t.Fatal("handleCredentialEdit should not return a command when editing auth method")
 	}
-	if !m.apiKeyActive {
+	if !m.credForm.active {
 		t.Fatal("handleCredentialEdit should activate API key input")
 	}
-	if m.apiKeyEnvVar != "BEDROCK_API_KEY" {
-		t.Fatalf("got env var %q, want BEDROCK_API_KEY", m.apiKeyEnvVar)
+	if m.credForm.vars[0] != "BEDROCK_API_KEY" {
+		t.Fatalf("got env var %q, want BEDROCK_API_KEY", m.credForm.vars[0])
 	}
 }
 
@@ -166,24 +168,24 @@ func TestHandleCredentialEditUpdatesOnEnter(t *testing.T) {
 	}
 
 	// Verify API key input is active
-	if !m.apiKeyActive {
+	if !m.credForm.active {
 		t.Fatal("handleCredentialEdit should activate API key input")
 	}
-	if m.apiKeyEnvVar != "OPENAI_API_KEY" {
-		t.Fatalf("got env var %q, want OPENAI_API_KEY", m.apiKeyEnvVar)
+	if m.credForm.vars[0] != "OPENAI_API_KEY" {
+		t.Fatalf("got env var %q, want OPENAI_API_KEY", m.credForm.vars[0])
 	}
 
 	// Update the API key
-	m.apiKeyInput.SetValue("NEW_TEST_KEY")
+	m.credForm.inputs[0].SetValue("NEW_TEST_KEY")
 
 	// Simulate Enter key to submit
-	cmd = m.handleAPIKeyInput(tea.KeyPressMsg{Code: tea.KeyEnter})
+	cmd = m.handleCredentialFormKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("handleAPIKeyInput should return a command after Enter")
+		t.Fatal("handleCredentialFormKey should return a command after Enter")
 	}
 
 	// Verify API key input is closed after submission
-	if m.apiKeyActive {
+	if m.credForm.active {
 		t.Fatal("API key input should be deactivated after Enter")
 	}
 
@@ -225,7 +227,7 @@ func TestHandleCredentialEditWithEmptyEnv(t *testing.T) {
 	if cmd != nil {
 		t.Fatalf("handleCredentialEdit should return nil when EnvVars is empty, got %T", cmd)
 	}
-	if m.apiKeyActive {
+	if m.credForm.active {
 		t.Fatal("handleCredentialEdit should not activate API key input when EnvVars is empty")
 	}
 }
@@ -280,13 +282,13 @@ func TestEditAuthMethodPreservesOtherConnections(t *testing.T) {
 
 	// Enter credential edit mode and update the key
 	m.handleCredentialEdit()
-	if !m.apiKeyActive {
+	if !m.credForm.active {
 		t.Fatal("handleCredentialEdit should activate API key input")
 	}
 
 	// Cancel the edit and verify state
-	m.handleAPIKeyInput(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if m.apiKeyActive {
+	m.handleCredentialFormKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if m.credForm.active {
 		t.Fatal("API key input should be canceled after Esc")
 	}
 }
@@ -326,10 +328,10 @@ func TestEditCredentialFlowWithKeyboardShortcuts(t *testing.T) {
 		t.Fatal("handleCredentialEdit should not return a command for single auth method")
 	}
 
-	if !m.apiKeyActive {
+	if !m.credForm.active {
 		t.Fatal("handleCredentialEdit should activate API key input")
 	}
-	if m.apiKeyEnvVar != "OPENAI_API_KEY" {
+	if m.credForm.vars[0] != "OPENAI_API_KEY" {
 		t.Fatal("incorrect environment variable set for API key input")
 	}
 }
@@ -720,5 +722,66 @@ func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
 	// Verify current model is cleared
 	if cur := store.GetCurrentModel(); cur != nil {
 		t.Fatalf("current model should be cleared after confirm, got %v", cur)
+	}
+}
+
+// A Vertex deployment is a project plus an optional region, neither a secret:
+// the form shows both rows in the clear, prefilled, and a blank region clears
+// the variable rather than failing.
+func TestCredentialFormVertexDeployment(t *testing.T) {
+	isolateSecretStore(t)
+	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
+	t.Setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+	m := NewProviderSelector()
+	m.active = true
+	m.activeTab = providerTabProviders
+	m.allProviders = []providerProviderItem{{
+		Provider: llm.Google,
+		AuthMethods: []providerAuthMethodItem{{
+			Provider:        llm.Google,
+			AuthMethod:      llm.AuthVertex,
+			EnvVars:         []string{"GOOGLE_CLOUD_PROJECT"},
+			OptionalEnvVars: []string{"GOOGLE_CLOUD_LOCATION"},
+			Hint:            "run gcloud first",
+		}},
+	}}
+	m.rebuildVisibleItems()
+
+	m.openCredentialForm(m.allProviders[0].AuthMethods[0], 0, 0)
+	f := &m.credForm
+	if !f.active || len(f.inputs) != 2 || f.required != 1 || f.hint != "run gcloud first" {
+		t.Fatalf("form = %+v, want two rows (one required) with the hint", *f)
+	}
+	if f.inputs[0].EchoMode != textinput.EchoNormal || f.inputs[1].Value() != "us-central1" {
+		t.Fatal("deployment rows should show in the clear, prefilled from the environment")
+	}
+	if !strings.Contains(m.renderCredentialForm(), "run gcloud first") {
+		t.Fatal("hint should render above the rows")
+	}
+
+	// Enter with the required project blank keeps the form open with an error.
+	if cmd := m.handleCredentialFormKey(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd != nil || !f.active || f.err == "" {
+		t.Fatalf("blank project should be refused inline, got cmd=%v active=%v err=%q", cmd, f.active, f.err)
+	}
+
+	// Tab moves between rows; a blanked optional row clears its variable.
+	f.inputs[0].SetValue("my-project")
+	m.handleCredentialFormKey(tea.KeyPressMsg{Code: tea.KeyTab})
+	if f.focus != 1 {
+		t.Fatalf("focus after Tab = %d, want the region row", f.focus)
+	}
+	f.inputs[1].SetValue("")
+	if cmd := m.handleCredentialFormKey(tea.KeyPressMsg{Code: tea.KeyEnter}); cmd == nil {
+		t.Fatal("Enter with the project filled should connect")
+	}
+	if m.credForm.active {
+		t.Fatal("form should close after submit")
+	}
+	if os.Getenv("GOOGLE_CLOUD_PROJECT") != "my-project" || os.Getenv("GOOGLE_CLOUD_LOCATION") != "" {
+		t.Fatalf("env after submit: project=%q location=%q", os.Getenv("GOOGLE_CLOUD_PROJECT"), os.Getenv("GOOGLE_CLOUD_LOCATION"))
+	}
+	if secret.Default().Get("GOOGLE_CLOUD_LOCATION") != "" {
+		t.Fatal("blank optional row should clear the stored value")
 	}
 }

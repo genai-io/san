@@ -22,7 +22,7 @@ func (s *ProviderSelector) Enter(ctx context.Context, width, height int) (tea.Cm
 	s.resetModelSearch()
 	s.resetConnectionResult()
 	s.expandedProviderIdx = -1
-	s.apiKeyActive = false
+	s.closeCredentialForm()
 	s.closeCustomForm()
 	s.closeOllamaForm()
 	s.active = true
@@ -67,11 +67,13 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 		connected := false
 		for _, info := range infos {
 			item.AuthMethods = append(item.AuthMethods, providerAuthMethodItem{
-				Provider:    info.Meta.Provider,
-				AuthMethod:  info.Meta.AuthMethod,
-				DisplayName: info.Meta.DisplayName,
-				Status:      info.Status,
-				EnvVars:     info.Meta.EnvVars,
+				Provider:        info.Meta.Provider,
+				AuthMethod:      info.Meta.AuthMethod,
+				DisplayName:     info.Meta.DisplayName,
+				Status:          info.Status,
+				EnvVars:         info.Meta.EnvVars,
+				OptionalEnvVars: info.Meta.OptionalEnvVars,
+				Hint:            info.Meta.Hint,
 			})
 			if info.Status == llm.StatusConnected {
 				connected = true
@@ -488,7 +490,7 @@ func (s *ProviderSelector) Cancel() {
 	s.filteredModels = nil
 	s.visibleItems = nil
 	s.expandedProviderIdx = -1
-	s.apiKeyActive = false
+	s.closeCredentialForm()
 	s.closeCustomForm()
 	s.closeOllamaForm()
 	s.store = nil

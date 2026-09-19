@@ -53,7 +53,7 @@ func (s *ProviderSelector) switchTab(t providerTab) {
 	s.resetModelSearch()
 	s.resetConnectionResult()
 	s.expandedProviderIdx = -1
-	s.apiKeyActive = false
+	s.closeCredentialForm()
 	s.closeCustomForm()
 	s.closeOllamaForm()
 	s.rebuildVisibleItems()
@@ -71,8 +71,8 @@ func (s *ProviderSelector) GoBack() bool {
 		s.closeOllamaForm()
 		return true
 	}
-	if s.apiKeyActive {
-		s.apiKeyActive = false
+	if s.credForm.active {
+		s.closeCredentialForm()
 		return true
 	}
 	if s.expandedProviderIdx >= 0 {
@@ -124,9 +124,9 @@ func (s *ProviderSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 		return s.handleOllamaFormKey(key)
 	}
 
-	// Route to API key input if active
-	if s.apiKeyActive {
-		return s.handleAPIKeyInput(key)
+	// Route to the credential form if active
+	if s.credForm.active {
+		return s.handleCredentialFormKey(key)
 	}
 
 	// Route to confirm-remove if active
@@ -316,7 +316,7 @@ func markedModel(candidate providerModelItem, marked *providerModelItem) bool {
 
 // selectProvider handles Enter on a provider row (Providers tab).
 // Connected single auth method: refresh models.
-// Disconnected single auth method: auto-connect or show API key input.
+// Disconnected single auth method: auto-connect or open the credential form.
 // Multiple auth methods: expand inline to show auth method list.
 func (s *ProviderSelector) selectProvider(item providerListItem) tea.Cmd {
 	if item.Provider == nil {
@@ -325,7 +325,7 @@ func (s *ProviderSelector) selectProvider(item providerListItem) tea.Cmd {
 	p := item.Provider
 
 	// The custom provider needs ID + baseURL + apiKey, so it gets its own form
-	// instead of the single API-key input. Once connected, Enter refreshes as usual.
+	// instead of the credential form. Once connected, Enter refreshes as usual.
 	if len(p.AuthMethods) == 1 && s.isCustomProvider(p.Provider) && p.AuthMethods[0].Status != llm.StatusConnected {
 		s.openCustomForm()
 		return nil

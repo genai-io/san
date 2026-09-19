@@ -89,9 +89,9 @@ func (s *ProviderSelector) renderItemList(sb *strings.Builder) {
 		}
 		sb.WriteString("\n")
 
-		// Inline API key input (render below the relevant item)
-		if s.apiKeyActive && isSelected {
-			sb.WriteString(s.renderAPIKeyInput())
+		// Inline credential form (render below the relevant item)
+		if s.credForm.active && isSelected {
+			sb.WriteString(s.renderCredentialForm())
 			sb.WriteString("\n")
 		}
 
@@ -340,19 +340,31 @@ func (s *ProviderSelector) renderAuthMethod(item providerListItem, isSelected bo
 	return kit.RenderSelectableRow(line, isSelected)
 }
 
-// ── API key input ───────────────────────────────────────────────────────────
+// ── Credential form ─────────────────────────────────────────────────────────
 
-func (s *ProviderSelector) renderAPIKeyInput() string {
-	label := kit.DimStyle().Render(s.apiKeyEnvVar + ": ")
-	inputView := label + s.apiKeyInput.View()
-
+// renderCredentialForm renders the hint, one labeled input per env var, and
+// the validation error underneath when present. Indented six columns to align
+// with auth-method content (PaddingLeft(2) + "  " + "  ").
+func (s *ProviderSelector) renderCredentialForm() string {
+	f := &s.credForm
 	inputBg := kit.AdaptiveColor{Dark: "#1E293B", Light: "#F1F5F9"}
 	boxStyle := lipgloss.NewStyle().
 		Background(inputBg).
 		Padding(0, 1)
 
-	// Indent to align with auth method content (6 chars: PaddingLeft(2) + "  " + "  ")
-	return "      " + boxStyle.Render(inputView)
+	lines := make([]string, 0, len(f.inputs)+2)
+	if f.hint != "" {
+		lines = append(lines, "      "+kit.DimStyle().Width(max(s.width-6, 20)).Render(f.hint))
+	}
+	for i, input := range f.inputs {
+		label := kit.DimStyle().Render(f.vars[i] + ": ")
+		lines = append(lines, "      "+boxStyle.Render(label+input.View()))
+	}
+	if f.err != "" {
+		errStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error)
+		lines = append(lines, "      "+errStyle.Render(f.err))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderCustomForm renders the custom provider's two-field form (baseURL and
@@ -418,7 +430,10 @@ func (s *ProviderSelector) renderHints() string {
 	if s.ollamaFormActive {
 		return kit.DimStyle().Render("Enter save & connect · Esc cancel")
 	}
-	if s.apiKeyActive {
+	if s.credForm.active {
+		if len(s.credForm.inputs) > 1 {
+			return kit.DimStyle().Render("Enter connect · Tab next field · Esc cancel")
+		}
 		return kit.DimStyle().Render("Paste API key · Enter confirm · Esc cancel")
 	}
 	if s.confirmRemoveActive {

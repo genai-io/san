@@ -1,4 +1,4 @@
-// Provider selector: API-key entry, credential editing/removal, and the
+// Provider selector: the credential form, credential editing/removal, and the
 // connect/refresh flow with its in-flight spinner.
 package input
 
@@ -18,67 +18,155 @@ import (
 	"github.com/genai-io/san/internal/secret"
 )
 
-// HandlePaste inserts bracketed-paste content into the API key input when it's active.
-func (s *ProviderSelector) HandlePaste(content string) tea.Cmd {
-	if s.customFormActive {
-		content = strings.NewReplacer("\r", "", "\n", "").Replace(content)
-		content = strings.TrimSpace(content)
-		if content == "" {
-			return nil
+// credentialForm is the inline form under an auth-method row: one input per
+// environment variable the method reads. For most providers that is the one
+// API key; for Vertex it is the project and, optionally, the region.
+type credentialForm struct {
+	active      bool
+	vars        []string // env var per row; the first `required` may not be blank
+	required    int
+	inputs      []textinput.Model
+	focus       int
+	hint        string // shown above the rows, may be empty
+	err         string // validation error under the rows, may be empty
+	providerIdx int    // index into allProviders
+	authIdx     int    // index into that provider's AuthMethods
+}
+
+// openCredentialForm shows the form for one auth method. A key is typed
+// blind and never echoed back; a Vertex deployment is not a secret, so its
+// rows show in the clear and start from whatever is already set.
+func (s *ProviderSelector) openCredentialForm(am providerAuthMethodItem, providerIdx, authIdx int) {
+	var vars []string
+	required := 0
+	for i, v := range append(append([]string{}, am.EnvVars...), am.OptionalEnvVars...) {
+		if v == "" {
+			continue
 		}
-		s.customFormInputs[s.customFormFocus].SetValue(content)
-		s.customFormInputs[s.customFormFocus].CursorEnd()
-		return nil
+		vars = append(vars, v)
+		if i < len(am.EnvVars) {
+			required++
+		}
 	}
-	if !s.apiKeyActive {
-		return nil
+	if len(vars) == 0 {
+		return
 	}
+	deployment := am.AuthMethod == llm.AuthVertex
+	inputs := make([]textinput.Model, len(vars))
+	for i, v := range vars {
+		ti := textinput.New()
+		ti.Placeholder = v
+		ti.CharLimit = 256
+		ti.SetWidth(40)
+		if deployment {
+			ti.SetValue(secret.Resolve(v))
+		} else {
+			ti.EchoMode = textinput.EchoPassword
+		}
+		inputs[i] = ti
+	}
+	inputs[0].Focus()
+	s.credForm = credentialForm{
+		active:      true,
+		vars:        vars,
+		required:    required,
+		inputs:      inputs,
+		hint:        am.Hint,
+		providerIdx: providerIdx,
+		authIdx:     authIdx,
+	}
+}
+
+func (s *ProviderSelector) closeCredentialForm() { s.credForm = credentialForm{} }
+
+// HandlePaste inserts bracketed-paste content into the focused form input.
+func (s *ProviderSelector) HandlePaste(content string) tea.Cmd {
 	content = strings.NewReplacer("\r", "", "\n", "").Replace(content)
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil
 	}
-	s.apiKeyInput.SetValue(content)
-	s.apiKeyInput.CursorEnd()
+	switch {
+	case s.customFormActive:
+		s.customFormInputs[s.customFormFocus].SetValue(content)
+		s.customFormInputs[s.customFormFocus].CursorEnd()
+	case s.credForm.active:
+		s.credForm.inputs[s.credForm.focus].SetValue(content)
+		s.credForm.inputs[s.credForm.focus].CursorEnd()
+	}
 	return nil
 }
 
-func (s *ProviderSelector) handleAPIKeyInput(key tea.KeyMsg) tea.Cmd {
+func (s *ProviderSelector) handleCredentialFormKey(key tea.KeyMsg) tea.Cmd {
+	f := &s.credForm
 	switch key.String() {
-	case "enter":
-		value := strings.TrimSpace(s.apiKeyInput.Value())
-		if value == "" {
-			return nil
-		}
-		if store := secret.Default(); store != nil {
-			_ = store.Set(s.apiKeyEnvVar, value)
-		}
-		os.Setenv(s.apiKeyEnvVar, value)
-		s.apiKeyActive = false
-
-		// Find the auth method and trigger connection
-		if s.apiKeyProviderIdx >= 0 && s.apiKeyProviderIdx < len(s.allProviders) {
-			dp := &s.allProviders[s.apiKeyProviderIdx]
-			if s.apiKeyAuthIdx >= 0 && s.apiKeyAuthIdx < len(dp.AuthMethods) {
-				am := dp.AuthMethods[s.apiKeyAuthIdx]
-				return s.connectAuthMethod(am, s.selectedIdx)
-			}
-		}
-		return nil
-
 	case "esc":
-		s.apiKeyActive = false
+		s.closeCredentialForm()
 		return nil
-
+	case "tab", "down":
+		s.focusCredentialField((f.focus + 1) % len(f.inputs))
+		return nil
+	case "shift+tab", "up":
+		s.focusCredentialField((f.focus + len(f.inputs) - 1) % len(f.inputs))
+		return nil
+	case "enter":
+		return s.submitCredentialForm()
 	default:
 		var cmd tea.Cmd
-		s.apiKeyInput, cmd = s.apiKeyInput.Update(key)
+		f.inputs[f.focus], cmd = f.inputs[f.focus].Update(key)
 		return cmd
 	}
 }
 
+func (s *ProviderSelector) focusCredentialField(i int) {
+	f := &s.credForm
+	f.inputs[f.focus].Blur()
+	f.focus = i
+	f.inputs[i].Focus()
+}
+
+// submitCredentialForm stores every row and connects. A required row left
+// blank keeps the form open with an error; an optional row left blank clears
+// the variable, so erasing a prefilled region returns it to the default.
+func (s *ProviderSelector) submitCredentialForm() tea.Cmd {
+	f := &s.credForm
+	values := make([]string, len(f.vars))
+	for i, input := range f.inputs {
+		values[i] = strings.TrimSpace(input.Value())
+		if values[i] == "" && i < f.required {
+			f.err = f.vars[i] + " is required"
+			return nil
+		}
+	}
+	store := secret.Default()
+	for i, v := range f.vars {
+		switch {
+		case values[i] != "":
+			if store != nil {
+				_ = store.Set(v, values[i])
+			}
+			os.Setenv(v, values[i])
+		default:
+			if store != nil {
+				_ = store.Delete(v)
+			}
+			os.Unsetenv(v)
+		}
+	}
+	providerIdx, authIdx := f.providerIdx, f.authIdx
+	s.closeCredentialForm()
+
+	if providerIdx >= 0 && providerIdx < len(s.allProviders) {
+		dp := &s.allProviders[providerIdx]
+		if authIdx >= 0 && authIdx < len(dp.AuthMethods) {
+			return s.connectAuthMethod(dp.AuthMethods[authIdx], s.selectedIdx)
+		}
+	}
+	return nil
+}
+
 // handleCredentialEdit handles the 'e' key for editing credentials on connected providers.
-// For providers with a single auth method: activates API key input directly.
+// For providers with a single auth method: opens its credential form directly.
 // For providers with multiple auth methods: expands the provider first, then allows editing.
 func (s *ProviderSelector) handleCredentialEdit() tea.Cmd {
 	if s.selectedIdx < 0 || s.selectedIdx >= len(s.visibleItems) {
@@ -116,16 +204,9 @@ func (s *ProviderSelector) handleCredentialEditForProvider(item providerListItem
 		return nil
 	}
 
-	// Single auth method: activate API key input directly
+	// Single auth method: open its credential form directly
 	if len(p.AuthMethods) == 1 {
-		am := p.AuthMethods[0]
-		envVar := providerFirstEnvVar(am.EnvVars)
-		if envVar == "" {
-			return nil
-		}
-		s.apiKeyProviderIdx = item.ProviderIdx
-		s.apiKeyAuthIdx = 0
-		s.initAPIKeyInput(envVar)
+		s.openCredentialForm(p.AuthMethods[0], item.ProviderIdx, 0)
 		return nil
 	}
 
@@ -148,16 +229,7 @@ func (s *ProviderSelector) handleCredentialEditForAuthMethod(item providerListIt
 	if item.AuthMethod == nil {
 		return nil
 	}
-	am := item.AuthMethod
-
-	envVar := providerFirstEnvVar(am.EnvVars)
-	if envVar == "" {
-		return nil
-	}
-
-	s.apiKeyProviderIdx = item.ProviderIdx
-	s.apiKeyAuthIdx = s.findAuthMethodIndex(item)
-	s.initAPIKeyInput(envVar)
+	s.openCredentialForm(*item.AuthMethod, item.ProviderIdx, s.findAuthMethodIndex(item))
 	return nil
 }
 
@@ -218,8 +290,6 @@ func (s *ProviderSelector) handleConfirmRemove(key tea.KeyMsg) tea.Cmd {
 
 // executeCredentialRemove performs the actual credential removal.
 func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
-	envVar := s.confirmRemoveEnvVar
-
 	// Resolve the provider and auth method from the item
 	am := resolveRemovableAuthMethod(s.visibleItems[s.confirmRemoveItemIdx])
 	if am == nil {
@@ -229,14 +299,17 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	authMethod := am.AuthMethod
 
 	// Clear the credential: OAuth tokens for interactive-login auth, otherwise
-	// the API-key env var in the secret store.
+	// every env var the method reads, from the secret store and the process.
 	if llm.SupportsInteractiveLogin(providerName, authMethod) {
 		_ = llm.Logout(providerName, authMethod)
 	} else {
-		if store := secret.Default(); store != nil {
-			_ = store.Delete(envVar)
+		store := secret.Default()
+		for _, v := range append(append([]string{}, am.EnvVars...), am.OptionalEnvVars...) {
+			if store != nil {
+				_ = store.Delete(v)
+			}
+			os.Unsetenv(v)
 		}
-		os.Unsetenv(envVar)
 	}
 
 	// Disconnect provider and remove cached models from the llm store
@@ -263,11 +336,11 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 	return nil
 }
 
-// tryConnectOrPromptKey connects if env vars are available, otherwise shows API
-// key input.
+// tryConnectOrPromptKey connects if env vars are available, otherwise opens
+// the credential form.
 //
 // formAuthIdx addresses the auth method within its provider, which is what the
-// API-key form needs to route the entered key. The connect helpers want
+// credential form needs to route what was entered. The connect helpers want
 // something different — the visible row their spinner and result render on —
 // so they take s.selectedIdx, the row the user pressed Enter on. The two agree
 // only for the first row, which is why mixing them up parks the spinner on
@@ -287,28 +360,8 @@ func (s *ProviderSelector) tryConnectOrPromptKey(am providerAuthMethodItem, prov
 		return s.connectAuthMethod(am, s.selectedIdx)
 	}
 
-	// Show inline API key input
-	envVar := providerFirstEnvVar(am.EnvVars)
-	if envVar == "" {
-		return nil
-	}
-	s.apiKeyProviderIdx = providerIdx
-	s.apiKeyAuthIdx = formAuthIdx
-	s.initAPIKeyInput(envVar)
+	s.openCredentialForm(am, providerIdx, formAuthIdx)
 	return nil
-}
-
-// initAPIKeyInput initializes the textinput for API key entry.
-func (s *ProviderSelector) initAPIKeyInput(envVar string) {
-	ti := textinput.New()
-	ti.Placeholder = envVar
-	ti.Focus()
-	ti.CharLimit = 256
-	ti.SetWidth(40)
-	ti.EchoMode = textinput.EchoPassword
-	s.apiKeyInput = ti
-	s.apiKeyActive = true
-	s.apiKeyEnvVar = envVar
 }
 
 func providerIsEnvReady(envVars []string) bool {
