@@ -1,12 +1,11 @@
 package autoupdate
 
-// Every release ships SHA256SUMS — one "<hex>  <asset>" line per archive —
-// and SHA256SUMS.sig, the ed25519 signature the release workflow makes over
-// that file with the key it holds as SAN_RELEASE_SIGNING_KEY (see
-// tools/releasekey). A client trusts an archive only when the signature
-// verifies against the public key built into this binary and the archive
-// hashes to the listed sum. TLS to github.com proves who served the bytes;
-// the signature proves who published them.
+// A release ships SHA256SUMS — one "<hex>  <asset>" line per archive — and
+// SHA256SUMS.sig, the base64 ed25519 signature over that file that
+// tools/releasekey makes with the project's release key. A client installs an
+// archive only when the signature verifies against the public key built into
+// this binary and the archive hashes to the listed sum. Key setup and
+// rotation: docs/operations/release.md.
 
 import (
 	"context"
@@ -18,25 +17,30 @@ import (
 	"strings"
 )
 
-// releasePublicKeyBase64 is the public half of the release signing key.
-// Rotating it means every client built with the old key refuses updates until
-// it is reinstalled — the safe direction to fail in. While it is empty every
-// verification fails, and the release workflow's own verify step refuses to
-// publish — so a release, not a merge, is what needs the key in place.
+// releasePublicKeyBase64 is the public half of the release signing key, as
+// printed by `releasekey gen`. Empty until a maintainer sets one up; until
+// then every verification fails and the release workflow refuses to publish.
 const releasePublicKeyBase64 = ""
 
-// releasePublicKey is releasePublicKeyBase64 decoded; a var so tests can sign
-// with a key of their own.
-var releasePublicKey, _ = base64.StdEncoding.DecodeString(releasePublicKeyBase64)
+// ReleasePublicKey is the release signing key built into this binary.
+func ReleasePublicKey() ed25519.PublicKey {
+	key, _ := base64.StdEncoding.DecodeString(releasePublicKeyBase64)
+	return key
+}
 
-// VerifyChecksums checks sig over sums against the built-in release key and
-// returns the listed checksums keyed by asset name.
-func VerifyChecksums(sums, sig []byte) (map[string]string, error) {
-	if len(releasePublicKey) != ed25519.PublicKeySize {
+// Sign returns the SHA256SUMS.sig contents for data.
+func Sign(priv ed25519.PrivateKey, data []byte) []byte {
+	return []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, data)) + "\n")
+}
+
+// VerifyChecksums checks sig over sums against pub and returns the listed
+// checksums keyed by asset name.
+func VerifyChecksums(pub ed25519.PublicKey, sums, sig []byte) (map[string]string, error) {
+	if len(pub) != ed25519.PublicKeySize {
 		return nil, errors.New("no release signing key built into this binary")
 	}
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sig)))
-	if err != nil || !ed25519.Verify(ed25519.PublicKey(releasePublicKey), sums, raw) {
+	if err != nil || !ed25519.Verify(pub, sums, raw) {
 		return nil, errors.New("SHA256SUMS signature does not verify against the built-in release key")
 	}
 	out := map[string]string{}
@@ -48,23 +52,24 @@ func VerifyChecksums(sums, sig []byte) (map[string]string, error) {
 	return out, nil
 }
 
-// fetchChecksums downloads and verifies release version's checksum list.
-func fetchChecksums(ctx context.Context, version string) (map[string]string, error) {
-	sums, err := fetchSmall(ctx, fmt.Sprintf(downloadURL, version, "SHA256SUMS"))
+// fetchChecksums downloads release version's checksum list and verifies it
+// against pub.
+func fetchChecksums(ctx context.Context, version string, pub ed25519.PublicKey) (map[string]string, error) {
+	sums, err := fetchAsset(ctx, version, "SHA256SUMS")
 	if err != nil {
-		return nil, fmt.Errorf("release v%s has no signed checksums: %w", version, err)
+		return nil, err
 	}
-	sig, err := fetchSmall(ctx, fmt.Sprintf(downloadURL, version, "SHA256SUMS.sig"))
+	sig, err := fetchAsset(ctx, version, "SHA256SUMS.sig")
 	if err != nil {
-		return nil, fmt.Errorf("release v%s has no signed checksums: %w", version, err)
+		return nil, err
 	}
-	return VerifyChecksums(sums, sig)
+	return VerifyChecksums(pub, sums, sig)
 }
 
-// fetchSmall reads a release metadata file into memory, capped well above
-// the few hundred bytes it should be.
-func fetchSmall(ctx context.Context, url string) ([]byte, error) {
-	resp, err := get(ctx, url)
+// fetchAsset reads a small release asset into memory, capped well above the
+// few hundred bytes a checksum list or signature is.
+func fetchAsset(ctx context.Context, version, name string) ([]byte, error) {
+	resp, err := get(ctx, fmt.Sprintf(downloadURL, version, name))
 	if err != nil {
 		return nil, err
 	}

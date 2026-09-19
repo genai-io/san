@@ -21,8 +21,8 @@ the signature verifies against the public key built into the binary
 (`releasePublicKeyBase64` in `internal/autoupdate/verify.go`) and the archive
 hashes to the listed sum.
 
-The workflow verifies its own signature against the built-in key before
-publishing, so a missing secret, an empty built-in key, or a secret that does
+`releasekey sign` checks its own signature against that built-in key before
+writing it, so a missing secret, an empty built-in key, or a secret that does
 not match the code fails the release rather than shipping one no client will
 install.
 
@@ -33,7 +33,11 @@ go run ./tools/releasekey gen ~/san-release.key   # prints the public key
 gh secret set SAN_RELEASE_SIGNING_KEY --repo genai-io/san < ~/san-release.key
 ```
 
-Keep the keyfile in a password manager: a client verifies with the key it
-was built with, so after a rotation every client built with the old key
-refuses updates until it is reinstalled — losing the key means exactly that
-for everyone.
+Then paste the printed public key into `releasePublicKeyBase64` and merge
+that before tagging: the workflow signs with the secret and verifies with the
+key in the tagged code, so the two must match.
+
+Keep the keyfile in a password manager. A client verifies with the key it was
+built with, so after a rotation every client built with the old key refuses
+updates until it is reinstalled — losing the key means exactly that for
+everyone.

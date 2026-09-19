@@ -4,36 +4,26 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"path"
 	"testing"
 )
 
-// signingKey installs a fresh keypair as the built-in release key for the
-// test and returns the private half for signing.
-func signingKey(t *testing.T) ed25519.PrivateKey {
+const sumsFixture = "aaaa  san_darwin_arm64.tar.gz\nbbbb  san_linux_amd64.tar.gz\n"
+
+func keypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := releasePublicKey
-	releasePublicKey = pub
-	t.Cleanup(func() { releasePublicKey = old })
-	return priv
+	return pub, priv
 }
-
-func sign(priv ed25519.PrivateKey, sums string) []byte {
-	return []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, []byte(sums))) + "\n")
-}
-
-const sumsFixture = "aaaa  san_darwin_arm64.tar.gz\nbbbb  san_linux_amd64.tar.gz\n"
 
 func TestVerifyChecksums(t *testing.T) {
-	priv := signingKey(t)
-	got, err := VerifyChecksums([]byte(sumsFixture), sign(priv, sumsFixture))
+	pub, priv := keypair(t)
+	got, err := VerifyChecksums(pub, []byte(sumsFixture), Sign(priv, []byte(sumsFixture)))
 	if err != nil {
 		t.Fatalf("VerifyChecksums() error: %v", err)
 	}
@@ -43,33 +33,26 @@ func TestVerifyChecksums(t *testing.T) {
 }
 
 func TestVerifyChecksumsRefuses(t *testing.T) {
-	priv := signingKey(t)
-	good := sign(priv, sumsFixture)
-	_, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	pub, priv := keypair(t)
+	_, otherPriv := keypair(t)
+	good := Sign(priv, []byte(sumsFixture))
 
 	cases := map[string]struct {
+		pub  ed25519.PublicKey
 		sums string
 		sig  []byte
 	}{
-		"tampered sums":   {sumsFixture + "cccc  san_evil.tar.gz\n", good},
-		"foreign key":     {sumsFixture, sign(otherPriv, sumsFixture)},
-		"garbage sig":     {sumsFixture, []byte("not base64!")},
-		"truncated sig":   {sumsFixture, good[:20]},
-		"empty signature": {sumsFixture, nil},
+		"tampered sums":   {pub, sumsFixture + "cccc  san_evil.tar.gz\n", good},
+		"foreign key":     {pub, sumsFixture, Sign(otherPriv, []byte(sumsFixture))},
+		"garbage sig":     {pub, sumsFixture, []byte("not base64!")},
+		"truncated sig":   {pub, sumsFixture, good[:20]},
+		"empty signature": {pub, sumsFixture, nil},
+		"no built-in key": {nil, sumsFixture, good},
 	}
 	for name, tc := range cases {
-		if _, err := VerifyChecksums([]byte(tc.sums), tc.sig); err == nil {
+		if _, err := VerifyChecksums(tc.pub, []byte(tc.sums), tc.sig); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
-	}
-}
-
-func TestVerifyChecksumsRequiresABuiltInKey(t *testing.T) {
-	priv := signingKey(t)
-	sig := sign(priv, sumsFixture)
-	releasePublicKey = nil
-	if _, err := VerifyChecksums([]byte(sumsFixture), sig); err == nil {
-		t.Fatal("an empty built-in key must refuse every signature")
 	}
 }
 
@@ -77,8 +60,7 @@ func TestVerifyChecksumsRequiresABuiltInKey(t *testing.T) {
 func serveRelease(t *testing.T, files map[string]string) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		name := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
-		body, ok := files[name]
+		body, ok := files[path.Base(r.URL.Path)]
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -92,12 +74,12 @@ func serveRelease(t *testing.T, files map[string]string) {
 }
 
 func TestFetchChecksums(t *testing.T) {
-	priv := signingKey(t)
+	pub, priv := keypair(t)
 	serveRelease(t, map[string]string{
 		"SHA256SUMS":     sumsFixture,
-		"SHA256SUMS.sig": string(sign(priv, sumsFixture)),
+		"SHA256SUMS.sig": string(Sign(priv, []byte(sumsFixture))),
 	})
-	got, err := fetchChecksums(context.Background(), "1.0.0")
+	got, err := fetchChecksums(context.Background(), "1.0.0", pub)
 	if err != nil {
 		t.Fatalf("fetchChecksums() error: %v", err)
 	}
@@ -107,13 +89,13 @@ func TestFetchChecksums(t *testing.T) {
 }
 
 func TestFetchChecksumsRejectsAnUnsignedRelease(t *testing.T) {
-	signingKey(t)
+	pub, _ := keypair(t)
 	serveRelease(t, map[string]string{"SHA256SUMS": sumsFixture}) // no .sig
-	if _, err := fetchChecksums(context.Background(), "1.0.0"); err == nil {
+	if _, err := fetchChecksums(context.Background(), "1.0.0", pub); err == nil {
 		t.Fatal("a release without SHA256SUMS.sig must be refused")
 	}
 	serveRelease(t, map[string]string{}) // nothing at all
-	if _, err := fetchChecksums(context.Background(), "1.0.0"); err == nil {
+	if _, err := fetchChecksums(context.Background(), "1.0.0", pub); err == nil {
 		t.Fatal("a release without SHA256SUMS must be refused")
 	}
 }

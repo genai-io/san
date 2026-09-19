@@ -161,7 +161,9 @@ func Latest(ctx context.Context) (string, error)
 func Newer(a, b string) bool
 func IsRelease(v string) bool
 func Install(ctx context.Context, version string, progress func(written, total int64)) error
-func VerifyChecksums(sums, sig []byte) (map[string]string, error)
+func ReleasePublicKey() ed25519.PublicKey
+func Sign(priv ed25519.PrivateKey, data []byte) []byte
+func VerifyChecksums(pub ed25519.PublicKey, sums, sig []byte) (map[string]string, error)
 func Cleanup()
 ```
 

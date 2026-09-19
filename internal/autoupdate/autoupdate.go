@@ -166,7 +166,7 @@ func Install(ctx context.Context, version string, progress func(written, total i
 
 	// The signed checksum list comes first: a release that does not verify
 	// costs nothing more than these two small fetches.
-	sums, err := fetchChecksums(ctx, version)
+	sums, err := fetchChecksums(ctx, version, ReleasePublicKey())
 	if err != nil {
 		return err
 	}

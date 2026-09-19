@@ -3,15 +3,10 @@
 //
 //	go run ./tools/releasekey gen <keyfile>   write a new private key to keyfile (mode 0600) and print its public key
 //	go run ./tools/releasekey sign <file>     write <file>.sig, signed with $SAN_RELEASE_SIGNING_KEY
-//	go run ./tools/releasekey verify <file>   check <file>.sig against the key built into san
 //
-// One-time setup: run gen, keep the keyfile somewhere durable (a password
-// manager — losing it means every shipped client refuses further updates
-// until reinstalled), store it as the SAN_RELEASE_SIGNING_KEY repository
-// secret, and paste the printed public key into releasePublicKeyBase64 in
-// internal/autoupdate/verify.go. The release workflow then signs SHA256SUMS
-// and verifies its own signature before publishing, so a secret that does not
-// match the built-in key fails the release instead of shipping.
+// sign refuses a signature the key built into san would not accept, so a
+// secret that does not match the code fails the release instead of shipping
+// one no client will install. Setup and rotation: docs/operations/release.md.
 package main
 
 import (
@@ -26,7 +21,7 @@ import (
 
 func main() {
 	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: releasekey gen <keyfile> | sign <file> | verify <file>")
+		fmt.Fprintln(os.Stderr, "usage: releasekey gen <keyfile> | sign <file>")
 		os.Exit(2)
 	}
 	var err error
@@ -35,8 +30,6 @@ func main() {
 		err = gen(os.Args[2])
 	case "sign":
 		err = signFile(os.Args[2])
-	case "verify":
-		err = verify(os.Args[2])
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -67,23 +60,9 @@ func signFile(path string) error {
 	if err != nil {
 		return err
 	}
-	sig := base64.StdEncoding.EncodeToString(ed25519.Sign(ed25519.PrivateKey(priv), data))
-	return os.WriteFile(path+".sig", []byte(sig+"\n"), 0o644)
-}
-
-func verify(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
+	sig := autoupdate.Sign(priv, data)
+	if _, err := autoupdate.VerifyChecksums(autoupdate.ReleasePublicKey(), data, sig); err != nil {
 		return err
 	}
-	sig, err := os.ReadFile(path + ".sig")
-	if err != nil {
-		return err
-	}
-	sums, err := autoupdate.VerifyChecksums(data, sig)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("ok: %s signed for %d assets\n", path, len(sums))
-	return nil
+	return os.WriteFile(path+".sig", sig, 0o644)
 }

@@ -33,15 +33,12 @@ jobs:
       - name: Build binaries
         run: make release
 
-      # SHA256SUMS is signed with the release key and checked against the
-      # public key built into san, so a secret that no longer matches the
-      # code fails here instead of shipping a release no client will install.
+      # sign also checks the signature against the key built into san, so a
+      # secret that does not match the code fails here instead of shipping.
       - name: Sign checksums
         env:
           SAN_RELEASE_SIGNING_KEY: ${{ secrets.SAN_RELEASE_SIGNING_KEY }}
-        run: |
-          go run ./tools/releasekey sign bin/SHA256SUMS
-          go run ./tools/releasekey verify bin/SHA256SUMS
+        run: go run ./tools/releasekey sign bin/SHA256SUMS
 
       - name: Extract release notes
         env:
