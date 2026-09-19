@@ -366,6 +366,7 @@ func (m model) renderModeStatus() string {
 		ReviewApprovals:   reviewApprovals,
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,
+		UpdateInstalled:   m.updateInstalled,
 	})
 }
 

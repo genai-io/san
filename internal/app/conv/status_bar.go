@@ -209,9 +209,10 @@ type OperationModeParams struct {
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
-	ReviewApprovals   int  // auto-review approvals this session, shown next to the mode
-	ReviewEscalations int  // auto-review escalations to the user this session
-	AutopilotThinking bool // the copilot is mid-decision — show "thinking…" on the mode indicator
+	ReviewApprovals   int    // auto-review approvals this session, shown next to the mode
+	ReviewEscalations int    // auto-review escalations to the user this session
+	AutopilotThinking bool   // the copilot is mid-decision — show "thinking…" on the mode indicator
+	UpdateInstalled   string // release installed on disk this session, "" for none
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -273,6 +274,10 @@ func renderStatusCluster(p OperationModeParams) string {
 	}
 	if !p.ConversationCost.IsZero() {
 		segments = append(segments, statusSegment{text: muted.Render(kit.FormatCostTotal(p.ConversationCost)), priority: 6})
+	}
+	if p.UpdateInstalled != "" {
+		notice := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Render("✓ v" + p.UpdateInstalled + " installed · restart to update")
+		segments = append(segments, statusSegment{text: notice, priority: 2})
 	}
 
 	survivors := fitStatusSegments(segments, p.Width, lipgloss.Width(sep))

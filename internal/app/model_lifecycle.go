@@ -112,6 +112,7 @@ func (m *model) applyRunOptions(opts setting.RunOptions) error {
 	if opts.Prompt != "" {
 		m.env.InitialPrompt = opts.Prompt
 	}
+	m.env.Version = opts.Version
 
 	if opts.Persona != "" {
 		if err := m.services.Persona.Validate(opts.Persona); err != nil {

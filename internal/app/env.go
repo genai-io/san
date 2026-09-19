@@ -21,6 +21,7 @@ type env struct {
 	Height        int
 	Ready         bool
 	InitialPrompt string
+	Version       string // build version of the running binary
 
 	// ── Provider (mutable — changes via SwitchProvider) ─────────
 	LLMProvider  llm.Provider

@@ -79,7 +79,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-Start with `san`. On first launch, choose a model and add its API key when prompted. To update later, run `san update` — or `brew upgrade san` if you installed via Homebrew.
+Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; set `SAN_DISABLE_AUTOUPDATE=1` to opt out of background updates.
 
 <details>
 <summary><b>Other methods</b></summary>

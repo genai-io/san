@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/genai-io/san/internal/app"
+	"github.com/genai-io/san/internal/autoupdate"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/setting"
 )
@@ -63,10 +64,7 @@ func init() {
 func main() {
 	defer func() { _ = log.Sync() }()
 
-	// Clean up any stale backup file from a previous self-update.
-	// On Windows, os.Remove on a running executable's renamed backup
-	// fails, so we clean it on the next launch instead.
-	cleanupUpdateBackup()
+	autoupdate.Cleanup()
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -107,26 +105,13 @@ Non-interactive mode:
 			Continue:  cliOpts.cont,
 			Resume:    cliOpts.resume,
 			ResumeID:  resumeID,
+			Version:   version,
 		}
 		if err := app.Run(opts); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
 	},
-}
-
-// cleanupUpdateBackup removes any stale .bak file from a previous self-update.
-// On Windows, the running process cannot delete the renamed backup of itself,
-// so we defer cleanup to the next launch.
-func cleanupUpdateBackup() {
-	exe, err := os.Executable()
-	if err != nil {
-		return
-	}
-	backupPath := exe + ".bak"
-	if _, err := os.Stat(backupPath); err == nil {
-		_ = os.Remove(backupPath)
-	}
 }
 
 // readStdin returns piped stdin data, or empty string if stdin is a terminal.
@@ -187,7 +172,7 @@ Example:
   san update`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runSelfUpdate(cmd.Context())
+		return runUpdate(cmd.Context())
 	},
 }
 

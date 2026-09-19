@@ -10,4 +10,5 @@ type RunOptions struct {
 	Continue  bool   // resume most recent session
 	Resume    bool   // open session selector or resume by ID
 	ResumeID  string // specific session ID to resume
+	Version   string // build version of the running binary, for the background auto-update
 }

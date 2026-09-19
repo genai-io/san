@@ -79,6 +79,7 @@ Configuration and supporting capabilities:
 | `internal/proc` | `infrastructure` | Cross-platform process-group / signal helpers (Unix/Windows variants) and the OS URL launcher. |
 | `internal/confdir` | `infrastructure` | Shared `.san` configuration directory naming helper. |
 | `internal/atomicfile` | `infrastructure` | Temp-file-then-rename file replacement, so a reader never sees a half-written file. |
+| `internal/autoupdate` | `infrastructure` | Replaces the running binary with a newer GitHub release by download-beside-and-rename; shared by `san update` and the TUI's background check. |
 
 ## Ownership Rule
 

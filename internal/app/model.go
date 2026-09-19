@@ -105,6 +105,9 @@ type model struct {
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
 
+	// updateInstalled holds the last updateInstalledMsg; "" until one arrives.
+	updateInstalled string
+
 	// autopilotRecoveries counts consecutive attempts to revive a run after a
 	// turn died on an error, bounding a retry loop into a sustained outage. Any
 	// turn that reaches OnTurnEnd resets it.
@@ -160,6 +163,7 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
 		awaitSelfLearnStart(m.selfLearnStarts),
+		autoUpdate(m.env.Version),
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt

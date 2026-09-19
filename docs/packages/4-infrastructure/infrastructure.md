@@ -145,6 +145,43 @@ func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
   is complete on Windows.
 - Code: `internal/proc/`.
 
+## `internal/autoupdate`
+
+Replaces the running `san` binary with a newer GitHub release. The running
+process is never touched: the release is downloaded and extracted beside the
+binary, then swapped in by rename, so the session keeps the version it started
+with and the next launch runs the new one.
+
+```go
+package autoupdate
+
+func InstallDir() string
+func Managed() bool
+func Latest(ctx context.Context) (string, error)
+func Newer(a, b string) bool
+func IsRelease(v string) bool
+func Install(ctx context.Context, version string, progress func(written, total int64)) error
+func Cleanup()
+```
+
+- `san update` calls it interactively, wherever the binary lives. The TUI
+  calls it once at startup in the background — only when `Managed()` says the
+  binary is in `InstallDir()` (`~/.local/bin`, or `%LOCALAPPDATA%\san\bin` on
+  Windows), so a Homebrew, `go install`, package-manager, or dev-build binary
+  is never replaced behind its owner's back — and on success shows
+  `✓ vX.Y.Z installed · restart to update` in the status line.
+  `SAN_DISABLE_AUTOUPDATE=1` turns the background check off; `san update`
+  still works.
+- `Newer` only accepts plain `X.Y.Z`, so a dev build (`git describe` suffix,
+  bare hash) is never replaced and a release never downgrades; `IsRelease`
+  lets the caller skip the network for one. `Install` extracts only the
+  archive entry named `san`/`san.exe`, beside the binary, and fails before any
+  network traffic when that directory is not writable.
+- `Cleanup` runs at every launch: it removes the renamed-out old binary
+  (Windows cannot delete it while it is still running) and download
+  directories abandoned by a session that quit mid-install.
+- Code: `internal/autoupdate/`.
+
 ## See Also
 
 - Layer: [`../reference/dependency-rules.md`](../../reference/dependency-rules.md)
