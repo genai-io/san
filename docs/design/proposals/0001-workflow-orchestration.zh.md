@@ -62,6 +62,13 @@ San 已经能扇出了。主 agent 在一个 turn 里发多个 `Agent` 调用，
 一张声明式无环图，节点是子 agent 的一次 turn，用 markdown 定义，
 可以从存好的文件触发，也可以由模型现场写出来触发。
 
+本提案的对象是这台引擎，不是任何一条具体的工作流。第 3 节列出引擎能表达的
+全部形状，每种一张最小拓扑；第 4 节用一个最小的 review 说明格式；第 8 节用
+release-check 说明模式怎么组合。后两个都是 instance，不是引擎本身。引擎对
+节点里装的是什么一无所知：`.san/skills/` 里的 `release` 和 `qa` 是同样自然的
+instance，只是今天还写成线性的 skill。凡是把"审查"换成别的活也照样成立的
+规则，才是设计；只对审查成立的，是示例。
+
 ### 1. 取 Argo 的形状，不取 LangGraph 的
 
 取 Argo 的形状——声明式、无环、可参数化。不把 LangGraph 的环当成通用特性收进来。
@@ -71,7 +78,15 @@ LangGraph 的头号能力在这里是负资产。环的存在是为了"反复推
 自己调工具、自己判断做完没有。在编排层再实现一遍这个循环，产出的是一个更差的
 副本——每一圈都要重新组 prompt，并丢掉上一圈建立起来的上下文。
 
-被拒的不是回边，是**无界**的回边。见设计第 6 节。
+被拒的不是回边，是**无界**的回边。见设计第 6 节。无界为什么不行，三条，
+每条都不是口味问题：
+
+- **成本不可预估。** 每圈是一个完整子 agent，可能几十次模型调用；循环条件
+  写错就是烧预算。`xN` 让最坏情况在启动前是一个确定的数。
+- **进度不可判定。** 有拓扑序才说得出 "3/7"。展开后的回边仍有拓扑序，
+  说得出 `draft 2/3`；真正的环说不出来。
+- **收敛信号不可靠。** "够好了吗" 本身又是一次模型判断，可能永远说不够。
+  上界不是保险，是刹车。
 
 ### 2. 节点 = 一次子 agent turn
 
@@ -123,6 +138,57 @@ Voting 值得单说。同一个 prompt 在同一个模型上跑三遍，得到�
 跨 provider 路由）、不同视角。一个"重复 N 次"的量词只能表达没用的那一半，
 所以没有这个字段：voting 就是各路配置不同的 sectioning。
 
+每种模式的最小拓扑，都能直接粘进定义文件：
+
+**Prompt chaining** —— 一条线，每步只干一件，上一步的输出喂给下一步。
+
+```mermaid
+flowchart LR
+  outline --> draft --> polish
+```
+
+**Gate** —— 只有一条边的 routing：`triage` 只回 `YES` 或 `NO`，不值得就整条不跑。
+
+```mermaid
+flowchart LR
+  triage -->|YES| deep --> report
+```
+
+**Routing** —— 分类一次，走不同的专家路线。路由逻辑集中在源节点一处，
+不散在每个下游身上。
+
+```mermaid
+flowchart LR
+  triage -->|SEC| sec --> out
+  triage -->|PERF| perf --> out
+  triage -->|DOCS| docs --> out
+```
+
+**Sectioning** —— 几路同看一份材料，各自独立上下文，最后汇聚。最常用的形状。
+
+```mermaid
+flowchart LR
+  diff --> sec & perf & tests --> report
+```
+
+**Voting** —— 形状同 sectioning，但 `j_*` 各配不同的 `model`
+（`opus` / `sonnet` / `deepseek/deepseek-v4`），不是同一个跑三遍。
+
+```mermaid
+flowchart LR
+  diff --> j_sec & j_perf & j_ops --> verdict
+```
+
+**Orchestrator–workers** —— `plan` 返回一份计划，`review` 带
+`for_each: plan.tasks`，runner 按计划展开。完整写法见第 6 节。
+
+```mermaid
+flowchart LR
+  plan --> review --> merge
+```
+
+**Evaluator–optimizer** —— 带上界的回边，见第 6 节。
+
 ### 4. 定义：拓扑是一张 mermaid 流程图的 markdown
 
 节点配置和图的形状是两件事，把它们嵌套进同一棵 YAML 树，正是那份 YAML 啰嗦的原因。
@@ -166,6 +232,7 @@ mode: explore
 | 标题下的 `key: value` | 连续的这些行是节点配置（`agent`、`mode`、`model`、`continue_on_error`、`for_each`、`max_workers`）；空行以下全是 prompt。大多数节点一行都不需要。 |
 | `{{id}}` | 上游节点的输出。引用图里没连过来的节点是校验错误，不是空值。 |
 | `{{input.x}}` | 触发时传入的参数。 |
+| frontmatter | 可选。`name`、`description`、`max_parallel`。 |
 
 `needs` 消失了——它从图里读出来。一起消失的还有 `nodes:` 嵌套、prompt 的引号和
 `\n` 转义、以及 `.steps.x.output`。
@@ -206,6 +273,12 @@ mode: explore
 `for_each` 覆盖两种形状：项是字符串就是普通 map（逐个文件审查），
 项是对象就是 orchestrator（每个 worker 带自己的 prompt）。
 `max_workers` 是**必填**的——否则一份写飞的计划会拉起两百个子 agent。
+计划一到手，runner 展开出来的是这样一张普通 DAG：
+
+```mermaid
+flowchart LR
+  plan --> a["review·llm"] & b["review·tool"] & c["review·app"] & d["… ≤ max_workers"] --> merge
+```
 
 **Evaluator–optimizer** 需要回边，那就把回边画进图里，并把它的上界写进语法。
 没有 `xN` 的回边校验不过。
@@ -219,7 +292,15 @@ flowchart LR
 
 解析期把它展开成一张普通 DAG —— `draft#1 → review#1 → draft#2 → …`，
 每一轮都有一条 `PASS` 逃逸边通向 `ship` —— 所以执行器、调度器和渲染器
-从头到尾都不知道曾经有过一个循环。
+从头到尾都不知道曾经有过一个循环。展开的结果：
+
+```mermaid
+flowchart LR
+  spec --> d1["draft#1"] --> r1["review#1"]
+  r1 -->|FAIL| d2["draft#2"] --> r2["review#2"]
+  r2 -->|FAIL| d3["draft#3"] --> r3["review#3"]
+  r1 & r2 & r3 -->|PASS| ship
+```
 
 | 情形 | 语义 |
 | --- | --- |
@@ -240,6 +321,7 @@ flowchart LR
 
 | 情况 | 行为 |
 | --- | --- |
+| 节点状态 | 调度器内部 `pending → ready → running → succeeded \| failed \| omitted`。画进度、算剩余、判传染全靠它；不作为编程模型暴露给节点 |
 | 上游失败 | 下游 skip，工作流失败；节点上的 `continue_on_error: true` 可放行 |
 | 上游被 omit（条件边没选中） | 下游只在**所有**上游都 omitted 时才 omitted；只要有一个上游活着就照跑，缺失的 `{{x}}` 渲染为空 |
 | 模板可见范围 | 只有图里连过来的上游，加上 `{{input.*}}` |
@@ -249,13 +331,89 @@ flowchart LR
 | 校验 | id 唯一 · 图里的 id 与段落一一对应 · Kahn 查环 · agent 名可解析 · mode 在白名单内 · 模板只引用连过来的上游。全部在启动前完成，一次报完 |
 | 工具边界 | `Workflow` 加入 `internal/tool/set.go` 的 `parentOnlyTools`：子 agent 不能启动工作流 |
 
-### 8. 终端渲染
+### 8. 组合示例：release-check
+
+routing 套 sectioning，汇聚后收尾。三种边接起来就是了，没有额外规则。
+第 9 节的渲染示例画的就是这张图。
+
+```mermaid
+flowchart LR
+  diff --> triage & perf & tests
+  triage -->|HIGH| sec & threat
+  triage -->|LOW| quick
+  sec & threat & quick & perf & tests --> report
+```
+
+````markdown
+---
+name: release-check
+max_parallel: 3
+---
+
+```mermaid
+flowchart LR
+  diff --> triage & perf & tests
+  triage -->|HIGH| sec & threat
+  triage -->|LOW| quick
+  sec & threat & quick & perf & tests --> report
+```
+
+## diff
+agent: Explore
+
+总结 {{input.base}}..HEAD 的改动，按包分组，标出涉及权限和凭证的部分
+
+## triage
+mode: explore
+
+以下改动是否触及安全边界？只回 HIGH 或 LOW：
+{{diff}}
+
+## sec
+mode: explore
+
+审查可达的安全问题，不报理论风险：{{diff}}
+
+## threat
+mode: explore
+
+从攻击者视角看这次改动引入了什么新入口：{{diff}}
+
+## quick
+mode: explore
+
+只查明显错误，五分钟内给结论：{{diff}}
+
+## perf
+mode: explore
+
+只看性能回退：{{diff}}
+
+## tests
+跑 make test，报告失败项
+
+## report
+合并成一份发布评估，安全部分若有分歧要写明：
+{{sec}} {{threat}} {{quick}} {{perf}} {{tests}}
+````
+
+`triage` 判为 HIGH、`max_parallel: 3` 时的波次：
+
+```
+wave 1   diff                     1 个
+wave 2   triage · perf · tests    3 个并发，撞上上限
+wave 3   sec · threat             2 个并发；quick 被 omit
+wave 4   report                   1 个，{{quick}} 渲染为空串
+```
+
+### 9. 终端渲染
 
 San 现在没有任何东西渲染 mermaid —— `grep -rn mermaid internal/` 是空的，
 glamour 把那个围栏当普通代码块。也不需要 mermaid 渲染器：
 真要画的时候，图已经被解析成节点和边了。这是布局问题，不是 mermaid 问题。
 
-图用 ASCII 画，从左到右排布，状态长在节点上：
+图用 ASCII 画，从左到右排布，状态长在节点上。下面是第 8 节的 release-check
+跑到一半、`triage` 判了 HIGH 的样子：
 
 ```
 ✓ diff ─┬─▶ ⠹ perf   ─────────────┐
@@ -291,6 +449,22 @@ Kahn 分层给出列（调度器本来就要算），行号按第一个上游贪
 运行中的节点取它那个 agent 的颜色，而图会**长大**——orchestrator 一交出计划，
 `for_each` 那一列当场长出新行；一轮失败时回边上的 `⟲2/3` 当场跳。
 
+```
+⠋ plan   ▸ 拆分审查任务
+
+        ────────  8 秒后  ────────
+
+✓ plan ─┬─▶ ⠋ review·llm      ─┐
+        ├─▶ ⠋ review·tool     ─┤
+        ├─▶ ⠋ review·app      ─┤
+        ├─▶ ○ review·session  ─┤
+        ├─▶ ○ review·core     ─┤
+        ╰─▶ ○ review·subagent ─┴─▶ ◇ merge
+
+✓ spec ─▶ ⠋ draft ⟲2/3 ─▶ ○ review ─PASS─▶ ○ ship
+             ╰──── FAIL ─────╯
+```
+
 退化是渲染器的事，不是用户要选的模式：并行行太多就折叠成 `⋮ 3 more`，
 列太多就截断并提示去 `/workflow show`，图乱到画不清就退回一行一个节点。
 
@@ -299,7 +473,7 @@ Kahn 分层给出列（调度器本来就要算），行号按第一个上游贪
 是 `internal/app/conv/markdown.go` 已经在用的 `lipgloss/v2/table` 的同包兄弟，
 画框线不引入新依赖。
 
-### 9. 包的归属
+### 10. 包的归属
 
 `internal/workflow` 装解析、校验、展开和 DAG runner，**零 San import**——
 只有标准库、`yaml`，以及一个承载宿主节点配置的类型参数。节点执行通过一个

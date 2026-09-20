@@ -68,6 +68,16 @@ call, `pkg/agent` runs the loop around it. Grepping `pkg/` for
 A declarative acyclic graph whose nodes are subagent turns, defined in
 markdown, executable from a saved file or from a model-authored tool call.
 
+The subject of this proposal is that engine, not any particular workflow.
+Design 3 lists every shape the engine can express, one minimal topology
+each; Design 4 uses a minimal review to show the format; Design 8 uses
+release-check to show how patterns compose. The latter two are instances,
+not the engine. The engine knows nothing about what a node does: `release`
+and `qa` in `.san/skills/` are equally natural instances that today happen
+to be written as linear skills. A rule that still holds when "review" is
+replaced by any other job is design; one that holds only for review is
+example.
+
 ### 1. Argo-shaped, not LangGraph-shaped
 
 Take Argo's shape — declarative, acyclic, parameterized. Do not take
@@ -81,7 +91,16 @@ layer produces a worse copy: every lap re-composes a prompt and loses the
 context the previous lap built.
 
 What is rejected is not the back edge — it is the *unbounded* back edge. See
-Design 6.
+Design 6. Three reasons unbounded is out, none of them taste:
+
+- **Cost is unpredictable.** Every lap is a full subagent, possibly dozens of
+  model calls; a mis-written loop condition burns budget. `xN` makes the
+  worst case a known number before launch.
+- **Progress is undecidable.** "3/7" needs a topological order. An unrolled
+  back edge still has one and can say `draft 2/3`; a true cycle cannot.
+- **The convergence signal is unreliable.** "Good enough yet?" is itself a
+  model judgement and may never say yes. The bound is not insurance, it is
+  the brake.
 
 ### 2. A node is one subagent turn
 
@@ -138,6 +157,60 @@ is heterogeneous — different agents, different models (San already routes
 times" quantifier would express only the useless half, so there is no such
 field: voting is sectioning with branches configured differently.
 
+The minimal topology of each pattern, each pasteable into a definition file:
+
+**Prompt chaining** — a line; each step does one thing and feeds the next.
+
+```mermaid
+flowchart LR
+  outline --> draft --> polish
+```
+
+**Gate** — routing with one edge: `triage` answers only `YES` or `NO`, and
+nothing downstream runs when it is not worth it.
+
+```mermaid
+flowchart LR
+  triage -->|YES| deep --> report
+```
+
+**Routing** — classify once, take a specialist path. The routing decision
+lives in the source node, not scattered across the targets.
+
+```mermaid
+flowchart LR
+  triage -->|SEC| sec --> out
+  triage -->|PERF| perf --> out
+  triage -->|DOCS| docs --> out
+```
+
+**Sectioning** — several branches read the same material in independent
+contexts, then converge. The most common shape.
+
+```mermaid
+flowchart LR
+  diff --> sec & perf & tests --> report
+```
+
+**Voting** — sectioning's shape, but each `j_*` sets a different `model`
+(`opus` / `sonnet` / `deepseek/deepseek-v4`) rather than running one three
+times.
+
+```mermaid
+flowchart LR
+  diff --> j_sec & j_perf & j_ops --> verdict
+```
+
+**Orchestrator–workers** — `plan` returns a plan; `review` carries
+`for_each: plan.tasks` and the runner unrolls it. Full form in Design 6.
+
+```mermaid
+flowchart LR
+  plan --> review --> merge
+```
+
+**Evaluator–optimizer** — a bounded back edge; see Design 6.
+
 ### 4. Definition: markdown whose topology is a mermaid flowchart
 
 Node configuration and graph shape are two different things, and nesting them
@@ -183,6 +256,7 @@ Merge into one review: {{sec}} {{perf}}
 | `key: value` under the heading | the contiguous run of such lines is node config (`agent`, `mode`, `model`, `continue_on_error`, `for_each`, `max_workers`); everything after the blank line is the prompt. Most nodes need none. |
 | `{{id}}` | an upstream node's output. Referencing a node the graph does not connect is a validation error, not an empty value. |
 | `{{input.x}}` | a parameter passed at trigger time. |
+| frontmatter | optional: `name`, `description`, `max_parallel`. |
 
 `needs` disappears — it is read off the graph. So do the `nodes:` nesting,
 the quoting and `\n` escaping of prompts, and `.steps.x.output`.
@@ -227,7 +301,13 @@ mode: explore
 `for_each` covers both shapes: string items give an ordinary map (review each
 file), object items give an orchestrator (each worker carries its own
 prompt). `max_workers` is **required** — a plan that goes wrong otherwise
-starts two hundred subagents.
+starts two hundred subagents. Once the plan is in, the runner unrolls it
+into this ordinary DAG:
+
+```mermaid
+flowchart LR
+  plan --> a["review·llm"] & b["review·tool"] & c["review·app"] & d["… ≤ max_workers"] --> merge
+```
 
 **Evaluator–optimizer** needs a back edge, so the back edge is drawn in the
 graph, and its bound is part of the syntax. A back edge without `xN` fails
@@ -242,7 +322,15 @@ flowchart LR
 
 Parsing unrolls it into a plain DAG — `draft#1 → review#1 → draft#2 → …`
 with a `PASS` escape edge from each iteration to `ship` — so the executor,
-the scheduler and the renderer never learn that a loop existed.
+the scheduler and the renderer never learn that a loop existed. Unrolled:
+
+```mermaid
+flowchart LR
+  spec --> d1["draft#1"] --> r1["review#1"]
+  r1 -->|FAIL| d2["draft#2"] --> r2["review#2"]
+  r2 -->|FAIL| d3["draft#3"] --> r3["review#3"]
+  r1 & r2 & r3 -->|PASS| ship
+```
 
 | Case | Semantics |
 | --- | --- |
@@ -263,6 +351,7 @@ is not a nicety; it is the reason these two patterns are admissible at all.
 
 | Situation | Behaviour |
 | --- | --- |
+| node state | scheduler-internal `pending → ready → running → succeeded \| failed \| omitted`. Progress, remaining count and failure contagion all read it; it is not exposed to nodes as a programming model |
 | upstream failed | downstream skipped, workflow fails; `continue_on_error: true` overrides per node |
 | upstream omitted (conditional not taken) | downstream is omitted only when **all** its upstreams are; one surviving upstream is enough to run, and the missing `{{x}}` renders empty |
 | template scope | only upstreams the graph connects, plus `{{input.*}}` |
@@ -272,14 +361,91 @@ is not a nicety; it is the reason these two patterns are admissible at all.
 | validation | unique ids · graph ids match sections · Kahn cycle check · agent names resolve · mode in whitelist · templates reference connected upstreams only. All before launch, reported at once |
 | tool scope | `Workflow` joins `parentOnlyTools` in `internal/tool/set.go`: a subagent cannot start a workflow |
 
-### 8. Terminal rendering
+### 8. Composite example: release-check
+
+Routing nested in sectioning, converging at the end. The three edge kinds
+joined up — no extra rules. Design 9's rendering example draws this graph.
+
+```mermaid
+flowchart LR
+  diff --> triage & perf & tests
+  triage -->|HIGH| sec & threat
+  triage -->|LOW| quick
+  sec & threat & quick & perf & tests --> report
+```
+
+````markdown
+---
+name: release-check
+max_parallel: 3
+---
+
+```mermaid
+flowchart LR
+  diff --> triage & perf & tests
+  triage -->|HIGH| sec & threat
+  triage -->|LOW| quick
+  sec & threat & quick & perf & tests --> report
+```
+
+## diff
+agent: Explore
+
+Summarize {{input.base}}..HEAD by package; flag anything touching
+permissions or credentials
+
+## triage
+mode: explore
+
+Does this change touch a security boundary? Answer HIGH or LOW only:
+{{diff}}
+
+## sec
+mode: explore
+
+Review for reachable security issues, not theoretical ones: {{diff}}
+
+## threat
+mode: explore
+
+From an attacker's view, what new entry points does this add: {{diff}}
+
+## quick
+mode: explore
+
+Obvious mistakes only, verdict within five minutes: {{diff}}
+
+## perf
+mode: explore
+
+Performance regressions only: {{diff}}
+
+## tests
+Run make test, report failures
+
+## report
+Merge into one release assessment; note any disagreement on security:
+{{sec}} {{threat}} {{quick}} {{perf}} {{tests}}
+````
+
+Waves when `triage` says HIGH and `max_parallel: 3`:
+
+```
+wave 1   diff                     1 node
+wave 2   triage · perf · tests    3 concurrent, at the cap
+wave 3   sec · threat             2 concurrent; quick omitted
+wave 4   report                   1 node, {{quick}} renders empty
+```
+
+### 9. Terminal rendering
 
 Nothing renders mermaid in San today — `grep -rn mermaid internal/` is empty,
 and glamour treats the fence as an ordinary code block. Nor is a mermaid
 renderer needed: by the time anything is drawn, the graph has been parsed
 into nodes and edges. This is a layout problem, not a mermaid problem.
 
-The graph is drawn as ASCII, laid out left to right, with state on the node:
+The graph is drawn as ASCII, laid out left to right, with state on the node.
+This is Design 8's release-check mid-run, `triage` having said HIGH:
 
 ```
 ✓ diff ─┬─▶ ⠹ perf   ─────────────┐
@@ -324,6 +490,22 @@ running nodes take their agent's colour, and the graph *grows* — a `for_each`
 column gains rows the moment the orchestrator returns its plan, and a back
 edge's `⟲2/3` advances when an iteration fails.
 
+```
+⠋ plan   ▸ splitting review tasks
+
+        ────────  8s later  ────────
+
+✓ plan ─┬─▶ ⠋ review·llm      ─┐
+        ├─▶ ⠋ review·tool     ─┤
+        ├─▶ ⠋ review·app      ─┤
+        ├─▶ ○ review·session  ─┤
+        ├─▶ ○ review·core     ─┤
+        ╰─▶ ○ review·subagent ─┴─▶ ◇ merge
+
+✓ spec ─▶ ⠋ draft ⟲2/3 ─▶ ○ review ─PASS─▶ ○ ship
+             ╰──── FAIL ─────╯
+```
+
 Degradation belongs to the renderer, not to a mode the user picks: too many
 parallel rows fold to `⋮ 3 more`, too many columns truncate with a pointer to
 `/workflow show`, and a graph too tangled to draw falls back to one node per
@@ -335,7 +517,7 @@ so nodes registered as tracker items get dependencies and progress; and
 imported by `internal/app/conv/markdown.go`, so the box-drawing costs no new
 dependency.
 
-### 9. Package placement
+### 10. Package placement
 
 `internal/workflow` holds parsing, validation, expansion and the DAG runner,
 with **no San imports** — standard library, `yaml`, and one type parameter
