@@ -35,12 +35,13 @@ Agent, persistence, and orchestration:
 | --- | --- | --- |
 | `internal/agent` | `feature` | Agent construction, permission adapter, and session-facing setup. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
-| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
+| `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `workflow`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
 | `internal/session` | `feature` | Session metadata, transcript persistence, resume, projection, message conversion. |
 | `internal/session/transcript` | `feature` | Transcript records, filesystem store, projection, renderable views. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |
+| `internal/workflow` | `feature` | Workflow definition (markdown + mermaid subset), validation, DAG scheduler, summary; imports nothing from San so it can move to sdk-go. |
 | `internal/broker` | `feature` | Routes messages between agents: addresses keyed by agent id, for main↔subagent messages and completions. |
 | `internal/cron` | `feature` | Cron definitions, storage, service, loop. |
 | `internal/selflearn` | `feature` | Background self-learning reviewer, durable memory store, and restricted skill-update surface. |

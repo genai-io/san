@@ -1,0 +1,95 @@
+---
+package: github.com/genai-io/san/internal/workflow
+layer: feature
+---
+
+# workflow
+
+Parses and runs a workflow: a declarative acyclic graph whose nodes are one
+subagent turn each, written as markdown with a mermaid flowchart for the
+topology.
+
+## Purpose
+
+The `Workflow` tool (`internal/tool/workflow`) hands this package a markdown
+document and gets back a validated graph, then runs it under one background
+task. The package owns the format (frontmatter, one mermaid block, one
+`## id` section per node), every validation, the scheduler, and the summary
+the parent conversation receives. It imports nothing from San — node
+execution enters through `NodeRunner` — so it can move to sdk-go as
+`pkg/agent/flow` once the schema settles. Design and rationale:
+[`design/proposals/0001-workflow-orchestration.md`](../../design/proposals/0001-workflow-orchestration.md);
+user-facing behaviour: [`concepts/workflow.md`](../../concepts/workflow.md).
+
+## Contract
+
+```go
+package workflow
+
+// Parse reads a definition and validates it: one mermaid block, one section
+// per graph node and vice versa, no cycle, templates referencing only
+// connected upstreams. Every problem found is reported at once.
+func Parse(src string) (*Workflow, error)
+
+// NodeRunner executes one node with its rendered prompt. The host decides
+// what a node is; an error is a failed node.
+type NodeRunner interface {
+	RunNode(ctx context.Context, node *Node, prompt string) (output string, err error)
+}
+
+// Run executes the graph: a node starts once every upstream has settled, at
+// most MaxParallel run at once, and cancelling ctx stops what has not started
+// while keeping what has finished.
+func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Result
+
+func (r *Result) Failed(w *Workflow) bool
+func (r *Result) Failures(w *Workflow) []string
+func (r *Result) Summary(w *Workflow) string
+```
+
+`Workflow`, `Node`, `Edge`, `Options`, `Result` and `NodeResult` are plain
+structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
+`model`) untouched.
+
+## Internals
+
+- `parse.go` — frontmatter (`name`, `description`, `max_parallel`) via
+  yaml; a line-oriented mermaid subset (`flowchart` header, bare ids,
+  `-->`, `&`, `|LABEL|`; anything else is an error naming the subset);
+  `## id` sections whose leading `key: value` lines are config and whose
+  remainder is the prompt; Kahn's algorithm for the cycle check; `{{ref}}`
+  references checked against the node's ancestors.
+- `run.go` — one goroutine per node waiting on its upstreams' done
+  channels, a semaphore of `MaxParallel` held only while a node executes. A
+  node's template scope is the outputs of every ancestor reached through a
+  *taken* edge, inherited downstream; an untaken conditional edge hides that
+  branch.
+- Node phases: `pending → running → succeeded | failed | skipped | omitted`.
+  `skipped` is contagion from an upstream failure; `omitted` means no
+  upstream edge was taken. `continue_on_error` on the failing node stops the
+  contagion and renders its `{{id}}` empty.
+- `Summary` is one status line per node followed by the output of each
+  succeeded sink; intermediate outputs stay in the node transcripts.
+
+## Lifecycle
+
+`Parse` is pure. `Run` blocks until every node has settled and is safe to
+call concurrently on distinct workflows; the host owns the context, and
+cancelling it fails nodes that have not started (or that observe it) while
+finished results are kept. No state outlives the call.
+
+## Tests
+
+```
+internal/workflow/parse_test.go — the release-check example, ancestor references, every rejection, all problems in one error.
+internal/workflow/run_test.go   — order and data flow, max_parallel, conditional omit, scope along taken paths, failure contagion and continue_on_error, cancellation.
+internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection, node requests, task completion.
+```
+
+## See Also
+
+- Code: `internal/workflow/`, `internal/tool/workflow/`
+- Related packages: [`subagent`](subagent.md) (what runs a node),
+  [`task`](task.md) (the background task a run lives under),
+  [`tool`](tool.md) (registration and the parent-only rule)
+- Concepts: [`concepts/workflow.md`](../../concepts/workflow.md)

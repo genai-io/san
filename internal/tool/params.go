@@ -20,6 +20,11 @@ func (e *ToolError) Error() string {
 
 // GenerateRequestID generates a unique request ID using cryptographic randomness.
 // This avoids collisions that could occur with time-based IDs in high-speed scenarios.
+// BackgroundLaunchSuffix is what a tool appends when it starts work in the
+// background: it is how San stops the model from narrating while the task
+// runs. Shared because it is protocol, and two copies drift.
+const BackgroundLaunchSuffix = "\n\nThe work is running in the background. You will be notified automatically when it completes.\nBriefly tell the user what you launched and end your response. Do not generate any other text — the result will arrive in a subsequent message."
+
 func GenerateRequestID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {

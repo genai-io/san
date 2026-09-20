@@ -10,8 +10,6 @@ import (
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
-const backgroundLaunchSuffix = "\n\nThe agent is working in the background. You will be notified automatically when it completes.\nBriefly tell the user what you launched and end your response. Do not generate any other text — agent results will arrive in a subsequent message."
-
 // AgentTool spawns subagents to handle complex tasks.
 // It implements PermissionAwareTool to require user confirmation.
 type AgentTool struct {
@@ -200,7 +198,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,
-			Output: fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s"+backgroundLaunchSuffix,
+			Output: fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s"+tool.BackgroundLaunchSuffix,
 				taskInfo.TaskID, displayAgentLabel(agentName, mode), description),
 			HookResponse: map[string]any{
 				"backgroundTask": map[string]any{
