@@ -3,6 +3,18 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.10] - 2026-09-21
+
+### Added
+- Credential form for Vertex — project in the clear, region, ADC hint ([@yanmxa](https://github.com/yanmxa) in [#536](https://github.com/genai-io/san/pull/536))
+- Install only releases the project signed ([@yanmxa](https://github.com/yanmxa) in [#533](https://github.com/genai-io/san/pull/533))
+- Install newer releases in the background and ask for a restart ([@yanmxa](https://github.com/yanmxa) in [#532](https://github.com/genai-io/san/pull/532))
+- Serve Gemini through Vertex AI ([@yanmxa](https://github.com/yanmxa) in [#531](https://github.com/genai-io/san/pull/531))
+### Changed
+- Separate the engine from its instances in PROP-0001 ([@yanmxa](https://github.com/yanmxa) in [#537](https://github.com/genai-io/san/pull/537))
+- Name tool subpackages after what they expose ([@yanmxa](https://github.com/yanmxa) in [#535](https://github.com/genai-io/san/pull/535))
+- Point sdk-go at the v0.6.0 tag ([@yanmxa](https://github.com/yanmxa) in [#534](https://github.com/genai-io/san/pull/534))
+- Say lean context, not small context ([@yanmxa](https://github.com/yanmxa) in [#530](https://github.com/genai-io/san/pull/530))
 ## [v1.22.9] - 2026-09-14
 
 ### Changed
