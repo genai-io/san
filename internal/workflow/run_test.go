@@ -18,16 +18,22 @@ type stubRunner struct {
 	fails   map[string]bool
 	block   map[string]chan struct{} // node id -> release channel
 	prompts map[string]string
+	calls   []string
 	running atomic.Int32
 	peak    atomic.Int32
 }
 
-func (s *stubRunner) RunNode(ctx context.Context, n *Node, prompt string) (string, error) {
+func (s *stubRunner) RunNode(ctx context.Context, c Call) (string, error) {
+	key := c.Node.ID
+	if c.Label != "" {
+		key += "/" + c.Label
+	}
 	s.mu.Lock()
 	if s.prompts == nil {
 		s.prompts = map[string]string{}
 	}
-	s.prompts[n.ID] = prompt
+	s.prompts[key] = c.Prompt
+	s.calls = append(s.calls, key)
 	s.mu.Unlock()
 
 	cur := s.running.Add(1)
@@ -38,17 +44,17 @@ func (s *stubRunner) RunNode(ctx context.Context, n *Node, prompt string) (strin
 			break
 		}
 	}
-	if ch, ok := s.block[n.ID]; ok {
+	if ch, ok := s.block[key]; ok {
 		select {
 		case <-ch:
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
 	}
-	if s.fails[n.ID] {
-		return "", fmt.Errorf("%s exploded", n.ID)
+	if s.fails[key] {
+		return "", fmt.Errorf("%s exploded", key)
 	}
-	return s.outputs[n.ID], nil
+	return s.outputs[key], nil
 }
 
 func mustParse(t *testing.T, src string) *Workflow {

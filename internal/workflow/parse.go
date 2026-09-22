@@ -38,6 +38,16 @@ type Node struct {
 	// ContinueOnError lets this node's failure leave the workflow running:
 	// downstream still runs, with {{id}} rendered empty.
 	ContinueOnError bool
+	// ForEach names the plan this node fans out over, as "id" or "id.field"
+	// where id is an ancestor. Empty for an ordinary node.
+	ForEach string
+	// MaxWorkers bounds that fan-out. Required with ForEach — the whole
+	// point is that the worst case is known before launch.
+	MaxWorkers int
+	// forEachNode and forEachField are ForEach split once, here, so the
+	// regexp runs in one place and nothing downstream indexes an unchecked
+	// match.
+	forEachNode, forEachField string
 
 	upstream   []Edge
 	downstream []Edge
@@ -65,13 +75,14 @@ const defaultMaxParallel = 4
 
 // configKeys are the keys accepted under a node heading. Anything else that
 // looks like `key: value` on the first lines is a typo, not prompt text.
-var configKeys = map[string]bool{"agent": true, "mode": true, "model": true, "continue_on_error": true}
+var configKeys = []string{"agent", "mode", "model", "continue_on_error", "for_each", "max_workers"}
 
 var (
 	idRe       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 	arrowRe    = regexp.MustCompile(`\s*-->\s*(?:\|([^|]*)\|)?\s*`)
 	headingRe  = regexp.MustCompile(`^##\s+(\S+)\s*$`)
 	configRe   = regexp.MustCompile(`^([a-z_]+):\s*(.*)$`)
+	forEachRe  = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9_-]*)(?:\.([A-Za-z_][A-Za-z0-9_-]*))?$`)
 	templateRe = regexp.MustCompile(`\{\{\s*([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}`)
 )
 
@@ -293,27 +304,55 @@ func (n *Node) fill(lines []string) error {
 		if m == nil {
 			break
 		}
-		if !configKeys[m[1]] {
-			return fmt.Errorf("node %s: unknown config key %q (accepted: agent, mode, model, continue_on_error); put a blank line before prompt text that starts with `word:`", n.ID, m[1])
+		key, value := m[1], strings.TrimSpace(m[2])
+		switch key {
+		case "continue_on_error":
+			b, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("node %s: continue_on_error must be true or false", n.ID)
+			}
+			n.ContinueOnError = b
+		case "for_each":
+			n.ForEach = value
+		case "max_workers":
+			w, err := strconv.Atoi(value)
+			if err != nil || w < 1 {
+				return fmt.Errorf("node %s: max_workers must be a positive number", n.ID)
+			}
+			n.MaxWorkers = w
+		case "mode":
+			switch value {
+			case "", "default", "explore", "edit":
+			default:
+				return fmt.Errorf("node %s: mode must be explore, edit, or default", n.ID)
+			}
+			n.Config[key] = value
+		default:
+			if !slices.Contains(configKeys, key) {
+				return fmt.Errorf("node %s: unknown config key %q (accepted: %s); put a blank line before prompt text that starts with `word:`", n.ID, key, strings.Join(configKeys, ", "))
+			}
+			n.Config[key] = value
 		}
-		n.Config[m[1]] = strings.TrimSpace(m[2])
 	}
 	n.Prompt = strings.TrimSpace(strings.Join(lines[i:], "\n"))
-	if v, ok := n.Config["continue_on_error"]; ok {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return fmt.Errorf("node %s: continue_on_error must be true or false", n.ID)
+
+	switch {
+	case n.ForEach == "" && n.MaxWorkers > 0:
+		return fmt.Errorf("node %s: max_workers means nothing without for_each", n.ID)
+	case n.ForEach != "" && n.MaxWorkers == 0:
+		return fmt.Errorf("node %s: for_each requires max_workers — a plan that goes wrong must not start an unbounded number of subagents", n.ID)
+	case n.ForEach != "":
+		m := forEachRe.FindStringSubmatch(n.ForEach)
+		if m == nil {
+			return fmt.Errorf("node %s: for_each must be `node` or `node.field`, got %q", n.ID, n.ForEach)
 		}
-		n.ContinueOnError = b
-		delete(n.Config, "continue_on_error")
-	}
-	switch n.Config["mode"] {
-	case "", "default", "explore", "edit":
-	default:
-		return fmt.Errorf("node %s: mode must be explore, edit, or default", n.ID)
+		n.forEachNode, n.forEachField = m[1], m[2]
 	}
 	return nil
 }
+
+// isItemRef reports a template reference to the current for_each item.
+func isItemRef(ref string) bool { return ref == "item" || strings.HasPrefix(ref, "item.") }
 
 // validate cross-checks graph and sections, rejects cycles, and checks every
 // template reference. Problems are collected so one round trip fixes them all.
@@ -346,11 +385,19 @@ func (w *Workflow) validate(declared []string) error {
 
 	for _, n := range w.Nodes {
 		ancestors := w.ancestors(n)
-		for _, ref := range n.refs() {
-			if strings.HasPrefix(ref, "input.") {
-				continue
+		if n.ForEach != "" {
+			if src := n.forEachNode; !ancestors[src] {
+				problems = append(problems, fmt.Sprintf("node %s: for_each reads %s but the graph has no path %s --> … --> %s", n.ID, src, src, n.ID))
 			}
-			if !ancestors[ref] {
+		}
+		for _, ref := range n.refs() {
+			switch {
+			case strings.HasPrefix(ref, "input."):
+			case isItemRef(ref):
+				if n.ForEach == "" {
+					problems = append(problems, fmt.Sprintf("node %s references {{%s}} but has no for_each", n.ID, ref))
+				}
+			case !ancestors[ref]:
 				problems = append(problems, fmt.Sprintf("node %s references {{%s}} but the graph has no path %s --> … --> %s", n.ID, ref, ref, n.ID))
 			}
 		}
@@ -428,14 +475,19 @@ func (w *Workflow) ancestors(n *Node) map[string]bool {
 	return seen
 }
 
-// render substitutes {{id}} with an ancestor's output and {{input.key}} with
-// the trigger parameter; anything unset renders empty.
-func render(prompt string, outputs, inputs map[string]string) string {
+// render substitutes {{id}} with an ancestor's output, {{input.key}} with the
+// trigger parameter, and {{item}} / {{item.key}} with the for_each item;
+// anything unset renders empty.
+func render(prompt string, outputs, inputs, item map[string]string) string {
 	return templateRe.ReplaceAllStringFunc(prompt, func(m string) string {
 		ref := templateRe.FindStringSubmatch(m)[1]
-		if key, ok := strings.CutPrefix(ref, "input."); ok {
+		switch key, isInput := strings.CutPrefix(ref, "input."); {
+		case isInput:
 			return inputs[key]
+		case isItemRef(ref):
+			return item[ref]
+		default:
+			return outputs[ref]
 		}
-		return outputs[ref]
 	})
 }

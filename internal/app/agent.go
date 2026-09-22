@@ -7,6 +7,8 @@ import (
 
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
@@ -806,11 +809,25 @@ func (m *model) ReconfigureAgentTool() {
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
+	type searchPathSetter interface{ SetSearchPaths([]string) }
+	home, _ := os.UserHomeDir()
 	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolWorkflow} {
-		if t, ok := m.services.Tool.Get(name); ok {
-			if setter, ok := t.(executorSetter); ok {
-				setter.SetExecutor(adapter)
+		t, ok := m.services.Tool.Get(name)
+		if !ok {
+			continue
+		}
+		if setter, ok := t.(executorSetter); ok {
+			setter.SetExecutor(adapter)
+		}
+		// Saved workflows resolve project-first, then user, the way subagent
+		// definitions do. A home directory we could not read is left out
+		// rather than joined from "", which would name the project twice.
+		if setter, ok := t.(searchPathSetter); ok {
+			dirs := []string{filepath.Join(confdir.Dir(m.env.CWD), "workflows")}
+			if home != "" {
+				dirs = append(dirs, filepath.Join(confdir.Dir(home), "workflows"))
 			}
+			setter.SetSearchPaths(dirs)
 		}
 	}
 }
