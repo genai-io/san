@@ -36,7 +36,8 @@ const (
 	// scrollback is permanent (ADR-0002), so the noise cannot be cleaned up
 	// after the fact.
 	ThinkingDisplayCollapsed = "collapsed"
-	// ThinkingDisplayHidden draws nothing at all, not even the duration line.
+	// ThinkingDisplayHidden draws nothing at all, not even the
+	// "Thought for 3.2s" line.
 	ThinkingDisplayHidden = "hidden"
 )
 

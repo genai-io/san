@@ -76,10 +76,11 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
-	// thinkingDurationLine is the collapsed mode's rendered "Thought for 3.2s" line,
-	// committed instead of a reasoning body. thinkingSlice is empty in that
-	// case: the body never reaches scrollback in the collapsed and hidden modes.
-	thinkingDurationLine string
+	// collapsedThinking is the collapsed mode's rendered "Thought for 3.2s"
+	// line, committed instead of a reasoning body. thinkingSlice is empty in
+	// that case: the body never reaches scrollback in the collapsed and hidden
+	// modes.
+	collapsedThinking string
 }
 
 // flushState is the streaming-block flush subsystem: it renders each completed
@@ -128,7 +129,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	// the only proof that reasoning is over: a block boundary alone can fall
 	// mid-thought, and committing a reasoning prefix would strand the rest.
 	reasoningDone := len(msg.Content) > 0
-	var thinkingSlice, contentSlice, thinkingDurationLine string
+	var thinkingSlice, contentSlice, collapsedThinking string
 	thinkingEnd := msg.ThinkingCommittedLen
 	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
 		thinkingEnd = conv.CompletedBlockBoundary(msg.Thinking)
@@ -141,34 +142,34 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	} else if reasoningDone && !msg.ThinkingEmitted && len(msg.Thinking) > 0 {
 		// Collapsed/hidden: the body must never reach the screen, so nothing is
 		// sliced for commit. The offsets still advance past it, and collapsed
-		// commits one duration line instead — which is why this waits for
-		// reasoningDone rather than the first completed block.
+		// commits one "Thought for 3.2s" line instead — which is why this
+		// waits for reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
 		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
-			thinkingDurationLine = conv.RenderThinkingDurationLine(msg.ThinkingDuration)
+			collapsedThinking = conv.RenderCollapsedThinking(msg.ThinkingDuration)
 		}
 	}
 	contentEnd := conv.CompletedBlockBoundary(msg.Content)
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
-	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && thinkingDurationLine == "" {
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && collapsedThinking == "" {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
 	m.flush.rendering = true
 	return []tea.Cmd{renderSnapshotCmd(flushSnapshot{
-		msgID:                msg.ID,
-		index:                idx,
-		thinkingSlice:        thinkingSlice,
-		contentSlice:         contentSlice,
-		thinkingEnd:          thinkingEnd,
-		contentEnd:           contentEnd,
-		showThinkingIcon:     !msg.ThinkingEmitted,
-		showBullet:           !msg.BulletEmitted,
-		width:                m.env.Width,
-		md:                   m.flush.mdRenderer(m.env.Width),
-		thinkingDurationLine: thinkingDurationLine,
+		msgID:             msg.ID,
+		index:             idx,
+		thinkingSlice:     thinkingSlice,
+		contentSlice:      contentSlice,
+		thinkingEnd:       thinkingEnd,
+		contentEnd:        contentEnd,
+		showThinkingIcon:  !msg.ThinkingEmitted,
+		showBullet:        !msg.BulletEmitted,
+		width:             m.env.Width,
+		md:                m.flush.mdRenderer(m.env.Width),
+		collapsedThinking: collapsedThinking,
 	})}
 }
 
@@ -180,8 +181,8 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if snap.thinkingDurationLine != "" {
-			blocks = append(blocks, snap.thinkingDurationLine)
+		if snap.collapsedThinking != "" {
+			blocks = append(blocks, snap.collapsedThinking)
 			thinkingEmitted = true
 		} else if snap.thinkingSlice != "" {
 			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
@@ -304,7 +305,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	// emptied of everything this print carries. The frame accounting is
 	// unaffected: the notice never occupied a frame row.
 	if m.conv.ResumeNoticePending {
-		parts = append([]string{resumeElidedNotice(m.conv.ElidedCount)}, parts...)
+		parts = append([]string{resumeSkippedNotice(m.conv.ResumeSkippedCount)}, parts...)
 		m.conv.ResumeNoticePending = false
 	}
 	if banner := m.takeWelcomeBanner(); banner != "" {

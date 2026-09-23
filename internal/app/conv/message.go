@@ -207,12 +207,12 @@ type AssistantParams struct {
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
-	// "collapsed" replaces it with a single duration line, "hidden" draws
-	// nothing. Empty is treated as "full" so a caller that has not been taught
-	// the setting keeps the historical behaviour.
+	// "collapsed" replaces it with one "✦ Thought for 3.2s" line, "hidden"
+	// draws nothing. Empty is treated as "full" so a caller that has not been
+	// taught the setting keeps the historical behaviour.
 	ThinkingDisplay string
-	// ThinkingDuration is how long the message reasoned, used by the collapsed
-	// mode's duration line.
+	// ThinkingDuration is how long the message reasoned, reported by the
+	// collapsed mode's "Thought for 3.2s" line.
 	ThinkingDuration time.Duration
 
 	// Streaming-commit offsets: how much of Content/Thinking is already in
@@ -234,30 +234,30 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
-// thinkingDurationLine is the one line the collapsed mode prints in place of the
-// reasoning body, or "" when there is nothing to print. It is drawn only once
-// the reasoning has actually ended: while the model is still thinking, the live
-// spinner is the whole indicator, and a duration line that appeared mid-thought would
-// have to be rewritten — which native scrollback cannot do (ADR-0002).
-// ThinkingEmitted keeps it to one line per message: the scrollback flush prints
-// the duration line mid-stream, and this guards the later turn-end commit against
+// collapsedThinking is the "Thought for 3.2s" line the collapsed mode prints in
+// place of the reasoning body, or "" when there is nothing to print. It is
+// drawn only once the reasoning has actually ended: while the model is still
+// thinking, the live spinner is the whole indicator, and a line that appeared
+// mid-thought would have to be rewritten — which native scrollback cannot do
+// (ADR-0002). ThinkingEmitted keeps it to one line per message: the scrollback
+// flush prints it mid-stream, and this guards the later turn-end commit against
 // repeating it.
-func (p AssistantParams) thinkingDurationLine() string {
+func (p AssistantParams) collapsedThinking() string {
 	if p.ThinkingDisplay != setting.ThinkingDisplayCollapsed || p.ThinkingEmitted {
 		return ""
 	}
 	if p.Thinking == "" || (p.StreamActive && p.IsLast) {
 		return ""
 	}
-	return RenderThinkingDurationLine(p.ThinkingDuration)
+	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderThinkingDurationLine renders the collapsed mode's stand-in for a reasoning
-// block — live and committed to scrollback: the same muted "✦" gutter the full
-// body leads with, then how long the model reasoned. A message restored from a
-// transcript was never timed, so the duration is dropped rather than reported
-// as zero.
-func RenderThinkingDurationLine(d time.Duration) string {
+// RenderCollapsedThinking renders a reasoning block as the collapsed mode shows
+// it, live and in scrollback: one "✦ Thought for 3.2s" line — the same muted
+// "✦" gutter the full body leads with, then how long the model reasoned. A
+// message restored from a transcript was never timed, so the duration is
+// dropped rather than reported as zero.
+func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
 		label += " for " + toolresult.FormatDuration(d)
@@ -409,7 +409,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width, thinkMD) + "\n\n")
 	}
 
-	if line := params.thinkingDurationLine(); line != "" {
+	if line := params.collapsedThinking(); line != "" {
 		sb.WriteString(line + "\n\n")
 	}
 

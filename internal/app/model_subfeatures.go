@@ -79,20 +79,21 @@ func (m *model) autopilotSuggestMission() string {
 	return strings.TrimSpace(m.env.AutoPilot.Mission)
 }
 
-// renderElidedMessages prepares the /history viewer's content: the messages
+// renderSkippedMessages prepares the /history viewer's content: the messages
 // this view never replayed into native scrollback, rendered the way scrollback
 // would have drawn them, plus the title naming how many.
 //
-// This is the one place the elided transcript is rendered at all, and it happens
-// only when the user asks. It builds plain strings — no chunked Printlns and no
-// terminal round-trips — so it is a fraction of what rendering the same messages
-// into scrollback at startup cost, with nothing permanent left behind.
-func (m *model) renderElidedMessages() (string, []string) {
+// This is the one place the skipped transcript is rendered at all, and it
+// happens only when the user asks. It builds plain strings — no chunked
+// Printlns and no terminal round-trips — so it is a fraction of what rendering
+// the same messages into scrollback at startup cost, with nothing permanent
+// left behind.
+func (m *model) renderSkippedMessages() (string, []string) {
 	// Clamped rather than trusted: the bound indexes into Messages, and anything
 	// that shortens the transcript (a /clear, a compaction) must not turn an
 	// open /history into a slice panic.
-	elided := min(m.conv.ElidedCount, len(m.conv.Messages))
-	if elided <= 0 {
+	skipped := min(m.conv.ResumeSkippedCount, len(m.conv.Messages))
+	if skipped <= 0 {
 		return "", nil
 	}
 
@@ -101,17 +102,17 @@ func (m *model) renderElidedMessages() (string, []string) {
 	// index 0 across the prefix keeps every tool result under the assistant that
 	// owns it, the way it was drawn live, instead of rendering it standalone.
 	params.StreamActive = false
-	params.InlinedResults = conv.PrecomputeInlinedResults(m.conv.Messages[:elided], 0)
+	params.InlinedResults = conv.PrecomputeInlinedResults(m.conv.Messages[:skipped], 0)
 
 	var lines []string
-	for i := 0; i < elided; i++ {
+	for i := 0; i < skipped; i++ {
 		rendered := conv.RenderSingleMessage(params, i)
 		if rendered == "" {
 			continue
 		}
 		lines = append(lines, strings.Split(rendered, "\n")...)
 	}
-	return fmt.Sprintf("History · %s earlier", kit.Plural(elided, "message")), lines
+	return fmt.Sprintf("History · %s earlier", kit.Plural(skipped, "message")), lines
 }
 
 func (m *model) overlayDeps() input.OverlayDeps {

@@ -90,11 +90,11 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 	if m.conv.CommittedCount != 7 {
 		t.Fatalf("CommittedCount = %d, want 7 (the snapped window start)", m.conv.CommittedCount)
 	}
-	if m.conv.ElidedCount != 7 {
-		t.Fatalf("ElidedCount = %d, want 7", m.conv.ElidedCount)
+	if m.conv.ResumeSkippedCount != 7 {
+		t.Fatalf("ResumeSkippedCount = %d, want 7", m.conv.ResumeSkippedCount)
 	}
 	if !m.conv.ResumeNoticePending {
-		t.Fatal("the elided messages must be announced")
+		t.Fatal("the skipped messages must be announced")
 	}
 	if len(m.conv.Messages) != 9 {
 		t.Fatalf("the window must not discard messages: kept %d, want 9", len(m.conv.Messages))
@@ -102,7 +102,7 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 }
 
 // A window that skips nothing must not announce anything.
-func TestApplyResumeWindowStaysSilentWhenNothingIsElided(t *testing.T) {
+func TestApplyResumeWindowStaysSilentWhenNothingIsSkipped(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(99)
 
@@ -115,11 +115,11 @@ func TestApplyResumeWindowStaysSilentWhenNothingIsElided(t *testing.T) {
 }
 
 // The replay commits only the window, and opens it with the count it skipped —
-// once. ElidedCount has to survive the notice being consumed, because /history
-// reads it for the rest of the session.
+// once. ResumeSkippedCount has to survive the notice being consumed, because
+// /history reads it for the rest of the session.
 func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
-	m.applyResumeWindow(1) // window = [assistant c, result c], 7 elided
+	m.applyResumeWindow(1) // window = [assistant c, result c], 7 skipped
 
 	if cmds := m.commitAllMessages(); len(cmds) == 0 {
 		t.Fatal("expected a commit payload for the replay window")
@@ -127,7 +127,7 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	payload := ansi.Strip(queuedScrollbackPayload(m))
 
 	if !strings.Contains(payload, "7 messages earlier not shown") {
-		t.Fatalf("the elided messages must be announced: %q", payload)
+		t.Fatalf("the skipped messages must be announced: %q", payload)
 	}
 	// The window is turn c: its assistant content and its tool result, and
 	// nothing from turns a/b.
@@ -139,9 +139,9 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 			t.Fatalf("message %q is outside the window but was printed: %q", old, payload)
 		}
 	}
-	if m.conv.ElidedCount != 7 {
-		t.Fatalf("ElidedCount = %d after the replay, want 7 — /history reads it later",
-			m.conv.ElidedCount)
+	if m.conv.ResumeSkippedCount != 7 {
+		t.Fatalf("ResumeSkippedCount = %d after the replay, want 7 — /history reads it later",
+			m.conv.ResumeSkippedCount)
 	}
 
 	// A second commit (the next turn ending) must not repeat the notice.
@@ -159,38 +159,38 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	}
 }
 
-// /history reads the elided prefix through ElidedCount, which indexes into
-// Messages. Anything that shortens the transcript must not turn the viewer into
-// a slice panic, and an empty prefix must report nothing to show rather than
-// opening an empty frame.
-func TestRenderElidedMessages(t *testing.T) {
+// /history reads the skipped prefix through ResumeSkippedCount, which indexes
+// into Messages. Anything that shortens the transcript must not turn the viewer
+// into a slice panic, and an empty prefix must report nothing to show rather
+// than opening an empty frame.
+func TestRenderSkippedMessages(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1)
 
-	title, lines := m.renderElidedMessages()
+	title, lines := m.renderSkippedMessages()
 	if len(lines) == 0 {
-		t.Fatal("the elided prefix should render")
+		t.Fatal("the skipped prefix should render")
 	}
 	if !strings.Contains(title, "7 messages") {
-		t.Fatalf("title = %q, want the elided count", title)
+		t.Fatalf("title = %q, want the skipped count", title)
 	}
 	joined := ansi.Strip(strings.Join(lines, "\n"))
 	for _, want := range []string{"prompt a", "out a", "prompt b", "out b"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("the elided prefix is missing %q", want)
+			t.Errorf("the skipped prefix is missing %q", want)
 		}
 	}
 	if strings.Contains(joined, "thinking about c") {
-		t.Error("the window is on screen, not elided, and must not be repeated in /history")
+		t.Error("the window is on screen, not skipped, and must not be repeated in /history")
 	}
 
 	// A transcript that shrank under the bound must clamp, not panic.
 	m.conv.Messages = m.conv.Messages[:2]
-	if _, lines := m.renderElidedMessages(); len(lines) == 0 {
+	if _, lines := m.renderSkippedMessages(); len(lines) == 0 {
 		t.Fatal("a clamped prefix should still render")
 	}
 	m.conv.Messages = nil
-	if _, lines := m.renderElidedMessages(); lines != nil {
+	if _, lines := m.renderSkippedMessages(); lines != nil {
 		t.Fatalf("nothing to show should report nothing, got %d lines", len(lines))
 	}
 }

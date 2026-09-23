@@ -88,17 +88,17 @@ type SlashCommandEnv struct {
 	FireSessionEnd          func(reason string)
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
 	SpinnerTickCmd          func() tea.Cmd
-	// RenderElidedMessages prepares the /history viewer's content: a title and
+	// RenderSkippedMessages prepares the /history viewer's content: a title and
 	// the already-rendered lines of the messages the current view never
 	// replayed into native scrollback. Rendering needs the conversation render
 	// context, which lives in the app layer, so the viewer is handed lines to
 	// scroll.
-	RenderElidedMessages func() (string, []string)
-	ResetCronQueue       func()
-	ForkSession          func() (originalSessionID string, err error)
-	RunSelfLearnDemo     func()
-	SetActivePersona     func(name string) error
-	RenameSession        func(name string) error
+	RenderSkippedMessages func() (string, []string)
+	ResetCronQueue        func()
+	ForkSession           func() (originalSessionID string, err error)
+	RunSelfLearnDemo      func()
+	SetActivePersona      func(name string) error
+	RenameSession         func(name string) error
 }
 
 type SlashCommandController struct {
@@ -369,11 +369,11 @@ func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string
 }
 
 // handleHistoryCommand opens the /history viewer on the messages the current
-// view never replayed into native scrollback — the elided prefix of a resumed
+// view never replayed into native scrollback — the skipped prefix of a resumed
 // session, and nothing else once the window has already been printed. When
 // there is nothing to show it says so rather than opening an empty frame.
 func (c *SlashCommandController) handleHistoryCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	title, lines := c.env.RenderElidedMessages()
+	title, lines := c.env.RenderSkippedMessages()
 	if len(lines) == 0 {
 		return "Nothing earlier to show — this session's whole history is on screen.", nil, nil
 	}

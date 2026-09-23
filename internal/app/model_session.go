@@ -212,7 +212,7 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 func (m *model) applyResumeWindow(tail int) {
 	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start
-	m.conv.ElidedCount = start
+	m.conv.ResumeSkippedCount = start
 	m.conv.ResumeNoticePending = start > 0
 }
 
@@ -240,13 +240,13 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 	return start
 }
 
-// resumeElidedNotice is the one line that opens a replayed block when earlier
+// resumeSkippedNotice is the one line that opens a replayed block when earlier
 // messages were left out, so the transcript does not silently appear to start
 // mid-conversation.
-func resumeElidedNotice(elided int) string {
+func resumeSkippedNotice(skipped int) string {
 	return conv.RenderSystemMessage(fmt.Sprintf(
 		"… %s earlier not shown · /history to read them",
-		kit.Plural(elided, "message"),
+		kit.Plural(skipped, "message"),
 	))
 }
 

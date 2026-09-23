@@ -25,13 +25,13 @@ type ConversationModel struct {
 	Modal          ModalState
 	Tool           ToolExecState
 
-	// ElidedCount is the length of the leading run of messages this view never
-	// replayed into native scrollback — non-zero only after a resume, and the
-	// bound /history reads. It is a durable count, not a cursor: CommittedCount
-	// advances past it as the replay prints, so the two cannot stand in for one
-	// another.
-	ElidedCount int
-	// ResumeNoticePending marks that the elided messages have not been
+	// ResumeSkippedCount is how many leading messages the resume replay
+	// skipped: they stay in Messages but were never printed to native
+	// scrollback, and /history shows them. Non-zero only after a resume. It is
+	// a fixed count, not a cursor: CommittedCount advances past it as the
+	// replay prints, so the two cannot stand in for one another.
+	ResumeSkippedCount int
+	// ResumeNoticePending marks that the skipped messages have not been
 	// announced yet. The replay prints the notice with the block it opens and
 	// clears this. Transient.
 	ResumeNoticePending bool
@@ -58,7 +58,7 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
-	m.ElidedCount = 0
+	m.ResumeSkippedCount = 0
 	m.ResumeNoticePending = false
 }
 

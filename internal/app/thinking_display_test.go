@@ -1,9 +1,10 @@
 // The reasoning-display preference: "full" draws the body, "collapsed" replaces
-// it with one duration line, "hidden" draws nothing. The two sites that can put
-// reasoning on screen are the live view (conv.RenderAssistantMessage) and the
-// scrollback flush (FlushStreamingBlocks → renderSnapshotCmd), and both must be
-// gated — reasoning that reaches native scrollback cannot be taken back, so a
-// gate on the live view alone would still leave every token permanent.
+// it with one "Thought for …" line, "hidden" draws nothing. The two sites that
+// can put reasoning on screen are the live view (conv.RenderAssistantMessage)
+// and the scrollback flush (FlushStreamingBlocks → renderSnapshotCmd), and both
+// must be gated — reasoning that reaches native scrollback cannot be taken
+// back, so a gate on the live view alone would still leave every token
+// permanent.
 package app
 
 import (
@@ -52,7 +53,7 @@ func queuedScrollbackPayload(m *model) string {
 }
 
 // full mode is the historical behaviour: the body commits to scrollback, and no
-// duration line appears.
+// "Thought for …" line appears.
 func TestFullThinkingCommitsTheBody(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:             core.ChatAssistant,
@@ -68,13 +69,13 @@ func TestFullThinkingCommitsTheBody(t *testing.T) {
 		t.Fatalf("full mode must commit the reasoning body, payload = %q", payload)
 	}
 	if strings.Contains(payload, "Thought") {
-		t.Fatalf("full mode must not print a duration line, payload = %q", payload)
+		t.Fatalf("full mode must not print a Thought-for line, payload = %q", payload)
 	}
 }
 
 // Collapsed: the body never reaches scrollback, and the block commits as a
-// single duration line instead.
-func TestCollapsedThinkingCommitsDurationLineNotTheBody(t *testing.T) {
+// single "Thought for …" line instead.
+func TestCollapsedThinkingCommitsOneLineNotTheBody(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role: core.ChatAssistant,
 		// Content arriving is the "reasoning is over" signal the flush waits
@@ -92,7 +93,7 @@ func TestCollapsedThinkingCommitsDurationLineNotTheBody(t *testing.T) {
 		t.Fatalf("collapsed mode leaked the reasoning body into scrollback: %q", payload)
 	}
 	if !strings.Contains(ansi.Strip(payload), "Thought for 3.2s") {
-		t.Fatalf("collapsed mode should commit one duration line, payload = %q", payload)
+		t.Fatalf("collapsed mode should commit one Thought-for line, payload = %q", payload)
 	}
 
 	msg := m.conv.Messages[0]
@@ -102,11 +103,12 @@ func TestCollapsedThinkingCommitsDurationLineNotTheBody(t *testing.T) {
 			msg.ThinkingCommittedLen, len(msg.Thinking))
 	}
 	if !msg.ThinkingEmitted {
-		t.Fatal("ThinkingEmitted must latch so the duration line is printed once")
+		t.Fatal("ThinkingEmitted must latch so the Thought-for line is printed once")
 	}
 }
 
-// Hidden: neither the body nor a duration line, but the offsets still advance.
+// Hidden: neither the body nor a "Thought for …" line, but the offsets still
+// advance.
 func TestHiddenThinkingCommitsNothing(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role: core.ChatAssistant,
@@ -126,7 +128,7 @@ func TestHiddenThinkingCommitsNothing(t *testing.T) {
 		t.Fatalf("hidden mode leaked the reasoning body into scrollback: %q", raw)
 	}
 	if strings.Contains(payload, "Thought") {
-		t.Fatalf("hidden mode must not print a duration line: %q", payload)
+		t.Fatalf("hidden mode must not print a Thought-for line: %q", payload)
 	}
 	if !strings.Contains(payload, "the answer") {
 		t.Fatalf("hidden mode must still commit the content: %q", payload)
@@ -137,8 +139,8 @@ func TestHiddenThinkingCommitsNothing(t *testing.T) {
 }
 
 // While reasoning is still streaming nothing commits for it in any mode: the
-// collapsed duration line would otherwise have to be rewritten, which native
-// scrollback cannot do.
+// collapsed "Thought for …" line would otherwise have to be rewritten, which
+// native scrollback cannot do.
 func TestCollapsedThinkingWaitsForReasoningToFinish(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:     core.ChatAssistant,
@@ -147,7 +149,7 @@ func TestCollapsedThinkingWaitsForReasoningToFinish(t *testing.T) {
 	m.env.ThinkingDisplay = setting.ThinkingDisplayCollapsed
 
 	if cmds := m.FlushStreamingBlocks(); cmds != nil {
-		t.Fatal("reasoning that is not provably over must not commit a duration line")
+		t.Fatal("reasoning that is not provably over must not commit a Thought-for line")
 	}
 	if got := m.conv.Messages[0].ThinkingCommittedLen; got != 0 {
 		t.Fatalf("ThinkingCommittedLen = %d, want 0", got)
@@ -174,6 +176,6 @@ func TestCollapsedThinkingIsNotResurrectedByTheTurnEndCommit(t *testing.T) {
 		t.Fatalf("the turn-end commit rendered suppressed reasoning: %q", payload)
 	}
 	if !strings.Contains(ansi.Strip(payload), "Thought for 2.0s") {
-		t.Fatalf("the turn-end commit should carry the duration line: %q", payload)
+		t.Fatalf("the turn-end commit should carry the Thought-for line: %q", payload)
 	}
 }
