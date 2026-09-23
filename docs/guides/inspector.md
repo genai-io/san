@@ -52,7 +52,8 @@ hide each event type so you can focus on what matters:
 - **tool** — tool calls the model made, with arguments and results
 - **system** — system-prompt section changes
 - **inference** — each request sent to the model (the "what did the model
-  see?" record; carries the integrity checks below)
+  see?" record; carries the integrity checks below) and how it ended —
+  a response, or a failure (see below)
 - **state** — session state changes
 - **hook** — hook executions
 - **permission** — permission prompts and decisions
@@ -95,6 +96,32 @@ was recorded:
 Mismatches are flagged with a **BAD** badge, showing exactly which
 messages are missing or extra. This is useful for debugging compaction
 bugs, harness injection issues, or unexpected state drift.
+
+### Failed Inferences
+
+Every request ends in exactly one terminal record: `inference.responded`
+or `inference.failed`. A failed call is accented in red and labeled with
+the attempt, the loop's classification, and the error:
+
+```
+inference.failed  turn 7  attempt 2  retryable  — 529 overloaded
+```
+
+- **attempt** — which call of this step it was, counting from one. It
+  rises across recoveries as well as retries, so a step that retried
+  writes one `inference.failed` per abandoned call.
+- **retryable** — the error was transient (429 / 5xx / network / stall).
+  This is how it was *classified*, not whether a retry followed: retries
+  are bounded, so the last `retryable` failure of a step is where the
+  budget ran out.
+- **not-retryable** — the error was never eligible for a retry (bad
+  request, auth, content policy, context window). Usually the end of the
+  turn — but not always: a too-long prompt lands here and the loop
+  recovers by compacting, which the following `session.compacted` shows.
+
+The gap between a failure and the next `inference.requested` is the
+backoff that was waited out. A session that ends on an `inference.failed`
+ended *because* of it.
 
 ### Live Tail
 

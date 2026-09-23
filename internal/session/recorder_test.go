@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -301,4 +302,57 @@ func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record
 		t.Fatalf("scan transcript: %v", err)
 	}
 	return out
+}
+
+// A failed call must land on disk as inference.failed, closing the pending
+// inference.requested so every request ends in exactly one terminal record.
+func TestRecorderWritesInferenceFailed(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewFileStore(dir, "proj-fail")
+	if err != nil {
+		t.Fatalf("NewFileStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-f", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewRecorder(RecorderOptions{
+		FileStore: fs, SessionID: "sess-f", AgentID: "main",
+		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
+	})
+
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+		System: "you are san", Messages: []core.Message{{ID: "m1"}},
+	}})
+	rec.OnAgentEvent(sdkagent.MessageEnd{
+		Attempt: 2,
+		Err:     &ai.Error{Kind: ai.KindOverloaded, Status: 529, Message: "overloaded"},
+	})
+	// Second failure with no request open: the first one consumed it, so this
+	// must not claim the same turn.
+	rec.OnAgentEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
+
+	var failed []*transcript.InferenceRecord
+	for _, r := range readAllRecords(t, dir, "sess-f") {
+		if r.Type == transcript.InferenceFailed {
+			failed = append(failed, r.Inference)
+		}
+	}
+	if len(failed) != 2 {
+		t.Fatalf("inference.failed records = %d, want 2", len(failed))
+	}
+	if !strings.Contains(failed[0].Error, "overloaded") || failed[0].Attempt != 2 || failed[0].Turn != 1 {
+		t.Errorf("paired failure = %+v, want turn 1, attempt 2 and its error preserved", failed[0])
+	}
+	if !failed[0].Retryable {
+		t.Errorf("529 classified as not-retryable: %+v", failed[0])
+	}
+	if failed[1].Turn != 0 {
+		t.Errorf("orphan failure claimed turn %d, want 0", failed[1].Turn)
+	}
+	if failed[1].Retryable {
+		t.Errorf("a plain error classified as retryable: %+v", failed[1])
+	}
 }

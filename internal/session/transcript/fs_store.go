@@ -409,7 +409,9 @@ func (s *FileStore) AppendInference(ctx context.Context, cmd AppendInferenceComm
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if cmd.Type != InferenceRequested && cmd.Type != InferenceResponded {
+	switch cmd.Type {
+	case InferenceRequested, InferenceResponded, InferenceFailed:
+	default:
 		return fmt.Errorf("append inference: unexpected type %q", cmd.Type)
 	}
 
@@ -424,7 +426,11 @@ func (s *FileStore) AppendInference(ctx context.Context, cmd AppendInferenceComm
 	// inference.responded sync-flushes the file so any preceding telemetry
 	// (system.section.*, tools.*, inference.requested) from this turn lands
 	// on disk together; inference.requested itself stays in the page cache.
-	return s.appendRecord(s.transcriptPath(cmd.SessionID), full, cmd.Type == InferenceResponded)
+	// inference.failed flushes for a sharper reason than its sibling: a fatal
+	// failure is the last thing the process may do, and an unflushed cause
+	// helps nobody.
+	sync := cmd.Type == InferenceResponded || cmd.Type == InferenceFailed
+	return s.appendRecord(s.transcriptPath(cmd.SessionID), full, sync)
 }
 
 func (s *FileStore) Compact(ctx context.Context, cmd CompactCommand) error {

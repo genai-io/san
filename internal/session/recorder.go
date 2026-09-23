@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session/transcript"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // Recorder turns core.Agent lifecycle events into transcript records in
@@ -165,7 +166,7 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 	case sdkagent.MessageStart:
 		r.onInferenceRequested(e)
 	case sdkagent.MessageEnd:
-		r.onInferenceResponded(e)
+		r.onInferenceEnded(e)
 	case core.SystemChange:
 		r.onSystemChange(e)
 	case core.ToolsChange:
@@ -314,61 +315,78 @@ func (r *Recorder) onInferenceRequested(e sdkagent.MessageStart) {
 	}
 	r.mu.Unlock()
 
-	err := r.fs.AppendInference(context.Background(), transcript.AppendInferenceCommand{
-		SessionID: r.sessionID,
-		Time:      now,
-		Type:      transcript.InferenceRequested,
-		Record: transcript.InferenceRecord{
-			Turn:         turn,
-			SystemDigest: ic.SystemDigest,
-			ToolsDigest:  ic.ToolsDigest,
-			MessageIDs:   ic.MessageIDs,
-		},
+	r.appendInference(now, transcript.InferenceRequested, transcript.InferenceRecord{
+		Turn:         turn,
+		SystemDigest: ic.SystemDigest,
+		ToolsDigest:  ic.ToolsDigest,
+		MessageIDs:   ic.MessageIDs,
 	})
-	if err != nil {
-		log.Logger().Warn("recorder: append inference.requested failed", zap.Error(err))
-	}
 }
 
-func (r *Recorder) onInferenceResponded(e sdkagent.MessageEnd) {
+// onInferenceEnded closes out the open request. A call that failed ends the
+// span just as a response does, and says why: without inference.failed the
+// attempt leaves an inference.requested no record ever answers.
+func (r *Recorder) onInferenceEnded(e sdkagent.MessageEnd) {
+	now := time.Now()
+
+	if e.Err != nil {
+		turn, latencyMs := r.closePendingRequest(now)
+		r.appendInference(now, transcript.InferenceFailed, transcript.InferenceRecord{
+			Turn:      turn,
+			LatencyMs: latencyMs,
+			Error:     e.Err.Error(),
+			Attempt:   e.Attempt,
+			Retryable: ai.IsRetryable(e.Err),
+		})
+		return
+	}
+
 	resp := e.Response
 	if resp == nil {
 		return
 	}
+	turn, latencyMs := r.closePendingRequest(now)
 
+	r.appendInference(now, transcript.InferenceResponded, transcript.InferenceRecord{
+		Turn:       turn,
+		StopReason: string(resp.StopReason),
+		LatencyMs:  latencyMs,
+		// The transcript's own names on the left: this is a disk format
+		// and keeps the keys it was written with.
+		Usage: &transcript.InferenceUsage{
+			InputTokens:              resp.Usage.Input,
+			OutputTokens:             resp.Usage.Output,
+			CacheCreationInputTokens: resp.Usage.CacheWrite,
+			CacheReadInputTokens:     resp.Usage.CacheRead,
+		},
+	})
+}
+
+// closePendingRequest consumes the open inference.requested and returns its
+// turn plus the elapsed time to now. Zero turn when no request is pending.
+func (r *Recorder) closePendingRequest(now time.Time) (turn int, latencyMs int64) {
 	r.mu.Lock()
 	prev := r.lastRequest
 	r.lastRequest = nil
 	r.mu.Unlock()
 
-	now := time.Now()
-	var turn int
-	var latencyMs int64
-	if prev != nil {
-		turn = prev.turn
-		latencyMs = now.Sub(prev.startedAt).Milliseconds()
+	if prev == nil {
+		return 0, 0
 	}
+	return prev.turn, now.Sub(prev.startedAt).Milliseconds()
+}
 
+// appendInference writes one inference record, logging rather than
+// propagating a failure: losing telemetry must not break the session.
+func (r *Recorder) appendInference(now time.Time, typ string, rec transcript.InferenceRecord) {
 	err := r.fs.AppendInference(context.Background(), transcript.AppendInferenceCommand{
 		SessionID: r.sessionID,
 		Time:      now,
-		Type:      transcript.InferenceResponded,
-		Record: transcript.InferenceRecord{
-			Turn:       turn,
-			StopReason: string(resp.StopReason),
-			LatencyMs:  latencyMs,
-			// The transcript's own names on the left: this is a disk format
-			// and keeps the keys it was written with.
-			Usage: &transcript.InferenceUsage{
-				InputTokens:              resp.Usage.Input,
-				OutputTokens:             resp.Usage.Output,
-				CacheCreationInputTokens: resp.Usage.CacheWrite,
-				CacheReadInputTokens:     resp.Usage.CacheRead,
-			},
-		},
+		Type:      typ,
+		Record:    rec,
 	})
 	if err != nil {
-		log.Logger().Warn("recorder: append inference.responded failed", zap.Error(err))
+		log.Logger().Warn("recorder: append "+typ+" failed", zap.Error(err))
 	}
 }
 

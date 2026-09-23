@@ -505,10 +505,14 @@ aside {
    on the actual decision points (ask path + user response) first. */
 .row.auto-decided        { opacity: 0.6; }
 .row.auto-decided .label { color: var(--bone-2); }
+/* A failed inference is a dead end in the timeline — accent it so a stalled
+   or truncated session is findable by eye. Shares the one error signal. */
+.row.inference-failed,
 .row.integrity-bad {
   background: linear-gradient(90deg, rgba(196, 90, 90, 0.13) 0%, transparent 65%);
   border-left-color: var(--oxblood);
 }
+.row.inference-failed .label { color: var(--oxblood); }
 .row.integrity-bad .label::after {
   content: "  ✗  digest drift";
   color: var(--oxblood);
