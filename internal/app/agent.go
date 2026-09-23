@@ -553,6 +553,10 @@ func (m *model) sendToAgent(msg core.Message) tea.Cmd {
 // channel to deliver session/project context (skills, memory, one-time notices)
 // without invalidating the system-prompt cache prefix.
 func (m *model) attachPendingReminders(msg core.Message) core.Message {
+	if !m.systemRemindersSent {
+		m.services.Reminder.RequeueSystemReminders()
+		m.systemRemindersSent = true
+	}
 	pending := m.services.Reminder.Drain()
 	if len(pending) == 0 {
 		return msg
@@ -567,9 +571,9 @@ func (m *model) attachPendingReminders(msg core.Message) core.Message {
 	return msg
 }
 
-// wireReminderProviders registers the harness providers that emit on
-// SessionStart and PostCompact. Each provider's render closure captures the
-// services struct pointer so it always reads the live registry/cache state
+// wireReminderProviders registers the harness providers attached once per
+// conversation (see systemRemindersSent). Each provider's render closure
+// captures the services struct pointer so it always reads the live state
 // — that way settings reload and skill toggles surface in the next emission
 // without ever mutating the cached system prompt.
 func (m *model) wireReminderProviders() {
@@ -622,7 +626,10 @@ func (m *model) StopAgentSession() {
 func (m *model) ResetAgentSession() {
 	m.agentRestartMessages = nil
 	m.services.Agent.Stop()
+	// The next conversation carries neither the old notices nor, until its
+	// first message, the skills/memory reminders.
 	m.services.Reminder.DiscardPendingNotices()
+	m.systemRemindersSent = false
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.

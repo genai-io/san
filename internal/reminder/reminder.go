@@ -65,8 +65,8 @@ func (p providerFunc) Render() string { return p.render() }
 //
 // The service holds two pieces of state:
 //
-//   - providers: long-lived sources that re-emit on SessionStart and
-//     PostCompact (e.g. skills, memory).
+//   - providers: long-lived sources that emit once per conversation and
+//     again when their content changes (e.g. skills, memory).
 //   - pending: reminders queued for the next user message; each entry tracks
 //     which provider (if any) emitted it so RequeueSystemReminders can replace
 //     stale provider entries instead of duplicating them. Entries with no
@@ -93,8 +93,8 @@ func NewService() *Service {
 	return &Service{}
 }
 
-// Register adds a Provider whose output is re-emitted on SessionStart and
-// PostCompact. Re-registering an existing ID replaces the old provider.
+// Register adds a Provider whose output RequeueSystemReminders emits.
+// Re-registering an existing ID replaces the old provider.
 func (s *Service) Register(p Provider) {
 	if p == nil {
 		return
@@ -124,9 +124,9 @@ func (s *Service) Unregister(id string) {
 }
 
 // Enqueue adds a one-time notice to the pending queue. A notice is a reminder
-// not backed by a provider — e.g. hook context or a cancel notice — emitted
-// once and never auto-regenerated. The body should not include the
-// <system-reminder> wrapper; this method adds it.
+// not backed by a provider — e.g. hook context — emitted once and never
+// auto-regenerated. The body should not include the <system-reminder>
+// wrapper; this method adds it.
 //
 // Empty bodies are dropped silently. Notices persist independently of
 // RequeueSystemReminders — the latter only touches provider-emitted entries.
@@ -167,7 +167,7 @@ func (s *Service) DiscardPendingNotices() {
 // past event rather than live session state.
 //
 // Idempotent across repeated calls: any prior pending entry from the same
-// provider is dropped before re-emitting, so SessionStart → PostCompact →
+// provider is dropped before re-emitting, so first message → PostCompact →
 // /skills toggle in close succession produces a single emission per provider
 // rather than accumulating duplicates.
 //
@@ -270,6 +270,12 @@ var blockRe = regexp.MustCompile(`(?s)` + Pattern)
 // body returns "".
 func Wrap(body string) string {
 	return WrapWithSource(body, "")
+}
+
+// HasSystemReminder reports whether text carries a provider-emitted reminder
+// (one stamped with a source). One-time notices are unsourced.
+func HasSystemReminder(text string) bool {
+	return strings.Contains(text, tagOpen+" "+sourceAttrName+"=")
 }
 
 // WrapWithSource is like Wrap but stamps a source attribute on the opening

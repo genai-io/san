@@ -49,14 +49,12 @@ func (m *model) executeStartupHooks(ctx context.Context) hook.HookOutcome {
 	m.services.Hook.ExecuteAsync(hook.Setup, hook.HookInput{
 		Trigger: "init",
 	})
+	// A session ID exists even for a new session; restored messages are what
+	// mark a resume.
 	source := "startup"
-	if m.services.Session.ID() != "" {
+	if len(m.conv.Messages) > 0 {
 		source = "resume"
 	}
-	// Enqueue session-level reminders (skills directory, memory, etc.) so
-	// they ride on the first user message of this session. The system-prompt
-	// cache prefix stays untouched.
-	m.services.Reminder.RequeueSystemReminders()
 	return m.services.Hook.Execute(ctx, hook.SessionStart, hook.HookInput{
 		Source: source,
 		Model:  m.env.GetModelID(),
