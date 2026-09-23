@@ -34,8 +34,6 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **开** —— 模型、skills、subagents、MCP servers，想接就接；system prompt、Autopilot 的目标、自我学习的策略，都由你来写；`san inspector` 回放任意一次运行。
 
-**小的是开销，不是 Agent 的能力。**
-
 <sub>*关于名字 —— **San**，即 **三**，符号取自 **☰**。语出《道德经》「三生万物」—— 一个运行时即可化身为任意 Agent，并以三步循环运转（推理 → 行动 → 观察）。命令仍是 `san`。*</sub>
 
 ## 开放架构
@@ -229,7 +227,7 @@ plugins-local/      # 本地插件（git-ignored）
 ## 相关项目
 
 - [Claude Code](https://claude.ai/code) —— Anthropic 的 AI 编程助手
-- [Aider](https://github.com/paul-gauthier/aider) —— 终端中的 AI 结对编程
+- [Aider](https://github.com/Aider-AI/aider) —— 终端中的 AI 结对编程
 - [Continue](https://github.com/continuedev/continue) —— 开源 AI 编程助手
 
 ## 社区
