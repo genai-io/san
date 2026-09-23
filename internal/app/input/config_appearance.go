@@ -1,12 +1,16 @@
-// /config Appearance panel: two radio groups the user navigates as one
+// /config Appearance panel: three radio groups the user navigates as one
 // flat list.
 //
 //   - COLOR THEME — light / dark / auto. Applied live and persisted to the
 //     user-level settings file.
 //   - CONTEXT BAR — on / off. Toggles the visual context-usage bar
 //     ([██████░░░░] 71%) in the status line. Off by default.
+//   - THINKING — full / collapsed / hidden. How the model's reasoning is
+//     drawn. Full by default (the reasoning streams as before); collapsed
+//     drops the body everywhere and shows one "✦ Thought for 3.2s" line
+//     instead.
 //
-// Both are personal preferences, so — unlike Self-Learning — they have no
+// All are personal preferences, so — unlike Self-Learning — they have no
 // project scope; selecting a row persists to the user settings file.
 package input
 
@@ -36,24 +40,35 @@ type ContextBarSavedMsg struct {
 	On bool
 }
 
+// ThinkingDisplaySavedMsg is emitted after the appearance panel persists the
+// reasoning-display choice so the app can update its live render flag, refresh
+// its settings handle, and show a confirmation. The value is already written to
+// disk by the time this fires.
+type ThinkingDisplaySavedMsg struct {
+	Mode string
+}
+
 // appearanceKind tags which setting a row applies when selected.
 type appearanceKind int
 
 const (
 	kindTheme appearanceKind = iota
 	kindContextBar
+	kindThinkingDisplay
 )
 
 // appearanceOption is one selectable row. section heads the group it belongs
 // to (printed once, above the group's first row). Exactly one value field is
-// meaningful, selected by kind: theme for kindTheme, barOn for kindContextBar.
+// meaningful, selected by kind: theme for kindTheme, barOn for kindContextBar,
+// thinkingDisplay for kindThinkingDisplay.
 type appearanceOption struct {
-	section string
-	kind    appearanceKind
-	label   string
-	desc    string
-	theme   string // kindTheme: the theme value to apply
-	barOn   bool   // kindContextBar: the on/off value to apply
+	section         string
+	kind            appearanceKind
+	label           string
+	desc            string
+	theme           string // kindTheme: the theme value to apply
+	barOn           bool   // kindContextBar: the on/off value to apply
+	thinkingDisplay string // kindThinkingDisplay: the display mode to apply
 }
 
 // appearanceOptions is the full, section-ordered row list. The theme group
@@ -66,6 +81,9 @@ func appearanceOptions() []appearanceOption {
 		{section: "COLOR THEME", kind: kindTheme, label: "Auto", desc: "Match terminal appearance automatically", theme: "auto"},
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "On", desc: "Show the visual context-usage bar", barOn: true},
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "Off", desc: "Hide the bar (numeric ctx X/Y still shows)", barOn: false},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
 	}
 }
 
@@ -78,8 +96,9 @@ type appearancePanel struct {
 	// Baselines are the values persisted on disk, marked "● current" in their
 	// group. A group is "dirty" while the cursor hovers a row that diverges
 	// from its baseline.
-	themeBaseline string
-	barBaseline   bool
+	themeBaseline    string
+	barBaseline      bool
+	thinkingBaseline string
 
 	// saveErr holds the last failed persist so Render can surface it inline
 	// instead of silently swallowing it. Cleared on navigation / re-entry.
@@ -96,12 +115,14 @@ func (p *appearancePanel) Enter() {
 	p.options = appearanceOptions()
 	p.themeBaseline = "auto"
 	p.barBaseline = false
+	p.thinkingBaseline = setting.DefaultThinkingDisplay
 	if p.settings != nil {
 		if data := p.settings.Snapshot(); data != nil {
 			if data.Theme != "" {
 				p.themeBaseline = data.Theme
 			}
 			p.barBaseline = data.ShowContextBar()
+			p.thinkingBaseline = data.ThinkingDisplayMode()
 		}
 	}
 	p.cursor = indexOfTheme(p.themeBaseline)
@@ -160,6 +181,13 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		}
 		p.barBaseline = opt.barOn
 		return func() tea.Msg { return ContextBarSavedMsg{On: opt.barOn} }, true
+	case kindThinkingDisplay:
+		if err := setting.SaveThinkingDisplay(opt.thinkingDisplay); err != nil {
+			p.saveErr = err
+			return nil, false
+		}
+		p.thinkingBaseline = opt.thinkingDisplay
+		return func() tea.Msg { return ThinkingDisplaySavedMsg{Mode: opt.thinkingDisplay} }, true
 	}
 	return nil, false
 }
@@ -231,6 +259,8 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 	switch opt.kind {
 	case kindContextBar:
 		return opt.barOn == p.barBaseline
+	case kindThinkingDisplay:
+		return opt.thinkingDisplay == p.thinkingBaseline
 	default:
 		return opt.theme == p.themeBaseline
 	}

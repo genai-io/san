@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -160,6 +163,7 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
+	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeWindowMessageCount())
 	m.adoptSession(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 
@@ -191,6 +195,47 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 		m.env.OperationMode = mode
 		m.applyOperationMode()
 	}
+}
+
+// applyResumeWindow marks everything before the last tail messages as already
+// committed, so a resume prints only the window. The skipped messages stay in
+// conv.Messages for /history and the next save. A notice opening the window
+// says how many were skipped; like every notice it is never saved or sent to
+// the model.
+func (m *model) applyResumeWindow(tail int) {
+	start := resumeWindowStart(m.conv.Messages, tail)
+	m.conv.CommittedCount = start
+	m.conv.ResumeWindowStart = start
+	if start > 0 {
+		m.conv.Messages = slices.Insert(m.conv.Messages, start, core.ChatMessage{
+			Role:    core.ChatNotice,
+			Content: fmt.Sprintf("… %s earlier not shown · /history to read them", kit.Plural(start, "message")),
+		})
+	}
+}
+
+// resumeWindowStart returns the first message index a resumed session replays:
+// the start of the last `tail` messages, snapped back so the window never opens
+// on a tool result whose owning assistant falls outside it. A non-positive tail
+// replays nothing.
+//
+// The snap is load-bearing, not cosmetic: PrecomputeInlinedResults only pairs a
+// result with an assistant at or after the window start (conv/view.go), so a
+// window opening mid-turn would render that result standalone *and* inline
+// under its assistant — the same content twice. An assistant always commits
+// together with its tool results.
+func resumeWindowStart(messages []core.ChatMessage, tail int) int {
+	if tail <= 0 {
+		return len(messages)
+	}
+	if len(messages) <= tail {
+		return 0
+	}
+	start := len(messages) - tail
+	for start > 0 && messages[start].ToolResult != nil {
+		start--
+	}
+	return start
 }
 
 func (m *model) initTaskStorage(sessionID string) {

@@ -117,6 +117,15 @@ RenderMessageAt ─┤
                                               result, if available)
 ```
 
+Reasoning is gated by the `thinkingDisplay` preference
+([configuration.md](../reference/configuration.md)), and the gate sits on **both**
+surfaces: `RenderAssistantMessage` for the live tail and `FlushStreamingBlocks`
+for the scrollback commit. `full` (the default) draws the body; `collapsed` draws
+the body nowhere and commits one `✦ Thought for 3.2s` line instead; `hidden`
+draws nothing. In the suppressed modes the flush still advances
+`ThinkingCommittedLen` / `ThinkingEmitted` past the bytes it did not print, so a
+later full rebuild cannot resurrect the body it never showed.
+
 `renderAssistantWithTools` does **not** scan the message list to find
 its paired results — `ctx.InlinedResults` was precomputed once at the
 top of the render pass and tells it which `ToolCallID → ToolResultData`
@@ -138,9 +147,9 @@ behaviors are intentional and not glamour defaults:
 
 Width matters: glamour computes column widths from its configured
 width. If the terminal resizes, glamour-wrapped content already in
-scrollback is now sized for the old width but the repaint zone uses
-the new width. That mismatch is exactly what `reflowScrollback`
-addresses (see Resize below).
+scrollback is now sized for the old width while the repaint zone uses
+the new width. That is left alone: the terminal rewraps what it already
+holds, and committed rows cannot be taken back (see Resize below).
 
 ## Tool calls and inlined results
 
@@ -367,18 +376,20 @@ the ToolResult from also being Println'd standalone.
 
 ## Resize behavior
 
-Terminal resize is the **only event that invalidates already-painted
-scrollback** (glamour wraps at its configured width). `handleWindowResize`
-in [`internal/app/update_resize.go`](../../internal/app/update_resize.go):
+**Already-committed scrollback is immutable to us.** `handleWindowResize` in
+[`internal/app/update_resize.go`](../../internal/app/update_resize.go) updates
+`m.env.Width / Height`, drops the frozen print frame (so `insertAbove` cannot
+scroll live rows into history under the old geometry), rebuilds the markdown
+renderer at the new width, and lets Bubble Tea repaint the bottom strip. It does
+not reprint committed messages: the terminal rewraps what it already holds on its
+own, and a row that reached the top of the screen cannot be taken back — see
+[ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md), whose
+invariant 6 covers the rewrap arithmetic the redraw depends on.
 
-1. Update `m.env.Width / Height` and the textarea width.
-2. `m.conv.ResizeMDRenderer(newWidth)` — rebuilds glamour at the new
-   width.
-3. If width actually changed and any messages are committed:
-   `reflowScrollback` clears the screen and re-Printlns every committed
-   message at the new width.
-4. Bubble Tea calls `View()` next to repaint the bottom strip at the
-   new width.
+`handleWindowResize` is also the **deferred initial paint**: the first
+`WindowSizeMsg` is where a resumed conversation is committed, via
+`commitAllMessages()`. Only the replay window is committed — earlier messages are
+kept but never printed, and `/history` reads them (see `resumeWindowMessages`).
 
 ## File pointers
 
@@ -392,4 +403,4 @@ in [`internal/app/update_resize.go`](../../internal/app/update_resize.go):
 | Compact / agent activity / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go), [`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go), [`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
 | `MDRenderer` lifecycle | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
-| Resize + reflow | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
+| Resize | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |

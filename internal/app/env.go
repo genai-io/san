@@ -57,6 +57,12 @@ type env struct {
 	// bar. Cached here so the hot render path never snapshots settings.
 	// Set at startup and whenever the /config Appearance panel saves.
 	ShowContextBar bool
+	// ThinkingDisplay mirrors the persisted reasoning-display preference
+	// ("full" / "collapsed" / "hidden"); one of the setting.ThinkingDisplay*
+	// constants, already resolved through setting.Data.ThinkingDisplayMode so
+	// it is never empty. Cached here because the render path — the live tail
+	// and the scrollback flush alike — reads it per message per frame.
+	ThinkingDisplay string
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	// Two views of one posture, kept in step by ApplyModePermissions.

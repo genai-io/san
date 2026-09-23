@@ -110,6 +110,14 @@ RenderMessageAt ─┤
                                               如果已有结果的话）
 ```
 
+思考过程由 `thinkingDisplay` 偏好决定
+（[configuration.md](../reference/configuration.md)），而且这个开关落在**两个**
+面上：实时视图的 `RenderAssistantMessage`，以及提交 scrollback 的
+`FlushStreamingBlocks`。`full`（默认）画正文；`collapsed` 两处都不画正文，
+只提交一行 `✦ Thought for 3.2s`；`hidden` 什么都不画。在被抑制的模式下，
+flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印的字节，
+这样之后整段重建时不会再把它从未展示过的正文捞回来。
+
 `renderAssistantWithTools` **不会**扫消息列表去找它的配对 result——
 `ctx.InlinedResults` 在渲染开始就预算好了，告诉它哪个
 `ToolCallID → ToolResultData` 该 inline。见下面"工具调用 + inline 结果"。
@@ -129,8 +137,8 @@ RenderMessageAt ─┤
 | 内联标记 | 自定义内联 markdown pass 处理 glamour 渲染不好的部分（如嵌套格式里的反引号）。 |
 
 宽度为什么重要：glamour 根据配置宽度算列宽。终端 resize 后，scrollback
-里的内容是按旧宽度换行的，但重绘区按新宽度。这正是 `reflowScrollback`
-要解决的问题（见下文 Resize 一节）。
+里的内容是按旧宽度换行的，但重绘区按新宽度。这种情况不做处理：终端自己会
+重排它已经持有的内容，而已经 commit 的行收不回来（见下文 Resize 一节）。
 
 ## 工具调用 + inline 结果
 
@@ -352,16 +360,19 @@ CommittedCount = 3                           // 追上
 
 ## Resize 行为
 
-终端 resize 是**唯一会让已经写到 scrollback 里的内容失效**的事件
-（glamour 按配置宽度换行）。
+**已经 commit 到 scrollback 的内容对我们来说是不可变的。**
 [`internal/app/update_resize.go`](../../internal/app/update_resize.go)
-里的 `handleWindowResize`：
+里的 `handleWindowResize`：更新 `m.env.Width / Height`，丢掉冻结的打印帧
+（否则 `insertAbove` 会在旧几何下把实时行滚进历史），按新宽度重建 markdown
+渲染器，然后交给 Bubble Tea 重画底部条。它**不会**重新打印已 commit 的消息：
+终端自己会重排它已经持有的内容，而滚到屏幕顶部的行再也收不回来——见
+[ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)，
+其不变式 6 覆盖了重画依赖的换行算术。
 
-1. 更新 `m.env.Width / Height` 和 textarea 宽度
-2. `m.conv.ResizeMDRenderer(newWidth)`——按新宽度重建 glamour
-3. 宽度真的变了且已经有 commit 的消息：`reflowScrollback` 清屏，
-   用新宽度对每条 commit 消息重新 `tea.Println` 一次
-4. Bubble Tea 接着调 `View()` 用新宽度重画底部条
+`handleWindowResize` 同时承担**延迟的首次绘制**：第一个 `WindowSizeMsg`
+才把 resume 出来的对话通过 `commitAllMessages()` 提交。只有重放窗口会被
+提交——更早的消息被保留但从不打印，由 `/history` 按需读取（见
+`resumeWindowMessages`）。
 
 ## 文件指路
 
@@ -375,4 +386,4 @@ CommittedCount = 3                           // 追上
 | Compact / 智能体活动 / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go)、[`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go)、[`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
 | `MDRenderer` 生命周期 | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
-| Resize + reflow | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
+| Resize | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |

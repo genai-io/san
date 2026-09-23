@@ -1,6 +1,8 @@
 package conv
 
 import (
+	"time"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -22,6 +24,10 @@ type ConversationModel struct {
 	Compact        CompactState
 	Modal          ModalState
 	Tool           ToolExecState
+
+	// ResumeWindowStart is where a resume's replay began; /history shows the
+	// messages before it. Unlike CommittedCount it never moves.
+	ResumeWindowStart int
 }
 
 func NewConversation() ConversationModel {
@@ -45,6 +51,7 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
+	m.ResumeWindowStart = 0
 }
 
 func (m *ConversationModel) AddNotice(content string) {
@@ -83,7 +90,7 @@ func (m *ConversationModel) AppendToLast(text, thinking string) {
 		return
 	}
 	if thinking != "" {
-		m.Messages[idx].Thinking += thinking
+		m.Messages[idx].AppendThinking(thinking, time.Now())
 	}
 	if text != "" {
 		m.Messages[idx].Content += text

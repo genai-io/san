@@ -31,9 +31,54 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "env": { "MY_VAR": "value" },
   "enabledPlugins": { "my-plugin": true },
   "disabledTools": { "WebSearch": true, "Cron": false },
-  "theme": "dark"
+  "theme": "dark",
+  "contextBar": true,
+  "thinkingDisplay": "collapsed",
+  "resumeWindowMessages": 20
 }
 ```
+
+### `thinkingDisplay`
+
+How the model's reasoning is drawn. Display only — it does not change what the
+provider is asked to reason about (that is thinking effort, `/think`).
+
+| Value | Live tail | Scrollback |
+| --- | --- | --- |
+| `full` (default) | the reasoning body | the reasoning body |
+| `collapsed` | a `Thinking…` indicator | one `Thought for 3.2s` line |
+| `hidden` | nothing | nothing |
+
+An unset or unrecognized value resolves to `full`, so the preference is opt-in:
+nothing about an existing transcript changes until you ask for it. Set
+`collapsed` when a reasoning model's thinking buries the operations and the
+answer you actually wanted — that is the whole point of the setting, since
+committed scrollback is permanent and the noise cannot be cleaned up later.
+
+Reasoning that is suppressed is never drawn in either surface: the value is read
+by both the live view and the scrollback flush, so there is no path that leaks
+the body.
+
+Because committed scrollback is immutable ([ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)),
+changing this takes effect from that point on: reasoning already on screen stays
+as it was drawn. There is no `ctrl+o`-style expansion of a collapsed block for
+the same reason.
+
+Set it from `/config` → Appearance → THINKING, or directly in
+`~/.san/settings.json`.
+
+### `resumeWindowMessages`
+
+How many trailing messages resuming a session (`san -c`, `san -r <id>`,
+`/resume`) replays into native scrollback. Default 20; `0` replays none. The
+window is snapped back to a turn boundary so an assistant is never separated
+from its tool results, and the rest of the transcript is kept — it is simply not
+printed. This only changes what is drawn: the model still sees the whole
+conversation. A one-line notice above the replayed block reports how many messages
+were left out, and `/history` reads them on demand.
+
+Unset (or negative) uses the default. Raising it replays more at startup, which
+costs one markdown render per message plus a print round-trip per chunk.
 
 ## UI Interactions
 

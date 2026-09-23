@@ -22,6 +22,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type scrollbackPrintReadyMsg struct{ id uint64 }
@@ -75,6 +76,11 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
+	// collapsedThinking is the collapsed mode's rendered "Thought for 3.2s"
+	// line, committed instead of a reasoning body. thinkingSlice is empty in
+	// that case: the body never reaches scrollback in the collapsed and hidden
+	// modes.
+	collapsedThinking string
 }
 
 // flushState is the streaming-block flush subsystem: it renders each completed
@@ -119,36 +125,51 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	}
 
 	// Once content starts, flush thinking's trailing paragraph too (it has no
-	// terminating blank line, but reasoning is done).
-	thinkingEnd := conv.CompletedBlockBoundary(msg.Thinking)
-	if len(msg.Content) > 0 {
+	// terminating blank line, but reasoning is done). Content arriving is also
+	// the only proof that reasoning is over: a block boundary alone can fall
+	// mid-thought, and committing a reasoning prefix would strand the rest.
+	reasoningDone := len(msg.Content) > 0
+	var thinkingSlice, contentSlice, collapsedThinking string
+	thinkingEnd := msg.ThinkingCommittedLen
+	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
+		thinkingEnd = conv.CompletedBlockBoundary(msg.Thinking)
+		if reasoningDone {
+			thinkingEnd = len(msg.Thinking)
+		}
+		if thinkingEnd > msg.ThinkingCommittedLen {
+			thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
+		}
+	} else if reasoningDone && !msg.ThinkingEmitted && len(msg.Thinking) > 0 {
+		// Collapsed/hidden: the body must never reach the screen, so nothing is
+		// sliced for commit. The offsets still advance past it, and collapsed
+		// commits one "Thought for 3.2s" line instead — which is why this
+		// waits for reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
+		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
+			collapsedThinking = conv.RenderCollapsedThinking(msg.ThinkingDuration)
+		}
 	}
 	contentEnd := conv.CompletedBlockBoundary(msg.Content)
-
-	var thinkingSlice, contentSlice string
-	if thinkingEnd > msg.ThinkingCommittedLen {
-		thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
-	}
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
-	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" {
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && collapsedThinking == "" {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
 	m.flush.rendering = true
 	return []tea.Cmd{renderSnapshotCmd(flushSnapshot{
-		msgID:            msg.ID,
-		index:            idx,
-		thinkingSlice:    thinkingSlice,
-		contentSlice:     contentSlice,
-		thinkingEnd:      thinkingEnd,
-		contentEnd:       contentEnd,
-		showThinkingIcon: !msg.ThinkingEmitted,
-		showBullet:       !msg.BulletEmitted,
-		width:            m.env.Width,
-		md:               m.flush.mdRenderer(m.env.Width),
+		msgID:             msg.ID,
+		index:             idx,
+		thinkingSlice:     thinkingSlice,
+		contentSlice:      contentSlice,
+		thinkingEnd:       thinkingEnd,
+		contentEnd:        contentEnd,
+		showThinkingIcon:  !msg.ThinkingEmitted,
+		showBullet:        !msg.BulletEmitted,
+		width:             m.env.Width,
+		md:                m.flush.mdRenderer(m.env.Width),
+		collapsedThinking: collapsedThinking,
 	})}
 }
 
@@ -160,7 +181,10 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if snap.thinkingSlice != "" {
+		if snap.collapsedThinking != "" {
+			blocks = append(blocks, snap.collapsedThinking)
+			thinkingEmitted = true
+		} else if snap.thinkingSlice != "" {
 			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
 				blocks = append(blocks, b)
 				thinkingEmitted = true

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // NewMessageID returns a fresh short hex identifier for a Message.
@@ -163,6 +164,21 @@ type ChatMessage struct {
 	ThinkingCommittedLen int  // bytes of Thinking already flushed to scrollback
 	BulletEmitted        bool // the "● " content marker has already been emitted
 	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
+
+	// Reasoning time, first thinking delta to latest (see AppendThinking).
+	// Shown as "Thought for 3.2s" in collapsed mode. Not persisted.
+	ThinkingStartedAt time.Time
+	ThinkingDuration  time.Duration
+}
+
+// AppendThinking appends a reasoning delta and updates the reasoning time, so
+// no caller has to stop a timer when reasoning ends.
+func (m *ChatMessage) AppendThinking(delta string, now time.Time) {
+	if m.ThinkingStartedAt.IsZero() {
+		m.ThinkingStartedAt = now
+	}
+	m.Thinking += delta
+	m.ThinkingDuration = now.Sub(m.ThinkingStartedAt)
 }
 
 // ResetStreamCommit clears the streaming-commit progress so the message renders

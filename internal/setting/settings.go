@@ -23,6 +23,38 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
+// How the model's reasoning is drawn. This is a display preference only: it
+// never changes what the provider is asked to reason about (that is thinking
+// effort — see llm.ThinkingEffortForModel).
+const (
+	// ThinkingDisplayFull draws the reasoning body, live and in scrollback.
+	ThinkingDisplayFull = "full"
+	// ThinkingDisplayCollapsed draws no reasoning body anywhere; the live tail
+	// shows a "Thinking…" indicator and the settled turn a single
+	// "✦ Thought for 3.2s" line. Opt in when a reasoning model's transcript is
+	// mostly thinking and it buries the operations and the answer — committed
+	// scrollback is permanent (ADR-0002), so the noise cannot be cleaned up
+	// after the fact.
+	ThinkingDisplayCollapsed = "collapsed"
+	// ThinkingDisplayHidden draws nothing at all, not even the
+	// "Thought for 3.2s" line.
+	ThinkingDisplayHidden = "hidden"
+)
+
+// DefaultThinkingDisplay is what an unset or unrecognized value resolves to.
+// Full, so the preference is opt-in: a reasoning model's answer is not made
+// less legible by default for users who never asked for it.
+const DefaultThinkingDisplay = ThinkingDisplayFull
+
+// DrawsThinkingBody reports whether mode draws the reasoning body. Unset counts
+// as full.
+func DrawsThinkingBody(mode string) bool {
+	return mode == "" || mode == ThinkingDisplayFull
+}
+
+// DefaultResumeWindowMessages is the resume window when unset.
+const DefaultResumeWindowMessages = 20
+
 // Data represents the complete San configuration.
 type Data struct {
 	Permissions    PermissionSettings `json:"permissions"`
@@ -54,6 +86,15 @@ type Data struct {
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
 	// "ctx X/Y" label is unaffected and always shows.
 	ContextBar *bool `json:"contextBar,omitempty"`
+	// ThinkingDisplay selects how the model's reasoning is drawn: "full",
+	// "collapsed", or "hidden" (see the ThinkingDisplay* constants). Empty or
+	// unrecognized resolves to DefaultThinkingDisplay. Read via
+	// Data.ThinkingDisplayMode().
+	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
+	// ResumeWindowMessages is how many recent messages a resume prints.
+	// Display only: the model still sees the whole session. Pointer so an
+	// explicit 0 differs from unset.
+	ResumeWindowMessages *int `json:"resumeWindowMessages,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -373,6 +414,30 @@ func (s SelfLearnSettings) Validate() error {
 // Nil (unset) resolves to off — the bar is opt-in.
 func (s *Data) ShowContextBar() bool {
 	return s != nil && s.ContextBar != nil && *s.ContextBar
+}
+
+// ThinkingDisplayMode resolves how reasoning is drawn, mapping an unset or
+// unrecognized value to DefaultThinkingDisplay so the render paths can compare
+// against the ThinkingDisplay* constants without a default case of their own.
+func (s *Data) ThinkingDisplayMode() string {
+	if s == nil {
+		return DefaultThinkingDisplay
+	}
+	switch s.ThinkingDisplay {
+	case ThinkingDisplayFull, ThinkingDisplayCollapsed, ThinkingDisplayHidden:
+		return s.ThinkingDisplay
+	default:
+		return DefaultThinkingDisplay
+	}
+}
+
+// ResumeWindowMessageCount resolves ResumeWindowMessages; unset or negative
+// means the default.
+func (s *Data) ResumeWindowMessageCount() int {
+	if s == nil || s.ResumeWindowMessages == nil || *s.ResumeWindowMessages < 0 {
+		return DefaultResumeWindowMessages
+	}
+	return *s.ResumeWindowMessages
 }
 
 // StartupMode is the operation mode a new session starts in: the mode the user
@@ -757,6 +822,11 @@ func (s *Data) Clone() *Data {
 	if s.ContextBar != nil {
 		v := *s.ContextBar
 		dst.ContextBar = &v
+	}
+	dst.ThinkingDisplay = s.ThinkingDisplay
+	if s.ResumeWindowMessages != nil {
+		v := *s.ResumeWindowMessages
+		dst.ResumeWindowMessages = &v
 	}
 	maps.Copy(dst.Env, s.Env)
 	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)

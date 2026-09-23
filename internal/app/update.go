@@ -79,6 +79,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Config,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
+		&m.userInput.Transcript,
 	}
 }
 
@@ -280,6 +281,17 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.conv.AddNotice("Context bar off")
 		}
+		return m, nil
+	case input.ThinkingDisplaySavedMsg:
+		// Update the live render flag so the tail and the scrollback flush
+		// reflect the choice immediately, then refresh the in-memory handle for
+		// re-opens. Already-committed reasoning in native scrollback is
+		// immutable (ADR-0002), so this applies from here on.
+		m.env.ThinkingDisplay = msg.Mode
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after thinking-display save failed", zap.Error(err))
+		}
+		m.conv.AddNotice("Thinking: " + msg.Mode)
 		return m, nil
 	case input.AllowBypassSavedMsg:
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {

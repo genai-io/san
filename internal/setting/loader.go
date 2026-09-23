@@ -549,6 +549,14 @@ func SaveContextBar(on bool) error {
 	return nil
 }
 
+// SaveThinkingDisplay persists the reasoning-display choice to
+// ~/.san/settings.json, replacing the field. Callers pass one of the
+// ThinkingDisplay* constants; an unrecognized value resolves to the default on
+// read (see ThinkingDisplayMode).
+func SaveThinkingDisplay(mode string) error {
+	return updateSettingsFile(true, func(d *Data) { d.ThinkingDisplay = mode })
+}
+
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
 // to ~/.san/settings.json. It replaces the field rather than merging it: the
 // setting is opt-out, so locking the gate means persisting an explicit false,

@@ -12,7 +12,9 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -203,6 +205,16 @@ type AssistantParams struct {
 	Width             int
 	ExecutingTool     string
 
+	// ThinkingDisplay is the resolved reasoning-display mode, one of the
+	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
+	// "collapsed" replaces it with one "✦ Thought for 3.2s" line, "hidden"
+	// draws nothing. Empty is treated as "full" so a caller that has not been
+	// taught the setting keeps the historical behaviour.
+	ThinkingDisplay string
+	// ThinkingDuration is how long the message reasoned, reported by the
+	// collapsed mode's "Thought for 3.2s" line.
+	ThinkingDuration time.Duration
+
 	// Streaming-commit offsets: how much of Content/Thinking is already in
 	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
 	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
@@ -221,6 +233,29 @@ type AssistantParams struct {
 // save+reload. Stripped at render time so the UI shows a styled badge
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
+
+// collapsedThinking is the "Thought for 3.2s" line collapsed mode prints, or
+// "". It waits until reasoning ends, since scrollback cannot be rewritten, and
+// skips a message whose line the flush already printed (ThinkingEmitted).
+func (p AssistantParams) collapsedThinking() string {
+	if p.ThinkingDisplay != setting.ThinkingDisplayCollapsed || p.ThinkingEmitted {
+		return ""
+	}
+	if p.Thinking == "" || (p.StreamActive && p.IsLast) {
+		return ""
+	}
+	return RenderCollapsedThinking(p.ThinkingDuration)
+}
+
+// RenderCollapsedThinking renders "✦ Thought for 3.2s". An untimed message
+// (restored from disk) shows just "✦ Thought".
+func RenderCollapsedThinking(d time.Duration) string {
+	label := "Thought"
+	if d >= 50*time.Millisecond {
+		label += " for " + toolresult.FormatDuration(d)
+	}
+	return thinkingGutter(true) + ThinkingStyle.Render(label)
+}
 
 // continuationGutter is the 2-column blank that aligns continuation lines, and
 // content blocks committed after the first, under the "● " assistant marker.
@@ -356,7 +391,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 		interrupted = true
 	}
 
-	if params.Thinking != "" {
+	if params.Thinking != "" && setting.DrawsThinkingBody(params.ThinkingDisplay) {
 		// The live streaming tail stays plain (nil renderer), matching the content
 		// tail; a settled block lays out as muted markdown.
 		thinkMD := params.MDRenderer
@@ -364,6 +399,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 			thinkMD = nil
 		}
 		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width, thinkMD) + "\n\n")
+	}
+
+	if line := params.collapsedThinking(); line != "" {
+		sb.WriteString(line + "\n\n")
 	}
 
 	content := formatAssistantContent(params)
@@ -380,7 +419,13 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 // formatAssistantContent formats the assistant message content based on streaming state.
 func formatAssistantContent(params AssistantParams) string {
-	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && params.Thinking == "" {
+	// The filler stands in for reasoning the user cannot see: with the body
+	// suppressed (collapsed) it is the only sign the model is thinking, and
+	// "Thinking..." is still no reasoning content. Under "hidden" the user
+	// asked for nothing at all, so the bare spinner is the whole indicator.
+	showThinkingFiller := params.Thinking == "" ||
+		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
+	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
 		if params.ExecutingTool != "" {
 			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
 		}

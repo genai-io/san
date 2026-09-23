@@ -3,6 +3,7 @@ package core
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -101,5 +102,25 @@ func TestAModelsOwnStateSurvivesTheConversion(t *testing.T) {
 	// endpoint being asked can take it is ai.Model's to answer, not this.
 	if got := out[0].Content[0].Signature; got != "sig-1" {
 		t.Errorf("signature = %q, want it carried through", got)
+	}
+}
+
+// The reasoning timer runs from the first thinking delta to the latest, so the
+// duration is settled however the reasoning ends.
+func TestAppendThinkingTimesFirstToLatestDelta(t *testing.T) {
+	start := time.Unix(100, 0)
+	var msg ChatMessage
+	msg.AppendThinking("a", start)
+	msg.AppendThinking("b", start.Add(1500*time.Millisecond))
+	msg.AppendThinking("c", start.Add(3200*time.Millisecond))
+
+	if msg.Thinking != "abc" {
+		t.Fatalf("Thinking = %q, want %q", msg.Thinking, "abc")
+	}
+	if !msg.ThinkingStartedAt.Equal(start) {
+		t.Fatalf("ThinkingStartedAt = %v, want the first delta's time %v", msg.ThinkingStartedAt, start)
+	}
+	if msg.ThinkingDuration != 3200*time.Millisecond {
+		t.Fatalf("ThinkingDuration = %v, want 3.2s", msg.ThinkingDuration)
 	}
 }

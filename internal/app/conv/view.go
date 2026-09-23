@@ -40,6 +40,11 @@ type RenderContext struct {
 	// ── Renderer / terminal env ─────────────────────────────────
 	Width      int
 	MDRenderer *MDRenderer
+	// ThinkingDisplay is the resolved reasoning-display mode (one of the
+	// setting.ThinkingDisplay* constants), threaded down to the assistant
+	// renderer so it knows whether to draw the reasoning body, a
+	// "Thought for 3.2s" line, or nothing.
+	ThinkingDisplay string
 
 	// ── Per-tick UI state ───────────────────────────────────────
 	SpinnerView  string
@@ -242,6 +247,8 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		ThinkingCommittedLen: msg.ThinkingCommittedLen,
 		BulletEmitted:        msg.BulletEmitted,
 		ThinkingEmitted:      msg.ThinkingEmitted,
+		ThinkingDisplay:      p.ThinkingDisplay,
+		ThinkingDuration:     msg.ThinkingDuration,
 	})
 
 	if len(msg.ToolCalls) == 0 {
