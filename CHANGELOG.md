@@ -3,6 +3,11 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.22.11] - 2026-09-23
+
+### Added
+- Collapse reasoning into a summary line by default and bound the resume replay ([@zhujian7](https://github.com/zhujian7) in [#543](https://github.com/genai-io/san/pull/543))
+
 ## [v1.22.10] - 2026-09-21
 
 ### Added
