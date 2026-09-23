@@ -74,14 +74,14 @@ type contextCategory struct {
 func (u ContextUsage) categories() (prompt, conversation []contextCategory) {
 	t := kit.CurrentTheme
 	return []contextCategory{
-			{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator},
-			{label: "Tools", tokens: u.Tools, color: t.Accent},
-			{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim},
-		}, []contextCategory{
-			{label: "Skills", tokens: u.Skills, color: t.Primary},
-			{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
-			{label: "Messages", tokens: u.Messages, color: t.Focus},
-		}
+		{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator},
+		{label: "Tools", tokens: u.Tools, color: t.Accent},
+		{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim},
+	}, []contextCategory{
+		{label: "Skills", tokens: u.Skills, color: t.Primary},
+		{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
+		{label: "Messages", tokens: u.Messages, color: t.Focus},
+	}
 }
 
 // totalTokens sums a group of categories.
