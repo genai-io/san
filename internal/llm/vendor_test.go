@@ -479,6 +479,56 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 	}
 }
 
+// Yolo-Auto reaches San as a row the SDK's catalog does not carry, so what has
+// to hold is what a catalog row would have carried: the registered entry
+// resolves to a reachable host, and the endpoint's own listing is the catalog —
+// with every ID in it keeping the protocol San reaches that host with rather
+// than arriving stripped of it.
+func TestYoloAutoIsReachedThroughItsOwnListing(t *testing.T) {
+	server := listing(t, `{"object":"list","data":[{"id":"yolo","object":"model"},{"id":"yolo-small","object":"model"}]}`)
+
+	registered := false
+	var entry vendorEntry
+	for _, e := range vendorEntries {
+		if e.meta.Provider == YoloAuto {
+			registered, entry = true, e
+		}
+	}
+	if !registered {
+		t.Fatal("Yolo-Auto is in no vendor entry; the picker would not offer it")
+	}
+
+	vendor, err := entry.resolveVendor()
+	if err != nil {
+		t.Fatalf("%s: %v", providerName(entry.meta), err)
+	}
+	if vendor.BaseURL == "" {
+		t.Fatal("the entry resolved a row with no host; the endpoint cannot be reached")
+	}
+
+	p := newVendorProvider(providerName(entry.meta), vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+
+	listed := map[string]bool{}
+	for _, m := range models {
+		listed[m.ID] = true
+	}
+	for _, id := range []string{"yolo", "yolo-small"} {
+		if !listed[id] {
+			t.Errorf("%s is missing from %+v", id, models)
+		}
+		if api := p.model(id).API; api != ai.APIOpenAIChat {
+			t.Errorf("%s is reached as %q, want the OpenAI chat protocol the host speaks", id, api)
+		}
+	}
+	if len(models) != 2 {
+		t.Errorf("listed %d models, want the two the endpoint published", len(models))
+	}
+}
+
 func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 	var path string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

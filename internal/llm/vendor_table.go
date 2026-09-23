@@ -32,6 +32,12 @@ type vendorEntry struct {
 	meta     Meta
 	vendorID string
 
+	// row builds the catalog entry for a vendor the SDK's catalog does not
+	// carry, which is how an endpoint that exists in no catalog — the host the
+	// user configured, and Yolo-Auto — reaches the same code path as every
+	// other. Nil for every vendor the catalog already knows.
+	row func() (catalog.Vendor, error)
+
 	// configure fills in what the catalog cannot: a credential from San's
 	// secret store, an endpoint the user set, a deployment. Nil means the
 	// common case — the vendor's first key variable and its default host.
@@ -54,6 +60,7 @@ var vendorDisplays = map[ProviderID]ProviderDisplay{
 	Mimo:           {Name: "Xiaomi MiMo", Order: 110},
 	Volcengine:     {Name: "Volcengine Ark", Order: 120},
 	AgnesAI:        {Name: "Agnes-AI", Order: 130},
+	YoloAuto:       {Name: "Yolo-Auto", Order: 135},
 	CustomProvider: {Name: "Custom", Order: 140},
 }
 
@@ -149,7 +156,12 @@ var vendorEntries = []vendorEntry{
 		vendorID: "agnesai",
 	},
 	{
+		meta: Meta{Provider: YoloAuto, AuthMethod: AuthAPIKey, EnvVars: []string{"YOLO_AUTO_API_KEY"}, DisplayName: "Direct API"},
+		row:  yoloAutoVendor,
+	},
+	{
 		meta:      Meta{Provider: CustomProvider, AuthMethod: AuthAPIKey, EnvVars: []string{CustomAPIKeyEnvVar}, DisplayName: "Direct API"},
+		row:       customVendor,
 		configure: configureCustom,
 	},
 }
@@ -189,12 +201,12 @@ func (e vendorEntry) factory() Factory {
 	}
 }
 
-// resolveVendor returns the catalog row this entry serves. An entry with no
-// vendor ID builds its own, which is how the user-defined endpoint — a host
-// that exists in no catalog — reaches the same code path as every other.
+// resolveVendor returns the catalog row this entry serves: the one the SDK's
+// catalog carries, or — for a host that exists in no catalog — the one the
+// entry builds itself.
 func (e vendorEntry) resolveVendor() (catalog.Vendor, error) {
-	if e.vendorID == "" {
-		return customVendor()
+	if e.row != nil {
+		return e.row()
 	}
 	vendor, ok := catalog.Find(e.vendorID)
 	if !ok {
@@ -270,6 +282,25 @@ func configureVolcengine(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
 	// is for every other Ark model.
 	cfg.Models = []ai.Model{vendor.Model(modelID)}
 	return nil
+}
+
+// yoloAutoVendor builds the catalog row Yolo-Auto has none of: an
+// OpenAI-compatible endpoint that is in no catalog, so San states what a row
+// would have said — the protocol, the host, and the variable the credential
+// comes from. It names no models: the endpoint publishes its own list at
+// /v1/models and that listing is the catalog, while yolo and yolo-small are
+// the two aliases that stay put, which is why nothing here has to be revised
+// when the lineup behind them changes.
+func yoloAutoVendor() (catalog.Vendor, error) {
+	return catalog.Vendor{
+		ID:          string(YoloAuto),
+		DisplayName: "Yolo-Auto",
+		API:         ai.APIOpenAIChat,
+		BaseURL:     "https://yolo-auto.com/v1",
+		BaseURLEnv:  "YOLO_AUTO_BASE_URL",
+		KeyEnv:      []string{"YOLO_AUTO_API_KEY"},
+		Compat:      ai.OpenAIChatCompat{},
+	}, nil
 }
 
 // customVendor builds a catalog row for the OpenAI-compatible endpoint the

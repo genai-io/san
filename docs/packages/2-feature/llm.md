@@ -8,7 +8,8 @@ layer: feature
 Provider registry, model store, and active-connection handle for every LLM
 backend (Anthropic, OpenAI, GitHub Copilot, Google, Moonshot, Alibaba, MiniMax,
 Z.ai/GLM, DeepSeek, Ollama, SenseNova, Volcengine Ark, Xiaomi MiMo, Agnes-AI,
-plus a user-defined OpenAI-compatible endpoint). Reaching them is one adapter,
+Yolo-Auto, plus a user-defined OpenAI-compatible endpoint). Reaching them is
+one adapter,
 the `vendor_*` files, over
 [`genai-io/sdk-go`](https://github.com/genai-io/sdk-go); adding a vendor is a
 row in `vendor_table.go`, not a package.

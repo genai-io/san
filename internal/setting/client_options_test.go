@@ -15,6 +15,7 @@ func TestDefaultModel(t *testing.T) {
 		{name: "openai", provider: "openai", want: "gpt-4o"},
 		{name: "ollama", provider: "ollama", want: "llama4"},
 		{name: "mimo", provider: "mimo", want: "xiaomi/mimo-v2.5-pro"},
+		{name: "yolo-auto", provider: "yolo-auto", want: "yolo"},
 		{name: "volcengine from env", provider: "volcengine", envModel: "doubao-pro-256k", want: "doubao-pro-256k"},
 		{name: "volcengine without env", provider: "volcengine", want: ""},
 		{name: "unknown provider", provider: "custom", want: ""},

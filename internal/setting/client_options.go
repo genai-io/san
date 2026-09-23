@@ -44,6 +44,10 @@ func DefaultModel(providerName string, authMethod string) string {
 		// VOLCENGINE_MODEL. Empty means the caller must require an explicit
 		// selection.
 		return secret.Resolve("VOLCENGINE_MODEL")
+	case "yolo-auto":
+		// Yolo-Auto's lineup is its own /v1/models listing; the general alias
+		// is the one default that keeps working as that listing changes.
+		return "yolo"
 	default:
 		// Unknown provider (e.g. a user-defined custom provider) — there is no
 		// sensible default; the caller must require an explicit selection.

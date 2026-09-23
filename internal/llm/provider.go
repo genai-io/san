@@ -31,6 +31,7 @@ const (
 	Ollama     ProviderID = "ollama"
 	Mimo       ProviderID = "mimo"
 	Volcengine ProviderID = "volcengine"
+	YoloAuto   ProviderID = "yolo-auto"
 )
 
 // AuthMethod is how a provider is reached. The same models can be served

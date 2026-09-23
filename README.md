@@ -154,6 +154,7 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 | **Volcengine** (Ark) | `VOLCENGINE_API_KEY` |
 | **Ollama** (local) | `OLLAMA_BASE_URL` (default `http://localhost:11434/v1`) |
 | **Agnes-AI** | `AGNESAI_API_KEY` |
+| **Yolo-Auto** | `YOLO_AUTO_API_KEY` |
 | **Exa** search | _none_ (default) |
 | **Tavily** search | `TAVILY_API_KEY` |
 | **Brave** search | `BRAVE_API_KEY` |
