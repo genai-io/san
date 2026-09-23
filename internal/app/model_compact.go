@@ -102,11 +102,11 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	// Compaction summarized away the system-reminder content that rode on the
 	// old user messages. Re-read memory from disk (a provider renders from the
 	// cached instructions, so an edited memory file would otherwise re-inject
-	// stale content), drop now-irrelevant one-time notices, and re-emit the
-	// providers so skills/memory reattach to the next user turn.
+	// stale content), drop now-irrelevant one-time notices, and mark the
+	// skills/memory reminders unsent so they reattach to the next user turn.
 	m.refreshMemoryContext(m.env.CWD, "post_compact")
 	m.services.Reminder.DiscardPendingNotices()
-	m.services.Reminder.RequeueSystemReminders()
+	m.systemRemindersSent = false
 
 	// Manual /compact restores recently-accessed files as a one-time notice
 	// so they ride on the next user turn. Enqueued AFTER DiscardPendingNotices

@@ -152,6 +152,13 @@ type model struct {
 	// or explicitly by ResetAgentSession when the conversation itself changes.
 	agentRestartMessages []core.Message
 
+	// systemRemindersSent reports whether the current conversation already
+	// carries the skills/memory reminders. The next user message attaches them
+	// while it is false; replacing the conversation resets it.
+	// TODO: derive this from the chain the model sees instead of caching it,
+	// once that chain has a single source (live agent, restart snapshot, conv).
+	systemRemindersSent bool
+
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState

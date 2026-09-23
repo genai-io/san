@@ -7,8 +7,8 @@ layer: feature
 
 Manages `<system-reminder>` content the harness attaches to user
 messages. Reminders are cache-friendly: they live in immutable
-conversation history once attached and re-inject on `SessionStart` /
-`PostCompact` without invalidating the system-prompt cache prefix.
+conversation history once attached and re-inject once per conversation
+(new session, `/clear`, compaction) without invalidating the system-prompt cache prefix.
 
 ## Purpose
 
@@ -88,7 +88,7 @@ A handful of nits:
   queue. Mutex-protected.
 - `RequeueSystemReminders` is idempotent across repeated calls — it drops
   prior pending entries from the same provider before re-emitting, so
-  `SessionStart` → `PostCompact` → `/skills` toggle in close succession
+  first message → `PostCompact` → `/skills` toggle in close succession
   produces one emission per provider rather than three.
 - One-time notices (`Enqueue`) persist independently of provider re-emits.
 - `Wrap` adds the `<system-reminder source="...">…</system-reminder>`
@@ -102,11 +102,17 @@ A handful of nits:
   `DrainPending()` and wraps the bodies into the outgoing user message.
 - Per-event: skill toggles / memory updates call `RequeueSystemReminders`
   to refresh provider-emitted reminders.
+- Once per conversation: the harness keeps a `systemRemindersSent` flag.
+  While it is false, `attachPendingReminders` re-emits the providers onto the
+  outgoing user message and sets it. `/clear` and compaction reset it (the
+  conversation no longer carries them); a resume sets it by scanning the
+  restored transcript with `HasSystemReminder`. `/clear` and `/resume` also
+  discard pending notices, which belong to the old conversation.
 - On compaction: reminder blocks are **skipped, not summarized**.
   `core.BuildCompactionText` peels trailing `<system-reminder>…</system-reminder>`
   blocks from user content before the summarizer runs, then the harness calls
-  `DiscardPendingNotices` + `RequeueSystemReminders` so fresh provider state
-  reattaches to the next user turn. All providers (skills, memory-user,
+  `DiscardPendingNotices` and resets `systemRemindersSent` so fresh provider
+  state reattaches to the next user turn. All providers (skills, memory-user,
   memory-project) and one-time notices share this lifecycle. On PostCompact
   the harness re-reads memory from disk before re-emitting, so an edited
   memory file re-injects its latest content. See

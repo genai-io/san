@@ -72,7 +72,7 @@ Both entry points run the same core steps:
     │
     ├─▶ refresh   re-read memory from disk (refreshMemoryContext)
     │
-    └─▶ reminders DiscardPendingNotices() + RequeueSystemReminders()
+    └─▶ reminders DiscardPendingNotices() + systemRemindersSent = false
                   → skills/memory reattach on the next user message
 ```
 
@@ -112,8 +112,8 @@ MANUAL  (/compact [focus], app layer)
 
 - Summarize with the same compaction prompt over reminder-stripped text.
 - Replace the chain with one `Previous context:` user message.
-- Re-read memory from disk, then `DiscardPendingNotices` + `RequeueSystemReminders`
-  so the next user turn carries fresh skills/memory.
+- Re-read memory from disk, then `DiscardPendingNotices` and mark the
+  skills/memory reminders unsent so the next user turn carries them fresh.
 - Fire the `PostCompact` hook.
 - The system prompt is reused from cache (neither path rebuilds it).
 
