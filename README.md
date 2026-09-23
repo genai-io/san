@@ -36,8 +36,6 @@ Three properties, and San refuses to trade any one of them for the others.
 
 **Open** — plug in models, skills, subagents, and MCP servers; write your own system prompt, autopilot goals, and self-learning strategy; replay any run in `san inspector`.
 
-**Minimal overhead, not a minimal agent.**
-
 <sub>*The name — **San**, written **三** ("three") and drawn **☰**. From the Dao De Jing, 三生万物 — "three begets the ten-thousand things": one runtime that becomes any agent, running a three-step loop (reason → act → observe). The command stays `san`.*</sub>
 
 ## Open architecture
@@ -231,7 +229,7 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 ## Related Projects
 
 - [Claude Code](https://claude.ai/code) — Anthropic's AI coding assistant
-- [Aider](https://github.com/paul-gauthier/aider) — AI pair programming in terminal
+- [Aider](https://github.com/Aider-AI/aider) — AI pair programming in terminal
 - [Continue](https://github.com/continuedev/continue) — Open-source AI code assistant
 
 ## Community
