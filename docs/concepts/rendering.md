@@ -120,7 +120,7 @@ RenderMessageAt ─┤
 Reasoning is gated by the `thinkingDisplay` preference
 ([configuration.md](../reference/configuration.md)), and the gate sits on **both**
 surfaces: `RenderAssistantMessage` for the live tail and `FlushStreamingBlocks`
-for the scrollback commit. `full` draws the body; `collapsed` (the default) draws
+for the scrollback commit. `full` (the default) draws the body; `collapsed` draws
 the body nowhere and commits one `✦ Thought for 3.2s` line instead; `hidden`
 draws nothing. In the suppressed modes the flush still advances
 `ThinkingCommittedLen` / `ThinkingEmitted` past the bytes it did not print, so a

@@ -30,17 +30,20 @@ const (
 	// ThinkingDisplayFull draws the reasoning body, live and in scrollback.
 	ThinkingDisplayFull = "full"
 	// ThinkingDisplayCollapsed draws no reasoning body anywhere; the live tail
-	// shows a "✦ Thinking…" indicator and the settled turn a single
-	// "✦ Thought for 3.2s" line. The default: a reasoning model's transcript is
-	// mostly thinking, and committed scrollback is permanent (ADR-0002), so the
-	// noise cannot be cleaned up after the fact.
+	// shows a "Thinking…" indicator and the settled turn a single
+	// "✦ Thought for 3.2s" line. Opt in when a reasoning model's transcript is
+	// mostly thinking and it buries the operations and the answer — committed
+	// scrollback is permanent (ADR-0002), so the noise cannot be cleaned up
+	// after the fact.
 	ThinkingDisplayCollapsed = "collapsed"
 	// ThinkingDisplayHidden draws nothing at all, not even the duration line.
 	ThinkingDisplayHidden = "hidden"
 )
 
 // DefaultThinkingDisplay is what an unset or unrecognized value resolves to.
-const DefaultThinkingDisplay = ThinkingDisplayCollapsed
+// Full, so the preference is opt-in: a reasoning model's answer is not made
+// less legible by default for users who never asked for it.
+const DefaultThinkingDisplay = ThinkingDisplayFull
 
 // DefaultResumeTailMessages is how many trailing messages a resumed session
 // replays into native scrollback when resumeTailMessages is unset.

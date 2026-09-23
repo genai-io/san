@@ -45,13 +45,19 @@ provider is asked to reason about (that is thinking effort, `/think`).
 
 | Value | Live tail | Scrollback |
 | --- | --- | --- |
-| `full` | the reasoning body | the reasoning body |
-| `collapsed` (default) | a `✦ Thinking…` indicator | one `✦ Thought for 3.2s` line |
+| `full` (default) | the reasoning body | the reasoning body |
+| `collapsed` | a `Thinking…` indicator | one `Thought for 3.2s` line |
 | `hidden` | nothing | nothing |
 
-An unset or unrecognized value resolves to `collapsed`. Reasoning that is
-suppressed is never drawn in either surface — the value is read by both the live
-view and the scrollback flush, so there is no path that leaks the body.
+An unset or unrecognized value resolves to `full`, so the preference is opt-in:
+nothing about an existing transcript changes until you ask for it. Set
+`collapsed` when a reasoning model's thinking buries the operations and the
+answer you actually wanted — that is the whole point of the setting, since
+committed scrollback is permanent and the noise cannot be cleaned up later.
+
+Reasoning that is suppressed is never drawn in either surface: the value is read
+by both the live view and the scrollback flush, so there is no path that leaks
+the body.
 
 Because committed scrollback is immutable ([ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)),
 changing this takes effect from that point on: reasoning already on screen stays

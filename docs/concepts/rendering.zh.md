@@ -113,7 +113,7 @@ RenderMessageAt ─┤
 思考过程由 `thinkingDisplay` 偏好决定
 （[configuration.md](../reference/configuration.md)），而且这个开关落在**两个**
 面上：实时视图的 `RenderAssistantMessage`，以及提交 scrollback 的
-`FlushStreamingBlocks`。`full` 画正文；`collapsed`（默认）两处都不画正文，
+`FlushStreamingBlocks`。`full`（默认）画正文；`collapsed` 两处都不画正文，
 只提交一行 `✦ Thought for 3.2s`；`hidden` 什么都不画。在被抑制的模式下，
 flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印的字节，
 这样之后整段重建时不会再把它从未展示过的正文捞回来。

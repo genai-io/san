@@ -193,10 +193,11 @@ func TestConfigSelectorTabSwitchesPanels(t *testing.T) {
 	}
 }
 
-// The THINKING group is the reasoning-display preference. It defaults to
-// collapsed — an unset value must not read as "full", or a fresh install would
-// keep drowning the transcript in reasoning.
-func TestAppearancePanelThinkingGroupDefaultsToCollapsed(t *testing.T) {
+// The THINKING group is the reasoning-display preference. It defaults to full,
+// so the preference is opt-in and an existing user's transcript is unchanged
+// until they ask for it — an unset value must not silently start hiding
+// reasoning.
+func TestAppearancePanelThinkingGroupDefaultsToFull(t *testing.T) {
 	var rows []appearanceOption
 	for _, opt := range appearanceOptions() {
 		if opt.kind == kindThinking {
@@ -226,8 +227,8 @@ func TestAppearancePanelThinkingGroupDefaultsToCollapsed(t *testing.T) {
 		t.Fatalf("baseline = %q, want the default %q",
 			p.thinkingBaseline, setting.DefaultThinkingDisplay)
 	}
-	if p.thinkingBaseline != setting.ThinkingDisplayCollapsed {
-		t.Fatalf("the default must be collapsed, got %q", p.thinkingBaseline)
+	if p.thinkingBaseline != setting.ThinkingDisplayFull {
+		t.Fatalf("the default must be full, got %q", p.thinkingBaseline)
 	}
 }
 
