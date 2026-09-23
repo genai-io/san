@@ -18,9 +18,10 @@ import (
 )
 
 // releasePublicKeyBase64 is the public half of the release signing key, as
-// printed by `releasekey gen`. Empty until a maintainer sets one up; until
-// then every verification fails and the release workflow refuses to publish.
-const releasePublicKeyBase64 = ""
+// printed by `releasekey gen`. The private half is the
+// SAN_RELEASE_SIGNING_KEY repository secret; setup and rotation:
+// docs/operations/release.md.
+const releasePublicKeyBase64 = "8dwF2Ni8m7daSmFYgO4sBLYRA4USOQbifUaJVZXD0l8="
 
 // ReleasePublicKey is the release signing key built into this binary.
 func ReleasePublicKey() ed25519.PublicKey {
