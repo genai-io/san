@@ -213,9 +213,6 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
 		m.Stream.Active = false
-		// A message that reasoned and then produced no text still has to close
-		// its reasoning timer, or its collapsed summary shows no duration.
-		m.FinalizeThinking()
 		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)
 		}
@@ -235,9 +232,6 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	}
 	rt.OnInference(resp)
 	m.Compact.WarningSuppressed = false
-	// A message that reasons and then calls a tool never streams text, so this
-	// is where its reasoning timer closes.
-	m.FinalizeThinking()
 	// No Stream.Active guard: SetLastThinkingSignature / SetLastToolCalls
 	// already bail on non-assistant tails, which is the only way a late
 	// PostInfer could corrupt conv state (after cancelPendingToolCalls

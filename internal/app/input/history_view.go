@@ -11,51 +11,52 @@
 package input
 
 import (
-	"strconv"
+	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// HistoryViewer shows a scrollable block of pre-rendered transcript lines.
+// HistoryViewer shows a scrollable block of pre-rendered transcript lines. The
+// scrolling itself — offset, clamping at both ends, padding the body to a
+// stable height — is bubbles' viewport; this type owns only the frame around it.
 type HistoryViewer struct {
 	active bool
 	width  int
-	height int
-
-	title string
-	lines []string
-	top   int // index of the first visible line
+	title  string
+	body   viewport.Model
 }
 
-// Enter opens the viewer on the given lines. An empty body still opens: the
-// overlay then says so, which is a better answer than a key that appears to do
-// nothing.
+// Enter opens the viewer on the given lines, scrolled to the top.
 func (h *HistoryViewer) Enter(title string, lines []string, width, height int) {
 	h.active = true
-	h.width = width
-	h.height = height
 	h.title = title
-	h.lines = lines
-	h.top = 0
+	h.body = viewport.New()
+	h.body.FillHeight = true
+	h.body.SetContentLines(lines)
+	h.Resize(width, height)
 }
 
 func (h *HistoryViewer) IsActive() bool { return h.active }
 
+// cancel closes the viewer and releases the rendered lines, which can be the
+// bulk of a long transcript.
 func (h *HistoryViewer) cancel() {
 	h.active = false
-	h.lines = nil
+	h.body = viewport.Model{}
 }
 
 // Resize implements resizableOverlay: the frame caches the terminal size it was
 // opened with, so a resize has to refresh it or the stale-width frame hard-wraps
-// and leaves fragments behind.
+// and leaves fragments behind. The viewport re-clamps its offset to the new
+// body height itself.
 func (h *HistoryViewer) Resize(width, height int) {
 	h.width = width
-	h.height = height
-	h.clampTop()
+	h.body.SetWidth(width)
+	h.body.SetHeight(max(1, height-historyChromeRows-historyFrameMargin))
 }
 
 func (h *HistoryViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
@@ -63,19 +64,18 @@ func (h *HistoryViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	case "esc", "q":
 		h.cancel()
 	case "up", "k":
-		h.top--
+		h.body.ScrollUp(1)
 	case "down", "j":
-		h.top++
+		h.body.ScrollDown(1)
 	case "pgup", "ctrl+b":
-		h.top -= h.bodyRows()
+		h.body.PageUp()
 	case "pgdown", "ctrl+f", " ":
-		h.top += h.bodyRows()
+		h.body.PageDown()
 	case "home", "g":
-		h.top = 0
+		h.body.GotoTop()
 	case "end", "G":
-		h.top = len(h.lines)
+		h.body.GotoBottom()
 	}
-	h.clampTop()
 	return nil
 }
 
@@ -87,51 +87,19 @@ const historyChromeRows = 5
 // height-2 that every other fullscreen selector's Wrap centers into.
 const historyFrameMargin = 2
 
-// bodyRows is how many lines fit between the header and the hint.
-func (h *HistoryViewer) bodyRows() int {
-	return max(1, h.height-historyChromeRows-historyFrameMargin)
-}
-
-// maxTop is the largest offset that still fills the body — scrolling past it
-// would leave blank rows under the last line.
-func (h *HistoryViewer) maxTop() int { return max(0, len(h.lines)-h.bodyRows()) }
-
-func (h *HistoryViewer) clampTop() {
-	h.top = min(max(h.top, 0), h.maxTop())
-}
-
-// visible returns the body slice for the current offset, padded to a full body
-// so the frame keeps a stable height while scrolling.
-func (h *HistoryViewer) visible() []string {
-	rows := h.bodyRows()
-	out := make([]string, 0, rows)
-	for i := h.top; i < len(h.lines) && len(out) < rows; i++ {
-		out = append(out, h.lines[i])
-	}
-	for len(out) < rows {
-		out = append(out, "")
-	}
-	return out
-}
-
 func (h *HistoryViewer) Render() string {
 	if !h.active {
 		return ""
 	}
-	panel := kit.Panel{Width: h.width, Height: h.height}
-	dim := kit.DimStyle()
-
-	var sb strings.Builder
-	sb.WriteString(panel.SeparatorLine())
-	sb.WriteString("\n")
-	sb.WriteString(kit.SelectorTitleStyle().Render(h.title))
-	sb.WriteString("\n\n")
-	sb.WriteString(strings.Join(h.visible(), "\n"))
-	sb.WriteString("\n")
-	sb.WriteString(panel.SeparatorLine())
-	sb.WriteString("\n")
-	sb.WriteString(dim.Render(h.hint()))
-	return sb.String()
+	separator := kit.Panel{Width: h.width}.SeparatorLine()
+	return strings.Join([]string{
+		separator,
+		kit.SelectorTitleStyle().Render(h.title),
+		"",
+		h.body.View(),
+		separator,
+		h.hint(),
+	}, "\n")
 }
 
 // hint states the keys plus where the view sits in the transcript. The position
@@ -140,13 +108,10 @@ func (h *HistoryViewer) Render() string {
 // position the reader cannot tell the block is bounded.
 func (h *HistoryViewer) hint() string {
 	parts := []string{"↑/↓ scroll", "pgup/pgdn page", "home/end", "esc close"}
-	if len(h.lines) > h.bodyRows() {
-		parts = append(parts, positionLabel(h.top+1, min(h.top+h.bodyRows(), len(h.lines)), len(h.lines)))
+	if total := h.body.TotalLineCount(); total > h.body.Height() {
+		first := h.body.YOffset() + 1
+		last := min(h.body.YOffset()+h.body.Height(), total)
+		parts = append(parts, fmt.Sprintf("%d–%d of %d", first, last, total))
 	}
-	return strings.Join(parts, " · ")
-}
-
-// positionLabel renders "12–34 of 512" for the scroll hint.
-func positionLabel(from, to, total int) string {
-	return strconv.Itoa(from) + "–" + strconv.Itoa(to) + " of " + strconv.Itoa(total)
+	return kit.HintLine(parts...)
 }

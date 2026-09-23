@@ -85,15 +85,13 @@ func TestResumeWindowNeverOpensOnAToolResult(t *testing.T) {
 
 func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
-	m.env.ResumeTailMessages = 1 // 9-1 = 8 is a tool result; snaps back to 7
-
-	m.applyResumeWindow()
+	m.applyResumeWindow(1) // 9-1 = 8 is a tool result; snaps back to 7
 
 	if m.conv.CommittedCount != 7 {
 		t.Fatalf("CommittedCount = %d, want 7 (the snapped window start)", m.conv.CommittedCount)
 	}
-	if m.conv.ElidedUpTo != 7 {
-		t.Fatalf("ElidedUpTo = %d, want 7", m.conv.ElidedUpTo)
+	if m.conv.ElidedCount != 7 {
+		t.Fatalf("ElidedCount = %d, want 7", m.conv.ElidedCount)
 	}
 	if !m.conv.ResumeNoticePending {
 		t.Fatal("the elided messages must be announced")
@@ -106,9 +104,7 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 // A window that skips nothing must not announce anything.
 func TestApplyResumeWindowStaysSilentWhenNothingIsElided(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
-	m.env.ResumeTailMessages = 99
-
-	m.applyResumeWindow()
+	m.applyResumeWindow(99)
 
 	if m.conv.CommittedCount != 0 {
 		t.Fatalf("CommittedCount = %d, want 0", m.conv.CommittedCount)
@@ -119,12 +115,11 @@ func TestApplyResumeWindowStaysSilentWhenNothingIsElided(t *testing.T) {
 }
 
 // The replay commits only the window, and opens it with the count it skipped —
-// once. ElidedUpTo has to survive the notice being consumed, because /history
+// once. ElidedCount has to survive the notice being consumed, because /history
 // reads it for the rest of the session.
 func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
-	m.env.ResumeTailMessages = 1 // window = [assistant c, result c], 7 elided
-	m.applyResumeWindow()
+	m.applyResumeWindow(1) // window = [assistant c, result c], 7 elided
 
 	if cmds := m.commitAllMessages(); len(cmds) == 0 {
 		t.Fatal("expected a commit payload for the replay window")
@@ -144,9 +139,9 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 			t.Fatalf("message %q is outside the window but was printed: %q", old, payload)
 		}
 	}
-	if m.conv.ElidedUpTo != 7 {
-		t.Fatalf("ElidedUpTo = %d after the replay, want 7 — /history reads it later",
-			m.conv.ElidedUpTo)
+	if m.conv.ElidedCount != 7 {
+		t.Fatalf("ElidedCount = %d after the replay, want 7 — /history reads it later",
+			m.conv.ElidedCount)
 	}
 
 	// A second commit (the next turn ending) must not repeat the notice.
@@ -164,14 +159,13 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	}
 }
 
-// /history reads the elided prefix through ElidedUpTo, which indexes into
+// /history reads the elided prefix through ElidedCount, which indexes into
 // Messages. Anything that shortens the transcript must not turn the viewer into
 // a slice panic, and an empty prefix must report nothing to show rather than
 // opening an empty frame.
 func TestRenderHistoryOfTheElidedPrefix(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
-	m.env.ResumeTailMessages = 1
-	m.applyResumeWindow()
+	m.applyResumeWindow(1)
 
 	title, lines := m.renderHistory()
 	if len(lines) == 0 {

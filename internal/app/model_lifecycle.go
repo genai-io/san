@@ -96,7 +96,6 @@ func applyStartupSettings(environment *env, settings *setting.Data, cwd string, 
 	hookEngine.SetPermissionMode(environment.OperationModeName())
 	environment.ShowContextBar = settings.ShowContextBar()
 	environment.ThinkingDisplay = settings.ThinkingDisplayMode()
-	environment.ResumeTailMessages = settings.ResumeTail()
 	environment.AutoPilot = settings.AutoPilot.Clone()
 }
 

@@ -173,7 +173,7 @@ func TestCollapsedThinkingIsNotResurrectedByTheTurnEndCommit(t *testing.T) {
 	if strings.Contains(payload, reasoningSentinel) {
 		t.Fatalf("the turn-end commit rendered suppressed reasoning: %q", payload)
 	}
-	if !strings.Contains(ansi.Strip(payload), "Thought for 2s") {
+	if !strings.Contains(ansi.Strip(payload), "Thought for 2.0s") {
 		t.Fatalf("the turn-end commit should carry the duration line: %q", payload)
 	}
 }

@@ -16,8 +16,6 @@ func numberedLines(n int) []string {
 	return lines
 }
 
-// Opening on an empty body is a deliberate no-op rather than an empty frame:
-// the command that opens it reports "nothing to show" instead.
 func TestHistoryViewerEnterAndCancel(t *testing.T) {
 	var h HistoryViewer
 	if h.IsActive() {
@@ -31,28 +29,8 @@ func TestHistoryViewerEnterAndCancel(t *testing.T) {
 	if h.IsActive() {
 		t.Fatal("esc should close the viewer")
 	}
-	if h.lines != nil {
+	if h.body.TotalLineCount() != 0 {
 		t.Fatal("closing should release the rendered lines")
-	}
-}
-
-// The body fills its rows exactly, so the frame height does not wobble as the
-// reader scrolls: rows the content does not cover are blank, not missing.
-func TestHistoryViewerFillsTheBody(t *testing.T) {
-	var h HistoryViewer
-	h.Enter("t", []string{"a", "b"}, 80, 24)
-
-	body := h.visible()
-	if len(body) != h.bodyRows() {
-		t.Fatalf("visible rows = %d, want a full body of %d", len(body), h.bodyRows())
-	}
-	if body[0] != "a" || body[1] != "b" {
-		t.Fatalf("body should lead with the content, got %q", body[:2])
-	}
-	for i := 2; i < len(body); i++ {
-		if body[i] != "" {
-			t.Fatalf("row %d should be blank padding, got %q", i, body[i])
-		}
 	}
 }
 
@@ -64,23 +42,22 @@ func TestHistoryViewerClampsScroll(t *testing.T) {
 	h.Enter("t", lines, 80, 24)
 
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyUp})
-	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyHome})
-	if h.top != 0 {
-		t.Fatalf("top = %d, want 0", h.top)
+	if !h.body.AtTop() {
+		t.Fatalf("scrolling up from the top must stay there, offset %d", h.body.YOffset())
 	}
 
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnd})
-	if h.top != h.maxTop() {
-		t.Fatalf("end should land on maxTop %d, got %d", h.maxTop(), h.top)
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyPgDown})
+	if !h.body.AtBottom() || h.body.PastBottom() {
+		t.Fatalf("paging past the end must clamp to the last page, offset %d", h.body.YOffset())
 	}
-	body := h.visible()
-	if body[len(body)-1] != lines[len(lines)-1] {
-		t.Fatalf("the last line should be visible at the bottom, got %q", body[len(body)-1])
+	if !strings.Contains(h.Render(), lines[len(lines)-1]) {
+		t.Fatal("the last line should be visible at the bottom")
 	}
 
-	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyPgDown})
-	if h.top != h.maxTop() {
-		t.Fatalf("paging past the end must clamp to maxTop, got %d", h.top)
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyHome})
+	if !h.body.AtTop() {
+		t.Fatalf("home should return to the top, offset %d", h.body.YOffset())
 	}
 }
 
@@ -89,9 +66,6 @@ func TestHistoryViewerClampsScroll(t *testing.T) {
 func TestHistoryViewerShortBodyHasNoScrollRange(t *testing.T) {
 	var h HistoryViewer
 	h.Enter("t", []string{"only"}, 80, 24)
-	if h.maxTop() != 0 {
-		t.Fatalf("maxTop = %d, want 0 for a body that fits", h.maxTop())
-	}
 	if strings.Contains(h.hint(), " of ") {
 		t.Fatalf("a body that fits should not report a position: %q", h.hint())
 	}
@@ -103,7 +77,7 @@ func TestHistoryViewerShortBodyHasNoScrollRange(t *testing.T) {
 func TestHistoryViewerReportsPositionWhenScrollable(t *testing.T) {
 	var h HistoryViewer
 	h.Enter("t", numberedLines(200), 80, 24)
-	if !strings.Contains(h.hint(), " of 200") {
+	if !strings.Contains(h.hint(), "1–17 of 200") {
 		t.Fatalf("a scrollable body should report its position: %q", h.hint())
 	}
 }
@@ -116,31 +90,28 @@ func TestHistoryViewerResizeReclamps(t *testing.T) {
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnd})
 
 	h.Resize(80, 12)
-	if h.top > h.maxTop() {
-		t.Fatalf("top = %d after shrinking, want <= maxTop %d", h.top, h.maxTop())
+	if h.body.PastBottom() {
+		t.Fatalf("offset %d is past the bottom after shrinking", h.body.YOffset())
 	}
 }
 
-// Render draws only the body rows plus a stable frame, and shows the lines in
-// the window rather than the whole transcript.
+// Render keeps a stable frame — the body is padded to its full height even when
+// the content is short — and shows only the lines in the window.
 func TestHistoryViewerRendersTheWindow(t *testing.T) {
-	var h HistoryViewer
-	h.Enter("History · 500 messages earlier", numberedLines(500), 80, 24)
+	for _, n := range []int{2, 500} {
+		var h HistoryViewer
+		h.Enter("History · earlier", numberedLines(n), 80, 24)
 
-	out := h.Render()
-	rows := strings.Split(out, "\n")
-	if len(rows) != historyChromeRows+h.bodyRows() {
-		t.Fatalf("rendered %d rows, want %d", len(rows), historyChromeRows+h.bodyRows())
-	}
-	if len(rows) != h.height-historyFrameMargin {
-		t.Fatalf("rendered %d rows, want height-%d = %d",
-			len(rows), historyFrameMargin, h.height-historyFrameMargin)
-	}
-	if !strings.Contains(out, "History · 500 messages earlier") {
-		t.Fatalf("the title is missing:\n%s", out)
-	}
-	// The window shows the head of the transcript, not all 500 lines.
-	if !strings.Contains(out, "line-A") || strings.Contains(out, "line-Z") {
-		t.Fatalf("the body should be the visible window only:\n%s", out)
+		out := h.Render()
+		if rows := strings.Count(out, "\n") + 1; rows != 24-historyFrameMargin {
+			t.Fatalf("%d lines: rendered %d rows, want height-%d = %d",
+				n, rows, historyFrameMargin, 24-historyFrameMargin)
+		}
+		if !strings.Contains(out, "History · earlier") {
+			t.Fatalf("the title is missing:\n%s", out)
+		}
+		if !strings.Contains(out, "line-A") || strings.Contains(out, "line-Z") {
+			t.Fatalf("the body should be the visible window only:\n%s", out)
+		}
 	}
 }

@@ -550,18 +550,11 @@ func SaveContextBar(on bool) error {
 }
 
 // SaveThinkingDisplay persists the reasoning-display choice to
-// ~/.san/settings.json. Unlike ContextBar this is a string, so a zero value
-// would be indistinguishable from "unset" and would be dropped by
-// omitempty — callers pass one of the ThinkingDisplay* constants, and an
-// unrecognized value resolves to the default on read (see ThinkingDisplayMode).
+// ~/.san/settings.json, replacing the field. Callers pass one of the
+// ThinkingDisplay* constants; an unrecognized value resolves to the default on
+// read (see ThinkingDisplayMode).
 func SaveThinkingDisplay(mode string) error {
-	if err := NewLoader().SaveToUser(&Data{ThinkingDisplay: mode}); err != nil {
-		return err
-	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
+	return updateSettingsFile(true, func(d *Data) { d.ThinkingDisplay = mode })
 }
 
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable

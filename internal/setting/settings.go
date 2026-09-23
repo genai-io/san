@@ -45,6 +45,14 @@ const (
 // less legible by default for users who never asked for it.
 const DefaultThinkingDisplay = ThinkingDisplayFull
 
+// DrawsThinkingBody reports whether the display mode draws the reasoning body,
+// live and in scrollback. Full does, and so does an unset mode: it keeps the
+// historical behaviour, so a caller that has not been taught the setting cannot
+// silently lose the reasoning.
+func DrawsThinkingBody(mode string) bool {
+	return mode == "" || mode == ThinkingDisplayFull
+}
+
 // DefaultResumeTailMessages is how many trailing messages a resumed session
 // replays into native scrollback when resumeTailMessages is unset.
 const DefaultResumeTailMessages = 20
@@ -427,11 +435,11 @@ func (s *Data) ThinkingDisplayMode() string {
 	}
 }
 
-// ResumeTail is the replay window for a resumed session: how many trailing
+// ResumeTailCount is the replay window for a resumed session: how many trailing
 // messages to print into native scrollback. A non-nil value wins (including 0,
 // which replays the notice only); unset means DefaultResumeTailMessages. A
 // negative value is treated as unset.
-func (s *Data) ResumeTail() int {
+func (s *Data) ResumeTailCount() int {
 	if s == nil || s.ResumeTailMessages == nil || *s.ResumeTailMessages < 0 {
 		return DefaultResumeTailMessages
 	}

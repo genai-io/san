@@ -372,9 +372,6 @@ func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string
 // session, and nothing else once the window has already been printed. When
 // there is nothing to show it says so rather than opening an empty frame.
 func (c *SlashCommandController) handleHistoryCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if c.env.RenderHistory == nil {
-		return "", nil, nil
-	}
 	title, lines := c.env.RenderHistory()
 	if len(lines) == 0 {
 		return "Nothing earlier to show — this session's whole history is on screen.", nil, nil

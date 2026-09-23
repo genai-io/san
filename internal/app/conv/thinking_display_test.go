@@ -110,12 +110,12 @@ func TestRenderAssistantMessageCollapsedSummaryPrintsOnce(t *testing.T) {
 // A message restored from a transcript was never timed, so the duration is left
 // off rather than reported as zero.
 func TestRenderThinkingSummaryOmitsAnUnmeasuredDuration(t *testing.T) {
-	measured := RenderCommittedThinkingSummary(2500 * time.Millisecond)
+	measured := RenderThinkingSummary(2500 * time.Millisecond)
 	if !strings.Contains(stripANSI(measured), "Thought for 2.5s") {
 		t.Fatalf("measured summary = %q", stripANSI(measured))
 	}
 
-	unmeasured := stripANSI(RenderCommittedThinkingSummary(0))
+	unmeasured := stripANSI(RenderThinkingSummary(0))
 	if strings.Contains(unmeasured, "0s") {
 		t.Fatalf("an unmeasured duration must not read as zero: %q", unmeasured)
 	}

@@ -16,7 +16,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -77,11 +76,10 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
-	// thinkingSummary commits the collapsed mode's single "Thought for 3.2s"
-	// line instead of a reasoning body. thinkingSlice is empty in that case:
-	// the body never reaches scrollback in the collapsed and hidden modes.
-	thinkingSummary  bool
-	thinkingDuration time.Duration
+	// thinkingSummary is the collapsed mode's rendered "Thought for 3.2s" line,
+	// committed instead of a reasoning body. thinkingSlice is empty in that
+	// case: the body never reaches scrollback in the collapsed and hidden modes.
+	thinkingSummary string
 }
 
 // flushState is the streaming-block flush subsystem: it renders each completed
@@ -130,14 +128,13 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	// the only proof that reasoning is over: a block boundary alone can fall
 	// mid-thought, and committing a reasoning prefix would strand the rest.
 	reasoningDone := len(msg.Content) > 0
-	thinkingEnd := conv.CompletedBlockBoundary(msg.Thinking)
-	if reasoningDone {
-		thinkingEnd = len(msg.Thinking)
-	}
-
-	var thinkingSlice, contentSlice string
-	thinkingSummary := false
-	if m.reasoningBodyVisible() {
+	var thinkingSlice, contentSlice, thinkingSummary string
+	thinkingEnd := msg.ThinkingCommittedLen
+	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
+		thinkingEnd = conv.CompletedBlockBoundary(msg.Thinking)
+		if reasoningDone {
+			thinkingEnd = len(msg.Thinking)
+		}
 		if thinkingEnd > msg.ThinkingCommittedLen {
 			thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
 		}
@@ -147,15 +144,15 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		// commits one duration line instead — which is why this waits for
 		// reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
-		thinkingSummary = m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed
-	} else {
-		thinkingEnd = msg.ThinkingCommittedLen
+		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
+			thinkingSummary = conv.RenderThinkingSummary(msg.ThinkingDuration)
+		}
 	}
 	contentEnd := conv.CompletedBlockBoundary(msg.Content)
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
-	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && !thinkingSummary {
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && thinkingSummary == "" {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
@@ -172,15 +169,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		width:            m.env.Width,
 		md:               m.flush.mdRenderer(m.env.Width),
 		thinkingSummary:  thinkingSummary,
-		thinkingDuration: msg.ThinkingDuration,
 	})}
-}
-
-// reasoningBodyVisible reports whether the reasoning body may be drawn and
-// committed at all — the app-side twin of conv's AssistantParams helper, which
-// the flush pipeline cannot reach because it works from a snapshot.
-func (m *model) reasoningBodyVisible() bool {
-	return m.env.ThinkingDisplay == "" || m.env.ThinkingDisplay == setting.ThinkingDisplayFull
 }
 
 // renderSnapshotCmd renders the snapshot's completed blocks (glamour, off the UI
@@ -191,11 +180,9 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if snap.thinkingSummary {
-			if b := conv.RenderCommittedThinkingSummary(snap.thinkingDuration); b != "" {
-				blocks = append(blocks, b)
-				thinkingEmitted = true
-			}
+		if snap.thinkingSummary != "" {
+			blocks = append(blocks, snap.thinkingSummary)
+			thinkingEmitted = true
 		} else if snap.thinkingSlice != "" {
 			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
 				blocks = append(blocks, b)
@@ -316,10 +303,10 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	// the payload rather than the live tail because the frame is about to be
 	// emptied of everything this print carries. The frame accounting is
 	// unaffected: the notice never occupied a frame row.
-	if m.conv.ResumeNoticePending && m.conv.ElidedUpTo > 0 {
-		parts = append([]string{resumeElidedNotice(m.conv.ElidedUpTo)}, parts...)
+	if m.conv.ResumeNoticePending {
+		parts = append([]string{resumeElidedNotice(m.conv.ElidedCount)}, parts...)
+		m.conv.ResumeNoticePending = false
 	}
-	m.conv.ResumeNoticePending = false
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}

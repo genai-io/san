@@ -63,10 +63,6 @@ type env struct {
 	// it is never empty. Cached here because the render path — the live tail
 	// and the scrollback flush alike — reads it per message per frame.
 	ThinkingDisplay string
-	// ResumeTailMessages is how many trailing messages a resumed session
-	// replays into native scrollback (setting.Data.ResumeTail). Read once per
-	// resume, not per frame.
-	ResumeTailMessages int
 
 	// ── Permission (mutable — changes per mode cycle) ───────────
 	// Two views of one posture, kept in step by ApplyModePermissions.

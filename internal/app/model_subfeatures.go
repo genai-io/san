@@ -91,7 +91,7 @@ func (m *model) renderHistory() (string, []string) {
 	// Clamped rather than trusted: the bound indexes into Messages, and anything
 	// that shortens the transcript (a /clear, a compaction) must not turn an
 	// open /history into a slice panic.
-	elided := min(m.conv.ElidedUpTo, len(m.conv.Messages))
+	elided := min(m.conv.ElidedCount, len(m.conv.Messages))
 	if elided <= 0 {
 		return "", nil
 	}
@@ -155,7 +155,6 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		SetActivePersona:        m.setActivePersona,
 		OpenPersona:             m.openPersona,
 		DeletePersona:           m.deletePersona,
-		RenderHistory:           m.renderHistory,
 	}
 }
 

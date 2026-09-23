@@ -163,7 +163,7 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
-	m.applyResumeWindow()
+	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeTailCount())
 	m.adoptSession(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 
@@ -197,7 +197,8 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	}
 }
 
-// applyResumeWindow sets CommittedCount to the start of the replay window, so
+// applyResumeWindow sets CommittedCount to the start of the replay window — the
+// last tail messages, per resumeWindowStart — so
 // the deferred first paint commits only the tail of a resumed transcript rather
 // than all of it. Everything downstream follows CommittedCount: renderAndCommit
 // starts its loop there, the live tail renders [CommittedCount:], and
@@ -208,10 +209,10 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 // never printed, which is the point: replaying a long transcript costs a full
 // markdown render per message plus a print round-trip per chunk, and the rows
 // it leaves in native scrollback are permanent (ADR-0002).
-func (m *model) applyResumeWindow() {
-	start := resumeWindowStart(m.conv.Messages, m.env.ResumeTailMessages)
+func (m *model) applyResumeWindow(tail int) {
+	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start
-	m.conv.ElidedUpTo = start
+	m.conv.ElidedCount = start
 	m.conv.ResumeNoticePending = start > 0
 }
 

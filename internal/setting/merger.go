@@ -21,10 +21,10 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.EnabledPlugins = mergeMaps(base.EnabledPlugins, overlay.EnabledPlugins)
 	result.DisabledTools = mergeMaps(base.DisabledTools, overlay.DisabledTools)
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
-	result.AllowBypass = coalesceBool(overlay.AllowBypass, base.AllowBypass)
-	result.ContextBar = coalesceBool(overlay.ContextBar, base.ContextBar)
+	result.AllowBypass = coalescePtr(overlay.AllowBypass, base.AllowBypass)
+	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
-	result.ResumeTailMessages = coalesceIntPtr(overlay.ResumeTailMessages, base.ResumeTailMessages)
+	result.ResumeTailMessages = coalescePtr(overlay.ResumeTailMessages, base.ResumeTailMessages)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)
@@ -46,8 +46,8 @@ func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 		Mission:          coalesce(overlay.Mission, base.Mission),
 		MaxContinuations: coalesceInt(overlay.MaxContinuations, base.MaxContinuations),
 		Steers: SteerSettings{
-			Suggest:    coalesceBool(overlay.Steers.Suggest, base.Steers.Suggest),
-			Permission: coalesceBool(overlay.Steers.Permission, base.Steers.Permission),
+			Suggest:    coalescePtr(overlay.Steers.Suggest, base.Steers.Suggest),
+			Permission: coalescePtr(overlay.Steers.Permission, base.Steers.Permission),
 			BashPrompt: overlay.Steers.BashPrompt || base.Steers.BashPrompt,
 			Skill:      overlay.Steers.Skill || base.Steers.Skill,
 			Question:   overlay.Steers.Question || base.Steers.Question,
@@ -142,17 +142,10 @@ func coalesce(a, b string) string {
 	return b
 }
 
-func coalesceBool(a, b *bool) *bool {
-	if a != nil {
-		return a
-	}
-	return b
-}
-
-// coalesceIntPtr picks the overlay's value when explicitly set. An arrow to an
-// explicit 0 must survive — that is a real choice ("replay nothing"), not an
-// absent value, which is the whole reason these are pointers.
-func coalesceIntPtr(a, b *int) *int {
+// coalescePtr picks the overlay's value when explicitly set. An explicit false
+// or 0 must survive — that is a real choice, not an absent value, which is the
+// whole reason these fields are pointers.
+func coalescePtr[T any](a, b *T) *T {
 	if a != nil {
 		return a
 	}
