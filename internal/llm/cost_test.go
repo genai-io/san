@@ -8,7 +8,7 @@ import (
 func TestEstimateCostDispatchesToRegisteredProvider(t *testing.T) {
 	const fake ProviderID = "test-cost-provider"
 	want := Money{Amount: 1.5, Currency: CurrencyUSD}
-	RegisterCostEstimator(fake, func(modelID string, usage Usage) (Money, bool) {
+	RegisterCostEstimator(fake, AuthAPIKey, func(modelID string, usage Usage) (Money, bool) {
 		if modelID != "m1" {
 			t.Fatalf("modelID = %q, want m1", modelID)
 		}
@@ -18,14 +18,14 @@ func TestEstimateCostDispatchesToRegisteredProvider(t *testing.T) {
 		return want, true
 	})
 
-	got, ok := EstimateCost(fake, "m1", Usage{Input: 10})
+	got, ok := EstimateCost(fake, AuthAPIKey, "m1", Usage{Input: 10})
 	if !ok || got != want {
 		t.Fatalf("EstimateCost = (%+v, %v), want (%+v, true)", got, ok, want)
 	}
 }
 
 func TestEstimateCostUnknownProviderReturnsFalse(t *testing.T) {
-	cost, ok := EstimateCost("totally-unregistered-provider", "m", Usage{})
+	cost, ok := EstimateCost("totally-unregistered-provider", AuthAPIKey, "m", Usage{})
 	if ok || !cost.IsZero() {
 		t.Fatalf("EstimateCost(unknown) = (%+v, %v), want (zero, false)", cost, ok)
 	}

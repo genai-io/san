@@ -99,6 +99,7 @@ san --continue                       # resume the last session
 | Scope | Path | What it holds |
 |---|---|---|
 | User | `~/.san/providers.json` | Provider connections, current model |
+| User | `~/.san/models.json` | Corrections to model windows, prices, reasoning efforts (models.dev shape, keyed by vendor) |
 | User | `~/.san/settings.json` | Permissions, hooks, env, persona, search provider |
 | User | `~/.san/skills/` `~/.san/agents/` `~/.san/commands/` `~/.san/plugins/` | Your personal extensions |
 | Project | `<project>/.san/settings.json` | Per-project overrides |

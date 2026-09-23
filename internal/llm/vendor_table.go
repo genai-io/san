@@ -164,8 +164,10 @@ func registerVendors() {
 	}
 	for _, e := range vendorEntries {
 		Register(e.meta, e.factory())
-		if e.vendorID != "" {
-			RegisterCostEstimator(e.meta.Provider, costEstimator(e.vendorID))
+		// A subscription or a coding plan is a flat fee: pricing its tokens
+		// at the metered rate would invent a bill.
+		if e.vendorID != "" && (e.meta.AuthMethod == AuthAPIKey || e.meta.AuthMethod == AuthVertex) {
+			RegisterCostEstimator(e.meta.Provider, e.meta.AuthMethod, costEstimator(e.vendorID))
 		}
 	}
 	registerAuthenticators()
@@ -266,9 +268,7 @@ func configureVolcengine(vendor catalog.Vendor, cfg *sdkprovider.Config) error {
 	if modelID == "" {
 		return nil
 	}
-	// Through the vendor, so the window is read out of the model ID the way it
-	// is for every other Ark model.
-	cfg.Models = []ai.Model{vendor.Model(modelID)}
+	cfg.Models = []ai.Model{newVendorModels(vendor).model(modelID)}
 	return nil
 }
 
@@ -290,7 +290,6 @@ func customVendor() (catalog.Vendor, error) {
 		API:         ai.APIOpenAIChat,
 		BaseURL:     cfg.BaseURL,
 		KeyEnv:      []string{CustomAPIKeyEnvVar},
-		Input:       []ai.Modality{ai.ModalityText, ai.ModalityImage},
 		Compat:      ai.OpenAIChatCompat{},
 	}, nil
 }
@@ -299,15 +298,16 @@ func customVendor() (catalog.Vendor, error) {
 // host came from the store and the key from the secret store.
 func configureCustom(catalog.Vendor, *sdkprovider.Config) error { return nil }
 
-// costEstimator prices a turn from the vendor's published rate card. A model
-// with no card reports unknown, which San renders as "--" rather than as free.
+// costEstimator prices a turn from the model's rate card in San's data. A
+// model with no card reports unknown, which San renders as "--" rather than as
+// free.
 func costEstimator(vendorID string) CostEstimator {
 	return func(modelID string, usage Usage) (Money, bool) {
 		vendor, ok := catalog.Find(vendorID)
 		if !ok {
 			return Money{}, false
 		}
-		pricing := vendor.Model(modelID).Pricing
+		pricing := newVendorModels(vendor).model(modelID).Pricing
 		if !pricing.Known() {
 			return Money{}, false
 		}

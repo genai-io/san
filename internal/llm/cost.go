@@ -9,22 +9,23 @@ import (
 )
 
 // CostEstimator prices one inference from its token usage, reporting false when
-// the model's pricing is unknown. The vendor table registers one per provider.
+// the model's pricing is unknown. The vendor table registers one per
+// provider/auth-method pair: the same models cost differently per way in.
 type CostEstimator func(modelID string, usage Usage) (Money, bool)
 
-// RegisterCostEstimator records a provider's pricing.
-func RegisterCostEstimator(provider ProviderID, estimate CostEstimator) {
+// RegisterCostEstimator records one provider/auth-method pair's pricing.
+func RegisterCostEstimator(provider ProviderID, authMethod AuthMethod, estimate CostEstimator) {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
-	globalRegistry.costs[provider] = estimate
+	globalRegistry.costs[providerKey(provider, authMethod)] = estimate
 }
 
 // EstimateCost prices one turn, reporting ok=false when the provider has no
 // registered pricing or the model has no published rate — which San renders as
 // "--" rather than as free.
-func EstimateCost(provider ProviderID, modelID string, usage Usage) (Money, bool) {
+func EstimateCost(provider ProviderID, authMethod AuthMethod, modelID string, usage Usage) (Money, bool) {
 	globalRegistry.mu.RLock()
-	estimate, ok := globalRegistry.costs[provider]
+	estimate, ok := globalRegistry.costs[providerKey(provider, authMethod)]
 	globalRegistry.mu.RUnlock()
 
 	if !ok {

@@ -14,6 +14,8 @@
 //	vendor_signin.go       the vendors that authenticate a person, not a service
 //	vendor_credentials.go  those credentials, kept in San's own secret store
 //	vendor_models.go       the two endpoints that answer about their models their own way
+//	vendor_data.go         what the models are: lineups, limits, prices, reasoning efforts
+//	vendor_data_refresh.go keeping that data current from models.dev
 package llm
 
 import (
@@ -36,6 +38,8 @@ type vendorProvider struct {
 	// existing provider reports and the store keys connections by.
 	name   string
 	vendor catalog.Vendor
+	// models says what each model is; the vendor row only how to reach it.
+	models vendorModels
 	// endpoint carries the credential, the host and the live model listing.
 	endpoint *sdkprovider.Provider
 	// turnHeaders are the headers whose value depends on what a turn sends,
@@ -49,9 +53,15 @@ type vendorProvider struct {
 
 // newVendorProvider builds the adapter for one vendor endpoint.
 func newVendorProvider(name string, vendor catalog.Vendor, cfg sdkprovider.Config) *vendorProvider {
+	models := newVendorModels(vendor)
+	if cfg.Models == nil {
+		cfg.Models = models.list()
+	}
+	cfg.Resolve = models.resolve
 	return &vendorProvider{
 		name:        name,
 		vendor:      vendor,
+		models:      models,
 		endpoint:    vendor.Provider(cfg),
 		turnHeaders: turnHeadersFor(vendor.ID),
 		clients:     make(map[string]*ai.Client),
@@ -123,15 +133,14 @@ func clientKey(modelID string, headers map[string]string) string {
 }
 
 // model resolves a model ID the way both inference and the picker must see it:
-// the vendor's own entry first — which is what carries the protocol dialect, the
-// reasoning ladder and the rate card — with anything the endpoint published
-// layered over it.
+// San's data first — the reasoning ladder, the limits, the rate card, on the
+// vendor's protocol — with anything the endpoint published layered over it.
 //
-// Resolving through the vendor rather than through the endpoint's list matters
-// for an ID that is not in either: a model newer than the catalog still
-// inherits its vendor's dialect instead of reaching the endpoint stripped of it.
+// An ID in neither still resolves: a model newer than the data inherits its
+// vendor's protocol and defaults instead of reaching the endpoint stripped of
+// them.
 func (p *vendorProvider) model(modelID string) ai.Model {
-	m := p.vendor.Model(modelID)
+	m := p.models.model(modelID)
 	for _, live := range p.endpoint.Models() {
 		if strings.EqualFold(live.ID, modelID) {
 			return sdkprovider.MergeListing(m, live)
@@ -146,26 +155,24 @@ func (p *vendorProvider) model(modelID string) ai.Model {
 
 // ListModels returns the models this endpoint serves.
 //
-// The endpoint's own listing is fetched once and kept; a vendor with a catalog
-// answers from it when the fetch fails, and one without — an aggregator, a
+// The endpoint's own listing is fetched once and kept; a vendor San has data
+// for answers from it when the fetch fails, and one without — an aggregator, a
 // local Ollama, a user's own endpoint — reports the failure, because there is
 // nothing else to show and a silent empty list reads as a working connection.
 //
-// Every entry is resolved through the vendor rather than taken from the
-// listing as it arrived. Most endpoints publish an ID and nothing else, and a
-// vendor knows how to size a model its own listing says nothing about — from
-// its table, or from the ID itself. Reading the listing raw reports no window
-// for those, which switches off the context percentage and auto-compaction
-// without saying why.
+// Every entry is resolved through San's data rather than taken from the
+// listing as it arrived. Most endpoints publish an ID and nothing else, and
+// reading the listing raw reports no window for those, which switches off the
+// context percentage and auto-compaction without saying why.
 func (p *vendorProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	if err := p.refresh(ctx); err != nil && len(p.vendor.Models) == 0 {
+	if err := p.refresh(ctx); err != nil && len(p.models.lineup.Models) == 0 {
 		return nil, err
 	}
 
 	listed := ai.Available(p.endpoint.Models())
 	out := make([]ModelInfo, 0, len(listed))
 	for _, m := range listed {
-		out = append(out, toModelInfo(sdkprovider.MergeListing(p.vendor.Model(m.ID), m)))
+		out = append(out, toModelInfo(p.models.resolve(m)))
 	}
 	return out, nil
 }

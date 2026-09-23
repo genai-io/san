@@ -168,6 +168,7 @@ san --resume                 # 选择历史会话恢复
 
 ```
 providers.json    # 提供商连接信息与当前模型
+models.json       # 你对模型窗口、价格、推理档位的修正（models.dev 格式，按厂商分组）
 settings.json     # 权限、hooks、env、当前 persona
 skills.json       # 技能状态
 personas/         # persona 包：系统 prompt 片段、技能、设置
