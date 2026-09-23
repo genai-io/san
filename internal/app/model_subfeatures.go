@@ -92,7 +92,7 @@ func (m *model) renderSkippedMessages() (string, []string) {
 	// Clamped rather than trusted: the bound indexes into Messages, and anything
 	// that shortens the transcript (a /clear, a compaction) must not turn an
 	// open /history into a slice panic.
-	skipped := min(m.conv.ResumeSkippedCount, len(m.conv.Messages))
+	skipped := min(m.conv.ReplayStart, len(m.conv.Messages))
 	if skipped <= 0 {
 		return "", nil
 	}

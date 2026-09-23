@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
-	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
@@ -197,23 +197,32 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	}
 }
 
-// applyResumeWindow sets CommittedCount to the start of the replay window — the
-// last tail messages, per resumeWindowStart — so
-// the deferred first paint commits only the tail of a resumed transcript rather
-// than all of it. Everything downstream follows CommittedCount: renderAndCommit
-// starts its loop there, the live tail renders [CommittedCount:], and
-// PrecomputeInlinedResults scans from it.
+// applyResumeWindow sets CommittedCount to the start of the replay window (the
+// last tail messages, per resumeWindowStart), so the deferred first paint
+// commits only the tail of a resumed transcript rather than all of it.
+// Everything downstream follows CommittedCount: renderAndCommit starts its loop
+// there, the live tail renders [CommittedCount:], and PrecomputeInlinedResults
+// scans from it.
 //
-// Nothing is discarded. The messages below the window stay in conv.Messages —
-// they are what /history reads and what the next save persists — they are just
-// never printed, which is the point: replaying a long transcript costs a full
+// When messages are skipped, a notice saying how many opens the window. It is
+// an ordinary notice message, so the normal commit prints it exactly once, and
+// like every notice it is never saved or sent to the model.
+//
+// Nothing is discarded. The skipped messages stay in conv.Messages — they are
+// what /history reads and what the next save persists — they are just never
+// printed, which is the point: replaying a long transcript costs a full
 // markdown render per message plus a print round-trip per chunk, and the rows
 // it leaves in native scrollback are permanent (ADR-0002).
 func (m *model) applyResumeWindow(tail int) {
 	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start
-	m.conv.ResumeSkippedCount = start
-	m.conv.ResumeNoticePending = start > 0
+	m.conv.ReplayStart = start
+	if start > 0 {
+		m.conv.Messages = slices.Insert(m.conv.Messages, start, core.ChatMessage{
+			Role:    core.ChatNotice,
+			Content: fmt.Sprintf("… %s earlier not shown · /history to read them", kit.Plural(start, "message")),
+		})
+	}
 }
 
 // resumeWindowStart returns the first message index a resumed session replays:
@@ -238,16 +247,6 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 		start--
 	}
 	return start
-}
-
-// resumeSkippedNotice is the one line that opens a replayed block when earlier
-// messages were left out, so the transcript does not silently appear to start
-// mid-conversation.
-func resumeSkippedNotice(skipped int) string {
-	return conv.RenderSystemMessage(fmt.Sprintf(
-		"… %s earlier not shown · /history to read them",
-		kit.Plural(skipped, "message"),
-	))
 }
 
 func (m *model) initTaskStorage(sessionID string) {

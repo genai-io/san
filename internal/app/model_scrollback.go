@@ -296,17 +296,8 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		m.conv.CommittedCount = i + 1
 	}
 
-	if len(parts) == 0 && !m.conv.ResumeNoticePending {
+	if len(parts) == 0 {
 		return nil
-	}
-	// A resumed transcript that left earlier messages out opens with how many,
-	// so the block does not read as the start of the conversation. It rides in
-	// the payload rather than the live tail because the frame is about to be
-	// emptied of everything this print carries. The frame accounting is
-	// unaffected: the notice never occupied a frame row.
-	if m.conv.ResumeNoticePending {
-		parts = append([]string{resumeSkippedNotice(m.conv.ResumeSkippedCount)}, parts...)
-		m.conv.ResumeNoticePending = false
 	}
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)

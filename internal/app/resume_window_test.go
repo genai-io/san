@@ -90,14 +90,14 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 	if m.conv.CommittedCount != 7 {
 		t.Fatalf("CommittedCount = %d, want 7 (the snapped window start)", m.conv.CommittedCount)
 	}
-	if m.conv.ResumeSkippedCount != 7 {
-		t.Fatalf("ResumeSkippedCount = %d, want 7", m.conv.ResumeSkippedCount)
+	if m.conv.ReplayStart != 7 {
+		t.Fatalf("ReplayStart = %d, want 7", m.conv.ReplayStart)
 	}
-	if !m.conv.ResumeNoticePending {
-		t.Fatal("the skipped messages must be announced")
+	if notice := m.conv.Messages[7]; notice.Role != core.ChatNotice || !strings.Contains(notice.Content, "7 messages earlier") {
+		t.Fatalf("the window must open with a notice of what it skipped, got %+v", notice)
 	}
-	if len(m.conv.Messages) != 9 {
-		t.Fatalf("the window must not discard messages: kept %d, want 9", len(m.conv.Messages))
+	if len(m.conv.Messages) != 10 {
+		t.Fatalf("the window must not discard messages: have %d, want 9 plus the notice", len(m.conv.Messages))
 	}
 }
 
@@ -109,14 +109,16 @@ func TestApplyResumeWindowStaysSilentWhenNothingIsSkipped(t *testing.T) {
 	if m.conv.CommittedCount != 0 {
 		t.Fatalf("CommittedCount = %d, want 0", m.conv.CommittedCount)
 	}
-	if m.conv.ResumeNoticePending {
-		t.Fatal("a full replay has nothing to announce")
+	for _, msg := range m.conv.Messages {
+		if msg.Role == core.ChatNotice {
+			t.Fatalf("a full replay has nothing to announce, got %q", msg.Content)
+		}
 	}
 }
 
 // The replay commits only the window, and opens it with the count it skipped —
-// once. ResumeSkippedCount has to survive the notice being consumed, because
-// /history reads it for the rest of the session.
+// once. ReplayStart has to stay put after the replay prints, because /history
+// reads it for the rest of the session.
 func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1) // window = [assistant c, result c], 7 skipped
@@ -139,9 +141,9 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 			t.Fatalf("message %q is outside the window but was printed: %q", old, payload)
 		}
 	}
-	if m.conv.ResumeSkippedCount != 7 {
-		t.Fatalf("ResumeSkippedCount = %d after the replay, want 7 — /history reads it later",
-			m.conv.ResumeSkippedCount)
+	if m.conv.ReplayStart != 7 {
+		t.Fatalf("ReplayStart = %d after the replay, want 7 — /history reads it later",
+			m.conv.ReplayStart)
 	}
 
 	// A second commit (the next turn ending) must not repeat the notice.
@@ -159,7 +161,28 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	}
 }
 
-// /history reads the skipped prefix through ResumeSkippedCount, which indexes
+// resumeTailMessages: 0 replays nothing, so the notice is the whole replay. It
+// must still print exactly once, not again with the next message.
+func TestResumeReplayOfNothingPrintsTheNoticeOnce(t *testing.T) {
+	m := commitTestModel(longTranscript()...)
+	m.applyResumeWindow(0)
+
+	if cmds := m.commitAllMessages(); len(cmds) == 0 {
+		t.Fatal("expected the notice to commit")
+	}
+	if payload := ansi.Strip(queuedScrollbackPayload(m)); !strings.Contains(payload, "9 messages earlier not shown") {
+		t.Fatalf("the notice must print: %q", payload)
+	}
+
+	m.flush.pendingPrints = nil
+	m.conv.Messages = append(m.conv.Messages, core.ChatMessage{Role: core.ChatAssistant, Content: "next"})
+	m.commitAllMessages()
+	if again := ansi.Strip(queuedScrollbackPayload(m)); strings.Contains(again, "not shown") {
+		t.Fatalf("the notice must be printed once: %q", again)
+	}
+}
+
+// /history reads the skipped prefix through ReplayStart, which indexes
 // into Messages. Anything that shortens the transcript must not turn the viewer
 // into a slice panic, and an empty prefix must report nothing to show rather
 // than opening an empty frame.

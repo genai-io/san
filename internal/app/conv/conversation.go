@@ -25,16 +25,11 @@ type ConversationModel struct {
 	Modal          ModalState
 	Tool           ToolExecState
 
-	// ResumeSkippedCount is how many leading messages the resume replay
-	// skipped: they stay in Messages but were never printed to native
-	// scrollback, and /history shows them. Non-zero only after a resume. It is
-	// a fixed count, not a cursor: CommittedCount advances past it as the
-	// replay prints, so the two cannot stand in for one another.
-	ResumeSkippedCount int
-	// ResumeNoticePending marks that the skipped messages have not been
-	// announced yet. The replay prints the notice with the block it opens and
-	// clears this. Transient.
-	ResumeNoticePending bool
+	// ReplayStart is the index where a resumed session's replay into native
+	// scrollback began. The messages before it were never printed, and
+	// /history shows them. Zero unless a resume skipped something. Unlike
+	// CommittedCount it stays put while the replay prints.
+	ReplayStart int
 }
 
 func NewConversation() ConversationModel {
@@ -58,8 +53,7 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
-	m.ResumeSkippedCount = 0
-	m.ResumeNoticePending = false
+	m.ReplayStart = 0
 }
 
 func (m *ConversationModel) AddNotice(content string) {
