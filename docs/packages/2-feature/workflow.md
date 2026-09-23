@@ -70,7 +70,16 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   `## id` sections whose leading `key: value` lines are config and whose
   remainder is the prompt; Kahn's algorithm for the cycle check; `{{ref}}`
   references checked against the node's ancestors.
-- `expand.go` — the for_each plan: the first JSON value that decodes in the
+- `expand.go` — bounded back edges and the for_each plan. A labelled edge
+  carrying `xN` is held out of the acyclic graph, its body resolved (the
+  nodes between target and source), and unrolled into one copy per round
+  wired head-to-tail, each round keeping its own escape edges; an edge that
+  leaves one loop enters whatever follows at its first round. `xN` is capped
+  at 10 in `validate`, before unrolling, because parsing runs while the
+  approval dialog is built. Validation runs on the graph as drawn, so
+  `{{review}}` inside `draft` resolves; the cycle check and the unroller
+  work on the forward edges alone. The for_each
+  plan: the first JSON value that decodes in the
   upstream's output (a model writes prose around it), navigated to the named
   field, flattened into `{{item}}` / `{{item.key}}`. A plan larger than
   `max_workers` fails the node rather than losing its tail — which is the
@@ -83,7 +92,13 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
 - `run.go` — one goroutine per node waiting on its upstreams' done
   channels, a semaphore of `MaxParallel` held only while a turn executes
   (never while waiting, so a for_each node cannot deadlock against its own
-  workers). A
+  workers). A node's scope is keyed by `Base`, not `ID`, which is what makes
+  `{{draft}}` inside `review#2` mean round 2's draft. A copy of the node
+  carrying the back edge (`Node.tail`) fails when its answer takes none of
+  its labelled ways out (`unanswered`), read off that round's own edges — on
+  the last round the retry edge is gone, so `FAIL` itself fails, which is
+  exhaustion. Every other node is exempt, a gate in the loop body included:
+  a gate's unmatched answer is a successful stop. A
   node's template scope is the outputs of every ancestor reached through a
   *taken* edge, inherited downstream; an untaken conditional edge hides that
   branch.
@@ -108,6 +123,7 @@ finished results are kept. No state outlives the call.
 internal/workflow/parse_test.go  — the release-check example, ancestor references, every rejection, all problems in one error.
 internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit, scope along taken paths, failure contagion and continue_on_error, cancellation.
 internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
+internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
 internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds, node requests, fan-out labels, saved workflows.
 ```
 

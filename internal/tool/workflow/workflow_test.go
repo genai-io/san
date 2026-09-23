@@ -240,3 +240,52 @@ func runToCompletion(t *testing.T, wt *WorkflowTool, params map[string]any) task
 	}
 	return bg.GetStatus()
 }
+
+const optimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
+
+func TestWorkflowToolStatesLoopRounds(t *testing.T) {
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{})
+	req, err := wt.PreparePermission(context.Background(), map[string]any{"definition": optimizer}, ".")
+	if err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	want := "Run workflow polish: 7 nodes, up to 7 subagent turns, max 4 parallel\ndraft/review: up to 3 rounds"
+	if req.Description != want {
+		t.Fatalf("description = %q,\nwant %q", req.Description, want)
+	}
+}
+
+func TestWorkflowToolRetriesUntilReviewPasses(t *testing.T) {
+	exec := &scriptedExecutor{outputs: map[string]string{
+		"draft#1": "v1", "review#1": "FAIL",
+		"draft#2": "v2", "review#2": "PASS",
+		"ship": "shipped",
+	}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	params := map[string]any{"definition": optimizer}
+	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	info := runToCompletion(t, wt, params)
+
+	if info.Status != task.StatusCompleted {
+		t.Fatalf("status = %s (%s)\n%s", info.Status, info.Error, info.Output)
+	}
+	byNode := map[string]tool.AgentExecRequest{}
+	exec.mu.Lock()
+	for _, r := range exec.reqs {
+		byNode[r.Description] = r
+	}
+	exec.mu.Unlock()
+	if got := byNode["polish/draft#2"].Prompt; got != "Write it. Last review: FAIL" {
+		t.Fatalf("second draft prompt = %q", got)
+	}
+	if got := byNode["polish/ship"].Prompt; got != "Ship v2" {
+		t.Fatalf("ship prompt = %q", got)
+	}
+	if _, ran := byNode["polish/draft#3"]; ran {
+		t.Fatal("round 3 ran although round 2 passed")
+	}
+}

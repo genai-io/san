@@ -116,5 +116,147 @@ func (w *Workflow) Bounds() (turns int, fanOut []string) {
 		turns += n.MaxWorkers
 		fanOut = append(fanOut, fmt.Sprintf("%s: up to %d workers over %s", n.ID, n.MaxWorkers, n.ForEach))
 	}
+	for _, l := range w.Loops {
+		fanOut = append(fanOut, l.String())
+	}
 	return turns, fanOut
+}
+
+// Loop is a bounded back edge: From --> To, taken while From's output equals
+// Label, at most Rounds times. Parsing unrolls it into a plain chain, so the
+// scheduler never learns that a loop existed.
+type Loop struct {
+	From, To string
+	Label    string
+	Rounds   int
+}
+
+// String renders the bound for the approval dialog.
+func (l Loop) String() string {
+	return fmt.Sprintf("%s/%s: up to %d rounds", l.To, l.From, l.Rounds)
+}
+
+// checkLoops resolves each loop's body — the nodes on a forward path from
+// its head to its tail — and rejects the shapes the unroller cannot turn back
+// into a plain DAG.
+func (w *Workflow) checkLoops(forward []Edge) error {
+	down := map[string][]string{}
+	up := map[string][]string{}
+	for _, e := range forward {
+		down[e.From] = append(down[e.From], e.To)
+		up[e.To] = append(up[e.To], e.From)
+	}
+	w.loopOf = map[string]*Loop{}
+	for i := range w.Loops {
+		l := &w.Loops[i]
+		fromHead, toTail := reach(l.To, down), reach(l.From, up)
+		if !fromHead[l.From] {
+			return fmt.Errorf("back edge %s -->|%s x%d| %s: %s is not an ancestor of %s, so there is no loop to bound",
+				l.From, l.Label, l.Rounds, l.To, l.To, l.From)
+		}
+		inBody := func(id string) bool { return fromHead[id] && toTail[id] }
+		for _, n := range w.Nodes {
+			if !inBody(n.ID) {
+				continue
+			}
+			if prev := w.loopOf[n.ID]; prev != nil {
+				return fmt.Errorf("node %s is inside two loops (%s and %s); nested rounds are a cartesian explosion", n.ID, prev, l)
+			}
+			w.loopOf[n.ID] = l
+			if n.ForEach != "" {
+				return fmt.Errorf("node %s has for_each inside the loop %s; dynamic fan-out times iteration is a cartesian explosion", n.ID, l)
+			}
+			// Everything the body reads from outside must enter through the
+			// loop's head, or a later round would re-read a node that ran once.
+			for _, from := range up[n.ID] {
+				if n.ID != l.To && !inBody(from) {
+					return fmt.Errorf("node %s is inside the loop %s but %s --> %s enters the body from outside; route it through %s", n.ID, l, from, n.ID, l.To)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// unroll replaces each loop's body with one copy per round, wired
+// head-to-tail, and gives every round its own escape edges. What is left is
+// an ordinary DAG.
+func (w *Workflow) unroll() {
+	if len(w.Loops) == 0 {
+		return
+	}
+	inBody := w.loopOf
+	instance := func(id string, round int) string {
+		if inBody[id] == nil {
+			return id
+		}
+		return fmt.Sprintf("%s#%d", id, round)
+	}
+
+	var nodes []*Node
+	for _, n := range w.Nodes {
+		l := inBody[n.ID]
+		if l == nil {
+			nodes = append(nodes, n)
+			continue
+		}
+		for round := 1; round <= l.Rounds; round++ {
+			clone := *n
+			clone.ID = instance(n.ID, round)
+			clone.tail = n.ID == l.From
+			nodes = append(nodes, &clone)
+		}
+	}
+
+	var edges []Edge
+	for _, e := range w.Edges {
+		from, to := inBody[e.From], inBody[e.To]
+		rounds := 1
+		if from != nil {
+			rounds = from.Rounds
+		}
+		for round := 1; round <= rounds; round++ {
+			// Within a body, round i stays in round i. Anywhere else — into a
+			// body from outside, out to a plain node, into the head of a
+			// second loop — the target is entered fresh at its round 1, so a
+			// following loop starts from the top however long this one ran.
+			target := 1
+			if to == from {
+				target = round
+			}
+			edges = append(edges, Edge{From: instance(e.From, round), To: instance(e.To, target), Label: e.Label})
+		}
+	}
+	// The back edge becomes the chain: round i's tail feeds round i+1's head.
+	// The last round has nowhere to go on a retry, which is what exhaustion
+	// means; the scheduler fails that round when its answer takes no edge.
+	for _, l := range w.Loops {
+		for round := 1; round < l.Rounds; round++ {
+			edges = append(edges, Edge{From: instance(l.From, round), To: instance(l.To, round+1), Label: l.Label})
+		}
+	}
+
+	w.Nodes, w.Edges, w.byID = nodes, edges, map[string]*Node{}
+	for _, n := range nodes {
+		n.upstream, n.downstream = nil, nil
+		w.byID[n.ID] = n
+	}
+	w.link(edges)
+}
+
+// reach returns every node reachable from start, inclusive.
+func reach(start string, next map[string][]string) map[string]bool {
+	seen := map[string]bool{start: true}
+	queue := []string{start}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		for _, to := range next[id] {
+			if !seen[to] {
+				seen[to] = true
+				queue = append(queue, to)
+			}
+		}
+	}
+	return seen
 }

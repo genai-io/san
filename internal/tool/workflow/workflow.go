@@ -77,6 +77,8 @@ func (t *WorkflowTool) Schema() core.ToolSchema {
 		"`{{id}}` inserts the output of any node upstream on a taken path; `{{input.key}}` inserts a value from inputs.\n\n" +
 		"A node with `for_each: plan.tasks` and `max_workers: N` runs once per item of the JSON array its upstream returned, up to N — `{{item}}` is the item, `{{item.key}}` one of its fields. " +
 		"A plan with more items than max_workers is refused, so state a limit in the planning node's prompt too.\n\n" +
+		"A conditional edge pointing back at an ancestor is a bounded retry and must carry its bound: `review -->|FAIL x3| draft` redoes draft/review up to three times, escaping through `review -->|PASS| ship`. " +
+		"Inside a round, `{{review}}` is the previous round's output, empty on the first; using every round without escaping fails the workflow.\n\n" +
 		"Every node is a fresh subagent — brief each one fully. Validation errors come back before anything runs.")
 
 	return core.ToolSchema{

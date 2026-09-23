@@ -22,15 +22,21 @@ type Workflow struct {
 	Name        string
 	Description string
 	MaxParallel int
-	Nodes       []*Node // in definition order
+	Nodes       []*Node // in definition order, loop bodies unrolled
 	Edges       []Edge
+	Loops       []Loop
 
-	byID map[string]*Node
+	byID   map[string]*Node
+	loopOf map[string]*Loop // body node id → its loop, filled by checkLoops
 }
 
 // Node is one section of the definition: one subagent turn.
 type Node struct {
 	ID string
+	// Base is the id as written in the graph. It differs from ID only for a
+	// loop instance (`draft#2`), and it is what templates name: `{{draft}}`
+	// inside a later round reads the round before it.
+	Base string
 	// Config holds the host-facing keys under the heading (agent, mode,
 	// model). The engine reads none of them.
 	Config map[string]string
@@ -48,6 +54,9 @@ type Node struct {
 	// regexp runs in one place and nothing downstream indexes an unchecked
 	// match.
 	forEachNode, forEachField string
+	// tail marks a copy of the node that carries a back edge — the one node
+	// whose author wrote down every answer it may give. See unanswered.
+	tail bool
 
 	upstream   []Edge
 	downstream []Edge
@@ -73,6 +82,11 @@ func (n *Node) Downstream() []Edge { return n.downstream }
 
 const defaultMaxParallel = 4
 
+// maxRounds caps a back edge's xN. An evaluator-optimizer loop that has not
+// converged in ten rounds will not converge in a hundred; the cap exists so
+// that the worst case stays something a person can be asked to approve.
+const maxRounds = 10
+
 // configKeys are the keys accepted under a node heading. Anything else that
 // looks like `key: value` on the first lines is a typo, not prompt text.
 var configKeys = []string{"agent", "mode", "model", "continue_on_error", "for_each", "max_workers"}
@@ -83,6 +97,7 @@ var (
 	headingRe  = regexp.MustCompile(`^##\s+(\S+)\s*$`)
 	configRe   = regexp.MustCompile(`^([a-z_]+):\s*(.*)$`)
 	forEachRe  = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9_-]*)(?:\.([A-Za-z_][A-Za-z0-9_-]*))?$`)
+	boundRe    = regexp.MustCompile(`^(.*\S)\s+x(\d+)$`)
 	templateRe = regexp.MustCompile(`\{\{\s*([A-Za-z][A-Za-z0-9_.-]*)\s*\}\}`)
 )
 
@@ -107,7 +122,11 @@ func Parse(src string) (*Workflow, error) {
 	if err := w.parseSections(rest); err != nil {
 		return nil, err
 	}
-	return w, w.validate(declared)
+	if err := w.validate(declared); err != nil {
+		return nil, err
+	}
+	w.unroll()
+	return w, nil
 }
 
 func (w *Workflow) parseFrontmatter(src string) (string, error) {
@@ -287,7 +306,7 @@ func (w *Workflow) parseSections(rest string) error {
 			if _, dup := w.byID[m[1]]; dup {
 				return fmt.Errorf("node %s is defined twice", m[1])
 			}
-			cur = &Node{ID: m[1], Config: map[string]string{}}
+			cur = &Node{ID: m[1], Base: m[1], Config: map[string]string{}}
 			continue
 		}
 		if cur != nil {
@@ -375,12 +394,35 @@ func (w *Workflow) validate(declared []string) error {
 		return fmt.Errorf("%s", strings.Join(problems, "\n"))
 	}
 
+	// Linked as drawn, back edges included, so that {{review}} inside draft
+	// resolves. Unrolling relinks the executable graph when there are loops;
+	// without them the graph as drawn is the executable one.
+	w.link(w.Edges)
+
+	// A labelled edge carrying a bound is a declared back edge; it is held
+	// out of the acyclic graph and unrolled later. Everything else must
+	// leave a DAG behind.
+	var forward []Edge
 	for _, e := range w.Edges {
-		w.byID[e.From].downstream = append(w.byID[e.From].downstream, e)
-		w.byID[e.To].upstream = append(w.byID[e.To].upstream, e)
+		if m := boundRe.FindStringSubmatch(e.Label); m != nil {
+			// Checked before unroll allocates anything: parsing runs while
+			// the approval dialog is built. An overflowing number parses as
+			// MaxInt and is refused by the same test.
+			rounds, _ := strconv.Atoi(m[2])
+			if rounds < 1 || rounds > maxRounds {
+				return fmt.Errorf("back edge %s --> %s: x%s must be between 1 and %d rounds", e.From, e.To, m[2], maxRounds)
+			}
+			w.Loops = append(w.Loops, Loop{From: e.From, To: e.To, Label: m[1], Rounds: rounds})
+			continue
+		}
+		forward = append(forward, e)
 	}
-	if left := w.cycle(); len(left) > 0 {
-		return fmt.Errorf("graph has a cycle through %s; a back edge needs a bound (not supported yet)", strings.Join(left, ", "))
+	w.Edges = forward
+	if left := w.cycle(forward); len(left) > 0 {
+		return fmt.Errorf("graph has a cycle through %s; a back edge needs a bound, as in `%s -->|FAIL x3| %s`", strings.Join(left, ", "), left[len(left)-1], left[0])
+	}
+	if err := w.checkLoops(forward); err != nil {
+		return err
 	}
 
 	for _, n := range w.Nodes {
@@ -408,12 +450,22 @@ func (w *Workflow) validate(declared []string) error {
 	return nil
 }
 
-// cycle runs Kahn's algorithm and returns the nodes it could not remove —
-// empty for a DAG.
-func (w *Workflow) cycle() []string {
+// link records each edge on both of its ends.
+func (w *Workflow) link(edges []Edge) {
+	for _, e := range edges {
+		w.byID[e.From].downstream = append(w.byID[e.From].downstream, e)
+		w.byID[e.To].upstream = append(w.byID[e.To].upstream, e)
+	}
+}
+
+// cycle runs Kahn's algorithm over the given edges and returns the nodes it
+// could not remove — empty for a DAG.
+func (w *Workflow) cycle(edges []Edge) []string {
 	indeg := map[string]int{}
-	for _, n := range w.Nodes {
-		indeg[n.ID] = len(n.upstream)
+	out := map[string][]Edge{}
+	for _, e := range edges {
+		indeg[e.To]++
+		out[e.From] = append(out[e.From], e)
 	}
 	var queue []string
 	for _, n := range w.Nodes {
@@ -426,7 +478,7 @@ func (w *Workflow) cycle() []string {
 		id := queue[0]
 		queue = queue[1:]
 		removed++
-		for _, e := range w.byID[id].downstream {
+		for _, e := range out[id] {
 			indeg[e.To]--
 			if indeg[e.To] == 0 {
 				queue = append(queue, e.To)
