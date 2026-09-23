@@ -14,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -146,13 +147,17 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 // chain; otherwise the next user message would resurrect the old session.
 func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 	m := model{
-		services: services{Agent: &agent.Session{}},
+		services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()},
 		conv:     conv.NewModel(80),
 		agentRestartMessages: []core.Message{
 			{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")},
 		},
 	}
+	m.services.Reminder.Enqueue("hook context from the old session")
 	m.ResetAgentSession()
+	if got := m.services.Reminder.Pending(); len(got) != 0 {
+		t.Fatalf("pending reminders after reset = %q, want none", got)
+	}
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
 	if got := m.seedAgentMessages("new-u1"); len(got) != 0 {

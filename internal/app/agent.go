@@ -622,6 +622,7 @@ func (m *model) StopAgentSession() {
 func (m *model) ResetAgentSession() {
 	m.agentRestartMessages = nil
 	m.services.Agent.Stop()
+	m.services.Reminder.DiscardPendingNotices()
 	// Stop feeding the L1 reviewer AND cancel the session-scoped context
 	// so an in-flight fork unblocks immediately instead of holding tokens /
 	// HTTP for up to forkDeadline.

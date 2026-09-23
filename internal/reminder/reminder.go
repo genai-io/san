@@ -142,10 +142,9 @@ func (s *Service) Enqueue(body string) {
 }
 
 // DiscardPendingNotices drops every pending notice — entries queued via
-// Enqueue / EnqueueOnce (providerID==""). Used by /compact: the cancelled
-// assistant or hook output that originally produced these notices has been
-// summarized out of the conversation, so the notice no longer matches what
-// the model sees. Provider entries are preserved.
+// Enqueue (providerID==""). Used by /compact, /clear and /resume: the output
+// that produced these notices is no longer in the conversation the model
+// sees. Provider entries are preserved.
 func (s *Service) DiscardPendingNotices() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -159,26 +158,6 @@ func (s *Service) DiscardPendingNotices() {
 		}
 	}
 	s.pending = kept
-}
-
-// EnqueueOnce is like Enqueue but skips bodies that are already pending. Used
-// for signals where multiple triggers in a row (e.g. mashed Esc keys all
-// enqueuing the same cancel reminder) should still produce a single copy on
-// the next user message.
-func (s *Service) EnqueueOnce(body string) {
-	body = strings.TrimSpace(body)
-	if body == "" {
-		return
-	}
-	wrapped := Wrap(body)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, existing := range s.pending {
-		if existing.providerID == "" && existing.wrapped == wrapped {
-			return
-		}
-	}
-	s.pending = append(s.pending, pendingEntry{wrapped: wrapped})
 }
 
 // RequeueSystemReminders re-renders the provider-sourced reminders only: it
