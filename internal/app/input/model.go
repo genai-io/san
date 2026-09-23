@@ -56,15 +56,15 @@ type Model struct {
 	Secret   SecretPromptModel
 
 	// Self-contained selectors.
-	Agent       AgentSelector
-	Persona     PersonaSelector
-	Search      SearchSelector
-	Plugin      PluginSelector
-	Tool        ToolSelector
-	Config      PanelPopup        // /config: appearance (+ future provider/permissions)
-	Evolve      PanelPopup        // /evolve: self-learning skills + memory
-	Autopilot   AutopilotSelector // /autopilot: the session copilot
-	HistoryView HistoryViewer     // /history: earlier messages a resume did not replay
+	Agent      AgentSelector
+	Persona    PersonaSelector
+	Search     SearchSelector
+	Plugin     PluginSelector
+	Tool       ToolSelector
+	Config     PanelPopup        // /config: appearance (+ future provider/permissions)
+	Evolve     PanelPopup        // /evolve: self-learning skills + memory
+	Autopilot  AutopilotSelector // /autopilot: the session copilot
+	Transcript TranscriptViewer  // /history: earlier messages a resume did not replay
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation

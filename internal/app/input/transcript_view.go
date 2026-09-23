@@ -20,10 +20,10 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 )
 
-// HistoryViewer shows a scrollable block of pre-rendered transcript lines. The
+// TranscriptViewer shows a scrollable block of pre-rendered transcript lines. The
 // scrolling itself — offset, clamping at both ends, padding the body to a
 // stable height — is bubbles' viewport; this type owns only the frame around it.
-type HistoryViewer struct {
+type TranscriptViewer struct {
 	active bool
 	width  int
 	title  string
@@ -31,7 +31,7 @@ type HistoryViewer struct {
 }
 
 // Enter opens the viewer on the given lines, scrolled to the top.
-func (h *HistoryViewer) Enter(title string, lines []string, width, height int) {
+func (h *TranscriptViewer) Enter(title string, lines []string, width, height int) {
 	h.active = true
 	h.title = title
 	h.body = viewport.New()
@@ -40,11 +40,11 @@ func (h *HistoryViewer) Enter(title string, lines []string, width, height int) {
 	h.Resize(width, height)
 }
 
-func (h *HistoryViewer) IsActive() bool { return h.active }
+func (h *TranscriptViewer) IsActive() bool { return h.active }
 
 // cancel closes the viewer and releases the rendered lines, which can be the
 // bulk of a long transcript.
-func (h *HistoryViewer) cancel() {
+func (h *TranscriptViewer) cancel() {
 	h.active = false
 	h.body = viewport.Model{}
 }
@@ -53,13 +53,13 @@ func (h *HistoryViewer) cancel() {
 // opened with, so a resize has to refresh it or the stale-width frame hard-wraps
 // and leaves fragments behind. The viewport re-clamps its offset to the new
 // body height itself.
-func (h *HistoryViewer) Resize(width, height int) {
+func (h *TranscriptViewer) Resize(width, height int) {
 	h.width = width
 	h.body.SetWidth(width)
-	h.body.SetHeight(max(1, height-historyChromeRows-historyFrameMargin))
+	h.body.SetHeight(max(1, height-transcriptChromeRows-transcriptFrameMargin))
 }
 
-func (h *HistoryViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
+func (h *TranscriptViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	switch key.String() {
 	case "esc", "q":
 		h.cancel()
@@ -79,15 +79,15 @@ func (h *HistoryViewer) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// historyChromeRows is the number of rendered rows that are not body: the
+// transcriptChromeRows is the number of rendered rows that are not body: the
 // separator + title, the blank line under it, and the separator + hint below.
-const historyChromeRows = 5
+const transcriptChromeRows = 5
 
-// historyFrameMargin is the blank slack left below the frame, matching the
+// transcriptFrameMargin is the blank slack left below the frame, matching the
 // height-2 that every other fullscreen selector's Wrap centers into.
-const historyFrameMargin = 2
+const transcriptFrameMargin = 2
 
-func (h *HistoryViewer) Render() string {
+func (h *TranscriptViewer) Render() string {
 	if !h.active {
 		return ""
 	}
@@ -106,7 +106,7 @@ func (h *HistoryViewer) Render() string {
 // matters more than usual here: the rows above and below the window are not in
 // the terminal's scrollback, so there is nothing to scroll up to, and without a
 // position the reader cannot tell the block is bounded.
-func (h *HistoryViewer) hint() string {
+func (h *TranscriptViewer) hint() string {
 	parts := []string{"↑/↓ scroll", "pgup/pgdn page", "home/end", "esc close"}
 	if total := h.body.TotalLineCount(); total > h.body.Height() {
 		first := h.body.YOffset() + 1

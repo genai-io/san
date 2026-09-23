@@ -16,8 +16,8 @@ func numberedLines(n int) []string {
 	return lines
 }
 
-func TestHistoryViewerEnterAndCancel(t *testing.T) {
-	var h HistoryViewer
+func TestTranscriptViewerEnterAndCancel(t *testing.T) {
+	var h TranscriptViewer
 	if h.IsActive() {
 		t.Fatal("a fresh viewer must not be active")
 	}
@@ -36,8 +36,8 @@ func TestHistoryViewerEnterAndCancel(t *testing.T) {
 
 // Scrolling is clamped at both ends: past the top there is nothing, and past
 // the bottom the last line stays on screen rather than scrolling into blank.
-func TestHistoryViewerClampsScroll(t *testing.T) {
-	var h HistoryViewer
+func TestTranscriptViewerClampsScroll(t *testing.T) {
+	var h TranscriptViewer
 	lines := numberedLines(200)
 	h.Enter("t", lines, 80, 24)
 
@@ -63,8 +63,8 @@ func TestHistoryViewerClampsScroll(t *testing.T) {
 
 // A body shorter than the viewport has nothing to scroll, and the position
 // label is omitted rather than reporting a meaningless range.
-func TestHistoryViewerShortBodyHasNoScrollRange(t *testing.T) {
-	var h HistoryViewer
+func TestTranscriptViewerShortBodyHasNoScrollRange(t *testing.T) {
+	var h TranscriptViewer
 	h.Enter("t", []string{"only"}, 80, 24)
 	if strings.Contains(h.hint(), " of ") {
 		t.Fatalf("a body that fits should not report a position: %q", h.hint())
@@ -74,8 +74,8 @@ func TestHistoryViewerShortBodyHasNoScrollRange(t *testing.T) {
 // The position label is what tells the reader the view is bounded — the rows
 // above and below it are not in the terminal's scrollback, so there is nothing
 // to scroll up to.
-func TestHistoryViewerReportsPositionWhenScrollable(t *testing.T) {
-	var h HistoryViewer
+func TestTranscriptViewerReportsPositionWhenScrollable(t *testing.T) {
+	var h TranscriptViewer
 	h.Enter("t", numberedLines(200), 80, 24)
 	if !strings.Contains(h.hint(), "1–17 of 200") {
 		t.Fatalf("a scrollable body should report its position: %q", h.hint())
@@ -84,8 +84,8 @@ func TestHistoryViewerReportsPositionWhenScrollable(t *testing.T) {
 
 // Resize implements resizableOverlay, so a terminal resize re-clamps the offset
 // instead of leaving the view scrolled past a now-shorter body.
-func TestHistoryViewerResizeReclamps(t *testing.T) {
-	var h HistoryViewer
+func TestTranscriptViewerResizeReclamps(t *testing.T) {
+	var h TranscriptViewer
 	h.Enter("t", numberedLines(200), 80, 40)
 	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnd})
 
@@ -97,15 +97,15 @@ func TestHistoryViewerResizeReclamps(t *testing.T) {
 
 // Render keeps a stable frame — the body is padded to its full height even when
 // the content is short — and shows only the lines in the window.
-func TestHistoryViewerRendersTheWindow(t *testing.T) {
+func TestTranscriptViewerRendersTheWindow(t *testing.T) {
 	for _, n := range []int{2, 500} {
-		var h HistoryViewer
+		var h TranscriptViewer
 		h.Enter("History · earlier", numberedLines(n), 80, 24)
 
 		out := h.Render()
-		if rows := strings.Count(out, "\n") + 1; rows != 24-historyFrameMargin {
+		if rows := strings.Count(out, "\n") + 1; rows != 24-transcriptFrameMargin {
 			t.Fatalf("%d lines: rendered %d rows, want height-%d = %d",
-				n, rows, historyFrameMargin, 24-historyFrameMargin)
+				n, rows, transcriptFrameMargin, 24-transcriptFrameMargin)
 		}
 		if !strings.Contains(out, "History · earlier") {
 			t.Fatalf("the title is missing:\n%s", out)

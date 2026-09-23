@@ -234,30 +234,30 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
-// thinkingSummary is the one line the collapsed mode prints in place of the
+// thinkingDurationLine is the one line the collapsed mode prints in place of the
 // reasoning body, or "" when there is nothing to print. It is drawn only once
 // the reasoning has actually ended: while the model is still thinking, the live
-// spinner is the whole indicator, and a summary that appeared mid-thought would
+// spinner is the whole indicator, and a duration line that appeared mid-thought would
 // have to be rewritten — which native scrollback cannot do (ADR-0002).
 // ThinkingEmitted keeps it to one line per message: the scrollback flush prints
-// the summary mid-stream, and this guards the later turn-end commit against
+// the duration line mid-stream, and this guards the later turn-end commit against
 // repeating it.
-func (p AssistantParams) thinkingSummary() string {
+func (p AssistantParams) thinkingDurationLine() string {
 	if p.ThinkingDisplay != setting.ThinkingDisplayCollapsed || p.ThinkingEmitted {
 		return ""
 	}
 	if p.Thinking == "" || (p.StreamActive && p.IsLast) {
 		return ""
 	}
-	return RenderThinkingSummary(p.ThinkingDuration)
+	return RenderThinkingDurationLine(p.ThinkingDuration)
 }
 
-// RenderThinkingSummary renders the collapsed mode's stand-in for a reasoning
+// RenderThinkingDurationLine renders the collapsed mode's stand-in for a reasoning
 // block — live and committed to scrollback: the same muted "✦" gutter the full
 // body leads with, then how long the model reasoned. A message restored from a
 // transcript was never timed, so the duration is dropped rather than reported
 // as zero.
-func RenderThinkingSummary(d time.Duration) string {
+func RenderThinkingDurationLine(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
 		label += " for " + toolresult.FormatDuration(d)
@@ -409,8 +409,8 @@ func RenderAssistantMessage(params AssistantParams) string {
 		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width, thinkMD) + "\n\n")
 	}
 
-	if summary := params.thinkingSummary(); summary != "" {
-		sb.WriteString(summary + "\n\n")
+	if line := params.thinkingDurationLine(); line != "" {
+		sb.WriteString(line + "\n\n")
 	}
 
 	content := formatAssistantContent(params)
@@ -431,9 +431,9 @@ func formatAssistantContent(params AssistantParams) string {
 	// suppressed (collapsed) it is the only sign the model is thinking, and
 	// "Thinking..." is still no reasoning content. Under "hidden" the user
 	// asked for nothing at all, so the bare spinner is the whole indicator.
-	thinkingSilent := params.Thinking == "" ||
+	showThinkingFiller := params.Thinking == "" ||
 		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
-	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && thinkingSilent {
+	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && showThinkingFiller {
 		if params.ExecutingTool != "" {
 			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
 		}

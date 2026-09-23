@@ -243,10 +243,10 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 // resumeElidedNotice is the one line that opens a replayed block when earlier
 // messages were left out, so the transcript does not silently appear to start
 // mid-conversation.
-func resumeElidedNotice(hidden int) string {
+func resumeElidedNotice(elided int) string {
 	return conv.RenderSystemMessage(fmt.Sprintf(
 		"… %s earlier not shown · /history to read them",
-		kit.Plural(hidden, "message"),
+		kit.Plural(elided, "message"),
 	))
 }
 

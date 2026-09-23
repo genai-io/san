@@ -54,13 +54,13 @@ type appearanceKind int
 const (
 	kindTheme appearanceKind = iota
 	kindContextBar
-	kindThinking
+	kindThinkingDisplay
 )
 
 // appearanceOption is one selectable row. section heads the group it belongs
 // to (printed once, above the group's first row). Exactly one value field is
 // meaningful, selected by kind: theme for kindTheme, barOn for kindContextBar,
-// thinkingDisplay for kindThinking.
+// thinkingDisplay for kindThinkingDisplay.
 type appearanceOption struct {
 	section         string
 	kind            appearanceKind
@@ -68,7 +68,7 @@ type appearanceOption struct {
 	desc            string
 	theme           string // kindTheme: the theme value to apply
 	barOn           bool   // kindContextBar: the on/off value to apply
-	thinkingDisplay string // kindThinking: the display mode to apply
+	thinkingDisplay string // kindThinkingDisplay: the display mode to apply
 }
 
 // appearanceOptions is the full, section-ordered row list. The theme group
@@ -81,9 +81,9 @@ func appearanceOptions() []appearanceOption {
 		{section: "COLOR THEME", kind: kindTheme, label: "Auto", desc: "Match terminal appearance automatically", theme: "auto"},
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "On", desc: "Show the visual context-usage bar", barOn: true},
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "Off", desc: "Hide the bar (numeric ctx X/Y still shows)", barOn: false},
-		{section: "THINKING", kind: kindThinking, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
-		{section: "THINKING", kind: kindThinking, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
-		{section: "THINKING", kind: kindThinking, label: "Hidden", desc: "Draw nothing at all, not even the duration line", thinkingDisplay: setting.ThinkingDisplayHidden},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even the duration line", thinkingDisplay: setting.ThinkingDisplayHidden},
 	}
 }
 
@@ -181,7 +181,7 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		}
 		p.barBaseline = opt.barOn
 		return func() tea.Msg { return ContextBarSavedMsg{On: opt.barOn} }, true
-	case kindThinking:
+	case kindThinkingDisplay:
 		if err := setting.SaveThinkingDisplay(opt.thinkingDisplay); err != nil {
 			p.saveErr = err
 			return nil, false
@@ -259,7 +259,7 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 	switch opt.kind {
 	case kindContextBar:
 		return opt.barOn == p.barBaseline
-	case kindThinking:
+	case kindThinkingDisplay:
 		return opt.thinkingDisplay == p.thinkingBaseline
 	default:
 		return opt.theme == p.themeBaseline

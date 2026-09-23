@@ -76,10 +76,10 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
-	// thinkingSummary is the collapsed mode's rendered "Thought for 3.2s" line,
+	// thinkingDurationLine is the collapsed mode's rendered "Thought for 3.2s" line,
 	// committed instead of a reasoning body. thinkingSlice is empty in that
 	// case: the body never reaches scrollback in the collapsed and hidden modes.
-	thinkingSummary string
+	thinkingDurationLine string
 }
 
 // flushState is the streaming-block flush subsystem: it renders each completed
@@ -128,7 +128,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	// the only proof that reasoning is over: a block boundary alone can fall
 	// mid-thought, and committing a reasoning prefix would strand the rest.
 	reasoningDone := len(msg.Content) > 0
-	var thinkingSlice, contentSlice, thinkingSummary string
+	var thinkingSlice, contentSlice, thinkingDurationLine string
 	thinkingEnd := msg.ThinkingCommittedLen
 	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {
 		thinkingEnd = conv.CompletedBlockBoundary(msg.Thinking)
@@ -145,30 +145,30 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		// reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
 		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
-			thinkingSummary = conv.RenderThinkingSummary(msg.ThinkingDuration)
+			thinkingDurationLine = conv.RenderThinkingDurationLine(msg.ThinkingDuration)
 		}
 	}
 	contentEnd := conv.CompletedBlockBoundary(msg.Content)
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
-	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && thinkingSummary == "" {
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && thinkingDurationLine == "" {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
 	m.flush.rendering = true
 	return []tea.Cmd{renderSnapshotCmd(flushSnapshot{
-		msgID:            msg.ID,
-		index:            idx,
-		thinkingSlice:    thinkingSlice,
-		contentSlice:     contentSlice,
-		thinkingEnd:      thinkingEnd,
-		contentEnd:       contentEnd,
-		showThinkingIcon: !msg.ThinkingEmitted,
-		showBullet:       !msg.BulletEmitted,
-		width:            m.env.Width,
-		md:               m.flush.mdRenderer(m.env.Width),
-		thinkingSummary:  thinkingSummary,
+		msgID:                msg.ID,
+		index:                idx,
+		thinkingSlice:        thinkingSlice,
+		contentSlice:         contentSlice,
+		thinkingEnd:          thinkingEnd,
+		contentEnd:           contentEnd,
+		showThinkingIcon:     !msg.ThinkingEmitted,
+		showBullet:           !msg.BulletEmitted,
+		width:                m.env.Width,
+		md:                   m.flush.mdRenderer(m.env.Width),
+		thinkingDurationLine: thinkingDurationLine,
 	})}
 }
 
@@ -180,8 +180,8 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if snap.thinkingSummary != "" {
-			blocks = append(blocks, snap.thinkingSummary)
+		if snap.thinkingDurationLine != "" {
+			blocks = append(blocks, snap.thinkingDurationLine)
 			thinkingEmitted = true
 		} else if snap.thinkingSlice != "" {
 			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {

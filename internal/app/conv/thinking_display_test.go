@@ -74,8 +74,8 @@ func TestRenderAssistantMessageThinkingDisplay(t *testing.T) {
 	})
 }
 
-// While the message is still the live streaming tail, the summary is withheld:
-// the model is not done reasoning, and a summary written now would have to be
+// While the message is still the live streaming tail, the duration line is withheld:
+// the model is not done reasoning, and a duration line written now would have to be
 // rewritten later — which native scrollback cannot do.
 func TestRenderAssistantMessageCollapsedWaitsForTheStreamToEnd(t *testing.T) {
 	p := AssistantParams{
@@ -91,9 +91,9 @@ func TestRenderAssistantMessageCollapsedWaitsForTheStreamToEnd(t *testing.T) {
 	}
 }
 
-// ThinkingEmitted means the summary already went to scrollback mid-stream, so
+// ThinkingEmitted means the duration line already went to scrollback mid-stream, so
 // the turn-end render must not print it a second time.
-func TestRenderAssistantMessageCollapsedSummaryPrintsOnce(t *testing.T) {
+func TestRenderAssistantMessageCollapsedDurationLinePrintsOnce(t *testing.T) {
 	p := AssistantParams{
 		Thinking:         bodySentinel,
 		Content:          "the answer",
@@ -103,19 +103,19 @@ func TestRenderAssistantMessageCollapsedSummaryPrintsOnce(t *testing.T) {
 		ThinkingEmitted:  true,
 	}
 	if out := stripANSI(RenderAssistantMessage(p)); strings.Contains(out, "Thought") {
-		t.Fatalf("the summary must print once per message:\n%s", out)
+		t.Fatalf("the duration line must print once per message:\n%s", out)
 	}
 }
 
 // A message restored from a transcript was never timed, so the duration is left
 // off rather than reported as zero.
-func TestRenderThinkingSummaryOmitsAnUnmeasuredDuration(t *testing.T) {
-	measured := RenderThinkingSummary(2500 * time.Millisecond)
+func TestRenderThinkingDurationLineOmitsAnUnmeasuredDuration(t *testing.T) {
+	measured := RenderThinkingDurationLine(2500 * time.Millisecond)
 	if !strings.Contains(stripANSI(measured), "Thought for 2.5s") {
-		t.Fatalf("measured summary = %q", stripANSI(measured))
+		t.Fatalf("measured duration line = %q", stripANSI(measured))
 	}
 
-	unmeasured := stripANSI(RenderThinkingSummary(0))
+	unmeasured := stripANSI(RenderThinkingDurationLine(0))
 	if strings.Contains(unmeasured, "0s") {
 		t.Fatalf("an unmeasured duration must not read as zero: %q", unmeasured)
 	}

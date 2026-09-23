@@ -79,15 +79,15 @@ func (m *model) autopilotSuggestMission() string {
 	return strings.TrimSpace(m.env.AutoPilot.Mission)
 }
 
-// renderHistory prepares the /history viewer's content: the messages this view
-// never replayed into native scrollback, rendered the way scrollback would have
-// drawn them, plus the title naming how many.
+// renderElidedMessages prepares the /history viewer's content: the messages
+// this view never replayed into native scrollback, rendered the way scrollback
+// would have drawn them, plus the title naming how many.
 //
 // This is the one place the elided transcript is rendered at all, and it happens
 // only when the user asks. It builds plain strings — no chunked Printlns and no
 // terminal round-trips — so it is a fraction of what rendering the same messages
 // into scrollback at startup cost, with nothing permanent left behind.
-func (m *model) renderHistory() (string, []string) {
+func (m *model) renderElidedMessages() (string, []string) {
 	// Clamped rather than trusted: the bound indexes into Messages, and anything
 	// that shortens the transcript (a /clear, a compaction) must not turn an
 	// open /history into a slice panic.

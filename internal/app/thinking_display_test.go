@@ -52,7 +52,7 @@ func queuedScrollbackPayload(m *model) string {
 }
 
 // full mode is the historical behaviour: the body commits to scrollback, and no
-// summary line appears.
+// duration line appears.
 func TestFullThinkingCommitsTheBody(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role:             core.ChatAssistant,
@@ -74,7 +74,7 @@ func TestFullThinkingCommitsTheBody(t *testing.T) {
 
 // Collapsed: the body never reaches scrollback, and the block commits as a
 // single duration line instead.
-func TestCollapsedThinkingCommitsSummaryNotTheBody(t *testing.T) {
+func TestCollapsedThinkingCommitsDurationLineNotTheBody(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
 		Role: core.ChatAssistant,
 		// Content arriving is the "reasoning is over" signal the flush waits
@@ -102,7 +102,7 @@ func TestCollapsedThinkingCommitsSummaryNotTheBody(t *testing.T) {
 			msg.ThinkingCommittedLen, len(msg.Thinking))
 	}
 	if !msg.ThinkingEmitted {
-		t.Fatal("ThinkingEmitted must latch so the summary is printed once")
+		t.Fatal("ThinkingEmitted must latch so the duration line is printed once")
 	}
 }
 
@@ -137,7 +137,7 @@ func TestHiddenThinkingCommitsNothing(t *testing.T) {
 }
 
 // While reasoning is still streaming nothing commits for it in any mode: the
-// collapsed summary would otherwise have to be rewritten, which native
+// collapsed duration line would otherwise have to be rewritten, which native
 // scrollback cannot do.
 func TestCollapsedThinkingWaitsForReasoningToFinish(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{
@@ -147,7 +147,7 @@ func TestCollapsedThinkingWaitsForReasoningToFinish(t *testing.T) {
 	m.env.ThinkingDisplay = setting.ThinkingDisplayCollapsed
 
 	if cmds := m.FlushStreamingBlocks(); cmds != nil {
-		t.Fatal("reasoning that is not provably over must not commit a summary")
+		t.Fatal("reasoning that is not provably over must not commit a duration line")
 	}
 	if got := m.conv.Messages[0].ThinkingCommittedLen; got != 0 {
 		t.Fatalf("ThinkingCommittedLen = %d, want 0", got)

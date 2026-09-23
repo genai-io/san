@@ -200,7 +200,7 @@ func TestConfigSelectorTabSwitchesPanels(t *testing.T) {
 func TestAppearancePanelThinkingGroupDefaultsToFull(t *testing.T) {
 	var rows []appearanceOption
 	for _, opt := range appearanceOptions() {
-		if opt.kind == kindThinking {
+		if opt.kind == kindThinkingDisplay {
 			rows = append(rows, opt)
 		}
 	}
@@ -244,7 +244,7 @@ func TestAppearancePanelSavesThinkingDisplay(t *testing.T) {
 	// Park on the Hidden row, wherever the group sits in the flat list.
 	target := -1
 	for i, opt := range p.options {
-		if opt.kind == kindThinking && opt.thinkingDisplay == setting.ThinkingDisplayHidden {
+		if opt.kind == kindThinkingDisplay && opt.thinkingDisplay == setting.ThinkingDisplayHidden {
 			target = i
 		}
 	}

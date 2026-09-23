@@ -79,7 +79,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Config,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
-		&m.userInput.HistoryView,
+		&m.userInput.Transcript,
 	}
 }
 

@@ -163,11 +163,11 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 // Messages. Anything that shortens the transcript must not turn the viewer into
 // a slice panic, and an empty prefix must report nothing to show rather than
 // opening an empty frame.
-func TestRenderHistoryOfTheElidedPrefix(t *testing.T) {
+func TestRenderElidedMessages(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1)
 
-	title, lines := m.renderHistory()
+	title, lines := m.renderElidedMessages()
 	if len(lines) == 0 {
 		t.Fatal("the elided prefix should render")
 	}
@@ -186,11 +186,11 @@ func TestRenderHistoryOfTheElidedPrefix(t *testing.T) {
 
 	// A transcript that shrank under the bound must clamp, not panic.
 	m.conv.Messages = m.conv.Messages[:2]
-	if _, lines := m.renderHistory(); len(lines) == 0 {
+	if _, lines := m.renderElidedMessages(); len(lines) == 0 {
 		t.Fatal("a clamped prefix should still render")
 	}
 	m.conv.Messages = nil
-	if _, lines := m.renderHistory(); lines != nil {
+	if _, lines := m.renderElidedMessages(); lines != nil {
 		t.Fatalf("nothing to show should report nothing, got %d lines", len(lines))
 	}
 }
