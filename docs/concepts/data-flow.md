@@ -583,18 +583,13 @@ follow-up user message resumes the same session via the inbox channel.
        │      │                                       close(h.done) ──┐
        │      └─ <-h.done   (≤ 250 ms)  ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
        │
-       │ 2. Reminder.Enqueue(InterruptReminder)
-       │      └─ "The previous response was interrupted by the user."
-       │         attached to the NEXT user message via the same
-       │         <system-reminder> channel skills/memory already use.
-       │
-       │ 3. conv-side UI updates (display only — never sync into agent)
+       │ 2. conv-side UI updates (display only — never sync into agent)
        │      ├─ Stream.Stop / hide modals / drain pending questions
        │      ├─ cancelPendingToolCalls   → cancelled tool_result rows
        │      └─ MarkLastInterrupted      → ⏸ interrupted badge on
        │                                    the last assistant
        │
-       │ 4. CommitMessages + drainInputQueueAfterCancel
+       │ 3. CommitMessages + drainInputQueueAfterCancel
        │
        │                          inner break (turn cancel detected),
        │                          interruptPending.Store(false),
@@ -609,9 +604,7 @@ follow-up user message resumes the same session via the inbox channel.
    user types "do B instead"
    ──▶ SubmitToAgent
        └─ ensureAgentSession sees Active=true — NO rebuild
-       └─ sendToAgent → attachPendingReminders
-                          → "<system-reminder>The previous response
-                             was interrupted…</system-reminder>do B"
+       └─ sendToAgent → "do B"
        └─ Agent.Send ──────────▶  inbox
                                   waitForInput unblocks
                                   loop top: interruptPending=false → proceed
@@ -634,12 +627,9 @@ their own copy with their own IDs. This works because:
 - **Consecutive user messages are tolerated.** Anthropic's converter
   calls `mergeConsecutiveMessages`; OpenAI / DeepSeek / Moonshot etc.
   accept user-after-user without complaint.
-- **The interrupt signal rides the reminder.** Instead of injecting a
-  fake assistant or user turn, the cancel handler enqueues a one-shot
-  reminder body; the existing `attachPendingReminders` wraps it in a
-  `<system-reminder>` block on the very next user submission. The
-  model gets an explicit "previous turn was interrupted" cue without
-  any synthetic message in the chain.
+- **The interrupt is already visible to the model.** The truncated
+  assistant reply and the cancelled `tool_result` rows show the turn
+  was cut short, so no extra reminder or synthetic message is added.
 
 Three pieces carry the cancel safely:
 

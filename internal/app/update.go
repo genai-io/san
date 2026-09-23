@@ -330,9 +330,8 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case input.SkillCycleMsg:
 		// Why re-emit on toggle: the skills directory rides in
-		// <system-reminder>, which is only refreshed at SessionStart and
-		// PostCompact. Without this nudge the LLM sees stale state until
-		// one of those fires.
+		// <system-reminder>, which is sent once per conversation. Without
+		// this nudge the LLM sees stale state until the next one.
 		m.services.Reminder.RequeueSystemReminders()
 		return m, nil
 	case input.AgentToggleMsg:

@@ -2,6 +2,7 @@ package app
 
 import (
 	"iter"
+	"strings"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
@@ -14,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
@@ -146,7 +148,7 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 // chain; otherwise the next user message would resurrect the old session.
 func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 	m := model{
-		services: services{Agent: &agent.Session{}},
+		services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()},
 		conv:     conv.NewModel(80),
 		agentRestartMessages: []core.Message{
 			{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")},
@@ -157,6 +159,30 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 
 	if got := m.seedAgentMessages("new-u1"); len(got) != 0 {
 		t.Fatalf("seedAgentMessages() after reset = %+v, want no old seed", got)
+	}
+}
+
+// Skills/memory reminders ride on a conversation's first message only;
+// replacing the conversation drops old notices and sends them again.
+func TestSystemRemindersOncePerConversation(t *testing.T) {
+	m := model{services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()}}
+	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderSkillsDirectory, func() string { return "skills" }))
+	send := func(text string) string {
+		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
+	}
+
+	if got := send("first"); !reminder.HasSystemReminder(got) {
+		t.Fatalf("first message = %q, want the skills reminder", got)
+	}
+	if got := send("second"); got != "second" {
+		t.Fatalf("second message = %q, want no reminders", got)
+	}
+
+	m.services.Reminder.Enqueue("old hook context")
+	m.ResetAgentSession()
+	got := send("after reset")
+	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
+		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
 	}
 }
 

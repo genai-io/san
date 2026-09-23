@@ -551,17 +551,12 @@ scrollback。`go.mod` 中的替代依赖固定到
        │      │                                       close(h.done) ──┐
        │      └─ <-h.done   （≤ 250 ms）◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
        │
-       │ 2. Reminder.Enqueue(InterruptReminder)
-       │      └─ "The previous response was interrupted by the user."
-       │         走 attachPendingReminders 这个老通道：下一条用户消息
-       │         会自动被包成 <system-reminder> 注入。
-       │
-       │ 3. conv 侧 UI 更新（仅显示，不回写 agent）
+       │ 2. conv 侧 UI 更新（仅显示，不回写 agent）
        │      ├─ Stream.Stop / 隐藏弹窗 / 清空 pending 问题
        │      ├─ cancelPendingToolCalls    → 显示已取消的 tool_result
        │      └─ MarkLastInterrupted       → assistant 末尾 ⏸ 徽章
        │
-       │ 4. CommitMessages + drainInputQueueAfterCancel
+       │ 3. CommitMessages + drainInputQueueAfterCancel
        │
        │                          内循环 break（识别 turn cancel），
        │                          interruptPending.Store(false)，
@@ -576,9 +571,7 @@ scrollback。`go.mod` 中的替代依赖固定到
    用户输入 "改做 B"
    ──▶ SubmitToAgent
        └─ ensureAgentSession 检查到 Active=true —— 不重建
-       └─ sendToAgent → attachPendingReminders
-                          → "<system-reminder>The previous response
-                             was interrupted…</system-reminder>改做 B"
+       └─ sendToAgent → "改做 B"
        └─ Agent.Send ──────────▶  inbox
                                   waitForInput 解除阻塞
                                   循环顶部：interruptPending=false → 正常进入
@@ -598,10 +591,8 @@ conv 同步回 agent——两边各自维护自己的副本和 ID。能做到这
   `SanitizeToolMessages`）。
 - **连续 user 消息也是允许的**。Anthropic converter 自己 `mergeConsecutiveMessages`；
   OpenAI / DeepSeek / Moonshot 等都直接接受 user 接 user。
-- **打断信号走 reminder**。不再注入任何合成的 assistant 或 user 消息——
-  cancel 时只是 enqueue 一段 reminder body，下次用户提交时
-  `attachPendingReminders` 自动用 `<system-reminder>` 把它包到那条用户
-  消息上。模型拿到明确的"上一轮被打断"提示，对话链里没有任何合成消息。
+- **打断本身对模型已经可见**。被截断的 assistant 回复和已取消的
+  `tool_result` 已经说明上一轮没完成，不再额外注入 reminder 或合成消息。
 
 三件套撑起整个 cancel 的安全性：
 

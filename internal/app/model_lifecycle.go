@@ -155,7 +155,7 @@ func (m *model) ReloadAfterPluginChange() error {
 	m.applyPersonaAgents()
 
 	// Refresh skills/memory reminders so the LLM sees the updated skill set
-	// in the next user message instead of waiting for SessionStart/PostCompact.
+	// in the next user message instead of waiting for the next conversation.
 	m.services.Reminder.RequeueSystemReminders()
 
 	return nil

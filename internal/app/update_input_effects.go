@@ -12,26 +12,10 @@ import (
 	"github.com/genai-io/san/internal/image"
 )
 
-// InterruptReminder is enqueued on the reminder service when the user
-// cancels a streaming turn. It piggybacks onto the next user message
-// via attachPendingReminders, so the model gets an explicit "the
-// previous response did not complete" signal without us having to
-// inject a synthetic assistant or user message into the chain.
-const InterruptReminder = "The previous response was interrupted by the user. Acknowledge the interruption and proceed with their next instruction."
-
 func (m *model) handleStreamCancel() tea.Cmd {
-	// The whole cancel path is just two things now: stop the agent's
-	// in-flight turn, and arrange for the next user message to carry a
-	// reminder explaining what happened. Convert-layer sanitization
-	// already strips any orphaned tool_use blocks the cancel left in
-	// the agent's history, and Anthropic's converter merges consecutive
-	// same-role messages — so the agent does not need to synthesize
-	// any marker of its own, and the conv layer does not need to push
-	// state back into the agent.
+	// The truncated reply and the cancelled tool results already tell the
+	// model the turn was cut short; no extra reminder is needed.
 	m.services.Agent.InterruptTurn()
-	// EnqueueOnce so mashed Esc keys don't attach N identical
-	// <system-reminder> blocks to the next user message.
-	m.services.Reminder.EnqueueOnce(InterruptReminder)
 	m.conv.Stream.Stop()
 	m.conv.AgentToUI.DrainPendingQuestions()
 	m.conv.Modal.Question.Hide()

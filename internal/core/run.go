@@ -144,9 +144,7 @@ func (a *agent) Run(ctx context.Context) error {
 				// Turn-only interrupt: parent ctx still alive, the turn's ctx
 				// was cancelled by InterruptCurrentTurn. Just bail back to
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
-				// left in the conversation, and the UI attaches a "previous
-				// turn was interrupted" reminder onto the next user message so
-				// the model knows the prior response did not complete.
+				// left in the conversation.
 				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
 					glog.QueueLog("agent.Run: turn interrupted by user, resuming wait")
 					// Consume the latch that triggered this cancel so the

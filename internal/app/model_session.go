@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -163,6 +164,9 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
+	m.systemRemindersSent = slices.ContainsFunc(sess.Messages, func(msg core.ChatMessage) bool {
+		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
+	})
 	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeWindowMessageCount())
 	m.adoptSession(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
