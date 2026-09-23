@@ -216,7 +216,7 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 func (m *model) applyResumeWindow(tail int) {
 	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start
-	m.conv.ReplayStart = start
+	m.conv.ResumeWindowStart = start
 	if start > 0 {
 		m.conv.Messages = slices.Insert(m.conv.Messages, start, core.ChatMessage{
 			Role:    core.ChatNotice,

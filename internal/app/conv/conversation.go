@@ -25,11 +25,12 @@ type ConversationModel struct {
 	Modal          ModalState
 	Tool           ToolExecState
 
-	// ReplayStart is the index where a resumed session's replay into native
-	// scrollback began. The messages before it were never printed, and
-	// /history shows them. Zero unless a resume skipped something. Unlike
-	// CommittedCount it stays put while the replay prints.
-	ReplayStart int
+	// ResumeWindowStart is the index where a resumed session's replay window
+	// begins (see resumeWindowStart). The messages before it were never
+	// printed to native scrollback, and /history shows them. Zero unless a
+	// resume skipped something. Unlike CommittedCount it stays put while the
+	// replay prints.
+	ResumeWindowStart int
 }
 
 func NewConversation() ConversationModel {
@@ -53,7 +54,7 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
-	m.ReplayStart = 0
+	m.ResumeWindowStart = 0
 }
 
 func (m *ConversationModel) AddNotice(content string) {

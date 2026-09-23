@@ -90,8 +90,8 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 	if m.conv.CommittedCount != 7 {
 		t.Fatalf("CommittedCount = %d, want 7 (the snapped window start)", m.conv.CommittedCount)
 	}
-	if m.conv.ReplayStart != 7 {
-		t.Fatalf("ReplayStart = %d, want 7", m.conv.ReplayStart)
+	if m.conv.ResumeWindowStart != 7 {
+		t.Fatalf("ResumeWindowStart = %d, want 7", m.conv.ResumeWindowStart)
 	}
 	if notice := m.conv.Messages[7]; notice.Role != core.ChatNotice || !strings.Contains(notice.Content, "7 messages earlier") {
 		t.Fatalf("the window must open with a notice of what it skipped, got %+v", notice)
@@ -117,8 +117,8 @@ func TestApplyResumeWindowStaysSilentWhenNothingIsSkipped(t *testing.T) {
 }
 
 // The replay commits only the window, and opens it with the count it skipped —
-// once. ReplayStart has to stay put after the replay prints, because /history
-// reads it for the rest of the session.
+// once. ResumeWindowStart has to stay put after the replay prints, because
+// /history reads it for the rest of the session.
 func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1) // window = [assistant c, result c], 7 skipped
@@ -141,9 +141,9 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 			t.Fatalf("message %q is outside the window but was printed: %q", old, payload)
 		}
 	}
-	if m.conv.ReplayStart != 7 {
-		t.Fatalf("ReplayStart = %d after the replay, want 7 — /history reads it later",
-			m.conv.ReplayStart)
+	if m.conv.ResumeWindowStart != 7 {
+		t.Fatalf("ResumeWindowStart = %d after the replay, want 7 — /history reads it later",
+			m.conv.ResumeWindowStart)
 	}
 
 	// A second commit (the next turn ending) must not repeat the notice.
@@ -182,7 +182,7 @@ func TestResumeReplayOfNothingPrintsTheNoticeOnce(t *testing.T) {
 	}
 }
 
-// /history reads the skipped prefix through ReplayStart, which indexes
+// /history reads the skipped prefix through ResumeWindowStart, which indexes
 // into Messages. Anything that shortens the transcript must not turn the viewer
 // into a slice panic, and an empty prefix must report nothing to show rather
 // than opening an empty frame.
