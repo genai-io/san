@@ -46,17 +46,14 @@ const (
 // less legible by default for users who never asked for it.
 const DefaultThinkingDisplay = ThinkingDisplayFull
 
-// DrawsThinkingBody reports whether the display mode draws the reasoning body,
-// live and in scrollback. Full does, and so does an unset mode: it keeps the
-// historical behaviour, so a caller that has not been taught the setting cannot
-// silently lose the reasoning.
+// DrawsThinkingBody reports whether mode draws the reasoning body. Unset counts
+// as full.
 func DrawsThinkingBody(mode string) bool {
 	return mode == "" || mode == ThinkingDisplayFull
 }
 
-// DefaultResumeTailMessages is how many trailing messages a resumed session
-// replays into native scrollback when resumeTailMessages is unset.
-const DefaultResumeTailMessages = 20
+// DefaultResumeWindowMessages is the resume window when unset.
+const DefaultResumeWindowMessages = 20
 
 // Data represents the complete San configuration.
 type Data struct {
@@ -94,12 +91,10 @@ type Data struct {
 	// unrecognized resolves to DefaultThinkingDisplay. Read via
 	// Data.ThinkingDisplayMode().
 	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
-	// ResumeTailMessages caps how many trailing messages resuming a session
-	// replays into native scrollback; earlier messages are kept in the session
-	// but not printed, so a long transcript no longer floods the screen or
-	// stalls startup (see /history). Pointer so an explicit 0 (replay nothing)
-	// persists distinctly from unset; nil means DefaultResumeTailMessages.
-	ResumeTailMessages *int `json:"resumeTailMessages,omitempty"`
+	// ResumeWindowMessages is how many recent messages a resume prints.
+	// Display only: the model still sees the whole session. Pointer so an
+	// explicit 0 differs from unset.
+	ResumeWindowMessages *int `json:"resumeWindowMessages,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -436,15 +431,13 @@ func (s *Data) ThinkingDisplayMode() string {
 	}
 }
 
-// ResumeTailCount is the replay window for a resumed session: how many trailing
-// messages to print into native scrollback. A non-nil value wins (including 0,
-// which replays the notice only); unset means DefaultResumeTailMessages. A
-// negative value is treated as unset.
-func (s *Data) ResumeTailCount() int {
-	if s == nil || s.ResumeTailMessages == nil || *s.ResumeTailMessages < 0 {
-		return DefaultResumeTailMessages
+// ResumeWindowMessageCount resolves ResumeWindowMessages; unset or negative
+// means the default.
+func (s *Data) ResumeWindowMessageCount() int {
+	if s == nil || s.ResumeWindowMessages == nil || *s.ResumeWindowMessages < 0 {
+		return DefaultResumeWindowMessages
 	}
-	return *s.ResumeTailMessages
+	return *s.ResumeWindowMessages
 }
 
 // StartupMode is the operation mode a new session starts in: the mode the user
@@ -831,9 +824,9 @@ func (s *Data) Clone() *Data {
 		dst.ContextBar = &v
 	}
 	dst.ThinkingDisplay = s.ThinkingDisplay
-	if s.ResumeTailMessages != nil {
-		v := *s.ResumeTailMessages
-		dst.ResumeTailMessages = &v
+	if s.ResumeWindowMessages != nil {
+		v := *s.ResumeWindowMessages
+		dst.ResumeWindowMessages = &v
 	}
 	maps.Copy(dst.Env, s.Env)
 	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)

@@ -25,11 +25,8 @@ type ConversationModel struct {
 	Modal          ModalState
 	Tool           ToolExecState
 
-	// ResumeWindowStart is the index where a resumed session's replay window
-	// begins (see resumeWindowStart). The messages before it were never
-	// printed to native scrollback, and /history shows them. Zero unless a
-	// resume skipped something. Unlike CommittedCount it stays put while the
-	// replay prints.
+	// ResumeWindowStart is where a resume's replay began; /history shows the
+	// messages before it. Unlike CommittedCount it never moves.
 	ResumeWindowStart int
 }
 

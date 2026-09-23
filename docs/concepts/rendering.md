@@ -389,7 +389,7 @@ invariant 6 covers the rewrap arithmetic the redraw depends on.
 `handleWindowResize` is also the **deferred initial paint**: the first
 `WindowSizeMsg` is where a resumed conversation is committed, via
 `commitAllMessages()`. Only the replay window is committed — earlier messages are
-kept but never printed, and `/history` reads them (see `resumeTailMessages`).
+kept but never printed, and `/history` reads them (see `resumeWindowMessages`).
 
 ## File pointers
 

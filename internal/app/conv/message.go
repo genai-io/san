@@ -234,14 +234,9 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
-// collapsedThinking is the "Thought for 3.2s" line the collapsed mode prints in
-// place of the reasoning body, or "" when there is nothing to print. It is
-// drawn only once the reasoning has actually ended: while the model is still
-// thinking, the live spinner is the whole indicator, and a line that appeared
-// mid-thought would have to be rewritten — which native scrollback cannot do
-// (ADR-0002). ThinkingEmitted keeps it to one line per message: the scrollback
-// flush prints it mid-stream, and this guards the later turn-end commit against
-// repeating it.
+// collapsedThinking is the "Thought for 3.2s" line collapsed mode prints, or
+// "". It waits until reasoning ends, since scrollback cannot be rewritten, and
+// skips a message whose line the flush already printed (ThinkingEmitted).
 func (p AssistantParams) collapsedThinking() string {
 	if p.ThinkingDisplay != setting.ThinkingDisplayCollapsed || p.ThinkingEmitted {
 		return ""
@@ -252,11 +247,8 @@ func (p AssistantParams) collapsedThinking() string {
 	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderCollapsedThinking renders a reasoning block as the collapsed mode shows
-// it, live and in scrollback: one "✦ Thought for 3.2s" line — the same muted
-// "✦" gutter the full body leads with, then how long the model reasoned. A
-// message restored from a transcript was never timed, so the duration is
-// dropped rather than reported as zero.
+// RenderCollapsedThinking renders "✦ Thought for 3.2s". An untimed message
+// (restored from disk) shows just "✦ Thought".
 func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {

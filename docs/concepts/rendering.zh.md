@@ -372,7 +372,7 @@ CommittedCount = 3                           // 追上
 `handleWindowResize` 同时承担**延迟的首次绘制**：第一个 `WindowSizeMsg`
 才把 resume 出来的对话通过 `commitAllMessages()` 提交。只有重放窗口会被
 提交——更早的消息被保留但从不打印，由 `/history` 按需读取（见
-`resumeTailMessages`）。
+`resumeWindowMessages`）。
 
 ## 文件指路
 

@@ -34,7 +34,7 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "theme": "dark",
   "contextBar": true,
   "thinkingDisplay": "collapsed",
-  "resumeTailMessages": 20
+  "resumeWindowMessages": 20
 }
 ```
 
@@ -67,13 +67,14 @@ the same reason.
 Set it from `/config` → Appearance → THINKING, or directly in
 `~/.san/settings.json`.
 
-### `resumeTailMessages`
+### `resumeWindowMessages`
 
 How many trailing messages resuming a session (`san -c`, `san -r <id>`,
 `/resume`) replays into native scrollback. Default 20; `0` replays none. The
 window is snapped back to a turn boundary so an assistant is never separated
 from its tool results, and the rest of the transcript is kept — it is simply not
-printed. A one-line notice above the replayed block reports how many messages
+printed. This only changes what is drawn: the model still sees the whole
+conversation. A one-line notice above the replayed block reports how many messages
 were left out, and `/history` reads them on demand.
 
 Unset (or negative) uses the default. Raising it replays more at startup, which

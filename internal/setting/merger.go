@@ -24,7 +24,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.AllowBypass = coalescePtr(overlay.AllowBypass, base.AllowBypass)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
-	result.ResumeTailMessages = coalescePtr(overlay.ResumeTailMessages, base.ResumeTailMessages)
+	result.ResumeWindowMessages = coalescePtr(overlay.ResumeWindowMessages, base.ResumeWindowMessages)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)

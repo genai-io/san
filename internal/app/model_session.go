@@ -163,7 +163,7 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
-	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeTailCount())
+	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeWindowMessageCount())
 	m.adoptSession(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 
@@ -197,22 +197,11 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	}
 }
 
-// applyResumeWindow sets CommittedCount to the start of the replay window (the
-// last tail messages, per resumeWindowStart), so the deferred first paint
-// commits only the tail of a resumed transcript rather than all of it.
-// Everything downstream follows CommittedCount: renderAndCommit starts its loop
-// there, the live tail renders [CommittedCount:], and PrecomputeInlinedResults
-// scans from it.
-//
-// When messages are skipped, a notice saying how many opens the window. It is
-// an ordinary notice message, so the normal commit prints it exactly once, and
-// like every notice it is never saved or sent to the model.
-//
-// Nothing is discarded. The skipped messages stay in conv.Messages — they are
-// what /history reads and what the next save persists — they are just never
-// printed, which is the point: replaying a long transcript costs a full
-// markdown render per message plus a print round-trip per chunk, and the rows
-// it leaves in native scrollback are permanent (ADR-0002).
+// applyResumeWindow marks everything before the last tail messages as already
+// committed, so a resume prints only the window. The skipped messages stay in
+// conv.Messages for /history and the next save. A notice opening the window
+// says how many were skipped; like every notice it is never saved or sent to
+// the model.
 func (m *model) applyResumeWindow(tail int) {
 	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start

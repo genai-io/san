@@ -35,7 +35,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/history` opens a fullscreen reader over the messages a resumed session did
-  not replay into scrollback (see `resumeTailMessages` in
+  not replay into scrollback (see `resumeWindowMessages` in
   [Configuration System](./configuration.md)). It reports "nothing earlier to
   show" when the whole transcript is already on screen. Earlier history cannot be
   paged back into native scrollback: `tea.Println` inserts at the frame's top, so

@@ -165,19 +165,14 @@ type ChatMessage struct {
 	BulletEmitted        bool // the "● " content marker has already been emitted
 	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
 
-	// ThinkingStartedAt and ThinkingDuration time this message's reasoning,
-	// from its first thinking delta to its latest, as AppendThinking records
-	// them. The duration is what the collapsed display reports as "Thought for
-	// 3.2s" instead of the body. Transient UI state, never persisted, and zero
-	// for a message that was never timed (e.g. one restored from a transcript).
+	// Reasoning time, first thinking delta to latest (see AppendThinking).
+	// Shown as "Thought for 3.2s" in collapsed mode. Not persisted.
 	ThinkingStartedAt time.Time
 	ThinkingDuration  time.Duration
 }
 
-// AppendThinking adds a streamed reasoning delta that arrived at now, keeping
-// the reasoning timer current. Timing the deltas themselves means the duration
-// is settled by whatever ends the reasoning — text, a tool call, the end of the
-// stream, a cancel — without any of them having to close a timer.
+// AppendThinking appends a reasoning delta and updates the reasoning time, so
+// no caller has to stop a timer when reasoning ends.
 func (m *ChatMessage) AppendThinking(delta string, now time.Time) {
 	if m.ThinkingStartedAt.IsZero() {
 		m.ThinkingStartedAt = now

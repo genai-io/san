@@ -161,7 +161,7 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	}
 }
 
-// resumeTailMessages: 0 replays nothing, so the notice is the whole replay. It
+// resumeWindowMessages: 0 replays nothing, so the notice is the whole replay. It
 // must still print exactly once, not again with the next message.
 func TestResumeReplayOfNothingPrintsTheNoticeOnce(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
