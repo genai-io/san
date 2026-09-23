@@ -23,6 +23,29 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 )
 
+// How the model's reasoning is drawn. This is a display preference only: it
+// never changes what the provider is asked to reason about (that is thinking
+// effort — see llm.ThinkingEffortForModel).
+const (
+	// ThinkingDisplayFull draws the reasoning body, live and in scrollback.
+	ThinkingDisplayFull = "full"
+	// ThinkingDisplayCollapsed draws no reasoning body anywhere; the live tail
+	// shows a "✦ Thinking…" indicator and the settled turn a single
+	// "✦ Thought for 3.2s" line. The default: a reasoning model's transcript is
+	// mostly thinking, and committed scrollback is permanent (ADR-0002), so the
+	// noise cannot be cleaned up after the fact.
+	ThinkingDisplayCollapsed = "collapsed"
+	// ThinkingDisplayHidden draws nothing at all, not even the duration line.
+	ThinkingDisplayHidden = "hidden"
+)
+
+// DefaultThinkingDisplay is what an unset or unrecognized value resolves to.
+const DefaultThinkingDisplay = ThinkingDisplayCollapsed
+
+// DefaultResumeTailMessages is how many trailing messages a resumed session
+// replays into native scrollback when resumeTailMessages is unset.
+const DefaultResumeTailMessages = 20
+
 // Data represents the complete San configuration.
 type Data struct {
 	Permissions    PermissionSettings `json:"permissions"`
@@ -54,6 +77,17 @@ type Data struct {
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
 	// "ctx X/Y" label is unaffected and always shows.
 	ContextBar *bool `json:"contextBar,omitempty"`
+	// ThinkingDisplay selects how the model's reasoning is drawn: "full",
+	// "collapsed", or "hidden" (see the ThinkingDisplay* constants). Empty or
+	// unrecognized resolves to DefaultThinkingDisplay. Read via
+	// Data.ThinkingDisplayMode().
+	ThinkingDisplay string `json:"thinkingDisplay,omitempty"`
+	// ResumeTailMessages caps how many trailing messages resuming a session
+	// replays into native scrollback; earlier messages are kept in the session
+	// but not printed, so a long transcript no longer floods the screen or
+	// stalls startup (see /history). Pointer so an explicit 0 (replay nothing)
+	// persists distinctly from unset; nil means DefaultResumeTailMessages.
+	ResumeTailMessages *int `json:"resumeTailMessages,omitempty"`
 	// Persona selects an active persona directory under ~/.san/personas/<name>/
 	// or .san/personas/<name>/. Empty = no persona override. The persona's own
 	// settings.json is applied as the highest config overlay (see
@@ -373,6 +407,32 @@ func (s SelfLearnSettings) Validate() error {
 // Nil (unset) resolves to off — the bar is opt-in.
 func (s *Data) ShowContextBar() bool {
 	return s != nil && s.ContextBar != nil && *s.ContextBar
+}
+
+// ThinkingDisplayMode resolves how reasoning is drawn, mapping an unset or
+// unrecognized value to DefaultThinkingDisplay so the render paths can compare
+// against the ThinkingDisplay* constants without a default case of their own.
+func (s *Data) ThinkingDisplayMode() string {
+	if s == nil {
+		return DefaultThinkingDisplay
+	}
+	switch s.ThinkingDisplay {
+	case ThinkingDisplayFull, ThinkingDisplayCollapsed, ThinkingDisplayHidden:
+		return s.ThinkingDisplay
+	default:
+		return DefaultThinkingDisplay
+	}
+}
+
+// ResumeTail is the replay window for a resumed session: how many trailing
+// messages to print into native scrollback. A non-nil value wins (including 0,
+// which replays the notice only); unset means DefaultResumeTailMessages. A
+// negative value is treated as unset.
+func (s *Data) ResumeTail() int {
+	if s == nil || s.ResumeTailMessages == nil || *s.ResumeTailMessages < 0 {
+		return DefaultResumeTailMessages
+	}
+	return *s.ResumeTailMessages
 }
 
 // StartupMode is the operation mode a new session starts in: the mode the user
@@ -757,6 +817,11 @@ func (s *Data) Clone() *Data {
 	if s.ContextBar != nil {
 		v := *s.ContextBar
 		dst.ContextBar = &v
+	}
+	dst.ThinkingDisplay = s.ThinkingDisplay
+	if s.ResumeTailMessages != nil {
+		v := *s.ResumeTailMessages
+		dst.ResumeTailMessages = &v
 	}
 	maps.Copy(dst.Env, s.Env)
 	maps.Copy(dst.EnabledPlugins, s.EnabledPlugins)

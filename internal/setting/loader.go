@@ -549,6 +549,21 @@ func SaveContextBar(on bool) error {
 	return nil
 }
 
+// SaveThinkingDisplay persists the reasoning-display choice to
+// ~/.san/settings.json. Unlike ContextBar this is a string, so a zero value
+// would be indistinguishable from "unset" and would be dropped by
+// omitempty — callers pass one of the ThinkingDisplay* constants, and an
+// unrecognized value resolves to the default on read (see ThinkingDisplayMode).
+func SaveThinkingDisplay(mode string) error {
+	if err := NewLoader().SaveToUser(&Data{ThinkingDisplay: mode}); err != nil {
+		return err
+	}
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+	return nil
+}
+
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
 // to ~/.san/settings.json. It replaces the field rather than merging it: the
 // setting is opt-out, so locking the gate means persisting an explicit false,

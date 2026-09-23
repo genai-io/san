@@ -23,6 +23,8 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalesceBool(overlay.AllowBypass, base.AllowBypass)
 	result.ContextBar = coalesceBool(overlay.ContextBar, base.ContextBar)
+	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
+	result.ResumeTailMessages = coalesceIntPtr(overlay.ResumeTailMessages, base.ResumeTailMessages)
 	result.Persona = coalesce(overlay.Persona, base.Persona)
 	result.SelfLearn = mergeSelfLearn(base.SelfLearn, overlay.SelfLearn)
 	result.AutoPilot = mergeAutoPilot(base.AutoPilot, overlay.AutoPilot)
@@ -141,6 +143,16 @@ func coalesce(a, b string) string {
 }
 
 func coalesceBool(a, b *bool) *bool {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+// coalesceIntPtr picks the overlay's value when explicitly set. An arrow to an
+// explicit 0 must survive — that is a real choice ("replay nothing"), not an
+// absent value, which is the whole reason these are pointers.
+func coalesceIntPtr(a, b *int) *int {
 	if a != nil {
 		return a
 	}

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // NewMessageID returns a fresh short hex identifier for a Message.
@@ -163,6 +164,13 @@ type ChatMessage struct {
 	ThinkingCommittedLen int  // bytes of Thinking already flushed to scrollback
 	BulletEmitted        bool // the "● " content marker has already been emitted
 	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
+
+	// ThinkingDuration is how long this message's reasoning took, measured from
+	// the first thinking delta to the first text delta (or the end of the
+	// message). It is what the collapsed display reports as "Thought for 3.2s"
+	// instead of the body. Transient UI state, never persisted, and zero for a
+	// message that was never timed (e.g. one restored from a transcript).
+	ThinkingDuration time.Duration
 }
 
 // ResetStreamCommit clears the streaming-commit progress so the message renders

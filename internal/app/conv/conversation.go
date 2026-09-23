@@ -1,6 +1,8 @@
 package conv
 
 import (
+	"time"
+
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -22,6 +24,25 @@ type ConversationModel struct {
 	Compact        CompactState
 	Modal          ModalState
 	Tool           ToolExecState
+
+	// Reasoning timer for the message currently streaming, feeding
+	// ChatMessage.ThinkingDuration — what the collapsed display reports as
+	// "Thought for 3.2s". Armed on the first thinking delta and closed by
+	// FinalizeThinking when the message stops reasoning. Transient.
+	thinkingMsgID   string
+	thinkingIdx     int
+	thinkingStartAt time.Time
+
+	// ElidedUpTo is the length of the leading run of messages this view never
+	// replayed into native scrollback — non-zero only after a resume, and the
+	// bound /history reads. It is a durable index, not a cursor: CommittedCount
+	// advances past it as the replay prints, so the two cannot stand in for one
+	// another.
+	ElidedUpTo int
+	// ResumeNoticePending marks that the elided messages have not been
+	// announced yet. The replay prints the notice with the block it opens and
+	// clears this. Transient.
+	ResumeNoticePending bool
 }
 
 func NewConversation() ConversationModel {
@@ -45,6 +66,9 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
+	m.ElidedUpTo = 0
+	m.ResumeNoticePending = false
+	m.thinkingMsgID = ""
 }
 
 func (m *ConversationModel) AddNotice(content string) {
@@ -83,10 +107,34 @@ func (m *ConversationModel) AppendToLast(text, thinking string) {
 		return
 	}
 	if thinking != "" {
+		if m.thinkingMsgID != m.Messages[idx].ID {
+			m.thinkingMsgID = m.Messages[idx].ID
+			m.thinkingIdx = idx
+			m.thinkingStartAt = time.Now()
+		}
 		m.Messages[idx].Thinking += thinking
 	}
 	if text != "" {
+		// First non-reasoning output for this message: reasoning is over, so
+		// close the timer before the text lands.
+		m.FinalizeThinking()
 		m.Messages[idx].Content += text
+	}
+}
+
+// FinalizeThinking closes the reasoning timer for the streaming message and
+// stamps its duration onto ChatMessage.ThinkingDuration. Safe to call when no
+// timer runs, and safe to call more than once. Callers are the points where a
+// message stops reasoning: the first content delta, the arrival of tool calls,
+// the end-of-stream chunk, and a cancel.
+func (m *ConversationModel) FinalizeThinking() {
+	if m.thinkingMsgID == "" {
+		return
+	}
+	id := m.thinkingMsgID
+	m.thinkingMsgID = ""
+	if m.thinkingIdx >= 0 && m.thinkingIdx < len(m.Messages) && m.Messages[m.thinkingIdx].ID == id {
+		m.Messages[m.thinkingIdx].ThinkingDuration = time.Since(m.thinkingStartAt)
 	}
 }
 
@@ -164,6 +212,9 @@ func (m *ConversationModel) RemoveEmptyLastAssistant() {
 }
 
 func (m *ConversationModel) MarkLastInterrupted() {
+	// A cancelled turn still ends its reasoning, so close the timer — the
+	// collapsed summary would otherwise show a duration that never settles.
+	m.FinalizeThinking()
 	for i := len(m.Messages) - 1; i >= 0; i-- {
 		msg := &m.Messages[i]
 		if msg.Role != core.ChatAssistant {

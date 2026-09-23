@@ -16,12 +16,14 @@ import (
 	"github.com/genai-io/san/internal/core"
 
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/setting"
 )
 
 type scrollbackPrintReadyMsg struct{ id uint64 }
@@ -75,6 +77,11 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
+	// thinkingSummary commits the collapsed mode's single "Thought for 3.2s"
+	// line instead of a reasoning body. thinkingSlice is empty in that case:
+	// the body never reaches scrollback in the collapsed and hidden modes.
+	thinkingSummary  bool
+	thinkingDuration time.Duration
 }
 
 // flushState is the streaming-block flush subsystem: it renders each completed
@@ -119,21 +126,36 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	}
 
 	// Once content starts, flush thinking's trailing paragraph too (it has no
-	// terminating blank line, but reasoning is done).
+	// terminating blank line, but reasoning is done). Content arriving is also
+	// the only proof that reasoning is over: a block boundary alone can fall
+	// mid-thought, and committing a reasoning prefix would strand the rest.
+	reasoningDone := len(msg.Content) > 0
 	thinkingEnd := conv.CompletedBlockBoundary(msg.Thinking)
-	if len(msg.Content) > 0 {
+	if reasoningDone {
 		thinkingEnd = len(msg.Thinking)
 	}
-	contentEnd := conv.CompletedBlockBoundary(msg.Content)
 
 	var thinkingSlice, contentSlice string
-	if thinkingEnd > msg.ThinkingCommittedLen {
-		thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
+	thinkingSummary := false
+	if m.reasoningBodyVisible() {
+		if thinkingEnd > msg.ThinkingCommittedLen {
+			thinkingSlice = msg.Thinking[msg.ThinkingCommittedLen:thinkingEnd]
+		}
+	} else if reasoningDone && !msg.ThinkingEmitted && len(msg.Thinking) > 0 {
+		// Collapsed/hidden: the body must never reach the screen, so nothing is
+		// sliced for commit. The offsets still advance past it, and collapsed
+		// commits one duration line instead — which is why this waits for
+		// reasoningDone rather than the first completed block.
+		thinkingEnd = len(msg.Thinking)
+		thinkingSummary = m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed
+	} else {
+		thinkingEnd = msg.ThinkingCommittedLen
 	}
+	contentEnd := conv.CompletedBlockBoundary(msg.Content)
 	if contentEnd > msg.ContentCommittedLen {
 		contentSlice = msg.Content[msg.ContentCommittedLen:contentEnd]
 	}
-	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" {
+	if strings.TrimSpace(thinkingSlice) == "" && strings.TrimSpace(contentSlice) == "" && !thinkingSummary {
 		return nil // no completed block yet (or blank-only — nothing to render)
 	}
 
@@ -149,7 +171,16 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		showBullet:       !msg.BulletEmitted,
 		width:            m.env.Width,
 		md:               m.flush.mdRenderer(m.env.Width),
+		thinkingSummary:  thinkingSummary,
+		thinkingDuration: msg.ThinkingDuration,
 	})}
+}
+
+// reasoningBodyVisible reports whether the reasoning body may be drawn and
+// committed at all — the app-side twin of conv's AssistantParams helper, which
+// the flush pipeline cannot reach because it works from a snapshot.
+func (m *model) reasoningBodyVisible() bool {
+	return m.env.ThinkingDisplay == "" || m.env.ThinkingDisplay == setting.ThinkingDisplayFull
 }
 
 // renderSnapshotCmd renders the snapshot's completed blocks (glamour, off the UI
@@ -160,7 +191,12 @@ func renderSnapshotCmd(snap flushSnapshot) tea.Cmd {
 		// blank-check their input and we gate on a non-empty result.
 		var blocks []string
 		thinkingEmitted := false
-		if snap.thinkingSlice != "" {
+		if snap.thinkingSummary {
+			if b := conv.RenderCommittedThinkingSummary(snap.thinkingDuration); b != "" {
+				blocks = append(blocks, b)
+				thinkingEmitted = true
+			}
+		} else if snap.thinkingSlice != "" {
 			if b := conv.RenderCommittedThinkingBlock(snap.thinkingSlice, snap.showThinkingIcon, snap.width, snap.md); b != "" {
 				blocks = append(blocks, b)
 				thinkingEmitted = true
@@ -272,9 +308,18 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		m.conv.CommittedCount = i + 1
 	}
 
-	if len(parts) == 0 {
+	if len(parts) == 0 && !m.conv.ResumeNoticePending {
 		return nil
 	}
+	// A resumed transcript that left earlier messages out opens with how many,
+	// so the block does not read as the start of the conversation. It rides in
+	// the payload rather than the live tail because the frame is about to be
+	// emptied of everything this print carries. The frame accounting is
+	// unaffected: the notice never occupied a frame row.
+	if m.conv.ResumeNoticePending && m.conv.ElidedUpTo > 0 {
+		parts = append([]string{resumeElidedNotice(m.conv.ElidedUpTo)}, parts...)
+	}
+	m.conv.ResumeNoticePending = false
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}

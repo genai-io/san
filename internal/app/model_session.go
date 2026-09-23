@@ -11,7 +11,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
@@ -160,6 +163,7 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
+	m.applyResumeWindow()
 	m.adoptSession(sess.Metadata.ID)
 	m.env.SessionName = sess.Metadata.Title
 
@@ -191,6 +195,58 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 		m.env.OperationMode = mode
 		m.applyOperationMode()
 	}
+}
+
+// applyResumeWindow sets CommittedCount to the start of the replay window, so
+// the deferred first paint commits only the tail of a resumed transcript rather
+// than all of it. Everything downstream follows CommittedCount: renderAndCommit
+// starts its loop there, the live tail renders [CommittedCount:], and
+// PrecomputeInlinedResults scans from it.
+//
+// Nothing is discarded. The messages below the window stay in conv.Messages —
+// they are what /history reads and what the next save persists — they are just
+// never printed, which is the point: replaying a long transcript costs a full
+// markdown render per message plus a print round-trip per chunk, and the rows
+// it leaves in native scrollback are permanent (ADR-0002).
+func (m *model) applyResumeWindow() {
+	start := resumeWindowStart(m.conv.Messages, m.env.ResumeTailMessages)
+	m.conv.CommittedCount = start
+	m.conv.ElidedUpTo = start
+	m.conv.ResumeNoticePending = start > 0
+}
+
+// resumeWindowStart returns the first message index a resumed session replays:
+// the start of the last `tail` messages, snapped back so the window never opens
+// on a tool result whose owning assistant falls outside it. A non-positive tail
+// replays nothing.
+//
+// The snap is load-bearing, not cosmetic: PrecomputeInlinedResults only pairs a
+// result with an assistant at or after the window start (conv/view.go), so a
+// window opening mid-turn would render that result standalone *and* inline
+// under its assistant — the same content twice. An assistant always commits
+// together with its tool results.
+func resumeWindowStart(messages []core.ChatMessage, tail int) int {
+	if tail <= 0 {
+		return len(messages)
+	}
+	if len(messages) <= tail {
+		return 0
+	}
+	start := len(messages) - tail
+	for start > 0 && messages[start].ToolResult != nil {
+		start--
+	}
+	return start
+}
+
+// resumeElidedNotice is the one line that opens a replayed block when earlier
+// messages were left out, so the transcript does not silently appear to start
+// mid-conversation.
+func resumeElidedNotice(hidden int) string {
+	return conv.RenderSystemMessage(fmt.Sprintf(
+		"… %s earlier not shown · /history to read them",
+		kit.Plural(hidden, "message"),
+	))
 }
 
 func (m *model) initTaskStorage(sessionID string) {

@@ -6,11 +6,13 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -77,6 +79,41 @@ func (m *model) autopilotSuggestMission() string {
 	return strings.TrimSpace(m.env.AutoPilot.Mission)
 }
 
+// renderHistory prepares the /history viewer's content: the messages this view
+// never replayed into native scrollback, rendered the way scrollback would have
+// drawn them, plus the title naming how many.
+//
+// This is the one place the elided transcript is rendered at all, and it happens
+// only when the user asks. It builds plain strings — no chunked Printlns and no
+// terminal round-trips — so it is a fraction of what rendering the same messages
+// into scrollback at startup cost, with nothing permanent left behind.
+func (m *model) renderHistory() (string, []string) {
+	// Clamped rather than trusted: the bound indexes into Messages, and anything
+	// that shortens the transcript (a /clear, a compaction) must not turn an
+	// open /history into a slice panic.
+	elided := min(m.conv.ElidedUpTo, len(m.conv.Messages))
+	if elided <= 0 {
+		return "", nil
+	}
+
+	params := m.messageRenderParams()
+	// The prefix is settled history: nothing in it streams. Pairing results from
+	// index 0 across the prefix keeps every tool result under the assistant that
+	// owns it, the way it was drawn live, instead of rendering it standalone.
+	params.StreamActive = false
+	params.InlinedResults = conv.PrecomputeInlinedResults(m.conv.Messages[:elided], 0)
+
+	var lines []string
+	for i := 0; i < elided; i++ {
+		rendered := conv.RenderSingleMessage(params, i)
+		if rendered == "" {
+			continue
+		}
+		lines = append(lines, strings.Split(rendered, "\n")...)
+	}
+	return fmt.Sprintf("History · %s earlier", kit.Plural(elided, "message")), lines
+}
+
 func (m *model) overlayDeps() input.OverlayDeps {
 	reloadModelStore := func() {
 		if store := m.services.LLM.Store(); store != nil {
@@ -118,6 +155,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		SetActivePersona:        m.setActivePersona,
 		OpenPersona:             m.openPersona,
 		DeletePersona:           m.deletePersona,
+		RenderHistory:           m.renderHistory,
 	}
 }
 

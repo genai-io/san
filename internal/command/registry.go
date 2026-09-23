@@ -30,6 +30,7 @@ func builtinCommands() []Info {
 		{Name: "clear", Description: "Clear chat history"},
 		{Name: "fork", Description: "Fork current conversation into a new session"},
 		{Name: "resume", Description: "Resume a previous session (opens session selector)"},
+		{Name: "history", Description: "Read the earlier messages a resumed session did not replay"},
 		{Name: "help", Description: "Show available commands"},
 		{Name: "tools", Description: "Manage available tools (enable/disable)"},
 		{Name: "skills", Description: "Manage skills (enable/disable/activate)"},

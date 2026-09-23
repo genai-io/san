@@ -371,6 +371,8 @@ func handleSessionSelected(deps OverlayDeps, msg sessionSelectedMsg) tea.Cmd {
 		deps.Conv.AddNotice("Failed to load session: " + err.Error())
 	}
 
-	deps.Conv.CommittedCount = 0
+	// LoadSession → restoreSessionData has already set CommittedCount to the
+	// start of the replay window, so the transcript is not reprinted wholesale
+	// here. CommitAllMessages only has to print that window.
 	return tea.Batch(deps.CommitAllMessages()...)
 }

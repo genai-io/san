@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestIndexOfTheme(t *testing.T) {
@@ -188,5 +190,97 @@ func TestConfigSelectorTabSwitchesPanels(t *testing.T) {
 	c.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}) // wrap back
 	if got := c.ActivePanel().Title(); got != "permissions" {
 		t.Fatalf("after shift+tab wrap = %q, want permissions", got)
+	}
+}
+
+// The THINKING group is the reasoning-display preference. It defaults to
+// collapsed — an unset value must not read as "full", or a fresh install would
+// keep drowning the transcript in reasoning.
+func TestAppearancePanelThinkingGroupDefaultsToCollapsed(t *testing.T) {
+	var rows []appearanceOption
+	for _, opt := range appearanceOptions() {
+		if opt.kind == kindThinking {
+			rows = append(rows, opt)
+		}
+	}
+	if len(rows) != 3 {
+		t.Fatalf("THINKING should offer three choices, got %d", len(rows))
+	}
+	values := map[string]bool{}
+	for _, opt := range rows {
+		values[opt.thinkingDisplay] = true
+	}
+	for _, want := range []string{
+		setting.ThinkingDisplayFull,
+		setting.ThinkingDisplayCollapsed,
+		setting.ThinkingDisplayHidden,
+	} {
+		if !values[want] {
+			t.Errorf("THINKING is missing the %q row", want)
+		}
+	}
+
+	p := newAppearancePanel(nil)
+	p.Enter()
+	if p.thinkingBaseline != setting.DefaultThinkingDisplay {
+		t.Fatalf("baseline = %q, want the default %q",
+			p.thinkingBaseline, setting.DefaultThinkingDisplay)
+	}
+	if p.thinkingBaseline != setting.ThinkingDisplayCollapsed {
+		t.Fatalf("the default must be collapsed, got %q", p.thinkingBaseline)
+	}
+}
+
+// Selecting a THINKING row persists it to the user settings file and emits
+// ThinkingDisplaySavedMsg so the app can update its live render flag.
+func TestAppearancePanelSavesThinkingDisplay(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	p := newAppearancePanel(nil)
+	p.Enter()
+	// Park on the Hidden row, wherever the group sits in the flat list.
+	target := -1
+	for i, opt := range p.options {
+		if opt.kind == kindThinking && opt.thinkingDisplay == setting.ThinkingDisplayHidden {
+			target = i
+		}
+	}
+	if target < 0 {
+		t.Fatal("no Hidden row in the appearance options")
+	}
+	p.cursor = target
+
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !done {
+		t.Fatal("enter should dismiss the popup (done=true)")
+	}
+	if p.saveErr != nil {
+		t.Fatalf("unexpected saveErr: %v", p.saveErr)
+	}
+	if cmd == nil {
+		t.Fatal("expected a ThinkingDisplaySavedMsg command")
+	}
+	msg, ok := cmd().(ThinkingDisplaySavedMsg)
+	if !ok || msg.Mode != setting.ThinkingDisplayHidden {
+		t.Fatalf("expected ThinkingDisplaySavedMsg{hidden}, got %#v", cmd())
+	}
+	if p.thinkingBaseline != setting.ThinkingDisplayHidden {
+		t.Fatalf("baseline = %q, want hidden", p.thinkingBaseline)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(home, ".san", "settings.json"))
+	if err != nil {
+		t.Fatalf("settings file not written: %v", err)
+	}
+	var data struct {
+		ThinkingDisplay string `json:"thinkingDisplay"`
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatalf("settings file not valid JSON: %v\n%s", err, raw)
+	}
+	if data.ThinkingDisplay != setting.ThinkingDisplayHidden {
+		t.Fatalf("persisted thinkingDisplay = %q, want hidden\n%s", data.ThinkingDisplay, raw)
 	}
 }

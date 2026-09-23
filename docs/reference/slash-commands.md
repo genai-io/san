@@ -11,6 +11,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/clear` | Clear chat history |
 | `/fork` | Fork the current session |
 | `/resume` | Resume a previous session |
+| `/history` | Read the earlier messages a resumed session did not replay |
 | `/help` | Show available commands |
 | `/tools` | Enable / disable tools |
 | `/plan` | Enter plan mode |
@@ -33,6 +34,12 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Commands are matched against the registry as the user types; a suggestion dropdown appears.
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
+- `/history` opens a fullscreen reader over the messages a resumed session did
+  not replay into scrollback (see `resumeTailMessages` in
+  [Configuration System](./configuration.md)). It reports "nothing earlier to
+  show" when the whole transcript is already on screen. Earlier history cannot be
+  paged back into native scrollback: `tea.Println` inserts at the frame's top, so
+  a later print would land *below* what is already there and invert the order.
 - `/think` cycles through levels and updates the status bar indicator.
 - `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `ctx X/Y` says how full the window is; `/context` says what filled it. The total is the provider's measured prompt size for the last turn. On a provider whose prompt-cache breakpoint sits at the end of the system prompt (Anthropic renders tools → system → messages, so the cached prefix is exactly those two), the reported cache tokens also measure the system prompt and toolset exactly, and only the conversation split stays estimated — the footer names which numbers are which. The reading is discarded when it disagrees with the estimate by more than 2×, so a moved breakpoint degrades to estimation rather than reporting a confident wrong number.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).

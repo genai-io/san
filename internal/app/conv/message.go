@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
 )
 
@@ -203,6 +204,16 @@ type AssistantParams struct {
 	Width             int
 	ExecutingTool     string
 
+	// ThinkingDisplay is the resolved reasoning-display mode, one of the
+	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
+	// "collapsed" replaces it with a single duration line, "hidden" draws
+	// nothing. Empty is treated as "full" so a caller that has not been taught
+	// the setting keeps the historical behaviour.
+	ThinkingDisplay string
+	// ThinkingDuration is how long the message reasoned, used by the collapsed
+	// mode's duration line.
+	ThinkingDuration time.Duration
+
 	// Streaming-commit offsets: how much of Content/Thinking is already in
 	// scrollback (see FlushStreamingBlocks). Only the remainder is rendered
 	// here. BulletEmitted swaps the "● " marker for a continuation gutter once
@@ -221,6 +232,43 @@ type AssistantParams struct {
 // save+reload. Stripped at render time so the UI shows a styled badge
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
+
+// thinkingBodyVisible reports whether the reasoning body may be drawn at all.
+// An unset mode keeps the historical behaviour (draw it), so a caller that has
+// not been taught the setting cannot silently lose the reasoning.
+func (p AssistantParams) thinkingBodyVisible() bool {
+	return p.ThinkingDisplay == "" || p.ThinkingDisplay == setting.ThinkingDisplayFull
+}
+
+// thinkingSummary is the one line the collapsed mode prints in place of the
+// reasoning body, or "" when there is nothing to print. It is drawn only once
+// the reasoning has actually ended: while the model is still thinking, the live
+// spinner is the whole indicator, and a summary that appeared mid-thought would
+// have to be rewritten — which native scrollback cannot do (ADR-0002).
+// ThinkingEmitted keeps it to one line per message: the scrollback flush prints
+// the summary mid-stream, and this guards the later turn-end commit against
+// repeating it.
+func (p AssistantParams) thinkingSummary() string {
+	if p.ThinkingDisplay != setting.ThinkingDisplayCollapsed || p.ThinkingEmitted {
+		return ""
+	}
+	if p.Thinking == "" || (p.StreamActive && p.IsLast) {
+		return ""
+	}
+	return renderThinkingSummary(p.ThinkingDuration)
+}
+
+// renderThinkingSummary renders the collapsed mode's stand-in for a reasoning
+// block: the same muted "✦" gutter the full body leads with, then how long the
+// model reasoned. A message restored from a transcript was never timed, so the
+// duration is dropped rather than reported as zero.
+func renderThinkingSummary(d time.Duration) string {
+	label := "Thought"
+	if secs := d.Seconds(); secs >= 0.05 {
+		label += " for " + d.Round(100*time.Millisecond).String()
+	}
+	return thinkingGutter(true) + ThinkingStyle.Render(label)
+}
 
 // continuationGutter is the 2-column blank that aligns continuation lines, and
 // content blocks committed after the first, under the "● " assistant marker.
@@ -314,6 +362,15 @@ func RenderCommittedThinkingBlock(thinking string, showIcon bool, width int, md 
 	return renderThinkingBlock(thinking, showIcon, width, md)
 }
 
+// RenderCommittedThinkingSummary renders the collapsed mode's duration line for
+// commit to native scrollback — the muted "✦" marker plus how long the model
+// reasoned. It is what a completed reasoning block commits instead of its body
+// when the display mode is "collapsed"; "hidden" commits nothing. The duration
+// line is one row regardless of width, so it takes no width or renderer.
+func RenderCommittedThinkingSummary(d time.Duration) string {
+	return renderThinkingSummary(d)
+}
+
 // RenderCommittedContentBlock renders one or more completed markdown blocks of
 // assistant content for commit to native scrollback. showBullet leads the block
 // with the "● " marker (the turn's first content) or a blank continuation
@@ -356,7 +413,7 @@ func RenderAssistantMessage(params AssistantParams) string {
 		interrupted = true
 	}
 
-	if params.Thinking != "" {
+	if params.Thinking != "" && params.thinkingBodyVisible() {
 		// The live streaming tail stays plain (nil renderer), matching the content
 		// tail; a settled block lays out as muted markdown.
 		thinkMD := params.MDRenderer
@@ -364,6 +421,10 @@ func RenderAssistantMessage(params AssistantParams) string {
 			thinkMD = nil
 		}
 		sb.WriteString(renderThinkingBlock(params.Thinking, !params.ThinkingEmitted, params.Width, thinkMD) + "\n\n")
+	}
+
+	if summary := params.thinkingSummary(); summary != "" {
+		sb.WriteString(summary + "\n\n")
 	}
 
 	content := formatAssistantContent(params)
@@ -380,7 +441,13 @@ func RenderAssistantMessage(params AssistantParams) string {
 
 // formatAssistantContent formats the assistant message content based on streaming state.
 func formatAssistantContent(params AssistantParams) string {
-	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && params.Thinking == "" {
+	// The filler stands in for reasoning the user cannot see: with the body
+	// suppressed (collapsed) it is the only sign the model is thinking, and
+	// "Thinking..." is still no reasoning content. Under "hidden" the user
+	// asked for nothing at all, so the bare spinner is the whole indicator.
+	thinkingSilent := params.Thinking == "" ||
+		params.ThinkingDisplay == setting.ThinkingDisplayCollapsed
+	if params.Content == "" && len(params.ToolCalls) == 0 && params.StreamActive && thinkingSilent {
 		if params.ExecutingTool != "" {
 			return ThinkingStyle.Render(getToolExecutionDesc(params.ExecutingTool))
 		}
