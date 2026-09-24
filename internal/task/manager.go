@@ -40,7 +40,7 @@ func NewManager() *Manager {
 
 // CreateBashTask creates and registers a new bash task
 func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
-	id := generateID()
+	id := NewID()
 	task := NewBashTask(id, command, description, cmd, cancel, m.outputPath(id))
 	m.RegisterTask(task)
 	return task
@@ -89,8 +89,9 @@ func (m *Manager) RegisterTask(task BackgroundTask) {
 	notifyTaskCreated(task.GetStatus())
 }
 
-// generateID creates a short random ID
-func generateID() string {
+// NewID mints a short random task ID. Exported because callers that create
+// a task through this manager need the id before the task exists.
+func NewID() string {
 	b := make([]byte, 4)
 	if _, err := rand.Read(b); err != nil {
 		panic("crypto/rand failed: " + err.Error())

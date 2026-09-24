@@ -18,9 +18,12 @@ import (
 // back the main plan it has no business reading.
 // Cron is parent-only for the same reason again: scheduling creates state
 // that outlives the worker and belongs to the session owner.
+// Workflow is Agent several times over, so it is parent-only for Agent's
+// reason: a worker that could start a workflow could spawn workers.
 var parentOnlyTools = map[string]bool{
 	ToolAgent:      true,
 	ToolAgentStop:  true,
+	ToolWorkflow:   true,
 	ToolTaskCreate: true,
 	ToolTaskUpdate: true,
 	ToolTaskGet:    true,

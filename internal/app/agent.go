@@ -806,7 +806,7 @@ func (m *model) ReconfigureAgentTool() {
 
 	adapter := subagent.NewExecutorAdapter(executor)
 	type executorSetter interface{ SetExecutor(tool.AgentExecutor) }
-	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage} {
+	for _, name := range []string{tool.ToolAgent, tool.ToolSendMessage, tool.ToolWorkflow} {
 		if t, ok := m.services.Tool.Get(name); ok {
 			if setter, ok := t.(executorSetter); ok {
 				setter.SetExecutor(adapter)

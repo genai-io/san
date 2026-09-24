@@ -11,4 +11,5 @@ import (
 	_ "github.com/genai-io/san/internal/tool/skill"
 	_ "github.com/genai-io/san/internal/tool/todo"
 	_ "github.com/genai-io/san/internal/tool/web"
+	_ "github.com/genai-io/san/internal/tool/workflow"
 )
