@@ -51,14 +51,14 @@ type ForkCommand struct {
 	Time            time.Time
 }
 
-// AppendInferenceCommand writes either an inference.requested or
-// inference.responded record. Type selects which; Record carries the payload.
+// AppendInferenceCommand writes an inference.requested, inference.responded,
+// or inference.failed record. Type selects which; Record carries the payload.
 // AgentID is not on the command: the recorder is single-agent and the agent
 // ID lives on session.started.
 type AppendInferenceCommand struct {
 	SessionID string
 	Time      time.Time
-	Type      string // InferenceRequested or InferenceResponded
+	Type      string // InferenceRequested, InferenceResponded, or InferenceFailed
 	Record    InferenceRecord
 }
 

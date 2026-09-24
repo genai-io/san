@@ -94,7 +94,18 @@ function labelFor(rec) {
   if (rec.system)    label += "  " + (rec.system.name || "");
   if (rec.tool && rec.tool.schema) label += "  " + rec.tool.schema.name;
   if (rec.tool && rec.tool.name)   label += "  " + rec.tool.name;
-  if (rec.inference) label += "  turn " + (rec.inference.turn || "?");
+  if (rec.inference) {
+    label += "  turn " + (rec.inference.turn || "?");
+    // A failed attempt is the one inference row worth reading without
+    // clicking: say what broke and how the loop classified it. "not-retryable"
+    // is not "the turn died" — a too-long prompt classifies that way and the
+    // loop still recovers by compacting.
+    if (rec.type === "inference.failed") {
+      if (rec.inference.attempt) label += "  attempt " + rec.inference.attempt;
+      label += rec.inference.retryable ? "  retryable" : "  not-retryable";
+      label += "  — " + truncate((rec.inference.error || "").split("\n")[0], 120);
+    }
+  }
   if (rec.hook)      label += "  " + (rec.hook.event || "") + " · " + (rec.hook.outcome || "");
   if (rec.permission) {
     label += "  " + (rec.permission.tool || "") +
@@ -332,7 +343,7 @@ function appendRow(rec, idx) {
   if (!passesFilter(klass)) return;
 
   const row = document.createElement("div");
-  row.className = "row " + klass;
+  row.className = "row " + klass + " " + (rec.type || "").replace(/\./g, "-");
   row.dataset.idx = idx;
   // Mark messages that aren't on the current active chain so users can see
   // at a glance what the model still sees vs. what was compacted out or

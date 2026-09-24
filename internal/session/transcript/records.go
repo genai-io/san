@@ -17,6 +17,7 @@ const (
 	MessageAppended      = "message.appended"
 	InferenceRequested   = "inference.requested"
 	InferenceResponded   = "inference.responded"
+	InferenceFailed      = "inference.failed"
 	SystemSectionAdded   = "system.section.added"
 	SystemSectionRemoved = "system.section.removed"
 	ToolAdded            = "tool.added"
@@ -144,6 +145,15 @@ type InferenceRecord struct {
 	StopReason string          `json:"stopReason,omitempty"`
 	LatencyMs  int64           `json:"latencyMs,omitempty"`
 	Usage      *InferenceUsage `json:"usage,omitempty"`
+
+	// Failure fields — populated on inference.failed only. Attempt is the
+	// loop's own count of calls in this step, rising across recoveries as
+	// well as retries. Retryable is how the error was classified, not
+	// whether a retry followed, which is what makes a misclassification
+	// visible after the fact.
+	Error     string `json:"error,omitempty"`
+	Attempt   int    `json:"attempt,omitempty"`
+	Retryable bool   `json:"retryable,omitempty"`
 }
 
 type InferenceUsage struct {
