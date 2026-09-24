@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -192,13 +195,8 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 // means the JSON line protocol, not terminal ownership — so the child is
 // detached, and cancellation reaches its whole process group.
 func buildShellCommand(ctx context.Context, hookCmd setting.HookCmd, cwd string) *exec.Cmd {
-	var cmd *exec.Cmd
-	switch strings.ToLower(strings.TrimSpace(hookCmd.Shell)) {
-	case "powershell", "pwsh":
-		cmd = exec.CommandContext(ctx, "pwsh", "-NoProfile", "-Command", hookCmd.Command)
-	default:
-		cmd = exec.CommandContext(ctx, "sh", "-c", hookCmd.Command)
-	}
+	name, args := hookInvocation(hookCmd)
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = cwd
 	proc.DetachSession(cmd)
 	cmd.Cancel = func() error {
@@ -210,6 +208,62 @@ func buildShellCommand(ctx context.Context, hookCmd setting.HookCmd, cwd string)
 	// a bounded time to drain before exec force-closes the pipes.
 	cmd.WaitDelay = 5 * time.Second
 	return cmd
+}
+
+// hookInvocation is the program and arguments a hook command runs as.
+//
+// On Windows a command that is just the path of a script runs that script
+// rather than going through a shell's parser, which would read the
+// backslashes in "C:\hooks\check.sh" as escapes.
+func hookInvocation(hookCmd setting.HookCmd) (string, []string) {
+	shell := strings.ToLower(strings.TrimSpace(hookCmd.Shell))
+	if runtime.GOOS == "windows" && shell == "" {
+		script := strings.Trim(strings.TrimSpace(hookCmd.Command), `"`)
+		if info, err := os.Stat(script); err == nil && !info.IsDir() {
+			switch strings.ToLower(filepath.Ext(script)) {
+			case ".exe", ".bat", ".cmd":
+				return script, nil
+			case ".ps1":
+				return powerShell(), append(powerShellFlags(), "-File", script)
+			default:
+				if bash, ok := proc.BashPath(); ok {
+					return bash, []string{script}
+				}
+			}
+		}
+	}
+	name, args := hookShell(shell)
+	return name, append(args, hookCmd.Command)
+}
+
+// hookShell picks the interpreter for a hook command. PowerShell means pwsh
+// when installed, else the Windows PowerShell every Windows ships with.
+// Otherwise it is sh on Unix; Windows has no sh of its own, so there it is Git
+// for Windows' bash when installed, else PowerShell.
+func hookShell(shell string) (string, []string) {
+	powerShellArgs := append(powerShellFlags(), "-Command")
+	switch {
+	case shell == "powershell" || shell == "pwsh":
+		return powerShell(), powerShellArgs
+	case runtime.GOOS != "windows":
+		return "sh", []string{"-c"}
+	}
+	if bash, ok := proc.BashPath(); ok {
+		return bash, []string{"-c"}
+	}
+	return powerShell(), powerShellArgs
+}
+
+// powerShellFlags run PowerShell without the user's profile or a prompt.
+func powerShellFlags() []string { return []string{"-NoProfile", "-NonInteractive"} }
+
+// powerShell is pwsh or Windows PowerShell, whichever resolves; the bare name
+// when neither does, so the failure names what is missing.
+func powerShell() string {
+	if path, ok := proc.PowerShellPath(); ok {
+		return path
+	}
+	return "powershell"
 }
 
 func handleBlockingExit(stderr *bytes.Buffer) HookOutcome {

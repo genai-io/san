@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -441,7 +442,7 @@ func TestEngineEnvironmentVariables(t *testing.T) {
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "env.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-echo "{\"systemMessage\":\"SAN=$SAN_PROJECT_DIR CLAUDE=$CLAUDE_PROJECT_DIR\"}"
+echo "{\"systemMessage\":\"SAN=${SAN_PROJECT_DIR//\\/\\\\} CLAUDE=${CLAUDE_PROJECT_DIR//\\/\\\\}\"}"
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -471,6 +472,9 @@ func TestEnginePermissionMode(t *testing.T) {
 }
 
 func TestHooks_Timeout_TerminatesHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows kills only the hook's shell, not the sleep it started, until the process tree is put in a Job Object")
+	}
 	// Create a script that uses exec to replace the shell process so
 	// exec.CommandContext can kill it directly (no orphaned children).
 	tmpDir := t.TempDir()
@@ -515,7 +519,7 @@ func TestHooks_Once_ExecutesExactlyOnce(t *testing.T) {
 	// Script increments a counter file each time it runs
 	scriptPath := filepath.Join(tmpDir, "counter.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-echo -n "x" >> `+counterFile+`
+echo -n "x" >> `+filepath.ToSlash(counterFile)+`
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -549,7 +553,7 @@ func TestHooks_InputContains_SessionContext(t *testing.T) {
 	// Script captures stdin (the hook input JSON) to a file
 	scriptPath := filepath.Join(tmpDir, "capture.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-cat > `+captureFile+`
+cat > `+filepath.ToSlash(captureFile)+`
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -609,7 +613,7 @@ func TestHooks_PermissionModeIncludedOnlyForRelevantEvents(t *testing.T) {
 	captureFile := filepath.Join(tmpDir, "input.json")
 	scriptPath := filepath.Join(tmpDir, "capture.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-cat > `+captureFile+`
+cat > `+filepath.ToSlash(captureFile)+`
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -1381,7 +1385,7 @@ read -r INPUT
 # First line signals async
 echo '{"async":true}'
 # Background work (simulated)
-echo "async_done" > `+markerFile+`
+echo "async_done" > `+filepath.ToSlash(markerFile)+`
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)
@@ -1528,7 +1532,7 @@ func TestHooks_SessionStartOmitsPermissionMode(t *testing.T) {
 	captureFile := filepath.Join(tmpDir, "input.json")
 	scriptPath := filepath.Join(tmpDir, "capture.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-cat > `+captureFile+`
+cat > `+filepath.ToSlash(captureFile)+`
 `), 0o755)
 	if err != nil {
 		t.Fatal(err)

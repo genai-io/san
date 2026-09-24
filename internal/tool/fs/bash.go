@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,11 +86,16 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	bash, err := requireBash()
+	if err != nil {
+		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd)
+	}
+
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(command)
 	defer cleanup()
 
 	// Execute command
-	cmd := exec.CommandContext(ctx, "bash", "-c", trackedCommand)
+	cmd := exec.CommandContext(ctx, bash, "-c", trackedCommand)
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 	if trackedFile != "" {
@@ -123,7 +129,7 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
 
-	err := cmd.Run()
+	err = cmd.Run()
 	duration := time.Since(start)
 
 	// A command that backgrounds a child inheriting the output pipe (e.g.
@@ -259,11 +265,20 @@ func (t *BashTool) Execute(ctx context.Context, params map[string]any, cwd strin
 
 // executeBackground runs the command in the background and returns immediately
 func (t *BashTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration) toolresult.ToolResult {
+	bash, err := requireBash()
+	if err != nil {
+		return toolresult.ToolResult{
+			Success:  false,
+			Error:    err.Error(),
+			Metadata: toolresult.ResultMetadata{Title: t.Name(), Icon: t.Icon()},
+		}
+	}
+
 	// Create context with timeout for background task
 	taskCtx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	// Create command
-	cmd := exec.CommandContext(taskCtx, "bash", "-c", command)
+	cmd := exec.CommandContext(taskCtx, bash, "-c", command)
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 
@@ -416,8 +431,28 @@ func prepareCwdTracking(command string) (string, string, func()) {
 	cleanup := func() {
 		_ = os.Remove(tmp.Name())
 	}
-	wrapped := "trap 'pwd > \"$" + cwdFileEnvVar + "\"' EXIT\n" + command
+	wrapped := "trap '" + pwdCommand() + " > \"$" + cwdFileEnvVar + "\"' EXIT\n" + command
 	return wrapped, tmp.Name(), cleanup
+}
+
+// pwdCommand prints the working directory as the host spells it. Git Bash's
+// plain pwd answers "/c/Users/..."; -W gives the Windows path San can use.
+func pwdCommand() string {
+	if runtime.GOOS == "windows" {
+		return "pwd -W"
+	}
+	return "pwd"
+}
+
+// requireBash resolves the bash to run under, or says why there is none.
+func requireBash() (string, error) {
+	if bash, ok := proc.BashPath(); ok {
+		return bash, nil
+	}
+	if runtime.GOOS == "windows" {
+		return "", errors.New("bash not found: install Git for Windows (https://git-scm.com/download/win)")
+	}
+	return "", errors.New("bash not found on PATH")
 }
 
 func readTrackedCwd(path, fallback string) string {

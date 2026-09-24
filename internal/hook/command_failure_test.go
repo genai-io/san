@@ -2,6 +2,8 @@ package hook
 
 import (
 	"context"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -75,5 +77,26 @@ func TestZeroExitStaysSuccessful(t *testing.T) {
 	}
 	if len(audited) != 1 || audited[0].Outcome != outcomeRan {
 		t.Errorf("audit = %+v, want a single %q record", audited, outcomeRan)
+	}
+}
+
+// A hook runs under sh on Unix and never under an sh Windows does not have;
+// asking for PowerShell always yields one, even without pwsh installed.
+func TestHookShellIsOneThePlatformHas(t *testing.T) {
+	name, args := hookShell("")
+	if runtime.GOOS != "windows" {
+		if name != "sh" || len(args) != 1 || args[0] != "-c" {
+			t.Errorf("default hook shell = %s %v, want sh -c", name, args)
+		}
+	} else if name == "sh" {
+		t.Error("Windows hooks were sent to sh, which Windows does not ship")
+	}
+
+	name, args = hookShell("powershell")
+	if base := strings.ToLower(filepath.Base(name)); !strings.HasPrefix(base, "pwsh") && !strings.HasPrefix(base, "powershell") {
+		t.Errorf("powershell hook ran under %q", name)
+	}
+	if args[len(args)-1] != "-Command" {
+		t.Errorf("powershell args = %v, want the command last", args)
 	}
 }

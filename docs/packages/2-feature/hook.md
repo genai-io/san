@@ -134,6 +134,18 @@ line, and reads one `PromptResponse` line. Its stdin remains open until the
 script exits, the user cancels, or the hook timeout expires. Both command modes
 run without the TUI's controlling terminal.
 
+## Which shell runs a command hook
+
+| `shell` | Unix | Windows |
+|---|---|---|
+| unset | `sh -c` | Git for Windows' bash, else PowerShell |
+| `powershell` / `pwsh` | pwsh | pwsh, else Windows PowerShell |
+
+On Windows a command that is just the path of a script runs that script
+directly — `.ps1` under PowerShell, `.exe`/`.bat`/`.cmd` as themselves, anything
+else under bash — because a shell would read the backslashes in its path as
+escapes. The WSL `bash.exe` stub in System32 is never used.
+
 ## Tests
 
 ```

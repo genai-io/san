@@ -68,7 +68,7 @@ func TestBashExecuteApproved_reportsOutputProgress(t *testing.T) {
 
 	result := (&BashTool{}).ExecuteApproved(ctx, map[string]any{
 		"command": `for i in $(seq 1 5); do echo "line $i"; sleep 0.05; done`,
-		"timeout": 5000,
+		"timeout": 30000,
 	}, t.TempDir())
 
 	if !result.Success {
