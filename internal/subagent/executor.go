@@ -708,9 +708,9 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 			switch {
 			case perm.IsSafeTool(name), name == tool.ToolSendMessage, name == tool.ToolSkill:
 				return true, ""
-			case name == tool.ToolBash:
+			case tool.IsShellTool(name):
 				command, _ := input["command"].(string)
-				if setting.IsReadOnlyBashCommand(command) {
+				if setting.IsReadOnlyShellCommand(name, command) {
 					return true, ""
 				}
 			}
@@ -729,8 +729,8 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		// is as safe as the dedicated read-only tools, which also run without
 		// being listed in allow_tools. Checked after deny_tools so agents can
 		// still block Bash outright.
-		if name == "Bash" {
-			if cmd, ok := input["command"].(string); ok && setting.IsReadOnlyBashCommand(cmd) {
+		if tool.IsShellTool(name) {
+			if cmd, ok := input["command"].(string); ok && setting.IsReadOnlyShellCommand(name, cmd) {
 				return true, ""
 			}
 		}

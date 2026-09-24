@@ -81,3 +81,22 @@ func TestParseRuleStringHandlesPatternForms(t *testing.T) {
 		}
 	}
 }
+
+// An agent written for one shell keeps its shell on the other: a bare Bash or
+// PowerShell names the shell tool. A pattern is its own shell's syntax, so it
+// never carries over.
+func TestBareShellRuleNamesEitherShell(t *testing.T) {
+	ps := map[string]any{"command": "Get-ChildItem"}
+	if !(ToolList{{Name: "Bash"}}).Allows("PowerShell", ps) {
+		t.Error("allow_tools: Bash did not allow the PowerShell tool")
+	}
+	if !(ToolList{{Name: "Bash"}}).Matches("PowerShell", ps) {
+		t.Error("deny_tools: Bash did not deny the PowerShell tool")
+	}
+	if (ToolList{{Name: "Bash", Pattern: "git status"}}).Allows("PowerShell", map[string]any{"command": "git status"}) {
+		t.Error("a Bash pattern was applied to a PowerShell command")
+	}
+	if !(ToolList{{Name: "PowerShell"}}).Allows("Bash", map[string]any{"command": "ls"}) {
+		t.Error("allow_tools: PowerShell did not allow the Bash tool")
+	}
+}

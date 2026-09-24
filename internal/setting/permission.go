@@ -187,10 +187,8 @@ func ModeDefault(toolName string, mode OperationMode) PermissionDecision {
 // earlier in the pipeline and still override this, except that Bypass
 // Permissions deliberately skips confirmation checks after honoring deny rules.
 func ModeDefaultForCall(toolName string, args map[string]any, mode OperationMode) PermissionDecision {
-	if toolName == "Bash" {
-		if cmd, ok := args["command"].(string); ok && IsReadOnlyBashCommand(cmd) {
-			return decide(perm.Permit, "mode: read-only bash command")
-		}
+	if cmd, ok := args["command"].(string); ok && IsReadOnlyShellCommand(toolName, cmd) {
+		return decide(perm.Permit, "mode: read-only "+strings.ToLower(toolName)+" command")
 	}
 	// Listing scheduled jobs is read-only; create/delete still follow the
 	// mode default like any other mutating call.
@@ -293,7 +291,7 @@ func BuildRule(toolName string, args map[string]any) string {
 		// The whole command, so a grant covers exactly the command approved.
 		// An empty argument would match every PowerShell call.
 		if cmd, ok := args["command"].(string); ok {
-			argStr = strings.Join(strings.Fields(cmd), " ")
+			argStr = normalizePowerShell(cmd)
 		}
 
 	case "WebFetch":
@@ -482,10 +480,12 @@ func extractBashCommands(cmd string) []string {
 // allow checks must use matchAllowPatterns, which requires every subcommand to
 // be covered by the allow set.
 func MatchesToolPattern(toolName string, args map[string]any, rule, pattern string) bool {
-	// A PowerShell rule names one whole command. Glob matching would let a
-	// "*" in an approved command — Get-ChildItem *.go — match any other.
 	if toolName == "PowerShell" {
-		return rule == pattern
+		cmd, _ := args["command"].(string)
+		return matchPowerShellDeny(cmd, pattern)
+	}
+	if toolName == "Bash" && isBareShellRule(pattern) {
+		return true
 	}
 	if MatchRule(rule, pattern) {
 		return true
@@ -519,6 +519,20 @@ func MatchesToolPattern(toolName string, args map[string]any, rule, pattern stri
 func MatchAllowList(toolName string, args map[string]any, patterns []string) (string, bool) {
 	if len(patterns) == 0 {
 		return "", false
+	}
+	if toolName == "PowerShell" {
+		cmd, _ := args["command"].(string)
+		for _, pattern := range patterns {
+			if matchPowerShellAllow(cmd, pattern) {
+				return pattern, true
+			}
+		}
+		return "", false
+	}
+	if toolName == "Bash" {
+		if i := slices.IndexFunc(patterns, isBareShellRule); i >= 0 {
+			return patterns[i], true
+		}
 	}
 	if toolName != "Bash" {
 		rule := BuildRule(toolName, args)
@@ -568,8 +582,11 @@ func MatchAllowList(toolName string, args map[string]any, patterns []string) (st
 // or the home directory. It is the only check bypass mode cannot skip — a
 // circuit breaker against model error, not a permission policy.
 func CircuitBreakerReason(toolName string, args map[string]any) string {
-	if cmd, ok := bashCommandArg(toolName, args); ok && isRootOrHomeRemoval(cmd) {
+	if cmd, ok := shellCommandArg("Bash", toolName, args); ok && isRootOrHomeRemoval(cmd) {
 		return "removal targets the filesystem root or home directory"
+	}
+	if cmd, ok := shellCommandArg("PowerShell", toolName, args); ok && isPowerShellRootOrHomeRemoval(cmd) {
+		return "removal targets a drive root or the home directory"
 	}
 	return ""
 }
@@ -593,7 +610,10 @@ func ConfirmationTier(toolName string, args map[string]any) (reason string, reco
 // RecoverableReason is the recoverable confirmation tier (work-discarding git
 // commands) — the tier the AutoPilot judge may weigh and bypass mode skips.
 func RecoverableReason(toolName string, args map[string]any) string {
-	if cmd, ok := bashCommandArg(toolName, args); ok && isGitDiscardingCommand(cmd) {
+	if cmd, ok := shellCommandArg("Bash", toolName, args); ok && isGitDiscardingCommand(cmd) {
+		return "git command that discards work"
+	}
+	if cmd, ok := shellCommandArg("PowerShell", toolName, args); ok && powerShellGitDiscarding(cmd) {
 		return "git command that discards work"
 	}
 	return ""
@@ -613,7 +633,7 @@ func UnrecoverableReason(toolName string, args map[string]any) string {
 			}
 		}
 	case "Bash":
-		if cmd, ok := bashCommandArg(toolName, args); ok {
+		if cmd, ok := shellCommandArg("Bash", toolName, args); ok {
 			if isDestructiveCommand(cmd) {
 				return "destructive command"
 			}
@@ -621,13 +641,18 @@ func UnrecoverableReason(toolName string, args map[string]any) string {
 				return reason
 			}
 		}
+	case "PowerShell":
+		if cmd, ok := shellCommandArg("PowerShell", toolName, args); ok && isDestructivePowerShellCommand(cmd) {
+			return "destructive command"
+		}
 	}
 	return ""
 }
 
-// bashCommandArg extracts a Bash tool call's command string.
-func bashCommandArg(toolName string, args map[string]any) (string, bool) {
-	if toolName != "Bash" {
+// shellCommandArg extracts the command of a call to the shell tool named
+// shell (Bash or PowerShell).
+func shellCommandArg(shell, toolName string, args map[string]any) (string, bool) {
+	if toolName != shell {
 		return "", false
 	}
 	cmd, ok := args["command"].(string)

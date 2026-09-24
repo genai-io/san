@@ -166,6 +166,30 @@ See [`packages/hook.md`](../packages/2-feature/hook.md) for the request/response
 shape, and `PermissionUpdate` in `internal/hook/types.go` for the
 mutation payload.
 
+## PowerShell
+
+Where the shell is PowerShell (a Windows without Git Bash, or `SAN_SHELL`),
+shell calls go to the `PowerShell` tool and are classified in PowerShell's own
+terms — there is no PowerShell parser, so every judgment errs one way:
+
+- **Read-only** runs without asking: one pipeline of read-only cmdlets
+  (`Get-ChildItem`, `Get-Content`, `Select-String`, `Sort-Object`, …) or
+  read-only `git`/`rg`, with nothing that could hide more — no `;`, `&&`, `||`,
+  `&`, `(`, `{`, `$`, `@`, `[`, backtick, redirection or newline — and no UNC
+  path.
+- **Rules** name the exact command, or `PowerShell(name:args-glob)` like Bash's.
+  An allow rule broader than the exact command covers a simple command only, so
+  a prefix never waves through a chained one; deny and ask fire on any statement
+  anywhere in the command.
+- **Confirmation** — a recursive `Remove-Item` (any alias, any `-r…`
+  abbreviation, `rd /s`), disk and partition cmdlets, scheduled tasks, services
+  and elevation — is found anywhere in a statement, so wrapping it in
+  `cmd /c` or `pwsh -c` does not hide it. A recursive removal of a drive root
+  or the home directory trips the circuit breaker, even in bypass mode.
+- A bare `Bash` or `PowerShell` in an allow, deny or `allow_tools` list names
+  the shell tool, whichever the platform has. A pattern is its shell's syntax:
+  `Bash(git status)` never applies to PowerShell.
+
 ## Implementation Pointers
 
 - Decision gate: `internal/setting/permission.go` → `HasPermissionToUseTool`.

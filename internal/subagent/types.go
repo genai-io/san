@@ -11,6 +11,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/tool"
 	"gopkg.in/yaml.v3"
 )
 
@@ -153,11 +154,22 @@ func (t ToolList) ConstrainedDisplayNames() []string {
 
 func (t ToolList) HasName(name string) bool {
 	for _, rule := range t {
-		if rule.Name == name {
+		if rule.names(name) {
 			return true
 		}
 	}
 	return false
+}
+
+// names reports whether the rule is about the tool called name. A bare Bash
+// or PowerShell names the shell tool, whichever the platform has, so an agent
+// written for one shell keeps its shell on the other; a rule with a pattern
+// is that shell's syntax and names only its own tool.
+func (r ToolRule) names(name string) bool {
+	if r.Name == name {
+		return true
+	}
+	return r.Pattern == "" && tool.IsShellTool(r.Name) && tool.IsShellTool(name)
 }
 
 func (t ToolList) HasPattern(name string) bool {

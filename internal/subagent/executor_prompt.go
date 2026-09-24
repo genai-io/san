@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -19,11 +20,19 @@ func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []st
 
 	filtered := make([]string, 0, len(constraints)+1)
 	for _, constraint := range constraints {
-		if !strings.HasPrefix(constraint, tool.ToolBash+"(") {
+		if !strings.HasPrefix(constraint, tool.ToolBash+"(") && !strings.HasPrefix(constraint, tool.ToolPowerShell+"(") {
 			filtered = append(filtered, constraint)
 		}
 	}
-	return append(filtered, "Bash limited to commands classified as read-only")
+	return append(filtered, shellToolName()+" limited to commands classified as read-only")
+}
+
+// shellToolName is the shell tool this platform registers.
+func shellToolName() string {
+	if shell, err := proc.DefaultShell(); err == nil {
+		return shell.Kind.ToolName()
+	}
+	return tool.ToolBash
 }
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
