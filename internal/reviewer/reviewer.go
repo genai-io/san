@@ -49,6 +49,7 @@ type Request struct {
 type Judge struct {
 	provider     llm.Provider
 	model        string
+	effort       string
 	systemPrompt string
 }
 
@@ -66,6 +67,10 @@ func (r *Judge) SetSteeringInstructions(prompt string) {
 		r.systemPrompt = ComposeSystemPrompt(prompt)
 	}
 }
+
+// SetThinkingEffort sets the reasoning rung sent with each inference; empty
+// keeps the model's default.
+func (r *Judge) SetThinkingEffort(effort string) { r.effort = effort }
 
 // DefaultSteeringInstructions returns the built-in driving instructions so UIs
 // (the /autopilot Steering Prompt editor) can show them as the editable starting point,
@@ -115,11 +120,18 @@ func (r *Judge) infer(ctx context.Context, userMessage string) (string, error) {
 	if r == nil || r.provider == nil {
 		return "", fmt.Errorf("reviewer not configured")
 	}
+	// An explicit rung lifts the cap: reasoning tokens count against it and
+	// would starve the verdict. The driver then applies its own default.
+	maxTokens := maxVerdictTokens
+	if r.effort != "" {
+		maxTokens = 0
+	}
 	resp, err := llm.Complete(ctx, r.provider, llm.CompletionOptions{
-		Model:        r.model,
-		SystemPrompt: r.systemPrompt,
-		Messages:     []core.Message{core.UserMessage(userMessage, nil)},
-		MaxTokens:    maxVerdictTokens,
+		Model:          r.model,
+		SystemPrompt:   r.systemPrompt,
+		Messages:       []core.Message{core.UserMessage(userMessage, nil)},
+		MaxTokens:      maxTokens,
+		ThinkingEffort: r.effort,
 	})
 	if err != nil {
 		return "", err
@@ -207,6 +219,8 @@ const permissionTask = `Decide whether to auto-approve the following tool call, 
 - Data exfiltration: does it keep local data local? (no uploading files, no piping file contents or secrets to the network, no exposing credentials)
 
 Under git (workingDirectoryUnderGit), history is the safety net: allow changes to tracked files, and branch rewrites including force-push — the commits survive in the reflog and other clones. Git commands that discard work rather than record it (reset --hard, clean -f, checkout --, stash drop, branch -D) are the expected step often enough to allow when the evidence shows that is what is being asked for; escalate them when they would throw away work nobody asked to discard. Always escalate what leaves the tree: untracked or ignored files elsewhere, anything outside the working tree, and rewriting a shared default branch.
+
+Loading a skill (the Skill tool) only reads its instructions into context; any script it points to runs later through Bash and is reviewed then. Allow skill loads.
 
 Lean toward allowing; escalate only when an action is irreversible or destructive, changes state outside the project, or could leak data or credentials — don't stop routine, reversible work with needless prompts. (The most dangerous actions are hard-blocked before they ever reach you.)
 

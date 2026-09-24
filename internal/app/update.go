@@ -187,17 +187,6 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// panel to replace the draft (or surface an error under the editor).
 		m.userInput.Autopilot.DeliverRefinedMission(msg.Mission, msg.Err)
 		return m, nil
-	case input.AutopilotMissionSavedMsg:
-		// The Mission editor saved or cleared the mission. It rides the transcript
-		// and restores on /resume, so it lives only in the live session; flushing
-		// settings.json keeps it out of the new-session default (a clear thus wipes
-		// it from both places). Refresh the agent goroutine's snapshot so the
-		// Permission/Bash judge sees the new mission at its next call — reusing the
-		// judge (model / prompt / steers are unchanged), so no full rebuild.
-		m.env.AutoPilot.Mission = msg.Mission
-		m.refreshAutopilotSnapshot()
-		m.writeAutopilotDefault()
-		return m, nil
 	case autopilotDecisionMsg:
 		// The TurnEnd steer's continue/stop verdict came back.
 		return m, m.handleAutopilotDecision(msg)
@@ -215,14 +204,18 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// hot-swap the running judge so the new model/prompt/steers take effect at
 		// once, and write it — minus the per-session mission and system prompt — as
 		// the default for new sessions.
-		m.env.AutoPilot = msg.Config.Clone()
+		m.applyAutopilotConfig(msg.Config)
 		m.persistAutopilotDefault()
 		// Suggest is the input hint's feature switch. Clear both visible and
 		// in-flight hints immediately when it is turned off.
 		if !m.env.AutoPilot.Steers.SuggestOn() {
 			m.userInput.PromptSuggestion.Clear()
 		}
-		m.conv.AddNotice("Autopilot config saved")
+		if m.autopilotEngaged() {
+			m.conv.AddNotice("Autopilot config saved")
+		} else {
+			m.conv.AddNotice("Autopilot config saved · shift+tab to engage")
+		}
 		return m, nil
 	case input.GoalSetMsg:
 		// /goal: the stated goal becomes the mission and the copilot drives.
@@ -231,18 +224,6 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// /goal clear: stand the copilot down.
 		m.clearGoal()
 		return m, nil
-	case input.AutopilotStartMsg:
-		// Save & Start: apply + persist exactly like a Save, then engage AutoPilot
-		// and kick the mission hands-free. The explicit counterpart to shift+tab
-		// (which only lands the mode and, with Suggest on, proposes a step).
-		m.env.AutoPilot = msg.Config.Clone()
-		m.persistAutopilotDefault()
-		if !m.env.AutoPilot.Steers.SuggestOn() {
-			m.userInput.PromptSuggestion.Clear()
-		}
-		m.enterAutoPilotMode()
-		m.conv.AddNotice("Autopilot engaged")
-		return m, m.autopilotKickCmd()
 	case input.ConfigSavedMsg:
 		// Refresh the in-memory settings handle so re-opening /config (and any
 		// in-session reader) sees the just-saved values rather than the stale

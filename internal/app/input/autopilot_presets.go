@@ -1,7 +1,8 @@
-// Export / Import sub-views for the /autopilot panel. Export names the current
-// config and writes it as a preset under ~/.san/autopilot/<name>.json; Import
-// lists those presets and loads the chosen one into the working buffer. Both are
-// a shared, non-session space so a copilot config can be reused and shared.
+// Preset sub-views for the /autopilot panel. Save names the current config and
+// writes it as a preset under ~/.san/autopilot/<name>.json; Load lists those
+// presets and loads the chosen one into the working buffer. Both are a shared,
+// non-session space so a copilot config can be reused and shared. A preset is a
+// template: it carries the mission text, never where a run of it stood.
 package input
 
 import (
@@ -28,9 +29,10 @@ func (p *AutopilotSelector) handleExportKey(msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		path, err := setting.ExportAutoPilot(p.nameBuffer, p.snap)
 		if err != nil {
-			p.status = "export failed: " + err.Error()
+			p.status = "save failed: " + err.Error()
 		} else {
-			p.status = "exported → " + kit.ShortenPath(path)
+			p.status = "saved → " + kit.ShortenPath(path)
+			p.presets, _ = setting.ListAutoPilotPresets()
 		}
 		p.view = apMenu
 	case "backspace":
@@ -49,7 +51,7 @@ func (p *AutopilotSelector) handleExportKey(msg tea.KeyMsg) tea.Cmd {
 func (p *AutopilotSelector) renderExport() string {
 	dir := kit.ShortenPath(setting.AutoPilotPresetDir())
 	var b strings.Builder
-	b.WriteString(apDescStyle.Render("Save the copilot config — Steering Prompt, mission, and steers — as a preset under " + dir + "/"))
+	b.WriteString(apDescStyle.Render("Save this setup — mission, system prompt, model and switches — as a preset under " + dir + "/"))
 	b.WriteString("\n\n")
 	b.WriteString(apLabelStyle.Render("Name") + "  ")
 	b.WriteString(apValueStyle.Render(p.nameBuffer) + apCursorStyle.Render("_"))
@@ -69,7 +71,7 @@ func (p *AutopilotSelector) exportHint() string {
 func (p *AutopilotSelector) beginImport() {
 	names, err := setting.ListAutoPilotPresets()
 	if err != nil {
-		p.status = "import failed: " + err.Error()
+		p.status = "load failed: " + err.Error()
 		return
 	}
 	p.presets = names
@@ -98,12 +100,11 @@ func (p *AutopilotSelector) handleImportKey(msg tea.KeyMsg) tea.Cmd {
 		name := p.presets[p.importCursor]
 		cfg, err := setting.ImportAutoPilot(name)
 		if err != nil {
-			p.status = "import failed: " + err.Error()
+			p.status = "load failed: " + err.Error()
 		} else {
 			p.snap = cfg.Clone()
 			p.resetMission()
-			p.reclampCursor()
-			p.status = "imported ← " + name
+			p.status = "loaded ← " + name + " · enter to apply"
 		}
 		p.view = apMenu
 	}
@@ -112,10 +113,10 @@ func (p *AutopilotSelector) handleImportKey(msg tea.KeyMsg) tea.Cmd {
 
 func (p *AutopilotSelector) renderImport() string {
 	if len(p.presets) == 0 {
-		return apDescStyle.Render("No presets yet — Export one first.")
+		return apDescStyle.Render("No presets yet — save one first.")
 	}
 	var b strings.Builder
-	b.WriteString(apDescStyle.Render("Load a saved preset into the panel, then Save to apply it (steers become the new-session default; Steering Prompt and mission stay with this session):"))
+	b.WriteString(apDescStyle.Render("Load a preset into the panel, then press enter on the menu to apply it. A loaded mission starts ready."))
 	b.WriteString("\n\n")
 	for i, name := range p.presets {
 		mark := "  "

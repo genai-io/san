@@ -31,15 +31,21 @@ func TestAutopilotNarrowFrameDoesNotOverflowTerminal(t *testing.T) {
 	}
 }
 
-func TestAutopilotUsesSteeringPromptName(t *testing.T) {
+// The menu is one page in three groups, and the System row says outright that
+// it is the (editable part of the) system prompt.
+func TestAutopilotMenuGroups(t *testing.T) {
 	p := NewAutopilotSelector()
-	p.Enter(100, 32)
+	p.Enter(120, 40)
 
 	rendered := p.Render()
-	if !strings.Contains(rendered, "Steering Prompt") {
-		t.Fatalf("menu should use Steering Prompt terminology, got %q", rendered)
+	for _, want := range []string{"GIVE IT", "LET IT", "PRESETS", "(system prompt)", "Continue"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("menu is missing %q", want)
+		}
 	}
-	if strings.Contains(rendered, "System Prompt") {
-		t.Fatalf("menu still exposes the ambiguous System Prompt name: %q", rendered)
+
+	p.openSystemPrompt()
+	if !strings.Contains(p.Render(), "Safety rules are fixed") {
+		t.Error("the system prompt editor does not say the safety rules are fixed")
 	}
 }

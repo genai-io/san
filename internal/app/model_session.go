@@ -187,6 +187,10 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	// the resumed steers/model/permission config immediately, not on the next
 	// /autopilot Save.
 	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
+		// A resumed run waits for the human instead of driving on its own.
+		if ar.MissionState == setting.MissionRunning {
+			ar.MissionState = setting.MissionPaused
+		}
 		m.env.AutoPilot = ar
 	}
 	m.rebuildAutopilotReviewer()

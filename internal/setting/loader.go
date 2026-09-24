@@ -327,6 +327,8 @@ func ExportAutoPilot(name string, cfg AutoPilotSettings) (string, error) {
 		return "", err
 	}
 	path := filepath.Join(dir, base+".json")
+	// A preset is a template: where one run stood means nothing to the next.
+	cfg.MissionState = ""
 	if err := atomicfile.WriteJSON(path, cfg, 0o644); err != nil {
 		return "", err
 	}

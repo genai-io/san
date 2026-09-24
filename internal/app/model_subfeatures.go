@@ -76,7 +76,7 @@ func (m *model) autopilotSuggestMission() string {
 	if !m.autopilotEngaged() || !m.env.AutoPilot.Steers.SuggestOn() {
 		return ""
 	}
-	return strings.TrimSpace(m.env.AutoPilot.Mission)
+	return m.env.AutoPilot.ActiveMission()
 }
 
 // renderSkippedMessages prepares the /history viewer's content: the messages

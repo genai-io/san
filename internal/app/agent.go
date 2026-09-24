@@ -264,16 +264,6 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			m.recordDecision(ctx, false, r)
 			return agent.PermReviewResult{}
 		}
-		// Skill steer: trust skill loads — approve them outright, no judge, so
-		// the copilot can pull in skills without a prompt. Deliberately separate
-		// from the Permission steer, since the judge tends to escalate a skill
-		// load (it can run scripts) and you may want skills without opening the
-		// whole gray zone.
-		if name == tool.ToolSkill && cfg.Steers.Skill {
-			m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
-			m.recordDecision(ctx, true, "skill steer: trusted skill load")
-			return agent.PermReviewResult{Allow: true, Reason: "autopilot: skill steer"}
-		}
 		// Permission steer: delegate gray-zone prompts to the judge. Off ⇒ every
 		// gray-zone call escalates to the human.
 		if !cfg.Steers.PermissionOn() {
@@ -283,7 +273,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		verdict, err := rev.Permission(ctx, reviewer.Request{
-			ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.Mission,
+			ToolName: name, Args: args, Reason: reason, CWD: m.env.CWD, Mission: cfg.ActiveMission(),
 			UnderGit: m.env.IsGit,
 		})
 		log.Logger().Debug("auto-review verdict",
@@ -324,21 +314,61 @@ func (m *model) buildAgentParams() agent.BuildParams {
 }
 
 // resolveReviewerModel picks the provider and model for the auto-review judge.
-// A "vendor/model" ref (e.g. "anthropic/claude-haiku-4-5") routes to that
-// connected provider; a bare id stays on the session provider; empty uses the
-// session model. An unresolvable vendor falls back to the session model.
 func (m *model) resolveReviewerModel(ref string) (llm.Provider, string) {
+	p, info := m.resolveReviewer(ref)
+	return p, info.ModelID
+}
+
+// resolveReviewer resolves a judge model ref to its provider and model. A
+// "vendor/model" ref (e.g. "anthropic/claude-haiku-4-5") routes to that
+// connected provider; a bare id stays on the session provider; empty uses the
+// session model. An unresolvable vendor falls back to the session model. The
+// info names whichever provider was actually picked, for capability lookups.
+func (m *model) resolveReviewer(ref string) (llm.Provider, *llm.CurrentModelInfo) {
+	session := &llm.CurrentModelInfo{ModelID: m.env.GetModelID()}
+	if m.env.CurrentModel != nil {
+		session.Provider, session.AuthMethod = m.env.CurrentModel.Provider, m.env.CurrentModel.AuthMethod
+	}
 	if ref == "" {
-		return m.env.LLMProvider, m.env.GetModelID()
+		return m.env.LLMProvider, session
 	}
 	if vendor, id, ok := llm.ParseVendorModel(ref); ok {
 		if p, err := llm.NewProviderPool(m.services.LLM.Store()).Resolve(context.Background(), vendor); err == nil {
-			return p, id
+			return p, &llm.CurrentModelInfo{ModelID: id, Provider: vendor}
 		}
 		log.Logger().Warn("auto-review model vendor unavailable; using session model", zap.String("model", ref))
-		return m.env.LLMProvider, m.env.GetModelID()
+		return m.env.LLMProvider, session
 	}
-	return m.env.LLMProvider, ref
+	session.ModelID = ref
+	return m.env.LLMProvider, session
+}
+
+// autopilotModelEfforts lists the reasoning rungs a "vendor/model" ref offers,
+// or nil for a ref that cannot be resolved or a model that does not reason.
+func (m *model) autopilotModelEfforts(ref string) []string {
+	if _, _, ok := llm.ParseVendorModel(ref); !ok {
+		return nil
+	}
+	p, info := m.resolveReviewer(ref)
+	return llm.ThinkingEffortsForModel(p, m.services.LLM.Store(), info)
+}
+
+// autopilotModelRefs lists "vendor/model" refs for the /autopilot model picker:
+// the cached models of each connected provider under its connected auth method.
+func (m *model) autopilotModelRefs() []string {
+	store := m.services.LLM.Store()
+	if store == nil {
+		return nil
+	}
+	cached := store.CachedModelsByProvider()
+	var refs []string
+	for vendor, conn := range store.GetConnections() {
+		for _, mdl := range cached[vendor+":"+string(conn.AuthMethod)] {
+			refs = append(refs, vendor+"/"+mdl.ID)
+		}
+	}
+	slices.Sort(refs)
+	return refs
 }
 
 // recordDecision tallies one auto-review decision for the status-bar count and

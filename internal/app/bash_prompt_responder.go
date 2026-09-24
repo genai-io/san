@@ -17,13 +17,13 @@ type bashPromptResponder struct {
 // decides the reply. It never sees a secret prompt — that goes to RequestSecret.
 // The provider closure only builds this responder when auto-review is on, so
 // there is no mode re-check here. The runtime snapshot is loaded live (judge plus
-// the mission it steers toward) so a mid-session Save or mission edit takes
+// the mission it steers toward) so a mid-session panel save or mission edit takes
 // effect.
 func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt string) (string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	rt := r.model.autopilot.Load()
-	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.Mission, command, prompt)
+	reply, err := rt.judge.BashPrompt(ctx, rt.cfg.ActiveMission(), command, prompt)
 	log.Logger().Debug("auto-review prompt answer",
 		zap.Bool("answer", err == nil && reply.Answer),
 		zap.String("prompt", prompt),

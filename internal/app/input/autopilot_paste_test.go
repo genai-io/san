@@ -12,7 +12,7 @@ import (
 func TestAutopilotPasteIntoMission(t *testing.T) {
 	p := NewAutopilotSelector()
 	p.Enter(120, 40)
-	p.openView(apMission)
+	p.openMission()
 
 	p.HandlePaste("ship the release\r\nthen tag it")
 
@@ -24,7 +24,7 @@ func TestAutopilotPasteIntoMission(t *testing.T) {
 func TestAutopilotPasteIgnoredWhileRefining(t *testing.T) {
 	p := NewAutopilotSelector()
 	p.Enter(120, 40)
-	p.openView(apMission)
+	p.openMission()
 	p.mission.refining = true
 
 	p.HandlePaste("late arrival")
@@ -37,7 +37,7 @@ func TestAutopilotPasteIgnoredWhileRefining(t *testing.T) {
 func TestAutopilotPasteIntoSystemPrompt(t *testing.T) {
 	p := NewAutopilotSelector()
 	p.Enter(120, 40)
-	p.openView(apSteeringPrompt)
+	p.openSystemPrompt()
 
 	p.HandlePaste("\ndrive with care")
 
