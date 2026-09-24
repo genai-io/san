@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -472,9 +471,6 @@ func TestEnginePermissionMode(t *testing.T) {
 }
 
 func TestHooks_Timeout_TerminatesHook(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows kills only the hook's shell, not the sleep it started, until the process tree is put in a Job Object")
-	}
 	// Create a script that uses exec to replace the shell process so
 	// exec.CommandContext can kill it directly (no orphaned children).
 	tmpDir := t.TempDir()
