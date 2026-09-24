@@ -9,7 +9,7 @@ import (
 )
 
 // Render implements overlayPanel: it frames whichever sub-view is active in a
-// centered box matching the /config overlay.
+// centered box matching the /settings overlay.
 func (p *AutopilotSelector) Render() string {
 	if !p.active {
 		return ""

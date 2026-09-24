@@ -1,4 +1,4 @@
-// /config Appearance panel: three radio groups the user navigates as one
+// /settings Appearance panel: three radio groups the user navigates as one
 // flat list.
 //
 //   - COLOR THEME — light / dark / auto. Applied live and persisted to the
@@ -226,7 +226,7 @@ func renderAppearanceSection(title string, width int) string {
 	return appearanceSectionStyle.Render(title) + " " + appearanceRuleStyle.Render(strings.Repeat("─", ruleLen))
 }
 
-// renderRadioRow renders one selectable row of a /config radio group: the
+// renderRadioRow renders one selectable row of a /settings radio group: the
 // hover caret, the ○/● radio, a label padded to a common column so the
 // descriptions line up, and the "current" tag on the persisted choice.
 // Shared by every panel with a radio group so the tabs cannot drift apart.

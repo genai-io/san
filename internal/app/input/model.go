@@ -61,7 +61,7 @@ type Model struct {
 	Search     SearchSelector
 	Plugin     PluginSelector
 	Tool       ToolSelector
-	Config     PanelPopup        // /config: appearance (+ future provider/permissions)
+	Settings   PanelPopup        // /settings: appearance and permissions
 	Evolve     PanelPopup        // /evolve: self-learning skills + memory
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
 	Transcript TranscriptViewer  // /history: earlier messages a resume did not replay
@@ -145,7 +145,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		Plugin:    NewPluginSelector(deps.PluginRegistry),
 		Provider:  ProviderState{Selector: NewProviderSelector()},
 		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
-		Config:    NewConfigSelector(deps.Setting),
+		Settings:  NewSettingsSelector(deps.Setting),
 		Autopilot: NewAutopilotSelector(),
 		Evolve:    NewEvolveSelector(deps.Evolve),
 	}

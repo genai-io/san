@@ -133,6 +133,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,
+		"settings":       (*SlashCommandController).handleSettingsCommand,
 		"config":         (*SlashCommandController).handleConfigCommand,
 		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
 		"goal":           (*SlashCommandController).handleGoalCommand,
@@ -360,12 +361,18 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	return "", nil, nil
 }
 
-// handleConfigCommand opens the /config popup (Appearance and Permissions;
-// Provider is planned as a sibling panel). Self-learning has moved out to
-// its own /evolve popup.
-func (c *SlashCommandController) handleConfigCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	c.env.Input.Config.Enter(c.env.Width, c.env.Height)
+// handleSettingsCommand opens the /settings popup (Appearance and
+// Permissions). Self-learning lives in its own /evolve popup.
+func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil
+}
+
+// handleConfigCommand keeps the old /config name working while pointing at
+// its replacement.
+func (c *SlashCommandController) handleConfigCommand(ctx context.Context, args string) (string, tea.Cmd, error) {
+	_, cmd, err := c.handleSettingsCommand(ctx, args)
+	return "/config is deprecated — use /settings.", cmd, err
 }
 
 // handleHistoryCommand opens the /history viewer on the messages the current

@@ -55,7 +55,7 @@ type env struct {
 	// ShowContextBar mirrors the persisted appearance setting (off by
 	// default): when true the status line renders the visual [██████░░░░] 71%
 	// bar. Cached here so the hot render path never snapshots settings.
-	// Set at startup and whenever the /config Appearance panel saves.
+	// Set at startup and whenever the /settings Appearance panel saves.
 	ShowContextBar bool
 	// ThinkingDisplay mirrors the persisted reasoning-display preference
 	// ("full" / "collapsed" / "hidden"); one of the setting.ThinkingDisplay*

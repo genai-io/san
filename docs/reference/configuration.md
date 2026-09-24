@@ -64,7 +64,7 @@ changing this takes effect from that point on: reasoning already on screen stays
 as it was drawn. There is no `ctrl+o`-style expansion of a collapsed block for
 the same reason.
 
-Set it from `/config` → Appearance → THINKING, or directly in
+Set it from `/settings` → Appearance → THINKING, or directly in
 `~/.san/settings.json`.
 
 ### `resumeWindowMessages`

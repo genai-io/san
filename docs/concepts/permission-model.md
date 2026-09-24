@@ -37,7 +37,7 @@ mode. `ModeDontAsk` and `ModeReadOnly` are entered programmatically
 (headless runs, the subagent explore mode), not by cycling.
 
 Which of the two cycles applies is the `allowBypass` user setting, toggled
-from `/config › permissions`. It is opt-out: unset means YOLO mode is in
+from `/settings › permissions`. It is opt-out: unset means YOLO mode is in
 the cycle. Locking it removes that step, downgrades a `bypassPermissions`
 defaultMode to normal at startup, and drops a session already running in
 YOLO mode back to normal.
