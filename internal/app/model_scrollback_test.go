@@ -523,7 +523,7 @@ func TestHandleFlushResultDiscardsReplacedRow(t *testing.T) {
 func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
 	m.userInput.Approval.Hide()
-	m.userInput.Config.Enter(m.env.Width, m.env.Height)
+	m.userInput.Settings.Enter(m.env.Width, m.env.Height)
 	if _, active := m.activeOverlay(); !active {
 		t.Fatal("the config picker did not become the active overlay")
 	}

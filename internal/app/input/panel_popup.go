@@ -8,7 +8,7 @@
 //   - /evolve  → one self-learning panel covering both arms (skills + memory).
 //
 // To add a panel to either, implement Panel and append it in the popup's
-// constructor (NewConfigSelector / NewEvolveSelector).
+// constructor (NewSettingsSelector / NewEvolveSelector).
 package input
 
 import (
@@ -79,15 +79,14 @@ func newPanelPopup(glyph, title, tagline string, panels ...Panel) PanelPopup {
 	return PanelPopup{glyph: glyph, title: title, tagline: tagline, panels: panels}
 }
 
-// NewConfigSelector builds the /config popup: Appearance and Permissions,
-// with Provider planned as a sibling panel.
-func NewConfigSelector(settings *setting.Settings) PanelPopup {
-	return newPanelPopup("⚙", "Config", "appearance & settings",
+// NewSettingsSelector builds the /settings popup: Appearance and Permissions.
+func NewSettingsSelector(settings *setting.Settings) PanelPopup {
+	return newPanelPopup("⚙", "Settings", "appearance & permissions",
 		newAppearancePanel(settings), newPermissionsPanel(settings))
 }
 
 // Enter activates the popup, re-focusing whichever panel was last open (the
-// index survives between openings, so /config reopens where you left it).
+// index survives between openings, so /settings reopens where you left it).
 func (c *PanelPopup) Enter(width, height int) {
 	c.width = width
 	c.height = height

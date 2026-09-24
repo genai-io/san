@@ -76,7 +76,7 @@ func (m *model) overlayPanels() []overlayPanel {
 		&m.userInput.Session.Selector,
 		&m.userInput.Memory.Selector,
 		&m.userInput.Search,
-		&m.userInput.Config,
+		&m.userInput.Settings,
 		&m.userInput.Autopilot,
 		&m.userInput.Evolve,
 		&m.userInput.Transcript,
@@ -225,7 +225,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.clearGoal()
 		return m, nil
 	case input.ConfigSavedMsg:
-		// Refresh the in-memory settings handle so re-opening /config (and any
+		// Refresh the in-memory settings handle so re-opening /settings (and any
 		// in-session reader) sees the just-saved values rather than the stale
 		// pre-save snapshot. The panel already persisted to disk.
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
@@ -244,7 +244,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case input.ThemeSavedMsg:
 		// The panel already applied (kit.InitTheme) and persisted the theme;
-		// refresh the in-memory handle so re-opening /config reflects it.
+		// refresh the in-memory handle so re-opening /settings reflects it.
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after theme save failed", zap.Error(err))
 		}

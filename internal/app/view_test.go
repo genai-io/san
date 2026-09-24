@@ -292,7 +292,7 @@ func TestOverlaysUseAlternateScreen(t *testing.T) {
 		t.Fatal("docked approval modal must render in the alternate screen")
 	}
 	m.userInput.Approval.Hide()
-	m.userInput.Config.Enter(m.env.Width, m.env.Height)
+	m.userInput.Settings.Enter(m.env.Width, m.env.Height)
 	if view := m.View(); !view.AltScreen {
 		t.Fatal("fullscreen picker must render in the alternate screen")
 	}

@@ -1,4 +1,4 @@
-// /config Permissions panel: one radio group gating YOLO mode.
+// /settings Permissions panel: one radio group gating YOLO mode.
 //
 //   - YOLO MODE — allowed / locked. Allowed (the default) puts the mode in
 //     the shift+tab cycle, one step past autopilot; locked removes it and
