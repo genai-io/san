@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 - Collapse reasoning into a summary line by default and bound the resume replay ([@zhujian7](https://github.com/zhujian7) in [#543](https://github.com/genai-io/san/pull/543))
+- Keep model data in San and let the SDK keep protocols ([@yanmxa](https://github.com/yanmxa) in [#552](https://github.com/genai-io/san/pull/552))
+- Record inference.failed so failed calls state their cause ([@yanmxa](https://github.com/yanmxa) in [#551](https://github.com/genai-io/san/pull/551))
+
+### Changed
+- Build the release signing key into the binary ([@yanmxa](https://github.com/yanmxa) in [#550](https://github.com/genai-io/san/pull/550))
+- Drop the repeated tagline and fix the Aider link ([@yanmxa](https://github.com/yanmxa) in [#547](https://github.com/genai-io/san/pull/547))
+
+### Fixed
+- Drop the interrupt reminder and attach skills and memory once per conversation ([@yanmxa](https://github.com/yanmxa) in [#548](https://github.com/genai-io/san/pull/548))
 
 ## [v1.22.10] - 2026-09-21
 
