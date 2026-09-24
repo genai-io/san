@@ -28,6 +28,7 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("HOME", home)
+	os.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	code := m.Run()
 	os.RemoveAll(home)
 	os.Exit(code)
@@ -292,6 +293,7 @@ func TestEmbeddedDataNamesRealVendors(t *testing.T) {
 func TestAStaleCacheIsRefreshedAndAFreshOneIsNot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	path := modelDataCachePath()
 	if err := writeLineups(path, lineups{"deepseek": {}}); err != nil {
 		t.Fatal(err)
