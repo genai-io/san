@@ -1,0 +1,42 @@
+{
+  "anthropic": {
+    "default_effort": "high",
+    "default_input": ["text", "image"],
+    "default_limit": {"context": 1000000, "output": 128000},
+    "models": {
+      "claude-fable-5": {"always_reasons": true},
+      "claude-opus-4-1-20250805": {"name": "Claude Opus 4.1", "status": "retired", "replacement": "claude-opus-5", "reasoning": false},
+      "claude-opus-4-20250514": {"name": "Claude Opus 4", "status": "retired", "replacement": "claude-opus-5", "reasoning": false},
+      "claude-sonnet-4-20250514": {"name": "Claude Sonnet 4", "status": "retired", "replacement": "claude-sonnet-5", "reasoning": false},
+      "claude-3-7-sonnet-20250219": {"name": "Claude Sonnet 3.7", "status": "retired", "replacement": "claude-sonnet-5", "reasoning": false},
+      "claude-3-5-haiku-20241022": {"name": "Claude Haiku 3.5", "status": "retired", "replacement": "claude-sonnet-5", "reasoning": false}
+    }
+  },
+  "anthropic-vertex": {
+    "default_effort": "high",
+    "default_input": ["text", "image"],
+    "default_limit": {"context": 1000000, "output": 128000},
+    "models": {
+      "claude-fable-5": {"always_reasons": true}
+    }
+  },
+  "openai": {"default_effort": "medium", "default_input": ["text", "image"]},
+  "openai-codex": {"default_effort": "medium", "default_input": ["text", "image"]},
+  "copilot": {"default_input": ["text", "image"]},
+  "google": {"default_input": ["text", "image"]},
+  "google-vertex": {"default_input": ["text", "image"]},
+  "deepseek": {"default_effort": "high"},
+  "sensenova": {"default_input": ["text", "image"]},
+  "minimax": {"default_input": ["text", "image"]},
+  "moonshot": {"default_input": ["text", "image"]},
+  "alibaba": {"default_input": ["text", "image"]},
+  "bigmodel": {"default_input": ["text", "image"]},
+  "mimo": {"default_input": ["text", "image"]},
+  "volcengine": {"default_input": ["text", "image"]},
+  "agnesai": {"default_input": ["text", "image"]},
+  "ollama": {
+    "default_input": ["text", "image"],
+    "default_limit": {"context": 131072, "output": 16384}
+  },
+  "custom": {"default_input": ["text", "image"]}
+}

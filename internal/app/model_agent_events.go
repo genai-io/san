@@ -44,7 +44,7 @@ func (m *model) OnInference(resp *ai.Response) {
 	m.env.CachedPrefixTokens = resp.Usage.CacheWrite + resp.Usage.CacheRead
 
 	if m.env.CurrentModel != nil {
-		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.ModelID, resp.Usage); ok {
+		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.AuthMethod, m.env.CurrentModel.ModelID, resp.Usage); ok {
 			m.env.ConversationCost = m.env.ConversationCost.Add(cost)
 		}
 	}

@@ -21,7 +21,7 @@ type registry struct {
 	mu             sync.RWMutex
 	entries        map[string]registryEntry       // key: providerKey
 	displays       map[ProviderID]ProviderDisplay // provider-level UI presentation
-	costs          map[ProviderID]CostEstimator   // per-provider turn-cost pricing
+	costs          map[string]CostEstimator       // key: providerKey; turn-cost pricing
 	authenticators map[string]Authenticator       // key: providerKey; interactive (OAuth) login
 }
 
@@ -34,7 +34,7 @@ type registryEntry struct {
 var globalRegistry = &registry{
 	entries:        make(map[string]registryEntry),
 	displays:       make(map[ProviderID]ProviderDisplay),
-	costs:          make(map[ProviderID]CostEstimator),
+	costs:          make(map[string]CostEstimator),
 	authenticators: make(map[string]Authenticator),
 }
 
@@ -84,16 +84,16 @@ func Unregister(provider ProviderID, authMethod AuthMethod) {
 	key := providerKey(provider, authMethod)
 	delete(globalRegistry.entries, key)
 	delete(globalRegistry.authenticators, key)
+	delete(globalRegistry.costs, key)
 
-	// The display and the pricing are per provider, shared by its auth
-	// methods, so they go only once the last one does.
+	// The display is per provider, shared by its auth methods, so it goes only
+	// once the last one does.
 	for _, entry := range globalRegistry.entries {
 		if entry.meta.Provider == provider {
 			return
 		}
 	}
 	delete(globalRegistry.displays, provider)
-	delete(globalRegistry.costs, provider)
 }
 
 // GetProvider opens a connection to a registered provider auth method.

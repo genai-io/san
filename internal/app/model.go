@@ -175,6 +175,7 @@ func (m *model) Init() tea.Cmd {
 		awaitMainNotice(m.mainNotices),
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version),
+		refreshModelData(),
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt

@@ -77,7 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
-Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; set `SAN_DISABLE_AUTOUPDATE=1` to opt out of background updates.
+Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; set `SAN_DISABLE_AUTOUPDATE=1` to opt out of background updates. Model lineups, context windows and prices come from [models.dev](https://models.dev), refreshed daily (`SAN_DISABLE_MODEL_REFRESH=1` to skip); correct any of them in `~/.san/models.json`.
 
 <details>
 <summary><b>Other methods</b></summary>
@@ -170,6 +170,7 @@ User-level (`~/.san/`):
 
 ```
 providers.json    # Provider connections and current model
+models.json       # Your corrections to model windows, prices and reasoning efforts
 settings.json     # Permissions, hooks, env, active persona
 skills.json       # Skill states
 personas/         # Persona bundles: system prompt parts, skills, settings

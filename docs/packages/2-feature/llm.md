@@ -62,9 +62,10 @@ conn.go        the package-level *Conn, provider resolution, the cross-vendor po
 client.go      Client: a Provider plus a model; hands the loop a per-turn *ai.Client
 store.go       providers.json — what the user connected and chose
 modelcache.go  the cached listings, and the context window resolved from them
-cost.go        Money, the multi-currency total, and per-vendor pricing
+cost.go        Money, the multi-currency total, and per-provider/auth pricing
 logging.go     CompletionOptions, as the log package reads it
 vendor*.go     every vendor, over genai-io/sdk-go
+data/          the model data built into the binary (see Model data)
 ```
 
 The test double lives outside the binary, in
@@ -88,13 +89,13 @@ Worth knowing beyond the names:
   ID. Issue #338 was the two disagreeing.
 - **`ModelInfo.Reasoning`** carries live supported/default effort values when a
   provider advertises them; `effort.go` prefers that metadata and falls back to
-  `ThinkingEffortProvider` for catalogs (such as the standard OpenAI
-  `/v1/models` response) that omit reasoning capabilities.
+  `ThinkingEffortProvider`, which answers from San's model data for listings
+  (such as the standard OpenAI `/v1/models` response) that omit it.
 - **`vendor*.go` is one adapter, not one package per vendor.** The wire
   protocols, their streaming shapes and their reasoning dialects belong to the
   SDK's drivers; what stays here is the seam — `Provider` on one side,
-  `ai.Client` on the other — plus the table saying which San provider is which
-  catalog vendor. `vendor.go` names the file each subject lives in.
+  `ai.Client` on the other — the table saying which San provider is which
+  catalog vendor, and the model data. `vendor.go` names the file each subject lives in.
 
 ## Lifecycle
 
@@ -105,26 +106,45 @@ Worth knowing beyond the names:
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 
-## Model catalogs
+## Model data
 
-The catalog is the SDK's — `ai/catalog`, one row per vendor, carrying endpoints,
-windows, prices, reasoning ladders and per-endpoint quirks as data. It is a
-fallback, not an authority: most OpenAI-compatible vendors return the bare
-`id`/`object`/`owned_by` shape and publish limits only in their docs, so the
-live listing wins on every field it states and the catalog fills the rest.
+The SDK's catalog says how to reach a vendor and speak its protocol — endpoint,
+credential variable, wire dialect — and nothing about its models. Which models a
+vendor serves, their windows, output caps, prices, input kinds and reasoning
+efforts change every few weeks, so they are San's data, in layers
+(`vendor_data.go`), each overriding the one before it field by field:
 
-Three rules keep the fallback honest:
+```
+internal/llm/data/models.dev.json   models.dev, trimmed to San's vendors, built in
+~/.san/cache/models.json            the same, refetched daily in the background
+internal/llm/data/san.json          what models.dev lacks: per-vendor default
+                                    effort and fallbacks, retired models and their
+                                    replacements, a model that cannot stop reasoning
+~/.san/models.json                  the user's own corrections, same shape
+```
 
-- An unrecognised model reports **0**, not a blanket default. San treats 0 as
-  "window unknown" and skips proactive compaction, which is recoverable; a
-  guessed window is acted on silently and is wrong in both directions —
-  guessing low burns context on every compaction, guessing high never fires.
-- A vendor that encodes the window in the model ID reads it from there rather
-  than reporting nothing, which is what `catalog.Vendor.Infer` is for. A model
-  that reaches a picker with no window is a defect, and a test asserts it.
-- Each vendor records the date its figures were last checked against the
-  vendor's documentation, because a stale window or price reads exactly like a
-  fresh one; `catalog.Stale` reports the ones that have aged out.
+and the endpoint's live listing over all of them. The shape is models.dev's,
+keyed by catalog vendor ID. `SAN_DISABLE_MODEL_REFRESH=1` skips the daily fetch;
+`go test ./internal/llm -run TestModelDataSnapshot -update-model-data` refreshes
+the built-in snapshot.
+
+A few rules keep it honest:
+
+- **Data describes; it never routes.** The trim keeps only the fields
+  `modelSpec` reads — no endpoint, header or credential name survives it — and
+  drops figures outside any plausible range, so a bad fetch reads as "unknown",
+  not as a fact.
+- **The data names reasoning efforts; the SDK spells them.** A model's ladder is
+  the efforts its data names, cut to what its protocol can tell apart
+  (`ai.Model.WireEfforts`), with the lineup's default marked. The wire value of
+  each rung — `"none"`, `"enabled"`, `"HIGH"`, a token budget — is derived by the
+  SDK from the protocol, so none of it is written here.
+- **An unrecognised model reports 0**, not a guess, unless its lineup states a
+  fallback. San treats 0 as "window unknown" and skips proactive compaction,
+  which is recoverable; a guessed window is acted on silently and is wrong in
+  both directions.
+- **Cost is per way in.** An estimator is registered per provider/auth pair and
+  only for metered access — a subscription or coding plan is a flat fee.
 
 Model Studio is the exception that proves the shape: it publishes no window for
 any of its hundreds of models and answers per model instead, which is what
@@ -149,6 +169,8 @@ internal/llm/provider_test.go — the optional-extension defaults.
 internal/llm/store_test.go    — provider config persistence.
 internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
 internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
+internal/llm/vendor_data_test.go — the data layers, the models.dev trim, and
+                                each model's ladder against its protocol.
 internal/llm/vendor_live_test.go — one real turn per configured vendor,
                                 opt-in via SAN_SDK_LIVE.
 ```

@@ -313,9 +313,8 @@ func TestOverflowedPromptAsksForCompaction(t *testing.T) {
 
 func TestModelInfoCarriesLimitsAndReasoning(t *testing.T) {
 	e := serve(t)
-	// The listing endpoint is not what this stub serves, so the catalog is
-	// what answers — which is the fallback San relies on for a vendor whose
-	// models it already knows.
+	// The listing endpoint is not what this stub serves, so San's data is
+	// what answers — the fallback for a vendor whose models it already knows.
 	models, err := claude(t, e).ListModels(context.Background())
 	if err != nil {
 		t.Fatalf("ListModels: %v", err)
@@ -334,7 +333,7 @@ func TestModelInfoCarriesLimitsAndReasoning(t *testing.T) {
 		t.Fatalf("claude-opus-5 is missing from %d models", len(models))
 	}
 	if opus.InputTokenLimit == 0 || opus.OutputTokenLimit == 0 {
-		t.Errorf("model limits = %d/%d, want the catalog's figures", opus.InputTokenLimit, opus.OutputTokenLimit)
+		t.Errorf("model limits = %d/%d, want the data's figures", opus.InputTokenLimit, opus.OutputTokenLimit)
 	}
 	if opus.Reasoning == nil || len(opus.Reasoning.SupportedEfforts) == 0 {
 		t.Fatalf("Reasoning = %+v, want the model's ladder", opus.Reasoning)
@@ -455,7 +454,7 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 		byID[m.ID] = m
 	}
 
-	// One the vendor lists: its window comes from the catalog row.
+	// One the data lists: its window comes from there.
 	listed, present := byID["glm-4.7"]
 	if !present {
 		t.Fatalf("glm-4.7 is missing from %+v", models)
@@ -468,14 +467,14 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 		t.Error("a listed model reached the picker with no reasoning ladder")
 	}
 
-	// One it does not: the vendor still sizes it from the ID.
+	// One it does not: nothing sizes it, and nothing guesses.
 	unlisted, present := byID["glm-9-imaginary"]
 	if !present {
 		t.Fatalf("an unlisted model was dropped from the listing: %+v", models)
 	}
 	if unlisted.InputTokenLimit != 0 {
-		t.Errorf("glm-9-imaginary window = %d; the vendor cannot size an ID it "+
-			"does not recognise, and a guess is worse than nothing", unlisted.InputTokenLimit)
+		t.Errorf("glm-9-imaginary window = %d; nothing states it, and a guess "+
+			"is worse than nothing", unlisted.InputTokenLimit)
 	}
 }
 
@@ -513,27 +512,23 @@ func TestModelStudioAnswersOneModelAtATime(t *testing.T) {
 	}
 }
 
-// A guardrail, carried over from the per-vendor catalogs this replaces: every
-// model San offers in a picker must state a context window.
+// Every model San offers in a picker from its own data must state a context
+// window.
 //
 // A zero window is not a cosmetic gap. It is what "cannot size this
 // conversation" means: the context percentage cannot render and auto-compaction
-// cannot fire, both silently. A model whose window genuinely is not known
-// belongs in neither catalog — leave it to the endpoint's own listing, where
-// its absence is at least explained by the endpoint saying nothing.
-func TestEveryCatalogModelStatesItsWindow(t *testing.T) {
+// cannot fire, both silently.
+func TestEveryModelInTheDataStatesItsWindow(t *testing.T) {
 	for _, e := range vendorEntries {
-		if e.vendorID == "" || e.vendorID == alibabaVendor {
-			// The user-defined endpoint ships no models, and Model Studio
-			// answers per model — see TestModelStudioAnswersOneModelAtATime.
-			continue
+		if e.vendorID == "" {
+			continue // the user-defined endpoint ships no models
 		}
 		vendor, ok := catalog.Find(e.vendorID)
 		if !ok {
 			t.Errorf("%s: no catalog vendor %q", providerName(e.meta), e.vendorID)
 			continue
 		}
-		for _, m := range ai.Available(vendor.ModelList()) {
+		for _, m := range ai.Available(newVendorModels(vendor).list()) {
 			if m.ContextWindow == 0 {
 				t.Errorf("%s: model %q states no context window", e.vendorID, m.ID)
 			}
