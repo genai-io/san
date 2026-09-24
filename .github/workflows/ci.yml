@@ -59,8 +59,8 @@ jobs:
           cache: true
       - name: Build
         run: go build ./cmd/san/
-      - name: Test (cmd/san only — integration tests are Unix-only)
-        run: go test -count=1 ./cmd/san/...
+      - name: Test cmd/san and the shell layer (process, hooks, shell tool) — integration tests are Unix-only
+        run: go test -count=1 ./cmd/san/... ./internal/proc/... ./internal/hook/... ./internal/tool/fs/...
       - name: Smoke test — zip package
         run: |
           go build -o san.exe ./cmd/san/
