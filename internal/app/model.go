@@ -177,7 +177,7 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
 		awaitSelfLearnStart(m.selfLearnStarts),
-		autoUpdate(m.env.Version),
+		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),
 	}
 	if m.env.InitialPrompt != "" {

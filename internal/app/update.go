@@ -274,6 +274,16 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Thinking: " + msg.Mode)
 		return m, nil
+	case input.AutoUpdateSavedMsg:
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after auto-update save failed", zap.Error(err))
+		}
+		if msg.On {
+			m.conv.AddNotice("Auto update on — takes effect next launch")
+		} else {
+			m.conv.AddNotice("Auto update off — takes effect next launch")
+		}
+		return m, nil
 	case input.AllowBypassSavedMsg:
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			// The in-memory handle still holds the pre-save value, and it is

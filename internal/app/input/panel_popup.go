@@ -79,10 +79,11 @@ func newPanelPopup(glyph, title, tagline string, panels ...Panel) PanelPopup {
 	return PanelPopup{glyph: glyph, title: title, tagline: tagline, panels: panels}
 }
 
-// NewSettingsSelector builds the /settings popup: Appearance and Permissions.
+// NewSettingsSelector builds the /settings popup: Appearance, Permissions and
+// General.
 func NewSettingsSelector(settings *setting.Settings) PanelPopup {
-	return newPanelPopup("⚙", "Settings", "appearance & permissions",
-		newAppearancePanel(settings), newPermissionsPanel(settings))
+	return newPanelPopup("⚙", "Settings", "appearance, permissions & general",
+		newAppearancePanel(settings), newPermissionsPanel(settings), newGeneralPanel(settings))
 }
 
 // Enter activates the popup, re-focusing whichever panel was last open (the
