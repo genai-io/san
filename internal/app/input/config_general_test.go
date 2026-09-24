@@ -16,12 +16,13 @@ func TestGeneralPanelAutoUpdateOffPersistsExplicitFalse(t *testing.T) {
 
 	p := newGeneralPanel(nil)
 	p.Enter()
-	if !p.autoUpdate {
-		t.Fatal("auto update should default on")
+	if !p.baseline || p.Dirty() {
+		t.Fatal("auto update should default on and start clean")
 	}
-	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight}) // On → Off
-	if done || p.saveErr != nil {
-		t.Fatalf("switching should save in place: done=%v err=%v", done, p.saveErr)
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // On → Off
+	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !done || p.saveErr != nil {
+		t.Fatalf("save failed: done=%v err=%v", done, p.saveErr)
 	}
 	if msg, ok := cmd().(AutoUpdateSavedMsg); !ok || msg.On {
 		t.Fatalf("got %#v, want AutoUpdateSavedMsg{On:false}", cmd())
