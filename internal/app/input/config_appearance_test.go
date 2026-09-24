@@ -169,11 +169,11 @@ func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
 	}
 }
 
-// TestConfigSelectorTabSwitchesPanels confirms tab / shift+tab cycle
+// TestSettingsSelectorTabSwitchesPanels confirms tab / shift+tab cycle
 // /settings's panels (and wrap). The shell's tab switching was dormant while
 // /settings hosted a single panel; registering Permissions alongside
 // Appearance puts it back in play.
-func TestConfigSelectorTabSwitchesPanels(t *testing.T) {
+func TestSettingsSelectorTabSwitchesPanels(t *testing.T) {
 	c := NewSettingsSelector(nil)
 	c.Enter(120, 40)
 	if got := c.ActivePanel().Title(); got != "appearance" {
