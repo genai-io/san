@@ -18,7 +18,7 @@ func (t ToolList) Matches(name string, input map[string]any) bool {
 	}
 	rule := setting.BuildRule(name, input)
 	for _, r := range t {
-		if r.Name != name {
+		if !r.names(name) {
 			continue
 		}
 		if r.Pattern == "" {
@@ -46,7 +46,7 @@ func (t ToolList) Allows(name string, input map[string]any) bool {
 	patterns := make([]string, 0, len(t))
 	hasBare := false
 	for _, r := range t {
-		if r.Name != name {
+		if !r.names(name) {
 			continue
 		}
 		if r.Pattern == "" {

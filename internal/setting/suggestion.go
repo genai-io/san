@@ -46,6 +46,10 @@ func GenerateSuggestions(toolName string, args map[string]any, maxSuggestions in
 		if cmd, ok := args["command"].(string); ok {
 			return suggestBashRules(cmd, maxSuggestions)
 		}
+	case "PowerShell":
+		if cmd, ok := args["command"].(string); ok {
+			return suggestPowerShellRules(cmd)
+		}
 	case "Edit", "Write":
 		// Edit takes "path", Write "file_path"; filePathArg owns that mapping.
 		if fp, ok := filePathArg(toolName, args); ok {

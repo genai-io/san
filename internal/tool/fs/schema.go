@@ -136,7 +136,7 @@ const powerShellDescription = `Executes a PowerShell command and returns its out
 
 - Write PowerShell, not bash: separate statements with ";" (Windows PowerShell 5.1 has no && or ||; use "if ($?) { ... }"), send errors away with 2>$null, read environment variables as $env:NAME, and escape with a backtick.
 - Commands already run in the session working directory — NEVER prefix with "Set-Location <cwd>;"; use relative paths inside it. A successful Set-Location (cd) updates the session working directory; other state (variables, functions) does not persist between calls.
-- Search and discovery run through this tool (Get-ChildItem -Recurse -Filter, Select-String, or rg when installed); cut large output with Select-Object -First N.
+- Search and discovery run through this tool (Get-ChildItem -Recurse -Filter, Select-String, or rg when installed); cut large output with Select-Object -First N. A single pipeline of read-only cmdlets runs without an approval prompt; anything with ; && ( { $ or a redirection asks.
 - For file contents use the dedicated tools: Read (not Get-Content), Edit (not -replace), Write (not Set-Content/Out-File).
 - No console and no stdin — anything awaiting input hangs until timeout. Use non-interactive flags (-Force, -Confirm:$false, "git commit -m").
 - Optional timeout in ms (default 120000, max 600000). run_in_background runs the command detached; you are notified when it completes.`
