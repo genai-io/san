@@ -204,8 +204,8 @@ func buildShellCommand(ctx context.Context, hookCmd setting.HookCmd, cwd string)
 		return nil
 	}
 	// Backstop: if a grandchild keeps the stdout/stderr pipe open after the
-	// shell is killed (common on Windows where we can't group-kill), give Wait
-	// a bounded time to drain before exec force-closes the pipes.
+	// shell is killed, give Wait a bounded time to drain before exec
+	// force-closes the pipes.
 	cmd.WaitDelay = 5 * time.Second
 	return cmd
 }
