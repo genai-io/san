@@ -75,6 +75,8 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
+在 Windows 上，装了 Git for Windows 时 San 用它自带的 bash 执行命令，否则用 PowerShell（有 pwsh 就用 pwsh，没有就用系统自带的 Windows PowerShell）；可以用 `SAN_SHELL=bash`、`powershell` 或某个可执行文件路径指定。两者都装了时，另一个也可用，在 `/tools` 里打开即可。
+
 升级直接重新执行同样的命令;通过 Homebrew 安装的用 `brew upgrade san`。
 
 <details>

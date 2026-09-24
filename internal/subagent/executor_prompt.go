@@ -68,6 +68,7 @@ var toolActivityParams = map[string]string{
 	"Write":      "file_path",
 	"Edit":       "file_path",
 	"Bash":       "command",
+	"PowerShell": "command",
 	"WebFetch":   "url",
 	"WebSearch":  "query",
 	"TaskCreate": "subject",

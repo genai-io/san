@@ -15,7 +15,7 @@ import (
 )
 
 func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
-	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"command": "printf 'line one\\nline two\\n'; printf 'stderr\\n' >&2; exit 7",
 	}, t.TempDir())
 	if result.Success {
@@ -37,7 +37,7 @@ func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
 }
 
 func TestBashFailureWithoutOutputHasZeroDisplayLines(t *testing.T) {
-	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"command": "exit 3",
 	}, t.TempDir())
 	if result.Success {
@@ -59,7 +59,7 @@ func TestBashToolTracksChangedDirectory(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"command": "cd subdir",
 	}, cwd)
 	if !result.Success {
@@ -96,7 +96,7 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 		}
 	})
 
-	result := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"command":           "sleep 60",
 		"run_in_background": true,
 	}, t.TempDir())
@@ -126,7 +126,7 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 	if !ok {
 		t.Fatalf("task %v not registered", background["taskId"])
 	}
-	stop := (&BashTool{}).ExecuteApproved(context.Background(), map[string]any{
+	stop := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
 		"command": fmt.Sprintf("kill -TERM -- -%d", background["processGroupId"]),
 	}, t.TempDir())
 	if !stop.Success {

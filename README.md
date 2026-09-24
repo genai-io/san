@@ -77,6 +77,8 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1 | iex
 ```
 
+On Windows, San runs commands under Git for Windows' bash when it is installed and under PowerShell otherwise (pwsh if present, else the built-in Windows PowerShell); set `SAN_SHELL=bash`, `powershell`, or a path to choose. With both installed, the other one is available too — turn it on in `/tools`.
+
 Start with `san`. On first launch, choose a model and add its API key when prompted. San keeps itself current: a new release is installed in the background and the status line asks for a restart. Run `san update` to update right away, or `brew upgrade san` if you installed via Homebrew; set `SAN_DISABLE_AUTOUPDATE=1` to opt out of background updates. Model lineups, context windows and prices come from [models.dev](https://models.dev), refreshed daily (`SAN_DISABLE_MODEL_REFRESH=1` to skip); correct any of them in `~/.san/models.json`.
 
 <details>

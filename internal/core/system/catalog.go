@@ -261,6 +261,9 @@ func modeDescription(mode string) string {
 // daily date rollovers and cwd switches.
 type Environment struct {
 	Cwd string
+	// Shell names what shell commands run under, e.g. "bash" or
+	// "Windows PowerShell 5.1"; empty when there is none.
+	Shell string
 }
 
 // WithEnvironment registers the environment section. Callers should refresh
@@ -286,6 +289,9 @@ func renderEnvironment(env Environment) string {
 		fmt.Fprintf(&b, "\nbranch: %s", branch)
 	}
 	fmt.Fprintf(&b, "\nplatform: %s/%s", runtime.GOOS, runtime.GOARCH)
+	if env.Shell != "" {
+		fmt.Fprintf(&b, "\nshell: %s", env.Shell)
+	}
 	return wrap("environment", nil, b.String())
 }
 

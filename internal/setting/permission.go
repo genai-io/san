@@ -289,6 +289,13 @@ func BuildRule(toolName string, args map[string]any) string {
 			argStr = fp
 		}
 
+	case "PowerShell":
+		// The whole command, so a grant covers exactly the command approved.
+		// An empty argument would match every PowerShell call.
+		if cmd, ok := args["command"].(string); ok {
+			argStr = strings.Join(strings.Fields(cmd), " ")
+		}
+
 	case "WebFetch":
 		// For WebFetch, extract domain from URL
 		if u, ok := args["url"].(string); ok {
@@ -475,6 +482,11 @@ func extractBashCommands(cmd string) []string {
 // allow checks must use matchAllowPatterns, which requires every subcommand to
 // be covered by the allow set.
 func MatchesToolPattern(toolName string, args map[string]any, rule, pattern string) bool {
+	// A PowerShell rule names one whole command. Glob matching would let a
+	// "*" in an approved command — Get-ChildItem *.go — match any other.
+	if toolName == "PowerShell" {
+		return rule == pattern
+	}
 	if MatchRule(rule, pattern) {
 		return true
 	}

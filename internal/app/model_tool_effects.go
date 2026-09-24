@@ -14,6 +14,7 @@ import (
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
@@ -23,7 +24,7 @@ func (m *model) applyToolSideEffects(toolName string, sideEffect any) {
 		return
 	}
 	switch toolName {
-	case "Bash":
+	case tool.ToolBash, tool.ToolPowerShell:
 		if newCwd := kit.MapString(resp, "cwd"); newCwd != "" {
 			m.changeCwd(newCwd)
 		}

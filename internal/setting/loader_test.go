@@ -1,6 +1,10 @@
 package setting
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/genai-io/san/internal/proc"
+)
 
 func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 	// Absent key falls back to the factory default.
@@ -39,5 +43,25 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 		if !WithDefaultDisabledTools(nil)[name] {
 			t.Fatalf("%s should be disabled by default", name)
 		}
+	}
+}
+
+// On a Windows with both Git Bash and PowerShell the second shell's tool ships
+// disabled — the /tools panel turns it on — and the default one does not.
+func TestSecondShellShipsDisabled(t *testing.T) {
+	shells := proc.Shells()
+	if len(shells) < 2 {
+		t.Skip("this machine offers one shell")
+	}
+	def, second := shells[0].Kind.ToolName(), shells[1].Kind.ToolName()
+	disabled := WithDefaultDisabledTools(nil)
+	if !IsDefaultDisabledTool(second) || !disabled[second] {
+		t.Errorf("%s, the second shell, does not ship disabled", second)
+	}
+	if IsDefaultDisabledTool(def) || disabled[def] {
+		t.Errorf("%s, the default shell, ships disabled", def)
+	}
+	if WithDefaultDisabledTools(map[string]bool{second: false})[second] {
+		t.Errorf("turning %s on in /tools did not override its default", second)
 	}
 }

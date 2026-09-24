@@ -61,6 +61,14 @@ jobs:
         run: go build ./cmd/san/
       - name: Test cmd/san and the shell layer (process, hooks, shell tool) — integration tests are Unix-only
         run: go test -count=1 ./cmd/san/... ./internal/proc/... ./internal/hook/... ./internal/tool/fs/...
+      - name: Test PowerShell under both pwsh and Windows PowerShell 5.1
+        run: go test -count=1 -v -run PowerShell ./internal/tool/fs/
+      - name: A Windows with both Git Bash and PowerShell offers both, the second disabled
+        run: go test -count=1 -v -run 'TestSecondShellShipsDisabled|TestBuiltinToolsAllRegistered' ./internal/setting/ ./internal/tool/
+      - name: A Windows without Git Bash is given the PowerShell tool
+        env:
+          SAN_SHELL: powershell
+        run: go test -count=1 -v -run 'TestShellToolFollowsSANShell|TestBuiltinToolsAllRegistered' ./internal/tool/
       - name: Smoke test — zip package
         run: |
           go build -o san.exe ./cmd/san/

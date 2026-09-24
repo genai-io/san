@@ -297,8 +297,8 @@ func (p *ApprovalModel) getTitle() string {
 		title = "Edit file"
 	case "Write":
 		title = "Write to file"
-	case "Bash":
-		title = "Bash command"
+	case tool.ToolBash, tool.ToolPowerShell:
+		title = p.request.ToolName + " command"
 	case tool.ToolSkill:
 		title = "Load skill"
 	case tool.ToolAgent, tool.ToolSendMessage:
@@ -359,7 +359,7 @@ func allSessionLabel(req *perm.PermissionRequest) string {
 		return "Yes, allow all edits during this session"
 	case "Write":
 		return "Yes, allow all writes during this session"
-	case "Bash":
+	case tool.ToolBash, tool.ToolPowerShell:
 		return "Yes, allow all commands during this session"
 	case tool.ToolSkill:
 		return "Yes, allow all skills during this session"
