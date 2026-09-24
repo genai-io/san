@@ -61,7 +61,7 @@ type Model struct {
 	Search     SearchSelector
 	Plugin     PluginSelector
 	Tool       ToolSelector
-	Settings   PanelPopup        // /settings: appearance and permissions
+	Settings   PanelPopup        // /settings: appearance, permissions, general
 	Evolve     PanelPopup        // /evolve: self-learning skills + memory
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
 	Transcript TranscriptViewer  // /history: earlier messages a resume did not replay

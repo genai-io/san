@@ -278,10 +278,16 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after auto-update save failed", zap.Error(err))
 		}
-		if msg.On {
-			m.conv.AddNotice("Auto update on — takes effect next launch")
+		// Report the effective value: a project-level autoUpdate outranks the
+		// user level the panel writes.
+		state := "off"
+		if m.services.Setting.AutoUpdate() {
+			state = "on"
+		}
+		if m.services.Setting.AutoUpdate() != msg.On {
+			m.conv.AddNotice("Saved, but a project setting keeps auto update " + state)
 		} else {
-			m.conv.AddNotice("Auto update off — takes effect next launch")
+			m.conv.AddNotice("Auto update " + state + " — takes effect next launch")
 		}
 		return m, nil
 	case input.AllowBypassSavedMsg:
