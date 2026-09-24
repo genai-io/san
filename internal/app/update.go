@@ -280,11 +280,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Report the effective value: a project-level autoUpdate outranks the
 		// user level the panel writes.
+		on := m.services.Setting.AutoUpdate()
 		state := "off"
-		if m.services.Setting.AutoUpdate() {
+		if on {
 			state = "on"
 		}
-		if m.services.Setting.AutoUpdate() != msg.On {
+		if on != msg.On {
 			m.conv.AddNotice("Saved, but a project setting keeps auto update " + state)
 		} else {
 			m.conv.AddNotice("Auto update " + state + " — takes effect next launch")

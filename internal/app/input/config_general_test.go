@@ -24,8 +24,9 @@ func TestGeneralPanelAutoUpdateOffPersistsExplicitFalse(t *testing.T) {
 	if !done || p.saveErr != nil {
 		t.Fatalf("save failed: done=%v err=%v", done, p.saveErr)
 	}
-	if msg, ok := cmd().(AutoUpdateSavedMsg); !ok || msg.On {
-		t.Fatalf("got %#v, want AutoUpdateSavedMsg{On:false}", cmd())
+	got := cmd()
+	if msg, ok := got.(AutoUpdateSavedMsg); !ok || msg.On {
+		t.Fatalf("got %#v, want AutoUpdateSavedMsg{On:false}", got)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(home, ".san", "settings.json"))
