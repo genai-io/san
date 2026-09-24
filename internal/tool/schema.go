@@ -11,6 +11,7 @@ const (
 	ToolWrite     = "Write"
 
 	ToolBash        = "Bash"
+	ToolPowerShell  = "PowerShell"
 	ToolAgent       = "Agent"
 	ToolAgentStop   = "AgentStop"
 	ToolSendMessage = "SendMessage"
@@ -24,6 +25,13 @@ const (
 
 	ToolEvolve = "Evolve"
 )
+
+// IsShellTool reports whether name is a tool that runs shell commands: Bash
+// or PowerShell. Most platforms register one; a Windows with both may
+// register both.
+func IsShellTool(name string) bool {
+	return name == ToolBash || name == ToolPowerShell
+}
 
 // IsAgentToolName reports whether the tool name represents an agent-like worker tool.
 func IsAgentToolName(name string) bool {
@@ -57,9 +65,10 @@ type SchemaOptions struct {
 // intentionally never exposed (e.g. TaskOutput) or injected per-turn with
 // tailored parameters (e.g. Evolve) are simply left out of this list rather
 // than skipped at runtime. TestBuiltinOrderCoversEveryRegisteredTool guards
-// the reverse: a registered tool must not be missing from this order.
+// the reverse: a registered tool must not be missing from this order. Bash and
+// PowerShell share a slot; whichever the platform lacks is skipped.
 var builtinToolOrder = []string{
-	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolAskUserQuestion,
+	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolPowerShell, ToolAskUserQuestion,
 	ToolSkill,
 	ToolAgent, ToolAgentStop, ToolSendMessage,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate,
@@ -115,10 +124,8 @@ func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 	for _, name := range builtinToolOrder {
 		t, ok := Get(name)
 		if !ok {
-			// Unreachable in a correctly wired binary: every builtinToolOrder
-			// entry is a registered tool (enforced by
-			// TestBuiltinToolsAllRegistered). Skip defensively rather than
-			// nil-panic should a build ever drop one.
+			// The shell slot's other tool; otherwise unreachable in a
+			// correctly wired binary (TestBuiltinToolsAllRegistered).
 			continue
 		}
 		if agentDirectory != "" {

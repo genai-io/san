@@ -627,7 +627,7 @@ func (sp *SessionPermissions) IsToolAllowed(toolName string) bool {
 		return sp.AllowAllEdits
 	case "Write":
 		return sp.AllowAllWrites
-	case "Bash":
+	case "Bash", "PowerShell":
 		return sp.AllowAllBash
 	case "Skill":
 		return sp.AllowAllSkills

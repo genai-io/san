@@ -28,20 +28,41 @@ const (
 	cwdFileEnvVar = "SAN_CWD_FILE"
 )
 
-// BashTool executes shell commands
-type BashTool struct{}
+// ShellTool runs shell commands under the platform's shell, and is named for
+// it — Bash, or PowerShell — so the model writes that shell's syntax. The zero
+// value uses proc.DefaultShell.
+type ShellTool struct {
+	shell proc.Shell
+	// second marks the shell offered beside the default, which ships
+	// disabled; its schema says how to split work with the default.
+	second bool
+}
 
-func (t *BashTool) Name() string        { return "Bash" }
-func (t *BashTool) Description() string { return "Execute shell commands" }
-func (t *BashTool) Icon() string        { return IconBash }
+func (t *ShellTool) Name() string {
+	shell, err := t.resolve()
+	if err != nil {
+		return tool.ToolBash
+	}
+	return shell.Kind.ToolName()
+}
+func (t *ShellTool) Description() string { return "Execute shell commands" }
+func (t *ShellTool) Icon() string        { return IconBash }
+
+// resolve is the shell to run under, or why there is none.
+func (t *ShellTool) resolve() (proc.Shell, error) {
+	if t.shell.Path != "" {
+		return t.shell, nil
+	}
+	return proc.DefaultShell()
+}
 
 // RequiresPermission returns true - Bash always requires permission
-func (t *BashTool) RequiresPermission() bool {
+func (t *ShellTool) RequiresPermission() bool {
 	return true
 }
 
 // PreparePermission prepares a permission request with command preview
-func (t *BashTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
+func (t *ShellTool) PreparePermission(ctx context.Context, params map[string]any, cwd string) (*perm.PermissionRequest, error) {
 	command, err := tool.RequireString(params, "command")
 	if err != nil {
 		return nil, err
@@ -67,7 +88,7 @@ func (t *BashTool) PreparePermission(ctx context.Context, params map[string]any,
 }
 
 // ExecuteApproved executes the command after user approval
-func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	start := time.Now()
 
 	command := tool.GetString(params, "command")
@@ -86,16 +107,16 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	bash, err := requireBash()
+	shell, err := t.resolve()
 	if err != nil {
 		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd)
 	}
 
-	trackedCommand, trackedFile, cleanup := prepareCwdTracking(command)
+	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
 	defer cleanup()
 
 	// Execute command
-	cmd := exec.CommandContext(ctx, bash, "-c", trackedCommand)
+	cmd := shellCommand(ctx, shell, trackedCommand)
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 	if trackedFile != "" {
@@ -146,7 +167,7 @@ func (t *BashTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd)
 }
 
-func (t *BashTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string) toolresult.ToolResult {
+func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
@@ -258,14 +279,14 @@ func (t *BashTool) foregroundResult(ctx context.Context, description, output, er
 }
 
 // Execute implements the Tool interface (for permission-unaware execution)
-func (t *BashTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
+func (t *ShellTool) Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult {
 	// This will be called if permission flow is bypassed
 	return t.ExecuteApproved(ctx, params, cwd)
 }
 
 // executeBackground runs the command in the background and returns immediately
-func (t *BashTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration) toolresult.ToolResult {
-	bash, err := requireBash()
+func (t *ShellTool) executeBackground(ctx context.Context, command, description, cwd string, timeout time.Duration) toolresult.ToolResult {
+	shell, err := t.resolve()
 	if err != nil {
 		return toolresult.ToolResult{
 			Success:  false,
@@ -278,7 +299,7 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 	taskCtx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	// Create command
-	cmd := exec.CommandContext(taskCtx, bash, "-c", command)
+	cmd := shellCommand(taskCtx, shell, command)
 	cmd.Dir = cwd
 	cmd.Env = bashEnv(ctx)
 
@@ -404,7 +425,7 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 			pgid, pgid, pgid)
 		backgroundMeta["processGroupId"] = pgid
 	} else {
-		output += "\n\nThis platform does not provide a reliable Bash process group. Use the system process controls for PID " + fmt.Sprint(bgTask.PID) + "."
+		output += "\n\nThis platform does not provide a reliable process group. Use the system process controls for PID " + fmt.Sprint(bgTask.PID) + "."
 	}
 
 	return toolresult.ToolResult{
@@ -421,7 +442,10 @@ func (t *BashTool) executeBackground(ctx context.Context, command, description, 
 	}
 }
 
-func prepareCwdTracking(command string) (string, string, func()) {
+// prepareCwdTracking wraps command so that, however it exits, the directory
+// it ended in is written to a temp file San reads back. PowerShell's wrapping
+// already does this (powerShellScript), so its command is left as it is.
+func prepareCwdTracking(shell proc.Shell, command string) (string, string, func()) {
 	tmp, err := os.CreateTemp("", "san-cwd-*")
 	if err != nil {
 		return command, "", func() {}
@@ -430,6 +454,9 @@ func prepareCwdTracking(command string) (string, string, func()) {
 
 	cleanup := func() {
 		_ = os.Remove(tmp.Name())
+	}
+	if shell.Kind == proc.ShellPowerShell {
+		return command, tmp.Name(), cleanup
 	}
 	wrapped := "trap '" + pwdCommand() + " > \"$" + cwdFileEnvVar + "\"' EXIT\n" + command
 	return wrapped, tmp.Name(), cleanup
@@ -444,15 +471,12 @@ func pwdCommand() string {
 	return "pwd"
 }
 
-// requireBash resolves the bash to run under, or says why there is none.
-func requireBash() (string, error) {
-	if bash, ok := proc.BashPath(); ok {
-		return bash, nil
+// shellCommand is the process that runs script under shell.
+func shellCommand(ctx context.Context, shell proc.Shell, script string) *exec.Cmd {
+	if shell.Kind == proc.ShellPowerShell {
+		return exec.CommandContext(ctx, shell.Path, powerShellArgs(powerShellScript(script))...)
 	}
-	if runtime.GOOS == "windows" {
-		return "", errors.New("bash not found: install Git for Windows (https://git-scm.com/download/win)")
-	}
-	return "", errors.New("bash not found on PATH")
+	return exec.CommandContext(ctx, shell.Path, "-c", script)
 }
 
 func readTrackedCwd(path, fallback string) string {
@@ -463,7 +487,7 @@ func readTrackedCwd(path, fallback string) string {
 	if err != nil {
 		return ""
 	}
-	newCwd := filepath.Clean(strings.TrimSpace(string(data)))
+	newCwd := filepath.Clean(strings.TrimSpace(strings.TrimPrefix(string(data), "\uFEFF")))
 	if newCwd == "" || newCwd == "." || newCwd == filepath.Clean(fallback) {
 		return ""
 	}
@@ -473,7 +497,7 @@ func readTrackedCwd(path, fallback string) string {
 var extraEnvProvider atomic.Value // stores func(context.Context) []string
 
 // SetEnvProvider registers a provider of additional environment variables
-// for Bash child processes (e.g., plugin-injected variables). The
+// for shell child processes (e.g., plugin-injected variables). The
 // provider is called with the per-invocation ctx so it can read
 // per-call values (like the active plugin root) from the context.
 func SetEnvProvider(fn func(context.Context) []string) {
@@ -498,6 +522,15 @@ func bashEnv(ctx context.Context) []string {
 	return env
 }
 
+// init registers a tool per shell the platform offers (see proc.Shells), or
+// one Bash tool that reports the missing shell when there is none.
 func init() {
-	tool.Register(&BashTool{})
+	shells := proc.Shells()
+	if len(shells) == 0 {
+		tool.Register(&ShellTool{})
+		return
+	}
+	for i, shell := range shells {
+		tool.Register(&ShellTool{shell: shell, second: i == 1})
+	}
 }

@@ -1,10 +1,12 @@
 package tool_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 
 	// Register the built-in tools so schemas resolve from the live registry —
@@ -39,13 +41,26 @@ func TestBuiltinToolsAllRegistered(t *testing.T) {
 	schemas := tool.GetToolSchemas()
 	for _, name := range []string{
 		tool.ToolRead, tool.ToolWebFetch, tool.ToolWebSearch,
-		tool.ToolEdit, tool.ToolWrite, tool.ToolBash, tool.ToolAskUserQuestion,
+		tool.ToolEdit, tool.ToolWrite, tool.ToolAskUserQuestion,
 		tool.ToolSkill, tool.ToolAgent, tool.ToolAgentStop, tool.ToolSendMessage,
 		tool.ToolTaskCreate, tool.ToolTaskGet, tool.ToolTaskUpdate,
 		tool.ToolCron,
 	} {
 		if _, ok := findSchema(schemas, name); !ok {
 			t.Errorf("built-in tool %q is missing from GetToolSchemas output", name)
+		}
+	}
+	// One shell tool per shell the platform offers; Bash alone when none is.
+	want := map[string]bool{}
+	for _, shell := range proc.Shells() {
+		want[shell.Kind.ToolName()] = true
+	}
+	if len(want) == 0 {
+		want[tool.ToolBash] = true
+	}
+	for _, name := range []string{tool.ToolBash, tool.ToolPowerShell} {
+		if _, got := findSchema(schemas, name); got != want[name] {
+			t.Errorf("shell tool %s registered = %v, want %v", name, got, want[name])
 		}
 	}
 }
@@ -168,5 +183,23 @@ func TestAskUserQuestionSchemaRejectsEmptyQuestionsShape(t *testing.T) {
 	}
 	if got, ok := options["maxItems"].(int); !ok || got != 8 {
 		t.Fatalf("AskUserQuestion nested options must allow at most eight items, got %#v", options["maxItems"])
+	}
+}
+
+// With SAN_SHELL set — CI sets it to powershell on Windows — the model is
+// handed the tool named for that shell, and not the other.
+func TestShellToolFollowsSANShell(t *testing.T) {
+	var want string
+	switch os.Getenv("SAN_SHELL") {
+	case "powershell", "pwsh":
+		want = tool.ToolPowerShell
+	case "bash":
+		want = tool.ToolBash
+	default:
+		t.Skip("SAN_SHELL is not set to a shell kind")
+	}
+	schemas := tool.GetToolSchemas()
+	if _, ok := findSchema(schemas, want); !ok {
+		t.Errorf("SAN_SHELL=%s, but the model was not given %s", os.Getenv("SAN_SHELL"), want)
 	}
 }

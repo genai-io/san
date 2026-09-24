@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/proc"
 )
 
 // Loader handles loading and merging settings from multiple sources.
@@ -411,15 +412,28 @@ var defaultDisabledTools = map[string]bool{
 // panel uses this to write an explicit enable entry instead of deleting the
 // key (deletion would fall back to the default).
 func IsDefaultDisabledTool(name string) bool {
-	return defaultDisabledTools[name]
+	return defaultDisabledTools[name] || name == secondShellTool()
+}
+
+// secondShellTool names the shell tool offered beside the default one — on a
+// Windows with both Git Bash and PowerShell — which ships disabled. Empty
+// when there is none.
+func secondShellTool() string {
+	if second, ok := proc.SecondShell(); ok {
+		return second.Kind.ToolName()
+	}
+	return ""
 }
 
 // WithDefaultDisabledTools overlays the factory defaults onto explicit
 // settings entries: an explicit entry (true or false) always wins; absent
 // keys fall back to the default.
 func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
-	result := make(map[string]bool, len(explicit)+len(defaultDisabledTools))
+	result := make(map[string]bool, len(explicit)+len(defaultDisabledTools)+1)
 	maps.Copy(result, defaultDisabledTools)
+	if second := secondShellTool(); second != "" {
+		result[second] = true
+	}
 	maps.Copy(result, explicit)
 	for name, disabled := range result {
 		if !disabled {

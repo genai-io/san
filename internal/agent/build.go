@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
@@ -84,7 +85,7 @@ type BuildParams struct {
 func (p BuildParams) System() core.System {
 	return system.Build(core.ScopeMain,
 		system.WithPersona(p.Persona),
-		system.WithEnvironment(system.Environment{Cwd: p.CWD}),
+		system.WithEnvironment(system.Environment{Cwd: p.CWD, Shell: proc.DefaultShellName()}),
 	)
 }
 

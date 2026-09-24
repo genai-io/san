@@ -76,6 +76,12 @@ func TestBuildRule(t *testing.T) {
 			"Bash(git:status)",
 		},
 		{
+			"powershell command is kept whole",
+			"PowerShell",
+			map[string]any{"command": "Get-ChildItem  -Recurse\n  *.go"},
+			"PowerShell(Get-ChildItem -Recurse *.go)",
+		},
+		{
 			"read file",
 			"Read",
 			map[string]any{"file_path": "/path/to/file.txt"},
@@ -1157,5 +1163,22 @@ func TestOperationModeNext(t *testing.T) {
 	// BypassPermissions is not in cycle — goes back to Normal
 	if ModeBypassPermissions.Next() != ModeNormal {
 		t.Errorf("Bypass.Next() = %v, want Normal", ModeBypassPermissions.Next())
+	}
+}
+
+// A PowerShell grant covers the one command approved: not every PowerShell
+// call (an empty rule would), and not whatever a "*" in it happens to match.
+func TestPowerShellGrantCoversOnlyItsCommand(t *testing.T) {
+	grant := BuildRule("PowerShell", map[string]any{"command": "Get-ChildItem *.go"})
+	for command, want := range map[string]bool{
+		"Get-ChildItem *.go":                         true,
+		"Get-ChildItem   *.go":                       true,
+		"Get-ChildItem x; Remove-Item -Recurse y.go": false,
+		"Remove-Item -Recurse C:\\":                  false,
+	} {
+		args := map[string]any{"command": command}
+		if _, got := MatchAllowList("PowerShell", args, []string{grant}); got != want {
+			t.Errorf("grant %q allows %q = %v, want %v", grant, command, got, want)
+		}
 	}
 }

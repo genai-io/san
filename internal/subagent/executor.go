@@ -16,6 +16,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/mcp"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/task"
@@ -406,7 +407,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	// pattern as the main agent.
 	sys := system.Build(core.ScopeSubagent,
 		system.WithSubagentIdentity(rc.brief),
-		system.WithEnvironment(system.Environment{Cwd: agentCwd}),
+		system.WithEnvironment(system.Environment{Cwd: agentCwd, Shell: proc.DefaultShellName()}),
 	)
 
 	// Tools — adapt legacy tool registry + MCP tools
@@ -799,7 +800,7 @@ func modeAllowsSchema(mode PermissionMode, name string) bool {
 	// schema stays visible even to explore/read-only agents — it is their
 	// search tool. Skill stays visible for the same reason the gate permits
 	// it: the worker's prompt already lists available skills.
-	return name == "Bash" || name == tool.ToolSkill
+	return tool.IsShellTool(name) || name == tool.ToolSkill
 }
 
 // newAgentToolSet creates a tool.Set for subagents with global and per-agent

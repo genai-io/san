@@ -481,7 +481,7 @@ func getToolExecutionDesc(toolName string) string {
 		return "Writing file..."
 	case "Edit":
 		return "Editing file..."
-	case "Bash":
+	case tool.ToolBash, tool.ToolPowerShell:
 		return "Executing command..."
 	case "WebFetch":
 		return "Fetching web content..."
@@ -677,8 +677,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
-			} else if tc.Name == tool.ToolBash {
-				row = renderBashToolCall(tc.Input, params.Width, icon, detail)
+			} else if tool.IsShellTool(tc.Name) {
+				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)

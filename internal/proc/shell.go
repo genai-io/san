@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,6 +9,135 @@ import (
 	"strings"
 	"sync"
 )
+
+// ShellKind is the language a shell speaks, which decides the tool the model
+// is given and the syntax it writes.
+type ShellKind string
+
+const (
+	ShellBash       ShellKind = "bash"
+	ShellPowerShell ShellKind = "powershell"
+)
+
+// ToolName is the name of the tool that runs this shell's commands, and so
+// the syntax the model is told to write.
+func (k ShellKind) ToolName() string {
+	if k == ShellPowerShell {
+		return "PowerShell"
+	}
+	return "Bash"
+}
+
+// Shell is the interpreter shell commands run under.
+type Shell struct {
+	Kind ShellKind
+	Path string
+}
+
+// String names the shell the way a person would, including which PowerShell:
+// Windows PowerShell 5.1 lacks && and ||, which pwsh has.
+func (s Shell) String() string {
+	if s.Kind != ShellPowerShell {
+		return string(s.Kind)
+	}
+	if strings.HasPrefix(strings.ToLower(filepath.Base(s.Path)), "pwsh") {
+		return "PowerShell 7 (pwsh)"
+	}
+	return "Windows PowerShell 5.1"
+}
+
+// DefaultShell is the shell commands run under: bash on Unix; on Windows Git
+// for Windows' bash when installed, else PowerShell. SAN_SHELL overrides it
+// with "bash", "powershell", or a path to either.
+func DefaultShell() (Shell, error) { return defaultShell() }
+
+var defaultShell = sync.OnceValues(func() (Shell, error) {
+	return resolveShell(strings.TrimSpace(os.Getenv("SAN_SHELL")))
+})
+
+func resolveShell(override string) (Shell, error) {
+	switch strings.ToLower(override) {
+	case "":
+	case "bash":
+		if path, ok := BashPath(); ok {
+			return Shell{Kind: ShellBash, Path: path}, nil
+		}
+		return Shell{}, fmt.Errorf("SAN_SHELL=bash, but no bash was found")
+	case "powershell", "pwsh":
+		if path, ok := PowerShellPath(); ok {
+			return Shell{Kind: ShellPowerShell, Path: path}, nil
+		}
+		return Shell{}, fmt.Errorf("SAN_SHELL=%s, but no PowerShell was found", override)
+	default:
+		if !fileExists(override) {
+			return Shell{}, fmt.Errorf("SAN_SHELL=%s: no such file", override)
+		}
+		base := strings.ToLower(filepath.Base(override))
+		if strings.HasPrefix(base, "pwsh") || strings.HasPrefix(base, "powershell") {
+			return Shell{Kind: ShellPowerShell, Path: override}, nil
+		}
+		return Shell{Kind: ShellBash, Path: override}, nil
+	}
+
+	if path, ok := BashPath(); ok {
+		return Shell{Kind: ShellBash, Path: path}, nil
+	}
+	if runtime.GOOS == "windows" {
+		if path, ok := PowerShellPath(); ok {
+			return Shell{Kind: ShellPowerShell, Path: path}, nil
+		}
+		return Shell{}, fmt.Errorf("no shell found: install Git for Windows, or make powershell.exe reachable on PATH")
+	}
+	return Shell{}, fmt.Errorf("bash not found on PATH")
+}
+
+// Shells are the shells commands can run under: DefaultShell, then — on a
+// Windows with both Git Bash and PowerShell — the other one, which ships
+// disabled for the user to turn on. Unix offers bash alone.
+func Shells() []Shell {
+	def, err := DefaultShell()
+	if err != nil {
+		return nil
+	}
+	if second, ok := SecondShell(); ok {
+		return []Shell{def, second}
+	}
+	return []Shell{def}
+}
+
+// SecondShell is the shell offered beside DefaultShell, which ships disabled.
+func SecondShell() (Shell, bool) {
+	if runtime.GOOS != "windows" {
+		return Shell{}, false
+	}
+	def, err := DefaultShell()
+	if err != nil {
+		return Shell{}, false
+	}
+	bash, _ := BashPath()
+	powerShell, _ := PowerShellPath()
+	return secondShell(def, bash, powerShell)
+}
+
+// secondShell is the other kind than def, when its interpreter was found.
+func secondShell(def Shell, bash, powerShell string) (Shell, bool) {
+	switch {
+	case def.Kind == ShellBash && powerShell != "":
+		return Shell{Kind: ShellPowerShell, Path: powerShell}, true
+	case def.Kind == ShellPowerShell && bash != "":
+		return Shell{Kind: ShellBash, Path: bash}, true
+	}
+	return Shell{}, false
+}
+
+// DefaultShellName names DefaultShell for a prompt, or "" when there is none.
+func DefaultShellName() string {
+	shell, err := DefaultShell()
+	if err != nil {
+		return ""
+	}
+	return shell.String()
+}
 
 // BashPath returns the bash that shell commands run under, and false when
 // there is none.

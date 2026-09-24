@@ -125,7 +125,7 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 }
 
 func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
-	raw := renderBashToolCall(`{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "")
+	raw := renderShellToolCall("Bash", `{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "")
 	out := stripANSI(raw)
 	if out != "● Bash(git status) (inspect repository)\n" {
 		t.Fatalf("single-line command should render as one preview row, got %q", out)
@@ -140,7 +140,7 @@ func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
 }
 
 func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
-	out := stripANSI(renderBashToolCall(`{}`, 100, "●", ""))
+	out := stripANSI(renderShellToolCall("Bash", `{}`, 100, "●", ""))
 	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  $ (no command)\n") {
 		t.Fatalf("empty command should retain the Bash command block, got %q", out)
 	}
@@ -148,7 +148,7 @@ func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
 
 func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 	input := `{"command":"for f in a b; do\n  echo \"$f\"\ndone","description":"loop over files"}`
-	out := renderBashToolCall(input, 100, "●", "")
+	out := renderShellToolCall("Bash", input, 100, "●", "")
 
 	// Every command line renders in the block, not folded away behind ctrl+o.
 	for _, want := range []string{"for f in a b; do", `echo "$f"`, "done"} {
@@ -177,7 +177,7 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	// block: the first row is led by a "$" prompt and later rows use connectors.
 	// No gutter bar or background fill is added.
 	long := `{"command":"git log --oneline --graph --all --decorate --abbrev-commit --since='2 weeks ago' | head -50\necho done"}`
-	raw := renderBashToolCall(long, 70, "●", "")
+	raw := renderShellToolCall("Bash", long, 70, "●", "")
 	if strings.ContainsAny(raw, "│") || strings.Contains(raw, "48;2;") {
 		t.Fatalf("command block should have no bar and no background, got %q", raw)
 	}
@@ -213,19 +213,19 @@ func Test_renderBashToolCallKeepsConnectorsContinuousAcrossBlankLines(t *testing
 		`{"command":"first\n\nthird"}`,
 		`{"command":"first\n   \nthird"}`,
 	} {
-		out := stripANSI(renderBashToolCall(input, 100, "●", ""))
+		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
 		if !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n"+nestedBodyPrefix+"third\n") {
 			t.Fatalf("blank command lines should retain the connector, got %q", out)
 		}
 	}
 
-	if out := stripANSI(renderBashToolCall(`{"command":"first\n"}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
 		t.Fatalf("trailing blank command line should retain the connector, got %q", out)
 	}
-	if out := stripANSI(renderBashToolCall(`{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
-	if out := stripANSI(renderBashToolCall(`{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
 		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
 	}
 }
@@ -235,7 +235,7 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 	input := `{"command":` + strconv.Quote(command) + `,"description":"Inspect pull request details and review status"}`
 	const width = 80
 
-	rendered := stripANSI(renderBashToolCall(input, width, "●", ""))
+	rendered := stripANSI(renderShellToolCall("Bash", input, width, "●", ""))
 	if !strings.HasPrefix(rendered, "● Bash (Inspect pull request details and review status)\n") {
 		t.Fatalf("oversized command should use a Bash header, got %q", rendered)
 	}
@@ -471,7 +471,7 @@ func TestRenderToolCallsWrapsLongSingleLineBashCommandWithoutTruncating(t *testi
 func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testing.T) {
 	const width = 70
 	detail := toolResultStyle.Render(" · 12s · 1.2k lines")
-	rendered := stripANSI(renderBashToolCall(
+	rendered := stripANSI(renderShellToolCall("Bash",
 		`{"command":"git log --oneline --graph --all --decorate --abbrev-commit","description":"inspect repository history"}`,
 		width, "⋯", detail,
 	))

@@ -99,14 +99,14 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	// use the shared layout without repeating the call's tool name.
 	if data.Nested && data.IsError {
 		switch toolName {
-		case tool.ToolBash, tool.ToolEdit, tool.ToolWrite:
+		case tool.ToolBash, tool.ToolPowerShell, tool.ToolEdit, tool.ToolWrite:
 		default:
 			return renderNestedFailure(data.Content, data.Width)
 		}
 	}
 
 	switch toolName {
-	case tool.ToolBash:
+	case tool.ToolBash, tool.ToolPowerShell:
 		if data.Nested {
 			return renderBashToolResultInline(data)
 		}
@@ -1184,18 +1184,18 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
 }
 
-// renderBashToolCall renders a Bash tool call without ever truncating its
+// renderShellToolCall renders a shell tool call without ever truncating its
 // command. A single-line command stays in Bash(command) form only when that
 // complete label fits; its optional description may be shortened to keep the
 // row within the terminal. Commands that contain a newline or do not fit become
 // a full command block below the Bash header and soft-wrap without ellipses.
-func renderBashToolCall(input string, width int, icon, detail string) string {
+func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
 	description = strings.Join(strings.Fields(description), " ")
 	labelWidth := max(3, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
-		commandLabel := fmt.Sprintf("%s(%s)", tool.ToolBash, command)
+		commandLabel := fmt.Sprintf("%s(%s)", toolName, command)
 		if lipgloss.Width(commandLabel) <= labelWidth {
 			label := toolCallStyle.Render(commandLabel)
 			label += renderBashDescription(description, labelWidth-lipgloss.Width(commandLabel))
@@ -1211,7 +1211,7 @@ func renderBashToolCall(input string, width int, icon, detail string) string {
 
 	// Header line: ● Bash (description) · running detail. Only the description
 	// may be shortened; the command is rendered separately below.
-	header := toolCallStyle.Render(tool.ToolBash) + renderBashDescription(description, labelWidth-lipgloss.Width(tool.ToolBash))
+	header := toolCallStyle.Render(toolName) + renderBashDescription(description, labelWidth-lipgloss.Width(toolName))
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
