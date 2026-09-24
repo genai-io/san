@@ -279,3 +279,24 @@ func Test_RenderedInputsUseJSONDataEnvelope(t *testing.T) {
 		t.Fatalf("bash payload is not a JSON data envelope:\n%s", bash)
 	}
 }
+
+func Test_ThinkingEffortLiftsVerdictCap(t *testing.T) {
+	req := Request{ToolName: "Bash", Args: map[string]any{"command": "ls"}, CWD: "/repo"}
+	sp := &stubProvider{content: `{"decision":"allow","reason":"read-only"}`}
+	r := New(sp, "model")
+
+	if _, err := r.Permission(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.driver.Last(); got.MaxTokens != maxVerdictTokens || got.Effort != "" {
+		t.Fatalf("default call: MaxTokens=%d Effort=%q, want %d and model default", got.MaxTokens, got.Effort, maxVerdictTokens)
+	}
+
+	r.SetThinkingEffort("low")
+	if _, err := r.Permission(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if got := sp.driver.Last(); got.MaxTokens != 0 || got.Effort != "low" {
+		t.Fatalf("with effort: MaxTokens=%d Effort=%q, want 0 and low", got.MaxTokens, got.Effort)
+	}
+}

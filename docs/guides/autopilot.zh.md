@@ -4,117 +4,151 @@
 
 Autopilot 是 San 的自动驾驶系统,旨在最大限度减少人工介入:由一个 copilot
 模型对会话进行巡航,让例行工作持续推进,只在真正需要人的时刻交还控制权。
-它通过一组可独立启用的介入点(**steer**)行动 —— 提议下一步、放行灰区
-工具调用、回答命令的交互问询、回答 `AskUserQuestion`,以及在回合结束后朝
-mission 继续推进。默认开启自动输入提示和灰区权限判定。
+你给它一个 mission、一段 system prompt 和一个模型,再允许它替你做四件事:
+建议你的下一条输入、批准权限请求、回答问题,以及一轮接一轮地朝 mission 推进。
+Suggest 和 Approve 默认开启。
 
-用 `shift+tab` 切换到 Autopilot 模式(循环到琥珀色的 `⏵⏵ autopilot`),
-用 `/autopilot` 面板配置。恢复会话(`san -r <id>`)会回到保存时所在的模式。
-只想先看它跑起来的话,[`/goal`](#goal) 是最短的入口 —— 它就是下面这一整套的
-一个预设。
+用 `/autopilot` 面板配置,再用 `shift+tab` 进入 Autopilot 模式(循环到琥珀色的
+`⏵⏵ autopilot`)。恢复会话(`san -r <id>`)会回到保存时所在的模式。只想先看它
+跑起来的话,[`/goal`](#goal) 是最短的入口。
 
-## 六个 steer
+## 面板
 
-Steer 是按需组合的开关,按自主程度从低到高排列。Autopilot 模式未开启时,
-任何 steer 都不会触发 —— Suggest 除外:它的开关在任何模式下都控制自动输入提示。
+`/autopilot` 是一页,分三组:
 
-| Steer | 默认 | 作用 |
+```
+✦ Autopilot
+GIVE IT
+▸ Mission    the goal it works toward                      not set · Space to write
+  System     how it thinks and decides (system prompt)     built-in
+  Model      which model makes the calls                   same as session
+
+LET IT
+  [✓] Suggest   your next input · Tab to accept
+  [✓] Approve   permission requests · asks you if risky
+  [ ] Answer    questions and [y/N] prompts
+  [ ] Continue  to the next turn · needs a mission
+
+PRESETS
+  Save preset…   reuse this setup in other sessions
+  Load preset…    3 saved
+
+↑↓ navigate · Space edit/toggle · ←→ adjust · Enter save · Esc discard
+```
+
+`space` 操作当前行(打开编辑器或切换开关),`←`/`→` 调整 Continue 的上限,
+`enter` 保存,`esc` 放弃。保存会把改动应用到当前会话,并写进 `settings.json`
+作为新会话的默认值;保存本身不会启动任务 —— 见[执行 mission](#执行-mission)。
+
+### Give it(给它什么)
+
+- **Mission** —— 它要达成的目标。所有判断都朝它靠:它建议或发出的下一步,以及
+  Approve、Answer 权衡时参考的意图。编辑器里整段文字就是 mission(`alt+enter`
+  换行、可粘贴),`ctrl+r` 让副驾就地精炼草稿,`ctrl+c` 清空,`enter` 或 `esc`
+  返回。这一行右侧显示 mission 当前的状态(`ready`、`running`、`paused`、`✓ done`)。
+- **System** —— 它怎么思考和决策:副驾 system prompt 里可编辑的那部分,初始为
+  内置指令。安全规则是另一份固定的策略,每次判断都会带上,这里改不到;这里只改
+  它的行事方式。按会话生效。
+- **Model** —— 用哪个模型来做判断。可选:"same as session" 跟随会话模型。否则
+  先选已连接的 provider,再选它缓存的模型;如果模型支持推理,再选 thinking 档位
+  (`default` 用模型自己的默认档)。保存为 `vendor/model`,所以切换会话模型后
+  副驾仍留在原 provider。一般用便宜、快速的模型就够了;显式设了档位时会取消
+  512 token 的判定上限,免得推理吃掉答案。
+
+### Let it(让它做什么)
+
+除 Suggest 外,其余开关只在 Autopilot 模式下生效;Suggest 在任何模式下都控制
+输入提示。
+
+| 开关 | 默认 | 作用 |
 |---|---|---|
-| **Suggest** | **开** | 控制任何模式下的自动输入提示。关闭时完全不生成提示;开启后在输入框中显示下一条输入建议。Autopilot 正在推进 mission 时,建议围绕 mission;否则使用通用输入预测。`tab` 接受建议,`enter` 发送;它不会自行提交。 |
-| **Permission** | **开** | 自动放行静态规则解不了的灰区工具调用,按可逆性、影响面、数据外泄三轴判断。工作区在 git 下时,把版本历史当作安全网:对已跟踪文件的改动属于常规活儿;git 自身那些利器(`reset --hard`、`clean -f`、`stash drop`、force-push、`branch -D`)按本次会话的意图来权衡,而不是一律拦下。真正出了工作区的仍然升级给你 —— 别处的未跟踪文件、项目之外的路径、共享的主干分支。失败即收紧:任何错误都升级给你。 |
-| **Bash** | 关 | 回答已批准命令的交互问询(`Continue? [Y/n]`),仅当回答只是让已批准的动作继续;会扩大范围的一律跳过。 |
-| **Skill** | 关 | 直接放行副驾的 skill 加载(不经判官)—— 一个独立的"信任 skill"开关。因为 skill 可能跑脚本,判官往往会把它升级给你;单开这个就能让副驾自动加载 skill,而不必打开整个灰区。关闭时,skill 加载回落到 Permission 判官(或你)。 |
-| **Question** | 关 | 只要 mission 或对话让某个选择站得住脚,就替你回答 `AskUserQuestion` —— 宁可选保守可逆的那项,也不让整轮停在这里等你。只有当这一步确实该你拍板(不可逆、代价高、取决于你的偏好或判断)时才留给你。选项标签逐字校验 —— 部分或凭空的回答一律转为留给你。 |
-| **End** | 关 | 回合结束后判断是否朝 mission 续跑,并自己敲出下一条指令。受 **Continue at most N times** 约束(默认 20,填 `0` 表示不限);计数在每次人类回合重置。没有交代 mission 时,它从对话里推断目标;对话里也看不出目标就交回给你。 |
+| **Suggest** your next input | **开** | 在输入框里以灰字显示下一条输入建议;`tab` 采纳,`enter` 发送,它不会自行提交。有 mission 时建议朝 mission 的下一步,否则预测你想输入什么。 |
+| **Approve** permission requests | **开** | 审查静态规则交给你决定的工具调用,按可逆性、影响面、数据外泄三方面判断。在 git 下以版本历史为安全网:改已跟踪文件属于常规操作,git 自身那些危险操作(`reset --hard`、`clean -f`、force-push 等)按 mission 权衡而不是一律拦下。出了工作区的仍然问你;出错即收紧,任何错误都转给你。加载 skill 视为读取说明,skill 指向的脚本在真正运行时才会被审查。 |
+| **Answer** questions and [y/N] prompts | 关 | 当 mission 或对话足以支撑一个合理选择时,替你回答 AI 的 `AskUserQuestion`;当回复只是让已批准的命令继续时,替你回应命令的交互提示(`Continue? [Y/n]`)。真正该你拍板的留给你,会扩大范围的提示一律跳过。 |
+| **Continue** to the next turn | 关 | 运行中的 mission 每一轮结束后,判断是否已完成,没完成就自己发出下一步。需要 mission。受上限约束(`←`/`→`:5、10、20、50、100 或不限;默认 20)。 |
 
-## Mission(任务)
+## 执行 mission
 
-Mission 是副驾本会话要开往的目标 —— 在 `/autopilot` 面板的 Mission 对话框里
-撰写:这是个小编辑器,你打的字就是 mission(`enter` 保存、`alt+enter` 换行、
-可粘贴),`ctrl+r` 让副驾就地精炼草稿、`ctrl+c` 清空、`esc` 保存并退出。每个
-steer 都读它:推进类 steer(Suggest、Question、End)朝它开 —— 没交代 mission 时
-则退回到对话本身透出的目标;安全类 steer
-(Permission、Bash)把它当作意图上下文 —— 明显在推进 mission 的调用或提示,会被
-看作预期内的常规活儿。但意图不凌驾于安全:凡是不可逆、破坏性、越出项目、或会外泄
-数据的动作,无论是否契合 mission,一律仍升级给你。
+Mission 有状态,只有 **running** 状态的 mission 会被推进。这样 mission 的轮次和
+你自己的对话是分开的:Continue 不会把 mission 接在你发起的对话后面。
 
-当 End steer 判定 mission **已完全达成**,会将其退役:清空 mission、steer 归位
-到被动基线(Permission + Bash)—— Autopilot 保持开启,你重新接手,自动放行的
-安全网仍在。
+| 状态 | 含义 | Continue 是否推进 | 输入框提示 |
+|---|---|---|---|
+| — | 没有 mission | 否 | — |
+| **ready** | 写好了,还没开始 | 否 | `Start the mission? enter to start · esc to skip` |
+| **running** | 副驾正在推进 | **是** | — |
+| **paused** | 你插话了,或副驾交还给你 | 否 | `Resume the mission? enter to resume · esc to skip` |
+| **done** | 副驾判断已完成 | 否 | — |
 
-## 启动 mission
-
-面板底部一行是两个按钮 —— **Save** 和 **Start**(`←`/`→` 选择、`enter`
-执行):
-
-- **Save** 把配置应用到实时会话,并写入 `settings.json` 作为默认种子,但不
-  改变模式。只调 steer、或想稍后再用 `shift+tab` 启动时用它。
-- **Start** 先做 Save 做的一切,再开启 Autopilot 并免人工发动 mission:从
-  mission 推出开场那一步并自己提交 —— 交代好 mission、按下 Start 就是完整的
-  启动。Start 需要一个 mission,没设时它会提示你而不是空转开启。
-
-用 `shift+tab` 落到 Autopilot 不再自动起步,只会浮出 Suggest steer 的提议
-(若开启)。发动 mission 始终是显式的 Start 按钮。
+- **开始。** 在面板里保存 mission,再用 `shift+tab` 进入 Autopilot:输入框会询问
+  是否开始,按 `enter` 即开始。副驾推出第一步并发出。已经在 Autopilot 里的话,
+  保存后询问会立刻出现。
+- **你自己的消息。** 一打字,询问就让开,`enter` 发送的是你输入的内容。这一轮属于
+  你:运行中的 mission 会暂停,你这一轮结束后输入框会询问是否继续。你输入的内容
+  不会被当成 mission 的一步。
+- **交还。** 副驾需要只有你能做的决定、这一轮被中断(`esc`、stop hook、离开
+  Autopilot)或达到上限时,mission 暂停。继续时计数接着算,如果是上限用完则重新
+  开始计数。
+- **完成。** 副驾判断 mission 已完成时把它标记为 done:保留记录,但不会再被推进,
+  也不再影响之后的判断。你的开关保持原样。要做新任务,写一个新的 mission。
+- **修改 mission** —— 改写它,或加载带 mission 的预设 —— 会让它回到 ready,
+  重新开始一次执行。
+- **恢复会话**时,运行中的 mission 会变成 paused,在你确认之前不会自己跑。
 
 ## /goal
 
-最常见的那条路 —— 交代 mission、打开让副驾能动手的几个 steer、解除上限、
-发车 —— 压成一行:
+常见用法 —— 交代 mission、打开让副驾行动的开关、取消上限、启动 —— 可以压缩成一行:
 
 ```
-/goal 给 internal/setting 补表驱动测试,直到 go test ./... 全绿
+/goal add table-driven tests for internal/setting until go test ./... passes
 ```
 
-`/goal` 是一个预设,不是另一种模式:开的还是同一个 Autopilot,只是配置固定。
+- 目标成为 [mission](#执行-mission),直接进入 running
+- Answer 和 Continue 打开
+- 取消上限 —— 目标达成才结束,而不是计数用完
+- 进入 Autopilot,副驾自己发出第一步
 
-- 这个目标成为 [mission](#mission任务)
-- 推进类 steer 全部打开(Bash、Skill、Question、End)
-- 解除续跑上限 —— 这一轮在目标达成时结束,而不是计数器耗尽时结束
-- 开启 Autopilot,并由副驾自己发出第一步
+在一轮进行中下达的话,会在当前这一轮结束后接手。单独输入 `/goal` 显示当前目标;
+`/goal clear` 撤销它。
 
-在回合进行中输入,它会等当前回合落地后接管。单独输入 `/goal` 会显示当前目标;
-`/goal clear` 让副驾停手。
+它刻意只作用于本会话:不同于面板的保存,它不会改写你保存的默认配置。**Approve**
+保持你原来的设置不变,因为显式关掉它是一个安全选择,目标无权推翻。目标达成或被
+撤销后,开关回到 `/goal` 接手前的样子。
 
-它刻意只作用于本会话:不同于面板的 Save,它不会改写你保存的默认配置 ——
-定个目标是这一次会话的事。你的 **Permission** steer 保持原样,因为把它显式
-关成 `false` 是一个安全选择,不该因为人定了个目标就被推翻。目标结束时
-(达成或清空)steer 会回滚到 `/goal` 接手前的样子,它打开的自主权不会活得
-比目标更久。
+想要别的组合就用面板:只建议不提交、限定续跑次数,或者自定义 system prompt。
 
-想要别的组合就还是用面板:只提议不提交、限定续跑次数、或换一套驾驶指令。
+## 保持自主
 
-## 让它一直自主跑下去
+Continue 开着时,运行中的 mission 会被推着越过那些原本会让会话停下等你的情况:
 
-开着 End steer 时,那些本会让会话停下来等你的情况,副驾都会自己开过去:
+- **中途停下的一轮** —— 达到步数上限,或输出被截断且无法恢复 —— 会被接着做,副驾
+  会知道它是怎么停的。你自己按 `esc` 不一样:取消一轮代表你接手,mission 暂停。
+  stop hook 也一样。
+- **直接失败的一轮** 会按递增的间隔(5s、10s、15s)等待,然后判断是否继续,最多
+  连续三次;任何一轮正常结束都会重置计数。需要你处理的错误仍然交还给你。
+- **副驾调用失败**(网络抖动、回复不是 JSON)会重试最多三次,不会因此结束 mission。
+- **判断进行中遇到上下文压缩** 会先保留结论,而不是丢掉。
+- **续跑次数用完**:把 Continue 的上限设为不限,mission 完成才结束,而不是计数
+  用完就停。这时唯一的停止条件是副驾自己的判断,所以 mission 里要写清楚完成标准。
 
-- **回合半途停住**(撞上步数上限、输出截断且无法恢复)会被接着往下开,副驾知道
-  上一回合是怎么停的。你自己按的 `esc` 是另一回事:取消回合意味着你要接管;
-  stop hook 同理。
-- **回合直接失败**时按递增退避等待(5s、10s、15s)再判断能否续跑,最多连续三次,
-  任何跑到结束的回合都会重置计数。真正需要你处理的错误仍会交回给你。
-- **steer 自己抽风**最多重试三次,网络抖动或没吐 JSON 都不至于终结 mission。
-- **决策撞上上下文压缩**时,裁决会等压缩落地,而不是被丢掉。
-- **回合数用光**:把 **Continue at most** 设为 `0`(显示为 `∞`),这一轮就在
-  mission 完成时结束,而不是在计数器耗尽时结束。
+不限次数的运行适合搭配快速、便宜的模型 —— 见 [Model](#give-it给它什么)。
 
-不限次数的长跑,建议配一个便宜够快的 steer 模型 —— 见[配置](#配置)。
+## 演示:免手动搭建一个目录
 
-## Demo:一次免人工的脚手架搭建
+一次约两分钟的运行,走完整个流程 —— 开场、权限审批、续跑、完成 —— 只在一个临时
+目录里操作。
 
-两分钟跑通完整闭环 —— 起步、灰区放行、自动续跑、目标达成 ——
-全程不触碰临时目录以外的任何东西。
-
-**1. 在一个空仓库里启动 San。** 只在那里跑 —— 下面这条 goal 会在启动目录下直接
-建 `notes/`,放到你自己的项目里跑就是往真实目录里乱写:
+**1. 在空仓库里启动 San。** 只在这里运行 —— 下面的目标会在启动目录写 `notes/`,
+放到你自己的项目里就会写进真实目录:
 
 ```bash
 mkdir /tmp/autopilot-demo && cd /tmp/autopilot-demo && git init -q && san
 ```
 
-`git init` 不是顺手加的:工作区在 git 下,Permission steer 会把对已跟踪文件的
-改动当作可恢复,这正是这一轮不会停下来问你的原因。
+`git init` 不是可有可无 —— 在 git 下,Approve 会把改已跟踪文件视为可恢复,这正是
+让这次运行不停下来问你的原因。
 
-**2. 交代目标。** 一行,而且是你要按的最后一个键:
+**2. 下达目标。** 一行,也是你按的最后一个键:
 
 ```
 /goal 搭建一个 notes/ 目录:todo.md 放一个 3 项的清单、done.md 留空、
@@ -123,8 +157,8 @@ ls notes/ 验证 —— 然后目标即达成。
 ```
 
 这段话里有三个细节在起作用:*每回合只处理一个文件* 逼出多次续跑,好让你看清;
-*ls notes/* 在路径上放了一个灰区 bash 调用;*然后目标即达成* 给了副驾一个它真
-能验证的完成条件。
+*ls notes/* 在路径上放了一个需要审查的 bash 调用;*然后目标即达成* 给了副驾一个
+它真能验证的完成条件。
 
 **3. 观察运行。** 预期的转录大致是:
 
@@ -146,70 +180,70 @@ ls notes/ 验证 —— 然后目标即达成。
 ✓ autopilot · mission complete
 ```
 
-每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由副驾敲入,你没有
-碰过输入框。那条 `ls` 是灰区调用,由 Permission steer 就地放行。出现
-`✓ mission complete` 时,目标被清空、steer 回滚到 `/goal` 接手前的样子(打开
-`/autopilot` 可确认),而 Autopilot 保持开启。想中途停下就 `/goal clear`。
+每个 `❭` 都带绿色 `⎿ autopilot` 标记 —— 包括开场那条,全部由副驾输入,你没有碰过
+输入框。那条 `ls` 由 Approve 就地放行。出现 `✓ mission complete` 时,mission 显示
+为 done,开关回到 `/goal` 接手前的样子(打开 `/autopilot` 可确认),Autopilot
+保持开启。想中途停下就 `/goal clear`。
 
-同一轮用面板走:打开 **End**、把上面那段话交代成 **Mission**、按 **Start**。
-想要别的组合时才走这条路 —— 比如体验最轻的一档:只开 **Suggest** 重跑一遍、
-用 `shift+tab` 启动,副驾把每一步以幽灵文本提议在输入框里,你用 `tab` +
-`enter` 接受发送。
+同一轮用面板走:把上面那段话写成 **Mission**,打开 **Continue**,按 `enter` 保存,
+再 `shift+tab` 进入 Autopilot,在开始询问上按 `enter`。想体验最轻的一档,只开
+**Suggest**:副驾把每一步以灰字建议在输入框里,你用 `tab` + `enter` 采纳发送。
 
 ## 读懂转录里的标记
 
 | 标记 | 含义 |
 |---|---|
-| 绿 `⎿ autopilot · 2/5` | 上方那条 `❭` 是副驾敲的(第 2 / 共 5 次续跑;不限次数时显示 `step 2`) |
-| 琥珀 `⏵ autopilot · turn failed · retrying in 5s` | 某个回合出错,副驾稍后判断能否续跑 |
-| 绿 `↳ auto-approved · <理由>` | 判官放行了上方的工具调用 |
-| 琥珀 `↳ escalated · <理由>` | 判官把调用退回给你 |
-| 绿 `⏵ autopilot · answered for you` | 副驾替你回答了 `AskUserQuestion` |
-| 琥珀 `↩ autopilot · this question is yours` | 它把问题留给了你 |
-| 琥珀 `↩ autopilot · over to you` | 它停手并交还控制权(判定出错时错误原因缀在后面) |
-| 绿 `✓ autopilot · mission complete` | mission 完成并退役 |
+| 绿色 `⎿ autopilot · 2/5` | 上面那条 `❭` 是副驾输入的(第 2 次续跑,共 5 次;不限次数时显示 `step 2`) |
+| 琥珀色 `⏵ autopilot · turn failed · retrying in 5s` | 这一轮出错了,副驾会判断是否继续 |
+| 绿色 `↳ auto-approved · <原因>` | Approve 放行了上面那个工具调用 |
+| 琥珀色 `↳ escalated · <原因>` | Approve 把调用转给了你 |
+| 绿色 `⏵ autopilot · answered for you` | 副驾替你回答了 `AskUserQuestion` |
+| 琥珀色 `↩ autopilot · this question is yours` | 它把问题留给了你 |
+| 琥珀色 `↩ autopilot · over to you` | 它停下并交还控制权,mission 暂停(判断出错时后面附带错误信息) |
+| 绿色 `✓ autopilot · mission complete` | mission 已完成 |
 
-判定进行中,模式行显示 `⏵⏵ autopilot · thinking…`;放行计数也在那里
+判断进行中时,模式行显示 `⏵⏵ autopilot · thinking…`;审批数量也统计在这里
 (`· 3 approved · 1 escalated`)。
 
 ## 配置
 
-面板编辑的是本会话的实时配置。model、steer、续跑上限保存进 `settings.json`,作为
-新会话的默认值。**Steering Prompt（驾驶指令）**和 **mission** 则按会话走:它们随
-转录持久化、`/resume` 时恢复,但不会被写成默认值 —— 新会话从内置驾驶指令、无
-mission 起步。要把自定义驾驶指令或 mission 带到另一个会话,导出成预设再导入。
+模型、开关和 Continue 的上限会保存进 `settings.json`,作为新会话的默认值。mission、
+它的状态和 system prompt 按会话走:随转录保存、`/resume` 时恢复,但不会写成默认值。
+要把 mission 或自定义 system prompt 带到另一个会话,保存成预设再在那边加载。
 
-Steering Prompt 只负责定义副驾“怎么开”,不会替换不可覆盖的 control-plane policy。
-每个 LLM steer 始终携带这层固定 policy,由它约束信任边界、fail-closed 行为、各任务的
-安全规则和输出格式。配置键 `systemPrompt` / `systemPromptFile` 为兼容保留,其内容只
-作为可编辑的驾驶指令。
+System prompt 决定副驾的行事方式,但替代不了固定的控制策略。每次副驾判断都会带上
+那份策略,它规定了信任边界、出错即收紧的行为、各项任务的安全规则和输出格式。
+`systemPrompt` / `systemPromptFile` 只提供可编辑的那部分。
 
 ```jsonc
 {
   "autoPilot": {
-    "model": "anthropic/claude-haiku-4-5", // steer 判定用的模型;留空用会话模型
-    "systemPrompt": "…",                   // Steering Prompt;按会话走,面板不会写到这里
-    "systemPromptFile": "~/prompts/pilot.md", // 持久驾驶指令;systemPrompt 为空时生效
-    "mission": "…",                        // 按会话;在面板里设置
-    "maxContinuations": 20,                // -1 表示不限次数(面板里填 0 即写入这个值)
+    "model": "anthropic/claude-haiku-4-5", // 留空 = 会话模型
+    "thinkingEffort": "low",               // 留空 = 模型默认档位
+    "systemPrompt": "…",                   // 按会话;面板不会写到这里
+    "systemPromptFile": "~/prompts/pilot.md", // 持久默认值;systemPrompt 为空时使用
+    "maxContinuations": 20,                // Continue 的上限;-1 = 不限
     "steers": {
-      "suggest": true,
-      "permission": true,  // 省略即默认开;false 则一律升级给你
-      "bashPrompt": true,  // Bash steer
-      "skill": true,       // Skill steer —— 信任 skill 加载
-      "question": true,
-      "turnEnd": true      // End steer
+      "suggest": true,     // Suggest
+      "permission": true,  // Approve;省略即默认(开)
+      "question": true,    // Answer —— AI 的提问
+      "bashPrompt": true,  // Answer —— 命令的 [y/N] 提示
+      "turnEnd": true      // Continue
     }
   }
 }
 ```
 
-命名预设打包整份副驾配置 —— Steering Prompt、mission 和 steer。在 `/autopilot`
-菜单里,`e` 导出当前配置、`i` 导入,存取于 `~/.san/autopilot/<name>.json`。
+面板里的 Answer 开关同时设置 `question` 和 `bashPrompt`。这些 key 保留原来的名字
+以保持兼容;遗留的 `"skill"` key 会被忽略 —— skill 加载和其他调用一样走 Approve。
 
-## 关联
+预设把整套配置 —— mission 文字、system prompt、模型和开关 —— 存到
+`~/.san/autopilot/<名字>.json`。预设是模板:它不记录某次执行进行到哪里,所以
+加载进来的 mission 一律从 ready 开始。
 
-- [权限模型](../concepts/permission-model.md) —— Permission steer 判定的灰区
-  来自这套静态规则;被硬性拦截的动作永远到不了判官面前。
-- 判官组件在 `internal/reviewer`(`reviewer.Judge`);steer 与面板在
-  `internal/app` / `internal/app/input`。
+## 与其他功能的关系
+
+- [权限模型](../concepts/permission-model.md) —— 静态规则留下的灰区由 Approve
+  审查;硬拦截的动作根本到不了它。
+- 判官组件在 `internal/reviewer`(`reviewer.Judge`);mission 生命周期和开关在
+  `internal/app`,面板在 `internal/app/input`。

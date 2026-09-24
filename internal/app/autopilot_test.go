@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
@@ -157,7 +159,7 @@ func TestAutopilotDecideContinueGivesUpAfterAttemptsAreSpent(t *testing.T) {
 	}
 }
 
-func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing.T) {
+func TestAutopilotDecideContinueCarriesTheSituation(t *testing.T) {
 	noSteerBackoff(t)
 	provider := &autopilotStubProvider{content: `{"continue":false,"done":false,"instruction":""}`}
 
@@ -169,14 +171,11 @@ func TestAutopilotDecideContinueCarriesTheSituationAndMissionlessTask(t *testing
 	if !strings.Contains(sent, "the previous turn hit its step limit") {
 		t.Errorf("prompt missing the stop situation:\n%s", sent)
 	}
-	if !strings.Contains(sent, "No mission was briefed") {
-		t.Errorf("prompt missing the mission-less instructions:\n%s", sent)
-	}
 }
 
-// /goal switches steers on wholesale, so standing it down has to put back what
-// the user actually configured — otherwise Bash and Skill stay on behind them.
-func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
+// A finished goal rewinds to the configuration /goal found — otherwise the
+// driving set stays on behind the user — and stays on record as done.
+func TestGoalFinishRestoresTheConfigItFound(t *testing.T) {
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
 	suggestOn := true
 	configured := setting.AutoPilotSettings{
@@ -188,40 +187,94 @@ func TestGoalStandDownRestoresTheConfigItFound(t *testing.T) {
 	before := configured.Clone()
 	m.beforeGoal = &before
 	m.env.AutoPilot.Mission = "ship it"
+	m.env.AutoPilot.MissionState = setting.MissionRunning
 	m.env.AutoPilot.EngageDriving()
 
-	m.retireAutopilotMission()
-	if m.env.AutoPilot.Mission != "" {
-		t.Errorf("mission = %q, want it cleared", m.env.AutoPilot.Mission)
+	m.finishMission()
+	got := m.env.AutoPilot
+	if got.Mission != "ship it" || got.MissionState != setting.MissionDone {
+		t.Errorf("mission = %q (%s), want it kept as done", got.Mission, got.MissionState)
 	}
-	if got := m.env.AutoPilot; !got.Equal(configured) {
-		t.Errorf("stand-down left %+v, want the pre-goal config %+v", got, configured)
+	got.Mission, got.MissionState = "", ""
+	if !got.Equal(configured) {
+		t.Errorf("finish left %+v, want the pre-goal config %+v", got, configured)
 	}
 	if m.beforeGoal != nil {
 		t.Error("the pre-goal snapshot outlived the goal")
 	}
 }
 
-// Without a goal the wind-down stays subtractive: it stops the copilot driving
-// without touching safety steers the user set for themselves.
-func TestMissionRetireLeavesConfiguredSafetySteers(t *testing.T) {
+// Without a goal, finishing changes only the state: the switches keep the
+// user's settings, and the done mission stops steering decisions.
+func TestFinishMissionKeepsSwitches(t *testing.T) {
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
 	m.userInput.PromptSuggestion.Text = "stale mission hint"
 	suggestOn := true
 	m.env.AutoPilot = setting.AutoPilotSettings{
-		Mission: "ship it",
-		Steers:  setting.SteerSettings{BashPrompt: true, Suggest: &suggestOn, TurnEnd: true},
+		Mission: "ship it", MissionState: setting.MissionRunning,
+		Steers: setting.SteerSettings{BashPrompt: true, Suggest: &suggestOn, TurnEnd: true},
 	}
 
-	m.retireAutopilotMission()
-	if !m.env.AutoPilot.Steers.BashPrompt {
-		t.Error("retire flipped off a Bash steer the user configured")
+	m.finishMission()
+	ar := m.env.AutoPilot
+	if !ar.Steers.BashPrompt || !ar.Steers.SuggestOn() || !ar.Steers.TurnEnd {
+		t.Errorf("finish changed the user's switches: %+v", ar.Steers)
 	}
-	if m.env.AutoPilot.Steers.SuggestOn() || m.env.AutoPilot.Steers.TurnEnd {
-		t.Error("retire left a driving steer on")
+	if ar.ActiveMission() != "" {
+		t.Error("a done mission still steers decisions")
 	}
 	if m.userInput.PromptSuggestion.Text != "" {
-		t.Error("retire left a stale mission suggestion on screen")
+		t.Error("finish left a stale mission suggestion on screen")
+	}
+}
+
+// Only a running mission is driven: a done or paused mission's turn end waits
+// for the human, and a running one the human steps into pauses.
+func TestMissionLifecycleGatesContinuation(t *testing.T) {
+	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
+	m.env.AutoPilot.Mission = "ship it"
+	m.env.AutoPilot.Steers.TurnEnd = true
+	end := core.Result{StopReason: core.StopEndTurn}
+
+	for _, st := range []setting.MissionState{"", setting.MissionPaused, setting.MissionDone} {
+		m.env.AutoPilot.MissionState = st
+		if cmd := m.autopilotContinueCmd(end); cmd != nil {
+			t.Errorf("%s mission was driven at turn end", st)
+		}
+	}
+
+	m.env.AutoPilot.MissionState = setting.MissionRunning
+	if cmd := m.autopilotContinueCmd(end); cmd == nil {
+		t.Fatal("running mission was not driven at turn end")
+	}
+
+	m.autopilotDeciding = false
+	m.pauseMission()
+	if m.env.AutoPilot.MissionState != setting.MissionPaused {
+		t.Fatalf("state = %s, want paused after the human stepped in", m.env.AutoPilot.MissionState)
+	}
+}
+
+// Saving the panel owns the settings, not where the run stands: a changed
+// mission starts over as ready, an unchanged one keeps its live state.
+func TestApplyAutopilotConfigMissionState(t *testing.T) {
+	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.env.AutoPilot = setting.AutoPilotSettings{Mission: "ship it", MissionState: setting.MissionPaused}
+
+	m.applyAutopilotConfig(setting.AutoPilotSettings{Mission: "ship it"})
+	if got := m.env.AutoPilot.MissionState; got != setting.MissionPaused {
+		t.Errorf("unchanged mission: state = %s, want the live paused", got)
+	}
+
+	m.env.AutoPilot.MissionState = setting.MissionDone
+	m.applyAutopilotConfig(setting.AutoPilotSettings{Mission: "ship the docs"})
+	if got := m.env.AutoPilot.MissionState; got != "" {
+		t.Errorf("changed mission: state = %s, want not started", got)
+	}
+
+	m.applyAutopilotConfig(setting.AutoPilotSettings{})
+	if got := m.env.AutoPilot.MissionState; got != "" {
+		t.Errorf("cleared mission: state = %s, want none", got)
 	}
 }
 
@@ -276,9 +329,42 @@ func TestAutopilotModeSettledSkipsSuggestionMidTurn(t *testing.T) {
 	}
 }
 
+// A ready mission shows a start offer in the idle composer instead of a
+// proposal; typing steps it aside and esc dismisses it.
+func TestMissionOfferInComposer(t *testing.T) {
+	m := newSuggestionModel(t, true, setting.ModeAutoPilot)
+	m.userInput = input.New("", 80, nil, input.SelectorDeps{})
+	m.env.AutoPilot.Mission = "ship the release"
+	m.env.AutoPilot.MissionState = "" // not started
+
+	if !m.missionOfferVisible() {
+		t.Fatal("a ready mission did not offer to start")
+	}
+	if cmd := m.handleAutopilotModeSettled(); cmd != nil {
+		t.Fatal("settling fetched a proposal while the start offer owns the composer")
+	}
+
+	m.userInput.Textarea.SetValue("run the tests first")
+	if m.missionOfferVisible() {
+		t.Fatal("start offer still showing over typed input")
+	}
+	m.userInput.Textarea.SetValue("")
+
+	if _, ok := m.handleTextareaShortcut(tea.KeyPressMsg{Code: tea.KeyEscape}); !ok || m.missionOfferVisible() {
+		t.Fatal("esc did not dismiss the start offer")
+	}
+	m.autopilotOfferDismissed = false // OnTurnEnd re-arms it
+
+	m.env.AutoPilot.MissionState = setting.MissionDone
+	if m.missionOfferVisible() {
+		t.Fatal("a done mission still offers to start")
+	}
+}
+
 func TestAutopilotSaveWithSuggestOffClearsPromptSuggestion(t *testing.T) {
 	off := false
 	m := &model{autopilot: &atomic.Pointer[autopilotRuntime]{}}
+	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.userInput.PromptSuggestion.Text = "stale hint"
 
 	_, _ = m.Update(input.AutopilotSavedMsg{Config: setting.AutoPilotSettings{

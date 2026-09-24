@@ -120,6 +120,9 @@ type AutoPilotSettings struct {
 	// (e.g. "anthropic/claude-haiku-4-5") routes to that connected provider.
 	// Empty uses the session model.
 	Model string `json:"model,omitempty"`
+	// ThinkingEffort sets the judge model's reasoning rung (e.g. "low"). Empty
+	// keeps the model's default; a rung the model lacks falls back to it.
+	ThinkingEffort string `json:"thinkingEffort,omitempty"`
 	// SystemPrompt replaces the built-in steering prompt inline (edited in the
 	// /autopilot panel). Per-session, like Mission: it rides the transcript and
 	// restores on /resume, but the panel does not write it as the new-session
@@ -134,6 +137,10 @@ type AutoPilotSettings struct {
 	// Mission is the per-session directive the copilot steers toward — the
 	// briefing composed in the /autopilot Mission dialog.
 	Mission string `json:"mission,omitempty"`
+	// MissionState is where the mission's run stands (see MissionState). It is
+	// session state, never a default: it rides the transcript and is stripped
+	// from settings.json and presets.
+	MissionState MissionState `json:"missionState,omitempty"`
 	// Steers selects which lifecycle points the copilot takes the helm at.
 	Steers SteerSettings `json:"steers"`
 	// MaxContinuations caps how many times the TurnEnd steer may auto-continue
@@ -144,8 +151,8 @@ type AutoPilotSettings struct {
 
 // SteerSettings toggles each point where the copilot steers the session.
 // Field names track the trigger: turnEnd caps the turn; the middle three name
-// the agent event that hands control over. (The mission kick-off is an explicit
-// action — the panel's Start button — not a persisted steer.)
+// the agent event that hands control over. (Starting a mission is an explicit
+// action — the start offer or /goal — not a persisted steer.)
 type SteerSettings struct {
 	// Suggest is the feature switch for the input hint (on by default, in and
 	// out of AutoPilot mode): while a mission is driven it proposes the next
@@ -158,10 +165,6 @@ type SteerSettings struct {
 	Permission *bool `json:"permission,omitempty"`
 	// BashPrompt answers a running command's interactive prompts.
 	BashPrompt bool `json:"bashPrompt,omitempty"`
-	// Skill approves the copilot's skill loads outright, without the judge — a
-	// deliberate "trust skills" toggle separate from the Permission steer, since
-	// the judge tends to escalate a skill load (it can run scripts).
-	Skill bool `json:"skill,omitempty"`
 	// Question answers an AskUserQuestion on the human's behalf.
 	Question bool `json:"question,omitempty"`
 	// TurnEnd auto-continues a finished turn toward the mission.
@@ -176,6 +179,27 @@ func (s SteerSettings) SuggestOn() bool { return s.Suggest == nil || *s.Suggest 
 // because gray-zone approval is the baseline of autopilot; an explicit false
 // makes the copilot escalate every gray-zone prompt to the human instead.
 func (s SteerSettings) PermissionOn() bool { return s.Permission == nil || *s.Permission }
+
+// MissionState is the lifecycle of a mission's run. Only a running mission is
+// driven: Continue advances it turn by turn, and every other state waits for the
+// human. The zero value is a mission not started yet (shown as "ready");
+// changing the mission text resets it there.
+type MissionState string
+
+const (
+	MissionRunning MissionState = "running" // the copilot is driving it
+	MissionPaused  MissionState = "paused"  // the human stepped in or the copilot handed back; offers to resume
+	MissionDone    MissionState = "done"    // the copilot judged it accomplished; never driven again
+)
+
+// ActiveMission is the mission the copilot should weigh right now: the text,
+// unless its run is done — a finished mission must not keep steering decisions.
+func (a AutoPilotSettings) ActiveMission() string {
+	if a.MissionState == MissionDone {
+		return ""
+	}
+	return strings.TrimSpace(a.Mission)
+}
 
 // AutoPilotDefaultMaxContinuations bounds TurnEnd auto-continuation when the
 // config leaves maxContinuations unset — the single source of truth shared by
@@ -199,20 +223,9 @@ func (a AutoPilotSettings) ContinuationsUnlimited() bool { return a.MaxContinuat
 // choice no stated goal should overrule.
 func (a *AutoPilotSettings) EngageDriving() {
 	a.Steers.BashPrompt = true
-	a.Steers.Skill = true
 	a.Steers.Question = true
 	a.Steers.TurnEnd = true
 	a.MaxContinuations = AutoPilotUnlimitedContinuations
-}
-
-// StopDriving turns off the steers that make the copilot act on its own,
-// leaving the passive safety steers exactly as configured — the wind-down for a
-// mission that ended without a goal to rewind to.
-func (a *AutoPilotSettings) StopDriving() {
-	off := false
-	a.Steers.Suggest = &off
-	a.Steers.Question = false
-	a.Steers.TurnEnd = false
 }
 
 // ResolvedMaxContinuations returns the configured continuation cap, or the
@@ -243,17 +256,19 @@ func (a AutoPilotSettings) Clone() AutoPilotSettings {
 // IsZero reports whether the config is entirely unset — used to keep the value
 // out of persisted session state and settings files when nothing was configured.
 func (a AutoPilotSettings) IsZero() bool {
-	return a.Model == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
-		a.Mission == "" && a.MaxContinuations == 0 &&
+	return a.Model == "" && a.ThinkingEffort == "" && a.SystemPrompt == "" && a.SystemPromptFile == "" &&
+		a.Mission == "" && a.MissionState == "" && a.MaxContinuations == 0 &&
 		a.Steers.Suggest == nil && a.Steers.Permission == nil &&
-		!a.Steers.BashPrompt && !a.Steers.Skill && !a.Steers.Question && !a.Steers.TurnEnd
+		!a.Steers.BashPrompt && !a.Steers.Question && !a.Steers.TurnEnd
 }
 
 // Equal compares two configs by value, normalizing the tri-state permission
 // steer via PermissionOn (nil and &true are equal). Used for the /autopilot
-// panel's unsaved-edits check.
+// panel's unsaved-edits check, so MissionState — session state the panel never
+// sets — is left out.
 func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 	return a.Model == b.Model &&
+		a.ThinkingEffort == b.ThinkingEffort &&
 		a.SystemPrompt == b.SystemPrompt &&
 		a.SystemPromptFile == b.SystemPromptFile &&
 		a.Mission == b.Mission &&
@@ -261,7 +276,6 @@ func (a AutoPilotSettings) Equal(b AutoPilotSettings) bool {
 		a.Steers.SuggestOn() == b.Steers.SuggestOn() &&
 		a.Steers.PermissionOn() == b.Steers.PermissionOn() &&
 		a.Steers.BashPrompt == b.Steers.BashPrompt &&
-		a.Steers.Skill == b.Steers.Skill &&
 		a.Steers.Question == b.Steers.Question &&
 		a.Steers.TurnEnd == b.Steers.TurnEnd
 }

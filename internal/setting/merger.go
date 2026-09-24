@@ -41,6 +41,7 @@ func mergeSettings(base, overlay *Data) *Data {
 func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 	return AutoPilotSettings{
 		Model:            coalesce(overlay.Model, base.Model),
+		ThinkingEffort:   coalesce(overlay.ThinkingEffort, base.ThinkingEffort),
 		SystemPrompt:     coalesce(overlay.SystemPrompt, base.SystemPrompt),
 		SystemPromptFile: coalesce(overlay.SystemPromptFile, base.SystemPromptFile),
 		Mission:          coalesce(overlay.Mission, base.Mission),
@@ -49,7 +50,6 @@ func mergeAutoPilot(base, overlay AutoPilotSettings) AutoPilotSettings {
 			Suggest:    coalescePtr(overlay.Steers.Suggest, base.Steers.Suggest),
 			Permission: coalescePtr(overlay.Steers.Permission, base.Steers.Permission),
 			BashPrompt: overlay.Steers.BashPrompt || base.Steers.BashPrompt,
-			Skill:      overlay.Steers.Skill || base.Steers.Skill,
 			Question:   overlay.Steers.Question || base.Steers.Question,
 			TurnEnd:    overlay.Steers.TurnEnd || base.Steers.TurnEnd,
 		},

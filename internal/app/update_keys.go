@@ -146,6 +146,10 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		return cmd, true
 
 	case "esc":
+		if m.missionOfferVisible() {
+			m.autopilotOfferDismissed = true
+			return nil, true
+		}
 		if m.userInput.PromptSuggestion.Text != "" {
 			m.userInput.PromptSuggestion.Clear()
 			return nil, true
@@ -181,6 +185,9 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 		}
 
 	case "enter":
+		if m.missionOfferVisible() {
+			return m.startMission(), true
+		}
 		return m.handleSubmit(), true
 	}
 	// Newline keys deliberately fall through to the textarea, which owns them

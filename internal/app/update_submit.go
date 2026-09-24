@@ -72,11 +72,8 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 		return cmd
 	}
 
-	// A human turn resets the auto-continue budget; a copilot-driven continuation
-	// (flagged) does not, so MaxContinuations bounds a run of consecutive
-	// auto-turns rather than the whole session. Capture the copilot's note now,
-	// before the flag resets, so the built message can wear its "⎿ autopilot ·
-	// N/M" continuation annotation.
+	// Capture the copilot's note now, before the flag resets, so the built
+	// message can wear its "⎿ autopilot · N/M" continuation annotation.
 	autopilotNote := ""
 	if m.autopilotContinuing {
 		// A capped run counts toward its ceiling ("2/5"). An uncapped one has no
@@ -88,8 +85,6 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 			autopilotNote = fmt.Sprintf("%d/%d", m.autopilotContinuations, m.env.AutoPilot.ResolvedMaxContinuations())
 		}
 		m.autopilotContinuing = false
-	} else {
-		m.autopilotContinuations = 0
 	}
 
 	if blocked, reason := m.checkPromptHook(context.Background(), raw); blocked {
@@ -108,6 +103,12 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 		if cmd, handled := m.runSlashCommandIfMatched(raw); handled {
 			return cmd
 		}
+	}
+
+	// The human's own message is their turn, not the mission's: a running
+	// mission pauses and waits for them to resume it.
+	if autopilotNote == "" {
+		m.pauseMission()
 	}
 
 	msg, ok := m.buildUserMessage(raw)

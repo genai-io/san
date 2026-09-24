@@ -1,7 +1,6 @@
 package input
 
 import (
-	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -16,29 +15,28 @@ func (p *AutopilotSelector) Render() string {
 		return ""
 	}
 	switch p.view {
-	case apSteeringPrompt:
+	case apSystemPrompt:
 		return p.frame(
-			p.header("Steering Prompt"),
-			p.prompt.View(),
-			kit.HintLine(keycap("esc")+" back", "edits apply on Save"),
+			p.header("System prompt"),
+			apDescStyle.Render("Safety rules are fixed and always apply; this edits how it drives. Applies to this session only.")+
+				"\n\n"+p.prompt.View(),
+			kit.HintLine(keycap("esc")+" back"),
 		)
 	case apMission:
-		return p.frame(
-			p.header("Mission"),
-			p.renderMission(),
-			p.missionHint(),
-		)
+		return p.frame(p.header("Mission"), p.renderMission(), p.missionHint())
 	case apExport:
-		return p.frame(p.header("Export"), p.renderExport(), p.exportHint())
+		return p.frame(p.header("Save preset"), p.renderExport(), p.exportHint())
 	case apImport:
-		return p.frame(p.header("Import"), p.renderImport(), p.importHint())
+		return p.frame(p.header("Load preset"), p.renderImport(), p.importHint())
+	case apModel:
+		return p.frame(p.header(p.modelCrumb()), p.renderModel(), p.modelHint())
 	default:
 		return p.frame(
 			p.header(""),
 			p.renderMenu(p.innerWidth()),
 			kit.HintLine(
-				keycap("↑↓")+" navigate", keycap("space")+" toggle", keycap("enter")+" select",
-				keycap("e")+" export", keycap("i")+" import", keycap("esc")+" close",
+				keycap("↑↓")+" navigate", keycap("space")+" edit/toggle", keycap("←→")+" adjust",
+				keycap("enter")+" save", keycap("esc")+" discard",
 			),
 		)
 	}
@@ -67,14 +65,12 @@ func (p *AutopilotSelector) frame(header, body, hint string) string {
 	return lipgloss.Place(p.width, p.height-2, lipgloss.Center, lipgloss.Center, card)
 }
 
-// header renders the title lockup ("✦ Autopilot" + tagline) with a sub-view
-// crumb when inside an editor, and an "● unsaved" tag pinned right.
+// header renders the title lockup ("✦ Autopilot") with a sub-view crumb when
+// inside an editor, and an "● unsaved" tag pinned right.
 func (p *AutopilotSelector) header(sub string) string {
 	left := apTitleGlyphStyle.Render("✦ ") + apTitleStyle.Render("Autopilot")
 	if sub != "" {
 		left += apBreadcrumbDimStyle.Render("  ›  ") + apBreadcrumbSubStyle.Render(sub)
-	} else {
-		left += apTaglineStyle.Render("   your session's co-pilot")
 	}
 	if !p.Dirty() {
 		return left
@@ -86,20 +82,19 @@ func (p *AutopilotSelector) header(sub string) string {
 
 // ── Menu ────────────────────────────────────────────────────────────────
 
+// apLabelWidth aligns the descriptions: every label is padded to the widest.
+const apLabelWidth = 8
+
 func (p *AutopilotSelector) renderMenu(width int) string {
 	var b strings.Builder
 	for i, row := range p.rows() {
 		switch row.kind {
 		case apRowSection:
-			b.WriteString(p.renderSection(row.label, width))
+			b.WriteString(apSectionStyle.Render(strings.ToUpper(row.label)))
 		case apRowEntry:
 			b.WriteString(p.renderEntry(i, row, width))
-		case apRowSteer:
-			b.WriteString(p.renderSteer(i, row))
-		case apRowInt:
-			b.WriteString(p.renderInt(i, row))
-		case apRowSaveStart:
-			b.WriteString(p.renderSaveStart(i))
+		case apRowToggle:
+			b.WriteString(p.renderToggle(i, row))
 		case apRowSpacer:
 			// blank line
 		}
@@ -119,69 +114,38 @@ func (p *AutopilotSelector) cursorMark(i int) string {
 	return "  "
 }
 
-func (p *AutopilotSelector) renderSection(label string, width int) string {
-	up := strings.ToUpper(label)
-	ruleLen := max(width-lipgloss.Width(up)-1, 1)
-	return apSectionStyle.Render(up) + " " + apFaintRuleStyle.Render(strings.Repeat("─", ruleLen))
-}
-
-// renderEntry draws an editor entry: "▸ Steering Prompt  how it drives … built-in".
-// The value hint sits right-aligned; enter-to-open is covered by the bottom hint.
+// renderEntry draws "▸ Mission   the goal it works toward …   ship it · ready":
+// label, muted description, and the current value right-aligned. The
+// description is truncated first on a narrow card so the value always shows.
 func (p *AutopilotSelector) renderEntry(i int, row apRow, width int) string {
-	left := p.cursorMark(i) + apLabelStyle.Render(row.label)
-	if row.desc != "" {
-		left += "  " + apDescStyle.Render(row.desc)
+	label := p.cursorMark(i) + apLabelStyle.Render(apPad(row.label, apLabelWidth))
+	right := apSummaryStyle.Render(row.value)
+	room := width - lipgloss.Width(label) - lipgloss.Width(right) - 4
+	desc := ""
+	if row.desc != "" && room > 0 {
+		desc = "  " + apDescStyle.Render(kit.TruncateText(row.desc, room))
 	}
-	right := ""
-	if row.summary != nil {
-		right = apSummaryStyle.Render(row.summary(p.snap))
-	}
+	left := label + desc
 	gap := max(width-lipgloss.Width(left)-lipgloss.Width(right), 1)
 	return left + strings.Repeat(" ", gap) + right
 }
 
-func (p *AutopilotSelector) renderSteer(i int, row apRow) string {
-	mark := "[ ]"
-	if row.get(p.snap) {
+// renderToggle draws "▸ [✓] Suggest   your next input · Tab to accept". A
+// disabled row is drawn dim end to end.
+func (p *AutopilotSelector) renderToggle(i int, row apRow) string {
+	mark, labelStyle, descStyle := "[ ]", apLabelStyle, apDescStyle
+	switch {
+	case row.disabled:
+		mark, labelStyle, descStyle = apSummaryStyle.Render(mark), apSummaryStyle, apSummaryStyle
+	case row.on:
 		mark = apCheckStyle.Render("[✓]")
 	}
-	line := p.cursorMark(i) + mark + " " + apLabelStyle.Render(row.label)
-	if row.desc != "" {
-		line += "  " + apDescStyle.Render(row.desc)
-	}
-	return line
+	return p.cursorMark(i) + mark + " " + labelStyle.Render(apPad(row.label, apLabelWidth)) + "  " + descStyle.Render(row.desc)
 }
 
-func (p *AutopilotSelector) renderInt(i int, row apRow) string {
-	value, suffix := strconv.Itoa(p.snap.ResolvedMaxContinuations()), "times"
-	if p.snap.ContinuationsUnlimited() {
-		value, suffix = "∞", "until the mission is done"
-	}
-	if p.editing && i == p.cursor {
-		// Teach the affordance where it's needed: 0 is meaningless as a cap, so it
-		// reads as "don't cap me".
-		value, suffix = p.editingBuffer+"_", "times · 0 = no limit"
-	}
-	indent := strings.Repeat("  ", row.indent+1)
-	chip := apChipStyle.Render("(") + apValueStyle.Render(value) + apChipStyle.Render(")")
-	return indent + p.cursorMark(i) + row.label + " " + chip + " " + apDescStyle.Render(suffix)
-}
-
-// renderSaveStart draws Save and Start as two filled pill keys side by side —
-// both sit on the neutral keycap surface so they read as buttons at rest. The
-// focused pick (←/→) lights its label bold green; the other stays neutral. Focus
-// is carried by that color, so this row skips the ▸ mark and indents to sit under
-// the content column instead.
-func (p *AutopilotSelector) renderSaveStart(i int) string {
-	seg := func(active bool, label string) string {
-		if i == p.cursor && active {
-			return apButtonFocusedStyle.Render(label)
-		}
-		return apButtonIdleStyle.Render(label)
-	}
-	save := seg(p.saveCursor == 0, "Save")
-	start := seg(p.saveCursor == 1, "Start")
-	return "  " + save + "  " + start
+// apPad pads a label to w cells; a longer one is left whole.
+func apPad(s string, w int) string {
+	return s + strings.Repeat(" ", max(w-lipgloss.Width(s), 0))
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────
@@ -190,7 +154,6 @@ var (
 	// Title lockup: teal star + accent-bold wordmark + a muted tagline.
 	apTitleGlyphStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus)
 	apTitleStyle         = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
-	apTaglineStyle       = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Italic(true)
 	apBreadcrumbDimStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	apBreadcrumbSubStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Text).Bold(true)
 
@@ -212,16 +175,7 @@ var (
 	apCursorStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	apCheckStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 	apValueStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Underline(true)
-	apChipStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 
 	apUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
 	apUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
-
-	// Save/Start buttons: filled neutral pills on the panel's keycap surface, so
-	// they read as raised keys at rest — depth from the fill, no frame. Focus is a
-	// light touch: the picked pill keeps the same surface and just takes a bold
-	// green label; no heavy fill swap.
-	apButtonBaseStyle    = lipgloss.NewStyle().Padding(0, 2).Background(kit.SearchBg)
-	apButtonIdleStyle    = apButtonBaseStyle.Foreground(kit.CurrentTheme.Text)
-	apButtonFocusedStyle = apButtonBaseStyle.Foreground(kit.CurrentTheme.Success).Bold(true)
 )

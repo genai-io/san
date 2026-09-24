@@ -102,6 +102,8 @@ func (m *model) OnToolResult(tr core.ToolResult) (*core.ToolResult, any) {
 }
 
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
+	// A dismissed start/resume offer comes back once the turn is over.
+	m.autopilotOfferDismissed = false
 	// Only a list the model closed out is safe to discard. An item left open —
 	// pending, or in_progress with nothing executing it — is unfinished work, so
 	// the list survives the turn and stays on screen.

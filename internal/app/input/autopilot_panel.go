@@ -1,12 +1,11 @@
-// /autopilot popup: configures the autopilot copilot — how it drives (system
-// prompt), which lifecycle points it steers, and the mission it steers toward.
-// It edits a working copy of setting.AutoPilotSettings; Save writes the
-// autoPilot block to user settings, and Export/Import move it through a shared
-// file for reuse across sessions and projects.
+// /autopilot popup: configures the autopilot copilot on one page. GIVE IT holds
+// what it works with (mission, system prompt, model), LET IT what it may do on
+// the human's behalf, and PRESETS saves or loads the whole setup. It edits a
+// working copy of setting.AutoPilotSettings: enter saves it, esc discards it.
 //
-// The panel is a small state machine over three views: a menu (steer toggles +
-// editor entries + Save/Export/Import), a full-screen Steering Prompt editor, and
-// the Mission dialog (autopilot_mission.go). It renders its own centered frame.
+// The menu opens sub-views for the multi-step edits: the Mission dialog
+// (autopilot_mission.go), the System prompt editor, the Model picker
+// (autopilot_model.go) and the preset views (autopilot_presets.go).
 package input
 
 import (
@@ -25,48 +24,51 @@ import (
 type autopilotView int
 
 const (
-	apMenu           autopilotView = iota // steer toggles + editor entries
-	apSteeringPrompt                      // full-screen steering-prompt editor
-	apMission                             // mission dialog (autopilot_mission.go)
-	apExport                              // name-a-preset input (autopilot_presets.go)
-	apImport                              // pick-a-preset list (autopilot_presets.go)
+	apMenu         autopilotView = iota // the one-page menu
+	apSystemPrompt                      // full-screen system-prompt editor
+	apMission                           // mission dialog (autopilot_mission.go)
+	apExport                            // name-a-preset input (autopilot_presets.go)
+	apImport                            // pick-a-preset list (autopilot_presets.go)
+	apModel                             // judge-model picker (autopilot_model.go)
 )
 
-// AutopilotSavedMsg is emitted on Save carrying the edited config. The app
-// applies it to the live session (m.env.AutoPilot) and persists it as the
-// default seed for new sessions.
+// AutopilotSavedMsg is emitted when the panel saves with edits, carrying the
+// edited config. The app applies it to the live session (m.env.AutoPilot) and
+// persists it as the default seed for new sessions.
 type AutopilotSavedMsg struct{ Config setting.AutoPilotSettings }
-
-// AutopilotStartMsg is emitted on Start: everything Save does, then the app
-// engages AutoPilot and kicks the mission hands-free. Carries the same config.
-type AutopilotStartMsg struct{ Config setting.AutoPilotSettings }
 
 // AutopilotSelector is the /autopilot overlay.
 type AutopilotSelector struct {
 	refine MissionRefiner                   // injected; nil disables mission refinement
 	live   func() setting.AutoPilotSettings // injected; returns the live session config
 
+	modelSource  func() []string           // injected; connected "vendor/model" refs
+	effortSource func(ref string) []string // injected; a ref's reasoning rungs
+	models       []string                  // apModel: refs loaded on open
+	pickVendor   string                    // apModel: chosen provider; "" = provider list
+	pickModel    string                    // apModel: chosen "vendor/model"; set = rung list
+	efforts      []string                  // apModel: pickModel's reasoning rungs
+	modelFilter  string                    // apModel: typed filter over pickVendor's models
+	modelCursor  int                       // apModel: selection in modelChoices
+
 	active bool
 	width  int
 	height int
 	view   autopilotView
 
-	// snap is the working buffer; Save writes it to disk. baseline is snap as
-	// of Enter() so the panel can flag unsaved edits.
+	// snap is the working buffer; enter saves it. baseline is snap as of
+	// Enter() so the panel can flag unsaved edits.
 	snap     setting.AutoPilotSettings
 	baseline setting.AutoPilotSettings
 
-	cursor        int
-	editing       bool // inline-editing the continuation cap
-	editingBuffer string
-	status        string // transient export/import notice under the menu
+	cursor int
+	status string // transient notice under the menu
 
-	saveCursor   int      // menu: 0 = Save, 1 = Start on the save/start row
 	nameBuffer   string   // apExport: the preset name being typed
-	presets      []string // apImport: available preset names
+	presets      []string // saved preset names, listed on Enter
 	importCursor int      // apImport: selection
 
-	prompt  textarea.Model // Steering Prompt editor
+	prompt  textarea.Model // System prompt editor
 	mission missionDialog  // Mission dialog state (autopilot_mission.go)
 }
 
@@ -94,15 +96,13 @@ func (p *AutopilotSelector) Enter(width, height int) {
 	p.Resize(width, height)
 	p.active = true
 	p.view = apMenu
-	p.editing = false
-	p.editingBuffer = ""
 	if p.live != nil {
 		p.snap = p.live().Clone()
 	}
 	p.baseline = p.snap.Clone()
+	p.presets, _ = setting.ListAutoPilotPresets()
 	p.cursor = p.firstSelectable()
 	p.status = ""
-	p.saveCursor = 0
 	p.resetMission()
 }
 
@@ -114,7 +114,7 @@ func (p *AutopilotSelector) Resize(width, height int) {
 	p.width = width
 	p.height = height
 	switch p.view {
-	case apSteeringPrompt:
+	case apSystemPrompt:
 		p.prompt.SetWidth(p.innerWidth())
 		p.prompt.SetHeight(p.editorHeight())
 	case apMission:
@@ -135,7 +135,7 @@ func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch p.view {
-	case apSteeringPrompt:
+	case apSystemPrompt:
 		return p.handlePromptKey(msg)
 	case apMission:
 		return p.handleMissionKey(msg)
@@ -143,6 +143,8 @@ func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 		return p.handleExportKey(msg)
 	case apImport:
 		return p.handleImportKey(msg)
+	case apModel:
+		return p.handleModelKey(msg)
 	default:
 		return p.handleMenuKey(msg)
 	}
@@ -166,7 +168,7 @@ func (p *AutopilotSelector) HandlePaste(content string) tea.Cmd {
 			return nil
 		}
 		p.mission.input.InsertString(content)
-	case apSteeringPrompt:
+	case apSystemPrompt:
 		p.prompt.InsertString(content)
 	}
 	return nil
@@ -175,147 +177,77 @@ func (p *AutopilotSelector) HandlePaste(content string) tea.Cmd {
 // ── Menu view ───────────────────────────────────────────────────────────
 
 func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
-	if p.editing {
-		return p.handleEditingKey(msg)
-	}
 	rows := p.rows()
 	if p.cursor >= len(rows) {
 		p.cursor = p.firstSelectable()
 	}
+	row := rows[p.cursor]
 	switch msg.String() {
 	case "esc":
+		// Discard: the working buffer is dropped with the popup.
 		p.active = false
 	case "up", "k":
 		p.cursor = apStep(rows, p.cursor-1, -1, p.cursor)
 	case "down", "j":
 		p.cursor = apStep(rows, p.cursor+1, +1, p.cursor)
 	case "left", "h":
-		if rows[p.cursor].kind == apRowSaveStart {
-			p.saveCursor = 0
+		if row.adjust != nil {
+			row.adjust(p, -1)
 		}
 	case "right", "l":
-		if rows[p.cursor].kind == apRowSaveStart {
-			p.saveCursor = 1
+		if row.adjust != nil {
+			row.adjust(p, +1)
 		}
 	case "space":
-		// Space is a shortcut for the primary action of a toggle row only; on any
-		// other row it's a no-op (enter opens those).
-		if row := rows[p.cursor]; row.kind == apRowSteer {
-			return p.activateRow(row)
+		// Space works the row (toggle or open); enter is reserved for saving so
+		// the two never overlap.
+		if row.act != nil {
+			row.act(p)
 		}
 	case "enter":
-		return p.activateRow(rows[p.cursor])
-	case "e", "E":
-		p.beginExport()
-	case "i", "I":
-		p.beginImport()
+		return p.save()
 	}
 	return nil
 }
 
-// activateRow performs the cursor row's primary action.
-func (p *AutopilotSelector) activateRow(row apRow) tea.Cmd {
-	switch row.kind {
-	case apRowEntry:
-		p.openView(row.open)
-	case apRowSteer:
-		row.toggle(&p.snap)
-		p.reclampCursor()
-	case apRowInt:
-		p.editing = true
-		p.editingBuffer = strconv.Itoa(p.snap.ResolvedMaxContinuations())
-		if p.snap.ContinuationsUnlimited() {
-			p.editingBuffer = "0" // the value that means ∞, so re-editing starts from what's set
-		}
-	case apRowSaveStart:
-		if p.saveCursor == 0 {
-			return p.save()
-		}
-		return p.start()
-	}
-	return nil
-}
-
-// openView switches to an editor sub-view, seeding it from the working buffer.
-func (p *AutopilotSelector) openView(v autopilotView) {
-	switch v {
-	case apSteeringPrompt:
-		// Seed with the built-in steering instructions when there's no override, so the
-		// user sees and edits the real prompt rather than a blank box.
-		seed := p.snap.SystemPrompt
-		if seed == "" {
-			seed = reviewer.DefaultSteeringInstructions()
-		}
-		p.prompt.SetValue(seed)
-		p.prompt.SetWidth(p.innerWidth())
-		p.prompt.SetHeight(p.editorHeight())
-		p.prompt.CursorEnd()
-		p.prompt.Focus()
-		p.view = apSteeringPrompt
-	case apMission:
-		p.enterMission()
-		p.view = apMission
-	}
-}
-
-func (p *AutopilotSelector) handleEditingKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc":
-		p.editing = false
-		p.editingBuffer = ""
-	case "enter":
-		if v, err := strconv.Atoi(p.editingBuffer); err == nil {
-			// 0 lifts the cap: a long unattended run should end when the mission is
-			// done, not when a step counter runs out.
-			switch {
-			case v == 0:
-				v = setting.AutoPilotUnlimitedContinuations
-			case v > 999:
-				v = 999
-			}
-			p.snap.MaxContinuations = v
-		}
-		p.editing = false
-		p.editingBuffer = ""
-	case "backspace":
-		if n := len(p.editingBuffer); n > 0 {
-			p.editingBuffer = p.editingBuffer[:n-1]
-		}
-	default:
-		if t := msg.Key().Text; len(t) == 1 && t[0] >= '0' && t[0] <= '9' && len(p.editingBuffer) < 3 {
-			p.editingBuffer += t
-		}
-	}
-	return nil
-}
-
-// save hands the working buffer to the app (which applies it to the live session
-// and persists the default) and dismisses the popup.
+// save dismisses the popup, handing any edits to the app (which applies them to
+// the live session and persists the default). Launching is not the panel's job:
+// entering AutoPilot offers to start a ready mission, and /goal starts one.
 func (p *AutopilotSelector) save() tea.Cmd {
-	cfg := p.snap.Clone()
 	p.active = false
-	return func() tea.Msg { return AutopilotSavedMsg{Config: cfg} }
-}
-
-// start saves the working buffer and asks the app to engage AutoPilot and kick
-// the mission. There is nothing to kick without a mission, so an empty one keeps
-// the panel open with a nudge instead of engaging into a no-op.
-func (p *AutopilotSelector) start() tea.Cmd {
-	if strings.TrimSpace(p.snap.Mission) == "" {
-		p.status = "set a mission before starting"
+	if !p.Dirty() {
 		return nil
 	}
 	cfg := p.snap.Clone()
-	p.active = false
-	return func() tea.Msg { return AutopilotStartMsg{Config: cfg} }
+	return func() tea.Msg { return AutopilotSavedMsg{Config: cfg} }
 }
 
-// ── Steering Prompt editor view ─────────────────────────────────────────
+// openSystemPrompt opens the editor, seeded with the built-in instructions when
+// there is no override so the user edits the real prompt, not a blank box.
+func (p *AutopilotSelector) openSystemPrompt() {
+	seed := p.snap.SystemPrompt
+	if seed == "" {
+		seed = reviewer.DefaultSteeringInstructions()
+	}
+	p.prompt.SetValue(seed)
+	p.prompt.SetWidth(p.innerWidth())
+	p.prompt.SetHeight(p.editorHeight())
+	p.prompt.CursorEnd()
+	p.prompt.Focus()
+	p.view = apSystemPrompt
+}
+
+func (p *AutopilotSelector) openMission() {
+	p.enterMission()
+	p.view = apMission
+}
+
+// ── System prompt editor view ───────────────────────────────────────────
 
 func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 	if msg.String() == "esc" {
 		val := strings.TrimRight(p.prompt.Value(), "\n")
-		// Left as the built-in steering instructions (unchanged) → store nothing, so the
+		// Left as the built-in instructions (unchanged) → store nothing, so the
 		// panel keeps reading "built-in" and Dirty() doesn't flag a no-op edit.
 		if strings.TrimSpace(val) == strings.TrimSpace(reviewer.DefaultSteeringInstructions()) {
 			val = ""
@@ -335,68 +267,162 @@ func (p *AutopilotSelector) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 type apRowKind int
 
 const (
-	apRowEntry     apRowKind = iota // opens a sub-view (Steering Prompt / Mission)
-	apRowSteer                      // bool toggle
-	apRowInt                        // continuation cap
-	apRowSaveStart                  // Save | Start on one line (left/right picks)
-	apRowSection                    // section header
-	apRowSpacer                     // blank line
+	apRowEntry   apRowKind = iota // opens a sub-view; value shown right-aligned
+	apRowToggle                   // checkbox
+	apRowSection                  // section header
+	apRowSpacer                   // blank line
 )
 
 // apRow is one renderable menu row. Fields unused by the kind stay zero.
 type apRow struct {
-	kind    apRowKind
-	label   string
-	desc    string                                 // muted description after the label
-	open    autopilotView                          // apRowEntry: view to switch to
-	summary func(setting.AutoPilotSettings) string // apRowEntry: right-aligned value hint
-	get     func(setting.AutoPilotSettings) bool   // apRowSteer: current state
-	toggle  func(*setting.AutoPilotSettings)       // apRowSteer: flip it
-	indent  int
+	kind     apRowKind
+	label    string
+	desc     string                               // muted description after the label
+	value    string                               // apRowEntry: right-aligned current value
+	on       bool                                 // apRowToggle: checked
+	disabled bool                                 // drawn dim; act explains why instead
+	act      func(*AutopilotSelector)             // space
+	adjust   func(p *AutopilotSelector, step int) // ←/→, when the row has a value to step
 }
 
-func (r apRow) selectable() bool {
-	switch r.kind {
-	case apRowEntry, apRowSteer, apRowInt, apRowSaveStart:
-		return true
-	default:
-		return false
-	}
-}
+func (r apRow) selectable() bool { return r.kind == apRowEntry || r.kind == apRowToggle }
 
 func (p *AutopilotSelector) rows() []apRow {
-	// Steering Prompt and Mission are the two editor entries — group them at the top
-	// (no section header for a single item) before the Steer toggles.
-	rows := []apRow{
-		{kind: apRowEntry, label: "Steering Prompt", desc: "how it drives", open: apSteeringPrompt, summary: steeringPromptSummary},
-		{kind: apRowEntry, label: "Mission", desc: "what to achieve", open: apMission, summary: missionSummary},
+	s := p.snap
+	var continueRow apRow
+	if strings.TrimSpace(s.Mission) != "" {
+		continueRow = apRow{
+			kind: apRowToggle, label: "Continue", on: s.Steers.TurnEnd,
+			desc:   "to the next turn · " + continueLimit(s),
+			act:    func(p *AutopilotSelector) { p.snap.Steers.TurnEnd = !p.snap.Steers.TurnEnd },
+			adjust: stepContinuations,
+		}
+	} else {
+		continueRow = apRow{
+			kind: apRowToggle, label: "Continue", disabled: true,
+			desc: "to the next turn · needs a mission",
+			act:  func(p *AutopilotSelector) { p.status = "write a mission first — Continue drives toward it" },
+		}
+	}
+
+	loadDesc := strconv.Itoa(len(p.presets)) + " saved"
+	if p.baseline.MissionState == setting.MissionRunning {
+		loadDesc += " · replaces the running mission"
+	}
+
+	return []apRow{
+		{kind: apRowSection, label: "Give it"},
+		{kind: apRowEntry, label: "Mission", desc: "the goal it works toward", value: p.missionValue(),
+			act: (*AutopilotSelector).openMission},
+		{kind: apRowEntry, label: "System", desc: "how it thinks and decides (system prompt)", value: systemPromptValue(s),
+			act: (*AutopilotSelector).openSystemPrompt},
+		{kind: apRowEntry, label: "Model", desc: "which model makes the calls", value: modelValue(s),
+			act: (*AutopilotSelector).beginModelPick},
 		{kind: apRowSpacer},
-		{kind: apRowSection, label: "Steer"},
-		{kind: apRowSteer, label: "Suggest", desc: "enable automatic input hints", get: getSuggest, toggle: toggleSuggest},
-		{kind: apRowSteer, label: "Permission", desc: "auto-approve gray zone", get: getPermission, toggle: togglePermission},
-		{kind: apRowSteer, label: "Bash", desc: "answer command prompts", get: getBash, toggle: toggleBash},
-		{kind: apRowSteer, label: "Skill", desc: "approve skill loads", get: getSkill, toggle: toggleSkill},
-		{kind: apRowSteer, label: "Question", desc: "answer AskUserQuestion", get: getQuestion, toggle: toggleQuestion},
-		{kind: apRowSteer, label: "End", desc: "auto-continue the turn", get: getTurnEnd, toggle: toggleTurnEnd},
+		{kind: apRowSection, label: "Let it"},
+		{kind: apRowToggle, label: "Suggest", desc: "your next input · Tab to accept", on: s.Steers.SuggestOn(),
+			act: func(p *AutopilotSelector) { flip(&p.snap.Steers.Suggest, p.snap.Steers.SuggestOn()) }},
+		{kind: apRowToggle, label: "Approve", desc: "permission requests · asks you if risky", on: s.Steers.PermissionOn(),
+			act: func(p *AutopilotSelector) { flip(&p.snap.Steers.Permission, p.snap.Steers.PermissionOn()) }},
+		{kind: apRowToggle, label: "Answer", desc: "questions and [y/N] prompts", on: answerOn(s),
+			act: func(p *AutopilotSelector) {
+				on := !answerOn(p.snap)
+				p.snap.Steers.Question, p.snap.Steers.BashPrompt = on, on
+			}},
+		continueRow,
+		{kind: apRowSpacer},
+		{kind: apRowSection, label: "Presets"},
+		{kind: apRowEntry, label: "Save preset…", desc: "reuse this setup in other sessions",
+			act: (*AutopilotSelector).beginExport},
+		{kind: apRowEntry, label: "Load preset…", desc: loadDesc,
+			act: (*AutopilotSelector).beginImport},
 	}
-	if p.snap.Steers.TurnEnd {
-		rows = append(rows, apRow{kind: apRowInt, label: "Continue at most", indent: 1})
-	}
-	rows = append(rows,
-		apRow{kind: apRowSpacer},
-		apRow{kind: apRowSaveStart},
-	)
-	return rows
 }
 
-// reclampCursor keeps the cursor on a selectable row after a toggle changes the
-// row set (Turn End reveals/hides the continuation cap).
-func (p *AutopilotSelector) reclampCursor() {
-	rows := p.rows()
-	if p.cursor < len(rows) && rows[p.cursor].selectable() {
+// flip toggles a tri-state default-on steer, writing an explicit value so an
+// off persists distinctly from the default.
+func flip(p **bool, current bool) {
+	v := !current
+	*p = &v
+}
+
+// answerOn reports the Answer toggle, which drives both answering steers: the
+// agent's questions and a running command's prompts. Either one on reads as on
+// so a legacy config with just one set still shows it.
+func answerOn(s setting.AutoPilotSettings) bool { return s.Steers.Question || s.Steers.BashPrompt }
+
+// continuationLadder is what ←/→ steps the Continue cap through; -1 is no limit.
+var continuationLadder = []int{5, 10, 20, 50, 100, setting.AutoPilotUnlimitedContinuations}
+
+// stepContinuations moves the Continue cap one rung along continuationLadder. A
+// hand-set value off the ladder steps to its nearest neighbor.
+func stepContinuations(p *AutopilotSelector, step int) {
+	// rank orders no-limit after every finite cap.
+	rank := func(v int) int {
+		if v < 0 {
+			return 1 << 30
+		}
+		return v
+	}
+	cur := rank(p.snap.MaxContinuations)
+	if p.snap.MaxContinuations == 0 {
+		cur = setting.AutoPilotDefaultMaxContinuations
+	}
+	l := continuationLadder
+	if step > 0 {
+		for _, v := range l {
+			if rank(v) > cur {
+				p.snap.MaxContinuations = v
+				return
+			}
+		}
 		return
 	}
-	p.cursor = apStep(rows, p.cursor, -1, p.firstSelectable())
+	for i := len(l) - 1; i >= 0; i-- {
+		if rank(l[i]) < cur {
+			p.snap.MaxContinuations = l[i]
+			return
+		}
+	}
+}
+
+func continueLimit(s setting.AutoPilotSettings) string {
+	if s.ContinuationsUnlimited() {
+		return "no limit"
+	}
+	return "up to " + strconv.Itoa(s.ResolvedMaxContinuations())
+}
+
+// missionValue is the Mission row's value: the text and where its run stands,
+// as of opening the panel. An edited mission reads "ready" because saving it
+// starts a fresh run.
+func (p *AutopilotSelector) missionValue() string {
+	mission := strings.TrimSpace(p.snap.Mission)
+	if mission == "" {
+		return "not set · Space to write"
+	}
+	label := "ready"
+	if mission == strings.TrimSpace(p.baseline.Mission) {
+		switch p.baseline.MissionState {
+		case setting.MissionDone:
+			label = "✓ done"
+		case "":
+		default:
+			label = string(p.baseline.MissionState)
+		}
+	}
+	return kit.TruncateText(mission, 32) + " · " + label
+}
+
+func systemPromptValue(s setting.AutoPilotSettings) string {
+	switch {
+	case s.SystemPrompt != "":
+		return "custom"
+	case s.SystemPromptFile != "":
+		return "file"
+	default:
+		return "built-in"
+	}
 }
 
 func (p *AutopilotSelector) firstSelectable() int { return apStep(p.rows(), 0, +1, 0) }
@@ -410,49 +436,6 @@ func apStep(rows []apRow, start, step, fallback int) int {
 		}
 	}
 	return fallback
-}
-
-// ── Steer accessors ─────────────────────────────────────────────────────
-
-func getSuggest(s setting.AutoPilotSettings) bool    { return s.Steers.SuggestOn() }
-func getPermission(s setting.AutoPilotSettings) bool { return s.Steers.PermissionOn() }
-func getBash(s setting.AutoPilotSettings) bool       { return s.Steers.BashPrompt }
-func getSkill(s setting.AutoPilotSettings) bool      { return s.Steers.Skill }
-func getQuestion(s setting.AutoPilotSettings) bool   { return s.Steers.Question }
-func getTurnEnd(s setting.AutoPilotSettings) bool    { return s.Steers.TurnEnd }
-
-func toggleSuggest(s *setting.AutoPilotSettings) {
-	on := !s.Steers.SuggestOn()
-	s.Steers.Suggest = &on
-}
-func toggleBash(s *setting.AutoPilotSettings)     { s.Steers.BashPrompt = !s.Steers.BashPrompt }
-func toggleSkill(s *setting.AutoPilotSettings)    { s.Steers.Skill = !s.Steers.Skill }
-func toggleQuestion(s *setting.AutoPilotSettings) { s.Steers.Question = !s.Steers.Question }
-func toggleTurnEnd(s *setting.AutoPilotSettings)  { s.Steers.TurnEnd = !s.Steers.TurnEnd }
-
-// togglePermission flips the tri-state permission steer, writing an explicit
-// value so an off-toggle persists distinctly from the default-on.
-func togglePermission(s *setting.AutoPilotSettings) {
-	on := !s.Steers.PermissionOn()
-	s.Steers.Permission = &on
-}
-
-func steeringPromptSummary(s setting.AutoPilotSettings) string {
-	switch {
-	case s.SystemPrompt != "":
-		return "custom"
-	case s.SystemPromptFile != "":
-		return "file"
-	default:
-		return "built-in"
-	}
-}
-
-func missionSummary(s setting.AutoPilotSettings) string {
-	if strings.TrimSpace(s.Mission) == "" {
-		return "empty"
-	}
-	return kit.TruncateText(strings.TrimSpace(s.Mission), 32)
 }
 
 // innerWidth is the card's content column — a generous fill of the terminal so

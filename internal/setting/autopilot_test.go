@@ -121,15 +121,14 @@ func TestAutoPilotContinuationBudget(t *testing.T) {
 	}
 }
 
-// The driving configuration is one named concept, so the two ends of a run
-// can't drift: engaging never touches Permission, and stopping never flips off
-// a safety steer the user set for themselves.
-func TestAutoPilotDrivingConfiguration(t *testing.T) {
+// Engaging the driving configuration never touches Permission: an explicit off
+// is a safety choice no stated goal should overrule.
+func TestAutoPilotEngageDriving(t *testing.T) {
 	off := false
 	cfg := AutoPilotSettings{MaxContinuations: 5, Steers: SteerSettings{Permission: &off}}
 	cfg.EngageDriving()
 
-	if !cfg.Steers.BashPrompt || !cfg.Steers.Skill || !cfg.Steers.Question || !cfg.Steers.TurnEnd {
+	if !cfg.Steers.BashPrompt || !cfg.Steers.Question || !cfg.Steers.TurnEnd {
 		t.Errorf("EngageDriving left a driving steer off: %+v", cfg.Steers)
 	}
 	if !cfg.ContinuationsUnlimited() {
@@ -137,16 +136,6 @@ func TestAutoPilotDrivingConfiguration(t *testing.T) {
 	}
 	if cfg.Steers.PermissionOn() {
 		t.Error("EngageDriving overrode an explicit permission:false")
-	}
-
-	on := true
-	cfg.Steers.Suggest = &on
-	cfg.StopDriving()
-	if cfg.Steers.SuggestOn() || cfg.Steers.Question || cfg.Steers.TurnEnd {
-		t.Errorf("StopDriving left the copilot driving: %+v", cfg.Steers)
-	}
-	if !cfg.Steers.BashPrompt || !cfg.Steers.Skill {
-		t.Error("StopDriving flipped off a passive safety steer")
 	}
 }
 

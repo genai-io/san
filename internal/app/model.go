@@ -95,8 +95,8 @@ type model struct {
 	// directly — it Loads this snapshot instead (single-word swap is race-free).
 	autopilot *atomic.Pointer[autopilotRuntime]
 
-	// autopilotContinuations counts TurnEnd auto-continuations since the last
-	// human turn (reset in dispatchSubmission); autopilotContinuing tags the
+	// autopilotContinuations counts the running mission's auto-continuations
+	// (reset when a mission starts fresh); autopilotContinuing tags the
 	// in-flight submit as copilot-driven so that reset skips it.
 	autopilotContinuations int
 	autopilotContinuing    bool
@@ -104,6 +104,9 @@ type model struct {
 	// autopilotDeciding is true while a turn-end/kick decision is in flight, so
 	// the mode indicator shows "thinking…" instead of a transcript notice.
 	autopilotDeciding bool
+	// autopilotOfferDismissed hides the start/resume offer after esc, until the
+	// next turn ends or the panel saves.
+	autopilotOfferDismissed bool
 
 	// updateInstalled / updateFailed record the background auto-update's
 	// outcome: the release now on disk (the status line asks for a restart),

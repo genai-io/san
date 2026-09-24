@@ -10,6 +10,7 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 )
@@ -210,6 +211,13 @@ func (m *model) renderFooter(separator string) (string, int) {
 
 func (m model) renderInputView() string {
 	prompt := conv.InputPromptStyle.Render(conv.InputPrompt)
+	if m.missionOfferVisible() && !m.userInput.Suggestions.IsVisible() {
+		offer := "Start the mission? enter to start · esc to skip"
+		if m.env.AutoPilot.MissionState == setting.MissionPaused {
+			offer = "Resume the mission? enter to resume · esc to skip"
+		}
+		return prompt + ghostTextStyle.Render(offer)
+	}
 	if m.userInput.PromptSuggestion.Text != "" && m.userInput.Textarea.Value() == "" &&
 		!m.conv.Stream.Active && !m.userInput.Suggestions.IsVisible() {
 		return prompt + ghostTextStyle.Render(m.userInput.PromptSuggestion.Text)

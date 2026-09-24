@@ -1,9 +1,9 @@
 // Mission dialog: a mission editor. The text box holds the whole mission and is
-// the mission — you type, paste, and edit it (enter saves it, alt+enter inserts a
-// newline). That is the plain "input" path. The "input + thinking" path is ctrl+r:
-// the copilot (an injected MissionRefiner) rewrites the box into a cleaner, more
-// complete mission, shown in place. ctrl+c clears; esc saves and leaves. The core
-// actions all use keys every terminal delivers.
+// the mission — you type, paste, and edit it (alt+enter inserts a newline). That
+// is the plain "input" path. The "input + thinking" path is ctrl+r: the copilot
+// (an injected MissionRefiner) rewrites the box into a cleaner, more complete
+// mission, shown in place. ctrl+c clears; enter or esc goes back to the menu.
+// Like every panel edit, the mission takes effect when the panel is saved.
 package input
 
 import (
@@ -30,11 +30,6 @@ type MissionRefinedMsg struct {
 	Mission string
 	Err     error
 }
-
-// AutopilotMissionSavedMsg carries the mission the editor just saved (empty when
-// cleared) so the app persists it to the live session at once — the editor's
-// save/clear don't wait for the panel's Save button.
-type AutopilotMissionSavedMsg struct{ Mission string }
 
 type missionDialog struct {
 	input    textarea.Model // holds the whole mission; editing it IS the mission
@@ -81,13 +76,11 @@ func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	switch msg.String() {
-	case "esc":
+	case "esc", "enter":
+		p.commitMission()
 		p.mission.input.Blur()
 		p.view = apMenu
-		return p.saveMission("")
-	case "enter":
-		// Save (cache) the current mission without leaving the editor.
-		return p.saveMission("mission saved")
+		return nil
 	case "alt+enter", "shift+enter":
 		p.mission.input.InsertString("\n")
 		return nil
@@ -95,26 +88,15 @@ func (p *AutopilotSelector) handleMissionKey(msg tea.KeyMsg) tea.Cmd {
 		return p.refineMission()
 	case "ctrl+c":
 		// The overlay captures ctrl+c (it never reaches the global quit here), so
-		// give it a purpose: wipe the mission — this session and the persisted one.
+		// give it a purpose: wipe the draft.
 		p.mission.input.SetValue("")
 		p.mission.input.CursorEnd()
-		return p.saveMission("mission cleared")
+		return nil
 	default:
 		var cmd tea.Cmd
 		p.mission.input, cmd = p.mission.input.Update(msg)
 		return cmd
 	}
-}
-
-// saveMission commits the editor to the working buffer AND emits the mission so
-// the app persists it straight to the live session — the editor's save/clear take
-// effect at once, not only when the panel's Save button is pressed. An optional
-// status note is shown under the editor.
-func (p *AutopilotSelector) saveMission(status string) tea.Cmd {
-	p.commitMission()
-	p.mission.status = status
-	mission := p.snap.Mission
-	return func() tea.Msg { return AutopilotMissionSavedMsg{Mission: mission} }
 }
 
 // refineMission (ctrl+r) is the "input + thinking" path: it hands the current
@@ -176,7 +158,7 @@ func (p *AutopilotSelector) UpdateSpinner(msg tea.Msg) tea.Cmd {
 }
 
 func (p *AutopilotSelector) missionHint() string {
-	return kit.HintLine(keycap("enter")+" save", keycap("ctrl+r")+" refine", keycap("ctrl+c")+" clear", keycap("esc")+" done")
+	return kit.HintLine(keycap("enter")+" done", keycap("alt+enter")+" newline", keycap("ctrl+r")+" refine", keycap("ctrl+c")+" clear")
 }
 
 func (p *AutopilotSelector) renderMission() string {

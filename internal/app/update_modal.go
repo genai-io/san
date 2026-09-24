@@ -61,15 +61,16 @@ const autopilotSettleDelay = 250 * time.Millisecond
 type autopilotModeSettledMsg struct{}
 
 // handleAutopilotModeSettled surfaces the Suggest steer's opening proposal once
-// the mode has rested on AutoPilot. It no-ops if the user has since cycled away,
-// so a pass-through cycle costs nothing. The mission kick-off is deliberately NOT
-// here — that's the panel's explicit Start button, not a side effect of landing.
+// the mode has rested on AutoPilot. A mission waiting to start or resume shows
+// its offer instead (see missionOfferVisible), so no proposal is fetched. It
+// no-ops if the user has since cycled away, so a pass-through cycle costs
+// nothing.
 //
 // A mid-turn landing skips it: the proposal is ghost text for an idle textarea
 // (HandlePromptSuggestion drops it while streaming anyway), and OnTurnEnd
 // re-arms the hint once the turn is over.
 func (m *model) handleAutopilotModeSettled() tea.Cmd {
-	if !m.autopilotEngaged() || m.conv.Stream.Active {
+	if !m.autopilotEngaged() || m.conv.Stream.Active || m.missionOfferVisible() {
 		return nil
 	}
 	return m.startPromptSuggestion()

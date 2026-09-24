@@ -42,6 +42,8 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.wireReminderProviders()
 	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
 	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
+	m.userInput.Autopilot.SetModelSource(m.autopilotModelRefs)
+	m.userInput.Autopilot.SetEffortSource(m.autopilotModelEfforts)
 	if err := m.applyRunOptions(opts); err != nil {
 		return nil, err
 	}
