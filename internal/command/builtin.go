@@ -15,9 +15,6 @@ func WrapInvocation(name, body string) string {
 //go:embed prompts/simplify.md
 var simplifyPrompt string
 
-//go:embed prompts/workflow.md
-var workflowPrompt string
-
 // builtinPromptCommands are slash commands that ship with San as embedded
 // markdown workflows rather than Go handlers. They dispatch through the same
 // <custom-command> pipeline as user-defined commands, and a user or project
@@ -29,12 +26,6 @@ func builtinPromptCommands() []CustomCommand {
 			Name:        "simplify",
 			Description: "Review the changed code with 4 parallel cleanup agents (reuse, simplification, efficiency, altitude), then apply the fixes",
 			Body:        simplifyPrompt,
-			Scope:       scopeBuiltin,
-		},
-		{
-			Name:        "workflow",
-			Description: "Run a saved workflow from .san/workflows/, or list what is saved",
-			Body:        workflowPrompt,
 			Scope:       scopeBuiltin,
 		},
 	}

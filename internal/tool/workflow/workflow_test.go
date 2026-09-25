@@ -320,3 +320,18 @@ func TestWorkflowToolFailsTheTaskWhenALoopRunsOut(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkflowToolExecuteRefusesATypoedAgentWithoutApproval(t *testing.T) {
+	// Execute is the only check that holds on the model's path: an allow rule
+	// skips PreparePermission, and the approval prompt drops its error anyway.
+	// So Execute must refuse a plan it would otherwise launch with the default
+	// agent in place of the misspelled one.
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
+	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
+
+	res := wt.Execute(context.Background(), map[string]any{"definition": src}, ".")
+	if res.Success || !strings.Contains(res.Error, `no agent named "Explorr"`) {
+		t.Fatalf("Execute = %+v; an unapproved call must get the same checks as an approved one", res)
+	}
+}

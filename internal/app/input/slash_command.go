@@ -129,6 +129,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"reload-plugins": (*SlashCommandController).handleReloadPluginsCommand,
 		"think":          (*SlashCommandController).handleThinkCommand,
 		"loop":           (*SlashCommandController).handleLoopCommand,
+		"workflow":       (*SlashCommandController).handleWorkflowCommand,
 		"search":         (*SlashCommandController).handleSearchCommand,
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,
