@@ -525,7 +525,7 @@ func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 	m.userInput.Approval.Hide()
 	m.userInput.Settings.Enter(m.env.Width, m.env.Height)
 	if _, active := m.activeOverlay(); !active {
-		t.Fatal("the config picker did not become the active overlay")
+		t.Fatal("the settings popup did not become the active overlay")
 	}
 
 	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)

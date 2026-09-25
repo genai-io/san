@@ -15,11 +15,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Info holds the metadata for a slash command (name, description, visibility).
+// Info holds the metadata for a slash command. A command left out of the
+// registry (but still handled) is hidden from the catalog.
 type Info struct {
 	Name        string
 	Description string
-	Hidden      bool
 }
 
 // builtinCommands returns the static set of built-in command metadata.
@@ -48,7 +48,6 @@ func builtinCommands() []Info {
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
 		{Name: "search", Description: "Select search engine for web search"},
 		{Name: "settings", Description: "Configure appearance, permissions and other settings"},
-		{Name: "config", Description: "Deprecated alias of /settings"},
 		{Name: "evolve", Description: "Configure self-learning (skills & memory)"},
 		{Name: "autopilot", Description: "Configure the autopilot copilot (steers, system prompt, mission)"},
 		{Name: "goal", Description: "State a goal and let autopilot drive until it's met (/goal <text>, /goal clear)"},

@@ -573,6 +573,12 @@ func SaveThinkingDisplay(mode string) error {
 	return updateSettingsFile(true, func(d *Data) { d.ThinkingDisplay = mode })
 }
 
+// SaveAutoUpdate persists whether background auto-update is on to
+// ~/.san/settings.json, as an explicit value so turning it off sticks.
+func SaveAutoUpdate(on bool) error {
+	return updateSettingsFile(true, func(d *Data) { d.AutoUpdate = &on })
+}
+
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
 // to ~/.san/settings.json. It replaces the field rather than merging it: the
 // setting is opt-out, so locking the gate means persisting an explicit false,

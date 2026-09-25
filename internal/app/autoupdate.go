@@ -31,8 +31,9 @@ type updateFailedMsg struct {
 // goroutine. Nothing it does can reach the session — failures become a log
 // line or an exit-time warning, and a panic is swallowed here because Bubble
 // Tea would otherwise tear the whole program down for it.
-// SAN_DISABLE_AUTOUPDATE turns the check off; the cleanup still runs.
-func autoUpdate(current string) tea.Cmd {
+// The autoUpdate setting (off via /settings › General) or SAN_DISABLE_AUTOUPDATE
+// turns the check off; the cleanup still runs.
+func autoUpdate(current string, enabled bool) tea.Cmd {
 	return func() (msg tea.Msg) {
 		defer func() {
 			if r := recover(); r != nil {
@@ -45,7 +46,7 @@ func autoUpdate(current string) tea.Cmd {
 		// Everything decidable without the network is decided before it: a
 		// binary outside the installer's dir is never ours to replace, and a
 		// dev build could never pass Newer.
-		if setting.Getenv("DISABLE_AUTOUPDATE") != "" || !autoupdate.Managed() || !autoupdate.IsRelease(current) {
+		if !enabled || setting.Getenv("DISABLE_AUTOUPDATE") != "" || !autoupdate.Managed() || !autoupdate.IsRelease(current) {
 			return nil
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

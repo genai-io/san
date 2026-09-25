@@ -133,7 +133,7 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"identity":       (*SlashCommandController).handlePersonaCommand,
 		"persona":        (*SlashCommandController).handlePersonaCommand,
 		"settings":       (*SlashCommandController).handleSettingsCommand,
-		"config":         (*SlashCommandController).handleConfigCommand,
+		"config":         (*SlashCommandController).handleConfigCommand, // deprecated; kept out of the catalog
 		"autopilot":      (*SlashCommandController).handleAutopilotCommand,
 		"goal":           (*SlashCommandController).handleGoalCommand,
 		"name":           (*SlashCommandController).handleNameCommand,
@@ -360,8 +360,8 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	return "", nil, nil
 }
 
-// handleSettingsCommand opens the /settings popup (Appearance and
-// Permissions). Self-learning lives in its own /evolve popup.
+// handleSettingsCommand opens the /settings popup (Appearance, Permissions
+// and General). Self-learning lives in its own /evolve popup.
 func (c *SlashCommandController) handleSettingsCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.Input.Settings.Enter(c.env.Width, c.env.Height)
 	return "", nil, nil

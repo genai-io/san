@@ -22,6 +22,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result.DisabledTools = mergeMaps(base.DisabledTools, overlay.DisabledTools)
 	result.SearchProvider = coalesce(overlay.SearchProvider, base.SearchProvider)
 	result.AllowBypass = coalescePtr(overlay.AllowBypass, base.AllowBypass)
+	result.AutoUpdate = coalescePtr(overlay.AutoUpdate, base.AutoUpdate)
 	result.ContextBar = coalescePtr(overlay.ContextBar, base.ContextBar)
 	result.ThinkingDisplay = coalesce(overlay.ThinkingDisplay, base.ThinkingDisplay)
 	result.ResumeWindowMessages = coalescePtr(overlay.ResumeWindowMessages, base.ResumeWindowMessages)

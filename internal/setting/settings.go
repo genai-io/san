@@ -69,6 +69,10 @@ type Data struct {
 	// allowed (bypass is in the Shift+Tab cycle by default); set false to
 	// lock it out. Read via Settings.AllowBypass().
 	AllowBypass *bool `json:"allowBypass,omitempty"`
+	// AutoUpdate lets an installer-managed binary update itself in the
+	// background at startup. Opt-out: nil/absent means on. Read via
+	// Settings.AutoUpdate(); SAN_DISABLE_AUTOUPDATE overrides it.
+	AutoUpdate *bool `json:"autoUpdate,omitempty"`
 	// StreamFirstChunkTimeout overrides the core default (5m) for time-to-first-
 	// chunk. A valid time.Duration string (e.g. "5m", "120s"); empty = core default.
 	StreamFirstChunkTimeout string `json:"streamFirstChunkTimeout,omitempty"`
@@ -832,6 +836,10 @@ func (s *Data) Clone() *Data {
 	if s.AllowBypass != nil {
 		v := *s.AllowBypass
 		dst.AllowBypass = &v
+	}
+	if s.AutoUpdate != nil {
+		v := *s.AutoUpdate
+		dst.AutoUpdate = &v
 	}
 	if s.ContextBar != nil {
 		v := *s.ContextBar

@@ -274,6 +274,23 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.conv.AddNotice("Thinking: " + msg.Mode)
 		return m, nil
+	case input.AutoUpdateSavedMsg:
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after auto-update save failed", zap.Error(err))
+		}
+		// Report the effective value: a project-level autoUpdate outranks the
+		// user level the panel writes.
+		on := m.services.Setting.AutoUpdate()
+		state := "off"
+		if on {
+			state = "on"
+		}
+		if on != msg.On {
+			m.conv.AddNotice("Saved, but a project setting keeps auto update " + state)
+		} else {
+			m.conv.AddNotice("Auto update " + state + " — takes effect next launch")
+		}
+		return m, nil
 	case input.AllowBypassSavedMsg:
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			// The in-memory handle still holds the pre-save value, and it is

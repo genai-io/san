@@ -75,6 +75,14 @@ func (s *Settings) Snapshot() *Data {
 	return s.data.Clone()
 }
 
+// AutoUpdate reports whether background auto-update is on. It is opt-out:
+// enabled unless the user sets "autoUpdate": false.
+func (s *Settings) AutoUpdate() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.data == nil || s.data.AutoUpdate == nil || *s.data.AutoUpdate
+}
+
 // AllowBypass reports whether Bypass Permissions mode is reachable (in the
 // Shift+Tab cycle and as a settings defaultMode). It is opt-out: enabled
 // unless the user explicitly sets "allowBypass": false to lock it out.
