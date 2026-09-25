@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -60,25 +62,11 @@ func TestWorkflowToolRunsNodesThroughTheExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PreparePermission: %v", err)
 	}
-	if req.Description != "Run workflow review: 4 nodes, max 4 parallel" {
+	if req.Description != "Run workflow review: 4 nodes, up to 4 subagent turns, max 4 parallel" {
 		t.Fatalf("description = %q", req.Description)
 	}
 
-	result := wt.ExecuteApproved(context.Background(), params, ".")
-	if !result.Success {
-		t.Fatalf("Execute: %s", result.Error)
-	}
-	id := result.Output[strings.Index(result.Output, "Task ID: ")+len("Task ID: "):]
-	id = id[:strings.Index(id, "\n")]
-	bg, ok := task.Default().Get(id)
-	if !ok {
-		t.Fatalf("task %s not registered", id)
-	}
-	if !bg.WaitForCompletion(5 * time.Second) {
-		t.Fatal("workflow did not finish")
-	}
-
-	info := bg.GetStatus()
+	info := runToCompletion(t, wt, params)
 	if info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s (%s)", info.Status, info.Error)
 	}
@@ -140,4 +128,115 @@ func TestWorkflowToolAcceptsANodeWithNoAgent(t *testing.T) {
 	if _, err := wt.PreparePermission(context.Background(), map[string]any{"definition": src}, "."); err != nil {
 		t.Fatalf("a node without an agent takes the default one: %v", err)
 	}
+}
+
+const orchestrator = "---\nname: split\n---\n```mermaid\nflowchart LR\n  plan --> review --> merge\n```\n\n## plan\nSplit it up\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\nmode: explore\n\nReview {{item.prompt}}\n\n## merge\nMerge {{review}}\n"
+
+func TestWorkflowToolStatesTheWorstCase(t *testing.T) {
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{})
+	req, err := wt.PreparePermission(context.Background(), map[string]any{"definition": orchestrator}, ".")
+	if err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	want := "Run workflow split: 3 nodes, up to 6 subagent turns, max 4 parallel\nreview: up to 4 workers over plan.tasks"
+	if req.Description != want {
+		t.Fatalf("description = %q,\nwant %q", req.Description, want)
+	}
+}
+
+func TestWorkflowToolFansOutOverAPlan(t *testing.T) {
+	exec := &scriptedExecutor{outputs: map[string]string{
+		"plan":        `{"tasks":[{"name":"llm","prompt":"errors"},{"name":"tool","prompt":"perms"}]}`,
+		"review·llm":  "L",
+		"review·tool": "T",
+		"merge":       "done",
+	}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	params := map[string]any{"definition": orchestrator}
+	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	info := runToCompletion(t, wt, params)
+
+	if info.Status != task.StatusCompleted {
+		t.Fatalf("status = %s (%s)", info.Status, info.Error)
+	}
+	byNode := map[string]tool.AgentExecRequest{}
+	exec.mu.Lock()
+	for _, r := range exec.reqs {
+		byNode[r.Description] = r
+	}
+	exec.mu.Unlock()
+	if got := byNode["split/review·llm"]; got.Prompt != "Review errors" || got.Mode != "explore" {
+		t.Fatalf("llm worker = %+v", got)
+	}
+	if got := byNode["split/merge"].Prompt; !strings.Contains(got, "## llm\nL") || !strings.Contains(got, "## tool\nT") {
+		t.Fatalf("merge prompt = %q", got)
+	}
+}
+
+func TestWorkflowToolRunsASavedWorkflow(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	wt.SetSearchPaths([]string{dir})
+
+	if list := wt.Schema().Description; !strings.Contains(list, "Saved workflows") || !strings.Contains(list, "- review") {
+		t.Fatalf("schema does not list the saved workflow:\n%s", list)
+	}
+
+	params := map[string]any{"name": "review", "inputs": map[string]any{"base": "main"}}
+	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	info := runToCompletion(t, wt, params)
+	if info.Status != task.StatusCompleted || !strings.Contains(info.Output, "## report\nR") {
+		t.Fatalf("status = %s output:\n%s", info.Status, info.Output)
+	}
+}
+
+func TestWorkflowToolNameErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{})
+	wt.SetSearchPaths([]string{dir})
+
+	_, err := wt.PreparePermission(context.Background(), map[string]any{"name": "nope"}, ".")
+	if err == nil || !strings.Contains(err.Error(), "no workflow named nope") || !strings.Contains(err.Error(), "- review") {
+		t.Fatalf("err = %v, want it to list what is saved", err)
+	}
+	if _, err := wt.PreparePermission(context.Background(), map[string]any{}, "."); err == nil || !strings.Contains(err.Error(), "name or definition is required") {
+		t.Fatalf("empty call err = %v", err)
+	}
+	if _, err := wt.PreparePermission(context.Background(), map[string]any{"name": "review", "definition": definition}, "."); err == nil || !strings.Contains(err.Error(), "not both") {
+		t.Fatalf("both err = %v", err)
+	}
+}
+
+// runToCompletion executes an approved call and waits for its background task.
+func runToCompletion(t *testing.T, wt *WorkflowTool, params map[string]any) task.TaskInfo {
+	t.Helper()
+	result := wt.ExecuteApproved(context.Background(), params, ".")
+	if !result.Success {
+		t.Fatalf("Execute: %s", result.Error)
+	}
+	id := result.Output[strings.Index(result.Output, "Task ID: ")+len("Task ID: "):]
+	id = id[:strings.Index(id, "\n")]
+	bg, ok := task.Default().Get(id)
+	if !ok {
+		t.Fatalf("task %s not registered", id)
+	}
+	if !bg.WaitForCompletion(5 * time.Second) {
+		t.Fatal("workflow did not finish")
+	}
+	return bg.GetStatus()
 }

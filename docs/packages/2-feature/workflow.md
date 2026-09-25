@@ -26,6 +26,13 @@ user-facing behaviour: [`concepts/workflow.md`](../../concepts/workflow.md).
 ```go
 package workflow
 
+// Load lists the `*.md` definitions in dirs, earliest directory winning when
+// a name appears twice, sorted by name.
+func Load(dirs ...string) []Saved
+
+// Find returns the definition named name, parsed and validated.
+func Find(name string, dirs ...string) (*Workflow, error)
+
 // Parse reads a definition and validates it: one mermaid block, one section
 // per graph node and vice versa, no cycle, templates referencing only
 // connected upstreams. Every problem found is reported at once.
@@ -45,6 +52,10 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 func (r *Result) Failed(w *Workflow) bool
 func (r *Result) Failures(w *Workflow) []string
 func (r *Result) Summary(w *Workflow) string
+
+// Bounds reports the worst case a run can reach: how many subagent turns it
+// can start, and the fan-out bound of each for_each node.
+func (w *Workflow) Bounds() (turns int, fanOut []string)
 ```
 
 `Workflow`, `Node`, `Edge`, `Options`, `Result` and `NodeResult` are plain
@@ -59,15 +70,28 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   `## id` sections whose leading `key: value` lines are config and whose
   remainder is the prompt; Kahn's algorithm for the cycle check; `{{ref}}`
   references checked against the node's ancestors.
+- `expand.go` — the for_each plan: the first JSON value that decodes in the
+  upstream's output (a model writes prose around it), navigated to the named
+  field, flattened into `{{item}}` / `{{item.key}}`. A plan larger than
+  `max_workers` fails the node rather than losing its tail — which is the
+  only place that bound is enforced, so the fan-out needs no gate of its own
+  and queues for the run's shared slots like any other node. `Bounds` counts
+  the worst case for the approval dialog.
+- `load.go` — directory listing, frontmatter only, so listing does not pay
+  for parsing every graph; `Find` does the full parse. Search paths come
+  from the caller, so the package still knows nothing about San's layout.
 - `run.go` — one goroutine per node waiting on its upstreams' done
-  channels, a semaphore of `MaxParallel` held only while a node executes. A
+  channels, a semaphore of `MaxParallel` held only while a turn executes
+  (never while waiting, so a for_each node cannot deadlock against its own
+  workers). A
   node's template scope is the outputs of every ancestor reached through a
   *taken* edge, inherited downstream; an untaken conditional edge hides that
   branch.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
   `skipped` is contagion from an upstream failure; `omitted` means no
   upstream edge was taken. `continue_on_error` on the failing node stops the
-  contagion and renders its `{{id}}` empty.
+  contagion, and `whole` decides what its `{{id}}` still carries: a
+  `for_each` node's finished workers, nothing from a plain turn.
 - `Summary` is one status line per node followed by the output of each
   succeeded sink; intermediate outputs stay in the node transcripts.
 
@@ -81,9 +105,10 @@ finished results are kept. No state outlives the call.
 ## Tests
 
 ```
-internal/workflow/parse_test.go — the release-check example, ancestor references, every rejection, all problems in one error.
-internal/workflow/run_test.go   — order and data flow, max_parallel, conditional omit, scope along taken paths, failure contagion and continue_on_error, cancellation.
-internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection, node requests, task completion.
+internal/workflow/parse_test.go  — the release-check example, ancestor references, every rejection, all problems in one error.
+internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit, scope along taken paths, failure contagion and continue_on_error, cancellation.
+internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
+internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds, node requests, fan-out labels, saved workflows.
 ```
 
 ## See Also

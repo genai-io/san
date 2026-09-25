@@ -26,10 +26,20 @@ const (
 	StatusOmitted Status = "omitted"
 )
 
-// NodeRunner executes one node with its rendered prompt. The host decides
-// what a node is; an error is a failed node.
+// Call is one subagent turn: a node, the prompt it was rendered into, and —
+// for a node fanned out by for_each — which item it is working on.
+type Call struct {
+	Node   *Node
+	Prompt string
+	// Label names one worker of a for_each node; empty for an ordinary node.
+	// The host uses it to distinguish the transcripts.
+	Label string
+}
+
+// NodeRunner executes one call. The host decides what a node is; an error is
+// a failed node.
 type NodeRunner interface {
-	RunNode(ctx context.Context, node *Node, prompt string) (output string, err error)
+	RunNode(ctx context.Context, c Call) (output string, err error)
 }
 
 // Options tune one run.
@@ -125,10 +135,21 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 						take(e, up, up.res.Output)
 					}
 				case StatusFailed:
-					if !w.byID[e.From].ContinueOnError {
+					from := w.byID[e.From]
+					switch {
+					case !from.ContinueOnError:
 						blocked = true
-					} else if e.Label == "" {
-						take(e, up, "") // tolerated failure: {{from}} renders empty
+					case e.Label == "":
+						// A fan-out hands on the workers that finished: whole
+						// work, just less of it than the plan asked for. A
+						// plain turn's output is the half-answer it stopped
+						// on, which downstream would read as the finished
+						// thing, so it hands on nothing.
+						out := ""
+						if from.ForEach != "" {
+							out = up.res.Output
+						}
+						take(e, up, out)
 					}
 				case StatusSkipped:
 					blocked = true
@@ -143,19 +164,10 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 				return
 			}
 
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				s.res.Err = ctx.Err()
-				setStatus(StatusFailed)
-				return
-			}
-			defer func() { <-sem }()
-
+			s.scope = scope
 			setStatus(StatusRunning)
 			t0 := time.Now()
-			s.scope = scope
-			out, err := runner.RunNode(ctx, n, render(n.Prompt, scope, opts.Inputs))
+			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem)
 			s.res.Duration = time.Since(t0)
 			s.res.Output = out
 			if err != nil {
@@ -174,6 +186,57 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 		r.Nodes[id] = &res
 	}
 	return r
+}
+
+// execute runs a node: one turn, or — with for_each — one turn per plan item,
+// bounded by the node's max_workers and by the run's shared slots.
+func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runner NodeRunner, sem chan struct{}) (string, error) {
+	if n.ForEach == "" {
+		return run1(ctx, runner, sem, Call{Node: n, Prompt: render(n.Prompt, scope, inputs, nil)})
+	}
+	items, err := plan(n, scope)
+	if err != nil {
+		return "", err
+	}
+	// max_workers is enforced in plan(), which refuses a larger plan outright,
+	// so the fan-out is already at most that wide here and needs no second
+	// gate; the run's shared slots still decide how many turns are in flight.
+	outs := make([]string, len(items))
+	errs := make([]error, len(items))
+	var wg sync.WaitGroup
+	for i, item := range items {
+		wg.Go(func() {
+			outs[i], errs[i] = run1(ctx, runner, sem, Call{
+				Node:   n,
+				Prompt: render(n.Prompt, scope, inputs, item),
+				Label:  item[itemName],
+			})
+		})
+	}
+	wg.Wait()
+
+	// Only the workers that finished are reported, so what a failed fan-out
+	// leaves behind is whole work rather than gaps under headings.
+	var b strings.Builder
+	for i, item := range items {
+		if errs[i] != nil {
+			continue
+		}
+		fmt.Fprintf(&b, "## %s\n%s\n\n", item[itemName], strings.TrimSpace(outs[i]))
+	}
+	return strings.TrimSpace(b.String()), errors.Join(errs...)
+}
+
+// run1 takes a shared slot for the length of one turn. Waiting for a slot
+// happens here and nowhere else, so a node never holds one while it waits.
+func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call) (string, error) {
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	defer func() { <-sem }()
+	return runner.RunNode(ctx, c)
 }
 
 // Summary renders the run for the conversation that launched it: one status
