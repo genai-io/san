@@ -7,6 +7,9 @@ markdown document, and there are two ways in — a file you saved under
 San validates the whole thing before asking for approval, runs it as one
 background task, and delivers one summary when it finishes.
 
+The `Workflow` tool ships **disabled**: enable it from `/tools`. Until then the
+model does not see it, and `/workflow` says how to turn it on.
+
 Use a workflow when the arrangement matters more than any single job — a
 dependency order a long turn could forget, or a fan-out whose intermediate
 results should stay out of the main conversation. For one bounded job, or a
