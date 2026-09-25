@@ -83,8 +83,10 @@ costs one markdown render per message plus a print round-trip per chunk.
 ## UI Interactions
 
 - **`/tools`**: shows which tools are disabled via `disabledTools`. Some
-  tools ship disabled (currently `Cron`); an explicit `"Cron": false` entry —
-  what the panel writes when you enable it — overrides the factory default.
+  tools ship disabled (`Cron`, `TaskCreate`, `TaskGet`, `TaskUpdate`,
+  `SendMessage`, `AgentStop`, `Workflow`); an explicit `"Cron": false`
+  entry — what the panel writes when you enable it — overrides the factory
+  default.
 - **Env vars**: injected into the Bash tool's environment automatically.
 - **Theme**: applied at startup; no restart needed when changed via `/models` or similar commands.
 

@@ -38,6 +38,14 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 		t.Fatal("explicit enable must override the task-tracker default")
 	}
 
+	// Workflow is opt-in, and the /tool panel's explicit enable turns it on.
+	if !WithDefaultDisabledTools(nil)["Workflow"] {
+		t.Fatal("Workflow should be disabled by default")
+	}
+	if WithDefaultDisabledTools(map[string]bool{"Workflow": false})["Workflow"] {
+		t.Fatal("explicit enable must override the Workflow default")
+	}
+
 	// Inter-agent controls ship disabled by default.
 	for _, name := range []string{"SendMessage", "AgentStop"} {
 		if !WithDefaultDisabledTools(nil)[name] {

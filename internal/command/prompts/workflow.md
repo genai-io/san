@@ -1,5 +1,9 @@
 `/workflow [name] [key=value …]` → run a saved workflow, or show what is saved
 
+If the `Workflow` tool is not among your tools, the feature is off — it ships
+disabled. Tell the user to enable it from `/tools`, and stop. Do not stand in
+for it with Agent calls or by reading `.san/workflows/` yourself.
+
 A workflow is a graph of subagent turns defined in markdown. Saved ones live
 in `.san/workflows/*.md` (project) and `~/.san/workflows/*.md` (user); the
 project copy wins when both define the same name. The `Workflow` tool's own
