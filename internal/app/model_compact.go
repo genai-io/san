@@ -154,15 +154,3 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 		Trigger:       "manual",
 	})
 }
-
-func (m *model) HandleTokenLimitResult(msg kit.TokenLimitResultMsg) tea.Cmd {
-	m.userInput.Provider.FetchingLimits = false
-	var content string
-	if msg.Err != nil {
-		content = "Error: " + msg.Err.Error()
-	} else {
-		content = msg.Result
-	}
-	m.conv.AddNotice(content)
-	return tea.Batch(m.CommitMessages()...)
-}

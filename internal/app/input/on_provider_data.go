@@ -368,7 +368,7 @@ func modelDisplayName(m providerModelItem) string {
 
 // sortProviderModelsByNameDescending keeps each provider's model picker in a
 // predictable descending name order. Context-window metadata is independent of
-// presentation order and remains available in InputTokenLimit.
+// presentation order and remains available in ContextWindow.
 func sortProviderModelsByNameDescending(models []providerModelItem) {
 	sort.SliceStable(models, func(a, b int) bool {
 		nameA := modelSortName(models[a])

@@ -73,7 +73,7 @@ func TestStore_ReloadPicksUpAnotherInstancesWrites(t *testing.T) {
 		t.Fatalf("NewStore(selector) error = %v", err)
 	}
 	if err := selector.CacheModels(Moonshot, AuthAPIKey, []ModelInfo{
-		{ID: "kimi-k2", Name: "kimi-k2", DisplayName: "Kimi K2", InputTokenLimit: 256_000, OutputTokenLimit: 16_384},
+		{ID: "kimi-k2", Name: "kimi-k2", DisplayName: "Kimi K2", ContextWindow: 256_000, MaxOutput: 16_384},
 	}); err != nil {
 		t.Fatalf("CacheModels() error = %v", err)
 	}
@@ -115,7 +115,7 @@ func TestStore_ReloadMissingFileIsNoError(t *testing.T) {
 	}
 }
 
-func TestStore_SetTokenLimitUpdatesCachedModelCopy(t *testing.T) {
+func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -145,14 +145,16 @@ func TestStore_SetTokenLimitUpdatesCachedModelCopy(t *testing.T) {
 	if !ok {
 		t.Fatal("expected cached models after override")
 	}
-	if cachedAfter[0].InputTokenLimit != 256000 || cachedAfter[0].OutputTokenLimit != 64000 {
-		t.Fatalf("expected cached override applied, got %#v", cachedAfter[0])
+	// The override lives beside the cache, not in it, so clearing it restores
+	// what the provider said.
+	if cachedAfter[0].ContextWindow != 0 || cachedBefore[0].ContextWindow != 0 {
+		t.Fatalf("expected the cache left alone, got %#v", cachedAfter[0])
 	}
-	if cachedAfter[1].InputTokenLimit != 0 || cachedAfter[1].OutputTokenLimit != 0 {
-		t.Fatalf("expected unrelated model unchanged, got %#v", cachedAfter[1])
+	if in, out, ok := store.GetTokenLimit("gpt-5"); !ok || in != 256000 || out != 64000 {
+		t.Fatalf("GetTokenLimit() = (%d, %d, %v), want (256000, 64000, true)", in, out, ok)
 	}
-	if cachedBefore[0].InputTokenLimit != 0 || cachedBefore[0].OutputTokenLimit != 0 {
-		t.Fatalf("expected previously returned cached slice to remain unchanged, got %#v", cachedBefore[0])
+	if got := store.EffectiveContextWindow(OpenAI, AuthAPIKey, "gpt-5"); got != 256000 {
+		t.Fatalf("EffectiveContextWindow() = %d, want the 256000 override", got)
 	}
 }
 
@@ -226,7 +228,7 @@ func TestStore_CachedModelLimitsPrefersKnownWindow(t *testing.T) {
 		t.Fatalf("CacheModels(alibaba) error = %v", err)
 	}
 	if err := store.CacheModels(DeepSeek, AuthAPIKey, []ModelInfo{
-		{ID: "deepseek-v4-pro", InputTokenLimit: 1_000_000, OutputTokenLimit: 384_000},
+		{ID: "deepseek-v4-pro", ContextWindow: 1_000_000, MaxOutput: 384_000},
 	}); err != nil {
 		t.Fatalf("CacheModels(deepseek) error = %v", err)
 	}
@@ -258,12 +260,12 @@ func TestStore_CachedModelLimitsPrefersLargestWindow(t *testing.T) {
 	}
 
 	if err := store.CacheModels(OpenAI, AuthSubscription, []ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 272_000, OutputTokenLimit: 16_384},
+		{ID: "gpt-5.5", ContextWindow: 272_000, MaxOutput: 16_384},
 	}); err != nil {
 		t.Fatalf("CacheModels(subscription) error = %v", err)
 	}
 	if err := store.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 400_000, OutputTokenLimit: 16_384},
+		{ID: "gpt-5.5", ContextWindow: 400_000, MaxOutput: 16_384},
 	}); err != nil {
 		t.Fatalf("CacheModels(api_key) error = %v", err)
 	}
@@ -289,12 +291,12 @@ func TestStore_CachedModelLimitsForProvider(t *testing.T) {
 	}
 
 	if err := store.CacheModels(OpenAI, AuthAPIKey, []ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 400_000, OutputTokenLimit: 16_384},
+		{ID: "gpt-5.5", ContextWindow: 400_000, MaxOutput: 16_384},
 	}); err != nil {
 		t.Fatalf("CacheModels(api_key) error = %v", err)
 	}
 	if err := store.CacheModels(OpenAI, AuthSubscription, []ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 272_000, OutputTokenLimit: 16_384},
+		{ID: "gpt-5.5", ContextWindow: 272_000, MaxOutput: 16_384},
 	}); err != nil {
 		t.Fatalf("CacheModels(subscription) error = %v", err)
 	}

@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/tool"
@@ -30,8 +29,6 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		return rt.HandlePermGate(msg.Request), true
 	case CompactResultMsg:
 		return rt.HandleCompactResult(msg), true
-	case kit.TokenLimitResultMsg:
-		return rt.HandleTokenLimitResult(msg), true
 	case AgentActivityMsg:
 		if msg.Index < 0 && msg.ToolCallID != "" {
 			msg.Index = m.Tool.IndexOf(msg.ToolCallID)

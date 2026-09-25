@@ -1,6 +1,6 @@
 # Compaction
 
-When a conversation approaches the model's input limit, San **compacts**
+When a conversation approaches the model's context window, San **compacts**
 it: an LLM summarizes the history, and that summary replaces the old turns so
 the conversation can keep going within the window.
 
@@ -9,13 +9,13 @@ This page covers the mechanism end to end — what happens to each
 blocks, messages), how the summary is recorded for replay, and how the two
 entry points (automatic and manual `/compact`) differ and agree.
 
-The window itself is resolved as: `SAN_INPUT_LIMIT` if set, else the limit the
-model reports (or the one configured for it), else unknown. There is no guessed
-default — an invented window is acted on silently, and guessing low discards
-context on every compaction while guessing high never fires. An unknown window
-skips proactive compaction and leaves the reactive *prompt-too-long* retry to
-recover; the status bar shows `--` rather than a percentage of a guess. Set
-`SAN_INPUT_LIMIT` for a model San cannot size on its own.
+Auto-compaction fires once the prompt reaches the **budget**: the window less
+the `max_tokens` the request keeps for the reply, since a request needs
+`prompt + max_tokens ≤ window`. The prompt is sized from the provider's count
+for the last call plus an estimate of what followed. An unknown window has no
+budget: proactive compaction is skipped, the reactive *prompt-too-long* retry
+recovers, and the status bar shows `--`. Set one with `/context limit`. See
+[`reference/token-limits.md`](../reference/token-limits.md).
 
 ## What compaction touches (and what it doesn't)
 
@@ -94,7 +94,7 @@ AUTO  (core agent, inside the ThinkAct loop)
   │   size is estimated from system prompt + conversation bytes; │
   │   that covers an agent seeded with a resumed history.        │
   │        │                                                     │
-  │        ├─ ≥ 90% of input limit ──▶ compact() ──▶ continue ───┼─▶ re-infer NOW
+  │        ├─ ≥ budget (window − max_tokens) ─▶ compact() ─▶ continue ┼─▶ re-infer NOW
   │        │                                          (in-loop)  │   with [summary]
   │   streamInfer()                                              │
   │        └─ "prompt too long" error ─▶ compact() ─▶ continue ──┼─▶ retry
@@ -121,7 +121,7 @@ MANUAL  (/compact [focus], app layer)
 
 | Aspect | Auto-compact | Manual `/compact` |
 |---|---|---|
-| Trigger | proactive size estimate (≥90% of limit) or reactive *prompt-too-long* retry | user runs `/compact [focus]` |
+| Trigger | proactive: prompt ≥ window − max_tokens; or reactive *prompt-too-long* retry | user runs `/compact [focus]` |
 | Driver | core agent `compact()` — runs **in-loop** | app layer; summary computed, then agent **stopped** |
 | Continuation | `continue` re-infers immediately with `[summary]` | agent stopped; **next** user message reseeds it from the conversation |
 | Focus | none | optional focus string; `PreCompact` hook can add context |

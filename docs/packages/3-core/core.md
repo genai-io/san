@@ -94,8 +94,9 @@ Client func(msgs []Message) (*ai.Client, error)
 // The settings a person can change mid-session — the reasoning rung, the
 // output cap — asked for fresh on every inference.
 CallOptions func() []ai.Option
-// The prompt budget auto-compaction measures against. Zero turns it off.
-InputLimit func() int
+// The prompt size at which auto-compaction fires: the window less the
+// reply's room. Zero turns it off.
+PromptBudget func() int
 ```
 
 There is nothing left to translate: a message, a tool, a tool result and a

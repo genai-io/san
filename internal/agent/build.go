@@ -166,7 +166,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		ID:           "main",
 		Client:       client.TurnClient,
 		CallOptions:  client.CallOptions,
-		InputLimit:   client.InputLimit,
+		PromptBudget: client.PromptBudget,
 		System:       sys,
 		Tools:        tools,
 		Gate:         tool.HookedPermission(p.HookEngine, pg),

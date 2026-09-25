@@ -29,10 +29,15 @@ import (
 // Every category is an estimate — the provider reports one exact prompt size
 // and no breakdown, so the split has to be derived from the text itself.
 func (m *model) contextUsage() conv.ContextUsage {
+	store, current := m.services.LLM.Store(), m.env.CurrentModel
 	usage := conv.ContextUsage{
 		ModelName: m.env.GetModelDisplayName(),
-		Limit:     kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
+		Limit:     kit.GetContextWindow(store, current),
+		Budget:    kit.GetPromptBudget(store, current),
 		Measured:  m.env.InputTokens,
+	}
+	if store != nil && current != nil {
+		_, _, usage.Overridden = store.GetTokenLimit(current.ModelID)
 	}
 
 	sys, tools := m.services.Agent.System(), m.services.Agent.Tools()

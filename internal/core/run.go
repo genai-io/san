@@ -34,13 +34,16 @@ type agent struct {
 	resultFilter ResultFilter
 	client       func(msgs []Message) (*ai.Client, error)
 	callOptions  func() []ai.Option
-	inputLimit   func() int
+	promptBudget func() int
 	inbox        chan Inbound
 	outbox       chan Event
 	onEvent      func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
+
+	// measured is the last reply's real prompt size; see promptTokens.
+	measured promptMeasure
 
 	// pending is what the inbox took since the last exchange. The SDK's Run
 	// takes a turn's input as an argument rather than reading a queue, so an
@@ -73,13 +76,16 @@ type turnHandle struct {
 	done   chan struct{}
 }
 
-func (a *agent) ID() string                 { return a.id }
-func (a *agent) System() System             { return a.system }
-func (a *agent) Tools() Tools               { return a.tools }
-func (a *agent) Inbox() chan<- Inbound      { return a.inbox }
-func (a *agent) Outbox() <-chan Event       { return a.outbox }
-func (a *agent) Messages() []Message        { return a.inner.Messages() }
-func (a *agent) SetMessages(msgs []Message) { a.inner.SetMessages(msgs) }
+func (a *agent) ID() string            { return a.id }
+func (a *agent) System() System        { return a.system }
+func (a *agent) Tools() Tools          { return a.tools }
+func (a *agent) Inbox() chan<- Inbound { return a.inbox }
+func (a *agent) Outbox() <-chan Event  { return a.outbox }
+func (a *agent) Messages() []Message   { return a.inner.Messages() }
+func (a *agent) SetMessages(msgs []Message) {
+	a.measured.reset()
+	a.inner.SetMessages(msgs)
+}
 
 // Append puts a message into the conversation the next exchange opens with.
 // This is the unified entry point for both paths:
@@ -439,6 +445,7 @@ func (a *agent) fold(ctx context.Context, event sdkagent.Event, out *Result) {
 func (a *agent) hooks() sdkagent.Hook {
 	return sdkagent.Hook{
 		PreInfer:     a.preInfer,
+		PostInfer:    a.postInfer,
 		PreTool:      a.gate,
 		PostTool:     a.resultFilter,
 		PreStep:      a.preStep,
@@ -463,5 +470,12 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 	if a.callOptions != nil {
 		inf.Options = append(inf.Options, a.callOptions()...)
 	}
+	a.measured.sending(len(inf.Messages))
+	return nil
+}
+
+// postInfer records what the provider counted for the call just made.
+func (a *agent) postInfer(_ context.Context, resp *ai.Response) error {
+	a.measured.answered(resp.Usage)
 	return nil
 }

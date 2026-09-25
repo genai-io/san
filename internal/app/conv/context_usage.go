@@ -32,6 +32,12 @@ type ContextUsage struct {
 	// counts still render.
 	Limit int
 
+	// Budget is the prompt size at which auto-compaction fires: Limit less
+	// the room kept for the reply. Overridden marks a window set by hand with
+	// /context limit.
+	Budget     int
+	Overridden bool
+
 	// Measured is the prompt size the provider reported for the last turn —
 	// the same number the status bar shows as `ctx X/…`. It is 0 until a turn
 	// completes, which falls the total back to the estimate.
@@ -111,6 +117,9 @@ func RenderContextUsage(u ContextUsage) string {
 
 	var b strings.Builder
 	b.WriteString(muted.Render(contextUsageHeader(u.ModelName, used, u.Limit)))
+	if line := u.limitLine(); line != "" {
+		b.WriteString("\n" + muted.Render(line))
+	}
 	b.WriteString("\n\n")
 	if u.Limit > 0 {
 		b.WriteString(renderStackedBar(cats, u.Limit))
@@ -137,6 +146,20 @@ func contextUsageHeader(modelName string, used, limit int) string {
 			kit.FormatTokenCount(used), kit.FormatTokenCount(limit), percentOf(used, limit)))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// limitLine says where auto-compaction fires and whether the window was set by
+// hand, so the reading comes with how to change it.
+func (u ContextUsage) limitLine() string {
+	if u.Limit <= 0 {
+		return "window unknown · set one with /context limit <window> <output>"
+	}
+	line := fmt.Sprintf("auto-compacts at %s · %s kept for the reply",
+		kit.FormatTokenCount(u.Budget), kit.FormatTokenCount(u.Limit-u.Budget))
+	if u.Overridden {
+		line += " · set by hand (/context limit reset)"
+	}
+	return line
 }
 
 // footer names which numbers above it are measured and which are estimated, so

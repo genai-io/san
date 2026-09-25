@@ -1,215 +1,54 @@
 # Token Limits
 
-Token limits help track context window usage and prevent exceeding model limits. San supports both provider-supplied limits (from API) and user-configured limits.
+A model publishes two figures, and San uses them as the vendor means them:
 
-## Storage
+- **context window**: the most tokens one request may use, prompt and reply
+  together (OpenAI: "includes input, output, and reasoning tokens").
+- **max output**: the most one reply may produce. It is part of the window,
+  not added to it.
 
-Token limits are stored in `~/.san/providers.json`:
+So the prompt a request can carry depends on how much it keeps for the reply:
+`prompt + max_tokens ≤ window`.
+
+## How San uses them
+
+| Figure | Rule | Where |
+|---|---|---|
+| `max_tokens` sent | `min(max output, 32k)`; 8192 when unknown | `llm.OutputCap` |
+| Auto-compact point | `window − max_tokens` | `llm.PromptBudget` |
+| Prompt size | the provider's count for the last call + an estimate of what followed | `core.promptMeasure` |
+
+A reply cut off at `max_tokens` is continued, not lost, so holding the cap to
+32k costs nothing but frees the rest of the window for the prompt. The status
+bar reads against the same budget: 100% is where auto-compaction fires.
+
+An unknown window stays unknown: no proactive compaction, the prompt-too-long
+retry recovers, and the status bar shows `--`.
+
+## Where the figures come from
+
+In order, first hit wins (`llm.Store.EffectiveContextWindow`):
+
+1. A hand-set override: `/context limit`, stored under `tokenLimits` in
+   `~/.san/providers.json`.
+2. This provider's cached model listing, which the model data under it fills
+   in (models.dev, San's own corrections, then `~/.san/models.json`).
+3. The largest window cached for the same model ID under any provider.
+
+## Setting them by hand
+
+```
+/context                          # usage, window, and where it auto-compacts
+/context limit 200000 64000       # override the current model's window and max output
+/context limit reset              # drop the override
+```
+
+Use the vendor's figures as published. To correct a model for every session,
+`~/.san/models.json` takes the models.dev shape, keyed by vendor:
 
 ```json
-{
-  "models": {
-    "google:default": {
-      "cachedAt": "2025-01-30T10:00:00Z",
-      "models": [
-        {
-          "id": "gemini-2.0-flash",
-          "name": "Gemini 2.0 Flash",
-          "inputTokenLimit": 1048576,
-          "outputTokenLimit": 8192
-        }
-      ]
-    },
-    "anthropic:vertex": {
-      "cachedAt": "2025-01-30T10:00:00Z",
-      "noExpire": true,
-      "models": [
-        {"id": "claude-opus-4-5@20251101", "name": "Claude Opus 4.5"}
-      ]
-    }
-  },
-  "tokenLimits": {
-    "claude-opus-4-5@20251101": {
-      "inputTokenLimit": 200000,
-      "outputTokenLimit": 64000
-    }
-  }
-}
+{ "openai": { "models": { "<model-id>": { "limit": { "context": 1050000, "output": 128000 } } } } }
 ```
 
-## Data Sources
-
-| Source | Location | Description |
-|--------|----------|-------------|
-| Model Cache | `models → {provider:auth} → models[]` | From provider's `ListModels()` API (e.g., Gemini) |
-| Token Limits | `tokenLimits → {modelID}` | Manual override or auto-fetched values |
-
-## Commands
-
-| Command | Action |
-|---------|--------|
-| `/tokenlimit` | Show limits if available in model cache; otherwise auto-fetch |
-| `/tokenlimit <input> <output>` | Set custom limits (e.g., `/tokenlimit 200000 64000`) |
-
-## Fetch Logic (`/tokenlimit` command)
-
-```
-/tokenlimit
-    │
-    ▼
-┌─────────────────────────────────┐
-│ 1. Check Model Cache            │
-│    (getModelTokenLimits)        │
-└─────────────────────────────────┘
-    │
-    ├─── Has limits ───► Display (check tokenLimits for override)
-    │                         │
-    │                         ├─ Has override → Show with "(custom override)"
-    │                         └─ No override → Show model cache values
-    │
-    └─── No limits ────► Auto-Fetch Agent
-                              │
-                              ▼
-                    ┌─────────────────────────────────┐
-                    │ Token Limit Agent               │
-                    │ - Isolated context              │
-                    │ - Max 5 turns                   │
-                    │ - Tools: WebSearch, WebFetch    │
-                    │ - Saves to tokenLimits          │
-                    └─────────────────────────────────┘
-```
-
-### Auto-Fetch Agent
-
-When model cache has no limits, an isolated agent is spawned:
-
-- **System Prompt**: Specialized for finding token limits
-- **Tools**: WebSearch, WebFetch only
-- **Max Turns**: 5
-- **Output Format**: `FOUND: <input> <output>` or `NOT_FOUND`
-- **Isolation**: Does NOT pollute main conversation loop
-
-```go
-// The agent runs in complete isolation
-systemPrompt := "You are a helpful assistant that finds token limits..."
-messages := []provider.Message{
-    {Role: "user", Content: "Find the token limits for model: ..."},
-}
-// Separate from main m.messages
-```
-
-## Display Logic (80% Usage Indicator)
-
-When context usage reaches 80%+ of input limit:
-
-```
-⚡ 180K/200K (90%)
-```
-
-### Read Priority (`getEffectiveInputLimit`)
-
-```go
-func (m *model) getEffectiveInputLimit() int {
-    // Priority 1: Custom override (tokenLimits)
-    if inputLimit, _, ok := m.store.GetTokenLimit(modelID); ok {
-        return inputLimit
-    }
-    // Priority 2: Model cache
-    return getModelTokenLimits(m)
-}
-```
-
-**Priority Order:**
-1. `tokenLimits` (manual or auto-fetched) — **highest priority**
-2. `Model Cache` (from provider API)
-3. Return 0 (no limit known)
-
-## Provider Differences
-
-| Provider | ListModels API | Token Limits Source |
-|----------|----------------|---------------------|
-| Google (Gemini) | ✅ Yes | Model cache (API returns limits) |
-| Anthropic | ❌ No | Auto-fetch or manual (`tokenLimits`) |
-| OpenAI | ✅ Yes | Model cache (if API returns limits) |
-
-### Anthropic Special Case
-
-Anthropic providers use `noExpire: true` in model cache because they don't have a ListModels API. Token limits must come from:
-1. Auto-fetch via `/tokenlimit`
-2. Manual setting via `/tokenlimit <input> <output>`
-
-## Implementation Files
-
-| File | Purpose |
-|------|---------|
-| `internal/app/input/on_token_limits.go` | `/tokenlimit` slash command handler, auto-fetch agent |
-| `internal/llm/store.go` | `SetTokenLimit`, `GetTokenLimit`, model cache |
-| `internal/app/kit/token.go` | token usage rendering and 80% threshold indicator |
-| `internal/app/conv/update.go` | `handleTokenLimitResult()` async result handling |
-
-## Key Functions
-
-### commands.go
-
-```go
-// Entry point for /tokenlimit command
-handleTokenLimitCommand(ctx, m, args)
-
-// Check model cache, start auto-fetch if needed
-showOrFetchTokenLimits(ctx, m, modelID)
-
-// Async agent that searches for token limits
-autoFetchTokenLimits(ctx, m)
-
-// Get limits from model cache only
-getModelTokenLimits(m) (inputLimit, outputLimit int)
-
-// Get effective limit for display (tokenLimits → model cache → 0)
-getEffectiveInputLimit() int
-```
-
-### store.go
-
-```go
-// Save custom token limits
-SetTokenLimit(modelID string, input, output int) error
-
-// Get custom token limits
-GetTokenLimit(modelID string) (input, output int, ok bool)
-
-// Get cached models from provider
-GetCachedModels(provider, authMethod) ([]ModelInfo, bool)
-```
-
-## UI Components
-
-### Spinner During Fetch
-
-When auto-fetching, a spinner is displayed in the chat area:
-
-```
-⠼ Fetching token limits...
-```
-
-The spinner is handled by:
-- `fetchingTokenLimits` bool in model struct
-- `handleSpinnerTick()` updates spinner when fetching
-- `View()` renders spinner above input area
-
-### Result Display
-
-```
-Token Limits for claude-opus-4-5@20251101:
-
-  Input:  200K tokens
-  Output: 64K tokens
-
-(custom override)
-
-Current usage: 150K tokens (75.0%)
-```
-
-## See Also
-
-- [`packages/subagent.md`](../packages/2-feature/subagent.md) — Auto-fetch agent for token limits
-- [`packages/mcp.md`](../packages/2-feature/mcp.md) — MCP tool responses contribute to token usage
+A live listing that states a window outranks `models.json`; the override
+outranks both.

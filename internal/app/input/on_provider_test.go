@@ -412,8 +412,8 @@ func newProviderTestStore(t *testing.T) *llm.Store {
 func TestEnterLoadsCachedModelsAndPutsCurrentFirst(t *testing.T) {
 	store := newProviderTestStore(t)
 	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
-		{ID: "gpt-5-mini", DisplayName: "GPT-5 mini", InputTokenLimit: 128000, OutputTokenLimit: 16000},
-		{ID: "gpt-5", DisplayName: "GPT-5", InputTokenLimit: 256000, OutputTokenLimit: 32000},
+		{ID: "gpt-5-mini", DisplayName: "GPT-5 mini", ContextWindow: 128000, MaxOutput: 16000},
+		{ID: "gpt-5", DisplayName: "GPT-5", ContextWindow: 256000, MaxOutput: 32000},
 	}); err != nil {
 		t.Fatalf("CacheModels() error = %v", err)
 	}
@@ -879,11 +879,11 @@ func TestRebuildModelsTabSortsByNameDescending(t *testing.T) {
 	m := NewProviderSelector()
 	m.activeTab = providerTabModels
 	m.allModels = []providerModelItem{
-		{ID: "current-small", DisplayName: "Current small", ProviderName: "moonshot", InputTokenLimit: 16_000, IsCurrent: true},
+		{ID: "current-small", DisplayName: "Current small", ProviderName: "moonshot", ContextWindow: 16_000, IsCurrent: true},
 		{ID: "unknown", DisplayName: "Unknown", ProviderName: "moonshot"},
-		{ID: "medium-b", DisplayName: "Beta", ProviderName: "moonshot", InputTokenLimit: 128_000},
-		{ID: "large", DisplayName: "Large", ProviderName: "moonshot", InputTokenLimit: 1_048_576},
-		{ID: "medium-a", DisplayName: "Alpha", ProviderName: "moonshot", InputTokenLimit: 128_000},
+		{ID: "medium-b", DisplayName: "Beta", ProviderName: "moonshot", ContextWindow: 128_000},
+		{ID: "large", DisplayName: "Large", ProviderName: "moonshot", ContextWindow: 1_048_576},
+		{ID: "medium-a", DisplayName: "Alpha", ProviderName: "moonshot", ContextWindow: 128_000},
 	}
 	m.connectedProviders = []providerProviderItem{{Provider: "moonshot", DisplayName: "Kimi"}}
 
@@ -1044,7 +1044,7 @@ func TestInteractiveConnectMarksTheSelectedRow(t *testing.T) {
 func TestModelRowShowsTheGrid(t *testing.T) {
 	models := []providerModelItem{
 		{
-			ID: "claude-opus-5", DisplayName: "Claude Opus 5", InputTokenLimit: 1_000_000,
+			ID: "claude-opus-5", DisplayName: "Claude Opus 5", ContextWindow: 1_000_000,
 			Thinks: true, IsCurrent: true,
 		},
 		{ID: "qwen3-max", DisplayName: "qwen3-max"},
@@ -1074,9 +1074,9 @@ func TestModelRowShowsTheGrid(t *testing.T) {
 // start in the same place however wide its own name and figures are.
 func TestModelRowsShareOneGrid(t *testing.T) {
 	models := []providerModelItem{
-		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
-		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", InputTokenLimit: 204_800, Thinks: true},
-		{ID: "narrow", DisplayName: "Narrow", InputTokenLimit: 16_000, Thinks: true},
+		{ID: "short", DisplayName: "Wide", ContextWindow: 1_000_000, Thinks: true},
+		{ID: "long", DisplayName: "MiniMax-M2.7-Highspeed", ContextWindow: 204_800, Thinks: true},
+		{ID: "narrow", DisplayName: "Narrow", ContextWindow: 16_000, Thinks: true},
 	}
 	s, items := selectorWithModels(t, 100, models)
 
@@ -1098,11 +1098,11 @@ func TestModelRowsShareOneGrid(t *testing.T) {
 func TestALongModelNameCannotOverflowThePanel(t *testing.T) {
 	models := []providerModelItem{
 		{
-			ID:              "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
-			DisplayName:     "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
-			InputTokenLimit: 262_144, Thinks: true,
+			ID:            "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			DisplayName:   "hf.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF:Q4_K_M",
+			ContextWindow: 262_144, Thinks: true,
 		},
-		{ID: "short", DisplayName: "Wide", InputTokenLimit: 1_000_000, Thinks: true},
+		{ID: "short", DisplayName: "Wide", ContextWindow: 1_000_000, Thinks: true},
 	}
 
 	for _, width := range []int{60, 80, 120} {

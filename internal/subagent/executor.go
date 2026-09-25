@@ -444,16 +444,16 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	ag = core.NewAgent(core.Config{
-		Client:      llmClient.TurnClient,
-		CallOptions: llmClient.CallOptions,
-		InputLimit:  llmClient.InputLimit,
-		System:      sys,
-		Tools:       tools,
-		Gate:        gate,
-		CompactFunc: subagentCompactFunc(llmClient),
-		MaxSteps:    rc.maxSteps,
-		OutboxBuf:   -1,
-		OnEvent:     onEvent,
+		Client:       llmClient.TurnClient,
+		CallOptions:  llmClient.CallOptions,
+		PromptBudget: llmClient.PromptBudget,
+		System:       sys,
+		Tools:        tools,
+		Gate:         gate,
+		CompactFunc:  subagentCompactFunc(llmClient),
+		MaxSteps:     rc.maxSteps,
+		OutboxBuf:    -1,
+		OnEvent:      onEvent,
 	})
 
 	return ag, cleanup, nil

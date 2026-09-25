@@ -265,7 +265,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:        "claude-sonnet-4-6",
 		InputTokens:      142000,
-		InputLimit:       200000,
+		PromptBudget:     200000,
 		ConversationCost: llm.NewCostTotal(llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD}),
 		ShowContextBar:   true,
 		Width:            120,
@@ -292,10 +292,10 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 // numeric "ctx X/Y" label still shows.
 func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:   "claude-sonnet-4-6",
-		InputTokens: 142000,
-		InputLimit:  200000,
-		Width:       120,
+		ModelName:    "claude-sonnet-4-6",
+		InputTokens:  142000,
+		PromptBudget: 200000,
+		Width:        120,
 	})
 	visible := stripANSI(rendered)
 	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
@@ -310,7 +310,7 @@ func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "claude-sonnet-4-6",
 		InputTokens:    190000,
-		InputLimit:     200000,
+		PromptBudget:   200000,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -331,7 +331,7 @@ func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:    "claude-sonnet-4-6",
 		InputTokens:  1000,
-		InputLimit:   200000,
+		PromptBudget: 200000,
 		Compressions: 3,
 		Width:        120,
 	})
@@ -345,7 +345,7 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:    "claude-sonnet-4-6",
 		InputTokens:  1000,
-		InputLimit:   200000,
+		PromptBudget: 200000,
 		Compressions: 0,
 		Width:        120,
 	})
@@ -356,13 +356,13 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 }
 
 func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
-	// When InputLimit == 0 (limit unknown), the bar must still render with
+	// When PromptBudget == 0 (limit unknown), the bar must still render with
 	// a placeholder so the gap stays visible and actionable, instead of
 	// silently hiding the entire context segment.
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "some-model",
 		InputTokens:    5000,
-		InputLimit:     0,
+		PromptBudget:   0,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -393,10 +393,10 @@ func TestRenderModeStatusShowsTemporaryStatusMessage(t *testing.T) {
 // scoped token figure above the input area).
 func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
-		ModelName:   "gpt-test",
-		InputTokens: 164600,
-		InputLimit:  272000,
-		Width:       120,
+		ModelName:    "gpt-test",
+		InputTokens:  164600,
+		PromptBudget: 272000,
+		Width:        120,
 	}))
 	if !strings.Contains(visible, "ctx") {
 		t.Fatalf("RenderModeStatus() = %q, want the ctx label", visible)

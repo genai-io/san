@@ -32,11 +32,6 @@ const (
 	// agentContentIndent is the extra indent for agent prompt/response content
 	// beyond toolResultExpandedStyle's PaddingLeft(4). Total indent = 4 + 4 = 8 chars.
 	agentContentIndent = "    "
-
-	// autoCompactThreshold is the context usage percentage that triggers
-	// auto-compaction. pctCritical in status_bar.go derives from this; do
-	// not reintroduce a separate literal.
-	autoCompactThreshold = core.AutoCompactThresholdPercent
 )
 
 // toolResultIcon returns the icon for tool results based on error state.

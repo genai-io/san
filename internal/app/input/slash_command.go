@@ -120,7 +120,6 @@ func builtinCommandHandlers() map[string]slashCommandHandler {
 		"tools":          (*SlashCommandController).handleToolCommand,
 		"skills":         (*SlashCommandController).handleSkillCommand,
 		"agents":         (*SlashCommandController).handleAgentCommand,
-		"tokenlimit":     (*SlashCommandController).handleTokenLimitCommand,
 		"context":        (*SlashCommandController).handleContextCommand,
 		"compact":        (*SlashCommandController).handleCompactCommand,
 		"init":           (*SlashCommandController).handleInitCommand,
@@ -690,26 +689,13 @@ func loopUsage() string {
 	return "Usage: /loop [interval] <prompt>\n       /loop once <interval> <prompt>\n       /loop once <prompt> in <interval>\n       /loop list\n       /loop delete <job-id>\n       /loop delete all\nExamples: /loop 5m check the deploy, /loop check the deploy every 20m, /loop once 20m check the deploy"
 }
 
-func (c *SlashCommandController) handleTokenLimitCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	result, cmd, err := HandleTokenLimitCommand(TokenLimitDeps{
-		CurrentModel: c.env.LLM.CurrentModel(),
-		Provider:     c.env.LLM.Provider(),
-		Store:        c.env.LLM.Store(),
-		InputTokens:  c.env.InputTokens,
-		Cwd:          c.env.Cwd,
-		SpinnerTick:  c.env.SpinnerTickCmd(),
-		ToolSvc:      c.env.ToolSvc,
-	}, args)
-	if cmd != nil {
-		c.env.Input.Provider.FetchingLimits = true
-	}
-	return result, cmd, err
-}
-
 // handleContextCommand reports what is filling the model's context window,
 // broken down by category. It is the "what" to the status bar's "how much" —
 // the reading you take before deciding whether /compact is worth it.
-func (c *SlashCommandController) handleContextCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
+func (c *SlashCommandController) handleContextCommand(_ context.Context, args string) (string, tea.Cmd, error) {
+	if sub, rest, _ := strings.Cut(strings.TrimSpace(args), " "); sub == "limit" {
+		return setContextLimit(c.env.LLM.Store(), c.env.LLM.CurrentModel(), rest), nil, nil
+	}
 	return conv.RenderContextUsage(c.env.ContextUsage()), nil, nil
 }
 
@@ -778,7 +764,7 @@ func shouldPreserveCommandInConversation(inputText string) bool {
 	// /goal is kept for the same reason as the others: it is the instruction the
 	// rest of the run answers to, so a transcript that drops it reads as the
 	// copilot driving for no stated reason.
-	case "compact", "fork", "resume", "loop", "init", "tokenlimit", "goal":
+	case "compact", "fork", "resume", "loop", "init", "goal":
 		return true
 	}
 	return false

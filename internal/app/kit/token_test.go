@@ -18,12 +18,12 @@ func TestGetModelTokenLimitsPrefersCurrentProvider(t *testing.T) {
 	}
 
 	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 400000, OutputTokenLimit: 16384},
+		{ID: "gpt-5.5", ContextWindow: 400000, MaxOutput: 16384},
 	}); err != nil {
 		t.Fatalf("CacheModels(api_key): %v", err)
 	}
 	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, []llm.ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 272000, OutputTokenLimit: 16384},
+		{ID: "gpt-5.5", ContextWindow: 272000, MaxOutput: 16384},
 	}); err != nil {
 		t.Fatalf("CacheModels(subscription): %v", err)
 	}
@@ -36,7 +36,7 @@ func TestGetModelTokenLimitsPrefersCurrentProvider(t *testing.T) {
 
 	// Repeat to catch the non-deterministic map iteration the bug relied on.
 	for range 30 {
-		if got := GetEffectiveInputLimit(store, current); got != 272000 {
+		if got := GetContextWindow(store, current); got != 272000 {
 			t.Fatalf("input limit = %d, want 272000 (current provider's cache, not the 400k api_key entry)", got)
 		}
 	}
@@ -53,12 +53,12 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 		t.Fatalf("Connect(subscription): %v", err)
 	}
 	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 400000, OutputTokenLimit: 16384},
+		{ID: "gpt-5.5", ContextWindow: 400000, MaxOutput: 16384},
 	}); err != nil {
 		t.Fatalf("CacheModels(api_key): %v", err)
 	}
 	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, []llm.ModelInfo{
-		{ID: "gpt-5.5", InputTokenLimit: 272000, OutputTokenLimit: 16384},
+		{ID: "gpt-5.5", ContextWindow: 272000, MaxOutput: 16384},
 	}); err != nil {
 		t.Fatalf("CacheModels(subscription): %v", err)
 	}
@@ -70,7 +70,7 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 	}
 
 	for range 30 {
-		if got := GetEffectiveInputLimit(store, current); got != 272000 {
+		if got := GetContextWindow(store, current); got != 272000 {
 			t.Fatalf("input limit = %d, want 272000 from connected subscription auth", got)
 		}
 	}
@@ -79,50 +79,58 @@ func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T
 // A model whose window San cannot discover resolves to 0, which the status bar
 // renders as "--". Inventing a figure would show a percentage of a guess and,
 // worse, have compaction act on it.
-func TestGetEffectiveInputLimitUnknownIsZero(t *testing.T) {
+func TestGetContextWindowUnknownIsZero(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(llm.InputLimitEnvVar, "")
 	store, err := llm.NewStore()
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
 
-	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
+	got := GetContextWindow(store, &llm.CurrentModelInfo{
 		ModelID: "unknown-model", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
 	})
 	if got != 0 {
-		t.Fatalf("GetEffectiveInputLimit() = %d, want 0 for an undiscoverable window", got)
+		t.Fatalf("GetContextWindow() = %d, want 0 for an undiscoverable window", got)
 	}
 }
 
-// The env override wins over the cache, so a user can correct a provider that
-// under-reports its window.
-func TestGetEffectiveInputLimitEnvOverrideWins(t *testing.T) {
+// A hand-set override wins over the cache, and clearing it restores what the
+// provider said. The status bar's budget follows it.
+func TestContextLimitOverrideWinsAndClears(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv(llm.InputLimitEnvVar, "1000000")
 	store, err := llm.NewStore()
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
 	if err := store.CacheModels(llm.OpenAI, llm.AuthAPIKey, []llm.ModelInfo{
-		{ID: "m", InputTokenLimit: 200000},
+		{ID: "m", ContextWindow: 200000, MaxOutput: 8000},
 	}); err != nil {
 		t.Fatalf("CacheModels: %v", err)
 	}
+	current := &llm.CurrentModelInfo{ModelID: "m", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey}
 
-	got := GetEffectiveInputLimit(store, &llm.CurrentModelInfo{
-		ModelID: "m", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey,
-	})
-	if got != 1_000_000 {
-		t.Fatalf("GetEffectiveInputLimit() = %d, want the 1000000 override", got)
+	if err := store.SetTokenLimit("m", 1_000_000, 64_000); err != nil {
+		t.Fatalf("SetTokenLimit: %v", err)
+	}
+	if got := GetContextWindow(store, current); got != 1_000_000 {
+		t.Fatalf("GetContextWindow() = %d, want the 1000000 override", got)
+	}
+	if got, want := GetPromptBudget(store, current), llm.PromptBudget(1_000_000, 64_000); got != want {
+		t.Fatalf("GetPromptBudget() = %d, want %d", got, want)
+	}
+
+	if err := store.ClearTokenLimit("m"); err != nil {
+		t.Fatalf("ClearTokenLimit: %v", err)
+	}
+	if got := GetContextWindow(store, current); got != 200000 {
+		t.Fatalf("GetContextWindow() after clear = %d, want the cached 200000", got)
 	}
 }
 
 // No model selected is genuinely unknown, not a case for guessing — the status
 // bar renders 0 as "--" rather than a percentage against an invented window.
-func TestGetEffectiveInputLimitWithoutModelIsZero(t *testing.T) {
-	t.Setenv(llm.InputLimitEnvVar, "500000")
-	if got := GetEffectiveInputLimit(nil, nil); got != 0 {
-		t.Fatalf("GetEffectiveInputLimit(nil, nil) = %d, want 0", got)
+func TestGetContextWindowWithoutModelIsZero(t *testing.T) {
+	if got := GetContextWindow(nil, nil); got != 0 {
+		t.Fatalf("GetContextWindow(nil, nil) = %d, want 0", got)
 	}
 }
