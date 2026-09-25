@@ -47,7 +47,7 @@ Merge into one review: {{sec}} {{perf}}
 | Part | Rule |
 | --- | --- |
 | frontmatter | optional: `name`, `description`, `max_parallel` (default 4) |
-| mermaid block | the only source of topology. Starts with `flowchart LR`; then bare ids joined by `-->` (sequence), `&` (fan-out and fan-in) and `-->\|LABEL\|` (conditional). Node shapes, subgraphs and other mermaid syntax are errors, not silently ignored — a dropped edge is a silently wrong graph. |
+| mermaid block | the only source of topology. Starts with `flowchart LR`; then bare ids joined by `-->` (sequence), `&` (fan-out and fan-in), `-->\|LABEL\|` (conditional) and `-->\|LABEL xN\|` pointing back at an ancestor (a bounded retry; see below). Node shapes, subgraphs and other mermaid syntax are errors, not silently ignored — a dropped edge is a silently wrong graph. |
 | `## id` | one node, one subagent turn. Every id in the graph needs a section and vice versa. |
 | `key: value` under the heading | the contiguous run of such lines is config: `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
 | `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before approval — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
@@ -115,6 +115,54 @@ Merge: {{review}}
 The approval dialog states the bound it buys: `up to 14 subagent turns` and
 `review: up to 8 workers over plan.tasks`.
 
+## Drafting until a review passes
+
+A conditional edge pointing back at an ancestor is a retry, and it must say
+how many:
+
+````markdown
+```mermaid
+flowchart LR
+  spec --> draft --> review
+  review -->|FAIL x3| draft
+  review -->|PASS| ship
+```
+
+## draft
+Write it. Previous review: {{review}}
+
+Spec: {{spec}}
+
+## review
+PASS or FAIL: {{draft}}
+
+## ship
+Ship {{draft}}
+````
+
+Parsing unrolls this into a plain chain — `draft#1 → review#1 ─FAIL→ draft#2
+→ …`, with a `PASS` escape from every round to `ship` — so the scheduler,
+the permission gate and the summary never learn that a loop existed. What
+follows falls out of that:
+
+| Case | Behaviour |
+| --- | --- |
+| `{{review}}` inside `draft` | the previous round's review; empty on the first |
+| `{{draft}}` inside `ship` | the round that actually passed |
+| an early round passing | the remaining rounds are omitted, never run |
+| every round used up, still `FAIL` | the workflow **fails** — the condition was never met, and a result that failed review must not flow on |
+| `review` answering neither `FAIL` nor `PASS` | that round **fails**, in any round. The node carrying the back edge is the one place every answer is declared (the retry label plus the escapes), so an answer outside them is a model gone off-script, not a quiet stop. Any other node — a gate outside the loop or inside its body — keeps gate semantics: an unmatched `NO` means "stop here" and succeeds |
+| the bound | required, from `x1` to `x10`. A back edge without `xN` is the cycle error it would otherwise be. The cap is checked before anything is unrolled, since unrolling happens while the approval dialog is being built |
+| one loop after another | the second is always entered at its first round, however many rounds the first one took |
+| the target | must be an ancestor of the source, or there is no loop to bound |
+| a node in two loops, or `for_each` inside one | rejected: rounds × rounds and dynamic × iteration are both cartesian explosions |
+| an edge into the body from outside | rejected — route it through the loop's head, or a later round would re-read a node that ran once |
+
+The point of splitting `draft` from `review` is that the review runs in a
+clean context instead of grading what it just wrote. The approval dialog
+counts every round in its worst case, and names the loop: `draft/review: up
+to 3 rounds`.
+
 ## How it runs
 
 - A node starts once every upstream has settled. At most `max_parallel`
@@ -169,8 +217,8 @@ workflow review succeeded in 1m24s
 
 ## Not yet
 
-Bounded back edges (`review -->|FAIL x3| draft`, for evaluator–optimizer) are
-the next phase of
-[`design/proposals/0001-workflow-orchestration.md`](../design/proposals/0001-workflow-orchestration.md).
-Any cycle is rejected today. `for_each` inside a loop will stay rejected:
-dynamic × iteration is a cartesian explosion.
+A graph view in the panel is the last phase of
+[`design/proposals/0001-workflow-orchestration.md`](../design/proposals/0001-workflow-orchestration.md),
+and only if the run's progress lines prove insufficient. An unbounded cycle
+stays rejected: cost, progress and convergence are all undecidable without a
+bound.

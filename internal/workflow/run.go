@@ -121,9 +121,12 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			// deep graph cannot starve itself.
 			scope := map[string]string{}
 			active, blocked := false, false
+			// Keyed by Base, not ID: `{{draft}}` inside review#2 means the
+			// draft of round 2, and a round's chain carries only its own
+			// instances, so the name resolves to the right one.
 			take := func(e Edge, up *slot, output string) {
 				maps.Copy(scope, up.scope)
-				scope[e.From] = output
+				scope[w.byID[e.From].Base] = output
 				active = true
 			}
 			for _, e := range n.upstream {
@@ -170,6 +173,9 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem)
 			s.res.Duration = time.Since(t0)
 			s.res.Output = out
+			if err == nil {
+				err = unanswered(n, out)
+			}
 			if err != nil {
 				s.res.Err = err
 				setStatus(StatusFailed)
@@ -225,6 +231,31 @@ func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runn
 		fmt.Fprintf(&b, "## %s\n%s\n\n", item[itemName], strings.TrimSpace(outs[i]))
 	}
 	return strings.TrimSpace(b.String()), errors.Join(errs...)
+}
+
+// unanswered fails a loop's tail when its answer takes none of its ways out.
+//
+// The node carrying a back edge is the one place the author declares every
+// answer — the retry label, and the labels on its escapes — so an answer
+// outside that set is a model gone off-script, and the round fails instead of
+// silently omitting everything after it. On the last round the retry has
+// nowhere left to go, so FAIL itself is outside the set: that is exhaustion.
+// Every other node, a gate inside a loop body included, is exempt: a gate's
+// unmatched NO is how it says "stop here", and nothing in the graph tells a
+// gate from a router.
+func unanswered(n *Node, out string) error {
+	if !n.tail || len(n.downstream) == 0 {
+		return nil
+	}
+	out = strings.TrimSpace(out) // as the edge-taking rule compares it
+	var want []string
+	for _, e := range n.downstream {
+		if e.Label == "" || e.Label == out {
+			return nil // an unconditional way out, or the answer's own edge
+		}
+		want = append(want, e.Label)
+	}
+	return fmt.Errorf("returned %q; its edges want %s", out, strings.Join(want, " or "))
 }
 
 // run1 takes a shared slot for the length of one turn. Waiting for a slot
