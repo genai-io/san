@@ -9,14 +9,14 @@ import (
 // "unknown" rather than substituting a guess.
 func toModelInfo(m ai.Model) ModelInfo {
 	info := ModelInfo{
-		ID:               m.ID,
-		Name:             m.Name,
-		DisplayName:      m.Name,
-		InputTokenLimit:  m.ContextWindow,
-		OutputTokenLimit: m.MaxOutput,
-		Lifecycle:        toModelLifecycle(m.Stage),
-		Replacement:      m.Replacement,
-		TextOnly:         !m.Accepts(ai.ModalityImage),
+		ID:            m.ID,
+		Name:          m.Name,
+		DisplayName:   m.Name,
+		ContextWindow: m.ContextWindow,
+		MaxOutput:     m.MaxOutput,
+		Lifecycle:     toModelLifecycle(m.Stage),
+		Replacement:   m.Replacement,
+		TextOnly:      !m.Accepts(ai.ModalityImage),
 	}
 	if info.Name == "" {
 		info.Name = m.ID

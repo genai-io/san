@@ -148,12 +148,12 @@ const (
 // decodes with them unset and that has to read as "nothing unusual" rather than
 // as a claim. A zero token limit likewise means unknown, not zero.
 type ModelInfo struct {
-	ID               string               `json:"id"`
-	Name             string               `json:"name"`
-	DisplayName      string               `json:"displayName,omitempty"`
-	InputTokenLimit  int                  `json:"inputTokenLimit,omitempty"`
-	OutputTokenLimit int                  `json:"outputTokenLimit,omitempty"`
-	Reasoning        *ReasoningCapability `json:"reasoning,omitempty"`
+	ID            string               `json:"id"`
+	Name          string               `json:"name"`
+	DisplayName   string               `json:"displayName,omitempty"`
+	ContextWindow int                  `json:"inputTokenLimit,omitempty"`
+	MaxOutput     int                  `json:"outputTokenLimit,omitempty"`
+	Reasoning     *ReasoningCapability `json:"reasoning,omitempty"`
 
 	// Replacement is the actionable half of a deprecation.
 	Lifecycle   ModelLifecycle `json:"lifecycle,omitempty"`

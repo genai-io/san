@@ -231,8 +231,8 @@ func (s *ProviderSelector) renderModelRow(item providerListItem, isSelected bool
 	cols := s.modelColumns
 	name := padRight(modelDisplayName(*m), cols.name)
 
-	window, windowStyle := kit.FormatTokenCount(m.InputTokenLimit), kit.DimStyle()
-	if m.InputTokenLimit == 0 {
+	window, windowStyle := kit.FormatTokenCount(m.ContextWindow), kit.DimStyle()
+	if m.ContextWindow == 0 {
 		// With no window the context percentage cannot render and
 		// auto-compaction cannot fire, which is worth flagging in its place.
 		window, windowStyle = "⚠", lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)

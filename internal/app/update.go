@@ -411,7 +411,6 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
-		m.userInput.Provider.FetchingLimits ||
 		m.hasRunningBackgroundTask()
 }
 

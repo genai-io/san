@@ -8,13 +8,13 @@ Token usage is tracked per turn and accumulated across the session. Cost is calc
 - **Session total:** cumulative across all turns
 - **Display:** status bar shows running totals
 - **Pricing:** model-aware; updates when the model changes
-- **Token limits:** `/tokenlimit <input> <output>` can persist a manual override
+- **Token limits:** `/context limit <window> <output>` persists a manual override
 
 ## UI Interactions
 
 - **Status bar**: shows `in: N / out: N / $X.XX` after each turn.
-- **`/tokenlimit`**: shows current usage and the model's context limit in a popup.
-- **Auto-compact warning**: a notice appears when usage exceeds 80% of the limit.
+- **`/context`**: shows current usage, the window, and where auto-compaction fires.
+- **Auto-compact warning**: the context bar hints once usage passes 80% of the compaction budget.
 
 ## Automated Tests
 
@@ -65,7 +65,7 @@ func TestCost_StatusBarFormat(t *testing.T) {
 }
 
 func TestCost_TokenLimitManualOverride_Persists(t *testing.T) {
-    // Manual /tokenlimit overrides must be saved and used for future displays
+    // Manual /context limit overrides must be saved and used for future displays
 }
 ```
 
@@ -83,10 +83,10 @@ tmux capture-pane -t t_cost -p
 # Expected: footer/status area updates with token usage after the turn
 
 # Test 2: View token limit
-tmux send-keys -t t_cost '/tokenlimit' Enter
+tmux send-keys -t t_cost '/context' Enter
 sleep 2
 tmux capture-pane -t t_cost -p
-# Expected: current usage and context limit shown
+# Expected: current usage, window, and auto-compact point shown
 
 # Test 3: Accumulate across turns
 for i in {1..3}; do
@@ -111,7 +111,7 @@ tmux capture-pane -t t_cost -p | tail -3
 # Expected: cost updates reflect new model pricing
 
 # Test 6: Manual token limit override
-tmux send-keys -t t_cost '/tokenlimit 123456 4096' Enter
+tmux send-keys -t t_cost '/context limit 123456 4096' Enter
 sleep 2
 tmux capture-pane -t t_cost -p
 # Expected: token limit display shows the custom override values

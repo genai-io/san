@@ -68,34 +68,34 @@ type providerAuthMethodItem struct {
 
 // providerModelItem represents a model in the provider selector.
 type providerModelItem struct {
-	ID               string
-	Name             string
-	DisplayName      string
-	ProviderName     string
-	AuthMethod       llm.AuthMethod
-	IsCurrent        bool
-	InputTokenLimit  int
-	OutputTokenLimit int
-	Lifecycle        llm.ModelLifecycle
-	Replacement      string
-	TextOnly         bool
-	Thinks           bool
+	ID            string
+	Name          string
+	DisplayName   string
+	ProviderName  string
+	AuthMethod    llm.AuthMethod
+	IsCurrent     bool
+	ContextWindow int
+	MaxOutput     int
+	Lifecycle     llm.ModelLifecycle
+	Replacement   string
+	TextOnly      bool
+	Thinks        bool
 }
 
 func newProviderModelItem(mdl llm.ModelInfo, providerName string, authMethod llm.AuthMethod, current *llm.CurrentModelInfo) providerModelItem {
 	return providerModelItem{
-		ID:               mdl.ID,
-		Name:             mdl.Name,
-		DisplayName:      mdl.DisplayName,
-		ProviderName:     providerName,
-		AuthMethod:       authMethod,
-		IsCurrent:        current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
-		InputTokenLimit:  mdl.InputTokenLimit,
-		OutputTokenLimit: mdl.OutputTokenLimit,
-		Lifecycle:        mdl.Lifecycle,
-		Replacement:      mdl.Replacement,
-		TextOnly:         mdl.TextOnly,
-		Thinks:           mdl.Reasoning != nil,
+		ID:            mdl.ID,
+		Name:          mdl.Name,
+		DisplayName:   mdl.DisplayName,
+		ProviderName:  providerName,
+		AuthMethod:    authMethod,
+		IsCurrent:     current != nil && current.ModelID == mdl.ID && string(current.Provider) == providerName && current.AuthMethod == authMethod,
+		ContextWindow: mdl.ContextWindow,
+		MaxOutput:     mdl.MaxOutput,
+		Lifecycle:     mdl.Lifecycle,
+		Replacement:   mdl.Replacement,
+		TextOnly:      mdl.TextOnly,
+		Thinks:        mdl.Reasoning != nil,
 	}
 }
 
@@ -266,10 +266,9 @@ func providerBestAuthMethodStatus(methods []providerAuthMethodItem) llm.Status {
 // Domain state (LLM, Store, CurrentModel, tokens, thinking) lives
 // on the parent app model, not here.
 type ProviderState struct {
-	FetchingLimits bool
-	Selector       ProviderSelector
-	StatusMessage  string // Temporary status shown in status bar
-	statusToken    int64
+	Selector      ProviderSelector
+	StatusMessage string // Temporary status shown in status bar
+	statusToken   int64
 }
 
 // SetStatusMessage sets the temporary status message displayed in the status bar.

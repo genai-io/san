@@ -3,7 +3,6 @@ package conv
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -45,7 +44,6 @@ type Runtime interface {
 	// ── Handle*: system messages ────────────────────────────────
 	HandlePermGate(req *PermGateRequest) tea.Cmd
 	HandleCompactResult(msg CompactResultMsg) tea.Cmd
-	HandleTokenLimitResult(msg kit.TokenLimitResultMsg) tea.Cmd
 
 	// ── Services conv calls on the host ─────────────────────────
 	CommitMessages() []tea.Cmd

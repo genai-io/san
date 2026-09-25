@@ -1,8 +1,6 @@
 package llm
 
 import (
-	"os"
-	"strconv"
 	"time"
 )
 
@@ -12,7 +10,7 @@ import (
 // Above all the context window, which is the denominator of every "how full is
 // the context" question — the status bar's percentage and the agent's
 // auto-compaction trigger. Both must get the same answer, so both go through
-// EffectiveInputLimit. Issue #338 was the two disagreeing.
+// EffectiveContextWindow. Issue #338 was the two disagreeing.
 
 // modelCacheTTL is how long a provider's listing is trusted before it is
 // fetched again.
@@ -25,10 +23,10 @@ type modelCache struct {
 }
 
 // tokenLimitOverride is the window and output cap the user set by hand for a
-// model, via /tokenlimit. It outranks anything a provider published.
+// model, via /context limit. It outranks anything a provider published.
 type tokenLimitOverride struct {
-	InputTokenLimit  int `json:"inputTokenLimit"`
-	OutputTokenLimit int `json:"outputTokenLimit"`
+	ContextWindow int `json:"inputTokenLimit"`
+	MaxOutput     int `json:"outputTokenLimit"`
 }
 
 // CacheModels saves model information for a provider.
@@ -160,11 +158,11 @@ func (s *Store) cachedModel(provider ProviderID, authMethod AuthMethod, id strin
 // CachedModelLimitsForProvider returns a model's token limits from one
 // provider's listing, or (0, 0) when it states no window.
 func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
-	m, ok := s.cachedModel(provider, authMethod, id, func(m ModelInfo) bool { return m.InputTokenLimit > 0 })
+	m, ok := s.cachedModel(provider, authMethod, id, func(m ModelInfo) bool { return m.ContextWindow > 0 })
 	if !ok {
 		return 0, 0
 	}
-	return m.InputTokenLimit, m.OutputTokenLimit
+	return m.ContextWindow, m.MaxOutput
 }
 
 // CachedModelLimits returns the token limits for a model ID found in any
@@ -189,8 +187,8 @@ func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
 
 	for _, cache := range s.data.Models {
 		for _, m := range cache.Models {
-			if m.ID == id && m.InputTokenLimit > inputLimit {
-				inputLimit, outputLimit = m.InputTokenLimit, m.OutputTokenLimit
+			if m.ID == id && m.ContextWindow > inputLimit {
+				inputLimit, outputLimit = m.ContextWindow, m.MaxOutput
 			}
 		}
 	}
@@ -209,44 +207,24 @@ func (s *Store) CachedModelReasoningForProvider(provider ProviderID, authMethod 
 	return m.Reasoning, true
 }
 
-// SetTokenLimit sets custom token limits for a model.
-// It also updates the model cache so subsequent model listings reflect these limits.
-func (s *Store) SetTokenLimit(modelID string, inputLimit, outputLimit int) error {
+// SetTokenLimit overrides a model's context window and max output by hand. It
+// outranks every cached listing (see EffectiveContextWindow), so the cache is
+// left alone and ClearTokenLimit restores what the provider said.
+func (s *Store) SetTokenLimit(modelID string, contextWindow, maxOutput int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.initMaps()
-	s.data.TokenLimits[modelID] = tokenLimitOverride{
-		InputTokenLimit:  inputLimit,
-		OutputTokenLimit: outputLimit,
-	}
+	s.data.TokenLimits[modelID] = tokenLimitOverride{ContextWindow: contextWindow, MaxOutput: maxOutput}
+	return s.save()
+}
 
-	// Update the model cache entry so model listings show the limits.
-	// We copy the slice before modifying to avoid mutating arrays shared with
-	// callers that received a slice from GetCachedModels.
-	for key, cache := range s.data.Models {
-		modified := false
-		for _, m := range cache.Models {
-			if m.ID == modelID {
-				modified = true
-				break
-			}
-		}
-		if !modified {
-			continue
-		}
-		newModels := make([]ModelInfo, len(cache.Models))
-		copy(newModels, cache.Models)
-		for i := range newModels {
-			if newModels[i].ID == modelID {
-				newModels[i].InputTokenLimit = inputLimit
-				newModels[i].OutputTokenLimit = outputLimit
-			}
-		}
-		cache.Models = newModels
-		s.data.Models[key] = cache
-	}
+// ClearTokenLimit drops a model's hand-set override.
+func (s *Store) ClearTokenLimit(modelID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
+	delete(s.data.TokenLimits, modelID)
 	return s.save()
 }
 
@@ -259,45 +237,23 @@ func (s *Store) GetTokenLimit(modelID string) (inputLimit, outputLimit int, ok b
 	if !exists {
 		return 0, 0, false
 	}
-	return override.InputTokenLimit, override.OutputTokenLimit, true
+	return override.ContextWindow, override.MaxOutput, true
 }
 
-// InputLimitEnvVar sets the window for a model San cannot size on its own,
-// e.g. an aggregator serving a model without publishing its limits. There is
-// deliberately no default to stand in for it: a guessed window is acted on
-// silently, and guessing low costs real context on every compaction while
-// guessing high never fires at all. An unknown window resolves to 0, which
-// skips proactive compaction and leaves the prompt-too-long retry
-// (isPromptTooLong) to recover — one wasted request, no invented number, and
-// the status bar honestly reads "--" instead of a percentage of a guess.
-const InputLimitEnvVar = "SAN_INPUT_LIMIT"
-
-// inputLimitOverride returns the window forced by InputLimitEnvVar, or 0 when
-// unset or not a positive integer.
-func inputLimitOverride() int {
-	n, err := strconv.Atoi(os.Getenv(InputLimitEnvVar))
-	if err != nil || n <= 0 {
-		return 0
-	}
-	return n
-}
-
-// EffectiveInputLimit resolves a model's context window from configuration and
-// cache, returning 0 when it cannot be determined. Callers treat 0 as
-// "unknown" and skip whatever they would have done with a window rather than
-// substituting a guess.
+// EffectiveContextWindow resolves a model's context window from configuration
+// and cache, returning 0 when it cannot be determined. There is deliberately no
+// default: a guessed window is acted on silently. An unknown one skips
+// proactive compaction, leaves the prompt-too-long retry to recover, and the
+// status bar reads "--" instead of a percentage of a guess.
 //
-// Order: the env override, then the user's configured limit, then this
+// Order: the user's /context limit override, then this
 // provider+auth's cached figure, then the largest figure cached for the ID
 // under any provider (an aggregator may serve a model without publishing its
 // window while the native provider knows it).
 //
 // auth disambiguates a model ID cached under several auth methods with
 // different windows (gpt-5.5: 400k via the API, 272k via a subscription).
-func (s *Store) EffectiveInputLimit(provider ProviderID, auth AuthMethod, modelID string) int {
-	if n := inputLimitOverride(); n > 0 {
-		return n
-	}
+func (s *Store) EffectiveContextWindow(provider ProviderID, auth AuthMethod, modelID string) int {
 	if s == nil || modelID == "" {
 		return 0
 	}

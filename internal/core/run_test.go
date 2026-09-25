@@ -326,7 +326,7 @@ func TestCompactEmitsStartBeforeBoundary(t *testing.T) {
 		MaxSteps: 1,
 		// One token of room, so the first boundary is already over budget and
 		// the hook fires on the exchange below.
-		InputLimit: func() int { return 1 },
+		PromptBudget: func() int { return 1 },
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
 			return "the summary", nil
 		},
@@ -661,12 +661,12 @@ func TestOnlyAFailedInferenceIsAnError(t *testing.T) {
 func TestAFailedShorteningStillClosesTheSpan(t *testing.T) {
 	var captured []Event
 	ag := NewAgent(Config{
-		ID:         "test",
-		Client:     testClient(aitest.Always(talks("done"))),
-		System:     NewSystem(),
-		Tools:      NewTools(),
-		MaxSteps:   1,
-		InputLimit: func() int { return 1 },
+		ID:           "test",
+		Client:       testClient(aitest.Always(talks("done"))),
+		System:       NewSystem(),
+		Tools:        NewTools(),
+		MaxSteps:     1,
+		PromptBudget: func() int { return 1 },
 		CompactFunc: func(_ context.Context, _ []Message) (string, error) {
 			return "", errors.New("the summarizer is down")
 		},

@@ -107,10 +107,10 @@ func TestRenderContextLabel(t *testing.T) {
 
 func TestRenderContextLabelStaysCompact(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
-		ModelName:   "gpt-test",
-		InputTokens: 0,
-		InputLimit:  272_000,
-		Width:       120,
+		ModelName:    "gpt-test",
+		InputTokens:  0,
+		PromptBudget: 272_000,
+		Width:        120,
 	}))
 	if !strings.Contains(visible, "ctx 0/272.0k") {
 		t.Fatalf("RenderModeStatus() = %q, want compact ctx label", visible)

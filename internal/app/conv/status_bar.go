@@ -16,11 +16,12 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// Threshold percentages for the 4 PRD §7.2 color tiers.
+// Threshold percentages for the 4 PRD §7.2 color tiers, of the prompt budget:
+// auto-compaction fires at 100%.
 const (
 	pctGood     = 50.0
 	pctWarn     = 80.0
-	pctCritical = autoCompactThreshold // critical tier == auto-compact trigger
+	pctCritical = 90.0
 
 	// contextBarWidth is the cell count for the visual bar (PRD §7.1).
 	contextBarWidth = 10
@@ -202,7 +203,7 @@ func fitStatusSegments(segments []statusSegment, maxWidth, sepWidth int) []strin
 type OperationModeParams struct {
 	Mode              setting.OperationMode
 	InputTokens       int
-	InputLimit        int
+	PromptBudget      int // prompt size at which auto-compaction fires; 0 = unknown
 	ModelName         string
 	StatusMessage     string
 	ConversationCost  llm.CostTotal
@@ -253,16 +254,16 @@ func renderStatusCluster(p OperationModeParams) string {
 	// The numeric label always renders — it falls back to "ctx X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
-		text:     RenderContextLabel(p.InputTokens, p.InputLimit),
+		text:     RenderContextLabel(p.InputTokens, p.PromptBudget),
 		priority: 3,
 	})
 
 	// The visual bar is opt-in (off by default). When shown it also carries
 	// the auto-compact hint as a near-full warning.
 	if p.ShowContextBar {
-		bar := RenderContextBar(p.InputTokens, p.InputLimit)
-		if p.InputLimit > 0 {
-			if hint := compactStatusHint(float64(p.InputTokens) / float64(p.InputLimit) * 100); hint != "" {
+		bar := RenderContextBar(p.InputTokens, p.PromptBudget)
+		if p.PromptBudget > 0 {
+			if hint := compactStatusHint(float64(p.InputTokens) / float64(p.PromptBudget) * 100); hint != "" {
 				bar += sep + muted.Render(hint)
 			}
 		}
@@ -286,10 +287,8 @@ func renderStatusCluster(p OperationModeParams) string {
 
 func compactStatusHint(percent float64) string {
 	switch {
-	case percent >= pctCritical:
-		return "auto-compact"
 	case percent > pctWarn:
-		return fmt.Sprintf("compact at %d%%", int(pctCritical))
+		return "auto-compact near"
 	default:
 		return ""
 	}

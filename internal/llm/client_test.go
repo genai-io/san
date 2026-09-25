@@ -124,22 +124,22 @@ func TestResolveMaxTokens_CustomOverride(t *testing.T) {
 func TestResolveMaxTokens_FromProvider(t *testing.T) {
 	mp := &mockLLMProvider{
 		models: []ModelInfo{
-			{ID: "claude-opus", OutputTokenLimit: 32000},
-			{ID: "claude-sonnet", OutputTokenLimit: 64000},
+			{ID: "claude-opus", MaxOutput: 32000},
+			{ID: "claude-sonnet", MaxOutput: 24000},
 		},
 	}
 	l := &Client{provider: mp, model: "claude-sonnet"} // maxTokens = 0
 
 	got := l.effectiveMaxTokens()
-	if got != 64000 {
-		t.Errorf("expected 64000, got %d", got)
+	if got != 24000 {
+		t.Errorf("expected 24000, got %d", got)
 	}
 }
 
 func TestResolveMaxTokens_Fallback(t *testing.T) {
 	mp := &mockLLMProvider{
 		models: []ModelInfo{
-			{ID: "other-model", OutputTokenLimit: 32000},
+			{ID: "other-model", MaxOutput: 32000},
 		},
 	}
 	l := &Client{provider: mp, model: "unknown-model"} // no match
@@ -156,13 +156,13 @@ func TestResolveMaxTokens_Fallback(t *testing.T) {
 // than call the provider each time.
 func TestModelLimitsMemoized(t *testing.T) {
 	mp := &mockLLMProvider{
-		models: []ModelInfo{{ID: "m", InputTokenLimit: 200000, OutputTokenLimit: 8000}},
+		models: []ModelInfo{{ID: "m", ContextWindow: 200000, MaxOutput: 8000}},
 	}
 	l := &Client{provider: mp, model: "m"}
 
 	for i := range 5 {
-		if got := l.InputLimit(); got != 200000 {
-			t.Fatalf("InputLimit call %d = %d, want 200000", i, got)
+		if got := l.ContextWindow(); got != 200000 {
+			t.Fatalf("ContextWindow call %d = %d, want 200000", i, got)
 		}
 		if got := l.effectiveMaxTokens(); got != 8000 {
 			t.Fatalf("ResolveMaxTokens call %d = %d, want 8000", i, got)
@@ -178,15 +178,14 @@ func TestModelLimitsMemoized(t *testing.T) {
 // TestModelLimitsRetryAfterFailure ensures a transient resolution failure is not
 // cached as 0: the next query retries, and only a successful lookup is memoized.
 func TestModelLimitsRetryAfterFailure(t *testing.T) {
-	t.Setenv(InputLimitEnvVar, "")
 	mp := &mockLLMProvider{listErr: errors.New("network down")}
 	l := &Client{provider: mp, model: "m"}
 
-	if got := l.InputLimit(); got != 0 {
-		t.Fatalf("InputLimit during outage = %d, want 0", got)
+	if got := l.ContextWindow(); got != 0 {
+		t.Fatalf("ContextWindow during outage = %d, want 0", got)
 	}
-	if got := l.InputLimit(); got != 0 {
-		t.Fatalf("InputLimit during outage (2nd) = %d, want 0", got)
+	if got := l.ContextWindow(); got != 0 {
+		t.Fatalf("ContextWindow during outage (2nd) = %d, want 0", got)
 	}
 	if mp.listCalls != 2 {
 		t.Errorf("ListModels called %d times during outage, want 2 (failures retry)", mp.listCalls)
@@ -194,28 +193,16 @@ func TestModelLimitsRetryAfterFailure(t *testing.T) {
 
 	// Provider recovers: the success is now cached and later calls stop hitting it.
 	mp.listErr = nil
-	mp.models = []ModelInfo{{ID: "m", InputTokenLimit: 200000}}
-	if got := l.InputLimit(); got != 200000 {
-		t.Fatalf("InputLimit after recovery = %d, want 200000", got)
+	mp.models = []ModelInfo{{ID: "m", ContextWindow: 200000}}
+	if got := l.ContextWindow(); got != 200000 {
+		t.Fatalf("ContextWindow after recovery = %d, want 200000", got)
 	}
 	afterRecovery := mp.listCalls
-	if got := l.InputLimit(); got != 200000 {
-		t.Fatalf("InputLimit cached = %d, want 200000", got)
+	if got := l.ContextWindow(); got != 200000 {
+		t.Fatalf("ContextWindow cached = %d, want 200000", got)
 	}
 	if mp.listCalls != afterRecovery {
 		t.Errorf("ListModels called again after success (%d→%d), want cached", afterRecovery, mp.listCalls)
-	}
-}
-
-// The env override outranks the provider's own figure, for a provider that
-// under-reports its window.
-func TestInputLimitEnvOverrideBeatsProvider(t *testing.T) {
-	t.Setenv(InputLimitEnvVar, "272000")
-	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", InputTokenLimit: 200000}}}
-	l := &Client{provider: mp, model: "m"}
-
-	if got := l.InputLimit(); got != 272000 {
-		t.Fatalf("InputLimit() = %d, want the 272000 override", got)
 	}
 }
 
@@ -223,12 +210,11 @@ func TestInputLimitEnvOverrideBeatsProvider(t *testing.T) {
 // compaction then stays out of the way and the prompt-too-long retry recovers.
 // Acting on an invented number would silently compact a conversation that had
 // room, or never fire on one that did not.
-func TestInputLimitUnknownStaysZero(t *testing.T) {
-	t.Setenv(InputLimitEnvVar, "")
+func TestContextWindowUnknownStaysZero(t *testing.T) {
 	l := &Client{provider: &mockLLMProvider{models: []ModelInfo{{ID: "m"}}}, model: "m"}
 
-	if got := l.InputLimit(); got != 0 {
-		t.Fatalf("InputLimit() = %d, want 0 for an unknown window", got)
+	if got := l.ContextWindow(); got != 0 {
+		t.Fatalf("ContextWindow() = %d, want 0 for an unknown window", got)
 	}
 }
 
@@ -237,13 +223,13 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 		mockLLMProvider: mockLLMProvider{
 			models: []ModelInfo{{ID: "m"}},
 		},
-		outputLimit: 128000,
+		outputLimit: 16000,
 	}
 	l := &Client{provider: mp, model: "m"}
 
 	got := l.effectiveMaxTokens()
-	if got != 128000 {
-		t.Errorf("expected 128000, got %d", got)
+	if got != 16000 {
+		t.Errorf("expected 16000, got %d", got)
 	}
 }
 
@@ -297,17 +283,16 @@ func TestModelLimitsReportUnknownAsZero(t *testing.T) {
 }
 
 // A provider that answered "I don't know" has answered. Re-asking re-fetches an
-// entire endpoint catalog, and InputLimit runs inside the agent's step loop —
+// entire endpoint catalog, and ContextWindow runs inside the agent's step loop —
 // so this was a network round-trip per step of every turn, for any model whose
 // window nobody publishes.
 func TestAnUnknownWindowIsStillAnAnswer(t *testing.T) {
-	t.Setenv(InputLimitEnvVar, "")
 	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m"}}} // listed, no window stated
 	l := &Client{provider: mp, model: "m"}
 
 	for range 5 {
-		if got := l.InputLimit(); got != 0 {
-			t.Fatalf("InputLimit() = %d, want 0 (unknown)", got)
+		if got := l.ContextWindow(); got != 0 {
+			t.Fatalf("ContextWindow() = %d, want 0 (unknown)", got)
 		}
 		if got := l.effectiveMaxTokens(); got != defaultMaxTokens {
 			t.Fatalf("effectiveMaxTokens() = %d, want the default", got)
@@ -321,11 +306,11 @@ func TestAnUnknownWindowIsStillAnAnswer(t *testing.T) {
 // One listing answers both questions; resolving them separately paid for the
 // same round-trip twice.
 func TestModelLimitsResolveBothFromOneListing(t *testing.T) {
-	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", InputTokenLimit: 200000, OutputTokenLimit: 8192}}}
+	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", ContextWindow: 200000, MaxOutput: 8192}}}
 	l := &Client{provider: mp, model: "m"}
 
-	if got := l.InputLimit(); got != 200000 {
-		t.Fatalf("InputLimit() = %d, want 200000", got)
+	if got := l.ContextWindow(); got != 200000 {
+		t.Fatalf("ContextWindow() = %d, want 200000", got)
 	}
 	if got := l.effectiveMaxTokens(); got != 8192 {
 		t.Fatalf("effectiveMaxTokens() = %d, want 8192", got)
@@ -464,5 +449,53 @@ func TestCallOptionsCarryTheCurrentThinkingEffort(t *testing.T) {
 	}
 	if req.Effort != ai.EffortLow {
 		t.Errorf("Effort after the change = %q, want low", req.Effort)
+	}
+}
+
+// A request needs prompt + max_tokens within the window, so the prompt budget
+// is the window less the reply cap — and the cap is held to maxOutputReserve so
+// a rarely-used 128k of output room does not eat the prompt's.
+func TestPromptBudgetLeavesRoomForTheReply(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		window, maxOutput int
+		want              int
+	}{
+		{"small output fits whole", 200_000, 8_000, 192_000},
+		{"large output held to the reserve", 200_000, 64_000, 168_000},
+		{"1M window, 128k output", 1_050_000, 128_000, 1_018_000},
+		{"unknown output takes the default", 200_000, 0, 200_000 - defaultMaxTokens},
+		{"unknown window is unknown", 0, 64_000, 0},
+		{"window smaller than the cap", 16_000, 64_000, 0},
+	} {
+		if got := PromptBudget(tc.window, tc.maxOutput); got != tc.want {
+			t.Errorf("%s: PromptBudget(%d, %d) = %d, want %d", tc.name, tc.window, tc.maxOutput, got, tc.want)
+		}
+	}
+}
+
+// The client asks for no more than the reserve, whatever the model allows.
+func TestEffectiveMaxTokensHeldToTheReserve(t *testing.T) {
+	mp := &mockLLMProvider{models: []ModelInfo{{ID: "m", ContextWindow: 200_000, MaxOutput: 64_000}}}
+	l := &Client{provider: mp, model: "m"}
+	if got := l.effectiveMaxTokens(); got != maxOutputReserve {
+		t.Fatalf("effectiveMaxTokens() = %d, want %d", got, maxOutputReserve)
+	}
+	if got := l.PromptBudget(); got != 200_000-maxOutputReserve {
+		t.Fatalf("PromptBudget() = %d, want %d", got, 200_000-maxOutputReserve)
+	}
+}
+
+// The #338 follow-up: at 90% of a 200k window the prompt could reach 180k while
+// the request still asked for 64k of reply — 244k, over the window. Any prompt
+// under the budget now leaves the reply its room.
+func TestPromptUnderBudgetAlwaysFitsWithItsReply(t *testing.T) {
+	for _, m := range []struct{ window, maxOutput int }{
+		{200_000, 64_000}, {400_000, 128_000}, {1_050_000, 128_000}, {128_000, 4_096},
+	} {
+		budget := PromptBudget(m.window, m.maxOutput)
+		if prompt := budget - 1; prompt+OutputCap(m.maxOutput) > m.window {
+			t.Errorf("window %d, output %d: prompt %d + reply %d overflows", m.window, m.maxOutput, prompt, OutputCap(m.maxOutput))
+		}
 	}
 }

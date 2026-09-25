@@ -332,8 +332,8 @@ func TestModelInfoCarriesLimitsAndReasoning(t *testing.T) {
 	if opus.ID == "" {
 		t.Fatalf("claude-opus-5 is missing from %d models", len(models))
 	}
-	if opus.InputTokenLimit == 0 || opus.OutputTokenLimit == 0 {
-		t.Errorf("model limits = %d/%d, want the data's figures", opus.InputTokenLimit, opus.OutputTokenLimit)
+	if opus.ContextWindow == 0 || opus.MaxOutput == 0 {
+		t.Errorf("model limits = %d/%d, want the data's figures", opus.ContextWindow, opus.MaxOutput)
 	}
 	if opus.Reasoning == nil || len(opus.Reasoning.SupportedEfforts) == 0 {
 		t.Fatalf("Reasoning = %+v, want the model's ladder", opus.Reasoning)
@@ -459,7 +459,7 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 	if !present {
 		t.Fatalf("glm-4.7 is missing from %+v", models)
 	}
-	if listed.InputTokenLimit == 0 {
+	if listed.ContextWindow == 0 {
 		t.Error("a listed model reached the picker with no window; the context " +
 			"percentage and auto-compaction both go quiet when that happens")
 	}
@@ -472,9 +472,9 @@ func TestAListedModelKeepsWhatItsVendorKnows(t *testing.T) {
 	if !present {
 		t.Fatalf("an unlisted model was dropped from the listing: %+v", models)
 	}
-	if unlisted.InputTokenLimit != 0 {
+	if unlisted.ContextWindow != 0 {
 		t.Errorf("glm-9-imaginary window = %d; nothing states it, and a guess "+
-			"is worse than nothing", unlisted.InputTokenLimit)
+			"is worse than nothing", unlisted.ContextWindow)
 	}
 }
 

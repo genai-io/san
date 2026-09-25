@@ -6,12 +6,6 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
-// TokenLimitResultMsg is sent when a token limit fetch completes.
-type TokenLimitResultMsg struct {
-	Result string
-	Err    error
-}
-
 // FormatTokenCount formats a token count for display.
 func FormatTokenCount(count int) string {
 	switch {
@@ -56,9 +50,8 @@ func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (
 }
 
 // getEffectiveOutputLimit returns the output cap: a custom limit if set,
-// otherwise the cached model metadata. The input side has its own resolver
-// (llm.Store.EffectiveInputLimit) because it also honors an env override and
-// is shared with the agent's compaction check.
+// otherwise the cached model metadata. The window has its own resolver
+// (llm.Store.EffectiveContextWindow), shared with the agent's compaction check.
 func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	if currentModel == nil {
 		return 0
@@ -74,19 +67,23 @@ func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInf
 	return output
 }
 
-// GetEffectiveInputLimit returns the context window for the status bar's
-// percentage, or 0 when it is unknown (no model selected, or a model whose
-// window San cannot size) — the bar renders that as "--" rather than a
-// percentage of a guess.
+// GetContextWindow returns the model's context window, or 0 when it is unknown
+// (no model selected, or a model whose window San cannot size).
 //
-// It delegates to llm.Store.EffectiveInputLimit, the same resolver
-// llm.Client.InputLimit uses for the auto-compaction trigger, so the bar can
-// never fill against a different window than the one compaction fires on
-// (issue #338).
-func GetEffectiveInputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
+// It delegates to llm.Store.EffectiveContextWindow, the same resolver
+// llm.Client.ContextWindow uses, so the bar can never fill against a different
+// window than the one compaction fires on (issue #338).
+func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	if store == nil || currentModel == nil {
 		return 0
 	}
 	auth := store.ResolveAuthMethod(currentModel)
-	return store.EffectiveInputLimit(currentModel.Provider, auth, currentModel.ModelID)
+	return store.EffectiveContextWindow(currentModel.Provider, auth, currentModel.ModelID)
+}
+
+// GetPromptBudget is the status bar's denominator: the prompt size at which
+// auto-compaction fires, computed as llm.Client.PromptBudget computes it. 0
+// when the window is unknown — the bar then reads "--", not a guess.
+func GetPromptBudget(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
+	return llm.PromptBudget(GetContextWindow(store, currentModel), getEffectiveOutputLimit(store, currentModel))
 }

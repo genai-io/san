@@ -272,14 +272,6 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 		parts = append(parts, "\n"+strings.TrimSuffix(trackerView, "\n"))
 	}
 
-	if m.userInput.Provider.FetchingLimits {
-		spinnerView := conv.ThinkingStyle.Render(m.conv.Spinner.View() + " Fetching token limits...")
-		if len(parts) > 0 {
-			spinnerView = "\n" + spinnerView
-		}
-		parts = append(parts, spinnerView)
-	}
-
 	if compactView := conv.RenderCompactStatus(m.env.Width, m.conv.Spinner.View(), m.conv.Compact); compactView != "" {
 		// Surrounded by blank rows, like the self-learning indicator below
 		// and for the same two reasons: what sits above is the committed
@@ -364,7 +356,7 @@ func (m model) renderModeStatus() string {
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:              m.env.OperationMode,
 		InputTokens:       m.env.InputTokens,
-		InputLimit:        kit.GetEffectiveInputLimit(m.services.LLM.Store(), m.env.CurrentModel),
+		PromptBudget:      kit.GetPromptBudget(m.services.LLM.Store(), m.env.CurrentModel),
 		ModelName:         modelName,
 		StatusMessage:     m.userInput.Provider.StatusMessage,
 		ConversationCost:  m.env.ConversationCost,

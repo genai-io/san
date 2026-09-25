@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"strings"
+	"sync"
 
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -20,16 +21,17 @@ import (
 // prompt no shorter.
 const MinMessagesToCompact = 3
 
-// preStep shortens the conversation before it outgrows the window. The figure
-// is the SDK's, measured fresh at every boundary — the whole prompt, tool
-// schemas included. San used to keep the previous response's, which had to be
-// cleared by hand after a compaction or it would read "full" forever.
+// preStep shortens the conversation once the next prompt would leave the reply
+// no room in the window.
 func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Message, error) {
 	if a.compactFunc == nil || len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
-	limit := a.promptBudget()
-	if limit <= 0 || !NeedsCompaction(c.Tokens, limit) {
+	if a.promptBudget == nil {
+		return nil, nil
+	}
+	budget := a.promptBudget()
+	if budget <= 0 || !NeedsCompaction(a.measured.prompt(c.Messages, c.Tokens), budget) {
 		return nil, nil
 	}
 	return a.shorten(ctx, c.Messages, "auto")
@@ -62,6 +64,7 @@ func (a *agent) shorten(ctx context.Context, msgs []Message, trigger string) ([]
 	// Shortening is a model call of its own and takes as long as one. The hook
 	// says so, because only the code deciding to shorten knows it is about to.
 	sdkagent.Compacting(ctx)
+	a.measured.reset()
 
 	summary, err := a.compactFunc(ctx, msgs)
 	if err != nil || strings.TrimSpace(summary) == "" {
@@ -98,13 +101,49 @@ func (a *agent) summaryMessage(ctx context.Context, summary string, originalCoun
 	return msg
 }
 
-// promptBudget is what auto-compaction measures against, or zero when the
-// application did not say.
-func (a *agent) promptBudget() int {
-	if a.inputLimit == nil {
-		return 0
+// promptMeasure anchors the prompt size on the provider's own count. The SDK's
+// estimate deliberately runs 12-45% high, which would compact early; the last
+// reply's usage is exact, so only what was added since is estimated.
+type promptMeasure struct {
+	mu sync.Mutex
+	// sent is how many messages the call in flight carries. messages and
+	// tokens describe the last answered call: the conversation it left behind
+	// (its prompt plus the reply) and what the provider counted for them.
+	sent, messages, tokens int
+}
+
+func (m *promptMeasure) sending(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = n
+}
+
+func (m *promptMeasure) answered(u ai.Usage) {
+	if u.TotalInput() == 0 {
+		return
 	}
-	return a.inputLimit()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.messages, m.tokens = m.sent+1, u.Total()
+}
+
+// reset forgets the anchor once the conversation is replaced.
+func (m *promptMeasure) reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.messages, m.tokens = 0, 0
+}
+
+// prompt sizes the next prompt: the anchor plus an estimate of what followed
+// it, or the SDK's whole-prompt estimate when there is no anchor.
+func (m *promptMeasure) prompt(msgs []Message, estimate int) int {
+	m.mu.Lock()
+	anchor, tokens := m.messages, m.tokens
+	m.mu.Unlock()
+	if anchor == 0 || anchor > len(msgs) {
+		return estimate
+	}
+	return tokens + (&ai.Request{Messages: msgs[anchor:]}).EstimateTokens()
 }
 
 // CompactMaxTokens is the max output tokens for compaction LLM calls.

@@ -135,25 +135,23 @@ func TestNeedsCompaction(t *testing.T) {
 	tests := []struct {
 		name   string
 		input  int
-		limit  int
+		budget int
 		expect bool
 	}{
-		{"zero limit", 100, 0, false},
+		{"unknown budget", 100, 0, false},
 		{"zero tokens", 0, 1000, false},
 		{"well below", 500, 1000, false},
-		{"at 89%", 890, 1000, false},
-		{"at 90%", 900, 1000, true},
-		{"at 95%", 950, 1000, true},
-		{"at 100%", 1000, 1000, true},
-		{"over limit", 1100, 1000, true},
+		{"just under", 999, 1000, false},
+		{"at budget", 1000, 1000, true},
+		{"over budget", 1100, 1000, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := core.NeedsCompaction(tt.input, tt.limit)
+			got := core.NeedsCompaction(tt.input, tt.budget)
 			if got != tt.expect {
 				t.Errorf("NeedsCompaction(%d, %d) = %v, want %v",
-					tt.input, tt.limit, got, tt.expect)
+					tt.input, tt.budget, got, tt.expect)
 			}
 		})
 	}

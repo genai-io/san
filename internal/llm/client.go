@@ -17,6 +17,10 @@ const (
 	// defaultMaxTokens applies when neither the caller nor the provider caps
 	// the output.
 	defaultMaxTokens = 8192
+	// maxOutputReserve caps what one reply may claim of the window. A request
+	// needs prompt + max_tokens within the window, so every token of cap is a
+	// token the prompt cannot use; a reply cut off here is continued, not lost.
+	maxOutputReserve = 32_000
 	// completeMaxAttempts bounds in-place retries for utility completions.
 	completeMaxAttempts = 3
 )
@@ -39,7 +43,7 @@ type Client struct {
 }
 
 // modelLimits memoizes what the provider says a model takes and produces. The
-// lookup is a live listing, and InputLimit sits inside the agent's step loop,
+// lookup is a live listing, and ContextWindow sits inside the agent's step loop,
 // so what it memoizes matters: a provider that could not answer is transient
 // and asked again, but one that answered "I don't know" is settled — re-asking
 // re-fetches an entire catalog to be told the same thing.
@@ -88,7 +92,7 @@ func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 	}
 	for _, m := range models {
 		if m.ID == model {
-			in, out = m.InputTokenLimit, m.OutputTokenLimit
+			in, out = m.ContextWindow, m.MaxOutput
 			break
 		}
 	}
@@ -180,21 +184,20 @@ func (l *Client) Name() string {
 
 func (l *Client) ModelID() string { return l.model }
 
-// InputLimit returns the model's context window, or 0 when it cannot be
-// determined — callers treat 0 as "unknown" and skip the size check rather
-// than acting on a guess (see InputLimitEnvVar).
+// ContextWindow returns the model's context window — prompt and reply
+// together — or 0 when it cannot be determined; callers then skip the size
+// check rather than act on a guess.
 //
-// It goes through EffectiveInputLimit rather than an injected value, so every
-// client resolves the window the same way the status bar does.
-func (l *Client) InputLimit() int {
+// It goes through EffectiveContextWindow rather than an injected value, so
+// every client resolves the window the same way the status bar does.
+func (l *Client) ContextWindow() int {
 	p, model := l.provider, l.model
 
 	// Split rather than cast whole: a provider names itself
 	// "vendor:auth_method" while the store keys connections by the bare vendor,
 	// so the composite string misses every lookup and falls through to the
 	// cross-provider scan this call exists to avoid. Both store methods are
-	// nil-receiver safe, and EffectiveInputLimit runs unconditionally so its
-	// env override is honored even before a store exists.
+	// nil-receiver safe.
 	var provider ProviderID
 	var auth AuthMethod
 	if p != nil {
@@ -204,23 +207,45 @@ func (l *Client) InputLimit() int {
 	if auth == "" {
 		auth = store.ConnectionAuthMethod(provider)
 	}
-	if n := store.EffectiveInputLimit(provider, auth, model); n > 0 {
+	if n := store.EffectiveContextWindow(provider, auth, model); n > 0 {
 		return n
 	}
 	return l.limits.input(p, model)
 }
 
-// effectiveMaxTokens resolves the output-token cap: an explicit maxTokens
-// override wins, otherwise the memoized provider limit, otherwise the default.
+// PromptBudget is how large the prompt may grow before auto-compaction: the
+// window less the reply this client asks room for. 0 means unknown.
+func (l *Client) PromptBudget() int {
+	return PromptBudget(l.ContextWindow(), l.effectiveMaxTokens())
+}
+
+// effectiveMaxTokens is the max_tokens every request carries: the caller's cap,
+// else the model's, else the default — never more than maxOutputReserve.
 func (l *Client) effectiveMaxTokens() int {
-	if l.maxTokens > 0 {
-		return l.maxTokens
+	n := l.maxTokens
+	if n <= 0 {
+		n = l.limits.output(l.provider, l.model)
 	}
-	p, model := l.provider, l.model
-	if out := l.limits.output(p, model); out > 0 {
-		return out
+	return OutputCap(n)
+}
+
+// OutputCap is the max_tokens a request asks for given the model's output
+// limit (0 when unknown).
+func OutputCap(maxOutput int) int {
+	if maxOutput <= 0 {
+		return defaultMaxTokens
 	}
-	return defaultMaxTokens
+	return min(maxOutput, maxOutputReserve)
+}
+
+// PromptBudget is the largest prompt that still leaves room for the reply: a
+// request needs prompt + max_tokens within the window. 0 when the window is
+// unknown.
+func PromptBudget(contextWindow, maxOutput int) int {
+	if contextWindow <= 0 {
+		return 0
+	}
+	return max(contextWindow-OutputCap(maxOutput), 0)
 }
 
 // completionOpts builds CompletionOptions from the Client's current configuration.

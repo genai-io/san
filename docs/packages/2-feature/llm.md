@@ -84,9 +84,10 @@ Worth knowing beyond the names:
   untagged.
 - **`modelcache.go` owns the window.** The status bar's percentage and the
   agent's auto-compaction trigger are the same number, so both resolve it
-  through `EffectiveInputLimit` — env override, then the user's `/tokenlimit`,
-  then this provider's cache, then the largest figure cached anywhere for the
-  ID. Issue #338 was the two disagreeing.
+  through `EffectiveContextWindow` — the user's `/context limit` override, then
+  this provider's cache, then the largest figure cached anywhere for the ID —
+  and both compact at `PromptBudget`: the window less the reply's `OutputCap`.
+  Issue #338 was the two disagreeing. See `reference/token-limits.md`.
 - **`ModelInfo.Reasoning`** carries live supported/default effort values when a
   provider advertises them; `effort.go` prefers that metadata and falls back to
   `ThinkingEffortProvider`, which answers from San's model data for listings

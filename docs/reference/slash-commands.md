@@ -17,8 +17,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/plan` | Enter plan mode |
 | `/skills` | Manage skill states |
 | `/agents` | Manage agents |
-| `/tokenlimit` | View / set token budget |
-| `/context` | Show what is filling the context window, by category |
+| `/context` | Show what is filling the context window; `/context limit <window> <output>` \| `reset` overrides it |
 | `/compact` | Compress conversation history |
 | `/init` | Create AGENTS.md and config files |
 | `/memory` | View / edit memory files |
@@ -92,8 +91,8 @@ func TestSlashSearch_SwitchesEngine(t *testing.T) {
     // /search selection must change active search engine
 }
 
-func TestSlashTokenlimit_ShowsUsage(t *testing.T) {
-    // /tokenlimit must show current usage and context limit
+func TestSlashContextLimit_SetsOverride(t *testing.T) {
+    // /context limit must set and reset the current model's window
 }
 
 func TestSlashResume_OpensSessionSelector(t *testing.T) {
@@ -153,11 +152,11 @@ sleep 1
 tmux capture-pane -t t_cmds -p
 # Expected: search engine selector
 
-# Test 6: /tokenlimit
-tmux send-keys -t t_cmds '/tokenlimit' Enter
+# Test 6: /context limit
+tmux send-keys -t t_cmds '/context limit' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
-# Expected: current token usage and limit
+# Expected: usage for /context limit <window> <output> | reset
 
 # Test 7: /init — test in a fresh directory
 tmux send-keys -t t_cmds C-c
