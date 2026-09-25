@@ -187,9 +187,11 @@ to 3 rounds`.
   stops early having done half the job reports success; a converging node
   that reviews its inputs is the guard for that.
 - Every node passes the same permission gate as a background `Agent`: a
-  prompt for confirmation collapses to a deny, `mode` never reaches
-  `bypass`, and the definition's own directory is not trusted more than any
-  other project file.
+  prompt for confirmation collapses to a deny, and a definition cannot ask
+  for `bypass` — `mode` accepts `explore`, `edit` and `default` only, so a
+  file in the project directory is trusted no further than any other file
+  there. What `default` resolves to is the subagent layer's business, the
+  same as for `Agent`.
 - `AgentStop` on the workflow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
 - The `Workflow` tool is parent-only, like `Agent`: a subagent cannot start
