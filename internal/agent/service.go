@@ -2,11 +2,8 @@
 // is the concrete handle; the package exposes it directly.
 package agent
 
-// Options holds dependencies for initialization.
-type Options struct{}
-
 // Initialize installs a fresh *Session as the package-level default.
-func Initialize(opts Options) {
+func Initialize() {
 	defaultSession = &Session{}
 }
 

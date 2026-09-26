@@ -14,7 +14,7 @@ import (
 var taskIDRe = regexp.MustCompile(`#\d+`)
 
 func TestRenderTrackerListShowsTaskStatus(t *testing.T) {
-	todo.Initialize(todo.Options{})
+	todo.Initialize()
 	t.Cleanup(func() { todo.Default().Reset() })
 
 	inProgress := todo.Default().Create("Fix auth module", "", "", map[string]any{
@@ -89,7 +89,7 @@ func TestRenderTaskAnimatesInProgressItem(t *testing.T) {
 }
 
 func TestRenderTrackerListOrdersByID(t *testing.T) {
-	todo.Initialize(todo.Options{})
+	todo.Initialize()
 	t.Cleanup(func() { todo.Default().Reset() })
 
 	// Create tasks with mixed statuses — an in-progress task after a pending one.

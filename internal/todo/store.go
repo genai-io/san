@@ -42,6 +42,10 @@ const (
 
 // Store is a thread-safe item store with optional disk persistence.
 // When a storageDir is set, each item is persisted as {id}.json.
+//
+// Deliberately absent: a "has in-progress work" query. Status records what the
+// model intended and outlives whatever was executing it; resolve liveness
+// against the executor (the stream, or task.Manager.ListRunning).
 type Store struct {
 	mu         sync.RWMutex
 	items      map[string]*Item

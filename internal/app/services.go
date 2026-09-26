@@ -36,7 +36,7 @@ type services struct {
 	Subagent *subagent.Registry
 	Command  *command.Registry
 	Task     *task.Manager
-	Tracker  todo.Service
+	Tracker  *todo.Store
 	Cron     *cron.Scheduler
 	MCP      *mcp.Registry
 	Plugin   *plugin.Registry

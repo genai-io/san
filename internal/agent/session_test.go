@@ -73,7 +73,7 @@ func newControlledAgent(ignoreContext bool) *controlledAgent {
 
 func (a *controlledAgent) ID() string                                     { return "controlled" }
 func (a *controlledAgent) System() core.System                            { return nil }
-func (a *controlledAgent) Tools() core.Tools                              { return nil }
+func (a *controlledAgent) Tools() *core.Tools                             { return nil }
 func (a *controlledAgent) Inbox() chan<- core.Inbound                     { return a.inbox }
 func (a *controlledAgent) Outbox() <-chan core.Event                      { return a.outbox }
 func (a *controlledAgent) Messages() []core.Message                       { return nil }

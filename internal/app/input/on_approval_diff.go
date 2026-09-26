@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/mattn/go-runewidth"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -152,12 +152,12 @@ func (d *approvalDiffPreview) renderUnifiedDiff(width int) string {
 }
 
 func approvalTruncateContent(content string, width int) string {
-	displayWidth := runewidth.StringWidth(content)
+	displayWidth := ansi.StringWidth(content)
 	if displayWidth > width {
 		if width > 3 {
-			return runewidth.Truncate(content, width-3, "...")
+			return ansi.Truncate(content, width-3, "...")
 		}
-		return runewidth.Truncate(content, width, "")
+		return ansi.Truncate(content, width, "")
 	}
 	return content
 }

@@ -5,10 +5,10 @@ import (
 	"sync"
 )
 
-// toolSet is the default Tools implementation.
-//
-// Thread-safe map of tools with cached schema list.
-type toolSet struct {
+// Tools is a mutable, queryable, thread-safe collection of tools with a cached
+// schema list. It changes dynamically: hooks add/remove tools, agent
+// definitions restrict to read-only, parent agents filter child tool sets.
+type Tools struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
 	dirty bool         // true when schemas cache needs rebuild
@@ -18,8 +18,8 @@ type toolSet struct {
 }
 
 // NewTools creates an empty tool set.
-func NewTools(tools ...Tool) Tools {
-	ts := &toolSet{
+func NewTools(tools ...Tool) *Tools {
+	ts := &Tools{
 		tools: make(map[string]Tool, len(tools)),
 		dirty: true,
 	}
@@ -29,13 +29,13 @@ func NewTools(tools ...Tool) Tools {
 	return ts
 }
 
-func (s *toolSet) Get(name string) Tool {
+func (s *Tools) Get(name string) Tool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.tools[name]
 }
 
-func (s *toolSet) All() []Tool {
+func (s *Tools) All() []Tool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]Tool, 0, len(s.tools))
@@ -46,7 +46,7 @@ func (s *toolSet) All() []Tool {
 	return out
 }
 
-func (s *toolSet) Add(tool Tool, caller string) {
+func (s *Tools) Add(tool Tool, caller string) {
 	s.mu.Lock()
 	s.tools[tool.Schema().Name] = tool
 	s.dirty = true
@@ -58,7 +58,7 @@ func (s *toolSet) Add(tool Tool, caller string) {
 	}
 }
 
-func (s *toolSet) Remove(name, caller string) {
+func (s *Tools) Remove(name, caller string) {
 	s.mu.Lock()
 	_, existed := s.tools[name]
 	if existed {
@@ -75,7 +75,7 @@ func (s *toolSet) Remove(name, caller string) {
 
 // SetObserver attaches a callback invoked on every Add/Remove. On attach,
 // existing tools are replayed as Add events with caller="tools:init".
-func (s *toolSet) SetObserver(fn func(ToolsChange)) {
+func (s *Tools) SetObserver(fn func(ToolsChange)) {
 	s.mu.Lock()
 	s.observer = fn
 	snapshot := make([]Tool, 0, len(s.tools))
@@ -94,7 +94,7 @@ func (s *toolSet) SetObserver(fn func(ToolsChange)) {
 	}
 }
 
-func (s *toolSet) Schemas() []ToolSchema {
+func (s *Tools) Schemas() []ToolSchema {
 	s.mu.RLock()
 	if !s.dirty && s.cache != nil {
 		out := make([]ToolSchema, len(s.cache))

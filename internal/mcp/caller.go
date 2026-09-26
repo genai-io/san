@@ -6,16 +6,14 @@ import (
 	"strings"
 )
 
-// Caller adapts the mcp.Tools surface into the (content, isError, err)
+// Caller adapts the registry's CallTool into the (content, isError, err)
 // tuple shape the agent loop expects.
 type Caller struct {
-	tools Tools
+	tools *Registry
 }
 
-// NewCaller wraps a Tools implementation in the *Caller helper consumed
-// by AsCoreTools. Typically called with *Registry; tests may pass a
-// fake Tools.
-func NewCaller(tools Tools) *Caller {
+// NewCaller wraps a registry in the *Caller helper consumed by AsCoreTools.
+func NewCaller(tools *Registry) *Caller {
 	return &Caller{tools: tools}
 }
 
@@ -46,10 +44,9 @@ func ExtractContent(contents []ToolResultContent) string {
 	return strings.Join(parts, "\n")
 }
 
-// ConnectServers connects to a specific set of MCP servers via the
-// supplied Servers handle. Returns a cleanup function that disconnects
-// them.
-func ConnectServers(ctx context.Context, servers Servers, serverNames []string) (cleanup func(), errs []error) {
+// ConnectServers connects to a specific set of MCP servers. Returns a
+// cleanup function that disconnects them.
+func ConnectServers(ctx context.Context, servers *Registry, serverNames []string) (cleanup func(), errs []error) {
 	var connected []string
 	for _, name := range serverNames {
 		if _, ok := servers.GetConfig(name); !ok {

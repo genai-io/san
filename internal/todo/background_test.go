@@ -16,7 +16,7 @@ func metadataStr(metadata map[string]any, key string) string {
 }
 
 func TestTrackWorkerCreatesEntry(t *testing.T) {
-	Initialize(Options{})
+	Initialize()
 	t.Cleanup(func() { Default().Reset() })
 
 	TrackWorker(Default(), task.TaskInfo{
@@ -42,7 +42,7 @@ func TestTrackWorkerCreatesEntry(t *testing.T) {
 // to the command itself. CompleteWorker already fired for bash items before
 // they were tracked at all; now that both halves run, they need a readable row.
 func TestTrackWorkerNamesBashWorker(t *testing.T) {
-	Initialize(Options{})
+	Initialize()
 	t.Cleanup(func() { Default().Reset() })
 
 	TrackWorker(Default(), task.TaskInfo{
@@ -61,7 +61,7 @@ func TestTrackWorkerNamesBashWorker(t *testing.T) {
 }
 
 func TestTrackWorkerIgnoresTaskWithoutID(t *testing.T) {
-	Initialize(Options{})
+	Initialize()
 	t.Cleanup(func() { Default().Reset() })
 
 	TrackWorker(Default(), task.TaskInfo{Description: "no worker behind this"})
@@ -72,7 +72,7 @@ func TestTrackWorkerIgnoresTaskWithoutID(t *testing.T) {
 }
 
 func TestCompleteWorkerUpdatesStatus(t *testing.T) {
-	Initialize(Options{})
+	Initialize()
 	t.Cleanup(func() { Default().Reset() })
 
 	TrackWorker(Default(), task.TaskInfo{
@@ -101,7 +101,7 @@ func TestCompleteWorkerUpdatesStatus(t *testing.T) {
 }
 
 func TestCompleteWorkerTracksFailure(t *testing.T) {
-	Initialize(Options{})
+	Initialize()
 	t.Cleanup(func() { Default().Reset() })
 
 	TrackWorker(Default(), task.TaskInfo{

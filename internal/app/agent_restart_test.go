@@ -166,7 +166,7 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 // replacing the conversation drops old notices and sends them again.
 func TestSystemRemindersOncePerConversation(t *testing.T) {
 	m := model{services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()}}
-	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderSkillsDirectory, func() string { return "skills" }))
+	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
 	}

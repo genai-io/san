@@ -18,26 +18,6 @@ type Tool = sdkagent.Tool
 // which is what the SDK sends and what it validates arguments against.
 type ToolSchema = ai.Schema
 
-// Tools is a mutable, queryable collection of tools.
-//
-// Can change dynamically: hooks add/remove tools, agent definitions
-// restrict to read-only, parent agents filter child tool sets.
-type Tools interface {
-	Get(name string) Tool
-	All() []Tool
-	// Add registers (or replaces) a tool. Caller tags the mutation source
-	// (e.g. "mcp:weather", "agent:init") for trace records.
-	Add(tool Tool, caller string)
-	// Remove unregisters a tool by name. No-op if absent.
-	Remove(name, caller string)
-	Schemas() []ToolSchema
-
-	// SetObserver installs a callback invoked synchronously on every
-	// subsequent Add/Remove. Attaching also replays existing tools as
-	// synthetic Add events so the observer sees the full registry from t0.
-	SetObserver(fn func(ToolsChange))
-}
-
 // ToAITools is what an inference is told it may call. Run stays nil: San
 // executes tools itself and hands the results back as history, so the SDK is
 // never asked to run one.

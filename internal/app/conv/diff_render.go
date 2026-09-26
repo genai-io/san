@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"charm.land/lipgloss/v2"
-	"github.com/mattn/go-runewidth"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -185,7 +185,7 @@ func renderDiffRow(prefix, content string, emphasis runeSpan, base, strong lipgl
 	}
 
 	// Truncate to the row, clamping the emphasis span with it.
-	if runewidth.StringWidth(string(full)) > rowWidth {
+	if ansi.StringWidth(string(full)) > rowWidth {
 		full = []rune(kit.TruncateText(string(full), rowWidth))
 		span.from = min(span.from, len(full))
 		span.to = min(span.to, len(full))
@@ -199,7 +199,7 @@ func renderDiffRow(prefix, content string, emphasis runeSpan, base, strong lipgl
 	} else {
 		sb.WriteString(base.Render(string(full)))
 	}
-	if pad := rowWidth - runewidth.StringWidth(string(full)); pad > 0 {
+	if pad := rowWidth - ansi.StringWidth(string(full)); pad > 0 {
 		sb.WriteString(base.Render(strings.Repeat(" ", pad)))
 	}
 	return sb.String()

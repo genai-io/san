@@ -261,7 +261,7 @@ func (s *Session) System() core.System {
 // Like System(), this is the toolset actually being sent — built-ins after
 // the disabled-tools filter, plus whatever MCP and conditional tools were
 // wired in — not a reconstruction of what the params asked for.
-func (s *Session) Tools() core.Tools {
+func (s *Session) Tools() *core.Tools {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.run == nil {
