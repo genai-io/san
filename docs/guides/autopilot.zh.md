@@ -7,7 +7,7 @@
 
 ```
 GIVE IT
-▸ Mission    the goal it works toward                      not set · Space to write
+▸ Mission    the goal it works toward                      not set · Enter to write
   System     how it thinks and decides (system prompt)     built-in
   Model      which model makes the calls                   same as session
 LET IT
@@ -20,7 +20,7 @@ PRESETS
   Load preset…  3 saved
 ```
 
-`space` 编辑或切换,`←`/`→` 调整 Continue 的上限,`enter` 保存,`esc` 放弃。
+`enter` 或 `space` 编辑或切换,`←`/`→` 调整 Continue 的上限,`esc` 保存并关闭。
 保存不会启动任务。
 
 - **Mission** —— 所有判断都朝它靠的目标。

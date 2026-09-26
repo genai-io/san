@@ -417,6 +417,14 @@ func (c *SlashCommandController) handleGoalCommand(_ context.Context, args strin
 		}
 		return "Goal: " + c.env.GetGoal() + " (/goal clear to stand down)", nil, nil
 	}
+	// Hang the acknowledgement under the "❭ /goal" echo, like a continuation's
+	// step mark, instead of a separate notice block. The echo commits before
+	// GoalSetMsg lands, so it has to be marked here.
+	note := "goal set"
+	if c.env.Conversation.Stream.Active {
+		note += " · starts after this turn"
+	}
+	c.env.Conversation.SetLastAutopilotNote(note)
 	return "", func() tea.Msg { return GoalSetMsg{Goal: goal} }, nil
 }
 

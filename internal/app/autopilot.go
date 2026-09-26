@@ -649,14 +649,10 @@ func (m *model) startGoal(goal string) tea.Cmd {
 	m.enterAutoPilotMode()
 
 	// Mid-turn, the running turn owns the session; the TurnEnd steer picks the
-	// goal up when it lands, so say so rather than looking like nothing happened.
+	// goal up when it lands. The /goal echo already carries the acknowledgement.
 	if m.conv.Stream.Active {
-		m.conv.AddNotice(autopilotAction("goal set · starts after this turn"))
 		return nil
 	}
-	// Just "goal set" — the copilot's first step lands right below wearing its
-	// own ⎿ autopilot mark, which says it took the wheel better than words would.
-	m.conv.AddNotice(autopilotAction("goal set"))
 	return m.autopilotKickCmd()
 }
 

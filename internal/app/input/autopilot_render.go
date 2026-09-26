@@ -35,8 +35,8 @@ func (p *AutopilotSelector) Render() string {
 			p.header(""),
 			p.renderMenu(p.innerWidth()),
 			kit.HintLine(
-				keycap("↑↓")+" navigate", keycap("space")+" edit/toggle", keycap("←→")+" adjust",
-				keycap("enter")+" save", keycap("esc")+" discard",
+				keycap("↑↓")+" navigate", keycap("enter")+" edit/toggle", keycap("←→")+" adjust",
+				keycap("esc")+" save & close",
 			),
 		)
 	}
@@ -66,18 +66,13 @@ func (p *AutopilotSelector) frame(header, body, hint string) string {
 }
 
 // header renders the title lockup ("✦ Autopilot") with a sub-view crumb when
-// inside an editor, and an "● unsaved" tag pinned right.
+// inside an editor.
 func (p *AutopilotSelector) header(sub string) string {
 	left := apTitleGlyphStyle.Render("✦ ") + apTitleStyle.Render("Autopilot")
 	if sub != "" {
 		left += apBreadcrumbDimStyle.Render("  ›  ") + apBreadcrumbSubStyle.Render(sub)
 	}
-	if !p.Dirty() {
-		return left
-	}
-	right := apUnsavedDotStyle.Render("●") + " " + apUnsavedTextStyle.Render("unsaved")
-	gap := max(p.innerWidth()-lipgloss.Width(left)-lipgloss.Width(right), 1)
-	return left + strings.Repeat(" ", gap) + right
+	return left
 }
 
 // ── Menu ────────────────────────────────────────────────────────────────
@@ -175,7 +170,4 @@ var (
 	apCursorStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Bold(true)
 	apCheckStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success)
 	apValueStyle   = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Accent).Underline(true)
-
-	apUnsavedDotStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Bold(true)
-	apUnsavedTextStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning)
 )
