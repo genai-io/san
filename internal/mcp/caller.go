@@ -45,12 +45,20 @@ func ExtractContent(contents []ToolResultContent) string {
 }
 
 // ConnectServers connects to a specific set of MCP servers. Returns a
-// cleanup function that disconnects them.
+// cleanup function that disconnects only the ones this call connected, so a
+// connection the session already had outlives the caller.
+//
+// ponytail: no refcount — two concurrent callers sharing a server this call
+// connected lose it when the first finishes; add per-server counts if that
+// case shows up.
 func ConnectServers(ctx context.Context, servers *Registry, serverNames []string) (cleanup func(), errs []error) {
 	var connected []string
 	for _, name := range serverNames {
 		if _, ok := servers.GetConfig(name); !ok {
 			errs = append(errs, fmt.Errorf("MCP server not configured: %s", name))
+			continue
+		}
+		if c, ok := servers.GetClient(name); ok && c.IsConnected() {
 			continue
 		}
 		if err := servers.Connect(ctx, name); err != nil {
