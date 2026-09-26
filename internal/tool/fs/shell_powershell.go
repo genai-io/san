@@ -35,7 +35,7 @@ func powerShellArgs(script string) []string {
 	}
 	encoded := base64.StdEncoding.EncodeToString(raw)
 	if len(encoded) > maxEncodedCommandLen {
-		if path, err := writeSelfDeletingScript(script); err == nil {
+		if path, err := powerShellFile(script); err == nil {
 			return append(flags, "-File", path)
 		}
 		// Unwritable temp dir: the encoded form still fails, but with Windows'
@@ -44,10 +44,10 @@ func powerShellArgs(script string) []string {
 	return append(flags, "-EncodedCommand", encoded)
 }
 
-// writeSelfDeletingScript saves script as a .ps1 whose first line removes the
+// powerShellFile saves script as a temp .ps1 whose first line removes the
 // file; PowerShell has parsed the whole file by then. The UTF-8 BOM makes
 // Windows PowerShell 5.1 read it as UTF-8 rather than the ANSI code page.
-func writeSelfDeletingScript(script string) (string, error) {
+func powerShellFile(script string) (string, error) {
 	f, err := os.CreateTemp("", "san-*.ps1")
 	if err != nil {
 		return "", err
