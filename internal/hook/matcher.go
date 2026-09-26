@@ -74,13 +74,3 @@ func getMatchValue(event EventType, input HookInput) string {
 		return ""
 	}
 }
-
-// eventSupportsMatcher returns true if the event type supports matcher filtering.
-func eventSupportsMatcher(event EventType) bool {
-	switch event {
-	case UserPromptSubmit, Stop, StopFailure:
-		return false
-	default:
-		return true
-	}
-}

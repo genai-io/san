@@ -15,20 +15,4 @@ func Default() *Session {
 	return defaultSession
 }
 
-// SetDefaultSession replaces the package-level *Session. Intended for
-// tests. A nil argument restores a fresh empty *Session.
-func SetDefaultSession(s *Session) {
-	if s == nil {
-		defaultSession = &Session{}
-		return
-	}
-	defaultSession = s
-}
-
-// ResetDefaultSession restores a fresh empty *Session. Intended for
-// tests.
-func ResetDefaultSession() {
-	defaultSession = &Session{}
-}
-
 var defaultSession = &Session{}

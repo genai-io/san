@@ -110,8 +110,3 @@ func Get(name string) (Tool, bool) {
 func List() []string {
 	return defaultRegistry.List()
 }
-
-// Execute runs a tool from the default registry.
-func Execute(ctx context.Context, name string, params map[string]any, cwd string) toolresult.ToolResult {
-	return defaultRegistry.Execute(ctx, name, params, cwd)
-}

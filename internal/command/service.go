@@ -40,10 +40,4 @@ func SetDefaultRegistry(s *Registry) {
 	defaultRegistry = s
 }
 
-// ResetDefaultRegistry restores a fresh empty *Registry. Intended for
-// tests.
-func ResetDefaultRegistry() {
-	defaultRegistry = &Registry{}
-}
-
 var defaultRegistry = &Registry{}

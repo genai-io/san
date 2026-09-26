@@ -66,11 +66,6 @@ func encodeProjectPath(path string) string {
 	return strings.ReplaceAll(path, "/", "-")
 }
 
-// AutoMemoryIndexPath is the auto-memory index file for cwd's project.
-func AutoMemoryIndexPath(cwd string) string {
-	return filepath.Join(AutoMemoryDir(cwd), AutoMemoryIndexName)
-}
-
 // ResolveAutoMemoryDir returns the directory backing the auto-memory store,
 // honoring a user override (the /evolve Memory storage path). An empty override
 // falls back to the project-partitioned default; a "~" prefix expands to the
@@ -135,21 +130,6 @@ type MemoryFile struct {
 	Size    int64
 	Content string
 	Level   string // "global", "project", or "local"
-}
-
-// LoadInstructions loads user-level and project-level instructions separately.
-func LoadInstructions(cwd string) (user, project string) {
-	files := LoadMemoryFiles(cwd)
-	var userParts, projectParts []string
-	for _, f := range files {
-		switch f.Level {
-		case "global":
-			userParts = append(userParts, f.Content)
-		case "project", "local":
-			projectParts = append(projectParts, f.Content)
-		}
-	}
-	return strings.Join(userParts, "\n\n"), strings.Join(projectParts, "\n\n")
 }
 
 // LoadMemoryFiles loads every instruction file that applies to cwd, in the

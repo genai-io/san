@@ -44,22 +44,6 @@ func DefaultIfInit() *Settings {
 	return defaultSettings
 }
 
-// SetDefaultSettings replaces the package-level *Settings. Intended for
-// tests. A nil argument restores a fresh empty *Settings.
-func SetDefaultSettings(s *Settings) {
-	if s == nil {
-		defaultSettings = &Settings{}
-		return
-	}
-	defaultSettings = s
-}
-
-// ResetDefaultSettings restores a fresh empty *Settings. Intended for
-// tests.
-func ResetDefaultSettings() {
-	defaultSettings = &Settings{}
-}
-
 var defaultSettings = &Settings{}
 
 // Settings is the live handle: a *Data under a mutex. Methods are

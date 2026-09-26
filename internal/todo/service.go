@@ -72,10 +72,3 @@ func SetDefault(s Service) {
 	instance = s
 	mu.Unlock()
 }
-
-// ResetService clears the singleton instance. Intended for tests.
-func ResetService() {
-	mu.Lock()
-	instance = nil
-	mu.Unlock()
-}

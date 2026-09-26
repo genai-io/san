@@ -294,21 +294,3 @@ var powerShellRiskyPrefixes = map[string]bool{
 	"start-process": true, "saps": true, "start": true,
 	"invoke-webrequest": true, "iwr": true, "invoke-restmethod": true, "irm": true, "curl": true, "wget": true,
 }
-
-// suggestPowerShellRules proposes an allow rule for a simple command: its
-// name and first argument as a prefix, like Bash's. Nothing for a compound
-// command, or for one that removes, escalates, or runs other code.
-func suggestPowerShellRules(cmd string) []string {
-	if !isSimplePowerShell(cmd) || isDestructivePowerShellCommand(cmd) {
-		return nil
-	}
-	fields := strings.Fields(cmd)
-	name := fields[0]
-	if lower := commandName(name); powerShellRemoval[lower] || powerShellRiskyPrefixes[lower] || dangerousPrefixes[lower] {
-		return nil
-	}
-	if len(fields) > 1 {
-		return []string{"PowerShell(" + name + ":" + fields[1] + " *)"}
-	}
-	return []string{"PowerShell(" + name + ":*)"}
-}

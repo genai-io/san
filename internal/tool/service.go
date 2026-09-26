@@ -20,16 +20,6 @@ func Default() *Registry {
 	return defaultRegistry
 }
 
-// SetDefaultRegistry replaces the package-level registry. Intended for
-// tests. A nil argument restores the package default.
-func SetDefaultRegistry(r *Registry) {
-	if r == nil {
-		defaultInstance = defaultRegistry
-		return
-	}
-	defaultInstance = r
-}
-
 // ResetDefaultRegistry restores the package default. Intended for
 // tests.
 func ResetDefaultRegistry() {

@@ -14,7 +14,6 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
-	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
 	_ "github.com/genai-io/san/internal/tool/register" // registers built-in schemas used by tool.Set.Tools
@@ -902,32 +901,21 @@ func TestValidateRequestRejectsInjectedBypassMode(t *testing.T) {
 	}
 }
 
-func TestParentPermissionModeGetterUsesLiveSessionSnapshot(t *testing.T) {
-	permissions := setting.NewSessionPermissions()
+func TestParentPermissionModeGetterIsReadPerRequest(t *testing.T) {
+	parent := PermissionDefault
 	executor := &Executor{}
-	executor.SetParentPermissionMode(func() PermissionMode {
-		return PermissionModeFromOperationMode(permissions.Snapshot().Mode)
-	})
+	executor.SetParentPermissionMode(func() PermissionMode { return parent })
 	config := baseAgentConfig()
 
 	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "default"}); got != PermissionDefault {
 		t.Fatalf("initial inherited mode = %q, want default", got)
 	}
-	permissions.SetMode(setting.ModeBypassPermissions)
+	parent = PermissionBypass
 	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "default"}); got != PermissionBypass {
 		t.Fatalf("updated inherited mode = %q, want bypass", got)
 	}
 	if got := executor.requestPermissionMode(config, tool.AgentExecRequest{Mode: "explore"}); got != PermissionExplore {
 		t.Fatalf("explicit explore mode = %q, want read-only ceiling", got)
-	}
-}
-
-func TestPermissionModeFromOperationMode(t *testing.T) {
-	if got := PermissionModeFromOperationMode(setting.ModeBypassPermissions); got != PermissionBypass {
-		t.Fatalf("bypass parent maps to %q", got)
-	}
-	if got := PermissionModeFromOperationMode(setting.ModeAutoPilot); got != PermissionAcceptEdits {
-		t.Fatalf("autopilot parent maps to %q", got)
 	}
 }
 

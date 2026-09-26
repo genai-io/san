@@ -173,31 +173,6 @@ type Author struct {
 	URL   string `json:"url,omitempty"`
 }
 
-// AuthorFromAny parses author from either a string or Author object.
-func AuthorFromAny(v any) *Author {
-	if v == nil {
-		return nil
-	}
-	switch a := v.(type) {
-	case string:
-		return &Author{Name: a}
-	case map[string]any:
-		author := &Author{}
-		if name, ok := a["name"].(string); ok {
-			author.Name = name
-		}
-		if email, ok := a["email"].(string); ok {
-			author.Email = email
-		}
-		if url, ok := a["url"].(string); ok {
-			author.URL = url
-		}
-		return author
-	default:
-		return nil
-	}
-}
-
 // InstalledPluginsV2 represents the installed_plugins.json version 2 format.
 // This is compatible with Claude Code's format.
 type InstalledPluginsV2 struct {

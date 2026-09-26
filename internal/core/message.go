@@ -375,16 +375,6 @@ func AssistantMessage(text, thinking string, calls []ToolCall) Message {
 	return Message{Role: ai.RoleAssistant, Content: content}
 }
 
-// ErrorResult creates an error ToolResult for a tool call.
-func ErrorResult(tc ToolCall, content string) *ToolResult {
-	return &ToolResult{
-		ToolCallID: tc.ID,
-		ToolName:   tc.Name,
-		Content:    ai.TextContent(content),
-		IsError:    true,
-	}
-}
-
 // ToolResultMessage creates a tool result message.
 func ToolResultMessage(result ToolResult) Message {
 	return ai.ToolResultsMessage(result)

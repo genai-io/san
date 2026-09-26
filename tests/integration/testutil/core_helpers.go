@@ -119,12 +119,6 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 	})
 }
 
-// BuildTestTools adapts all globally registered tools into a core.Tools for use in tests.
-func BuildTestTools(t *testing.T) core.Tools {
-	t.Helper()
-	return buildAllRegisteredTools(t.TempDir())
-}
-
 // RunAgent sends a prompt to the agent, drains its outbox, and returns the result.
 // It sends SigStop after the first OnTurn event (single cycle).
 func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, error) {

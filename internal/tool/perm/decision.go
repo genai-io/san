@@ -44,13 +44,6 @@ var readOnlyTools = map[string]bool{
 	"LSP":       true,
 }
 
-// IsReadOnlyTool reports whether the tool only reads from the workspace
-// or remote sources. Used by callers that need a stricter classification
-// than IsSafeTool (which also covers task / question tools).
-func IsReadOnlyTool(name string) bool {
-	return readOnlyTools[name]
-}
-
 var safeTools = func() map[string]bool {
 	m := map[string]bool{
 		"TaskCreate":      true,

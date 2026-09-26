@@ -21,7 +21,7 @@ import (
 // dropped, and what the /mcp listing shows. The protocol is sdk-go's.
 
 // conn is one live session. The real one is the SDK's; the registry's tests
-// supply their own, since leases and epochs are what they are about.
+// supply their own.
 type conn interface {
 	Tools(ctx context.Context) ([]core.Tool, error)
 	Resources(ctx context.Context) ([]sdkmcp.Resource, error)

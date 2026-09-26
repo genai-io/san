@@ -68,24 +68,6 @@ type runConfig struct {
 	permMode    PermissionMode
 }
 
-// PermissionModeFromOperationMode preserves the parent session's effective
-// policy for mode="default" without exposing privileged spellings in the tool
-// schema.
-func PermissionModeFromOperationMode(mode setting.OperationMode) PermissionMode {
-	switch mode {
-	case setting.ModeAutoAccept, setting.ModeAutoPilot:
-		return PermissionAcceptEdits
-	case setting.ModeBypassPermissions:
-		return PermissionBypass
-	case setting.ModeDontAsk:
-		return PermissionDontAsk
-	case setting.ModeReadOnly:
-		return PermissionExplore
-	default:
-		return PermissionDefault
-	}
-}
-
 // NewExecutor creates a new agent executor. parentModelID is used for model
 // inheritance; hookEngine, when non-nil, fires subagent lifecycle hooks.
 // Headless callers inherit the safe default permission policy unless they set a
@@ -193,7 +175,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 
-	ctx = e.attachRunContext(ctx, run.cfg.displayName)
 	e.logRunStart(run)
 	e.fireSubagentStart(run.req, run.hookID)
 

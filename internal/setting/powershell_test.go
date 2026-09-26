@@ -154,26 +154,6 @@ func TestPowerShellRulePatterns(t *testing.T) {
 	}
 }
 
-func TestPowerShellSuggestions(t *testing.T) {
-	cases := map[string][]string{
-		"git commit -m fix":      {"PowerShell(git:commit *)"},
-		"Get-ChildItem":          {"PowerShell(Get-ChildItem:*)"},
-		"git add .; git commit":  nil,
-		"Remove-Item file.txt":   nil,
-		"Remove-Item -Recurse x": nil,
-		"pwsh -c Get-Date":       nil,
-		"iex x":                  nil,
-		"curl https://x":         nil,
-		"python build.py":        nil,
-	}
-	for cmd, want := range cases {
-		got := GenerateSuggestions("PowerShell", map[string]any{"command": cmd}, MaxSuggestedRules)
-		if len(got) != len(want) || (len(want) > 0 && got[0] != want[0]) {
-			t.Errorf("suggestions for %q = %v, want %v", cmd, got, want)
-		}
-	}
-}
-
 func TestPowerShellReadOnlyRunsWithoutAsking(t *testing.T) {
 	if d := ModeDefaultForCall("PowerShell", map[string]any{"command": "Get-ChildItem -Recurse"}, ModeNormal); d.Behavior != perm.Permit {
 		t.Errorf("read-only PowerShell = %v, want permit", d.Behavior)

@@ -107,18 +107,6 @@ func (m *Manager) Get(id string) (BackgroundTask, bool) {
 	return task, ok
 }
 
-// getBashTask retrieves a bash task by ID (for backward compatibility)
-func (m *Manager) getBashTask(id string) (*BashTask, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	task, ok := m.tasks[id]
-	if !ok {
-		return nil, false
-	}
-	bashTask, ok := task.(*BashTask)
-	return bashTask, ok
-}
-
 // List returns all tasks
 func (m *Manager) List() []BackgroundTask {
 	m.mu.RLock()

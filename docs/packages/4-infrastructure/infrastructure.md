@@ -13,28 +13,18 @@ Layer: `infrastructure` (see [`../reference/dependency-rules.md`](../../referenc
 
 ## `internal/log`
 
-Process-wide structured logger built on `go.uber.org/zap`, plus a
-development-mode sidecar that writes per-turn LLM request/response/chunk
-artifacts to `$DEV_DIR` for offline inspection.
+Process-wide structured logger built on `go.uber.org/zap`.
 
 ```go
 package log
 
 func Init() error              // initialize from env; idempotent
 func Logger() *zap.Logger      // process-wide logger; never nil
-func TurnCount() int           // monotonic turn counter
-func IncrementTurn()           // called once per turn boundary
-
-func DevEnabled() bool
-func WriteRequest(payload any) error
-func WriteResponse(payload any) error
-func WriteChunk(payload any) error
 ```
 
 - `log.Init()` runs once at app startup (from `internal/app/init.go`).
   Output is suppressed by default; `SAN_DEBUG=1` enables zap with
   `lumberjack` rotation.
-- `DEV_DIR` is read once at `Init` time; changing it later has no effect.
 - Code: `internal/log/`. No unit tests; behavior exercised end-to-end.
 
 ## `internal/secret`

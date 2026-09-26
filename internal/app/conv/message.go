@@ -797,15 +797,3 @@ func appendRowDetail(row, detail string) string {
 	}
 	return row + detail
 }
-
-// stripMarkdownHeading removes leading `#` markers from markdown headings.
-func stripMarkdownHeading(line string) string {
-	trimmed := strings.TrimLeft(line, " ")
-	if !strings.HasPrefix(trimmed, "#") {
-		return line
-	}
-	stripped := strings.TrimLeft(trimmed, "#")
-	stripped = strings.TrimPrefix(stripped, " ")
-	indent := line[:len(line)-len(trimmed)]
-	return indent + stripped
-}

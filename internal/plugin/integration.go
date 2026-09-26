@@ -129,25 +129,8 @@ func mcpServerNameSafe(name string) string {
 	return b.String()
 }
 
-// GetPluginNamespace extracts the namespace from a plugin path or source.
-func GetPluginNamespace(source string) string {
-	name, _ := ParsePluginRef(source)
-	return name
-}
-
 // rootKey is the context-key type used to attach an active plugin root.
 type rootKey struct{}
-
-// WithRoot returns a context that carries `path` as the active plugin
-// root. Subprocess spawn paths that read PluginEnv(ctx) will then emit
-// PLUGIN_ROOT=<path> for hook scripts and tool subprocesses to find
-// their sibling files. Pass "" to leave ctx unchanged.
-func WithRoot(ctx context.Context, path string) context.Context {
-	if path == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, rootKey{}, path)
-}
 
 // RootFromContext returns the active plugin root attached to ctx, if any.
 func RootFromContext(ctx context.Context) (string, bool) {

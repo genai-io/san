@@ -16,7 +16,6 @@ func connectedRegistry(t *testing.T, servers map[string]*fakeSession) *Registry 
 		cfg := ServerConfig{Name: name, Type: "stdio", Command: name}
 		r.configs[name] = cfg
 		r.clients[name] = connectedClient(t, cfg, session)
-		r.getOrCreateConnectionState(name).retainWithoutLeases = true
 	}
 	return r
 }

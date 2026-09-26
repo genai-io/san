@@ -2,17 +2,9 @@ package conv
 
 import (
 	"context"
-	"strings"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/mcp"
-	coretool "github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
-	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // --- Tool state ---
@@ -176,33 +168,6 @@ func (t *ToolExecState) DrainPendingCalls() []core.ToolCall {
 
 // --- Tool execution dispatching ---
 
-type DefaultMCPExecutor struct {
-	caller *mcp.Caller
-}
-
-func NewMCPExecutor(caller *mcp.Caller) DefaultMCPExecutor {
-	return DefaultMCPExecutor{caller: caller}
-}
-
-func (e DefaultMCPExecutor) IsMCPTool(name string) bool {
-	return mcp.IsMCPTool(name)
-}
-
-func (e DefaultMCPExecutor) ExecuteMCP(ctx context.Context, name string, params map[string]any) (toolresult.ToolResult, error) {
-	if e.caller == nil {
-		return toolresult.NewErrorResult(name, "MCP not initialized"), nil
-	}
-	output, isError, err := e.caller.CallTool(ctx, name, params)
-	if err != nil {
-		return toolresult.NewErrorResult(name, err.Error()), nil
-	}
-	return toolresult.ToolResult{
-		Success:  !isError,
-		Output:   output,
-		Metadata: toolresult.ResultMetadata{Title: name, Icon: "plugin"},
-	}, nil
-}
-
 type ExecResultMsg struct {
 	Index  int
 	Result core.ToolResult
@@ -211,92 +176,4 @@ type ExecResultMsg struct {
 	// model is told.
 	Details  any
 	ToolName string
-}
-
-func newExecResult(tc core.ToolCall, index int, content string, isError bool) ExecResultMsg {
-	return ExecResultMsg{
-		Index:    index,
-		Result:   core.ToolResult{ToolCallID: tc.ID, Content: ai.TextContent(content), IsError: isError},
-		ToolName: tc.Name,
-	}
-}
-
-func newExecResultFromOutput(tc core.ToolCall, index int, output toolresult.ToolResult) ExecResultMsg {
-	return ExecResultMsg{
-		Index:    index,
-		Result:   core.ToolResult{ToolCallID: tc.ID, Content: ai.TextContent(output.FormatForLLM()), IsError: !output.Success},
-		Details:  output.Details,
-		ToolName: tc.Name,
-	}
-}
-
-func ExecuteApproved(ctx context.Context, agentUI *AgentToUI, toolCalls []core.ToolCall, idx int, cwd string, mcpExec ...coretool.MCPExecutor) tea.Cmd {
-	if idx >= len(toolCalls) {
-		return nil
-	}
-
-	tc := toolCalls[idx]
-	var executor coretool.MCPExecutor
-	if len(mcpExec) > 0 && mcpExec[0] != nil {
-		executor = mcpExec[0]
-	} else {
-		executor = NewMCPExecutor(nil)
-	}
-
-	return func() tea.Msg {
-		if ctx == nil {
-			ctx = context.Background()
-		}
-
-		prepared, err := coretool.PrepareToolCall(tc, executor)
-		if err != nil {
-			errMsg := "Error parsing tool input: " + err.Error()
-			if after, ok := strings.CutPrefix(err.Error(), "unknown tool: "); ok {
-				errMsg = "Unknown tool: " + after
-			}
-			return newExecResult(tc, idx, errMsg, true)
-		}
-
-		attachExecAgentCallbacks(ctx, agentUI, idx, prepared)
-
-		start := time.Now()
-		result, err := prepared.Execute(ctx, cwd, true, executor)
-		if err != nil {
-			if executor != nil && executor.IsMCPTool(tc.Name) {
-				return newExecResult(tc, idx, "Internal error: "+err.Error(), true)
-			}
-			return newExecResult(tc, idx, "Internal error: unknown tool: "+tc.Name, true)
-		}
-		log.LogTool(tc.Name, tc.ID, time.Since(start).Milliseconds(), result.Success)
-		return newExecResultFromOutput(tc, idx, result)
-	}
-}
-
-func attachExecAgentCallbacks(ctx context.Context, agentUI *AgentToUI, idx int, prepared *coretool.PreparedToolCall) {
-	if !coretool.IsAgentToolName(prepared.Call.Name) {
-		return
-	}
-
-	prepared.Params["_onActivity"] = coretool.ActivityFunc(func(msg string) {
-		if agentUI != nil {
-			agentUI.SendForAgent(idx, msg)
-		}
-	})
-	prepared.Params["_onQuestion"] = coretool.AskQuestionFunc(func(qctx context.Context, req *coretool.QuestionRequest) (*coretool.QuestionResponse, error) {
-		if qctx == nil {
-			qctx = ctx
-		}
-		return askExecAgentQuestion(qctx, agentUI, idx, req)
-	})
-
-	if getter := coretool.GetMessagesGetter(ctx); getter != nil {
-		prepared.Params["_messagesGetter"] = getter
-	}
-}
-
-func askExecAgentQuestion(ctx context.Context, agentUI *AgentToUI, idx int, req *coretool.QuestionRequest) (*coretool.QuestionResponse, error) {
-	if agentUI == nil {
-		return nil, context.Canceled
-	}
-	return agentUI.Ask(ctx, idx, req)
 }
