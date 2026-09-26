@@ -789,7 +789,7 @@ func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.Permis
 			}
 		}
 	}
-	permReq.AllowRules = m.services.Setting.Snapshot().AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
+	permReq.AllowRules = m.services.Setting.AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
 	return permReq
 }
 

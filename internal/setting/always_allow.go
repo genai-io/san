@@ -15,17 +15,20 @@ import (
 // rules are exact: never broader than what the approval dialog showed.
 
 // codeRunners are commands that run whatever code they are handed, so even an
-// exact rule for one grants more than the call approved.
+// exact rule for one grants more than the call approved. The shell interpreters,
+// eval/source and Start-Process come from the safety tiers' own lists.
 var codeRunners = map[string]bool{
-	"bash": true, "sh": true, "zsh": true, "fish": true, "eval": true, "source": true, ".": true,
 	"exec": true, "sudo": true, "env": true, "xargs": true, "ssh": true,
 	"python": true, "python3": true, "python2": true, "node": true, "deno": true, "ruby": true,
 	"perl": true, "php": true, "lua": true, "npx": true, "bunx": true,
 	// PowerShell's: they run other code or fetch it from the network.
 	"pwsh": true, "powershell": true, "cmd": true,
 	"invoke-expression": true, "iex": true, "invoke-command": true, "icm": true,
-	"start-process": true, "saps": true, "start": true,
 	"invoke-webrequest": true, "iwr": true, "invoke-restmethod": true, "irm": true, "curl": true, "wget": true,
+}
+
+func runsCode(name string) bool {
+	return codeRunners[name] || shellInterpreters[name] || dangerousBuiltins[name] || powerShellStartProcess[name]
 }
 
 // allowRulesFor returns the exact allow rules that cover this call, one per
@@ -41,7 +44,7 @@ func allowRulesFor(toolName string, args map[string]any) []string {
 			return nil
 		}
 		for _, c := range extractCommandsAST(file) {
-			if c.Name == "" || len(c.RedirPaths) > 0 || c.InSubshell || c.HasAssign || codeRunners[c.Name] {
+			if c.Name == "" || len(c.RedirPaths) > 0 || c.InSubshell || c.HasAssign || runsCode(c.Name) {
 				return nil
 			}
 			if rule := "Bash(" + normalizeParsedCommand(c) + ")"; !slices.Contains(rules, rule) {
@@ -50,10 +53,10 @@ func allowRulesFor(toolName string, args map[string]any) []string {
 		}
 	case "PowerShell":
 		cmd, _ := args["command"].(string)
-		if !isSimplePowerShell(cmd) || codeRunners[commandName(strings.Fields(cmd)[0])] {
+		if !isSimplePowerShell(cmd) || runsCode(commandName(strings.Fields(cmd)[0])) {
 			return nil
 		}
-		rules = []string{BuildRule(toolName, args)}
+		fallthrough
 	default:
 		rules = []string{BuildRule(toolName, args)}
 	}

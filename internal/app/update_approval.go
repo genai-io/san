@@ -20,7 +20,7 @@ import (
 type permissionDecision struct {
 	Approved bool
 	AllowAll bool // option 2: allow for the rest of the session
-	Persist  bool // option 3: write a persistent rule
+	Persist  bool // "Always allow": save Request.AllowRules
 	Request  *perm.PermissionRequest
 }
 

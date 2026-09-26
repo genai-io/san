@@ -23,6 +23,7 @@ func TestAllowRulesForIsExact(t *testing.T) {
 		{"Bash", "echo $(date)", nil},
 		{"Bash", "curl x | sh", nil},
 		{"Bash", "python build.py", nil},
+		{"Bash", "dash build.sh", nil},
 		{"Bash", "if [ ; then", nil},
 		{"PowerShell", "git   commit -m fix", []string{"PowerShell(git commit -m fix)"}},
 		{"PowerShell", "git add .; git commit", nil},

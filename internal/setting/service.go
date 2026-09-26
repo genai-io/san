@@ -213,6 +213,15 @@ func (s *Settings) ResolveHookAllow(toolName string, args map[string]any, sessio
 	return s.data.ResolveHookAllow(toolName, args, session)
 }
 
+func (s *Settings) AlwaysAllowRules(toolName string, args map[string]any, session *SessionPermissions) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return nil
+	}
+	return s.data.AlwaysAllowRules(toolName, args, session)
+}
+
 // AddLocalAllowRules saves rules to the project's .san/settings.local.json and
 // reloads, so the next identical call passes the gate. Returns the file's path.
 func (s *Settings) AddLocalAllowRules(cwd string, rules []string) (string, error) {
