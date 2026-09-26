@@ -7,6 +7,7 @@ type PermissionRequest struct {
 	FilePath    string         // File path being modified
 	Description string         // Human-readable description of the action
 	CallerAgent string         // Name of the agent requesting permission (e.g., "@reviewer-1")
+	AllowRules  []string       // what "Always allow" saves; empty hides the option
 	DiffMeta    *DiffMetadata  // Diff metadata (for Edit/Write tools)
 	BashMeta    *BashMetadata  // Bash metadata (for Bash tool)
 	SkillMeta   *SkillMetadata // Skill metadata (for Skill tool)

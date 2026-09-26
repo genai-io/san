@@ -13,11 +13,9 @@ import (
 // a new row at any position should automatically map to a new digit without
 // touching HandleKeypress.
 func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
-	model := &ApprovalModel{
-		active:  true,
-		request: &perm.PermissionRequest{ToolName: "Bash"},
-	}
-	options := buildApprovalOptionRows(model.request)
+	request := &perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(ls)"}}
+	model := &ApprovalModel{}
+	options := buildApprovalOptionRows(request)
 
 	cases := []struct {
 		key      rune
@@ -30,7 +28,7 @@ func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
 		{'4', 3, ApprovalResponseMsg{}},
 	}
 	for _, tc := range cases {
-		model.active = true
+		model.active, model.request = true, request
 		_, resp := model.handleKeypress(tea.KeyPressMsg{Code: tc.key, Text: string(tc.key)})
 		if resp == nil {
 			t.Fatalf("digit %q produced no response", string(tc.key))
@@ -40,6 +38,18 @@ func TestApprovalModalDigitKeysFollowOptionOrder(t *testing.T) {
 			t.Errorf("digit %q: response = %+v, want option %d %+v",
 				string(tc.key), *resp, tc.wantOpt, want)
 		}
+	}
+}
+
+// "Always allow" names the rule it saves, and is offered only with one.
+func TestApprovalAlwaysAllowNamesItsRule(t *testing.T) {
+	labels := BuildApprovalOptions(&perm.PermissionRequest{ToolName: "Bash", AllowRules: []string{"Bash(touch:x)", "Bash(echo:ok)"}})
+	if labels[2] != "Always allow Bash(touch:x) +1" {
+		t.Errorf("label = %q", labels[2])
+	}
+	labels = BuildApprovalOptions(&perm.PermissionRequest{ToolName: "Bash"})
+	if len(labels) != 3 || labels[2] != "No" {
+		t.Errorf("without rules, options = %v, want no Always allow", labels)
 	}
 }
 

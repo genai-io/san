@@ -778,17 +778,19 @@ func permDetail(req *perm.PermissionRequest) json.RawMessage {
 // ============================================================
 
 func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.PermissionRequest {
-	if resolved, ok := tool.Get(req.ToolName); ok {
-		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
-			if rich, err := pat.PreparePermission(context.Background(), req.Input, m.env.CWD); err == nil && rich != nil {
-				return rich
-			}
-		}
-	}
-	return &perm.PermissionRequest{
+	permReq := &perm.PermissionRequest{
 		ToolName:    req.ToolName,
 		Description: req.Description,
 	}
+	if resolved, ok := tool.Get(req.ToolName); ok {
+		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
+			if rich, err := pat.PreparePermission(context.Background(), req.Input, m.env.CWD); err == nil && rich != nil {
+				permReq = rich
+			}
+		}
+	}
+	permReq.AllowRules = m.services.Setting.Snapshot().AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
+	return permReq
 }
 
 func (m *model) ReconfigureAgentTool() {

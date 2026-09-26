@@ -5,10 +5,16 @@
 package app
 
 import (
+	"path/filepath"
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -73,6 +79,9 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 		if decision.AllowAll && m.env.SessionPermissions != nil && decision.Request != nil {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
 		}
+		if decision.Persist && decision.Request != nil && len(decision.Request.AllowRules) > 0 {
+			m.saveAllowRules(decision.Request.AllowRules)
+		}
 	}
 	// Snapshot the request before releasing the permission gate. Agent tools
 	// add runtime callbacks to their input map as soon as the response wakes
@@ -101,4 +110,24 @@ func permDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, 
 		Reason:    reason,
 		Mode:      mode,
 	}
+}
+
+// saveAllowRules persists an "Always allow" and reloads settings, so the next
+// identical call passes the gate. A failed save leaves this one approval.
+func (m *model) saveAllowRules(rules []string) {
+	path, err := setting.AddLocalAllowRules(m.env.CWD, rules)
+	if err == nil {
+		err = m.services.Setting.Reload(m.env.CWD)
+	}
+	if rel, relErr := filepath.Rel(m.env.CWD, path); relErr == nil {
+		path = rel
+	}
+	notice := "Always allowed " + strings.Join(rules, ", ") + " in " + path
+	if err != nil {
+		log.Logger().Warn("save always-allow rule failed", zap.Error(err))
+		notice = "Approved once; could not save the allow rule: " + err.Error()
+	}
+	// Parked, not appended: the stream still owns the tail while the modal is
+	// up. It shows once this tool batch ends (see notify.go).
+	m.pendingNotices = append(m.pendingNotices, mainNotice{Display: notice})
 }
