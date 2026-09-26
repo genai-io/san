@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 )
 
@@ -71,9 +72,9 @@ func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 // EnterSelect activates the selector and loads agents from the registry.
 func (s *AgentSelector) EnterSelect(width, height int) error {
 	configs := s.registry.ListConfigs()
-	disabledByLevel := map[bool]map[string]bool{
-		false: s.registry.GetDisabledAt(false),
-		true:  s.registry.GetDisabledAt(true),
+	disabledByScope := map[setting.Scope]map[string]bool{
+		setting.ScopeProject: s.registry.GetDisabledAt(setting.ScopeProject),
+		setting.ScopeUser:    s.registry.GetDisabledAt(setting.ScopeUser),
 	}
 
 	agents := make([]agentItem, 0, len(configs))
@@ -85,9 +86,12 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 			pluginName = cfg.Name[:idx]
 		}
 		source := cfg.Source
-		// Disabled state lookup uses the user-level map for built-in/user
-		// agents, project-level map for project agents.
-		userLevel := source == "user" || source == "built-in"
+		// Built-in and user agents keep their disabled state in user scope,
+		// project agents in project scope.
+		scope := setting.ScopeProject
+		if source == "user" || source == "built-in" {
+			scope = setting.ScopeUser
+		}
 		agents = append(agents, agentItem{
 			Name:           cfg.Name,
 			Description:    cfg.Description,
@@ -96,7 +100,7 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 			Tools:          formatAgentTools(cfg.Tools),
 			Source:         source,
 			PluginName:     pluginName,
-			Enabled:        !disabledByLevel[userLevel][lowerName],
+			Enabled:        !disabledByScope[scope][lowerName],
 		})
 	}
 
@@ -144,10 +148,13 @@ func agentMatchesTab(a agentItem, tab int) bool {
 	return false
 }
 
-func (s *AgentSelector) saveLevelForActiveTab() bool {
-	// Built-in and User tabs persist disable-state at the user level;
-	// Project tab persists at the project level.
-	return s.list.activeTab != int(agentTabProject)
+// activeScope is where the active tab saves: Built-in and User tabs in user
+// scope, the Project tab in project scope.
+func (s *AgentSelector) activeScope() setting.Scope {
+	if s.list.activeTab == int(agentTabProject) {
+		return setting.ScopeProject
+	}
+	return setting.ScopeUser
 }
 
 func (s *AgentSelector) Toggle() tea.Cmd {
@@ -162,7 +169,7 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 			break
 		}
 	}
-	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.saveLevelForActiveTab())
+	_ = s.registry.SetEnabled(selected.Name, selected.Enabled, s.activeScope())
 	return func() tea.Msg {
 		return AgentToggleMsg{AgentName: selected.Name, Enabled: selected.Enabled}
 	}

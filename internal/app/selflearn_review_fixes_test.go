@@ -83,7 +83,7 @@ func TestNotifySelfLearnOverrideChecksIndividualSkillActions(t *testing.T) {
 		conv:     conv.NewModel(80),
 	}
 	m.notifySelfLearnOverride(input.ConfigSavedMsg{
-		Scope:          "project",
+		Scope:          setting.ScopeProject,
 		SavedSelfLearn: setting.SelfLearnSettings{Skills: setting.SelfLearnSkills{}},
 	})
 

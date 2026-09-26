@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // NewRegistry creates an empty skill registry.
@@ -231,10 +232,9 @@ func (r *Registry) GetActive() []*Skill {
 	return skills
 }
 
-// SetState sets the state for a skill and persists it to the specified level.
+// SetState sets the state for a skill and persists it to scope's skills.json.
 // The name should be the full name (namespace:name or just name).
-// If userLevel is true, saves to ~/.san/skills.json, otherwise to .san/skills.json.
-func (r *Registry) SetState(name string, state SkillState, userLevel bool) error {
+func (r *Registry) SetState(name string, state SkillState, scope setting.Scope) error {
 	r.mu.Lock()
 	skill, ok := r.skills[name]
 	if !ok {
@@ -247,37 +247,27 @@ func (r *Registry) SetState(name string, state SkillState, userLevel bool) error
 	fullName := skill.FullName()
 	r.mu.Unlock()
 
-	// Persist to the appropriate store
-	var err error
-	if userLevel {
-		err = r.userStore.SetState(fullName, state)
-	} else {
-		err = r.projectStore.SetState(fullName, state)
-	}
+	err := r.store(scope).SetState(fullName, state)
 
 	// Fire observer after the write so the recorder sees the durable state
 	// transition, not a no-op or rollback-on-error.
 	if err == nil && observer != nil && previous != state {
-		level := "project"
-		if userLevel {
-			level = "user"
-		}
-		observer(fullName, string(previous), string(state), "user:/skills:"+level)
+		observer(fullName, string(previous), string(state), "user:/skills:"+string(scope))
 	}
 	return err
 }
 
-// GetStatesAt returns a copy of skill states from the specified level.
-func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState {
-	var src map[string]SkillState
-	if userLevel {
-		src = r.userStore.states
-	} else {
-		src = r.projectStore.states
+// GetStatesAt returns a copy of the skill states saved in scope.
+func (r *Registry) GetStatesAt(scope setting.Scope) map[string]SkillState {
+	return maps.Clone(r.store(scope).states)
+}
+
+// store is the skills.json store for scope.
+func (r *Registry) store(scope setting.Scope) *Store {
+	if scope == setting.ScopeUser {
+		return r.userStore
 	}
-	result := make(map[string]SkillState, len(src))
-	maps.Copy(result, src)
-	return result
+	return r.projectStore
 }
 
 // GetSkillsSection generates the body of the skills directory for the system
@@ -382,17 +372,17 @@ func (r *Registry) IsEnabled(name string) bool {
 
 // SetEnabled sets the enabled state for a skill and persists it.
 // When enabled is true the skill moves to StateEnable; when false it moves to StateDisable.
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error {
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error {
 	state := StateEnable
 	if !enabled {
 		state = StateDisable
 	}
-	return r.SetState(name, state, userLevel)
+	return r.SetState(name, state, scope)
 }
 
-// GetDisabledAt returns a map of skill names that are disabled at the given level.
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
-	states := r.GetStatesAt(userLevel)
+// GetDisabledAt returns the skill names disabled in scope.
+func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool {
+	states := r.GetStatesAt(scope)
 	result := make(map[string]bool)
 	for name, state := range states {
 		if state == StateDisable {

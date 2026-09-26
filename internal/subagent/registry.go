@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Registry manages agent definitions.
@@ -113,42 +115,32 @@ func (r *Registry) IsEnabled(name string) bool {
 	return true
 }
 
-// SetEnabled sets the enabled state for an agent at the specified level.
-// Used by internal/app's agentRegistryAdapter.
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error {
+// SetEnabled enables or disables an agent in scope's agents file.
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	lowerName := strings.ToLower(name)
-
-	if userLevel {
-		if r.userStore != nil {
-			return r.userStore.SetDisabled(lowerName, !enabled)
-		}
-	} else {
-		if r.projectStore != nil {
-			return r.projectStore.SetDisabled(lowerName, !enabled)
-		}
+	if s := r.store(scope); s != nil {
+		return s.SetDisabled(strings.ToLower(name), !enabled)
 	}
 	return nil
 }
 
-// GetDisabledAt returns the disabled agents from the specified level.
-// Used by internal/app's agentRegistryAdapter.
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
+// GetDisabledAt returns the agents disabled in scope.
+func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
-	if userLevel {
-		if r.userStore != nil {
-			return r.userStore.GetDisabled()
-		}
-	} else {
-		if r.projectStore != nil {
-			return r.projectStore.GetDisabled()
-		}
+	if s := r.store(scope); s != nil {
+		return s.GetDisabled()
 	}
 	return make(map[string]bool)
+}
+
+// store is the agents store for scope; nil before InitStores.
+func (r *Registry) store(scope setting.Scope) *AgentStore {
+	if scope == setting.ScopeUser {
+		return r.userStore
+	}
+	return r.projectStore
 }
 
 // LoadPersona restricts the visible agent set to an allow-list while a persona

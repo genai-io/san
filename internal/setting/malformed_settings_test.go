@@ -27,10 +27,10 @@ func TestSavePathsRefuseToClobberMalformedSettings(t *testing.T) {
 			return NewLoaderWithOptions(filepath.Join(home, ".san"), "", true).SaveToUser(d)
 		},
 		"UpdateSelfLearnAt": func(t *testing.T, home string) error {
-			return UpdateSelfLearnAt(SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}, true)
+			return UpdateSelfLearnAt(SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}, ScopeUser)
 		},
 		"SavePersonaAt": func(t *testing.T, home string) error {
-			return SavePersonaAt("", "reviewer", true)
+			return SavePersonaAt("", "reviewer", ScopeUser)
 		},
 	}
 
@@ -88,7 +88,7 @@ func TestSaveWorksOnMissingOrEmptySettings(t *testing.T) {
 				}
 			}
 
-			if err := SavePersonaAt("", "reviewer", true); err != nil {
+			if err := SavePersonaAt("", "reviewer", ScopeUser); err != nil {
 				t.Fatalf("SavePersonaAt: %v", err)
 			}
 			after, err := os.ReadFile(path)

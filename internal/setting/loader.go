@@ -26,6 +26,22 @@ type Loader struct {
 	claudeCompat bool
 }
 
+// Scope selects which settings file a single-file read or write targets.
+type Scope string
+
+const (
+	ScopeUser    Scope = "user"    // ~/.san
+	ScopeProject Scope = "project" // <cwd>/.san
+)
+
+// dir is the settings directory for scope.
+func (l *Loader) dir(scope Scope) string {
+	if scope == ScopeUser {
+		return l.userDir
+	}
+	return l.projectDir
+}
+
 // NewLoader creates a loader with default paths (~/.san, .san) and Claude compatibility enabled.
 func NewLoader() *Loader {
 	homeDir, err := os.UserHomeDir()
@@ -238,8 +254,8 @@ func defaultData() *Data {
 // level, and merging would OR it with the file's previous keys so a re-enable
 // (a removed key) or a default-disabled tool toggled back off could never
 // persist. Cross-level layering still ORs on Load by design.
-func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error {
-	return updateSettingsFile(userLevel, func(d *Data) {
+func UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error {
+	return updateSettingsFile(scope, func(d *Data) {
 		d.DisabledTools = disabledTools
 	})
 }
@@ -254,12 +270,8 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error 
 // off-toggle stick. (Cross-level layering still ORs on Load by design —
 // disabling at a lower-priority level cannot override an enable at a
 // higher-priority one.)
-func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
-	loader := NewLoader()
-	path := filepath.Join(loader.projectDir, "settings.json")
-	if userLevel {
-		path = filepath.Join(loader.userDir, "settings.json")
-	}
+func updateSettingsFile(scope Scope, mutate func(*Data)) error {
+	path := filepath.Join(NewLoader().dir(scope), "settings.json")
 
 	existing := NewData()
 	if err := atomicfile.ReadJSON(path, existing); err != nil {
@@ -278,23 +290,23 @@ func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 // settings level, rewriting only the selfLearn block. Returns Validate's error
 // verbatim if the new config is illegal (§3.1) so the caller can surface it
 // inline before touching disk.
-func UpdateSelfLearnAt(cfg SelfLearnSettings, userLevel bool) error {
+func UpdateSelfLearnAt(cfg SelfLearnSettings, scope Scope) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	return updateSettingsFile(userLevel, func(d *Data) { d.SelfLearn = cfg })
+	return updateSettingsFile(scope, func(d *Data) { d.SelfLearn = cfg })
 }
 
 // UpdateAutoPilotAt persists the autopilot config at the requested settings
 // level, rewriting only the autoPilot block.
-func UpdateAutoPilotAt(cfg AutoPilotSettings, userLevel bool) error {
-	return updateSettingsFile(userLevel, func(d *Data) { d.AutoPilot = cfg })
+func UpdateAutoPilotAt(cfg AutoPilotSettings, scope Scope) error {
+	return updateSettingsFile(scope, func(d *Data) { d.AutoPilot = cfg })
 }
 
 // UpdateLastOperationMode persists the user-wide mode restored when a new
 // session starts.
 func UpdateLastOperationMode(mode OperationMode) error {
-	return updateSettingsFile(true, func(d *Data) { d.LastOperationMode = mode.PersistenceName() })
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.LastOperationMode = mode.PersistenceName() })
 }
 
 // AutoPilotPresetDir is the folder where /autopilot Export saves named configs
@@ -436,13 +448,9 @@ func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
 }
 
 // GetDisabledToolsAt returns disabled tools from a single settings file (not merged).
-// userLevel=true reads from ~/.san/settings.json; false reads from .san/settings.json.
-func GetDisabledToolsAt(userLevel bool) map[string]bool {
+func GetDisabledToolsAt(scope Scope) map[string]bool {
 	loader := NewLoader()
-	path := filepath.Join(loader.projectDir, "settings.json")
-	if userLevel {
-		path = filepath.Join(loader.userDir, "settings.json")
-	}
+	path := filepath.Join(loader.dir(scope), "settings.json")
 	s, err := loader.LoadFile(path)
 	if err != nil || s.DisabledTools == nil {
 		return make(map[string]bool)
@@ -453,16 +461,12 @@ func GetDisabledToolsAt(userLevel bool) map[string]bool {
 }
 
 // PersonaAt returns the persona pinned in a single settings file (not merged).
-// userLevel=true reads ~/.san/settings.json; false reads <cwd>/.san/settings.json.
-func PersonaAt(cwd string, userLevel bool) string {
+func PersonaAt(cwd string, scope Scope) string {
 	loader := NewLoader()
 	if cwd != "" {
 		loader = NewLoaderForCwd(cwd)
 	}
-	dir := loader.projectDir
-	if userLevel {
-		dir = loader.userDir
-	}
+	dir := loader.dir(scope)
 	if dir == "" {
 		return ""
 	}
@@ -508,13 +512,13 @@ func SaveContextBar(on bool) error {
 // ThinkingDisplay* constants; an unrecognized value resolves to the default on
 // read (see ThinkingDisplayMode).
 func SaveThinkingDisplay(mode string) error {
-	return updateSettingsFile(true, func(d *Data) { d.ThinkingDisplay = mode })
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.ThinkingDisplay = mode })
 }
 
 // SaveAutoUpdate persists whether background auto-update is on to
 // ~/.san/settings.json, as an explicit value so turning it off sticks.
 func SaveAutoUpdate(on bool) error {
-	return updateSettingsFile(true, func(d *Data) { d.AutoUpdate = &on })
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.AutoUpdate = &on })
 }
 
 // SaveAllowBypass persists whether YOLO mode (bypassPermissions) is reachable
@@ -522,27 +526,23 @@ func SaveAutoUpdate(on bool) error {
 // setting is opt-out, so locking the gate means persisting an explicit false,
 // which is exactly the toggle updateSettingsFile exists to make stick.
 func SaveAllowBypass(on bool) error {
-	return updateSettingsFile(true, func(d *Data) { d.AllowBypass = &on })
+	return updateSettingsFile(ScopeUser, func(d *Data) { d.AllowBypass = &on })
 }
 
-// SavePersonaAt persists the chosen persona name at the given scope: the
-// project file (.san/settings.json under cwd) when userLevel is false, or the
-// user file (~/.san/settings.json) when true. An empty name clears the field.
+// SavePersonaAt persists the chosen persona name in scope's settings file. An
+// empty name clears the field.
 // It bypasses mergeSettings so an empty value can actually clear it on disk.
 //
 // Scope matters: a project-scoped persona should save project-level so the
 // selection lives with the persona (and doesn't leak to other projects, where
 // it wouldn't resolve); user-scoped personas save user-level to become the
 // default everywhere.
-func SavePersonaAt(cwd, name string, userLevel bool) error {
+func SavePersonaAt(cwd, name string, scope Scope) error {
 	loader := NewLoader()
 	if cwd != "" {
 		loader = NewLoaderForCwd(cwd)
 	}
-	dir := loader.projectDir
-	if userLevel {
-		dir = loader.userDir
-	}
+	dir := loader.dir(scope)
 	if dir == "" {
 		return os.ErrNotExist
 	}

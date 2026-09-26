@@ -27,7 +27,7 @@ import (
 // effective state and detect cross-level overrides (settings merger ORs
 // Enabled across user+project).
 type ConfigSavedMsg struct {
-	Scope          string
+	Scope          setting.Scope
 	SavedSelfLearn setting.SelfLearnSettings
 }
 
@@ -44,7 +44,7 @@ type selfLearnForm struct {
 	// baseline captures snap as it was at Enter() time so the form can flag
 	// unsaved edits in the top-right corner.
 	baseline setting.SelfLearnSettings
-	scope    string // "user" | "project"
+	scope    setting.Scope
 
 	cursor        int
 	editing       bool
@@ -89,10 +89,10 @@ func (f *selfLearnForm) HandleKey(msg tea.KeyMsg) (cmd tea.Cmd, done bool, activ
 	case "left", "right":
 		// ←→ flips the save target; Tab is reserved by the shell for switching
 		// the skills ↔ memory tab.
-		if f.scope == "user" {
-			f.scope = "project"
+		if f.scope == setting.ScopeUser {
+			f.scope = setting.ScopeProject
 		} else {
-			f.scope = "user"
+			f.scope = setting.ScopeUser
 		}
 	case "space":
 		// Space toggles the checkbox on a plain bool row or the checkbox half
@@ -132,8 +132,7 @@ func (f *selfLearnForm) save() (tea.Cmd, bool) {
 	if err := f.snap.Validate(); err != nil {
 		return nil, false
 	}
-	userLevel := f.scope == "user"
-	if err := setting.UpdateSelfLearnAt(f.snap, userLevel); err != nil {
+	if err := setting.UpdateSelfLearnAt(f.snap, f.scope); err != nil {
 		return nil, false
 	}
 	scope := f.scope
@@ -256,14 +255,14 @@ func (f *selfLearnForm) Render(width int) string {
 // as a filled pill. The "scope" label is dropped — the two visible
 // segments (user / project) are self-explanatory.
 func (f *selfLearnForm) renderScopeControl() string {
-	seg := func(name string) string {
-		if f.scope == name {
-			return selflearnScopeActiveStyle.Render(name)
+	seg := func(scope setting.Scope) string {
+		if f.scope == scope {
+			return selflearnScopeActiveStyle.Render(string(scope))
 		}
-		return selflearnScopeIdleStyle.Render(name)
+		return selflearnScopeIdleStyle.Render(string(scope))
 	}
 	sep := selflearnMutedStyle.Render(" · ")
-	return seg("user") + sep + seg("project")
+	return seg(setting.ScopeUser) + sep + seg(setting.ScopeProject)
 }
 
 // keycap renders a key label as a bg-filled pill so it doesn't read as

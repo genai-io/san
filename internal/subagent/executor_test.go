@@ -688,7 +688,7 @@ func TestResolveAgentConfigRejectsDisabledDefinition(t *testing.T) {
 	if err := registry.InitStores(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.SetEnabled("reviewer", false, false); err != nil {
+	if err := registry.SetEnabled("reviewer", false, setting.ScopeProject); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := resolveAgentConfig("reviewer"); ok {

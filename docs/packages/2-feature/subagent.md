@@ -54,8 +54,8 @@ func (r *Registry) Get(name string) (*AgentConfig, bool)
 func (r *Registry) IsEnabled(name string) bool
 
 // State mutation (used by the TUI selector adapter)
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error
+func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool
 
 // System prompt
 func (r *Registry) GetAgentsSection() string

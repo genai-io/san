@@ -208,7 +208,7 @@ func autopilotWithoutSessionFields(cfg setting.AutoPilotSettings) setting.AutoPi
 // first.
 func (m *model) persistAutopilotDefault() {
 	m.rebuildAutopilotReviewer()
-	if err := setting.UpdateAutoPilotAt(autopilotWithoutSessionFields(m.env.AutoPilot), true); err != nil {
+	if err := setting.UpdateAutoPilotAt(autopilotWithoutSessionFields(m.env.AutoPilot), setting.ScopeUser); err != nil {
 		log.Logger().Warn("persist autopilot default failed", zap.Error(err))
 	}
 }

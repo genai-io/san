@@ -143,7 +143,7 @@ func newEvolvePanel(d EvolveDeps) *evolvePanel {
 	}
 	p.form = selfLearnForm{
 		workspace: d.Workspace,
-		scope:     "user",
+		scope:     setting.ScopeUser,
 		rowsFn:    func() []configRow { return p.rows },
 	}
 	return p

@@ -56,10 +56,10 @@ func (r *Registry) Count() int
 func (r *Registry) IsEnabled(name string) bool
 
 // State (used by the TUI selector)
-func (r *Registry) SetState(name string, state SkillState, userLevel bool) error
-func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool
+func (r *Registry) SetState(name string, state SkillState, scope setting.Scope) error
+func (r *Registry) GetStatesAt(scope setting.Scope) map[string]SkillState
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error
+func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool
 
 // Rendering (consumed by the skills-directory reminder provider)
 func (r *Registry) PromptSection() string

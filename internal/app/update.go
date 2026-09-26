@@ -231,7 +231,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
 		}
-		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
+		m.conv.AddNotice("Self-learning config saved (" + string(msg.Scope) + ")")
 		m.notifySelfLearnOverride(msg)
 		// Re-wire the L1 reviewer so the saved values take effect on the
 		// running session. If the save also changed the Evolve tool's
