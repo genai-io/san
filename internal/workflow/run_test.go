@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -122,6 +123,10 @@ func TestRunConditionalEdgesOmitTheBranchNotTaken(t *testing.T) {
 	if got := res.Nodes["quick"].Status; got != StatusOmitted {
 		t.Fatalf("quick = %s, want omitted", got)
 	}
+	// Omitted means never run: the untaken branch costs no turn at all.
+	if slices.Contains(r.calls, "quick") {
+		t.Fatalf("calls = %v; an omitted node must never reach the runner", r.calls)
+	}
 	if got := res.Nodes["deep"].Status; got != StatusSucceeded {
 		t.Fatalf("deep = %s, want succeeded", got)
 	}
@@ -201,5 +206,20 @@ func TestRunCancelKeepsFinishedWork(t *testing.T) {
 	}
 	if !res.Failed(w) {
 		t.Fatal("a cancelled run is a failed run")
+	}
+}
+
+func TestSummaryMarksEachNodesOutcome(t *testing.T) {
+	// The summary is what the launching conversation reads back, so its
+	// shape is owned here rather than by any end-to-end suite.
+	src := "```mermaid\nflowchart LR\n  a --> b --> c\n  a -->|X| d\n```\n\n## a\na\n\n## b\nb\n\n## c\nc\n\n## d\nd\n"
+	w := mustParse(t, src)
+	res := Run(context.Background(), w, &stubRunner{outputs: map[string]string{"a": "A"}, fails: map[string]bool{"b": true}}, Options{})
+
+	got := res.Summary(w)
+	for _, want := range []string{"✓ a", "✗ b", "b exploded", "↷ c", "⊘ d"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary lacks %q:\n%s", want, got)
+		}
 	}
 }

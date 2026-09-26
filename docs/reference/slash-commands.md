@@ -26,6 +26,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/reload-plugins` | Reload plugins and refresh plugin-backed components |
 | `/think` | Cycle thinking level (off / normal / high / ultra) |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
+| `/workflow` | Run a saved workflow directly (`/workflow <name> [key=value …]`), or list them |
 | `/search` | Select search engine for web search |
 
 ## UI Interactions

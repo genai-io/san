@@ -46,9 +46,10 @@ func (t *WorkflowTool) SetExecutor(executor tool.AgentExecutor) { t.executor = e
 // how subagent definitions resolve.
 func (t *WorkflowTool) SetSearchPaths(dirs []string) { t.dirs = dirs }
 
-// saved lists the definitions on disk for the schema description, so the
-// model can name one instead of rewriting it.
-func (t *WorkflowTool) saved() string {
+// Saved lists the definitions on disk, one "- name — description" per line:
+// the schema description carries it so the model can name one instead of
+// rewriting it, and /workflow shows it to the user.
+func (t *WorkflowTool) Saved() string {
 	entries := workflow.Load(t.dirs...)
 	if len(entries) == 0 {
 		return ""
@@ -68,7 +69,7 @@ func (t *WorkflowTool) Schema() core.ToolSchema {
 	b.WriteString("Run a workflow: several subagent turns arranged as a graph, in the background, reporting one summary when done. " +
 		"Use it only when the same arrangement is worth keeping — a dependency order a long turn could forget, or a fan-out whose intermediate results should stay out of this conversation. " +
 		"For one bounded job, or a one-off fan-out, use Agent instead.\n\n")
-	if list := t.saved(); list != "" {
+	if list := t.Saved(); list != "" {
 		b.WriteString("Saved workflows — pass one of these as `name`:" + list + "\n\n")
 	}
 	b.WriteString("Otherwise pass `definition`: a markdown document. Optional frontmatter sets name and max_parallel (default 4). " +
@@ -121,7 +122,7 @@ func (t *WorkflowTool) resolve(params map[string]any) (*workflow.Workflow, error
 		w, err := workflow.Find(name, t.dirs...)
 		switch {
 		case errors.Is(err, workflow.ErrNotFound):
-			return nil, fmt.Errorf("%w. Saved workflows:%s", err, cmp.Or(t.saved(), " (none saved)"))
+			return nil, fmt.Errorf("%w. Saved workflows:%s", err, cmp.Or(t.Saved(), " (none saved)"))
 		case err != nil:
 			return nil, fmt.Errorf("workflow %s is invalid:\n%w", name, err)
 		}
@@ -137,14 +138,12 @@ func (t *WorkflowTool) resolve(params map[string]any) (*workflow.Workflow, error
 	}
 }
 
-// PreparePermission resolves the workflow and validates every node's agent
-// before the user is asked, so a workflow that cannot run is refused rather
-// than approved. Nothing is carried over to Execute: every stage of a tool
-// call parses its own copy of the arguments, so a value stashed on this map
-// would be dropped on the floor.
-func (t *WorkflowTool) PreparePermission(_ context.Context, params map[string]any, _ string) (*perm.PermissionRequest, error) {
+// prepare resolves the call's workflow and checks every node's agent. Every
+// way in calls it, so a plan that cannot run is refused however it started;
+// nothing carries between stages — each parses its own copy of the arguments.
+func (t *WorkflowTool) prepare(params map[string]any) (*workflow.Workflow, error) {
 	if t.executor == nil {
-		return nil, fmt.Errorf("agent executor not configured")
+		return nil, errors.New("agent executor not configured")
 	}
 	w, err := t.resolve(params)
 	if err != nil {
@@ -166,7 +165,16 @@ func (t *WorkflowTool) PreparePermission(_ context.Context, params map[string]an
 			return nil, fmt.Errorf("node %s: no agent named %q — drop the line for the default agent, or set mode: explore|edit for a read-only or editing node", n.ID, agent)
 		}
 	}
+	return w, nil
+}
 
+// PreparePermission shows the user what they are approving: the plan and the
+// worst case it can reach.
+func (t *WorkflowTool) PreparePermission(_ context.Context, params map[string]any, _ string) (*perm.PermissionRequest, error) {
+	w, err := t.prepare(params)
+	if err != nil {
+		return nil, err
+	}
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
@@ -203,10 +211,7 @@ func (t *WorkflowTool) ExecuteApproved(ctx context.Context, params map[string]an
 // Execute launches the run as one background task and returns at once; the
 // summary arrives as that task's completion notification.
 func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ string) toolresult.ToolResult {
-	if t.executor == nil {
-		return toolresult.NewErrorResult(t.Name(), "agent executor not configured")
-	}
-	w, err := t.resolve(params)
+	w, err := t.prepare(params)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
@@ -216,11 +221,31 @@ func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ strin
 			inputs[k] = fmt.Sprint(v)
 		}
 	}
-
-	description := tool.GetString(params, "description")
-	if description == "" {
-		description = "Run workflow " + w.Name
+	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name))
+	return toolresult.ToolResult{
+		Success: true,
+		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nNodes: %d"+tool.BackgroundLaunchSuffix,
+			w.Name, id, len(w.Nodes)),
+		Metadata: toolresult.ResultMetadata{
+			Title:    t.Name(),
+			Icon:     t.Icon(),
+			Subtitle: fmt.Sprintf("[background] %s: %s", w.Name, id),
+		},
 	}
+}
+
+// Launch runs a saved workflow for a user's /workflow: the same checks and
+// background task as a model's call, returning the plan's bounds and task id.
+func (t *WorkflowTool) Launch(name string, inputs map[string]string) (bounds, taskID string, err error) {
+	w, err := t.prepare(map[string]any{"name": name})
+	if err != nil {
+		return "", "", err
+	}
+	return describe(w, ""), t.start(w, inputs, "/workflow "+name), nil
+}
+
+// start runs the workflow under one background task and returns its id.
+func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string) string {
 	ctx, cancel := context.WithCancel(context.Background())
 	bg := task.Default().CreateAgentTask(task.NewID(), "workflow", description, ctx, cancel)
 
@@ -245,17 +270,7 @@ func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ strin
 			bg.Complete(nil)
 		}
 	}()
-
-	return toolresult.ToolResult{
-		Success: true,
-		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nNodes: %d"+tool.BackgroundLaunchSuffix,
-			w.Name, bg.GetID(), len(w.Nodes)),
-		Metadata: toolresult.ResultMetadata{
-			Title:    t.Name(),
-			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("[background] %s: %s", w.Name, bg.GetID()),
-		},
-	}
+	return bg.GetID()
 }
 
 // nodeRunner is the workflow.NodeRunner seam: one node is one subagent turn

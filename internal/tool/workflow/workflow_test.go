@@ -289,3 +289,49 @@ func TestWorkflowToolRetriesUntilReviewPasses(t *testing.T) {
 		t.Fatal("round 3 ran although round 2 passed")
 	}
 }
+
+func TestWorkflowToolFailsTheTaskWhenALoopRunsOut(t *testing.T) {
+	// How a failed workflow reaches the conversation: a failed task whose
+	// error names the node, so the notification says what went wrong.
+	exec := &scriptedExecutor{outputs: map[string]string{
+		"draft#1": "v1", "review#1": "FAIL",
+		"draft#2": "v2", "review#2": "FAIL",
+		"draft#3": "v3", "review#3": "FAIL",
+	}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	params := map[string]any{"definition": optimizer}
+	if _, err := wt.PreparePermission(context.Background(), params, "."); err != nil {
+		t.Fatalf("PreparePermission: %v", err)
+	}
+	info := runToCompletion(t, wt, params)
+
+	if info.Status != task.StatusFailed {
+		t.Fatalf("status = %s, want failed\n%s", info.Status, info.Output)
+	}
+	if !strings.Contains(info.Error, "workflow polish failed") || !strings.Contains(info.Error, "review#3") {
+		t.Fatalf("task error = %q; it should name the workflow and the node that failed", info.Error)
+	}
+	exec.mu.Lock()
+	defer exec.mu.Unlock()
+	for _, r := range exec.reqs {
+		if r.Description == "polish/ship" {
+			t.Fatal("a draft that never passed review reached ship")
+		}
+	}
+}
+
+func TestWorkflowToolExecuteRefusesATypoedAgentWithoutApproval(t *testing.T) {
+	// Execute is the only check that holds on the model's path: an allow rule
+	// skips PreparePermission, and the approval prompt drops its error anyway.
+	// So Execute must refuse a plan it would otherwise launch with the default
+	// agent in place of the misspelled one.
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{unknown: "Explorr"})
+	src := strings.Replace(definition, "agent: explorer", "agent: Explorr", 1)
+
+	res := wt.Execute(context.Background(), map[string]any{"definition": src}, ".")
+	if res.Success || !strings.Contains(res.Error, `no agent named "Explorr"`) {
+		t.Fatalf("Execute = %+v; an unapproved call must get the same checks as an approved one", res)
+	}
+}

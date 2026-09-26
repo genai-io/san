@@ -110,6 +110,9 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
 - `Summary` is one status line per node followed by the output of each
   succeeded sink; intermediate outputs stay in the node transcripts.
 
+`tests/integration/workflow/` covers the node ↔ subagent-turn seam the
+unit tests stub out; graph semantics stay with the unit tests.
+
 ## Lifecycle
 
 `Parse` is pure. `Run` blocks until every node has settled and is safe to
@@ -121,10 +124,12 @@ finished results are kept. No state outlives the call.
 
 ```
 internal/workflow/parse_test.go  — the release-check example, ancestor references, every rejection, all problems in one error.
-internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit, scope along taken paths, failure contagion and continue_on_error, cancellation.
+internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit (and that it never runs), scope along taken paths, failure contagion and continue_on_error, cancellation, the summary's shape.
 internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
 internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
-internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds, node requests, fan-out labels, saved workflows.
+internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, a failed run becoming a failed task.
+internal/app/input/slash_workflow_test.go — /workflow listing, launching through Launch with no model turn, the task naming the command, bad input.
+tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), and a truncated turn failing its node.
 ```
 
 ## See Also

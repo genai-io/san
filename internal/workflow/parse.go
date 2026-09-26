@@ -38,7 +38,8 @@ type Node struct {
 	// inside a later round reads the round before it.
 	Base string
 	// Config holds the host-facing keys under the heading (agent, mode,
-	// model). The engine reads none of them.
+	// model). The engine acts on none of them; it only refuses a mode
+	// outside the allowlist in fill.
 	Config map[string]string
 	Prompt string
 	// ContinueOnError lets this node's failure leave the workflow running:
@@ -340,6 +341,8 @@ func (n *Node) fill(lines []string) error {
 			}
 			n.MaxWorkers = w
 		case "mode":
+			// A trust boundary: a definition is a project file, so it may
+			// narrow a node's permissions but never request bypass.
 			switch value {
 			case "", "default", "explore", "edit":
 			default:

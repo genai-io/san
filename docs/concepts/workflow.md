@@ -4,8 +4,12 @@ A workflow is several subagent turns arranged as a graph: which runs after
 which, which run together, which run only on a given answer. It is one
 markdown document, and there are two ways in — a file you saved under
 `.san/workflows/`, or a document the model writes on the spot. Either way
-San validates the whole thing before asking for approval, runs it as one
+San validates the whole thing before anything runs, runs it as one
 background task, and delivers one summary when it finishes.
+
+The `Workflow` tool ships **disabled**: enable it from `/tools` to let the
+model start workflows on its own. Your saved workflows run with `/workflow`
+either way.
 
 Use a workflow when the arrangement matters more than any single job — a
 dependency order a long turn could forget, or a fan-out whose intermediate
@@ -50,7 +54,7 @@ Merge into one review: {{sec}} {{perf}}
 | mermaid block | the only source of topology. Starts with `flowchart LR`; then bare ids joined by `-->` (sequence), `&` (fan-out and fan-in), `-->\|LABEL\|` (conditional) and `-->\|LABEL xN\|` pointing back at an ancestor (a bounded retry; see below). Node shapes, subgraphs and other mermaid syntax are errors, not silently ignored — a dropped edge is a silently wrong graph. |
 | `## id` | one node, one subagent turn. Every id in the graph needs a section and vice versa. |
 | `key: value` under the heading | the contiguous run of such lines is config: `agent`, `mode` (`explore`, `edit`, `default`), `model`, `continue_on_error`. Everything after them is the prompt. An unknown key is an error; put a blank line before prompt text that happens to start with `word:`. |
-| `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before approval — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
+| `agent:` | the name of a definition in `.san/agents/`, which is where a node gets its tool list, skills, system prompt and MCP servers. A name that resolves to nothing is refused before the run starts — in a file, an unknown name is a typo, not a label. Leave the line out for the default agent. |
 | `{{id}}` | the output of a node upstream of this one. Any ancestor on a taken path counts, not only the direct parent. Referencing a node with no path here is a validation error. |
 | `{{input.key}}` | a value passed in the tool's `inputs`. |
 | `for_each` + `max_workers` | fans this node out over a plan; see below. |
@@ -64,8 +68,10 @@ Definitions live in `.san/workflows/*.md` (project) and
 `~/.san/workflows/*.md` (user); the project copy wins when both define the
 same name, and the `name:` in frontmatter beats the filename. The `Workflow`
 tool lists what it finds in its own description, so the model can run one by
-`name` instead of rewriting it; `/workflow` with no argument lists them, and
-`/workflow <name> key=value` runs one.
+`name` instead of rewriting it. `/workflow` with no argument lists them, and
+`/workflow <name> key=value …` runs one directly — San launches it itself,
+with no model turn in between, and shows the plan's bounds and the task id.
+Input values are split on spaces, so a value cannot contain one.
 
 A file is parsed when it is run, not at startup: a broken definition is
 reported to whoever tried to run it, and never blocks the session.
@@ -187,9 +193,11 @@ to 3 rounds`.
   stops early having done half the job reports success; a converging node
   that reviews its inputs is the guard for that.
 - Every node passes the same permission gate as a background `Agent`: a
-  prompt for confirmation collapses to a deny, `mode` never reaches
-  `bypass`, and the definition's own directory is not trusted more than any
-  other project file.
+  prompt for confirmation collapses to a deny, and a definition cannot ask
+  for `bypass` — `mode` accepts `explore`, `edit` and `default` only, so a
+  file in the project directory is trusted no further than any other file
+  there. What `default` resolves to is the subagent layer's business, the
+  same as for `Agent`.
 - `AgentStop` on the workflow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
 - The `Workflow` tool is parent-only, like `Agent`: a subagent cannot start
