@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
@@ -27,68 +28,64 @@ var codeRunners = map[string]bool{
 	"invoke-webrequest": true, "iwr": true, "invoke-restmethod": true, "irm": true, "curl": true, "wget": true,
 }
 
-// AllowRulesFor returns the exact allow rules that cover this call, one per
-// Bash subcommand. ok is false when no rule can be exact: a redirect,
-// substitution, env assignment, glob character, or a command that runs code.
-func AllowRulesFor(toolName string, args map[string]any) (rules []string, ok bool) {
+// allowRulesFor returns the exact allow rules that cover this call, one per
+// Bash subcommand, or nil when no rule can be exact: a redirect, substitution,
+// env assignment, glob character, or a command that runs code.
+func allowRulesFor(toolName string, args map[string]any) []string {
+	var rules []string
 	switch toolName {
 	case "Bash":
 		cmd, _ := args["command"].(string)
 		file := parseBashAST(cmd)
 		if file == nil {
-			return nil, false
+			return nil
 		}
 		for _, c := range extractCommandsAST(file) {
 			if c.Name == "" || len(c.RedirPaths) > 0 || c.InSubshell || c.HasAssign || codeRunners[c.Name] {
-				return nil, false
+				return nil
 			}
-			rule := "Bash(" + normalizeParsedCommand(c) + ")"
-			if hasGlob(rule) {
-				return nil, false
-			}
-			if !slices.Contains(rules, rule) {
+			if rule := "Bash(" + normalizeParsedCommand(c) + ")"; !slices.Contains(rules, rule) {
 				rules = append(rules, rule)
 			}
 		}
-		return rules, len(rules) > 0
 	case "PowerShell":
 		cmd, _ := args["command"].(string)
 		if !isSimplePowerShell(cmd) || codeRunners[commandName(strings.Fields(cmd)[0])] {
-			return nil, false
+			return nil
 		}
+		rules = []string{BuildRule(toolName, args)}
+	default:
+		rules = []string{BuildRule(toolName, args)}
 	}
-	rule := BuildRule(toolName, args)
-	if hasGlob(rule) {
-		return nil, false
-	}
-	return []string{rule}, true
-}
-
-// hasGlob reports a character a rule would read as a wildcard.
-func hasGlob(rule string) bool { return strings.ContainsAny(rule, "*?") }
-
-// AlwaysAllowRules returns the rules "Always allow" would save for this call,
-// or nil when saving them would not stop it prompting — a deny, ask or safety
-// check outranks allow rules, so offering the option there would do nothing.
-func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *SessionPermissions) []string {
-	rules, ok := AllowRulesFor(toolName, args)
-	if !ok {
-		return nil
-	}
-	with := s.Clone()
-	with.Permissions.Allow = append(with.Permissions.Allow, rules...)
-	if with.HasPermissionToUseTool(toolName, args, session).Behavior != perm.Permit {
+	// A * or ? would make the saved rule a wildcard, broader than this call.
+	if slices.ContainsFunc(rules, func(r string) bool { return strings.ContainsAny(r, "*?") }) {
 		return nil
 	}
 	return rules
 }
 
-// AddLocalAllowRules appends rules to permissions.allow in the project's
+// AlwaysAllowRules returns the rules "Always allow" would save for this call,
+// or nil when saving them would not stop it prompting — a deny, ask or safety
+// check outranks allow rules, so offering the option there would do nothing.
+func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *SessionPermissions) []string {
+	rules := allowRulesFor(toolName, args)
+	if len(rules) == 0 {
+		return nil
+	}
+	with := *s // the gate only reads, so a shallow copy with its own allow list is enough
+	with.Permissions.Allow = append(slices.Clip(s.Permissions.Allow), rules...)
+	if with.CheckPermission(toolName, args, session) != perm.Permit {
+		return nil
+	}
+	return rules
+}
+
+// addLocalAllowRules appends rules to permissions.allow in the project's
 // .san/settings.local.json — the personal, highest-priority layer, so a grant
 // is never committed for the whole team. Only that key is touched; a file
 // that does not parse is left alone. Returns the file's path.
-func AddLocalAllowRules(cwd string, rules []string) (string, error) {
-	path := filepath.Join(NewLoaderForCwd(cwd).projectDir, "settings.local.json")
+func addLocalAllowRules(cwd string, rules []string) (string, error) {
+	path := filepath.Join(confdir.Dir(cwd), "settings.local.json")
 	var doc map[string]any
 	if err := atomicfile.ReadJSON(path, &doc); err != nil {
 		return path, err
@@ -117,8 +114,6 @@ func AddLocalAllowRules(cwd string, rules []string) (string, error) {
 	if err := atomicfile.WriteJSON(path, doc, 0o644); err != nil {
 		return path, err
 	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
+	invalidateLoaded()
 	return path, nil
 }

@@ -199,6 +199,13 @@ var (
 	loadedSettingsMu sync.Mutex
 )
 
+// invalidateLoaded drops the cached settings so the next Load reads disk.
+func invalidateLoaded() {
+	loadedSettingsMu.Lock()
+	loadedSettings = nil
+	loadedSettingsMu.Unlock()
+}
+
 // Load loads settings using the default loader (cached after first call).
 func Load() (*Data, error) {
 	loadedSettingsMu.Lock()
@@ -263,9 +270,7 @@ func updateSettingsFile(userLevel bool, mutate func(*Data)) error {
 		return err
 	}
 
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
+	invalidateLoaded()
 	return nil
 }
 
@@ -482,9 +487,7 @@ func SaveTheme(t string) error {
 	if err := NewLoader().SaveToUser(&Data{Theme: t}); err != nil {
 		return err
 	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
+	invalidateLoaded()
 	return nil
 }
 
@@ -496,9 +499,7 @@ func SaveContextBar(on bool) error {
 	if err := NewLoader().SaveToUser(&Data{ContextBar: &on}); err != nil {
 		return err
 	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
+	invalidateLoaded()
 	return nil
 }
 
@@ -557,8 +558,6 @@ func SavePersonaAt(cwd, name string, userLevel bool) error {
 		return err
 	}
 
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
+	invalidateLoaded()
 	return nil
 }

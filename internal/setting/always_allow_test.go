@@ -32,19 +32,19 @@ func TestAllowRulesForIsExact(t *testing.T) {
 	}
 	for _, tc := range cases {
 		args := map[string]any{"command": tc.arg, "path": tc.arg, "url": tc.arg}
-		got, ok := AllowRulesFor(tc.tool, args)
-		if !slices.Equal(got, tc.want) || ok != (tc.want != nil) {
-			t.Errorf("%s(%q) = %v %v, want %v", tc.tool, tc.arg, got, ok, tc.want)
+		got := allowRulesFor(tc.tool, args)
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s(%q) = %v, want %v", tc.tool, tc.arg, got, tc.want)
 			continue
 		}
-		if ok {
+		if got != nil {
 			if _, matched := MatchAllowList(tc.tool, args, got); !matched {
 				t.Errorf("%s(%q): its own rules %v do not cover it", tc.tool, tc.arg, got)
 			}
 		}
 	}
 
-	rules, _ := AllowRulesFor("Bash", map[string]any{"command": "touch x && echo ok"})
+	rules := allowRulesFor("Bash", map[string]any{"command": "touch x && echo ok"})
 	for _, other := range []string{"touch y", "touch x && echo ok && rm z", "touch x -r"} {
 		if _, matched := MatchAllowList("Bash", map[string]any{"command": other}, rules); matched {
 			t.Errorf("rules %v cover a different command %q", rules, other)
@@ -78,7 +78,7 @@ func TestAddLocalAllowRulesKeepsTheRestOfTheFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 { // the second call must not duplicate
-		if _, err := AddLocalAllowRules(cwd, []string{"Bash(make:test)", "Bash(ls)"}); err != nil {
+		if _, err := addLocalAllowRules(cwd, []string{"Bash(make:test)", "Bash(ls)"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -114,7 +114,7 @@ func TestAddLocalAllowRulesLeavesAnUnparsableFileAlone(t *testing.T) {
 	path := filepath.Join(cwd, ".san", "settings.local.json")
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	_ = os.WriteFile(path, []byte(`{"permissions": {`), 0o644)
-	if _, err := AddLocalAllowRules(cwd, []string{"Bash(ls)"}); err == nil {
+	if _, err := addLocalAllowRules(cwd, []string{"Bash(ls)"}); err == nil {
 		t.Fatal("wrote into an unparsable file")
 	}
 	if got, _ := os.ReadFile(path); string(got) != `{"permissions": {` {

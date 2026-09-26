@@ -226,15 +226,20 @@ func awaitMainNotice(ch <-chan mainNotice) tea.Cmd {
 // unconditional: after the read the chan is empty, so the next firing waits for
 // the next message.
 func (m *model) onMainNotice(n mainNotice) tea.Cmd {
-	next := awaitMainNotice(m.mainNotices)
+	return tea.Batch(m.deliverNotice(n), awaitMainNotice(m.mainNotices))
+}
+
+// deliverNotice places a notice at the earliest point the conversation can
+// take it (see notify.go).
+func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 	switch {
 	case m.conv.LastMessageIsStreaming():
 		m.pendingNotices = append(m.pendingNotices, n)
-		return next
+		return nil
 	case m.conv.Stream.Active:
-		return tea.Batch(m.injectIntoRunningTurn(n), next)
+		return m.injectIntoRunningTurn(n)
 	default:
-		return tea.Batch(m.injectAsNewTurn(n), next)
+		return m.injectAsNewTurn(n)
 	}
 }
 
