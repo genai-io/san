@@ -26,7 +26,6 @@ import (
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
-	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	_ "github.com/genai-io/san/internal/tool/register"
 )
@@ -44,7 +43,6 @@ func initInfrastructure() error {
 	initExtensions(appCwd)
 
 	// Phase 3: tool infrastructure
-	tool.Initialize()
 	agent.Initialize()
 	if err := task.Initialize(task.Options{}); err != nil {
 		log.Logger().Warn("task output directory unavailable; task output will not persist", zap.Error(err))

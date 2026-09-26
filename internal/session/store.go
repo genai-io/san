@@ -55,7 +55,7 @@ func NewStore(cwd string) (*Store, error) {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectID := encodePath(cwd)
+	projectID := EncodePath(cwd)
 	projectDir := filepath.Join(confdir.Dir(homeDir), "projects", projectID)
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create project directory: %w", err)
@@ -78,13 +78,13 @@ func NewStoreWithDir(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
-	txStore, err := transcript.NewFileStore(dir, encodePath(dir))
+	txStore, err := transcript.NewFileStore(dir, EncodePath(dir))
 	if err != nil {
 		return nil, fmt.Errorf("create transcript store: %w", err)
 	}
 	return &Store{
 		cwd:             dir,
-		projectID:       encodePath(dir),
+		projectID:       EncodePath(dir),
 		projectDir:      dir,
 		transcriptStore: txStore,
 	}, nil

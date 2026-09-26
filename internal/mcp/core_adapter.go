@@ -12,35 +12,36 @@ import (
 // mcpCoreTool wraps an MCP tool as a core.Tool for use with core.Agent.
 type mcpCoreTool struct {
 	schema core.ToolSchema
-	caller *Caller
+	tools  *Registry
 }
 
 func (t *mcpCoreTool) Schema() core.ToolSchema { return t.schema }
 
 func (t *mcpCoreTool) Run(ctx context.Context, call ai.ToolCall) (agent.Result, error) {
 	input, _ := core.ParseToolInput(call.Input)
-	content, isError, err := t.caller.CallTool(ctx, t.schema.Name, input)
+	result, err := t.tools.CallTool(ctx, t.schema.Name, input)
 	if err != nil {
 		return agent.Result{}, err
 	}
-	if isError {
+	content := ExtractContent(result.Content)
+	if result.IsError {
 		return agent.TextResult(content), fmt.Errorf("%s", content)
 	}
 	return agent.TextResult(content), nil
 }
 
 // AsCoreTools converts MCP tool schemas into core.Tool implementations
-// that route execution through the provided Caller.
-func AsCoreTools(schemas []core.ToolSchema, caller *Caller) []core.Tool {
-	if caller == nil || len(schemas) == 0 {
+// that route execution through tools.
+func AsCoreTools(schemas []core.ToolSchema, tools *Registry) []core.Tool {
+	if tools == nil || len(schemas) == 0 {
 		return nil
 	}
-	tools := make([]core.Tool, 0, len(schemas))
+	out := make([]core.Tool, 0, len(schemas))
 	for _, schema := range schemas {
 		if !IsMCPTool(schema.Name) {
 			continue
 		}
-		tools = append(tools, &mcpCoreTool{schema: schema, caller: caller})
+		out = append(out, &mcpCoreTool{schema: schema, tools: tools})
 	}
-	return tools
+	return out
 }

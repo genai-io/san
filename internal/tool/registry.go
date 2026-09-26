@@ -32,14 +32,6 @@ func (r *Registry) Register(tool Tool) {
 	r.tools[strings.ToLower(tool.Name())] = tool
 }
 
-// RegisterAlias adds an additional name that resolves to the same tool.
-// Use this for backward-compatible renames (e.g., AgentOutput → TaskOutput).
-func (r *Registry) RegisterAlias(alias string, tool Tool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.tools[strings.ToLower(alias)] = tool
-}
-
 // Unregister removes a tool by name. Returns true if the tool existed.
 func (r *Registry) Unregister(name string) bool {
 	r.mu.Lock()

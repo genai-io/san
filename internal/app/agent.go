@@ -109,7 +109,7 @@ func (m *model) promptParams() agent.BuildParams {
 		Persona:        m.personaPrompt(),
 		AgentDirectory: func() string { return m.services.Subagent.GetAgentsSection() },
 		DisabledTools:  m.services.Setting.DisabledTools(),
-		MCPTools:       mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)),
+		MCPTools:       mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), m.services.MCP),
 
 		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
@@ -133,7 +133,7 @@ func (m *model) syncMCPTools() {
 	disabled := m.services.Setting.DisabledTools()
 
 	live := make(map[string]bool)
-	for _, t := range mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)) {
+	for _, t := range mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), m.services.MCP) {
 		name := t.Schema().Name
 		// The /tool panel's disable applies to MCP tools here for the same
 		// reason agent.BuildParams applies it when the agent is built.

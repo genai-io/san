@@ -78,13 +78,6 @@ func DefaultEngine() *Engine {
 	return defaultEngine
 }
 
-// defaultEngine is the package-level hook engine. Initialized to an
-// empty (zero-hook) engine so callers that fire events before
-// Initialize is called don't crash.
-var defaultEngine = newEmptyEngine()
-
-// newEmptyEngine returns an Engine wired to empty settings — fires no
-// hooks until Initialize installs a real one.
-func newEmptyEngine() *Engine {
-	return NewEngine(setting.NewData(), "", "", "")
-}
+// defaultEngine is the package-level hook engine: empty settings, so events
+// fired before Initialize installs a real one reach no hooks.
+var defaultEngine = NewEngine(setting.NewData(), "", "", "")

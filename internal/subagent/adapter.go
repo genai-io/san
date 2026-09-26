@@ -76,7 +76,6 @@ func (a *ExecutorAdapter) ResolveAgentSelection(name string) (tool.AgentConfigIn
 	return info, config, true
 }
 
-
 // GetAgentConfig returns configuration for an optional agent name.
 func (a *ExecutorAdapter) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	info, _, ok := a.ResolveAgentSelection(name)

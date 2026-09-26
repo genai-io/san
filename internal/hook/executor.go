@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -144,7 +145,7 @@ func (e *Engine) applyHookOutput(outcome HookOutcome, hookOutput HookOutput) Hoo
 	if hookOutput.Continue != nil && !*hookOutput.Continue {
 		outcome.ShouldContinue = false
 		outcome.ShouldBlock = true
-		outcome.BlockReason = firstNonEmpty(hookOutput.StopReason, hookOutput.Reason)
+		outcome.BlockReason = cmp.Or(hookOutput.StopReason, hookOutput.Reason)
 	}
 
 	if hookOutput.SystemMessage != "" {
@@ -260,15 +261,6 @@ func appendContext(a, b string) string {
 		return b
 	}
 	return a + "\n" + b
-}
-
-func firstNonEmpty(strs ...string) string {
-	for _, s := range strs {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }
 
 func parsePermissionUpdate(v any) PermissionUpdate {

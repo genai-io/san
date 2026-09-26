@@ -70,7 +70,7 @@ var (
 )
 
 // Free functions.
-func NewCaller(tools Tools) *Caller
+func AsCoreTools(schemas []core.ToolSchema, tools *Registry) []core.Tool
 func PrepareServerEdit(reg *Registry, name string) (*EditInfo, error)
 func ApplyServerEdit(reg *Registry, info *EditInfo) error
 func ConnectServers(ctx context.Context, servers Servers, serverNames []string) (cleanup func(), errs []error)

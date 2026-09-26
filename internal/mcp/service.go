@@ -41,7 +41,7 @@ func Initialize(opts Options) error {
 // This is the only seam. There is no separate Service interface — every
 // consumer (subagent executor, TUI selector, agent tool wiring,
 // cmd subcommands) depends on *Registry directly. Tool execution goes
-// through NewCaller(reg). Config editing uses the free functions
+// through AsCoreTools. Config editing uses the free functions
 // PrepareServerEdit / ApplyServerEdit.
 func DefaultRegistry() *Registry {
 	registryMu.RLock()

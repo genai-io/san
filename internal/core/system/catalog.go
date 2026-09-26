@@ -3,10 +3,11 @@ package system
 import (
 	"embed"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -73,7 +74,7 @@ func wrap(name string, attrs map[string]string, body string) string {
 	var b strings.Builder
 	b.WriteByte('<')
 	b.WriteString(name)
-	for _, k := range sortedKeys(attrs) {
+	for _, k := range slices.Sorted(maps.Keys(attrs)) {
 		fmt.Fprintf(&b, " %s=%q", k, attrs[k])
 	}
 	b.WriteString(">\n")
@@ -82,18 +83,6 @@ func wrap(name string, attrs map[string]string, body string) string {
 	b.WriteString(name)
 	b.WriteByte('>')
 	return b.String()
-}
-
-func sortedKeys(m map[string]string) []string {
-	if len(m) == 0 {
-		return nil
-	}
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	sort.Strings(ks)
-	return ks
 }
 
 // Part: identity (slot 0)

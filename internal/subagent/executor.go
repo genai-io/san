@@ -396,8 +396,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	// Add MCP tool executors
 	if e.mcpRegistry != nil {
-		mcpCaller := mcp.NewCaller(e.mcpRegistry)
-		for _, t := range mcp.AsCoreTools(schemas, mcpCaller) {
+		for _, t := range mcp.AsCoreTools(schemas, e.mcpRegistry) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}
