@@ -14,12 +14,8 @@ type Model struct {
 
 func New() Model {
 	return Model{
-		AsyncHookQueue: NewAsyncHookQueue(),
+		AsyncHookQueue: &AsyncHookQueue{},
 	}
-}
-
-func NewAsyncHookQueue() *AsyncHookQueue {
-	return &AsyncHookQueue{}
 }
 
 // AsyncHookRewake holds data for an async hook continuation.

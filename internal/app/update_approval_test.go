@@ -3,13 +3,13 @@ package app
 import (
 	"testing"
 
-	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/tool/perm"
 )
 
 func TestPermDecisionRecordSnapshotsInput(t *testing.T) {
 	input := map[string]any{"prompt": "inspect the repository"}
-	req := &conv.PermGateRequest{
+	req := &agent.PermGateRequest{
 		RequestID: "permission-1",
 		ToolName:  "Agent",
 		Input:     input,

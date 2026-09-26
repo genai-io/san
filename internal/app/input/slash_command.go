@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -584,12 +585,7 @@ func (c *SlashCommandController) handleThinkCommand(_ context.Context, args stri
 }
 
 func containsThinkingEffort(efforts []string, effort string) bool {
-	for _, allowed := range efforts {
-		if strings.EqualFold(allowed, effort) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(efforts, func(e string) bool { return strings.EqualFold(e, effort) })
 }
 
 func (c *SlashCommandController) handleLoopCommand(_ context.Context, args string) (string, tea.Cmd, error) {

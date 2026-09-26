@@ -22,10 +22,6 @@ import (
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
-func (m *model) InitTaskStorage() {
-	m.initTaskStorage(m.services.Session.ID())
-}
-
 func (m *model) PersistSession() error {
 	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
 		return err

@@ -428,12 +428,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
-		m.hasRunningBackgroundTask()
-}
-
-// hasRunningBackgroundTask reports whether any background task is executing.
-func (m *model) hasRunningBackgroundTask() bool {
-	return m.services.Task.HasRunning()
+		m.services.Task.HasRunning()
 }
 
 // executingTrackerItem reports whether the executor behind a tracker item is

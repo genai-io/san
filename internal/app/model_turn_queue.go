@@ -23,12 +23,12 @@ const maxNoticesPerDrain = 8
 
 func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	if msg.Blocked {
-		log.QueueLog("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
+		log.Logger().Sugar().Debugf("handleStopHookResult: hooks BLOCKED reason=%q", msg.Reason)
 		blockMsg := "Stop hook blocked: " + msg.Reason
 		providerMsg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: blockMsg}).ToMessage()
 		return m.sendToAgent(providerMsg)
 	}
-	log.QueueLog("handleStopHookResult: hooks done, persisting")
+	log.Logger().Sugar().Debugf("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
 	if cmd := m.persistAfterTurn(); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -107,10 +107,10 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	// producing one TurnEnded per queued message. Leaving edit mode re-kicks a
 	// drain held by a head item under edit (see routeKeypress).
 	if cmd, released := m.releaseQueuedMessage(); released {
-		log.QueueLog("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
+		log.Logger().Sugar().Debugf("drainTurnQueues: released queued message, remaining=%d", m.userInput.Queue.Len())
 		return cmd, true
 	} else if m.userInput.Queue.SelectIdx == 0 {
-		log.QueueLog("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
+		log.Logger().Sugar().Debugf("drainTurnQueues: head item under edit, holding %d queued", m.userInput.Queue.Len())
 	}
 
 	if len(m.systemInput.CronQueue) > 0 {
@@ -156,7 +156,7 @@ func (m *model) releaseParkedNotices() tea.Cmd {
 	if len(notices) == 0 {
 		return nil
 	}
-	log.QueueLog("releaseParkedNotices: releasing %d notice(s) mid-turn", len(notices))
+	log.Logger().Sugar().Debugf("releaseParkedNotices: releasing %d notice(s) mid-turn", len(notices))
 	return m.injectIntoRunningTurn(mergeNotices(notices))
 }
 

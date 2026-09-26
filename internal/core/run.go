@@ -112,7 +112,7 @@ func (a *agent) Run(ctx context.Context) error {
 	}()
 
 	for {
-		glog.QueueLog("agent.Run: waitForInput blocking...")
+		glog.Logger().Sugar().Debugf("agent.Run: waitForInput blocking...")
 		if err := a.waitForInput(ctx); err != nil {
 			if err == errStopped {
 				return nil
@@ -120,7 +120,7 @@ func (a *agent) Run(ctx context.Context) error {
 			runErr = err
 			return err
 		}
-		glog.QueueLog("agent.Run: waitForInput received message")
+		glog.Logger().Sugar().Debugf("agent.Run: waitForInput received message")
 
 		// A fresh message supersedes a latched interrupt: an Esc that landed
 		// while the agent sat idle here had no turn to stop, and keeping the
@@ -128,10 +128,10 @@ func (a *agent) Run(ctx context.Context) error {
 		a.interruptPending.Store(false)
 
 		for {
-			glog.QueueLog("agent.Run: starting ThinkAct")
+			glog.Logger().Sugar().Debugf("agent.Run: starting ThinkAct")
 			result, err, interrupted := a.runOneTurn(ctx)
 			if interrupted {
-				glog.QueueLog("agent.Run: interrupt latched, resuming wait")
+				glog.Logger().Sugar().Debugf("agent.Run: interrupt latched, resuming wait")
 				break
 			}
 
@@ -139,11 +139,11 @@ func (a *agent) Run(ctx context.Context) error {
 			// emitting TurnEnded would fire OnTurnEnd on top of OnAgentStop.
 			// Cancellation still emits (OnTurnEnd guards StopCanceled).
 			if result != nil && result.StopReason != StopError {
-				glog.QueueLog("agent.Run: ThinkAct done, emitting TurnEnded")
+				glog.Logger().Sugar().Debugf("agent.Run: ThinkAct done, emitting TurnEnded")
 				a.emit(ctx, TurnEnded{Result: *result})
 			}
 			if err != nil {
-				glog.QueueLog("agent.Run: ThinkAct error: %v", err)
+				glog.Logger().Sugar().Debugf("agent.Run: ThinkAct error: %v", err)
 				if err == errStopped {
 					return nil
 				}
@@ -152,7 +152,7 @@ func (a *agent) Run(ctx context.Context) error {
 				// waitForInput — ai.Repair strips any orphaned tool_use blocks
 				// left in the conversation.
 				if ctx.Err() == nil && errors.Is(err, context.Canceled) {
-					glog.QueueLog("agent.Run: turn interrupted by user, resuming wait")
+					glog.Logger().Sugar().Debugf("agent.Run: turn interrupted by user, resuming wait")
 					// Consume the latch that triggered this cancel so the
 					// next user message can start a fresh turn. Narrow
 					// race: a brand-new Interrupt that arrives between
@@ -173,7 +173,7 @@ func (a *agent) Run(ctx context.Context) error {
 				runErr = drainErr
 				return drainErr
 			}
-			glog.QueueLog("agent.Run: post-ThinkAct drain n=%d", n)
+			glog.Logger().Sugar().Debugf("agent.Run: post-ThinkAct drain n=%d", n)
 			if n == 0 {
 				break
 			}

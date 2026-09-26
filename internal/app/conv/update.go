@@ -54,7 +54,7 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 // --- Agent event dispatch ---
 
 func handleAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
-	log.QueueLog("handleAgentEvent: %T", ev)
+	log.Logger().Sugar().Debugf("handleAgentEvent: %T", ev)
 	switch e := ev.(type) {
 	case core.TurnEnded:
 		m.Stream.Stop()
@@ -83,7 +83,7 @@ func handleAgentEventBatch(rt Runtime, m *Model, events []core.Event, closed boo
 	needsContinue := true
 
 	for _, ev := range events {
-		log.QueueLog("handleAgentEventBatch: %T", ev)
+		log.Logger().Sugar().Debugf("handleAgentEventBatch: %T", ev)
 		switch e := ev.(type) {
 		case core.TurnEnded:
 			m.Stream.Stop()

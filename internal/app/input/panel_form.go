@@ -413,29 +413,13 @@ func (f *selfLearnForm) renderTextRow(i int, row configRow, width int) string {
 
 	avail := max(width-lipgloss.Width(head)-1, 8)
 	if value == "" && !editing {
-		return head + selflearnMutedStyle.Render(tailTruncate(row.placeholder, avail))
+		return head + selflearnMutedStyle.Render(kit.TruncateKeepEnd(row.placeholder, avail))
 	}
-	shown := tailTruncate(value, avail-1) // room for the edit caret
+	shown := kit.TruncateKeepEnd(value, avail-1) // room for the edit caret
 	if editing {
 		shown += "_"
 	}
 	return head + selflearnValueStyle.Render(shown)
-}
-
-// tailTruncate keeps the last n columns of s, prefixing "…" when clipped, so a
-// long path shows its most-specific tail rather than its common root.
-func tailTruncate(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	if n == 1 {
-		return "…"
-	}
-	return "…" + string(r[len(r)-(n-1):])
 }
 
 // valueChip wraps a numeric value in chip-style brackets so it reads as

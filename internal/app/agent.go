@@ -683,7 +683,7 @@ func (m *model) ContinueOutbox() tea.Cmd {
 	return conv.DrainAgentOutbox(m.services.Agent.Outbox())
 }
 
-func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
+func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	m.services.Agent.SetPendingPermission(req)
 	if req == nil {
 		m.conv.Tool.ClearAwaitingApproval()
@@ -780,7 +780,7 @@ func permDetail(req *perm.PermissionRequest) json.RawMessage {
 // Agent tool configuration
 // ============================================================
 
-func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.PermissionRequest {
+func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.PermissionRequest {
 	permReq := &perm.PermissionRequest{
 		ToolName:    req.ToolName,
 		Description: req.Description,

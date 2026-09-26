@@ -92,7 +92,7 @@ func initExtensions(cwd string) {
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
-		DynamicProviders:   []func() []command.Info{skillCommandInfos},
+		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
 		PluginCommandPaths: pluginCommandPaths,
 	})
 	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
@@ -130,7 +130,7 @@ func (m *model) reloadProjectServices(cwd string) {
 
 	command.Initialize(command.Options{
 		CWD:                cwd,
-		DynamicProviders:   []func() []command.Info{skillCommandInfos},
+		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
 		PluginCommandPaths: pluginCommandPaths,
 	})
 	m.services.Command = command.Default()
@@ -215,8 +215,4 @@ func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.S
 		}
 		return result
 	}
-}
-
-func skillCommandInfos() []command.Info {
-	return input.SkillCommandInfos()
 }

@@ -50,7 +50,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	// After the run options: a -c / -r start has adopted its session's task
 	// directory by now, and this is a no-op for it. Before, every resume left
 	// an empty tasks/<startup-id>/ behind and kept writing there.
-	m.InitTaskStorage()
+	m.initTaskStorage(m.services.Session.ID())
 	return m, nil
 }
 
