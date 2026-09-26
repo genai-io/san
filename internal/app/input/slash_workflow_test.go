@@ -108,3 +108,14 @@ func TestWorkflowCommandRefusesBadInput(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitQuotedKeepsQuotedValuesWhole(t *testing.T) {
+	got, err := splitQuoted(`review base="main branch"  note='say "hi"' x=`)
+	want := []string{"review", "base=main branch", `note=say "hi"`, "x="}
+	if err != nil || strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q, err %v; want %q", got, err, want)
+	}
+	if _, err := splitQuoted(`review base="main`); err == nil {
+		t.Fatal("unclosed quote accepted")
+	}
+}

@@ -42,3 +42,32 @@ func TestConnectServersCleanupDisconnectsWhatItConnected(t *testing.T) {
 		t.Fatal("cleanup left the subagent's own connection open")
 	}
 }
+
+// Two subagents sharing a server: the first to finish must leave it up for
+// the other, and the last one takes it down.
+func TestConnectServersSharedUntilLastCleanup(t *testing.T) {
+	r := NewRegistryForTest(map[string]ServerConfig{"own": {Name: "own", Type: TransportSTDIO, Command: "own"}})
+	r.newClientForConfig = func(cfg ServerConfig) *Client {
+		c := NewClient(cfg)
+		c.dial = dialing(newFakeSession())
+		return c
+	}
+
+	first, errs := ConnectServers(context.Background(), r, []string{"own"})
+	if len(errs) != 0 {
+		t.Fatalf("first ConnectServers() errors = %v", errs)
+	}
+	second, errs := ConnectServers(context.Background(), r, []string{"own"})
+	if len(errs) != 0 {
+		t.Fatalf("second ConnectServers() errors = %v", errs)
+	}
+
+	first()
+	if _, ok := r.GetClient("own"); !ok {
+		t.Fatal("first cleanup disconnected a server the second caller still holds")
+	}
+	second()
+	if _, ok := r.GetClient("own"); ok {
+		t.Fatal("last cleanup left the server connected")
+	}
+}

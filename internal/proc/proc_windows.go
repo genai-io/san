@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"unsafe"
 
@@ -14,26 +15,65 @@ import (
 
 // DetachSession is a no-op on Windows: there is no controlling-terminal /
 // /dev/tty concept to detach from. Grandchildren are reached at termination
-// instead — see TerminateGroup.
+// instead — see Start and TerminateGroup.
 func DetachSession(cmd *exec.Cmd) {}
 
 // GroupLeaderPID reports that Windows offers no signalable process group, so
 // callers must fall back to single-process controls.
 func GroupLeaderPID(cmd *exec.Cmd) (pid int, ok bool) { return 0, false }
 
-// TerminateGroup terminates cmd's child and every process descended from it,
-// read from a process snapshot; sig is ignored. A child that already exited
-// is reported as success, as on Unix.
-//
-// ponytail: a descendant whose parent already exited is missed, as a setsid'd
-// daemon is on Unix. A Job Object would catch it, but needs a post-Start call
-// at every call site: nothing can be assigned before the process exists.
+// jobs holds the Job Object each started command's processes run in, keyed by
+// its *exec.Cmd, until the child exits or TerminateGroup ends the job.
+var jobs sync.Map
+
+// Start starts cmd and puts its child in a new Job Object, which every process
+// it spawns joins too, so TerminateGroup reaches a descendant whose own parent
+// has already exited. A child that cannot be assigned (breakaway forbidden by
+// an outer job) still runs; TerminateGroup then falls back to the snapshot.
+func Start(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return nil
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_SET_QUOTA|windows.PROCESS_TERMINATE|windows.SYNCHRONIZE, false, uint32(cmd.Process.Pid))
+	if err != nil {
+		_ = windows.CloseHandle(job)
+		return nil
+	}
+	if err := windows.AssignProcessToJobObject(job, h); err != nil {
+		_ = windows.CloseHandle(h)
+		_ = windows.CloseHandle(job)
+		return nil
+	}
+	jobs.Store(cmd, job)
+	go func() {
+		_, _ = windows.WaitForSingleObject(h, windows.INFINITE)
+		_ = windows.CloseHandle(h)
+		if job, ok := jobs.LoadAndDelete(cmd); ok {
+			_ = windows.CloseHandle(job.(windows.Handle))
+		}
+	}()
+	return nil
+}
+
+// TerminateGroup terminates cmd's child and every process descended from it:
+// its Job Object when Start made one, plus the tree read from a process
+// snapshot, which also covers a child spawned before the job was assigned;
+// sig is ignored. A child that already exited is reported as success, as on
+// Unix.
 func TerminateGroup(cmd *exec.Cmd, _ syscall.Signal) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
 	descendants := descendantsOf(uint32(cmd.Process.Pid))
 	err := cmd.Process.Kill()
+	if job, ok := jobs.LoadAndDelete(cmd); ok {
+		_ = windows.TerminateJobObject(job.(windows.Handle), 1)
+		_ = windows.CloseHandle(job.(windows.Handle))
+	}
 	for _, pid := range descendants {
 		if h, openErr := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid); openErr == nil {
 			_ = windows.TerminateProcess(h, 1)

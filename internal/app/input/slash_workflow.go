@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -29,7 +30,10 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 	if !ok {
 		return "", nil, errors.New("the Workflow tool is not available in this build")
 	}
-	fields := strings.Fields(args)
+	fields, err := splitQuoted(args)
+	if err != nil {
+		return "", nil, err
+	}
 	if len(fields) == 0 {
 		list := wt.Saved()
 		if list == "" {
@@ -38,8 +42,6 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 		return "Saved workflows:" + list + "\n\nRun one with /workflow <name> [key=value …].", nil, nil
 	}
 
-	// ponytail: whitespace-split key=value, so an input value cannot contain a
-	// space; quote-aware parsing if a real definition needs one.
 	inputs := map[string]string{}
 	for _, kv := range fields[1:] {
 		k, v, ok := strings.Cut(kv, "=")
@@ -53,4 +55,39 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 		return "", nil, err
 	}
 	return bounds + "\nTask ID: " + id, nil, nil
+}
+
+// splitQuoted splits args on whitespace, keeping a run inside single or double
+// quotes together (quotes dropped), so key="two words" is one field.
+func splitQuoted(args string) ([]string, error) {
+	var fields []string
+	var cur strings.Builder
+	var quote rune
+	inField := false
+	for _, r := range args {
+		switch {
+		case quote != 0 && r == quote:
+			quote = 0
+		case quote != 0:
+			cur.WriteRune(r)
+		case r == '"' || r == '\'':
+			quote, inField = r, true
+		case unicode.IsSpace(r):
+			if inField {
+				fields = append(fields, cur.String())
+				cur.Reset()
+				inField = false
+			}
+		default:
+			cur.WriteRune(r)
+			inField = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unclosed %c quote", quote)
+	}
+	if inField {
+		fields = append(fields, cur.String())
+	}
+	return fields, nil
 }

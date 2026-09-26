@@ -150,7 +150,10 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
 
-	err = cmd.Run()
+	err = proc.Start(cmd)
+	if err == nil {
+		err = cmd.Wait()
+	}
 	duration := time.Since(start)
 
 	// A command that backgrounds a child inheriting the output pipe (e.g.
@@ -348,7 +351,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	}
 
 	// Start the command
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(cmd); err != nil {
 		cancel()
 		return toolresult.ToolResult{
 			Success: false,

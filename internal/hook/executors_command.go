@@ -47,7 +47,10 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	runErr := cmd.Run()
+	runErr := proc.Start(cmd)
+	if runErr == nil {
+		runErr = cmd.Wait()
+	}
 	exitCode := getExitCode(runErr)
 	if exitCode < 0 {
 		outcome.Error = runErr
@@ -125,7 +128,7 @@ func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd settin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	if err := cmd.Start(); err != nil {
+	if err := proc.Start(cmd); err != nil {
 		outcome.Error = fmt.Errorf("failed to start hook: %w", err)
 		return outcome
 	}

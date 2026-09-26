@@ -33,6 +33,22 @@ func TestPowerShellArgsCarryTheScriptVerbatim(t *testing.T) {
 	}
 }
 
+// A script past the command-line cap runs from a temp file instead, which
+// removes itself when PowerShell runs it.
+func TestPowerShellArgsMoveALongScriptToAFile(t *testing.T) {
+	script := strings.Repeat("#", maxEncodedCommand)
+	args := powerShellArgs(script)
+	if args[len(args)-2] != "-File" {
+		t.Fatalf("args = %q, want -File", args[:len(args)-1])
+	}
+	path := args[len(args)-1]
+	defer os.Remove(path)
+	body, err := os.ReadFile(path)
+	if err != nil || !strings.HasSuffix(string(body), "\n"+script) {
+		t.Fatalf("temp script does not end with the command (err %v)", err)
+	}
+}
+
 func TestShellToolIsNamedForItsShell(t *testing.T) {
 	bash := (&ShellTool{shell: proc.Shell{Kind: proc.ShellBash, Path: "/bin/bash"}}).Schema()
 	if bash.Name != tool.ToolBash {
@@ -80,6 +96,17 @@ func TestPowerShellRunsACommand(t *testing.T) {
 			if !strings.Contains(result.Output, want) {
 				t.Errorf("output %q lacks %q", result.Output, want)
 			}
+		}
+	})
+}
+
+func TestPowerShellRunsAScriptPastTheCommandLineCap(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		result := sh.ExecuteApproved(context.Background(), map[string]any{
+			"command": "# " + strings.Repeat("x", 20000) + "\nWrite-Output 'long 中文'",
+		}, t.TempDir())
+		if !result.Success || !strings.Contains(result.Output, "long 中文") {
+			t.Fatalf("Success=%v Error=%q Output=%q", result.Success, result.Error, result.Output)
 		}
 	})
 }

@@ -39,6 +39,8 @@ type Registry struct {
 	disabled              map[string]bool   // servers explicitly disabled by the user
 	connecting            map[string]bool   // servers currently being connected (async)
 	connectErr            map[string]string // last connection error for servers without a client
+	leaseMu               sync.Mutex
+	leases                map[string]int // callers holding a server ConnectServers connected
 	loader                *ConfigLoader
 	cwd                   string
 

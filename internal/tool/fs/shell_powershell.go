@@ -3,6 +3,7 @@ package fs
 import (
 	"encoding/base64"
 	"encoding/binary"
+	"os"
 	"unicode/utf16"
 )
 
@@ -18,18 +19,47 @@ func powerShellScript(command string) string {
 		"if ($LASTEXITCODE) { exit $LASTEXITCODE }\n"
 }
 
+// maxEncodedCommand keeps -EncodedCommand clear of Windows' ~32K-character
+// command-line cap, leaving room for the executable path and other flags.
+const maxEncodedCommand = 30000
+
 // powerShellArgs runs script through -EncodedCommand: base64 of its UTF-16LE
-// bytes, so no quote or backslash in it is ever re-read by a command line.
-// ponytail: Windows caps a command line near 32K characters, which this
-// encoding reaches at about 12K of script; write longer ones to a file first.
+// bytes, so no quote or backslash in it is ever re-read by a command line. A
+// script too long for that runs from a temp file that deletes itself.
 func powerShellArgs(script string) []string {
+	flags := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"}
 	units := utf16.Encode([]rune(script))
 	raw := make([]byte, 2*len(units))
 	for i, u := range units {
 		binary.LittleEndian.PutUint16(raw[2*i:], u)
 	}
-	return []string{
-		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-		"-EncodedCommand", base64.StdEncoding.EncodeToString(raw),
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	if len(encoded) > maxEncodedCommand {
+		if path, err := writeSelfDeletingScript(script); err == nil {
+			return append(flags, "-File", path)
+		}
+		// Unwritable temp dir: the encoded form still fails, but with Windows'
+		// own "command line too long" error.
 	}
+	return append(flags, "-EncodedCommand", encoded)
+}
+
+// writeSelfDeletingScript saves script as a .ps1 whose first line removes the
+// file; PowerShell has parsed the whole file by then. The UTF-8 BOM makes
+// Windows PowerShell 5.1 read it as UTF-8 rather than the ANSI code page.
+func writeSelfDeletingScript(script string) (string, error) {
+	f, err := os.CreateTemp("", "san-*.ps1")
+	if err != nil {
+		return "", err
+	}
+	body := "\uFEFFRemove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n" + script
+	_, err = f.WriteString(body)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
