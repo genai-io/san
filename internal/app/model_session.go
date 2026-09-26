@@ -243,7 +243,7 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
-	if m.services.Tracker.GetStorageDir() != "" {
+	if m.services.Tracker.StorageDir() != "" {
 		return
 	}
 

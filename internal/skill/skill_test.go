@@ -256,13 +256,13 @@ Test instructions.
 	}
 
 	// Test GetActive
-	activeSkills := registry.GetActive()
+	activeSkills := registry.ListActive()
 	if len(activeSkills) != 1 {
 		t.Errorf("GetActive returned %d skills, want 1", len(activeSkills))
 	}
 
 	// Test GetSkillsSection
-	prompt := registry.GetSkillsSection()
+	prompt := registry.SkillsSection()
 	if prompt == "" {
 		t.Error("GetSkillsSection returned empty string for active skill")
 	}

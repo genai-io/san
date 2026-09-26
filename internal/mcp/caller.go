@@ -24,7 +24,7 @@ func ExtractContent(contents []ToolResultContent) string {
 func ConnectServers(ctx context.Context, servers *Manager, serverNames []string) (cleanup func(), errs []error) {
 	var held []string
 	for _, name := range serverNames {
-		if _, ok := servers.GetConfig(name); !ok {
+		if _, ok := servers.Config(name); !ok {
 			errs = append(errs, fmt.Errorf("MCP server not configured: %s", name))
 			continue
 		}
@@ -53,7 +53,7 @@ func (r *Manager) hold(ctx context.Context, name string) (bool, error) {
 	r.holdersMu.Lock()
 	defer r.holdersMu.Unlock()
 	if r.holders[name] == 0 {
-		if c, ok := r.GetClient(name); ok && c.IsConnected() {
+		if c, ok := r.Client(name); ok && c.IsConnected() {
 			return false, nil
 		}
 		if err := r.Connect(ctx, name); err != nil {

@@ -196,8 +196,8 @@ func (r *Registry) List() []*Plugin {
 	return plugins
 }
 
-// GetEnabled returns all enabled plugins.
-func (r *Registry) GetEnabled() []*Plugin {
+// ListEnabled returns all enabled plugins.
+func (r *Registry) ListEnabled() []*Plugin {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

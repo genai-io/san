@@ -202,7 +202,7 @@ func TestRegistry(t *testing.T) {
 	}
 
 	// Test GetEnabled
-	enabled := registry.GetEnabled()
+	enabled := registry.ListEnabled()
 	if len(enabled) != 1 {
 		t.Errorf("Registry.GetEnabled() length = %d, want 1", len(enabled))
 	}

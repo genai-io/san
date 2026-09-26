@@ -96,7 +96,7 @@ func TestPrepareServerEditAndApplyServerEdit_RoundTrip(t *testing.T) {
 		t.Fatalf("ApplyServerEdit() error = %v", err)
 	}
 
-	cfg, ok := reg.GetConfig("demo")
+	cfg, ok := reg.Config("demo")
 	if !ok {
 		t.Fatal("expected edited server config to exist")
 	}

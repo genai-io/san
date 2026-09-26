@@ -42,7 +42,7 @@ func (r *Registry) LoadClaudePlugins(ctx context.Context) error
 // 查询
 func (r *Registry) Get(name string) (*Plugin, bool)
 func (r *Registry) List() []*Plugin
-func (r *Registry) GetEnabled() []*Plugin
+func (r *Registry) ListEnabled() []*Plugin
 func (r *Registry) Count() int
 func (r *Registry) EnabledCount() int
 func (r *Registry) GetByScope(scope Scope) []*Plugin

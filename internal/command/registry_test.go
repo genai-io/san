@@ -58,7 +58,7 @@ func TestGetMatchingCommands_IncludesDynamicProviders(t *testing.T) {
 		}
 	}))
 
-	matches := Default().GetMatching("sea")
+	matches := Default().Matching("sea")
 	if len(matches) != 1 {
 		t.Fatalf("expected 1 matching dynamic command, got %d", len(matches))
 	}
@@ -91,7 +91,7 @@ func TestLoadCustomCommandFile_WithFrontmatter(t *testing.T) {
 	if pc.FullName() != "myplug:deploy" {
 		t.Errorf("fullName = %q, want %q", pc.FullName(), "myplug:deploy")
 	}
-	inst := pc.GetInstructions()
+	inst := pc.Instructions()
 	if inst != "Run the deploy pipeline." {
 		t.Errorf("instructions = %q, want %q", inst, "Run the deploy pipeline.")
 	}
@@ -171,7 +171,7 @@ func TestIsCustomCommand_MatchesCustomCommands(t *testing.T) {
 
 	pc, ok := svc.IsCustomCommand("myplugin:greet")
 	if !ok {
-		cmds := svc.GetCustomCommands()
+		cmds := svc.CustomCommands()
 		t.Logf("available plugin commands: %+v", cmds)
 		t.Fatal("expected myplugin:greet to be found as plugin command")
 	}
@@ -196,7 +196,7 @@ func TestGetMatchingCommands_IncludesCustomCommands(t *testing.T) {
 	_, provider := setupPluginCommandPaths(t)
 	initTestService(t, "", withPluginCommandPaths(provider))
 
-	matches := Default().GetMatching("gre")
+	matches := Default().Matching("gre")
 	found := false
 	for _, m := range matches {
 		if m.Name == "myplugin:greet" {

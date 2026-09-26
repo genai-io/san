@@ -333,16 +333,16 @@ func closeInBackground(name string, client *Client) {
 	}()
 }
 
-// GetClient returns a client by name
-func (r *Manager) GetClient(name string) (*Client, bool) {
+// Client returns a client by name
+func (r *Manager) Client(name string) (*Client, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	client, ok := r.clients[name]
 	return client, ok
 }
 
-// GetConfig returns a server config by name
-func (r *Manager) GetConfig(name string) (ServerConfig, bool) {
+// Config returns a server config by name
+func (r *Manager) Config(name string) (ServerConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	config, ok := r.configs[name]
@@ -382,8 +382,8 @@ var emptySchema = map[string]any{
 	"properties": map[string]any{},
 }
 
-// GetToolSchemas returns core.ToolSchema schemas for all connected MCP servers
-func (r *Manager) GetToolSchemas() []core.ToolSchema {
+// ToolSchemas returns core.ToolSchema schemas for all connected MCP servers
+func (r *Manager) ToolSchemas() []core.ToolSchema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -393,7 +393,7 @@ func (r *Manager) GetToolSchemas() []core.ToolSchema {
 			continue
 		}
 
-		for _, mcpTool := range client.GetCachedTools() {
+		for _, mcpTool := range client.CachedTools() {
 			tools = append(tools, core.ToolSchema{
 				Name:        fmt.Sprintf("mcp__%s__%s", serverName, mcpTool.Name),
 				Description: mcpTool.Description,
@@ -422,7 +422,7 @@ func (r *Manager) CallTool(ctx context.Context, fullName string, arguments map[s
 		return nil, fmt.Errorf("invalid MCP tool name: %s", fullName)
 	}
 
-	client, ok := r.GetClient(serverName)
+	client, ok := r.Client(serverName)
 	if !ok {
 		return nil, fmt.Errorf("MCP server not connected: %s", serverName)
 	}
@@ -514,7 +514,7 @@ func (r *Manager) SetDisabled(name string, disabled bool) {
 // statePath returns the path to the state file.
 func (r *Manager) statePath() string {
 	if r.loader != nil {
-		return filepath.Join(r.loader.GetProjectDir(), "mcp-state.json")
+		return filepath.Join(r.loader.ProjectDir(), "mcp-state.json")
 	}
 	return ""
 }

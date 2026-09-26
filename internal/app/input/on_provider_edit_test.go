@@ -682,10 +682,10 @@ func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
 	if !store.IsConnected(llm.OpenAI, llm.AuthAPIKey) {
 		t.Fatal("expected OpenAI to be connected before remove")
 	}
-	if _, ok := store.GetCachedModels(llm.OpenAI, llm.AuthAPIKey); !ok {
+	if _, ok := store.CachedModels(llm.OpenAI, llm.AuthAPIKey); !ok {
 		t.Fatal("expected cached models before remove")
 	}
-	if cur := store.GetCurrentModel(); cur == nil || cur.Provider != llm.OpenAI {
+	if cur := store.CurrentModel(); cur == nil || cur.Provider != llm.OpenAI {
 		t.Fatal("expected current model to be OpenAI before remove")
 	}
 
@@ -715,12 +715,12 @@ func TestHandleCredentialRemoveClearsModelsAndConnection(t *testing.T) {
 	}
 
 	// Verify cached models are removed
-	if _, ok := store.GetCachedModels(llm.OpenAI, llm.AuthAPIKey); ok {
+	if _, ok := store.CachedModels(llm.OpenAI, llm.AuthAPIKey); ok {
 		t.Fatal("cached models should be removed after confirm")
 	}
 
 	// Verify current model is cleared
-	if cur := store.GetCurrentModel(); cur != nil {
+	if cur := store.CurrentModel(); cur != nil {
 		t.Fatalf("current model should be cleared after confirm, got %v", cur)
 	}
 }

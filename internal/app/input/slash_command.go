@@ -244,7 +244,7 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 
 func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args string) string {
 	if c.env.Skill != nil {
-		c.env.Input.Skill.SetPending(sk.FullName(), c.env.Skill.GetSkillInvocationPrompt(sk.FullName()))
+		c.env.Input.Skill.SetPending(sk.FullName(), c.env.Skill.SkillInvocationPrompt(sk.FullName()))
 	}
 	if c.env.Plugin != nil {
 		c.env.Input.Skill.PendingPluginRoot = plugin.FindPluginRootForPath(sk.SkillDir)
@@ -254,7 +254,7 @@ func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args s
 }
 
 func (c SlashCommandController) executeCustomCommand(pc *command.CustomCommand, args string) string {
-	if instructions := pc.GetInstructions(); instructions != "" {
+	if instructions := pc.Instructions(); instructions != "" {
 		c.env.Input.Skill.SetPending(pc.FullName(), command.WrapInvocation(pc.FullName(), instructions))
 	}
 	if c.env.Plugin != nil {
@@ -285,7 +285,7 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 		info := builtins[name]
 		fmt.Fprintf(&sb, "  /%s - %s\n", info.Name, info.Description)
 	}
-	pluginCmds := c.env.Command.GetCustomCommands()
+	pluginCmds := c.env.Command.CustomCommands()
 	if len(pluginCmds) > 0 {
 		sb.WriteString("\nCustom Commands:\n\n")
 		for _, cmd := range pluginCmds {
@@ -530,7 +530,7 @@ func (c *SlashCommandController) handleReloadPluginsCommand(ctx context.Context,
 func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	var mcpTools func() []core.ToolSchema
 	if c.env.MCP != nil {
-		mcpTools = c.env.MCP.GetToolSchemas
+		mcpTools = c.env.MCP.ToolSchemas
 	}
 	if err := c.env.Input.Tool.EnterSelect(c.env.Width, c.env.Height, mcpTools); err != nil {
 		return "", nil, err
@@ -742,7 +742,7 @@ func SkillCommandInfos() []command.Info {
 	if svc == nil {
 		return nil
 	}
-	enabled := svc.GetEnabled()
+	enabled := svc.ListEnabled()
 	infos := make([]command.Info, 0, len(enabled))
 	for _, sk := range enabled {
 		description := sk.Description

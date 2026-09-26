@@ -432,7 +432,7 @@ func (m *Model) Reset() {
 
 func (m *Model) HandleCwdChange(newCwd string) {
 	m.Suggestions.SetCwd(newCwd)
-	if m.Suggestions.GetSuggestionType() == suggest.TypeFile {
+	if m.Suggestions.SuggestionType() == suggest.TypeFile {
 		m.Suggestions.Hide()
 	}
 }
@@ -544,8 +544,8 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		m.Suggestions.MoveToEnd()
 		return nil, true
 	case "tab", "enter":
-		if selected := m.Suggestions.GetSelected(); selected != "" {
-			if m.Suggestions.GetSuggestionType() == suggest.TypeFile {
+		if selected := m.Suggestions.Selected(); selected != "" {
+			if m.Suggestions.SuggestionType() == suggest.TypeFile {
 				currentValue := m.Textarea.Value()
 				if atIdx := strings.LastIndex(currentValue, "@"); atIdx >= 0 {
 					newValue := currentValue[:atIdx] + "@" + selected

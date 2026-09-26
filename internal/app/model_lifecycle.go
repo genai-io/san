@@ -67,7 +67,7 @@ func newBaseModel() model {
 			MCPRegistry:     svc.MCP,
 			PluginRegistry:  svc.Plugin,
 			Setting:         svc.Setting,
-			LoadDisabled:    svc.Setting.GetDisabledToolsAt,
+			LoadDisabled:    svc.Setting.DisabledToolsAt,
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
 			Evolve: input.EvolveDeps{
 				Workspace: learnedStores.Snapshot,

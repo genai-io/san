@@ -125,12 +125,12 @@ func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) er
 	return nil
 }
 
-// GetDisabledAt returns the agents disabled in scope.
-func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool {
+// DisabledAt returns the agents disabled in scope.
+func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if s := r.store(scope); s != nil {
-		return s.GetDisabled()
+		return s.Disabled()
 	}
 	return make(map[string]bool)
 }
@@ -187,12 +187,12 @@ func (r *Registry) isDisabledInternal(name string) bool {
 	return false
 }
 
-// GetAgentsSection returns the body of the agents directory for the system
+// AgentsSection returns the body of the agents directory for the system
 // prompt. Only enabled agents, sorted by name (deterministic output).
 //
 // Returns plain body text without the outer XML tag; the system catalog
 // wraps it in <agents>…</agents>.
-func (r *Registry) GetAgentsSection() string {
+func (r *Registry) AgentsSection() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

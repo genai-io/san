@@ -22,7 +22,7 @@ func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.Agent
 	e.runReq = req
 	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent}, nil
 }
-func (e *recordingExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+func (e *recordingExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, false
@@ -36,7 +36,7 @@ func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfig
 	}
 	return tool.AgentConfigInfo{Name: name, PermissionMode: "default"}, e.resolvedConfig, true
 }
-func (e *recordingExecutor) GetParentModelID() string { return "parent-model" }
+func (e *recordingExecutor) ParentModelID() string { return "parent-model" }
 
 func TestAgentToolUsesOptionalName(t *testing.T) {
 	executor := &recordingExecutor{configOK: true}

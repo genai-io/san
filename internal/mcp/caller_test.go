@@ -16,7 +16,7 @@ func TestConnectServersCleanupKeepsPreexistingConnection(t *testing.T) {
 	}
 	cleanup()
 
-	if _, ok := r.GetClient("shared"); !ok {
+	if _, ok := r.Client("shared"); !ok {
 		t.Fatal("cleanup disconnected a connection the session already owned")
 	}
 }
@@ -33,12 +33,12 @@ func TestConnectServersCleanupDisconnectsWhatItConnected(t *testing.T) {
 	if len(errs) != 0 {
 		t.Fatalf("ConnectServers() errors = %v", errs)
 	}
-	if _, ok := r.GetClient("own"); !ok {
+	if _, ok := r.Client("own"); !ok {
 		t.Fatal("server not connected")
 	}
 	cleanup()
 
-	if _, ok := r.GetClient("own"); ok {
+	if _, ok := r.Client("own"); ok {
 		t.Fatal("cleanup left the subagent's own connection open")
 	}
 }
@@ -63,11 +63,11 @@ func TestConnectServersSharedUntilLastCleanup(t *testing.T) {
 	}
 
 	first()
-	if _, ok := r.GetClient("own"); !ok {
+	if _, ok := r.Client("own"); !ok {
 		t.Fatal("first cleanup disconnected a server the second caller still holds")
 	}
 	second()
-	if _, ok := r.GetClient("own"); ok {
+	if _, ok := r.Client("own"); ok {
 		t.Fatal("last cleanup left the server connected")
 	}
 }

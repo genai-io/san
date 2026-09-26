@@ -51,7 +51,7 @@ This is the full skill instructions content.
 	}
 
 	// Call GetInstructions() to read from disk
-	instructions := skill.GetInstructions()
+	instructions := skill.Instructions()
 	if instructions == "" {
 		t.Error("GetInstructions() should return the full content")
 	}
@@ -71,7 +71,7 @@ Updated instructions with new content.
 		t.Fatalf("Failed to update skill file: %v", err)
 	}
 
-	updatedInstructions := skill.GetInstructions()
+	updatedInstructions := skill.Instructions()
 	if !strings.Contains(updatedInstructions, "Updated instructions") {
 		t.Errorf("GetInstructions() should reflect disk changes immediately, got: %s", updatedInstructions)
 	}

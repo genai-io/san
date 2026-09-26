@@ -331,7 +331,7 @@ func TestPluginAgentPaths(t *testing.T) {
 	}
 
 	// Get enabled plugins
-	enabled := registry.GetEnabled()
+	enabled := registry.ListEnabled()
 	if len(enabled) != 1 {
 		t.Fatalf("Expected 1 enabled plugin, got %d", len(enabled))
 	}

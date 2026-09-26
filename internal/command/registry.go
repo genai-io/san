@@ -110,9 +110,9 @@ func (cc *CustomCommand) FullName() string {
 	return cc.Name
 }
 
-// GetInstructions reads the markdown body (excluding frontmatter) from disk,
+// Instructions reads the markdown body (excluding frontmatter) from disk,
 // or returns the embedded body for a builtin command.
-func (cc *CustomCommand) GetInstructions() string {
+func (cc *CustomCommand) Instructions() string {
 	if cc.FilePath == "" {
 		return cc.Body
 	}
@@ -193,7 +193,7 @@ func (s *Registry) List() []Info {
 	return all
 }
 
-func (s *Registry) GetMatching(prefix string) []Info {
+func (s *Registry) Matching(prefix string) []Info {
 	query := strings.ToLower(strings.TrimPrefix(prefix, "/"))
 	matches := make([]Info, 0)
 	seen := make(map[string]bool)
@@ -215,7 +215,7 @@ func (s *Registry) GetMatching(prefix string) []Info {
 		}
 	}
 
-	customCmds := s.GetCustomCommands()
+	customCmds := s.CustomCommands()
 	for _, cmd := range customCmds {
 		if fuzzyMatch(strings.ToLower(cmd.Name), query) {
 			if !seen[cmd.Name] {
@@ -241,7 +241,7 @@ func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool) {
 	return nil, false
 }
 
-func (s *Registry) GetCustomCommands() []Info {
+func (s *Registry) CustomCommands() []Info {
 	cmds := s.loadAllCustomCommands()
 	infos := make([]Info, 0, len(cmds))
 	for _, c := range cmds {

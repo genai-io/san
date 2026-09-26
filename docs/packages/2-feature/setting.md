@@ -43,7 +43,7 @@ func (s *Settings) Hooks() map[string][]Hook
 func (s *Settings) CheckPermission(toolName string, args map[string]any, session *SessionPermissions) PermissionBehavior
 func (s *Settings) HasPermissionToUseTool(toolName string, args map[string]any, session *SessionPermissions) PermissionDecision
 func (s *Settings) ResolveHookAllow(toolName string, args map[string]any, session *SessionPermissions) bool
-func (s *Settings) GetDisabledToolsAt(scope Scope) map[string]bool
+func (s *Settings) DisabledToolsAt(scope Scope) map[string]bool
 func (s *Settings) UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error
 
 // Package-level access

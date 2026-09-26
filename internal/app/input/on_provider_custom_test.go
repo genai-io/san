@@ -148,7 +148,7 @@ func TestSubmitCustomFormSavesAndConnects(t *testing.T) {
 	if !m.store.IsConnected(llm.CustomProvider, llm.AuthAPIKey) {
 		t.Fatal("provider should be connected after submit")
 	}
-	if models, ok := m.store.GetCachedModels(llm.CustomProvider, llm.AuthAPIKey); !ok || len(models) != 1 || models[0].ID != "model-1" {
+	if models, ok := m.store.CachedModels(llm.CustomProvider, llm.AuthAPIKey); !ok || len(models) != 1 || models[0].ID != "model-1" {
 		t.Fatalf("models should be cached after connect: %+v", models)
 	}
 	if got := os.Getenv(llm.CustomAPIKeyEnvVar); got != "sk-test" {

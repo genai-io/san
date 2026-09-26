@@ -158,9 +158,9 @@ func (c *Client) conn() conn {
 	return c.session
 }
 
-// GetCachedTools is what the server last said it offers, so the /mcp listing
+// CachedTools is what the server last said it offers, so the /mcp listing
 // and the tool picker never block on one.
-func (c *Client) GetCachedTools() []MCPTool {
+func (c *Client) CachedTools() []MCPTool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -266,7 +266,7 @@ func (c *Client) ToServer() Server {
 	return Server{
 		Config:        c.config,
 		Status:        status,
-		Tools:         c.GetCachedTools(),
+		Tools:         c.CachedTools(),
 		ResourceCount: resources,
 		PromptCount:   prompts,
 	}

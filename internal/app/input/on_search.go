@@ -56,7 +56,7 @@ func (s *SearchSelector) Enter(store *llm.Store, width, height int) error {
 		}
 	}
 
-	currentName := store.GetSearchProvider()
+	currentName := store.SearchProvider()
 	if currentName == "" {
 		currentName = string(search.ProviderExa)
 	}

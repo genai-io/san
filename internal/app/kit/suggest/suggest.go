@@ -515,7 +515,7 @@ func (s *State) totalSuggestions() int {
 	return len(s.suggestions)
 }
 
-func (s *State) GetSelected() string {
+func (s *State) Selected() string {
 	if !s.visible {
 		return ""
 	}
@@ -533,7 +533,7 @@ func (s *State) GetSelected() string {
 	return "/" + s.suggestions[s.selectedIdx].Name
 }
 
-func (s *State) GetSuggestionType() Type {
+func (s *State) SuggestionType() Type {
 	return s.suggestionType
 }
 

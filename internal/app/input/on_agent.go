@@ -73,8 +73,8 @@ func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 func (s *AgentSelector) EnterSelect(width, height int) error {
 	configs := s.registry.ListConfigs()
 	disabledByScope := map[setting.Scope]map[string]bool{
-		setting.ScopeProject: s.registry.GetDisabledAt(setting.ScopeProject),
-		setting.ScopeUser:    s.registry.GetDisabledAt(setting.ScopeUser),
+		setting.ScopeProject: s.registry.DisabledAt(setting.ScopeProject),
+		setting.ScopeUser:    s.registry.DisabledAt(setting.ScopeUser),
 	}
 
 	agents := make([]agentItem, 0, len(configs))

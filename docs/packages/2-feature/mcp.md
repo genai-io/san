@@ -28,7 +28,7 @@ one uses free functions; one stays on the concrete `*Manager`.
 
 | Role | Shape | Consumers |
 |---|---|---|
-| **Tools** — tool discovery + execution | `interface{ GetToolSchemas; CallTool }` | agent main loop, slash-command tool selector, subagent executor |
+| **Tools** — tool discovery + execution | `interface{ ToolSchemas; CallTool }` | agent main loop, slash-command tool selector, subagent executor |
 | **Servers** — server listing + connect lifecycle | `interface{ List; Connect; Disconnect; ConnectAll; DisconnectAll; GetConfig }` | `mcp.ConnectServers` (free function), subagent executor |
 | **ConfigStore** — load / edit / save server definitions | free functions `PrepareServerEdit` / `ApplyServerEdit` | `san mcp edit` CLI subcommand |
 | **Manager** — full server-state mutation (add / remove / set-disabled / set-status) | concrete `*Manager` | TUI `/mcp` selector — needs the wide surface and there is exactly one consumer |
@@ -46,7 +46,7 @@ package mcp
 
 // Tools — list MCP tool schemas and call one by name. Implemented by *Manager.
 type Tools interface {
-    GetToolSchemas() []core.ToolSchema
+    ToolSchemas() []core.ToolSchema
     CallTool(ctx context.Context, fullName string, args map[string]any) (*ToolResult, error)
 }
 
@@ -57,7 +57,7 @@ type Servers interface {
     Disconnect(name string) error
     ConnectAll(ctx context.Context) []error
     DisconnectAll()
-    GetConfig(name string) (ServerConfig, bool)
+    Config(name string) (ServerConfig, bool)
 }
 
 // *Manager is the only implementation; covers the Manager role and

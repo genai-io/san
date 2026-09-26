@@ -18,7 +18,7 @@ type EditInfo struct {
 // The caller is responsible for calling ApplyServerEdit after the editor closes
 // and removing the temp file.
 func PrepareServerEdit(reg *Manager, name string) (*EditInfo, error) {
-	config, ok := reg.GetConfig(name)
+	config, ok := reg.Config(name)
 	if !ok {
 		return nil, fmt.Errorf("server not found: %s\n\nUse /mcp list to see available servers", name)
 	}

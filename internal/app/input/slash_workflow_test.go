@@ -22,13 +22,13 @@ func (okExecutor) Run(context.Context, tool.AgentExecRequest) (*tool.AgentExecRe
 func (okExecutor) RunBackground(tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	return tool.AgentTaskInfo{}, nil
 }
-func (okExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+func (okExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	return tool.AgentConfigInfo{Name: name}, true
 }
 func (okExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, nil, true
 }
-func (okExecutor) GetParentModelID() string { return "m" }
+func (okExecutor) ParentModelID() string { return "m" }
 
 // workflowController wires /workflow to a Workflow tool reading dir, holding
 // the given saved definitions.

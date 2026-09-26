@@ -22,7 +22,7 @@ func TestSetStorageDirRollsBackAfterConfigurationFailure(t *testing.T) {
 		t.Fatal("SetStorageDir(invalid) succeeded")
 	}
 
-	if got := store.GetStorageDir(); got != validDir {
+	if got := store.StorageDir(); got != validDir {
 		t.Fatalf("storage dir = %q, want previous %q", got, validDir)
 	}
 	if _, ok := store.Get("1"); !ok {

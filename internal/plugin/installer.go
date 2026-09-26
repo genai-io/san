@@ -93,7 +93,7 @@ func (i *Installer) LoadMarketplaces() error {
 // "name" field matches the given name. Returns the marketplace ID if found.
 func (i *Installer) resolveMarketplaceByName(name string) string {
 	for _, id := range i.marketplaceManager.List() {
-		meta, err := i.marketplaceManager.GetMarketplaceMetadata(id)
+		meta, err := i.marketplaceManager.MarketplaceMetadata(id)
 		if err != nil {
 			continue
 		}
@@ -294,7 +294,7 @@ func (i *Installer) resolvePluginSource(marketplaceID, name string) (PluginSourc
 	if marketplaceID == "" {
 		return PluginSource{}, false
 	}
-	meta, err := i.marketplaceManager.GetMarketplaceMetadata(marketplaceID)
+	meta, err := i.marketplaceManager.MarketplaceMetadata(marketplaceID)
 	if err != nil {
 		return PluginSource{}, false
 	}
@@ -314,7 +314,7 @@ func (i *Installer) findMarketplaceFor(name string) string {
 		if _, ok := i.resolvePluginSource(id, name); ok {
 			return id
 		}
-		if _, err := i.marketplaceManager.GetPluginPath(id, name); err == nil {
+		if _, err := i.marketplaceManager.PluginPath(id, name); err == nil {
 			return id
 		}
 	}

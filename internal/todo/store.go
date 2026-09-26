@@ -385,8 +385,8 @@ func (s *Store) Import(items []Item) {
 	s.demoteOrphanedItems()
 }
 
-// GetStorageDir returns the current storage directory.
-func (s *Store) GetStorageDir() string {
+// StorageDir returns the current storage directory.
+func (s *Store) StorageDir() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.storageDir

@@ -28,7 +28,7 @@ func GetPluginCommandPaths() []PluginPath {
 // collectPluginPaths collects paths from enabled plugins using a getter function.
 func collectPluginPaths(getPaths func(*Plugin) []string) []PluginPath {
 	var paths []PluginPath
-	for _, p := range defaultRegistry.GetEnabled() {
+	for _, p := range defaultRegistry.ListEnabled() {
 		for _, path := range getPaths(p) {
 			paths = append(paths, PluginPath{
 				Path:      path,
@@ -52,7 +52,7 @@ type PluginPath struct {
 func GetPluginHooks() map[string][]setting.Hook {
 	result := make(map[string][]setting.Hook)
 
-	for _, p := range defaultRegistry.GetEnabled() {
+	for _, p := range defaultRegistry.ListEnabled() {
 		if p.Components.Hooks == nil {
 			continue
 		}
@@ -93,7 +93,7 @@ type PluginMCPServer struct {
 // GetPluginMCPServers returns all MCP servers from enabled plugins.
 func GetPluginMCPServers() []PluginMCPServer {
 	var servers []PluginMCPServer
-	for _, p := range defaultRegistry.GetEnabled() {
+	for _, p := range defaultRegistry.ListEnabled() {
 		for name, cfg := range p.Components.MCP {
 			servers = append(servers, PluginMCPServer{
 				Name:   mcpServerNameSafe(p.Name() + ":" + name),
@@ -178,7 +178,7 @@ func FindPluginRootForPath(path string) string {
 	if path == "" {
 		return ""
 	}
-	for _, p := range defaultRegistry.GetEnabled() {
+	for _, p := range defaultRegistry.ListEnabled() {
 		if strings.HasPrefix(path, p.Path+"/") || path == p.Path {
 			return p.Path
 		}
@@ -204,7 +204,7 @@ func FindPluginRootForPath(path string) string {
 //
 //     SAN_PLUGIN_ROOT=<path>   CLAUDE_PLUGIN_ROOT=<path>
 func PluginEnv(ctx context.Context) []string {
-	enabled := defaultRegistry.GetEnabled()
+	enabled := defaultRegistry.ListEnabled()
 	if len(enabled) == 0 {
 		return nil
 	}

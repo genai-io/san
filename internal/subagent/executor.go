@@ -140,8 +140,8 @@ func (e *Executor) SetSessionStore(store SubagentSessionStore, parentSessionID s
 	e.parentSessionID = parentSessionID
 }
 
-// GetParentModelID returns the parent model ID
-func (e *Executor) GetParentModelID() string {
+// ParentModelID returns the parent model ID
+func (e *Executor) ParentModelID() string {
 	return e.parentModelID
 }
 
@@ -376,7 +376,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	// Tools — adapt legacy tool registry + MCP tools
 	var mcpGetter func() []core.ToolSchema
 	if e.mcpManager != nil {
-		mcpGetter = e.mcpManager.GetToolSchemas
+		mcpGetter = e.mcpManager.ToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)

@@ -123,7 +123,7 @@ func handleMCPConnect(reg *coremcp.Manager, ctx context.Context, name string) (s
 		return "Usage: /mcp connect <server-name>", nil
 	}
 
-	if _, ok := reg.GetConfig(name); !ok {
+	if _, ok := reg.Config(name); !ok {
 		return fmt.Sprintf("Server not found: %s\n\nUse /mcp list to see available servers.", name), nil
 	}
 
@@ -131,8 +131,8 @@ func handleMCPConnect(reg *coremcp.Manager, ctx context.Context, name string) (s
 		return fmt.Sprintf("Failed to connect to %s: %v", name, err), nil
 	}
 
-	if client, ok := reg.GetClient(name); ok {
-		tools := client.GetCachedTools()
+	if client, ok := reg.Client(name); ok {
+		tools := client.CachedTools()
 		return fmt.Sprintf("Connected to %s\nTools available: %d", name, len(tools)), nil
 	}
 
@@ -236,8 +236,8 @@ func handleMCPAdd(reg *coremcp.Manager, ctx context.Context, args []string) (str
 	}
 
 	toolCount := 0
-	if client, ok := reg.GetClient(name); ok {
-		toolCount = len(client.GetCachedTools())
+	if client, ok := reg.Client(name); ok {
+		toolCount = len(client.CachedTools())
 	}
 
 	return fmt.Sprintf("Added and connected to '%s' (%s, %s scope)\nTools available: %d", name, transport, scope, toolCount), nil
@@ -248,7 +248,7 @@ func handleMCPRemove(reg *coremcp.Manager, name string) (string, error) {
 		return "Usage: /mcp remove <server-name>", nil
 	}
 
-	if _, ok := reg.GetConfig(name); !ok {
+	if _, ok := reg.Config(name); !ok {
 		return fmt.Sprintf("Server not found: %s\n\nUse /mcp list to see available servers.", name), nil
 	}
 
@@ -264,7 +264,7 @@ func handleMCPGet(reg *coremcp.Manager, name string) (string, error) {
 		return "Usage: /mcp get <server-name>", nil
 	}
 
-	config, ok := reg.GetConfig(name)
+	config, ok := reg.Config(name)
 	if !ok {
 		return fmt.Sprintf("Server not found: %s\n\nUse /mcp list to see available servers.", name), nil
 	}
@@ -314,7 +314,7 @@ func handleMCPGet(reg *coremcp.Manager, name string) (string, error) {
 
 	icon, label := mcpStatusDisplay(coremcp.StatusDisconnected)
 	toolCount := 0
-	if client, ok := reg.GetClient(name); ok {
+	if client, ok := reg.Client(name); ok {
 		srv := client.ToServer()
 		icon, label = mcpStatusDisplay(srv.Status)
 		toolCount = len(srv.Tools)
@@ -336,7 +336,7 @@ func handleMCPReconnect(reg *coremcp.Manager, ctx context.Context, name string) 
 		return "Usage: /mcp reconnect <server-name>", nil
 	}
 
-	if _, ok := reg.GetConfig(name); !ok {
+	if _, ok := reg.Config(name); !ok {
 		return fmt.Sprintf("Server not found: %s\n\nUse /mcp list to see available servers.", name), nil
 	}
 
@@ -347,8 +347,8 @@ func handleMCPReconnect(reg *coremcp.Manager, ctx context.Context, name string) 
 	}
 
 	toolCount := 0
-	if client, ok := reg.GetClient(name); ok {
-		toolCount = len(client.GetCachedTools())
+	if client, ok := reg.Client(name); ok {
+		toolCount = len(client.CachedTools())
 	}
 
 	return fmt.Sprintf("Reconnected to %s\nTools available: %d", name, toolCount), nil

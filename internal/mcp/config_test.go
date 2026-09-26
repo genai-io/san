@@ -334,7 +334,7 @@ func TestNewRegistry_IncludesPluginServers(t *testing.T) {
 	}
 	reg.configs = reg.mergePluginMCPConfigs(reg.configs)
 
-	cfg, ok := reg.GetConfig("demo:db")
+	cfg, ok := reg.Config("demo:db")
 	if !ok {
 		t.Fatal("expected plugin MCP server to be present in registry")
 	}

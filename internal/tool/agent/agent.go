@@ -76,7 +76,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 		effectiveModel = config.Model
 	}
 	if effectiveModel == "" {
-		effectiveModel = t.executor.GetParentModelID()
+		effectiveModel = t.executor.ParentModelID()
 	}
 	if effectiveModel == "" {
 		effectiveModel = "inherit"

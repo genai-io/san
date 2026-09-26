@@ -467,8 +467,8 @@ func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 		}
 
 		toolCount := 0
-		if client, ok := reg.GetClient(name); ok {
-			toolCount = len(client.GetCachedTools())
+		if client, ok := reg.Client(name); ok {
+			toolCount = len(client.CachedTools())
 		}
 
 		return mcpConnectResultMsg{

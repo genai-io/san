@@ -116,7 +116,7 @@ func TestSkill_AvailablePrompt(t *testing.T) {
 
 	registry := newTestRegistry(t, skills)
 
-	prompt := registry.GetSkillsSection()
+	prompt := registry.SkillsSection()
 
 	// Only active skills should be in the prompt
 	if !strings.Contains(prompt, "git:commit") {
@@ -153,7 +153,7 @@ func TestSkill_InvocationPrompt(t *testing.T) {
 
 	registry := newTestRegistry(t, skills)
 
-	prompt := registry.GetSkillInvocationPrompt("test-skill")
+	prompt := registry.SkillInvocationPrompt("test-skill")
 
 	if !strings.Contains(prompt, "<skill-invocation") {
 		t.Error("expected XML wrapper")
@@ -202,7 +202,7 @@ func TestSkill_Persistence(t *testing.T) {
 		t.Fatalf("NewStore() error: %v", err)
 	}
 
-	state, ok := store2.GetState("git:commit")
+	state, ok := store2.State("git:commit")
 	if !ok {
 		t.Fatal("expected persisted state for git:commit")
 	}
@@ -260,11 +260,11 @@ func TestSkill_ScopePriority_ProjectOverridesUser(t *testing.T) {
 	}
 
 	// Apply user state
-	if state, ok := userStore.GetState("greet"); ok {
+	if state, ok := userStore.State("greet"); ok {
 		s.State = state
 	}
 	// Apply project state (higher priority — overrides user)
-	if state, ok := projectStore.GetState("greet"); ok {
+	if state, ok := projectStore.State("greet"); ok {
 		s.State = state
 	}
 
@@ -296,7 +296,7 @@ func TestSkill_Active_AppearsInSystemPrompt(t *testing.T) {
 	}
 
 	registry := newTestRegistry(t, skills)
-	prompt := registry.GetSkillsSection()
+	prompt := registry.SkillsSection()
 
 	// Active skill must appear
 	if !strings.Contains(prompt, "deploy") {
@@ -320,7 +320,7 @@ func TestSkill_Active_AppearsInSystemPrompt(t *testing.T) {
 	}
 
 	// GetSkillInvocationPrompt must include the instructions body
-	invocation := registry.GetSkillInvocationPrompt("deploy")
+	invocation := registry.SkillInvocationPrompt("deploy")
 	if !strings.Contains(invocation, "Run the deployment pipeline step by step") {
 		t.Errorf("invocation prompt missing skill instructions, got: %q", invocation)
 	}

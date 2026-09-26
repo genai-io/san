@@ -35,7 +35,7 @@ func (e *scriptedExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*t
 func (e *scriptedExecutor) RunBackground(tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	panic("workflow nodes run in the foreground of their own goroutine")
 }
-func (e *scriptedExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+func (e *scriptedExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	info, _, ok := e.ResolveAgentSelection(name)
 	return info, ok
 }
@@ -48,7 +48,7 @@ func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigI
 	}
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, "cfg:" + name, true
 }
-func (e *scriptedExecutor) GetParentModelID() string { return "parent" }
+func (e *scriptedExecutor) ParentModelID() string { return "parent" }
 
 const definition = "---\nname: review\n---\n```mermaid\nflowchart LR\n  diff --> sec & perf --> report\n```\n\n## diff\nagent: explorer\n\nSummarize {{input.base}}..HEAD\n\n## sec\nmode: explore\n\nSecurity: {{diff}}\n\n## perf\nmode: explore\n\nPerf: {{diff}}\n\n## report\nMerge {{sec}} {{perf}}\n"
 

@@ -113,7 +113,7 @@ func newEnv(llmConn *llm.Conn, cwd string, isGit bool) env {
 	// Restore the user's prior per-model thinking-effort choice. Empty
 	// means "use provider default" — EffectiveThinkingEffort handles that.
 	if e.store != nil && e.CurrentModel != nil {
-		e.ThinkingEffort = e.store.GetThinkingEffort(e.CurrentModel.ModelID)
+		e.ThinkingEffort = e.store.ThinkingEffort(e.CurrentModel.ModelID)
 	}
 	return e
 }
@@ -143,7 +143,7 @@ func (m *env) LoadThinkingEffortFromStore() {
 		m.ThinkingEffort = ""
 		return
 	}
-	m.ThinkingEffort = m.store.GetThinkingEffort(m.CurrentModel.ModelID)
+	m.ThinkingEffort = m.store.ThinkingEffort(m.CurrentModel.ModelID)
 }
 
 func (m *env) GetModelID() string {

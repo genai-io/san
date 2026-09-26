@@ -36,12 +36,12 @@ func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
 		t.Errorf("Disconnect blocked for %v; the UI would be frozen for that long", elapsed)
 	}
 	// The server is gone from the registry immediately, teardown or not.
-	if _, ok := r.GetClient("wedged"); ok {
+	if _, ok := r.Client("wedged"); ok {
 		t.Error("the server is still in the registry after Disconnect returned")
 	}
 	// And the lock is free right away, which is what the agent needs.
 	done := make(chan struct{})
-	go func() { r.GetToolSchemas(); close(done) }()
+	go func() { r.ToolSchemas(); close(done) }()
 	select {
 	case <-done:
 	case <-time.After(100 * time.Millisecond):

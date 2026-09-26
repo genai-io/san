@@ -13,7 +13,7 @@ import (
 func TestSaveServerRefusesToClobberMalformedConfig(t *testing.T) {
 	base := t.TempDir()
 	loader := NewConfigLoaderForTest(base)
-	path := loader.GetFilePath(ScopeProject)
+	path := loader.FilePath(ScopeProject)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}

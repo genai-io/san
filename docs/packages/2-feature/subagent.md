@@ -33,8 +33,8 @@ no producer-side role interface earns its keep — TEMPLATE Rule 3.
 |---|---|
 | `cmd/san agent` | `Get` (CLI argument validation) |
 | TUI view | `ListConfigs` (color enumeration) |
-| Agent build site | `GetAgentsSection` |
-| TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `GetDisabledAt` for the `/agent` menu |
+| Agent build site | `AgentsSection` |
+| TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `DisabledAt` for the `/agent` menu |
 
 Executor construction goes through the package-level `NewExecutor`
 free function (in `executor.go`), not a method on the registry. The
@@ -55,10 +55,10 @@ func (r *Registry) IsEnabled(name string) bool
 
 // State mutation (used by the TUI selector adapter)
 func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error
-func (r *Registry) GetDisabledAt(scope setting.Scope) map[string]bool
+func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool
 
 // System prompt
-func (r *Registry) GetAgentsSection() string
+func (r *Registry) AgentsSection() string
 
 // Loader bootstrapping
 func (r *Registry) Register(config *AgentConfig)

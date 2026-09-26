@@ -47,7 +47,7 @@ func TestRegistry_ListConfigs(t *testing.T) {
 func TestRegistry_GetConfig(t *testing.T) {
 	registry := newFakeRegistry("my-server")
 
-	cfg, ok := registry.GetConfig("my-server")
+	cfg, ok := registry.Config("my-server")
 	if !ok {
 		t.Fatal("expected to find 'my-server' config")
 	}
@@ -55,7 +55,7 @@ func TestRegistry_GetConfig(t *testing.T) {
 		t.Errorf("expected name 'my-server', got %q", cfg.Name)
 	}
 
-	_, ok = registry.GetConfig("nonexistent")
+	_, ok = registry.Config("nonexistent")
 	if ok {
 		t.Error("expected not to find 'nonexistent'")
 	}
@@ -64,7 +64,7 @@ func TestRegistry_GetConfig(t *testing.T) {
 func TestRegistry_GetClient_NotConnected(t *testing.T) {
 	registry := newFakeRegistry("srv")
 
-	_, ok := registry.GetClient("srv")
+	_, ok := registry.Client("srv")
 	if ok {
 		t.Error("expected no client before Connect()")
 	}
@@ -73,7 +73,7 @@ func TestRegistry_GetClient_NotConnected(t *testing.T) {
 func TestRegistry_GetToolSchemas_Empty(t *testing.T) {
 	registry := newFakeRegistry("srv")
 
-	tools := registry.GetToolSchemas()
+	tools := registry.ToolSchemas()
 	if len(tools) != 0 {
 		t.Errorf("expected 0 tools, got %d", len(tools))
 	}
@@ -283,7 +283,7 @@ func TestRealMCP_Everything(t *testing.T) {
 	// so tools may not be cached immediately. Wait briefly for them to appear.
 	var tools []mcp.MCPTool
 	for range 20 {
-		tools = client.GetCachedTools()
+		tools = client.CachedTools()
 		if len(tools) > 0 {
 			break
 		}
@@ -397,7 +397,7 @@ func TestRealMCP_Filesystem(t *testing.T) {
 	}
 
 	// --- Tools ---
-	tools := client.GetCachedTools()
+	tools := client.CachedTools()
 	t.Logf("tools: %d", len(tools))
 	if len(tools) == 0 {
 		t.Fatal("expected at least 1 tool from server-filesystem")
@@ -491,7 +491,7 @@ func TestRealMCP_Registry_EndToEnd(t *testing.T) {
 	// Tool schemas — wait for async tool list to populate
 	var schemas []core.ToolSchema
 	for range 20 {
-		schemas = registry.GetToolSchemas()
+		schemas = registry.ToolSchemas()
 		if len(schemas) > 0 {
 			break
 		}
@@ -526,7 +526,7 @@ func TestRealMCP_Registry_EndToEnd(t *testing.T) {
 	registry.Disconnect("everything")
 
 	// After disconnect, tool schemas should be empty
-	schemas = registry.GetToolSchemas()
+	schemas = registry.ToolSchemas()
 	if len(schemas) != 0 {
 		t.Errorf("expected 0 tool schemas after disconnect, got %d", len(schemas))
 	}

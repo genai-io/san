@@ -447,8 +447,8 @@ func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
 	return result
 }
 
-// GetDisabledToolsAt returns disabled tools from a single settings file (not merged).
-func GetDisabledToolsAt(scope Scope) map[string]bool {
+// DisabledToolsAt returns disabled tools from a single settings file (not merged).
+func DisabledToolsAt(scope Scope) map[string]bool {
 	loader := NewLoader()
 	path := filepath.Join(loader.dir(scope), "settings.json")
 	s, err := loader.LoadFile(path)

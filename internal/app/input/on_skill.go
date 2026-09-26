@@ -127,8 +127,8 @@ func (s *SkillSelector) EnterSelect(width, height int) error {
 	allSkills := s.registry.List()
 	// Pre-load both stores so each tab shows the correct enabled state.
 	statesByScope := map[setting.Scope]map[string]coreskill.SkillState{
-		setting.ScopeProject: s.registry.GetStatesAt(setting.ScopeProject),
-		setting.ScopeUser:    s.registry.GetStatesAt(setting.ScopeUser),
+		setting.ScopeProject: s.registry.StatesAt(setting.ScopeProject),
+		setting.ScopeUser:    s.registry.StatesAt(setting.ScopeUser),
 	}
 
 	skills := make([]skillItem, 0, len(allSkills))

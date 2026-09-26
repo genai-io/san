@@ -114,7 +114,7 @@ func (s *Store) List() ([]*SessionMetadata, error) {
 	return out, nil
 }
 
-func (s *Store) GetLatest() (*Snapshot, error) {
+func (s *Store) Latest() (*Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
