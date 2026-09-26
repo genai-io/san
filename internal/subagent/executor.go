@@ -37,9 +37,6 @@ type Executor struct {
 	provider                   llm.Provider
 	registry                   *Registry
 	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
-	modelStore                 *llm.Store       // optional cached provider catalog for validating same-provider overrides
-	parentProviderName         llm.ProviderID   // canonical provider key for the parent connection
-	parentAuthMethod           llm.AuthMethod   // auth-specific catalog key for the parent connection
 	cwd                        string
 	parentModelID              string // Parent conversation's model ID (used when inheriting)
 	parentPermissionModeGetter func() PermissionMode
@@ -108,15 +105,6 @@ func (e *Executor) SetProjectInstructions(instructions string) {
 // reusing the parent's provider. Unavailable routes fall back to the parent.
 func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
-}
-
-// SetModelStore supplies the cached catalog and parent connection identity used
-// to reject unsupported same-provider overrides without fetching models on the
-// agent startup path.
-func (e *Executor) SetModelStore(store *llm.Store, provider llm.ProviderID, authMethod llm.AuthMethod) {
-	e.modelStore = store
-	e.parentProviderName = provider
-	e.parentAuthMethod = authMethod
 }
 
 // SetSkillsDirectory provides the skills directory section so subagents
@@ -551,42 +539,15 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		if e.resolver == nil {
 			return e.provider, e.parentModelID, nil
 		}
-		if vendor == e.parentProviderName && modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
-			return e.provider, e.parentModelID, nil
-		}
 		p, err := e.resolver.Resolve(ctx, vendor)
 		if err != nil || p == nil {
 			return e.provider, e.parentModelID, nil
 		}
 		return p, modelID, nil
 	}
-	// A bare id or alias stays on the parent provider. If the cached catalog
-	// positively reports that provider does not offer the model, inherit instead
-	// of sending a request that may fail with an opaque 400 response.
-	modelID := resolveModelAlias(ref)
-	if modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
-		return e.provider, e.parentModelID, nil
-	}
-	return e.provider, modelID, nil
-}
-
-// cachedCatalogAllowsModel rejects only a definitive cached miss. A missing
-// store, parent connection identity, or catalog leaves the override unverified
-// and therefore allowed.
-func (e *Executor) cachedCatalogAllowsModel(modelID string) bool {
-	if e.modelStore == nil || e.parentProviderName == "" || modelID == "" {
-		return true
-	}
-	models, ok := e.modelStore.GetCachedModels(e.parentProviderName, e.parentAuthMethod)
-	if !ok {
-		return true
-	}
-	for _, model := range models {
-		if model.ID == modelID {
-			return true
-		}
-	}
-	return false
+	// A bare id or alias stays on the parent provider; a model it lacks fails
+	// the first request and retries on the parent model.
+	return e.provider, resolveModelAlias(ref), nil
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
@@ -613,6 +574,24 @@ func operationMode(mode PermissionMode) setting.OperationMode {
 		return setting.ModeDontAsk
 	default:
 		return setting.ModeNormal
+	}
+}
+
+// PermissionModeFor is the mode an unnamed subagent inherits from a session in
+// mode. Autopilot's review agent cannot answer for a subagent, so it inherits
+// only the edit posture.
+func PermissionModeFor(mode setting.OperationMode) PermissionMode {
+	switch mode {
+	case setting.ModeAutoAccept, setting.ModeAutoPilot:
+		return PermissionAcceptEdits
+	case setting.ModeBypassPermissions:
+		return PermissionBypass
+	case setting.ModeDontAsk:
+		return PermissionDontAsk
+	case setting.ModeReadOnly:
+		return PermissionExplore
+	default:
+		return PermissionDefault
 	}
 }
 

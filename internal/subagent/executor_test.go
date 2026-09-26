@@ -1,6 +1,7 @@
 package subagent
 
 import (
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"context"
@@ -167,96 +168,9 @@ func TestResolveModelResolverErrorInheritsParent(t *testing.T) {
 	}
 }
 
-func newModelStore(t *testing.T, models []llm.ModelInfo) *llm.Store {
-	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	store, err := llm.NewStore()
-	if err != nil {
-		t.Fatalf("llm.NewStore() error: %v", err)
-	}
-	if err := store.CacheModels(llm.OpenAI, llm.AuthSubscription, models); err != nil {
-		t.Fatalf("CacheModels() error: %v", err)
-	}
-	return store
-}
-
-func TestResolveModelUnavailableOverrideInheritsParent(t *testing.T) {
-	executor := &Executor{
-		provider:           stubProvider{},
-		modelStore:         newModelStore(t, []llm.ModelInfo{{ID: "gpt-5.6-sol"}}),
-		parentProviderName: llm.OpenAI,
-		parentAuthMethod:   llm.AuthSubscription,
-		parentModelID:      "gpt-5.6-sol",
-	}
-
-	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
-	if err != nil {
-		t.Fatalf("resolveModel() error: %v", err)
-	}
-	if modelID != executor.parentModelID {
-		t.Fatalf("resolveModel(haiku) model = %q, want parent %q", modelID, executor.parentModelID)
-	}
-}
-
-func TestResolveModelUnavailableParentProviderQualifiedOverrideInheritsParent(t *testing.T) {
-	executor := &Executor{
-		provider:           stubProvider{},
-		resolver:           &stubResolver{provider: stubProvider{}},
-		modelStore:         newModelStore(t, []llm.ModelInfo{{ID: "gpt-5.6-sol"}}),
-		parentProviderName: llm.OpenAI,
-		parentAuthMethod:   llm.AuthSubscription,
-		parentModelID:      "gpt-5.6-sol",
-	}
-
-	_, modelID, err := executor.resolveModel(context.Background(), "openai/nonexistent-model", "")
-	if err != nil {
-		t.Fatalf("resolveModel() error: %v", err)
-	}
-	if modelID != executor.parentModelID {
-		t.Fatalf("resolveModel(openai/nonexistent-model) model = %q, want parent %q", modelID, executor.parentModelID)
-	}
-}
-
-func TestResolveModelEmptyCachedCatalogInheritsParent(t *testing.T) {
-	executor := &Executor{
-		provider:           stubProvider{},
-		modelStore:         newModelStore(t, nil),
-		parentProviderName: llm.OpenAI,
-		parentAuthMethod:   llm.AuthSubscription,
-		parentModelID:      "gpt-5.6-sol",
-	}
-
-	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
-	if err != nil {
-		t.Fatalf("resolveModel() error: %v", err)
-	}
-	if modelID != executor.parentModelID {
-		t.Fatalf("resolveModel(haiku) model = %q, want parent %q", modelID, executor.parentModelID)
-	}
-}
-
-func TestResolveModelAvailableOverrideIsPreserved(t *testing.T) {
-	executor := &Executor{
-		provider: stubProvider{},
-		modelStore: newModelStore(t, []llm.ModelInfo{
-			{ID: "gpt-5.6-sol"},
-			{ID: "gpt-5.6-terra"},
-		}),
-		parentProviderName: llm.OpenAI,
-		parentAuthMethod:   llm.AuthSubscription,
-		parentModelID:      "gpt-5.6-sol",
-	}
-
-	_, modelID, err := executor.resolveModel(context.Background(), "gpt-5.6-terra", "")
-	if err != nil {
-		t.Fatalf("resolveModel() error: %v", err)
-	}
-	if modelID != "gpt-5.6-terra" {
-		t.Fatalf("resolveModel() model = %q, want gpt-5.6-terra", modelID)
-	}
-}
-
-func TestResolveModelMissingCatalogLeavesOverrideUnverified(t *testing.T) {
+// A bare override goes to the parent provider as asked; a model it lacks is
+// caught by the retry on the parent model, not checked up front.
+func TestResolveModelBareOverridePassesThrough(t *testing.T) {
 	executor := &Executor{provider: stubProvider{}, parentModelID: "gpt-5.6-sol"}
 
 	_, modelID, err := executor.resolveModel(context.Background(), "haiku", "")
@@ -264,7 +178,7 @@ func TestResolveModelMissingCatalogLeavesOverrideUnverified(t *testing.T) {
 		t.Fatalf("resolveModel() error: %v", err)
 	}
 	if modelID != "claude-haiku-4-5" {
-		t.Fatalf("resolveModel() model = %q, want unresolved override to pass through", modelID)
+		t.Fatalf("resolveModel() model = %q, want the override to pass through", modelID)
 	}
 }
 
@@ -1023,5 +937,23 @@ func TestBuildUnfinishedAgentResultRejectsCompletedRun(t *testing.T) {
 	}
 	if got := executor.buildUnfinishedAgentResult(run, nil); got != nil {
 		t.Fatalf("nil Result treated as unfinished: %#v", got)
+	}
+}
+
+// Every mode a session can be in maps to the subagent mode that keeps its
+// posture, and back again through operationMode.
+func TestPermissionModeForRoundTripsSessionModes(t *testing.T) {
+	cases := map[setting.OperationMode]setting.OperationMode{
+		setting.ModeNormal:            setting.ModeNormal,
+		setting.ModeAutoAccept:        setting.ModeAutoAccept,
+		setting.ModeAutoPilot:         setting.ModeAutoAccept,
+		setting.ModeBypassPermissions: setting.ModeBypassPermissions,
+		setting.ModeDontAsk:           setting.ModeDontAsk,
+		setting.ModeReadOnly:          setting.ModeReadOnly,
+	}
+	for session, want := range cases {
+		if got := operationMode(PermissionModeFor(session)); got != want {
+			t.Errorf("session %v: subagent runs as %v, want %v", session, got, want)
+		}
 	}
 }

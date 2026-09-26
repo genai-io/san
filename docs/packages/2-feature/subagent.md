@@ -33,7 +33,7 @@ no producer-side role interface earns its keep — TEMPLATE Rule 3.
 |---|---|
 | `cmd/san agent` | `Get` (CLI argument validation) |
 | TUI view | `ListConfigs` (color enumeration) |
-| Agent build site | `PromptSection` (twice) |
+| Agent build site | `GetAgentsSection` |
 | TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `GetDisabledAt` for the `/agent` menu |
 
 Executor construction goes through the package-level `NewExecutor`
@@ -58,7 +58,7 @@ func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error
 func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool
 
 // System prompt
-func (r *Registry) PromptSection() string
+func (r *Registry) GetAgentsSection() string
 
 // Loader bootstrapping
 func (r *Registry) Register(config *AgentConfig)

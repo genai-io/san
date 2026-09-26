@@ -59,12 +59,6 @@ func (r *Registry) LookupAgent(name string) (config *AgentConfig, exists, enable
 	return config, true, !r.isDisabledInternal(lowerName)
 }
 
-// ResolveEnabledAgent returns an enabled agent configuration by exact name.
-func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
-	config, exists, enabled := r.LookupAgent(name)
-	return config, exists && enabled
-}
-
 // ListConfigs returns all registered agent configurations that are visible
 // under the active persona allow-list.
 func (r *Registry) ListConfigs() []*AgentConfig {
@@ -252,9 +246,4 @@ func (r *Registry) GetAgentsSection() string {
 		}
 	}
 	return sb.String()
-}
-
-// PromptSection returns the rendered prompt section for available agents.
-func (r *Registry) PromptSection() string {
-	return r.GetAgentsSection()
 }

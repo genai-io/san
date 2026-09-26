@@ -107,7 +107,7 @@ func (m *model) promptParams() agent.BuildParams {
 	return agent.BuildParams{
 		CWD:            m.env.CWD,
 		Persona:        m.personaPrompt(),
-		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
+		AgentDirectory: func() string { return m.services.Subagent.GetAgentsSection() },
 		DisabledTools:  m.services.Setting.DisabledTools(),
 		MCPTools:       mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)),
 
@@ -804,6 +804,10 @@ func (m *model) ReconfigureAgentTool() {
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	perms := m.env.SessionPermissions
+	executor.SetParentPermissionMode(func() subagent.PermissionMode {
+		return subagent.PermissionModeFor(perms.CurrentMode())
+	})
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}
