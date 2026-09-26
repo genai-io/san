@@ -322,9 +322,9 @@ func TestConfigLoader_RemoveServerFromAll_RemovesEveryScope(t *testing.T) {
 }
 
 func TestNewRegistry_IncludesPluginServers(t *testing.T) {
-	reg, err := NewRegistry(t.TempDir())
+	reg, err := NewManager(t.TempDir())
 	if err != nil {
-		t.Fatalf("NewRegistry() error = %v", err)
+		t.Fatalf("NewManager() error = %v", err)
 	}
 
 	reg.PluginServers = func() []PluginServer {
@@ -334,7 +334,7 @@ func TestNewRegistry_IncludesPluginServers(t *testing.T) {
 	}
 	reg.configs = reg.mergePluginMCPConfigs(reg.configs)
 
-	cfg, ok := reg.GetConfig("demo:db")
+	cfg, ok := reg.Config("demo:db")
 	if !ok {
 		t.Fatal("expected plugin MCP server to be present in registry")
 	}

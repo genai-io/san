@@ -34,36 +34,17 @@ func (s *PluginSelector) Render() string {
 	return s.renderTabList()
 }
 
-func (s *PluginSelector) boxWidth() int {
-	return max(60, s.width-6)
-}
+func (s *PluginSelector) panel() kit.Panel { return kit.Panel{Width: s.width, Height: s.height} }
 
-func (s *PluginSelector) boxHeight() int {
-	return max(18, s.height-4)
-}
-
+// contentWidth is the box's inner width: panel width minus Padding(1, 2).
 func (s *PluginSelector) contentWidth() int {
-	return s.boxWidth() - 4 // padding(1,2) takes 4 chars
+	return s.panel().ContentWidth() - 4
 }
 
-func (s *PluginSelector) bodyHeight() int {
-	return max(6, s.boxHeight()-10)
-}
-
+// sepLine is 4 cells narrower than kit.Panel.SeparatorLine.
 func (s *PluginSelector) sepLine() string {
 	sepStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
 	return sepStyle.Render(strings.Repeat("─", s.contentWidth()-4))
-}
-
-// ── Full-width placement ──────────────────────────────────────────────────
-
-func (s *PluginSelector) renderFullWidth(content string) string {
-	box := lipgloss.NewStyle().
-		Width(s.boxWidth()).
-		Height(s.boxHeight()).
-		Padding(1, 2).
-		Render(content)
-	return lipgloss.Place(s.width, s.height-2, lipgloss.Center, lipgloss.Top, box)
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────
@@ -147,7 +128,7 @@ func (s *PluginSelector) renderTabList() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, s.getTabHint())
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 func (s *PluginSelector) getItemCount() (int, int) {
@@ -195,7 +176,7 @@ func (s *PluginSelector) renderInstalledList(sb *strings.Builder) {
 	// Two lines per item (name row + indented description), like the Discover
 	// list, so a long description wraps onto its own bounded line instead of
 	// running to the right edge.
-	visible := max(2, s.bodyHeight()/2)
+	visible := max(2, s.panel().BodyHeight()/2)
 	endIdx := min(s.scrollOffset+visible, len(s.filteredItems))
 	cw := s.contentWidth()
 
@@ -252,7 +233,7 @@ func (s *PluginSelector) renderDiscoverList(sb *strings.Builder) {
 		return
 	}
 
-	maxItems := max(3, s.bodyHeight()/3)
+	maxItems := max(3, s.panel().BodyHeight()/3)
 	endIdx := min(s.scrollOffset+maxItems, len(s.filteredItems))
 
 	if s.scrollOffset > 0 {
@@ -318,7 +299,7 @@ func (s *PluginSelector) renderMarketplacesList(sb *strings.Builder) {
 
 	sb.WriteString("\n")
 
-	visible := max(4, s.bodyHeight()/2)
+	visible := max(4, s.panel().BodyHeight()/2)
 	endIdx := min(s.scrollOffset+visible, len(s.filteredItems))
 
 	for i := s.scrollOffset; i < endIdx; i++ {
@@ -426,7 +407,7 @@ func (s *PluginSelector) renderInstalledDetail() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "↑/↓ scroll/actions · enter select · esc back")
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 func (s *PluginSelector) renderDiscoverDetail() string {
@@ -477,7 +458,7 @@ func (s *PluginSelector) renderDiscoverDetail() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "↑/↓ scroll/actions · enter select · esc back")
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 func (s *PluginSelector) renderMarketplaceDetail() string {
@@ -526,7 +507,7 @@ func (s *PluginSelector) renderMarketplaceDetail() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "↑/↓ scroll/actions · enter select · esc back")
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 // ── Add marketplace dialog ────────────────────────────────────────────────
@@ -592,7 +573,7 @@ func (s *PluginSelector) renderAddMarketplaceDialog() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "enter add · esc cancel")
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 // ── Browse plugins ────────────────────────────────────────────────────────
@@ -619,7 +600,7 @@ func (s *PluginSelector) renderBrowsePlugins() string {
 		sb.WriteString(dimStyle.PaddingLeft(2).Render("No plugins found"))
 		sb.WriteString("\n")
 	} else {
-		visible := max(4, s.bodyHeight())
+		visible := max(4, s.panel().BodyHeight())
 		endIdx := min(s.scrollOffset+visible, len(s.browsePlugins))
 
 		if s.scrollOffset > 0 {
@@ -659,7 +640,7 @@ func (s *PluginSelector) renderBrowsePlugins() string {
 	sb.WriteString("\n")
 	s.renderFooter(&sb, "↑/↓ navigate · enter details · esc back")
 
-	return s.renderFullWidth(sb.String())
+	return s.panel().Wrap(sb.String())
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────
@@ -743,7 +724,7 @@ func (s *PluginSelector) renderViewport(content string, scroll int) string {
 		lines = nil
 	}
 
-	visible := s.bodyHeight()
+	visible := s.panel().BodyHeight()
 	if visible <= 0 {
 		return ""
 	}

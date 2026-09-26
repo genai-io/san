@@ -119,17 +119,9 @@ type specTier struct {
 // Loading
 // ---------------------------------------------------------------------------
 
-var (
-	modelDataOnce sync.Once
-	modelData     lineups
-)
-
 // loadedModelData returns the layered lineups, read once per process. A
 // refresh lands in the cache and takes effect on the next start.
-func loadedModelData() lineups {
-	modelDataOnce.Do(func() { modelData = readModelData() })
-	return modelData
-}
+var loadedModelData = sync.OnceValue(readModelData)
 
 func readModelData() lineups {
 	data := embeddedLineups("data/models.dev.json")

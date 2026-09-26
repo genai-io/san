@@ -3,18 +3,17 @@ package log
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/genai-io/san/internal/confdir"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+const maxLogSize = 50 << 20 // 50MB
 
 var (
 	logger      *zap.Logger
-	enabled     bool
 	initialized bool
 	mu          sync.Mutex
 )
@@ -41,8 +40,6 @@ func Init() error {
 		return nil
 	}
 
-	enabled = true
-
 	// Get home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -57,14 +54,16 @@ func Init() error {
 
 	logPath := filepath.Join(logDir, "debug.log")
 
-	// Use lumberjack for log rotation
-	writeSyncer := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   logPath,
-		MaxSize:    50, // MB
-		MaxBackups: 3,
-		MaxAge:     7, // Days
-		Compress:   true,
-	})
+	// Append across runs; start over once the file passes the size cap.
+	flags := os.O_APPEND | os.O_CREATE | os.O_WRONLY
+	if fi, err := os.Stat(logPath); err == nil && fi.Size() > maxLogSize {
+		flags |= os.O_TRUNC
+	}
+	f, err := os.OpenFile(logPath, flags, 0o644)
+	if err != nil {
+		return err
+	}
+	writeSyncer := zapcore.AddSync(f)
 
 	// Console encoder for human-readable output
 	encoderConfig := zapcore.EncoderConfig{
@@ -107,12 +106,4 @@ func Sync() error {
 		return logger.Sync()
 	}
 	return nil
-}
-
-// EscapeForLog escapes newlines and tabs for single-line log output.
-func EscapeForLog(s string) string {
-	s = strings.ReplaceAll(s, "\n", "\\n")
-	s = strings.ReplaceAll(s, "\r", "")
-	s = strings.ReplaceAll(s, "\t", "\\t")
-	return s
 }

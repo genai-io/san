@@ -73,21 +73,6 @@ func (w *FileWatcher) SetPaths(paths []string) {
 	}
 }
 
-func (w *FileWatcher) CurrentPaths() []string {
-	if w == nil {
-		return nil
-	}
-
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	paths := make([]string, 0, len(w.paths))
-	for path := range w.paths {
-		paths = append(paths, path)
-	}
-	return paths
-}
-
 func (w *FileWatcher) Stop() {
 	if w == nil {
 		return

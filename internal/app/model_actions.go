@@ -33,14 +33,14 @@ func (m *model) setActivePersona(name string) error {
 	// write and the switch would silently do nothing (e.g. switching away from
 	// a project persona to the built-in default) — or when the target is itself
 	// a project persona. Otherwise persist user-level.
-	userLevel := true
+	scope := setting.ScopeUser
 	if p, ok := m.services.Persona.Get(name); ok && p.Scope == persona.ScopeProject {
-		userLevel = false
+		scope = setting.ScopeProject
 	}
-	if setting.PersonaAt(m.env.CWD, false) != "" {
-		userLevel = false
+	if setting.PersonaAt(m.env.CWD, setting.ScopeProject) != "" {
+		scope = setting.ScopeProject
 	}
-	if err := setting.SavePersonaAt(m.env.CWD, name, userLevel); err != nil {
+	if err := setting.SavePersonaAt(m.env.CWD, name, scope); err != nil {
 		return err
 	}
 	_ = m.services.Setting.Reload(m.env.CWD)

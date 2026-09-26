@@ -36,7 +36,7 @@ func Initialize() {
 
 	defaultConn.mu.Lock()
 	defaultConn.store = store
-	defaultConn.currentModel = store.GetCurrentModel()
+	defaultConn.currentModel = store.CurrentModel()
 	defaultConn.mu.Unlock()
 
 	if resolved, ok := ResolveProvider(context.Background(), store); ok {
@@ -84,11 +84,6 @@ func (c *Conn) Store() *Store {
 	return c.store
 }
 
-// NewClient builds a one-shot *Client for the active provider.
-func (c *Conn) NewClient(model string, maxTokens int) *Client {
-	return NewClient(c.Provider(), model, maxTokens)
-}
-
 // ResolvedProvider is a connected provider plus the identity used to reach it.
 // ModelID carries the saved current model when one is set, and is empty when
 // resolution fell back to a connection without a saved model — in that case the
@@ -108,12 +103,12 @@ func ResolveProvider(ctx context.Context, store *Store) (ResolvedProvider, bool)
 	if store == nil {
 		return ResolvedProvider{}, false
 	}
-	if current := store.GetCurrentModel(); current != nil {
+	if current := store.CurrentModel(); current != nil {
 		if p, err := GetProvider(ctx, current.Provider, current.AuthMethod); err == nil {
 			return ResolvedProvider{Provider: p, ModelID: current.ModelID, AuthMethod: current.AuthMethod}, true
 		}
 	}
-	for provider, conn := range store.GetConnections() {
+	for provider, conn := range store.Connections() {
 		if p, err := GetProvider(ctx, ProviderID(provider), conn.AuthMethod); err == nil {
 			return ResolvedProvider{Provider: p, AuthMethod: conn.AuthMethod}, true
 		}
@@ -148,7 +143,7 @@ func (p *ProviderPool) Resolve(ctx context.Context, vendor ProviderID) (Provider
 		return nil, fmt.Errorf("provider pool is not configured")
 	}
 
-	conn, ok := p.store.GetConnection(vendor)
+	conn, ok := p.store.Connection(vendor)
 	if !ok {
 		return nil, fmt.Errorf("provider %q is not connected", vendor)
 	}

@@ -32,8 +32,8 @@ how-to-author-a-skill guide is tracked in `notes/tech-debt.md`.
 
 The package exposes `*Registry` directly. Skill consumers each use a
 different subset of the registry surface — the TUI selector goes wide
-(`List` / `GetStatesAt` / `SetState`), the slash-command flow uses
-narrow lookups (`Get` / `FindByPartialName` / `GetSkillInvocationPrompt`),
+(`List` / `StatesAt` / `SetState`), the slash-command flow uses
+narrow lookups (`Get` / `FindByPartialName` / `SkillInvocationPrompt`),
 the system-prompt builder uses one method (`PromptSection`), and the
 session recorder attaches an observer (`SetStateChangeObserver`). No
 shared narrow surface ⇒ no producer-side role interface earns its keep.
@@ -50,20 +50,20 @@ type Registry struct { /* internal fields */ }
 func (r *Registry) Get(name string) (*Skill, bool)
 func (r *Registry) FindByPartialName(name string) *Skill
 func (r *Registry) List() []*Skill
-func (r *Registry) GetEnabled() []*Skill
-func (r *Registry) GetActive() []*Skill
+func (r *Registry) ListEnabled() []*Skill
+func (r *Registry) ListActive() []*Skill
 func (r *Registry) Count() int
 func (r *Registry) IsEnabled(name string) bool
 
 // State (used by the TUI selector)
-func (r *Registry) SetState(name string, state SkillState, userLevel bool) error
-func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool
+func (r *Registry) SetState(name string, state SkillState, scope setting.Scope) error
+func (r *Registry) StatesAt(scope setting.Scope) map[string]SkillState
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error
+func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool
 
 // Rendering (consumed by the skills-directory reminder provider)
 func (r *Registry) PromptSection() string
-func (r *Registry) GetSkillInvocationPrompt(name string) string
+func (r *Registry) SkillInvocationPrompt(name string) string
 
 // Recorder observer (used by the session recorder)
 func (r *Registry) SetStateChangeObserver(cb StateChangeObserver)
@@ -112,7 +112,7 @@ func ResetDefaultRegistry()           // test-only
 internal/skill/skill_test.go            — loader, state cycling,
                                             scope priority, prompt rendering.
 internal/skill/lazy_loading_test.go     — verifies content stays on disk
-                                            until GetInstructions().
+                                            until Instructions().
 ```
 
 ## See Also

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ type SlashCommandEnv struct {
 	Session *session.Setup
 	Skill   *skill.Registry
 	Plugin  *plugin.Registry
-	MCP     *mcp.Registry
+	MCP     *mcp.Manager
 	Tracker *todo.Store
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
@@ -237,16 +238,13 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 	}
 	c.env.StopAgentSession()
 	c.env.Conversation.Stream.Stop()
-	if c.env.Tool.Cancel != nil {
-		c.env.Tool.Cancel()
-	}
 	c.env.FireSessionEnd("prompt_input_exit")
 	return "", tea.Quit, true
 }
 
 func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args string) string {
 	if c.env.Skill != nil {
-		c.env.Input.Skill.SetPending(sk.FullName(), c.env.Skill.GetSkillInvocationPrompt(sk.FullName()))
+		c.env.Input.Skill.SetPending(sk.FullName(), c.env.Skill.SkillInvocationPrompt(sk.FullName()))
 	}
 	if c.env.Plugin != nil {
 		c.env.Input.Skill.PendingPluginRoot = plugin.FindPluginRootForPath(sk.SkillDir)
@@ -256,7 +254,7 @@ func (c SlashCommandController) executeSkillSlashCommand(sk *skill.Skill, args s
 }
 
 func (c SlashCommandController) executeCustomCommand(pc *command.CustomCommand, args string) string {
-	if instructions := pc.GetInstructions(); instructions != "" {
+	if instructions := pc.Instructions(); instructions != "" {
 		c.env.Input.Skill.SetPending(pc.FullName(), command.WrapInvocation(pc.FullName(), instructions))
 	}
 	if c.env.Plugin != nil {
@@ -287,7 +285,7 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 		info := builtins[name]
 		fmt.Fprintf(&sb, "  /%s - %s\n", info.Name, info.Description)
 	}
-	pluginCmds := c.env.Command.GetCustomCommands()
+	pluginCmds := c.env.Command.CustomCommands()
 	if len(pluginCmds) > 0 {
 		sb.WriteString("\nCustom Commands:\n\n")
 		for _, cmd := range pluginCmds {
@@ -304,9 +302,6 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.ResetAgentSession()
 	c.env.Conversation.Stream.Stop()
-	if c.env.Tool.Cancel != nil {
-		c.env.Tool.Cancel()
-	}
 	c.env.Tool.Reset()
 	c.env.Conversation.Clear()
 	c.env.ResetTokens()
@@ -535,7 +530,7 @@ func (c *SlashCommandController) handleReloadPluginsCommand(ctx context.Context,
 func (c *SlashCommandController) handleToolCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	var mcpTools func() []core.ToolSchema
 	if c.env.MCP != nil {
-		mcpTools = c.env.MCP.GetToolSchemas
+		mcpTools = c.env.MCP.ToolSchemas
 	}
 	if err := c.env.Input.Tool.EnterSelect(c.env.Width, c.env.Height, mcpTools); err != nil {
 		return "", nil, err
@@ -590,12 +585,7 @@ func (c *SlashCommandController) handleThinkCommand(_ context.Context, args stri
 }
 
 func containsThinkingEffort(efforts []string, effort string) bool {
-	for _, allowed := range efforts {
-		if strings.EqualFold(allowed, effort) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(efforts, func(e string) bool { return strings.EqualFold(e, effort) })
 }
 
 func (c *SlashCommandController) handleLoopCommand(_ context.Context, args string) (string, tea.Cmd, error) {
@@ -752,7 +742,7 @@ func SkillCommandInfos() []command.Info {
 	if svc == nil {
 		return nil
 	}
-	enabled := svc.GetEnabled()
+	enabled := svc.ListEnabled()
 	infos := make([]command.Info, 0, len(enabled))
 	for _, sk := range enabled {
 		description := sk.Description

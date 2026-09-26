@@ -29,6 +29,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/genai-io/san/internal/skill"
 )
 
 // DefaultName is the reserved name of the virtual built-in persona. An empty
@@ -137,24 +139,11 @@ func skillDirs(root string) []string {
 			continue
 		}
 		sub := filepath.Join(root, e.Name())
-		if hasSkillFile(sub) {
+		if skill.FindSkillFile(sub) != "" {
 			out = append(out, sub)
 		}
 	}
 	return out
-}
-
-func hasSkillFile(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.EqualFold(e.Name(), "SKILL.md") {
-			return true
-		}
-	}
-	return false
 }
 
 // sortPersonas orders personas for stable display: default first, then

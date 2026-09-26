@@ -93,7 +93,7 @@ func (i *Installer) LoadMarketplaces() error {
 // "name" field matches the given name. Returns the marketplace ID if found.
 func (i *Installer) resolveMarketplaceByName(name string) string {
 	for _, id := range i.marketplaceManager.List() {
-		meta, err := i.marketplaceManager.GetMarketplaceMetadata(id)
+		meta, err := i.marketplaceManager.MarketplaceMetadata(id)
 		if err != nil {
 			continue
 		}
@@ -294,7 +294,7 @@ func (i *Installer) resolvePluginSource(marketplaceID, name string) (PluginSourc
 	if marketplaceID == "" {
 		return PluginSource{}, false
 	}
-	meta, err := i.marketplaceManager.GetMarketplaceMetadata(marketplaceID)
+	meta, err := i.marketplaceManager.MarketplaceMetadata(marketplaceID)
 	if err != nil {
 		return PluginSource{}, false
 	}
@@ -314,7 +314,7 @@ func (i *Installer) findMarketplaceFor(name string) string {
 		if _, ok := i.resolvePluginSource(id, name); ok {
 			return id
 		}
-		if _, err := i.marketplaceManager.GetPluginPath(id, name); err == nil {
+		if _, err := i.marketplaceManager.PluginPath(id, name); err == nil {
 			return id
 		}
 	}
@@ -572,69 +572,4 @@ func copyFile(src, dst string) error {
 	}
 
 	return os.WriteFile(dst, data, srcInfo.Mode())
-}
-
-// ListInstalled returns all installed plugins for a scope.
-// Handles both v1 (JSON array) and v2 (versioned object) formats.
-func (i *Installer) ListInstalled(scope Scope) ([]InstalledPlugin, error) {
-	installedFile := GetInstalledPluginsFile(i.cwd, scope)
-
-	v2 := loadInstalledPluginsV2(installedFile)
-
-	var installed []InstalledPlugin
-	for source, entries := range v2.Plugins {
-		for _, info := range entries {
-			installed = append(installed, InstalledPlugin{
-				Name:        source,
-				Source:      source,
-				Path:        info.InstallPath,
-				Version:     info.Version,
-				InstalledAt: info.InstalledAt,
-			})
-		}
-	}
-	return installed, nil
-}
-
-// GetMarketplaces returns all known marketplaces.
-func (i *Installer) GetMarketplaces() []MarketplaceSource {
-	result := make([]MarketplaceSource, 0, len(i.marketplaces))
-	for _, m := range i.marketplaces {
-		result = append(result, m)
-	}
-	return result
-}
-
-// AddMarketplace adds a new marketplace source.
-func (i *Installer) AddMarketplace(source MarketplaceSource) error {
-	homeDir, _ := os.UserHomeDir()
-	path := filepath.Join(confdir.Dir(homeDir), "plugins", "known_marketplaces.json")
-
-	// Load existing
-	var km KnownMarketplaces
-	if err := atomicfile.ReadJSON(path, &km); err != nil {
-		return err
-	}
-
-	// Check if already exists
-	found := false
-	for idx, m := range km.Marketplaces {
-		if m.Name == source.Name {
-			km.Marketplaces[idx] = source
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		km.Marketplaces = append(km.Marketplaces, source)
-		i.marketplaces[source.Name] = source
-	}
-
-	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-
-	return atomicfile.WriteJSON(path, km, 0o644)
 }

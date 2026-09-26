@@ -143,7 +143,7 @@ func (t *SkillTool) execute(ctx context.Context, params map[string]any, cwd stri
 	}
 
 	// Load full instructions
-	instructions := sk.GetInstructions()
+	instructions := sk.Instructions()
 	if instructions == "" {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("skill has no instructions: %s", sk.FullName()))
 	}

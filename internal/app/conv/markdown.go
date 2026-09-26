@@ -804,13 +804,13 @@ func customizeStyle(s *ansi.StyleConfig, width int) {
 	s.H1.Suffix = ""
 	s.H1.Color = &blue
 	s.H1.BackgroundColor = nil
-	s.H1.Bold = boolPtr(true)
+	s.H1.Bold = new(true)
 	s.H2.Prefix = ""
 	s.H2.Color = &blue
-	s.H2.Bold = boolPtr(true)
+	s.H2.Bold = new(true)
 	s.H3.Prefix = ""
 	s.H3.Color = &blue
-	s.H3.Bold = boolPtr(true)
+	s.H3.Bold = new(true)
 	s.Heading.BlockSuffix = "\n"
 	s.H4.Prefix = ""
 	s.H5.Prefix = ""
@@ -818,8 +818,8 @@ func customizeStyle(s *ansi.StyleConfig, width int) {
 
 	// BlockQuote: muted color with standard │ indent token
 	s.BlockQuote.Color = &textDim
-	s.BlockQuote.Indent = uintPtr(1)
-	s.BlockQuote.IndentToken = stringPtr("│ ")
+	s.BlockQuote.Indent = new(uint(1))
+	s.BlockQuote.IndentToken = new("│ ")
 
 	// Horizontal rule: full-width thin line. Kept on the faint Border tone (not
 	// muted) so a section divider recedes instead of competing with the prose —
@@ -843,15 +843,11 @@ func customizeStyle(s *ansi.StyleConfig, width int) {
 	}
 }
 
-func boolPtr(b bool) *bool { return &b }
-
 var reTripleNewlines = regexp.MustCompile(`\n{3,}`)
 
 func collapseBlankLines(s string) string {
 	return reTripleNewlines.ReplaceAllString(s, "\n\n")
 }
-func uintPtr(u uint) *uint       { return &u }
-func stringPtr(s string) *string { return &s }
 
 // CompletedBlockBoundary returns the byte offset in content up to which the
 // text forms complete markdown blocks that are safe to render and commit to

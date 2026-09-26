@@ -64,7 +64,7 @@ type mcpServerItem struct {
 
 // MCPSelector holds state for the MCP server selector
 type MCPSelector struct {
-	registry *coremcp.Registry
+	registry *coremcp.Manager
 
 	active          bool
 	servers         []mcpServerItem
@@ -125,7 +125,7 @@ type mcpEditServerMsg struct {
 // ── Constructor ─────────────────────────────────────────────────────
 
 // NewMCPSelector creates a new MCPSelector with the given MCP registry.
-func NewMCPSelector(reg *coremcp.Registry) MCPSelector {
+func NewMCPSelector(reg *coremcp.Manager) MCPSelector {
 	return MCPSelector{
 		registry: reg,
 		active:   false,
@@ -447,7 +447,7 @@ func (s *MCPSelector) AutoConnect() tea.Cmd {
 }
 
 // mcpStartConnect returns a tea.Cmd that connects to an MCP server.
-func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
+func mcpStartConnect(reg *coremcp.Manager, name string) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		if reg == nil {
@@ -467,8 +467,8 @@ func mcpStartConnect(reg *coremcp.Registry, name string) tea.Cmd {
 		}
 
 		toolCount := 0
-		if client, ok := reg.GetClient(name); ok {
-			toolCount = len(client.GetCachedTools())
+		if client, ok := reg.Client(name); ok {
+			toolCount = len(client.CachedTools())
 		}
 
 		return mcpConnectResultMsg{

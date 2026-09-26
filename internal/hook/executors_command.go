@@ -1,12 +1,10 @@
 package hook
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,7 +45,10 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	runErr := cmd.Run()
+	runErr := proc.StartGroup(cmd)
+	if runErr == nil {
+		runErr = cmd.Wait()
+	}
 	exitCode := getExitCode(runErr)
 	if exitCode < 0 {
 		outcome.Error = runErr
@@ -84,115 +85,8 @@ func commandFailure(exitCode int, stderr *bytes.Buffer) error {
 	return fmt.Errorf("hook exited %d: %s", exitCode, reason)
 }
 
-func (e *Engine) executeCommandBidirectional(ctx context.Context, hookCmd setting.HookCmd, input HookInput) HookOutcome {
-	outcome := HookOutcome{ShouldContinue: true}
-	if hookCmd.Command == "" {
-		return outcome
-	}
-
-	timeout := defaultTimeout
-	if hookCmd.Timeout > 0 {
-		timeout = hookCmd.Timeout
-	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	detached := false
-	defer func() {
-		if !detached {
-			cancel()
-		}
-	}()
-
-	inputJSON, err := json.Marshal(input)
-	if err != nil {
-		outcome.Error = fmt.Errorf("failed to marshal input: %w", err)
-		return outcome
-	}
-
-	cwd := e.getCwd()
-	cmd := buildShellCommand(ctx, hookCmd, cwd)
-	cmd.Env = e.buildEnv(ctx, input)
-
-	stdinPipe, err := cmd.StdinPipe()
-	if err != nil {
-		outcome.Error = fmt.Errorf("failed to create stdin pipe: %w", err)
-		return outcome
-	}
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		outcome.Error = fmt.Errorf("failed to create stdout pipe: %w", err)
-		return outcome
-	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Start(); err != nil {
-		outcome.Error = fmt.Errorf("failed to start hook: %w", err)
-		return outcome
-	}
-	if _, err := io.WriteString(stdinPipe, string(inputJSON)+"\n"); err != nil {
-		outcome.Error = fmt.Errorf("failed to write to stdin: %w", err)
-		_ = cmd.Wait()
-		return outcome
-	}
-
-	scanner := bufio.NewScanner(stdoutPipe)
-	var finalOutput string
-	firstLine := true
-	promptCallback := e.getPromptCallback()
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if firstLine {
-			firstLine = false
-			var async asyncFirstLine
-			if json.Unmarshal([]byte(line), &async) == nil && async.Async {
-				detached = true
-				go func() {
-					defer cancel()
-					_ = cmd.Wait()
-				}()
-				return outcome
-			}
-		}
-
-		var promptReq PromptRequest
-		if err := json.Unmarshal([]byte(line), &promptReq); err == nil && promptReq.Prompt != "" && promptReq.Message != "" {
-			if promptCallback == nil {
-				continue
-			}
-			resp, cancelled := promptCallback(promptReq)
-			if cancelled {
-				_ = stdinPipe.Close()
-				_ = cmd.Wait()
-				return outcome
-			}
-			respJSON, err := json.Marshal(resp)
-			if err != nil {
-				continue
-			}
-			if _, err := io.WriteString(stdinPipe, string(respJSON)+"\n"); err != nil {
-				break
-			}
-			continue
-		}
-		finalOutput = line
-	}
-	exitCode := getExitCode(cmd.Wait())
-	if exitCode == 2 {
-		return handleBlockingExit(&stderr)
-	}
-	if exitCode != 0 && exitCode >= 0 {
-		return outcome
-	}
-	return e.parseOutput(finalOutput, outcome)
-}
-
 // buildShellCommand prepares a hook process. Hook commands talk through
-// configured pipes, never the TUI's controlling terminal — an interactive hook
-// means the JSON line protocol, not terminal ownership — so the child is
+// configured pipes, never the TUI's controlling terminal, so the child is
 // detached, and cancellation reaches its whole process group.
 func buildShellCommand(ctx context.Context, hookCmd setting.HookCmd, cwd string) *exec.Cmd {
 	name, args := hookInvocation(hookCmd)

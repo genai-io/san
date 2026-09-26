@@ -135,13 +135,6 @@ func (m *ConversationModel) SetLastAutopilotNote(note string) {
 	last.AutopilotNote = note
 }
 
-func (m *ConversationModel) AppendErrorToLast(err error) {
-	if len(m.Messages) > 0 {
-		idx := len(m.Messages) - 1
-		m.Messages[idx].Content += "\n[Error: " + err.Error() + "]"
-	}
-}
-
 func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, contentFn func(core.ToolCall) string, decisionFn func(callID string) *core.ReviewDecision) {
 	for _, tc := range calls {
 		m.Append(core.ChatMessage{
@@ -171,15 +164,6 @@ func (m *ConversationModel) DropStreamingAssistant() {
 	}
 	if m.Messages[n-1].Role == core.ChatAssistant {
 		m.Messages = m.Messages[:n-1]
-	}
-}
-
-func (m *ConversationModel) RemoveEmptyLastAssistant() {
-	if len(m.Messages) > 0 {
-		last := m.Messages[len(m.Messages)-1]
-		if last.Role == core.ChatAssistant && last.Content == "" {
-			m.Messages = m.Messages[:len(m.Messages)-1]
-		}
 	}
 }
 
@@ -236,46 +220,6 @@ func (m *ConversationModel) ToggleAllExpandable() {
 			m.Messages[i].ToolCallsExpanded = !anyExpanded
 		}
 	}
-}
-
-func (m *ConversationModel) HasAllToolResults(idx int) bool {
-	if idx < 0 || idx >= len(m.Messages) {
-		return true
-	}
-	toolCalls := m.Messages[idx].ToolCalls
-	if len(toolCalls) == 0 {
-		return true
-	}
-
-	expected := make(map[string]bool, len(toolCalls))
-	for _, tc := range toolCalls {
-		expected[tc.ID] = false
-	}
-
-	for j := idx + 1; j < len(m.Messages); j++ {
-		msg := m.Messages[j]
-		if msg.Role == core.ChatNotice {
-			continue
-		}
-		if msg.ToolResult == nil {
-			break
-		}
-		if _, ok := expected[msg.ToolResult.ToolCallID]; ok {
-			expected[msg.ToolResult.ToolCallID] = true
-		}
-		allFound := true
-		for _, found := range expected {
-			if !found {
-				allFound = false
-				break
-			}
-		}
-		if allFound {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (m ConversationModel) ConvertToProvider() []core.Message {

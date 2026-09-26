@@ -58,7 +58,7 @@ func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInf
 	}
 
 	if store != nil {
-		if _, output, ok := store.GetTokenLimit(currentModel.ModelID); ok {
+		if _, output, ok := store.TokenLimit(currentModel.ModelID); ok {
 			return output
 		}
 	}

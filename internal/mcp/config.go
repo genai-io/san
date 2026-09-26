@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/hook"
 )
 
 // ConfigLoader handles loading MCP configuration from multiple sources
@@ -81,8 +82,8 @@ func (l *ConfigLoader) loadFile(path string) (map[string]ServerConfig, error) {
 	return config.MCPServers, nil
 }
 
-// GetFilePath returns the file path for a given scope
-func (l *ConfigLoader) GetFilePath(scope Scope) string {
+// FilePath returns the file path for a given scope
+func (l *ConfigLoader) FilePath(scope Scope) string {
 	switch scope {
 	case ScopeUser:
 		return filepath.Join(l.userDir, "mcp.json")
@@ -97,7 +98,7 @@ func (l *ConfigLoader) GetFilePath(scope Scope) string {
 
 // SaveServer saves a server configuration to the specified scope
 func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope) error {
-	filePath := l.GetFilePath(scope)
+	filePath := l.FilePath(scope)
 
 	// Ensure directory exists
 	dir := filepath.Dir(filePath)
@@ -126,13 +127,13 @@ func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope)
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChange(scopeConfigSource(scope), filePath)
 	return nil
 }
 
 // RemoveServer removes a server configuration from the specified scope
 func (l *ConfigLoader) RemoveServer(name string, scope Scope) error {
-	filePath := l.GetFilePath(scope)
+	filePath := l.FilePath(scope)
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {
@@ -154,14 +155,14 @@ func (l *ConfigLoader) RemoveServer(name string, scope Scope) error {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChange(scopeConfigSource(scope), filePath)
 	return nil
 }
 
 // RemoveServerFromAll removes a server from all config files where it exists
 func (l *ConfigLoader) RemoveServerFromAll(name string) error {
 	for _, scope := range []Scope{ScopeUser, ScopeProject, ScopeLocal} {
-		l.removeServerFromFile(l.GetFilePath(scope), name)
+		l.removeServerFromFile(l.FilePath(scope), name)
 	}
 	return nil
 }
@@ -187,7 +188,7 @@ func (l *ConfigLoader) removeServerFromFile(filePath, name string) {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return
 	}
-	fireConfigChanged(configSourceFromFilePath(filePath), filePath)
+	hook.FireConfigChange(configSourceFromFilePath(filePath), filePath)
 }
 
 func configSourceFromFilePath(filePath string) string {
@@ -215,8 +216,8 @@ func configSourceFromFilePath(filePath string) string {
 	}
 }
 
-// GetProjectDir returns the project config directory
-func (l *ConfigLoader) GetProjectDir() string {
+// ProjectDir returns the project config directory
+func (l *ConfigLoader) ProjectDir() string {
 	return l.projectDir
 }
 

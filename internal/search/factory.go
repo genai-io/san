@@ -8,12 +8,13 @@ import (
 	"github.com/genai-io/san/internal/setting"
 )
 
-// Preferred returns the preferred search provider from settings, or the default.
+// Preferred returns the preferred search provider from settings, or Exa,
+// which needs no API key.
 func Preferred() Provider {
 	if s := setting.DefaultIfInit(); s != nil && s.SearchProvider() != "" {
 		return CreateProvider(ProviderName(s.SearchProvider()))
 	}
-	return GetDefaultProvider()
+	return NewExaProvider()
 }
 
 // CreateProvider creates a search provider by name.
@@ -31,13 +32,6 @@ func CreateProvider(name ProviderName) Provider {
 	default:
 		return NewExaProvider()
 	}
-}
-
-// GetDefaultProvider returns the first available search provider
-// Priority: Exa (no key needed) > Serper > Brave
-func GetDefaultProvider() Provider {
-	// Exa is always available (no API key required)
-	return NewExaProvider()
 }
 
 // matchesDomainFilter checks if a URL matches the domain filter criteria

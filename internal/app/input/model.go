@@ -15,8 +15,10 @@ import (
 	coremcp "github.com/genai-io/san/internal/mcp"
 	corepersona "github.com/genai-io/san/internal/persona"
 	coreplugin "github.com/genai-io/san/internal/plugin"
+	"github.com/genai-io/san/internal/setting"
 	coresetting "github.com/genai-io/san/internal/setting"
 	coreskill "github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
 )
 
 type PastedChunk struct {
@@ -110,14 +112,14 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
-	AgentRegistry   AgentRegistry
+	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
-	MCPRegistry     *coremcp.Registry
+	MCPRegistry     *coremcp.Manager
 	PluginRegistry  *coreplugin.Registry
 	Setting         *coresetting.Settings
-	LoadDisabled    func(userLevel bool) map[string]bool
-	UpdateDisabled  func(disabled map[string]bool, userLevel bool) error
+	LoadDisabled    func(scope setting.Scope) map[string]bool
+	UpdateDisabled  func(disabled map[string]bool, scope setting.Scope) error
 	// Evolve bundles the /evolve popup's dependencies: the live workspace
 	// source, the learned skill/memory stores, and the recent-activity
 	// accessor. See EvolveDeps.

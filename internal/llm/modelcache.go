@@ -43,8 +43,8 @@ func (s *Store) CacheModels(provider ProviderID, authMethod AuthMethod, models [
 	return s.save()
 }
 
-// GetCachedModels returns cached models if they exist and are not expired
-func (s *Store) GetCachedModels(provider ProviderID, authMethod AuthMethod) ([]ModelInfo, bool) {
+// CachedModels returns cached models if they exist and are not expired
+func (s *Store) CachedModels(provider ProviderID, authMethod AuthMethod) ([]ModelInfo, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -228,8 +228,8 @@ func (s *Store) ClearTokenLimit(modelID string) error {
 	return s.save()
 }
 
-// GetTokenLimit returns custom token limits for a model
-func (s *Store) GetTokenLimit(modelID string) (inputLimit, outputLimit int, ok bool) {
+// TokenLimit returns custom token limits for a model
+func (s *Store) TokenLimit(modelID string) (inputLimit, outputLimit int, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -257,7 +257,7 @@ func (s *Store) EffectiveContextWindow(provider ProviderID, auth AuthMethod, mod
 	if s == nil || modelID == "" {
 		return 0
 	}
-	if in, _, ok := s.GetTokenLimit(modelID); ok && in > 0 {
+	if in, _, ok := s.TokenLimit(modelID); ok && in > 0 {
 		return in
 	}
 	if in, _ := s.CachedModelLimitsForProvider(provider, auth, modelID); in > 0 {

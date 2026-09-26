@@ -123,9 +123,9 @@ func TestAgent_ModelResolution(t *testing.T) {
 			}
 			executor := subagent.NewExecutor(mp, t.TempDir(), tt.parentModel, nil)
 
-			if tt.parentModel != "" && executor.GetParentModelID() != tt.parentModel {
+			if tt.parentModel != "" && executor.ParentModelID() != tt.parentModel {
 				t.Errorf("parent model mismatch: got %q, want %q",
-					executor.GetParentModelID(), tt.parentModel)
+					executor.ParentModelID(), tt.parentModel)
 			}
 
 			_, err := executor.Run(context.Background(), tool.AgentExecRequest{

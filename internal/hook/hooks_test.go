@@ -153,8 +153,8 @@ func TestMatchesIfConditionMatchesBashSubcommands(t *testing.T) {
 
 func TestEngineRuntimeAndSessionHooks(t *testing.T) {
 	engine := NewEngine(setting.NewData(), "test-session", "/tmp", "")
-	engine.store.AddRuntimeHook(PreToolUse, "Bash", setting.HookCmd{Type: "command", Command: "echo runtime"})
-	engine.store.AddSessionHook(Stop, "", setting.HookCmd{Type: "command", Command: "echo session"})
+	engine.store.runtimeHooks[PreToolUse] = []setting.Hook{{Matcher: "Bash", Hooks: []setting.HookCmd{{Type: "command", Command: "echo runtime"}}}}
+	engine.store.sessionHooks[Stop] = []setting.Hook{{Hooks: []setting.HookCmd{{Type: "command", Command: "echo session"}}}}
 	engine.AddRuntimeFunctionHook(StopFailure, "", FunctionHook{
 		Callback: func(_ context.Context, _ HookInput) (HookOutput, error) {
 			msg := "runtime function"
@@ -216,28 +216,6 @@ func TestEngineSessionFunctionHook(t *testing.T) {
 	outcome = engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Write"})
 	if outcome.AdditionalContext != "" {
 		t.Fatalf("expected matcher-missed function hook to skip, got %q", outcome.AdditionalContext)
-	}
-}
-
-func TestEngineRemoveSessionFunctionHook(t *testing.T) {
-	engine := NewEngine(setting.NewData(), "test-session", "/tmp", "")
-	id := engine.AddSessionFunctionHook(Stop, "", FunctionHook{
-		ID: "fn-stop",
-		Callback: func(_ context.Context, _ HookInput) (HookOutput, error) {
-			msg := "should not run"
-			return HookOutput{SystemMessage: msg}, nil
-		},
-	})
-	if id != "fn-stop" {
-		t.Fatalf("expected stable hook ID, got %q", id)
-	}
-	if !engine.store.RemoveSessionFunctionHook(Stop, id) {
-		t.Fatal("expected function hook removal to succeed")
-	}
-
-	outcome := engine.Execute(context.Background(), Stop, HookInput{})
-	if outcome.AdditionalContext != "" {
-		t.Fatalf("expected removed function hook to stop running, got %q", outcome.AdditionalContext)
 	}
 }
 
@@ -1130,9 +1108,7 @@ echo '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"be
 	}
 }
 
-// === Reverse Control #6: Bidirectional Prompt Protocol ===
-
-func TestHooks_NonInteractiveCommandClosesStdinWithPromptCallback(t *testing.T) {
+func TestHooks_CommandClosesStdin(t *testing.T) {
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "noninteractive.sh")
 	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
@@ -1148,10 +1124,6 @@ echo '{"systemMessage":"stdin closed"}'
 		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Timeout: 2}}},
 	}
 	engine := NewEngine(settings, "test-session", tmpDir, "")
-	engine.SetPromptCallback(func(PromptRequest) (PromptResponse, bool) {
-		t.Fatal("non-interactive hook invoked prompt callback")
-		return PromptResponse{}, true
-	})
 
 	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Read"})
 	if outcome.Error != nil {
@@ -1159,240 +1131,6 @@ echo '{"systemMessage":"stdin closed"}'
 	}
 	if outcome.AdditionalContext != "stdin closed" {
 		t.Fatalf("AdditionalContext = %q, want stdin closed", outcome.AdditionalContext)
-	}
-}
-
-func TestHooks_BidirectionalPrompt_SingleRound(t *testing.T) {
-	tmpDir := t.TempDir()
-	// Script sends a PromptRequest, reads the response, then outputs final JSON
-	scriptPath := filepath.Join(tmpDir, "prompt.sh")
-	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-# Read initial input from stdin
-read -r INPUT
-# Send a prompt request
-echo '{"prompt":"confirm","message":"Proceed?","options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}'
-# Read prompt response
-read -r RESPONSE
-# Parse the selected value and use it in final output
-SELECTED=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('selected',''))" 2>/dev/null)
-if [ "$SELECTED" = "yes" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-else
-  echo '{"continue":false,"reason":"user declined"}'
-fi
-`), 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	settings := setting.NewData()
-	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
-	}
-
-	engine := NewEngine(settings, "test-session", tmpDir, "")
-
-	// Set up a prompt callback that auto-approves
-	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
-		if req.Prompt != "confirm" {
-			t.Errorf("unexpected prompt ID: %q", req.Prompt)
-		}
-		if req.Message != "Proceed?" {
-			t.Errorf("unexpected message: %q", req.Message)
-		}
-		if len(req.Options) != 2 {
-			t.Errorf("expected 2 options, got %d", len(req.Options))
-		}
-		return PromptResponse{
-			PromptResponse: "confirm",
-			Selected:       "yes",
-		}, false
-	})
-
-	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Bash"})
-
-	if !outcome.PermissionAllow {
-		t.Error("expected PermissionAllow=true after user approved prompt")
-	}
-	if outcome.ShouldBlock {
-		t.Error("should not block after approval")
-	}
-}
-
-func TestHooks_BidirectionalPrompt_UserDeclines(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptPath := filepath.Join(tmpDir, "prompt_deny.sh")
-	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-read -r INPUT
-echo '{"prompt":"confirm","message":"Allow this?","options":[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]}'
-read -r RESPONSE
-SELECTED=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('selected',''))" 2>/dev/null)
-if [ "$SELECTED" = "yes" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-else
-  echo '{"continue":false,"reason":"user declined"}'
-fi
-`), 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	settings := setting.NewData()
-	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
-	}
-
-	engine := NewEngine(settings, "test-session", tmpDir, "")
-	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
-		return PromptResponse{PromptResponse: "confirm", Selected: "no"}, false
-	})
-
-	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Bash"})
-
-	if !outcome.ShouldBlock {
-		t.Error("expected ShouldBlock=true after user declined")
-	}
-	if outcome.BlockReason != "user declined" {
-		t.Errorf("expected reason 'user declined', got %q", outcome.BlockReason)
-	}
-}
-
-func TestHooks_BidirectionalPrompt_Cancelled(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptPath := filepath.Join(tmpDir, "prompt_cancel.sh")
-	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-read -r INPUT
-echo '{"prompt":"confirm","message":"Continue?"}'
-# If stdin closes (cancelled), script exits naturally
-read -r RESPONSE || exit 0
-echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-`), 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	settings := setting.NewData()
-	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
-	}
-
-	engine := NewEngine(settings, "test-session", tmpDir, "")
-	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
-		// User cancels the prompt
-		return PromptResponse{}, true
-	})
-
-	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Bash"})
-
-	// Cancelled prompt should continue (no block, no allow — just pass through)
-	if outcome.ShouldBlock {
-		t.Error("cancelled prompt should not block")
-	}
-	if outcome.PermissionAllow {
-		t.Error("cancelled prompt should not allow")
-	}
-}
-
-func TestHooks_BidirectionalPrompt_MultiRound(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptPath := filepath.Join(tmpDir, "multi_prompt.sh")
-	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-read -r INPUT
-# Round 1: ask for environment
-echo '{"prompt":"env","message":"Which environment?"}'
-read -r RESP1
-ENV=$(echo "$RESP1" | python3 -c "import sys,json; print(json.load(sys.stdin).get('selected',''))" 2>/dev/null)
-# Round 2: confirm
-echo '{"prompt":"confirm","message":"Deploy to '"$ENV"'?"}'
-read -r RESP2
-CONFIRM=$(echo "$RESP2" | python3 -c "import sys,json; print(json.load(sys.stdin).get('selected',''))" 2>/dev/null)
-if [ "$CONFIRM" = "yes" ]; then
-  echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-else
-  echo '{"continue":false,"reason":"deployment cancelled"}'
-fi
-`), 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	settings := setting.NewData()
-	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
-	}
-
-	engine := NewEngine(settings, "test-session", tmpDir, "")
-
-	callCount := 0
-	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
-		callCount++
-		switch req.Prompt {
-		case "env":
-			return PromptResponse{PromptResponse: "env", Selected: "staging"}, false
-		case "confirm":
-			return PromptResponse{PromptResponse: "confirm", Selected: "yes"}, false
-		default:
-			t.Errorf("unexpected prompt: %q", req.Prompt)
-			return PromptResponse{}, true
-		}
-	})
-
-	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Bash"})
-
-	if callCount != 2 {
-		t.Errorf("expected 2 prompt rounds, got %d", callCount)
-	}
-	if !outcome.PermissionAllow {
-		t.Error("expected PermissionAllow=true after multi-round approval")
-	}
-}
-
-func TestHooks_BidirectionalPrompt_AsyncDetach(t *testing.T) {
-	tmpDir := t.TempDir()
-	markerFile := filepath.Join(tmpDir, "async_marker.txt")
-	scriptPath := filepath.Join(tmpDir, "async_detach.sh")
-	err := os.WriteFile(scriptPath, []byte(`#!/bin/bash
-read -r INPUT
-# First line signals async
-echo '{"async":true}'
-# Background work (simulated)
-echo "async_done" > `+filepath.ToSlash(markerFile)+`
-`), 0o755)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	settings := setting.NewData()
-	settings.Hooks["PreToolUse"] = []setting.Hook{
-		{Hooks: []setting.HookCmd{{Type: "command", Command: scriptPath, Interactive: true}}},
-	}
-
-	engine := NewEngine(settings, "test-session", tmpDir, "")
-	engine.SetPromptCallback(func(req PromptRequest) (PromptResponse, bool) {
-		t.Error("prompt callback should NOT be called for async-detached hooks")
-		return PromptResponse{}, true
-	})
-
-	outcome := engine.Execute(context.Background(), PreToolUse, HookInput{ToolName: "Bash"})
-
-	// Async detach: should continue without blocking or allowing
-	if outcome.ShouldBlock {
-		t.Error("async detach should not block")
-	}
-	if outcome.PermissionAllow {
-		t.Error("async detach should not set PermissionAllow")
-	}
-
-	// Poll for the marker file with a generous timeout for CI
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(markerFile); err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
-		t.Error("expected async hook to have run in background")
 	}
 }
 

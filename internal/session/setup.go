@@ -126,7 +126,7 @@ func (s *Setup) LoadLatest() (*Snapshot, error) {
 	if st == nil {
 		return nil, fmt.Errorf("session store not initialized")
 	}
-	return st.GetLatest()
+	return st.Latest()
 }
 
 // Fork forks a session by ID via the store.

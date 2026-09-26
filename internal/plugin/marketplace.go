@@ -311,8 +311,8 @@ func (m *MarketplaceManager) SyncAll(ctx context.Context) []error {
 	return errors
 }
 
-// GetPluginPath returns the path to a plugin in a marketplace.
-func (m *MarketplaceManager) GetPluginPath(marketplaceID, pluginName string) (string, error) {
+// PluginPath returns the path to a plugin in a marketplace.
+func (m *MarketplaceManager) PluginPath(marketplaceID, pluginName string) (string, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {
 		return "", err
@@ -361,7 +361,7 @@ func (m *MarketplaceManager) getMarketplaceBasePath(marketplaceID string) (strin
 // marketplace has no manifest plugins[], it falls back to scanning the repo for
 // vendored plugin subdirectories so directory-style marketplaces keep working.
 func (m *MarketplaceManager) MarketplacePlugins(marketplaceID string) ([]MarketplacePlugin, error) {
-	if meta, err := m.GetMarketplaceMetadata(marketplaceID); err == nil && len(meta.Plugins) > 0 {
+	if meta, err := m.MarketplaceMetadata(marketplaceID); err == nil && len(meta.Plugins) > 0 {
 		return meta.Plugins, nil
 	}
 
@@ -375,7 +375,7 @@ func (m *MarketplaceManager) MarketplacePlugins(marketplaceID string) ([]Marketp
 			Name:   name,
 			Source: PluginSource{Type: SourcePath, Path: name},
 		}
-		if path, perr := m.GetPluginPath(marketplaceID, name); perr == nil {
+		if path, perr := m.PluginPath(marketplaceID, name); perr == nil {
 			if man, merr := loadManifest(path); merr == nil {
 				entry.Description = man.Description
 				entry.Version = man.Version
@@ -416,7 +416,7 @@ func (m *MarketplaceManager) ResolveLocalPluginPath(marketplaceID, name string, 
 			return full, nil
 		}
 	}
-	return m.GetPluginPath(marketplaceID, name)
+	return m.PluginPath(marketplaceID, name)
 }
 
 // ListPlugins returns the names of vendored plugin subdirectories in a
@@ -477,8 +477,8 @@ func isValidPlugin(path string) bool {
 	return false
 }
 
-// GetMarketplaceMetadata loads the marketplace.json metadata from a marketplace.
-func (m *MarketplaceManager) GetMarketplaceMetadata(marketplaceID string) (*MarketplaceMetadata, error) {
+// MarketplaceMetadata loads the marketplace.json metadata from a marketplace.
+func (m *MarketplaceManager) MarketplaceMetadata(marketplaceID string) (*MarketplaceMetadata, error) {
 	basePath, err := m.getMarketplaceBasePath(marketplaceID)
 	if err != nil {
 		return nil, err

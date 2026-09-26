@@ -32,14 +32,14 @@ func TestStore_PersistsConnectionsCurrentModelSearchProviderAndTokenLimits(t *te
 	if !reloaded.IsConnected(OpenAI, AuthAPIKey) {
 		t.Fatal("expected OpenAI API key connection to persist")
 	}
-	current := reloaded.GetCurrentModel()
+	current := reloaded.CurrentModel()
 	if current == nil || current.ModelID != "gpt-5" || current.Provider != OpenAI || current.AuthMethod != AuthAPIKey {
 		t.Fatalf("unexpected current model after reload: %#v", current)
 	}
-	if reloaded.GetSearchProvider() != "brave" {
-		t.Fatalf("search provider = %q, want %q", reloaded.GetSearchProvider(), "brave")
+	if reloaded.SearchProvider() != "brave" {
+		t.Fatalf("search provider = %q, want %q", reloaded.SearchProvider(), "brave")
 	}
-	in, out, ok := reloaded.GetTokenLimit("gpt-5")
+	in, out, ok := reloaded.TokenLimit("gpt-5")
 	if !ok || in != 200000 || out != 32000 {
 		t.Fatalf("unexpected token limit after reload: in=%d out=%d ok=%v", in, out, ok)
 	}
@@ -97,7 +97,7 @@ func TestStore_ReloadPicksUpAnotherInstancesWrites(t *testing.T) {
 	if in != 256_000 || out != 16_384 {
 		t.Fatalf("CachedModelLimitsForProvider after reload = (%d, %d), want (256000, 16384)", in, out)
 	}
-	if cur := shared.GetCurrentModel(); cur == nil || cur.ModelID != "kimi-k2" {
+	if cur := shared.CurrentModel(); cur == nil || cur.ModelID != "kimi-k2" {
 		t.Fatalf("GetCurrentModel after reload = %#v, want kimi-k2", cur)
 	}
 }
@@ -132,7 +132,7 @@ func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 		t.Fatalf("CacheModels() error = %v", err)
 	}
 
-	cachedBefore, ok := store.GetCachedModels(OpenAI, AuthAPIKey)
+	cachedBefore, ok := store.CachedModels(OpenAI, AuthAPIKey)
 	if !ok {
 		t.Fatal("expected cached models")
 	}
@@ -141,7 +141,7 @@ func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 		t.Fatalf("SetTokenLimit() error = %v", err)
 	}
 
-	cachedAfter, ok := store.GetCachedModels(OpenAI, AuthAPIKey)
+	cachedAfter, ok := store.CachedModels(OpenAI, AuthAPIKey)
 	if !ok {
 		t.Fatal("expected cached models after override")
 	}
@@ -150,7 +150,7 @@ func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 	if cachedAfter[0].ContextWindow != 0 || cachedBefore[0].ContextWindow != 0 {
 		t.Fatalf("expected the cache left alone, got %#v", cachedAfter[0])
 	}
-	if in, out, ok := store.GetTokenLimit("gpt-5"); !ok || in != 256000 || out != 64000 {
+	if in, out, ok := store.TokenLimit("gpt-5"); !ok || in != 256000 || out != 64000 {
 		t.Fatalf("GetTokenLimit() = (%d, %d, %v), want (256000, 64000, true)", in, out, ok)
 	}
 	if got := store.EffectiveContextWindow(OpenAI, AuthAPIKey, "gpt-5"); got != 256000 {
@@ -307,7 +307,7 @@ func TestStore_CachedModelLimitsForProvider(t *testing.T) {
 	cache.CachedAt = cache.CachedAt.Add(-2 * modelCacheTTL)
 	store.data.Models[key] = cache
 
-	if in, ok := store.GetCachedModels(OpenAI, AuthSubscription); ok {
+	if in, ok := store.CachedModels(OpenAI, AuthSubscription); ok {
 		t.Fatalf("expected subscription cache to be expired, got %v", in)
 	}
 

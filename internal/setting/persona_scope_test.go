@@ -24,16 +24,16 @@ func TestPersonaAt_ReadsEachScopeRaw(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := PersonaAt(cwd, false); got != "proj-p" {
+	if got := PersonaAt(cwd, ScopeProject); got != "proj-p" {
 		t.Errorf("project PersonaAt = %q, want proj-p", got)
 	}
-	if got := PersonaAt(cwd, true); got != "user-p" {
+	if got := PersonaAt(cwd, ScopeUser); got != "user-p" {
 		t.Errorf("user PersonaAt = %q, want user-p", got)
 	}
 
 	// A project with no pin reads empty (so the switch falls back to user scope).
 	bare := t.TempDir()
-	if got := PersonaAt(bare, false); got != "" {
+	if got := PersonaAt(bare, ScopeProject); got != "" {
 		t.Errorf("unpinned project PersonaAt = %q, want empty", got)
 	}
 }

@@ -5,11 +5,8 @@ import (
 	"strings"
 )
 
+// EncodePath turns a directory into the flat name its sessions are stored under.
 func EncodePath(path string) string {
-	return encodePath(path)
-}
-
-func encodePath(path string) string {
 	path = strings.TrimRight(path, "/")
 	// On Windows, the working directory contains backslashes and a colon
 	// (e.g. D:\\go-project\\workspace).  These characters are not valid in

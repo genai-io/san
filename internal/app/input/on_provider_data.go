@@ -87,7 +87,7 @@ func (s *ProviderSelector) loadProviderData() (tea.Cmd, error) {
 		}
 	}
 
-	current := store.GetCurrentModel()
+	current := store.CurrentModel()
 
 	s.allModels = nil
 	allCached := store.CachedModelsByProvider()
@@ -136,7 +136,7 @@ func (s *ProviderSelector) ensureModelProvidersExist() {
 // loadModelsAsync returns a tea.Cmd that fetches models from all connected
 // providers concurrently, sending a providerModelsLoadedMsg when done.
 func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.CurrentModelInfo) tea.Cmd {
-	connections := store.GetConnections()
+	connections := store.Connections()
 	return func() tea.Msg {
 		ctx := context.Background()
 
@@ -163,7 +163,7 @@ func (s *ProviderSelector) loadModelsAsync(store *llm.Store, current *llm.Curren
 						return
 					}
 				}
-				if cached, ok := store.GetCachedModels(llm.ProviderID(providerName), authMethod); ok {
+				if cached, ok := store.CachedModels(llm.ProviderID(providerName), authMethod); ok {
 					ch <- providerResult{providerName, authMethod, cached}
 				}
 			}(name, conn.AuthMethod)
@@ -191,7 +191,7 @@ func (s *ProviderSelector) HandleModelsLoaded(msg providerModelsLoadedMsg) {
 
 	var current *llm.CurrentModelInfo
 	if s.store != nil {
-		current = s.store.GetCurrentModel()
+		current = s.store.CurrentModel()
 	}
 	s.sortConnectedProviders(current)
 	s.rebuildVisibleItems()
@@ -221,7 +221,7 @@ func (s *ProviderSelector) replaceModelsForAuthMethod(provider llm.ProviderID, a
 
 	var current *llm.CurrentModelInfo
 	if s.store != nil {
-		current = s.store.GetCurrentModel()
+		current = s.store.CurrentModel()
 	}
 
 	providerName := string(provider)

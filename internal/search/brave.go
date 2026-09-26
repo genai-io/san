@@ -20,20 +20,11 @@ type BraveProvider struct {
 }
 
 // NewBraveProvider creates a new Brave provider.
-// If apiKey is provided, it is used directly.
-func NewBraveProvider(apiKey ...string) *BraveProvider {
-	var key string
-	if len(apiKey) > 0 {
-		key = apiKey[0]
-	}
-	return &BraveProvider{apiKey: key}
+func NewBraveProvider(apiKey string) *BraveProvider {
+	return &BraveProvider{apiKey: apiKey}
 }
 
-func (p *BraveProvider) Name() ProviderName   { return ProviderBrave }
-func (p *BraveProvider) DisplayName() string  { return "Brave Search" }
-func (p *BraveProvider) RequiresAPIKey() bool { return true }
-func (p *BraveProvider) EnvVars() []string    { return []string{braveEnvKey} }
-func (p *BraveProvider) IsAvailable() bool    { return p.apiKey != "" }
+func (p *BraveProvider) DisplayName() string { return "Brave Search" }
 
 // braveResponse represents a Brave Search API response
 type braveResponse struct {
@@ -48,7 +39,7 @@ type braveResponse struct {
 
 // Search performs a web search using Brave Search
 func (p *BraveProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
-	if !p.IsAvailable() {
+	if p.apiKey == "" {
 		return nil, fmt.Errorf("%s environment variable is not set", braveEnvKey)
 	}
 

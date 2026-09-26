@@ -35,11 +35,7 @@ func (p *ExaProvider) mcpEndpoint() string {
 	return exaMCPEndpoint
 }
 
-func (p *ExaProvider) Name() ProviderName   { return ProviderExa }
-func (p *ExaProvider) DisplayName() string  { return "Exa AI" }
-func (p *ExaProvider) RequiresAPIKey() bool { return false }
-func (p *ExaProvider) EnvVars() []string    { return []string{} }
-func (p *ExaProvider) IsAvailable() bool    { return true } // Always available, no API key needed
+func (p *ExaProvider) DisplayName() string { return "Exa AI" }
 
 // exaMCPRequest represents a JSON-RPC 2.0 request to Exa MCP
 type exaMCPRequest struct {

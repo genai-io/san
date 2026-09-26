@@ -503,7 +503,7 @@ func TestEnterRefreshesModelsWhenCacheExists(t *testing.T) {
 		t.Fatalf("refreshed models = %#v, want live model", m.allModels)
 	}
 
-	reloaded, ok := m.store.GetCachedModels(providerName, llm.AuthAPIKey)
+	reloaded, ok := m.store.CachedModels(providerName, llm.AuthAPIKey)
 	if !ok || len(reloaded) != 1 || reloaded[0].ID != "live-model" {
 		t.Fatalf("cached after refresh = %#v (ok=%v), want live model", reloaded, ok)
 	}
@@ -618,7 +618,7 @@ func TestSetModelPersistsSelection(t *testing.T) {
 		t.Fatalf("unexpected result: %q", result)
 	}
 
-	current := store.GetCurrentModel()
+	current := store.CurrentModel()
 	if current == nil || current.ModelID != "gpt-5" || current.Provider != llm.OpenAI || current.AuthMethod != llm.AuthAPIKey {
 		t.Fatalf("unexpected current model after SetModel: %#v", current)
 	}

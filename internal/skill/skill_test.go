@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 func TestSkillStateNextState(t *testing.T) {
@@ -245,7 +247,7 @@ Test instructions.
 	}
 
 	// Test SetState (to user level)
-	err = registry.SetState("registry-test", StateActive, true)
+	err = registry.SetState("registry-test", StateActive, setting.ScopeUser)
 	if err != nil {
 		t.Fatalf("SetState failed: %v", err)
 	}
@@ -254,13 +256,13 @@ Test instructions.
 	}
 
 	// Test GetActive
-	activeSkills := registry.GetActive()
+	activeSkills := registry.ListActive()
 	if len(activeSkills) != 1 {
 		t.Errorf("GetActive returned %d skills, want 1", len(activeSkills))
 	}
 
 	// Test GetSkillsSection
-	prompt := registry.GetSkillsSection()
+	prompt := registry.SkillsSection()
 	if prompt == "" {
 		t.Error("GetSkillsSection returned empty string for active skill")
 	}

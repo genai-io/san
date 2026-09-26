@@ -231,7 +231,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
 			log.Logger().Warn("reload settings after config save failed", zap.Error(err))
 		}
-		m.conv.AddNotice("Self-learning config saved (" + msg.Scope + ")")
+		m.conv.AddNotice("Self-learning config saved (" + string(msg.Scope) + ")")
 		m.notifySelfLearnOverride(msg)
 		// Re-wire the L1 reviewer so the saved values take effect on the
 		// running session. If the save also changed the Evolve tool's
@@ -428,12 +428,7 @@ func (m *model) routeToSubModel(msg tea.Msg) (tea.Cmd, bool) {
 func (m *model) needsSpinner() bool {
 	return m.conv.Stream.Active ||
 		m.conv.Compact.Active ||
-		m.hasRunningBackgroundTask()
-}
-
-// hasRunningBackgroundTask reports whether any background task is executing.
-func (m *model) hasRunningBackgroundTask() bool {
-	return m.services.Task.HasRunning()
+		m.services.Task.HasRunning()
 }
 
 // executingTrackerItem reports whether the executor behind a tracker item is

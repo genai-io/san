@@ -52,7 +52,7 @@ func (m *model) OnInference(resp *ai.Response) {
 
 // HasRunningTasks gates the progress-hub tick's spinner batching. Like
 // needsSpinner it reads live runtime state, not persisted tracker status.
-func (m *model) HasRunningTasks() bool { return m.hasRunningBackgroundTask() }
+func (m *model) HasRunningTasks() bool { return m.services.Task.HasRunning() }
 
 // OnStepEnd releases pending work into a still-running turn at a step
 // boundary (a PostTool, where the turn continues): notices the stream held
@@ -129,7 +129,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
-	log.QueueLog("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
+	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
 	commitCmds := m.CommitMessages()
 
 	// User-initiated cancel surfaces here as a Result with StopCanceled now
@@ -145,7 +145,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// marker and cancelled tool_result rows survive a crash/quit, and
 	// re-arm prompt suggestions for the now-idle textarea.
 	if result.StopReason == core.StopCanceled {
-		log.QueueLog("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
+		log.Logger().Sugar().Debugf("OnTurnEnd: turn was cancelled, holding queues and skipping idle hooks")
 		if cmd := m.persistAfterTurn(); cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
@@ -157,7 +157,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	}
 
 	if cmd, found := m.drainTurnQueues(); found {
-		log.QueueLog("OnTurnEnd: drained queued message, skipping hooks")
+		log.Logger().Sugar().Debugf("OnTurnEnd: drained queued message, skipping hooks")
 		if cmd != nil {
 			commitCmds = append(commitCmds, cmd)
 		}
@@ -169,12 +169,12 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// session going toward the mission. When it wants to, the idle hooks are
 	// deferred until handleAutopilotDecision (which fires them if it stops).
 	if cmd := m.autopilotContinueCmd(result); cmd != nil {
-		log.QueueLog("OnTurnEnd: autopilot deciding whether to continue")
+		log.Logger().Sugar().Debugf("OnTurnEnd: autopilot deciding whether to continue")
 		commitCmds = append(commitCmds, cmd, m.ContinueOutbox())
 		return tea.Batch(commitCmds...)
 	}
 
-	log.QueueLog("OnTurnEnd: firing idle hooks async")
+	log.Logger().Sugar().Debugf("OnTurnEnd: firing idle hooks async")
 	commitCmds = append(commitCmds, m.fireIdleHooksCmd(result), m.ContinueOutbox())
 	return tea.Batch(commitCmds...)
 }

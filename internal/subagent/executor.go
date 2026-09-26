@@ -37,9 +37,6 @@ type Executor struct {
 	provider                   llm.Provider
 	registry                   *Registry
 	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
-	modelStore                 *llm.Store       // optional cached provider catalog for validating same-provider overrides
-	parentProviderName         llm.ProviderID   // canonical provider key for the parent connection
-	parentAuthMethod           llm.AuthMethod   // auth-specific catalog key for the parent connection
 	cwd                        string
 	parentModelID              string // Parent conversation's model ID (used when inheriting)
 	parentPermissionModeGetter func() PermissionMode
@@ -48,7 +45,7 @@ type Executor struct {
 	parentSessionID            string               // Parent session ID for linking subagent sessions
 	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
-	mcpRegistry                *mcp.Registry        // tool schemas, execution, per-subagent server sets
+	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 }
@@ -110,15 +107,6 @@ func (e *Executor) SetResolver(r ProviderResolver) {
 	e.resolver = r
 }
 
-// SetModelStore supplies the cached catalog and parent connection identity used
-// to reject unsupported same-provider overrides without fetching models on the
-// agent startup path.
-func (e *Executor) SetModelStore(store *llm.Store, provider llm.ProviderID, authMethod llm.AuthMethod) {
-	e.modelStore = store
-	e.parentProviderName = provider
-	e.parentAuthMethod = authMethod
-}
-
 // SetSkillsDirectory provides the skills directory section so subagents
 // with the Skill tool can see and invoke available skills.
 func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
@@ -126,8 +114,8 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 }
 
 // SetMCPDependencies wires MCP tool access and server connections.
-func (e *Executor) SetMCPDependencies(registry *mcp.Registry) {
-	e.mcpRegistry = registry
+func (e *Executor) SetMCPDependencies(registry *mcp.Manager) {
+	e.mcpManager = registry
 }
 
 // SetDisabledTools supplies the effective global disabled-tool policy inherited
@@ -152,8 +140,8 @@ func (e *Executor) SetSessionStore(store SubagentSessionStore, parentSessionID s
 	e.parentSessionID = parentSessionID
 }
 
-// GetParentModelID returns the parent model ID
-func (e *Executor) GetParentModelID() string {
+// ParentModelID returns the parent model ID
+func (e *Executor) ParentModelID() string {
 	return e.parentModelID
 }
 
@@ -366,8 +354,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	agentCwd := run.cwd
 	cleanup := func() {}
 
-	if len(rc.config.McpServers) > 0 && e.mcpRegistry != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpRegistry, rc.config.McpServers)
+	if len(rc.config.McpServers) > 0 && e.mcpManager != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, rc.config.McpServers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -387,8 +375,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	// Tools — adapt legacy tool registry + MCP tools
 	var mcpGetter func() []core.ToolSchema
-	if e.mcpRegistry != nil {
-		mcpGetter = e.mcpRegistry.GetToolSchemas
+	if e.mcpManager != nil {
+		mcpGetter = e.mcpManager.ToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
@@ -407,9 +395,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, adaptOpts...)
 
 	// Add MCP tool executors
-	if e.mcpRegistry != nil {
-		mcpCaller := mcp.NewCaller(e.mcpRegistry)
-		for _, t := range mcp.AsCoreTools(schemas, mcpCaller) {
+	if e.mcpManager != nil {
+		for _, t := range mcp.AsCoreTools(schemas, e.mcpManager) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}
@@ -551,42 +538,15 @@ func (e *Executor) resolveModel(ctx context.Context, requestModel, configModel s
 		if e.resolver == nil {
 			return e.provider, e.parentModelID, nil
 		}
-		if vendor == e.parentProviderName && modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
-			return e.provider, e.parentModelID, nil
-		}
 		p, err := e.resolver.Resolve(ctx, vendor)
 		if err != nil || p == nil {
 			return e.provider, e.parentModelID, nil
 		}
 		return p, modelID, nil
 	}
-	// A bare id or alias stays on the parent provider. If the cached catalog
-	// positively reports that provider does not offer the model, inherit instead
-	// of sending a request that may fail with an opaque 400 response.
-	modelID := resolveModelAlias(ref)
-	if modelID != e.parentModelID && !e.cachedCatalogAllowsModel(modelID) {
-		return e.provider, e.parentModelID, nil
-	}
-	return e.provider, modelID, nil
-}
-
-// cachedCatalogAllowsModel rejects only a definitive cached miss. A missing
-// store, parent connection identity, or catalog leaves the override unverified
-// and therefore allowed.
-func (e *Executor) cachedCatalogAllowsModel(modelID string) bool {
-	if e.modelStore == nil || e.parentProviderName == "" || modelID == "" {
-		return true
-	}
-	models, ok := e.modelStore.GetCachedModels(e.parentProviderName, e.parentAuthMethod)
-	if !ok {
-		return true
-	}
-	for _, model := range models {
-		if model.ID == modelID {
-			return true
-		}
-	}
-	return false
+	// A bare id or alias stays on the parent provider; a model it lacks fails
+	// the first request and retries on the parent model.
+	return e.provider, resolveModelAlias(ref), nil
 }
 
 func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
@@ -613,6 +573,24 @@ func operationMode(mode PermissionMode) setting.OperationMode {
 		return setting.ModeDontAsk
 	default:
 		return setting.ModeNormal
+	}
+}
+
+// InheritedPermissionMode is the mode an unnamed subagent inherits from a session in
+// mode. Autopilot's review agent cannot answer for a subagent, so it inherits
+// only the edit posture.
+func InheritedPermissionMode(mode setting.OperationMode) PermissionMode {
+	switch mode {
+	case setting.ModeAutoAccept, setting.ModeAutoPilot:
+		return PermissionAcceptEdits
+	case setting.ModeBypassPermissions:
+		return PermissionBypass
+	case setting.ModeDontAsk:
+		return PermissionDontAsk
+	case setting.ModeReadOnly:
+		return PermissionExplore
+	default:
+		return PermissionDefault
 	}
 }
 

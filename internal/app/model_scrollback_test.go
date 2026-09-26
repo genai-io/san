@@ -184,7 +184,7 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.env.Height = 1
-	cmd := m.queueScrollbackPrint("A", 0)
+	cmd := m.flush.queueScrollbackPrint("A", 0)
 	if cmd == nil {
 		t.Fatal("the first chunk must start immediately")
 	}
@@ -208,7 +208,7 @@ func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 // terminal history together with the actual conversation output.
 func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -249,7 +249,7 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 		ToolName: "Bash",
 		BashMeta: &perm.BashMetadata{Command: "git status"},
 	}
-	cmd := m.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_BEFORE_APPROVAL", 0)
 	if cmd == nil {
 		t.Fatal("the queued print must start")
 	}
@@ -270,11 +270,11 @@ func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 
 func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	firstCmd := m.queueScrollbackPrint("A", 0)
+	firstCmd := m.flush.queueScrollbackPrint("A", 0)
 	if firstCmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
-	if secondCmd := m.queueScrollbackPrint("B", 0); secondCmd != nil {
+	if secondCmd := m.flush.queueScrollbackPrint("B", 0); secondCmd != nil {
 		t.Fatal("a second print must wait until the in-flight head completes")
 	}
 
@@ -528,7 +528,7 @@ func TestScrollbackPrintResumesWhenAnyOverlayCloses(t *testing.T) {
 		t.Fatal("the settings popup did not become the active overlay")
 	}
 
-	cmd := m.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
+	cmd := m.flush.queueScrollbackPrint("COMMITTED_MARKDOWN_BLOCK", 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start immediately")
 	}
@@ -576,7 +576,7 @@ func TestScrollbackFrameHeightCountsWrappedRows(t *testing.T) {
 func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.env.Height = 6
-	cmd := m.queueScrollbackPrint(strings.Join([]string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"}, "\n"), 0)
+	cmd := m.flush.queueScrollbackPrint(strings.Join([]string{"L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8"}, "\n"), 0)
 	if cmd == nil {
 		t.Fatal("the first queued print must start")
 	}
@@ -607,7 +607,7 @@ func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
 // the frame growing, which the renderer handles.
 func TestHandoffCopyKeepsTheFrameAtItsPreCommitHeight(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
-	m.queueScrollbackPrint("ONE\nTWO", 6)
+	m.flush.queueScrollbackPrint("ONE\nTWO", 6)
 	ready := printScrollback(m.flush.pendingPrints[0].id)().(scrollbackPrintReadyMsg)
 	m.flush.prepareScrollbackPrint(ready.id, m.env.Width, m.env.Height, 0)
 

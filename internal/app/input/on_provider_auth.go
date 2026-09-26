@@ -318,13 +318,13 @@ func (s *ProviderSelector) executeCredentialRemove() tea.Cmd {
 		_ = s.store.RemoveCachedModels(providerName, authMethod)
 
 		// Clear current model if it belongs to the disconnected provider
-		if cur := s.store.GetCurrentModel(); cur != nil && cur.Provider == providerName {
+		if cur := s.store.CurrentModel(); cur != nil && cur.Provider == providerName {
 			_ = s.store.ClearCurrentModel()
 			llm.Default().SetCurrentModel(nil)
 		}
 
 		// If no connections remain, clear the runtime provider too
-		if len(s.store.GetConnections()) == 0 {
+		if len(s.store.Connections()) == 0 {
 			llm.Default().SetProvider(nil)
 		}
 	}

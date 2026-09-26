@@ -515,7 +515,7 @@ func (s *State) totalSuggestions() int {
 	return len(s.suggestions)
 }
 
-func (s *State) GetSelected() string {
+func (s *State) Selected() string {
 	if !s.visible {
 		return ""
 	}
@@ -533,7 +533,7 @@ func (s *State) GetSelected() string {
 	return "/" + s.suggestions[s.selectedIdx].Name
 }
 
-func (s *State) GetSuggestionType() Type {
+func (s *State) SuggestionType() Type {
 	return s.suggestionType
 }
 
@@ -572,7 +572,7 @@ func (s *State) renderfileSuggestions(width int) string {
 	end := min(start+viewSize, total)
 	items := s.fileSuggestions[start:end]
 
-	boxWidth := clampInt(width*60/100, 40, 60)
+	boxWidth := max(40, min(width*60/100, 60))
 
 	var lines []string
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
@@ -588,7 +588,7 @@ func (s *State) renderfileSuggestions(width int) string {
 		if file.IsDir {
 			suffix = "/"
 		}
-		displayPath := truncateFromLeft(file.DisplayName, maxPathLen) + suffix
+		displayPath := kit.TruncateKeepEnd(file.DisplayName, maxPathLen) + suffix
 
 		if start+i == s.selectedIdx {
 			bar := kit.FocusBarStyle().Render(kit.FocusBar)
@@ -666,19 +666,4 @@ func (s *State) renderCommandSuggestions(width int) string {
 
 	content := strings.Join(lines, "\n")
 	return suggestionBoxStyle().Width(boxWidth).Render(content)
-}
-
-func clampInt(value, minVal, maxVal int) int {
-	return max(minVal, min(value, maxVal))
-}
-
-func truncateFromLeft(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	if maxLen <= 1 {
-		return string(runes[len(runes)-maxLen:])
-	}
-	return "…" + string(runes[len(runes)-maxLen+1:])
 }

@@ -107,9 +107,9 @@ func (m *model) promptParams() agent.BuildParams {
 	return agent.BuildParams{
 		CWD:            m.env.CWD,
 		Persona:        m.personaPrompt(),
-		AgentDirectory: func() string { return m.services.Subagent.PromptSection() },
+		AgentDirectory: func() string { return m.services.Subagent.AgentsSection() },
 		DisabledTools:  m.services.Setting.DisabledTools(),
-		MCPTools:       mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)),
+		MCPTools:       mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
 
 		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
@@ -133,7 +133,7 @@ func (m *model) syncMCPTools() {
 	disabled := m.services.Setting.DisabledTools()
 
 	live := make(map[string]bool)
-	for _, t := range mcp.AsCoreTools(m.services.MCP.GetToolSchemas(), mcp.NewCaller(m.services.MCP)) {
+	for _, t := range mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP) {
 		name := t.Schema().Name
 		// The /tool panel's disable applies to MCP tools here for the same
 		// reason agent.BuildParams applies it when the agent is built.
@@ -368,7 +368,7 @@ func (m *model) autopilotModelRefs() []string {
 	}
 	cached := store.CachedModelsByProvider()
 	var refs []string
-	for vendor, conn := range store.GetConnections() {
+	for vendor, conn := range store.Connections() {
 		for _, mdl := range cached[vendor+":"+string(conn.AuthMethod)] {
 			refs = append(refs, vendor+"/"+mdl.ID)
 		}
@@ -683,7 +683,7 @@ func (m *model) ContinueOutbox() tea.Cmd {
 	return conv.DrainAgentOutbox(m.services.Agent.Outbox())
 }
 
-func (m *model) HandlePermGate(req *conv.PermGateRequest) tea.Cmd {
+func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	m.services.Agent.SetPendingPermission(req)
 	if req == nil {
 		m.conv.Tool.ClearAwaitingApproval()
@@ -780,7 +780,7 @@ func permDetail(req *perm.PermissionRequest) json.RawMessage {
 // Agent tool configuration
 // ============================================================
 
-func (m *model) preparePermissionRequest(req *conv.PermGateRequest) *perm.PermissionRequest {
+func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.PermissionRequest {
 	permReq := &perm.PermissionRequest{
 		ToolName:    req.ToolName,
 		Description: req.Description,
@@ -804,6 +804,10 @@ func (m *model) ReconfigureAgentTool() {
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
+	perms := m.env.SessionPermissions
+	executor.SetParentPermissionMode(func() subagent.PermissionMode {
+		return subagent.InheritedPermissionMode(perms.CurrentMode())
+	})
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
 	}

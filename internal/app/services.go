@@ -38,7 +38,7 @@ type services struct {
 	Task     *task.Manager
 	Tracker  *todo.Store
 	Cron     *cron.Scheduler
-	MCP      *mcp.Registry
+	MCP      *mcp.Manager
 	Plugin   *plugin.Registry
 	Agent    *agent.Session
 	Persona  *persona.Registry
@@ -105,7 +105,7 @@ func newServices() services {
 		Task:      task.Default(),
 		Tracker:   todo.Default(),
 		Cron:      cron.Default(),
-		MCP:       mcp.DefaultRegistry(),
+		MCP:       mcp.DefaultManager(),
 		Plugin:    plugin.Default(),
 		Agent:     agent.Default(),
 		Persona:   persona.Default(),

@@ -302,7 +302,7 @@ func (m *model) notifySelfLearnOverride(msg input.ConfigSavedMsg) {
 		return
 	}
 	other := "project"
-	if msg.Scope == "project" {
+	if msg.Scope == setting.ScopeProject {
 		other = "user"
 	}
 	m.conv.AddNotice("Note: " + strings.Join(arms, " and ") +

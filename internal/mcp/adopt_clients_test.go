@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Registry {
-	r := newEmptyRegistry()
+func registryWith(configs map[string]ServerConfig, clients map[string]*Client) *Manager {
+	r := newEmptyManager()
 	maps.Copy(r.configs, configs)
 	for name, c := range clients {
 		r.clients[name] = c

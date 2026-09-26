@@ -640,7 +640,7 @@ func applyMarketplacePlugin(item *pluginDiscoverItem, mp coreplugin.MarketplaceP
 // simply keep the marketplace metadata.
 func (s *PluginSelector) enrichDiscoverItem(item *pluginDiscoverItem) {
 	fullName := item.Name + "@" + item.Marketplace
-	pluginPath, err := s.marketplaceManager.GetPluginPath(item.Marketplace, item.Name)
+	pluginPath, err := s.marketplaceManager.PluginPath(item.Marketplace, item.Name)
 	if err != nil {
 		return
 	}

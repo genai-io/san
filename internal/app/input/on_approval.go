@@ -92,11 +92,6 @@ func (p *ApprovalModel) TogglePreview() {
 	}
 }
 
-// GetRequest returns the current permission request
-func (p *ApprovalModel) GetRequest() *perm.PermissionRequest {
-	return p.request
-}
-
 // ApprovalResponseMsg is sent when the user responds to a permission request
 type ApprovalResponseMsg struct {
 	Approved bool

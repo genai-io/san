@@ -21,7 +21,7 @@ func writePersonaSkill(t *testing.T, base, name, body string) string {
 }
 
 func activeFullNames(r *Registry) []string {
-	active := r.GetActive()
+	active := r.ListActive()
 	out := make([]string, len(active))
 	for i, s := range active {
 		out[i] = s.FullName()

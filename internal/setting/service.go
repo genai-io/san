@@ -232,10 +232,10 @@ func (s *Settings) AddLocalAllowRules(cwd string, rules []string) (string, error
 	return path, s.Reload(cwd)
 }
 
-func (s *Settings) GetDisabledToolsAt(userLevel bool) map[string]bool {
-	return GetDisabledToolsAt(userLevel)
+func (s *Settings) DisabledToolsAt(scope Scope) map[string]bool {
+	return DisabledToolsAt(scope)
 }
 
-func (s *Settings) UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error {
-	return UpdateDisabledToolsAt(disabledTools, userLevel)
+func (s *Settings) UpdateDisabledToolsAt(disabledTools map[string]bool, scope Scope) error {
+	return UpdateDisabledToolsAt(disabledTools, scope)
 }

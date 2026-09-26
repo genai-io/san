@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/setting"
 )
 
 // NewRegistry creates an empty skill registry.
@@ -124,8 +125,8 @@ func (s *Store) save() error {
 	return atomicfile.WriteJSON(s.path, storeData, 0o644)
 }
 
-// GetState returns the persisted state for a skill.
-func (s *Store) GetState(name string) (SkillState, bool) {
+// State returns the persisted state for a skill.
+func (s *Store) State(name string) (SkillState, bool) {
 	state, ok := s.states[name]
 	return state, ok
 }
@@ -193,8 +194,8 @@ func (r *Registry) List() []*Skill {
 	return skills
 }
 
-// GetEnabled returns all enabled or active skills.
-func (r *Registry) GetEnabled() []*Skill {
+// ListEnabled returns all enabled or active skills.
+func (r *Registry) ListEnabled() []*Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -212,8 +213,8 @@ func (r *Registry) GetEnabled() []*Skill {
 	return skills
 }
 
-// GetActive returns all active skills (model-aware).
-func (r *Registry) GetActive() []*Skill {
+// ListActive returns all active skills (model-aware).
+func (r *Registry) ListActive() []*Skill {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -231,10 +232,9 @@ func (r *Registry) GetActive() []*Skill {
 	return skills
 }
 
-// SetState sets the state for a skill and persists it to the specified level.
+// SetState sets the state for a skill and persists it to scope's skills.json.
 // The name should be the full name (namespace:name or just name).
-// If userLevel is true, saves to ~/.san/skills.json, otherwise to .san/skills.json.
-func (r *Registry) SetState(name string, state SkillState, userLevel bool) error {
+func (r *Registry) SetState(name string, state SkillState, scope setting.Scope) error {
 	r.mu.Lock()
 	skill, ok := r.skills[name]
 	if !ok {
@@ -247,47 +247,37 @@ func (r *Registry) SetState(name string, state SkillState, userLevel bool) error
 	fullName := skill.FullName()
 	r.mu.Unlock()
 
-	// Persist to the appropriate store
-	var err error
-	if userLevel {
-		err = r.userStore.SetState(fullName, state)
-	} else {
-		err = r.projectStore.SetState(fullName, state)
-	}
+	err := r.store(scope).SetState(fullName, state)
 
 	// Fire observer after the write so the recorder sees the durable state
 	// transition, not a no-op or rollback-on-error.
 	if err == nil && observer != nil && previous != state {
-		level := "project"
-		if userLevel {
-			level = "user"
-		}
-		observer(fullName, string(previous), string(state), "user:/skills:"+level)
+		observer(fullName, string(previous), string(state), "user:/skills:"+string(scope))
 	}
 	return err
 }
 
-// GetStatesAt returns a copy of skill states from the specified level.
-func (r *Registry) GetStatesAt(userLevel bool) map[string]SkillState {
-	var src map[string]SkillState
-	if userLevel {
-		src = r.userStore.states
-	} else {
-		src = r.projectStore.states
-	}
-	result := make(map[string]SkillState, len(src))
-	maps.Copy(result, src)
-	return result
+// StatesAt returns a copy of the skill states saved in scope.
+func (r *Registry) StatesAt(scope setting.Scope) map[string]SkillState {
+	return maps.Clone(r.store(scope).states)
 }
 
-// GetSkillsSection generates the body of the skills directory for the system
+// store is the skills.json store for scope.
+func (r *Registry) store(scope setting.Scope) *Store {
+	if scope == setting.ScopeUser {
+		return r.userStore
+	}
+	return r.projectStore
+}
+
+// SkillsSection generates the body of the skills directory for the system
 // prompt. Only includes active skills (progressive loading — full instructions
 // arrive only when the Skill tool is invoked).
 //
 // Returns plain body text without the outer XML tag; the system catalog
 // wraps it in <skills>…</skills>.
-func (r *Registry) GetSkillsSection() string {
-	active := r.GetActive()
+func (r *Registry) SkillsSection() string {
+	active := r.ListActive()
 	if len(active) == 0 {
 		return ""
 	}
@@ -318,9 +308,9 @@ func (r *Registry) GetSkillsSection() string {
 	return sb.String()
 }
 
-// GetSkillInvocationPrompt returns the full skill content wrapped in XML for injection.
+// SkillInvocationPrompt returns the full skill content wrapped in XML for injection.
 // The name should be the full name (namespace:name or just name).
-func (r *Registry) GetSkillInvocationPrompt(name string) string {
+func (r *Registry) SkillInvocationPrompt(name string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -329,7 +319,7 @@ func (r *Registry) GetSkillInvocationPrompt(name string) string {
 		return ""
 	}
 
-	instructions := skill.GetInstructions()
+	instructions := skill.Instructions()
 	if instructions == "" {
 		return ""
 	}
@@ -382,17 +372,17 @@ func (r *Registry) IsEnabled(name string) bool {
 
 // SetEnabled sets the enabled state for a skill and persists it.
 // When enabled is true the skill moves to StateEnable; when false it moves to StateDisable.
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error {
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error {
 	state := StateEnable
 	if !enabled {
 		state = StateDisable
 	}
-	return r.SetState(name, state, userLevel)
+	return r.SetState(name, state, scope)
 }
 
-// GetDisabledAt returns a map of skill names that are disabled at the given level.
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
-	states := r.GetStatesAt(userLevel)
+// DisabledAt returns the skill names disabled in scope.
+func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool {
+	states := r.StatesAt(scope)
 	result := make(map[string]bool)
 	for name, state := range states {
 		if state == StateDisable {
@@ -405,7 +395,7 @@ func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
 // PromptSection returns the rendered skills section for the system prompt.
 // This is an alias for GetSkillsSection to satisfy the Service interface.
 func (r *Registry) PromptSection() string {
-	return r.GetSkillsSection()
+	return r.SkillsSection()
 }
 
 // NewRegistryForTest creates a Registry with pre-populated skills and stores.

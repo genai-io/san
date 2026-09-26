@@ -23,8 +23,8 @@ func Logger() *zap.Logger      // process-wide logger; never nil
 ```
 
 - `log.Init()` runs once at app startup (from `internal/app/init.go`).
-  Output is suppressed by default; `SAN_DEBUG=1` enables zap with
-  `lumberjack` rotation.
+  Output is suppressed by default; `SAN_DEBUG=1` enables zap, appending
+  to `~/.san/debug.log` (reset once it passes 50MB).
 - Code: `internal/log/`. No unit tests; behavior exercised end-to-end.
 
 ## `internal/secret`

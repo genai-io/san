@@ -205,7 +205,7 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	m.services.Session = &session.Setup{}
 	m.conv.Tool.ClearAwaitingApproval()
 
-	m.HandlePermGate(&conv.PermGateRequest{
+	m.HandlePermGate(&agent.PermGateRequest{
 		RequestID:   "req-1",
 		ToolCallID:  "bash-1",
 		ToolName:    "Bash",
@@ -229,7 +229,7 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m.services.Session = &session.Setup{}
 	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
 
-	m.HandlePermGate(&conv.PermGateRequest{
+	m.HandlePermGate(&agent.PermGateRequest{
 		RequestID:   "req-1",
 		ToolName:    "Bash",
 		Description: "check disk",

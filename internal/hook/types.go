@@ -195,34 +195,6 @@ type FunctionHook struct {
 	Callback      FunctionHookCallback
 }
 
-// --- Bidirectional prompt protocol types ---
-
-// PromptRequest is sent by a hook process via stdout to request user input.
-// The hook writes one JSON line per request; Claude Code / San reads it,
-// collects the answer, and writes a PromptResponse back to the hook's stdin.
-type PromptRequest struct {
-	Prompt  string         `json:"prompt"`            // request ID / discriminator
-	Message string         `json:"message"`           // question text for user
-	Options []PromptOption `json:"options,omitempty"` // optional choices
-}
-
-// PromptOption is a selectable choice in a PromptRequest.
-type PromptOption struct {
-	Key         string `json:"key"`
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
-}
-
-// PromptResponse is sent back to the hook process via stdin.
-type PromptResponse struct {
-	PromptResponse string `json:"prompt_response"` // matches original Prompt field
-	Selected       string `json:"selected"`        // chosen option key or free text
-}
-
-// PromptCallback is called by the engine when a hook requests user input.
-// Returns the user's response. If cancelled is true, the hook should abort.
-type PromptCallback func(req PromptRequest) (resp PromptResponse, cancelled bool)
-
 type AsyncHookResult struct {
 	Event       EventType
 	HookType    string
@@ -232,8 +204,3 @@ type AsyncHookResult struct {
 }
 
 type AsyncHookCallback func(result AsyncHookResult)
-
-// asyncFirstLine is used to detect async hooks via their first stdout line.
-type asyncFirstLine struct {
-	Async bool `json:"async"`
-}

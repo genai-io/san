@@ -40,7 +40,7 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
 		Memory: SelfLearnMemory{Enabled: true},
 		Skills: SelfLearnSkills{}, // all actions allowed → skills active
-	}, true); err != nil {
+	}, ScopeUser); err != nil {
 		t.Fatalf("enable: %v", err)
 	}
 	if sl := read(); !sl.Memory.Enabled || !sl.Skills.Active() {
@@ -50,7 +50,7 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	if err := UpdateSelfLearnAt(SelfLearnSettings{
 		Memory: SelfLearnMemory{Enabled: false},
 		Skills: SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}, // all denied → off
-	}, true); err != nil {
+	}, ScopeUser); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
 	if sl := read(); sl.Memory.Enabled || sl.Skills.Active() {
@@ -107,7 +107,7 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := UpdateSelfLearnAt(SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}, true); err != nil {
+	if err := UpdateSelfLearnAt(SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}}, ScopeUser); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 

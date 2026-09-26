@@ -192,8 +192,8 @@ func (s *Store) IsConnected(provider ProviderID, authMethod AuthMethod) bool {
 	return conn.AuthMethod == authMethod
 }
 
-// GetConnection returns a provider's connection, if it has one.
-func (s *Store) GetConnection(provider ProviderID) (ConnectionInfo, bool) {
+// Connection returns a provider's connection, if it has one.
+func (s *Store) Connection(provider ProviderID) (ConnectionInfo, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -223,14 +223,14 @@ func (s *Store) ConnectionAuthMethod(provider ProviderID) AuthMethod {
 	if s == nil {
 		return ""
 	}
-	if conn, ok := s.GetConnection(provider); ok {
+	if conn, ok := s.Connection(provider); ok {
 		return conn.AuthMethod
 	}
 	return ""
 }
 
-// GetConnections returns a copy of every connection, keyed by provider.
-func (s *Store) GetConnections() map[string]ConnectionInfo {
+// Connections returns a copy of every connection, keyed by provider.
+func (s *Store) Connections() map[string]ConnectionInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -270,16 +270,16 @@ func (s *Store) SetCurrentModel(modelID string, provider ProviderID, authMethod 
 	return s.save()
 }
 
-// GetCurrentModel returns the model San infers through, or nil if none is set.
-func (s *Store) GetCurrentModel() *CurrentModelInfo {
+// CurrentModel returns the model San infers through, or nil if none is set.
+func (s *Store) CurrentModel() *CurrentModelInfo {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	return s.data.Current
 }
 
-// GetSearchProvider returns the chosen web-search backend, or "" for the default.
-func (s *Store) GetSearchProvider() string {
+// SearchProvider returns the chosen web-search backend, or "" for the default.
+func (s *Store) SearchProvider() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -298,9 +298,9 @@ func (s *Store) SetSearchProvider(name string) error {
 	return s.save()
 }
 
-// GetThinkingEffort returns the persisted thinking effort for modelID,
+// ThinkingEffort returns the persisted thinking effort for modelID,
 // or "" when no preference has been saved (fall back to provider default).
-func (s *Store) GetThinkingEffort(modelID string) string {
+func (s *Store) ThinkingEffort(modelID string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.data.ThinkingEfforts[modelID]

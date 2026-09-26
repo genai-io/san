@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/hook"
 )
 
 // Registry manages all loaded plugins.
@@ -195,8 +196,8 @@ func (r *Registry) List() []*Plugin {
 	return plugins
 }
 
-// GetEnabled returns all enabled plugins.
-func (r *Registry) GetEnabled() []*Plugin {
+// ListEnabled returns all enabled plugins.
+func (r *Registry) ListEnabled() []*Plugin {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -284,7 +285,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	if err := atomicfile.WriteJSON(settingsPath, settings, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), settingsPath)
+	hook.FireConfigChange(scopeConfigSource(scope), settingsPath)
 	return nil
 }
 
@@ -349,71 +350,6 @@ func (r *Registry) EnabledCount() int {
 		}
 	}
 	return count
-}
-
-// GetByScope returns plugins filtered by scope.
-func (r *Registry) GetByScope(scope Scope) []*Plugin {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	var result []*Plugin
-	for _, p := range r.plugins {
-		if p.Scope == scope {
-			result = append(result, snapshotLocked(p))
-		}
-	}
-	return result
-}
-
-// GetAllMCPServers returns all MCP server configs from enabled plugins.
-func (r *Registry) GetAllMCPServers() map[string]MCPServerConfig {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make(map[string]MCPServerConfig)
-	for _, p := range r.plugins {
-		if !p.Enabled || p.Components.MCP == nil {
-			continue
-		}
-		for name, config := range p.Components.MCP {
-			// Namespace the server name
-			key := p.Name() + ":" + name
-			result[key] = config
-		}
-	}
-	return result
-}
-
-// GetAllLSPServers returns all LSP server configs from enabled plugins.
-func (r *Registry) GetAllLSPServers() map[string]LSPServerConfig {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make(map[string]LSPServerConfig)
-	for _, p := range r.plugins {
-		if !p.Enabled || p.Components.LSP == nil {
-			continue
-		}
-		maps.Copy(result, p.Components.LSP)
-	}
-	return result
-}
-
-// GetAllHooks returns all hooks from enabled plugins.
-func (r *Registry) GetAllHooks() map[string][]HookMatcher {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	result := make(map[string][]HookMatcher)
-	for _, p := range r.plugins {
-		if !p.Enabled || p.Components.Hooks == nil {
-			continue
-		}
-		for event, matchers := range p.Components.Hooks.Hooks {
-			result[event] = append(result[event], matchers...)
-		}
-	}
-	return result
 }
 
 // defaultRegistry is the package-level plugin registry.

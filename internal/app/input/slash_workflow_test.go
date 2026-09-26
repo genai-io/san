@@ -22,13 +22,13 @@ func (okExecutor) Run(context.Context, tool.AgentExecRequest) (*tool.AgentExecRe
 func (okExecutor) RunBackground(tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	return tool.AgentTaskInfo{}, nil
 }
-func (okExecutor) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+func (okExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	return tool.AgentConfigInfo{Name: name}, true
 }
 func (okExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, nil, true
 }
-func (okExecutor) GetParentModelID() string { return "m" }
+func (okExecutor) ParentModelID() string { return "m" }
 
 // workflowController wires /workflow to a Workflow tool reading dir, holding
 // the given saved definitions.
@@ -106,5 +106,16 @@ func TestWorkflowCommandRefusesBadInput(t *testing.T) {
 		if _, _, err := c.handleWorkflowCommand(context.Background(), args); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("/workflow %s: err = %v, want it to mention %q", args, err, want)
 		}
+	}
+}
+
+func TestSplitQuotedKeepsQuotedValuesWhole(t *testing.T) {
+	got, err := splitQuoted(`review base="main branch"  note='say "hi"' x=`)
+	want := []string{"review", "base=main branch", `note=say "hi"`, "x="}
+	if err != nil || strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q, err %v; want %q", got, err, want)
+	}
+	if _, err := splitQuoted(`review base="main`); err == nil {
+		t.Fatal("unclosed quote accepted")
 	}
 }

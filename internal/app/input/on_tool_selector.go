@@ -46,17 +46,17 @@ type ToolToggleMsg struct {
 // level tabs, a cached flag would go stale on every tab switch.
 type ToolSelector struct {
 	list         tabbedList[toolItem]
-	loadDisabled func(userLevel bool) map[string]bool
-	saveDisabled func(disabled map[string]bool, userLevel bool) error
-	// disabledByLevel holds each level's explicit disabled entries (keyed by
-	// userLevel), loaded once per open and mutated by Toggle.
-	disabledByLevel map[bool]map[string]bool
+	loadDisabled func(scope setting.Scope) map[string]bool
+	saveDisabled func(disabled map[string]bool, scope setting.Scope) error
+	// disabledByScope holds each scope's explicit disabled entries, loaded
+	// once per open and mutated by Toggle.
+	disabledByScope map[setting.Scope]map[string]bool
 }
 
 // NewToolSelector creates a new ToolSelector with injected load/save callbacks.
 func NewToolSelector(
-	loadDisabled func(userLevel bool) map[string]bool,
-	saveDisabled func(disabled map[string]bool, userLevel bool) error,
+	loadDisabled func(scope setting.Scope) map[string]bool,
+	saveDisabled func(disabled map[string]bool, scope setting.Scope) error,
 ) ToolSelector {
 	return ToolSelector{
 		loadDisabled: loadDisabled,
@@ -83,9 +83,9 @@ func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.Too
 
 	// Pre-load both levels so switching tabs never has to touch disk. The loader
 	// hands back a fresh, owned map per level, so no copy is needed.
-	s.disabledByLevel = map[bool]map[string]bool{
-		false: s.loadDisabled(false),
-		true:  s.loadDisabled(true),
+	s.disabledByScope = map[setting.Scope]map[string]bool{
+		setting.ScopeProject: s.loadDisabled(setting.ScopeProject),
+		setting.ScopeUser:    s.loadDisabled(setting.ScopeUser),
 	}
 
 	items := make([]toolItem, 0, len(allTools))
@@ -99,14 +99,17 @@ func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.Too
 
 func (s *ToolSelector) IsActive() bool { return s.list.active }
 
-func (s *ToolSelector) saveLevelForActiveTab() bool {
-	return s.list.activeTab == int(toolTabUser)
+func (s *ToolSelector) activeScope() setting.Scope {
+	if s.list.activeTab == int(toolTabUser) {
+		return setting.ScopeUser
+	}
+	return setting.ScopeProject
 }
 
-// effectiveDisabled resolves a tool's state at the given level: an explicit
+// effectiveDisabled resolves a tool's state in scope: an explicit
 // settings entry wins; absent keys fall back to the factory default.
-func (s *ToolSelector) effectiveDisabled(userLevel bool, name string) bool {
-	if disabled, ok := s.disabledByLevel[userLevel][name]; ok {
+func (s *ToolSelector) effectiveDisabled(scope setting.Scope, name string) bool {
+	if disabled, ok := s.disabledByScope[scope][name]; ok {
 		return disabled
 	}
 	return setting.IsDefaultDisabledTool(name)
@@ -118,14 +121,14 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 	if len(s.list.filtered) == 0 || s.list.nav.Selected >= len(s.list.filtered) {
 		return nil
 	}
-	userLevel := s.saveLevelForActiveTab()
+	scope := s.activeScope()
 	name := s.list.filtered[s.list.nav.Selected].Name
 	// A currently-disabled tool is being enabled, and vice versa.
-	enabling := s.effectiveDisabled(userLevel, name)
+	enabling := s.effectiveDisabled(scope, name)
 
 	// A factory-default-disabled tool needs an explicit "false" entry when
 	// enabled — deleting its key would fall back to the disabled default.
-	m := s.disabledByLevel[userLevel]
+	m := s.disabledByScope[scope]
 	switch {
 	case enabling && setting.IsDefaultDisabledTool(name):
 		m[name] = false
@@ -136,7 +139,7 @@ func (s *ToolSelector) Toggle() tea.Cmd {
 	default:
 		m[name] = true
 	}
-	_ = s.saveDisabled(m, userLevel)
+	_ = s.saveDisabled(m, scope)
 
 	return func() tea.Msg {
 		return ToolToggleMsg{ToolName: name, Enabled: enabling}
@@ -170,7 +173,7 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 	}
 	maxNameLen = min(maxNameLen, 24)
 
-	userLevel := s.saveLevelForActiveTab()
+	scope := s.activeScope()
 	descStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
 	for i := startIdx; i < endIdx; i++ {
@@ -178,7 +181,7 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
-		if s.effectiveDisabled(userLevel, t.Name) {
+		if s.effectiveDisabled(scope, t.Name) {
 			statusIcon = "○"
 			statusStyle = kit.SelectorStatusNone()
 		} else {

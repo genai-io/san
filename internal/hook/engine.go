@@ -45,13 +45,12 @@ type Engine struct {
 	transcriptPath string
 	permissionMode string
 
-	promptCallback PromptCallback
-	llmCompleter   LLMCompleter
-	hookModel      string
-	httpClient     *http.Client
-	asyncCallback  AsyncHookCallback
-	auditCallback  AuditCallback
-	envProvider    func(context.Context) []string
+	llmCompleter  LLMCompleter
+	hookModel     string
+	httpClient    *http.Client
+	asyncCallback AsyncHookCallback
+	auditCallback AuditCallback
+	envProvider   func(context.Context) []string
 
 	mu         sync.RWMutex
 	store      *hookStore
@@ -94,13 +93,6 @@ func (e *Engine) SetPermissionMode(mode string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.permissionMode = mode
-}
-
-// SetPromptCallback sets the callback for bidirectional prompt exchanges.
-func (e *Engine) SetPromptCallback(cb PromptCallback) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.promptCallback = cb
 }
 
 // SetSession re-points hook input (session_id, transcript_path, and the

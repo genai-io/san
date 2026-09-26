@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/genai-io/san/internal/setting"
 )
 
 // Registry manages agent definitions.
@@ -57,12 +59,6 @@ func (r *Registry) LookupAgent(name string) (config *AgentConfig, exists, enable
 		return nil, false, false
 	}
 	return config, true, !r.isDisabledInternal(lowerName)
-}
-
-// ResolveEnabledAgent returns an enabled agent configuration by exact name.
-func (r *Registry) ResolveEnabledAgent(name string) (*AgentConfig, bool) {
-	config, exists, enabled := r.LookupAgent(name)
-	return config, exists && enabled
 }
 
 // ListConfigs returns all registered agent configurations that are visible
@@ -119,42 +115,32 @@ func (r *Registry) IsEnabled(name string) bool {
 	return true
 }
 
-// SetEnabled sets the enabled state for an agent at the specified level.
-// Used by internal/app's agentRegistryAdapter.
-func (r *Registry) SetEnabled(name string, enabled bool, userLevel bool) error {
+// SetEnabled enables or disables an agent in scope's agents file.
+func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
-	lowerName := strings.ToLower(name)
-
-	if userLevel {
-		if r.userStore != nil {
-			return r.userStore.SetDisabled(lowerName, !enabled)
-		}
-	} else {
-		if r.projectStore != nil {
-			return r.projectStore.SetDisabled(lowerName, !enabled)
-		}
+	if s := r.store(scope); s != nil {
+		return s.SetDisabled(strings.ToLower(name), !enabled)
 	}
 	return nil
 }
 
-// GetDisabledAt returns the disabled agents from the specified level.
-// Used by internal/app's agentRegistryAdapter.
-func (r *Registry) GetDisabledAt(userLevel bool) map[string]bool {
+// DisabledAt returns the agents disabled in scope.
+func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-
-	if userLevel {
-		if r.userStore != nil {
-			return r.userStore.GetDisabled()
-		}
-	} else {
-		if r.projectStore != nil {
-			return r.projectStore.GetDisabled()
-		}
+	if s := r.store(scope); s != nil {
+		return s.Disabled()
 	}
 	return make(map[string]bool)
+}
+
+// store is the agents store for scope; nil before InitStores.
+func (r *Registry) store(scope setting.Scope) *AgentStore {
+	if scope == setting.ScopeUser {
+		return r.userStore
+	}
+	return r.projectStore
 }
 
 // LoadPersona restricts the visible agent set to an allow-list while a persona
@@ -201,12 +187,12 @@ func (r *Registry) isDisabledInternal(name string) bool {
 	return false
 }
 
-// GetAgentsSection returns the body of the agents directory for the system
+// AgentsSection returns the body of the agents directory for the system
 // prompt. Only enabled agents, sorted by name (deterministic output).
 //
 // Returns plain body text without the outer XML tag; the system catalog
 // wraps it in <agents>…</agents>.
-func (r *Registry) GetAgentsSection() string {
+func (r *Registry) AgentsSection() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -252,9 +238,4 @@ func (r *Registry) GetAgentsSection() string {
 		}
 	}
 	return sb.String()
-}
-
-// PromptSection returns the rendered prompt section for available agents.
-func (r *Registry) PromptSection() string {
-	return r.GetAgentsSection()
 }

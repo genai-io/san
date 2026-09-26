@@ -517,7 +517,7 @@ func (s *memoryListState) writeMemoryFileLine(sb *strings.Builder, path string, 
 	displayPath := memoryShortenPathForDisplay(path, s.cwd, isProject)
 	displayPath = memoryTruncatePathKeepFilename(displayPath, memoryMaxPath)
 	sizeStr := fmt.Sprintf("(%s)", system.FormatFileSize(size))
-	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", memoryPadRight(displayPath, memoryMaxPath), sizeStr)))
+	sb.WriteString(memoryFormatBoxLine(fmt.Sprintf("   %s %s", padRight(displayPath, memoryMaxPath), sizeStr)))
 }
 
 func memoryFormatBoxLine(content string) string {
@@ -557,13 +557,6 @@ func memoryTruncatePathKeepFilename(path string, maxLen int) string {
 		return "..." + dir + "/" + base
 	}
 	return base
-}
-
-func memoryPadRight(s string, length int) string {
-	if w := lipgloss.Width(s); w >= length {
-		return kit.TruncateText(s, length)
-	}
-	return s + strings.Repeat(" ", length-lipgloss.Width(s))
 }
 
 // handleMemoryShow shows the current loaded memory content.

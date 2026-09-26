@@ -2,7 +2,7 @@
 // configured MCP servers and exposes the tools they advertise to the
 // agent loop.
 //
-// Callers use the concrete *Registry. Config editing (used by `san mcp edit`)
+// Callers use the concrete *Manager. Config editing (used by `san mcp edit`)
 // is exposed as the free functions PrepareServerEdit / ApplyServerEdit.
 package mcp
 
@@ -12,12 +12,12 @@ type Options struct {
 	PluginServers func() []PluginServer
 }
 
-// Initialize creates the MCP registry and installs it as the package-level
+// Initialize creates the MCP manager and installs it as the package-level
 // default. Idempotent: callers may invoke it more than once (e.g. after a
 // cwd change or plugin reload) and downstream callers reading
-// DefaultRegistry will see the latest instance.
+// DefaultManager will see the latest instance.
 func Initialize(opts Options) error {
-	reg, err := NewRegistry(opts.CWD)
+	reg, err := NewManager(opts.CWD)
 	if err != nil {
 		return err
 	}
@@ -30,42 +30,42 @@ func Initialize(opts Options) error {
 	// the old project and the new one — tearing it down would drop every
 	// mcp__* tool from the agent mid-session, with nothing to reconnect it
 	// (AutoConnect only runs at startup).
-	reg.adoptLiveClients(DefaultRegistry())
-	setDefaultRegistry(reg)
+	reg.adoptLiveClients(DefaultManager())
+	setDefaultManager(reg)
 	return nil
 }
 
-// DefaultRegistry returns the package-level MCP registry. Returns the
-// empty pre-Initialize registry if Initialize has not run.
+// DefaultManager returns the package-level MCP manager. Returns the
+// empty pre-Initialize manager if Initialize has not run.
 //
 // This is the only seam. There is no separate Service interface — every
 // consumer (subagent executor, TUI selector, agent tool wiring,
-// cmd subcommands) depends on *Registry directly. Tool execution goes
-// through NewCaller(reg). Config editing uses the free functions
+// cmd subcommands) depends on *Manager directly. Tool execution goes
+// through AsCoreTools. Config editing uses the free functions
 // PrepareServerEdit / ApplyServerEdit.
-func DefaultRegistry() *Registry {
-	registryMu.RLock()
-	defer registryMu.RUnlock()
-	return defaultRegistry
+func DefaultManager() *Manager {
+	managerMu.RLock()
+	defer managerMu.RUnlock()
+	return defaultManager
 }
 
-func setDefaultRegistry(reg *Registry) {
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	defaultRegistry = reg
+func setDefaultManager(reg *Manager) {
+	managerMu.Lock()
+	defer managerMu.Unlock()
+	defaultManager = reg
 }
 
-// SetDefaultRegistry replaces the package-level registry. Intended for
-// tests. A nil argument restores the empty pre-Initialize registry.
-func SetDefaultRegistry(reg *Registry) {
+// SetDefaultManager replaces the package-level manager. Intended for
+// tests. A nil argument restores the empty pre-Initialize manager.
+func SetDefaultManager(reg *Manager) {
 	if reg == nil {
-		reg = newEmptyRegistry()
+		reg = newEmptyManager()
 	}
-	setDefaultRegistry(reg)
+	setDefaultManager(reg)
 }
 
-// ResetDefaultRegistry restores the empty pre-Initialize registry.
+// ResetDefaultManager restores the empty pre-Initialize manager.
 // Intended for tests.
-func ResetDefaultRegistry() {
-	setDefaultRegistry(newEmptyRegistry())
+func ResetDefaultManager() {
+	setDefaultManager(newEmptyManager())
 }

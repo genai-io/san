@@ -242,43 +242,12 @@ type KnownMarketplaces struct {
 }
 
 // MarketplaceMetadata represents the marketplace.json file in a marketplace root.
-// Supports both flat format (version/description at top level) and nested format
-// (version/description inside a "metadata" object), as used by Claude Code.
 type MarketplaceMetadata struct {
 	Name        string              `json:"name"`
 	Version     string              `json:"version,omitempty"`
 	Description string              `json:"description,omitempty"`
 	Owner       *Author             `json:"owner,omitempty"`
 	Plugins     []MarketplacePlugin `json:"plugins,omitempty"`
-	Metadata    *MarketplaceExtra   `json:"metadata,omitempty"`
-}
-
-// MarketplaceExtra holds metadata fields that may be nested under "metadata".
-type MarketplaceExtra struct {
-	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
-}
-
-// GetVersion returns version, preferring the top-level field over nested metadata.
-func (m *MarketplaceMetadata) GetVersion() string {
-	if m.Version != "" {
-		return m.Version
-	}
-	if m.Metadata != nil {
-		return m.Metadata.Version
-	}
-	return ""
-}
-
-// GetDescription returns description, preferring the top-level field over nested metadata.
-func (m *MarketplaceMetadata) GetDescription() string {
-	if m.Description != "" {
-		return m.Description
-	}
-	if m.Metadata != nil {
-		return m.Metadata.Description
-	}
-	return ""
 }
 
 // Plugin source kinds, mirroring Claude Code's marketplace.json plugin sources.

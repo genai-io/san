@@ -30,7 +30,7 @@ func (m *model) handleSubmit() tea.Cmd {
 	}
 
 	if m.conv.Stream.Active {
-		log.QueueLog("handleSubmit: stream active, enqueue %q", raw)
+		log.Logger().Sugar().Debugf("handleSubmit: stream active, enqueue %q", raw)
 		return m.enqueueWhileStreaming(raw)
 	}
 
@@ -44,7 +44,7 @@ func (m *model) handleSubmit() tea.Cmd {
 		return nil
 	}
 
-	log.QueueLog("handleSubmit: stream idle, normal submit %q", raw)
+	log.Logger().Sugar().Debugf("handleSubmit: stream idle, normal submit %q", raw)
 	m.conv.Compact.ClearResult()
 	return m.dispatchSubmission(raw)
 }
@@ -59,7 +59,7 @@ func (m *model) enqueueWhileStreaming(raw string) tea.Cmd {
 		return nil
 	}
 	m.userInput.Reset()
-	log.QueueLog("enqueueWhileStreaming: queued %q queueLen=%d", raw, m.userInput.Queue.Len())
+	log.Logger().Sugar().Debugf("enqueueWhileStreaming: queued %q queueLen=%d", raw, m.userInput.Queue.Len())
 	return nil
 }
 
@@ -237,7 +237,7 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 	content := msg.Text()
-	log.QueueLog("SubmitToAgent: %q", truncate(content, 60))
+	log.Logger().Sugar().Debugf("SubmitToAgent: %q", truncate(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}

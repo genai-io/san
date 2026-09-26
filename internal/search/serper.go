@@ -20,20 +20,11 @@ type SerperProvider struct {
 }
 
 // NewSerperProvider creates a new Serper provider.
-// If apiKey is provided, it is used directly.
-func NewSerperProvider(apiKey ...string) *SerperProvider {
-	var key string
-	if len(apiKey) > 0 {
-		key = apiKey[0]
-	}
-	return &SerperProvider{apiKey: key}
+func NewSerperProvider(apiKey string) *SerperProvider {
+	return &SerperProvider{apiKey: apiKey}
 }
 
-func (p *SerperProvider) Name() ProviderName   { return ProviderSerper }
-func (p *SerperProvider) DisplayName() string  { return "Serper (Google)" }
-func (p *SerperProvider) RequiresAPIKey() bool { return true }
-func (p *SerperProvider) EnvVars() []string    { return []string{serperEnvKey} }
-func (p *SerperProvider) IsAvailable() bool    { return p.apiKey != "" }
+func (p *SerperProvider) DisplayName() string { return "Serper (Google)" }
 
 // serperRequest represents a Serper API request
 type serperRequest struct {
@@ -52,7 +43,7 @@ type serperResponse struct {
 
 // Search performs a web search using Serper
 func (p *SerperProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
-	if !p.IsAvailable() {
+	if p.apiKey == "" {
 		return nil, fmt.Errorf("%s environment variable is not set", serperEnvKey)
 	}
 

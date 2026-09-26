@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/log"
@@ -89,7 +90,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	// write and crash the process with concurrent map iteration/write.
 	permRecord := permDecisionRecord(req, decision, reason, m.env.SessionMode())
 	select {
-	case req.Response <- conv.PermGateResponse{Allow: decision.Approved, Reason: reason}:
+	case req.Response <- agent.PermGateResponse{Allow: decision.Approved, Reason: reason}:
 	default:
 	}
 	if rec := m.services.Session.Recorder(); rec != nil {
@@ -98,7 +99,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	return tea.Batch(noticeCmd, conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
 
-func permDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {
+func permDecisionRecord(req *agent.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {
 	return transcript.PermissionRecord{
 		RequestID: req.RequestID,
 		Tool:      req.ToolName,

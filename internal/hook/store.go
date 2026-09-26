@@ -45,24 +45,6 @@ func newHookStore() *hookStore {
 	}
 }
 
-func (s *hookStore) AddSessionHook(event EventType, matcher string, hook setting.HookCmd) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sessionHooks[event] = append(s.sessionHooks[event], setting.Hook{
-		Matcher: matcher,
-		Hooks:   []setting.HookCmd{hook},
-	})
-}
-
-func (s *hookStore) AddRuntimeHook(event EventType, matcher string, hook setting.HookCmd) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.runtimeHooks[event] = append(s.runtimeHooks[event], setting.Hook{
-		Matcher: matcher,
-		Hooks:   []setting.HookCmd{hook},
-	})
-}
-
 func (s *hookStore) AddSessionFunctionHook(event EventType, matcher string, hook FunctionHook) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,18 +65,6 @@ func (s *hookStore) AddRuntimeFunctionHook(event EventType, matcher string, hook
 		Hook:    hook,
 	})
 	return hook.ID
-}
-
-func (s *hookStore) RemoveSessionFunctionHook(event EventType, id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return removeFunctionHookByID(s.sessionFuncs, event, id)
-}
-
-func (s *hookStore) RemoveRuntimeFunctionHook(event EventType, id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return removeFunctionHookByID(s.runtimeFuncs, event, id)
 }
 
 func (s *hookStore) ClearSessionHooks() {
@@ -187,31 +157,4 @@ func (s *hookStore) ensureFunctionHookIDLocked(scope string, event EventType, cu
 	}
 	seq := s.functionSeqNo.Add(1)
 	return fmt.Sprintf("%s-%s-%d", scope, event, seq)
-}
-
-func removeFunctionHookByID(store map[EventType][]functionHookRegistration, event EventType, id string) bool {
-	hooks := store[event]
-	if len(hooks) == 0 {
-		return false
-	}
-
-	filtered := hooks[:0]
-	removed := false
-	for _, hook := range hooks {
-		if !removed && hook.Hook.ID == id {
-			removed = true
-			continue
-		}
-		filtered = append(filtered, hook)
-	}
-
-	if !removed {
-		return false
-	}
-	if len(filtered) == 0 {
-		delete(store, event)
-		return true
-	}
-	store[event] = append([]functionHookRegistration(nil), filtered...)
-	return true
 }

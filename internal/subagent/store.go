@@ -101,8 +101,8 @@ func (s *AgentStore) SetDisabled(name string, disabled bool) error {
 	return persistDisabled(path, snapshot)
 }
 
-// GetDisabled returns a copy of the disabled agents map
-func (s *AgentStore) GetDisabled() map[string]bool {
+// Disabled returns a copy of the disabled agents map
+func (s *AgentStore) Disabled() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 

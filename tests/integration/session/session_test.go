@@ -136,7 +136,7 @@ func TestSession_GetLatest(t *testing.T) {
 		t.Fatalf("Save() error: %v", err)
 	}
 
-	latest, err := store.GetLatest()
+	latest, err := store.Latest()
 	if err != nil {
 		t.Fatalf("GetLatest() error: %v", err)
 	}

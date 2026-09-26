@@ -1,6 +1,7 @@
 package hook
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -28,9 +29,6 @@ func (e *Engine) executeMatchedHook(ctx context.Context, hook matchedHook, input
 
 	switch normalizedHookType(*hook.Command) {
 	case "command":
-		if hook.Command.Interactive && e.getPromptCallback() != nil {
-			return e.executeCommandBidirectional(ctx, *hook.Command, input)
-		}
 		return e.executeCommand(ctx, *hook.Command, input)
 	case "prompt":
 		return e.executePromptHook(ctx, *hook.Command, input)
@@ -147,7 +145,7 @@ func (e *Engine) applyHookOutput(outcome HookOutcome, hookOutput HookOutput) Hoo
 	if hookOutput.Continue != nil && !*hookOutput.Continue {
 		outcome.ShouldContinue = false
 		outcome.ShouldBlock = true
-		outcome.BlockReason = firstNonEmpty(hookOutput.StopReason, hookOutput.Reason)
+		outcome.BlockReason = cmp.Or(hookOutput.StopReason, hookOutput.Reason)
 	}
 
 	if hookOutput.SystemMessage != "" {
@@ -265,15 +263,6 @@ func appendContext(a, b string) string {
 	return a + "\n" + b
 }
 
-func firstNonEmpty(strs ...string) string {
-	for _, s := range strs {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
 func parsePermissionUpdate(v any) PermissionUpdate {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -325,12 +314,6 @@ func (e *Engine) getCwd() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.cwd
-}
-
-func (e *Engine) getPromptCallback() PromptCallback {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.promptCallback
 }
 
 func (e *Engine) getLLMCompleter() LLMCompleter {

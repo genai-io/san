@@ -33,7 +33,6 @@ package tool
 type Registry struct { /* internal fields */ }
 
 func (r *Registry) Register(t Tool)
-func (r *Registry) RegisterAlias(alias string, t Tool)
 func (r *Registry) Get(name string) (Tool, bool)
 func (r *Registry) List() []string
 func (r *Registry) Execute(ctx context.Context, name string, params map[string]any, cwd string) toolresult.ToolResult

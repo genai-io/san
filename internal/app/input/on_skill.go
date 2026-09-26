@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/setting"
 	coreskill "github.com/genai-io/san/internal/skill"
 )
 
@@ -125,17 +126,16 @@ func (s *SkillSelector) EnterSelect(width, height int) error {
 
 	allSkills := s.registry.List()
 	// Pre-load both stores so each tab shows the correct enabled state.
-	statesByLevel := map[bool]map[string]coreskill.SkillState{
-		false: s.registry.GetStatesAt(false),
-		true:  s.registry.GetStatesAt(true),
+	statesByScope := map[setting.Scope]map[string]coreskill.SkillState{
+		setting.ScopeProject: s.registry.StatesAt(setting.ScopeProject),
+		setting.ScopeUser:    s.registry.StatesAt(setting.ScopeUser),
 	}
 
 	skills := make([]skillItem, 0, len(allSkills))
 	for _, sk := range allSkills {
-		userLevel := scopeIsUser(sk.Scope)
 		state := sk.State
-		if levelState, ok := statesByLevel[userLevel][sk.FullName()]; ok {
-			state = levelState
+		if saved, ok := statesByScope[settingScope(sk.Scope)][sk.FullName()]; ok {
+			state = saved
 		}
 		skills = append(skills, skillItem{
 			Name:        sk.Name,
@@ -159,6 +159,14 @@ func scopeIsUser(scope coreskill.SkillScope) bool {
 	return false
 }
 
+// settingScope is the settings file a skill's state is saved in.
+func settingScope(scope coreskill.SkillScope) setting.Scope {
+	if scopeIsUser(scope) {
+		return setting.ScopeUser
+	}
+	return setting.ScopeProject
+}
+
 func scopeIsPlugin(scope coreskill.SkillScope) bool {
 	return scope == coreskill.ScopeUserPlugin || scope == coreskill.ScopeProjectPlugin
 }
@@ -170,8 +178,11 @@ func skillMatchesTab(it skillItem, tab int) bool {
 	return !scopeIsUser(it.Scope)
 }
 
-func (s *SkillSelector) saveLevelForActiveTab() bool {
-	return s.list.activeTab == int(skillTabUser)
+func (s *SkillSelector) activeScope() setting.Scope {
+	if s.list.activeTab == int(skillTabUser) {
+		return setting.ScopeUser
+	}
+	return setting.ScopeProject
 }
 
 func (s *SkillSelector) IsActive() bool { return s.list.active }
@@ -195,7 +206,7 @@ func (s *SkillSelector) CycleState() tea.Cmd {
 	}
 
 	if s.registry != nil {
-		_ = s.registry.SetState(fullName, newState, s.saveLevelForActiveTab())
+		_ = s.registry.SetState(fullName, newState, s.activeScope())
 	}
 
 	return func() tea.Msg {

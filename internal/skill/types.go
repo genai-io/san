@@ -127,9 +127,9 @@ func (s *Skill) IsActive() bool {
 	return s.State == StateActive
 }
 
-// GetInstructions returns the full skill instructions, reading from disk each time.
+// Instructions returns the full skill instructions, reading from disk each time.
 // This ensures modifications to SKILL.md files are immediately reflected.
-func (s *Skill) GetInstructions() string {
+func (s *Skill) Instructions() string {
 	if s.FilePath == "" {
 		return ""
 	}

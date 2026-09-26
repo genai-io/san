@@ -6,6 +6,7 @@
 package inspector
 
 import (
+	"bytes"
 	"container/list"
 	"context"
 	"encoding/json"
@@ -155,7 +156,7 @@ func (s *Server) listFromDir() ([]sessionListItem, error) {
 			Title:     previewTitle(path),
 		})
 	}
-	sortByUpdatedDesc(items)
+	slices.SortStableFunc(items, func(a, b sessionListItem) int { return b.UpdatedAt.Compare(a.UpdatedAt) })
 	return items, nil
 }
 
@@ -333,20 +334,11 @@ func readFromOffset(path string, offset int64) ([]byte, int64, error) {
 	}
 	buf = buf[:n]
 	// Trim trailing partial line.
-	if i := lastNewline(buf); i >= 0 {
+	if i := bytes.LastIndexByte(buf, '\n'); i >= 0 {
 		return buf[:i+1], offset + int64(i+1), nil
 	}
 	// No newline yet — leave the bytes for next poll.
 	return nil, offset, nil
-}
-
-func lastNewline(b []byte) int {
-	for i, v := range slices.Backward(b) {
-		if v == '\n' {
-			return i
-		}
-	}
-	return -1
 }
 
 // previewTitle returns a short prefix of the first user-role message's text
@@ -390,15 +382,4 @@ func previewTitle(path string) string {
 		}
 	}
 	return ""
-}
-
-func sortByUpdatedDesc(items []sessionListItem) {
-	// Insertion sort — list size is small (tens of sessions per project).
-	for i := 1; i < len(items); i++ {
-		j := i
-		for j > 0 && items[j].UpdatedAt.After(items[j-1].UpdatedAt) {
-			items[j-1], items[j] = items[j], items[j-1]
-			j--
-		}
-	}
 }

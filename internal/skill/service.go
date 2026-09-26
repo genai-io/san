@@ -44,10 +44,10 @@ func Initialize(opts Options) {
 
 	for _, skill := range skills {
 		fullName := skill.FullName()
-		if state, ok := userStore.GetState(fullName); ok {
+		if state, ok := userStore.State(fullName); ok {
 			skill.State = state
 		}
-		if state, ok := projectStore.GetState(fullName); ok {
+		if state, ok := projectStore.State(fullName); ok {
 			skill.State = state
 		}
 	}

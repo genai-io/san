@@ -20,7 +20,7 @@ func TestSimplifyShipsAsBuiltinPromptCommand(t *testing.T) {
 	if pc.Description == "" {
 		t.Fatal("builtin command needs a description for the /help listing")
 	}
-	instructions := pc.GetInstructions()
+	instructions := pc.Instructions()
 	for _, want := range []string{"Phase 0", "Reuse", "Simplification", "Efficiency", "Altitude", "Agent tool"} {
 		if !strings.Contains(instructions, want) {
 			t.Fatalf("simplify workflow should mention %q, got %d bytes", want, len(instructions))
@@ -58,7 +58,7 @@ func TestDiskCommandShadowsBuiltinPromptCommand(t *testing.T) {
 	if pc.FilePath == "" || pc.Scope == scopeBuiltin {
 		t.Fatalf("a project command must shadow the builtin, got %+v", pc)
 	}
-	if got := pc.GetInstructions(); !strings.Contains(got, "Do it my way.") {
+	if got := pc.Instructions(); !strings.Contains(got, "Do it my way.") {
 		t.Fatalf("instructions should come from the project file, got %q", got)
 	}
 }

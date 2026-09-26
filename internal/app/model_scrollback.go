@@ -242,7 +242,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 	var cmds []tea.Cmd
 	if msg.printed != "" {
 		// No budget: a streamed block leaves the tail as its rendered self.
-		cmds = append(cmds, m.queueScrollbackPrint(msg.printed, 0))
+		cmds = append(cmds, m.flush.queueScrollbackPrint(msg.printed, 0))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
 	// the row is still uncommitted, so it's safe.
@@ -302,16 +302,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
-	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)}
-}
-
-// queueScrollbackPrint appends content to a single-flight FIFO. Only an empty
-// queue starts a print; finishScrollbackPrint starts the next chunk after Bubble
-// Tea has processed the current Println. Each chunk is no taller than the rows
-// above the managed frame, so insertAbove cannot scroll live UI rows into native
-// history.
-func (m *model) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
-	return m.flush.queueScrollbackPrint(content, frameRows)
+	return []tea.Cmd{m.flush.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)}
 }
 
 // resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.
@@ -328,6 +319,11 @@ func (m *model) resumeDeferredScrollbackPrint() tea.Cmd {
 	return printScrollback(m.flush.pendingPrints[0].id)
 }
 
+// queueScrollbackPrint appends content to a single-flight FIFO. Only an empty
+// queue starts a print; finishScrollbackPrint starts the next chunk after Bubble
+// Tea has processed the current Println. Each chunk is no taller than the rows
+// above the managed frame, so insertAbove cannot scroll live UI rows into native
+// history.
 func (f *flushState) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
 	if content == "" {
 		return nil

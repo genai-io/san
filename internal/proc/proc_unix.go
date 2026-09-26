@@ -24,6 +24,10 @@ func DetachSession(cmd *exec.Cmd) {
 	cmd.SysProcAttr.Setsid = true
 }
 
+// StartGroup starts cmd. On Unix, DetachSession already made it a group leader, so
+// there is nothing to add after the fact.
+func StartGroup(cmd *exec.Cmd) error { return cmd.Start() }
+
 // GroupLeaderPID returns the process-group ID a caller can signal (as -pgid)
 // to reach cmd and its ordinary descendants. It is meaningful once cmd was
 // configured with DetachSession, which makes the child a group leader, so

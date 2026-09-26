@@ -53,7 +53,7 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 			sb.WriteString("\n\n")
 		}
 		for _, name := range config.Skills {
-			body := skill.Default().GetSkillInvocationPrompt(name)
+			body := skill.Default().SkillInvocationPrompt(name)
 			if body != "" {
 				sb.WriteString(body)
 				sb.WriteString("\n\n")

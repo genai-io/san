@@ -22,10 +22,6 @@ import (
 	"github.com/genai-io/san/internal/tool/fs"
 )
 
-func (m *model) InitTaskStorage() {
-	m.initTaskStorage(m.services.Session.ID())
-}
-
 func (m *model) PersistSession() error {
 	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
 		return err
@@ -247,7 +243,7 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
-	if m.services.Tracker.GetStorageDir() != "" {
+	if m.services.Tracker.StorageDir() != "" {
 		return
 	}
 

@@ -271,25 +271,6 @@ func (s *Store) List() []*Item {
 	return items
 }
 
-// IsBlocked returns true if the item has any uncompleted blockers
-func (s *Store) IsBlocked(id string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	item, ok := s.items[id]
-	if !ok || item.Status == StatusDeleted {
-		return false
-	}
-
-	for _, blockerID := range item.BlockedBy {
-		blocker, ok := s.items[blockerID]
-		if ok && blocker.Status != StatusCompleted && blocker.Status != StatusDeleted {
-			return true
-		}
-	}
-	return false
-}
-
 // OpenBlockers returns IDs of uncompleted items that block the given item
 func (s *Store) OpenBlockers(id string) []string {
 	s.mu.RLock()
@@ -404,8 +385,8 @@ func (s *Store) Import(items []Item) {
 	s.demoteOrphanedItems()
 }
 
-// GetStorageDir returns the current storage directory.
-func (s *Store) GetStorageDir() string {
+// StorageDir returns the current storage directory.
+func (s *Store) StorageDir() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.storageDir

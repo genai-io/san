@@ -26,7 +26,6 @@ import (
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
-	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
 	_ "github.com/genai-io/san/internal/tool/register"
 )
@@ -44,7 +43,6 @@ func initInfrastructure() error {
 	initExtensions(appCwd)
 
 	// Phase 3: tool infrastructure
-	tool.Initialize()
 	agent.Initialize()
 	if err := task.Initialize(task.Options{}); err != nil {
 		log.Logger().Warn("task output directory unavailable; task output will not persist", zap.Error(err))
@@ -92,7 +90,7 @@ func initExtensions(cwd string) {
 	persona.Initialize(cwd)
 	command.Initialize(command.Options{
 		CWD:                cwd,
-		DynamicProviders:   []func() []command.Info{skillCommandInfos},
+		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
 		PluginCommandPaths: pluginCommandPaths,
 	})
 	if err := subagent.Initialize(subagent.Options{CWD: cwd, PluginAgentPaths: pluginAgentPaths}); err != nil {
@@ -130,7 +128,7 @@ func (m *model) reloadProjectServices(cwd string) {
 
 	command.Initialize(command.Options{
 		CWD:                cwd,
-		DynamicProviders:   []func() []command.Info{skillCommandInfos},
+		DynamicProviders:   []func() []command.Info{input.SkillCommandInfos},
 		PluginCommandPaths: pluginCommandPaths,
 	})
 	m.services.Command = command.Default()
@@ -143,7 +141,7 @@ func (m *model) reloadProjectServices(cwd string) {
 	if err := mcp.Initialize(mcp.Options{CWD: cwd, PluginServers: pluginMCPServers}); err != nil {
 		log.Logger().Warn("Failed to initialize mcp", zap.Error(err))
 	}
-	m.services.MCP = mcp.DefaultRegistry()
+	m.services.MCP = mcp.DefaultManager()
 	m.services.MCP.SetOnToolsChanged(m.syncMCPTools)
 
 	persona.Initialize(cwd)
@@ -208,36 +206,11 @@ func pluginMCPServers() []mcp.PluginServer {
 
 func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.Suggestion {
 	return func(query string) []suggest.Suggestion {
-		cmds := cmdSvc.GetMatching(query)
+		cmds := cmdSvc.Matching(query)
 		result := make([]suggest.Suggestion, len(cmds))
 		for i, c := range cmds {
 			result[i] = suggest.Suggestion{Name: c.Name, Description: c.Description}
 		}
 		return result
 	}
-}
-
-type agentRegistryAdapter struct {
-	reg *subagent.Registry
-}
-
-func (a *agentRegistryAdapter) ListConfigs() []tool.AgentConfigInfo {
-	configs := a.reg.ListConfigs()
-	out := make([]tool.AgentConfigInfo, len(configs))
-	for i, cfg := range configs {
-		out[i] = subagent.ToAgentConfigInfo(cfg)
-	}
-	return out
-}
-
-func (a *agentRegistryAdapter) GetDisabledAt(userLevel bool) map[string]bool {
-	return a.reg.GetDisabledAt(userLevel)
-}
-
-func (a *agentRegistryAdapter) SetEnabled(name string, enabled bool, userLevel bool) error {
-	return a.reg.SetEnabled(name, enabled, userLevel)
-}
-
-func skillCommandInfos() []command.Info {
-	return input.SkillCommandInfos()
 }

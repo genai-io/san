@@ -16,15 +16,15 @@ import (
 )
 
 const (
-	maxReadLines  = 2000
-	maxLineLength = 2000
+	maxReadLines = 2000
+	maxLineLen   = 2000
 
 	// maxReadBytes caps the total content one Read emits into the context.
 	// The line and line-length caps alone still admit ~4MB (2000 lines ×
 	// 2000 chars); a busy minified file would blow the context in one call.
 	maxReadBytes = 256 * 1024
 
-	// lineTruncationMarker ends every line that was cut at maxLineLength. It
+	// lineTruncationMarker ends every line that was cut at maxLineLen. It
 	// is documented in the Read schema so the model knows the marker is not
 	// part of the file — a truncated line cannot be edited by copying the
 	// shortened text.
@@ -129,9 +129,9 @@ func (t *ReadTool) Execute(ctx context.Context, params map[string]any, cwd strin
 		text := scanner.Text()
 
 		// Truncate long lines (rune-aware to avoid splitting multi-byte characters)
-		if utf8.RuneCountInString(text) > maxLineLength {
+		if utf8.RuneCountInString(text) > maxLineLen {
 			runes := []rune(text)
-			text = string(runes[:maxLineLength]) + lineTruncationMarker
+			text = string(runes[:maxLineLen]) + lineTruncationMarker
 		}
 
 		lines = append(lines, toolresult.ContentLine{

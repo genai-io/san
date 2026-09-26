@@ -51,9 +51,9 @@ func GetMessagesGetter(ctx context.Context) MessagesGetter {
 type AgentExecutor interface {
 	Run(ctx context.Context, req AgentExecRequest) (*AgentExecResult, error)
 	RunBackground(req AgentExecRequest) (AgentTaskInfo, error)
-	GetAgentConfig(name string) (AgentConfigInfo, bool)
+	AgentConfig(name string) (AgentConfigInfo, bool)
 	ResolveAgentSelection(name string) (AgentConfigInfo, any, bool)
-	GetParentModelID() string
+	ParentModelID() string
 }
 
 // ActivityFunc is called when the agent reports activity.

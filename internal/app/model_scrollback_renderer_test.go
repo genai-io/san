@@ -201,7 +201,7 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case beginNativeHistoryCommitsMsg:
 		m.started = true
-		first := m.queueScrollbackPrint(strings.Join([]string{
+		first := m.flush.queueScrollbackPrint(strings.Join([]string{
 			nativeBash + "1",
 			nativeBash + "2",
 			nativeBash + "3",
@@ -211,7 +211,7 @@ func (m *nativeHistoryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			nativeBash + "7",
 			nativeBash + "8",
 		}, "\n"), 0)
-		m.queueScrollbackPrint(nativeEdit, 0)
+		m.flush.queueScrollbackPrint(nativeEdit, 0)
 		return m, first
 	case scrollbackPrintReadyMsg:
 		frame := m.View()

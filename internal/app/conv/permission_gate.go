@@ -6,22 +6,11 @@ import (
 	"github.com/genai-io/san/internal/agent"
 )
 
-// Re-export agent permission types for conv consumers.
-type (
-	PermDecisionResult = agent.PermDecisionResult
-	PermDecisionFunc   = agent.PermDecisionFunc
-	PermGateRequest    = agent.PermGateRequest
-	PermGateResponse   = agent.PermGateResponse
-	PermissionGate     = agent.PermissionGate
-)
-
-var NewPermissionGate = agent.NewPermissionGate
-
 type PermGateMsg struct {
-	Request *PermGateRequest
+	Request *agent.PermGateRequest
 }
 
-func PollPermGate(pg *PermissionGate) tea.Cmd {
+func PollPermGate(pg *agent.PermissionGate) tea.Cmd {
 	return func() tea.Msg {
 		req, ok := pg.Recv()
 		if !ok {

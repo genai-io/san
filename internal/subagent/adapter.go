@@ -76,13 +76,8 @@ func (a *ExecutorAdapter) ResolveAgentSelection(name string) (tool.AgentConfigIn
 	return info, config, true
 }
 
-// GetParentModelID returns the parent conversation's model ID
-func (a *ExecutorAdapter) GetParentModelID() string {
-	return a.Executor.GetParentModelID()
-}
-
-// GetAgentConfig returns configuration for an optional agent name.
-func (a *ExecutorAdapter) GetAgentConfig(name string) (tool.AgentConfigInfo, bool) {
+// AgentConfig returns configuration for an optional agent name.
+func (a *ExecutorAdapter) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	info, _, ok := a.ResolveAgentSelection(name)
 	return info, ok
 }

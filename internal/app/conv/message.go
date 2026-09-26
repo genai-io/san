@@ -125,11 +125,6 @@ var (
 
 	PendingImageStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Primary)
-
-	SelectedImageStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.TextBright).
-				Background(kit.CurrentTheme.Primary).
-				Bold(true)
 )
 
 // RenderAutopilotMark is the "⎿ autopilot · <note>" annotation a copilot-produced
