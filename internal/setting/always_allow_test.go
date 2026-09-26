@@ -33,7 +33,7 @@ func TestAllowRulesForIsExact(t *testing.T) {
 	}
 	for _, tc := range cases {
 		args := map[string]any{"command": tc.arg, "path": tc.arg, "url": tc.arg}
-		got := allowRulesFor(tc.tool, args)
+		got := ExactAllowRules(tc.tool, args)
 		if !slices.Equal(got, tc.want) {
 			t.Errorf("%s(%q) = %v, want %v", tc.tool, tc.arg, got, tc.want)
 			continue
@@ -45,7 +45,7 @@ func TestAllowRulesForIsExact(t *testing.T) {
 		}
 	}
 
-	rules := allowRulesFor("Bash", map[string]any{"command": "touch x && echo ok"})
+	rules := ExactAllowRules("Bash", map[string]any{"command": "touch x && echo ok"})
 	for _, other := range []string{"touch y", "touch x && echo ok && rm z", "touch x -r"} {
 		if _, matched := MatchAllowList("Bash", map[string]any{"command": other}, rules); matched {
 			t.Errorf("rules %v cover a different command %q", rules, other)

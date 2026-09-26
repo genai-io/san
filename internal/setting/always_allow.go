@@ -31,10 +31,10 @@ func runsCode(name string) bool {
 	return codeRunners[name] || shellInterpreters[name] || dangerousBuiltins[name] || powerShellStartProcess[name]
 }
 
-// allowRulesFor returns the exact allow rules that cover this call, one per
+// ExactAllowRules returns the exact allow rules that cover this call, one per
 // Bash subcommand, or nil when no rule can be exact: a redirect, substitution,
 // env assignment, glob character, or a command that runs code.
-func allowRulesFor(toolName string, args map[string]any) []string {
+func ExactAllowRules(toolName string, args map[string]any) []string {
 	var rules []string
 	switch toolName {
 	case "Bash":
@@ -71,7 +71,7 @@ func allowRulesFor(toolName string, args map[string]any) []string {
 // or nil when saving them would not stop it prompting — a deny, ask or safety
 // check outranks allow rules, so offering the option there would do nothing.
 func (s *Data) AlwaysAllowRules(toolName string, args map[string]any, session *SessionPermissions) []string {
-	rules := allowRulesFor(toolName, args)
+	rules := ExactAllowRules(toolName, args)
 	if len(rules) == 0 {
 		return nil
 	}

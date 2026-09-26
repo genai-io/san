@@ -296,9 +296,12 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		}
 		// Cache the approval as a session grant so an identical repeat hits the
 		// static fast path instead of the judge, shrinking the gray zone over
-		// the session. Safe to write here: the agent goroutine is the only
+		// the session. Only exact rules: a call no rule covers exactly asks the
+		// judge again. Safe to write here: the agent goroutine is the only
 		// mutator (the human-approval writer runs only while it is parked).
-		m.env.SessionPermissions.AllowPattern(setting.BuildRule(name, args))
+		for _, rule := range setting.ExactAllowRules(name, args) {
+			m.env.SessionPermissions.AllowPattern(rule)
+		}
 		// Tally it and stash the decision so the renderer can draw it inline
 		// under the tool call the judge just let through (the status-bar count
 		// alone doesn't say what was approved or why).
