@@ -28,7 +28,7 @@ func ConnectServers(ctx context.Context, servers *Registry, serverNames []string
 			errs = append(errs, fmt.Errorf("MCP server not configured: %s", name))
 			continue
 		}
-		ok, err := servers.holdServer(ctx, name)
+		ok, err := servers.hold(ctx, name)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("MCP server %s: %w", name, err))
 			continue
@@ -40,16 +40,16 @@ func ConnectServers(ctx context.Context, servers *Registry, serverNames []string
 
 	cleanup = func() {
 		for _, name := range held {
-			servers.releaseServer(name)
+			servers.release(name)
 		}
 	}
 	return cleanup, errs
 }
 
-// holdServer takes a hold on name, connecting it if nothing is connected yet. It
+// hold takes a hold on name, connecting it if nothing is connected yet. It
 // reports false for a server the session connected itself, which no caller
 // holds and none may disconnect.
-func (r *Registry) holdServer(ctx context.Context, name string) (bool, error) {
+func (r *Registry) hold(ctx context.Context, name string) (bool, error) {
 	r.holdersMu.Lock()
 	defer r.holdersMu.Unlock()
 	if r.holders[name] == 0 {
@@ -67,8 +67,8 @@ func (r *Registry) holdServer(ctx context.Context, name string) (bool, error) {
 	return true, nil
 }
 
-// releaseServer drops one hold on name and disconnects it with the last one.
-func (r *Registry) releaseServer(name string) {
+// release drops one hold on name and disconnects it with the last one.
+func (r *Registry) release(name string) {
 	r.holdersMu.Lock()
 	defer r.holdersMu.Unlock()
 	r.holders[name]--
