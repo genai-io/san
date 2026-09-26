@@ -6,10 +6,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +16,7 @@ import (
 
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/inspector"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/session"
 )
 
@@ -81,7 +80,7 @@ in your default browser. Use --no-open to skip the browser launch and
 
 		fmt.Printf("san inspector: serving %s\n  project: %s\n", url, projectDir)
 		if !inspectorNoOpen {
-			openBrowser(url)
+			_ = proc.OpenURL(url)
 		}
 
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
@@ -113,20 +112,4 @@ func requireLoopback(addr string) error {
 		return nil
 	}
 	return fmt.Errorf("--addr %q is not loopback; only 127.0.0.1, ::1, or localhost are allowed", addr)
-}
-
-func openBrowser(url string) {
-	var bin string
-	var args []string
-	switch runtime.GOOS {
-	case "darwin":
-		bin, args = "open", []string{url}
-	case "linux":
-		bin, args = "xdg-open", []string{url}
-	case "windows":
-		bin, args = "rundll32", []string{"url.dll,FileProtocolHandler", url}
-	default:
-		return
-	}
-	_ = exec.Command(bin, args...).Start()
 }

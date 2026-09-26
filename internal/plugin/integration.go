@@ -211,7 +211,7 @@ func PluginEnv(ctx context.Context) []string {
 
 	var out []string
 	for _, p := range enabled {
-		out = append(out, setting.EnvPairF("PLUGIN_ROOT_%s", envSafeName(p.Name()), p.Path)...)
+		out = append(out, setting.EnvPair("PLUGIN_ROOT_"+envSafeName(p.Name()), p.Path)...)
 	}
 
 	root := activePluginRoot(ctx)

@@ -193,10 +193,6 @@ func (s *Registry) List() []Info {
 	return all
 }
 
-func (s *Registry) ListCustom() []CustomCommand {
-	return s.loadAllCustomCommands()
-}
-
 func (s *Registry) GetMatching(prefix string) []Info {
 	query := strings.ToLower(strings.TrimPrefix(prefix, "/"))
 	matches := make([]Info, 0)

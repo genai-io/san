@@ -81,3 +81,11 @@ func DefaultEngine() *Engine {
 // defaultEngine is the package-level hook engine: empty settings, so events
 // fired before Initialize installs a real one reach no hooks.
 var defaultEngine = NewEngine(setting.NewData(), "", "", "")
+
+// FireConfigChanged tells the default engine a config file changed, as both
+// a ConfigChange and a FileChanged event.
+func FireConfigChanged(source, filePath string) {
+	e, input := defaultEngine, HookInput{Source: source, FilePath: filePath}
+	e.ExecuteAsync(ConfigChange, input)
+	e.ExecuteAsync(FileChanged, input)
+}

@@ -84,11 +84,6 @@ func (c *Conn) Store() *Store {
 	return c.store
 }
 
-// NewClient builds a one-shot *Client for the active provider.
-func (c *Conn) NewClient(model string, maxTokens int) *Client {
-	return NewClient(c.Provider(), model, maxTokens)
-}
-
 // ResolvedProvider is a connected provider plus the identity used to reach it.
 // ModelID carries the saved current model when one is set, and is empty when
 // resolution fell back to a connection without a saved model — in that case the

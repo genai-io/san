@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/hook"
 )
 
 // ConfigLoader handles loading MCP configuration from multiple sources
@@ -126,7 +127,7 @@ func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope)
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChanged(scopeConfigSource(scope), filePath)
 	return nil
 }
 
@@ -154,7 +155,7 @@ func (l *ConfigLoader) RemoveServer(name string, scope Scope) error {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChanged(scopeConfigSource(scope), filePath)
 	return nil
 }
 
@@ -187,7 +188,7 @@ func (l *ConfigLoader) removeServerFromFile(filePath, name string) {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return
 	}
-	fireConfigChanged(configSourceFromFilePath(filePath), filePath)
+	hook.FireConfigChanged(configSourceFromFilePath(filePath), filePath)
 }
 
 func configSourceFromFilePath(filePath string) string {

@@ -6,7 +6,6 @@
 package setting
 
 import (
-	"fmt"
 	"os"
 )
 
@@ -43,15 +42,6 @@ func EnvPairs(kvs ...string) []string {
 		out = append(out, EnvPair(kvs[i], kvs[i+1])...)
 	}
 	return out
-}
-
-// EnvPairF is like EnvPair but with a formatted suffix on the key.
-//
-//	EnvPairF("PLUGIN_ROOT_%s", "CODEX", "/path") →
-//	  ["SAN_PLUGIN_ROOT_CODEX=/path", "CLAUDE_PLUGIN_ROOT_CODEX=/path"]
-func EnvPairF(keyFmt, keyArg, value string) []string {
-	key := fmt.Sprintf(keyFmt, keyArg)
-	return EnvPair(key, value)
 }
 
 // Getenv reads the canonical SAN_<suffix> variable.

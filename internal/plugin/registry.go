@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
+	"github.com/genai-io/san/internal/hook"
 )
 
 // Registry manages all loaded plugins.
@@ -284,7 +285,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	if err := atomicfile.WriteJSON(settingsPath, settings, 0o644); err != nil {
 		return err
 	}
-	fireConfigChanged(scopeConfigSource(scope), settingsPath)
+	hook.FireConfigChanged(scopeConfigSource(scope), settingsPath)
 	return nil
 }
 
