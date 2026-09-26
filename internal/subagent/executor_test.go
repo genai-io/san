@@ -942,7 +942,7 @@ func TestBuildUnfinishedAgentResultRejectsCompletedRun(t *testing.T) {
 
 // Every mode a session can be in maps to the subagent mode that keeps its
 // posture, and back again through operationMode.
-func TestPermissionModeForRoundTripsSessionModes(t *testing.T) {
+func TestInheritedPermissionModeRoundTripsSessionModes(t *testing.T) {
 	cases := map[setting.OperationMode]setting.OperationMode{
 		setting.ModeNormal:            setting.ModeNormal,
 		setting.ModeAutoAccept:        setting.ModeAutoAccept,
@@ -952,7 +952,7 @@ func TestPermissionModeForRoundTripsSessionModes(t *testing.T) {
 		setting.ModeReadOnly:          setting.ModeReadOnly,
 	}
 	for session, want := range cases {
-		if got := operationMode(PermissionModeFor(session)); got != want {
+		if got := operationMode(InheritedPermissionMode(session)); got != want {
 			t.Errorf("session %v: subagent runs as %v, want %v", session, got, want)
 		}
 	}

@@ -576,10 +576,10 @@ func operationMode(mode PermissionMode) setting.OperationMode {
 	}
 }
 
-// PermissionModeFor is the mode an unnamed subagent inherits from a session in
+// InheritedPermissionMode is the mode an unnamed subagent inherits from a session in
 // mode. Autopilot's review agent cannot answer for a subagent, so it inherits
 // only the edit posture.
-func PermissionModeFor(mode setting.OperationMode) PermissionMode {
+func InheritedPermissionMode(mode setting.OperationMode) PermissionMode {
 	switch mode {
 	case setting.ModeAutoAccept, setting.ModeAutoPilot:
 		return PermissionAcceptEdits

@@ -806,7 +806,7 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
 	perms := m.env.SessionPermissions
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {
-		return subagent.PermissionModeFor(perms.CurrentMode())
+		return subagent.InheritedPermissionMode(perms.CurrentMode())
 	})
 	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
 		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())

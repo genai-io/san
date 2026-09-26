@@ -36,7 +36,7 @@ func TestPowerShellArgsCarryTheScriptVerbatim(t *testing.T) {
 // A script past the command-line cap runs from a temp file instead, which
 // removes itself when PowerShell runs it.
 func TestPowerShellArgsMoveALongScriptToAFile(t *testing.T) {
-	script := strings.Repeat("#", maxEncodedCommand)
+	script := strings.Repeat("#", maxEncodedCommandLen)
 	args := powerShellArgs(script)
 	if args[len(args)-2] != "-File" {
 		t.Fatalf("args = %q, want -File", args[:len(args)-1])

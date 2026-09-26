@@ -19,9 +19,9 @@ func powerShellScript(command string) string {
 		"if ($LASTEXITCODE) { exit $LASTEXITCODE }\n"
 }
 
-// maxEncodedCommand keeps -EncodedCommand clear of Windows' ~32K-character
+// maxEncodedCommandLen keeps -EncodedCommand clear of Windows' ~32K-character
 // command-line cap, leaving room for the executable path and other flags.
-const maxEncodedCommand = 30000
+const maxEncodedCommandLen = 30000
 
 // powerShellArgs runs script through -EncodedCommand: base64 of its UTF-16LE
 // bytes, so no quote or backslash in it is ever re-read by a command line. A
@@ -34,7 +34,7 @@ func powerShellArgs(script string) []string {
 		binary.LittleEndian.PutUint16(raw[2*i:], u)
 	}
 	encoded := base64.StdEncoding.EncodeToString(raw)
-	if len(encoded) > maxEncodedCommand {
+	if len(encoded) > maxEncodedCommandLen {
 		if path, err := writeSelfDeletingScript(script); err == nil {
 			return append(flags, "-File", path)
 		}

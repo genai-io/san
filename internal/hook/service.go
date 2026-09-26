@@ -82,9 +82,9 @@ func DefaultEngine() *Engine {
 // fired before Initialize installs a real one reach no hooks.
 var defaultEngine = NewEngine(setting.NewData(), "", "", "")
 
-// FireConfigChanged tells the default engine a config file changed, as both
+// FireConfigChange tells the default engine a config file changed, as both
 // a ConfigChange and a FileChanged event.
-func FireConfigChanged(source, filePath string) {
+func FireConfigChange(source, filePath string) {
 	e, input := defaultEngine, HookInput{Source: source, FilePath: filePath}
 	e.ExecuteAsync(ConfigChange, input)
 	e.ExecuteAsync(FileChanged, input)

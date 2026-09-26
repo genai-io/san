@@ -28,7 +28,7 @@ func ConnectServers(ctx context.Context, servers *Registry, serverNames []string
 			errs = append(errs, fmt.Errorf("MCP server not configured: %s", name))
 			continue
 		}
-		ok, err := servers.acquire(ctx, name)
+		ok, err := servers.holdServer(ctx, name)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("MCP server %s: %w", name, err))
 			continue
@@ -40,41 +40,41 @@ func ConnectServers(ctx context.Context, servers *Registry, serverNames []string
 
 	cleanup = func() {
 		for _, name := range held {
-			servers.release(name)
+			servers.releaseServer(name)
 		}
 	}
 	return cleanup, errs
 }
 
-// acquire takes a hold on name, connecting it if nothing is connected yet. It
+// holdServer takes a hold on name, connecting it if nothing is connected yet. It
 // reports false for a server the session connected itself, which no caller
 // holds and none may disconnect.
-func (r *Registry) acquire(ctx context.Context, name string) (bool, error) {
-	r.leaseMu.Lock()
-	defer r.leaseMu.Unlock()
-	if r.leases[name] == 0 {
+func (r *Registry) holdServer(ctx context.Context, name string) (bool, error) {
+	r.holdersMu.Lock()
+	defer r.holdersMu.Unlock()
+	if r.holders[name] == 0 {
 		if c, ok := r.GetClient(name); ok && c.IsConnected() {
 			return false, nil
 		}
 		if err := r.Connect(ctx, name); err != nil {
 			return false, err
 		}
-		if r.leases == nil {
-			r.leases = make(map[string]int)
+		if r.holders == nil {
+			r.holders = make(map[string]int)
 		}
 	}
-	r.leases[name]++
+	r.holders[name]++
 	return true, nil
 }
 
-// release drops one hold on name and disconnects it with the last one.
-func (r *Registry) release(name string) {
-	r.leaseMu.Lock()
-	defer r.leaseMu.Unlock()
-	r.leases[name]--
-	if r.leases[name] > 0 {
+// releaseServer drops one hold on name and disconnects it with the last one.
+func (r *Registry) releaseServer(name string) {
+	r.holdersMu.Lock()
+	defer r.holdersMu.Unlock()
+	r.holders[name]--
+	if r.holders[name] > 0 {
 		return
 	}
-	delete(r.leases, name)
+	delete(r.holders, name)
 	r.Disconnect(name)
 }

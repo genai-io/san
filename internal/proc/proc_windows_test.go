@@ -50,11 +50,11 @@ func TestTerminateGroupReachesGrandchildren(t *testing.T) {
 }
 
 // A process whose own parent already exited is gone from the snapshot's tree,
-// but not from the job Start put the whole command in.
+// but not from the job StartGroup put the whole command in.
 func TestTerminateGroupReachesAnOrphanedDescendant(t *testing.T) {
 	before := pingPIDs()
 	cmd := exec.Command("cmd", "/c", "(cmd /c start /b ping -n 61 127.0.0.1 >NUL) & ping -n 60 127.0.0.1 >NUL")
-	if err := Start(cmd); err != nil {
+	if err := StartGroup(cmd); err != nil {
 		t.Fatal(err)
 	}
 

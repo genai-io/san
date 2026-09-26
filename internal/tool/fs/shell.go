@@ -150,7 +150,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
 
-	err = proc.Start(cmd)
+	err = proc.StartGroup(cmd)
 	if err == nil {
 		err = cmd.Wait()
 	}
@@ -351,7 +351,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	}
 
 	// Start the command
-	if err := proc.Start(cmd); err != nil {
+	if err := proc.StartGroup(cmd); err != nil {
 		cancel()
 		return toolresult.ToolResult{
 			Success: false,

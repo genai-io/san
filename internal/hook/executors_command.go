@@ -45,7 +45,7 @@ func (e *Engine) executeCommand(ctx context.Context, hookCmd setting.HookCmd, in
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	runErr := proc.Start(cmd)
+	runErr := proc.StartGroup(cmd)
 	if runErr == nil {
 		runErr = cmd.Wait()
 	}

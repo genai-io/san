@@ -127,7 +127,7 @@ func (l *ConfigLoader) SaveServer(name string, config ServerConfig, scope Scope)
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	hook.FireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChange(scopeConfigSource(scope), filePath)
 	return nil
 }
 
@@ -155,7 +155,7 @@ func (l *ConfigLoader) RemoveServer(name string, scope Scope) error {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return err
 	}
-	hook.FireConfigChanged(scopeConfigSource(scope), filePath)
+	hook.FireConfigChange(scopeConfigSource(scope), filePath)
 	return nil
 }
 
@@ -188,7 +188,7 @@ func (l *ConfigLoader) removeServerFromFile(filePath, name string) {
 	if err := atomicfile.WriteJSON(filePath, mcpConfig, 0o644); err != nil {
 		return
 	}
-	hook.FireConfigChanged(configSourceFromFilePath(filePath), filePath)
+	hook.FireConfigChange(configSourceFromFilePath(filePath), filePath)
 }
 
 func configSourceFromFilePath(filePath string) string {

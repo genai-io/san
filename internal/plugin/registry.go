@@ -285,7 +285,7 @@ func (r *Registry) saveEnabledState(name string, enabled bool, scope Scope) erro
 	if err := atomicfile.WriteJSON(settingsPath, settings, 0o644); err != nil {
 		return err
 	}
-	hook.FireConfigChanged(scopeConfigSource(scope), settingsPath)
+	hook.FireConfigChange(scopeConfigSource(scope), settingsPath)
 	return nil
 }
 

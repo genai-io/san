@@ -15,7 +15,7 @@ import (
 
 // DetachSession is a no-op on Windows: there is no controlling-terminal /
 // /dev/tty concept to detach from. Grandchildren are reached at termination
-// instead — see Start and TerminateGroup.
+// instead — see StartGroup and TerminateGroup.
 func DetachSession(cmd *exec.Cmd) {}
 
 // GroupLeaderPID reports that Windows offers no signalable process group, so
@@ -26,11 +26,11 @@ func GroupLeaderPID(cmd *exec.Cmd) (pid int, ok bool) { return 0, false }
 // its *exec.Cmd, until the child exits or TerminateGroup ends the job.
 var jobs sync.Map
 
-// Start starts cmd and puts its child in a new Job Object, which every process
+// StartGroup starts cmd and puts its child in a new Job Object, which every process
 // it spawns joins too, so TerminateGroup reaches a descendant whose own parent
 // has already exited. A child that cannot be assigned (breakaway forbidden by
 // an outer job) still runs; TerminateGroup then falls back to the snapshot.
-func Start(cmd *exec.Cmd) error {
+func StartGroup(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func Start(cmd *exec.Cmd) error {
 }
 
 // TerminateGroup terminates cmd's child and every process descended from it:
-// its Job Object when Start made one, plus the tree read from a process
+// its Job Object when StartGroup made one, plus the tree read from a process
 // snapshot, which also covers a child spawned before the job was assigned;
 // sig is ignored. A child that already exited is reported as success, as on
 // Unix.
