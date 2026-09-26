@@ -74,11 +74,6 @@ func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*
 	}, nil
 }
 
-func (e *Executor) attachRunContext(ctx context.Context, displayName string) context.Context {
-	tracker := log.NewAgentTurnTracker(displayName, nil)
-	return log.WithAgentTracker(ctx, tracker)
-}
-
 func (e *Executor) logRunStart(run *preparedRun) {
 	log.Logger().Info("Starting agent execution",
 		zap.String("agent", run.cfg.displayName),

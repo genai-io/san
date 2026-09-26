@@ -36,30 +36,12 @@ const (
 	ProviderMemoryAuto = "memory-auto"
 )
 
-// Provider supplies a reminder body on demand. Returning an empty string
-// skips emission (e.g. no enabled skills).
-type Provider interface {
-	// ID returns a stable identifier used for deduplication and diagnostics.
-	ID() string
-	// Render returns the body to wrap in <system-reminder>; "" skips the
-	// reminder for this emission.
-	Render() string
-}
-
-// NewProvider returns a Provider with the given stable id whose body is
-// produced by render on every emission. Use this instead of declaring a
-// custom Provider type when you just need to wrap a closure.
-func NewProvider(id string, render func() string) Provider {
-	return providerFunc{id: id, render: render}
-}
-
-type providerFunc struct {
+// provider is a long-lived reminder source: render produces its body on every
+// emission, and "" skips it (e.g. no enabled skills).
+type provider struct {
 	id     string
 	render func() string
 }
-
-func (p providerFunc) ID() string     { return p.id }
-func (p providerFunc) Render() string { return p.render() }
 
 // Service is the runtime API the harness uses to manage reminders.
 //
@@ -75,7 +57,7 @@ func (p providerFunc) Render() string { return p.render() }
 // All operations are safe for concurrent use.
 type Service struct {
 	mu        sync.Mutex
-	providers []Provider
+	providers []provider
 	pending   []pendingEntry
 }
 
@@ -93,16 +75,14 @@ func NewService() *Service {
 	return &Service{}
 }
 
-// Register adds a Provider whose output RequeueSystemReminders emits.
-// Re-registering an existing ID replaces the old provider.
-func (s *Service) Register(p Provider) {
-	if p == nil {
-		return
-	}
+// Register adds a provider whose output RequeueSystemReminders emits.
+// Re-registering an existing id replaces the old provider.
+func (s *Service) Register(id string, render func() string) {
+	p := provider{id: id, render: render}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, existing := range s.providers {
-		if existing.ID() == p.ID() {
+		if existing.id == p.id {
 			s.providers[i] = p
 			return
 		}
@@ -116,7 +96,7 @@ func (s *Service) Unregister(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i, existing := range s.providers {
-		if existing.ID() == id {
+		if existing.id == id {
 			s.providers = append(s.providers[:i], s.providers[i+1:]...)
 			return
 		}
@@ -186,7 +166,7 @@ func (s *Service) RequeueSystemReminders() {
 
 	knownIDs := make(map[string]struct{}, len(s.providers))
 	for _, p := range s.providers {
-		knownIDs[p.ID()] = struct{}{}
+		knownIDs[p.id] = struct{}{}
 	}
 	kept := s.pending[:0]
 	for _, e := range s.pending {
@@ -197,11 +177,11 @@ func (s *Service) RequeueSystemReminders() {
 	s.pending = kept
 
 	for _, p := range s.providers {
-		body := strings.TrimSpace(p.Render())
+		body := strings.TrimSpace(p.render())
 		if body == "" {
 			continue
 		}
-		s.pending = append(s.pending, pendingEntry{providerID: p.ID(), wrapped: WrapWithSource(body, p.ID())})
+		s.pending = append(s.pending, pendingEntry{providerID: p.id, wrapped: WrapWithSource(body, p.id)})
 	}
 }
 

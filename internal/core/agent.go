@@ -26,7 +26,7 @@ import (
 type Agent interface {
 	ID() string
 	System() System
-	Tools() Tools
+	Tools() *Tools
 
 	// Inbox is where the world sends messages. The caller owns it and closes
 	// it when done; sending after Run returns may block forever.
@@ -146,7 +146,7 @@ type Config struct {
 	// setting is the application's.
 	PromptBudget func() int
 	System       System // required: system prompt layers
-	Tools        Tools  // required
+	Tools        *Tools // required
 	// Gate is asked before each tool runs and may refuse the call or rewrite
 	// what the model sent. Nil lets everything through.
 	Gate Gate

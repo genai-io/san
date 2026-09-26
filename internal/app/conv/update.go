@@ -293,13 +293,6 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult) tea.Cmd {
 
 // --- Activity handling (operates on output Model directly) ---
 
-func (m *OutputModel) drainActivity() {
-	if m.AgentToUI == nil {
-		return
-	}
-	m.TaskActivity = m.AgentToUI.Drain(m.TaskActivity)
-}
-
 func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
 	if m.TaskActivity == nil {
 		m.TaskActivity = make(map[int][]string)

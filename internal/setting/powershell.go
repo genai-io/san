@@ -284,31 +284,3 @@ func matchPowerShellRule(cmd, pattern string, statements [][]string) bool {
 func isBareShellRule(pattern string) bool {
 	return pattern == "Bash" || pattern == "PowerShell"
 }
-
-// powerShellRiskyPrefixes are PowerShell commands that run other code or reach
-// the network, so a prefix rule for them would approve far more than was
-// asked; with dangerousPrefixes, they are never suggested.
-var powerShellRiskyPrefixes = map[string]bool{
-	"pwsh": true, "powershell": true, "cmd": true,
-	"invoke-expression": true, "iex": true, "invoke-command": true, "icm": true,
-	"start-process": true, "saps": true, "start": true,
-	"invoke-webrequest": true, "iwr": true, "invoke-restmethod": true, "irm": true, "curl": true, "wget": true,
-}
-
-// suggestPowerShellRules proposes an allow rule for a simple command: its
-// name and first argument as a prefix, like Bash's. Nothing for a compound
-// command, or for one that removes, escalates, or runs other code.
-func suggestPowerShellRules(cmd string) []string {
-	if !isSimplePowerShell(cmd) || isDestructivePowerShellCommand(cmd) {
-		return nil
-	}
-	fields := strings.Fields(cmd)
-	name := fields[0]
-	if lower := commandName(name); powerShellRemoval[lower] || powerShellRiskyPrefixes[lower] || dangerousPrefixes[lower] {
-		return nil
-	}
-	if len(fields) > 1 {
-		return []string{"PowerShell(" + name + ":" + fields[1] + " *)"}
-	}
-	return []string{"PowerShell(" + name + ":*)"}
-}

@@ -97,31 +97,6 @@ func Test_getMatchValue(t *testing.T) {
 	}
 }
 
-func Test_eventSupportsMatcher(t *testing.T) {
-	supported := []EventType{
-		PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest,
-		PermissionDenied, Setup, SessionStart, SessionEnd, Notification,
-		SubagentStart, SubagentStop, TaskCreated, TaskCompleted, ConfigChange, InstructionsLoaded, CwdChanged, FileChanged, PreCompact, PostCompact,
-		WorktreeCreate, WorktreeRemove,
-	}
-
-	notSupported := []EventType{
-		UserPromptSubmit, Stop, StopFailure,
-	}
-
-	for _, event := range supported {
-		if !eventSupportsMatcher(event) {
-			t.Errorf("eventSupportsMatcher(%v) = false, want true", event)
-		}
-	}
-
-	for _, event := range notSupported {
-		if eventSupportsMatcher(event) {
-			t.Errorf("eventSupportsMatcher(%v) = true, want false", event)
-		}
-	}
-}
-
 func TestEngineNoHooks(t *testing.T) {
 	settings := setting.NewData()
 	engine := NewEngine(settings, "test-session", "/tmp", "")

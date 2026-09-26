@@ -48,8 +48,7 @@ type Executor struct {
 	parentSessionID            string               // Parent session ID for linking subagent sessions
 	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
-	mcpTools                   mcp.Tools            // tool schemas + execution
-	mcpServers                 mcp.Servers          // connect/disconnect for per-subagent server sets
+	mcpRegistry                *mcp.Registry        // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 }
@@ -66,24 +65,6 @@ type runConfig struct {
 	displayName string
 	brief       system.SubagentBrief // identity/charter for this run; immutable
 	permMode    PermissionMode
-}
-
-// PermissionModeFromOperationMode preserves the parent session's effective
-// policy for mode="default" without exposing privileged spellings in the tool
-// schema.
-func PermissionModeFromOperationMode(mode setting.OperationMode) PermissionMode {
-	switch mode {
-	case setting.ModeAutoAccept, setting.ModeAutoPilot:
-		return PermissionAcceptEdits
-	case setting.ModeBypassPermissions:
-		return PermissionBypass
-	case setting.ModeDontAsk:
-		return PermissionDontAsk
-	case setting.ModeReadOnly:
-		return PermissionExplore
-	default:
-		return PermissionDefault
-	}
 }
 
 // NewExecutor creates a new agent executor. parentModelID is used for model
@@ -144,14 +125,9 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 	e.skillsPrompt = skillsPrompt
 }
 
-// SetMCPDependencies wires MCP tool access and the per-Agent connection lease
-// registry. The registry is a concrete *mcp.Registry rather than the mcp.Servers
-// interface because lease operations (acquireConnectionLease/releaseConnectionLease)
-// are unexported lifecycle details not exposed on Servers — adding them would
-// leak internal ownership semantics to every Servers consumer.
-func (e *Executor) SetMCPDependencies(tools mcp.Tools, connectionRegistry *mcp.Registry) {
-	e.mcpTools = tools
-	e.mcpServers = connectionRegistry
+// SetMCPDependencies wires MCP tool access and server connections.
+func (e *Executor) SetMCPDependencies(registry *mcp.Registry) {
+	e.mcpRegistry = registry
 }
 
 // SetDisabledTools supplies the effective global disabled-tool policy inherited
@@ -193,7 +169,6 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 
-	ctx = e.attachRunContext(ctx, run.cfg.displayName)
 	e.logRunStart(run)
 	e.fireSubagentStart(run.req, run.hookID)
 
@@ -391,8 +366,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	agentCwd := run.cwd
 	cleanup := func() {}
 
-	if len(rc.config.McpServers) > 0 && e.mcpServers != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpServers, rc.config.McpServers)
+	if len(rc.config.McpServers) > 0 && e.mcpRegistry != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpRegistry, rc.config.McpServers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -412,8 +387,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	// Tools — adapt legacy tool registry + MCP tools
 	var mcpGetter func() []core.ToolSchema
-	if e.mcpTools != nil {
-		mcpGetter = e.mcpTools.GetToolSchemas
+	if e.mcpRegistry != nil {
+		mcpGetter = e.mcpRegistry.GetToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
@@ -432,8 +407,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, adaptOpts...)
 
 	// Add MCP tool executors
-	if e.mcpTools != nil {
-		mcpCaller := mcp.NewCaller(e.mcpTools)
+	if e.mcpRegistry != nil {
+		mcpCaller := mcp.NewCaller(e.mcpRegistry)
 		for _, t := range mcp.AsCoreTools(schemas, mcpCaller) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}

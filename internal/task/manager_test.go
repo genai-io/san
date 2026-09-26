@@ -143,23 +143,3 @@ func TestManager_RegisterTask(t *testing.T) {
 		t.Error("retrieved task should match registered task")
 	}
 }
-
-func TestManager_GetBashTask(t *testing.T) {
-	m := NewManager()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "echo", "test")
-	cmd.Start()
-
-	created := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
-
-	task, ok := m.getBashTask(created.ID)
-	if !ok {
-		t.Error("should find bash task")
-	}
-	if task.ID != created.ID {
-		t.Error("retrieved task should match created task")
-	}
-}

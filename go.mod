@@ -14,7 +14,6 @@ require (
 	github.com/genai-io/sdk-go v0.7.0
 	github.com/hexops/gotextdiff v1.0.3
 	github.com/joho/godotenv v1.5.1
-	github.com/mattn/go-runewidth v0.0.30
 	github.com/spf13/cobra v1.10.2
 	go.uber.org/zap v1.28.0
 	golang.org/x/term v0.46.0
@@ -34,6 +33,7 @@ require (
 	github.com/googleapis/gax-go/v2 v2.17.0 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
 	github.com/kr/pty v1.1.1 // indirect
+	github.com/mattn/go-runewidth v0.0.30 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.8.0 // indirect
 	github.com/openai/openai-go/v3 v3.62.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
@@ -66,7 +66,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
-	github.com/clipperhouse/displaywidth v0.11.0 // indirect
+	github.com/clipperhouse/displaywidth v0.11.0
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

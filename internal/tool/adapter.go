@@ -80,7 +80,7 @@ func AdaptTool(t Tool, schema core.ToolSchema, cwd func() string) core.Tool {
 
 // AdaptToolRegistry wraps all tools from the global registry as core.Tools.
 // The schema list maps tool names to their JSON schemas.
-func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...AdaptOption) core.Tools {
+func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...AdaptOption) *core.Tools {
 	var cfg adaptConfig
 	for _, o := range opts {
 		o(&cfg)

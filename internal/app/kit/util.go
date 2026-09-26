@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/mattn/go-runewidth"
 
+	"github.com/clipperhouse/displaywidth"
 	"github.com/genai-io/san/internal/secret"
 )
 
@@ -49,14 +49,14 @@ func TruncateText(text string, maxLen int) string {
 	// stop once the next rune would overflow. O(n), unlike a shrink-from-the-end
 	// loop that re-measures the whole string each step.
 	//
-	// Measured with runewidth rather than lipgloss.Width: one rune cannot
+	// Measured per rune rather than with lipgloss.Width: one rune cannot
 	// contain an escape sequence, so the ANSI-stripping state machine has
 	// nothing to do, and this runs per rune per row on every frame.
 	budget := maxLen - 1
 	width := 0
 	var b strings.Builder
 	for _, r := range text {
-		rw := runewidth.RuneWidth(r)
+		rw := displaywidth.Rune(r)
 		if width+rw > budget {
 			break
 		}

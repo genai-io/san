@@ -74,7 +74,7 @@ func NewTestAgent(t *testing.T, responses ...llm.CompletionResponse) core.Agent 
 // buildAllRegisteredTools creates a core.Tools wrapping ALL tools in the global registry,
 // including dynamically registered fake tools. Unlike AdaptToolRegistry which only finds
 // tools that have schemas in GetToolSchemas(), this walks the entire registry directly.
-func buildAllRegisteredTools(cwd string) core.Tools {
+func buildAllRegisteredTools(cwd string) *core.Tools {
 	var adapted []core.Tool
 	for _, name := range tool.Default().List() {
 		t, ok := tool.Get(name)
@@ -117,12 +117,6 @@ func NewTestAgentWithMaxSteps(t *testing.T, maxSteps int, responses ...llm.Compl
 
 		MaxSteps: maxSteps,
 	})
-}
-
-// BuildTestTools adapts all globally registered tools into a core.Tools for use in tests.
-func BuildTestTools(t *testing.T) core.Tools {
-	t.Helper()
-	return buildAllRegisteredTools(t.TempDir())
 }
 
 // RunAgent sends a prompt to the agent, drains its outbox, and returns the result.

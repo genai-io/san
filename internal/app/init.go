@@ -44,12 +44,12 @@ func initInfrastructure() error {
 	initExtensions(appCwd)
 
 	// Phase 3: tool infrastructure
-	tool.Initialize(tool.Options{})
-	agent.Initialize(agent.Options{})
+	tool.Initialize()
+	agent.Initialize()
 	if err := task.Initialize(task.Options{}); err != nil {
 		log.Logger().Warn("task output directory unavailable; task output will not persist", zap.Error(err))
 	}
-	todo.Initialize(todo.Options{})
+	todo.Initialize()
 	cron.Initialize(cron.Options{
 		StoragePath: filepath.Join(confdir.Dir(appCwd), "scheduled_tasks.json"),
 	})

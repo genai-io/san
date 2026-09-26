@@ -75,7 +75,7 @@ func metadataString(item *Item, key string) string {
 // and a completion that arrives before its item exists is dropped for good —
 // CompleteWorker has nothing to find, and the item created afterwards names a
 // background task that already ended, so it sits in_progress for the whole session.
-func TrackWorker(svc Service, info task.TaskInfo) {
+func TrackWorker(svc *Store, info task.TaskInfo) {
 	if info.ID == "" {
 		return
 	}
@@ -103,7 +103,7 @@ func TrackWorker(svc Service, info task.TaskInfo) {
 }
 
 // CompleteWorker marks a tracker item as completed.
-func CompleteWorker(svc Service, info task.TaskInfo) {
+func CompleteWorker(svc *Store, info task.TaskInfo) {
 	item := svc.FindByMetadata(metaTaskID, info.ID)
 	if item == nil {
 		return

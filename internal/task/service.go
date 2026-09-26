@@ -26,16 +26,6 @@ func Default() *Manager {
 	return defaultManager
 }
 
-// SetDefaultTracker replaces the package-level *Manager. Intended for
-// tests. A nil argument restores a fresh empty *Manager.
-func SetDefaultTracker(m *Manager) {
-	if m == nil {
-		defaultManager = NewManager()
-		return
-	}
-	defaultManager = m
-}
-
 // ResetDefaultTracker restores a fresh empty *Manager. Intended for
 // tests.
 func ResetDefaultTracker() {

@@ -71,10 +71,10 @@ func TestServiceProviderRegistration(t *testing.T) {
 	s := NewService()
 
 	rendered := 0
-	s.Register(NewProvider("skills", func() string {
+	s.Register("skills", func() string {
 		rendered++
 		return "- foo: do foo"
-	}))
+	})
 
 	s.RequeueSystemReminders()
 	if rendered != 1 {
@@ -89,8 +89,8 @@ func TestServiceProviderRegistration(t *testing.T) {
 
 func TestServiceProviderReplaceByID(t *testing.T) {
 	s := NewService()
-	s.Register(NewProvider("skills", func() string { return "old" }))
-	s.Register(NewProvider("skills", func() string { return "new" }))
+	s.Register("skills", func() string { return "old" })
+	s.Register("skills", func() string { return "new" })
 
 	s.RequeueSystemReminders()
 	out := s.Drain()
@@ -104,8 +104,8 @@ func TestServiceProviderReplaceByID(t *testing.T) {
 
 func TestServiceProviderEmptyOutput(t *testing.T) {
 	s := NewService()
-	s.Register(NewProvider("skills", func() string { return "" }))
-	s.Register(NewProvider("memory", func() string { return "stuff" }))
+	s.Register("skills", func() string { return "" })
+	s.Register("memory", func() string { return "stuff" })
 
 	s.RequeueSystemReminders()
 	out := s.Drain()
@@ -119,8 +119,8 @@ func TestServiceProviderEmptyOutput(t *testing.T) {
 
 func TestServiceUnregister(t *testing.T) {
 	s := NewService()
-	s.Register(NewProvider("a", func() string { return "alpha" }))
-	s.Register(NewProvider("b", func() string { return "beta" }))
+	s.Register("a", func() string { return "alpha" })
+	s.Register("b", func() string { return "beta" })
 
 	s.Unregister("a")
 	s.RequeueSystemReminders()
@@ -168,8 +168,8 @@ func TestServiceFullSessionLifecycle(t *testing.T) {
 	skillsBody := "Use the Skill tool to invoke these capabilities:\n\n- git: Git workflow"
 	memoryBody := "<memory scope=\"user\">\nAlways use tabs.\n</memory>"
 
-	s.Register(NewProvider("skills-directory", func() string { return skillsBody }))
-	s.Register(NewProvider("memory-user", func() string { return memoryBody }))
+	s.Register("skills-directory", func() string { return skillsBody })
+	s.Register("memory-user", func() string { return memoryBody })
 
 	// SessionStart: harness enqueues all providers.
 	s.RequeueSystemReminders()
@@ -212,7 +212,7 @@ func TestServiceFullSessionLifecycle(t *testing.T) {
 func TestServiceProviderReflectsLatestState(t *testing.T) {
 	s := NewService()
 	state := "v1"
-	s.Register(NewProvider("skills", func() string { return state }))
+	s.Register("skills", func() string { return state })
 
 	s.RequeueSystemReminders()
 	if got := s.Drain(); !strings.Contains(got[0], "v1") {
@@ -233,8 +233,8 @@ func TestServiceProviderReflectsLatestState(t *testing.T) {
 // One-time notices (Enqueue) must survive a re-emission unmolested.
 func TestServiceRequeueSystemRemindersIsIdempotent(t *testing.T) {
 	s := NewService()
-	s.Register(NewProvider("skills-directory", func() string { return "skills body" }))
-	s.Register(NewProvider("memory-user", func() string { return "user mem" }))
+	s.Register("skills-directory", func() string { return "skills body" })
+	s.Register("memory-user", func() string { return "user mem" })
 
 	// Hook-context notice queued before the first emission.
 	s.Enqueue("hook context A")
@@ -290,8 +290,8 @@ func TestServiceConcurrentAccess(t *testing.T) {
 // provider intact, so /context can attribute those bytes to the right source.
 func TestBlocksRecoversAttachedReminders(t *testing.T) {
 	s := NewService()
-	s.Register(NewProvider(ProviderSkillsDirectory, func() string { return "skills body" }))
-	s.Register(NewProvider(ProviderMemoryProject, func() string { return "project memory body" }))
+	s.Register(ProviderSkillsDirectory, func() string { return "skills body" })
+	s.Register(ProviderMemoryProject, func() string { return "project memory body" })
 	s.RequeueSystemReminders()
 	s.Enqueue("a one-time notice")
 

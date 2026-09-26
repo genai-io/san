@@ -22,7 +22,7 @@ import (
 // announces that from inside RegisterTask — before the caller has a goroutine
 // that could complete it — so the ordering holds by construction.
 func TestWorkerItemSurvivesImmediateCompletion(t *testing.T) {
-	todo.Initialize(todo.Options{})
+	todo.Initialize()
 	t.Cleanup(func() {
 		todo.Default().Reset()
 		task.SetLifecycleHandler(nil)

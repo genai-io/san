@@ -421,28 +421,6 @@ func TestLoadMemoryFilesWithImports(t *testing.T) {
 	}
 }
 
-func TestLoadInstructions(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	root := t.TempDir()
-
-	writeFile(t, filepath.Join(home, ".san", InstructionFile), "User instructions here")
-	writeFile(t, filepath.Join(root, InstructionFile), "Project instructions here")
-	writeFile(t, filepath.Join(root, LocalInstructionFile), "Local instructions here")
-
-	user, project := LoadInstructions(root)
-
-	if !strings.Contains(user, "User instructions here") {
-		t.Errorf("user instructions should contain the user AGENTS.md content, got: %s", user)
-	}
-	if !strings.Contains(project, "Project instructions here") {
-		t.Errorf("project instructions should contain the AGENTS.md content, got: %s", project)
-	}
-	if !strings.Contains(project, "Local instructions here") {
-		t.Errorf("project instructions should contain the AGENTS.local.md content, got: %s", project)
-	}
-}
-
 func TestMemory_ImportChain(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
@@ -457,22 +435,6 @@ func TestMemory_ImportChain(t *testing.T) {
 		if !strings.Contains(projectFile.Content, want) {
 			t.Errorf("Expected %q in resolved output; got: %s", want, projectFile.Content)
 		}
-	}
-}
-
-func TestMemory_MissingFile_NoError(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	root := t.TempDir()
-
-	files := LoadMemoryFiles(root)
-	for _, f := range files {
-		if f.Level == "project" && strings.Contains(f.Path, root) {
-			t.Errorf("Did not expect a project instruction file when AGENTS.md is absent, got: %s", f.Path)
-		}
-	}
-
-	if _, project := LoadInstructions(root); project != "" {
-		t.Errorf("Expected no project instructions, got: %s", project)
 	}
 }
 

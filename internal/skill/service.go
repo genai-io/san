@@ -85,12 +85,6 @@ func SetDefaultRegistry(r *Registry) {
 	setDefaultRegistry(r)
 }
 
-// ResetDefaultRegistry restores a fresh empty *Registry. Intended for
-// tests.
-func ResetDefaultRegistry() {
-	setDefaultRegistry(newEmptyRegistry())
-}
-
 // registryMu guards the defaultRegistry pointer swap; the Registry it points
 // at locks its own contents. Initialize (UI goroutine) and Default() (agent
 // goroutine) run concurrently, mirroring internal/persona's singleton locking.

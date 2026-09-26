@@ -2,13 +2,10 @@
 // Exposes *Registry directly — no Service interface.
 package tool
 
-// Options holds all dependencies for initialization.
-type Options struct{}
-
 // Initialize installs the package-level *Registry as the default.
 // Tools register at init time before Initialize runs; this is a
 // no-op trigger for consistency with other packages' Initialize.
-func Initialize(opts Options) {
+func Initialize() {
 	defaultInstance = defaultRegistry
 }
 
@@ -18,16 +15,6 @@ func Default() *Registry {
 		return defaultInstance
 	}
 	return defaultRegistry
-}
-
-// SetDefaultRegistry replaces the package-level registry. Intended for
-// tests. A nil argument restores the package default.
-func SetDefaultRegistry(r *Registry) {
-	if r == nil {
-		defaultInstance = defaultRegistry
-		return
-	}
-	defaultInstance = r
 }
 
 // ResetDefaultRegistry restores the package default. Intended for

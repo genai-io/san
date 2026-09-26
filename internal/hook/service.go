@@ -78,22 +78,6 @@ func DefaultEngine() *Engine {
 	return defaultEngine
 }
 
-// SetDefaultEngine replaces the package-level engine. Intended for
-// tests. A nil argument restores the empty pre-Initialize engine.
-func SetDefaultEngine(e *Engine) {
-	if e == nil {
-		defaultEngine = newEmptyEngine()
-		return
-	}
-	defaultEngine = e
-}
-
-// ResetDefaultEngine restores the empty pre-Initialize engine.
-// Intended for tests.
-func ResetDefaultEngine() {
-	defaultEngine = newEmptyEngine()
-}
-
 // defaultEngine is the package-level hook engine. Initialized to an
 // empty (zero-hook) engine so callers that fire events before
 // Initialize is called don't crash.

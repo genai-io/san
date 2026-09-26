@@ -46,18 +46,3 @@ func Initialize(opts Options) {
 func Default() *Setup {
 	return defaultSetup
 }
-
-// SetDefaultSetup replaces the package-level *Setup. Intended for
-// tests. A nil argument restores a fresh empty *Setup.
-func SetDefaultSetup(s *Setup) {
-	if s == nil {
-		defaultSetup = &Setup{}
-		return
-	}
-	defaultSetup = s
-}
-
-// ResetDefaultSetup restores a fresh empty *Setup. Intended for tests.
-func ResetDefaultSetup() {
-	defaultSetup = &Setup{}
-}

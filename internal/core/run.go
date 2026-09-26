@@ -28,7 +28,7 @@ import (
 type agent struct {
 	id           string
 	system       System
-	tools        Tools
+	tools        *Tools
 	compactFunc  func(ctx context.Context, msgs []Message) (string, error)
 	gate         Gate
 	resultFilter ResultFilter
@@ -78,7 +78,7 @@ type turnHandle struct {
 
 func (a *agent) ID() string            { return a.id }
 func (a *agent) System() System        { return a.system }
-func (a *agent) Tools() Tools          { return a.tools }
+func (a *agent) Tools() *Tools         { return a.tools }
 func (a *agent) Inbox() chan<- Inbound { return a.inbox }
 func (a *agent) Outbox() <-chan Event  { return a.outbox }
 func (a *agent) Messages() []Message   { return a.inner.Messages() }

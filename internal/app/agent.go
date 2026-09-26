@@ -613,21 +613,21 @@ func (m *model) wireReminderProviders() {
 	// Skill.PromptSection already produces a self-introduced body
 	// ("Use the Skill tool to invoke these capabilities: ...") so it goes
 	// inside <system-reminder> verbatim, matching Claude Code's shape.
-	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderSkillsDirectory, func() string {
+	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string {
 		return m.services.Skill.PromptSection()
-	}))
-	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderMemoryUser, func() string {
+	})
+	m.services.Reminder.Register(reminder.ProviderMemoryUser, func() string {
 		return reminder.WrapMemory("user", m.env.CachedUserInstructions)
-	}))
-	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderMemoryProject, func() string {
+	})
+	m.services.Reminder.Register(reminder.ProviderMemoryProject, func() string {
 		return reminder.WrapMemory("project", m.env.CachedProjectInstructions)
-	}))
-	// Agent-written auto-memory (L1 reviewer's store). Read at Render() time so
+	})
+	// Agent-written auto-memory (L1 reviewer's store). Read at render time so
 	// PostCompact / cwd change picks up the latest written entries without a
 	// separate refresh hook (see notes/active/l1-background-review.md §4.5).
 	// Kept as its own scope so agent-written entries never mix with the
 	// user-authored memory above.
-	m.services.Reminder.Register(reminder.NewProvider(reminder.ProviderMemoryAuto, func() string {
+	m.services.Reminder.Register(reminder.ProviderMemoryAuto, func() string {
 		// Honor a configured memory storage path so the injected memory matches
 		// where the reviewer writes.
 		override := ""
@@ -639,7 +639,7 @@ func (m *model) wireReminderProviders() {
 			return ""
 		}
 		return reminder.WrapMemory("auto", body)
-	}))
+	})
 }
 
 func (m *model) StopAgentSession() {
@@ -804,7 +804,7 @@ func (m *model) ReconfigureAgentTool() {
 	}
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())
-	executor.SetMCPDependencies(m.services.MCP, m.services.MCP)
+	executor.SetMCPDependencies(m.services.MCP)
 	executor.SetDisabledTools(m.services.Setting.DisabledTools())
 
 	adapter := subagent.NewExecutorAdapter(executor)

@@ -113,7 +113,7 @@ func trimTrailingPendingMessages(msgs []core.Message) []core.Message {
 // allowOnly builds a static permission policy: tools in `allowed` pass,
 // everything else rejects. No interactive resolver — the fork must never
 // prompt the TUI.
-func allowOnly(allowed core.Tools) perm.PermissionFunc {
+func allowOnly(allowed *core.Tools) perm.PermissionFunc {
 	names := make(map[string]bool)
 	for _, t := range allowed.All() {
 		names[t.Schema().Name] = true

@@ -56,7 +56,7 @@ type SlashCommandEnv struct {
 	Skill   *skill.Registry
 	Plugin  *plugin.Registry
 	MCP     *mcp.Registry
-	Tracker todo.Service
+	Tracker *todo.Store
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
 	Command *command.Registry

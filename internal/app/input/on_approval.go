@@ -334,7 +334,7 @@ func buildApprovalOptionRows(req *perm.PermissionRequest) []approvalOption {
 	return []approvalOption{
 		{Label: "Yes", Approved: true},
 		{Label: allSessionLabel(req), Hint: "(shift+tab)", Approved: true, AllowAll: true},
-		{Label: alwaysAllowLabel(req), Approved: true, Persist: true},
+		{Label: "Always allow", Approved: true, Persist: true},
 		{Label: "No"},
 	}
 }
@@ -368,13 +368,6 @@ func allSessionLabel(req *perm.PermissionRequest) string {
 	default:
 		return "Yes, allow all during this session"
 	}
-}
-
-func alwaysAllowLabel(req *perm.PermissionRequest) string {
-	if req != nil && len(req.SuggestedRules) > 0 {
-		return "Always allow: " + req.SuggestedRules[0]
-	}
-	return "Always allow"
 }
 
 func (p *ApprovalModel) renderMenu() string {

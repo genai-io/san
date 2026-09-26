@@ -84,15 +84,6 @@ func (s *Store) Delete(key string) error {
 	return s.save()
 }
 
-// ResolveEnv returns the value for an environment variable name,
-// checking os.Getenv first, then falling back to the stored value.
-func (s *Store) ResolveEnv(envVar string) string {
-	if v := os.Getenv(envVar); v != "" {
-		return v
-	}
-	return s.Get(envVar)
-}
-
 // Resolve is a standalone helper that uses the default store.
 func Resolve(envVar string) string {
 	if v := os.Getenv(envVar); v != "" {

@@ -181,11 +181,6 @@ func (l *Loader) LoadFile(path string) (*Data, error) {
 	return &s, nil
 }
 
-// SaveToProject saves settings to the project-level settings file, merging with existing.
-func (l *Loader) SaveToProject(settings *Data) error {
-	return l.saveToFile(filepath.Join(l.projectDir, "settings.json"), settings)
-}
-
 // SaveToUser saves settings to the user-level settings file, merging with existing.
 func (l *Loader) SaveToUser(settings *Data) error {
 	return l.saveToFile(filepath.Join(l.userDir, "settings.json"), settings)
@@ -211,18 +206,6 @@ func Load() (*Data, error) {
 	if loadedSettings != nil {
 		return loadedSettings, nil
 	}
-	s, err := NewLoader().Load()
-	if err != nil {
-		return nil, err
-	}
-	loadedSettings = s
-	return s, nil
-}
-
-// Reload clears the settings cache and reloads from disk.
-func Reload() (*Data, error) {
-	loadedSettingsMu.Lock()
-	defer loadedSettingsMu.Unlock()
 	s, err := NewLoader().Load()
 	if err != nil {
 		return nil, err
@@ -257,8 +240,8 @@ func UpdateDisabledToolsAt(disabledTools map[string]bool, userLevel bool) error 
 // updateSettingsFile reads the settings file at the requested level (true =
 // user-wide, false = project-local), lets mutate replace a single block, and
 // writes it back — leaving every other setting in the file untouched. It
-// deliberately does NOT route through SaveToUser/SaveToProject (which merge):
-// those mergers OR the boolean fields, so reusing them would OR the new config
+// deliberately does NOT route through SaveToUser (which merges):
+// that merger ORs the boolean fields, so reusing it would OR the new config
 // with the file's own previous value and a true→false toggle (e.g. disabling an
 // arm from /config) could never be persisted. Replacing the block lets the
 // off-toggle stick. (Cross-level layering still ORs on Load by design —
@@ -447,17 +430,6 @@ func WithDefaultDisabledTools(explicit map[string]bool) map[string]bool {
 	return result
 }
 
-// GetDisabledTools returns the merged disabled tools map from loaded settings,
-// with factory defaults applied. Returns a copy so callers cannot mutate the
-// cached settings.
-func GetDisabledTools() map[string]bool {
-	s, err := Load()
-	if err != nil {
-		return WithDefaultDisabledTools(nil)
-	}
-	return WithDefaultDisabledTools(s.DisabledTools)
-}
-
 // GetDisabledToolsAt returns disabled tools from a single settings file (not merged).
 // userLevel=true reads from ~/.san/settings.json; false reads from .san/settings.json.
 func GetDisabledToolsAt(userLevel bool) map[string]bool {
@@ -494,45 +466,6 @@ func PersonaAt(cwd string, userLevel bool) string {
 		return ""
 	}
 	return s.Persona
-}
-
-// AddAllowRuleAt appends a permission allow rule to project settings rooted at
-// the provided cwd.
-func AddAllowRuleAt(toolName string, args map[string]any, cwd string) error {
-	return AddAllowRuleDirectlyAt(BuildRule(toolName, args), cwd)
-}
-
-// AddAllowRuleDirectlyAt appends a pre-built allow rule string to the project
-// settings associated with cwd. When cwd is empty, it uses the process cwd.
-func AddAllowRuleDirectlyAt(rule, cwd string) error {
-	if rule == "" {
-		return nil
-	}
-
-	loader := NewLoader()
-	if cwd != "" {
-		loader = NewLoaderForCwd(cwd)
-	}
-	path := filepath.Join(loader.projectDir, "settings.json")
-
-	// Load existing to check for duplicates
-	existing, _ := loader.LoadFile(path)
-	if existing != nil && slices.Contains(existing.Permissions.Allow, rule) {
-		return nil // already exists
-	}
-
-	settings := &Data{
-		Permissions: PermissionSettings{
-			Allow: []string{rule},
-		},
-	}
-	if err := loader.SaveToProject(settings); err != nil {
-		return err
-	}
-	loadedSettingsMu.Lock()
-	loadedSettings = nil
-	loadedSettingsMu.Unlock()
-	return nil
 }
 
 // LoadTheme returns the configured theme string, or "" if none is set.
