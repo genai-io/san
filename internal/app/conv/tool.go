@@ -1,7 +1,6 @@
 package conv
 
 import (
-	"context"
 	"time"
 
 	"github.com/genai-io/san/internal/core"
@@ -26,35 +25,13 @@ type ToolExecState struct {
 	// spin and tick as if the call had been allowed to run. Empty while no
 	// permission request is open.
 	AwaitingApprovalID string
-	Ctx                context.Context
-	Cancel             context.CancelFunc
-}
-
-func (t *ToolExecState) Begin() context.Context {
-	if t.Cancel != nil {
-		t.Cancel()
-	}
-	t.Ctx, t.Cancel = context.WithCancel(context.Background())
-	return t.Ctx
-}
-
-func (t *ToolExecState) Context() context.Context {
-	if t.Ctx != nil {
-		return t.Ctx
-	}
-	return context.Background()
 }
 
 func (t *ToolExecState) Reset() {
-	if t.Cancel != nil {
-		t.Cancel()
-	}
 	t.ClearPending()
 	t.StartedAt = nil
 	t.Progress = nil
 	t.AwaitingApprovalID = ""
-	t.Ctx = nil
-	t.Cancel = nil
 }
 
 func (t *ToolExecState) Track(calls []core.ToolCall) {
@@ -152,28 +129,13 @@ func (t *ToolExecState) ClearPending() {
 	t.CurrentIdx = 0
 }
 
-// DrainPendingCalls cancels the current context and returns any remaining
-// pending tool calls (from CurrentIdx onward), then resets state.
+// DrainPendingCalls returns any remaining pending tool calls (from CurrentIdx
+// onward), then resets state.
 func (t *ToolExecState) DrainPendingCalls() []core.ToolCall {
-	if t.Cancel != nil {
-		t.Cancel()
-	}
 	if t.PendingCalls == nil || t.CurrentIdx >= len(t.PendingCalls) {
 		return nil
 	}
 	calls := t.PendingCalls[t.CurrentIdx:]
 	t.Reset()
 	return calls
-}
-
-// --- Tool execution dispatching ---
-
-type ExecResultMsg struct {
-	Index  int
-	Result core.ToolResult
-	// Details is the structured form of the answer, for the interface only —
-	// it rides beside Result rather than inside it, because Result is what the
-	// model is told.
-	Details  any
-	ToolName string
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/setting"
+	"github.com/genai-io/san/internal/skill"
 )
 
 const (
@@ -94,7 +95,7 @@ func ResolveSkills(manifest *Manifest, pluginPath string) []string {
 			continue
 		}
 		if info.IsDir() {
-			// Scan for skill directories (containing SKILL.md or skill.md)
+			// Scan for skill directories (containing SKILL.md, any case)
 			entries, err := os.ReadDir(p)
 			if err != nil {
 				continue
@@ -102,7 +103,7 @@ func ResolveSkills(manifest *Manifest, pluginPath string) []string {
 			for _, entry := range entries {
 				if entry.IsDir() {
 					skillDir := filepath.Join(p, entry.Name())
-					if hasSkillFile(skillDir) {
+					if skill.FindSkillFile(skillDir) != "" {
 						skills = append(skills, skillDir)
 					}
 				}
@@ -207,16 +208,6 @@ func resolveConfigMap[T any](
 	}
 }
 
-// hasSkillFile checks if a directory contains SKILL.md or skill.md.
-func hasSkillFile(dir string) bool {
-	for _, name := range []string{"SKILL.md", "skill.md"} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
 // scanMarkdownFiles recursively scans a directory for markdown files.
 func scanMarkdownFiles(dir string) ([]string, error) {
 	var files []string
@@ -302,9 +293,6 @@ func parseHooksMap(m map[string]any, pluginPath string) *HooksConfig {
 					}
 					if m, ok := hookMap["model"].(string); ok {
 						cmd.Model = m
-					}
-					if i, ok := hookMap["interactive"].(bool); ok {
-						cmd.Interactive = i
 					}
 					if a, ok := hookMap["async"].(bool); ok {
 						cmd.Async = a

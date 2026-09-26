@@ -24,20 +24,11 @@ type TavilyProvider struct {
 }
 
 // NewTavilyProvider creates a new Tavily provider.
-// If apiKey is provided, it is used directly.
-func NewTavilyProvider(apiKey ...string) *TavilyProvider {
-	var key string
-	if len(apiKey) > 0 {
-		key = apiKey[0]
-	}
-	return &TavilyProvider{apiKey: key}
+func NewTavilyProvider(apiKey string) *TavilyProvider {
+	return &TavilyProvider{apiKey: apiKey}
 }
 
-func (p *TavilyProvider) Name() ProviderName   { return ProviderTavily }
-func (p *TavilyProvider) DisplayName() string  { return "Tavily" }
-func (p *TavilyProvider) RequiresAPIKey() bool { return true }
-func (p *TavilyProvider) EnvVars() []string    { return []string{tavilyEnvKey} }
-func (p *TavilyProvider) IsAvailable() bool    { return p.apiKey != "" }
+func (p *TavilyProvider) DisplayName() string { return "Tavily" }
 
 // tavilyRequest represents a Tavily search API request body.
 type tavilyRequest struct {
@@ -59,7 +50,7 @@ type tavilyResult struct {
 
 // Search performs a web search using Tavily.
 func (p *TavilyProvider) Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error) {
-	if !p.IsAvailable() {
+	if p.apiKey == "" {
 		return nil, fmt.Errorf("%s environment variable is not set", tavilyEnvKey)
 	}
 

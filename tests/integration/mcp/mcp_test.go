@@ -97,12 +97,6 @@ func TestRegistry_CallTool_NotConnected(t *testing.T) {
 	}
 }
 
-func TestRegistry_DisconnectAll_Empty(t *testing.T) {
-	registry := newFakeRegistry("a", "b")
-	// Should not panic on empty clients
-	registry.DisconnectAll()
-}
-
 func TestRegistry_OnToolsChanged(t *testing.T) {
 	registry := newFakeRegistry("srv")
 
@@ -492,7 +486,7 @@ func TestRealMCP_Registry_EndToEnd(t *testing.T) {
 	if err := registry.Connect(ctx, "everything"); err != nil {
 		t.Fatalf("Registry.Connect() error: %v", err)
 	}
-	defer registry.DisconnectAll()
+	defer registry.Disconnect("everything")
 
 	// Tool schemas — wait for async tool list to populate
 	var schemas []core.ToolSchema

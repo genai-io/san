@@ -60,9 +60,6 @@ func (m *model) pasteImageFromClipboard() (tea.Cmd, bool) {
 func (m *model) QuitWithCancel() (tea.Cmd, bool) {
 	m.services.Agent.Stop()
 	m.conv.Stream.Stop()
-	if m.conv.Tool.Cancel != nil {
-		m.conv.Tool.Cancel()
-	}
 	m.FireSessionEnd("prompt_input_exit")
 	// Index flush happens once at the post-Run teardown seam (see run.go), the
 	// single point every quit path converges on — including /exit and /quit,

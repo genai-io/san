@@ -245,7 +245,7 @@ func (r *Registry) RemoveServer(name string) error {
 	delete(r.connectErr, name)
 
 	if oldClient != nil {
-		disconnectClientAsync(name, oldClient)
+		closeInBackground(name, oldClient)
 	}
 	return nil
 }
@@ -297,37 +297,6 @@ func (r *Registry) Connect(ctx context.Context, serverName string) error {
 	return nil
 }
 
-// disconnectClientAsync tears a client down off the caller's goroutine,
-// reporting a failure to the log.
-func disconnectClientAsync(name string, client *Client) {
-	go func() {
-		if err := client.Disconnect(); err != nil {
-			log.Logger().Warn("mcp: disconnect failed",
-				zap.String("server", name), zap.Error(err))
-		}
-	}()
-}
-
-// ConnectAll connects to all configured MCP servers.
-// Connection errors are collected but don't stop other connections.
-func (r *Registry) ConnectAll(ctx context.Context) []error {
-	r.mu.RLock()
-	names := make([]string, 0, len(r.configs))
-	for name := range r.configs {
-		names = append(names, name)
-	}
-	r.mu.RUnlock()
-
-	var errs []error
-	for _, name := range names {
-		if err := r.Connect(ctx, name); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", name, err))
-		}
-	}
-	return errs
-}
-
-// Disconnect disconnects from an MCP server
 // Disconnect drops a server from the registry. The server is gone from the
 // registry's point of view when this returns; the transport teardown runs in
 // the background.
@@ -352,18 +321,6 @@ func (r *Registry) Disconnect(name string) {
 	r.notifyToolsChanged()
 }
 
-// DisconnectAll disconnects from all MCP servers
-func (r *Registry) DisconnectAll() {
-	r.mu.Lock()
-	clients := r.clients
-	r.clients = make(map[string]*Client)
-	r.mu.Unlock()
-
-	for name, client := range clients {
-		closeInBackground(name, client)
-	}
-}
-
 // closeInBackground tears a client down off the caller's goroutine, reporting
 // a failure to the log — the caller cannot act on it, and waiting for it is
 // what froze the UI.
@@ -382,11 +339,6 @@ func (r *Registry) GetClient(name string) (*Client, bool) {
 	defer r.mu.RUnlock()
 	client, ok := r.clients[name]
 	return client, ok
-}
-
-// GetLoader returns the config loader used by this registry.
-func (r *Registry) GetLoader() *ConfigLoader {
-	return r.loader
 }
 
 // GetConfig returns a server config by name

@@ -217,27 +217,6 @@ func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.S
 	}
 }
 
-type agentRegistryAdapter struct {
-	reg *subagent.Registry
-}
-
-func (a *agentRegistryAdapter) ListConfigs() []tool.AgentConfigInfo {
-	configs := a.reg.ListConfigs()
-	out := make([]tool.AgentConfigInfo, len(configs))
-	for i, cfg := range configs {
-		out[i] = subagent.ToAgentConfigInfo(cfg)
-	}
-	return out
-}
-
-func (a *agentRegistryAdapter) GetDisabledAt(userLevel bool) map[string]bool {
-	return a.reg.GetDisabledAt(userLevel)
-}
-
-func (a *agentRegistryAdapter) SetEnabled(name string, enabled bool, userLevel bool) error {
-	return a.reg.SetEnabled(name, enabled, userLevel)
-}
-
 func skillCommandInfos() []command.Info {
 	return input.SkillCommandInfos()
 }

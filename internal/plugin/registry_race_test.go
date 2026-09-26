@@ -40,9 +40,6 @@ func TestReadSurfaceIsSafeAgainstConcurrentEnable(t *testing.T) {
 			if p, ok := r.Get("alpha"); ok {
 				_ = p.Enabled
 			}
-			for _, p := range r.GetByScope(ScopeUser) {
-				_ = p.Enabled
-			}
 		}
 	}()
 

@@ -237,9 +237,6 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 	}
 	c.env.StopAgentSession()
 	c.env.Conversation.Stream.Stop()
-	if c.env.Tool.Cancel != nil {
-		c.env.Tool.Cancel()
-	}
 	c.env.FireSessionEnd("prompt_input_exit")
 	return "", tea.Quit, true
 }
@@ -304,9 +301,6 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
 	c.env.ResetAgentSession()
 	c.env.Conversation.Stream.Stop()
-	if c.env.Tool.Cancel != nil {
-		c.env.Tool.Cancel()
-	}
 	c.env.Tool.Reset()
 	c.env.Conversation.Clear()
 	c.env.ResetTokens()

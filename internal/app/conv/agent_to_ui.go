@@ -46,14 +46,6 @@ func NewAgentToUI(buffer int) *AgentToUI {
 	}
 }
 
-// SendForAgent enqueues an activity line for a specific agent index.
-func (h *AgentToUI) SendForAgent(index int, msg string) {
-	select {
-	case h.ch <- AgentActivityMsg{Index: index, Message: msg}:
-	default:
-	}
-}
-
 // SendForToolCall enqueues an activity line for a specific tool call.
 func (h *AgentToUI) SendForToolCall(toolCallID string, msg string) {
 	select {

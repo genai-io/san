@@ -21,28 +21,6 @@ var (
 			BorderForeground(kit.CurrentTheme.Border).
 			Padding(0, 1)
 
-	headerTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(kit.CurrentTheme.Primary)
-
-	headerSubtitleStyle = lipgloss.NewStyle().
-				Foreground(kit.CurrentTheme.Text)
-
-	headerMetaStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Muted)
-
-	lineNumberStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Muted).
-			Width(5).
-			Align(lipgloss.Right)
-
-	matchStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Warning).
-			Bold(true)
-
-	filePathStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Primary)
-
 	truncatedStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Muted).
 			Italic(true)

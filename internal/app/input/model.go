@@ -17,6 +17,7 @@ import (
 	coreplugin "github.com/genai-io/san/internal/plugin"
 	coresetting "github.com/genai-io/san/internal/setting"
 	coreskill "github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/subagent"
 )
 
 type PastedChunk struct {
@@ -110,7 +111,7 @@ func (img *ImageState) RemoveAt(idx int) {
 }
 
 type SelectorDeps struct {
-	AgentRegistry   AgentRegistry
+	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
 	MCPRegistry     *coremcp.Registry

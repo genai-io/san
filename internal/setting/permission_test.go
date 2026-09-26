@@ -718,38 +718,6 @@ func TestCheckPermissionWithReason_WorkingDirectoryConstraint(t *testing.T) {
 	}
 }
 
-func TestDenialTracking(t *testing.T) {
-	d := &DenialTracking{}
-
-	// Should not fallback initially
-	if d.ShouldFallbackToPrompting() {
-		t.Error("should not fallback initially")
-	}
-
-	// Record 2 denials - still no fallback
-	d.RecordDenial()
-	d.RecordDenial()
-	if d.ShouldFallbackToPrompting() {
-		t.Error("should not fallback after 2 denials")
-	}
-
-	// 3rd consecutive denial triggers fallback
-	shouldFallback := d.RecordDenial()
-	if !shouldFallback {
-		t.Error("should fallback after 3 consecutive denials")
-	}
-
-	// Success resets consecutive counter
-	d.RecordSuccess()
-	if d.ConsecutiveDenials != 0 {
-		t.Errorf("consecutive denials = %d after success, want 0", d.ConsecutiveDenials)
-	}
-	// But total denials remain
-	if d.TotalDenials != 3 {
-		t.Errorf("total denials = %d, want 3", d.TotalDenials)
-	}
-}
-
 func TestIsRootOrHomeRemoval(t *testing.T) {
 	trips := []string{
 		"rm -rf /", "rm -fr /", "rm -r /", "rm --recursive /",

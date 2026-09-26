@@ -66,7 +66,7 @@ func parsePersonaSkills(skillDirs []string) []*Skill {
 	l := newLoader("")
 	var out []*Skill
 	for _, dir := range skillDirs {
-		path := findSkillFile(dir)
+		path := FindSkillFile(dir)
 		if path == "" {
 			continue
 		}
@@ -79,9 +79,9 @@ func parsePersonaSkills(skillDirs []string) []*Skill {
 	return out
 }
 
-// findSkillFile returns the path to the SKILL.md inside dir (case-insensitive),
+// FindSkillFile returns the path to the SKILL.md inside dir (case-insensitive),
 // or "" if there is none.
-func findSkillFile(dir string) string {
+func FindSkillFile(dir string) string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""

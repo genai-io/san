@@ -61,7 +61,7 @@ func newBaseModel() model {
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	return model{
 		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
-			AgentRegistry:   &agentRegistryAdapter{svc.Subagent},
+			AgentRegistry:   svc.Subagent,
 			PersonaRegistry: svc.Persona,
 			SkillRegistry:   svc.Skill,
 			MCPRegistry:     svc.MCP,

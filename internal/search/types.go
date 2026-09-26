@@ -51,20 +51,8 @@ func getTimeout(opts SearchOptions) time.Duration {
 
 // Provider is the interface for search providers
 type Provider interface {
-	// Name returns the provider name
-	Name() ProviderName
-
 	// DisplayName returns the human-readable name
 	DisplayName() string
-
-	// RequiresAPIKey returns true if an API key is needed
-	RequiresAPIKey() bool
-
-	// EnvVars returns the environment variable names for credentials
-	EnvVars() []string
-
-	// IsAvailable checks if the provider is configured and ready
-	IsAvailable() bool
 
 	// Search performs a web search
 	Search(ctx context.Context, query string, opts SearchOptions) ([]SearchResult, error)

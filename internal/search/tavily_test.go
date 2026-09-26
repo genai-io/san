@@ -132,24 +132,6 @@ func TestTavilyProviderHTTPErrorPropagates(t *testing.T) {
 	}
 }
 
-func TestTavilyProviderMetadata(t *testing.T) {
-	p := NewTavilyProvider()
-	if p.Name() != ProviderTavily {
-		t.Fatalf("name = %q", p.Name())
-	}
-	if !p.RequiresAPIKey() {
-		t.Fatal("expected RequiresAPIKey true")
-	}
-	if p.IsAvailable() {
-		t.Fatal("expected IsAvailable false without key")
-	}
-
-	withKey := NewTavilyProvider("k")
-	if !withKey.IsAvailable() {
-		t.Fatal("expected IsAvailable true with key")
-	}
-}
-
 func TestAllProvidersIncludesTavily(t *testing.T) {
 	var found bool
 	for _, m := range AllProviders() {
@@ -170,7 +152,7 @@ func TestAllProvidersIncludesTavily(t *testing.T) {
 
 func TestCreateProviderTavily(t *testing.T) {
 	p := CreateProvider(ProviderTavily)
-	if p.Name() != ProviderTavily {
-		t.Fatalf("CreateProvider returned %q for Tavily", p.Name())
+	if _, ok := p.(*TavilyProvider); !ok {
+		t.Fatalf("CreateProvider returned %T for Tavily", p)
 	}
 }

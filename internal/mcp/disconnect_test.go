@@ -55,33 +55,6 @@ func TestDisconnectDoesNotBlockOnATeardown(t *testing.T) {
 	}
 }
 
-// DisconnectAll had the same shape, serialized across every server under one
-// deferred lock.
-func TestDisconnectAllDoesNotBlockPerServer(t *testing.T) {
-	servers := map[string]*fakeSession{}
-	sessions := make([]*fakeSession, 0, 3)
-	for _, name := range []string{"a", "b", "c"} {
-		tr := newSlowSession(300 * time.Millisecond)
-		sessions = append(sessions, tr)
-		servers[name] = tr
-	}
-	r := connectedRegistry(t, servers)
-
-	start := time.Now()
-	r.DisconnectAll()
-	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
-		t.Errorf("DisconnectAll blocked for %v", elapsed)
-	}
-
-	for i, tr := range sessions {
-		select {
-		case <-tr.done():
-		case <-time.After(2 * time.Second):
-			t.Errorf("transport %d was never torn down", i)
-		}
-	}
-}
-
 // Disconnecting a server that is not connected is a no-op, not a panic.
 func TestDisconnectUnknownServerIsANoop(t *testing.T) {
 	r := connectedRegistry(t, nil)

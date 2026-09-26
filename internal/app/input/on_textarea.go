@@ -457,10 +457,6 @@ func (m *Model) RestoreImages(images []core.Attachment) {
 	m.Images.NextID += len(images)
 }
 
-func (m *Model) HasContent() bool {
-	return strings.TrimSpace(m.Textarea.Value()) != "" || len(m.Images.Pending) > 0
-}
-
 func (m *Model) PendingImages() []core.Attachment {
 	images := make([]core.Attachment, len(m.Images.Pending))
 	for i, p := range m.Images.Pending {

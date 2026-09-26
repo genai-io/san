@@ -490,7 +490,6 @@ type HookCmd struct {
 	If             string            `json:"if,omitempty"`
 	Shell          string            `json:"shell,omitempty"`
 	Model          string            `json:"model,omitempty"`
-	Interactive    bool              `json:"interactive,omitempty"`
 	Async          bool              `json:"async,omitempty"`
 	AsyncRewake    bool              `json:"asyncRewake,omitempty"`
 	Timeout        int               `json:"timeout,omitempty"`
@@ -518,7 +517,6 @@ type SessionPermissions struct {
 	AllowAllTasks   bool
 	AllowedTools    map[string]bool
 	AllowedPatterns map[string]bool
-	Denials         DenialTracking // Tracks denial frequency for fallback
 
 	// WorkingDirectories restricts Edit/Write operations to these directories.
 	// When non-empty, file edits outside these dirs prompt for confirmation
@@ -560,7 +558,6 @@ func (sp *SessionPermissions) Snapshot() *SessionPermissions {
 		AllowAllTasks:      sp.AllowAllTasks,
 		AllowedTools:       maps.Clone(sp.AllowedTools),
 		AllowedPatterns:    maps.Clone(sp.AllowedPatterns),
-		Denials:            sp.Denials,
 		WorkingDirectories: slices.Clone(sp.WorkingDirectories),
 		ShouldAvoidPrompts: sp.ShouldAvoidPrompts,
 	}

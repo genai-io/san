@@ -8,15 +8,8 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/subagent"
 )
-
-// AgentRegistry provides agent display and management for the selector UI.
-type AgentRegistry interface {
-	ListConfigs() []tool.AgentConfigInfo
-	GetDisabledAt(userLevel bool) map[string]bool
-	SetEnabled(name string, enabled bool, userLevel bool) error
-}
 
 // agentTab identifies a category tab in the agent selector. The values double
 // as indices into the selector's tabbedList tab order.
@@ -49,11 +42,11 @@ type AgentToggleMsg struct {
 // keypress/frame mechanics live in the embedded tabbedList; this type owns
 // agent loading, the row layout, and the enable/disable action.
 type AgentSelector struct {
-	registry AgentRegistry
+	registry *subagent.Registry
 	list     tabbedList[agentItem]
 }
 
-func NewAgentSelector(reg AgentRegistry) AgentSelector {
+func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 	return AgentSelector{
 		registry: reg,
 		list: tabbedList[agentItem]{
@@ -77,14 +70,15 @@ func NewAgentSelector(reg AgentRegistry) AgentSelector {
 
 // EnterSelect activates the selector and loads agents from the registry.
 func (s *AgentSelector) EnterSelect(width, height int) error {
-	allConfigs := s.registry.ListConfigs()
+	configs := s.registry.ListConfigs()
 	disabledByLevel := map[bool]map[string]bool{
 		false: s.registry.GetDisabledAt(false),
 		true:  s.registry.GetDisabledAt(true),
 	}
 
-	agents := make([]agentItem, 0, len(allConfigs))
-	for _, cfg := range allConfigs {
+	agents := make([]agentItem, 0, len(configs))
+	for _, c := range configs {
+		cfg := subagent.ToAgentConfigInfo(c)
 		lowerName := strings.ToLower(cfg.Name)
 		var pluginName string
 		if idx := strings.Index(cfg.Name, ":"); idx > 0 {

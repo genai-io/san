@@ -5,13 +5,9 @@ import (
 	"time"
 )
 
-func TestGetDefaultProviderReturnsExa(t *testing.T) {
-	provider := GetDefaultProvider()
-	if provider.Name() != ProviderExa {
-		t.Fatalf("expected default provider %q, got %q", ProviderExa, provider.Name())
-	}
-	if !provider.IsAvailable() {
-		t.Fatal("expected default provider to be available")
+func TestCreateProviderDefaultsToExa(t *testing.T) {
+	if _, ok := CreateProvider("unknown").(*ExaProvider); !ok {
+		t.Fatal("expected unknown provider name to fall back to Exa")
 	}
 }
 

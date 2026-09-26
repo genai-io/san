@@ -28,9 +28,6 @@ func (e *Engine) executeMatchedHook(ctx context.Context, hook matchedHook, input
 
 	switch normalizedHookType(*hook.Command) {
 	case "command":
-		if hook.Command.Interactive && e.getPromptCallback() != nil {
-			return e.executeCommandBidirectional(ctx, *hook.Command, input)
-		}
 		return e.executeCommand(ctx, *hook.Command, input)
 	case "prompt":
 		return e.executePromptHook(ctx, *hook.Command, input)
@@ -325,12 +322,6 @@ func (e *Engine) getCwd() string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.cwd
-}
-
-func (e *Engine) getPromptCallback() PromptCallback {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return e.promptCallback
 }
 
 func (e *Engine) getLLMCompleter() LLMCompleter {
