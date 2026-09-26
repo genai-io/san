@@ -79,20 +79,18 @@ func ConnectServers(ctx context.Context, servers *Registry, serverNames []string
 func (r *Registry) acquire(ctx context.Context, name string) (bool, error) {
 	r.leaseMu.Lock()
 	defer r.leaseMu.Unlock()
-	if r.leases[name] > 0 {
-		r.leases[name]++
-		return true, nil
+	if r.leases[name] == 0 {
+		if c, ok := r.GetClient(name); ok && c.IsConnected() {
+			return false, nil
+		}
+		if err := r.Connect(ctx, name); err != nil {
+			return false, err
+		}
+		if r.leases == nil {
+			r.leases = make(map[string]int)
+		}
 	}
-	if c, ok := r.GetClient(name); ok && c.IsConnected() {
-		return false, nil
-	}
-	if err := r.Connect(ctx, name); err != nil {
-		return false, err
-	}
-	if r.leases == nil {
-		r.leases = make(map[string]int)
-	}
-	r.leases[name] = 1
+	r.leases[name]++
 	return true, nil
 }
 
