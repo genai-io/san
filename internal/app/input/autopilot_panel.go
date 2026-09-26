@@ -1,7 +1,7 @@
 // /autopilot popup: configures the autopilot copilot on one page. GIVE IT holds
 // what it works with (mission, system prompt, model), LET IT what it may do on
 // the human's behalf, and PRESETS saves or loads the whole setup. It edits a
-// working copy of setting.AutoPilotSettings: enter saves it, esc discards it.
+// working copy of setting.AutoPilotSettings, saved when esc closes the popup.
 //
 // The menu opens sub-views for the multi-step edits: the Mission dialog
 // (autopilot_mission.go), the System prompt editor, the Model picker
@@ -56,8 +56,8 @@ type AutopilotSelector struct {
 	height int
 	view   autopilotView
 
-	// snap is the working buffer; enter saves it. baseline is snap as of
-	// Enter() so the panel can flag unsaved edits.
+	// snap is the working buffer; esc saves it. baseline is snap as of
+	// Enter() so closing an unedited panel saves nothing.
 	snap     setting.AutoPilotSettings
 	baseline setting.AutoPilotSettings
 
@@ -126,9 +126,6 @@ func (p *AutopilotSelector) Resize(width, height int) {
 // IsActive implements overlayPanel.
 func (p *AutopilotSelector) IsActive() bool { return p.active }
 
-// Dirty reports unsaved edits (used by the header tag).
-func (p *AutopilotSelector) Dirty() bool { return !p.snap.Equal(p.baseline) }
-
 // HandleKeypress implements overlayPanel.
 func (p *AutopilotSelector) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	if !p.active {
@@ -184,8 +181,7 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 	row := rows[p.cursor]
 	switch msg.String() {
 	case "esc":
-		// Discard: the working buffer is dropped with the popup.
-		p.active = false
+		return p.save()
 	case "up", "k":
 		p.cursor = apStep(rows, p.cursor-1, -1, p.cursor)
 	case "down", "j":
@@ -198,14 +194,10 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 		if row.adjust != nil {
 			row.adjust(p, +1)
 		}
-	case "space":
-		// Space works the row (toggle or open); enter is reserved for saving so
-		// the two never overlap.
+	case "space", "enter":
 		if row.act != nil {
 			row.act(p)
 		}
-	case "enter":
-		return p.save()
 	}
 	return nil
 }
@@ -215,7 +207,7 @@ func (p *AutopilotSelector) handleMenuKey(msg tea.KeyMsg) tea.Cmd {
 // entering AutoPilot offers to start a ready mission, and /goal starts one.
 func (p *AutopilotSelector) save() tea.Cmd {
 	p.active = false
-	if !p.Dirty() {
+	if p.snap.Equal(p.baseline) {
 		return nil
 	}
 	cfg := p.snap.Clone()
@@ -281,7 +273,7 @@ type apRow struct {
 	value    string                               // apRowEntry: right-aligned current value
 	on       bool                                 // apRowToggle: checked
 	disabled bool                                 // drawn dim; act explains why instead
-	act      func(*AutopilotSelector)             // space
+	act      func(*AutopilotSelector)             // enter/space
 	adjust   func(p *AutopilotSelector, step int) // ←/→, when the row has a value to step
 }
 
@@ -399,7 +391,7 @@ func continueLimit(s setting.AutoPilotSettings) string {
 func (p *AutopilotSelector) missionValue() string {
 	mission := strings.TrimSpace(p.snap.Mission)
 	if mission == "" {
-		return "not set · Space to write"
+		return "not set · Enter to write"
 	}
 	label := "ready"
 	if mission == strings.TrimSpace(p.baseline.Mission) {

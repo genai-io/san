@@ -122,6 +122,19 @@ func (m *ConversationModel) SetLastThinkingSignature(sig string) {
 	last.ThinkingSignature = sig
 }
 
+// SetLastAutopilotNote hangs a "⎿ autopilot · <note>" mark under the last
+// message when it is a user turn.
+func (m *ConversationModel) SetLastAutopilotNote(note string) {
+	if len(m.Messages) == 0 {
+		return
+	}
+	last := &m.Messages[len(m.Messages)-1]
+	if last.Role != core.ChatUser {
+		return
+	}
+	last.AutopilotNote = note
+}
+
 func (m *ConversationModel) AppendErrorToLast(err error) {
 	if len(m.Messages) > 0 {
 		idx := len(m.Messages) - 1

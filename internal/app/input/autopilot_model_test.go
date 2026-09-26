@@ -97,28 +97,32 @@ func TestAutopilotModelPickProviderModelThinking(t *testing.T) {
 	}
 }
 
-func TestAutopilotEnterSavesEscDiscards(t *testing.T) {
-	// No live source is wired here, so Enter keeps the buffer; Esc must not
-	// emit anything for it either way.
+func TestAutopilotEscSaves(t *testing.T) {
 	p := newModelPickPanel()
-	p.snap.Model = "openai/gpt-5-mini"
 	if cmd := p.HandleKeypress(keyEsc); p.IsActive() || cmd != nil {
-		t.Fatal("esc should close without saving")
-	}
-
-	p.Enter(120, 40)
-	if cmd := p.HandleKeypress(keyEnter); cmd != nil {
-		t.Fatal("enter on an unedited panel emitted a save")
+		t.Fatal("esc on an unedited panel should close without a save")
 	}
 
 	p.Enter(120, 40)
 	p.snap.Model = "anthropic/claude-haiku-4-5"
-	cmd := p.HandleKeypress(keyEnter)
+	cmd := p.HandleKeypress(keyEsc)
 	if p.IsActive() || cmd == nil {
-		t.Fatal("enter on an edited panel should dismiss it and save")
+		t.Fatal("esc on an edited panel should dismiss it and save")
 	}
 	if msg, ok := cmd().(AutopilotSavedMsg); !ok || msg.Config.Model != "anthropic/claude-haiku-4-5" {
-		t.Fatalf("enter emitted %#v, want AutopilotSavedMsg with the picked model", cmd())
+		t.Fatalf("esc emitted %#v, want AutopilotSavedMsg with the picked model", cmd())
+	}
+}
+
+// Enter works the row like space, so a reflexive enter opens or toggles
+// rather than closing the panel.
+func TestAutopilotEnterWorksTheRow(t *testing.T) {
+	p := newModelPickPanel()
+	if cmd := p.HandleKeypress(keyEnter); !p.IsActive() || cmd != nil {
+		t.Fatal("enter should act on the row, not close the panel")
+	}
+	if p.view == apMenu {
+		t.Fatal("enter on Mission should open its editor")
 	}
 }
 

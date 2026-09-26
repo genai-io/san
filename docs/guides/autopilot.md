@@ -8,7 +8,7 @@ something needs you. Configure it with `/autopilot`, engage it with `shift+tab`
 
 ```
 GIVE IT
-▸ Mission    the goal it works toward                      not set · Space to write
+▸ Mission    the goal it works toward                      not set · Enter to write
   System     how it thinks and decides (system prompt)     built-in
   Model      which model makes the calls                   same as session
 LET IT
@@ -21,8 +21,8 @@ PRESETS
   Load preset…  3 saved
 ```
 
-`space` edits or toggles a row, `←`/`→` step Continue's limit, `enter` saves,
-`esc` discards. Saving never starts a run.
+`enter` or `space` edits or toggles a row, `←`/`→` step Continue's limit, `esc`
+saves and closes. Saving never starts a run.
 
 - **Mission** — the goal every decision leans on.
 - **System** — the editable part of the copilot's system prompt. The safety

@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/core"
 )
 
 // run executes /goal with the given args against a controller whose session is
@@ -13,7 +16,10 @@ import (
 // and whatever message the command emitted.
 func runGoal(t *testing.T, current, args string) (string, tea.Msg) {
 	t.Helper()
-	c := NewSlashCommandController(SlashCommandEnv{GetGoal: func() string { return current }})
+	c := NewSlashCommandController(SlashCommandEnv{
+		GetGoal:      func() string { return current },
+		Conversation: new(conv.NewConversation()),
+	})
 	notice, cmd, err := c.handleGoalCommand(context.Background(), args)
 	if err != nil {
 		t.Fatalf("handleGoalCommand(%q) err = %v", args, err)
@@ -70,5 +76,19 @@ func TestGoalCommandReportsTheCurrentGoal(t *testing.T) {
 func TestGoalIsKeptInTheTranscript(t *testing.T) {
 	if !shouldPreserveCommandInConversation("/goal ship the release") {
 		t.Error("/goal was dropped from the transcript")
+	}
+}
+
+// The acknowledgement hangs under the "❭ /goal" echo rather than standing as
+// its own notice block.
+func TestGoalMarksItsEcho(t *testing.T) {
+	cv := new(conv.NewConversation())
+	cv.Append(core.ChatMessage{Role: core.ChatUser, Content: "/goal ship the release"})
+	c := NewSlashCommandController(SlashCommandEnv{Conversation: cv})
+	if _, _, err := c.handleGoalCommand(context.Background(), "ship the release"); err != nil {
+		t.Fatal(err)
+	}
+	if got := cv.Messages[0].AutopilotNote; got != "goal set" {
+		t.Errorf("echo note = %q, want %q", got, "goal set")
 	}
 }
