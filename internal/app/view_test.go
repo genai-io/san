@@ -12,6 +12,7 @@ import (
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -101,7 +102,7 @@ func dockedModalModelWithCalls(t *testing.T, rationale string, batch []core.Tool
 		env:       env{Width: width, Height: height, Ready: true},
 		conv:      conv.NewModel(width),
 		userInput: input.New("", width, nil, input.SelectorDeps{}),
-		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry()},
+		services:  services{Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(), Setting: &setting.Settings{}},
 	}
 	// The stream is still open across a permission gate — it clears only on a
 	// text-only final chunk — so the live tail believes it is mid-turn.

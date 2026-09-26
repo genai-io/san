@@ -331,12 +331,14 @@ type approvalOption struct {
 // reordering — happens here and propagates to renderMenu, HandleKeypress,
 // and BuildApprovalOptions automatically.
 func buildApprovalOptionRows(req *perm.PermissionRequest) []approvalOption {
-	return []approvalOption{
+	rows := []approvalOption{
 		{Label: "Yes", Approved: true},
 		{Label: allSessionLabel(req), Hint: "(shift+tab)", Approved: true, AllowAll: true},
-		{Label: "Always allow", Approved: true, Persist: true},
-		{Label: "No"},
 	}
+	if req != nil && len(req.AllowRules) > 0 {
+		rows = append(rows, approvalOption{Label: alwaysAllowLabel(req.AllowRules), Approved: true, Persist: true})
+	}
+	return append(rows, approvalOption{Label: "No"})
 }
 
 // BuildApprovalOptions returns just the labels in display order. Used by the
@@ -368,6 +370,16 @@ func allSessionLabel(req *perm.PermissionRequest) string {
 	default:
 		return "Yes, allow all during this session"
 	}
+}
+
+// alwaysAllowLabel names the rule the option saves, so what is granted is
+// what the user reads.
+func alwaysAllowLabel(rules []string) string {
+	label := "Always allow " + rules[0]
+	if len(rules) > 1 {
+		label += fmt.Sprintf(" +%d", len(rules)-1)
+	}
+	return label
 }
 
 func (p *ApprovalModel) renderMenu() string {

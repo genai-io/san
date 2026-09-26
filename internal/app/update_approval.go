@@ -5,9 +5,14 @@
 package app
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
+	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -15,7 +20,7 @@ import (
 type permissionDecision struct {
 	Approved bool
 	AllowAll bool // option 2: allow for the rest of the session
-	Persist  bool // option 3: write a persistent rule
+	Persist  bool // "Always allow": save Request.AllowRules
 	Request  *perm.PermissionRequest
 }
 
@@ -63,6 +68,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 		return nil
 	}
 	m.conv.Tool.ClearAwaitingApproval()
+	var noticeCmd tea.Cmd
 	reason := "user denied"
 	if decision.Approved {
 		reason = "user approved"
@@ -72,6 +78,9 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 		m.conv.Tool.MarkStarted(req.ToolCallID)
 		if decision.AllowAll && m.env.SessionPermissions != nil && decision.Request != nil {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
+		}
+		if decision.Persist && decision.Request != nil {
+			noticeCmd = m.saveAllowRules(decision.Request.AllowRules)
 		}
 	}
 	// Snapshot the request before releasing the permission gate. Agent tools
@@ -86,7 +95,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	if rec := m.services.Session.Recorder(); rec != nil {
 		rec.RecordPermissionDecided(permRecord)
 	}
-	return conv.PollPermGate(m.services.Agent.PermissionGate())
+	return tea.Batch(noticeCmd, conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
 
 func permDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {
@@ -101,4 +110,17 @@ func permDecisionRecord(req *conv.PermGateRequest, decision permissionDecision, 
 		Reason:    reason,
 		Mode:      mode,
 	}
+}
+
+// saveAllowRules persists an "Always allow"; a failed save leaves this one
+// approval. Returns the command that shows the outcome.
+func (m *model) saveAllowRules(rules []string) tea.Cmd {
+	notice := "Always allowed " + strings.Join(rules, ", ")
+	if path, err := m.services.Setting.AddLocalAllowRules(m.env.CWD, rules); err != nil {
+		log.Logger().Warn("save always-allow rule failed", zap.Error(err))
+		notice = "Approved once; could not save the allow rule: " + err.Error()
+	} else {
+		notice += " in " + kit.ShortenPathForProject(path, m.env.CWD)
+	}
+	return m.deliverNotice(mainNotice{Display: notice})
 }
