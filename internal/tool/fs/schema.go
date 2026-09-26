@@ -20,7 +20,7 @@ func (t *ReadTool) Schema() core.ToolSchema {
 - Read output has a line-number and tab prefix; strip it for Edit and preserve the rest exactly
 - Lines over %d characters end with “%s” and cannot be copied into an Edit
 - Do not re-read a file to verify your own Edit/Write — a failed change errors, and successful results keep your view current
-- Image files are recognized but cannot be displayed yet; ask the user to attach the image to a message instead`, maxReadLines, maxLineLength, lineTruncationMarker),
+- Image files are recognized but cannot be displayed yet; ask the user to attach the image to a message instead`, maxReadLines, maxLineLen, lineTruncationMarker),
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

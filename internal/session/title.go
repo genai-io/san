@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	maxTitleLength       = 60
+	maxTitleLen          = 60
 	MinSubstantiveLength = 6
 )
 
@@ -34,12 +34,12 @@ func GenerateTitle(msgs []core.ChatMessage) string {
 
 func truncateTitle(s string) string {
 	s = strings.Join(strings.Fields(s), " ")
-	if utf8.RuneCountInString(s) <= maxTitleLength {
+	if utf8.RuneCountInString(s) <= maxTitleLen {
 		return s
 	}
 	runes := []rune(s)
-	truncated := string(runes[:maxTitleLength])
-	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxTitleLength/2 {
+	truncated := string(runes[:maxTitleLen])
+	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxTitleLen/2 {
 		truncated = truncated[:lastSpace]
 	}
 	return strings.TrimSpace(truncated) + "..."
