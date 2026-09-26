@@ -115,7 +115,7 @@ type SelectorDeps struct {
 	AgentRegistry   *subagent.Registry
 	PersonaRegistry *corepersona.Registry
 	SkillRegistry   *coreskill.Registry
-	MCPRegistry     *coremcp.Registry
+	MCPRegistry     *coremcp.Manager
 	PluginRegistry  *coreplugin.Registry
 	Setting         *coresetting.Settings
 	LoadDisabled    func(scope setting.Scope) map[string]bool

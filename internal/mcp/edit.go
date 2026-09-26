@@ -17,7 +17,7 @@ type EditInfo struct {
 // PrepareServerEdit extracts a single server's config into a temp file for editing.
 // The caller is responsible for calling ApplyServerEdit after the editor closes
 // and removing the temp file.
-func PrepareServerEdit(reg *Registry, name string) (*EditInfo, error) {
+func PrepareServerEdit(reg *Manager, name string) (*EditInfo, error) {
 	config, ok := reg.GetConfig(name)
 	if !ok {
 		return nil, fmt.Errorf("server not found: %s\n\nUse /mcp list to see available servers", name)
@@ -54,7 +54,7 @@ func PrepareServerEdit(reg *Registry, name string) (*EditInfo, error) {
 }
 
 // ApplyServerEdit reads the edited temp file and saves the updated config back.
-func ApplyServerEdit(reg *Registry, info *EditInfo) error {
+func ApplyServerEdit(reg *Manager, info *EditInfo) error {
 	defer func() { _ = os.Remove(info.TempFile) }()
 
 	data, err := os.ReadFile(info.TempFile)

@@ -30,8 +30,8 @@ type PluginServer struct {
 	Scope   string
 }
 
-// Registry manages multiple MCP server connections
-type Registry struct {
+// Manager manages multiple MCP server connections
+type Manager struct {
 	mu                    sync.RWMutex
 	connectionLifecycleMu sync.Mutex
 	clients               map[string]*Client
@@ -60,32 +60,32 @@ type mcpState struct {
 	Disabled []string `json:"disabled,omitempty"`
 }
 
-// defaultRegistry is the package-level registry; registryMu guards the pointer
-// itself. The Registry it points at locks its own contents — what needed
+// defaultManager is the package-level manager; managerMu guards the pointer
+// itself. The Manager it points at locks its own contents — what needed
 // guarding is the swap, which Initialize performs on the bubbletea goroutine
-// (reloadProjectServices) while DefaultRegistry() is read elsewhere.
+// (reloadProjectServices) while DefaultManager() is read elsewhere.
 var (
-	registryMu sync.RWMutex
-	// registryTransferMu serializes concurrent registry replacement. It is
-	// redundant given the per-registry connectionLifecycleMu locks (the only
+	managerMu sync.RWMutex
+	// managerTransferMu serializes concurrent manager replacement. It is
+	// redundant given the per-manager connectionLifecycleMu locks (the only
 	// caller is Initialize on the single bubbletea goroutine) but kept as
 	// defence-in-depth against future reentrant call sites.
-	registryTransferMu sync.Mutex
-	defaultRegistry    = newEmptyRegistry()
+	managerTransferMu sync.Mutex
+	defaultManager    = newEmptyManager()
 )
 
-// adoptLiveClients moves connections from the outgoing registry into this one
+// adoptLiveClients moves connections from the outgoing manager into this one
 // for every server whose configuration is unchanged, and tears down the rest.
 //
-// Without it a cwd change replaced the registry with a fresh, zero-client one:
+// Without it a cwd change replaced the manager with a fresh, zero-client one:
 // GetToolSchemas returned nothing, so every mcp__* tool silently vanished from
-// the agent for the rest of the session, and the outgoing registry's stdio
+// the agent for the rest of the session, and the outgoing manager's stdio
 // subprocesses were dropped on the floor still running.
 //
 // The teardown of servers that did NOT survive runs detached: Client.Disconnect
 // waits on the child's read loop and exit, up to seven seconds per server, and
 // Initialize is called from the bubbletea goroutine.
-func (r *Registry) adoptLiveClients(old *Registry) {
+func (r *Manager) adoptLiveClients(old *Manager) {
 	if old == nil || old == r {
 		return
 	}
@@ -117,8 +117,8 @@ func (r *Registry) adoptLiveClients(old *Registry) {
 	}
 }
 
-func newEmptyRegistry() *Registry {
-	return &Registry{
+func newEmptyManager() *Manager {
+	return &Manager{
 		clients:    make(map[string]*Client),
 		configs:    make(map[string]ServerConfig),
 		disabled:   make(map[string]bool),
@@ -127,10 +127,10 @@ func newEmptyRegistry() *Registry {
 	}
 }
 
-// NewRegistryForTest creates a registry with pre-loaded configs for testing.
+// NewManagerForTest creates a manager with pre-loaded configs for testing.
 // It does not read from disk.
-func NewRegistryForTest(configs map[string]ServerConfig) *Registry {
-	return &Registry{
+func NewManagerForTest(configs map[string]ServerConfig) *Manager {
+	return &Manager{
 		clients:    make(map[string]*Client),
 		configs:    configs,
 		disabled:   make(map[string]bool),
@@ -139,15 +139,15 @@ func NewRegistryForTest(configs map[string]ServerConfig) *Registry {
 	}
 }
 
-// NewRegistry creates a new MCP registry
-func NewRegistry(cwd string) (*Registry, error) {
+// NewManager creates a new MCP manager
+func NewManager(cwd string) (*Manager, error) {
 	loader := NewConfigLoader(cwd)
 	configs, err := loader.LoadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load MCP configs: %w", err)
 	}
 
-	reg := &Registry{
+	reg := &Manager{
 		clients:    make(map[string]*Client),
 		configs:    configs,
 		disabled:   make(map[string]bool),
@@ -164,7 +164,7 @@ func NewRegistry(cwd string) (*Registry, error) {
 // Reload reloads configurations from disk.
 // Clients whose server config no longer exists are disconnected to avoid
 // orphaned connections.
-func (r *Registry) Reload() error {
+func (r *Manager) Reload() error {
 	configs, err := r.loader.LoadAll()
 	if err != nil {
 		return err
@@ -186,7 +186,7 @@ func (r *Registry) Reload() error {
 	return nil
 }
 
-func (r *Registry) mergePluginMCPConfigs(configs map[string]ServerConfig) map[string]ServerConfig {
+func (r *Manager) mergePluginMCPConfigs(configs map[string]ServerConfig) map[string]ServerConfig {
 	merged := make(map[string]ServerConfig, len(configs))
 	maps.Copy(merged, configs)
 	if r.PluginServers == nil {
@@ -208,7 +208,7 @@ func (r *Registry) mergePluginMCPConfigs(configs map[string]ServerConfig) map[st
 }
 
 // AddServer adds a new server configuration
-func (r *Registry) AddServer(name string, config ServerConfig, scope Scope) error {
+func (r *Manager) AddServer(name string, config ServerConfig, scope Scope) error {
 	if err := r.loader.SaveServer(name, config, scope); err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (r *Registry) AddServer(name string, config ServerConfig, scope Scope) erro
 }
 
 // RemoveServer removes a server configuration
-func (r *Registry) RemoveServer(name string) error {
+func (r *Manager) RemoveServer(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -254,7 +254,7 @@ func (r *Registry) RemoveServer(name string) error {
 // an explicit disconnect, even if an Agent definition originally created it.
 // Network I/O runs outside connectionLifecycleMu so TUI operations are not
 // blocked during a slow or remote connection.
-func (r *Registry) Connect(ctx context.Context, serverName string) error {
+func (r *Manager) Connect(ctx context.Context, serverName string) error {
 	r.connectionLifecycleMu.Lock()
 
 	// Fast path: already connected — just mark as retained.
@@ -297,8 +297,8 @@ func (r *Registry) Connect(ctx context.Context, serverName string) error {
 	return nil
 }
 
-// Disconnect drops a server from the registry. The server is gone from the
-// registry's point of view when this returns; the transport teardown runs in
+// Disconnect drops a server from the manager. The server is gone from the
+// manager's point of view when this returns; the transport teardown runs in
 // the background.
 //
 // Detached because Client.Disconnect waits on the child's read loop and then
@@ -306,7 +306,7 @@ func (r *Registry) Connect(ctx context.Context, serverName string) error {
 // the bubbletea Update goroutine (the /mcp panel, /mcp disconnect). Doing it
 // inline froze the UI for that whole time, and doing it under r.mu froze the
 // agent goroutine with it, since CallTool takes the read lock.
-func (r *Registry) Disconnect(name string) {
+func (r *Manager) Disconnect(name string) {
 	r.mu.Lock()
 	client, ok := r.clients[name]
 	if ok {
@@ -334,7 +334,7 @@ func closeInBackground(name string, client *Client) {
 }
 
 // GetClient returns a client by name
-func (r *Registry) GetClient(name string) (*Client, bool) {
+func (r *Manager) GetClient(name string) (*Client, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	client, ok := r.clients[name]
@@ -342,7 +342,7 @@ func (r *Registry) GetClient(name string) (*Client, bool) {
 }
 
 // GetConfig returns a server config by name
-func (r *Registry) GetConfig(name string) (ServerConfig, bool) {
+func (r *Manager) GetConfig(name string) (ServerConfig, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	config, ok := r.configs[name]
@@ -350,7 +350,7 @@ func (r *Registry) GetConfig(name string) (ServerConfig, bool) {
 }
 
 // List returns all configured servers with their current status
-func (r *Registry) List() []Server {
+func (r *Manager) List() []Server {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -383,7 +383,7 @@ var emptySchema = map[string]any{
 }
 
 // GetToolSchemas returns core.ToolSchema schemas for all connected MCP servers
-func (r *Registry) GetToolSchemas() []core.ToolSchema {
+func (r *Manager) GetToolSchemas() []core.ToolSchema {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -416,7 +416,7 @@ func schemaOrEmpty(def any) any {
 
 // CallTool calls a tool on an MCP server
 // The tool name should be in the format: mcp__<server>__<tool>
-func (r *Registry) CallTool(ctx context.Context, fullName string, arguments map[string]any) (*ToolResult, error) {
+func (r *Manager) CallTool(ctx context.Context, fullName string, arguments map[string]any) (*ToolResult, error) {
 	serverName, toolName, ok := parseMCPToolName(fullName)
 	if !ok {
 		return nil, fmt.Errorf("invalid MCP tool name: %s", fullName)
@@ -431,14 +431,14 @@ func (r *Registry) CallTool(ctx context.Context, fullName string, arguments map[
 }
 
 // SetOnToolsChanged sets a callback for when tools change
-func (r *Registry) SetOnToolsChanged(callback func()) {
+func (r *Manager) SetOnToolsChanged(callback func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.onToolsChanged = callback
 }
 
 // notifyToolsChanged calls the tools changed callback if set
-func (r *Registry) notifyToolsChanged() {
+func (r *Manager) notifyToolsChanged() {
 	r.mu.RLock()
 	callback := r.onToolsChanged
 	r.mu.RUnlock()
@@ -470,7 +470,7 @@ func IsMCPTool(name string) bool {
 
 // SetConnecting marks or unmarks a server as currently connecting.
 // On failure, call SetConnectError to store the error; List() will report StatusError.
-func (r *Registry) SetConnecting(name string, val bool) {
+func (r *Manager) SetConnecting(name string, val bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if val {
@@ -482,7 +482,7 @@ func (r *Registry) SetConnecting(name string, val bool) {
 }
 
 // SetConnectError stores a connection error for a server that failed to connect.
-func (r *Registry) SetConnectError(name string, errMsg string) {
+func (r *Manager) SetConnectError(name string, errMsg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if errMsg != "" {
@@ -493,14 +493,14 @@ func (r *Registry) SetConnectError(name string, errMsg string) {
 }
 
 // IsDisabled returns whether a server has been explicitly disabled by the user.
-func (r *Registry) IsDisabled(name string) bool {
+func (r *Manager) IsDisabled(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.disabled[name]
 }
 
 // SetDisabled sets the disabled state for a server and persists it.
-func (r *Registry) SetDisabled(name string, disabled bool) {
+func (r *Manager) SetDisabled(name string, disabled bool) {
 	r.mu.Lock()
 	if disabled {
 		r.disabled[name] = true
@@ -512,7 +512,7 @@ func (r *Registry) SetDisabled(name string, disabled bool) {
 }
 
 // statePath returns the path to the state file.
-func (r *Registry) statePath() string {
+func (r *Manager) statePath() string {
 	if r.loader != nil {
 		return filepath.Join(r.loader.GetProjectDir(), "mcp-state.json")
 	}
@@ -520,7 +520,7 @@ func (r *Registry) statePath() string {
 }
 
 // loadState loads persisted disabled state from disk.
-func (r *Registry) loadState() {
+func (r *Manager) loadState() {
 	path := r.statePath()
 	if path == "" {
 		return
@@ -541,7 +541,7 @@ func (r *Registry) loadState() {
 }
 
 // saveState persists disabled state to disk.
-func (r *Registry) saveState() {
+func (r *Manager) saveState() {
 	path := r.statePath()
 	if path == "" {
 		return

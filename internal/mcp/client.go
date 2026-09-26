@@ -20,7 +20,7 @@ import (
 // One MCP server, and San's business with it: when a connection is made and
 // dropped, and what the /mcp listing shows. The protocol is sdk-go's.
 
-// conn is one live session. The real one is the SDK's; the registry's tests
+// conn is one live session. The real one is the SDK's; the manager's tests
 // supply their own.
 type conn interface {
 	Tools(ctx context.Context) ([]core.Tool, error)
@@ -53,7 +53,7 @@ func NewClient(config ServerConfig) *Client {
 }
 
 // dialSDK opens the real session. Tool names come back unqualified: the
-// registry assembles mcp__server__tool, where San has always matched on it.
+// manager assembles mcp__server__tool, where San has always matched on it.
 func dialSDK(config ServerConfig) func(context.Context, func()) (conn, error) {
 	return func(ctx context.Context, onToolsChanged func()) (conn, error) {
 		server := sdkmcp.Server{

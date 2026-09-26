@@ -8,7 +8,7 @@ import (
 // A subagent listing a server the session already uses must not take that
 // connection down when it finishes.
 func TestConnectServersCleanupKeepsPreexistingConnection(t *testing.T) {
-	r := connectedRegistry(t, map[string]*fakeSession{"shared": newFakeSession()})
+	r := connectedManager(t, map[string]*fakeSession{"shared": newFakeSession()})
 
 	cleanup, errs := ConnectServers(context.Background(), r, []string{"shared"})
 	if len(errs) != 0 {
@@ -22,7 +22,7 @@ func TestConnectServersCleanupKeepsPreexistingConnection(t *testing.T) {
 }
 
 func TestConnectServersCleanupDisconnectsWhatItConnected(t *testing.T) {
-	r := NewRegistryForTest(map[string]ServerConfig{"own": {Name: "own", Type: TransportSTDIO, Command: "own"}})
+	r := NewManagerForTest(map[string]ServerConfig{"own": {Name: "own", Type: TransportSTDIO, Command: "own"}})
 	r.newClientForConfig = func(cfg ServerConfig) *Client {
 		c := NewClient(cfg)
 		c.dial = dialing(newFakeSession())
@@ -46,7 +46,7 @@ func TestConnectServersCleanupDisconnectsWhatItConnected(t *testing.T) {
 // Two subagents sharing a server: the first to finish must leave it up for
 // the other, and the last one takes it down.
 func TestConnectServersSharedUntilLastCleanup(t *testing.T) {
-	r := NewRegistryForTest(map[string]ServerConfig{"own": {Name: "own", Type: TransportSTDIO, Command: "own"}})
+	r := NewManagerForTest(map[string]ServerConfig{"own": {Name: "own", Type: TransportSTDIO, Command: "own"}})
 	r.newClientForConfig = func(cfg ServerConfig) *Client {
 		c := NewClient(cfg)
 		c.dial = dialing(newFakeSession())

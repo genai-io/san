@@ -41,7 +41,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 
 	m := &model{services: services{
 		Agent:   sess,
-		MCP:     mcp.NewRegistryForTest(nil),
+		MCP:     mcp.NewManagerForTest(nil),
 		Setting: setting.Default(),
 	}}
 	m.syncMCPTools()
@@ -65,7 +65,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	m := &model{services: services{
 		Agent:   &agent.Session{},
-		MCP:     mcp.NewRegistryForTest(nil),
+		MCP:     mcp.NewManagerForTest(nil),
 		Setting: setting.Default(),
 	}}
 	m.syncMCPTools()

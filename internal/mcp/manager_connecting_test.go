@@ -9,7 +9,7 @@ func TestRegistryConnectingState(t *testing.T) {
 		"server1": {Name: "server1", URL: "http://example.com/mcp"},
 		"server2": {Name: "server2", URL: "http://example2.com/mcp"},
 	}
-	reg := NewRegistryForTest(configs)
+	reg := NewManagerForTest(configs)
 
 	// Initially all disconnected
 	for _, s := range reg.List() {

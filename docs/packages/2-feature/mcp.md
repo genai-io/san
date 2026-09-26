@@ -24,33 +24,33 @@ Config lives at `<project>/.san/mcp.json` (San) or
 ## Contract
 
 The package has four natural roles. Two surface as small interfaces;
-one uses free functions; one stays on the concrete `*Registry`.
+one uses free functions; one stays on the concrete `*Manager`.
 
 | Role | Shape | Consumers |
 |---|---|---|
 | **Tools** — tool discovery + execution | `interface{ GetToolSchemas; CallTool }` | agent main loop, slash-command tool selector, subagent executor |
 | **Servers** — server listing + connect lifecycle | `interface{ List; Connect; Disconnect; ConnectAll; DisconnectAll; GetConfig }` | `mcp.ConnectServers` (free function), subagent executor |
 | **ConfigStore** — load / edit / save server definitions | free functions `PrepareServerEdit` / `ApplyServerEdit` | `san mcp edit` CLI subcommand |
-| **Manager** — full server-state mutation (add / remove / set-disabled / set-status) | concrete `*Registry` | TUI `/mcp` selector — needs the wide surface and there is exactly one consumer |
+| **Manager** — full server-state mutation (add / remove / set-disabled / set-status) | concrete `*Manager` | TUI `/mcp` selector — needs the wide surface and there is exactly one consumer |
 
-`*Registry` satisfies both interfaces; compile-time checks guarantee
+`*Manager` satisfies both interfaces; compile-time checks guarantee
 this. Consumers narrow by declaration:
 
 ```go
-var tools   mcp.Tools   = mcp.DefaultRegistry()
-var servers mcp.Servers = mcp.DefaultRegistry()
+var tools   mcp.Tools   = mcp.DefaultManager()
+var servers mcp.Servers = mcp.DefaultManager()
 ```
 
 ```go
 package mcp
 
-// Tools — list MCP tool schemas and call one by name. Implemented by *Registry.
+// Tools — list MCP tool schemas and call one by name. Implemented by *Manager.
 type Tools interface {
     GetToolSchemas() []core.ToolSchema
     CallTool(ctx context.Context, fullName string, args map[string]any) (*ToolResult, error)
 }
 
-// Servers — manage MCP server connections. Implemented by *Registry.
+// Servers — manage MCP server connections. Implemented by *Manager.
 type Servers interface {
     List() []Server
     Connect(ctx context.Context, name string) error
@@ -60,26 +60,26 @@ type Servers interface {
     GetConfig(name string) (ServerConfig, bool)
 }
 
-// *Registry is the only implementation; covers the Manager role and
+// *Manager is the only implementation; covers the Manager role and
 // satisfies both interfaces above.
-type Registry struct { /* internal fields */ }
+type Manager struct { /* internal fields */ }
 
 var (
-    _ Tools   = (*Registry)(nil)
-    _ Servers = (*Registry)(nil)
+    _ Tools   = (*Manager)(nil)
+    _ Servers = (*Manager)(nil)
 )
 
 // Free functions.
-func AsCoreTools(schemas []core.ToolSchema, tools *Registry) []core.Tool
-func PrepareServerEdit(reg *Registry, name string) (*EditInfo, error)
-func ApplyServerEdit(reg *Registry, info *EditInfo) error
+func AsCoreTools(schemas []core.ToolSchema, tools *Manager) []core.Tool
+func PrepareServerEdit(reg *Manager, name string) (*EditInfo, error)
+func ApplyServerEdit(reg *Manager, info *EditInfo) error
 func ConnectServers(ctx context.Context, servers Servers, serverNames []string) (cleanup func(), errs []error)
 
 // Package-level access.
 func Initialize(opts Options) error
-func DefaultRegistry() *Registry
-func SetDefaultRegistry(reg *Registry)   // test-only
-func ResetDefaultRegistry()              // test-only
+func DefaultManager() *Manager
+func SetDefaultManager(reg *Manager)   // test-only
+func ResetDefaultManager()              // test-only
 ```
 
 ### Why two role interfaces, not one god union
@@ -89,16 +89,16 @@ func ResetDefaultRegistry()              // test-only
 - Consumers that browse and connect servers (`ConnectServers`,
   subagent executor) depend on `Servers` — six methods.
 - The TUI `/mcp` selector mutates server state (`RemoveServer`,
-  `SetDisabled`, `SetConnectError`, …) and takes `*Registry` directly.
-  A 10-method interface here would just be `*Registry` renamed —
+  `SetDisabled`, `SetConnectError`, …) and takes `*Manager` directly.
+  A 10-method interface here would just be `*Manager` renamed —
   TEMPLATE Rule 1 says no.
 
-`*Registry` is the implementation; role interfaces are the public face
+`*Manager` is the implementation; role interfaces are the public face
 that callers narrow to.
 
 ## Internals
 
-- `Registry` (`registry.go`) — server name → `Client` map; merges
+- `Manager` (`manager.go`) — server name → `Client` map; merges
   user/project/plugin config.
 - `Client` (`client.go`) — one per server; owns the transport
   connection, request/response framing, tool list cache.

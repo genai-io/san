@@ -45,7 +45,7 @@ type Executor struct {
 	parentSessionID            string               // Parent session ID for linking subagent sessions
 	projectInstructions        string               // project memory (AGENTS.md) for edit-capable subagents
 	skillsPrompt               string               // available skills section for capable subagents
-	mcpRegistry                *mcp.Registry        // tool schemas, execution, per-subagent server sets
+	mcpManager                 *mcp.Manager         // tool schemas, execution, per-subagent server sets
 	disabledToolsMu            sync.RWMutex
 	disabledTools              map[string]bool // effective global disabled tools, copied on set/read
 }
@@ -114,8 +114,8 @@ func (e *Executor) SetSkillsDirectory(skillsPrompt string) {
 }
 
 // SetMCPDependencies wires MCP tool access and server connections.
-func (e *Executor) SetMCPDependencies(registry *mcp.Registry) {
-	e.mcpRegistry = registry
+func (e *Executor) SetMCPDependencies(registry *mcp.Manager) {
+	e.mcpManager = registry
 }
 
 // SetDisabledTools supplies the effective global disabled-tool policy inherited
@@ -354,8 +354,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	agentCwd := run.cwd
 	cleanup := func() {}
 
-	if len(rc.config.McpServers) > 0 && e.mcpRegistry != nil {
-		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpRegistry, rc.config.McpServers)
+	if len(rc.config.McpServers) > 0 && e.mcpManager != nil {
+		mcpCleanup, errs := mcp.ConnectServers(ctx, e.mcpManager, rc.config.McpServers)
 		if mcpCleanup != nil {
 			cleanup = mcpCleanup
 		}
@@ -375,8 +375,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 	// Tools — adapt legacy tool registry + MCP tools
 	var mcpGetter func() []core.ToolSchema
-	if e.mcpRegistry != nil {
-		mcpGetter = e.mcpRegistry.GetToolSchemas
+	if e.mcpManager != nil {
+		mcpGetter = e.mcpManager.GetToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
@@ -395,8 +395,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, adaptOpts...)
 
 	// Add MCP tool executors
-	if e.mcpRegistry != nil {
-		for _, t := range mcp.AsCoreTools(schemas, e.mcpRegistry) {
+	if e.mcpManager != nil {
+		for _, t := range mcp.AsCoreTools(schemas, e.mcpManager) {
 			tools.Add(t, "mcp:"+t.Schema().Name)
 		}
 	}
