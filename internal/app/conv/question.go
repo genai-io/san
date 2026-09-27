@@ -134,6 +134,19 @@ func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 	}
 	curOption := p.selectedOption[p.currentQuestion]
 
+	// On the free-text row, typing answers: the first key opens the input and
+	// lands in it, and a digit there is text rather than an option shortcut.
+	if curOption == customIdx {
+		if text := msg.Key().Text; text != "" && text != " " {
+			p.showingCustom = true
+			p.customInput.Focus()
+			p.restoreCustomInput()
+			var cmd tea.Cmd
+			p.customInput, cmd = p.customInput.Update(msg)
+			return cmd, nil
+		}
+	}
+
 	switch msg.String() {
 	case "left":
 		if len(p.request.Questions) > 1 && p.currentQuestion > 0 {
