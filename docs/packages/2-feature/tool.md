@@ -12,8 +12,8 @@ permission gate, side-effect plumbing, and per-call dispatch.
 
 Every built-in tool (Bash, Read, Edit, Write, WebFetch, …)
 registers into this package's singleton at init time. The shell tool is
-named for the shell `proc.DefaultShell` picks — `Bash`, or `PowerShell` on a
-Windows without Git Bash (`SAN_SHELL` overrides) — so the model writes that
+named for the shell `proc.DefaultShell` picks — `PowerShell` on Windows,
+`Bash` elsewhere (`SAN_SHELL` overrides) — so the model writes that
 shell's syntax. A Windows with both also registers the other, disabled by
 default (`/tools` turns it on), whose description says how to split the work; `IsShellTool` is how the rest of San asks "is this the shell
 tool" without naming one. The agent loop calls

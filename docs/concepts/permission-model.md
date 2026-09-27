@@ -168,7 +168,7 @@ mutation payload.
 
 ## PowerShell
 
-Where the shell is PowerShell (a Windows without Git Bash, or `SAN_SHELL`),
+Where the shell is PowerShell (the Windows default, or `SAN_SHELL`),
 shell calls go to the `PowerShell` tool and are classified in PowerShell's own
 terms — there is no PowerShell parser, so every judgment errs one way:
 
