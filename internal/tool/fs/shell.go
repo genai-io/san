@@ -118,7 +118,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	// Execute command
 	cmd := shellCommand(ctx, shell, trackedCommand)
 	cmd.Dir = cwd
-	cmd.Env = bashEnv(ctx)
+	cmd.Env = shellEnv(ctx)
 	if trackedFile != "" {
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
@@ -304,7 +304,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	// Create command
 	cmd := shellCommand(taskCtx, shell, command)
 	cmd.Dir = cwd
-	cmd.Env = bashEnv(ctx)
+	cmd.Env = shellEnv(ctx)
 
 	// Start the child in its own session: detached from the controlling
 	// terminal (so an interactive command fails fast instead of grabbing the
@@ -507,7 +507,7 @@ func SetEnvProvider(fn func(context.Context) []string) {
 	extraEnvProvider.Store(fn)
 }
 
-func bashEnv(ctx context.Context) []string {
+func shellEnv(ctx context.Context) []string {
 	env := os.Environ()
 	// Nudge common tools onto their non-interactive path so they fail fast
 	// rather than block on a prompt. Set each only when the caller hasn't
@@ -518,6 +518,12 @@ func bashEnv(ctx context.Context) []string {
 	}
 	if _, ok := os.LookupEnv("DEBIAN_FRONTEND"); !ok {
 		env = append(env, "DEBIAN_FRONTEND=noninteractive")
+	}
+	// The model reads the output, where color codes are noise. PowerShell 7
+	// colors errors even on a redirected stderr, and in Constrained Language
+	// Mode $PSStyle cannot turn that off.
+	if _, ok := os.LookupEnv("NO_COLOR"); !ok {
+		env = append(env, "NO_COLOR=1")
 	}
 	if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
 		env = append(env, fn(ctx)...)

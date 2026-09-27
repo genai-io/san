@@ -8,13 +8,17 @@ import (
 )
 
 // powerShellScript wraps a command for a non-interactive run: UTF-8 output,
-// the final directory written back when San asked for it (cwdFileEnvVar is
-// set), and the last native program's exit code as the process's own.
+// no progress records, the final directory written back when San asked for it
+// (cwdFileEnvVar is set), and the last native program's exit code as the
+// process's own. It uses only cmdlets and variables, so it also runs where
+// policy locks PowerShell into Constrained Language Mode; there the console
+// encoding cannot be set and output keeps the system code page.
 func powerShellScript(command string) string {
-	return "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
+	return "$ProgressPreference = 'SilentlyContinue'\n" +
+		"try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}\n" +
 		"$OutputEncoding = [System.Text.Encoding]::UTF8\n" +
 		"try {\n" + command + "\n} finally {\n" +
-		"  if ($env:" + cwdFileEnvVar + ") { [System.IO.File]::WriteAllText($env:" + cwdFileEnvVar + ", (Get-Location).ProviderPath) }\n" +
+		"  if ($env:" + cwdFileEnvVar + ") { Set-Content -LiteralPath $env:" + cwdFileEnvVar + " -Value (Get-Location).ProviderPath -Encoding UTF8 -NoNewline }\n" +
 		"}\n" +
 		"if ($LASTEXITCODE) { exit $LASTEXITCODE }\n"
 }
@@ -27,7 +31,9 @@ const maxEncodedCommandLen = 30000
 // bytes, so no quote or backslash in it is ever re-read by a command line. A
 // script too long for that runs from a temp file that deletes itself.
 func powerShellArgs(script string) []string {
-	flags := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"}
+	// -OutputFormat Text keeps stderr plain: with -EncodedCommand, PowerShell
+	// otherwise writes errors to a redirected stderr as CLIXML.
+	flags := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-OutputFormat", "Text"}
 	units := utf16.Encode([]rune(script))
 	raw := make([]byte, 2*len(units))
 	for i, u := range units {

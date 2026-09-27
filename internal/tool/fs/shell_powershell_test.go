@@ -144,3 +144,47 @@ func TestPowerShellTracksAChangedDirectory(t *testing.T) {
 		}
 	})
 }
+
+// Where policy locks PowerShell into Constrained Language Mode, .NET method
+// calls and property setters fail, so the wrapper must get by on cmdlets: the
+// command still succeeds, stderr stays plain text, and the cwd is written back.
+func TestPowerShellScriptRunsInConstrainedLanguage(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		dir := t.TempDir()
+		cwdFile := filepath.Join(dir, "cwd")
+		cmd := exec.Command(sh.shell.Path, "-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-Command",
+			"$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; Invoke-Expression $env:SAN_TEST_SCRIPT")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"SAN_TEST_SCRIPT="+powerShellScript("Write-Output \"mode=$($ExecutionContext.SessionState.LanguageMode)\""),
+			cwdFileEnvVar+"="+cwdFile)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil || !strings.Contains(string(out), "mode=ConstrainedLanguage") {
+			t.Fatalf("err=%v stdout=%q stderr=%q", err, out, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "CLIXML") || strings.Contains(stderr.String(), "NotSupportedInConstrainedLanguage") {
+			t.Errorf("stderr = %q", stderr.String())
+		}
+		want, _ := filepath.EvalSymlinks(dir)
+		if got, _ := filepath.EvalSymlinks(readTrackedCwd(cwdFile, "")); got != want {
+			t.Errorf("tracked cwd = %q, want %q", got, want)
+		}
+	})
+}
+
+// An error the command writes reaches the model as plain text: not the CLIXML
+// PowerShell uses for a redirected stderr under -EncodedCommand, and without
+// the color codes pwsh adds to it.
+func TestPowerShellErrorsArePlainText(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		result := sh.ExecuteApproved(context.Background(), map[string]any{
+			"command": `Write-Error "boom-marker"; exit 2`,
+		}, t.TempDir())
+		out := result.Output + result.Error
+		if !strings.Contains(out, "boom-marker") || strings.Contains(out, "CLIXML") || strings.Contains(out, "\x1b[") {
+			t.Errorf("Success=%v Error=%q Output=%q", result.Success, result.Error, result.Output)
+		}
+	})
+}
