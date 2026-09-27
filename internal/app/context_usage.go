@@ -34,7 +34,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 		ModelName: m.env.GetModelDisplayName(),
 		Limit:     kit.GetContextWindow(store, current),
 		Budget:    kit.GetPromptBudget(store, current),
-		Measured:  m.env.InputTokens,
+		Measured:  m.env.ContextTokens(),
 	}
 	if store != nil && current != nil {
 		_, _, usage.Overridden = store.TokenLimit(current.ModelID)

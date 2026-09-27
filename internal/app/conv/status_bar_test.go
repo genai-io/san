@@ -108,7 +108,7 @@ func TestRenderContextLabel(t *testing.T) {
 func TestRenderContextLabelStaysCompact(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
 		ModelName:     "gpt-test",
-		InputTokens:   0,
+		ContextTokens: 0,
 		ContextWindow: 272_000,
 		PromptBudget:  272_000,
 		Width:         120,
@@ -302,7 +302,7 @@ func TestModelStatusLabel(t *testing.T) {
 func TestContextLabelCountsAgainstTheWindow(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
 		ModelName:     "gpt-test",
-		InputTokens:   120_000,
+		ContextTokens: 120_000,
 		ContextWindow: 272_000,
 		PromptBudget:  240_000,
 		Width:         120,

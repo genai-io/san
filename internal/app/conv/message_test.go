@@ -264,7 +264,7 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:        "claude-sonnet-4-6",
-		InputTokens:      142000,
+		ContextTokens:    142000,
 		ContextWindow:    200000,
 		PromptBudget:     200000,
 		ConversationCost: llm.NewCostTotal(llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD}),
@@ -294,7 +294,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:     "claude-sonnet-4-6",
-		InputTokens:   142000,
+		ContextTokens: 142000,
 		ContextWindow: 200000,
 		PromptBudget:  200000,
 		Width:         120,
@@ -311,7 +311,7 @@ func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "claude-sonnet-4-6",
-		InputTokens:    190000,
+		ContextTokens:  190000,
 		ContextWindow:  200000,
 		PromptBudget:   200000,
 		ShowContextBar: true,
@@ -333,7 +333,7 @@ func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:     "claude-sonnet-4-6",
-		InputTokens:   1000,
+		ContextTokens: 1000,
 		ContextWindow: 200000,
 		PromptBudget:  200000,
 		Compressions:  3,
@@ -348,7 +348,7 @@ func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:     "claude-sonnet-4-6",
-		InputTokens:   1000,
+		ContextTokens: 1000,
 		ContextWindow: 200000,
 		PromptBudget:  200000,
 		Compressions:  0,
@@ -366,7 +366,7 @@ func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
 	// silently hiding the entire context segment.
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "some-model",
-		InputTokens:    5000,
+		ContextTokens:  5000,
 		ContextWindow:  0,
 		PromptBudget:   0,
 		ShowContextBar: true,
@@ -400,7 +400,7 @@ func TestRenderModeStatusShowsTemporaryStatusMessage(t *testing.T) {
 func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
 		ModelName:     "gpt-test",
-		InputTokens:   164600,
+		ContextTokens: 164600,
 		ContextWindow: 272000,
 		PromptBudget:  272000,
 		Width:         120,

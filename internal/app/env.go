@@ -174,6 +174,10 @@ func (m *env) EffectiveThinkingEffort() string {
 	return llm.ResolveThinkingEffortForModel(m.LLMProvider, m.store, m.CurrentModel, m.ThinkingEffort)
 }
 
+// ContextTokens is how much of the window the conversation fills now: the
+// latest call's prompt plus its reply, which the next call sends back.
+func (m *env) ContextTokens() int { return m.InputTokens + m.OutputTokens }
+
 func (m *env) ThinkingEfforts() []string {
 	return llm.ThinkingEffortsForModel(m.LLMProvider, m.store, m.CurrentModel)
 }

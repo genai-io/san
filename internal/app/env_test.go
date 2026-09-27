@@ -132,3 +132,12 @@ func TestCompressions_StartsAtZero(t *testing.T) {
 		t.Errorf("Compressions = %d, want 0 at session start", e.Compressions)
 	}
 }
+
+// The reply the last call produced is in the window too — the next call sends
+// it back — so the context readout counts it with the prompt.
+func TestContextTokensCountsTheReply(t *testing.T) {
+	e := &env{InputTokens: 120_000, OutputTokens: 8_000}
+	if got := e.ContextTokens(); got != 128_000 {
+		t.Fatalf("ContextTokens() = %d, want prompt plus reply 128000", got)
+	}
+}

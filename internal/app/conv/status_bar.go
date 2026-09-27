@@ -202,7 +202,7 @@ func fitStatusSegments(segments []statusSegment, maxWidth, sepWidth int) []strin
 // OperationModeParams holds the parameters needed for rendering mode status.
 type OperationModeParams struct {
 	Mode              setting.OperationMode
-	InputTokens       int
+	ContextTokens     int // how much of the window the conversation fills: last prompt plus reply
 	ContextWindow     int // the model's context window, what the label counts against; 0 = unknown
 	PromptBudget      int // prompt size at which auto-compaction fires; 0 = unknown
 	ModelName         string
@@ -255,16 +255,16 @@ func renderStatusCluster(p OperationModeParams) string {
 	// The numeric label always renders — it falls back to "ctx X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
-		text:     RenderContextLabel(p.InputTokens, p.ContextWindow),
+		text:     RenderContextLabel(p.ContextTokens, p.ContextWindow),
 		priority: 3,
 	})
 
 	// The visual bar is opt-in (off by default). When shown it also carries
 	// the auto-compact hint as a near-full warning.
 	if p.ShowContextBar {
-		bar := RenderContextBar(p.InputTokens, p.ContextWindow)
+		bar := RenderContextBar(p.ContextTokens, p.ContextWindow)
 		if p.PromptBudget > 0 {
-			if hint := compactStatusHint(float64(p.InputTokens) / float64(p.PromptBudget) * 100); hint != "" {
+			if hint := compactStatusHint(float64(p.ContextTokens) / float64(p.PromptBudget) * 100); hint != "" {
 				bar += sep + muted.Render(hint)
 			}
 		}

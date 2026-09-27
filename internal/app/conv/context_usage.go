@@ -38,9 +38,10 @@ type ContextUsage struct {
 	Budget     int
 	Overridden bool
 
-	// Measured is the prompt size the provider reported for the last turn —
-	// the same number the status bar shows as `ctx X/…`. It is 0 until a turn
-	// completes, which falls the total back to the estimate.
+	// Measured is the conversation size the provider reported for the last
+	// call — its prompt plus its reply, the same number the status bar shows
+	// as `ctx X/…`. It is 0 until a call completes, which falls the total back
+	// to the estimate.
 	Measured int
 
 	// CachedPrefix is the exact token count of the system prompt and the tool
