@@ -283,10 +283,6 @@ func TestDockedModalDropsDeadExpandHint(t *testing.T) {
 	}
 }
 
-// No overlay may enter terminal history as part of inline redraw: the primary
-// buffer stays reserved for the committed conversation. A docked prompt is
-// transient interaction; a full-screen picker is Height-2 rows, and shrinking
-// back to the composer inline strands the picker's top rows above it.
 // A full-screen picker takes the alternate screen; a docked modal stays
 // inline, where the composer sat, under the conversation it asks about.
 func TestOnlyFullScreenPanelsUseAlternateScreen(t *testing.T) {
