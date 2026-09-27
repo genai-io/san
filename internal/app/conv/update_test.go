@@ -13,8 +13,8 @@ type postToolRuntime struct {
 	drainCalls int
 }
 
-func (r *postToolRuntime) OnToolResult(tr core.ToolResult) (*core.ToolResult, any) {
-	return &tr, nil
+func (r *postToolRuntime) OnToolResult(tr core.ToolResult) *core.ToolResult {
+	return &tr
 }
 func (r *postToolRuntime) TakeReviewDecision(string) *core.ReviewDecision { return nil }
 func (r *postToolRuntime) OnStepEnd() tea.Cmd {
@@ -27,11 +27,11 @@ func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Bash"}})
 	rt := &postToolRuntime{}
 
-	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"})
+	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-1", ToolName: "Read"}, nil)
 	if rt.drainCalls != 0 {
 		t.Fatalf("drained pending input after first tool result; calls = %d", rt.drainCalls)
 	}
-	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"})
+	applyPostTool(rt, &m, core.ToolResult{ToolCallID: "tc-2", ToolName: "Bash"}, nil)
 	if rt.drainCalls != 1 {
 		t.Fatalf("drain calls after complete tool batch = %d, want 1", rt.drainCalls)
 	}

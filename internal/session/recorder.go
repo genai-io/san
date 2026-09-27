@@ -31,6 +31,10 @@ type Recorder struct {
 	mu            sync.Mutex
 	lastRequest   *requestState
 	lastMessageID string // for parentId on message.appended
+	// toolDetails holds each finished call's Result.Details, from ToolEnd,
+	// until the message carrying its result is appended; the next inference
+	// drops any a failed batch never appended.
+	toolDetails map[string]any
 }
 
 type requestState struct {
@@ -80,6 +84,7 @@ func NewRecorder(opts RecorderOptions) *Recorder {
 		sessionID:   opts.SessionID,
 		agentID:     opts.AgentID,
 		isSidechain: opts.Sidechain,
+		toolDetails: make(map[string]any),
 	}
 }
 
@@ -171,6 +176,8 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 		r.onSystemChange(e)
 	case core.ToolsChange:
 		r.onToolsChange(e)
+	case sdkagent.ToolEnd:
+		r.onToolEnd(e)
 	case sdkagent.MessageAdded:
 		r.onAppend(e.Message)
 	case core.Compacted:
@@ -196,6 +203,18 @@ func (r *Recorder) onCompact(info core.Compacted) {
 	}
 }
 
+// onToolEnd keeps a call's details — the diff behind an edit, a command's
+// output — for the result's message.appended, so a resumed session can draw
+// them again.
+func (r *Recorder) onToolEnd(e sdkagent.ToolEnd) {
+	if e.Result.Details == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.toolDetails[e.ID] = e.Result.Details
+}
+
 // onAppend persists message.appended at the moment the message enters the
 // chain. This is what guarantees "causes before consumers": any subsequent
 // inference.requested lands after the messages it references.
@@ -213,9 +232,15 @@ func (r *Recorder) onAppend(msg core.Message) {
 	// it. ChatRowsOf is that view with nothing drawn on it yet, which is
 	// exactly what an agent-side message is.
 	var content []ContentBlock
+	r.mu.Lock()
 	for _, row := range core.ChatRowsOf(msg) {
+		if row.ToolResult != nil {
+			row.ToolDetails = r.toolDetails[row.ToolResult.ToolCallID]
+			delete(r.toolDetails, row.ToolResult.ToolCallID)
+		}
 		content = append(content, MessageToBlocks(row)...)
 	}
+	r.mu.Unlock()
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
@@ -308,6 +333,7 @@ func (r *Recorder) onInferenceRequested(e sdkagent.MessageStart) {
 	now := time.Now()
 
 	r.mu.Lock()
+	clear(r.toolDetails) // every result the last batch appended has taken its own
 	r.lastRequest = &requestState{
 		turn:       turn,
 		startedAt:  now,

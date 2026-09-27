@@ -66,6 +66,10 @@ func ParseUnifiedDiff(unifiedDiff string) []DiffLine {
 	var oldLineNo, newLineNo int
 
 	for _, line := range diffLines {
+		// A Windows file's lines keep their \r; a renderer would print it
+		// and send the cursor back over the row.
+		line = strings.TrimSuffix(line, "\r")
+
 		// Skip file headers (---, +++)
 		if strings.HasPrefix(line, "---") || strings.HasPrefix(line, "+++") {
 			continue
