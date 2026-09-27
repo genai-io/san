@@ -87,3 +87,22 @@ func TestRenderFileDiffExpandsTabsInRows(t *testing.T) {
 		t.Fatalf("expanded removed row missing, got:\n%q", plain)
 	}
 }
+
+// A Windows file's lines end in \r\n. A \r left on an added or removed row
+// sends the cursor back to the row's start, and the background padding drawn
+// after it then paints over the line number and the text — the row shows as
+// an empty colored bar.
+func TestFileDiffRendersCRLFRows(t *testing.T) {
+	oldContent := "a := 1\r\nb := \"old value\"\r\nc := 3\r\n"
+	newContent := "a := 1\r\nb := \"new value\"\r\nc := 3\r\n"
+	out, _ := RenderFileDiff(perm.GenerateDiff("f.go", oldContent, newContent).Lines, 80, 0)
+	if strings.Contains(out, "\r") {
+		t.Fatalf("rendered diff keeps a carriage return:\n%q", out)
+	}
+	plain := xansi.Strip(out)
+	for _, want := range []string{`"old value"`, `"new value"`} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("rendered diff lacks %s:\n%s", want, plain)
+		}
+	}
+}
