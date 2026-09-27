@@ -15,21 +15,11 @@ import (
 // The TUI retrieves these when handling PostTool events to apply
 // environment side effects (cwd changes, file cache, background tasks).
 var sideEffects sync.Map
-var resultDetails sync.Map
 
 // PopSideEffect retrieves and removes the HookResponse for a tool call.
 // Returns nil if no side effect was stored.
 func PopSideEffect(toolCallID string) any {
 	val, ok := sideEffects.LoadAndDelete(toolCallID)
-	if !ok {
-		return nil
-	}
-	return val
-}
-
-// PopResultDetails retrieves structured result data for a tool call.
-func PopResultDetails(toolCallID string) any {
-	val, ok := resultDetails.LoadAndDelete(toolCallID)
 	if !ok {
 		return nil
 	}
@@ -177,14 +167,15 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 		if result.HookResponse != nil {
 			sideEffects.Store(callID, result.HookResponse)
 		}
-		if result.Details != nil {
-			resultDetails.Store(callID, result.Details)
-		}
 	}
 
+	// Details ride on the result, where the interface and the transcript
+	// recorder both read them off ToolEnd; the model is told only the text.
 	text := result.FormatForLLM()
+	res := agent.TextResult(text)
+	res.Details = result.Details
 	if !result.Success {
-		return agent.TextResult(text), fmt.Errorf("%s", text)
+		return res, fmt.Errorf("%s", text)
 	}
-	return agent.TextResult(text), nil
+	return res, nil
 }

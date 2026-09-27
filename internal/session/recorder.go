@@ -31,6 +31,9 @@ type Recorder struct {
 	mu            sync.Mutex
 	lastRequest   *requestState
 	lastMessageID string // for parentId on message.appended
+	// toolDetails holds each finished call's Result.Details, from ToolEnd,
+	// until the message carrying its result is appended.
+	toolDetails map[string]any
 }
 
 type requestState struct {
@@ -171,6 +174,8 @@ func (r *Recorder) OnAgentEvent(ev core.Event) {
 		r.onSystemChange(e)
 	case core.ToolsChange:
 		r.onToolsChange(e)
+	case sdkagent.ToolEnd:
+		r.onToolEnd(e)
 	case sdkagent.MessageAdded:
 		r.onAppend(e.Message)
 	case core.Compacted:
@@ -196,6 +201,21 @@ func (r *Recorder) onCompact(info core.Compacted) {
 	}
 }
 
+// onToolEnd keeps a call's details — the diff behind an edit, a command's
+// output — for the result's message.appended, so a resumed session can draw
+// them again.
+func (r *Recorder) onToolEnd(e sdkagent.ToolEnd) {
+	if e.Result.Details == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.toolDetails == nil {
+		r.toolDetails = make(map[string]any)
+	}
+	r.toolDetails[e.ID] = e.Result.Details
+}
+
 // onAppend persists message.appended at the moment the message enters the
 // chain. This is what guarantees "causes before consumers": any subsequent
 // inference.requested lands after the messages it references.
@@ -214,6 +234,12 @@ func (r *Recorder) onAppend(msg core.Message) {
 	// exactly what an agent-side message is.
 	var content []ContentBlock
 	for _, row := range core.ChatRowsOf(msg) {
+		if row.ToolResult != nil {
+			r.mu.Lock()
+			row.ToolDetails = r.toolDetails[row.ToolResult.ToolCallID]
+			delete(r.toolDetails, row.ToolResult.ToolCallID)
+			r.mu.Unlock()
+		}
 		content = append(content, MessageToBlocks(row)...)
 	}
 	if len(content) == 0 {

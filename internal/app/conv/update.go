@@ -165,7 +165,7 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 			ToolName:   e.Name,
 			Content:    sdkagent.ResultContent(e.Result, e.Err),
 			IsError:    e.Err != nil,
-		})
+		}, e.Result.Details)
 	default:
 		// AgentStarted, MessageReceived, and the loop's events the interface
 		// has nothing to draw for. A message entering the inbox is already on
@@ -253,7 +253,7 @@ func applyPreTool(m *Model, tc core.ToolCall) {
 	m.Tool.MarkStarted(tc.ID)
 }
 
-func applyPostTool(rt Runtime, m *Model, tr core.ToolResult) tea.Cmd {
+func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
 	m.Stream.BuildingTool = ""
 	if tool.IsAgentToolName(tr.ToolName) {
 		m.TaskActivity = nil
@@ -271,10 +271,9 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult) tea.Cmd {
 			}
 		}
 	}
-	result, details := rt.OnToolResult(tr)
 	m.Append(core.ChatMessage{
 		Role:        core.ChatUser,
-		ToolResult:  result,
+		ToolResult:  rt.OnToolResult(tr),
 		ToolDetails: details,
 		// Stamp the auto-review decision (if this call was judged) onto the
 		// result message so it renders inline under the tool call. Consumed

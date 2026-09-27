@@ -15,6 +15,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 // One turn through PreInfer + PostInfer must produce one inference.requested
@@ -355,4 +356,41 @@ func TestRecorderWritesInferenceFailed(t *testing.T) {
 	if failed[1].Retryable {
 		t.Errorf("a plain error classified as retryable: %+v", failed[1])
 	}
+}
+
+// A tool's details — an edit's diff — are recorded with its result, so a
+// resumed session can draw them again. They arrive on ToolEnd, before the
+// message carrying the result.
+func TestRecorderKeepsToolDetailsWithTheResult(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-d", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	rec := NewRecorder(RecorderOptions{FileStore: fs, SessionID: "sess-d", AgentID: "main"})
+
+	diff := toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "@@ -1 +1 @@\n-old\n+new\n", AddedLines: 1, RemovedLines: 1}
+	rec.OnAgentEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
+	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "call-1", ToolName: "Edit", Content: ai.TextContent("Edited a.go")})
+	msg.ID = "m-result"
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+
+	for _, r := range readAllRecords(t, dir, "sess-d") {
+		if r.Type != transcript.MessageAppended || r.Message == nil || r.Message.MessageID != "m-result" {
+			continue
+		}
+		for _, b := range r.Message.Content {
+			var got toolresult.FileChangeDetails
+			if b.Type == "tool_result" && json.Unmarshal(b.EditDetails, &got) == nil && got.UnifiedDiff == diff.UnifiedDiff {
+				return
+			}
+		}
+		t.Fatalf("result recorded without its diff: %+v", r.Message.Content)
+	}
+	t.Fatal("the result's message.appended was not recorded")
 }
