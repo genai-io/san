@@ -394,3 +394,24 @@ func TestRecorderKeepsToolDetailsWithTheResult(t *testing.T) {
 	}
 	t.Fatal("the result's message.appended was not recorded")
 }
+
+// A batch whose results were never appended — a failed PostTool hook — leaves
+// its details behind; the next inference drops them rather than holding them
+// for the session.
+func TestRecorderDropsDetailsTheLastBatchNeverAppended(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewFileStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewFileStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{SessionID: "sess-e", Cwd: "/tmp", Time: time.Now()}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	rec := NewRecorder(RecorderOptions{FileStore: fs, SessionID: "sess-e", AgentID: "main"})
+
+	rec.OnAgentEvent(sdkagent.ToolEnd{ID: "orphan", Name: "Bash", Result: sdkagent.Result{Details: toolresult.BashDetails{}}})
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{}})
+	if n := len(rec.toolDetails); n != 0 {
+		t.Fatalf("%d details still held after the next inference", n)
+	}
+}

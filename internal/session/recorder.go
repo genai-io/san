@@ -32,7 +32,8 @@ type Recorder struct {
 	lastRequest   *requestState
 	lastMessageID string // for parentId on message.appended
 	// toolDetails holds each finished call's Result.Details, from ToolEnd,
-	// until the message carrying its result is appended.
+	// until the message carrying its result is appended; the next inference
+	// drops any a failed batch never appended.
 	toolDetails map[string]any
 }
 
@@ -83,6 +84,7 @@ func NewRecorder(opts RecorderOptions) *Recorder {
 		sessionID:   opts.SessionID,
 		agentID:     opts.AgentID,
 		isSidechain: opts.Sidechain,
+		toolDetails: make(map[string]any),
 	}
 }
 
@@ -210,9 +212,6 @@ func (r *Recorder) onToolEnd(e sdkagent.ToolEnd) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.toolDetails == nil {
-		r.toolDetails = make(map[string]any)
-	}
 	r.toolDetails[e.ID] = e.Result.Details
 }
 
@@ -233,15 +232,15 @@ func (r *Recorder) onAppend(msg core.Message) {
 	// it. ChatRowsOf is that view with nothing drawn on it yet, which is
 	// exactly what an agent-side message is.
 	var content []ContentBlock
+	r.mu.Lock()
 	for _, row := range core.ChatRowsOf(msg) {
 		if row.ToolResult != nil {
-			r.mu.Lock()
 			row.ToolDetails = r.toolDetails[row.ToolResult.ToolCallID]
 			delete(r.toolDetails, row.ToolResult.ToolCallID)
-			r.mu.Unlock()
 		}
 		content = append(content, MessageToBlocks(row)...)
 	}
+	r.mu.Unlock()
 	if len(content) == 0 {
 		return // control signals etc. aren't model-visible
 	}
@@ -334,6 +333,7 @@ func (r *Recorder) onInferenceRequested(e sdkagent.MessageStart) {
 	now := time.Now()
 
 	r.mu.Lock()
+	clear(r.toolDetails) // every result the last batch appended has taken its own
 	r.lastRequest = &requestState{
 		turn:       turn,
 		startedAt:  now,

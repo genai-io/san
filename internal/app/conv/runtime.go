@@ -29,8 +29,8 @@ type AgentOutboxMsg struct {
 type Runtime interface {
 	// ── On*: agent lifecycle ────────────────────────────────────
 	OnInference(resp *ai.Response) // PostInfer
-	// OnToolResult hands back what the model is told and, separately, the
-	// structured form the interface draws. They are two audiences.
+	// OnToolResult hands back the result message the model is told; the
+	// structured form the interface draws arrives separately, on ToolEnd.
 	OnToolResult(tr core.ToolResult) *core.ToolResult
 	// OnStepEnd fires when a tool batch completes and the turn continues, so
 	// pending work (parked notices, one queued user message) can reach the
