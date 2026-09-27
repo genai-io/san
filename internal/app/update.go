@@ -356,9 +356,11 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case flushResultMsg:
 		return m, m.handleFlushResult(msg)
 	case scrollbackPrintReadyMsg:
-		// Every overlay renders in the alternate screen (see View), and a Println
-		// there lands in that buffer and vanishes with it. Keep the queued payload
-		// intact and restart it when the overlay closes.
+		// Hold prints while an overlay is up: a full-screen panel draws on the
+		// alternate screen, where a Println vanishes with the buffer, and a docked
+		// modal draws inline, where insertAbove would carry the prompt into
+		// scrollback with it. Keep the queued payload intact and restart it when
+		// the overlay closes.
 		if _, active := m.activeOverlay(); active {
 			return m, nil
 		}

@@ -34,10 +34,11 @@ func (m *model) View() tea.View {
 	content, cursor := m.viewString()
 	v := tea.NewView(content)
 	v.Cursor = cursor
-	// Overlays are transient, not transcript: drawn inline, a tall frame leaks
-	// into the primary buffer and its top rows outlive the close. The alternate
-	// screen keeps it out of history and restores the conversation on close.
-	if _, active := m.activeOverlay(); active {
+	// Full-screen panels are transient, not transcript: drawn inline, their
+	// top rows outlive the close. The alternate screen keeps them out of
+	// history and restores the conversation on close. A docked modal stays
+	// inline, where the composer sat, under the conversation it asks about.
+	if ov, active := m.activeOverlay(); active && !isDockedModal(ov) {
 		v.AltScreen = true
 	}
 	return v
