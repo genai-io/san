@@ -57,13 +57,13 @@ func (m *mockLLMProvider) Name() string { return "mock" }
 
 type mockLimitFetcherProvider struct {
 	mockLLMProvider
-	inputLimit  int
-	outputLimit int
-	fetchErr    error
+	contextWindow int
+	maxOutput     int
+	fetchErr      error
 }
 
 func (m *mockLimitFetcherProvider) FetchModelLimits(_ context.Context, _ string) (int, int, error) {
-	return m.inputLimit, m.outputLimit, m.fetchErr
+	return m.contextWindow, m.maxOutput, m.fetchErr
 }
 
 // --- LLM tests ---
@@ -223,7 +223,7 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 		mockLLMProvider: mockLLMProvider{
 			models: []ModelInfo{{ID: "m"}},
 		},
-		outputLimit: 16000,
+		maxOutput: 16000,
 	}
 	l := &Client{provider: mp, model: "m"}
 
@@ -238,8 +238,8 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 func TestModelLimitsFallBackToTheFetcher(t *testing.T) {
 	mp := &mockLimitFetcherProvider{
 		mockLLMProvider: mockLLMProvider{models: []ModelInfo{{ID: "m"}}},
-		inputLimit:      400000,
-		outputLimit:     8192,
+		contextWindow:   400000,
+		maxOutput:       8192,
 	}
 
 	in, out, _ := resolveModelLimits(mp, "m")

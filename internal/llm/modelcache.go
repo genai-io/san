@@ -22,9 +22,9 @@ type modelCache struct {
 	Models   []ModelInfo `json:"models"`
 }
 
-// tokenLimitOverride is the window and output cap the user set by hand for a
+// contextLimit is the window and output cap the user set by hand for a
 // model, via /context limit. It outranks anything a provider published.
-type tokenLimitOverride struct {
+type contextLimit struct {
 	ContextWindow int `json:"inputTokenLimit"`
 	MaxOutput     int `json:"outputTokenLimit"`
 }
@@ -157,7 +157,7 @@ func (s *Store) cachedModel(provider ProviderID, authMethod AuthMethod, id strin
 
 // CachedModelLimitsForProvider returns a model's token limits from one
 // provider's listing, or (0, 0) when it states no window.
-func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod AuthMethod, id string) (inputLimit, outputLimit int) {
+func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod AuthMethod, id string) (contextWindow, maxOutput int) {
 	m, ok := s.cachedModel(provider, authMethod, id, func(m ModelInfo) bool { return m.ContextWindow > 0 })
 	if !ok {
 		return 0, 0
@@ -181,18 +181,18 @@ func (s *Store) CachedModelLimitsForProvider(provider ProviderID, authMethod Aut
 // randomizes map iteration order, so returning the first hit would flicker the
 // status bar between providers. Scans in place without allocating, since it
 // feeds the status bar on every render.
-func (s *Store) CachedModelLimits(id string) (inputLimit, outputLimit int) {
+func (s *Store) CachedModelLimits(id string) (contextWindow, maxOutput int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	for _, cache := range s.data.Models {
 		for _, m := range cache.Models {
-			if m.ID == id && m.ContextWindow > inputLimit {
-				inputLimit, outputLimit = m.ContextWindow, m.MaxOutput
+			if m.ID == id && m.ContextWindow > contextWindow {
+				contextWindow, maxOutput = m.ContextWindow, m.MaxOutput
 			}
 		}
 	}
-	return inputLimit, outputLimit
+	return contextWindow, maxOutput
 }
 
 // CachedModelReasoningForProvider returns a model's reasoning ladder from one
@@ -207,33 +207,33 @@ func (s *Store) CachedModelReasoningForProvider(provider ProviderID, authMethod 
 	return m.Reasoning, true
 }
 
-// SetTokenLimit overrides a model's context window and max output by hand. It
+// SetContextLimit overrides a model's context window and max output by hand. It
 // outranks every cached listing (see EffectiveContextWindow), so the cache is
-// left alone and ClearTokenLimit restores what the provider said.
-func (s *Store) SetTokenLimit(modelID string, contextWindow, maxOutput int) error {
+// left alone and ClearContextLimit restores what the provider said.
+func (s *Store) SetContextLimit(modelID string, contextWindow, maxOutput int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.initMaps()
-	s.data.TokenLimits[modelID] = tokenLimitOverride{ContextWindow: contextWindow, MaxOutput: maxOutput}
+	s.data.ContextLimits[modelID] = contextLimit{ContextWindow: contextWindow, MaxOutput: maxOutput}
 	return s.save()
 }
 
-// ClearTokenLimit drops a model's hand-set override.
-func (s *Store) ClearTokenLimit(modelID string) error {
+// ClearContextLimit drops a model's hand-set override.
+func (s *Store) ClearContextLimit(modelID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.data.TokenLimits, modelID)
+	delete(s.data.ContextLimits, modelID)
 	return s.save()
 }
 
-// TokenLimit returns custom token limits for a model
-func (s *Store) TokenLimit(modelID string) (inputLimit, outputLimit int, ok bool) {
+// ContextLimit returns custom token limits for a model
+func (s *Store) ContextLimit(modelID string) (contextWindow, maxOutput int, ok bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	override, exists := s.data.TokenLimits[modelID]
+	override, exists := s.data.ContextLimits[modelID]
 	if !exists {
 		return 0, 0, false
 	}
@@ -257,7 +257,7 @@ func (s *Store) EffectiveContextWindow(provider ProviderID, auth AuthMethod, mod
 	if s == nil || modelID == "" {
 		return 0
 	}
-	if in, _, ok := s.TokenLimit(modelID); ok && in > 0 {
+	if in, _, ok := s.ContextLimit(modelID); ok && in > 0 {
 		return in
 	}
 	if in, _ := s.CachedModelLimitsForProvider(provider, auth, modelID); in > 0 {

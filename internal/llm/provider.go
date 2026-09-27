@@ -238,7 +238,7 @@ func CachesToolsAndSystemPrompt(p Provider) bool {
 // publishes a window for none. Reached for only when a listing came back
 // without one.
 type ModelLimitsFetcher interface {
-	FetchModelLimits(ctx context.Context, modelID string) (inputLimit, outputLimit int, err error)
+	FetchModelLimits(ctx context.Context, modelID string) (contextWindow, maxOutput int, err error)
 }
 
 // TurnHeaderProvider is implemented by an endpoint whose headers depend on

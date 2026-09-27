@@ -38,7 +38,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 		ContextTokens: m.env.ContextTokens,
 	}
 	if store != nil && current != nil {
-		_, _, usage.Overridden = store.TokenLimit(current.ModelID)
+		_, _, usage.Overridden = store.ContextLimit(current.ModelID)
 	}
 
 	sys, tools := m.services.Agent.System(), m.services.Agent.Tools()

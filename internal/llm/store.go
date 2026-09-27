@@ -66,13 +66,13 @@ type CustomProviderConfig struct {
 
 // storeData is providers.json, as written.
 type storeData struct {
-	Connections     map[string]ConnectionInfo     `json:"connections"`               // key: provider
-	Models          map[string]modelCache         `json:"models"`                    // key: provider:authMethod
-	Current         *CurrentModelInfo             `json:"current"`                   // current model with provider info
-	SearchProvider  *string                       `json:"searchProvider,omitempty"`  // search provider name (exa, serper, brave)
-	TokenLimits     map[string]tokenLimitOverride `json:"tokenLimits,omitempty"`     // key: modelID
-	ThinkingEfforts map[string]string             `json:"thinkingEfforts,omitempty"` // key: modelID; value: provider-native effort label
-	CustomProvider  *CustomProviderConfig         `json:"customProvider,omitempty"`  // user-defined OpenAI-compatible provider
+	Connections     map[string]ConnectionInfo `json:"connections"`               // key: provider
+	Models          map[string]modelCache     `json:"models"`                    // key: provider:authMethod
+	Current         *CurrentModelInfo         `json:"current"`                   // current model with provider info
+	SearchProvider  *string                   `json:"searchProvider,omitempty"`  // search provider name (exa, serper, brave)
+	ContextLimits   map[string]contextLimit   `json:"tokenLimits,omitempty"`     // key: modelID
+	ThinkingEfforts map[string]string         `json:"thinkingEfforts,omitempty"` // key: modelID; value: provider-native effort label
+	CustomProvider  *CustomProviderConfig     `json:"customProvider,omitempty"`  // user-defined OpenAI-compatible provider
 }
 
 // Store is providers.json, open. Every accessor locks; the data is unexported
@@ -154,8 +154,8 @@ func (s *Store) initMaps() {
 	if s.data.Models == nil {
 		s.data.Models = make(map[string]modelCache)
 	}
-	if s.data.TokenLimits == nil {
-		s.data.TokenLimits = make(map[string]tokenLimitOverride)
+	if s.data.ContextLimits == nil {
+		s.data.ContextLimits = make(map[string]contextLimit)
 	}
 	if s.data.ThinkingEfforts == nil {
 		s.data.ThinkingEfforts = make(map[string]string)

@@ -82,7 +82,7 @@ func (c *modelLimits) resolve(p Provider, model string) {
 //
 // answered reports whether the provider replied, not whether it knew: a 0
 // alongside answered=true is the provider saying it publishes no figure.
-func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
+func resolveModelLimits(p Provider, model string) (contextWindow, maxOutput int, answered bool) {
 	if p == nil {
 		return 0, 0, false
 	}
@@ -92,21 +92,21 @@ func resolveModelLimits(p Provider, model string) (in, out int, answered bool) {
 	}
 	for _, m := range models {
 		if m.ID == model {
-			in, out = m.ContextWindow, m.MaxOutput
+			contextWindow, maxOutput = m.ContextWindow, m.MaxOutput
 			break
 		}
 	}
 
 	// Either the listing stated everything, or it is all there is to ask.
 	fetcher, ok := p.(ModelLimitsFetcher)
-	if (in > 0 && out > 0) || !ok {
-		return in, out, true
+	if (contextWindow > 0 && maxOutput > 0) || !ok {
+		return contextWindow, maxOutput, true
 	}
-	fetchedIn, fetchedOut, err := fetcher.FetchModelLimits(context.TODO(), model)
+	fetchedWindow, fetchedOutput, err := fetcher.FetchModelLimits(context.TODO(), model)
 	if err != nil {
-		return in, out, false // incomplete for a reason that may pass
+		return contextWindow, maxOutput, false // incomplete for a reason that may pass
 	}
-	return max(in, fetchedIn), max(out, fetchedOut), true
+	return max(contextWindow, fetchedWindow), max(maxOutput, fetchedOutput), true
 }
 
 // NewClient fixes a model on a provider. maxTokens=0 means resolve the cap
