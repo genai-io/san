@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/tool/perm"
 )
@@ -71,13 +72,13 @@ func (b *approvalBashPreview) render(width int) string {
 
 	for i := 0; i < showCount; i++ {
 		sb.WriteString("   ")
-		sb.WriteString(approvalBashCommandStyle().Render(approvalTruncateContent(lines[i], contentWidth)))
+		sb.WriteString(approvalBashCommandStyle().Render(ansi.Truncate(lines[i], contentWidth, "...")))
 		sb.WriteString("\n")
 	}
 
 	if b.bashMeta.Description != "" {
 		sb.WriteString("   ")
-		sb.WriteString(approvalBashDescStyle().Render(approvalTruncateContent(b.bashMeta.Description, contentWidth)))
+		sb.WriteString(approvalBashDescStyle().Render(ansi.Truncate(b.bashMeta.Description, contentWidth, "...")))
 		sb.WriteString("\n")
 	}
 

@@ -42,7 +42,7 @@ func TestLoadPersona_AllowListRestrictsVisibility(t *testing.T) {
 	old := Default()
 	SetDefaultRegistry(r)
 	t.Cleanup(func() { SetDefaultRegistry(old) })
-	if config, ok := resolveAgentConfig(""); !ok || config.Name != "" {
+	if config, ok := resolveAgentConfigFrom(Default(), ""); !ok || config.Name != "" {
 		t.Fatalf("unnamed config = %#v, %v", config, ok)
 	}
 

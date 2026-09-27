@@ -654,19 +654,19 @@ func TestResolveAgentConfigUsesUnnamedAndNamedDefinitions(t *testing.T) {
 	Default().Register(named)
 	Default().Register(literalSubagent)
 
-	unnamed, ok := resolveAgentConfig("")
+	unnamed, ok := resolveAgentConfigFrom(Default(), "")
 	if !ok || unnamed.Name != "" {
 		t.Fatalf("unnamed config = %#v, %v; want empty name", unnamed, ok)
 	}
-	resolved, ok := resolveAgentConfig("reviewer")
+	resolved, ok := resolveAgentConfigFrom(Default(), "reviewer")
 	if !ok || resolved != named {
 		t.Fatalf("named config = %#v, %v; want registered config", resolved, ok)
 	}
-	resolved, ok = resolveAgentConfig("subagent")
+	resolved, ok = resolveAgentConfigFrom(Default(), "subagent")
 	if !ok || resolved != literalSubagent {
 		t.Fatalf("explicit subagent config = %#v, %v; want registered config", resolved, ok)
 	}
-	resolved, ok = resolveAgentConfig("missing")
+	resolved, ok = resolveAgentConfigFrom(Default(), "missing")
 	if !ok {
 		t.Fatal("unknown agent name should resolve through the base template")
 	}
@@ -691,7 +691,7 @@ func TestResolveAgentConfigRejectsDisabledDefinition(t *testing.T) {
 	if err := registry.SetEnabled("reviewer", false, setting.ScopeProject); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := resolveAgentConfig("reviewer"); ok {
+	if _, ok := resolveAgentConfigFrom(Default(), "reviewer"); ok {
 		t.Fatal("disabled agent should not resolve")
 	}
 }
@@ -834,7 +834,7 @@ func TestParentPermissionModeGetterIsReadPerRequest(t *testing.T) {
 }
 
 func TestUnnamedAgentUses500Steps(t *testing.T) {
-	config, ok := resolveAgentConfig("")
+	config, ok := resolveAgentConfigFrom(Default(), "")
 	if !ok {
 		t.Fatal("unnamed agent config not found")
 	}

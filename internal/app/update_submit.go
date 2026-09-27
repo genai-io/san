@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/image"
 	"github.com/genai-io/san/internal/llm"
@@ -237,7 +238,7 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 	content := msg.Text()
-	log.Logger().Sugar().Debugf("SubmitToAgent: %q", truncate(content, 60))
+	log.Logger().Sugar().Debugf("SubmitToAgent: %q", kit.TruncateText(content, 60))
 	if m.env.LLMProvider == nil {
 		return m.notifyNoProvider()
 	}

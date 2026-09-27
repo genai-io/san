@@ -264,13 +264,9 @@ func baseAgentConfig() *AgentConfig {
 	}
 }
 
-// resolveAgentConfig returns the base configuration for an omitted or unknown
-// name. A matching enabled definition overrides the base configuration; a
-// matching disabled definition is rejected instead of silently bypassed.
-func resolveAgentConfig(name string) (*AgentConfig, bool) {
-	return resolveAgentConfigFrom(Default(), name)
-}
-
+// resolveAgentConfigFrom returns the base configuration for an omitted or
+// unknown name. A matching enabled definition overrides the base configuration;
+// a matching disabled definition is rejected instead of silently bypassed.
 func resolveAgentConfigFrom(registry *Registry, name string) (*AgentConfig, bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
