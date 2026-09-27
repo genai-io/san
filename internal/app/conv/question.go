@@ -28,7 +28,7 @@ type QuestionPrompt struct {
 // NewQuestionPrompt creates a new QuestionPrompt
 func NewQuestionPrompt() *QuestionPrompt {
 	ti := textinput.New()
-	ti.Placeholder = "Type your answer..."
+	ti.Prompt = "" // the row's number leads the input
 	ti.CharLimit = 200
 	ti.SetWidth(50)
 
@@ -457,6 +457,11 @@ func (p *QuestionPrompt) Render() string {
 			prefix = "( )"
 		}
 
+		if i == customIdx {
+			sb.WriteString(p.customRow(prefix, i+1, isHighlighted, opt.Description))
+			continue
+		}
+
 		optBody := fmt.Sprintf("%s %d. %s", prefix, i+1, opt.Label)
 		if isHighlighted {
 			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(optBody))
@@ -464,14 +469,7 @@ func (p *QuestionPrompt) Render() string {
 			sb.WriteString(getQuestionUnselectedStyle().Render("   " + optBody))
 		}
 
-		if i == customIdx {
-			desc := opt.Description
-			if desc == "" {
-				desc = "Type custom response"
-			}
-			sb.WriteString(" - ")
-			sb.WriteString(getQuestionDescStyle().Render(desc))
-		} else if opt.Description != "" {
+		if opt.Description != "" {
 			sb.WriteString(" - ")
 			sb.WriteString(getQuestionDescStyle().Render(opt.Description))
 		}
@@ -479,37 +477,18 @@ func (p *QuestionPrompt) Render() string {
 	}
 
 	if customIdx == len(currentQ.Options) {
-		isOtherHighlighted := curOption == customIdx
-
-		otherPrefix := "( )"
-		if isMulti {
-			otherPrefix = "[ ]"
+		highlighted := curOption == customIdx
+		answered := p.customAnswers[p.currentQuestion] != ""
+		prefix := "( )"
+		switch {
+		case isMulti && answered:
+			prefix = "[\u2713]"
+		case isMulti:
+			prefix = "[ ]"
+		case highlighted || answered:
+			prefix = "(\u25CF)"
 		}
-
-		otherBody := fmt.Sprintf("%s %d. Other", otherPrefix, customIdx+1)
-		if isOtherHighlighted {
-			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(otherBody))
-		} else {
-			sb.WriteString(getQuestionUnselectedStyle().Render("   " + otherBody))
-		}
-		sb.WriteString(" - ")
-		sb.WriteString(getQuestionDescStyle().Render("Type custom response"))
-		sb.WriteString("\n")
-	}
-
-	if p.showingCustom {
-		sb.WriteString("\n")
-		sb.WriteString("   ")
-		sb.WriteString(p.customInput.View())
-		sb.WriteString("\n")
-	}
-
-	if !p.showingCustom {
-		if customText, ok := p.customAnswers[p.currentQuestion]; ok {
-			sb.WriteString("   ")
-			sb.WriteString(getQuestionDescStyle().Render("answered: " + customText))
-			sb.WriteString("\n")
-		}
+		sb.WriteString(p.customRow(prefix, customIdx+1, highlighted, ""))
 	}
 
 	sb.WriteString("\n")
@@ -528,4 +507,28 @@ func (p *QuestionPrompt) Render() string {
 	sb.WriteString(getQuestionSeparatorStyle().Render(solidSep))
 
 	return sb.String()
+}
+
+// customRow draws the free-text row: its number, then the answer being typed
+// in place, the answer given, or a prompt to type one. The option's own label
+// ("Other") is not shown; the row says what to do instead.
+func (p *QuestionPrompt) customRow(prefix string, n int, highlighted bool, hint string) string {
+	if hint == "" {
+		hint = "Type custom response"
+	}
+	head := fmt.Sprintf("%s %d. ", prefix, n)
+	var body string
+	switch answer := p.customAnswers[p.currentQuestion]; {
+	case p.showingCustom:
+		p.customInput.Placeholder = hint
+		body = p.customInput.View()
+	case answer != "":
+		body = answer
+	default:
+		body = getQuestionDescStyle().Render(hint)
+	}
+	if highlighted {
+		return " " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(head) + body + "\n"
+	}
+	return getQuestionUnselectedStyle().Render("   "+head) + body + "\n"
 }

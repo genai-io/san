@@ -50,11 +50,11 @@ func TestQuestionPromptRenderDoesNotDuplicateOtherOption(t *testing.T) {
 	}, 80)
 
 	plain := stripANSI(p.Render())
-	if count := strings.Count(plain, "Other"); count != 1 {
-		t.Fatalf("expected one Other option, got %d:\n%s", count, plain)
+	if strings.Contains(plain, "Other") {
+		t.Fatalf("the free-text row should say what to do, not show the Other label:\n%s", plain)
 	}
-	if !strings.Contains(plain, "4. Other - Type custom response") {
-		t.Fatalf("existing Other option should be used for custom input:\n%s", plain)
+	if !strings.Contains(plain, "4. Type custom response") || strings.Contains(plain, "5.") {
+		t.Fatalf("the model's own Other option should be the one free-text row:\n%s", plain)
 	}
 }
 
@@ -89,5 +89,37 @@ func TestQuestionPromptTypesStraightIntoTheOtherRow(t *testing.T) {
 	}
 	if got := resp.Response.Answers[0]; len(got) != 1 || got[0] != "9090" {
 		t.Fatalf("answer = %q, want the typed 9090", got)
+	}
+}
+
+// What is typed sits on the free-text row itself, after its number, not on a
+// line of its own below the options.
+func TestQuestionPromptTypesOnTheOtherRow(t *testing.T) {
+	p := NewQuestionPrompt()
+	p.Show(&tool.QuestionRequest{
+		ID: "ask-1",
+		Questions: []tool.Question{{
+			Question: "Which port?",
+			Options:  []tool.QuestionOption{{Label: "8080"}, {Label: "3000"}},
+		}},
+	}, 80)
+	p.handleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+	p.handleKeypress(tea.KeyPressMsg{Code: tea.KeyDown})
+	for _, r := range "9090" {
+		p.handleKeypress(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+
+	plain := stripANSI(p.Render())
+	var row string
+	for line := range strings.SplitSeq(plain, "\n") {
+		if strings.Contains(line, "3. ") {
+			row = line
+		}
+	}
+	if !strings.Contains(row, "3. 9090") {
+		t.Fatalf("typed text should follow the row number, got row %q in:\n%s", row, plain)
+	}
+	if strings.Count(plain, "9090") != 1 {
+		t.Fatalf("typed text should appear once, on its row:\n%s", plain)
 	}
 }
