@@ -69,8 +69,11 @@ chunking, resize — keeps all of them or it is wrong.
    load-bearing, not a corner.
 
 5. **Nothing transient rides in the inline frame while a print is pending.**
-   Overlays render in the alternate screen (#517); a print whose turn comes
-   while an overlay owns the frame waits and restarts when it closes.
+   Full-screen panels render in the alternate screen (#517), where a print
+   would vanish with the buffer; docked prompts (approval, question) render
+   inline in the composer's place (#573), where insertAbove would carry the
+   prompt into scrollback. Either way, a print whose turn comes while an
+   overlay owns the frame waits and restarts when it closes.
 
 6. **A resize redraw reaches the frame's top through the rows the terminal
    rewrapped.** The redraw moves up by the cursor's row *within* the frame,

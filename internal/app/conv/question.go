@@ -28,7 +28,7 @@ type QuestionPrompt struct {
 // NewQuestionPrompt creates a new QuestionPrompt
 func NewQuestionPrompt() *QuestionPrompt {
 	ti := textinput.New()
-	ti.Placeholder = "Type your answer..."
+	ti.Prompt = "" // the row's number leads the input
 	ti.CharLimit = 200
 	ti.SetWidth(50)
 
@@ -134,6 +134,21 @@ func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 	}
 	curOption := p.selectedOption[p.currentQuestion]
 
+	// On the free-text row, typing answers: the first key opens the input and
+	// lands in it, and a digit there is text rather than an option shortcut.
+	if curOption == customIdx {
+		if key := msg.String(); key == "space" || key == "enter" {
+			p.openCustom(currentQ)
+			return nil, nil
+		}
+		if text := msg.Key().Text; text != "" {
+			p.openCustom(currentQ)
+			var cmd tea.Cmd
+			p.customInput, cmd = p.customInput.Update(msg)
+			return cmd, nil
+		}
+	}
+
 	switch msg.String() {
 	case "left":
 		if len(p.request.Questions) > 1 && p.currentQuestion > 0 {
@@ -169,12 +184,6 @@ func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 		return nil, nil
 
 	case "space":
-		if curOption == customIdx {
-			p.showingCustom = true
-			p.customInput.Focus()
-			p.restoreCustomInput()
-			return nil, nil
-		}
 		if currentQ.MultiSelect {
 			p.toggleSelection()
 		} else {
@@ -188,13 +197,6 @@ func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 		return nil, nil
 
 	case "enter":
-		if curOption == customIdx {
-			p.showingCustom = true
-			p.customInput.Focus()
-			p.restoreCustomInput()
-			return nil, nil
-		}
-
 		if !currentQ.MultiSelect {
 			p.selected[p.currentQuestion] = []int{curOption}
 		} else if len(p.selected[p.currentQuestion]) == 0 {
@@ -219,9 +221,7 @@ func (p *QuestionPrompt) handleKeypress(msg tea.KeyMsg) (tea.Cmd, *QuestionRespo
 			p.selectedOption[p.currentQuestion] = optionIdx
 
 			if optionIdx == customIdx {
-				p.showingCustom = true
-				p.customInput.Focus()
-				p.restoreCustomInput()
+				p.openCustom(currentQ)
 				return nil, nil
 			}
 
@@ -432,16 +432,11 @@ func (p *QuestionPrompt) Render() string {
 		isHighlighted := i == curOption
 		isSelected := selectedSet[i]
 
-		var prefix string
-		switch {
-		case isMulti && isSelected:
-			prefix = "[\u2713]"
-		case isMulti:
-			prefix = "[ ]"
-		case isSelected || isHighlighted:
-			prefix = "(\u25CF)"
-		default:
-			prefix = "( )"
+		prefix := optionPrefix(isMulti, isSelected, isHighlighted)
+
+		if i == customIdx {
+			sb.WriteString(p.customRow(prefix, i+1, isHighlighted, opt.Description))
+			continue
 		}
 
 		optBody := fmt.Sprintf("%s %d. %s", prefix, i+1, opt.Label)
@@ -451,14 +446,7 @@ func (p *QuestionPrompt) Render() string {
 			sb.WriteString(getQuestionUnselectedStyle().Render("   " + optBody))
 		}
 
-		if i == customIdx {
-			desc := opt.Description
-			if desc == "" {
-				desc = "Type custom response"
-			}
-			sb.WriteString(" - ")
-			sb.WriteString(getQuestionDescStyle().Render(desc))
-		} else if opt.Description != "" {
+		if opt.Description != "" {
 			sb.WriteString(" - ")
 			sb.WriteString(getQuestionDescStyle().Render(opt.Description))
 		}
@@ -466,37 +454,9 @@ func (p *QuestionPrompt) Render() string {
 	}
 
 	if customIdx == len(currentQ.Options) {
-		isOtherHighlighted := curOption == customIdx
-
-		otherPrefix := "( )"
-		if isMulti {
-			otherPrefix = "[ ]"
-		}
-
-		otherBody := fmt.Sprintf("%s %d. Other", otherPrefix, customIdx+1)
-		if isOtherHighlighted {
-			sb.WriteString(" " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(otherBody))
-		} else {
-			sb.WriteString(getQuestionUnselectedStyle().Render("   " + otherBody))
-		}
-		sb.WriteString(" - ")
-		sb.WriteString(getQuestionDescStyle().Render("Type custom response"))
-		sb.WriteString("\n")
-	}
-
-	if p.showingCustom {
-		sb.WriteString("\n")
-		sb.WriteString("   ")
-		sb.WriteString(p.customInput.View())
-		sb.WriteString("\n")
-	}
-
-	if !p.showingCustom {
-		if customText, ok := p.customAnswers[p.currentQuestion]; ok {
-			sb.WriteString("   ")
-			sb.WriteString(getQuestionDescStyle().Render("answered: " + customText))
-			sb.WriteString("\n")
-		}
+		highlighted := curOption == customIdx
+		answered := p.customAnswers[p.currentQuestion] != ""
+		sb.WriteString(p.customRow(optionPrefix(isMulti, answered, highlighted), customIdx+1, highlighted, ""))
 	}
 
 	sb.WriteString("\n")
@@ -515,4 +475,61 @@ func (p *QuestionPrompt) Render() string {
 	sb.WriteString(getQuestionSeparatorStyle().Render(solidSep))
 
 	return sb.String()
+}
+
+// customRow draws the free-text row: its number, then the answer being typed
+// in place, the answer given, or a prompt to type one. The option's own label
+// ("Other") is not shown; the row says what to do instead.
+func (p *QuestionPrompt) customRow(prefix string, n int, highlighted bool, hint string) string {
+	head := fmt.Sprintf("%s %d. ", prefix, n)
+	var body string
+	switch answer := p.customAnswers[p.currentQuestion]; {
+	case p.showingCustom:
+		body = p.customInput.View()
+	case answer != "":
+		body = answer
+	default:
+		body = getQuestionDescStyle().Render(customHint(hint))
+	}
+	if highlighted {
+		return " " + kit.FocusBarStyle().Render(kit.FocusBar) + " " + getQuestionSelectedStyle().Render(head) + body + "\n"
+	}
+	return getQuestionUnselectedStyle().Render("   "+head) + body + "\n"
+}
+
+// openCustom focuses the free-text row's input, restoring any answer already
+// typed for this question and prompting with the row's hint.
+func (p *QuestionPrompt) openCustom(q tool.Question) {
+	var description string
+	if i := customOptionIndex(q); i < len(q.Options) {
+		description = q.Options[i].Description
+	}
+	p.showingCustom = true
+	p.customInput.Placeholder = customHint(description)
+	p.customInput.Focus()
+	p.restoreCustomInput()
+}
+
+// customHint is what the free-text row says before anything is typed: the
+// option's own description, else an invitation to type.
+func customHint(description string) string {
+	if description == "" {
+		return "Type custom response"
+	}
+	return description
+}
+
+// optionPrefix is a row's radio or checkbox: filled when checked, and for a
+// single choice also when highlighted.
+func optionPrefix(isMulti, checked, highlighted bool) string {
+	switch {
+	case isMulti && checked:
+		return "[\u2713]"
+	case isMulti:
+		return "[ ]"
+	case checked || highlighted:
+		return "(\u25CF)"
+	default:
+		return "( )"
+	}
 }

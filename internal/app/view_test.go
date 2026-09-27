@@ -283,14 +283,12 @@ func TestDockedModalDropsDeadExpandHint(t *testing.T) {
 	}
 }
 
-// No overlay may enter terminal history as part of inline redraw: the primary
-// buffer stays reserved for the committed conversation. A docked prompt is
-// transient interaction; a full-screen picker is Height-2 rows, and shrinking
-// back to the composer inline strands the picker's top rows above it.
-func TestOverlaysUseAlternateScreen(t *testing.T) {
+// A full-screen picker takes the alternate screen; a docked modal stays
+// inline, where the composer sat, under the conversation it asks about.
+func TestOnlyFullScreenPanelsUseAlternateScreen(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	if view := m.View(); !view.AltScreen {
-		t.Fatal("docked approval modal must render in the alternate screen")
+	if view := m.View(); view.AltScreen {
+		t.Fatal("docked approval modal must render inline, where the composer sits")
 	}
 	m.userInput.Approval.Hide()
 	m.userInput.Settings.Enter(m.env.Width, m.env.Height)
