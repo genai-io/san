@@ -358,7 +358,7 @@ func (m model) renderModeStatus() string {
 		Mode:              m.env.OperationMode,
 		ContextTokens:     m.env.ContextTokens,
 		ContextWindow:     window,
-		PromptBudget:      budget,
+		ContextBudget:     budget,
 		ModelName:         modelName,
 		StatusMessage:     m.userInput.Provider.StatusMessage,
 		ConversationCost:  m.env.ConversationCost,

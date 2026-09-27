@@ -266,7 +266,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 		ModelName:        "claude-sonnet-4-6",
 		ContextTokens:    142000,
 		ContextWindow:    200000,
-		PromptBudget:     200000,
+		ContextBudget:    200000,
 		ConversationCost: llm.NewCostTotal(llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD}),
 		ShowContextBar:   true,
 		Width:            120,
@@ -296,7 +296,7 @@ func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 		ModelName:     "claude-sonnet-4-6",
 		ContextTokens: 142000,
 		ContextWindow: 200000,
-		PromptBudget:  200000,
+		ContextBudget: 200000,
 		Width:         120,
 	})
 	visible := stripANSI(rendered)
@@ -313,7 +313,7 @@ func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 		ModelName:      "claude-sonnet-4-6",
 		ContextTokens:  190000,
 		ContextWindow:  200000,
-		PromptBudget:   200000,
+		ContextBudget:  200000,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -335,7 +335,7 @@ func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 		ModelName:     "claude-sonnet-4-6",
 		ContextTokens: 1000,
 		ContextWindow: 200000,
-		PromptBudget:  200000,
+		ContextBudget: 200000,
 		Compressions:  3,
 		Width:         120,
 	})
@@ -350,7 +350,7 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 		ModelName:     "claude-sonnet-4-6",
 		ContextTokens: 1000,
 		ContextWindow: 200000,
-		PromptBudget:  200000,
+		ContextBudget: 200000,
 		Compressions:  0,
 		Width:         120,
 	})
@@ -361,14 +361,14 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 }
 
 func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
-	// When PromptBudget == 0 (limit unknown), the bar must still render with
+	// When ContextBudget == 0 (limit unknown), the bar must still render with
 	// a placeholder so the gap stays visible and actionable, instead of
 	// silently hiding the entire context segment.
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "some-model",
 		ContextTokens:  5000,
 		ContextWindow:  0,
-		PromptBudget:   0,
+		ContextBudget:  0,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -402,7 +402,7 @@ func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
 		ModelName:     "gpt-test",
 		ContextTokens: 164600,
 		ContextWindow: 272000,
-		PromptBudget:  272000,
+		ContextBudget: 272000,
 		Width:         120,
 	}))
 	if !strings.Contains(visible, "ctx") {

@@ -86,7 +86,7 @@ Worth knowing beyond the names:
   agent's auto-compaction trigger are the same number, so both resolve it
   through `EffectiveContextWindow` — the user's `/context limit` override, then
   this provider's cache, then the largest figure cached anywhere for the ID —
-  and both compact at `PromptBudget`: the window less the reply's `OutputCap`.
+  and both compact at `ContextBudget`: the window less the reply's `OutputCap`.
   Issue #338 was the two disagreeing. See `reference/token-limits.md`.
 - **`ModelInfo.Reasoning`** carries live supported/default effort values when a
   provider advertises them; `effort.go` prefers that metadata and falls back to

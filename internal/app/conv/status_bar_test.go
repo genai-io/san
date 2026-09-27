@@ -110,7 +110,7 @@ func TestRenderContextLabelStaysCompact(t *testing.T) {
 		ModelName:     "gpt-test",
 		ContextTokens: 0,
 		ContextWindow: 272_000,
-		PromptBudget:  272_000,
+		ContextBudget: 272_000,
 		Width:         120,
 	}))
 	if !strings.Contains(visible, "ctx 0/272.0k") {
@@ -304,7 +304,7 @@ func TestContextLabelCountsAgainstTheWindow(t *testing.T) {
 		ModelName:     "gpt-test",
 		ContextTokens: 120_000,
 		ContextWindow: 272_000,
-		PromptBudget:  240_000,
+		ContextBudget: 240_000,
 		Width:         120,
 	}))
 	if !strings.Contains(visible, "ctx 120.0k/272.0k") {

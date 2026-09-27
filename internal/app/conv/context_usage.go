@@ -32,11 +32,11 @@ type ContextUsage struct {
 	// counts still render.
 	ContextWindow int
 
-	// PromptBudget is the prompt size at which auto-compaction fires: the
+	// ContextBudget is the prompt size at which auto-compaction fires: the
 	// window less the room kept for the reply. Overridden marks a window set
 	// by hand with /context limit.
-	PromptBudget int
-	Overridden   bool
+	ContextBudget int
+	Overridden    bool
 
 	// ContextTokens is the conversation size the provider reported for the last
 	// call — its prompt plus its reply, the same number the status bar shows
@@ -156,7 +156,7 @@ func (u ContextUsage) limitLine() string {
 		return "window unknown · set one with /context limit <window> <output>"
 	}
 	line := fmt.Sprintf("auto-compacts at %s · %s kept for the reply",
-		kit.FormatTokenCount(u.PromptBudget), kit.FormatTokenCount(u.ContextWindow-u.PromptBudget))
+		kit.FormatTokenCount(u.ContextBudget), kit.FormatTokenCount(u.ContextWindow-u.ContextBudget))
 	if u.Overridden {
 		line += " · set by hand (/context limit reset)"
 	}

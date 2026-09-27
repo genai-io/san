@@ -213,10 +213,10 @@ func (l *Client) ContextWindow() int {
 	return l.limits.input(p, model)
 }
 
-// PromptBudget is how large the prompt may grow before auto-compaction: the
+// ContextBudget is how large the prompt may grow before auto-compaction: the
 // window less the reply this client asks room for. 0 means unknown.
-func (l *Client) PromptBudget() int {
-	return PromptBudget(l.ContextWindow(), l.effectiveMaxTokens())
+func (l *Client) ContextBudget() int {
+	return ContextBudget(l.ContextWindow(), l.effectiveMaxTokens())
 }
 
 // effectiveMaxTokens is the max_tokens every request carries: the caller's cap,
@@ -238,10 +238,10 @@ func OutputCap(maxOutput int) int {
 	return min(maxOutput, maxOutputReserve)
 }
 
-// PromptBudget is the largest prompt that still leaves room for the reply: a
+// ContextBudget is the largest prompt that still leaves room for the reply: a
 // request needs prompt + max_tokens within the window. 0 when the window is
 // unknown.
-func PromptBudget(contextWindow, maxOutput int) int {
+func ContextBudget(contextWindow, maxOutput int) int {
 	if contextWindow <= 0 {
 		return 0
 	}

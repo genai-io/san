@@ -34,7 +34,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 	usage := conv.ContextUsage{
 		ModelName:     m.env.GetModelDisplayName(),
 		ContextWindow: window,
-		PromptBudget:  budget,
+		ContextBudget: budget,
 		ContextTokens: m.env.ContextTokens,
 	}
 	if store != nil && current != nil {

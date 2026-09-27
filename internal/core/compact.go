@@ -27,10 +27,10 @@ func (a *agent) preStep(ctx context.Context, c sdkagent.PreStepContext) ([]Messa
 	if a.compactFunc == nil || len(c.Messages) < MinMessagesToCompact {
 		return nil, nil
 	}
-	if a.promptBudget == nil {
+	if a.contextBudget == nil {
 		return nil, nil
 	}
-	budget := a.promptBudget()
+	budget := a.contextBudget()
 	if budget <= 0 || !NeedsCompaction(a.measured.prompt(c.Messages, c.Tokens), budget) {
 		return nil, nil
 	}

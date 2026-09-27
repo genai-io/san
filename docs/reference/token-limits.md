@@ -15,7 +15,7 @@ So the prompt a request can carry depends on how much it keeps for the reply:
 | Figure | Rule | Where |
 |---|---|---|
 | `max_tokens` sent | `min(max output, 32k)`; 8192 when unknown | `llm.OutputCap` |
-| Auto-compact point | `window − max_tokens` | `llm.PromptBudget` |
+| Auto-compact point | `window − max_tokens` | `llm.ContextBudget` |
 | Prompt size | the provider's count for the last call + an estimate of what followed | `core.promptMeasure` |
 
 A reply cut off at `max_tokens` is continued, not lost, so holding the cap to

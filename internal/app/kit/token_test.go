@@ -115,7 +115,7 @@ func TestContextLimitOverrideWinsAndClears(t *testing.T) {
 	if got := GetContextWindow(store, current); got != 1_000_000 {
 		t.Fatalf("GetContextWindow() = %d, want the 1000000 override", got)
 	}
-	if window, budget := GetContextLimits(store, current); window != 1_000_000 || budget != llm.PromptBudget(1_000_000, 64_000) {
+	if window, budget := GetContextLimits(store, current); window != 1_000_000 || budget != llm.ContextBudget(1_000_000, 64_000) {
 		t.Fatalf("GetContextLimits() = %d, %d; want the override and its budget", window, budget)
 	}
 

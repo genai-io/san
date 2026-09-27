@@ -38,5 +38,5 @@ func setContextLimit(store *llm.Store, current *llm.CurrentModelInfo, args strin
 	}
 	return fmt.Sprintf("%s: window %s · max output %s · auto-compacts at %s",
 		current.ModelID, kit.FormatTokenCount(window), kit.FormatTokenCount(output),
-		kit.FormatTokenCount(llm.PromptBudget(window, output)))
+		kit.FormatTokenCount(llm.ContextBudget(window, output)))
 }

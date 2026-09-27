@@ -204,7 +204,7 @@ type OperationModeParams struct {
 	Mode              setting.OperationMode
 	ContextTokens     int // how much of the window the conversation fills: last prompt plus reply
 	ContextWindow     int // the model's context window, what the label counts against; 0 = unknown
-	PromptBudget      int // prompt size at which auto-compaction fires; 0 = unknown
+	ContextBudget     int // prompt size at which auto-compaction fires; 0 = unknown
 	ModelName         string
 	StatusMessage     string
 	ConversationCost  llm.CostTotal
@@ -263,8 +263,8 @@ func renderStatusCluster(p OperationModeParams) string {
 	// the auto-compact hint as a near-full warning.
 	if p.ShowContextBar {
 		bar := RenderContextBar(p.ContextTokens, p.ContextWindow)
-		if p.PromptBudget > 0 {
-			if hint := compactStatusHint(float64(p.ContextTokens) / float64(p.PromptBudget) * 100); hint != "" {
+		if p.ContextBudget > 0 {
+			if hint := compactStatusHint(float64(p.ContextTokens) / float64(p.ContextBudget) * 100); hint != "" {
 				bar += sep + muted.Render(hint)
 			}
 		}

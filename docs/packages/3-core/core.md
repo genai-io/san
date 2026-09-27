@@ -96,7 +96,7 @@ Client func(msgs []Message) (*ai.Client, error)
 CallOptions func() []ai.Option
 // The prompt size at which auto-compaction fires: the window less the
 // reply's room. Zero turns it off.
-PromptBudget func() int
+ContextBudget func() int
 ```
 
 There is nothing left to translate: a message, a tool, a tool result and a

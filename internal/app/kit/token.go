@@ -86,5 +86,5 @@ func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int 
 // it; both 0 when the window is unknown.
 func GetContextLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (window, budget int) {
 	window = GetContextWindow(store, currentModel)
-	return window, llm.PromptBudget(window, getEffectiveOutputLimit(store, currentModel))
+	return window, llm.ContextBudget(window, getEffectiveOutputLimit(store, currentModel))
 }
