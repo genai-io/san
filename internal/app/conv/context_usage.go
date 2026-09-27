@@ -27,29 +27,29 @@ const contextUsageBarWidth = 40
 type ContextUsage struct {
 	ModelName string
 
-	// Limit is the model's context window, or 0 when San cannot size the
-	// model. A zero limit drops the bar and the percentages; the token
+	// ContextWindow is the model's context window, or 0 when San cannot size
+	// the model. A zero window drops the bar and the percentages; the token
 	// counts still render.
-	Limit int
+	ContextWindow int
 
-	// Budget is the prompt size at which auto-compaction fires: Limit less
-	// the room kept for the reply. Overridden marks a window set by hand with
-	// /context limit.
-	Budget     int
-	Overridden bool
+	// PromptBudget is the prompt size at which auto-compaction fires: the
+	// window less the room kept for the reply. Overridden marks a window set
+	// by hand with /context limit.
+	PromptBudget int
+	Overridden   bool
 
-	// Measured is the conversation size the provider reported for the last
+	// ContextTokens is the conversation size the provider reported for the last
 	// call — its prompt plus its reply, the same number the status bar shows
 	// as `ctx X/…`. It is 0 until a call completes, which falls the total back
 	// to the estimate.
-	Measured int
+	ContextTokens int
 
 	// CachedPrefix is the exact token count of the system prompt and the tool
 	// definitions together, read from the provider's cache accounting. When it
 	// is set, those categories and the conversation are each scaled to their
 	// own exact total instead of sharing one — which stops an estimation error
 	// in the tool schemas from being pushed onto Messages. Zero means no exact
-	// prefix was available and the whole split scales to Measured.
+	// prefix was available and the whole split scales to ContextTokens.
 	CachedPrefix int
 
 	SystemPrompt int
@@ -107,26 +107,26 @@ func RenderContextUsage(u ContextUsage) string {
 	prompt, conversation := u.categories()
 
 	used := totalTokens(prompt) + totalTokens(conversation)
-	if u.Measured > 0 {
+	if u.ContextTokens > 0 {
 		u.scaleToProvider(prompt, conversation)
-		used = u.Measured
+		used = u.ContextTokens
 	}
 	cats := append(prompt, conversation...)
 
-	free := max(u.Limit-used, 0)
+	free := max(u.ContextWindow-used, 0)
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
 	var b strings.Builder
-	b.WriteString(muted.Render(contextUsageHeader(u.ModelName, used, u.Limit)))
+	b.WriteString(muted.Render(contextUsageHeader(u.ModelName, used, u.ContextWindow)))
 	if line := u.limitLine(); line != "" {
 		b.WriteString("\n" + muted.Render(line))
 	}
 	b.WriteString("\n\n")
-	if u.Limit > 0 {
-		b.WriteString(renderStackedBar(cats, u.Limit))
+	if u.ContextWindow > 0 {
+		b.WriteString(renderStackedBar(cats, u.ContextWindow))
 		b.WriteString("\n\n")
 	}
-	b.WriteString(renderContextLegend(cats, free, u.Limit))
+	b.WriteString(renderContextLegend(cats, free, u.ContextWindow))
 	b.WriteString("\n")
 	b.WriteString(muted.Render(u.footer()))
 	return b.String()
@@ -152,11 +152,11 @@ func contextUsageHeader(modelName string, used, limit int) string {
 // limitLine says where auto-compaction fires and whether the window was set by
 // hand, so the reading comes with how to change it.
 func (u ContextUsage) limitLine() string {
-	if u.Limit <= 0 {
+	if u.ContextWindow <= 0 {
 		return "window unknown · set one with /context limit <window> <output>"
 	}
 	line := fmt.Sprintf("auto-compacts at %s · %s kept for the reply",
-		kit.FormatTokenCount(u.Budget), kit.FormatTokenCount(u.Limit-u.Budget))
+		kit.FormatTokenCount(u.PromptBudget), kit.FormatTokenCount(u.ContextWindow-u.PromptBudget))
 	if u.Overridden {
 		line += " · set by hand (/context limit reset)"
 	}
@@ -169,7 +169,7 @@ func (u ContextUsage) footer() string {
 	switch {
 	case u.CachedPrefix > 0:
 		return "prompt and tools measured last turn · conversation split estimated"
-	case u.Measured > 0:
+	case u.ContextTokens > 0:
 		return "total measured last turn · split estimated"
 	default:
 		return "estimated · no turn sent yet this session"
@@ -189,9 +189,9 @@ func (u ContextUsage) footer() string {
 // group that produced it.
 // It rescales in place.
 func (u ContextUsage) scaleToProvider(prompt, conversation []contextCategory) {
-	if u.CachedPrefix > 0 && u.CachedPrefix < u.Measured {
+	if u.CachedPrefix > 0 && u.CachedPrefix < u.ContextTokens {
 		scaleGroup(prompt, u.CachedPrefix)
-		scaleGroup(conversation, u.Measured-u.CachedPrefix)
+		scaleGroup(conversation, u.ContextTokens-u.CachedPrefix)
 		return
 	}
 	// No exact prefix: one pool, so the groups have to be apportioned against
@@ -200,9 +200,9 @@ func (u ContextUsage) scaleToProvider(prompt, conversation []contextCategory) {
 	if total <= 0 {
 		return
 	}
-	promptShare := u.Measured * totalTokens(prompt) / total
+	promptShare := u.ContextTokens * totalTokens(prompt) / total
 	scaleGroup(prompt, promptShare)
-	scaleGroup(conversation, u.Measured-promptShare)
+	scaleGroup(conversation, u.ContextTokens-promptShare)
 }
 
 // scaleGroup rescales one group of categories to sum to total, by the same

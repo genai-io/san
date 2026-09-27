@@ -11,15 +11,15 @@ import (
 // populated, and one category (memory) far too small to earn a bar cell.
 func midSession() ContextUsage {
 	return ContextUsage{
-		ModelName:    "claude-sonnet-5",
-		Limit:        200000,
-		Measured:     41200,
-		SystemPrompt: 5300,
-		Tools:        19700,
-		MCPTools:     3100,
-		Skills:       2200,
-		MemoryFiles:  263,
-		Messages:     13700,
+		ModelName:     "claude-sonnet-5",
+		ContextWindow: 200000,
+		ContextTokens: 41200,
+		SystemPrompt:  5300,
+		Tools:         19700,
+		MCPTools:      3100,
+		Skills:        2200,
+		MemoryFiles:   263,
+		Messages:      13700,
 	}
 }
 
@@ -43,8 +43,8 @@ func TestScaleToProviderPartsSumToMeasured(t *testing.T) {
 	u := midSession()
 
 	prompt, conversation := scaled(u)
-	if total := sumTokens(prompt) + sumTokens(conversation); total != u.Measured {
-		t.Errorf("scaled parts sum to %d, want the measured total %d", total, u.Measured)
+	if total := sumTokens(prompt) + sumTokens(conversation); total != u.ContextTokens {
+		t.Errorf("scaled parts sum to %d, want the measured total %d", total, u.ContextTokens)
 	}
 }
 
@@ -52,7 +52,7 @@ func TestScaleToProviderPartsSumToMeasured(t *testing.T) {
 // holds nothing — an empty category picking up stray tokens would render a
 // row for a thing the session does not have.
 func TestScaleToProviderKeepsEmptyCategoriesEmpty(t *testing.T) {
-	u := ContextUsage{Limit: 200000, Measured: 41201, SystemPrompt: 5300, Messages: 13700}
+	u := ContextUsage{ContextWindow: 200000, ContextTokens: 41201, SystemPrompt: 5300, Messages: 13700}
 	beforePrompt, beforeConversation := u.categories()
 
 	prompt, conversation := scaled(u)
@@ -79,7 +79,7 @@ func TestScaleToProviderPinsEachGroupToItsOwnTotal(t *testing.T) {
 	if got := sumTokens(prompt); got != u.CachedPrefix {
 		t.Errorf("prompt categories sum to %d, want the exact prefix %d", got, u.CachedPrefix)
 	}
-	if got, want := sumTokens(conversation), u.Measured-u.CachedPrefix; got != want {
+	if got, want := sumTokens(conversation), u.ContextTokens-u.CachedPrefix; got != want {
 		t.Errorf("conversation categories sum to %d, want %d", got, want)
 	}
 }
@@ -110,10 +110,10 @@ func TestScaleToProviderWithoutPrefixSharesOnePool(t *testing.T) {
 	u := midSession()
 
 	prompt, conversation := scaled(u)
-	if total := sumTokens(prompt) + sumTokens(conversation); total != u.Measured {
-		t.Errorf("parts sum to %d, want %d", total, u.Measured)
+	if total := sumTokens(prompt) + sumTokens(conversation); total != u.ContextTokens {
+		t.Errorf("parts sum to %d, want %d", total, u.ContextTokens)
 	}
-	if sumTokens(prompt) >= u.Measured {
+	if sumTokens(prompt) >= u.ContextTokens {
 		t.Errorf("prompt group took the whole measured total (%d)", sumTokens(prompt))
 	}
 }
@@ -124,23 +124,23 @@ func TestScaleToProviderWithoutPrefixSharesOnePool(t *testing.T) {
 func TestBarCellsFillMatchesHeaderPercent(t *testing.T) {
 	u := midSession()
 	prompt, conversation := u.categories()
-	cells := barCells(append(prompt, conversation...), u.Limit, contextUsageBarWidth)
+	cells := barCells(append(prompt, conversation...), u.ContextWindow, contextUsageBarWidth)
 
 	filled := 0
 	for _, n := range cells {
 		filled += n
 	}
 	want := percentOf(filled, contextUsageBarWidth)
-	got := percentOf(u.SystemPrompt+u.Tools+u.MCPTools+u.Skills+u.MemoryFiles+u.Messages, u.Limit)
+	got := percentOf(u.SystemPrompt+u.Tools+u.MCPTools+u.Skills+u.MemoryFiles+u.Messages, u.ContextWindow)
 	if diff := want - got; diff > 2 || diff < -2 {
 		t.Errorf("bar reads %d%% full but the categories fill %d%%", want, got)
 	}
 }
 
 func TestBarCellsNeverExceedWidth(t *testing.T) {
-	full := ContextUsage{Limit: 100, Measured: 100, SystemPrompt: 40, Tools: 40, Messages: 40}
+	full := ContextUsage{ContextWindow: 100, ContextTokens: 100, SystemPrompt: 40, Tools: 40, Messages: 40}
 	prompt, conversation := full.categories()
-	cells := barCells(append(prompt, conversation...), full.Limit, contextUsageBarWidth)
+	cells := barCells(append(prompt, conversation...), full.ContextWindow, contextUsageBarWidth)
 
 	filled := 0
 	for _, n := range cells {
@@ -177,7 +177,7 @@ func TestRenderContextUsageFooterNamesWhatWasMeasured(t *testing.T) {
 		usage ContextUsage
 		want  string
 	}{
-		"nothing measured":     {ContextUsage{Limit: 200000, SystemPrompt: 5300}, "no turn sent yet"},
+		"nothing measured":     {ContextUsage{ContextWindow: 200000, SystemPrompt: 5300}, "no turn sent yet"},
 		"total measured":       {midSession(), "total measured last turn"},
 		"prompt also measured": {measuredPrefix, "prompt and tools measured last turn"},
 	} {
@@ -189,7 +189,7 @@ func TestRenderContextUsageFooterNamesWhatWasMeasured(t *testing.T) {
 
 func TestRenderContextUsageOmitsEmptyCategories(t *testing.T) {
 	out := xansi.Strip(RenderContextUsage(ContextUsage{
-		ModelName: "gpt-5.5", Limit: 400000, SystemPrompt: 5300, Tools: 19700,
+		ModelName: "gpt-5.5", ContextWindow: 400000, SystemPrompt: 5300, Tools: 19700,
 	}))
 
 	if strings.Contains(out, "MCP tools") {
@@ -205,7 +205,7 @@ func TestRenderContextUsageOmitsEmptyCategories(t *testing.T) {
 // a guessed denominator.
 func TestRenderContextUsageWithoutLimitDropsPercentages(t *testing.T) {
 	out := xansi.Strip(RenderContextUsage(ContextUsage{
-		ModelName: "some-local-model", Measured: 41200, SystemPrompt: 5300, Messages: 13700,
+		ModelName: "some-local-model", ContextTokens: 41200, SystemPrompt: 5300, Messages: 13700,
 	}))
 
 	if strings.Contains(out, "%") {
