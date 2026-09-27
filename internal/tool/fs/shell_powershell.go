@@ -10,7 +10,8 @@ import (
 // (cwdFileEnvVar is set), and the last native program's exit code as the
 // process's own. It uses only cmdlets and variables, so it also runs where
 // policy locks PowerShell into Constrained Language Mode; there the console
-// encoding cannot be set and output keeps the system code page.
+// encoding cannot be set, output keeps the system code page, and
+// decodeOutput reads it.
 func powerShellScript(command string) string {
 	return "$ProgressPreference = 'SilentlyContinue'\n" +
 		"try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}\n" +

@@ -180,3 +180,18 @@ func TestPowerShellErrorsArePlainText(t *testing.T) {
 		}
 	})
 }
+
+// In Constrained Language Mode the console encoding stays the system code
+// page, so non-ASCII output arrives in it and must be decoded, not read as
+// UTF-8.
+func TestPowerShellOutputDecodesInConstrainedLanguage(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		cmd := exec.Command(sh.shell.Path, "-NoProfile", "-NonInteractive", "-Command",
+			"$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; Invoke-Expression $env:"+scriptEnvVar)
+		cmd.Env = append(shellEnv(context.Background()), scriptEnvVar+"="+powerShellScript(`"caf$([char]0xE9)"`))
+		out, err := cmd.Output()
+		if got := decodeOutput(out); err != nil || !strings.Contains(got, "café") {
+			t.Errorf("err=%v raw=% x decoded=%q", err, out, got)
+		}
+	})
+}

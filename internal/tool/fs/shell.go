@@ -163,8 +163,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		err = nil
 	}
 
-	output := stdout.String()
-	errOutput := stderr.String()
+	output := decodeOutput(stdout.Bytes())
+	errOutput := decodeOutput(stderr.Bytes())
 
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd)
 }
@@ -388,12 +388,12 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		wg.Wait()
 
 		// Combine output
-		output := stdoutBuf.String()
+		output := decodeOutput(stdoutBuf.Bytes())
 		if stderrBuf.Len() > 0 {
 			if output != "" {
 				output += "\n"
 			}
-			output += stderrBuf.String()
+			output += decodeOutput(stderrBuf.Bytes())
 		}
 		bgTask.AppendOutput([]byte(output))
 
