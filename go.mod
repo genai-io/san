@@ -47,8 +47,11 @@ require (
 // (charmbracelet/bubbletea#1736), and its resize redraw erases from where the
 // frame's top row would be had the terminal not rewrapped the frame, which
 // strands a copy of the frame's head on screen every time the window narrows.
-// Keep this replacement until both are fixed upstream.
-replace charm.land/bubbletea/v2 => github.com/yanmxa/bubbletea/v2 v2.0.8-0.20260913153100-4ede41a39073
+// Leaving the alternate screen (every approval or question prompt) also homed
+// the cursor, so the redraw wiped the visible conversation on terminals that
+// do not push a clear into history, such as Windows Terminal. Keep this
+// replacement until these are fixed upstream.
+replace charm.land/bubbletea/v2 => github.com/yanmxa/bubbletea/v2 v2.0.8-0.20260927122512-78014e52431d
 
 require (
 	cloud.google.com/go/auth v0.18.2 // indirect
