@@ -356,6 +356,7 @@ func (m model) renderModeStatus() string {
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:              m.env.OperationMode,
 		InputTokens:       m.env.InputTokens,
+		ContextWindow:     kit.GetContextWindow(m.services.LLM.Store(), m.env.CurrentModel),
 		PromptBudget:      kit.GetPromptBudget(m.services.LLM.Store(), m.env.CurrentModel),
 		ModelName:         modelName,
 		StatusMessage:     m.userInput.Provider.StatusMessage,

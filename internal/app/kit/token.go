@@ -81,9 +81,8 @@ func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int 
 	return store.EffectiveContextWindow(currentModel.Provider, auth, currentModel.ModelID)
 }
 
-// GetPromptBudget is the status bar's denominator: the prompt size at which
-// auto-compaction fires, computed as llm.Client.PromptBudget computes it. 0
-// when the window is unknown — the bar then reads "--", not a guess.
+// GetPromptBudget is the prompt size at which auto-compaction fires, computed
+// as llm.Client.PromptBudget computes it; 0 when the window is unknown.
 func GetPromptBudget(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	return llm.PromptBudget(GetContextWindow(store, currentModel), getEffectiveOutputLimit(store, currentModel))
 }
