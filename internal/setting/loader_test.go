@@ -46,8 +46,8 @@ func TestWithDefaultDisabledToolsOverlay(t *testing.T) {
 	}
 }
 
-// On a Windows with both Git Bash and PowerShell the second shell's tool ships
-// disabled — the /tools panel turns it on — and the default one does not.
+// On a Windows that also has Git Bash, Bash ships disabled beside the default
+// PowerShell — the /tools panel turns it on.
 func TestSecondShellShipsDisabled(t *testing.T) {
 	shells := proc.Shells()
 	if len(shells) < 2 {

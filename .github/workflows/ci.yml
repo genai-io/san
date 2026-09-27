@@ -65,11 +65,11 @@ jobs:
         run: go test -count=1 -run 'PowerShell|BareShell' ./internal/setting/ ./internal/subagent/
       - name: Test PowerShell under both pwsh and Windows PowerShell 5.1
         run: go test -count=1 -v -run PowerShell ./internal/tool/fs/
-      - name: A Windows with both Git Bash and PowerShell offers both, the second disabled
+      - name: Windows defaults to PowerShell and offers Git Bash beside it, disabled
         run: go test -count=1 -v -run 'TestSecondShellShipsDisabled|TestBuiltinToolsAllRegistered' ./internal/setting/ ./internal/tool/
-      - name: A Windows without Git Bash is given the PowerShell tool
+      - name: SAN_SHELL=bash makes Git Bash the default
         env:
-          SAN_SHELL: powershell
+          SAN_SHELL: bash
         run: go test -count=1 -v -run 'TestShellToolFollowsSANShell|TestBuiltinToolsAllRegistered' ./internal/tool/
       - name: Smoke test — zip package
         run: |

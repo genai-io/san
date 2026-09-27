@@ -419,9 +419,9 @@ func IsDefaultDisabledTool(name string) bool {
 	return defaultDisabledTools[name] || name == secondShellTool()
 }
 
-// secondShellTool names the shell tool offered beside the default one — on a
-// Windows with both Git Bash and PowerShell — which ships disabled. Empty
-// when there is none.
+// secondShellTool names the shell tool offered beside the default one — Bash,
+// on a Windows that has Git Bash — which ships disabled. Empty when there is
+// none.
 func secondShellTool() string {
 	if second, ok := proc.SecondShell(); ok {
 		return second.Kind.ToolName()

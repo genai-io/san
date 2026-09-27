@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
-	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
 		"command": "printf 'line one\\nline two\\n'; printf 'stderr\\n' >&2; exit 7",
 	}, t.TempDir())
 	if result.Success {
@@ -37,7 +38,7 @@ func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
 }
 
 func TestBashFailureWithoutOutputHasZeroDisplayLines(t *testing.T) {
-	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
 		"command": "exit 3",
 	}, t.TempDir())
 	if result.Success {
@@ -59,7 +60,7 @@ func TestBashToolTracksChangedDirectory(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
 		"command": "cd subdir",
 	}, cwd)
 	if !result.Success {
@@ -96,7 +97,7 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 		}
 	})
 
-	result := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
+	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
 		"command":           "sleep 60",
 		"run_in_background": true,
 	}, t.TempDir())
@@ -126,7 +127,7 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 	if !ok {
 		t.Fatalf("task %v not registered", background["taskId"])
 	}
-	stop := (&ShellTool{}).ExecuteApproved(context.Background(), map[string]any{
+	stop := bashTool(t).ExecuteApproved(context.Background(), map[string]any{
 		"command": fmt.Sprintf("kill -TERM -- -%d", background["processGroupId"]),
 	}, t.TempDir())
 	if !stop.Success {
@@ -138,4 +139,15 @@ func TestBackgroundBashReportsProcessGroupStopCommands(t *testing.T) {
 	if got := bgTask.GetStatus().Status; got != task.StatusStopped {
 		t.Fatalf("background task status = %s, want %s", got, task.StatusStopped)
 	}
+}
+
+// bashTool runs commands under bash whatever the platform default is; Windows
+// defaults to PowerShell, so these bash-syntax tests need Git Bash there.
+func bashTool(t *testing.T) *ShellTool {
+	t.Helper()
+	path, ok := proc.BashPath()
+	if !ok {
+		t.Skip("no bash on this machine")
+	}
+	return &ShellTool{shell: proc.Shell{Kind: proc.ShellBash, Path: path}}
 }

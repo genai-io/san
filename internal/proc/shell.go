@@ -46,9 +46,9 @@ func (s Shell) String() string {
 	return "Windows PowerShell 5.1"
 }
 
-// DefaultShell is the shell commands run under: bash on Unix; on Windows Git
-// for Windows' bash when installed, else PowerShell. SAN_SHELL overrides it
-// with "bash", "powershell", or a path to either.
+// DefaultShell is the shell commands run under: PowerShell on Windows, bash
+// elsewhere. SAN_SHELL overrides it with "bash", "powershell", or a path to
+// either.
 func DefaultShell() (Shell, error) { return defaultShell() }
 
 var defaultShell = sync.OnceValues(func() (Shell, error) {
@@ -79,21 +79,21 @@ func resolveShell(override string) (Shell, error) {
 		return Shell{Kind: ShellBash, Path: override}, nil
 	}
 
-	if path, ok := BashPath(); ok {
-		return Shell{Kind: ShellBash, Path: path}, nil
-	}
 	if runtime.GOOS == "windows" {
 		if path, ok := PowerShellPath(); ok {
 			return Shell{Kind: ShellPowerShell, Path: path}, nil
 		}
-		return Shell{}, fmt.Errorf("no shell found: install Git for Windows, or make powershell.exe reachable on PATH")
+		return Shell{}, fmt.Errorf("PowerShell not found on PATH; set SAN_SHELL=bash to use Git Bash")
+	}
+	if path, ok := BashPath(); ok {
+		return Shell{Kind: ShellBash, Path: path}, nil
 	}
 	return Shell{}, fmt.Errorf("bash not found on PATH")
 }
 
 // Shells are the shells commands can run under: DefaultShell, then — on a
-// Windows with both Git Bash and PowerShell — the other one, which ships
-// disabled for the user to turn on. Unix offers bash alone.
+// Windows that also has Git Bash — the other one, which ships disabled for the
+// user to turn on in /tools. Unix offers bash alone.
 func Shells() []Shell {
 	def, err := DefaultShell()
 	if err != nil {

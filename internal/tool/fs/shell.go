@@ -116,9 +116,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	defer cleanup()
 
 	// Execute command
-	cmd := shellCommand(ctx, shell, trackedCommand)
+	cmd := shellCommand(ctx, shell, trackedCommand, shellEnv(ctx))
 	cmd.Dir = cwd
-	cmd.Env = bashEnv(ctx)
 	if trackedFile != "" {
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
@@ -164,8 +163,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		err = nil
 	}
 
-	output := stdout.String()
-	errOutput := stderr.String()
+	output := decodeOutput(stdout.Bytes())
+	errOutput := decodeOutput(stderr.Bytes())
 
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd)
 }
@@ -302,9 +301,8 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	taskCtx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	// Create command
-	cmd := shellCommand(taskCtx, shell, command)
+	cmd := shellCommand(taskCtx, shell, command, shellEnv(ctx))
 	cmd.Dir = cwd
-	cmd.Env = bashEnv(ctx)
 
 	// Start the child in its own session: detached from the controlling
 	// terminal (so an interactive command fails fast instead of grabbing the
@@ -390,12 +388,12 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		wg.Wait()
 
 		// Combine output
-		output := stdoutBuf.String()
+		output := decodeOutput(stdoutBuf.Bytes())
 		if stderrBuf.Len() > 0 {
 			if output != "" {
 				output += "\n"
 			}
-			output += stderrBuf.String()
+			output += decodeOutput(stderrBuf.Bytes())
 		}
 		bgTask.AppendOutput([]byte(output))
 
@@ -474,12 +472,17 @@ func pwdCommand() string {
 	return "pwd"
 }
 
-// shellCommand is the process that runs script under shell.
-func shellCommand(ctx context.Context, shell proc.Shell, script string) *exec.Cmd {
+// shellCommand is the process that runs script under shell, in env.
+func shellCommand(ctx context.Context, shell proc.Shell, script string, env []string) *exec.Cmd {
 	if shell.Kind == proc.ShellPowerShell {
-		return exec.CommandContext(ctx, shell.Path, powerShellArgs(powerShellScript(script))...)
+		args, scriptEnv := powerShellArgs(powerShellScript(script))
+		cmd := exec.CommandContext(ctx, shell.Path, args...)
+		cmd.Env = append(env, scriptEnv...)
+		return cmd
 	}
-	return exec.CommandContext(ctx, shell.Path, "-c", script)
+	cmd := exec.CommandContext(ctx, shell.Path, "-c", script)
+	cmd.Env = env
+	return cmd
 }
 
 func readTrackedCwd(path, fallback string) string {
@@ -507,7 +510,7 @@ func SetEnvProvider(fn func(context.Context) []string) {
 	extraEnvProvider.Store(fn)
 }
 
-func bashEnv(ctx context.Context) []string {
+func shellEnv(ctx context.Context) []string {
 	env := os.Environ()
 	// Nudge common tools onto their non-interactive path so they fail fast
 	// rather than block on a prompt. Set each only when the caller hasn't
@@ -518,6 +521,12 @@ func bashEnv(ctx context.Context) []string {
 	}
 	if _, ok := os.LookupEnv("DEBIAN_FRONTEND"); !ok {
 		env = append(env, "DEBIAN_FRONTEND=noninteractive")
+	}
+	// The model reads the output, where color codes are noise. PowerShell 7
+	// colors errors even on a redirected stderr, and in Constrained Language
+	// Mode $PSStyle cannot turn that off.
+	if _, ok := os.LookupEnv("NO_COLOR"); !ok {
+		env = append(env, "NO_COLOR=1")
 	}
 	if fn, ok := extraEnvProvider.Load().(func(context.Context) []string); ok && fn != nil {
 		env = append(env, fn(ctx)...)

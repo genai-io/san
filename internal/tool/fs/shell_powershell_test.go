@@ -2,44 +2,36 @@ package fs
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 )
 
-// The command reaches PowerShell byte for byte: -EncodedCommand carries it as
-// UTF-16LE, so no quote or backslash is re-read by a command line.
+// The command reaches PowerShell byte for byte: it travels in an environment
+// variable, and the command line holds only a fixed Invoke-Expression.
 func TestPowerShellArgsCarryTheScriptVerbatim(t *testing.T) {
 	script := `Write-Output 'a"b\c' ; "中文"`
-	args := powerShellArgs(script)
-	raw, err := base64.StdEncoding.DecodeString(args[len(args)-1])
-	if err != nil {
-		t.Fatal(err)
+	args, env := powerShellArgs(script)
+	if got := args[len(args)-1]; got != "Invoke-Expression $env:"+scriptEnvVar {
+		t.Errorf("command line runs %q", got)
 	}
-	units := make([]uint16, len(raw)/2)
-	for i := range units {
-		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
-	}
-	if got := string(utf16.Decode(units)); got != script {
-		t.Errorf("decoded %q, want %q", got, script)
+	if len(env) != 1 || env[0] != scriptEnvVar+"="+script {
+		t.Errorf("env = %q, want the script verbatim", env)
 	}
 }
 
-// A script past the command-line cap runs from a temp file instead, which
-// removes itself when PowerShell runs it.
+// A script too long for an environment variable runs from a temp file
+// instead, which removes itself when PowerShell runs it.
 func TestPowerShellArgsMoveALongScriptToAFile(t *testing.T) {
-	script := strings.Repeat("#", maxEncodedCommandLen)
-	args := powerShellArgs(script)
-	if args[len(args)-2] != "-File" {
-		t.Fatalf("args = %q, want -File", args[:len(args)-1])
+	script := strings.Repeat("#", maxScriptEnvLen+1)
+	args, env := powerShellArgs(script)
+	if args[len(args)-2] != "-File" || env != nil {
+		t.Fatalf("args = %q, env = %d entries; want -File and no env", args[:len(args)-1], len(env))
 	}
 	path := args[len(args)-1]
 	defer os.Remove(path)
@@ -100,10 +92,10 @@ func TestPowerShellRunsACommand(t *testing.T) {
 	})
 }
 
-func TestPowerShellRunsAScriptPastTheCommandLineCap(t *testing.T) {
+func TestPowerShellRunsAScriptPastTheEnvironmentCap(t *testing.T) {
 	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
 		result := sh.ExecuteApproved(context.Background(), map[string]any{
-			"command": "# " + strings.Repeat("x", 20000) + "\nWrite-Output 'long 中文'",
+			"command": "# " + strings.Repeat("x", maxScriptEnvLen) + "\nWrite-Output 'long 中文'",
 		}, t.TempDir())
 		if !result.Success || !strings.Contains(result.Output, "long 中文") {
 			t.Fatalf("Success=%v Error=%q Output=%q", result.Success, result.Error, result.Output)
@@ -141,6 +133,65 @@ func TestPowerShellTracksAChangedDirectory(t *testing.T) {
 		want, _ := filepath.EvalSymlinks(sub)
 		if resolved, _ := filepath.EvalSymlinks(got); resolved != want {
 			t.Errorf("tracked cwd = %q, want %q", got, sub)
+		}
+	})
+}
+
+// Where policy locks PowerShell into Constrained Language Mode, .NET method
+// calls and property setters fail, so the wrapper must get by on cmdlets: the
+// command still succeeds, stderr stays plain text, and the cwd is written back.
+func TestPowerShellScriptRunsInConstrainedLanguage(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		dir := t.TempDir()
+		cwdFile := filepath.Join(dir, "cwd")
+		cmd := exec.Command(sh.shell.Path, "-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-Command",
+			"$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; Invoke-Expression $env:SAN_TEST_SCRIPT")
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"SAN_TEST_SCRIPT="+powerShellScript("Write-Output \"mode=$($ExecutionContext.SessionState.LanguageMode)\""),
+			cwdFileEnvVar+"="+cwdFile)
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil || !strings.Contains(string(out), "mode=ConstrainedLanguage") {
+			t.Fatalf("err=%v stdout=%q stderr=%q", err, out, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "CLIXML") || strings.Contains(stderr.String(), "NotSupportedInConstrainedLanguage") {
+			t.Errorf("stderr = %q", stderr.String())
+		}
+		want, _ := filepath.EvalSymlinks(dir)
+		if got, _ := filepath.EvalSymlinks(readTrackedCwd(cwdFile, "")); got != want {
+			t.Errorf("tracked cwd = %q, want %q", got, want)
+		}
+	})
+}
+
+// An error the command writes reaches the model as plain text: not the CLIXML
+// PowerShell uses for a redirected stderr under -EncodedCommand, and without
+// the color codes pwsh adds to it.
+func TestPowerShellErrorsArePlainText(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		result := sh.ExecuteApproved(context.Background(), map[string]any{
+			"command": `Write-Error "boom-marker"; exit 2`,
+		}, t.TempDir())
+		out := result.Output + result.Error
+		if !strings.Contains(out, "boom-marker") || strings.Contains(out, "CLIXML") || strings.Contains(out, "\x1b[") {
+			t.Errorf("Success=%v Error=%q Output=%q", result.Success, result.Error, result.Output)
+		}
+	})
+}
+
+// In Constrained Language Mode the console encoding stays the system code
+// page, so non-ASCII output arrives in it and must be decoded, not read as
+// UTF-8.
+func TestPowerShellOutputDecodesInConstrainedLanguage(t *testing.T) {
+	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
+		cmd := exec.Command(sh.shell.Path, "-NoProfile", "-NonInteractive", "-Command",
+			"$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; Invoke-Expression $env:"+scriptEnvVar)
+		cmd.Env = append(shellEnv(context.Background()), scriptEnvVar+"="+powerShellScript(`"caf$([char]0xE9)"`))
+		out, err := cmd.Output()
+		if got := decodeOutput(out); err != nil || !strings.Contains(got, "café") {
+			t.Errorf("err=%v raw=% x decoded=%q", err, out, got)
 		}
 	})
 }

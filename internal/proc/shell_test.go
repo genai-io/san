@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -125,6 +126,23 @@ func TestSecondShell(t *testing.T) {
 		got, ok := secondShell(tc.def, tc.bashPath, tc.psPath)
 		if ok != tc.ok || got != tc.want {
 			t.Errorf("%s: secondShell = %+v, %v; want %+v, %v", tc.name, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// Windows runs commands under PowerShell unless SAN_SHELL says otherwise, and
+// offers Git Bash, when installed, as the second shell.
+func TestWindowsDefaultsToPowerShell(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows default")
+	}
+	def, err := resolveShell("")
+	if err != nil || def.Kind != ShellPowerShell {
+		t.Fatalf("default shell = %+v, %v; want PowerShell", def, err)
+	}
+	if _, ok := BashPath(); ok {
+		if second, ok := SecondShell(); !ok || second.Kind != ShellBash {
+			t.Errorf("second shell = %+v, %v; want Git Bash", second, ok)
 		}
 	}
 }
