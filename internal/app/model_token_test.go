@@ -30,6 +30,10 @@ func TestOnInferenceUsesLatestCallNotAccumulated(t *testing.T) {
 	if m.env.InputTokens != 140500 || m.env.OutputTokens != 80 {
 		t.Fatalf("first update = in:%d out:%d, want in:140500 out:80", m.env.InputTokens, m.env.OutputTokens)
 	}
+	// The readout counts the reply too: the next call sends it back.
+	if m.env.ContextTokens != 140580 {
+		t.Fatalf("ContextTokens = %d, want prompt plus reply 140580", m.env.ContextTokens)
+	}
 
 	// Second infer in the same turn: ctx must become THIS call's full context,
 	// not the sum of both calls (which would be 281800).

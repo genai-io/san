@@ -353,11 +353,12 @@ func (m model) renderModeStatus() string {
 	if m.reviewerEscalations != nil {
 		reviewEscalations = int(m.reviewerEscalations.Load())
 	}
+	window, budget := kit.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:              m.env.OperationMode,
-		ContextTokens:     m.env.ContextTokens(),
-		ContextWindow:     kit.GetContextWindow(m.services.LLM.Store(), m.env.CurrentModel),
-		PromptBudget:      kit.GetPromptBudget(m.services.LLM.Store(), m.env.CurrentModel),
+		ContextTokens:     m.env.ContextTokens,
+		ContextWindow:     window,
+		PromptBudget:      budget,
 		ModelName:         modelName,
 		StatusMessage:     m.userInput.Provider.StatusMessage,
 		ConversationCost:  m.env.ConversationCost,

@@ -20,7 +20,6 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		Width:        m.env.Width,
 		Height:       m.env.Height,
 		Cwd:          m.env.CWD,
-		InputTokens:  m.env.InputTokens,
 
 		// Services
 		Setting: m.services.Setting,

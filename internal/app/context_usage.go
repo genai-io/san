@@ -30,11 +30,12 @@ import (
 // and no breakdown, so the split has to be derived from the text itself.
 func (m *model) contextUsage() conv.ContextUsage {
 	store, current := m.services.LLM.Store(), m.env.CurrentModel
+	window, budget := kit.GetContextLimits(store, current)
 	usage := conv.ContextUsage{
 		ModelName: m.env.GetModelDisplayName(),
-		Limit:     kit.GetContextWindow(store, current),
-		Budget:    kit.GetPromptBudget(store, current),
-		Measured:  m.env.ContextTokens(),
+		Limit:     window,
+		Budget:    budget,
+		Measured:  m.env.ContextTokens,
 	}
 	if store != nil && current != nil {
 		_, _, usage.Overridden = store.TokenLimit(current.ModelID)

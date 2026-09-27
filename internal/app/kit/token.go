@@ -81,8 +81,10 @@ func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int 
 	return store.EffectiveContextWindow(currentModel.Provider, auth, currentModel.ModelID)
 }
 
-// GetPromptBudget is the prompt size at which auto-compaction fires, computed
-// as llm.Client.PromptBudget computes it; 0 when the window is unknown.
-func GetPromptBudget(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
-	return llm.PromptBudget(GetContextWindow(store, currentModel), getEffectiveOutputLimit(store, currentModel))
+// GetContextLimits returns the model's context window and the prompt size
+// within it at which auto-compaction fires, computed as llm.Client computes
+// it; both 0 when the window is unknown.
+func GetContextLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (window, budget int) {
+	window = GetContextWindow(store, currentModel)
+	return window, llm.PromptBudget(window, getEffectiveOutputLimit(store, currentModel))
 }

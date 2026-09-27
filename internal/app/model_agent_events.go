@@ -38,6 +38,7 @@ func (m *model) OnInference(resp *ai.Response) {
 	// context-window occupancy rather than just the uncached delta.
 	m.env.InputTokens = resp.Usage.TotalInput()
 	m.env.OutputTokens = resp.Usage.Output
+	m.env.ContextTokens = resp.Usage.Total()
 	// Both halves of the cached prefix count toward it: the first turn writes
 	// it (creation), later turns read it (read), and a turn that invalidated it
 	// writes it again — the sum is the prefix size either way.
