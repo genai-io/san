@@ -3,6 +3,35 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.23.0] - 2026-09-27
+
+### Added
+- Default Windows shells to PowerShell under Constrained Language Mode ([@yanmxa](https://github.com/yanmxa) in [#570](https://github.com/genai-io/san/pull/570))
+- Unroll bounded workflow back edges into plain chains ([@yanmxa](https://github.com/yanmxa) in [#544](https://github.com/genai-io/san/pull/544))
+- Persist workflow definitions and fan out a plan ([@yanmxa](https://github.com/yanmxa) in [#540](https://github.com/genai-io/san/pull/540))
+- Add an auto-update switch to the General settings tab ([@yanmxa](https://github.com/yanmxa) in [#562](https://github.com/genai-io/san/pull/562))
+- Run markdown-defined subagent graphs as one task ([@yanmxa](https://github.com/yanmxa) in [#538](https://github.com/genai-io/san/pull/538))
+- Classify PowerShell commands in PowerShell's terms ([@yanmxa](https://github.com/yanmxa) in [#559](https://github.com/genai-io/san/pull/559))
+- Add a PowerShell shell tool for Windows ([@yanmxa](https://github.com/yanmxa) in [#558](https://github.com/genai-io/san/pull/558))
+- Rename `/config` to `/settings` ([@yanmxa](https://github.com/yanmxa) in [#561](https://github.com/genai-io/san/pull/561))
+- Add a one-page autopilot panel with mission lifecycle and optional judge model ([@yanmxa](https://github.com/yanmxa) in [#560](https://github.com/genai-io/san/pull/560))
+
+### Changed
+- Remove unreachable code and single-implementation interfaces ([@yanmxa](https://github.com/yanmxa) in [#566](https://github.com/genai-io/san/pull/566))
+- Exercise workflow tools through the real subagent executor ([@yanmxa](https://github.com/yanmxa) in [#545](https://github.com/genai-io/san/pull/545))
+- Require sdk-go v0.7.0 ([@yanmxa](https://github.com/yanmxa) in [#554](https://github.com/genai-io/san/pull/554))
+
+### Fixed
+- Dock prompts at the composer while preserving the conversation ([@yanmxa](https://github.com/yanmxa) in [#573](https://github.com/genai-io/san/pull/573))
+- Preserve Windows CRLF diff rows and diffs on resume ([@yanmxa](https://github.com/yanmxa) in [#572](https://github.com/genai-io/san/pull/572))
+- Show conversation size over the model context window in the status readout ([@yanmxa](https://github.com/yanmxa) in [#571](https://github.com/genai-io/san/pull/571))
+- Settle ponytail deferrals, wire subagent mode, and unify naming ([@yanmxa](https://github.com/yanmxa) in [#569](https://github.com/genai-io/san/pull/569))
+- Save exact allow rules with “Always allow” permissions ([@yanmxa](https://github.com/yanmxa) in [#568](https://github.com/genai-io/san/pull/568))
+- Make Enter activate the autopilot panel row and prevent the `/goal` acknowledgement from hanging ([@yanmxa](https://github.com/yanmxa) in [#565](https://github.com/genai-io/san/pull/565))
+- Leave reply room before compacting the context window ([@yanmxa](https://github.com/yanmxa) in [#563](https://github.com/genai-io/san/pull/563))
+- Terminate the complete Windows shell process tree ([@yanmxa](https://github.com/yanmxa) in [#557](https://github.com/genai-io/san/pull/557))
+- Run Windows shell commands and hooks under a native shell ([@yanmxa](https://github.com/yanmxa) in [#556](https://github.com/genai-io/san/pull/556))
+
 ## [v1.22.11] - 2026-09-23
 
 ### Added
