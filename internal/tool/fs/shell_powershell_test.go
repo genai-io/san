@@ -2,44 +2,36 @@ package fs
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 )
 
-// The command reaches PowerShell byte for byte: -EncodedCommand carries it as
-// UTF-16LE, so no quote or backslash is re-read by a command line.
+// The command reaches PowerShell byte for byte: it travels in an environment
+// variable, and the command line holds only a fixed Invoke-Expression.
 func TestPowerShellArgsCarryTheScriptVerbatim(t *testing.T) {
 	script := `Write-Output 'a"b\c' ; "中文"`
-	args := powerShellArgs(script)
-	raw, err := base64.StdEncoding.DecodeString(args[len(args)-1])
-	if err != nil {
-		t.Fatal(err)
+	args, env := powerShellArgs(script)
+	if got := args[len(args)-1]; got != "Invoke-Expression $env:"+scriptEnvVar {
+		t.Errorf("command line runs %q", got)
 	}
-	units := make([]uint16, len(raw)/2)
-	for i := range units {
-		units[i] = binary.LittleEndian.Uint16(raw[2*i:])
-	}
-	if got := string(utf16.Decode(units)); got != script {
-		t.Errorf("decoded %q, want %q", got, script)
+	if len(env) != 1 || env[0] != scriptEnvVar+"="+script {
+		t.Errorf("env = %q, want the script verbatim", env)
 	}
 }
 
-// A script past the command-line cap runs from a temp file instead, which
-// removes itself when PowerShell runs it.
+// A script too long for an environment variable runs from a temp file
+// instead, which removes itself when PowerShell runs it.
 func TestPowerShellArgsMoveALongScriptToAFile(t *testing.T) {
-	script := strings.Repeat("#", maxEncodedCommandLen)
-	args := powerShellArgs(script)
-	if args[len(args)-2] != "-File" {
-		t.Fatalf("args = %q, want -File", args[:len(args)-1])
+	script := strings.Repeat("#", maxScriptEnvLen+1)
+	args, env := powerShellArgs(script)
+	if args[len(args)-2] != "-File" || env != nil {
+		t.Fatalf("args = %q, env = %d entries; want -File and no env", args[:len(args)-1], len(env))
 	}
 	path := args[len(args)-1]
 	defer os.Remove(path)
@@ -100,10 +92,10 @@ func TestPowerShellRunsACommand(t *testing.T) {
 	})
 }
 
-func TestPowerShellRunsAScriptPastTheCommandLineCap(t *testing.T) {
+func TestPowerShellRunsAScriptPastTheEnvironmentCap(t *testing.T) {
 	eachPowerShell(t, func(t *testing.T, sh *ShellTool) {
 		result := sh.ExecuteApproved(context.Background(), map[string]any{
-			"command": "# " + strings.Repeat("x", 20000) + "\nWrite-Output 'long 中文'",
+			"command": "# " + strings.Repeat("x", maxScriptEnvLen) + "\nWrite-Output 'long 中文'",
 		}, t.TempDir())
 		if !result.Success || !strings.Contains(result.Output, "long 中文") {
 			t.Fatalf("Success=%v Error=%q Output=%q", result.Success, result.Error, result.Output)

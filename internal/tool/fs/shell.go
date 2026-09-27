@@ -116,9 +116,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	defer cleanup()
 
 	// Execute command
-	cmd := shellCommand(ctx, shell, trackedCommand)
+	cmd := shellCommand(ctx, shell, trackedCommand, shellEnv(ctx))
 	cmd.Dir = cwd
-	cmd.Env = shellEnv(ctx)
 	if trackedFile != "" {
 		cmd.Env = append(cmd.Env, cwdFileEnvVar+"="+trackedFile)
 	}
@@ -302,9 +301,8 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	taskCtx, cancel := context.WithTimeout(context.Background(), timeout)
 
 	// Create command
-	cmd := shellCommand(taskCtx, shell, command)
+	cmd := shellCommand(taskCtx, shell, command, shellEnv(ctx))
 	cmd.Dir = cwd
-	cmd.Env = shellEnv(ctx)
 
 	// Start the child in its own session: detached from the controlling
 	// terminal (so an interactive command fails fast instead of grabbing the
@@ -474,12 +472,17 @@ func pwdCommand() string {
 	return "pwd"
 }
 
-// shellCommand is the process that runs script under shell.
-func shellCommand(ctx context.Context, shell proc.Shell, script string) *exec.Cmd {
+// shellCommand is the process that runs script under shell, in env.
+func shellCommand(ctx context.Context, shell proc.Shell, script string, env []string) *exec.Cmd {
 	if shell.Kind == proc.ShellPowerShell {
-		return exec.CommandContext(ctx, shell.Path, powerShellArgs(powerShellScript(script))...)
+		args, scriptEnv := powerShellArgs(powerShellScript(script))
+		cmd := exec.CommandContext(ctx, shell.Path, args...)
+		cmd.Env = append(env, scriptEnv...)
+		return cmd
 	}
-	return exec.CommandContext(ctx, shell.Path, "-c", script)
+	cmd := exec.CommandContext(ctx, shell.Path, "-c", script)
+	cmd.Env = env
+	return cmd
 }
 
 func readTrackedCwd(path, fallback string) string {

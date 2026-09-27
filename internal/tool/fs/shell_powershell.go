@@ -1,8 +1,6 @@
 package fs
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"os"
 	"unicode/utf16"
 )
@@ -23,31 +21,30 @@ func powerShellScript(command string) string {
 		"if ($LASTEXITCODE) { exit $LASTEXITCODE }\n"
 }
 
-// maxEncodedCommandLen keeps -EncodedCommand clear of Windows' ~32K-character
-// command-line cap, leaving room for the executable path and other flags.
-const maxEncodedCommandLen = 30000
+// scriptEnvVar carries the script to PowerShell. Windows caps one
+// environment variable at 32767 UTF-16 units; maxScriptEnvLen leaves room for
+// the name.
+const (
+	scriptEnvVar    = "SAN_POWERSHELL_SCRIPT"
+	maxScriptEnvLen = 32000
+)
 
-// powerShellArgs runs script through -EncodedCommand: base64 of its UTF-16LE
-// bytes, so no quote or backslash in it is ever re-read by a command line. A
-// script too long for that runs from a temp file that deletes itself.
-func powerShellArgs(script string) []string {
-	// -OutputFormat Text keeps stderr plain: with -EncodedCommand, PowerShell
-	// otherwise writes errors to a redirected stderr as CLIXML.
+// powerShellArgs runs script with a fixed Invoke-Expression that reads it from
+// scriptEnvVar, so no quote or backslash in it is re-read by a command line;
+// env is what to add to the process environment. Unlike -EncodedCommand, this
+// keeps Windows PowerShell 5.1's errors plain text on a redirected stderr
+// instead of CLIXML prefixed with the whole script. A script too long for an
+// environment variable runs from a temp file that deletes itself.
+func powerShellArgs(script string) (args, env []string) {
 	flags := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-OutputFormat", "Text"}
-	units := utf16.Encode([]rune(script))
-	raw := make([]byte, 2*len(units))
-	for i, u := range units {
-		binary.LittleEndian.PutUint16(raw[2*i:], u)
-	}
-	encoded := base64.StdEncoding.EncodeToString(raw)
-	if len(encoded) > maxEncodedCommandLen {
+	if len(utf16.Encode([]rune(script))) > maxScriptEnvLen {
 		if path, err := powerShellFile(script); err == nil {
-			return append(flags, "-File", path)
+			return append(flags, "-File", path), nil
 		}
-		// Unwritable temp dir: the encoded form still fails, but with Windows'
-		// own "command line too long" error.
+		// Unwritable temp dir: the variable is still too long, and starting
+		// the process reports it.
 	}
-	return append(flags, "-EncodedCommand", encoded)
+	return append(flags, "-Command", "Invoke-Expression $env:"+scriptEnvVar), []string{scriptEnvVar + "=" + script}
 }
 
 // powerShellFile saves script as a temp .ps1 whose first line removes the
