@@ -57,13 +57,13 @@ func (m *mockLLMProvider) Name() string { return "mock" }
 
 type mockLimitFetcherProvider struct {
 	mockLLMProvider
-	inputLimit  int
-	outputLimit int
-	fetchErr    error
+	contextWindow int
+	maxOutput     int
+	fetchErr      error
 }
 
 func (m *mockLimitFetcherProvider) FetchModelLimits(_ context.Context, _ string) (int, int, error) {
-	return m.inputLimit, m.outputLimit, m.fetchErr
+	return m.contextWindow, m.maxOutput, m.fetchErr
 }
 
 // --- LLM tests ---
@@ -223,7 +223,7 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 		mockLLMProvider: mockLLMProvider{
 			models: []ModelInfo{{ID: "m"}},
 		},
-		outputLimit: 16000,
+		maxOutput: 16000,
 	}
 	l := &Client{provider: mp, model: "m"}
 
@@ -238,8 +238,8 @@ func TestResolveMaxTokens_FromModelLimitsFetcher(t *testing.T) {
 func TestModelLimitsFallBackToTheFetcher(t *testing.T) {
 	mp := &mockLimitFetcherProvider{
 		mockLLMProvider: mockLLMProvider{models: []ModelInfo{{ID: "m"}}},
-		inputLimit:      400000,
-		outputLimit:     8192,
+		contextWindow:   400000,
+		maxOutput:       8192,
 	}
 
 	in, out, _ := resolveModelLimits(mp, "m")
@@ -455,7 +455,7 @@ func TestCallOptionsCarryTheCurrentThinkingEffort(t *testing.T) {
 // A request needs prompt + max_tokens within the window, so the prompt budget
 // is the window less the reply cap — and the cap is held to maxOutputReserve so
 // a rarely-used 128k of output room does not eat the prompt's.
-func TestPromptBudgetLeavesRoomForTheReply(t *testing.T) {
+func TestContextBudgetLeavesRoomForTheReply(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		window, maxOutput int
@@ -468,8 +468,8 @@ func TestPromptBudgetLeavesRoomForTheReply(t *testing.T) {
 		{"unknown window is unknown", 0, 64_000, 0},
 		{"window smaller than the cap", 16_000, 64_000, 0},
 	} {
-		if got := PromptBudget(tc.window, tc.maxOutput); got != tc.want {
-			t.Errorf("%s: PromptBudget(%d, %d) = %d, want %d", tc.name, tc.window, tc.maxOutput, got, tc.want)
+		if got := ContextBudget(tc.window, tc.maxOutput); got != tc.want {
+			t.Errorf("%s: ContextBudget(%d, %d) = %d, want %d", tc.name, tc.window, tc.maxOutput, got, tc.want)
 		}
 	}
 }
@@ -481,8 +481,8 @@ func TestEffectiveMaxTokensHeldToTheReserve(t *testing.T) {
 	if got := l.effectiveMaxTokens(); got != maxOutputReserve {
 		t.Fatalf("effectiveMaxTokens() = %d, want %d", got, maxOutputReserve)
 	}
-	if got := l.PromptBudget(); got != 200_000-maxOutputReserve {
-		t.Fatalf("PromptBudget() = %d, want %d", got, 200_000-maxOutputReserve)
+	if got := l.ContextBudget(); got != 200_000-maxOutputReserve {
+		t.Fatalf("ContextBudget() = %d, want %d", got, 200_000-maxOutputReserve)
 	}
 }
 
@@ -493,7 +493,7 @@ func TestPromptUnderBudgetAlwaysFitsWithItsReply(t *testing.T) {
 	for _, m := range []struct{ window, maxOutput int }{
 		{200_000, 64_000}, {400_000, 128_000}, {1_050_000, 128_000}, {128_000, 4_096},
 	} {
-		budget := PromptBudget(m.window, m.maxOutput)
+		budget := ContextBudget(m.window, m.maxOutput)
 		if prompt := budget - 1; prompt+OutputCap(m.maxOutput) > m.window {
 			t.Errorf("window %d, output %d: prompt %d + reply %d overflows", m.window, m.maxOutput, prompt, OutputCap(m.maxOutput))
 		}

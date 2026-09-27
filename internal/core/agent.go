@@ -140,13 +140,13 @@ type Config struct {
 	// asked for fresh each inference, so a change mid-session lands on the next
 	// call. Nil leaves the model's defaults.
 	CallOptions func() []ai.Option
-	// PromptBudget is the prompt size at which auto-compaction fires: the
+	// ContextBudget is the prompt size at which auto-compaction fires: the
 	// window less the reply's room. Nil or zero turns it off. Not read off the
 	// client: the window is the model's unless a setting overrides it, and the
 	// setting is the application's.
-	PromptBudget func() int
-	System       System // required: system prompt layers
-	Tools        *Tools // required
+	ContextBudget func() int
+	System        System // required: system prompt layers
+	Tools         *Tools // required
 	// Gate is asked before each tool runs and may refuse the call or rewrite
 	// what the model sent. Nil lets everything through.
 	Gate Gate
@@ -220,18 +220,18 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:           cfg.ID,
-		system:       cfg.System,
-		tools:        cfg.Tools,
-		compactFunc:  cfg.CompactFunc,
-		gate:         cfg.Gate,
-		resultFilter: cfg.ResultFilter,
-		client:       cfg.Client,
-		callOptions:  cfg.CallOptions,
-		promptBudget: cfg.PromptBudget,
-		inbox:        make(chan Inbound, cfg.InboxBuf),
-		outbox:       outbox,
-		onEvent:      cfg.OnEvent,
+		id:            cfg.ID,
+		system:        cfg.System,
+		tools:         cfg.Tools,
+		compactFunc:   cfg.CompactFunc,
+		gate:          cfg.Gate,
+		resultFilter:  cfg.ResultFilter,
+		client:        cfg.Client,
+		callOptions:   cfg.CallOptions,
+		contextBudget: cfg.ContextBudget,
+		inbox:         make(chan Inbound, cfg.InboxBuf),
+		outbox:        outbox,
+		onEvent:       cfg.OnEvent,
 	}
 
 	// The SDK agent needs a client and San has none yet: which one answers a

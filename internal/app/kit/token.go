@@ -18,15 +18,16 @@ func FormatTokenCount(count int) string {
 	}
 }
 
-// GetMaxTokens returns the effective output limit, falling back to defaultMaxTokens.
-func GetMaxTokens(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultMaxTokens int) int {
-	if limit := getEffectiveOutputLimit(store, currentModel); limit > 0 {
+// GetMaxOutput returns the model's max output — a hand-set override, else
+// the cached metadata — falling back to defaultMaxOutput.
+func GetMaxOutput(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultMaxOutput int) int {
+	if limit := getMaxOutput(store, currentModel); limit > 0 {
 		return limit
 	}
-	return defaultMaxTokens
+	return defaultMaxOutput
 }
 
-// GetModelTokenLimits returns the cached context window for the current model.
+// GetModelLimits returns the cached context window for the current model.
 //
 // The same model ID can be cached under several provider/auth keys with
 // different windows (gpt-5.5: 400k via Direct API, 272k via ChatGPT
@@ -38,7 +39,7 @@ func GetMaxTokens(store *llm.Store, currentModel *llm.CurrentModelInfo, defaultM
 //     TTL, otherwise an expired cache would fall to step 2 and flicker again.
 //  2. else the largest window for the ID across all caches — covers a model an
 //     aggregator serves with no window while its native provider knows the real one.
-func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (inputLimit, outputLimit int) {
+func GetModelLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (contextWindow, maxOutput int) {
 	if store == nil || currentModel == nil {
 		return 0, 0
 	}
@@ -49,21 +50,21 @@ func GetModelTokenLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (
 	return store.CachedModelLimits(currentModel.ModelID)
 }
 
-// getEffectiveOutputLimit returns the output cap: a custom limit if set,
+// getMaxOutput returns the output cap: a custom limit if set,
 // otherwise the cached model metadata. The window has its own resolver
 // (llm.Store.EffectiveContextWindow), shared with the agent's compaction check.
-func getEffectiveOutputLimit(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
+func getMaxOutput(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
 	if currentModel == nil {
 		return 0
 	}
 
 	if store != nil {
-		if _, output, ok := store.TokenLimit(currentModel.ModelID); ok {
+		if _, output, ok := store.ContextLimit(currentModel.ModelID); ok {
 			return output
 		}
 	}
 
-	_, output := GetModelTokenLimits(store, currentModel)
+	_, output := GetModelLimits(store, currentModel)
 	return output
 }
 
@@ -81,9 +82,10 @@ func GetContextWindow(store *llm.Store, currentModel *llm.CurrentModelInfo) int 
 	return store.EffectiveContextWindow(currentModel.Provider, auth, currentModel.ModelID)
 }
 
-// GetPromptBudget is the status bar's denominator: the prompt size at which
-// auto-compaction fires, computed as llm.Client.PromptBudget computes it. 0
-// when the window is unknown — the bar then reads "--", not a guess.
-func GetPromptBudget(store *llm.Store, currentModel *llm.CurrentModelInfo) int {
-	return llm.PromptBudget(GetContextWindow(store, currentModel), getEffectiveOutputLimit(store, currentModel))
+// GetContextLimits returns the model's context window and the prompt size
+// within it at which auto-compaction fires, computed as llm.Client computes
+// it; both 0 when the window is unknown.
+func GetContextLimits(store *llm.Store, currentModel *llm.CurrentModelInfo) (window, budget int) {
+	window = GetContextWindow(store, currentModel)
+	return window, llm.ContextBudget(window, getMaxOutput(store, currentModel))
 }

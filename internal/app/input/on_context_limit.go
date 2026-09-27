@@ -20,7 +20,7 @@ func setContextLimit(store *llm.Store, current *llm.CurrentModelInfo, args strin
 	}
 	args = strings.TrimSpace(args)
 	if args == "reset" {
-		if err := store.ClearTokenLimit(current.ModelID); err != nil {
+		if err := store.ClearContextLimit(current.ModelID); err != nil {
 			return "Error: " + err.Error()
 		}
 		return "Cleared the context limit override for " + current.ModelID + "."
@@ -33,10 +33,10 @@ func setContextLimit(store *llm.Store, current *llm.CurrentModelInfo, args strin
 	if output >= window {
 		return "The max output must be smaller than the context window, which it is part of."
 	}
-	if err := store.SetTokenLimit(current.ModelID, window, output); err != nil {
+	if err := store.SetContextLimit(current.ModelID, window, output); err != nil {
 		return "Error: " + err.Error()
 	}
 	return fmt.Sprintf("%s: window %s · max output %s · auto-compacts at %s",
 		current.ModelID, kit.FormatTokenCount(window), kit.FormatTokenCount(output),
-		kit.FormatTokenCount(llm.PromptBudget(window, output)))
+		kit.FormatTokenCount(llm.ContextBudget(window, output)))
 }

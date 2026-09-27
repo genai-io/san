@@ -34,6 +34,9 @@ type env struct {
 	// active — see ai.Usage.TotalInput.
 	InputTokens  int
 	OutputTokens int
+	// ContextTokens is how much of the window the conversation fills: the
+	// latest call's prompt plus its reply, which the next call sends back.
+	ContextTokens int
 	// CachedPrefixTokens is the latest infer call's cached prompt prefix
 	// (creation + read). On a provider whose breakpoint sits at the end of the
 	// system prompt, that prefix is exactly the tool definitions plus the
@@ -305,6 +308,7 @@ func parseSessionMode(mode string) setting.OperationMode {
 func (m *env) ResetContextDisplay() {
 	m.InputTokens = 0
 	m.OutputTokens = 0
+	m.ContextTokens = 0
 	// The prefix measurement belongs to the same infer call as InputTokens;
 	// keeping it past the reset would pair an exact prefix with an estimated
 	// total and report a split neither number supports.

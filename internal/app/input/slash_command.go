@@ -46,7 +46,6 @@ type SlashCommandEnv struct {
 	Width        int
 	Height       int
 	Cwd          string
-	InputTokens  int
 
 	// Domain services. Commands read live state from these — never snapshot
 	// at deps construction time, since /something might mutate state that a

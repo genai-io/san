@@ -163,16 +163,16 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 	}
 
 	ag = core.NewAgent(core.Config{
-		ID:           "main",
-		Client:       client.TurnClient,
-		CallOptions:  client.CallOptions,
-		PromptBudget: client.PromptBudget,
-		System:       sys,
-		Tools:        tools,
-		Gate:         tool.HookedPermission(p.HookEngine, pg),
-		ResultFilter: p.ResultFilter,
-		CompactFunc:  compactFunc,
-		OnEvent:      p.OnEvent,
+		ID:            "main",
+		Client:        client.TurnClient,
+		CallOptions:   client.CallOptions,
+		ContextBudget: client.ContextBudget,
+		System:        sys,
+		Tools:         tools,
+		Gate:          tool.HookedPermission(p.HookEngine, pg),
+		ResultFilter:  p.ResultFilter,
+		CompactFunc:   compactFunc,
+		OnEvent:       p.OnEvent,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,

@@ -264,8 +264,9 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:        "claude-sonnet-4-6",
-		InputTokens:      142000,
-		PromptBudget:     200000,
+		ContextTokens:    142000,
+		ContextWindow:    200000,
+		ContextBudget:    200000,
 		ConversationCost: llm.NewCostTotal(llm.Money{Amount: 0.04, Currency: llm.CurrencyUSD}),
 		ShowContextBar:   true,
 		Width:            120,
@@ -292,10 +293,11 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 // numeric "ctx X/Y" label still shows.
 func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:    "claude-sonnet-4-6",
-		InputTokens:  142000,
-		PromptBudget: 200000,
-		Width:        120,
+		ModelName:     "claude-sonnet-4-6",
+		ContextTokens: 142000,
+		ContextWindow: 200000,
+		ContextBudget: 200000,
+		Width:         120,
 	})
 	visible := stripANSI(rendered)
 	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
@@ -309,8 +311,9 @@ func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "claude-sonnet-4-6",
-		InputTokens:    190000,
-		PromptBudget:   200000,
+		ContextTokens:  190000,
+		ContextWindow:  200000,
+		ContextBudget:  200000,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -329,11 +332,12 @@ func TestRenderModeStatusShowsBarWhenEnabled(t *testing.T) {
 
 func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:    "claude-sonnet-4-6",
-		InputTokens:  1000,
-		PromptBudget: 200000,
-		Compressions: 3,
-		Width:        120,
+		ModelName:     "claude-sonnet-4-6",
+		ContextTokens: 1000,
+		ContextWindow: 200000,
+		ContextBudget: 200000,
+		Compressions:  3,
+		Width:         120,
 	})
 	visible := stripANSI(rendered)
 	if !strings.Contains(visible, "compacted ×3") {
@@ -343,11 +347,12 @@ func TestRenderModeStatusShowsCompressionsBadgeWhenNonZero(t *testing.T) {
 
 func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
-		ModelName:    "claude-sonnet-4-6",
-		InputTokens:  1000,
-		PromptBudget: 200000,
-		Compressions: 0,
-		Width:        120,
+		ModelName:     "claude-sonnet-4-6",
+		ContextTokens: 1000,
+		ContextWindow: 200000,
+		ContextBudget: 200000,
+		Compressions:  0,
+		Width:         120,
 	})
 	visible := stripANSI(rendered)
 	if strings.Contains(visible, "compacted") {
@@ -356,13 +361,14 @@ func TestRenderModeStatusHidesBadgeWhenZero(t *testing.T) {
 }
 
 func TestRenderModeStatusShowsPlaceholderWhenLimitUnknown(t *testing.T) {
-	// When PromptBudget == 0 (limit unknown), the bar must still render with
+	// When ContextBudget == 0 (limit unknown), the bar must still render with
 	// a placeholder so the gap stays visible and actionable, instead of
 	// silently hiding the entire context segment.
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:      "some-model",
-		InputTokens:    5000,
-		PromptBudget:   0,
+		ContextTokens:  5000,
+		ContextWindow:  0,
+		ContextBudget:  0,
 		ShowContextBar: true,
 		Width:          120,
 	})
@@ -393,10 +399,11 @@ func TestRenderModeStatusShowsTemporaryStatusMessage(t *testing.T) {
 // scoped token figure above the input area).
 func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
-		ModelName:    "gpt-test",
-		InputTokens:  164600,
-		PromptBudget: 272000,
-		Width:        120,
+		ModelName:     "gpt-test",
+		ContextTokens: 164600,
+		ContextWindow: 272000,
+		ContextBudget: 272000,
+		Width:         120,
 	}))
 	if !strings.Contains(visible, "ctx") {
 		t.Fatalf("RenderModeStatus() = %q, want the ctx label", visible)

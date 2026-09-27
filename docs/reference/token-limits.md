@@ -15,12 +15,15 @@ So the prompt a request can carry depends on how much it keeps for the reply:
 | Figure | Rule | Where |
 |---|---|---|
 | `max_tokens` sent | `min(max output, 32k)`; 8192 when unknown | `llm.OutputCap` |
-| Auto-compact point | `window − max_tokens` | `llm.PromptBudget` |
+| Auto-compact point | `window − max_tokens` | `llm.ContextBudget` |
 | Prompt size | the provider's count for the last call + an estimate of what followed | `core.promptMeasure` |
 
 A reply cut off at `max_tokens` is continued, not lost, so holding the cap to
 32k costs nothing but frees the rest of the window for the prompt. The status
-bar reads against the same budget: 100% is where auto-compaction fires.
+bar's `ctx X/Y` is the last call's prompt plus its reply, read against the
+window itself — the figure the model is sold with and `/context limit` sets —
+and hints "auto-compact near" as it closes on the compact point; `/context`
+shows both.
 
 An unknown window stays unknown: no proactive compaction, the prompt-too-long
 retry recovers, and the status bar shows `--`.

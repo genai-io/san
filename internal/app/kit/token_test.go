@@ -6,11 +6,11 @@ import (
 	"github.com/genai-io/san/internal/llm"
 )
 
-// TestGetModelTokenLimitsPrefersCurrentProvider guards against the status-bar
+// TestGetModelLimitsPrefersCurrentProvider guards against the status-bar
 // context window flickering when the same model ID is cached under multiple
 // providers with different windows: it must resolve to the connected provider's
 // value deterministically, not a random map hit.
-func TestGetModelTokenLimitsPrefersCurrentProvider(t *testing.T) {
+func TestGetModelLimitsPrefersCurrentProvider(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	store, err := llm.NewStore()
 	if err != nil {
@@ -42,7 +42,7 @@ func TestGetModelTokenLimitsPrefersCurrentProvider(t *testing.T) {
 	}
 }
 
-func TestGetModelTokenLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T) {
+func TestGetModelLimitsUsesConnectedAuthWhenCurrentAuthMissing(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	store, err := llm.NewStore()
 	if err != nil {
@@ -109,18 +109,18 @@ func TestContextLimitOverrideWinsAndClears(t *testing.T) {
 	}
 	current := &llm.CurrentModelInfo{ModelID: "m", Provider: llm.OpenAI, AuthMethod: llm.AuthAPIKey}
 
-	if err := store.SetTokenLimit("m", 1_000_000, 64_000); err != nil {
-		t.Fatalf("SetTokenLimit: %v", err)
+	if err := store.SetContextLimit("m", 1_000_000, 64_000); err != nil {
+		t.Fatalf("SetContextLimit: %v", err)
 	}
 	if got := GetContextWindow(store, current); got != 1_000_000 {
 		t.Fatalf("GetContextWindow() = %d, want the 1000000 override", got)
 	}
-	if got, want := GetPromptBudget(store, current), llm.PromptBudget(1_000_000, 64_000); got != want {
-		t.Fatalf("GetPromptBudget() = %d, want %d", got, want)
+	if window, budget := GetContextLimits(store, current); window != 1_000_000 || budget != llm.ContextBudget(1_000_000, 64_000) {
+		t.Fatalf("GetContextLimits() = %d, %d; want the override and its budget", window, budget)
 	}
 
-	if err := store.ClearTokenLimit("m"); err != nil {
-		t.Fatalf("ClearTokenLimit: %v", err)
+	if err := store.ClearContextLimit("m"); err != nil {
+		t.Fatalf("ClearContextLimit: %v", err)
 	}
 	if got := GetContextWindow(store, current); got != 200000 {
 		t.Fatalf("GetContextWindow() after clear = %d, want the cached 200000", got)

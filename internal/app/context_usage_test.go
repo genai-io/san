@@ -125,10 +125,10 @@ func (prefixCachingProvider) CachesToolsAndSystemPrompt() bool { return true }
 // and the display falls back to estimation.
 func TestMeasuredPromptPrefixRejectsImplausibleReadings(t *testing.T) {
 	usage := conv.ContextUsage{
-		Measured:     41200,
-		SystemPrompt: 5000,
-		Tools:        19000,
-		MCPTools:     3000,
+		ContextTokens: 41200,
+		SystemPrompt:  5000,
+		Tools:         19000,
+		MCPTools:      3000,
 	}
 	const estimated = 27000 // the three cached categories
 
@@ -144,8 +144,8 @@ func TestMeasuredPromptPrefixRejectsImplausibleReadings(t *testing.T) {
 		},
 		"implausibly small":     {estimated / 4, 0},
 		"nothing cached":        {0, 0},
-		"at the measured total": {usage.Measured, 0},
-		"beyond the total":      {usage.Measured + 1, 0},
+		"at the measured total": {usage.ContextTokens, 0},
+		"beyond the total":      {usage.ContextTokens + 1, 0},
 	} {
 		m := &model{}
 		m.env.CachedPrefixTokens = tc.cachedPrefix
@@ -160,7 +160,7 @@ func TestMeasuredPromptPrefixRejectsImplausibleReadings(t *testing.T) {
 // Providers that cache on a boundary they choose report a real number that
 // measures an unknown span — believing it would overstate the prompt.
 func TestMeasuredPromptPrefixIgnoresProvidersWithoutAKnownBreakpoint(t *testing.T) {
-	usage := conv.ContextUsage{Measured: 41200, SystemPrompt: 5000, Tools: 19000, MCPTools: 3000}
+	usage := conv.ContextUsage{ContextTokens: 41200, SystemPrompt: 5000, Tools: 19000, MCPTools: 3000}
 
 	m := &model{}
 	m.env.CachedPrefixTokens = 26000 // plausible, but not a prompt-prefix measurement

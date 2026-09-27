@@ -30,14 +30,15 @@ import (
 // and no breakdown, so the split has to be derived from the text itself.
 func (m *model) contextUsage() conv.ContextUsage {
 	store, current := m.services.LLM.Store(), m.env.CurrentModel
+	window, budget := kit.GetContextLimits(store, current)
 	usage := conv.ContextUsage{
-		ModelName: m.env.GetModelDisplayName(),
-		Limit:     kit.GetContextWindow(store, current),
-		Budget:    kit.GetPromptBudget(store, current),
-		Measured:  m.env.InputTokens,
+		ModelName:     m.env.GetModelDisplayName(),
+		ContextWindow: window,
+		ContextBudget: budget,
+		ContextTokens: m.env.ContextTokens,
 	}
 	if store != nil && current != nil {
-		_, _, usage.Overridden = store.TokenLimit(current.ModelID)
+		_, _, usage.Overridden = store.ContextLimit(current.ModelID)
 	}
 
 	sys, tools := m.services.Agent.System(), m.services.Agent.Tools()
@@ -91,7 +92,7 @@ func (m *model) contextUsage() conv.ContextUsage {
 // measured total, which is the same honest answer every other provider gets.
 func (m *model) measuredPromptPrefix(usage conv.ContextUsage) int {
 	prefix := m.env.CachedPrefixTokens
-	if prefix <= 0 || prefix >= usage.Measured {
+	if prefix <= 0 || prefix >= usage.ContextTokens {
 		// Nothing cached — no turn yet, or a prefix below the model's
 		// cacheable minimum (512–4096 tokens, depending on the model, so
 		// small toolsets routinely miss it). A prefix at or above the whole

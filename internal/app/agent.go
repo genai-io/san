@@ -153,7 +153,7 @@ func (m *model) syncMCPTools() {
 func (m *model) buildAgentParams() agent.BuildParams {
 	params := m.promptParams()
 
-	maxTokens := kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
+	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	var onEvent func(core.Event)
 	rec := m.services.Session.NewRecorder("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
 	if rec != nil {
@@ -846,7 +846,7 @@ func (m *model) ReconfigureAgentTool() {
 // ============================================================
 
 func (m *model) buildLLMClient() *llm.Client {
-	c := llm.NewClient(m.env.LLMProvider, m.env.GetModelID(), kit.GetMaxTokens(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens))
+	c := llm.NewClient(m.env.LLMProvider, m.env.GetModelID(), kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens))
 	c.SetThinkingEffort(m.env.EffectiveThinkingEffort())
 	return c
 }

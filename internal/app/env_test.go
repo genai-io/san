@@ -85,12 +85,12 @@ func TestSessionModeReadsPostureWhileModesCycle(t *testing.T) {
 }
 
 func TestResetContextDisplay_PreservesCompressions(t *testing.T) {
-	e := &env{Compressions: 3, InputTokens: 100, OutputTokens: 50}
+	e := &env{Compressions: 3, InputTokens: 100, OutputTokens: 50, ContextTokens: 150}
 	e.ResetContextDisplay()
 	if e.Compressions != 3 {
 		t.Errorf("Compressions = %d, want 3 (must survive ResetContextDisplay)", e.Compressions)
 	}
-	if e.InputTokens != 0 || e.OutputTokens != 0 {
+	if e.InputTokens != 0 || e.OutputTokens != 0 || e.ContextTokens != 0 {
 		t.Errorf("InputTokens=%d OutputTokens=%d, want 0/0", e.InputTokens, e.OutputTokens)
 	}
 }

@@ -107,10 +107,11 @@ func TestRenderContextLabel(t *testing.T) {
 
 func TestRenderContextLabelStaysCompact(t *testing.T) {
 	visible := stripANSI(RenderModeStatus(OperationModeParams{
-		ModelName:    "gpt-test",
-		InputTokens:  0,
-		PromptBudget: 272_000,
-		Width:        120,
+		ModelName:     "gpt-test",
+		ContextTokens: 0,
+		ContextWindow: 272_000,
+		ContextBudget: 272_000,
+		Width:         120,
 	}))
 	if !strings.Contains(visible, "ctx 0/272.0k") {
 		t.Fatalf("RenderModeStatus() = %q, want compact ctx label", visible)
@@ -293,5 +294,20 @@ func TestModelStatusLabel(t *testing.T) {
 				t.Errorf("ModelStatusLabel(%q, %q) = %q, want %q", c.model, c.effort, got, c.want)
 			}
 		})
+	}
+}
+
+// The label counts against the model's window — the figure the model is sold
+// with and /context limit sets — not the earlier point where compaction fires.
+func TestContextLabelCountsAgainstTheWindow(t *testing.T) {
+	visible := stripANSI(RenderModeStatus(OperationModeParams{
+		ModelName:     "gpt-test",
+		ContextTokens: 120_000,
+		ContextWindow: 272_000,
+		ContextBudget: 240_000,
+		Width:         120,
+	}))
+	if !strings.Contains(visible, "ctx 120.0k/272.0k") {
+		t.Fatalf("status = %q, want the window as the denominator", visible)
 	}
 }

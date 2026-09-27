@@ -26,18 +26,18 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id           string
-	system       System
-	tools        *Tools
-	compactFunc  func(ctx context.Context, msgs []Message) (string, error)
-	gate         Gate
-	resultFilter ResultFilter
-	client       func(msgs []Message) (*ai.Client, error)
-	callOptions  func() []ai.Option
-	promptBudget func() int
-	inbox        chan Inbound
-	outbox       chan Event
-	onEvent      func(Event)
+	id            string
+	system        System
+	tools         *Tools
+	compactFunc   func(ctx context.Context, msgs []Message) (string, error)
+	gate          Gate
+	resultFilter  ResultFilter
+	client        func(msgs []Message) (*ai.Client, error)
+	callOptions   func() []ai.Option
+	contextBudget func() int
+	inbox         chan Inbound
+	outbox        chan Event
+	onEvent       func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent

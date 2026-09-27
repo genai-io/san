@@ -147,7 +147,7 @@ const modelDetailTimeout = 8 * time.Second
 // San's resolver only reaches for it when the listing already came back
 // without a window, and a vendor with nothing further to ask has nothing
 // further to say.
-func (p *vendorProvider) FetchModelLimits(ctx context.Context, modelID string) (inputLimit, outputLimit int, err error) {
+func (p *vendorProvider) FetchModelLimits(ctx context.Context, modelID string) (contextWindow, maxOutput int, err error) {
 	if p.vendor.ID != alibabaVendor {
 		return 0, 0, fmt.Errorf("llm: %s publishes no per-model limits", p.vendor.ID)
 	}

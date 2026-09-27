@@ -2,7 +2,7 @@ package llm
 
 import "testing"
 
-func TestStore_PersistsConnectionsCurrentModelSearchProviderAndTokenLimits(t *testing.T) {
+func TestStore_PersistsConnectionsCurrentModelSearchProviderAndContextLimits(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -20,8 +20,8 @@ func TestStore_PersistsConnectionsCurrentModelSearchProviderAndTokenLimits(t *te
 	if err := store.SetSearchProvider("brave"); err != nil {
 		t.Fatalf("SetSearchProvider() error = %v", err)
 	}
-	if err := store.SetTokenLimit("gpt-5", 200000, 32000); err != nil {
-		t.Fatalf("SetTokenLimit() error = %v", err)
+	if err := store.SetContextLimit("gpt-5", 200000, 32000); err != nil {
+		t.Fatalf("SetContextLimit() error = %v", err)
 	}
 
 	reloaded, err := NewStore()
@@ -39,7 +39,7 @@ func TestStore_PersistsConnectionsCurrentModelSearchProviderAndTokenLimits(t *te
 	if reloaded.SearchProvider() != "brave" {
 		t.Fatalf("search provider = %q, want %q", reloaded.SearchProvider(), "brave")
 	}
-	in, out, ok := reloaded.TokenLimit("gpt-5")
+	in, out, ok := reloaded.ContextLimit("gpt-5")
 	if !ok || in != 200000 || out != 32000 {
 		t.Fatalf("unexpected token limit after reload: in=%d out=%d ok=%v", in, out, ok)
 	}
@@ -115,7 +115,7 @@ func TestStore_ReloadMissingFileIsNoError(t *testing.T) {
 	}
 }
 
-func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
+func TestStore_SetContextLimitLeavesCacheAlone(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -137,8 +137,8 @@ func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 		t.Fatal("expected cached models")
 	}
 
-	if err := store.SetTokenLimit("gpt-5", 256000, 64000); err != nil {
-		t.Fatalf("SetTokenLimit() error = %v", err)
+	if err := store.SetContextLimit("gpt-5", 256000, 64000); err != nil {
+		t.Fatalf("SetContextLimit() error = %v", err)
 	}
 
 	cachedAfter, ok := store.CachedModels(OpenAI, AuthAPIKey)
@@ -150,7 +150,7 @@ func TestStore_SetTokenLimitLeavesCacheAlone(t *testing.T) {
 	if cachedAfter[0].ContextWindow != 0 || cachedBefore[0].ContextWindow != 0 {
 		t.Fatalf("expected the cache left alone, got %#v", cachedAfter[0])
 	}
-	if in, out, ok := store.TokenLimit("gpt-5"); !ok || in != 256000 || out != 64000 {
+	if in, out, ok := store.ContextLimit("gpt-5"); !ok || in != 256000 || out != 64000 {
 		t.Fatalf("GetTokenLimit() = (%d, %d, %v), want (256000, 64000, true)", in, out, ok)
 	}
 	if got := store.EffectiveContextWindow(OpenAI, AuthAPIKey, "gpt-5"); got != 256000 {
