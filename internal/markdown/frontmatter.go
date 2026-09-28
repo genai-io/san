@@ -2,7 +2,6 @@
 package markdown
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"strings"
@@ -11,53 +10,23 @@ import (
 // ParseFrontmatterFile reads a markdown file and returns (frontmatter, body).
 // Frontmatter is the YAML content between opening and closing --- delimiters.
 func ParseFrontmatterFile(path string) (frontmatter, body string, err error) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", "", err
 	}
-	defer file.Close()
-
-	var fmBuilder strings.Builder
-	var bodyBuilder strings.Builder
-	inFrontmatter := false
-
-	scanner := bufio.NewScanner(file)
-	lineNum := 0
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineNum++
-
-		if lineNum == 1 {
-			if strings.TrimSpace(line) == "---" {
-				inFrontmatter = true
-				continue
-			}
-			bodyBuilder.WriteString(line)
-			bodyBuilder.WriteString("\n")
-			continue
+	src := strings.ReplaceAll(string(data), "\r\n", "\n")
+	first, rest, _ := strings.Cut(src, "\n")
+	if strings.TrimSpace(first) != "---" {
+		return "", strings.TrimSpace(src), nil
+	}
+	var fm strings.Builder
+	for rest != "" {
+		line, next, _ := strings.Cut(rest, "\n")
+		if strings.TrimSpace(line) == "---" {
+			return fm.String(), strings.TrimSpace(next), nil
 		}
-
-		if inFrontmatter {
-			if strings.TrimSpace(line) == "---" {
-				inFrontmatter = false
-				continue
-			}
-			fmBuilder.WriteString(line)
-			fmBuilder.WriteString("\n")
-		} else {
-			bodyBuilder.WriteString(line)
-			bodyBuilder.WriteString("\n")
-		}
+		fm.WriteString(line + "\n")
+		rest = next
 	}
-
-	if err := scanner.Err(); err != nil {
-		return "", "", err
-	}
-
-	if inFrontmatter {
-		return "", "", fmt.Errorf("unclosed frontmatter: missing closing '---' delimiter")
-	}
-
-	return fmBuilder.String(), strings.TrimSpace(bodyBuilder.String()), nil
+	return "", "", fmt.Errorf("unclosed frontmatter: missing closing '---' delimiter")
 }

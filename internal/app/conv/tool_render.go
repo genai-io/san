@@ -1147,11 +1147,7 @@ func agentIcon(tick int) string {
 }
 
 func truncateToolLabel(label string, width int) string {
-	maxWidth := maxToolLabelWidth(width)
-	if lipgloss.Width(label) <= maxWidth {
-		return label
-	}
-	return kit.TruncateText(label, maxWidth)
+	return kit.TruncateText(label, maxToolLabelWidth(width))
 }
 
 func bashPreviewLabelWidth(width int) int {

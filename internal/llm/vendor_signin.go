@@ -153,10 +153,7 @@ func (a authenticator) HasCredentials() bool {
 	return err == nil && found
 }
 
-var (
-	_ Authenticator                 = authenticator{}
-	_ StoredCredentialAuthenticator = authenticator{}
-)
+var _ Authenticator = authenticator{}
 
 func registerAuthenticators() {
 	for vendorID, meta := range signIns {

@@ -28,11 +28,7 @@ type Authenticator interface {
 	Login(ctx context.Context, onPrompt func(LoginPrompt)) error
 	// Logout clears any stored credentials for the auth method.
 	Logout() error
-}
-
-// StoredCredentialAuthenticator is an optional extension for authenticators that
-// can report whether they already have local credentials worth validating.
-type StoredCredentialAuthenticator interface {
+	// HasCredentials reports whether local credentials worth validating exist.
 	HasCredentials() bool
 }
 
@@ -54,8 +50,8 @@ func SupportsInteractiveLogin(provider ProviderID, authMethod AuthMethod) bool {
 // has stored credentials. Callers should still verify them with the provider,
 // because this only checks local presence, not remote validity.
 func HasInteractiveCredentials(provider ProviderID, authMethod AuthMethod) bool {
-	stored, ok := lookupAuthenticator(provider, authMethod).(StoredCredentialAuthenticator)
-	return ok && stored.HasCredentials()
+	a := lookupAuthenticator(provider, authMethod)
+	return a != nil && a.HasCredentials()
 }
 
 // Login runs the interactive sign-in for a provider auth method.
