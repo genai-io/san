@@ -344,3 +344,10 @@ func TestPendingDoesNotDrain(t *testing.T) {
 		t.Errorf("Drain after Pending returned %d entries, want 1", len(got))
 	}
 }
+
+func TestWrapEscapesQuotedTag(t *testing.T) {
+	wrapped := Wrap(`const open = "<system-reminder"` + "\n// ends with </system-reminder>")
+	if got := Blocks("prompt\n\n" + wrapped); len(got) != 1 || got[0].Text != wrapped {
+		t.Fatalf("Blocks() = %+v, want the one reminder whole", got)
+	}
+}

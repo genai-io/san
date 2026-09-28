@@ -124,3 +124,43 @@ func TestAppendThinkingTimesFirstToLatestDelta(t *testing.T) {
 		t.Fatalf("ThinkingDuration = %v, want 3.2s", msg.ThinkingDuration)
 	}
 }
+
+func TestBuildCompactionTextKeepsToolArguments(t *testing.T) {
+	text := BuildCompactionText([]Message{
+		AssistantMessage("", "", []ToolCall{{ID: "1", Name: "Edit", Input: `{"file_path":"internal/core/compact.go"}`}}),
+	})
+	if !strings.Contains(text, `[Tool Call: Edit] {"file_path":"internal/core/compact.go"}`) {
+		t.Fatalf("BuildCompactionText() = %q, want the call's arguments", text)
+	}
+}
+
+func TestWithRecentRequestsKeepsNewestVerbatim(t *testing.T) {
+	msgs := []Message{
+		UserMessage(strings.Repeat("old ", 100), nil),
+		UserMessage(FormatCompactSummary("an earlier summary"), nil),
+		UserMessage("fix the login bug\n\n<system-reminder>\nmemory\n</system-reminder>", nil),
+		ToolResultMessage(ToolResult{ToolCallID: "1", ToolName: "Read", Content: ai.TextContent("file body")}),
+		UserMessage("and add a test", nil),
+	}
+	// A budget of 100 tokens leaves 40 bytes: room for the two newest only.
+	got := WithRecentRequests("SUMMARY", msgs, 100)
+	want := "SUMMARY\n\n## Recent User Messages (verbatim)\n\nfix the login bug\n\n---\n\nand add a test"
+	if got != want {
+		t.Fatalf("WithRecentRequests() =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestWithRecentRequestsCarriesAcrossCompactions(t *testing.T) {
+	first := WithRecentRequests("S1", []Message{UserMessage("fix the login bug", nil)}, 0)
+	msgs := []Message{
+		// The restored file quotes the tag, which defeats stripSystemReminders.
+		UserMessage(FormatCompactSummary(first)+"\n\n<system-reminder>\nmemory\n</system-reminder>"+
+			"\n\n<system-reminder>\n<file>const open = \"<system-reminder\"</file>\n</system-reminder>", nil),
+		UserMessage("and add a test", nil),
+	}
+	got := WithRecentRequests("S2", msgs, 0)
+	want := "S2\n\n## Recent User Messages (verbatim)\n\nfix the login bug\n\n---\n\nand add a test"
+	if got != want {
+		t.Fatalf("WithRecentRequests() =\n%q\nwant\n%q", got, want)
+	}
+}

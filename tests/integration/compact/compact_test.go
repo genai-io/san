@@ -37,7 +37,9 @@ func TestCompact_SummarizesConversation(t *testing.T) {
 	if count != 4 {
 		t.Errorf("expected count 4, got %d", count)
 	}
-	if summary != "Summary: discussed file reading" {
+	// The person's own messages ride along verbatim after the model's summary.
+	want := "Summary: discussed file reading\n\n## Recent User Messages (verbatim)\n\nread the file\n\n---\n\nthanks"
+	if summary != want {
 		t.Errorf("unexpected summary: %q", summary)
 	}
 }

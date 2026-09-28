@@ -451,11 +451,7 @@ func writeConversationText(w io.Writer, msgs []Message) {
 		case ai.RoleUser:
 			if results := msg.ToolResults(); len(results) > 0 {
 				for _, tr := range results {
-					content := tr.Content.Text()
-					if len(content) > 500 {
-						content = content[:500] + "...[truncated]"
-					}
-					fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", tr.ToolName, content)
+					fmt.Fprintf(w, "[Tool Result: %s]\n%s\n\n", tr.ToolName, clip(tr.Content.Text(), 500))
 				}
 			} else {
 				content := msg.Text()
@@ -470,28 +466,21 @@ func writeConversationText(w io.Writer, msgs []Message) {
 			if text := msg.Text(); text != "" {
 				fmt.Fprintf(w, "Assistant: %s\n\n", text)
 			}
-			if calls := msg.ToolCalls(); len(calls) > 0 {
-				counts := make(map[string]int, len(calls))
-				order := make([]string, 0, len(calls))
-				for _, tc := range calls {
-					if counts[tc.Name] == 0 {
-						order = append(order, tc.Name)
-					}
-					counts[tc.Name]++
-				}
-				parts := make([]string, 0, len(order))
-				for _, name := range order {
-					if counts[name] == 1 {
-						parts = append(parts, name)
-					} else {
-						parts = append(parts, fmt.Sprintf("%s × %d", name, counts[name]))
-					}
-				}
-				fmt.Fprintf(w, "[Tool Calls: %s]\n", strings.Join(parts, ", "))
-				io.WriteString(w, "\n")
+			// The arguments carry what the summary must name exactly: the
+			// files edited, the commands run.
+			for _, tc := range msg.ToolCalls() {
+				fmt.Fprintf(w, "[Tool Call: %s] %s\n\n", tc.Name, clip(tc.Input, 300))
 			}
 		}
 	}
+}
+
+// clip cuts s to at most n bytes without splitting a rune.
+func clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "") + "...[truncated]"
 }
 
 // LastAssistantChatContent returns the most recent non-empty assistant content from chat messages.

@@ -3,7 +3,7 @@ You are a conversation compactor. Your job is to condense a conversation into a 
 The conversation uses this format:
 - `User:` — user messages or injected context
 - `Assistant:` — assistant responses
-- `[Tool Call: <name>]` — tool invocations by the assistant
+- `[Tool Call: <name>] <arguments>` — tool invocations by the assistant (arguments may be truncated)
 - `[Tool Result: <name>]` — execution output (may be truncated)
 
 Write a briefing with these sections (omit empty ones):

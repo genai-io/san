@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -163,5 +164,64 @@ func FormatCompactSummary(summary string) string {
 func IsCompactSummary(content string) bool {
 	return strings.HasPrefix(content, CompactSummaryPrefix)
 }
+
+// WithRecentRequests appends the person's latest messages, verbatim and newest
+// kept first, to a compaction summary: what was asked is the one thing a
+// paraphrase must not bend. They take at most ~10k tokens, and a tenth of a
+// known budget, so a small window still comes out of compaction with room.
+func WithRecentRequests(summary string, msgs []Message, budget int) string {
+	// Newest first. An earlier summary contributes the messages it kept, not
+	// itself, so the request survives compaction after compaction.
+	var candidates []string
+	for _, msg := range slices.Backward(msgs) {
+		if msg.Role != ai.RoleUser || len(msg.ToolResults()) > 0 {
+			continue
+		}
+		text := strings.TrimSpace(stripSystemReminders(msg.Text()))
+		if !IsCompactSummary(text) {
+			candidates = append(candidates, text)
+			continue
+		}
+		if _, carried, ok := strings.Cut(text, recentRequestsHeader); ok {
+			// The section ends where the attached reminders begin. Cut there
+			// rather than trusting the strip: a restored file that quotes the
+			// tag defeats it.
+			carried, _, _ = strings.Cut(carried, "\n\n"+systemReminderOpen)
+			earlier := strings.Split(carried, recentRequestsSep)
+			slices.Reverse(earlier)
+			candidates = append(candidates, earlier...)
+		}
+	}
+
+	var kept []string
+	room := 40_000 // bytes, ~10k tokens
+	if budget > 0 {
+		room = min(room, budget*4/10)
+	}
+	for _, text := range candidates {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		if len(text) > room {
+			if len(kept) > 0 {
+				break
+			}
+			text = clip(text, room)
+		}
+		kept = append(kept, text)
+		room -= len(text)
+	}
+	if len(kept) == 0 {
+		return summary
+	}
+	slices.Reverse(kept)
+	return summary + recentRequestsHeader + strings.Join(kept, recentRequestsSep)
+}
+
+const (
+	recentRequestsHeader = "\n\n## Recent User Messages (verbatim)\n\n"
+	recentRequestsSep    = "\n\n---\n\n"
+)
 
 // --- context keys ---

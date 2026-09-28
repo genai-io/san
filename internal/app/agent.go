@@ -198,6 +198,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	params.MaxTokens = maxTokens
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
 	params.OnEvent = onEvent
+	params.FileCache = m.env.FileCache
 	params.CWDFunc = func() string { return m.env.CWD }
 	params.HookEngine = m.services.Hook
 
