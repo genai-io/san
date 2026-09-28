@@ -262,38 +262,22 @@ func (m *env) ClearCachedInstructions() {
 // SessionMode is the mode label persisted with the session and stamped on each
 // permission record. Called from the agent goroutine, so it reads the posture.
 func (m *env) SessionMode() string {
-	switch m.SessionPermissions.CurrentMode() {
-	case setting.ModeAutoAccept:
-		return "auto-accept"
-	case setting.ModeAutoPilot:
-		return "auto-pilot"
-	default:
-		return "normal"
-	}
+	return m.SessionPermissions.CurrentMode().PersistenceName()
 }
 
 // resumeOperationMode is the mode a resumed session restores into: the one it
-// recorded, or — for a session that recorded none, which is every session saved
-// before modes were persisted — the mode the launch already established. Only a
-// recorded mode may move the user; an absent one must not demote a startup
-// accept-edits/autopilot posture to Normal behind their back.
+// recorded, or the launch's when it recorded none (sessions saved before modes
+// were persisted) or a bypass / dont-ask mode — a session file never grants
+// those, but resuming one must not demote a launch that already holds them.
 func resumeOperationMode(recorded string, startup setting.OperationMode) setting.OperationMode {
 	if recorded == "" {
 		return startup
 	}
-	return parseSessionMode(recorded)
-}
-
-// parseSessionMode maps a persisted session mode back to the OperationMode a
-// resumed session restores into, reusing the canonical string parser but folding
-// everything except the two elevated cycle modes to Normal — so a resumed (or
-// hand-edited) session can never silently regain bypass / dont-ask.
-func parseSessionMode(mode string) setting.OperationMode {
-	switch setting.OperationModeFromString(mode) {
-	case setting.ModeAutoAccept:
-		return setting.ModeAutoAccept
-	case setting.ModeAutoPilot:
-		return setting.ModeAutoPilot
+	switch mode := setting.OperationModeFromString(recorded); mode {
+	case setting.ModeAutoAccept, setting.ModeAutoPilot:
+		return mode
+	case setting.ModeBypassPermissions, setting.ModeDontAsk:
+		return startup
 	default:
 		return setting.ModeNormal
 	}

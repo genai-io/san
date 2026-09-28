@@ -49,7 +49,10 @@ func TestResumeOperationMode(t *testing.T) {
 		{"no recorded mode keeps accept edits", "", setting.ModeAutoAccept, setting.ModeAutoAccept},
 		{"recorded normal wins over startup", "normal", setting.ModeAutoAccept, setting.ModeNormal},
 		{"recorded autopilot restores", "auto-pilot", setting.ModeNormal, setting.ModeAutoPilot},
-		{"recorded bypass never round-trips", "bypass", setting.ModeAutoAccept, setting.ModeNormal},
+		{"recorded bypass never grants bypass", "bypass", setting.ModeNormal, setting.ModeNormal},
+		{"recorded bypass keeps accept edits", "bypass", setting.ModeAutoAccept, setting.ModeAutoAccept},
+		{"recorded bypass keeps launch bypass", "bypass", setting.ModeBypassPermissions, setting.ModeBypassPermissions},
+		{"recorded dont-ask keeps launch", "dont-ask", setting.ModeNormal, setting.ModeNormal},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
