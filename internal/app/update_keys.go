@@ -20,6 +20,14 @@ const ctrlODoubleTapWindow = 300 * time.Millisecond
 
 type ctrlOSingleTickMsg struct{}
 
+// ctrlCExitWindow is how long an idle Ctrl+C stays armed for a second press to exit.
+const ctrlCExitWindow = time.Second
+
+// ctrlCExitHint shows in the status bar while an idle Ctrl+C is armed.
+const ctrlCExitHint = "Press Ctrl+C again to exit"
+
+type ctrlCExpiredMsg struct{}
+
 // routeKeypress is the priority dispatcher for tea.KeyMsg. A keypress
 // flows through these layers in order; the first one that claims it wins:
 //
@@ -127,13 +135,13 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.LastCtrlC = time.Time{}
 			return m.handleStreamCancel(), true
 		}
+		// Idle with nothing typed: arm exit, never clear — Ctrl+L and /clear do that.
 		now := time.Now()
-		if !m.userInput.LastCtrlC.IsZero() && now.Sub(m.userInput.LastCtrlC) < 1*time.Second {
+		if !m.userInput.LastCtrlC.IsZero() && now.Sub(m.userInput.LastCtrlC) < ctrlCExitWindow {
 			return m.QuitWithCancel()
 		}
 		m.userInput.LastCtrlC = now
-		_, cmd, _ := m.executeCommand(context.Background(), "/clear")
-		return cmd, true
+		return tea.Tick(ctrlCExitWindow, func(time.Time) tea.Msg { return ctrlCExpiredMsg{} }), true
 
 	case "ctrl+d":
 		if m.userInput.Textarea.Value() != "" {

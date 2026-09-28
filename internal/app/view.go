@@ -354,6 +354,10 @@ func (m model) renderModeStatus() string {
 	if m.reviewerEscalations != nil {
 		reviewEscalations = int(m.reviewerEscalations.Load())
 	}
+	statusMessage := m.userInput.Provider.StatusMessage
+	if !m.userInput.LastCtrlC.IsZero() {
+		statusMessage = ctrlCExitHint
+	}
 	window, budget := kit.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:              m.env.OperationMode,
@@ -361,7 +365,7 @@ func (m model) renderModeStatus() string {
 		ContextWindow:     window,
 		ContextBudget:     budget,
 		ModelName:         modelName,
-		StatusMessage:     m.userInput.Provider.StatusMessage,
+		StatusMessage:     statusMessage,
 		ConversationCost:  m.env.ConversationCost,
 		Compressions:      m.env.Compressions,
 		ShowContextBar:    m.env.ShowContextBar,

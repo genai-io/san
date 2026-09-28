@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"time"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 
@@ -151,5 +152,29 @@ func TestAltTTogglesTaskPanel(t *testing.T) {
 	}
 	if !m.conv.ShowTasks {
 		t.Fatal("Alt+T should toggle the task panel")
+	}
+}
+
+// Ctrl+C on an idle, empty prompt arms exit; it must never wipe the
+// conversation the way /clear does.
+func TestCtrlCIdleArmsExitWithoutClearing(t *testing.T) {
+	m := &model{conv: conv.NewModel(80)}
+	m.conv.AddNotice("earlier turn")
+
+	cmd, handled := m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if !handled || cmd == nil {
+		t.Fatal("idle Ctrl+C should be handled and schedule its disarm tick")
+	}
+	if len(m.conv.Messages) != 1 {
+		t.Fatalf("idle Ctrl+C cleared the conversation: %d messages left", len(m.conv.Messages))
+	}
+	if m.userInput.LastCtrlC.IsZero() {
+		t.Fatal("idle Ctrl+C should arm exit")
+	}
+
+	m.userInput.LastCtrlC = time.Now().Add(-ctrlCExitWindow)
+	m.Update(ctrlCExpiredMsg{})
+	if !m.userInput.LastCtrlC.IsZero() {
+		t.Fatal("expired window should disarm exit")
 	}
 }
