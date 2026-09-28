@@ -246,6 +246,8 @@ const (
 // the non-greedy body must not run past the first closing tag.
 var blockRe = regexp.MustCompile(`(?s)` + Pattern)
 
+var tagEscaper = strings.NewReplacer(tagOpen, "&lt;system-reminder", "</system-reminder", "&lt;/system-reminder")
+
 // Wrap returns body wrapped in <system-reminder>...</system-reminder>. Empty
 // body returns "".
 func Wrap(body string) string {
@@ -267,6 +269,9 @@ func WrapWithSource(body, source string) string {
 	if body == "" {
 		return ""
 	}
+	// A body that quotes the tag — a restored file of this very code — would
+	// otherwise read as a reminder boundary to every parser.
+	body = tagEscaper.Replace(body)
 	if source == "" {
 		return tagOpen + ">\n" + body + "\n" + tagClose
 	}
