@@ -499,3 +499,35 @@ func TestPromptUnderBudgetAlwaysFitsWithItsReply(t *testing.T) {
 		}
 	}
 }
+
+// The status bar sizes the window from the store alone, so a window the client
+// learned from a live listing must land there too — otherwise compaction runs
+// on a window the bar still shows as unknown (issue #338).
+func TestLiveListingWindowReachesTheStore(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := defaultConn.Store()
+	defaultConn.mu.Lock()
+	defaultConn.store = store
+	defaultConn.mu.Unlock()
+	t.Cleanup(func() {
+		defaultConn.mu.Lock()
+		defaultConn.store = prev
+		defaultConn.mu.Unlock()
+	})
+
+	p := &mockLLMProvider{models: []ModelInfo{{ID: "m", ContextWindow: 128000}}}
+	provider, auth := storeIdentity(store, p)
+	if got := store.EffectiveContextWindow(provider, auth, "m"); got != 0 {
+		t.Fatalf("store window before any listing = %d, want 0", got)
+	}
+	if got := (&Client{provider: p, model: "m"}).ContextWindow(); got != 128000 {
+		t.Fatalf("ContextWindow() = %d, want 128000", got)
+	}
+	if got := store.EffectiveContextWindow(provider, auth, "m"); got != 128000 {
+		t.Errorf("store window after the client resolved = %d, want 128000", got)
+	}
+}
