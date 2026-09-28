@@ -192,9 +192,8 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.rebuildAutopilotReviewer()
 
 	// Resume into the operation mode the session was saved in, so an autopilot
-	// run picks up where it left off without re-cycling shift+tab. (Bypass never
-	// round-trips — parseSessionMode maps it to Normal.) A session that saved no
-	// mode keeps the launch's — see resumeOperationMode.
+	// run picks up where it left off without re-cycling shift+tab. Bypass is
+	// never granted by a session, only kept — see resumeOperationMode.
 	if mode := resumeOperationMode(sess.Metadata.Mode, m.env.OperationMode); mode != m.env.OperationMode {
 		m.env.OperationMode = mode
 		m.applyOperationMode()
