@@ -80,15 +80,17 @@ type contextCategory struct {
 // /compact acts on — which takes the theme's single vivid accent.
 func (u ContextUsage) categories() (prompt, conversation []contextCategory) {
 	t := kit.CurrentTheme
-	return []contextCategory{
+	prompt = []contextCategory{
 		{label: "System prompt", tokens: u.SystemPrompt, color: t.Separator},
 		{label: "Tools", tokens: u.Tools, color: t.Accent},
 		{label: "MCP tools", tokens: u.MCPTools, color: t.TextDim},
-	}, []contextCategory{
+	}
+	conversation = []contextCategory{
 		{label: "Skills", tokens: u.Skills, color: t.Primary},
 		{label: "Memory files", tokens: u.MemoryFiles, color: t.Text},
 		{label: "Messages", tokens: u.Messages, color: t.Focus},
 	}
+	return prompt, conversation
 }
 
 // totalTokens sums a group of categories.
