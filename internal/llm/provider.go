@@ -216,23 +216,6 @@ func SupportsImages(p Provider, model string) bool {
 	return true
 }
 
-// PromptPrefixCacheProvider is implemented by providers that place their
-// prompt-cache breakpoint at the end of the system prompt. Anthropic renders a
-// request as tools → system → messages, so a breakpoint there makes the cache
-// token counts an exact measurement of the tools plus the system prompt.
-type PromptPrefixCacheProvider interface {
-	CachesToolsAndSystemPrompt() bool
-}
-
-// CachesToolsAndSystemPrompt defaults to false, which is the honest answer for
-// everyone else: a provider that caches automatically picks its own prefix
-// boundary, so its counts cover an unknown and usually larger span. Reading
-// those as a measurement of the prompt would silently overstate it.
-func CachesToolsAndSystemPrompt(p Provider) bool {
-	cp, ok := p.(PromptPrefixCacheProvider)
-	return ok && cp.CachesToolsAndSystemPrompt()
-}
-
 // ModelLimitsFetcher is implemented by an endpoint that answers about one model
 // at a time rather than in its listing — Model Studio serves hundreds and
 // publishes a window for none. Reached for only when a listing came back

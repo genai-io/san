@@ -39,10 +39,6 @@ func (m *model) OnInference(resp *ai.Response) {
 	m.env.InputTokens = resp.Usage.TotalInput()
 	m.env.OutputTokens = resp.Usage.Output
 	m.env.ContextTokens = resp.Usage.Total()
-	// Both halves of the cached prefix count toward it: the first turn writes
-	// it (creation), later turns read it (read), and a turn that invalidated it
-	// writes it again — the sum is the prefix size either way.
-	m.env.CachedPrefixTokens = resp.Usage.CacheWrite + resp.Usage.CacheRead
 
 	if m.env.CurrentModel != nil {
 		if cost, ok := llm.EstimateCost(m.env.CurrentModel.Provider, m.env.CurrentModel.AuthMethod, m.env.CurrentModel.ModelID, resp.Usage); ok {

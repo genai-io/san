@@ -228,27 +228,9 @@ func (p *vendorProvider) SupportsImages(model string) bool {
 	return p.model(model).Accepts(ai.ModalityImage)
 }
 
-// CachesToolsAndSystemPrompt reports whether this endpoint's cache tokens
-// count exactly the tool definitions plus the system prompt.
-//
-// True on the Anthropic Messages protocol alone: its driver sets one cache
-// breakpoint at the end of the system block, and Anthropic renders a request
-// as tools → system → messages, so the cached prefix is those two and nothing
-// else. Every other endpoint here caches automatically over a prefix it picks
-// itself, which is an unknown span.
-func (p *vendorProvider) CachesToolsAndSystemPrompt() bool {
-	switch p.vendor.API {
-	case ai.APIAnthropicMessages, ai.APIAnthropicVertex:
-		return true
-	default:
-		return false
-	}
-}
-
 var (
-	_ Provider                  = (*vendorProvider)(nil)
-	_ ThinkingEffortProvider    = (*vendorProvider)(nil)
-	_ ImageSupportProvider      = (*vendorProvider)(nil)
-	_ PromptPrefixCacheProvider = (*vendorProvider)(nil)
-	_ ModelLimitsFetcher        = (*vendorProvider)(nil)
+	_ Provider               = (*vendorProvider)(nil)
+	_ ThinkingEffortProvider = (*vendorProvider)(nil)
+	_ ImageSupportProvider   = (*vendorProvider)(nil)
+	_ ModelLimitsFetcher     = (*vendorProvider)(nil)
 )
