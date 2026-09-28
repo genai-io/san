@@ -90,6 +90,12 @@ func resolveModelLimits(p Provider, model string) (contextWindow, maxOutput int,
 	if err != nil {
 		return 0, 0, false
 	}
+	// The status bar sizes the window from the store alone; caching the listing
+	// keeps it on the window compaction uses (issue #338).
+	if store := Default().Store(); store != nil {
+		provider, auth := storeIdentity(store, p)
+		_ = store.CacheModels(provider, auth, models)
+	}
 	for _, m := range models {
 		if m.ID == model {
 			contextWindow, maxOutput = m.ContextWindow, m.MaxOutput
@@ -192,25 +198,28 @@ func (l *Client) ModelID() string { return l.model }
 // every client resolves the window the same way the status bar does.
 func (l *Client) ContextWindow() int {
 	p, model := l.provider, l.model
+	store := Default().Store()
+	provider, auth := storeIdentity(store, p)
+	if n := store.EffectiveContextWindow(provider, auth, model); n > 0 {
+		return n
+	}
+	return l.limits.input(p, model)
+}
 
-	// Split rather than cast whole: a provider names itself
-	// "vendor:auth_method" while the store keys connections by the bare vendor,
-	// so the composite string misses every lookup and falls through to the
-	// cross-provider scan this call exists to avoid. Both store methods are
-	// nil-receiver safe.
+// storeIdentity is the provider and auth method the store files p under. Split
+// rather than cast whole: a provider names itself "vendor:auth_method" while
+// the store keys connections by the bare vendor, so the composite string misses
+// every lookup. store may be nil; its methods are nil-receiver safe.
+func storeIdentity(store *Store, p Provider) (ProviderID, AuthMethod) {
 	var provider ProviderID
 	var auth AuthMethod
 	if p != nil {
 		provider, auth = parseProviderKey(p.Name())
 	}
-	store := Default().Store()
 	if auth == "" {
 		auth = store.ConnectionAuthMethod(provider)
 	}
-	if n := store.EffectiveContextWindow(provider, auth, model); n > 0 {
-		return n
-	}
-	return l.limits.input(p, model)
+	return provider, auth
 }
 
 // ContextBudget is how large the prompt may grow before auto-compaction: the
