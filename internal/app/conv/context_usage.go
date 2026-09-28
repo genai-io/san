@@ -44,14 +44,6 @@ type ContextUsage struct {
 	// to the estimate.
 	ContextTokens int
 
-	// CachedPrefix is the exact token count of the system prompt and the tool
-	// definitions together, read from the provider's cache accounting. When it
-	// is set, those categories and the conversation are each scaled to their
-	// own exact total instead of sharing one — which stops an estimation error
-	// in the tool schemas from being pushed onto Messages. Zero means no exact
-	// prefix was available and the whole split scales to ContextTokens.
-	CachedPrefix int
-
 	SystemPrompt int
 	Tools        int
 	MCPTools     int
@@ -169,8 +161,6 @@ func (u ContextUsage) limitLine() string {
 // the reading is never taken for more than it is.
 func (u ContextUsage) footer() string {
 	switch {
-	case u.CachedPrefix > 0:
-		return "prompt and tools measured last turn · conversation split estimated"
 	case u.ContextTokens > 0:
 		return "total measured last turn · split estimated"
 	default:
@@ -180,24 +170,8 @@ func (u ContextUsage) footer() string {
 
 // scaleToProvider fits the estimated split onto what the provider actually
 // reported, so the headline total matches the status bar exactly and the parts
-// still add up to it.
-//
-// With an exact prefix, the two groups are scaled separately — the cached
-// categories to the prefix, the conversation to what remains. That containment
-// is the point: scaling everything to one total spreads each category's
-// estimation error across all of them, so an underestimated tool schema (JSON
-// is punctuation-dense, and estimators read it low) quietly inflates Messages —
-// the one category the user acts on. Two groups keep each error inside the
-// group that produced it.
-// It rescales in place.
+// still add up to it. It rescales in place.
 func (u ContextUsage) scaleToProvider(prompt, conversation []contextCategory) {
-	if u.CachedPrefix > 0 && u.CachedPrefix < u.ContextTokens {
-		scaleGroup(prompt, u.CachedPrefix)
-		scaleGroup(conversation, u.ContextTokens-u.CachedPrefix)
-		return
-	}
-	// No exact prefix: one pool, so the groups have to be apportioned against
-	// their combined estimate rather than each on its own.
 	total := totalTokens(prompt) + totalTokens(conversation)
 	if total <= 0 {
 		return

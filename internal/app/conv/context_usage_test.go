@@ -67,43 +67,7 @@ func TestScaleToProviderKeepsEmptyCategoriesEmpty(t *testing.T) {
 	}
 }
 
-// An exact prefix pins the prompt categories to it exactly, and the
-// conversation to the remainder — the whole point of scaling two groups
-// instead of one.
-func TestScaleToProviderPinsEachGroupToItsOwnTotal(t *testing.T) {
-	u := midSession()
-	u.CachedPrefix = 30000
-
-	prompt, conversation := scaled(u)
-
-	if got := sumTokens(prompt); got != u.CachedPrefix {
-		t.Errorf("prompt categories sum to %d, want the exact prefix %d", got, u.CachedPrefix)
-	}
-	if got, want := sumTokens(conversation), u.ContextTokens-u.CachedPrefix; got != want {
-		t.Errorf("conversation categories sum to %d, want %d", got, want)
-	}
-}
-
-// The regression the two-group split exists to prevent: an underestimated
-// toolset must not push its error onto Messages. With the prompt pinned to an
-// exact prefix, Messages is unaffected by how wrong the tool estimate was.
-func TestScaleToProviderKeepsPrefixErrorOutOfMessages(t *testing.T) {
-	u := midSession()
-	u.CachedPrefix = 30000
-
-	underestimated := u
-	underestimated.Tools /= 3 // the estimator reading punctuation-dense JSON low
-
-	messagesFor := func(usage ContextUsage) int {
-		_, conversation := scaled(usage)
-		return conversation[len(conversation)-1].tokens
-	}
-	if got, want := messagesFor(underestimated), messagesFor(u); got != want {
-		t.Errorf("Messages moved to %d (from %d) because the tool estimate changed", got, want)
-	}
-}
-
-// Without an exact prefix there is one pool, and the parts must still sum to
+// There is one pool, and the parts must sum to
 // the measured total across both groups rather than each group being scaled to
 // the whole of it.
 func TestScaleToProviderWithoutPrefixSharesOnePool(t *testing.T) {
@@ -170,16 +134,12 @@ func TestRenderContextUsageShowsPopulatedCategoriesOnly(t *testing.T) {
 // The footer is the only thing telling the reader how much of the panel is
 // measured, so it has to track which measurement actually landed.
 func TestRenderContextUsageFooterNamesWhatWasMeasured(t *testing.T) {
-	measuredPrefix := midSession()
-	measuredPrefix.CachedPrefix = 30000
-
 	for name, tc := range map[string]struct {
 		usage ContextUsage
 		want  string
 	}{
-		"nothing measured":     {ContextUsage{ContextWindow: 200000, SystemPrompt: 5300}, "no turn sent yet"},
-		"total measured":       {midSession(), "total measured last turn"},
-		"prompt also measured": {measuredPrefix, "prompt and tools measured last turn"},
+		"nothing measured": {ContextUsage{ContextWindow: 200000, SystemPrompt: 5300}, "no turn sent yet"},
+		"total measured":   {midSession(), "total measured last turn"},
 	} {
 		if out := xansi.Strip(RenderContextUsage(tc.usage)); !strings.Contains(out, tc.want) {
 			t.Errorf("%s: footer missing %q in:\n%s", name, tc.want, out)
