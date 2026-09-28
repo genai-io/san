@@ -149,3 +149,18 @@ func TestWithRecentRequestsKeepsNewestVerbatim(t *testing.T) {
 		t.Fatalf("WithRecentRequests() =\n%q\nwant\n%q", got, want)
 	}
 }
+
+func TestWithRecentRequestsCarriesAcrossCompactions(t *testing.T) {
+	first := WithRecentRequests("S1", []Message{UserMessage("fix the login bug", nil)}, 0)
+	msgs := []Message{
+		// The restored file quotes the tag, which defeats stripSystemReminders.
+		UserMessage(FormatCompactSummary(first)+"\n\n<system-reminder>\nmemory\n</system-reminder>"+
+			"\n\n<system-reminder>\n<file>const open = \"<system-reminder\"</file>\n</system-reminder>", nil),
+		UserMessage("and add a test", nil),
+	}
+	got := WithRecentRequests("S2", msgs, 0)
+	want := "S2\n\n## Recent User Messages (verbatim)\n\nfix the login bug\n\n---\n\nand add a test"
+	if got != want {
+		t.Fatalf("WithRecentRequests() =\n%q\nwant\n%q", got, want)
+	}
+}

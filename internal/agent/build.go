@@ -243,7 +243,7 @@ func withInstructions(cwd string, msg core.Message) core.Message {
 }
 
 // instructionReminders reads the AGENTS.md chain from disk as the user and
-// project memory reminders.
+// project memory reminders, wrapped as the interactive providers wrap them.
 func instructionReminders(cwd string) []string {
 	var user, project []string
 	for _, f := range system.LoadMemoryFiles(cwd) {
@@ -254,8 +254,8 @@ func instructionReminders(cwd string) []string {
 		}
 	}
 	return []string{
-		reminder.WrapMemory("user", strings.Join(user, "\n\n")),
-		reminder.WrapMemory("project", strings.Join(project, "\n\n")),
+		reminder.WrapWithSource(reminder.WrapMemory("user", strings.Join(user, "\n\n")), reminder.ProviderMemoryUser),
+		reminder.WrapWithSource(reminder.WrapMemory("project", strings.Join(project, "\n\n")), reminder.ProviderMemoryProject),
 	}
 }
 
