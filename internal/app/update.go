@@ -14,6 +14,8 @@
 package app
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
@@ -154,6 +156,12 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ctrlOSingleTickMsg:
 		return m, m.handleCtrlOSingleTick()
+	case ctrlCExpiredMsg:
+		// A later press re-armed the window; its own tick will disarm it.
+		if time.Since(m.userInput.LastCtrlC) >= ctrlCExitWindow {
+			m.userInput.LastCtrlC = time.Time{}
+		}
+		return m, nil
 	case input.PromptSuggestionMsg:
 		// A request can finish just after the user switched Suggest off. The
 		// setting is the final authority, so a stale completion cannot restore
