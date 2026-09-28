@@ -8,6 +8,7 @@ import (
 
 const (
 	metaTaskID       = "background_task_id"
+	metaTaskType     = "background_task_type"
 	metaStatusDetail = "background_status_detail"
 )
 
@@ -28,6 +29,12 @@ const StatusDetailInterrupted = "interrupted"
 // when the item is a plan item authored by the model rather than a worker.
 func BackgroundTaskID(item *Item) string {
 	return metadataString(item, metaTaskID)
+}
+
+// BackgroundTaskType returns the kind of background task this item mirrors
+// ("bash" or "agent"), or "" for plan items and items recorded before the kind was.
+func BackgroundTaskType(item *Item) string {
+	return metadataString(item, metaTaskType)
 }
 
 // BackgroundStatusDetail returns how a worker item's background task ended —
@@ -81,6 +88,7 @@ func TrackWorker(svc *Store, info task.TaskInfo) {
 	}
 	metadata := map[string]any{
 		metaTaskID:       info.ID,
+		metaTaskType:     string(info.Type),
 		metaStatusDetail: string(task.StatusRunning),
 	}
 

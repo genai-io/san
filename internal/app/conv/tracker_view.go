@@ -51,10 +51,17 @@ func RenderTrackerList(params TrackerListParams) string {
 		return ""
 	}
 
-	ended := 0
+	ended, plans, plansDone := 0, 0, 0
 	for _, t := range params.Items {
-		if t.Status == todo.StatusCompleted {
+		done := t.Status == todo.StatusCompleted
+		if done {
 			ended++
+		}
+		if todo.BackgroundTaskID(t) == "" {
+			plans++
+			if done {
+				plansDone++
+			}
 		}
 	}
 
@@ -71,8 +78,13 @@ func RenderTrackerList(params TrackerListParams) string {
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	sb.WriteString("  " + headerStyle.Render("Tasks") + " " +
-		mutedStyle.Render(fmt.Sprintf("(%d%%)", ended*100/len(params.Items))))
+	// Progress is the plan's: a background task finishing is not a step of it.
+	if plans > 0 {
+		sb.WriteString("  " + headerStyle.Render("Tasks") + " " +
+			mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans)))
+	} else {
+		sb.WriteString("  " + headerStyle.Render("Background"))
+	}
 	sb.WriteString("\n")
 
 	// Items stay in ID order so rows hold their place as work advances — no
@@ -166,10 +178,13 @@ func activeText(t *todo.Item, maxTextLen int) string {
 
 func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func(string) []string, blink int, agentColors map[string]string) string {
 	indent := "  "
-	idTag := fmt.Sprintf("%-*s", idWidth, "#"+t.ID)
+	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	idTag := fmt.Sprintf("%-*s", idWidth, rowTag(t))
+	if todo.BackgroundTaskID(t) != "" {
+		idTag = mutedStyle.Render(idTag)
+	}
 	maxTextLen := max(width-len(indent)-idWidth-8, 12)
 	subject := kit.TruncateText(t.Subject, maxTextLen)
-	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 
 	// A row owned by a background agent wears that agent's color (icon + text),
 	// mirroring its launch line in the flow; a plain todo keeps the status
@@ -253,12 +268,22 @@ func renderItemLine(indent, icon, id, subject, detail string) string {
 	return line + "\n"
 }
 
+// rowTag leads a row: "#ID" for a plan item, the task kind for a background
+// task, whose tracker ID is no handle the user can act on.
+func rowTag(t *todo.Item) string {
+	if todo.BackgroundTaskID(t) == "" {
+		return "#" + t.ID
+	}
+	if kind := todo.BackgroundTaskType(t); kind != "" {
+		return kind
+	}
+	return "bg"
+}
+
 func itemIDWidth(items []*todo.Item) int {
 	width := 2
 	for _, t := range items {
-		if n := len("#" + t.ID); n > width {
-			width = n
-		}
+		width = max(width, len(rowTag(t)))
 	}
 	return width
 }
