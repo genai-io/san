@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 
@@ -162,6 +163,40 @@ func FormatCompactSummary(summary string) string {
 // IsCompactSummary reports whether content came from FormatCompactSummary.
 func IsCompactSummary(content string) bool {
 	return strings.HasPrefix(content, CompactSummaryPrefix)
+}
+
+// WithRecentRequests appends the person's latest messages, verbatim and newest
+// kept first, to a compaction summary: what was asked is the one thing a
+// paraphrase must not bend. They take at most ~10k tokens, and a tenth of a
+// known budget, so a small window still comes out of compaction with room.
+func WithRecentRequests(summary string, msgs []Message, budget int) string {
+	var kept []string
+	room := 40_000 // bytes, ~10k tokens
+	if budget > 0 {
+		room = min(room, budget*4/10)
+	}
+	for _, msg := range slices.Backward(msgs) {
+		if msg.Role != ai.RoleUser || len(msg.ToolResults()) > 0 {
+			continue
+		}
+		text := strings.TrimSpace(stripSystemReminders(msg.Text()))
+		if text == "" || IsCompactSummary(text) {
+			continue
+		}
+		if len(text) > room {
+			if len(kept) > 0 {
+				break
+			}
+			text = clip(text, room)
+		}
+		kept = append(kept, text)
+		room -= len(text)
+	}
+	if len(kept) == 0 {
+		return summary
+	}
+	slices.Reverse(kept)
+	return summary + "\n\n## Recent User Messages (verbatim)\n\n" + strings.Join(kept, "\n\n---\n\n")
 }
 
 // --- context keys ---

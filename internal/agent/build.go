@@ -8,6 +8,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/filecache"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/proc"
@@ -77,6 +78,10 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
 	OnEvent func(core.Event)
+
+	// FileCache tracks the files the session touched; an automatic compaction
+	// restores the most recent ones. Nil restores none.
+	FileCache *filecache.Cache
 }
 
 // System returns the system prompt these params build. Exported so a caller
@@ -159,7 +164,12 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		if summary == "" {
 			return "", fmt.Errorf("compaction produced empty summary")
 		}
-		return summary, nil
+		// The loop resumes on this summary at once, before the reminders the
+		// next user turn would carry: bring the instructions and the files in
+		// hand along with it.
+		budget := client.ContextBudget()
+		summary = core.WithRecentRequests(summary, msgs, budget)
+		return reminder.AttachToContent(summary, postCompactReminders(cwdFunc(), p.FileCache, budget)), nil
 	}
 
 	ag = core.NewAgent(core.Config{
@@ -225,6 +235,16 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 // and the same scopes the interactive path uses, so what the model is told
 // does not depend on which one asked.
 func withInstructions(cwd string, msg core.Message) core.Message {
+	text := reminder.AttachToContent(msg.Text(), instructionReminders(cwd))
+	if text == msg.Text() {
+		return msg
+	}
+	return core.UserMessage(text, nil)
+}
+
+// instructionReminders reads the AGENTS.md chain from disk as the user and
+// project memory reminders.
+func instructionReminders(cwd string) []string {
 	var user, project []string
 	for _, f := range system.LoadMemoryFiles(cwd) {
 		if f.Level == "global" {
@@ -233,13 +253,33 @@ func withInstructions(cwd string, msg core.Message) core.Message {
 			project = append(project, f.Content)
 		}
 	}
-	reminders := []string{
+	return []string{
 		reminder.WrapMemory("user", strings.Join(user, "\n\n")),
 		reminder.WrapMemory("project", strings.Join(project, "\n\n")),
 	}
-	text := reminder.AttachToContent(msg.Text(), reminders)
-	if text == msg.Text() {
-		return msg
+}
+
+// postCompactReminders is what an automatic compaction re-attaches: the
+// instructions, and the files most recently read or edited when files is set —
+// as many as fit in a quarter of a known budget, so compaction still shrinks.
+func postCompactReminders(cwd string, files *filecache.Cache, budget int) []string {
+	reminders := instructionReminders(cwd)
+	if files == nil {
+		return reminders
 	}
-	return core.UserMessage(text, nil)
+	restored, _ := files.RestoreRecent()
+	if budget > 0 {
+		room := budget // bytes: a quarter of the budget's tokens at ~4 bytes each
+		for i, f := range restored {
+			room -= len(f.Content)
+			if room < 0 {
+				restored = restored[:i]
+				break
+			}
+		}
+	}
+	if len(restored) > 0 {
+		reminders = append(reminders, reminder.Wrap(filecache.FormatRestoredFiles(restored)))
+	}
+	return reminders
 }

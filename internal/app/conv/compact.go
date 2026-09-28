@@ -98,7 +98,7 @@ func CompactConversation(ctx context.Context, c *llm.Client, msgs []core.Message
 		return "", count, fmt.Errorf("compaction produced empty summary")
 	}
 
-	return summary, count, nil
+	return core.WithRecentRequests(summary, msgs, c.ContextBudget()), count, nil
 }
 
 // RenderCompactStatus renders a single dim line while a manual /compact is in

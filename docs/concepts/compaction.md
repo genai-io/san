@@ -46,7 +46,10 @@ leaving the cacheable prefix alone and only rewriting the volatile tail.
 - **Messages — replaced by one summary.** The entire chain becomes a single
   **plain user message**, `core.FormatCompactSummary(summary)` =
   `"Previous context:\n" + summary`. Not a system-reminder, not the system
-  prompt — durable conversation state belongs in the message channel.
+  prompt — durable conversation state belongs in the message channel. The
+  person's latest messages follow the summary verbatim
+  (`core.WithRecentRequests`: ~10k tokens, at most a tenth of the budget), and
+  the summarizer sees each tool call's arguments, so paths and commands survive.
 - **`<system-reminder>` blocks — skipped, then re-rendered fresh.** Reminders
   ride *inside* the last user message's content, so the summarizer would
   otherwise bake stale skills/memory text into the permanent summary.
@@ -125,7 +128,7 @@ MANUAL  (/compact [focus], app layer)
 | Driver | core agent `compact()` — runs **in-loop** | app layer; summary computed, then agent **stopped** |
 | Continuation | `continue` re-infers immediately with `[summary]` | agent stopped; **next** user message reseeds it from the conversation |
 | Focus | none | optional focus string; `PreCompact` hook can add context |
-| Recent-file restore | not performed | restores recently-accessed files after the summary |
+| Recent-file restore | the loop resumes at once, so the summary itself carries the `AGENTS.md` chain and the recent files (within a quarter of the budget) | restores recently-accessed files on the next user turn |
 | Transcript boundary | recorded (summary append + `session.compacted`) | not yet recorded — tracked with the post-compaction unification work |
 
 > The remaining divergences (file restore, env-reset call, and manual-path
