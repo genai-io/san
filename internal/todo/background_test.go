@@ -58,6 +58,9 @@ func TestTrackWorkerNamesBashWorker(t *testing.T) {
 	if items[0].Subject != "go test ./..." {
 		t.Fatalf("subject = %q, want the command", items[0].Subject)
 	}
+	if got := BackgroundTaskType(items[0]); got != "bash" {
+		t.Fatalf("task type = %q, want bash", got)
+	}
 }
 
 func TestTrackWorkerIgnoresTaskWithoutID(t *testing.T) {

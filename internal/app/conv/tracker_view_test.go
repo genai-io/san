@@ -276,3 +276,37 @@ func TestPhaseOf(t *testing.T) {
 		})
 	}
 }
+
+// Background rows lead with their kind, not a tracker ID the user cannot act
+// on, and stay out of the plan's progress; with no plan the header says so.
+func TestRenderTrackerListLabelsBackgroundTasks(t *testing.T) {
+	todo.Initialize()
+	t.Cleanup(func() { todo.Default().Reset() })
+
+	worker := todo.Default().Create("Save Jenkins script", "", "", map[string]any{
+		"background_task_id":   "bg-1",
+		"background_task_type": "bash",
+	})
+	_ = todo.Default().Update(worker.ID, todo.WithStatus(todo.StatusInProgress))
+	render := func() string {
+		return stripANSI(RenderTrackerList(TrackerListParams{
+			Items:     todo.Default().List(),
+			Width:     120,
+			Executing: func(*todo.Item) bool { return true },
+		}))
+	}
+
+	plain := render()
+	if !strings.Contains(plain, "Background") || strings.Contains(plain, "%") {
+		t.Errorf("worker-only header should read Background without progress:\n%s", plain)
+	}
+	if !strings.Contains(plain, "bash  Save Jenkins script") || taskIDRe.MatchString(plain) {
+		t.Errorf("worker row should lead with its kind, not an ID:\n%s", plain)
+	}
+
+	plan := todo.Default().Create("Write tests", "", "", nil)
+	_ = todo.Default().Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
+	if plain := render(); !strings.Contains(plain, "Tasks (100%)") {
+		t.Errorf("progress should count plan items only:\n%s", plain)
+	}
+}
