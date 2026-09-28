@@ -408,7 +408,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		System:        sys,
 		Tools:         tools,
 		Gate:          gate,
-		CompactFunc:   subagentCompactFunc(llmClient),
+		CompactFunc:   subagentCompactFunc(llmClient, e.taskPrompt(rc, run.req)),
 		MaxSteps:      rc.maxSteps,
 		OutboxBuf:     -1,
 		OnEvent:       onEvent,
@@ -419,8 +419,9 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 
 // subagentCompactFunc summarizes the conversation on the run's own model so
 // long subagent runs survive context-window pressure instead of dying on
-// prompt-too-long. Mirrors the main agent's compaction.
-func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Message) (string, error) {
+// prompt-too-long. The task is re-attached verbatim after the summary: it is
+// the one message a one-shot worker cannot afford to have paraphrased.
+func subagentCompactFunc(client *llm.Client, task string) func(context.Context, []core.Message) (string, error) {
 	return func(ctx context.Context, msgs []core.Message) (string, error) {
 		text := core.BuildCompactionText(msgs)
 		resp, err := client.Complete(ctx, system.CompactPrompt(), []core.Message{core.UserMessage(text, nil)}, core.CompactMaxTokens)
@@ -431,17 +432,28 @@ func subagentCompactFunc(client *llm.Client) func(context.Context, []core.Messag
 		if summary == "" {
 			return "", fmt.Errorf("compaction produced empty summary")
 		}
-		return summary, nil
+		return withOriginalTask(summary, task), nil
 	}
 }
 
+// withOriginalTask appends the run's task, verbatim, to a compaction summary.
+func withOriginalTask(summary, task string) string {
+	if task == "" {
+		return summary
+	}
+	return summary + "\n\nYour original task, verbatim:\n\n" + task
+}
+
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
-	// Harness-managed reminders ride on the first user message as
-	// <system-reminder> blocks, matching the main agent's pattern.
-	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode, rc.config.AllowTools)
-	prompt := reminder.AttachToContent(req.Prompt, reminders)
-	ag.Append(ctx, core.UserMessage(prompt, nil))
+	ag.Append(ctx, core.UserMessage(e.taskPrompt(rc, req), nil))
 	return nil
+}
+
+// taskPrompt is the run's first user message: the prompt with its
+// harness-managed <system-reminder> blocks, matching the main agent's pattern.
+func (e *Executor) taskPrompt(rc *runConfig, req tool.AgentExecRequest) string {
+	reminders := e.collectSubagentReminders(e.skillsDirectoryFor(rc.config), rc.permMode, rc.config.AllowTools)
+	return reminder.AttachToContent(req.Prompt, reminders)
 }
 
 // collectSubagentReminders returns the <system-reminder> blocks for the
