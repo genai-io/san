@@ -63,8 +63,32 @@ The path of one message from A to B:
 
 When B has something to say back, it writes into `api.inbox/` the same way.
 
-- The broker is not involved; it still routes only between the main conversation and its subagents, in-process.
-- Delivery reuses the existing injection seam, `notifyMain` — the path a subagent's report takes.
+### Member messages are San's fourth input source
+
+| Source | What | Code |
+|---|---|---|
+| Source 1 | The person's keyboard input | `input.Model` |
+| Source 2 | Agent notices: subagent completions, interim reports, self-learn | `mainNotices` / `notify.go` |
+| Source 3 | System events: cron, hooks, file watcher | `trigger.Model` |
+| **Source 4** | **Member messages and roster changes** | **`internal/app/member` (new)** |
+
+Source 4 follows different rules from Source 2, so it is a source of its own
+rather than a case inside Source 2:
+
+| | Source 2 (subagents) | Source 4 (members) |
+|---|---|---|
+| Wakes the agent | always | per its own mode (active / passive) |
+| Trust | a subagent this session spawned | another session, not the person; never approves anything |
+| Count | none | `unattended-turns` |
+| Other events | none | joins, leaves, online/offline, renames |
+| Lifetime | the task's | the membership's; queued while offline, delivered on resume |
+
+**Only the delivery timing is shared**: start a turn when idle, insert between
+tool calls when running, hold while a stream owns the tail. That part moves
+out of `notify.go` into one delivery seam that Source 2 and Source 4 both call.
+
+The broker is not involved; it still routes only between the main conversation
+and its subagents, in-process.
 
 ## Storage
 
@@ -190,8 +214,8 @@ online status, and SendMessage's result says which applies:
 | Group deleted / self removed | reminder | same | same | `Your group was deleted — left it.` |
 | Full roster | reminder provider | on join, resume, `/clear`, after compaction | same | — |
 
-**How**: a notice carries a "reminder" kind, handled where `notify.go` decides
-delivery timing.
+**How**: the shared delivery seam (extracted from `notify.go`) takes two kinds;
+Source 4 picks one per event and mode.
 - **Reminder kind**: inserted into the running turn when there is one (except
   a passive member's peer message, which only queues); queued when idle; never
   starts a turn.
@@ -299,10 +323,11 @@ after `remove`, the members, offline first.
 | File | Responsibility |
 |---|---|
 | `internal/group/group.go` | Member files, inboxes, pid check; Join / Detach / Remove / Delete / Send / Poll |
-| `internal/app/group.go` | `/group`, automatic naming, roster snapshot and diff, delivery, `unattended-turns`, finalizers, completion |
+| `internal/app/member` (new, Source 4) | Inbox poll, roster snapshot and diff, wake or queue per mode, `<group-message>` wrapping, `unattended-turns` |
+| `internal/app/group.go` | `/group`, automatic naming, finalizers, completion |
 | Session record (`internal/session`) | Stores the group, so a resume comes back online |
 | `internal/tool/agent/sendmessage.go` | Resolves member names; the result reflects the recipient's state |
-| `internal/app/notify.go` | Delivery timing for reminder-kind notices |
+| Shared delivery seam (extracted from `internal/app/notify.go`) | Delivery timing — wake, insert, hold, queue — for Source 2 and Source 4 |
 | `internal/app/kit/suggest`, `input/on_textarea.go` | Argument completion; opening the next level after a selection |
 
 ## Prototype vs. this design

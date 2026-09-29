@@ -53,8 +53,28 @@
 
 B 处理完之后，如果要回复，就用同样的方式往 `api.inbox/` 写一条消息。
 
-- 不经过 broker（broker 仍只负责进程内主会话与子 agent）。
-- 收到的消息复用现有的注入入口 `notifyMain`，和子 agent 汇报走同一条路径。
+### 成员消息是 San 的第四个输入来源
+
+| 来源 | 内容 | 代码 |
+|---|---|---|
+| Source 1 | 用户键盘输入 | `input.Model` |
+| Source 2 | agent 通知：子 agent 完成、中途汇报、selflearn | `mainNotices` / `notify.go` |
+| Source 3 | 系统事件：cron、hook、文件监听 | `trigger.Model` |
+| **Source 4** | **组员消息与成员变化** | **`internal/app/member`（新）** |
+
+Source 4 与 Source 2 的规则完全不同，所以单独作为一个来源，而不是塞进 Source 2：
+
+| | Source 2（子 agent） | Source 4（成员） |
+|---|---|---|
+| 是否唤醒 | 总是唤醒 | 由自己的模式决定（active / passive） |
+| 信任 | 自己派出的子 agent | 另一个会话，不是用户，不能代替用户批准 |
+| 计数 | 无 | `unattended-turns` |
+| 附带事件 | 无 | 成员加入、离开、上下线、改名 |
+| 生命周期 | 跟随任务 | 跟随成员身份，离线排队，恢复补送 |
+
+**只共用底层的投递时机**：空闲时开启新的一轮、工作中在工具调用之间插入、流式输出进行中先暂存。这部分从 `notify.go` 提取为共用的投递入口，Source 2 和 Source 4 都调用它。
+
+不经过 broker：broker 仍只负责进程内主会话与子 agent 之间的消息。
 
 ## 存储
 
@@ -155,7 +175,7 @@ B 处理完之后，如果要回复，就用同样的方式往 `api.inbox/` 写�
 | group 被删除 / 自己被移除 | reminder | 同上 | 同上 | `Your group was deleted — left it.` |
 | 完整成员列表 | reminder provider | 加入、恢复、`/clear`、压缩后附上 | 同左 | — |
 
-**实现方式**：给通知加一个“reminder 类型”标记，在 `notify.go` 的投递时机判断处统一处理。
+**实现方式**：共用的投递入口（从 `notify.go` 提取）支持两种类型，Source 4 按事件和模式选择其一。
 - **reminder 类型**：目标工作中则插入当前这一轮（passive 的组员消息除外，它只入队）；空闲则只入队，永远不开启新的一轮。
 - **消息类型**：沿用现有逻辑。
 
@@ -246,10 +266,11 @@ schema changed, please rebase
 | 文件 | 职责 |
 |---|---|
 | `internal/group/group.go` | 成员文件、inbox、进程号检查、Join / Detach / Remove / Delete / Send / Poll |
-| `internal/app/group.go` | `/group` 命令、自动命名、成员快照与差异、注入、`unattended-turns`、finalizer、补全 |
+| `internal/app/member`（新，Source 4） | 轮询 inbox、成员快照与差异、按模式唤醒或入队、`<group-message>` 包装、`unattended-turns` |
+| `internal/app/group.go` | `/group` 命令、自动命名、finalizer、补全 |
 | 会话记录（`internal/session`） | 保存 group 信息，恢复时自动上线 |
 | `internal/tool/agent/sendmessage.go` | 组员地址解析，按对方状态返回结果 |
-| `internal/app/notify.go` | reminder 类型通知的投递时机 |
+| 共用投递入口（从 `internal/app/notify.go` 提取） | 投递时机：唤醒、插入、暂存、入队；Source 2 和 Source 4 共用 |
 | `internal/app/kit/suggest`、`input/on_textarea.go` | 命令参数补全；选中后立即显示下一级 |
 
 ## 原型与本设计的差异
