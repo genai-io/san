@@ -3,6 +3,19 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.23.1] - 2026-09-28
+
+### Changed
+- Bump sdk-go to v0.7.2 — Anthropic caches the conversation ([@yanmxa](https://github.com/yanmxa) in [#584](https://github.com/genai-io/san/pull/584))
+- Bump sdk-go to v0.7.1 ([@yanmxa](https://github.com/yanmxa) in [#581](https://github.com/genai-io/san/pull/581))
+- Drop hand-rolled truncation and one-off seams ([@yanmxa](https://github.com/yanmxa) in [#576](https://github.com/genai-io/san/pull/576))
+### Fixed
+- Keep requests, instructions and files across compaction ([@yanmxa](https://github.com/yanmxa) in [#582](https://github.com/genai-io/san/pull/582))
+- Cache a live model listing so the status bar sees its window ([@yanmxa](https://github.com/yanmxa) in [#583](https://github.com/genai-io/san/pull/583))
+- Resuming a YOLO session keeps YOLO ([@yanmxa](https://github.com/yanmxa) in [#580](https://github.com/genai-io/san/pull/580))
+- Keep the task verbatim across auto-compaction ([@yanmxa](https://github.com/yanmxa) in [#579](https://github.com/genai-io/san/pull/579))
+- Ctrl+C on an empty prompt arms exit instead of clearing ([@yanmxa](https://github.com/yanmxa) in [#578](https://github.com/genai-io/san/pull/578))
+- Label background rows by kind; progress counts the plan only ([@yanmxa](https://github.com/yanmxa) in [#577](https://github.com/genai-io/san/pull/577))
 ## [v1.23.0] - 2026-09-27
 
 ### Added
