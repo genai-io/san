@@ -33,7 +33,7 @@ message each other directly.
 |---|---|
 | **Group** | A directory, `~/.san/groups/<group>/`, created by the first join |
 | **Member** | One **session** (not process) in the group: a name (`@api`), a role, a mode, online or offline |
-| **Inbox** | One directory per member; each message or receipt addressed to it is one file |
+| **Inbox** | One directory per member; each message addressed to it is one file |
 | **Mode** | Whether a member wakes for a message: `active` (default) or `passive` |
 | **Roster** | The member list, kept by the San process and told to the agent in reminders |
 
@@ -59,12 +59,9 @@ The path of one message from A to B:
                   injected as a user message:             queued as a reminder, shown
                   idle    → starts a turn                 to the person; reaches the
                   running → between tool calls            agent with their next input
-                                 │                                  │
-                                 └── when it enters B's context ────┘
-                                                  │
-                                                  ▼
-                    a receipt goes to api.inbox/ → A learns "read" as a reminder
 ```
+
+When B has something to say back, it writes into `api.inbox/` the same way.
 
 - The broker is not involved; it still routes only between the main conversation and its subagents, in-process.
 - Delivery reuses the existing injection seam, `notifyMain` — the path a subagent's report takes.
@@ -84,7 +81,7 @@ The path of one message from A to B:
 - **Message file names** put the timestamp first: name order is time order, so
   messages arrive in the order sent. A sender cannot send twice in one
   nanosecond, so no random suffix is needed.
-- **Contents**: `type` (`message` or `receipt`), sender, body, time sent.
+- **Contents**: sender, body, time sent.
 - **No shared writes.** A member writes only its own file; a sender only adds
   files to the recipient's inbox. Concurrent sessions never race.
 - **Atomic writes.** Write a temp file (leading `.`, trailing `.tmp`), then rename; readers skip temp files.
@@ -183,20 +180,6 @@ online status, and SendMessage's result says which applies:
 - passive: "Delivered; they see it when their person next interacts — don't wait for a reply."
 - offline: "Queued; they see it when the session resumes."
 
-## Read receipts
-
-- **"Read" means the message entered the recipient agent's context**, not that
-  its process took the file. Nearly at once for an active member; at the
-  person's next input for a passive one; on resume for an offline one.
-- The recipient then writes a `type: receipt` into the sender's inbox:
-  `@web has read your message: "schema changed…"`.
-- The sender tells its agent in a **reminder**: it never wakes anyone, and a
-  receipt is never itself receipted.
-- Receipts close together are merged; they are not shown to the person, only to the model.
-
-The sender's agent can then tell delivered (SendMessage succeeded), read (a
-receipt arrived), and unread (the recipient is passive or offline).
-
 ## Injection: what, when, and in what form
 
 | Event | Form | Target running | Target idle | The person sees |
@@ -204,7 +187,6 @@ receipt arrived), and unread (the recipient is passive or offline).
 | Peer message → active | user message | inserted between tool calls | starts a turn | `◆ Message from @x` |
 | Peer message → passive | reminder | queued | queued | `◆ Message from @x … (queued for your next message)` |
 | Roster change (join, leave, offline/online, update, rename) | reminder, delta only | inserted between tool calls | queued | one line, e.g. `@web joined group dev` |
-| Read receipt | reminder, merged | inserted between tool calls | queued | not shown |
 | Group deleted / self removed | reminder | same | same | `Your group was deleted — left it.` |
 | Full roster | reminder provider | on join, resume, `/clear`, after compaction | same | — |
 
@@ -248,7 +230,14 @@ A rising count means agents are running on their own. Before replying,
 check that the exchange is converging on a result. If you are repeating
 yourself, answering only to acknowledge, or waiting on each other, stop:
 don't reply, and leave your user a one-line note of where things stand.
+
+When a member asked you for something, tell them when it is done — or that
+you can't do it. That reply moves the work forward; a bare "got it" does not.
 ```
+
+The last paragraph keeps "don't answer only to acknowledge" from being read as
+"stay silent when done": a request gets an answer when it is done or cannot be.
+That answer is the completion signal, so there is no separate read receipt.
 
 and each peer message ends with the current value:
 
@@ -263,7 +252,7 @@ schema changed, please rebase
 e.g. `◆ Message from @web: schema changed · 7th since you last typed`.
 
 The rest of the design pulls the same way:
-- Roster changes and receipts are reminders: they start no turn and offer nothing to answer.
+- Roster changes are reminders: they start no turn and offer nothing to answer.
 - Passive members are never woken by peers.
 
 ## SendMessage: for group members first
@@ -285,7 +274,7 @@ The rest of the design pulls the same way:
 
 ## Caching and cost
 
-- Roster, change notices, receipts and peer messages all ride the reminder or
+- Roster, change notices and peer messages all ride the reminder or
   message channel; **the system prompt never changes**, so the prompt-cache prefix holds.
 - join / detach rebuild the agent once (SendMessage turns on or off), costing one cache miss. Both are rare.
 - Passive, offline and idle members spend nothing when others message or come and go.
@@ -310,7 +299,7 @@ after `remove`, the members, offline first.
 | File | Responsibility |
 |---|---|
 | `internal/group/group.go` | Member files, inboxes, pid check; Join / Detach / Remove / Delete / Send / Poll |
-| `internal/app/group.go` | `/group`, automatic naming, roster snapshot and diff, delivery, `unattended-turns`, receipts, finalizers, completion |
+| `internal/app/group.go` | `/group`, automatic naming, roster snapshot and diff, delivery, `unattended-turns`, finalizers, completion |
 | Session record (`internal/session`) | Stores the group, so a resume comes back online |
 | `internal/tool/agent/sendmessage.go` | Resolves member names; the result reflects the recipient's state |
 | `internal/app/notify.go` | Delivery timing for reminder-kind notices |
@@ -328,7 +317,6 @@ this design:
 | Process exit leaves the group | Process exit goes offline; membership stored with the session and restored on resume |
 | Active behaviour only, at most 5 turns without the person | Active by default, passive available; no cap, `unattended-turns` instead |
 | Full roster on change, riding the next message | Deltas only; inserted when running, queued when idle; shown to the person; renames and online status recognised |
-| No read receipts | Read receipts |
 | No `mode` or `remove` | Both |
 
 Two existing bugs the prototype fixed, kept when landing:

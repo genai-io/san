@@ -24,7 +24,7 @@
 |---|---|
 | **Group** | 一个组，对应目录 `~/.san/groups/<group>/`。第一个人 join 时创建 |
 | **Member** | 组里的一个**会话**（不是进程）：名字（`@api`）、职责、模式、在线状态 |
-| **Inbox** | 每个成员一个收件目录，别人发给它的消息和回执各占一个文件 |
+| **Inbox** | 每个成员一个收件目录，别人发给它的每条消息各占一个文件 |
 | **Mode** | 成员决定收到消息后是否被唤醒：`active`（默认）或 `passive` |
 | **Roster** | 成员列表，由 San 进程维护，以 reminder 的形式告诉 agent |
 
@@ -49,12 +49,9 @@
                     当作用户消息注入：                 入 reminder 队列，界面提示；
                     空闲 → 开启新的一轮                用户下次输入时带给 agent
                     工作中 → 在工具调用之间插入
-                                 │                                │
-                                 └──── 消息进入 B 的上下文时 ─────┘
-                                                  │
-                                                  ▼
-                        往 api.inbox/ 写一条回执 → A 以 reminder 的形式得知“已读”
 ```
+
+B 处理完之后，如果要回复，就用同样的方式往 `api.inbox/` 写一条消息。
 
 - 不经过 broker（broker 仍只负责进程内主会话与子 agent）。
 - 收到的消息复用现有的注入入口 `notifyMain`，和子 agent 汇报走同一条路径。
@@ -69,7 +66,7 @@
 - **按成员名命名**：一眼能看出是谁的。join 时以“排他创建”的方式写成员文件，由文件系统保证组内不会重名，两个会话同时抢同一个名字也不会互相覆盖。
 - **成员 `id`**：加入时生成，之后不变，用于识别改名。不用 sessionID，因为 `/clear` 之后 sessionID 会变。
 - **消息文件名**：时间戳在前、发件人在后。按文件名排序就是按时间排序，先发的先送达。同一发件人不可能在同一纳秒发出两条，所以不需要随机后缀。
-- **文件内容**：`type` 区分 `message` 和 `receipt`，另外还有发件人、正文和发送时间。
+- **文件内容**：发件人、正文和发送时间。
 - **没有共享写入**：成员只写自己的文件，发件人只往对方 inbox 新增文件，多进程之间没有竞态。
 - **原子写入**：先写临时文件（`.` 开头、`.tmp` 结尾）再 rename，读取端跳过临时文件。
 - **权限**：目录 0700、文件 0600，只有当前系统用户可访问。
@@ -148,15 +145,6 @@
 - 对方 passive：“已送达，对方的用户下次交互时才会看到，不要等待回复。”
 - 对方离线：“已排队，对方恢复会话后才会看到。”
 
-## 已读回执
-
-- **“已读”的定义**：消息**进入了对方 agent 的上下文**，而不是对方进程从 inbox 读走了文件。active 模式下几乎立即发生；passive 模式下要等对方用户下次输入；离线时要等会话恢复。
-- 此时接收方往发件人的 inbox 写一条 `type: receipt`：`@web has read your message: "schema changed…"`。
-- 发件方把回执以 **reminder** 的形式告诉自己的 agent：**永远不唤醒**，也不会为回执再发回执。
-- 同一时间段内的多条回执合并成一条；界面上不显示，只给模型看。
-
-发件方的 agent 由此可以区分：已送达（`SendMessage` 成功）、已读（收到回执）、未读（对方 passive 或离线）。
-
 ## 注入：什么内容、什么时候、以什么形式
 
 | 事件 | 形式 | 目标正在工作 | 目标空闲 | 用户看到 |
@@ -164,7 +152,6 @@
 | 组员消息 → active | 用户消息 | 在工具调用之间插入 | 开启新的一轮 | `◆ Message from @x` |
 | 组员消息 → passive | reminder | 入队 | 入队 | `◆ Message from @x …（下次输入时带给 agent）` |
 | 成员变化（加入、离开、上下线、更新、改名） | reminder，只发变化 | 在工具调用之间插入 | 入队 | 一行提示，如 `@web joined group dev` |
-| 已读回执 | reminder，合并 | 在工具调用之间插入 | 入队 | 不显示 |
 | group 被删除 / 自己被移除 | reminder | 同上 | 同上 | `Your group was deleted — left it.` |
 | 完整成员列表 | reminder provider | 加入、恢复、`/clear`、压缩后附上 | 同左 | — |
 
@@ -201,7 +188,12 @@ A rising count means agents are running on their own. Before replying,
 check that the exchange is converging on a result. If you are repeating
 yourself, answering only to acknowledge, or waiting on each other, stop:
 don't reply, and leave your user a one-line note of where things stand.
+
+When a member asked you for something, tell them when it is done — or that
+you can't do it. That reply moves the work forward; a bare "got it" does not.
 ```
+
+最后一段是为了避免“不要为了确认而回复”被理解成做完了也不吭声：别人交代的事，做完或者做不了都要告诉对方，这就是完成的信号，所以不需要单独的已读机制。
 
 每条组员消息末尾再用一句话点明当前数值：
 
@@ -215,7 +207,7 @@ schema changed, please rebase
 **用户也能看到**：从第 2 轮开始，提示行带上这个数字，如 `◆ Message from @web: schema changed · 7th since you last typed`。
 
 其余机制也在帮助收敛：
-- 成员变化和已读回执都是 reminder，不会开启新的一轮，也没有可回复的对象。
+- 成员变化是 reminder，不会开启新的一轮，也没有可回复的对象。
 - passive 成员永远不会被组员消息唤醒。
 
 ## SendMessage：以组员为主
@@ -232,7 +224,7 @@ schema changed, please rebase
 
 ## 缓存与成本
 
-- 成员列表、变化通知、回执、组员消息都通过 reminder 或消息通道注入，**system prompt 始终不变**，不影响前缀缓存。
+- 成员列表、变化通知、组员消息都通过 reminder 或消息通道注入，**system prompt 始终不变**，不影响前缀缓存。
 - join / detach 会因为打开或关闭 `SendMessage` 而重建一次 agent，缓存失效一次。低频操作，可以接受。
 - passive 成员、离线成员和空闲成员，都不会因为别人发消息或进出组而花 token。
 
@@ -254,7 +246,7 @@ schema changed, please rebase
 | 文件 | 职责 |
 |---|---|
 | `internal/group/group.go` | 成员文件、inbox、进程号检查、Join / Detach / Remove / Delete / Send / Poll |
-| `internal/app/group.go` | `/group` 命令、自动命名、成员快照与差异、注入、`unattended-turns`、回执、finalizer、补全 |
+| `internal/app/group.go` | `/group` 命令、自动命名、成员快照与差异、注入、`unattended-turns`、finalizer、补全 |
 | 会话记录（`internal/session`） | 保存 group 信息，恢复时自动上线 |
 | `internal/tool/agent/sendmessage.go` | 组员地址解析，按对方状态返回结果 |
 | `internal/app/notify.go` | reminder 类型通知的投递时机 |
@@ -271,7 +263,6 @@ schema changed, please rebase
 | 进程退出即离开 group | 进程退出变为离线；成员身份写入会话记录，恢复时自动上线 |
 | 默认按 active 行为，无用户输入时最多 5 轮 | 默认 active，可切换 passive；不设上限，改为 `unattended-turns` |
 | 成员变化时发送完整列表，挂在下一条消息上 | 只发变化；工作中插入，空闲时入队；界面提示；可识别改名和上下线 |
-| 无已读回执 | 有 |
 | 无 `mode`、`remove` 命令 | 有 |
 
 原型中已经顺带修复、落地时一并保留的两个问题：
