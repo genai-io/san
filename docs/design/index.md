@@ -30,6 +30,7 @@ sizable feature usually has both a proposal and a notes plan.
 |---|---|---|
 | [`0001-workflow-orchestration`](proposals/0001-workflow-orchestration.md) | Draft | Subagent workflows: an acyclic graph defined in markdown, with a mermaid flowchart for topology. (中文: `.zh.md`) |
 | [`0002-autonomous-dev-management`](proposals/0002-autonomous-dev-management.md) | Draft | A team of personas that manages the project end to end. (中文: `.zh.md`) |
+| [`0003-session-groups`](proposals/0003-session-groups.md) | Draft | Sessions on one machine join a group and message each other; each member is passive or active. (中文: `.zh.md`) |
 
 ## Decision records
 
