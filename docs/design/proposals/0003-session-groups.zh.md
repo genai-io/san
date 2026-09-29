@@ -141,11 +141,13 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant A as @api 的 agent
+    participant FS as ~/.san/groups/shop
     participant M as @migrate 的会话
     participant MA as @migrate 的 agent
     participant L as 小李
-    A->>M: SendMessage(to: migrate)
-    M-->>A: 工具结果：对方是 passive，<br/>用户下次交互时才会看到，不要等待回复
+    A->>FS: SendMessage(to: migrate)<br/>写入 migrate.inbox/…-api.json
+    FS-->>A: 工具结果：对方是 passive，<br/>用户下次交互时才会看到，不要等待回复
+    M->>FS: 每秒轮询，读取后删除
     Note over M: 只入队，不唤醒，<br/>工作中也不插入
     M-->>L: 界面提示一行
     L->>MA: 小李输入「迁移跑完了吗」
@@ -215,11 +217,12 @@ expired. Deployed to staging.
 由 San 进程维护，模型不需要维护任何东西，只需要读到 reminder。
 
 ```mermaid
-flowchart LR
-    D["磁盘<br/>~/.san/groups/shop/*.json<br/>（唯一的事实来源）"] -->|每秒读取| S["进程内存<br/>成员快照<br/>map[sessionID] → 名字/职责/模式/在线"]
-    S -->|按内容对比，得出差异| R["差异 reminder<br/>joined / left / offline / online<br/>is now passive / is now @x"]
+flowchart TB
+    D["磁盘：~/.san/groups/shop/*.json<br/>唯一的事实来源"] -->|每秒读取| S["进程内存：成员快照<br/>sessionID → 名字、职责、模式、在线"]
+    S -->|按内容对比出差异| R["变化 reminder<br/>joined · left · offline · online · is now …"]
+    S -->|加入、恢复、/clear、压缩后| F["完整成员列表"]
     R --> M["模型上下文"]
-    S -->|加入、恢复、/clear、压缩后| F["完整成员列表"] --> M
+    F --> M
 ```
 
 - 按**内容**对比（名字、职责、模式、在线），不看文件修改时间。

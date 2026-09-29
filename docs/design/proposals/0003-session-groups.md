@@ -148,11 +148,13 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant A as @api's agent
+    participant FS as ~/.san/groups/shop
     participant M as @migrate's session
     participant MA as @migrate's agent
     participant L as Li
-    A->>M: SendMessage(to: migrate)
-    M-->>A: tool result: passive — they see it when their<br/>person next interacts, don't wait
+    A->>FS: SendMessage(to: migrate)<br/>writes migrate.inbox/…-api.json
+    FS-->>A: tool result: passive — they see it when their<br/>person next interacts, don't wait
+    M->>FS: polls every second, reads, deletes
     Note over M: queued only, never woken,<br/>not inserted while running either
     M-->>L: one line on screen
     L->>MA: Li types "is the migration done?"
@@ -222,11 +224,12 @@ A roster change sends only the change:
 The San process keeps it; the model maintains nothing and only reads reminders.
 
 ```mermaid
-flowchart LR
-    D["disk<br/>~/.san/groups/shop/*.json<br/>(the source of truth)"] -->|read every second| S["process memory<br/>roster snapshot<br/>map[sessionID] → name/role/mode/online"]
-    S -->|diff by contents| R["change reminders<br/>joined / left / offline / online<br/>is now passive / is now @x"]
+flowchart TB
+    D["disk: ~/.san/groups/shop/*.json<br/>the source of truth"] -->|read every second| S["process memory: roster snapshot<br/>sessionID → name, role, mode, online"]
+    S -->|diff by contents| R["change reminders<br/>joined · left · offline · online · is now …"]
+    S -->|join, resume, /clear, compaction| F["full roster"]
     R --> M["model context"]
-    S -->|join, resume, /clear, compaction| F["full roster"] --> M
+    F --> M
 ```
 
 - Compared by **contents** (name, role, mode, online), not file times.
