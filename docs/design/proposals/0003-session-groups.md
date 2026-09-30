@@ -165,14 +165,44 @@ sequenceDiagram
     M->>MA: the input and the message arrive together
 ```
 
-## What the model sees
+## Everything the model sees
 
-On join, and after resume, `/clear` or compaction, the full roster arrives as a reminder:
+**The system prompt does not change.** Group context reaches the model only
+three ways: a tool definition, reminders, and member messages.
+
+| What | Form | Where | When |
+|---|---|---|---|
+| SendMessage definition | tool schema | the tool list | present while in a group, removed on leaving |
+| Full roster | `<system-reminder source="group">` | appended to the next user message sent to the model | join, resume, `/clear`, after compaction |
+| Roster change, own membership change | `<system-reminder>`, one line | running: its own user message between tool calls; idle: appended to the next message | as it happens |
+| Member message → active | `<group-message>` | idle: its own user message, starting a turn; running: a user message between tool calls | on arrival |
+| Member message → passive | `<group-message>` | appended after the text of the person's next input | at that input |
+| Send result | tool result | the sender's SendMessage return value | every call |
+
+### SendMessage definition
+
+```
+name: SendMessage
+description: |
+  Send a message to another session in your group, by its member name. The
+  <group> reminder lists the members.
+  - The recipient reads it as a message from you, not from its user: make it
+    self-contained.
+  - The result says when it will be read: now (active), at its user's next
+    input (passive), or when its session resumes (offline).
+  - When you were asked for something, report back when it is done or can't
+    be done. Don't send bare acknowledgements.
+parameters:
+  to:      string, required — a member's name, without "@", e.g. "api"
+  message: string, required — the message body
+```
+
+### Full roster
 
 ```
 <system-reminder source="group">
 <group name="shop">
-You: @web — wiring coupons into the checkout page
+You: @web (active) — wiring coupons into the checkout page
 
 Members:
 - @api (active): owns the orders API — ~/work/shop/api
@@ -200,9 +230,28 @@ Unattended-Turns:
 </system-reminder>
 ```
 
-Offline members are folded into one `Offline: …` line: the model only needs to know they can't answer yet. `/group` still lists them in full.
+Offline members fold into one `Offline: …` line: the model only needs to know
+they can't answer yet. `/group` still lists them in full.
 
-A member's message:
+### Roster changes and own membership changes
+
+```
+<system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
+<system-reminder>Group shop: @qa left</system-reminder>
+<system-reminder>Group shop: @migrate went offline</system-reminder>
+<system-reminder>Group shop: @migrate is back online</system-reminder>
+<system-reminder>Group shop: @migrate is now active</system-reminder>
+<system-reminder>Group shop: @web is now @checkout</system-reminder>
+
+<system-reminder>Group shop: you are now passive; members' messages wait for your user.</system-reminder>
+<system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
+<system-reminder>You were removed from group shop; SendMessage is no longer available.</system-reminder>
+<system-reminder>Group shop was disbanded; SendMessage is no longer available.</system-reminder>
+```
+
+### Member messages
+
+Active: a user message of its own.
 
 ```
 <group-message>
@@ -216,13 +265,49 @@ expired. Deployed to staging.
 </group-message>
 ```
 
-A roster change sends only the change:
+Passive: appended after the text of the person's input. The person just typed,
+so `Unattended-Turns` is 0.
 
 ```
-<system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
-<system-reminder>Group shop: @migrate went offline</system-reminder>
-<system-reminder>Group shop: @web is now @checkout</system-reminder>
+is the migration done?
+
+<group-message>
+From: @api (owns the orders API)
+To: @migrate
+Sent: 2026-09-29 10:20
+Unattended-Turns: 0
+
+Please run 0043 right after 0042 finishes.
+</group-message>
 ```
+
+### Send results
+
+```
+Delivered to @web (active, online); they will handle it now.
+Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
+Queued for @qa (offline); they see it when the session resumes.
+
+no member named "front" in group shop; members: api, web, migrate
+cannot send a message to yourself
+only the main conversation can message group members; report to it instead   ← from a subagent
+```
+
+### Automatic naming (a separate model call, not part of the conversation)
+
+When `/group join` has no `--as` / `--role`, the current model is called once
+with this system prompt; the input is the recent conversation (the last ~12k
+characters).
+
+```
+You name a coding session that is joining a group of collaborating sessions.
+Read the conversation and answer with exactly two lines, nothing else:
+name: <a 1-3 word kebab-case handle for what this session works on>
+role: <one sentence: what this session is doing and what it owns>
+```
+
+With no conversation, or if the call fails, the name falls back to the `/name`
+session name or the directory name, and the role to `working in <directory>`.
 
 ## Keeping the roster
 
@@ -246,10 +331,7 @@ flowchart TB
 - The same session ID under a new name is a rename.
 - Online = the `pid`'s process is alive and its start time matches `procStart` (so a reused pid is not mistaken for the member). No heartbeat.
 - Own member file gone (`kick`ed) or group directory gone (`disband`ed) → leave and say so.
-- SendMessage checks the disk; an unknown name lists the members:
-  ```
-  no member named "front" in group shop; members: api, web, migrate
-  ```
+- SendMessage checks the disk, not a snapshot up to a second old.
 
 ## Membership follows the session
 
@@ -296,13 +378,7 @@ Whether a message makes an agent run is decided **only by the receiver's mode**;
 
 `/group mode passive` switches at once; the group is told `@migrate is now passive`.
 
-SendMessage's result reflects the recipient, so the sender knows whether to wait:
-
-```
-Delivered to @web (active, online); they will handle it now.
-Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @web (offline); they see it when the session resumes.
-```
+SendMessage's result says when the recipient will see it, so the sender knows whether to wait (text under "Everything the model sees").
 
 ## Preventing endless exchanges: the agent judges
 
@@ -363,7 +439,7 @@ flowchart TB
 ## SendMessage
 
 - While in a group, the **main agent** has SendMessage turned on; it goes back off on leaving (it is off by default).
-- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: …`.
+- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: …`. The definition and every result are under "Everything the model sees".
 - **Subagents cannot message members.** Member addresses are open to the main
   agent only; a subagent that needs to reach one reports to the main agent,
   which decides whether to pass it on.

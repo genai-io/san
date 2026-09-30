@@ -158,14 +158,43 @@ sequenceDiagram
     M->>MA: 输入和消息一起送达
 ```
 
-## 模型看到什么
+## 模型看到的全部内容
 
-加入时，以及恢复会话、`/clear`、压缩之后，完整成员列表以 reminder 的形式附上：
+**system prompt 不变。** group 相关的内容只通过三种途径进入模型：工具定义、reminder、组员消息。
+
+| 内容 | 形式 | 放在哪里 | 什么时候 |
+|---|---|---|---|
+| `SendMessage` 工具定义 | 工具 schema | 工具列表 | 加入 group 后出现，离开后移除 |
+| 完整成员列表 | `<system-reminder source="group">` | 附在下一条送往模型的 user 消息末尾 | 加入、恢复、`/clear`、压缩后 |
+| 成员变化、自己的身份变化 | `<system-reminder>`，一行 | 工作中：作为一条 user 消息插在工具调用之间；空闲：附在下一条消息末尾 | 发生时 |
+| 组员消息 → active | `<group-message>` | 空闲：单独一条 user 消息，开启新的一轮；工作中：一条 user 消息，插在工具调用之间 | 收到时 |
+| 组员消息 → passive | `<group-message>` | 附在用户下一条输入的正文之后 | 用户下次输入时 |
+| 发送结果 | 工具结果 | 发送方 `SendMessage` 的返回值 | 每次调用 |
+
+### SendMessage 工具定义
+
+```
+name: SendMessage
+description: |
+  Send a message to another session in your group, by its member name. The
+  <group> reminder lists the members.
+  - The recipient reads it as a message from you, not from its user: make it
+    self-contained.
+  - The result says when it will be read: now (active), at its user's next
+    input (passive), or when its session resumes (offline).
+  - When you were asked for something, report back when it is done or can't
+    be done. Don't send bare acknowledgements.
+parameters:
+  to:      string, required — a member's name, without "@", e.g. "api"
+  message: string, required — the message body
+```
+
+### 完整成员列表
 
 ```
 <system-reminder source="group">
 <group name="shop">
-You: @web — wiring coupons into the checkout page
+You: @web (active) — wiring coupons into the checkout page
 
 Members:
 - @api (active): owns the orders API — ~/work/shop/api
@@ -193,9 +222,27 @@ Unattended-Turns:
 </system-reminder>
 ```
 
-离线成员不逐个列出，折叠成一行 `Offline: …`：模型只需要知道他们暂时收不到回复。`/group` 里照常完整显示。
+离线成员折叠成一行 `Offline: …`：模型只需要知道他们暂时收不到回复。`/group` 里照常完整显示。
 
-收到的组员消息：
+### 成员变化与自己的身份变化
+
+```
+<system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
+<system-reminder>Group shop: @qa left</system-reminder>
+<system-reminder>Group shop: @migrate went offline</system-reminder>
+<system-reminder>Group shop: @migrate is back online</system-reminder>
+<system-reminder>Group shop: @migrate is now active</system-reminder>
+<system-reminder>Group shop: @web is now @checkout</system-reminder>
+
+<system-reminder>Group shop: you are now passive; members' messages wait for your user.</system-reminder>
+<system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
+<system-reminder>You were removed from group shop; SendMessage is no longer available.</system-reminder>
+<system-reminder>Group shop was disbanded; SendMessage is no longer available.</system-reminder>
+```
+
+### 组员消息
+
+active：单独作为一条 user 消息。
 
 ```
 <group-message>
@@ -209,13 +256,45 @@ expired. Deployed to staging.
 </group-message>
 ```
 
-成员有变化时，只发变化，不发完整列表：
+passive：附在用户这次输入的正文之后。用户刚输入，所以 `Unattended-Turns` 是 0。
 
 ```
-<system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
-<system-reminder>Group shop: @migrate went offline</system-reminder>
-<system-reminder>Group shop: @web is now @checkout</system-reminder>
+迁移跑完了吗
+
+<group-message>
+From: @api (owns the orders API)
+To: @migrate
+Sent: 2026-09-29 10:20
+Unattended-Turns: 0
+
+Please run 0043 right after 0042 finishes.
+</group-message>
 ```
+
+### 发送结果
+
+```
+Delivered to @web (active, online); they will handle it now.
+Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
+Queued for @qa (offline); they see it when the session resumes.
+
+no member named "front" in group shop; members: api, web, migrate
+cannot send a message to yourself
+only the main conversation can message group members; report to it instead   ← 子 agent 调用时
+```
+
+### 自动命名（单独的一次模型调用，不进入对话）
+
+`/group join` 没给 `--as` / `--role` 时，用当前模型调用一次：system prompt 如下，输入是最近的对话记录（截取最后约 12k 字符）。
+
+```
+You name a coding session that is joining a group of collaborating sessions.
+Read the conversation and answer with exactly two lines, nothing else:
+name: <a 1-3 word kebab-case handle for what this session works on>
+role: <one sentence: what this session is doing and what it owns>
+```
+
+对话为空或调用失败时，名字退回到 `/name` 设置的会话名或目录名，职责为 `working in <目录名>`。
 
 ## 成员列表怎么维护
 
@@ -237,10 +316,7 @@ flowchart TB
 - 同一个 sessionID 换了名字，就是改名。
 - 在线 = `pid` 的进程存活，且启动时间与 `procStart` 一致（防止 pid 被别的进程复用）。没有心跳。
 - 自己的成员文件没了（被 `kick`）或组目录没了（被 `disband`）→ 离开并提示。
-- `SendMessage` 以磁盘为准；名字不存在时报错并列出成员：
-  ```
-  no member named "front" in group shop; members: api, web, migrate
-  ```
+- `SendMessage` 以磁盘为准，不依赖可能落后 1 秒的快照。
 
 ## 成员身份跟着会话走
 
@@ -284,13 +360,7 @@ group 信息（group、名字、职责、模式）保存在会话记录里，恢
 
 `/group mode passive` 随时切换，立即生效，组员会收到 `@migrate is now passive`。
 
-`SendMessage` 的返回结果按对方状态区分，发送方由此知道要不要等：
-
-```
-Delivered to @web (active, online); they will handle it now.
-Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @web (offline); they see it when the session resumes.
-```
+`SendMessage` 的返回结果会说明对方何时能看到，发送方由此知道要不要等（原文见“模型看到的全部内容”）。
 
 ## 防止来回对话：把判断交给 agent
 
@@ -347,7 +417,7 @@ flowchart TB
 ## SendMessage
 
 - 在组里时，**主 agent** 自动打开 `SendMessage`，离开后关闭。它原本对主 agent 默认关闭。
-- `to` 写组员名字；消息正文包在 `<group-message>` 里；界面显示为 `● To @web: …`。
+- `to` 写组员名字；消息正文包在 `<group-message>` 里；界面显示为 `● To @web: …`。工具定义和所有返回文字见“模型看到的全部内容”。
 - **子 agent 不能给组员发消息**：组员地址只对主 agent 开放。子 agent 有需要时，把内容汇报给主 agent，由主 agent 决定要不要转告。
 - 原有的“主 agent 按任务 ID 给子 agent 发消息”“子 agent 发 `"main"` 汇报”两条路径保留，不再宣传。
 
