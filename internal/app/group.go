@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -43,6 +45,7 @@ type groupState struct {
 	announced  map[string]bool        // passive messages already shown
 	unattended int                    // turns member messages started since the person last typed
 	userTyped  bool                   // the person's input is on its way: attach waiting messages
+	colors     map[string]int         // member name → palette slot, in order of arrival, never reassigned
 }
 
 type rosterEntry struct {
@@ -139,6 +142,7 @@ func (m *model) syncRoster(g string, self group.Member, msg memberMsg) []tea.Cmd
 	next := msg.roster
 	prev := m.grp.roster
 	m.grp.roster = next
+	m.placeMemberColors(next, self.SessionID)
 	if prev == nil {
 		return nil // the first read after joining: the join itself told the model
 	}
@@ -147,6 +151,22 @@ func (m *model) syncRoster(g string, self group.Member, msg memberMsg) []tea.Cmd
 		cmds = append(cmds, m.deliverGroupReminder(c.line, c.text))
 	}
 	return cmds
+}
+
+// placeMemberColors gives each member not yet seen the next colour, oldest
+// first, so members never share one below the palette's size and a colour,
+// once on screen, keeps meaning the same member.
+func (m *model) placeMemberColors(roster map[string]rosterEntry, selfID string) {
+	if m.grp.colors == nil {
+		m.grp.colors = map[string]int{}
+	}
+	members := slices.Collect(maps.Values(roster))
+	slices.SortFunc(members, func(a, b rosterEntry) int { return a.JoinedAt.Compare(b.JoinedAt) })
+	for _, e := range members {
+		if _, ok := m.grp.colors[e.Name]; !ok && e.SessionID != selfID {
+			m.grp.colors[e.Name] = len(m.grp.colors)
+		}
+	}
 }
 
 type rosterChange struct{ line, text string } // for the person, for the model
@@ -418,6 +438,10 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	}
 	msgs := m.conv.ConvertToProviderFrom(0)
 	provider, model, cwd, session := m.env.LLMProvider, m.env.GetModelID(), m.env.CWD, m.env.SessionName
+	if len(msgs) == 0 { // nothing to summarize yet
+		gotName, gotRole := group.Fallback(session, cwd)
+		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), mode: mode}), nil
+	}
 	return fmt.Sprintf("Joining group %s — summarizing this session for its name and role…", name), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
@@ -440,7 +464,27 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	return m.fitLines(fmt.Sprintf("Joined group %s as @%s (%s) — %s\n%s", msg.group, self.Name, self.Mode, self.Role, group.Listing()))
+	return m.fitLines(fmt.Sprintf("Joined group %s as @%s.\n%s", msg.group, self.Name, group.Listing()))
+}
+
+// joinFlagSuggestions offers the join flags not yet given, once a group is named.
+func joinFlagSuggestions(rest string) []suggest.Suggestion {
+	done, partial := rest[:strings.LastIndex(rest, " ")+1], rest[strings.LastIndex(rest, " ")+1:]
+	fields := strings.Fields(done)
+	if last := fields[len(fields)-1]; last == "--as" || last == "--role" {
+		return nil // a value comes next
+	}
+	var out []suggest.Suggestion
+	for _, f := range []struct{ flag, desc string }{
+		{"--passive", "members' messages wait for you"},
+		{"--as", "NAME · your member name"},
+		{"--role", "TEXT · what this session owns"},
+	} {
+		if strings.HasPrefix(f.flag, partial) && !slices.Contains(fields, f.flag) {
+			out = append(out, suggest.Suggestion{Name: "group join " + done + f.flag, Description: f.desc})
+		}
+	}
+	return out
 }
 
 // fitLines cuts each line to the screen: notices are not re-wrapped, so a
@@ -525,22 +569,33 @@ func describeSession(ctx context.Context, provider llm.Provider, model string, m
 func groupSuggestions(args string) []suggest.Suggestion {
 	sub, rest, hasSub := strings.Cut(args, " ")
 	if !hasSub {
+		// Only what applies now: join outside a group, the rest inside one.
+		joined := false
+		if g, _ := group.Current(); g != "" {
+			joined = true
+		}
 		var out []suggest.Suggestion
-		for _, s := range []suggest.Suggestion{
-			{Name: "group join", Description: "join or create a group"},
-			{Name: "group leave", Description: "leave your group"},
-			{Name: "group mode", Description: "active: wake for members · passive: wait for you"},
-			{Name: "group kick", Description: "remove a member"},
-			{Name: "group list", Description: "every group"},
-			{Name: "group disband", Description: "remove a group; its members leave"},
+		for _, s := range []struct {
+			sub, desc string
+			show      bool
+		}{
+			{"join", "join or create a group", !joined},
+			{"leave", "leave your group", joined},
+			{"mode", "active: wake for members · passive: wait for you", joined},
+			{"kick", "remove a member", joined},
+			{"list", "every group", true},
+			{"disband", "remove a group; its members leave", true},
 		} {
-			if strings.HasPrefix(strings.TrimPrefix(s.Name, "group "), sub) {
-				out = append(out, s)
+			if s.show && strings.HasPrefix(s.sub, sub) {
+				out = append(out, suggest.Suggestion{Name: "group " + s.sub, Description: s.desc})
 			}
 		}
 		return out
 	}
 	if strings.Contains(rest, " ") {
+		if sub == "join" {
+			return joinFlagSuggestions(rest)
+		}
 		return nil
 	}
 	var out []suggest.Suggestion

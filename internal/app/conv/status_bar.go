@@ -215,6 +215,8 @@ type OperationModeParams struct {
 	ReviewEscalations int    // auto-review escalations to the user this session
 	AutopilotThinking bool   // the copilot is mid-decision — show "thinking…" on the mode indicator
 	UpdateInstalled   string // release installed on disk this session, "" for none
+	Group             string // this session's group, "" outside one
+	GroupWaiting      int    // member messages waiting for the person's next input
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -245,9 +247,17 @@ func renderStatusCluster(p OperationModeParams) string {
 
 	// Priority 1 = most important (dropped last). The model name always
 	// renders; everything else drops before it under width pressure.
-	segments := []statusSegment{
-		{text: muted.Render(p.ModelName), priority: 1},
+	var segments []statusSegment
+	if p.Group != "" {
+		// Passive messages wait out of sight once scrolled away; this keeps
+		// them in view until the person's next input takes them in.
+		group := muted.Render("◆ " + p.Group)
+		if p.GroupWaiting > 0 {
+			group = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(fmt.Sprintf("◆ %s · %d waiting", p.Group, p.GroupWaiting))
+		}
+		segments = append(segments, statusSegment{text: group, priority: 2})
 	}
+	segments = append(segments, statusSegment{text: muted.Render(p.ModelName), priority: 1})
 	if p.StatusMessage != "" {
 		segments = append(segments, statusSegment{text: muted.Render(p.StatusMessage), priority: 2})
 	}

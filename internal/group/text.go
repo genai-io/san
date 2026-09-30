@@ -73,7 +73,11 @@ func Listing() string {
 	}
 	members := Members(g)
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s · %d member(s)", g, len(members))
+	noun := "members"
+	if len(members) == 1 {
+		noun = "member"
+	}
+	fmt.Fprintf(&b, "%s · %d %s", g, len(members), noun)
 	width := 0
 	for _, m := range members {
 		width = max(width, len(m.Name))

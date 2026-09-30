@@ -11,7 +11,7 @@ import (
 func TestMemberLinesFitOneLineAndKeepTheNote(t *testing.T) {
 	body := strings.Repeat("字段名和单位都要对齐 ", 10) + " · waits for you"
 	for _, width := range []int{40, 49, 120} {
-		line := renderMemberLine("◆", "From", "api", body, width)
+		line := renderMemberLine("◆", "From", "api", body, width, nil)
 		if w := lipgloss.Width(line); w > width || strings.Contains(line, "\n") {
 			t.Errorf("width %d: line is %d wide or wraps: %q", width, w, xansi.Strip(line))
 		}

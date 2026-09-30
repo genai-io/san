@@ -374,6 +374,8 @@ func (m model) renderModeStatus() string {
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,
 		UpdateInstalled:   m.updateInstalled,
+		Group:             m.grp.name,
+		GroupWaiting:      len(m.grp.announced),
 	})
 }
 
@@ -423,6 +425,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Decorations
 		AgentColors:  m.agentColors(),
+		MemberColors: m.grp.colors,
 		TaskActivity: m.conv.TaskActivity,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 

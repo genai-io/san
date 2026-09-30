@@ -831,8 +831,8 @@ func sendMessageParts(input string) (to, body string) {
 	return strings.TrimPrefix(p.To, "@"), conciseAgentDescription(p.Message)
 }
 
-// memberPalette tells group members apart. A member keeps its colour on both
-// sides of an exchange: "To @api" in one session, "From @api" in the other.
+// memberPalette tells group members apart: "To @api" and "From @api" share
+// @api's colour, so one exchange reads as a thread.
 var memberPalette = []kit.AdaptiveColor{
 	{Dark: "#93C5FD", Light: "#1D4ED8"}, // blue
 	{Dark: "#F0ABFC", Light: "#A21CAF"}, // magenta
@@ -842,7 +842,12 @@ var memberPalette = []kit.AdaptiveColor{
 	{Dark: "#FDA4AF", Light: "#BE123C"}, // rose
 }
 
-func memberColor(name string) kit.AdaptiveColor {
+// memberColor is the slot the session gave name; a name it has not placed
+// yet (a resume before the roster is read) falls back to a hash.
+func memberColor(name string, colors map[string]int) kit.AdaptiveColor {
+	if i, ok := colors[name]; ok {
+		return memberPalette[i%len(memberPalette)]
+	}
 	h := fnv.New32a()
 	h.Write([]byte(name))
 	return memberPalette[h.Sum32()%uint32(len(memberPalette))]
@@ -851,8 +856,8 @@ func memberColor(name string) kit.AdaptiveColor {
 // renderMemberLine draws one message to or from a group member as a single
 // line: the icon and @name in the member's colour, then the body cut to the
 // width, keeping a trailing " · note" whole.
-func renderMemberLine(icon, dir, name, body string, width int) string {
-	color := lipgloss.NewStyle().Foreground(memberColor(name))
+func renderMemberLine(icon, dir, name, body string, width int, colors map[string]int) string {
+	color := lipgloss.NewStyle().Foreground(memberColor(name, colors))
 	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name) + toolCallStyle.Render(":")
 	note := ""
 	if i := strings.LastIndex(body, " · "); i >= 0 {
@@ -1025,6 +1030,11 @@ func formatToolResultSize(toolName, content string) string {
 		return toolresult.FormatSize(int64(len(content)))
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
+	case tool.ToolSendMessage, tool.ToolGroup:
+		// Their first clause is the outcome, e.g. "Delivered to @web (passive)".
+		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
+		first, _, _ = strings.Cut(first, "; ")
+		return strings.TrimSuffix(first, ".")
 	default:
 		return formatLineCount(content)
 	}

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,8 +40,14 @@ func TestGroupSuggestionsWalkSubcommandsThenValues(t *testing.T) {
 		}
 		return out
 	}
-	if got := names(""); len(got) != 6 {
-		t.Errorf("bare /group offers %v, want the six subcommands", got)
+	if got := names(""); !slices.Equal(got, []string{"group join", "group list", "group disband"}) {
+		t.Errorf("outside a group /group offers %v, want only what applies", got)
+	}
+	if got := names("join shop --as web "); !slices.Equal(got, []string{"group join shop --as web --passive", "group join shop --as web --role"}) {
+		t.Errorf("/group join shop --as web offers %v, want the flags not yet given", got)
+	}
+	if got := names("join shop --role "); got != nil {
+		t.Errorf("a value comes after --role, offered %v", got)
 	}
 	if got := names("mode "); !slices.Equal(got, []string{"group mode active", "group mode passive"}) {
 		t.Errorf("/group mode offers %v", got)
@@ -130,5 +137,19 @@ func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
 	m.exitGroup()
 	if members := group.Members("shop"); len(members) != 0 {
 		t.Errorf("members after exit = %+v, want none", members)
+	}
+}
+
+func TestMemberColorsGoInOrderOfArrivalAndStay(t *testing.T) {
+	at := func(min int) time.Time { return time.Date(2026, 9, 30, 10, min, 0, 0, time.UTC) }
+	entry := func(id, name string, min int) rosterEntry {
+		return rosterEntry{Member: group.Member{SessionID: id, Name: name, JoinedAt: at(min)}}
+	}
+	var m model
+	m.placeMemberColors(map[string]rosterEntry{"s-self": entry("s-self", "web", 0), "s-2": entry("s-2", "qa", 2), "s-1": entry("s-1", "api", 1)}, "s-self")
+	m.placeMemberColors(map[string]rosterEntry{"s-0": entry("s-0", "aaa", 3), "s-1": entry("s-1", "api", 1)}, "s-self")
+	want := map[string]int{"api": 0, "qa": 1, "aaa": 2}
+	if !maps.Equal(m.grp.colors, want) {
+		t.Errorf("colors = %v, want %v (self skipped, earlier members keep theirs)", m.grp.colors, want)
 	}
 }

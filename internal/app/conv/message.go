@@ -494,11 +494,11 @@ func RenderSystemMessage(content string) string {
 // RenderAgentNotice renders a background-agent notice (a subagent completion or
 // interim report) — a "◆" marker plus the "<description> <status>" line in the
 // accent tone, so it stands out from the dim system notices as an agent message.
-func RenderAgentNotice(content string, width int) string {
+func RenderAgentNotice(content string, width int, colors map[string]int) string {
 	// A group member's message: "From @api: …", mirroring "To @api: …".
 	if label, rest, ok := strings.Cut(content, ": "); ok {
 		if name, ok := strings.CutPrefix(label, "From @"); ok && !strings.Contains(name, " ") {
-			return renderMemberLine("◆", "From", name, rest, width) + "\n"
+			return renderMemberLine("◆", "From", name, rest, width, colors) + "\n"
 		}
 	}
 	return agentNoticeStyle.Render("◆ "+content) + "\n"
@@ -551,6 +551,7 @@ type ToolCallsParams struct {
 	OutputTokens       int
 	Blink              int
 	AgentColors        map[string]string
+	MemberColors       map[string]int
 	SpinnerView        string
 	TaskOwnerMap       map[string]string
 	MDRenderer         *MDRenderer
@@ -632,7 +633,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
 			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
-				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width) + "\n")
+				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width, params.MemberColors) + "\n")
 			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
