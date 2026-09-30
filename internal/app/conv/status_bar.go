@@ -223,8 +223,15 @@ type OperationModeParams struct {
 func RenderModeStatus(params OperationModeParams) string {
 	left := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
 
-	right := renderStatusCluster(params)
-	if right == "" || params.Width <= 0 {
+	if params.Width <= 0 {
+		return left
+	}
+	// The cluster gets what the mode indicator leaves, so it drops its least
+	// important segments instead of running off the edge.
+	cluster := params
+	cluster.Width = params.Width - lipgloss.Width(left) - 3
+	right := renderStatusCluster(cluster)
+	if right == "" {
 		return left
 	}
 

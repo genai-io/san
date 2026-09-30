@@ -442,7 +442,7 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 		gotName, gotRole := group.Fallback(session, cwd)
 		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), mode: mode}), nil
 	}
-	return fmt.Sprintf("Joining group %s — summarizing this session for its name and role…", name), func() tea.Msg {
+	return m.fitLines(fmt.Sprintf("Joining %s — naming this session…", name)), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		gotName, gotRole := describeSession(ctx, provider, model, msgs, cwd, session)
@@ -464,7 +464,12 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	return m.fitLines(fmt.Sprintf("Joined group %s as @%s.\n%s", msg.group, self.Name, group.Listing()))
+	n := len(group.Members(msg.group))
+	noun := "members"
+	if n == 1 {
+		noun = "member"
+	}
+	return m.fitLines(fmt.Sprintf("Joined %s as @%s (%s) · %d %s", msg.group, self.Name, self.Mode, n, noun))
 }
 
 // joinFlagSuggestions offers the join flags not yet given, once a group is named.
