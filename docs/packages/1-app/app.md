@@ -30,7 +30,7 @@ package app
 type model struct {
     userInput       input.Model        // Source 1: user keyboard
     mainNotices     chan mainNotice    // Source 2: notices bound for the main loop
-    pendingNotices  []mainNotice       // notices received while streaming
+    heldNotices     []mainNotice       // notice lines held while the stream owns the tail
     systemInput     trigger.Model      // Source 3: cron / async hook / file watcher
     conv            conv.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
@@ -94,7 +94,7 @@ Root files (no business logic; pure glue):
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |
-| `model_turn_queue.go` | Turn-end inbox drain + prompt injection + stop-hook gate. |
+| `model_turn_queue.go` | Notice delivery, turn-end queue drain + prompt injection + stop-hook gate. |
 | `model_deps.go` | Deps builders for sub-features (`overlayDeps`, `triggerDeps`, etc.). |
 | `model_actions.go` | Identity switch + slash-command dispatch from selector hotkeys. |
 | `update.go` | `Update()` dispatch + `routeFeatureUpdate` + `overlaySelectors`. |
@@ -128,8 +128,8 @@ Sub-model packages:
 - `cmd/san` calls `app.Run()` which builds the `tea.Program`,
   `newServices()` snapshots all `Default()` references, the root model is
   constructed, and `tea.Program.Run()` enters the MVU loop.
-- Per turn: user submits → input subpackage → `sendToAgent()` → agent
-  inbox → agent processes → outbox events → `conv` updates → re-render.
+- Per turn: user submits → input subpackage → `sendToAgent()` →
+  `core.Agent.Append` → agent processes → outbox events → `conv` updates → re-render.
 - Before a deliberate foreground-agent stop, the root snapshots the live
   `core.Agent` message chain. A replacement agent is seeded from that snapshot
   rather than the UI rendering model; `/clear` and loading another persisted

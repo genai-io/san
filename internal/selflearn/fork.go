@@ -84,7 +84,7 @@ func RunReview(ctx context.Context, fc ForkConfig, kinds ReviewKind, snapshot []
 	// RoleUser) so the review prompt isn't the second consecutive user-role turn
 	// on the wire — most providers reject that as a role-order violation.
 	ag.SetMessages(trimTrailingPendingMessages(snapshot))
-	ag.Append(ctx, core.UserMessage(prompt, nil))
+	ag.Append(core.UserMessage(prompt, nil))
 	res, err := ag.ThinkAct(ctx)
 	if err != nil {
 		return "", err

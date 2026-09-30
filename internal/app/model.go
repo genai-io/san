@@ -46,10 +46,10 @@ type model struct {
 	// interim messages) and self-learn notices land here; they show as a notice
 	// and then reach the main agent's real core.Agent inbox. See notify.go.
 	mainNotices chan mainNotice
-	// pendingNotices holds notices that arrived mid-stream, where appending to
-	// the conversation is unsafe. Released at the next completed tool batch
-	// (OnStepEnd), or at OnTurnEnd if the turn ends first.
-	pendingNotices []mainNotice
+	// heldNotices are the lines of notices that arrived mid-stream, where
+	// appending to the conversation is unsafe; their content already went to
+	// the agent. Shown at the next step or turn end.
+	heldNotices []mainNotice
 	// drainedThisStep caps OnStepEnd to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep bool

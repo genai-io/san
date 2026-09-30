@@ -17,14 +17,19 @@ import (
 // A SigCompact applies an in-place compaction (replacing the chain with the
 // precomputed summary, recording the manual boundary) and must NOT start a
 // turn — otherwise the lone summary would trigger a spurious inference.
-func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
-	var captured []Event
+func TestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
+	var captured atomic.Pointer[Compacted]
+	llm := aitest.Always(aitest.Hangs())
 	ag := NewAgent(Config{
-		ID:      "test",
-		Client:  testClient(aitest.Always(aitest.Hangs())),
-		System:  NewSystem(),
-		Tools:   NewTools(),
-		OnEvent: func(e Event) { captured = append(captured, e) },
+		ID:     "test",
+		Client: testClient(llm),
+		System: NewSystem(),
+		Tools:  NewTools(),
+		OnEvent: func(e Event) {
+			if c, ok := e.(Compacted); ok {
+				captured.Store(&c)
+			}
+		},
 	})
 	a := ag.(*agent)
 	go func() {
@@ -38,34 +43,26 @@ func TestIngestSigCompactAppliesInPlaceWithoutStartingTurn(t *testing.T) {
 		UserMessage("more", nil),
 	})
 
-	if a.ingest(context.Background(), Inbound{Signal: SigCompact, Summary: "the summary"}) {
-		t.Fatal("SigCompact must not start a turn")
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = ag.Run(ctx) }()
+	ag.Inbox() <- Inbound{Signal: SigCompact, Summary: "the summary"}
+	waitFor(t, "the compaction to land", func() bool { return captured.Load() != nil })
 
+	if n := llm.Calls(); n != 0 {
+		t.Fatalf("SigCompact started %d inferences, want none", n)
+	}
 	msgs := a.Messages()
 	if len(msgs) != 1 || !strings.Contains(msgs[0].Text(), "the summary") {
 		t.Fatalf("SigCompact should compact in place to the single summary, got %d messages", len(msgs))
 	}
 
-	var info *Compacted
-	for _, e := range captured {
-		if c, ok := e.(Compacted); ok {
-			cc := c
-			info = &cc
-		}
-	}
-	if info == nil {
-		t.Fatal("SigCompact should emit a CompactEvent")
-	}
+	info := captured.Load()
 	if info.Trigger != "manual" {
 		t.Fatalf("manual compaction trigger = %q, want manual", info.Trigger)
 	}
 	if info.SummaryMessageID == "" || info.SummaryMessageID != msgs[0].ID {
 		t.Fatalf("boundary %q must equal the summary message ID %q", info.SummaryMessageID, msgs[0].ID)
-	}
-
-	if !a.ingest(context.Background(), Inbound{Msg: UserMessage("next", nil)}) {
-		t.Fatal("a normal user message must start a turn")
 	}
 }
 
@@ -112,7 +109,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	}()
 
 	// Kick off the first turn, then interrupt while Infer is blocked.
-	ag.Inbox() <- Inbound{Msg: UserMessage("first", nil)}
+	ag.Append(UserMessage("first", nil))
 	// turn is stored at the top of each inner-loop iteration, right
 	// before ThinkAct is called — wait until that pointer is published.
 	waitFor(t, "agent turn to be stored", func() bool {
@@ -134,7 +131,7 @@ func TestInterruptCurrentTurnReturnsToWaitInsteadOfEndingRun(t *testing.T) {
 	// release channel is buffered so the test never races the agent's
 	// read of it. Waiting on turn.Load() instead of sleeping proves the
 	// second turn actually entered Infer.
-	ag.Inbox() <- Inbound{Msg: UserMessage("second", nil)}
+	ag.Append(UserMessage("second", nil))
 	waitFor(t, "second turn to enter Infer", func() bool {
 		return ag.(*agent).turn.Load() != nil
 	})
@@ -227,7 +224,7 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 	// Interrupt while the agent is parked in waitForInput.
 	<-ag.InterruptCurrentTurn()
 
-	ag.Inbox() <- Inbound{Msg: UserMessage("answer me", nil)}
+	ag.Append(UserMessage("answer me", nil))
 
 	// The model only replies once its release token is read, so a consumed
 	// token proves Infer was reached.
@@ -243,6 +240,43 @@ func TestIdleInterruptDoesNotEatTheNextMessage(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not exit after SigStop")
+	}
+}
+
+// A message queued during a turn the user then interrupts must not restart the
+// agent on its own: Esc stops everything, and the message rides with the next
+// one instead.
+func TestInterruptHoldsMessagesQueuedDuringTheTurn(t *testing.T) {
+	release := make(chan struct{}, 4)
+	llm := aitest.Always(released(release))
+	ag := NewAgent(Config{ID: "test", Client: testClient(llm), System: NewSystem(), Tools: NewTools()})
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	go func() { _ = ag.Run(ctx) }()
+
+	ag.Append(UserMessage("first", nil))
+	waitFor(t, "the first turn to start", func() bool { return ag.(*agent).turn.Load() != nil })
+	ag.Append(UserMessage("queued mid-turn", nil))
+	<-ag.InterruptCurrentTurn()
+
+	time.Sleep(100 * time.Millisecond)
+	if n := llm.Calls(); n != 1 {
+		t.Fatalf("inferences after the interrupt = %d, want 1: the agent restarted itself", n)
+	}
+
+	release <- struct{}{}
+	ag.Append(UserMessage("next", nil))
+	waitFor(t, "the next message to reach inference", func() bool { return llm.Calls() == 2 })
+	var said []string
+	for _, m := range llm.Last().Messages {
+		said = append(said, m.Text())
+	}
+	if got := strings.Join(said, "|"); !strings.Contains(got, "queued mid-turn|next") {
+		t.Fatalf("the next inference carried %q, want the queued message ahead of the next one", got)
 	}
 }
 
@@ -512,7 +546,7 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	result, err := ag.ThinkAct(ctx)
 	if !errors.Is(err, context.Canceled) {
@@ -523,6 +557,36 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	}
 	if n := ranOnDead.Load(); n != 0 {
 		t.Errorf("%d of %d tool calls executed after the turn was cancelled", n, ran.Load())
+	}
+}
+
+// A message appended while a tool runs — a background task finishing — must
+// reach the very next inference of the same turn, not wait for the turn to end.
+func TestAppendMidTurnReachesTheNextStep(t *testing.T) {
+	var ran, ranOnDead atomic.Int32
+	driver := aitest.New(aitest.Asks(ToolCall{ID: "c1", Name: "work", Input: "{}"}), aitest.Says("done"))
+	var ag Agent
+	ag = NewAgent(Config{
+		ID: "test", Client: testClient(driver), System: NewSystem(),
+		Tools: NewTools(cancelOnRunTool{name: "work", ran: &ran, ranOnDead: &ranOnDead, onRun: func() {
+			ag.Append(UserMessage("<task-notification>finished</task-notification>", nil))
+		}}),
+	})
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.Append(UserMessage("go", nil))
+
+	if _, err := ag.ThinkAct(context.Background()); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if n := driver.Calls(); n != 2 {
+		t.Fatalf("inferences = %d, want 2", n)
+	}
+	msgs := driver.Last().Messages
+	if got := msgs[len(msgs)-1].Text(); !strings.Contains(got, "finished") {
+		t.Fatalf("second inference ended with %q, want the notification", got)
 	}
 }
 
@@ -546,7 +610,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -563,7 +627,7 @@ func TestStreamInferSendsTheApplicationsCallSettings(t *testing.T) {
 
 	// Asked for again on the next call, so a mid-session change lands.
 	effort = ai.EffortHigh
-	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("again")})
+	ag.Append(Message{Role: ai.RoleUser, Content: ai.TextContent("again")})
 	if _, err := ag.ThinkAct(ctx); err != nil {
 		t.Fatalf("ThinkAct: %v", err)
 	}
@@ -591,7 +655,7 @@ func TestStreamInferAsksForAClientPerTurn(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -617,7 +681,7 @@ func TestStreamInferReportsAnUnconfiguredModel(t *testing.T) {
 		for range ag.Outbox() {
 		}
 	}()
-	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+	ag.Append(Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

@@ -28,18 +28,19 @@ move together when they move at all.
 package core
 
 // Agent — an LLM in a loop. Three capabilities: System (WHO), Tools (WHAT),
-// Inbox/Outbox (HOW it communicates).
+// Append/Inbox/Outbox (HOW it communicates).
 type Agent interface {
     ID() string
     System() System
     Tools() Tools
-    Inbox() chan<- Message    // caller owns and closes
+    Inbox() chan<- Inbound    // control signals only; caller owns and closes
     Outbox() <-chan Event     // agent owns and closes on Run() return
     Messages() []Message
     SetMessages(msgs []Message)
-    Append(ctx context.Context, msg Message)
+    Append(msg Message)       // queue a message; any goroutine, never blocks
     ThinkAct(ctx context.Context) (*Result, error)
     Run(ctx context.Context) error
+    InterruptCurrentTurn() <-chan struct{}
 }
 
 func NewAgent(cfg Config) Agent  // returns interface — see Note below
@@ -136,17 +137,21 @@ in `internal/agent` (for `core.Agent`), `internal/core/system/` (for
 `internal/llm` (for `LLM`).
 
 Three implementation files back `NewAgent`, kept inside `core` because the
-mailbox is inseparable from the contract:
+loop is inseparable from the contract:
 
-- `run.go` — the agent: the mailbox that waits for work (an inbox, an outbox,
-  and the loop between them) and the exchange it hands each batch to. Both
+- `run.go` — the agent: the loop that waits for work and the exchange it hands
+  it to. Messages have one queue, the SDK agent's: `Append` adds to it, and the
+  SDK enters them at the next step boundary — or opens the next exchange with
+  them — and does not end an exchange while any wait. `Run` only needs a wake
+  to start an exchange when idle. The inbox carries control signals (stop,
+  manual compaction), which act between turns on the agent's goroutine. Both
   halves are one file because they are one struct — every line of the exchange
-  reaches into the mailbox's fields, and the mailbox calls the exchange.
+  reaches into the loop's fields, and the loop calls the exchange.
 - `toolset.go` — what the model may call, and how a tool learns which call it
   is running. The exchange asks for it once, through `offered`, and never looks
   inside.
 - `compact.go` — shortening a conversation that has outgrown its window. Two of
-  the exchange's hooks ask for it and `/compact` asks for it through the inbox,
+  the exchange's hooks ask for it and `/compact` asks for it through a signal,
   so it belongs to neither.
 
 ## Lifecycle
@@ -155,14 +160,19 @@ mailbox is inseparable from the contract:
 construction, callers own the `Inbox` channel (must close when done
 sending) and read the `Outbox` until it closes (agent owns it).
 
-`Run` returns when the context is cancelled or a `SigStop` message is
-received. After `Run` returns, sending to the inbox blocks indefinitely.
+`Append` is how every message arrives — a user's, a finished background task's,
+a steer to a subagent — from any goroutine, mid-turn or idle. Mid-turn it lands
+before the next inference; idle it wakes `Run`. A message queued during a turn
+the user interrupts waits for the next message rather than restarting the agent.
+
+`Run` returns when the context is cancelled or `SigStop` arrives. After `Run`
+returns, sending to the inbox blocks indefinitely.
 
 ## Tests
 
 ```
-internal/core/run_test.go           — mailbox behaviour: signals, drains, the
-                                      interrupt latch.
+internal/core/run_test.go           — loop behaviour: signals, mid-turn
+                                      delivery, the interrupt latch.
 internal/core/exchange_test.go      — one exchange: compaction, the toolset it
                                       offers, the client it asks for.
 internal/core/agent_content_test.go — what one exchange produces and reports.

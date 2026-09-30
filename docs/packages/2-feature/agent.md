@@ -69,8 +69,8 @@ func ResetDefaultSession()         // test-only
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
 - Sending: callers pass the `core.Message` built from the conv row so both
-  share one ID. `Send` selects over the inbox and run completion, and reports
-  delivery failures instead of silently dropping input.
+  share one ID. `Send` appends to the agent's message queue (never blocks) and
+  reports a stopped run instead of silently dropping input.
 
 ## Tests
 

@@ -133,12 +133,7 @@ func RunAgent(ctx context.Context, ag core.Agent, prompt string) (core.Result, e
 		agentErr = ag.Run(ctx)
 	}()
 
-	select {
-	case ag.Inbox() <- core.Inbound{Msg: core.UserMessage(prompt, nil)}:
-	case <-ctx.Done():
-		<-done
-		return core.Result{}, ctx.Err()
-	}
+	ag.Append(core.UserMessage(prompt, nil))
 
 	var result core.Result
 	var hasResult bool

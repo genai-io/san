@@ -52,7 +52,7 @@ func (m *model) OnInference(resp *ai.Response) {
 func (m *model) HasRunningTasks() bool { return m.services.Task.HasRunning() }
 
 // OnStepEnd releases pending work into a still-running turn at a step
-// boundary (a PostTool, where the turn continues): notices the stream held
+// boundary (a PostTool, where the turn continues): notice lines the stream held
 // back, plus one queued user message — the cap is what keeps the queue
 // editable until release. Counterpart to drainTurnQueues, which runs once the
 // turn has ended.
@@ -60,7 +60,8 @@ func (m *model) OnStepEnd() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	notices := m.releaseParkedNotices()
+	m.showHeldNotices()
+	notices := tea.Batch(m.CommitMessages()...)
 	if m.drainedThisStep {
 		return notices
 	}
@@ -125,6 +126,7 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
+	m.showHeldNotices()
 	commitCmds := m.CommitMessages()
 
 	// User-initiated cancel surfaces here as a Result with StopCanceled now

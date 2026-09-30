@@ -1,23 +1,19 @@
 // Main-loop notifications: the small events that wake the TUI's Update loop —
 // a finished background subagent, an interim message from a running one, a
-// self-learn review tick. They arrive on m.mainNotices, and this is where their
-// delivery timing is defined; the mechanics live in model_turn_queue.go.
+// self-learn review tick. They arrive on m.mainNotices; deliverNotice
+// (model_turn_queue.go) places them.
 //
-// A notice shows a line in the conversation, so it can only be delivered where
-// appending is safe — anywhere except the last slot while the stream is still
-// writing into it (conv.LastMessageIsStreaming). onMainNotice takes the earliest of
-// three:
+// A notice has two halves with different constraints. Its content goes to the
+// agent at once: with a turn running it enters at the next step boundary (the
+// agent's queue sees to that, and a turn does not end with it unread);
+// otherwise it starts a fresh turn. Its display line can only be appended
+// where that is safe — anywhere except the last slot while the stream is still
+// writing into it (conv.LastMessageIsStreaming) — so there it is held and shown
+// at the next step or turn end. The agent never waits on the screen.
 //
-//   - no turn running: injected now, starting a fresh turn;
-//   - turn running, tail free (a tool is executing): injected into that turn,
-//     whose agent reads it at its next step;
-//   - stream owns the tail: parked in pendingNotices, released at the next
-//     completed tool batch (OnStepEnd) or, failing that, at OnTurnEnd.
-//
-// m.mainNotices is a TUI staging channel, not the main agent's inbox: unlike a
-// subagent, whose broker delivery goes straight into its core.Agent inbox, the
-// main conversation is UI-attached and has this display half to place. That is
-// why the channel carries a mainNotice rather than a raw message.
+// m.mainNotices is a TUI staging channel, not the agent's queue: the main
+// conversation is UI-attached and has the display half to place, which is why
+// the channel carries a mainNotice rather than a raw message.
 package app
 
 import (
@@ -48,37 +44,6 @@ type mainNotice struct {
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
 	return mainNotice{Display: m.Subject, Content: m.Content, FromAgent: true}
-}
-
-// mergeNotices collapses notices drained together into one displayed line + one
-// injected content. Display-only notices contribute their line but no content.
-func mergeNotices(notices []mainNotice) mainNotice {
-	if len(notices) == 1 {
-		return notices[0]
-	}
-	lines := make([]string, 0, len(notices))
-	contents := make([]string, 0, len(notices))
-	for _, n := range notices {
-		if n.Display != "" {
-			lines = append(lines, n.Display)
-		}
-		if c := strings.TrimSpace(n.Content); c != "" {
-			contents = append(contents, c)
-		}
-	}
-	merged := mainNotice{Display: strings.Join(lines, "; ")}
-	for _, n := range notices {
-		if n.FromAgent {
-			merged.FromAgent = true
-			break
-		}
-	}
-	if len(contents) == 1 {
-		merged.Content = contents[0]
-	} else if len(contents) > 1 {
-		merged.Content = "<agent-messages>\n" + strings.Join(contents, "\n") + "\n</agent-messages>"
-	}
-	return merged
 }
 
 // maxTaskOutputInNotification is the largest task output, in bytes, inlined

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,11 +44,10 @@ type agent struct {
 	// measured is the last reply's real prompt size; see promptTokens.
 	measured promptMeasure
 
-	// pending is what the inbox took since the last exchange. The SDK's Run
-	// takes a turn's input as an argument rather than reading a queue, so an
-	// ingested message waits here for the exchange it opens.
-	mu      sync.Mutex
-	pending []Message
+	// wake tells an idle Run that Append queued something. Messages
+	// themselves wait in inner's queue, which lands them at the next step
+	// boundary, or opens the next exchange with them.
+	wake chan struct{}
 
 	closed atomic.Bool // guards outbox writes after close
 
@@ -87,13 +85,15 @@ func (a *agent) SetMessages(msgs []Message) {
 	a.inner.SetMessages(msgs)
 }
 
-// Append puts a message into the conversation the next exchange opens with.
-// This is the unified entry point for both paths:
-//
-//	Run path:    inbox → ingest → here
-//	Direct path: caller → Append → ThinkAct
-func (a *agent) Append(ctx context.Context, msg Message) {
-	a.ingest(ctx, Inbound{Msg: msg})
+// Append queues a message for the conversation: mid-exchange it enters at the
+// next step boundary, otherwise the next exchange opens with it. Safe from any
+// goroutine and never blocks.
+func (a *agent) Append(msg Message) {
+	a.inner.AddMessages(msg)
+	select {
+	case a.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (a *agent) Run(ctx context.Context) error {
@@ -127,11 +127,14 @@ func (a *agent) Run(ctx context.Context) error {
 		// latch made runOneTurn swallow this message.
 		a.interruptPending.Store(false)
 
-		for {
+		// An exchange ends only with nothing queued, so another is owed only
+		// for a message that arrived after it had ended.
+		for a.inner.Pending() > 0 {
 			glog.Logger().Sugar().Debugf("agent.Run: starting ThinkAct")
 			result, err, interrupted := a.runOneTurn(ctx)
 			if interrupted {
 				glog.Logger().Sugar().Debugf("agent.Run: interrupt latched, resuming wait")
+				a.dropWake()
 				break
 			}
 
@@ -159,23 +162,11 @@ func (a *agent) Run(ctx context.Context) error {
 					// close(h.done) and this Store can be clobbered; the
 					// 2nd Esc is treated as a duplicate of the first.
 					a.interruptPending.Store(false)
+					a.dropWake()
 					break
 				}
 				runErr = err
 				return err
-			}
-
-			n, drainErr := a.drainInbox(ctx)
-			if drainErr != nil {
-				if drainErr == errStopped {
-					return nil
-				}
-				runErr = drainErr
-				return drainErr
-			}
-			glog.Logger().Sugar().Debugf("agent.Run: post-ThinkAct drain n=%d", n)
-			if n == 0 {
-				break
 			}
 		}
 	}
@@ -238,75 +229,38 @@ var errStopped = errors.New("stopped")
 // and the caller wants the model to continue in the next turn.
 const TruncatedResumePrompt = "Your response was truncated due to output token limits. Resume directly from where you left off. Do not repeat any content."
 
-// waitForInput blocks until a real (turn-starting) message arrives, then drains
-// remaining. Control-only signals such as SigCompact are processed but do not
-// start a turn: if a wake-up delivered nothing but signals, we loop back to
-// blocking rather than returning, so e.g. a manual /compact while idle compacts
-// the chain without triggering a spurious inference on the lone summary.
+// dropWake discards a wake for messages queued before an interrupt: the user
+// stopped the agent, so they wait for the next message instead of restarting
+// it on their own.
+func (a *agent) dropWake() {
+	select {
+	case <-a.wake:
+	default:
+	}
+}
+
+// waitForInput blocks until a queued message is owed an exchange. Signals are
+// handled on the way: SigCompact compacts in place without starting a turn, so
+// a manual /compact while idle spends no inference on the lone summary.
 func (a *agent) waitForInput(ctx context.Context) error {
 	for {
 		select {
-		case in, ok := <-a.inbox:
-			startsTurn, err := a.ingestBatch(ctx, in, ok)
-			if err != nil {
-				return err
-			}
-			if startsTurn {
+		case <-a.wake:
+			// A wake for a message an exchange already took is stale.
+			if a.inner.Pending() > 0 {
 				return nil
+			}
+		case in, ok := <-a.inbox:
+			if !ok || in.Signal == SigStop {
+				return errStopped
+			}
+			if in.Signal == SigCompact {
+				a.applyCompaction(ctx, in.Summary, len(a.Messages()), "manual")
 			}
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
-}
-
-// ingestBatch processes the just-received message plus any others already
-// queued (non-blocking), and reports whether any of them starts a turn. A
-// closed inbox or SigStop yields errStopped.
-func (a *agent) ingestBatch(ctx context.Context, in Inbound, ok bool) (startsTurn bool, err error) {
-	for {
-		if !ok || in.Signal == SigStop {
-			return false, errStopped
-		}
-		if a.ingest(ctx, in) {
-			startsTurn = true
-		}
-		select {
-		case in, ok = <-a.inbox:
-			// another message was already queued — loop to process it
-		default:
-			return startsTurn, nil
-		}
-	}
-}
-
-// ingest processes one inbox item and reports whether it starts a turn (i.e. a
-// real message arrived). SigCompact applies an in-place compaction with the
-// precomputed summary it carries; signals never start a turn.
-func (a *agent) ingest(ctx context.Context, in Inbound) bool {
-	if in.Signal == SigCompact {
-		a.applyCompaction(ctx, in.Summary, len(a.Messages()), "manual")
-		return false
-	}
-	if in.Signal != "" {
-		return false
-	}
-	a.emit(ctx, MessageReceived{Message: in.Msg})
-
-	a.mu.Lock()
-	a.pending = append(a.pending, in.Msg)
-	a.mu.Unlock()
-	return true
-}
-
-// takePending empties the queue ingest fills, for the exchange it opens.
-func (a *agent) takePending() []Message {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	msgs := a.pending
-	a.pending = nil
-	return msgs
 }
 
 // emit sends an event to the outbox for external observation.
@@ -361,26 +315,6 @@ func (a *agent) emitFinal(event Event) {
 	}
 }
 
-// drainInbox non-blocking reads ONE pending inbox message.
-// Returns 1 if a turn-starting message was consumed, 0 otherwise (nothing
-// pending, or a control-only signal such as SigCompact that was applied but
-// does not warrant a new ThinkAct). Each turn-starting message gets its own
-// ThinkAct cycle so the TUI can pair each user message with its response.
-func (a *agent) drainInbox(ctx context.Context) (int, error) {
-	select {
-	case in, ok := <-a.inbox:
-		if !ok || in.Signal == SigStop {
-			return 0, errStopped
-		}
-		if a.ingest(ctx, in) {
-			return 1, nil
-		}
-		return 0, nil
-	default:
-		return 0, nil
-	}
-}
-
 // ThinkAct runs one exchange and reports what it produced. The Result is
 // folded out of the event stream rather than tracked alongside it, so what an
 // observer sees and what this returns cannot disagree about one turn.
@@ -393,7 +327,7 @@ func (a *agent) ThinkAct(ctx context.Context) (*Result, error) {
 	out := &Result{}
 	var turnErr error
 
-	for event, err := range a.inner.Run(ctx, a.takePending()...) {
+	for event, err := range a.inner.Run(ctx) {
 		if err != nil {
 			// Outside a turn — ErrBusy today, which means two callers drove
 			// one conversation and the second must not silently do nothing.

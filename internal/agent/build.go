@@ -226,7 +226,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 	if gate != nil {
 		defer gate.Close()
 	}
-	ag.Append(ctx, message)
+	ag.Append(message)
 	return ag.ThinkAct(ctx)
 }
 

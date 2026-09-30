@@ -90,56 +90,44 @@ func assertAgentRead(t *testing.T, provider *restartStubProvider) {
 	}
 }
 
-// A task finishing while a tool runs must not be parked: the conversation tail
-// is a tool-result row then, so the notice can be appended and handed to the
-// running turn on arrival.
-func TestNoticeDuringToolExecutionIsNotParked(t *testing.T) {
-	m, _ := noticeDeliveryModel(t)
+// A task finishing while a tool runs is shown on arrival — the tail is a
+// tool-result row then — and handed to the running turn.
+func TestNoticeDuringToolExecutionIsShownAndDelivered(t *testing.T) {
+	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 
-	m.onMainNotice(taskNotice()) // cmds unused: the routing decision is synchronous
+	runCmd(m.deliverNotice(taskNotice()))
 
-	if len(m.pendingNotices) != 0 {
-		t.Fatalf("notice was parked even though the tail was not streaming: %+v", m.pendingNotices)
+	if len(m.heldNotices) != 0 {
+		t.Fatalf("notice line was held even though the tail was not streaming: %+v", m.heldNotices)
 	}
 	assertNoticeShown(t, m)
-}
-
-// Delivery into a running turn goes through the agent's inbox, which it drains
-// between steps — so the content is in the conversation its next inference
-// reads, without starting a turn of its own.
-func TestDeliveryToRunningTurnReachesTheNextInference(t *testing.T) {
-	m, provider := noticeDeliveryModel(t)
-	m.conv.Stream.Active = true
-
-	runCmd(m.injectIntoRunningTurn(taskNotice()))
-
 	assertAgentRead(t, provider)
 }
 
-// The stream finds its message by position, so a notice cannot be appended while
-// it is writing — the notice parks, and the next completed tool batch releases it
-// into the same turn rather than holding it until the turn ends.
-func TestNoticeParkedWhileStreamingIsReleasedAtTheNextStep(t *testing.T) {
+// The stream finds its message by position, so a notice's line cannot be
+// appended while it is writing. Only the line waits for the next step: the
+// content goes to the agent at once.
+func TestNoticeWhileStreamingHoldsOnlyTheLine(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
 	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "thinking out loud"})
 
-	m.onMainNotice(taskNotice()) // cmds unused: the routing decision is synchronous
-	if len(m.pendingNotices) != 1 {
-		t.Fatalf("notice was appended while the stream was writing: %+v", m.conv.Messages)
+	runCmd(m.deliverNotice(taskNotice()))
+	if len(m.heldNotices) != 1 {
+		t.Fatalf("notice line was appended while the stream was writing: %+v", m.conv.Messages)
 	}
+	assertAgentRead(t, provider)
 
 	// The tool batch completes: its result lands, leaving an appendable tail.
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 	runCmd(m.OnStepEnd())
 
-	if len(m.pendingNotices) != 0 {
-		t.Fatalf("notice still parked after a step boundary: %+v", m.pendingNotices)
+	if len(m.heldNotices) != 0 {
+		t.Fatalf("notice line still held after a step boundary: %+v", m.heldNotices)
 	}
 	assertNoticeShown(t, m)
-	assertAgentRead(t, provider)
 }
 
 // With nothing parked and nothing queued, a step boundary must not disturb the

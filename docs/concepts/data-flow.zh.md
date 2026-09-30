@@ -5,7 +5,7 @@
 > 姊妹篇：[`rendering.zh.md`](rendering.zh.md) ——
 > 真正的渲染输出是怎么组装的（View() 布局、Markdown pipeline、工具块）。
 
-一次按键（或一次 cron 触发、一次 hub 事件）如何穿过 TUI，最终变成
+一次按键（或一次 cron 触发、一条后台通知）如何穿过 TUI，最终变成
 slash 命令的结果或 agent 的回复呈现在终端里。
 
 ## 角色
@@ -42,13 +42,13 @@ MVU 循环。三个 Bubble Tea 原语驱动一切：
    │                      ▼                                       │
    │               SubmitToAgent(msg)                             │
    │                      │                                       │
-   │                      ▼ agent.Send (push to inbox)            │
+   │                      ▼ agent.Send (Append 进队列)            │
    └──────────────────────┼───────────────────────────────────────┘
                           │
    ┌──────────────────────┼───────────────────────────────────────┐
    │  Agent loop          ▼                                       │
    │           ┌─────────────────────┐                            │
-   │           │  Inbox → LLM → Tool │   ← 跑在 goroutine 里      │
+   │           │ Queue → LLM → Tool  │   ← 跑在 goroutine 里      │
    │           │     ↘    ↙          │                            │
    │           │     Outbox          │ → core.Event 流            │
    │           └─────────────────────┘                            │
@@ -149,9 +149,9 @@ routeKeypress → handleTextareaShortcut
                   │     下一条消息。
                   │
                   └─ SubmitToAgent(msg)   ← 与 conv 行共用同一个 ID
-                        把 `msg` 推到 agent 的 **INBOX**（一个独立的
-                        Go channel）。agent 自己的 loop 会读它，加到
-                        内部 history，然后调 LLM。两个调用都需要的
+                        把 `msg` Append 进 agent 的消息队列（SDK agent
+                        那一份）。agent 的 loop 在下一个步骤边界把它加进
+                        内部 history（空闲时直接用它开一轮），然后调 LLM。两个调用都需要的
                         原因：
                           conv.Append(msg)  → 让用户**看见**
                           SubmitToAgent     → 让 agent **干活**
@@ -160,8 +160,8 @@ routeKeypress → handleTextareaShortcut
    SubmitToAgent
         ├─ provider 连上了吗？     是
         ├─ ensureAgentSession()    必要时启动 agent goroutine
-        ├─ sendToAgent ───────────► agent.Session 的 inbox channel
-        │                           （Go channel，非阻塞推入）
+        ├─ sendToAgent ───────────► core.Agent.Append
+        │                           （任意 goroutine，永不阻塞）
         │
         └─ 返回 ContinueOutbox cmd  （见 Path D）
               这个 cmd 被 Bubble Tea 跑起来时，会从 agent 的 Outbox
@@ -224,15 +224,17 @@ handleSubmit → dispatchSubmission
 │    输出里指定了        │                     │   行 + ContinuationPrompt     │
 │    `nextPrompt: ...`） │                     │                               │
 ├───────────────────────┼─────────────────────┼───────────────────────────────┤
-│ Subagent 完成          │ agent.SetLife-      │ m.agentEventHub →             │
-│   （后台 Task，由      │ cycleHandler →      │ 发布一条 "task.completed"     │
-│    Agent 工具拉起）    │ hub.Publish         │ 事件；订阅者把它推到          │
-│                       │                     │ m.mainEvents（Go channel）     │
+│ Subagent 完成          │ task.SetLife-       │ broker.Send 到 "main"；主循环  │
+│   （后台 Task，由      │ cycleHandler →      │ 的投递函数把它推到             │
+│    Agent 工具拉起）    │ broker.Send         │ m.mainNotices（Go channel）    │
+│                       │                     │                               │
 └───────────────────────┴─────────────────────┴───────────────────────────────┘
 ```
 
-`m.agentEventHub` 是前台进程内部的小型 pub/sub 总线——目前唯一事件就是
-后台 subagent 完成时发的 "task.completed"。
+`m.mainNotices` 承载发给主循环的通知：subagent 完成、中途消息
+（`SendMessage to="main"`）、self-learn 通知。agent 之间的消息走进程级的
+[`broker`](../packages/2-feature/broker.md)；主循环注册 `broker.Main`，
+把收到的转到这个 channel 上。
 
 ### 回合边界排空
 
@@ -246,50 +248,43 @@ OnTurnEnd                                    model_agent_events.go
         │
         ├─ 用户输入队列?     ─── 流式期间排过队的（直接发，不走 inject*）
         ├─ cron 队列?         ──► injectCronPrompt(prompt)
-        ├─ 异步 hook 队列?    ──► injectAsyncHookContinuation(item)
-        └─ m.pendingMainEvents ──► injectNotification(merged hub.Message)
+        └─ 异步 hook 队列?    ──► injectAsyncHookContinuation(item)
 ```
 
-### 唤醒 Update 循环（idle 路径）
+通知不在这个列表里：它从不等回合边界（见下）。
 
-`drainTurnQueues` 只在 `OnTurnEnd` 跑一次，所以两个 turn **之间**到达
-的事件（subagent 启动几分钟后才完成的常见情况）需要另一条路径唤醒
-Update 循环。Hub 那一侧的投递本来就是 Go channel（`m.mainEvents`），
-所以直接借用 agent outbox 的同款套路——一个**阻塞接收的 `tea.Cmd`**，
-把 "chan 上的下一条消息" 转成 `tea.Msg`：
+### 通知投递
+
+通知（后台任务完成、`SendMessage to="main"`、self-learn）随时会到
+`m.mainNotices`，所以借用 agent outbox 的同款套路——一个**阻塞接收的
+`tea.Cmd`**，把"chan 上的下一条"转成 `tea.Msg`：
 
 ```
 Init                                       model.go
-   └─ awaitMainEvent(m.mainEvents)         model_turn_queue.go
-        └─ 阻塞读 chan，到一条就 yield mainEventMsg{event}
+   └─ awaitMainNotice(m.mainNotices)         model_turn_queue.go
+        └─ 阻塞读 chan，到一条就 yield mainNoticeMsg{notice}
 
 Update                                     update.go
-   case mainEventMsg:
-        └─ onMainEvent(ev)                 model_turn_queue.go
-              ├─ 把 ev（连同 chan 上的同伴）追加到 m.pendingMainEvents
-              ├─ 重新挂一次 awaitMainEvent，等下次 publish 唤醒
-              └─ 如果 !Stream.Active:
-                   injectNotification(merge(pending))；清空 pending
+   case mainNoticeMsg:
+        └─ onMainNotice(n)                 model_turn_queue.go
+              ├─ deliverNotice(n)
+              │    ├─ 空闲          → injectAsNewTurn(n)：显示一行 + 开新一轮
+              │    └─ 有轮次在跑    → 立刻 sendToAgent(content)，并且
+              │         ├─ 末尾空闲（工具在跑）→ 立刻显示那一行
+              │         └─ 流式输出占着末尾 → 那一行先存进 m.heldNotices，
+              │              在 OnStepEnd / OnTurnEnd 显示
+              └─ 重新挂一次 awaitMainNotice，等下一条唤醒
 ```
 
-`onMainEvent` 每次都重新挂一次 `awaitMainEvent`——安全的，因为重新挂
-时 chan 已经被读空，下一次触发会一直阻塞等下次 publish（不会自旋）。
-事件到达时根据 agent 状态走两条不同路径：
+通知分两半，约束不同，只有显示那一行需要等屏幕。内容一到就交给 agent：
+它的队列会在当前轮次的下一次推理前把内容放进对话，而且一轮不会带着没读的
+内容结束——所以不会出现"结果已经显示在屏幕上，模型还在盲跑"。
 
-| 事件什么时候到 | 谁来交付 | 延迟 |
-|---|---|---|
-| 流式期间（agent 正在回答） | `OnTurnEnd → drainTurnQueues` 读 `m.pendingMainEvents` | 当前 turn 结束 |
-| 闲着（turn 之间） | `onMainEvent` 自己走 `!Stream.Active` 分支直接 inject | 立刻 |
-
-idle 分支正是处理你最常遇到的情况：后台 subagent 在启动它的那一轮
-turn 结束很久之后才完成。`pendingMainEvents` 只为"流式期间到的"事件
-存在 —— 那种必须等，免得跟正在生成的回答撞车。
-
-Hub 的 publisher 侧没有变化：subagent（或任何后台 task）完成 →
-`notifyTaskCompleted` → `wireTaskLifecycle` 里注册的 lifecycle handler
-调用 `agentEventHub.Publish` → `Register("main", ...)` 回调推入
-`m.mainEvents`。所以 producer 就是后台 task（`run_in_background: true`
-的 agent 和 bash 命令）；当前只有一种事件 `"task.completed"`。
+生产者一侧：subagent（或任何后台 task）完成 → `notifyTaskCompleted` →
+`wireTaskLifecycle` 里注册的 lifecycle handler 把完成消息发到 "main" 地址
+→ `broker.Register(broker.Main, …)` 的投递函数推入 `m.mainNotices`。后台
+task 是一种生产者；subagent 的中途消息（`SendMessage to="main"`）和
+self-learn 通知是另外几种——都走同一个 channel。
 
 跟 `conv.DrainAgentOutbox` 读 agent outbox chan 是同一个套路——两个
 Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
@@ -306,7 +301,7 @@ Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 | --- | --- |
 | Cron | cron 任务的 `Prompt` 字符串（用户排程时写的内容）|
 | 异步 hook | context findings 与 `ContinuationPrompt` 合并成一个 user turn |
-| Subagent 完成 | merged `hub.Message` 的 `Data` 字段——通常是 subagent 的最终输出 |
+| Subagent 完成（空闲时） | `mainNotice` 的 `Content`——带着 subagent 最终输出的 `<task-notification>` |
 
 ```
 每个 inject*
@@ -317,86 +312,52 @@ Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 
 三条路径都汇聚到 **SubmitToAgent**。一样的 provider 检查、一样的
 `ensureAgentSession`、一样的 `sendToAgent` 推入。**没有别的途径**
-能进 agent 的 inbox。conversation projection 与 agent input 复用同一个
+能把消息交给 agent。conversation projection 与 agent input 复用同一个
 message ID；重启时按 ID 去掉待发送消息，不再靠文本内容碰运气匹配。
 
-### 端到端走一遍：subagent 完成 → 主 agent inbox
+### 端到端走一遍：subagent 完成 → 主 agent
 
-把上面这些拼起来 —— 一个后台 subagent 完成，到它的产出落进主 agent
-inbox 触发下一轮，中间发生的就是这一串。**涉及三条 goroutine**，每条
-`─ ─ ─►` 都是一次跨 goroutine 的交付。
+一个后台 subagent 完成，到它的结果进入主 agent 的下一次推理，中间发生的
+就是这一串。**涉及三条 goroutine**，每条 `─ ─ ─►` 都是一次跨 goroutine
+的交付。
 
 ```
    Subagent goroutine               TUI Update goroutine            主 Agent goroutine
    ──────────────────               ────────────────────            ────────────────────
-   ① task.Run() 返回
-       │
+   ① task 完成
        ▼
-   ② notifyTaskCompleted(info)
-       │   task/hooks.go
+   ② notifyTaskCompleted → lifecycle handler（model_lifecycle.go）
+       │   taskCompletionMessage 拼出 <task-notification>
        ▼
-   ③ lifecycleHandler.TaskCompleted
-       │   model_lifecycle.go:194
+   ③ broker.Send(to "main") → Main 投递函数
        ▼
-   ④ agentEventHub.Publish(
-       Type: "task.completed",
-       Target: "main", ...)
-       │   model_lifecycle.go:203
-       ▼
-   ⑤ Register("main",...) 回调触发
-       │   model_lifecycle.go:30
-       ▼
-   ⑥ m.mainEvents <- e  ─ ─ ─ ─ ─►  ⑦ awaitMainEvent 解阻塞
-                                       返回 mainEventMsg{event}
-                                       (Init 时挂在 chan 上的那个
-                                        goroutine，此刻才醒)
-                                          │   bubbletea 把这条 msg
-                                          │   送回 Update 循环
+   ④ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑤ awaitMainNotice 解阻塞
+                                       → Update → onMainNotice(n)
                                           ▼
-                                       ⑧ Update case mainEventMsg:
-                                          → onMainEvent(ev)
-                                          │   model_turn_queue.go
-                                          ├─ append 到 pendingMainEvents
-                                          ├─ 重启 awaitMainEvent
+                                       ⑥ deliverNotice(n)
+                                          ├─ 空闲：injectAsNewTurn
+                                          │    → SubmitToAgent
+                                          └─ 在跑：sendToAgent
                                           ▼
-                                       ⑨ Stream.Active?
-                                          ├─ true  → return; 等 OnTurnEnd
-                                          │           调 drainTurnQueues
-                                          └─ false → 继续 ↓
-                                          ▼
-                                      ⑩ injectNotification(merged)
-                                          ├─ conv.AddNotice("…completed")
-                                          └─ SubmitToAgent(message)
-                                          │   update_submit.go
-                                          ├─ 检查 LLMProvider
-                                          ├─ ensureAgentSession
-                                          ▼
-                                      ⑪ sendToAgent(message)
-                                          │   agent.go
-                                          ├─ attachPendingReminders
-                                          ▼
-                                      ⑫ m.services.Agent.Send(...)
-                                          ◄── 进入主 AGENT INBOX ──►  ⑬ agent 从 inbox 取出
-                                                                          运行新一轮 turn
-                                                                          （后面就是 Path D）
+                                       ⑦ Agent.Send → core.Agent.Append
+                                          ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─►  ⑧ 在跑：SDK 在下一个
+                                                                            步骤边界放进对话
+                                                                          空闲：wake → Run
+                                                                            开一轮
 ```
-
-关键的跨 goroutine 交付：
 
 | 步骤 | 从哪儿到哪儿 | 机制 |
 |---|---|---|
-| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainEvents`) + 阻塞接收的 `tea.Cmd` |
-| ⑫ → ⑬ | TUI Update goroutine → 主 agent goroutine | `Agent.Send` 写 agent 自己的 inbox chan |
+| ④ → ⑤ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainNotices`) + 阻塞接收的 `tea.Cmd` |
+| ⑦ → ⑧ | TUI Update goroutine → 主 agent goroutine | `sdkagent.Agent.AddMessages`（加锁的队列）+ 空闲 `Run` 用的 wake chan |
 
-**两条 chan、两道 goroutine 边界**。TUI 故意夹在中间 —— `AddNotice`、
-provider/session 检查、优先级排序，这些都是 TUI 该干的事。如果 ⑨
-那里碰上 Stream.Active=true 走了 `pendingMainEvents` 分支，⑩-⑫ 这串
-完全一样的步骤会在下一次 `OnTurnEnd` 由 `drainTurnQueues` 触发，
-**唯一的差别就是早一点还是晚一点**。
+在跑的轮次最早能在"结果到达时正在执行的那个工具"之后的下一步拿到结果；
+如果模型已经在写最后的回答，SDK 会多走一步，而不是结束这一轮。用户中断
+（Esc）后，排队的通知不会让 agent 自己重新跑起来——它跟着下一条消息一起进去。
 
 ## Path D —— Agent → 渲染
 
-Agent goroutine 处理 inbox、调 LLM、流式吐 token、emit 工具调用、
+Agent goroutine 取出排队的消息、调 LLM、流式吐 token、emit 工具调用、
 emit 最终结果。每条 emission 都丢到自己的 `Outbox` channel。
 
 ```
@@ -529,7 +490,7 @@ scrollback。`go.mod` 中的替代依赖固定到
 ## Path E —— 流式中打断 + 续聊
 
 用户在 agent 流式输出时按 **Esc** 或 **Ctrl+C**。Agent goroutine 不会
-被销毁——只取消当前这一轮 turn；用户下一条消息走 inbox 接着跑同一个
+被销毁——只取消当前这一轮 turn；用户下一条消息通过 `Append` 接着跑同一个
 会话。
 
 ```
@@ -572,7 +533,7 @@ scrollback。`go.mod` 中的替代依赖固定到
    ──▶ SubmitToAgent
        └─ ensureAgentSession 检查到 Active=true —— 不重建
        └─ sendToAgent → "改做 B"
-       └─ Agent.Send ──────────▶  inbox
+       └─ Agent.Send ──────────▶  Append + wake
                                   waitForInput 解除阻塞
                                   循环顶部：interruptPending=false → 正常进入
                                   新 turnHandle，全新 ThinkAct
@@ -605,7 +566,7 @@ conv 同步回 agent——两边各自维护自己的副本和 ID。能做到这
 为什么和旧实现差别大：旧的 cancel 路径直接 `Agent.Stop`，杀掉 goroutine，
 下一条用户消息时整个 agent 重建一遍——一次 `buildAgent`、一份新的
 `llm.Client`、session 里多两条 Stop/Start 事件。新路径 agent 不重建，
-下一次 `Agent.Send` 就是简单一次 inbox 写入，LLM 服务端看到相同的
+下一次 `Agent.Send` 就是简单一次 `Append`，LLM 服务端看到相同的
 prompt 前缀（prompt cache 命中更稳）。
 
 ## 文件指路
@@ -617,7 +578,7 @@ prompt 前缀（prompt cache 命中更稳）。
 | Submit + SubmitToAgent | [`internal/app/update_submit.go`](../../internal/app/update_submit.go) |
 | Slash 命令 controller | [`internal/app/input/slash_command.go`](../../internal/app/input/slash_command.go) |
 | Slash 命令 env 装配 | [`internal/app/update_command.go`](../../internal/app/update_command.go) |
-| inject 路径（cron/hook/hub）| [`internal/app/model_turn_queue.go`](../../internal/app/model_turn_queue.go) |
+| inject 路径（cron/hook/通知）| [`internal/app/model_turn_queue.go`](../../internal/app/model_turn_queue.go) |
 | Agent 事件回调 | [`internal/app/model_agent_events.go`](../../internal/app/model_agent_events.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
 | Conv 事件路由 | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
