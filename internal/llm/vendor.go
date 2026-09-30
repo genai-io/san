@@ -91,10 +91,22 @@ func (p *vendorProvider) TurnHeaders(msgs []core.Message) map[string]string {
 // is shared — so keying the cache by the headers too costs an entry per
 // distinct header set rather than a new connection pool.
 func (p *vendorProvider) Client(modelID string, headers map[string]string) (*ai.Client, error) {
+	key := clientKey(modelID, headers)
+	p.mu.Lock()
+	client, ok := p.clients[key]
+	p.mu.Unlock()
+	if ok {
+		return client, nil
+	}
+
+	// The listing can move a model off the vendor's protocol — Copilot serves
+	// its newest GPT models over Responses only — so read it before building.
+	ctx, cancel := context.WithTimeout(context.Background(), modelDetailTimeout)
+	_ = p.refresh(ctx)
+	cancel()
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
-
-	key := clientKey(modelID, headers)
 	if client, ok := p.clients[key]; ok {
 		return client, nil
 	}
@@ -140,13 +152,12 @@ func clientKey(modelID string, headers map[string]string) string {
 // vendor's protocol and defaults instead of reaching the endpoint stripped of
 // them.
 func (p *vendorProvider) model(modelID string) ai.Model {
-	m := p.models.model(modelID)
 	for _, live := range p.endpoint.Models() {
 		if strings.EqualFold(live.ID, modelID) {
-			return sdkprovider.MergeListing(m, live)
+			return p.models.resolve(live)
 		}
 	}
-	return m
+	return p.models.model(modelID)
 }
 
 // ---------------------------------------------------------------------------
