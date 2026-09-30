@@ -296,8 +296,10 @@ func (p *ApprovalModel) getTitle() string {
 		title = p.request.ToolName + " command"
 	case tool.ToolSkill:
 		title = "Load skill"
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		title = "Spawn agent"
+	case tool.ToolSendMessage:
+		title = "Send message"
 	default:
 		title = p.request.Description
 	}
@@ -360,8 +362,10 @@ func allSessionLabel(req *perm.PermissionRequest) string {
 		return "Yes, allow all commands during this session"
 	case tool.ToolSkill:
 		return "Yes, allow all skills during this session"
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		return "Yes, allow all agents during this session"
+	case tool.ToolSendMessage:
+		return "Yes, allow all messages during this session"
 	default:
 		return "Yes, allow all during this session"
 	}

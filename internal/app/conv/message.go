@@ -698,7 +698,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			// order things happened: judged → ran → produced this output.
 			sb.WriteString(renderDecision(resultData.Decision))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
-		} else if tool.IsAgentToolName(tc.Name) {
+		} else if tool.IsAgentToolName(tc.Name) && tc.Name != tool.ToolSendMessage { // a message runs no agent
 			limit := maxCompactAgentToolLines
 			if params.ParallelMode {
 				limit = maxParallelAgentToolLines

@@ -194,7 +194,7 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 		for _, msg := range msgs {
 			if !m.grp.announced[msg.File] {
 				m.grp.announced[msg.File] = true
-				m.conv.AddAgentNotice(fromLine(msg) + " (for your next message)")
+				m.conv.AddAgentNotice(fromLine(msg) + " · waits for your next message")
 			}
 		}
 		return tea.Batch(m.CommitMessages()...)
@@ -258,7 +258,10 @@ func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
 	if m.conv.Stream.Active {
 		return m.deliverNotice(mainNotice{Display: line, Content: reminder.Wrap(text)})
 	}
-	m.services.Reminder.Enqueue(text)
+	if m.systemRemindersSent {
+		// Before that, the first message carries the whole roster instead.
+		m.services.Reminder.Enqueue(text)
+	}
 	m.conv.AddNotice(line)
 	return tea.Batch(m.CommitMessages()...)
 }
@@ -324,7 +327,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 	rest = strings.TrimSpace(rest)
 	switch sub {
 	case "":
-		return group.Listing(), nil
+		return m.groupListing(), nil
 	case "list":
 		return group.GroupsListing(), nil
 	case "join":
@@ -413,7 +416,17 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	return fmt.Sprintf("Joined group %s as @%s (%s) — %s\n%s", msg.group, self.Name, self.Mode, self.Role, group.Listing())
+	return fmt.Sprintf("Joined group %s as @%s (%s) — %s\n%s", msg.group, self.Name, self.Mode, self.Role, m.groupListing())
+}
+
+// groupListing is group.Listing cut to the screen: a wrapped row would lose
+// its columns.
+func (m *model) groupListing() string {
+	lines := strings.Split(group.Listing(), "\n")
+	for i, line := range lines {
+		lines[i] = kit.TruncateText(line, m.env.Width-4)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func parseGroupJoin(args string) (name, member, role string, mode group.Mode) {
@@ -447,7 +460,7 @@ func parseGroupJoin(args string) (name, member, role string, mode group.Mode) {
 const describeSessionPrompt = `You name a coding session that is joining a group of collaborating sessions.
 Read the conversation and answer with exactly two lines, nothing else:
 name: <a 1-3 word kebab-case handle for what this session works on>
-role: <one sentence: what this session is doing and what it owns>`
+role: <at most 10 words on what this session owns, in the conversation's language>`
 
 // describeSession summarizes the conversation into a member name and role,
 // falling back to the session name or directory when there is nothing to go on.

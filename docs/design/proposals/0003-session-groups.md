@@ -204,7 +204,7 @@ parameters:
   group:  string — the group to join; defaults to "default"
   as:     string — your member name for join: a short kebab-case handle for
           what this session works on
-  role:   string — for join: one sentence on what this session does
+  role:   string — for join: a few words on what this session owns
   mode:   "active" | "passive" — for join or mode
 ```
 
@@ -349,7 +349,7 @@ characters).
 You name a coding session that is joining a group of collaborating sessions.
 Read the conversation and answer with exactly two lines, nothing else:
 name: <a 1-3 word kebab-case handle for what this session works on>
-role: <one sentence: what this session is doing and what it owns>
+role: <at most 10 words on what this session owns, in the conversation's language>
 ```
 
 With no conversation, or if the call fails, the name falls back to the `/name`

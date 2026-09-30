@@ -68,12 +68,16 @@ func Listing() string {
 	members := Members(g)
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s · %d member(s)", g, len(members))
+	width := 0
+	for _, m := range members {
+		width = max(width, len(m.Name))
+	}
 	row := func(mark string, m Member) {
 		state := ""
 		if !m.Online() && m.SessionID != self.SessionID {
 			state = " (offline)"
 		}
-		fmt.Fprintf(&b, "\n%s @%-10s %-8s %s%s", mark, m.Name, m.Mode, m.Role, state)
+		fmt.Fprintf(&b, "\n%s @%-*s  %-7s  %s%s", mark, width, m.Name, m.Mode, m.Role, state)
 	}
 	for _, m := range members {
 		if m.SessionID == self.SessionID {
