@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/session"
 )
 
 func TestParseGroupJoin(t *testing.T) {
@@ -72,14 +73,15 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 	}
 	var got []string
 	for _, c := range rosterChanges("shop", "s-self", prev, next) {
-		got = append(got, c.text)
+		got = append(got, c.line+" | "+c.text)
 	}
+	// Presence and mode are shown, not told: SendMessage's result says them.
 	want := []string{
-		"Group shop: @api went offline",
-		"Group shop: @docs is now @writer",
-		"Group shop: @migrate is now passive",
-		"Group shop: @old left",
-		"Group shop: @qa joined (active) — r (/w)",
+		"@api went offline | ",
+		"@docs is now @writer | Group shop: @docs is now @writer",
+		"@migrate is now passive | ",
+		"@old left group shop | Group shop: @old left",
+		"@qa joined group shop — r | Group shop: @qa joined (active) — r (/w)",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("rosterChanges =\n%q\nwant\n%q", got, want)
@@ -113,5 +115,20 @@ func TestAPassiveMembersMessagesRideOnTheNextInput(t *testing.T) {
 	}
 	if left := group.Inbox(); len(left) != 0 {
 		t.Errorf("delivered messages were left in the inbox: %+v", left)
+	}
+}
+
+// A session never saved can't be resumed; at exit its member leaves rather
+// than staying offline for good.
+func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession("s-new")
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	m := model{services: services{Session: &session.Setup{}}}
+	m.exitGroup()
+	if members := group.Members("shop"); len(members) != 0 {
+		t.Errorf("members after exit = %+v, want none", members)
 	}
 }

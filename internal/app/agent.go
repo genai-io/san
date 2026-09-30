@@ -695,6 +695,8 @@ func (m *model) ResetAgentSession() {
 // Agent outbox and permission gate
 // ============================================================
 
+func (m *model) AgentOutbox() <-chan core.Event { return m.services.Agent.Outbox() }
+
 func (m *model) ContinueOutbox() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil

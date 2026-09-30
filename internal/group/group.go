@@ -209,6 +209,7 @@ func Join(g string, self Member) (Member, error) {
 	self.PID = os.Getpid()
 	self.ProcStart, _ = proc.StartTime(self.PID)
 	self.JoinedAt = time.Now()
+	self.Cwd = homeRelative(self.Cwd)
 	if err := os.MkdirAll(groupDir(g), 0o700); err != nil {
 		return Member{}, err
 	}
@@ -223,6 +224,19 @@ func Join(g string, self Member) (Member, error) {
 	}
 	setCurrent(g, self)
 	return self, nil
+}
+
+// homeRelative writes a path under the home directory as ~/…: members share
+// one machine and one home, and the model reads every roster line.
+func homeRelative(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, home); ok && (rest == "" || rest[0] == filepath.Separator) {
+		return "~" + rest
+	}
+	return path
 }
 
 // claim publishes path only if nothing is there yet: the member is written to

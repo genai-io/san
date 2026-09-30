@@ -155,3 +155,18 @@ func TestTheLastMemberLeavingRemovesTheGroup(t *testing.T) {
 		t.Errorf("Groups = %v after the last member left, want none", groups)
 	}
 }
+
+func TestHomeRelative(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for path, want := range map[string]string{
+		home:                              "~",
+		filepath.Join(home, "src", "api"): filepath.Join("~", "src", "api"),
+		home + "x/api":                    home + "x/api", // a sibling, not under home
+		filepath.Join(string(filepath.Separator), "srv", "api"): filepath.Join(string(filepath.Separator), "srv", "api"),
+	} {
+		if got := homeRelative(path); got != want {
+			t.Errorf("homeRelative(%q) = %q, want %q", path, got, want)
+		}
+	}
+}

@@ -263,7 +263,14 @@ func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
 	defer sess.Stop()
 
 	m := model{services: services{Agent: sess}, conv: conv.NewModel(80)}
-	m.OnAgentStop(context.Canceled)
+	old := make(chan core.Event)
+	close(old)
+	for _, late := range []conv.AgentOutboxMsg{
+		{Outbox: old, Event: core.AgentStopped{Err: context.Canceled}},
+		{Outbox: old, Closed: true},
+	} {
+		conv.Update(&m, &m.conv, late)
+	}
 	if !sess.Active() {
 		t.Fatal("the late stop of a replaced agent stopped the running one")
 	}

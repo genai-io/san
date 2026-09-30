@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -156,6 +157,9 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 	var out []rosterChange
 	say := func(line, text string) { out = append(out, rosterChange{line, "Group " + g + ": " + text}) }
 	same := func(format string, args ...any) { s := fmt.Sprintf(format, args...); say(s, s) }
+	// Mode and presence are for the person: the model learns them when it
+	// sends, from SendMessage's result.
+	show := func(format string, args ...any) { out = append(out, rosterChange{line: fmt.Sprintf(format, args...)}) }
 	for id, now := range next {
 		if id == selfID {
 			continue
@@ -167,11 +171,11 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		case was.Name != now.Name:
 			same("@%s is now @%s", was.Name, now.Name)
 		case was.Mode != now.Mode:
-			same("@%s is now %s", now.Name, now.Mode)
+			show("@%s is now %s", now.Name, now.Mode)
 		case was.online && !now.online:
-			same("@%s went offline", now.Name)
+			show("@%s went offline", now.Name)
 		case !was.online && now.online:
-			same("@%s is back online", now.Name)
+			show("@%s is back online", now.Name)
 		}
 	}
 	for id, was := range prev {
@@ -179,7 +183,7 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 			say(fmt.Sprintf("@%s left group %s", was.Name, g), fmt.Sprintf("@%s left", was.Name))
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].text < out[j].text })
+	sort.Slice(out, func(i, j int) bool { return out[i].line < out[j].line })
 	return out
 }
 
@@ -255,6 +259,13 @@ func (m *model) attachWaitingMessages(text string) string {
 // starting a turn: into the running turn between tool calls, or with the next
 // message when idle. The person gets the line either way.
 func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
+	if text == "" { // for the person only
+		if m.conv.Stream.Active {
+			return m.deliverNotice(mainNotice{Display: line})
+		}
+		m.conv.AddNotice(line)
+		return tea.Batch(m.CommitMessages()...)
+	}
 	if m.conv.Stream.Active {
 		return m.deliverNotice(mainNotice{Display: line, Content: reminder.Wrap(text)})
 	}
@@ -303,6 +314,18 @@ func (m *model) reconcileMembership() {
 	}
 	m.grp.blob, m.grp.name = blob, g
 	_ = m.PersistSession()
+}
+
+// exitGroup takes the member offline at exit. A session that was never saved
+// can't be resumed, so its member would stay offline for good: it leaves.
+func (m *model) exitGroup() {
+	if path := m.services.Session.TranscriptPath(); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			group.Release()
+			return
+		}
+	}
+	_ = group.Leave()
 }
 
 // rejoinGroup reclaims the membership a resumed session recorded.
