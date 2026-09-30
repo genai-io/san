@@ -14,17 +14,6 @@ func TestNoticeFromAgentPropagates(t *testing.T) {
 	if n := fromBrokerMessage(broker.Message{Subject: "Backend: research completed"}); !n.FromAgent {
 		t.Fatal("fromBrokerMessage should mark the notice as FromAgent")
 	}
-	merged := mergeNotices([]mainNotice{
-		{Display: "system note"},
-		{Display: "Backend done", FromAgent: true},
-	})
-	if !merged.FromAgent {
-		t.Fatalf("merged notice should be FromAgent when any component is, got %+v", merged)
-	}
-	plain := mergeNotices([]mainNotice{{Display: "a"}, {Display: "b"}})
-	if plain.FromAgent {
-		t.Fatalf("merged notice should not be FromAgent when no component is, got %+v", plain)
-	}
 }
 
 // A result at or below the inline cap rides in the notification whole, so the

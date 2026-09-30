@@ -46,13 +46,13 @@ scrollback) plus `View()` (bottom UI strip).
    │                      ▼                                       │
    │               SubmitToAgent(msg)                             │
    │                      │                                       │
-   │                      ▼ agent.Send (push to inbox)            │
+   │                      ▼ agent.Send (Append to its queue)      │
    └──────────────────────┼───────────────────────────────────────┘
                           │
    ┌──────────────────────┼───────────────────────────────────────┐
    │  Agent loop          ▼                                       │
    │           ┌─────────────────────┐                            │
-   │           │  Inbox → LLM → Tool │   ← runs in goroutine     │
+   │           │ Queue → LLM → Tool  │   ← runs in goroutine     │
    │           │     ↘    ↙          │                            │
    │           │     Outbox          │ → core.Event stream        │
    │           └─────────────────────┘                            │
@@ -157,10 +157,10 @@ routeKeypress → handleTextareaShortcut
                   │     start the next message.
                   │
                   └─ SubmitToAgent(msg)   ← same ID as the conv row
-                        Pushes `msg` onto the agent's INBOX (a separate
-                        Go channel). The agent's own loop will read it,
-                        append it to its internal history, then call the
-                        LLM. That's why both calls are needed:
+                        Appends `msg` to the agent's message queue (the
+                        SDK agent's). The agent's loop enters it into its
+                        own history at the next step boundary — or opens
+                        a turn with it — then calls the LLM. That's why both calls are needed:
                           conv.Append(msg)  → makes the user SEE it
                           SubmitToAgent     → makes the agent ACT on it
                         │
@@ -168,8 +168,8 @@ routeKeypress → handleTextareaShortcut
    SubmitToAgent
         ├─ provider connected?    yes
         ├─ ensureAgentSession()    starts agent goroutine if needed
-        ├─ sendToAgent ───────────► agent.Session inbox channel
-        │                           (a Go channel; non-blocking push)
+        ├─ sendToAgent ───────────► core.Agent.Append
+        │                           (any goroutine; never blocks)
         │
         └─ returns ContinueOutbox cmd  (see Path D)
               That cmd, when bubbletea runs it, will read one event off
@@ -258,50 +258,43 @@ OnTurnEnd                                    model_agent_events.go
    └─ drainTurnQueues                        model_turn_queue.go
         First non-empty wins, priority high → low:
         │
-        ├─ user input queue?  ─── parked while a turn was streaming
+        ├─ user input queue?  ─── held while a turn was streaming
         │                        (handled inline; not an inject*)
         ├─ cron queue?       ──► injectCronPrompt(prompt)
-        ├─ async hook queue? ──► injectAsyncHookContinuation(item)
-        └─ main notice batch ► injectNotices(batch)
+        └─ async hook queue? ──► injectAsyncHookContinuation(item)
 ```
 
-### Waking the Update loop (idle path)
+Notices are not in this list: they never wait for a turn boundary (below).
 
-`drainTurnQueues` only fires at `OnTurnEnd`, so mail that arrives
-*between* turns (the common case for a subagent that finishes minutes
-after launch) needs another way to wake the Update loop. The broker
-subscription delivers onto a Go channel (`m.mainNotices`), so we use the
-same trick the agent outbox uses — a **blocking-receive `tea.Cmd`** that
-turns "next item on the chan" into a `tea.Msg`:
+### Notice delivery
+
+A notice (a finished background task, `SendMessage to="main"`, a self-learn
+tick) arrives on `m.mainNotices` at any moment, so a **blocking-receive
+`tea.Cmd`** turns "next item on the chan" into a `tea.Msg`, the same trick the
+agent outbox uses:
 
 ```
 Init                                       model.go
    └─ awaitMainNotice(m.mainNotices)         model_turn_queue.go
-        └─ blocks on chan, yields mainNoticeMsg{event} when one arrives
+        └─ blocks on chan, yields mainNoticeMsg{notice} when one arrives
 
 Update                                     update.go
    case mainNoticeMsg:
         └─ onMainNotice(n)                 model_turn_queue.go
-              ├─ if Stream.Active: append n to m.pendingNotices
-              ├─ start awaitMainNotice again so the next publish wakes us
-              └─ if !Stream.Active:
-                   injectNotices([]mainNotice{n})
+              ├─ deliverNotice(n)
+              │    ├─ idle           → injectAsNewTurn(n): line + a fresh turn
+              │    └─ turn running   → sendToAgent(content) now, and
+              │         ├─ tail free (a tool is running) → show the line now
+              │         └─ stream owns the tail → hold the line in
+              │              m.heldNotices; shown at OnStepEnd / OnTurnEnd
+              └─ start awaitMainNotice again so the next publish wakes us
 ```
 
-`onMainNotice` always starts a fresh `awaitMainNotice` — safe because
-the chan is empty when we restart, so the next firing waits for the
-next publish (no spin loop). There are two delivery paths depending
-on what the live agent is doing when the event arrives:
-
-| When the event arrives | Who delivers it | Latency |
-|---|---|---|
-| Mid-stream (agent answering) | `OnTurnEnd → drainTurnQueues` drains `m.pendingNotices` | next turn boundary |
-| Idle (between turns) | `onMainNotice` itself takes the `!Stream.Active` branch and injects directly | immediate |
-
-The idle branch is what handles the common case of a background
-subagent finishing long after the launching turn ended. `pendingNotices`
-exists only to bridge events that landed *during* a stream — those
-must wait so they don't collide with the answer in progress.
+A notice has two halves with different constraints, and only the display line
+waits on the screen. The content reaches the agent on arrival; its queue enters
+it before the next inference of the running turn, and a turn does not end with
+it unread — so the model never keeps working blind to a result that is already
+on screen.
 
 The producer side: a subagent (or any background task) finishes →
 `notifyTaskCompleted` → the task-lifecycle handler registered in
@@ -326,7 +319,7 @@ actually responds. The "payload" varies by producer:
 | --- | --- |
 | Cron | The cron job's `Prompt` string (what the user wrote when scheduling) |
 | Async hook | Context findings plus `ContinuationPrompt`, combined into one user turn |
-| Subagent done | `Content` from the merged `mainNotice` — usually the subagent's final output |
+| Subagent done (idle) | `Content` of the `mainNotice` — the `<task-notification>` carrying the subagent's final output |
 
 ```
 each inject*
@@ -337,89 +330,56 @@ each inject*
 
 All three converge on **SubmitToAgent**. Same provider check, same
 `ensureAgentSession`, same `sendToAgent` push. There is no other way
-to reach the agent's inbox from the TUI. The conversation projection and the
+to reach the agent from the TUI. The conversation projection and the
 agent input share the same message ID; restart preloading removes the pending
 message by ID rather than by matching its text.
 
-### End-to-end trace: subagent done → main agent inbox
+### End-to-end trace: subagent done → main agent
 
-Putting all the pieces above together — this is exactly what happens
-between the moment a background subagent finishes and the moment its
-result hits the main agent's inbox to drive the next turn. Three
-goroutines are involved; each `─ ─ ─►` is a handoff across one.
+What happens between a background subagent finishing and its result reaching
+the main agent's next inference. Three goroutines are involved; each
+`─ ─ ─►` is a handoff across one.
 
 ```
    Subagent goroutine               TUI Update goroutine            Main Agent goroutine
    ──────────────────               ────────────────────            ────────────────────
-   ① task.Run() returns
-       │
+   ① task finishes
        ▼
-   ② notifyTaskCompleted(info)
-       │   task/hooks.go
+   ② notifyTaskCompleted → lifecycle handler (model_lifecycle.go)
+       │   taskCompletionMessage builds the <task-notification>
        ▼
-   ③ lifecycleHandler.TaskCompleted
-       │   model_lifecycle.go:194
+   ③ broker.Send(to "main") → Main deliver fn
        ▼
-   ④ broker.Send(msg)
-       → addressed to "main"
-       │   model_lifecycle.go
-       ▼
-   ⑤ broker.Register(Main) deliver fn
-       │   model_lifecycle.go
-       ▼
-   ⑥ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑦ awaitMainNotice unblocks
-                                       returns mainNoticeMsg{event}
-                                       (was parked on chan in own
-                                        goroutine spawned by Init)
-                                          │   bubbletea routes the
-                                          │   msg to Update loop
+   ④ m.mainNotices <- n  ─ ─ ─ ─ ─►  ⑤ awaitMainNotice unblocks
+                                       → Update → onMainNotice(n)
                                           ▼
-                                       ⑧ Update case mainNoticeMsg:
-                                          → onMainNotice(n)
-                                          │   model_turn_queue.go
-                                          ├─ append to pendingNotices
-                                          ├─ restart awaitMainNotice
+                                       ⑥ deliverNotice(n)
+                                          ├─ idle: injectAsNewTurn
+                                          │    → SubmitToAgent
+                                          └─ running: sendToAgent
                                           ▼
-                                       ⑨ Stream.Active?
-                                          ├─ true → return; wait OnTurnEnd
-                                          │         to call drainTurnQueues
-                                          └─ false → fall through ↓
-                                          ▼
-                                      ⑩ injectNotices(merged)
-                                          ├─ conv.AddNotice("…completed")
-                                          └─ SubmitToAgent(message)
-                                          │   update_submit.go
-                                          ├─ check LLMProvider
-                                          ├─ ensureAgentSession
-                                          ▼
-                                      ⑪ sendToAgent(message)
-                                          │   agent.go
-                                          ├─ attachPendingReminders
-                                          ▼
-                                      ⑫ m.services.Agent.Send(...)
-                                          ◄── ENTERS MAIN AGENT INBOX ──►  ⑬ agent picks up
-                                                                                from inbox,
-                                                                                runs a turn
-                                                                                (now → Path D)
+                                       ⑦ Agent.Send → core.Agent.Append
+                                          ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─►  ⑧ running: the SDK
+                                                                            settles it at the
+                                                                            next step boundary
+                                                                          idle: wake → Run
+                                                                            opens a turn
 ```
-
-Key handoffs:
 
 | Step | What crosses what | Mechanism |
 |---|---|---|
-| ⑥ → ⑦ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainNotices`) + blocking-receive `tea.Cmd` |
-| ⑫ → ⑬ | TUI Update goroutine → main agent goroutine | `Agent.Send` writes the agent's internal inbox chan |
+| ④ → ⑤ | subagent goroutine → TUI Update goroutine | Go chan (`m.mainNotices`) + blocking-receive `tea.Cmd` |
+| ⑦ → ⑧ | TUI Update goroutine → main agent goroutine | `sdkagent.Agent.AddMessages` (mutex queue) + a wake chan for idle `Run` |
 
-Two chans, two goroutine boundaries. The TUI sits in the middle on
-purpose — that's where `AddNotice`, provider/session checks, and
-priority ordering happen. If a Stream.Active=true diverted us into
-the `pendingNotices` branch at ⑨, the same ⑩-⑫ sequence runs
-later from `drainTurnQueues` at the next OnTurnEnd; the only
-difference is *when*.
+The earliest a running turn can take the result is the step after the tool
+that was executing when it arrived; if the model is already writing its final
+answer, the SDK takes one more step instead of ending the turn. An interrupt
+(Esc) does not restart the agent for a queued notice — it rides with the next
+message.
 
 ## Path D — Agent → render
 
-The agent goroutine runs the inbox, calls the LLM, streams tokens,
+The agent goroutine takes queued messages, calls the LLM, streams tokens,
 emits tool calls, emits a final result. Every emission goes onto its
 `Outbox` channel.
 
@@ -562,7 +522,7 @@ while a tool is running and disappear once the result lands.
 
 User hits **Esc** or **Ctrl+C** while the agent is streaming. The agent
 goroutine stays alive — only the in-flight turn is cancelled — and a
-follow-up user message resumes the same session via the inbox channel.
+follow-up user message resumes the same session through `Append`.
 
 ```
    UI / tea.Update           Agent goroutine             Provider stream goroutine
@@ -605,7 +565,7 @@ follow-up user message resumes the same session via the inbox channel.
    ──▶ SubmitToAgent
        └─ ensureAgentSession sees Active=true — NO rebuild
        └─ sendToAgent → "do B"
-       └─ Agent.Send ──────────▶  inbox
+       └─ Agent.Send ──────────▶  Append + wake
                                   waitForInput unblocks
                                   loop top: interruptPending=false → proceed
                                   new turnHandle, fresh ThinkAct
@@ -643,7 +603,7 @@ Why this matters versus the pre-rewrite path: the old cancel called
 `Agent.Stop`, killed the goroutine, and rebuilt the entire agent on the
 next message — full `buildAgent`, fresh `llm.Client`, plus a spurious
 Stop/Start event pair in the session record. The new path keeps the
-agent alive, so the next `Agent.Send` is just an inbox push and the
+agent alive, so the next `Agent.Send` is just an `Append` and the
 LLM provider sees the same conversation prefix (better server-side
 prompt cache behaviour).
 

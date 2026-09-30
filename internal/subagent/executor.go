@@ -445,7 +445,7 @@ func withOriginalTask(summary, task string) string {
 }
 
 func (e *Executor) loadConversation(ag core.Agent, ctx context.Context, rc *runConfig, req tool.AgentExecRequest) error {
-	ag.Append(ctx, core.UserMessage(e.taskPrompt(rc, req), nil))
+	ag.Append(core.UserMessage(e.taskPrompt(rc, req), nil))
 	return nil
 }
 

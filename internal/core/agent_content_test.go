@@ -46,7 +46,7 @@ func newContentAgent(d ai.Driver, maxSteps int) *agent {
 		Tools:    NewTools(noopTool{}),
 		MaxSteps: maxSteps,
 	}).(*agent)
-	ag.Append(context.Background(), UserMessage("go", nil))
+	ag.Append(UserMessage("go", nil))
 	go func() {
 		for range ag.Outbox() {
 		}

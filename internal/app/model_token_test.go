@@ -1,6 +1,7 @@
 package app
 
 import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"os"
@@ -118,7 +119,7 @@ func TestAgentMessageEchoIsIgnored(t *testing.T) {
 		services:  services{Tracker: todo.NewStore(), Agent: &agent.Session{}},
 	}
 
-	echo := core.MessageReceived{Message: core.UserMessage("anything", nil)}
+	echo := sdkagent.MessageAdded{Message: core.UserMessage("anything", nil)}
 	cmd, handled := conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: echo})
 
 	if !handled {

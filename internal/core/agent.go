@@ -28,8 +28,9 @@ type Agent interface {
 	System() System
 	Tools() *Tools
 
-	// Inbox is where the world sends messages. The caller owns it and closes
-	// it when done; sending after Run returns may block forever.
+	// Inbox carries control signals, which act on the agent's own goroutine
+	// between turns. The caller owns it and closes it when done; sending after
+	// Run returns may block forever.
 	Inbox() chan<- Inbound
 
 	// Outbox is where the agent reports. The agent owns it and closes it when
@@ -44,17 +45,17 @@ type Agent interface {
 	// Shallow-copied, with the same caveat as Messages.
 	SetMessages(msgs []Message)
 
-	// Append puts a message into the conversation the next exchange opens
-	// with, whether it came from the inbox or straight from a caller.
-	Append(ctx context.Context, msg Message)
+	// Append queues a message: mid-exchange it enters at the next step
+	// boundary, otherwise the next exchange opens with it. Safe from any
+	// goroutine; under Run it also wakes an idle agent.
+	Append(msg Message)
 
 	// ThinkAct runs one exchange and returns what it produced. Run loops on
 	// it; a subagent calls it directly after Append.
 	ThinkAct(ctx context.Context) (*Result, error)
 
-	// Run is the mailbox loop: wait on the inbox, drain what accumulated, hand
-	// the batch to one exchange, repeat. Returns on ctx cancellation or
-	// SigStop, which are checked at every boundary.
+	// Run is the mailbox loop: wait for an appended message, run exchanges
+	// until none is queued, repeat. Returns on ctx cancellation or SigStop.
 	Run(ctx context.Context) error
 
 	// InterruptCurrentTurn cancels the in-flight ThinkAct without ending Run,
@@ -230,6 +231,7 @@ func NewAgent(cfg Config) Agent {
 		callOptions:   cfg.CallOptions,
 		contextBudget: cfg.ContextBudget,
 		inbox:         make(chan Inbound, cfg.InboxBuf),
+		wake:          make(chan struct{}, 1),
 		outbox:        outbox,
 		onEvent:       cfg.OnEvent,
 	}
@@ -301,10 +303,6 @@ type Event any
 type AgentStarted struct{}
 
 type AgentStopped struct{ Err error }
-
-// MessageReceived is a message reaching the inbox, before an exchange opened
-// for it.
-type MessageReceived struct{ Message Message }
 
 // TurnEnded closes a San turn: however many exchanges the mailbox drained into
 // it, not sdkagent.TurnEnd, which closes one.

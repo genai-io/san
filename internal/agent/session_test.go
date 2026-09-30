@@ -55,6 +55,7 @@ func TestSessionMessagesNilWhenInactive(t *testing.T) {
 // ignoreContext models a runner that outlives its cancellation.
 type controlledAgent struct {
 	inbox         chan core.Inbound
+	appended      chan core.Message
 	outbox        chan core.Event
 	started       chan struct{}
 	release       chan struct{}
@@ -64,6 +65,7 @@ type controlledAgent struct {
 func newControlledAgent(ignoreContext bool) *controlledAgent {
 	return &controlledAgent{
 		inbox:         make(chan core.Inbound, 8),
+		appended:      make(chan core.Message, 8),
 		outbox:        make(chan core.Event, 8),
 		started:       make(chan struct{}),
 		release:       make(chan struct{}),
@@ -78,7 +80,7 @@ func (a *controlledAgent) Inbox() chan<- core.Inbound                     { retu
 func (a *controlledAgent) Outbox() <-chan core.Event                      { return a.outbox }
 func (a *controlledAgent) Messages() []core.Message                       { return nil }
 func (a *controlledAgent) SetMessages([]core.Message)                     {}
-func (a *controlledAgent) Append(context.Context, core.Message)           {}
+func (a *controlledAgent) Append(m core.Message)                          { a.appended <- m }
 func (a *controlledAgent) ThinkAct(context.Context) (*core.Result, error) { return nil, nil }
 func (a *controlledAgent) Run(ctx context.Context) error {
 	close(a.started)
@@ -152,7 +154,7 @@ func TestSessionSendPreservesMessageIdentity(t *testing.T) {
 	if err := sess.Send(want); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	got := (<-ag.inbox).Msg
+	got := <-ag.appended
 	if got.ID != want.ID || got.Text() != want.Text() {
 		t.Fatalf("delivered message = %+v, want ID %q and content %q", got, want.ID, want.Text())
 	}

@@ -59,15 +59,12 @@ func (r ChatRole) AIRole() (ai.Role, bool) {
 	return "", false
 }
 
-// Inbound is what arrives on an agent's inbox: a message to add, or a signal
-// to act on. They ride one channel so that both land at a phase boundary on
-// the agent's own goroutine, in the order they were sent.
+// Inbound is a control signal on an agent's inbox, acted on between turns on
+// the agent's own goroutine. Messages do not ride here: Append queues them.
 //
-// It exists because ai.Message is the conversation and a signal is not part of
-// one. It goes away with the inbox itself, when the loop becomes pkg/agent's:
-// there a stop is Interrupt and a compaction is SetMessages, both methods.
+// It goes away with the inbox itself, when the loop becomes pkg/agent's: there
+// a stop is Interrupt and a compaction is SetMessages, both methods.
 type Inbound struct {
-	Msg    Message
 	Signal Signal
 	// Summary carries SigCompact's precomputed replacement.
 	Summary string

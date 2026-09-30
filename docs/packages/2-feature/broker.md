@@ -19,8 +19,8 @@ inter-agent communication, in ~60 lines.
   holds is dropped.
 
 Direct addressing only — no topics, no broadcast, no queuing beyond the
-recipient's own inbox. What a delivered message does (land in a subagent's
-inbox, wake the main loop) is the recipient's business, kept out of this
+recipient's own. What a delivered message does (enter a subagent's
+conversation, wake the main loop) is the recipient's business, kept out of this
 package so the broker only routes.
 
 ## Contract
@@ -47,7 +47,7 @@ Addresses are unique per run — a task id (`generateShortID()`) or `Main` — s
 an address is held by exactly one agent at a time; `Register`/`Unregister` are
 a plain add/remove on the map. The registry is a process-wide singleton, like
 `task.Default()`. The delivery function runs outside the lock and must not
-block (it enqueues into the recipient's inbox and returns).
+block (it enqueues for the recipient and returns).
 
 ## Who uses it
 
@@ -59,7 +59,7 @@ block (it enqueues into the recipient's inbox and returns).
 | Recipient | Registers |
 |---|---|
 | main loop (`app`) | `Main` → forwards onto the main-loop notice channel |
-| each background subagent (`subagent.Executor`) | its task id → pushes to its `core.Agent` inbox |
+| each background subagent (`subagent.Executor`) | its task id → `core.Agent.Append`, heard at its next step; its run does not end with one unread |
 
 A background task's **completion** is pushed automatically when its run ends.
 Main injects it immediately while idle, or at the next turn boundary during an

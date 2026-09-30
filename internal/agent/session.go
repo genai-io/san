@@ -148,18 +148,13 @@ func (s *Session) Send(msg core.Message) error {
 		return ErrSessionInactive
 	}
 
-	// A closed done channel would otherwise race the inbox send.
 	select {
 	case <-run.done:
 		return ErrSessionStopped
 	default:
 	}
-	select {
-	case run.agent.Inbox() <- core.Inbound{Msg: msg}:
-		return nil
-	case <-run.done:
-		return ErrSessionStopped
-	}
+	run.agent.Append(msg)
+	return nil
 }
 
 // Compact asks the running agent to compact in place using the precomputed

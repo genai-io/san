@@ -12,7 +12,7 @@ see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
 
 ## Primitives
 
-1. **Agent** — an LLM-in-a-loop with `Inbox` and `Outbox` channels. Contracts
+1. **Agent** — an LLM-in-a-loop: messages in through `Append`, events out on an `Outbox` channel. Contracts
    in `internal/core`; construction in `internal/agent`. Agents communicate
    only through messages, no shared mutable state.
 2. **Tools** — built-in capabilities the agent can call. Registered in
@@ -30,7 +30,7 @@ see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
 ## Runtime Model
 
 The TUI is a [Bubble Tea](https://github.com/charmbracelet/bubbletea) MVU
-loop. Three input sources feed the agent inbox; the agent's outbox produces
+loop. Three input sources feed the agent's message queue; the agent's outbox produces
 events that mutate the TUI model.
 
 ```
@@ -45,7 +45,7 @@ events that mutate the TUI model.
                                  v
                   ┌────────────────────────────┐
                   │           Agent            │
-                  │   Inbox  →  Run  →  Outbox │
+                  │  Append  →  Run  →  Outbox │
                   │   LLM  ↔  Tool  ↔  LLM ... │
                   └──────────────┬─────────────┘
                                  |

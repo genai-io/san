@@ -121,19 +121,12 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 	ctx = tool.WithAgentID(ctx, agentAddr)
 
 	// A background subagent registers its task id with the broker for the
-	// length of the run. A routed message lands in the subagent's inbox and is
-	// read at its next step boundary; a full inbox reports the drop back to the
-	// sender rather than silently swallowing it.
+	// length of the run. A routed message enters its conversation at the next
+	// step boundary, and its run does not end with one unread.
 	if run.req.TaskID != "" {
 		broker.Register(run.req.TaskID, func(m broker.Message) bool {
-			select {
-			case ag.Inbox() <- core.Inbound{Msg: core.UserMessage(m.Content, nil)}:
-				return true
-			default:
-				log.Logger().Warn("subagent inbox full; dropped message",
-					zap.String("from", m.From))
-				return false
-			}
+			ag.Append(core.UserMessage(m.Content, nil))
+			return true
 		})
 		defer broker.Unregister(run.req.TaskID)
 	}
