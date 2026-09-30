@@ -88,6 +88,7 @@
   "mode": "active",
   "sessionID": "6722d9ea-2903-4af6-b42e-9f72e22a65e2",
   "pid": 48213,
+  "procStart": "2026-09-29T10:01:58+08:00",
   "cwd": "/Users/li/work/shop/web",
   "joinedAt": "2026-09-29T10:02:11+08:00"
 }
@@ -107,6 +108,7 @@
 - **sessionID 就是成员身份**：它在会话的整个生命周期里不变，`/clear` 不变，恢复会话也不变，所以改名和恢复都靠它识别。`/fork` 出来的是新会话，有新的 sessionID，不继承成员身份。
 - **消息文件名 = 时间戳 + 发件人**，按文件名排序就是按时间排序。
 - **没有共享写入**：成员只写自己的文件，发件人只往对方 inbox 新增文件；先写临时文件再 rename，保证原子性。目录 0700、文件 0600。
+- **消息进入对话后才删除**：inbox 文件是消息唯一的一份。进程在送达前退出或崩溃，消息仍在磁盘上，下次上线时照常送达。
 
 ## 一条消息怎么走
 
@@ -122,8 +124,9 @@ sequenceDiagram
     participant WA as @web 的 agent
     A->>FS: SendMessage(to: web)<br/>写入 web.inbox/…-api.json
     FS-->>A: 工具结果：已送达，对方会马上处理
-    W->>FS: 每秒轮询，读取后删除
+    W->>FS: 每秒轮询，发现新消息
     W->>WA: web 空闲 → 开启新的一轮<br/>（工作中 → 在工具调用之间插入）
+    W->>FS: 注入完成后删除该文件
     WA->>FS: 改完结算页后 SendMessage(to: api)<br/>写入 api.inbox/…-web.json
 ```
 
@@ -147,11 +150,12 @@ sequenceDiagram
     participant L as 小李
     A->>FS: SendMessage(to: migrate)<br/>写入 migrate.inbox/…-api.json
     FS-->>A: 工具结果：对方是 passive，<br/>用户下次交互时才会看到，不要等待回复
-    M->>FS: 每秒轮询，读取后删除
-    Note over M: 只入队，不唤醒，<br/>工作中也不插入
+    M->>FS: 每秒轮询，发现新消息
+    Note over M: 不唤醒，工作中也不插入，<br/>消息留在 inbox
     M-->>L: 界面提示一行
-    L->>MA: 小李输入「迁移跑完了吗」
-    Note over MA: 排队的消息随这条输入一起送达
+    L->>M: 小李输入「迁移跑完了吗」
+    M->>FS: 读取 inbox，附加到这条输入，然后删除
+    M->>MA: 输入和消息一起送达
 ```
 
 ## 模型看到什么
@@ -166,6 +170,7 @@ You: @web — wiring coupons into the checkout page
 Members:
 - @api (active): owns the orders API — ~/work/shop/api
 - @migrate (passive): runs the 0042 schema migration — ~/work/shop/db
+Offline: @qa, @docs — their messages wait in their inbox
 
 Messaging:
 - Send with SendMessage, "to" set to a member's name.
@@ -188,7 +193,7 @@ Unattended-Turns:
 </system-reminder>
 ```
 
-和 `/group` 一样，只有离线的成员才会标 `offline`，例如 `@migrate (passive, offline)`。
+离线成员不逐个列出，折叠成一行 `Offline: …`：模型只需要知道他们暂时收不到回复。`/group` 里照常完整显示。
 
 收到的组员消息：
 
@@ -219,8 +224,8 @@ expired. Deployed to staging.
 ```mermaid
 flowchart TB
     T["每秒：检查组目录的修改时间"] -->|没变：不读文件| T
-    T -->|变了| D["读取所有成员文件"]
-    P["每秒：检查各成员 pid 是否存活"] --> S
+    T -->|"变了，或距上次完整读取已满 30 秒"| D["读取所有成员文件"]
+    P["每秒：检查各成员的 pid 和进程启动时间"] --> S
     D --> S["按内容与内存快照对比"]
     S -->|有变化| R["变化 reminder<br/>joined · left · offline · online · is now …"]
     R --> M["模型上下文"]
@@ -228,8 +233,9 @@ flowchart TB
 ```
 
 - 加入、离开、改职责、改模式都是“写临时文件再 rename”，会改变组目录的修改时间；目录没变就不读文件。
+- 有些文件系统的修改时间只精确到秒，同一秒内的第二次变化可能被漏掉，所以每 30 秒无论如何完整读一次。
 - 同一个 sessionID 换了名字，就是改名。
-- 在线看 `pid` 的进程是否存活，没有心跳。
+- 在线 = `pid` 的进程存活，且启动时间与 `procStart` 一致（防止 pid 被别的进程复用）。没有心跳。
 - 自己的成员文件没了（被 `kick`）或组目录没了（被 `disband`）→ 离开并提示。
 - `SendMessage` 以磁盘为准；名字不存在时报错并列出成员：
   ```
@@ -251,7 +257,7 @@ sequenceDiagram
     A->>FS: 19:10 SendMessage(to: web)<br/>写入 web.inbox/（排队）
     FS-->>A: 工具结果：@web 离线，恢复后才会看到
     Note over W: 次日 09:00 san -r 6722d9ea
-    W->>FS: 按 sessionID 认领 web.json，写入新 pid
+    W->>FS: 原 pid 已不在线 → 按 sessionID 认领 web.json，<br/>写入新 pid 和 procStart
     A-->>A: reminder：@web is back online
     FS->>W: 送达昨晚积压的消息
 ```
@@ -260,6 +266,7 @@ sequenceDiagram
 |---|---|
 | `/quit`、崩溃、关终端 | 离线，不离开 group；崩溃时由 `pid` 检查得出离线 |
 | 恢复会话（`san -r`、`/resume`） | 按 sessionID 认领，上线，积压的消息送达，**不需要重新 join** |
+| 同一个会话在两个终端里恢复 | 后恢复的一方认领前发现原 `pid` 仍在线，拒绝并提示“这个会话已在别处在线” |
 | `/clear` | 保留成员身份，重新附上完整成员列表 |
 | 在 San 里 `/resume` 到别的会话 | 原会话离线；目标会话如果属于某个 group，则上线 |
 | `/group leave` | 真正离开，删除成员文件和 inbox；最后一人离开时 group 消失 |
@@ -273,7 +280,7 @@ group 信息（group、名字、职责、模式）保存在会话记录里，恢
 
 一条消息会不会让 agent 跑起来，**只由接收方的模式决定**，发送方无权改变：
 - **active（默认）**：当作用户消息注入；空闲时开启新的一轮，工作中在工具调用之间插入。
-- **passive**：只入队，挂在用户下一条输入上；工作中也不插入，避免把用户主导的任务带偏。
+- **passive**：消息留在 inbox，只在界面提示；用户下次输入时读取、附加到这条输入，然后删除。工作中也不插入，避免把用户主导的任务带偏。
 
 `/group mode passive` 随时切换，立即生效，组员会收到 `@migrate is now passive`。
 
@@ -294,7 +301,7 @@ Queued for @web (offline); they see it when the session resumes.
 | 情况 | 计数 |
 |---|---|
 | 组员消息开启了新的一轮 | +1（多条合并成一轮也只算 +1） |
-| 工作中插入、passive 入队 | 不变 |
+| 工作中插入；passive 消息留在 inbox | 不变 |
 | 用户在这个会话里输入 | 清零 |
 
 一次跑偏又被 agent 自己收住的例子（小李不在）：
@@ -327,12 +334,14 @@ flowchart TB
     S4["Source 4（新）<br/>组员消息、成员变化<br/>memberMsg"] --> U
     U["主循环 Update"] -->|"Source 1–3：原有路径"| A["主 agent"]
     U -->|"Source 4 · active 消息"| I["注入函数<br/>空闲 → 开启新的一轮<br/>工作中 → 工具调用之间插入"] --> A
-    U -->|"Source 4 · passive 消息、成员变化"| Q["reminder 队列"] -->|随下一条消息| A
+    U -->|"Source 4 · passive 消息（只提示）"| IB["留在 inbox"] -->|用户下次输入时读取并删除| A
+    U -->|"Source 4 · 成员变化"| Q["reminder 队列"] -->|随下一条消息| A
 ```
 
 - Source 4 的规则与子 agent 汇报不同：唤醒由模式决定、来源不是用户、计 `Unattended-Turns`、带成员变化、离线排队。
 - 所以它像 Source 3 一样，由轮询协程发出自己的消息类型 `memberMsg` 进入主循环，**不经过 `mainNotices`，Source 2 的代码不改**。
-- active 消息调用现有的注入函数；passive 消息和成员变化进 reminder 队列。
+- active 消息调用现有的注入函数，注入后删除文件；passive 消息留在 inbox，用户下次输入时读取、附上、删除；成员变化进 reminder 队列。
+- 离线排队和 passive 排队是同一个机制：消息留在磁盘上，进入对话后才删除。
 - 不经过 broker。
 
 ## SendMessage
@@ -345,6 +354,7 @@ flowchart TB
 ## 安全与成本
 
 - 组员消息明确标注为来自其他会话：不能代替用户批准权限，不能要求修改配置或 AGENTS.md，其中的斜杠命令只当普通文字；接收方照常执行权限检查。
+- **active 加 YOLO**：YOLO 不做权限确认，所以组员的请求会直接执行。一个被恶意内容注入的会话，可以借组消息指挥这样的成员。同时打开这两项时，用户应当清楚这一点。
 - 所有注入都走 reminder 或消息通道，**system prompt 始终不变**，不影响前缀缓存。加入和离开时会因为打开或关闭 `SendMessage` 而重建一次 agent，缓存失效一次。
 - passive、离线和空闲的成员，不会因为别人发消息或进出组而花 token。
 
@@ -352,8 +362,8 @@ flowchart TB
 
 | 文件 | 职责 |
 |---|---|
-| `internal/group` | 磁盘结构：成员文件、inbox、`pid` 检查；Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member`（新） | Source 4：轮询 inbox 和组目录、成员快照与差异、`memberMsg`、按模式注入或入队、`<group-message>`、`Unattended-Turns` |
+| `internal/group` | 磁盘结构：成员文件、inbox、`pid` + 启动时间检查；Join / Leave / Kick / Disband / Send / Poll |
+| `internal/app/member`（新） | Source 4：轮询 inbox 和组目录、成员快照与差异、`memberMsg`、按模式注入或留在 inbox、`<group-message>`、`Unattended-Turns` |
 | `internal/app/group.go` | `/group` 命令、自动命名、finalizer、补全 |
 | 会话记录（`internal/session`） | 保存 group 信息，恢复时自动上线 |
 | `internal/tool/agent/sendmessage.go` | 组员地址解析（仅主 agent），按对方状态返回结果 |
@@ -363,7 +373,8 @@ flowchart TB
 | 原型（`feat/group`） | 本设计 |
 |---|---|
 | 随机 ID 命名；消息为 `<时间戳>-<随机>` | 成员名命名，排他创建；消息为 `<时间戳>-<发件人>` |
-| 10 秒心跳，60 秒未更新就清理 | 无心跳；按 `pid` 判断在线；不自动清理，由 `kick` 移出 |
+| 10 秒心跳，60 秒未更新就清理 | 无心跳；按 `pid` + 启动时间判断在线；不自动清理，由 `kick` 移出 |
+| 读取消息后立即删除 | 消息进入对话后才删除 |
 | 进程退出即离开 | 进程退出变为离线；恢复时自动上线 |
 | 默认按 active 行为，无用户输入时最多 5 轮 | active / passive 可切换；不设上限，改为 `Unattended-Turns` |
 | 成员变化时发送完整列表 | 只发变化；识别改名和上下线；界面提示 |

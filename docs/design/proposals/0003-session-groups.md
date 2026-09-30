@@ -93,6 +93,7 @@ Member file `web.json`:
   "mode": "active",
   "sessionID": "6722d9ea-2903-4af6-b42e-9f72e22a65e2",
   "pid": 48213,
+  "procStart": "2026-09-29T10:01:58+08:00",
   "cwd": "/Users/li/work/shop/web",
   "joinedAt": "2026-09-29T10:02:11+08:00"
 }
@@ -112,6 +113,7 @@ Message file `web.inbox/1790640123456789012-api.json`:
 - **The session ID is the member's identity**: it holds for the life of the session — `/clear` keeps it, a resume keeps it — so renames and resumes are recognised by it. A `/fork` is a new session with a new ID and does not inherit membership.
 - **Message name = timestamp + sender**: name order is time order.
 - **No shared writes**: a member writes only its own file, a sender only adds to the recipient's inbox; temp file then rename, so writes are atomic. Directories 0700, files 0600.
+- **A message is deleted only once it is in the conversation**: the inbox file is its only copy. A process that exits or crashes before delivery leaves it on disk, and it is delivered next time the member is online.
 
 ## How a message travels
 
@@ -129,8 +131,9 @@ sequenceDiagram
     participant WA as @web's agent
     A->>FS: SendMessage(to: web)<br/>writes web.inbox/…-api.json
     FS-->>A: tool result: delivered, they will handle it now
-    W->>FS: polls every second, reads, deletes
+    W->>FS: polls every second, finds the new message
     W->>WA: idle → starts a turn<br/>(running → between tool calls)
+    W->>FS: deletes the file once injected
     WA->>FS: after the checkout change, SendMessage(to: api)<br/>writes api.inbox/…-web.json
 ```
 
@@ -154,11 +157,12 @@ sequenceDiagram
     participant L as Li
     A->>FS: SendMessage(to: migrate)<br/>writes migrate.inbox/…-api.json
     FS-->>A: tool result: passive — they see it when their<br/>person next interacts, don't wait
-    M->>FS: polls every second, reads, deletes
-    Note over M: queued only, never woken,<br/>not inserted while running either
+    M->>FS: polls every second, finds the new message
+    Note over M: not woken, not inserted while running,<br/>the message stays in the inbox
     M-->>L: one line on screen
-    L->>MA: Li types "is the migration done?"
-    Note over MA: the queued message rides on that input
+    L->>M: Li types "is the migration done?"
+    M->>FS: reads the inbox, attaches it to that input, deletes it
+    M->>MA: the input and the message arrive together
 ```
 
 ## What the model sees
@@ -173,6 +177,7 @@ You: @web — wiring coupons into the checkout page
 Members:
 - @api (active): owns the orders API — ~/work/shop/api
 - @migrate (passive): runs the 0042 schema migration — ~/work/shop/db
+Offline: @qa, @docs — their messages wait in their inbox
 
 Messaging:
 - Send with SendMessage, "to" set to a member's name.
@@ -195,7 +200,7 @@ Unattended-Turns:
 </system-reminder>
 ```
 
-As in `/group`, only an offline member is marked, e.g. `@migrate (passive, offline)`.
+Offline members are folded into one `Offline: …` line: the model only needs to know they can't answer yet. `/group` still lists them in full.
 
 A member's message:
 
@@ -228,8 +233,8 @@ and every session notices changes by itself.
 ```mermaid
 flowchart TB
     T["every second: check the group directory's mtime"] -->|unchanged: read nothing| T
-    T -->|changed| D["read every member file"]
-    P["every second: is each member's pid alive"] --> S
+    T -->|"changed, or 30s since the last full read"| D["read every member file"]
+    P["every second: each member's pid and process start time"] --> S
     D --> S["compare contents with the snapshot"]
     S -->|something changed| R["change reminders<br/>joined · left · offline · online · is now …"]
     R --> M["model context"]
@@ -237,8 +242,9 @@ flowchart TB
 ```
 
 - Joining, leaving, a new role or mode are all a temp-file write plus rename, which changes the directory's mtime; an unchanged directory means no file is read.
+- Some filesystems keep mtime to the second, so a second change within the same second can be missed; every 30 seconds the files are read regardless.
 - The same session ID under a new name is a rename.
-- Online means the `pid`'s process is alive; no heartbeat.
+- Online = the `pid`'s process is alive and its start time matches `procStart` (so a reused pid is not mistaken for the member). No heartbeat.
 - Own member file gone (`kick`ed) or group directory gone (`disband`ed) → leave and say so.
 - SendMessage checks the disk; an unknown name lists the members:
   ```
@@ -261,7 +267,7 @@ sequenceDiagram
     A->>FS: 19:10 SendMessage(to: web)<br/>queued in web.inbox/
     FS-->>A: tool result: @web is offline, sees it on resume
     Note over W: next day 09:00 san -r 6722d9ea
-    W->>FS: reclaims web.json by session ID, writes the new pid
+    W->>FS: old pid not online → reclaims web.json by session ID,<br/>writes the new pid and procStart
     A-->>A: reminder: @web is back online
     FS->>W: last night's queued message arrives
 ```
@@ -270,6 +276,7 @@ sequenceDiagram
 |---|---|
 | `/quit`, crash, terminal closed | offline, still in the group; after a crash the `pid` check shows offline |
 | Session resumed (`san -r`, `/resume`) | reclaimed by session ID, online, queued messages arrive — **no rejoin** |
+| The same session resumed in two terminals | the later one finds the old `pid` still online and refuses: "this session is already online elsewhere" |
 | `/clear` | membership kept; the full roster is attached again |
 | `/resume` to another session inside San | the old one goes offline; the new one comes online if it is in a group |
 | `/group leave` | actually leaves: member file and inbox removed; the last one out removes the group |
@@ -285,7 +292,7 @@ reads as offline through the `pid` check, to the same effect.
 
 Whether a message makes an agent run is decided **only by the receiver's mode**; a sender cannot change it:
 - **active (default)**: injected as a user message; starts a turn when idle, inserted between tool calls when running.
-- **passive**: only queued, riding on the person's next input; not inserted while running either, so a person-led task is not hijacked.
+- **passive**: the message stays in the inbox with a line on screen; at the person's next input it is read, attached to that input, and deleted. Not inserted while running either, so a person-led task is not hijacked.
 
 `/group mode passive` switches at once; the group is told `@migrate is now passive`.
 
@@ -308,7 +315,7 @@ one included.
 | Situation | Count |
 |---|---|
 | A peer message starts a turn | +1 (several merged into one turn: +1) |
-| Inserted while running, or queued for passive | unchanged |
+| Inserted while running; a passive message waiting in the inbox | unchanged |
 | The person types in this session | reset to 0 |
 
 An exchange that drifts and the agent reins in (Li is away):
@@ -343,12 +350,14 @@ flowchart TB
     S4["Source 4 (new)<br/>member messages, roster changes<br/>memberMsg"] --> U
     U["main loop Update"] -->|"Source 1–3: existing paths"| A["main agent"]
     U -->|"Source 4 · active message"| I["injection functions<br/>idle → start a turn<br/>running → between tool calls"] --> A
-    U -->|"Source 4 · passive message, roster change"| Q["reminder queue"] -->|with the next message| A
+    U -->|"Source 4 · passive message (shown only)"| IB["stays in the inbox"] -->|read and deleted at the next input| A
+    U -->|"Source 4 · roster change"| Q["reminder queue"] -->|with the next message| A
 ```
 
 - Source 4's rules differ from subagent reports: the mode decides waking, the sender is not the person, `Unattended-Turns` is counted, roster changes come with it, messages queue while offline.
 - So, like Source 3, its poller sends its own message type, `memberMsg`, into the main loop — **not through `mainNotices`; Source 2 is untouched**.
-- An active message calls the existing injection functions; a passive message or roster change goes to the reminder queue.
+- An active message calls the existing injection functions and is deleted once injected; a passive message stays in the inbox until the person's next input attaches it; a roster change goes to the reminder queue.
+- Offline and passive queueing are one mechanism: the message stays on disk until it is in the conversation.
 - The broker is not involved.
 
 ## SendMessage
@@ -365,6 +374,9 @@ flowchart TB
 - A peer message is marked as another session's, not the person's: it never
   approves a permission, never justifies changing settings or AGENTS.md, and a
   slash command in it is plain text; the receiver's permission checks apply.
+- **Active plus YOLO**: YOLO confirms nothing, so a peer's request simply runs. A
+  session injected by malicious content could use a group message to steer such
+  a member. Anyone turning on both should know this.
 - Everything rides the reminder or message channel, so **the system prompt
   never changes** and the prompt-cache prefix holds. Joining and leaving
   rebuild the agent once (SendMessage on or off): one cache miss.
@@ -374,8 +386,8 @@ flowchart TB
 
 | File | Responsibility |
 |---|---|
-| `internal/group` | On-disk layout: member files, inboxes, `pid` check; Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member` (new) | Source 4: polls the inbox and group directory, roster snapshot and diff, `memberMsg`, inject or queue per mode, `<group-message>`, `Unattended-Turns` |
+| `internal/group` | On-disk layout: member files, inboxes, `pid` + start-time check; Join / Leave / Kick / Disband / Send / Poll |
+| `internal/app/member` (new) | Source 4: polls the inbox and group directory, roster snapshot and diff, `memberMsg`, inject or leave in the inbox per mode, `<group-message>`, `Unattended-Turns` |
 | `internal/app/group.go` | `/group`, automatic naming, finalizers, completion |
 | Session record (`internal/session`) | Stores the group so a resume comes back online |
 | `internal/tool/agent/sendmessage.go` | Member addresses (main agent only); result reflects the recipient |
@@ -385,7 +397,8 @@ flowchart TB
 | Prototype (`feat/group`) | This design |
 |---|---|
 | Random-id names; messages `<timestamp>-<random>` | Member names, created exclusively; messages `<timestamp>-<sender>` |
-| 10s heartbeat, reaped after 60s | No heartbeat; online from `pid`; no automatic removal, `kick` instead |
+| 10s heartbeat, reaped after 60s | No heartbeat; online from `pid` + start time; no automatic removal, `kick` instead |
+| A message is deleted as soon as it is read | Deleted only once it is in the conversation |
 | Process exit leaves | Process exit goes offline; resume comes back |
 | Active behaviour only; at most 5 turns without the person | Active / passive; no cap, `Unattended-Turns` |
 | Full roster on every change | Deltas only; renames and online status recognised; shown on screen |
