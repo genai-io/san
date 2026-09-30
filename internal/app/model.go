@@ -169,6 +169,12 @@ type model struct {
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState
+
+	// finalizers clean up state this session left outside itself (a group
+	// membership) when it ends; see group.go.
+	finalizers map[string]func()
+	// grp is this session's group, as the main loop tracks it (group.go).
+	grp groupState
 }
 
 var _ conv.Runtime = (*model)(nil)
@@ -180,6 +186,7 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartCronTicker(),
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
+		m.nextGroupTick(),
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),

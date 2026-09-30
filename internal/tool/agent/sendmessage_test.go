@@ -2,8 +2,13 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/group"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/tool"
@@ -103,5 +108,35 @@ func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
 	}
 	if r := toolInst.Execute(context.Background(), map[string]any{"message": "hi"}, "."); r.Success {
 		t.Fatal("missing recipient should fail")
+	}
+}
+
+func TestSendMessage_GroupMembers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession("s-self")
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = group.Leave() })
+	home, _ := os.UserHomeDir()
+	web := group.Member{Name: "web", Mode: group.Passive, SessionID: "s-web"}
+	dir := filepath.Join(home, ".san", "groups", "shop")
+	if err := os.MkdirAll(filepath.Join(dir, "web.inbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicfile.WriteJSON(filepath.Join(dir, "web.json"), web, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sm := NewSendMessageTool()
+	params := map[string]any{"to": "web", "message": "schema changed"}
+	res := sm.Execute(context.Background(), params, "")
+	if !res.Success || !strings.HasPrefix(res.Output, "Queued for @web (offline)") {
+		t.Errorf("to an offline member: %+v", res)
+	}
+
+	sub := tool.WithAgentID(context.Background(), "task-1")
+	if res := sm.Execute(sub, params, ""); res.Success || !strings.Contains(res.Output+res.Error, "only the main conversation") {
+		t.Errorf("a subagent reached a member: %+v", res)
 	}
 }

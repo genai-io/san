@@ -239,3 +239,21 @@ func Test_extractUserContent_restoresDisplayContent(t *testing.T) {
 		t.Fatalf("unexpected display content: %q", msgs[0].DisplayContent)
 	}
 }
+
+// A passive member's messages ride on the person's input; a resume shows only
+// what the person typed.
+func TestSplitHidesAttachedGroupMessages(t *testing.T) {
+	text := "is the migration done?\n\n<group-message>\nFrom: @api\nTo: @migrate\n\nrun 0043\n</group-message>"
+	blocks := splitTextBySource(text)
+	var visible, hidden string
+	for _, b := range blocks {
+		if isHiddenSource(b.Source) {
+			hidden += b.Text
+		} else {
+			visible += b.Text
+		}
+	}
+	if strings.TrimSpace(visible) != "is the migration done?" || !strings.HasPrefix(hidden, "<group-message>") {
+		t.Errorf("visible %q, hidden %q", visible, hidden)
+	}
+}

@@ -7,6 +7,7 @@ import (
 
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +24,7 @@ import (
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
+	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
@@ -108,7 +110,7 @@ func (m *model) promptParams() agent.BuildParams {
 		CWD:            m.env.CWD,
 		Persona:        m.personaPrompt(),
 		AgentDirectory: func() string { return m.services.Subagent.AgentsSection() },
-		DisabledTools:  m.services.Setting.DisabledTools(),
+		DisabledTools:  m.disabledTools(),
 		MCPTools:       mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
 
 		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
@@ -459,12 +461,22 @@ func firstValidDuration(vals ...string) time.Duration {
 // Agent lifecycle (delegates to services.Agent)
 // ============================================================
 
+// disabledTools is the settings' disabled set, except that SendMessage is on
+// while this session is in a group: it is how the model messages the members.
+func (m *model) disabledTools() map[string]bool {
+	disabled := maps.Clone(m.services.Setting.DisabledTools())
+	if g, _ := group.Current(); g != "" {
+		delete(disabled, tool.ToolSendMessage)
+	}
+	return disabled
+}
+
 // disabledToolsSignature is a stable fingerprint of the effective disabled-tool
 // set. ensureAgentSession compares it against the live agent's build-time value
 // so a /tool enable/disable (which the built-in and MCP tool filters both read)
 // rebuilds the toolset on the next turn.
 func (m *model) disabledToolsSignature() string {
-	disabled := m.services.Setting.DisabledTools()
+	disabled := m.disabledTools()
 	names := make([]string, 0, len(disabled))
 	for name, off := range disabled {
 		if off {
@@ -598,11 +610,12 @@ func (m *model) attachPendingReminders(msg core.Message) core.Message {
 		m.services.Reminder.RequeueSystemReminders()
 		m.systemRemindersSent = true
 	}
+	text := m.attachWaitingMessages(msg.Text())
 	pending := m.services.Reminder.Drain()
-	if len(pending) == 0 {
+	if len(pending) == 0 && text == msg.Text() {
 		return msg
 	}
-	content := ai.TextContent(reminder.AttachToContent(msg.Text(), pending))
+	content := ai.TextContent(reminder.AttachToContent(text, pending))
 	for _, block := range msg.Content {
 		if block.Type != ai.BlockText {
 			content = append(content, block)
@@ -630,6 +643,7 @@ func (m *model) wireReminderProviders() {
 	m.services.Reminder.Register(reminder.ProviderMemoryProject, func() string {
 		return reminder.WrapMemory("project", m.env.CachedProjectInstructions)
 	})
+	m.services.Reminder.Register(reminder.ProviderGroup, group.Roster)
 	// Agent-written auto-memory (L1 reviewer's store). Read at render time so
 	// PostCompact / cwd change picks up the latest written entries without a
 	// separate refresh hook (see notes/active/l1-background-review.md §4.5).

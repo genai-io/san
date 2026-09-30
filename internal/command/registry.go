@@ -53,6 +53,7 @@ func builtinCommands() []Info {
 		{Name: "autopilot", Description: "Configure the autopilot copilot (steers, system prompt, mission)"},
 		{Name: "goal", Description: "State a goal and let autopilot drive until it's met (/goal <text>, /goal clear)"},
 		{Name: "name", Description: "Set or change the name of the current conversation session"},
+		{Name: "group", Description: "Message your other sessions: /group · join [group] · leave · mode active|passive · kick <member> · list · disband <group>"},
 		{Name: "quit", Description: "Exit the application (/exit also works)"},
 	}
 }

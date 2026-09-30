@@ -251,3 +251,20 @@ func imageBlocks(m core.Message) int {
 	}
 	return n
 }
+
+// A rebuild stops the old agent and starts a new one; the old agent's stop
+// event reaches the UI afterwards. It must not stop its replacement.
+func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
+	sess := &agent.Session{}
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Stop()
+
+	m := model{services: services{Agent: sess}, conv: conv.NewModel(80)}
+	m.OnAgentStop(context.Canceled)
+	if !sess.Active() {
+		t.Fatal("the late stop of a replaced agent stopped the running one")
+	}
+}

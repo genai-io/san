@@ -555,6 +555,10 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			} else {
 				m.Textarea.SetValue(selected + " ")
 				m.Textarea.CursorEnd()
+				// Open the next level, e.g. /group's subcommands, then the
+				// groups a join can name. Nothing to offer hides the list.
+				m.Suggestions.UpdateSuggestions(m.Textarea.Value())
+				return nil, true
 			}
 			m.Suggestions.Hide()
 		}

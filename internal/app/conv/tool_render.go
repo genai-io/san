@@ -55,7 +55,7 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderGenericToolResultInline(data)
 	case tool.ToolSkill:
 		return renderSkillResultInline(data)
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		return renderTaskResultInline(data, mdRenderer)
 	case tool.ToolEdit, tool.ToolWrite:
 		if data.Nested {
@@ -821,6 +821,36 @@ func formatAgentLabel(agent agentInput) string {
 		return fmt.Sprintf("Agent - %s: %s", agent.Name, desc)
 	}
 	return fmt.Sprintf("Agent - %s", agent.Name)
+}
+
+// sendMessageLabel names a SendMessage call by its recipient and opening words.
+func sendMessageLabel(input string) string {
+	var p struct{ To, Message string }
+	_ = json.Unmarshal([]byte(input), &p)
+	if p.To == "" {
+		return "Message"
+	}
+	return fmt.Sprintf("To @%s: %s", strings.TrimPrefix(p.To, "@"), conciseAgentDescription(p.Message))
+}
+
+// groupCallArgs names a Group call by what it does, e.g. "join shop as web".
+func groupCallArgs(input string) string {
+	var p struct{ Action, Group, As, Mode string }
+	_ = json.Unmarshal([]byte(input), &p)
+	parts := []string{p.Action}
+	switch p.Action {
+	case "join":
+		parts = append(parts, p.Group)
+		if p.As != "" {
+			parts = append(parts, "as", p.As)
+		}
+		if p.Mode == "passive" {
+			parts = append(parts, "passive")
+		}
+	case "mode":
+		parts = append(parts, p.Mode)
+	}
+	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
 }
 
 func conciseAgentDescription(desc string) string {

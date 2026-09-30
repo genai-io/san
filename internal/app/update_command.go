@@ -58,6 +58,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		RunSelfLearnDemo:        m.runSelfLearnDemo,
 		SetActivePersona:        m.setActivePersona,
 		RenameSession:           m.renameSession,
+		GroupCommand:            m.groupCommand,
 		RenderSkippedMessages:   m.renderSkippedMessages,
 	}
 }

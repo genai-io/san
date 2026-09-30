@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -206,6 +207,14 @@ func pluginMCPServers() []mcp.PluginServer {
 
 func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.Suggestion {
 	return func(query string) []suggest.Suggestion {
+		// Past the command name the list completes its arguments, which only
+		// /group offers.
+		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
+			if name == "group" {
+				return groupSuggestions(args)
+			}
+			return nil
+		}
 		cmds := cmdSvc.Matching(query)
 		result := make([]suggest.Suggestion, len(cmds))
 		for i, c := range cmds {

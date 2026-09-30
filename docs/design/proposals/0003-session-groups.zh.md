@@ -2,7 +2,7 @@
 
 ## 状态
 
-草案，2026-09-29。未合并的 `feat/group` 分支上有一个早期原型，已用 tmux 端到端验证：两个会话互发消息、自动命名、补全、解散后自动离开。本文是评审后的设计，与原型的差异见末尾。
+已实现，2026-09-30。本 PR 包含这份设计和它的实现，已用 tmux 以三个会话端到端验证：斜杠命令和自然语言加入、active 自动回复、passive 随下一次输入送达、退出变离线并排队、`san -c` 恢复后自动上线、`kick`、`disband`。
 
 ## 一个贯穿全文的例子
 
@@ -198,7 +198,7 @@ parameters:
   mode:   "active" | "passive" — for join or mode
 ```
 
-`join`、`leave`、`mode` 走权限确认；`status` 只读，不需要确认。
+每次调用都走权限确认，`status` 也一样：权限按工具判断，不按参数区分。
 
 ### Group 工具结果
 
@@ -459,7 +459,7 @@ flowchart TB
 
 ## 工具：Group 与 SendMessage
 
-- **`Group`** 始终存在，管理自己的成员身份：`join` / `leave` / `mode` / `status`，与同名斜杠命令效果相同。只在用户要求时调用，组员的要求不算；改变状态的操作需要用户确认。
+- **`Group`** 始终存在，管理自己的成员身份：`join` / `leave` / `mode` / `status`，与同名斜杠命令效果相同。只在用户要求时调用，组员的要求不算；每次调用都需用户确认。
 - **`kick`、`disband` 不进工具**：它们影响别的会话，一条组员消息就可能诱导模型去执行，所以只能由用户输入斜杠命令。
 - 在组里时，**主 agent** 自动打开 `SendMessage`，离开后关闭。它原本对主 agent 默认关闭。
 - `to` 写组员名字；消息正文包在 `<group-message>` 里；界面显示为 `● To @web: …`。工具定义和所有返回文字见“模型看到的全部内容”。
@@ -469,7 +469,7 @@ flowchart TB
 ## 安全与成本
 
 - 组员消息明确标注为来自其他会话：不能代替用户批准权限，不能要求修改配置或 AGENTS.md，其中的斜杠命令只当普通文字；接收方照常执行权限检查。
-- **`Group` 工具只作用于自己**，且只在用户要求时调用；改变状态需要确认。影响他人的 `kick`、`disband` 不提供给模型。
+- **`Group` 工具只作用于自己**，且只在用户要求时调用，每次都需确认。影响他人的 `kick`、`disband` 不提供给模型。
 - **active 加 YOLO**：YOLO 不做权限确认，所以组员的请求会直接执行。一个被恶意内容注入的会话，可以借组消息指挥这样的成员。同时打开这两项时，用户应当清楚这一点。
 - 所有注入都走 reminder 或消息通道，**system prompt 始终不变**，不影响前缀缓存。加入和离开时会因为打开或关闭 `SendMessage` 而重建一次 agent，缓存失效一次。
 - passive、离线和空闲的成员，不会因为别人发消息或进出组而花 token。
@@ -477,29 +477,17 @@ flowchart TB
 
 ## 实现位置
 
-| 文件 | 职责 |
+| 位置 | 职责 |
 |---|---|
-| `internal/group` | 磁盘结构：成员文件、inbox、`pid` + 启动时间检查；Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member`（新） | Source 4：轮询 inbox 和组目录、成员快照与差异、`memberMsg`、按模式注入或留在 inbox、`<group-message>`、`Unattended-Turns` |
-| `internal/app/group.go` | `/group` 命令、自动命名、finalizer、补全 |
-| 会话记录（`internal/session`） | 保存 group 信息，恢复时自动上线 |
-| `internal/tool/group`（新） | `Group` 工具：参数校验、调用 `internal/group`、返回结果文字 |
-| `internal/tool/agent/sendmessage.go` | 组员地址解析（仅主 agent），按对方状态返回结果 |
+| `internal/group` | 磁盘结构：成员文件、inbox、在线判断；Join / Reclaim / Release / Leave / Kick / Disband / SetMode / Send / Inbox；成员列表和 `/group` 的文字 |
+| `internal/proc`（`StartTime`） | 进程启动时间，按平台实现，防止 pid 复用 |
+| `internal/app/group.go` | `/group` 命令、自动命名、Source 4（每秒轮询、`memberMsg`、成员差异、按模式注入或留在 inbox、`Unattended-Turns`）、会话记录与 finalizer、补全 |
+| `internal/tool/group` | `Group` 工具（仅主 agent） |
+| `internal/tool/agent/sendmessage.go` | 组员地址（仅主 agent），按对方状态返回结果 |
+| 会话记录（`internal/session`） | 保存成员身份（`Group` 字段）；恢复时隐藏附在输入后的 `<group-message>` |
 
-## 原型与本设计的差异
+## 顺带修复的已有问题
 
-| 原型（`feat/group`） | 本设计 |
-|---|---|
-| 随机 ID 命名；消息为 `<时间戳>-<随机>` | 成员名命名，排他创建；消息为 `<时间戳>-<发件人>` |
-| 10 秒心跳，60 秒未更新就清理 | 无心跳；按 `pid` + 启动时间判断在线；不自动清理，由 `kick` 移出 |
-| 读取消息后立即删除 | 消息进入对话后才删除 |
-| 进程退出即离开 | 进程退出变为离线；恢复时自动上线 |
-| 默认按 active 行为，无用户输入时最多 5 轮 | active / passive 可切换；不设上限，改为 `Unattended-Turns` |
-| 成员变化时发送完整列表 | 只发变化；识别改名和上下线；界面提示 |
-| `attach` / `detach` / `delete`；子 agent 可给组员发消息 | `join` / `leave` / `mode` / `kick` / `disband`；仅主 agent |
-| 只有斜杠命令 | 另有 `Group` 工具，可以用自然语言加入、离开、切换模式 |
-
-原型中顺带修复、落地时保留的两个问题：
 - **中途重建 agent 时，新 agent 被停掉**：旧 agent 的“已停止”事件晚到，停掉了刚建好的新 agent。在 `/tool` 面板切换工具也会触发。
 - **`SendMessage` 被渲染成“启动子 agent”**：现在显示为 `● To @x: …`。
 

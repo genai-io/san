@@ -124,6 +124,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 			LastPrompt: session.ExtractLastUserText(msgs),
 			Mode:       m.env.SessionMode(),
 			AutoPilot:  marshalAutoPilot(m.env.AutoPilot),
+			Group:      currentMembership(),
 		},
 		Messages:          msgs,
 		Tasks:             m.services.Tracker.Export(),
@@ -201,6 +202,10 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 		m.env.AutoPilot = ar
 	}
 	m.rebuildAutopilotReviewer()
+
+	// Membership follows the session: rejoin the group it was in, and leave the
+	// one the previous session held offline.
+	m.rejoinGroup(sess.Metadata.Group)
 
 	// Resume into the operation mode the session was saved in, so an autopilot
 	// run picks up where it left off without re-cycling shift+tab. Bypass is

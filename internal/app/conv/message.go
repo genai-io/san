@@ -80,6 +80,8 @@ var (
 	// message, distinct from the dim system notices around it.
 	agentNoticeStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
+	groupFromStyle = lipgloss.NewStyle().
+			Foreground(kit.CurrentTheme.Primary)
 
 	// The tool call line stays readable — the action and its target (the file
 	// being edited, the command being run) matter, and the live spinner rides
@@ -495,6 +497,10 @@ func RenderSystemMessage(content string) string {
 // interim report) — a "◆" marker plus the "<description> <status>" line in the
 // accent tone, so it stands out from the dim system notices as an agent message.
 func RenderAgentNotice(content string) string {
+	// A group member's message leads with its sender, set apart in its own tone.
+	if label, rest, ok := strings.Cut(content, ": "); ok && strings.HasPrefix(label, "From @") {
+		return agentNoticeStyle.Render("◆ ") + groupFromStyle.Render(label+":") + agentNoticeStyle.Render(" "+rest) + "\n"
+	}
 	return agentNoticeStyle.Render("◆ "+content) + "\n"
 }
 
@@ -624,6 +630,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
 			color := configuredAgentColor(agent, params.AgentColors)
+			if tc.Name == tool.ToolSendMessage {
+				label, color = sendMessageLabel(tc.Input), "accent"
+			}
 			_, hasResult := params.ResultMap[tc.ID]
 			if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
@@ -672,6 +681,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
+				if tc.Name == tool.ToolGroup {
+					args = groupCallArgs(tc.Input)
+				}
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))

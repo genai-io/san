@@ -177,6 +177,14 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 }
 
 func (m *model) OnAgentStop(err error) tea.Cmd {
+	// A canceled run while a session is still active belongs to the generation
+	// a rebuild replaced: ensureAgentSession stopped it and started the next,
+	// and its stop only arrives now, through the old outbox. Stopping here
+	// would take down the agent that replaced it. (/clear and a manual stop
+	// wait for the session to end, so they never see an active one.)
+	if errors.Is(err, context.Canceled) && m.services.Agent.Active() {
+		return nil
+	}
 	// /clear and manual stop cancel the active agent context; that is expected
 	// shutdown, not an agent failure the user needs to see.
 	failed := err != nil && !errors.Is(err, context.Canceled)

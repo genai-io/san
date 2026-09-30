@@ -92,6 +92,9 @@ func (s *State) Reset() {
 }
 
 func (s *State) UpdateSuggestions(input string) {
+	// A trailing space is meaningful to a command: "/group " asks for its
+	// arguments, "/group" for commands named like it.
+	command := strings.TrimLeft(input, " \t\n")
 	input = strings.TrimSpace(input)
 
 	if atIdx := strings.LastIndex(input, "@"); atIdx >= 0 {
@@ -109,7 +112,7 @@ func (s *State) UpdateSuggestions(input string) {
 
 	if strings.HasPrefix(input, "/") {
 		s.suggestionType = typeCommand
-		s.suggestions = s.cmdMatcher(input)
+		s.suggestions = s.cmdMatcher(command)
 		s.fileSuggestions = nil
 		s.visible = len(s.suggestions) > 0
 		s.atQuery = ""

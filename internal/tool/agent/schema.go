@@ -110,25 +110,24 @@ Only use the exact task_id returned when that agent was started. This tool canno
 func (t *SendMessageTool) Schema() core.ToolSchema {
 	return core.ToolSchema{
 		Name: "SendMessage",
-		Description: `Send a message to another agent, routed by the broker. The message lands in the recipient's inbox and is read at its next step (a running subagent) or turn boundary (the main conversation).
-
-Recipients (to):
-- a running subagent's task id — steer or add information to a subagent that is still working.
-- "main" — from inside a subagent, send an interim note to the main conversation without ending your run.
-
-Notes:
-- Delivery is best-effort: a subagent that has finished (or never takes another step) will not see the message. A subagent's final result comes back on its own when it completes — do not use SendMessage for it.
-- The recipient sees the message as a user turn — make it self-contained.`,
+		Description: `Send a message to another session in your group, by its member name. The
+<group> reminder lists the members.
+- The recipient reads it as a message from you, not from its user: make it
+  self-contained.
+- The result says when it will be read: now (active), at its user's next
+  input (passive), or when its session resumes (offline).
+- When you were asked for something, report back when it is done or can't
+  be done. Don't send bare acknowledgements.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"to": map[string]any{
 					"type":        "string",
-					"description": "Recipient address: a running subagent's task id, or \"main\".",
+					"description": "A member's name, without \"@\", e.g. \"api\".",
 				},
 				"message": map[string]any{
 					"type":        "string",
-					"description": "The message to deliver. Self-contained — the recipient reads it as a user turn.",
+					"description": "The message body.",
 				},
 			},
 			"required": []string{"to", "message"},

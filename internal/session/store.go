@@ -216,6 +216,7 @@ func (s *Store) Save(sess *Snapshot) error {
 		Tag:        sess.Metadata.Tag,
 		Mode:       sess.Metadata.Mode,
 		AutoPilot:  sess.Metadata.AutoPilot,
+		Group:      sess.Metadata.Group,
 		Tasks:      trackerItemViewsFromItems(sess.Tasks),
 	}
 	if s.lastEmittedState == nil {

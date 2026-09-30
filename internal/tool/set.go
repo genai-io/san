@@ -28,6 +28,8 @@ var parentOnlyTools = map[string]bool{
 	ToolTaskUpdate: true,
 	ToolTaskGet:    true,
 	ToolCron:       true,
+	// Group is this session's membership, which only the main conversation holds.
+	ToolGroup: true,
 }
 
 // IsParentOnlyTool reports whether the tool is reserved for the main

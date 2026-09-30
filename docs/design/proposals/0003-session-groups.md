@@ -2,10 +2,11 @@
 
 ## Status
 
-Draft — 2026-09-29. An early prototype lives on the unmerged `feat/group`
-branch and was verified end to end in tmux: two sessions messaging each other,
-automatic naming, completion, and auto-leave when a group is disbanded. This
-page is the design after review; how it differs from the prototype is at the end.
+Implemented — 2026-09-30. This PR carries the design and its implementation,
+verified end to end in tmux with three sessions: joining by slash command and
+in plain language, active members answering on their own, passive messages
+arriving with the next input, an exit going offline and queueing, `san -c`
+coming back online, `kick` and `disband`.
 
 ## One example throughout
 
@@ -207,7 +208,7 @@ parameters:
   mode:   "active" | "passive" — for join or mode
 ```
 
-`join`, `leave` and `mode` go through the permission prompt; `status` is read-only and needs none.
+Every call goes through the permission prompt, `status` included: permission is decided per tool, not per argument.
 
 ### Group results
 
@@ -483,7 +484,7 @@ flowchart TB
 
 ## Tools: Group and SendMessage
 
-- **`Group`** is always present and manages this session's membership: `join` / `leave` / `mode` / `status`, the same as the slash commands. Called only on the user's request, never a member's; state changes need confirmation.
+- **`Group`** is always present and manages this session's membership: `join` / `leave` / `mode` / `status`, the same as the slash commands. Called only on the user's request, never a member's; every call needs confirmation.
 - **`kick` and `disband` are not in the tool**: they act on other sessions, and a single member message could talk the model into them, so only the user runs them, as slash commands.
 - While in a group, the **main agent** has SendMessage turned on; it goes back off on leaving (it is off by default).
 - `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: …`. The definition and every result are under "Everything the model sees".
@@ -497,7 +498,7 @@ flowchart TB
 - A peer message is marked as another session's, not the person's: it never
   approves a permission, never justifies changing settings or AGENTS.md, and a
   slash command in it is plain text; the receiver's permission checks apply.
-- **`Group` acts only on this session**, only when the user asks, with confirmation for state changes; `kick` and `disband`, which affect others, are not offered to the model.
+- **`Group` acts only on this session**, only when the user asks, with confirmation every time; `kick` and `disband`, which affect others, are not offered to the model.
 - **Active plus YOLO**: YOLO confirms nothing, so a peer's request simply runs. A
   session injected by malicious content could use a group message to steer such
   a member. Anyone turning on both should know this.
@@ -509,29 +510,17 @@ flowchart TB
 
 ## Where it lives
 
-| File | Responsibility |
+| Where | Responsibility |
 |---|---|
-| `internal/group` | On-disk layout: member files, inboxes, `pid` + start-time check; Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member` (new) | Source 4: polls the inbox and group directory, roster snapshot and diff, `memberMsg`, inject or leave in the inbox per mode, `<group-message>`, `Unattended-Turns` |
-| `internal/app/group.go` | `/group`, automatic naming, finalizers, completion |
-| Session record (`internal/session`) | Stores the group so a resume comes back online |
-| `internal/tool/group` (new) | The `Group` tool: validates arguments, calls `internal/group`, words the result |
+| `internal/group` | On-disk layout: member files, inboxes, online check; Join / Reclaim / Release / Leave / Kick / Disband / SetMode / Send / Inbox; the roster and `/group` text |
+| `internal/proc` (`StartTime`) | Process start time per platform, so a reused pid is not mistaken for a member |
+| `internal/app/group.go` | `/group`, automatic naming, Source 4 (the one-second poll, `memberMsg`, roster diff, inject or leave in the inbox per mode, `Unattended-Turns`), session record and finalizer, completion |
+| `internal/tool/group` | The `Group` tool (main agent only) |
 | `internal/tool/agent/sendmessage.go` | Member addresses (main agent only); result reflects the recipient |
+| Session record (`internal/session`) | Stores the membership (`Group` field); hides a `<group-message>` attached to an input on resume |
 
-## Prototype vs. this design
+## Existing bugs fixed alongside
 
-| Prototype (`feat/group`) | This design |
-|---|---|
-| Random-id names; messages `<timestamp>-<random>` | Member names, created exclusively; messages `<timestamp>-<sender>` |
-| 10s heartbeat, reaped after 60s | No heartbeat; online from `pid` + start time; no automatic removal, `kick` instead |
-| A message is deleted as soon as it is read | Deleted only once it is in the conversation |
-| Process exit leaves | Process exit goes offline; resume comes back |
-| Active behaviour only; at most 5 turns without the person | Active / passive; no cap, `Unattended-Turns` |
-| Full roster on every change | Deltas only; renames and online status recognised; shown on screen |
-| `attach` / `detach` / `delete`; subagents may message members | `join` / `leave` / `mode` / `kick` / `disband`; main agent only |
-| Slash commands only | Also a `Group` tool: join, leave and switch mode in plain language |
-
-Two existing bugs the prototype fixed, kept when landing:
 - **A rebuild stopped the new agent**: the replaced agent's stop event arrived late and stopped its replacement. Toggling a tool in `/tool` could hit it too.
 - **SendMessage rendered as a subagent spawn**: it now reads `● To @x: …`.
 

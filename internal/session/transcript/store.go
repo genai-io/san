@@ -122,6 +122,7 @@ func PatchLastPrompt(prompt string) PatchOp { return mustPatch(PatchPathLastProm
 func PatchTag(tag string) PatchOp           { return mustPatch(PatchPathTag, tag) }
 func PatchMode(mode string) PatchOp         { return mustPatch(PatchPathMode, mode) }
 func PatchAutoPilot(v string) PatchOp       { return mustPatch(PatchPathAutoPilot, v) }
+func PatchGroup(v string) PatchOp           { return mustPatch(PatchPathGroup, v) }
 func PatchTasks(tasks []TrackerItemView) PatchOp {
 	return mustPatch(PatchPathTasks, tasks)
 }
@@ -147,6 +148,9 @@ func StateOpsDiff(prev, next State) []PatchOp {
 	}
 	if prev.AutoPilot != next.AutoPilot {
 		ops = append(ops, PatchAutoPilot(next.AutoPilot))
+	}
+	if prev.Group != next.Group {
+		ops = append(ops, PatchGroup(next.Group))
 	}
 	if !tasksEqual(prev.Tasks, next.Tasks) {
 		ops = append(ops, PatchTasks(next.Tasks))
