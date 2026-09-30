@@ -320,7 +320,7 @@ Queued for @web (offline); they see it when the session resumes.
 ## 成员消息是 San 的第四个输入来源
 
 ```mermaid
-flowchart LR
+flowchart TB
     S1["Source 1<br/>用户键盘输入"] --> U
     S2["Source 2<br/>子 agent 汇报（mainNotices）"] --> U
     S3["Source 3<br/>cron、hook、文件监听"] --> U

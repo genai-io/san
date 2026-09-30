@@ -336,7 +336,7 @@ turn and offering nothing to answer; passive members are never woken by peers.
 ## Member messages are San's fourth input source
 
 ```mermaid
-flowchart LR
+flowchart TB
     S1["Source 1<br/>the person's keyboard"] --> U
     S2["Source 2<br/>subagent reports (mainNotices)"] --> U
     S3["Source 3<br/>cron, hooks, file watcher"] --> U
