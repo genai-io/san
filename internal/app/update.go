@@ -97,9 +97,10 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 
 type initialPromptMsg string
 
-// Update wraps the dispatch below so one thing is observed across every branch
-// of it: an overlay closing, which is what restarts a held scrollback print —
-// whichever of the sixteen panels it was, and however it was dismissed.
+// Update wraps the dispatch below so two things are observed across every
+// branch of it: an overlay closing, which is what restarts a held scrollback
+// print — whichever of the sixteen panels it was, and however it was
+// dismissed — and a group joined, however, which starts the group loop.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)
@@ -107,6 +108,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
 			cmd = tea.Batch(cmd, resume)
 		}
+	}
+	if poll := m.startGroupPolling(); poll != nil {
+		cmd = tea.Batch(cmd, poll)
 	}
 	return model, cmd
 }

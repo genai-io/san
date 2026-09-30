@@ -372,11 +372,14 @@ flowchart TB
     T -->|"changed, or 30s since the last full read"| D["read every member file"]
     P["every second: each member's pid and process start time"] --> S
     D --> S["compare contents with the snapshot"]
-    S -->|something changed| R["change reminders<br/>joined · left · offline · online · is now …"]
+    S -->|joined · left · renamed| R["change reminders"]
+    S -->|offline · online · mode| U["screen only"]
     R --> M["model context"]
     F["full roster<br/>join, resume, /clear, compaction"] --> M
 ```
 
+- The loop runs only while the session is in a group: it starts on joining (`/group join`, the Group tool, a resume) and ends with the tick that finds the session out of it. A session in no group does no group work at all.
+- Per second in a group: two stats of the group directory, a read of the session's own member file, a listing of its inbox, and one process check per member (a syscall, not disk). All small metadata that stays in the page cache.
 - Joining, leaving, a new role or mode are all a temp-file write plus rename, which changes the directory's mtime; an unchanged directory means no file is read.
 - Some filesystems keep mtime to the second, so a second change within the same second can be missed; every 30 seconds the files are read regardless.
 - The same session ID under a new name is a rename.

@@ -153,3 +153,32 @@ func TestMemberColorsGoInOrderOfArrivalAndStay(t *testing.T) {
 		t.Errorf("colors = %v, want %v (self skipped, earlier members keep theirs)", m.grp.colors, want)
 	}
 }
+
+// The loop runs only in a group: none outside one, one per membership, and it
+// ends with the tick that finds the session gone from its group.
+func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := &model{services: services{Session: &session.Setup{}}}
+	if m.startGroupPolling() != nil {
+		t.Fatal("a loop started outside any group")
+	}
+	group.BindSession("s-self")
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	if m.startGroupPolling() == nil || m.startGroupPolling() != nil {
+		t.Fatal("want exactly one loop once in a group")
+	}
+	_ = group.Leave()
+	if next := m.handleMemberMsg(memberMsg{status: group.NotJoined}); m.grp.polling || next != nil {
+		t.Error("the loop outlived the membership")
+	}
+	group.BindSession("s-self")
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = group.Leave() })
+	if m.startGroupPolling() == nil {
+		t.Error("rejoining did not start the loop again")
+	}
+}

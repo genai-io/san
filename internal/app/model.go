@@ -183,7 +183,6 @@ func (m *model) Init() tea.Cmd {
 		trigger.StartCronTicker(),
 		trigger.StartAsyncHookTicker(),
 		awaitMainNotice(m.mainNotices),
-		m.nextGroupTick(),
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),

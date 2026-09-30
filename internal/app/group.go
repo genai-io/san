@@ -46,6 +46,11 @@ type groupState struct {
 	unattended int                    // turns member messages started since the person last typed
 	userTyped  bool                   // the person's input is on its way: attach waiting messages
 	colors     map[string]int         // member name → palette slot, in order of arrival, never reassigned
+	// polling: the one-second loop is scheduled. It is cleared only by a tick
+	// that finds the session out of its group and schedules no next, so no
+	// tick is ever in flight while it is false, and there is never two loops.
+	// It outlives the resets above: it is the loop, not the membership.
+	polling bool
 }
 
 type rosterEntry struct {
@@ -99,6 +104,20 @@ func (m *model) nextGroupTick() tea.Cmd {
 	return groupTick(m.grp.stamp, m.grp.fullRead, known)
 }
 
+// startGroupPolling starts the loop once this session is in a group, however
+// it got there: /group join, the Group tool, or a resume. Update calls it
+// after every message; outside a group it costs one lock and does nothing.
+func (m *model) startGroupPolling() tea.Cmd {
+	if m.grp.polling {
+		return nil
+	}
+	if g, _ := group.Current(); g == "" {
+		return nil
+	}
+	m.grp.polling = true
+	return m.nextGroupTick()
+}
+
 func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 	group.BindSession(m.services.Session.ID())
 	var cmds []tea.Cmd
@@ -131,6 +150,10 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 		}
 	default:
 		m.reconcileMembership()
+	}
+	if g, _ := group.Current(); g == "" {
+		m.grp.polling = false // out of the group: the loop ends here
+		return tea.Batch(cmds...)
 	}
 	return tea.Batch(append(cmds, m.nextGroupTick())...)
 }
@@ -329,7 +352,7 @@ func (m *model) reconcileMembership() {
 	}
 	g, _ := group.Current()
 	if blob == "" {
-		m.grp = groupState{}
+		m.grp = groupState{polling: m.grp.polling}
 	} else if g != m.grp.name { // joined, or a different group: start the roster afresh
 		m.grp.roster, m.grp.announced = nil, nil
 	}
@@ -352,7 +375,7 @@ func (m *model) exitGroup() {
 // rejoinGroup reclaims the membership a resumed session recorded.
 func (m *model) rejoinGroup(blob string) {
 	group.Release() // the session this process ran before goes offline
-	m.grp = groupState{}
+	m.grp = groupState{polling: m.grp.polling}
 	group.BindSession(m.services.Session.ID())
 	var ms membership
 	if blob != "" && json.Unmarshal([]byte(blob), &ms) == nil && ms.Group != "" {
