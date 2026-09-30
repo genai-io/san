@@ -68,25 +68,23 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	// A member of this session's group lives in another process: its inbox is
 	// a directory, not a broker route.
-	if g, _ := group.Current(); g != "" && to != broker.Main {
-		if _, isTask := task.Default().Get(to); !isTask {
-			if tool.AgentIDFromContext(ctx) != "" {
-				return toolresult.NewErrorResult(t.Name(), "only the main conversation can message group members; report to it instead")
-			}
-			member, err := group.Send(to, message)
-			if err != nil {
-				return toolresult.NewErrorResult(t.Name(), err.Error())
-			}
-			return toolresult.ToolResult{
-				Success: true,
-				Output:  sentTo(member),
-				Metadata: toolresult.ResultMetadata{
-					Title:    t.Name(),
-					Icon:     t.Icon(),
-					Subtitle: "→ @" + to,
-					Duration: time.Since(start),
-				},
-			}
+	if _, ok := groupMember(to); ok {
+		if tool.AgentIDFromContext(ctx) != "" {
+			return toolresult.NewErrorResult(t.Name(), "only the main conversation can message group members; report to it instead")
+		}
+		member, err := group.Send(to, message)
+		if err != nil {
+			return toolresult.NewErrorResult(t.Name(), err.Error())
+		}
+		return toolresult.ToolResult{
+			Success: true,
+			Output:  sentTo(member),
+			Metadata: toolresult.ResultMetadata{
+				Title:    t.Name(),
+				Icon:     t.Icon(),
+				Subtitle: "→ @" + to,
+				Duration: time.Since(start),
+			},
 		}
 	}
 
@@ -137,12 +135,21 @@ func recipientLabel(id string) string {
 	if id == broker.Main {
 		return "the main conversation"
 	}
-	if g, _ := group.Current(); g != "" {
-		if _, isTask := task.Default().Get(id); !isTask {
-			return "@" + id + " in group " + g
-		}
+	if g, ok := groupMember(id); ok {
+		return "@" + id + " in group " + g
 	}
 	return "running " + senderLabel(id)
+}
+
+// groupMember reports whether to names a member of this session's group
+// rather than "main" or a task, and which group.
+func groupMember(to string) (string, bool) {
+	g, _ := group.Current()
+	if g == "" || to == broker.Main {
+		return "", false
+	}
+	_, isTask := task.Default().Get(to)
+	return g, !isTask
 }
 
 // senderLabel names an agent id for a human-facing notice.

@@ -1,7 +1,9 @@
 package group
 
 import (
+	"cmp"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -112,6 +114,13 @@ func NameFrom(s string) string {
 		return ""
 	}
 	return s
+}
+
+// Fallback is the name and role a member gets when nothing better is known:
+// from hint (a session name or the name asked for), else the directory.
+func Fallback(hint, cwd string) (name, role string) {
+	dir := filepath.Base(cwd)
+	return cmp.Or(NameFrom(hint), NameFrom(dir), "session"), "working in " + dir
 }
 
 // FreeName returns name, or name-2, name-3… when group g already uses it.

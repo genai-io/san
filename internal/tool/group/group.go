@@ -8,7 +8,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/genai-io/san/internal/core"
 	members "github.com/genai-io/san/internal/group"
@@ -81,10 +80,10 @@ func run(params map[string]any, cwd string) (string, error) {
 	switch tool.GetString(params, "action") {
 	case "join":
 		g := cmp.Or(tool.GetString(params, "group"), members.DefaultName)
-		name := cmp.Or(members.NameFrom(tool.GetString(params, "as")), members.NameFrom(filepath.Base(cwd)), "session")
+		name, role := members.Fallback(tool.GetString(params, "as"), cwd)
 		self, err := members.Join(g, members.Member{
 			Name: members.FreeName(g, name),
-			Role: cmp.Or(tool.GetString(params, "role"), "working in "+filepath.Base(cwd)),
+			Role: cmp.Or(tool.GetString(params, "role"), role),
 			Mode: members.Mode(tool.GetString(params, "mode")),
 			Cwd:  cwd,
 		})
@@ -97,7 +96,7 @@ func run(params map[string]any, cwd string) (string, error) {
 		if err := members.Leave(); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Left group %s; SendMessage is no longer available.", g), nil
+		return "Left group " + g + members.NoSendMessage, nil
 	case "mode":
 		mode, err := members.ParseMode(tool.GetString(params, "mode"))
 		if err != nil {

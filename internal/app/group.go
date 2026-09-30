@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -51,13 +50,12 @@ type rosterEntry struct {
 }
 
 // memberMsg is one Source 4 poll: how the membership stands, the roster when
-// it was re-read, who is online, and the waiting messages.
+// with who is online, and the waiting messages.
 type memberMsg struct {
 	status   group.Status
-	members  []group.Member // nil when the directory had not changed
+	roster   map[string]rosterEntry // by session ID
 	stamp    time.Time
 	fullRead time.Time
-	online   map[string]bool // session ID → online
 	inbox    []group.Message
 }
 
@@ -78,12 +76,11 @@ func groupTick(stamp, fullRead time.Time, known []group.Member) tea.Cmd {
 		}
 		g, _ := group.Current()
 		if s, ok := group.Stamp(g); ok && (!s.Equal(stamp) || time.Since(fullRead) >= 30*time.Second) {
-			msg.members, msg.stamp, msg.fullRead = group.Members(g), s, time.Now()
-			known = msg.members
+			known, msg.stamp, msg.fullRead = group.Members(g), s, time.Now()
 		}
-		msg.online = make(map[string]bool, len(known))
-		for _, m := range known {
-			msg.online[m.SessionID] = m.Online()
+		msg.roster = make(map[string]rosterEntry, len(known))
+		for _, mem := range known {
+			msg.roster[mem.SessionID] = rosterEntry{Member: mem, online: mem.Online()}
 		}
 		msg.inbox = group.Inbox()
 		return msg
@@ -107,18 +104,19 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 		name := m.grp.name
 		group.Forget()
 		m.reconcileMembership()
-		line, text := "You were removed from group "+name, "You were removed from group "+name+"; SendMessage is no longer available."
+		line := "You were removed from group " + name
 		if msg.status == group.Disbanded {
-			line, text = "Group "+name+" was disbanded", "Group "+name+" was disbanded; SendMessage is no longer available."
+			line = "Group " + name + " was disbanded"
 		}
-		cmds = append(cmds, m.deliverGroupReminder(line, text))
+		cmds = append(cmds, m.deliverGroupReminder(line, line+group.NoSendMessage))
 	case group.Joined:
 		if self.SessionID != m.services.Session.ID() {
 			// Another session took over this process (/fork): the membership
 			// stays with the session that joined.
 			group.Release()
 			m.reconcileMembership()
-			cmds = append(cmds, m.deliverGroupReminder("This session is not in group "+g, "This session is not in group "+g+"; SendMessage is no longer available."))
+			line := "This session is not in group " + g
+			cmds = append(cmds, m.deliverGroupReminder(line, line+group.NoSendMessage))
 			break
 		}
 		m.reconcileMembership()
@@ -137,20 +135,7 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 // mode or was renamed since the last poll: a line for the person and the change
 // for the model. It never starts a turn.
 func (m *model) syncRoster(g string, self group.Member, msg memberMsg) []tea.Cmd {
-	next := map[string]rosterEntry{}
-	if msg.members != nil {
-		for _, mem := range msg.members {
-			next[mem.SessionID] = rosterEntry{Member: mem}
-		}
-	} else {
-		for id, e := range m.grp.roster {
-			next[id] = e
-		}
-	}
-	for id, e := range next {
-		e.online = msg.online[id]
-		next[id] = e
-	}
+	next := msg.roster
 	prev := m.grp.roster
 	m.grp.roster = next
 	if prev == nil {
@@ -323,17 +308,13 @@ func (m *model) rejoinGroup(blob string) {
 	m.grp = groupState{}
 	group.BindSession(m.services.Session.ID())
 	var ms membership
-	if blob == "" || json.Unmarshal([]byte(blob), &ms) != nil || ms.Group == "" {
-		m.reconcileMembership()
-		return
+	if blob != "" && json.Unmarshal([]byte(blob), &ms) == nil && ms.Group != "" {
+		if self, err := group.Reclaim(ms.Group, ms.Name); err != nil {
+			m.conv.AddNotice(fmt.Sprintf("Not rejoining group %s: %v", ms.Group, err))
+		} else {
+			m.conv.AddNotice(fmt.Sprintf("Back in group %s as @%s (%s)", ms.Group, self.Name, self.Mode))
+		}
 	}
-	self, err := group.Reclaim(ms.Group, ms.Name)
-	if err != nil {
-		m.conv.AddNotice(fmt.Sprintf("Not rejoining group %s: %v", ms.Group, err))
-		m.reconcileMembership()
-		return
-	}
-	m.conv.AddNotice(fmt.Sprintf("Back in group %s as @%s (%s)", ms.Group, self.Name, self.Mode))
 	m.reconcileMembership()
 }
 
@@ -354,7 +335,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 			return err.Error(), nil
 		}
 		m.reconcileMembership()
-		m.services.Reminder.Enqueue("You left group " + g + "; SendMessage is no longer available.")
+		m.services.Reminder.Enqueue("You left group " + g + group.NoSendMessage)
 		return "Left group " + g + ".", nil
 	case "mode":
 		mode, err := group.ParseMode(rest)
@@ -390,7 +371,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 		}
 		if mine == rest {
 			m.reconcileMembership()
-			m.services.Reminder.Enqueue("Group " + rest + " was disbanded; SendMessage is no longer available.")
+			m.services.Reminder.Enqueue("Group " + rest + " was disbanded" + group.NoSendMessage)
 		}
 		return "Disbanded group " + rest + "; its members leave.", nil
 	}
@@ -471,15 +452,12 @@ role: <one sentence: what this session is doing and what it owns>`
 // describeSession summarizes the conversation into a member name and role,
 // falling back to the session name or directory when there is nothing to go on.
 func describeSession(ctx context.Context, provider llm.Provider, model string, msgs []core.Message, cwd, session string) (name, role string) {
-	name = cmp.Or(group.NameFrom(session), group.NameFrom(filepath.Base(cwd)), "session")
-	role = "working in " + filepath.Base(cwd)
+	name, role = group.Fallback(session, cwd)
 	if provider == nil || len(msgs) == 0 {
 		return name, role
 	}
 	text := core.BuildCompactionText(msgs)
-	if len(text) > 12000 {
-		text = text[len(text)-12000:]
-	}
+	text = kit.TruncateKeepEnd(text, 12000)
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        model,
 		SystemPrompt: describeSessionPrompt,
@@ -555,7 +533,11 @@ func groupSuggestions(args string) []suggest.Suggestion {
 		members := group.Members(g)
 		for _, mem := range members {
 			if mem.SessionID != self.SessionID {
-				add(mem.Name, map[bool]string{true: "online", false: "offline"}[mem.Online()]+" · "+mem.Role)
+				state := "offline"
+				if mem.Online() {
+					state = "online"
+				}
+				add(mem.Name, state+" · "+mem.Role)
 			}
 		}
 	}
