@@ -134,13 +134,13 @@ sequenceDiagram
     WA->>FS: after the checkout change, SendMessage(to: api)<br/>writes api.inbox/…-web.json
 ```
 
-`@web`'s screen:
+`@web`'s screen (incoming `◆`, outgoing `●`; `From @x` and `To @x` in different colours):
 
 ```
-✉ From @api: Orders API now accepts coupon_code (string, optional)…
+◆ From @api: Orders API now accepts coupon_code (string, optional)…
 ● Read(src/pages/Checkout.tsx)
 ● Edit(src/pages/Checkout.tsx)
-● ✉ To @api: Checkout now sends coupon_code; tested against staging.
+● To @api: Checkout now sends coupon_code; tested against staging.
 ```
 
 ### To a passive member
@@ -221,22 +221,26 @@ A roster change sends only the change:
 
 ## Keeping the roster
 
-The San process keeps it; the model maintains nothing and only reads reminders.
+The San process keeps it; the model only reads reminders. **Joining or
+leaving writes to no one's inbox**: each member writes only its own `.json`,
+and every session notices changes by itself.
 
 ```mermaid
 flowchart TB
-    D["disk: ~/.san/groups/shop/*.json<br/>the source of truth"] -->|read every second| S["process memory: roster snapshot<br/>sessionID → name, role, mode, online"]
-    S -->|diff by contents| R["change reminders<br/>joined · left · offline · online · is now …"]
-    S -->|join, resume, /clear, compaction| F["full roster"]
+    T["every second: check the group directory's mtime"] -->|unchanged: read nothing| T
+    T -->|changed| D["read every member file"]
+    P["every second: is each member's pid alive"] --> S
+    D --> S["compare contents with the snapshot"]
+    S -->|something changed| R["change reminders<br/>joined · left · offline · online · is now …"]
     R --> M["model context"]
-    F --> M
+    F["full roster<br/>join, resume, /clear, compaction"] --> M
 ```
 
-- Compared by **contents** (name, role, mode, online), not file times.
-- The same session ID with a new name is a rename, not one member leaving and another joining.
-- Online means the process at the member file's `pid` is alive — **no heartbeat**.
+- Joining, leaving, a new role or mode are all a temp-file write plus rename, which changes the directory's mtime; an unchanged directory means no file is read.
+- The same session ID under a new name is a rename.
+- Online means the `pid`'s process is alive; no heartbeat.
 - Own member file gone (`kick`ed) or group directory gone (`disband`ed) → leave and say so.
-- SendMessage checks the disk when it sends; an unknown name lists the members:
+- SendMessage checks the disk; an unknown name lists the members:
   ```
   no member named "front" in group shop; members: api, web, migrate
   ```
@@ -322,7 +326,7 @@ An exchange that drifts and the agent reins in (Li is away):
 What Li finds on `@web` when back:
 
 ```
-✉ From @api: Confirm the frontend won't convert? · 4th since you last typed
+◆ From @api: Confirm the frontend won't convert? · 4th since you last typed
 ● Went 4 rounds with @api on coupon case. Settled: backend upper-cases, frontend does nothing. Tell me if you disagree.
 ```
 
@@ -333,24 +337,24 @@ turn and offering nothing to answer; passive members are never woken by peers.
 
 ```mermaid
 flowchart LR
-    S1["Source 1<br/>the person's keyboard"] --> A
-    S2["Source 2<br/>subagent completions, reports, self-learn"] --> D
-    S3["Source 3<br/>cron, hooks, file watcher"] --> A
-    S4["Source 4 (new)<br/>member messages, roster changes<br/>internal/app/member"] -->|per mode: wake or queue| D
-    D["shared delivery seam<br/>idle → start a turn<br/>running → between tool calls<br/>streaming → hold"] --> A["main agent"]
+    S1["Source 1<br/>the person's keyboard"] --> U
+    S2["Source 2<br/>subagent reports (mainNotices)"] --> U
+    S3["Source 3<br/>cron, hooks, file watcher"] --> U
+    S4["Source 4 (new)<br/>member messages, roster changes<br/>memberMsg"] --> U
+    U["main loop Update"] -->|"Source 1–3: existing paths"| A["main agent"]
+    U -->|"Source 4 · active message"| I["injection functions<br/>idle → start a turn<br/>running → between tool calls"] --> A
+    U -->|"Source 4 · passive message, roster change"| Q["reminder queue"] -->|with the next message| A
 ```
 
-Source 4 has rules of its own — mode decides waking, the sender is another
-session rather than the person, `Unattended-Turns` is counted, roster events
-come with it, messages queue while offline — so it is a source of its own. It
-shares only the delivery timing with Source 2; that part moves out of
-`notify.go` into a seam both call. The broker is not involved; it still routes
-only between the main conversation and its subagents, in-process.
+- Source 4's rules differ from subagent reports: the mode decides waking, the sender is not the person, `Unattended-Turns` is counted, roster changes come with it, messages queue while offline.
+- So, like Source 3, its poller sends its own message type, `memberMsg`, into the main loop — **not through `mainNotices`; Source 2 is untouched**.
+- An active message calls the existing injection functions; a passive message or roster change goes to the reminder queue.
+- The broker is not involved.
 
 ## SendMessage
 
 - While in a group, the **main agent** has SendMessage turned on; it goes back off on leaving (it is off by default).
-- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `✉ To @web: …`.
+- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: …`.
 - **Subagents cannot message members.** Member addresses are open to the main
   agent only; a subagent that needs to reach one reports to the main agent,
   which decides whether to pass it on.
@@ -371,9 +375,8 @@ only between the main conversation and its subagents, in-process.
 | File | Responsibility |
 |---|---|
 | `internal/group` | On-disk layout: member files, inboxes, `pid` check; Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member` (new) | Source 4: poll, roster snapshot and diff, wake or queue per mode, `<group-message>`, `Unattended-Turns` |
+| `internal/app/member` (new) | Source 4: polls the inbox and group directory, roster snapshot and diff, `memberMsg`, inject or queue per mode, `<group-message>`, `Unattended-Turns` |
 | `internal/app/group.go` | `/group`, automatic naming, finalizers, completion |
-| Shared delivery seam (from `internal/app/notify.go`) | Delivery timing for Source 2 and Source 4 |
 | Session record (`internal/session`) | Stores the group so a resume comes back online |
 | `internal/tool/agent/sendmessage.go` | Member addresses (main agent only); result reflects the recipient |
 
@@ -390,7 +393,7 @@ only between the main conversation and its subagents, in-process.
 
 Two existing bugs the prototype fixed, kept when landing:
 - **A rebuild stopped the new agent**: the replaced agent's stop event arrived late and stopped its replacement. Toggling a tool in `/tool` could hit it too.
-- **SendMessage rendered as a subagent spawn**: it now reads `✉ To @x: …`.
+- **SendMessage rendered as a subagent spawn**: it now reads `● To @x: …`.
 
 ## Later
 

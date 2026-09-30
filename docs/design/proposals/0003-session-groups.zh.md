@@ -127,13 +127,13 @@ sequenceDiagram
     WA->>FS: 改完结算页后 SendMessage(to: api)<br/>写入 api.inbox/…-web.json
 ```
 
-`@web` 那边的界面：
+`@web` 那边的界面（收到的用 `◆`，发出的用 `●`；`From @x` 和 `To @x` 用不同颜色）：
 
 ```
-✉ From @api: Orders API now accepts coupon_code (string, optional)…
+◆ From @api: Orders API now accepts coupon_code (string, optional)…
 ● Read(src/pages/Checkout.tsx)
 ● Edit(src/pages/Checkout.tsx)
-● ✉ To @api: Checkout now sends coupon_code; tested against staging.
+● To @api: Checkout now sends coupon_code; tested against staging.
 ```
 
 ### 发给 passive 成员
@@ -214,22 +214,24 @@ expired. Deployed to staging.
 
 ## 成员列表怎么维护
 
-由 San 进程维护，模型不需要维护任何东西，只需要读到 reminder。
+由 San 进程维护，模型只读 reminder。**进出组不往任何 inbox 写消息**：每个成员只写自己的 `.json`，其他会话自己发现变化。
 
 ```mermaid
 flowchart TB
-    D["磁盘：~/.san/groups/shop/*.json<br/>唯一的事实来源"] -->|每秒读取| S["进程内存：成员快照<br/>sessionID → 名字、职责、模式、在线"]
-    S -->|按内容对比出差异| R["变化 reminder<br/>joined · left · offline · online · is now …"]
-    S -->|加入、恢复、/clear、压缩后| F["完整成员列表"]
+    T["每秒：检查组目录的修改时间"] -->|没变：不读文件| T
+    T -->|变了| D["读取所有成员文件"]
+    P["每秒：检查各成员 pid 是否存活"] --> S
+    D --> S["按内容与内存快照对比"]
+    S -->|有变化| R["变化 reminder<br/>joined · left · offline · online · is now …"]
     R --> M["模型上下文"]
-    F --> M
+    F["完整成员列表<br/>加入、恢复、/clear、压缩后"] --> M
 ```
 
-- 按**内容**对比（名字、职责、模式、在线），不看文件修改时间。
-- 同一个 sessionID 名字变了，就是改名，而不是一个人离开、另一个人加入。
-- 在线状态看成员文件里的 `pid` 对应的进程还在不在，**没有心跳**。
-- 自己的成员文件没了（被 `kick`），或 group 目录没了（被 `disband`）→ 离开并提示。
-- `SendMessage` 发送时以磁盘为准；名字不存在时报错并列出当前成员：
+- 加入、离开、改职责、改模式都是“写临时文件再 rename”，会改变组目录的修改时间；目录没变就不读文件。
+- 同一个 sessionID 换了名字，就是改名。
+- 在线看 `pid` 的进程是否存活，没有心跳。
+- 自己的成员文件没了（被 `kick`）或组目录没了（被 `disband`）→ 离开并提示。
+- `SendMessage` 以磁盘为准；名字不存在时报错并列出成员：
   ```
   no member named "front" in group shop; members: api, web, migrate
   ```
@@ -309,7 +311,7 @@ Queued for @web (offline); they see it when the session resumes.
 小李回来时，`@web` 的界面：
 
 ```
-✉ From @api: 确认前端不转？ · 4th since you last typed
+◆ From @api: 确认前端不转？ · 4th since you last typed
 ● 和 @api 就 coupon 大小写来回了 4 轮，结论是后端统一转大写、前端不处理；如有异议请告诉我。
 ```
 
@@ -319,19 +321,24 @@ Queued for @web (offline); they see it when the session resumes.
 
 ```mermaid
 flowchart LR
-    S1["Source 1<br/>用户键盘输入"] --> A
-    S2["Source 2<br/>子 agent 完成、汇报、selflearn"] --> D
-    S3["Source 3<br/>cron、hook、文件监听"] --> A
-    S4["Source 4（新）<br/>组员消息、成员变化<br/>internal/app/member"] -->|按模式：唤醒 或 入队| D
-    D["共用投递入口<br/>空闲 → 开启新的一轮<br/>工作中 → 工具调用之间插入<br/>流式输出中 → 暂存"] --> A["主 agent"]
+    S1["Source 1<br/>用户键盘输入"] --> U
+    S2["Source 2<br/>子 agent 汇报（mainNotices）"] --> U
+    S3["Source 3<br/>cron、hook、文件监听"] --> U
+    S4["Source 4（新）<br/>组员消息、成员变化<br/>memberMsg"] --> U
+    U["主循环 Update"] -->|"Source 1–3：原有路径"| A["主 agent"]
+    U -->|"Source 4 · active 消息"| I["注入函数<br/>空闲 → 开启新的一轮<br/>工作中 → 工具调用之间插入"] --> A
+    U -->|"Source 4 · passive 消息、成员变化"| Q["reminder 队列"] -->|随下一条消息| A
 ```
 
-Source 4 有自己的规则：唤醒由模式决定、来自另一个会话（不是用户）、计 `Unattended-Turns`、带成员变化事件、离线排队。所以它单独作为一个来源，只和 Source 2 共用底层的投递时机；那部分从 `notify.go` 提取出来，两边都调用。不经过 broker，broker 仍只负责进程内主会话与子 agent。
+- Source 4 的规则与子 agent 汇报不同：唤醒由模式决定、来源不是用户、计 `Unattended-Turns`、带成员变化、离线排队。
+- 所以它像 Source 3 一样，由轮询协程发出自己的消息类型 `memberMsg` 进入主循环，**不经过 `mainNotices`，Source 2 的代码不改**。
+- active 消息调用现有的注入函数；passive 消息和成员变化进 reminder 队列。
+- 不经过 broker。
 
 ## SendMessage
 
 - 在组里时，**主 agent** 自动打开 `SendMessage`，离开后关闭。它原本对主 agent 默认关闭。
-- `to` 写组员名字；消息正文包在 `<group-message>` 里；界面显示为 `✉ To @web: …`。
+- `to` 写组员名字；消息正文包在 `<group-message>` 里；界面显示为 `● To @web: …`。
 - **子 agent 不能给组员发消息**：组员地址只对主 agent 开放。子 agent 有需要时，把内容汇报给主 agent，由主 agent 决定要不要转告。
 - 原有的“主 agent 按任务 ID 给子 agent 发消息”“子 agent 发 `"main"` 汇报”两条路径保留，不再宣传。
 
@@ -346,9 +353,8 @@ Source 4 有自己的规则：唤醒由模式决定、来自另一个会话（�
 | 文件 | 职责 |
 |---|---|
 | `internal/group` | 磁盘结构：成员文件、inbox、`pid` 检查；Join / Leave / Kick / Disband / Send / Poll |
-| `internal/app/member`（新） | Source 4：轮询、成员快照与差异、按模式唤醒或入队、`<group-message>`、`Unattended-Turns` |
+| `internal/app/member`（新） | Source 4：轮询 inbox 和组目录、成员快照与差异、`memberMsg`、按模式注入或入队、`<group-message>`、`Unattended-Turns` |
 | `internal/app/group.go` | `/group` 命令、自动命名、finalizer、补全 |
-| 共用投递入口（从 `internal/app/notify.go` 提取） | 投递时机，Source 2 和 Source 4 共用 |
 | 会话记录（`internal/session`） | 保存 group 信息，恢复时自动上线 |
 | `internal/tool/agent/sendmessage.go` | 组员地址解析（仅主 agent），按对方状态返回结果 |
 
@@ -365,7 +371,7 @@ Source 4 有自己的规则：唤醒由模式决定、来自另一个会话（�
 
 原型中顺带修复、落地时保留的两个问题：
 - **中途重建 agent 时，新 agent 被停掉**：旧 agent 的“已停止”事件晚到，停掉了刚建好的新 agent。在 `/tool` 面板切换工具也会触发。
-- **`SendMessage` 被渲染成“启动子 agent”**：现在显示为 `✉ To @x: …`。
+- **`SendMessage` 被渲染成“启动子 agent”**：现在显示为 `● To @x: …`。
 
 ## 以后可以做
 
