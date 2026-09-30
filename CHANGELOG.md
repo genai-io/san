@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Changed
 - One message queue, the SDK agent's ([@yanmxa](https://github.com/yanmxa) in [#589](https://github.com/genai-io/san/pull/589))
 - Bump sdk-go to v0.7.7 ([@yanmxa](https://github.com/yanmxa) in [#593](https://github.com/genai-io/san/pull/593))
+- Bump sdk-go to v0.8.0 ([@yanmxa](https://github.com/yanmxa) in [#594](https://github.com/genai-io/san/pull/594))
 
 ### Fixed
 - A message sent right after Esc starts its turn ([@yanmxa](https://github.com/yanmxa) in [#592](https://github.com/genai-io/san/pull/592))
