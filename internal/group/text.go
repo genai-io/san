@@ -73,11 +73,7 @@ func Listing() string {
 	}
 	members := Members(g)
 	var b strings.Builder
-	noun := "members"
-	if len(members) == 1 {
-		noun = "member"
-	}
-	fmt.Fprintf(&b, "%s · %d %s", g, len(members), noun)
+	fmt.Fprintf(&b, "%s · %s", g, MemberCount(len(members)))
 	width := 0
 	for _, m := range members {
 		width = max(width, len(m.Name))
@@ -100,6 +96,14 @@ func Listing() string {
 		}
 	}
 	return b.String()
+}
+
+// MemberCount reads n as "1 member" or "n members".
+func MemberCount(n int) string {
+	if n == 1 {
+		return "1 member"
+	}
+	return fmt.Sprintf("%d members", n)
 }
 
 // GroupsListing lists every group with its size.

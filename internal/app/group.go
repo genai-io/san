@@ -77,7 +77,7 @@ type groupJoinMsg struct {
 // groupTick polls once a second, off the UI goroutine. Member files are read
 // only when the directory changed, or every 30 seconds in case an mtime kept to
 // the second missed a change.
-func groupTick(stamp, fullRead time.Time, known []group.Member) tea.Cmd {
+func groupTick(stamp, fullRead time.Time, known map[string]rosterEntry) tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg {
 		msg := memberMsg{status: group.Check(), stamp: stamp, fullRead: fullRead}
 		if msg.status != group.Joined {
@@ -85,24 +85,22 @@ func groupTick(stamp, fullRead time.Time, known []group.Member) tea.Cmd {
 		}
 		g, _ := group.Current()
 		if s, ok := group.Stamp(g); ok && (!s.Equal(stamp) || time.Since(fullRead) >= 30*time.Second) {
-			known, msg.stamp, msg.fullRead = group.Members(g), s, time.Now()
+			known, msg.stamp, msg.fullRead = map[string]rosterEntry{}, s, time.Now()
+			for _, mem := range group.Members(g) {
+				known[mem.SessionID] = rosterEntry{Member: mem}
+			}
 		}
-		msg.roster = make(map[string]rosterEntry, len(known))
-		for _, mem := range known {
-			msg.roster[mem.SessionID] = rosterEntry{Member: mem, online: mem.Online()}
+		msg.roster = make(map[string]rosterEntry, len(known)) // a new map: known is the UI's
+		for id, e := range known {
+			e.online = e.Online()
+			msg.roster[id] = e
 		}
 		msg.inbox = group.Inbox()
 		return msg
 	})
 }
 
-func (m *model) nextGroupTick() tea.Cmd {
-	known := make([]group.Member, 0, len(m.grp.roster))
-	for _, e := range m.grp.roster {
-		known = append(known, e.Member)
-	}
-	return groupTick(m.grp.stamp, m.grp.fullRead, known)
-}
+func (m *model) nextGroupTick() tea.Cmd { return groupTick(m.grp.stamp, m.grp.fullRead, m.grp.roster) }
 
 // startGroupPolling starts the loop once this session is in a group, however
 // it got there: /group join, the Group tool, or a resume. Update calls it
@@ -303,17 +301,14 @@ func (m *model) attachWaitingMessages(text string) string {
 // message when idle. The person gets the line either way.
 func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
 	line = m.fitLines(line)
-	if text == "" { // for the person only
-		if m.conv.Stream.Active {
-			return m.deliverNotice(mainNotice{Display: line})
-		}
-		m.conv.AddNotice(line)
-		return tea.Batch(m.CommitMessages()...)
-	}
 	if m.conv.Stream.Active {
-		return m.deliverNotice(mainNotice{Display: line, Content: reminder.Wrap(text)})
+		content := "" // "" text: for the person only
+		if text != "" {
+			content = reminder.Wrap(text)
+		}
+		return m.deliverNotice(mainNotice{Display: line, Content: content})
 	}
-	if m.systemRemindersSent {
+	if text != "" && m.systemRemindersSent {
 		// Before that, the first message carries the whole roster instead.
 		m.services.Reminder.Enqueue(text)
 	}
@@ -456,12 +451,9 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	if !group.ValidName(name) {
 		return fmt.Sprintf("Invalid group name %q: use letters, digits, - or _.", name), nil
 	}
-	if member != "" && role != "" {
-		return m.finishJoin(groupJoinMsg{group: name, name: member, role: role, mode: mode}), nil
-	}
 	msgs := m.conv.ConvertToProviderFrom(0)
 	provider, model, cwd, session := m.env.LLMProvider, m.env.GetModelID(), m.env.CWD, m.env.SessionName
-	if len(msgs) == 0 { // nothing to summarize yet
+	if (member != "" && role != "") || len(msgs) == 0 { // given, or nothing to summarize
 		gotName, gotRole := group.Fallback(session, cwd)
 		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), mode: mode}), nil
 	}
@@ -487,12 +479,7 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	n := len(group.Members(msg.group))
-	noun := "members"
-	if n == 1 {
-		noun = "member"
-	}
-	return m.fitLines(fmt.Sprintf("Joined %s as @%s (%s) · %d %s", msg.group, self.Name, self.Mode, n, noun))
+	return m.fitLines(fmt.Sprintf("Joined %s as @%s (%s) · %s", msg.group, self.Name, self.Mode, group.MemberCount(len(group.Members(msg.group)))))
 }
 
 // joinFlagSuggestions offers the join flags not yet given, once a group is named.
@@ -565,8 +552,7 @@ func describeSession(ctx context.Context, provider llm.Provider, model string, m
 	if provider == nil || len(msgs) == 0 {
 		return name, role
 	}
-	text := core.BuildCompactionText(msgs)
-	text = kit.TruncateKeepEnd(text, 12000)
+	text := kit.TruncateKeepEnd(core.BuildCompactionText(msgs), 12000)
 	resp, err := llm.Complete(ctx, provider, llm.CompletionOptions{
 		Model:        model,
 		SystemPrompt: describeSessionPrompt,
@@ -598,10 +584,8 @@ func groupSuggestions(args string) []suggest.Suggestion {
 	sub, rest, hasSub := strings.Cut(args, " ")
 	if !hasSub {
 		// Only what applies now: join outside a group, the rest inside one.
-		joined := false
-		if g, _ := group.Current(); g != "" {
-			joined = true
-		}
+		g, _ := group.Current()
+		joined := g != ""
 		var out []suggest.Suggestion
 		for _, s := range []struct {
 			sub, desc string
