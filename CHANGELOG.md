@@ -3,6 +3,17 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.23.2] - 2026-10-01
+
+### Changed
+- One message queue, the SDK agent's ([@yanmxa](https://github.com/yanmxa) in [#589](https://github.com/genai-io/san/pull/589))
+- Bump sdk-go to v0.7.7 ([@yanmxa](https://github.com/yanmxa) in [#593](https://github.com/genai-io/san/pull/593))
+
+### Fixed
+- A message sent right after Esc starts its turn ([@yanmxa](https://github.com/yanmxa) in [#592](https://github.com/genai-io/san/pull/592))
+- Open Copilot's Responses-only models on Responses ([@yanmxa](https://github.com/yanmxa) in [#590](https://github.com/genai-io/san/pull/590))
+- Tell the model not to redo work it delegated ([@yanmxa](https://github.com/yanmxa) in [#587](https://github.com/genai-io/san/pull/587))
+
 ## [v1.23.1] - 2026-09-28
 
 ### Changed
