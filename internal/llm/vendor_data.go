@@ -271,7 +271,10 @@ func (v vendorModels) model(id string) ai.Model {
 // resolve fills in a model a live listing reported, keeping every figure the
 // listing did state.
 func (v vendorModels) resolve(live ai.Model) ai.Model {
-	return sdkprovider.MergeListing(v.model(live.ID), live)
+	// Start from the listed protocol: the ladder depends on it.
+	spec, known := v.lineup.find(live.ID)
+	base := v.vendor.Resolve(ai.Model{ID: live.ID, API: live.API, Compat: live.Compat})
+	return sdkprovider.MergeListing(v.lineup.apply(base, spec, known), live)
 }
 
 // list is the vendor's lineup as a picker baseline, newest first: the models

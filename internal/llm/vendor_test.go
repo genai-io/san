@@ -625,3 +625,34 @@ func TestToModelInfoCarriesTheCatalogsFacts(t *testing.T) {
 		})
 	}
 }
+
+// Copilot lists its newest GPT models as Responses-only. The first request
+// must already know it — no picker visit beforehand — and the reasoning
+// ladder must be the Responses one.
+func TestCopilotResponsesOnlyModelOpensOnResponses(t *testing.T) {
+	server := listing(t, `{"object":"list","data":[
+		{"id":"gpt-6-luna","object":"model","supported_endpoints":["/responses"]},
+		{"id":"claude-sonnet-4.5","object":"model","supported_endpoints":["/chat/completions"]}]}`)
+
+	vendor, ok := catalog.Find(copilotVendor)
+	if !ok {
+		t.Fatal("the catalog has no copilot vendor")
+	}
+	p := newVendorProvider("copilot:subscription", vendor, sdkprovider.Config{APIKey: "k", BaseURL: server.URL})
+
+	for id, want := range map[string]ai.API{
+		"gpt-6-luna":        ai.APIOpenAIResponses,
+		"claude-sonnet-4.5": ai.APIOpenAIChat,
+	} {
+		client, err := p.Client(id, nil)
+		if err != nil {
+			t.Fatalf("%s: Client: %v", id, err)
+		}
+		if got := client.Model().API; got != want {
+			t.Errorf("%s: API = %s, want %s", id, got, want)
+		}
+	}
+	if len(p.ThinkingEfforts("gpt-6-luna")) == 0 {
+		t.Error("gpt-6-luna offers no reasoning efforts; the ladder was built for Chat")
+	}
+}
