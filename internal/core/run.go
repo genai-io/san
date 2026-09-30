@@ -62,6 +62,12 @@ type agent struct {
 	// waitForInput rather than starting a new ThinkAct that the user
 	// already asked not to run.
 	interruptPending atomic.Bool
+
+	// appended counts every Append, and appendedAtInterrupt is that count
+	// when the user last interrupted. Messages up to it wait for the next one
+	// rather than restarting the agent; any message after it starts a turn
+	// however the interrupted turn's unwinding interleaves with it.
+	appended, appendedAtInterrupt atomic.Int64
 }
 
 // turnHandle binds the per-turn cancel function to a done channel so an
@@ -90,6 +96,7 @@ func (a *agent) SetMessages(msgs []Message) {
 // goroutine and never blocks.
 func (a *agent) Append(msg Message) {
 	a.inner.AddMessages(msg)
+	a.appended.Add(1)
 	select {
 	case a.wake <- struct{}{}:
 	default:
@@ -134,7 +141,6 @@ func (a *agent) Run(ctx context.Context) error {
 			result, err, interrupted := a.runOneTurn(ctx)
 			if interrupted {
 				glog.Logger().Sugar().Debugf("agent.Run: interrupt latched, resuming wait")
-				a.dropWake()
 				break
 			}
 
@@ -162,7 +168,6 @@ func (a *agent) Run(ctx context.Context) error {
 					// close(h.done) and this Store can be clobbered; the
 					// 2nd Esc is treated as a duplicate of the first.
 					a.interruptPending.Store(false)
-					a.dropWake()
 					break
 				}
 				runErr = err
@@ -213,6 +218,7 @@ func (a *agent) runOneTurn(ctx context.Context) (*Result, error, bool) {
 // interrupt so the next inner-loop iteration bails before starting a
 // fresh ThinkAct, and returns an already-closed channel.
 func (a *agent) InterruptCurrentTurn() <-chan struct{} {
+	a.appendedAtInterrupt.Store(a.appended.Load())
 	a.interruptPending.Store(true)
 	if h := a.turn.Swap(nil); h != nil {
 		h.cancel()
@@ -229,16 +235,6 @@ var errStopped = errors.New("stopped")
 // and the caller wants the model to continue in the next turn.
 const TruncatedResumePrompt = "Your response was truncated due to output token limits. Resume directly from where you left off. Do not repeat any content."
 
-// dropWake discards a wake for messages queued before an interrupt: the user
-// stopped the agent, so they wait for the next message instead of restarting
-// it on their own.
-func (a *agent) dropWake() {
-	select {
-	case <-a.wake:
-	default:
-	}
-}
-
 // waitForInput blocks until a queued message is owed an exchange. Signals are
 // handled on the way: SigCompact compacts in place without starting a turn, so
 // a manual /compact while idle spends no inference on the lone summary.
@@ -246,8 +242,9 @@ func (a *agent) waitForInput(ctx context.Context) error {
 	for {
 		select {
 		case <-a.wake:
-			// A wake for a message an exchange already took is stale.
-			if a.inner.Pending() > 0 {
+			// A wake for a message an exchange already took, or one the
+			// user interrupted, is stale.
+			if a.inner.Pending() > 0 && a.appended.Load() > a.appendedAtInterrupt.Load() {
 				return nil
 			}
 		case in, ok := <-a.inbox:

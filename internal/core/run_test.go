@@ -259,7 +259,7 @@ func TestInterruptHoldsMessagesQueuedDuringTheTurn(t *testing.T) {
 	go func() { _ = ag.Run(ctx) }()
 
 	ag.Append(UserMessage("first", nil))
-	waitFor(t, "the first turn to start", func() bool { return ag.(*agent).turn.Load() != nil })
+	waitFor(t, "the first inference to start", func() bool { return llm.Calls() == 1 })
 	ag.Append(UserMessage("queued mid-turn", nil))
 	<-ag.InterruptCurrentTurn()
 
