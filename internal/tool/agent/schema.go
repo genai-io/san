@@ -41,7 +41,7 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Use explore for read-only investigation and edit for file changes.\n\n")
-	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Verify the result before reporting it.")
+	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Once work is delegated, do not also do it yourself; wait for the result. Verify the result before reporting it.")
 
 	return core.ToolSchema{
 		Name:        "Agent",
