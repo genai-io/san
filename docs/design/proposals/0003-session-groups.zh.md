@@ -140,7 +140,7 @@ sequenceDiagram
     WA->>FS: 改完结算页后 SendMessage(to: api)<br/>写入 api.inbox/…-web.json
 ```
 
-`@web` 那边的界面（收到的用 `◆`，发出的用 `●`；`From @x` 和 `To @x` 用不同颜色）：
+`@web` 那边的界面（收到的用 `◆`，发出的用 `●`；每个成员有固定颜色，这边的 `To @api` 和那边的 `From @api` 同色；每条消息一行）：
 
 ```
 ◆ From @api: Orders API now accepts coupon_code (string, optional)…
@@ -435,7 +435,7 @@ group 信息（group、名字、职责、模式）保存在会话记录里，恢
 小李回来时，`@web` 的界面：
 
 ```
-◆ From @api: 确认前端不转？ · turn 4 since you last typed
+◆ From @api: 确认前端不转？ · unattended 4
 ● 和 @api 就 coupon 大小写来回了 4 轮，结论是后端统一转大写、前端不处理；如有异议请告诉我。
 ```
 

@@ -3,6 +3,7 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strconv"
 	"strings"
@@ -824,13 +825,44 @@ func formatAgentLabel(agent agentInput) string {
 }
 
 // sendMessageLabel names a SendMessage call by its recipient and opening words.
-func sendMessageLabel(input string) string {
+func sendMessageParts(input string) (to, body string) {
 	var p struct{ To, Message string }
 	_ = json.Unmarshal([]byte(input), &p)
-	if p.To == "" {
-		return "Message"
+	return strings.TrimPrefix(p.To, "@"), conciseAgentDescription(p.Message)
+}
+
+// memberPalette tells group members apart. A member keeps its colour on both
+// sides of an exchange: "To @api" in one session, "From @api" in the other.
+var memberPalette = []kit.AdaptiveColor{
+	{Dark: "#93C5FD", Light: "#1D4ED8"}, // blue
+	{Dark: "#F0ABFC", Light: "#A21CAF"}, // magenta
+	{Dark: "#5EEAD4", Light: "#0F766E"}, // teal
+	{Dark: "#FCD34D", Light: "#B45309"}, // amber
+	{Dark: "#C4B5FD", Light: "#6D28D9"}, // violet
+	{Dark: "#FDA4AF", Light: "#BE123C"}, // rose
+}
+
+func memberColor(name string) kit.AdaptiveColor {
+	h := fnv.New32a()
+	h.Write([]byte(name))
+	return memberPalette[h.Sum32()%uint32(len(memberPalette))]
+}
+
+// renderMemberLine draws one message to or from a group member as a single
+// line: the icon and @name in the member's colour, then the body cut to the
+// width, keeping a trailing " · note" whole.
+func renderMemberLine(icon, dir, name, body string, width int) string {
+	color := lipgloss.NewStyle().Foreground(memberColor(name))
+	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name) + toolCallStyle.Render(":")
+	note := ""
+	if i := strings.LastIndex(body, " · "); i >= 0 {
+		body, note = body[:i], toolResultStyle.Render(body[i:])
 	}
-	return fmt.Sprintf("To @%s: %s", strings.TrimPrefix(p.To, "@"), conciseAgentDescription(p.Message))
+	room := width - lipgloss.Width(head) - lipgloss.Width(note) - 2
+	if room < 8 {
+		return head + note
+	}
+	return head + toolCallStyle.Render(" "+kit.TruncateText(body, room)) + note
 }
 
 // groupCallArgs names a Group call by what it does, e.g. "join shop as web".
@@ -1038,7 +1070,7 @@ func formatLineCountValue(lineCount int) string {
 // label, shortening the text — never the closing paren — to fit width.
 func renderBashDescription(description string, width int) string {
 	inner := width - lipgloss.Width(" ()")
-	if description == "" || inner <= 0 {
+	if description == "" || inner < 8 { // too narrow for words: "()" or "(...)"
 		return ""
 	}
 	return toolResultStyle.Render(" (" + xansi.Truncate(description, inner, "...") + ")")

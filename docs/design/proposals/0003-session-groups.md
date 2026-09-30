@@ -149,7 +149,7 @@ sequenceDiagram
     WA->>FS: after the checkout change, SendMessage(to: api)<br/>writes api.inbox/…-web.json
 ```
 
-`@web`'s screen (incoming `◆`, outgoing `●`; `From @x` and `To @x` in different colours):
+`@web`'s screen (incoming `◆`, outgoing `●`; each member has its own colour, the same in `To @api` here and `From @api` there; one line per message):
 
 ```
 ◆ From @api: Orders API now accepts coupon_code (string, optional)…
@@ -461,7 +461,7 @@ An exchange that drifts and the agent reins in (Li is away):
 What Li finds on `@web` when back:
 
 ```
-◆ From @api: Confirm the frontend won't convert? · turn 4 since you last typed
+◆ From @api: Confirm the frontend won't convert? · unattended 4
 ● Went 4 rounds with @api on coupon case. Settled: backend upper-cases, frontend does nothing. Tell me if you disagree.
 ```
 

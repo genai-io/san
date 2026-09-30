@@ -80,8 +80,6 @@ var (
 	// message, distinct from the dim system notices around it.
 	agentNoticeStyle = lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Success)
-	groupFromStyle = lipgloss.NewStyle().
-			Foreground(kit.CurrentTheme.Primary)
 
 	// The tool call line stays readable — the action and its target (the file
 	// being edited, the command being run) matter, and the live spinner rides
@@ -496,10 +494,12 @@ func RenderSystemMessage(content string) string {
 // RenderAgentNotice renders a background-agent notice (a subagent completion or
 // interim report) — a "◆" marker plus the "<description> <status>" line in the
 // accent tone, so it stands out from the dim system notices as an agent message.
-func RenderAgentNotice(content string) string {
-	// A group member's message leads with its sender, set apart in its own tone.
-	if label, rest, ok := strings.Cut(content, ": "); ok && strings.HasPrefix(label, "From @") {
-		return agentNoticeStyle.Render("◆ ") + groupFromStyle.Render(label+":") + agentNoticeStyle.Render(" "+rest) + "\n"
+func RenderAgentNotice(content string, width int) string {
+	// A group member's message: "From @api: …", mirroring "To @api: …".
+	if label, rest, ok := strings.Cut(content, ": "); ok {
+		if name, ok := strings.CutPrefix(label, "From @"); ok && !strings.Contains(name, " ") {
+			return renderMemberLine("◆", "From", name, rest, width) + "\n"
+		}
 	}
 	return agentNoticeStyle.Render("◆ "+content) + "\n"
 }
@@ -630,11 +630,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 			agent := parseAgentInput(tc.Input)
 			label := formatAgentLabel(agent)
 			color := configuredAgentColor(agent, params.AgentColors)
-			if tc.Name == tool.ToolSendMessage {
-				label, color = sendMessageLabel(tc.Input), "accent"
-			}
 			_, hasResult := params.ResultMap[tc.ID]
-			if hasResult {
+			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
+				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width) + "\n")
+			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
 				// agentIcon blinks ●/○ off the frame counter; on the call a
@@ -650,7 +649,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				}
 				sb.WriteString("\n")
 			}
-			if params.ToolCallsExpanded && !hasResult {
+			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
 			}
 		} else if params.ToolCallsExpanded {

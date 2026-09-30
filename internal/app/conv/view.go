@@ -211,7 +211,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// Live it shows as a green notice; on resume the turn is rebuilt from
 			// the transcript, so collapse it to the same one-line notice here
 			// instead of dumping the raw <task-notification>/<agent-message> XML.
-			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content)))
+			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content), p.Width))
 		default:
 			sb.WriteString(RenderUserMessage(msg.Content, msg.DisplayContent, msg.Images, p.MDRenderer, p.Width))
 			if autopilotDriven {
@@ -220,7 +220,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		}
 	case core.ChatNotice:
 		if msg.AgentNotice {
-			sb.WriteString(RenderAgentNotice(msg.Content))
+			sb.WriteString(RenderAgentNotice(msg.Content, p.Width))
 		} else {
 			sb.WriteString(RenderSystemMessage(msg.Content))
 		}

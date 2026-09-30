@@ -198,7 +198,7 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 		for _, msg := range msgs {
 			if !m.grp.announced[msg.File] {
 				m.grp.announced[msg.File] = true
-				m.conv.AddAgentNotice(fromLine(msg) + " · waits for your next message")
+				m.conv.AddAgentNotice(fromLine(msg) + " · waits for you")
 			}
 		}
 		return tea.Batch(m.CommitMessages()...)
@@ -215,7 +215,7 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 		display += fmt.Sprintf(" (+%d more)", len(msgs)-1)
 	}
 	if m.grp.unattended >= 2 {
-		display += fmt.Sprintf(" · turn %d since you last typed", m.grp.unattended)
+		display += fmt.Sprintf(" · unattended %d", m.grp.unattended)
 	}
 	cmd := m.deliverNotice(mainNotice{Display: display, Content: strings.Join(bodies, "\n\n"), FromAgent: true})
 	group.Delivered(msgs)
@@ -259,6 +259,7 @@ func (m *model) attachWaitingMessages(text string) string {
 // starting a turn: into the running turn between tool calls, or with the next
 // message when idle. The person gets the line either way.
 func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
+	line = m.fitLines(line)
 	if text == "" { // for the person only
 		if m.conv.Stream.Active {
 			return m.deliverNotice(mainNotice{Display: line})
@@ -350,7 +351,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 	rest = strings.TrimSpace(rest)
 	switch sub {
 	case "":
-		return m.groupListing(), nil
+		return m.fitLines(group.Listing()), nil
 	case "list":
 		return group.GroupsListing(), nil
 	case "join":
@@ -439,13 +440,13 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	return fmt.Sprintf("Joined group %s as @%s (%s) — %s\n%s", msg.group, self.Name, self.Mode, self.Role, m.groupListing())
+	return m.fitLines(fmt.Sprintf("Joined group %s as @%s (%s) — %s\n%s", msg.group, self.Name, self.Mode, self.Role, group.Listing()))
 }
 
-// groupListing is group.Listing cut to the screen: a wrapped row would lose
-// its columns.
-func (m *model) groupListing() string {
-	lines := strings.Split(group.Listing(), "\n")
+// fitLines cuts each line to the screen: notices are not re-wrapped, so a
+// long one would spill onto an unindented line and a listing lose its columns.
+func (m *model) fitLines(s string) string {
+	lines := strings.Split(s, "\n")
 	for i, line := range lines {
 		lines[i] = kit.TruncateText(line, m.env.Width-4)
 	}
