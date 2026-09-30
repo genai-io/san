@@ -455,7 +455,7 @@ An exchange that drifts and the agent reins in (Li is away):
 What Li finds on `@web` when back:
 
 ```
-◆ From @api: Confirm the frontend won't convert? · 4th since you last typed
+◆ From @api: Confirm the frontend won't convert? · turn 4 since you last typed
 ● Went 4 rounds with @api on coupon case. Settled: backend upper-cases, frontend does nothing. Tell me if you disagree.
 ```
 

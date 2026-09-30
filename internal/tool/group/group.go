@@ -99,9 +99,9 @@ func run(params map[string]any, cwd string) (string, error) {
 		}
 		return fmt.Sprintf("Left group %s; SendMessage is no longer available.", g), nil
 	case "mode":
-		mode := members.Mode(tool.GetString(params, "mode"))
-		if mode != members.Active && mode != members.Passive {
-			return "", fmt.Errorf(`mode must be "active" or "passive"`)
+		mode, err := members.ParseMode(tool.GetString(params, "mode"))
+		if err != nil {
+			return "", err
 		}
 		if err := members.SetMode(mode); err != nil {
 			return "", err

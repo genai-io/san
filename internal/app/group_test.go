@@ -115,11 +115,3 @@ func TestAPassiveMembersMessagesRideOnTheNextInput(t *testing.T) {
 		t.Errorf("delivered messages were left in the inbox: %+v", left)
 	}
 }
-
-func TestOrdinal(t *testing.T) {
-	for n, want := range map[int]string{1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 22: "22nd"} {
-		if got := ordinal(n); got != want {
-			t.Errorf("ordinal(%d) = %q, want %q", n, got, want)
-		}
-	}
-}

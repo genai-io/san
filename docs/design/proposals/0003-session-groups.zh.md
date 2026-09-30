@@ -431,7 +431,7 @@ group 信息（group、名字、职责、模式）保存在会话记录里，恢
 小李回来时，`@web` 的界面：
 
 ```
-◆ From @api: 确认前端不转？ · 4th since you last typed
+◆ From @api: 确认前端不转？ · turn 4 since you last typed
 ● 和 @api 就 coupon 大小写来回了 4 轮，结论是后端统一转大写、前端不处理；如有异议请告诉我。
 ```
 

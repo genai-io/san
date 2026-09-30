@@ -36,6 +36,7 @@ const groupUsage = `Usage:
 // groupState is what the main loop keeps about this session's group.
 type groupState struct {
 	blob       string                 // the membership as last persisted; "" outside a group
+	name       string                 // the group blob names
 	roster     map[string]rosterEntry // by session ID; nil until the first read
 	stamp      time.Time              // the group directory's mtime at the last read
 	fullRead   time.Time              // when member files were last read
@@ -103,7 +104,7 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 	g, self := group.Current()
 	switch msg.status {
 	case group.Removed, group.Disbanded:
-		name := m.groupName()
+		name := m.grp.name
 		group.Forget()
 		m.reconcileMembership()
 		line, text := "You were removed from group "+name, "You were removed from group "+name+"; SendMessage is no longer available."
@@ -169,6 +170,7 @@ type rosterChange struct{ line, text string } // for the person, for the model
 func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []rosterChange {
 	var out []rosterChange
 	say := func(line, text string) { out = append(out, rosterChange{line, "Group " + g + ": " + text}) }
+	same := func(format string, args ...any) { s := fmt.Sprintf(format, args...); say(s, s) }
 	for id, now := range next {
 		if id == selfID {
 			continue
@@ -178,13 +180,13 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		case !ok:
 			say(fmt.Sprintf("@%s joined group %s — %s", now.Name, g, now.Role), fmt.Sprintf("@%s joined (%s) — %s (%s)", now.Name, now.Mode, now.Role, now.Cwd))
 		case was.Name != now.Name:
-			say(fmt.Sprintf("@%s is now @%s", was.Name, now.Name), fmt.Sprintf("@%s is now @%s", was.Name, now.Name))
+			same("@%s is now @%s", was.Name, now.Name)
 		case was.Mode != now.Mode:
-			say(fmt.Sprintf("@%s is now %s", now.Name, now.Mode), fmt.Sprintf("@%s is now %s", now.Name, now.Mode))
+			same("@%s is now %s", now.Name, now.Mode)
 		case was.online && !now.online:
-			say(fmt.Sprintf("@%s went offline", now.Name), fmt.Sprintf("@%s went offline", now.Name))
+			same("@%s went offline", now.Name)
 		case !was.online && now.online:
-			say(fmt.Sprintf("@%s is back online", now.Name), fmt.Sprintf("@%s is back online", now.Name))
+			same("@%s is back online", now.Name)
 		}
 	}
 	for id, was := range prev {
@@ -224,7 +226,7 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 		display += fmt.Sprintf(" (+%d more)", len(msgs)-1)
 	}
 	if m.grp.unattended >= 2 {
-		display += fmt.Sprintf(" · %s since you last typed", ordinal(m.grp.unattended))
+		display += fmt.Sprintf(" · turn %d since you last typed", m.grp.unattended)
 	}
 	cmd := m.deliverNotice(mainNotice{Display: display, Content: strings.Join(bodies, "\n\n"), FromAgent: true})
 	group.Delivered(msgs)
@@ -281,20 +283,6 @@ func fromLine(msg group.Message) string {
 	return fmt.Sprintf("From @%s: %s", msg.From, kit.TruncateText(first, 80))
 }
 
-func ordinal(n int) string {
-	switch {
-	case n%100 >= 11 && n%100 <= 13:
-		return fmt.Sprintf("%dth", n)
-	case n%10 == 1:
-		return fmt.Sprintf("%dst", n)
-	case n%10 == 2:
-		return fmt.Sprintf("%dnd", n)
-	case n%10 == 3:
-		return fmt.Sprintf("%drd", n)
-	}
-	return fmt.Sprintf("%dth", n)
-}
-
 // membership is what the session record keeps, so a resume can rejoin.
 type membership struct {
 	Group string     `json:"group"`
@@ -312,15 +300,8 @@ func currentMembership() string {
 	return string(data)
 }
 
-func (m *model) groupName() string {
-	var ms membership
-	_ = json.Unmarshal([]byte(m.grp.blob), &ms)
-	return ms.Group
-}
-
 // reconcileMembership follows the membership wherever it changed — /group, the
-// Group tool, a kick seen on disk: the session record, the finalizer that takes
-// the member offline at exit, and the roster the loop compares against.
+// Group tool, a kick seen on disk: the session record and the roster the loop compares against.
 func (m *model) reconcileMembership() {
 	blob := currentMembership()
 	if blob == m.grp.blob {
@@ -328,15 +309,11 @@ func (m *model) reconcileMembership() {
 	}
 	g, _ := group.Current()
 	if blob == "" {
-		m.removeFinalizer("group")
 		m.grp = groupState{}
-	} else {
-		m.addFinalizer("group", group.Release)
-		if g != m.groupName() { // joined, or a different group: start the roster afresh
-			m.grp.roster, m.grp.announced = nil, nil
-		}
+	} else if g != m.grp.name { // joined, or a different group: start the roster afresh
+		m.grp.roster, m.grp.announced = nil, nil
 	}
-	m.grp.blob = blob
+	m.grp.blob, m.grp.name = blob, g
 	_ = m.PersistSession()
 }
 
@@ -380,8 +357,8 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 		m.services.Reminder.Enqueue("You left group " + g + "; SendMessage is no longer available.")
 		return "Left group " + g + ".", nil
 	case "mode":
-		mode := group.Mode(rest)
-		if mode != group.Active && mode != group.Passive {
+		mode, err := group.ParseMode(rest)
+		if err != nil {
 			return "Usage: /group mode active|passive", nil
 		}
 		if err := group.SetMode(mode); err != nil {
@@ -529,26 +506,6 @@ func describeSession(ctx context.Context, provider llm.Provider, model string, m
 	return name, role
 }
 
-// Finalizers: cleanup for state this session left outside itself — a group
-// membership — run when the process ends (see run.go). A process killed before
-// it runs them reads as offline anyway: its pid is gone.
-
-func (m *model) addFinalizer(name string, fn func()) {
-	if m.finalizers == nil {
-		m.finalizers = map[string]func(){}
-	}
-	m.finalizers[name] = fn
-}
-
-func (m *model) removeFinalizer(name string) { delete(m.finalizers, name) }
-
-func (m *model) runFinalizers() {
-	for name, fn := range m.finalizers {
-		delete(m.finalizers, name)
-		fn()
-	}
-}
-
 // groupSuggestions completes /group: its subcommands, then what each takes.
 func groupSuggestions(args string) []suggest.Suggestion {
 	sub, rest, hasSub := strings.Cut(args, " ")
@@ -596,15 +553,9 @@ func groupSuggestions(args string) []suggest.Suggestion {
 	case "kick":
 		g, self := group.Current()
 		members := group.Members(g)
-		for _, online := range []bool{false, true} { // offline first: those are usually the ones to remove
-			for _, mem := range members {
-				if mem.SessionID != self.SessionID && mem.Online() == online {
-					state := "online"
-					if !online {
-						state = "offline"
-					}
-					add(mem.Name, state+" · "+mem.Role)
-				}
+		for _, mem := range members {
+			if mem.SessionID != self.SessionID {
+				add(mem.Name, map[bool]string{true: "online", false: "offline"}[mem.Online()]+" · "+mem.Role)
 			}
 		}
 	}

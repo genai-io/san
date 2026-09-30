@@ -329,6 +329,14 @@ func Disband(g string) error {
 	return os.RemoveAll(groupDir(g))
 }
 
+// ParseMode reads a mode as a person or the model names it.
+func ParseMode(s string) (Mode, error) {
+	if m := Mode(s); m == Active || m == Passive {
+		return m, nil
+	}
+	return "", errors.New(`mode must be "active" or "passive"`)
+}
+
 // SetMode switches this member's mode and records it in its member file.
 func SetMode(m Mode) error {
 	g, self := Current()

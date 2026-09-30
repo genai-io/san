@@ -170,9 +170,6 @@ type model struct {
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState
 
-	// finalizers clean up state this session left outside itself (a group
-	// membership) when it ends; see group.go.
-	finalizers map[string]func()
 	// grp is this session's group, as the main loop tracks it (group.go).
 	grp groupState
 }
