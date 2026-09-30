@@ -253,7 +253,7 @@ func NewAgent(cfg Config) Agent {
 		// Every message in the conversation gets a name, which is what the
 		// session's append-only writer dedupes by.
 		sdkagent.WithMessageIDs(NewMessageID),
-		sdkagent.WithHooks(a.hooks()),
+		sdkagent.WithHooks(a.hooks(), sdkagent.Hook{PostTool: a.admitInbox}),
 	)
 	if err != nil {
 		panic("core.NewAgent: " + err.Error())

@@ -381,6 +381,24 @@ func (a *agent) drainInbox(ctx context.Context) (int, error) {
 	}
 }
 
+// admitInbox hands what reached the inbox while a tool ran to the loop, which
+// adds it at the next step boundary instead of after the whole turn.
+func (a *agent) admitInbox(ctx context.Context, _ sdkagent.PostToolContext) (*sdkagent.Result, error) {
+	for {
+		select {
+		case in, ok := <-a.inbox:
+			if !ok || in.Signal == SigStop {
+				return nil, errStopped
+			}
+			if a.ingest(ctx, in) {
+				a.inner.AddMessages(a.takePending()...)
+			}
+		default:
+			return nil, nil
+		}
+	}
+}
+
 // ThinkAct runs one exchange and reports what it produced. The Result is
 // folded out of the event stream rather than tracked alongside it, so what an
 // observer sees and what this returns cannot disagree about one turn.

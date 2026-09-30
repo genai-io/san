@@ -526,6 +526,36 @@ func TestCancelDuringToolBatchStopsTheRemainingCalls(t *testing.T) {
 	}
 }
 
+// A message sent while a tool runs — a background task finishing — must reach
+// the very next inference of the same turn, not wait for the turn to end.
+func TestInboxMessageMidTurnReachesTheNextStep(t *testing.T) {
+	var ran, ranOnDead atomic.Int32
+	driver := aitest.New(aitest.Asks(ToolCall{ID: "c1", Name: "work", Input: "{}"}), aitest.Says("done"))
+	var ag *agent
+	ag = NewAgent(Config{
+		ID: "test", Client: testClient(driver), System: NewSystem(),
+		Tools: NewTools(cancelOnRunTool{name: "work", ran: &ran, ranOnDead: &ranOnDead, onRun: func() {
+			ag.Inbox() <- Inbound{Msg: Message{Role: ai.RoleUser, Content: ai.TextContent("<task-notification>finished</task-notification>")}}
+		}}),
+	}).(*agent)
+	go func() {
+		for range ag.Outbox() {
+		}
+	}()
+	ag.Append(context.Background(), Message{Role: ai.RoleUser, Content: ai.TextContent("go")})
+
+	if _, err := ag.ThinkAct(context.Background()); err != nil {
+		t.Fatalf("ThinkAct: %v", err)
+	}
+	if n := driver.Calls(); n != 2 {
+		t.Fatalf("inferences = %d, want 2", n)
+	}
+	msgs := driver.Last().Messages
+	if got := msgs[len(msgs)-1].Text(); !strings.Contains(got, "finished") {
+		t.Fatalf("second inference ended with %q, want the notification", got)
+	}
+}
+
 // --- what the application keeps saying about every call ---
 
 // The reasoning rung and the output cap are the application's, not the
