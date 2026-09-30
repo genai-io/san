@@ -2256,7 +2256,7 @@
         },
         "limit": {
           "context": 1000000,
-          "output": 65536
+          "output": 131072
         },
         "cost": {
           "input": 0.02962,
@@ -2451,6 +2451,43 @@
           "output": 5.33231,
           "cache_read": 0.22218,
           "cache_write": 2.22179
+        }
+      },
+      "qwen3.8-omni-flash": {
+        "name": "Qwen3.8 Omni Flash",
+        "release_date": "2026-09-17",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "xhigh"
+            ]
+          }
+        ],
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1000000,
+          "output": 131072
+        },
+        "cost": {
+          "input": 0.113,
+          "output": 0.382,
+          "cache_read": 0.014
         }
       },
       "qwq-32b": {
@@ -3170,6 +3207,45 @@
           "cache_read": 0.2,
           "cache_write": 2.5
         }
+      },
+      "claude-sonnet-5-5": {
+        "name": "Claude Sonnet 5.5",
+        "release_date": "2026-09-28",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.2,
+          "cache_write": 2.5
+        }
       }
     }
   },
@@ -3751,6 +3827,45 @@
           {
             "type": "toggle"
           },
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.2,
+          "cache_write": 2.5
+        }
+      },
+      "claude-sonnet-5-5": {
+        "name": "Claude Sonnet 5.5",
+        "release_date": "2026-09-28",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
           {
             "type": "effort",
             "values": [
@@ -4651,6 +4766,45 @@
           "cache_write": 2.5
         }
       },
+      "claude-sonnet-5.5": {
+        "name": "Claude Sonnet 5.5",
+        "release_date": "2026-09-28",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1000000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.2,
+          "cache_write": 2.5
+        }
+      },
       "gemini-3.5-flash": {
         "name": "Gemini 3.5 Flash",
         "release_date": "2026-05-19",
@@ -5346,6 +5500,57 @@
           ]
         }
       },
+      "gpt-6.1-sol": {
+        "name": "GPT-6.1 Sol",
+        "release_date": "2026-09-29",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "tiers": [
+            {
+              "input": 4,
+              "output": 15,
+              "cache_read": 0.2,
+              "cache_write": 5,
+              "tier": {
+                "type": "context",
+                "size": 272000
+              }
+            }
+          ]
+        }
+      },
       "grok-4.5": {
         "name": "Grok 4.5",
         "release_date": "2026-07-08",
@@ -5650,7 +5855,7 @@
         },
         "limit": {
           "context": 1000000,
-          "output": 384000
+          "output": 393216
         },
         "cost": {
           "input": 0.15,
@@ -5688,7 +5893,7 @@
         },
         "limit": {
           "context": 1000000,
-          "output": 384000
+          "output": 393216
         },
         "cost": {
           "input": 0.15,
@@ -5727,7 +5932,7 @@
         },
         "limit": {
           "context": 1000000,
-          "output": 384000
+          "output": 393216
         },
         "cost": {
           "input": 0.15,
@@ -5765,7 +5970,7 @@
         },
         "limit": {
           "context": 1000000,
-          "output": 384000
+          "output": 393216
         },
         "cost": {
           "input": 0.435,
@@ -5873,8 +6078,8 @@
           ]
         },
         "limit": {
-          "context": 131072,
-          "output": 65536
+          "context": 128000,
+          "output": 64000
         },
         "cost": {
           "input": 1.25,
@@ -6112,7 +6317,7 @@
         },
         "limit": {
           "context": 65536,
-          "output": 65536
+          "output": 4096
         },
         "cost": {
           "input": 0.25,
@@ -6683,7 +6888,7 @@
         },
         "limit": {
           "context": 1048576,
-          "output": 65536
+          "output": 65535
         },
         "cost": {
           "input": 0.1,
@@ -7681,7 +7886,7 @@
           ]
         },
         "limit": {
-          "context": 1048576,
+          "context": 1000000,
           "output": 512000
         },
         "cost": {
@@ -7819,7 +8024,7 @@
         },
         "limit": {
           "context": 1048576,
-          "output": 131072
+          "output": 1048576
         },
         "cost": {
           "input": 3,
@@ -9090,6 +9295,148 @@
               }
             }
           ]
+        }
+      },
+      "gpt-6.1-sol": {
+        "name": "GPT-6.1 Sol",
+        "release_date": "2026-09-29",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 2,
+          "output": 10,
+          "cache_read": 0.1,
+          "cache_write": 2.5,
+          "tiers": [
+            {
+              "input": 4,
+              "output": 15,
+              "cache_read": 0.2,
+              "cache_write": 5,
+              "tier": {
+                "type": "context",
+                "size": 272000
+              }
+            }
+          ]
+        }
+      },
+      "gpt-daybreak-blue-latest": {
+        "name": "Daybreak Blue",
+        "release_date": "2026-08-07",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "pdf"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 1050000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 4,
+          "output": 20,
+          "cache_read": 0.4,
+          "cache_write": 5,
+          "tiers": [
+            {
+              "input": 8,
+              "output": 30,
+              "cache_read": 0.8,
+              "cache_write": 10,
+              "tier": {
+                "type": "context",
+                "size": 272000
+              }
+            }
+          ]
+        }
+      },
+      "gpt-daybreak-red-latest": {
+        "name": "Daybreak Red",
+        "release_date": "2026-08-07",
+        "tool_call": true,
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          }
+        ],
+        "temperature": false,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ],
+          "output": [
+            "text"
+          ]
+        },
+        "limit": {
+          "context": 400000,
+          "output": 128000
+        },
+        "cost": {
+          "input": 12.5,
+          "output": 75,
+          "cache_read": 1.25,
+          "cache_write": 15.625
         }
       },
       "gpt-realtime-2.1": {
