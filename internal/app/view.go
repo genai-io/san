@@ -378,6 +378,7 @@ func (m model) renderModeStatus() string {
 		ModeHint:          time.Now().Before(m.modeHintUntil),
 		Group:             m.grp.name,
 		GroupSelf:         m.groupSelfName(),
+		GroupHold:         m.groupHolds(),
 		GroupWaiting:      len(m.grp.announced),
 		GroupApproval:     m.membersAwaitingApproval(),
 	})

@@ -115,8 +115,9 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 - The recipient reads it as a message from you, not from its user: make it
   self-contained. It arrives marked with your name and group, so don't put
   them in the body, and skip greetings and sign-offs.
-- The result says when it will be read: now (active), at its user's next
-  input (passive), or when its session resumes (offline).
+- The result says when it will be read: now, between the recipient's steps,
+  at its user's next input (it holds messages), or when its session resumes
+  (offline).
 - When you were asked for something, report back when it is done or can't
   be done. Don't send bare acknowledgements.`,
 		Definition: map[string]any{

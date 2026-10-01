@@ -119,7 +119,7 @@ func TestSendMessage_GroupMembers(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = group.Leave() })
 	home, _ := os.UserHomeDir()
-	web := group.Member{Name: "web", Mode: group.Passive, SessionID: "s-web"}
+	web := group.Member{Name: "web", Hold: true, SessionID: "s-web"}
 	dir := filepath.Join(home, ".san", "groups", "shop")
 	if err := os.MkdirAll(filepath.Join(dir, "web.inbox"), 0o700); err != nil {
 		t.Fatal(err)

@@ -36,19 +36,13 @@ import (
 // DefaultName is the group joined when none is named.
 const DefaultName = "default"
 
-// Mode decides whether a member's agent wakes for a message.
-type Mode string
-
-const (
-	Active  Mode = "active"  // a message starts a turn, or joins the running one
-	Passive Mode = "passive" // a message waits for the person's next input
-)
-
 // Member is one session in a group, as its member file records it.
 type Member struct {
-	Name      string    `json:"name"`
-	Role      string    `json:"role"`
-	Mode      Mode      `json:"mode"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+	// Hold keeps the other members' messages until this member's user next
+	// types; without it they are acted on right away.
+	Hold      bool      `json:"hold,omitempty"`
 	SessionID string    `json:"sessionID"`
 	PID       int       `json:"pid"`
 	ProcStart string    `json:"procStart"`
@@ -219,9 +213,6 @@ func Join(g string, self Member) (Member, error) {
 	if cur, _ := Current(); cur != "" {
 		return Member{}, fmt.Errorf("already in group %s; leave it first", cur)
 	}
-	if self.Mode != Passive {
-		self.Mode = Active
-	}
 	self.SessionID = currentSession()
 	self.PID = os.Getpid()
 	self.ProcStart, _ = proc.StartTime(self.PID)
@@ -360,16 +351,8 @@ func Disband(g string) error {
 	return os.RemoveAll(groupDir(g))
 }
 
-// ParseMode reads a mode as a person or the model names it.
-func ParseMode(s string) (Mode, error) {
-	if m := Mode(s); m == Active || m == Passive {
-		return m, nil
-	}
-	return "", errors.New(`mode must be "active" or "passive"`)
-}
-
-// SetMode switches this member's mode and records it in its member file.
-func SetMode(m Mode) error { return updateSelf(func(self *Member) { self.Mode = m }) }
+// SetHold records in this member's file whether it holds messages.
+func SetHold(hold bool) error { return updateSelf(func(self *Member) { self.Hold = hold }) }
 
 // SetState records what this session is doing in its member file.
 func SetState(s State) error { return updateSelf(func(self *Member) { self.State = s }) }

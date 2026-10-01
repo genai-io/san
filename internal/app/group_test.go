@@ -19,13 +19,13 @@ import (
 func TestParseGroupJoin(t *testing.T) {
 	type want struct {
 		name, member, role string
-		mode               group.Mode
+		hold               bool
 	}
 	for args, w := range map[string]want{
-		"":               {"default", "", "", group.Active},
-		"shop --passive": {"shop", "", "", group.Passive},
-		"shop --as @web --role owns the checkout": {"shop", "web", "owns the checkout", group.Active},
-		`--role "runs 0042" --as migrate`:         {"default", "migrate", "runs 0042", group.Active},
+		"":            {"default", "", "", false},
+		"shop --hold": {"shop", "", "", true},
+		"shop --as @web --role owns the checkout": {"shop", "web", "owns the checkout", false},
+		`--role "runs 0042" --as migrate`:         {"default", "migrate", "runs 0042", false},
 	} {
 		name, member, role, mode := parseGroupJoin(args)
 		if got := (want{name, member, role, mode}); got != w {
@@ -45,13 +45,13 @@ func TestGroupSuggestionsWalkSubcommandsThenValues(t *testing.T) {
 	if got := names(""); !slices.Equal(got, []string{"group join", "group list", "group disband"}) { // outside a group: no members, leave, mode or kick
 		t.Errorf("outside a group /group offers %v, want only what applies", got)
 	}
-	if got := names("join shop --as web "); !slices.Equal(got, []string{"group join shop --as web --passive", "group join shop --as web --role"}) {
+	if got := names("join shop --as web "); !slices.Equal(got, []string{"group join shop --as web --hold", "group join shop --as web --role"}) {
 		t.Errorf("/group join shop --as web offers %v, want the flags not yet given", got)
 	}
 	if got := names("join shop --role "); got != nil {
 		t.Errorf("a value comes after --role, offered %v", got)
 	}
-	if got := names("mode "); !slices.Equal(got, []string{"group mode active", "group mode passive"}) {
+	if got := names("hold "); !slices.Equal(got, []string{"group hold on", "group hold off"}) {
 		t.Errorf("/group mode offers %v", got)
 	}
 	if got := names("join "); len(got) == 0 {
@@ -63,20 +63,20 @@ func TestGroupSuggestionsWalkSubcommandsThenValues(t *testing.T) {
 }
 
 func TestRosterChangesSayWhatHappened(t *testing.T) {
-	entry := func(name string, mode group.Mode, online bool) rosterEntry {
-		return rosterEntry{Member: group.Member{Name: name, Mode: mode, Role: "r", Cwd: "/w"}, online: online}
+	entry := func(name string, hold, online bool) rosterEntry {
+		return rosterEntry{Member: group.Member{Name: name, Hold: hold, Role: "r", Cwd: "/w"}, online: online}
 	}
 	prev := map[string]rosterEntry{
-		"s-self": entry("web", group.Active, true),
-		"s-api":  entry("api", group.Active, true),
-		"s-mig":  entry("migrate", group.Active, true),
-		"s-gone": entry("old", group.Active, true),
+		"s-self": entry("web", false, true),
+		"s-api":  entry("api", false, true),
+		"s-mig":  entry("migrate", false, true),
+		"s-gone": entry("old", false, true),
 	}
 	next := map[string]rosterEntry{
-		"s-self": entry("web", group.Passive, true), // own changes are not reported
-		"s-api":  entry("api", group.Active, false),
-		"s-mig":  entry("migrate", group.Passive, true),
-		"s-new":  entry("qa", group.Active, true),
+		"s-self": entry("web", true, true), // own changes are not reported
+		"s-api":  entry("api", false, false),
+		"s-mig":  entry("migrate", true, true),
+		"s-new":  entry("qa", false, true),
 	}
 	var got []string
 	for _, c := range rosterChanges("shop", "s-self", prev, next) {
@@ -85,19 +85,19 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 	// Presence and mode are shown, not told: SendMessage's result says them.
 	want := []string{
 		"@api went offline | ",
-		"@migrate is now passive | ",
+		"@migrate now holds messages | ",
 		"@old left | Group shop: @old left",
-		"@qa joined — r | Group shop: @qa joined (active) — r (/w)",
+		"@qa joined — r | Group shop: @qa joined — r (/w)",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("rosterChanges =\n%q\nwant\n%q", got, want)
 	}
 }
 
-func TestAPassiveMembersMessagesRideOnTheNextInput(t *testing.T) {
+func TestAHoldingMembersMessagesRideOnTheNextInput(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	group.BindSession(func() string { return "s-self" })
-	if _, err := group.Join("shop", group.Member{Name: "migrate", Mode: group.Passive}); err != nil {
+	if _, err := group.Join("shop", group.Member{Name: "migrate", Hold: true}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = group.Leave() })
@@ -221,7 +221,7 @@ func TestInAGroupCompletionLeadsWithMembers(t *testing.T) {
 	for _, s := range groupSuggestions("") {
 		got = append(got, s.Name)
 	}
-	want := []string{"group members", "group leave", "group mode", "group kick", "group list", "group disband"}
+	want := []string{"group members", "group leave", "group hold", "group kick", "group list", "group disband"}
 	if !slices.Equal(got, want) {
 		t.Errorf("in a group /group offers %v, want %v", got, want)
 	}

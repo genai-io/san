@@ -29,8 +29,8 @@ func (m *model) handleSubmit() tea.Cmd {
 	if raw == "" && len(m.userInput.Images.Pending) == 0 {
 		return nil
 	}
-	// The person is back: the unattended count restarts, and messages a
-	// passive member was holding ride on this input.
+	// The person is back: the unattended count restarts, and messages this
+	// member was holding ride on this input.
 	m.grp.unattended, m.grp.userTyped = 0, true
 
 	if m.conv.Stream.Active {

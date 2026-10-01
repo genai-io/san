@@ -16,7 +16,7 @@ func Roster() string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "<group name=%q>\nYou: @%s (%s) — %s\n\nMembers:\n", g, self.Name, self.Mode, self.Role)
+	fmt.Fprintf(&b, "<group name=%q>\nYou: @%s%s — %s\n\nMembers:\n", g, self.Name, holdsNote(self), self.Role)
 	var offline []string
 	others := 0
 	for _, m := range Members(g) {
@@ -28,7 +28,7 @@ func Roster() string {
 			continue
 		}
 		others++
-		fmt.Fprintf(&b, "- @%s (%s): %s — %s\n", m.Name, m.Mode, m.Role, m.Cwd)
+		fmt.Fprintf(&b, "- @%s%s: %s — %s\n", m.Name, holdsNote(m), m.Role, m.Cwd)
 	}
 	if others == 0 {
 		b.WriteString("- none online\n")
@@ -37,9 +37,8 @@ func Roster() string {
 		fmt.Fprintf(&b, "Offline: %s — their messages wait in their inbox\n", strings.Join(offline, ", "))
 	}
 	b.WriteString(`
-Modes:
-- active: a member's message starts a turn right away, or joins the running one.
-- passive: it waits for the member's user to type next.
+A member that holds messages reads them when its user next types; the rest
+act on them right away, starting a turn or joining the running one.
 
 Messaging:
 - Send with SendMessage, "to" set to a member's name; its result says when
@@ -64,9 +63,16 @@ Unattended-Turns:
 	return b.String()
 }
 
+func holdsNote(m Member) string {
+	if m.Hold {
+		return " (holds messages)"
+	}
+	return ""
+}
+
 // Listing is what /group shows: this session first, marked *, then the
-// others, each with its mode and what it is doing. Outside a group it lists
-// the groups.
+// others, each with what it is doing and whether it holds messages. Outside a
+// group it lists the groups.
 func Listing() string {
 	g, self := Current()
 	if g == "" {
@@ -84,7 +90,11 @@ func Listing() string {
 		if m.SessionID != self.SessionID && !m.Online() {
 			state = "offline"
 		}
-		fmt.Fprintf(&b, "\n%s @%-*s  %-7s  %-8s  %s", mark, width, m.Name, m.Mode, state, m.Role)
+		hold := ""
+		if m.Hold {
+			hold = "hold"
+		}
+		fmt.Fprintf(&b, "\n%s @%-*s  %-8s  %-4s  %s", mark, width, m.Name, state, hold, m.Role)
 	}
 	for _, m := range members {
 		if m.SessionID == self.SessionID {

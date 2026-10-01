@@ -68,7 +68,7 @@ func TestAMessageStaysUntilDelivered(t *testing.T) {
 
 func TestSendNamesTheMembersWhenTheNameIsWrong(t *testing.T) {
 	isolate(t)
-	writeMember(t, "shop", Member{Name: "web", Mode: Passive})
+	writeMember(t, "shop", Member{Name: "web", Hold: true})
 	if _, err := Join("shop", Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
@@ -79,8 +79,8 @@ func TestSendNamesTheMembersWhenTheNameIsWrong(t *testing.T) {
 		t.Error("sending to yourself was accepted")
 	}
 	to, err := Send("web", "schema changed")
-	if err != nil || to.Mode != Passive {
-		t.Fatalf("Send = %+v, %v; want web, passive", to, err)
+	if err != nil || !to.Hold {
+		t.Fatalf("Send = %+v, %v; want web, holding", to, err)
 	}
 	if entries, _ := os.ReadDir(inboxDir("shop", "web")); len(entries) != 1 || !strings.HasSuffix(entries[0].Name(), "-api.json") {
 		t.Errorf("web's inbox = %v, want one <time>-api.json", entries)

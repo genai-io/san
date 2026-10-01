@@ -872,7 +872,10 @@ func renderMemberLine(icon, dir, name, body string, width int, colors map[string
 
 // groupCallArgs names a Group call by what it does, e.g. "join shop as web".
 func groupCallArgs(input string) string {
-	var p struct{ Action, Group, As, Mode string }
+	var p struct {
+		Action, Group, As string
+		Hold              bool
+	}
 	_ = json.Unmarshal([]byte(input), &p)
 	parts := []string{p.Action}
 	switch p.Action {
@@ -881,11 +884,15 @@ func groupCallArgs(input string) string {
 		if p.As != "" {
 			parts = append(parts, "as", p.As)
 		}
-		if p.Mode == "passive" {
-			parts = append(parts, "passive")
+		if p.Hold {
+			parts = append(parts, "holding")
 		}
-	case "mode":
-		parts = append(parts, p.Mode)
+	case "hold":
+		if p.Hold {
+			parts = append(parts, "on")
+		} else {
+			parts = append(parts, "off")
+		}
 	}
 	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
 }

@@ -29,9 +29,9 @@ import (
 const groupUsage = `Usage:
   /group members                                             who is in your group
   /group list                                                every group
-  /group join [group] [--as NAME] [--role TEXT] [--passive]  join, creating the group if needed
+  /group join [group] [--as NAME] [--role TEXT] [--hold]     join, creating the group if needed
   /group leave                                               leave your group
-  /group mode active|passive                                 wake for members' messages, or wait for you
+  /group hold on|off                                         keep members' messages until you type, or not
   /group kick <member>                                       remove a member
   /group disband <group>                                     remove a group; its members leave`
 
@@ -42,7 +42,7 @@ type groupState struct {
 	roster     map[string]rosterEntry // by session ID; nil until the first read
 	stamp      time.Time              // the group directory's mtime at the last read
 	fullRead   time.Time              // when member files were last read
-	announced  map[string]bool        // passive messages already shown
+	announced  map[string]bool        // held messages already shown
 	unattended int                    // turns member messages started since the person last typed
 	userTyped  bool                   // the person's input is on its way: attach waiting messages
 	colors     map[string]int         // member name → palette slot, in order of arrival, never reassigned
@@ -71,7 +71,7 @@ type memberMsg struct {
 // groupJoinMsg carries a /group join whose name or role had to be summarized.
 type groupJoinMsg struct {
 	group, name, role string
-	mode              group.Mode
+	hold              bool
 }
 
 // groupTick polls once a second, off the UI goroutine. Member files are read
@@ -139,6 +139,12 @@ func (m *model) syncGroupState() {
 func (m *model) groupSelfName() string {
 	_, self := group.Current()
 	return self.Name
+}
+
+// groupHolds reports whether this member holds messages, for the status bar.
+func (m *model) groupHolds() bool {
+	_, self := group.Current()
+	return self.Hold
 }
 
 // membersAwaitingApproval names the other members whose turn waits on their
@@ -235,7 +241,7 @@ type rosterChange struct{ line, text string } // for the person, for the model
 func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []rosterChange {
 	var out []rosterChange
 	say := func(line, text string) { out = append(out, rosterChange{line, "Group " + g + ": " + text}) }
-	// Mode and presence are for the person: the model learns them when it
+	// Holding and presence are for the person: the model learns them when it
 	// sends, from SendMessage's result.
 	show := func(format string, args ...any) { out = append(out, rosterChange{line: fmt.Sprintf(format, args...)}) }
 	for id, now := range next {
@@ -245,9 +251,11 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		was, ok := prev[id]
 		switch {
 		case !ok:
-			say(fmt.Sprintf("@%s joined — %s", now.Name, now.Role), fmt.Sprintf("@%s joined (%s) — %s (%s)", now.Name, now.Mode, now.Role, now.Cwd))
-		case was.Mode != now.Mode:
-			show("@%s is now %s", now.Name, now.Mode)
+			say(fmt.Sprintf("@%s joined — %s", now.Name, now.Role), fmt.Sprintf("@%s joined%s — %s (%s)", now.Name, holdsNote(now.Hold), now.Role, now.Cwd))
+		case !was.Hold && now.Hold:
+			show("@%s now holds messages", now.Name)
+		case was.Hold && !now.Hold:
+			show("@%s stopped holding messages", now.Name)
 		case was.online && !now.online:
 			show("@%s went offline", now.Name)
 		case !was.online && now.online:
@@ -263,11 +271,11 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 	return out
 }
 
-// deliverMemberMessages hands waiting messages to the agent per this member's
-// mode. Active: now, starting a turn when idle, and each file is deleted once
-// delivered. Passive: only a line; the files wait for the person's next input.
+// deliverMemberMessages hands waiting messages to the agent: now, starting a
+// turn when idle, each file deleted once delivered — or, when this member
+// holds messages, only a line, the files waiting for the person's next input.
 func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.Message) tea.Cmd {
-	if self.Mode == group.Passive {
+	if self.Hold {
 		if m.grp.announced == nil {
 			m.grp.announced = map[string]bool{}
 		}
@@ -310,7 +318,7 @@ func (m *model) groupMessage(msg group.Message, unattended int) string {
 		from, msg.To, msg.SentAt.Format("2006-01-02 15:04"), unattended, strings.TrimSpace(msg.Content))
 }
 
-// attachWaitingMessages appends a passive member's waiting messages to the
+// attachWaitingMessages appends a holding member's waiting messages to the
 // person's input, then deletes them: they reach the conversation together.
 func (m *model) attachWaitingMessages(text string) string {
 	if !m.grp.userTyped {
@@ -358,10 +366,10 @@ func fromLine(msg group.Message) string {
 
 // membership is what the session record keeps, so a resume can rejoin.
 type membership struct {
-	Group string     `json:"group"`
-	Name  string     `json:"name"`
-	Role  string     `json:"role"`
-	Mode  group.Mode `json:"mode"`
+	Group string `json:"group"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	Hold  bool   `json:"hold,omitempty"`
 }
 
 func currentMembership() string {
@@ -369,7 +377,7 @@ func currentMembership() string {
 	if g == "" {
 		return ""
 	}
-	data, _ := json.Marshal(membership{Group: g, Name: self.Name, Role: self.Role, Mode: self.Mode})
+	data, _ := json.Marshal(membership{Group: g, Name: self.Name, Role: self.Role, Hold: self.Hold})
 	return string(data)
 }
 
@@ -411,7 +419,7 @@ func (m *model) rejoinGroup(blob string) {
 		if self, err := group.Reclaim(ms.Group, ms.Name); err != nil {
 			m.conv.AddNotice(fmt.Sprintf("Not rejoining group %s: %v", ms.Group, err))
 		} else {
-			m.conv.AddNotice(fmt.Sprintf("Back in group %s as @%s (%s)", ms.Group, self.Name, self.Mode))
+			m.conv.AddNotice(fmt.Sprintf("Back in group %s as @%s%s", ms.Group, self.Name, holdTag(self.Hold)))
 		}
 	}
 	m.reconcileMembership()
@@ -435,22 +443,22 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 		m.reconcileMembership()
 		m.services.Reminder.Enqueue("You left group " + g + group.NoSendMessage)
 		return "Left group " + g + ".", nil
-	case "mode":
-		mode, err := group.ParseMode(rest)
-		if err != nil {
-			return "Usage: /group mode active|passive", nil
+	case "hold":
+		if rest != "on" && rest != "off" {
+			return "Usage: /group hold on|off", nil
 		}
-		if err := group.SetMode(mode); err != nil {
+		hold := rest == "on"
+		if err := group.SetHold(hold); err != nil {
 			return err.Error(), nil
 		}
 		m.reconcileMembership()
 		g, _ := group.Current()
-		wait := "members' messages start a turn"
-		if mode == group.Passive {
-			wait = "members' messages wait for your user"
+		if hold {
+			m.services.Reminder.Enqueue("Group " + g + ": you now hold members' messages; they wait for your user's next input.")
+			return "Holding members' messages in " + g + " until you type.", nil
 		}
-		m.services.Reminder.Enqueue(fmt.Sprintf("Group %s: you are now %s; %s.", g, mode, wait))
-		return fmt.Sprintf("You are now %s in group %s.", mode, g), nil
+		m.services.Reminder.Enqueue("Group " + g + ": you no longer hold members' messages; they start a turn right away.")
+		return "Members' messages in " + g + " are acted on right away again.", nil
 	case "kick":
 		if rest == "" {
 			return "Usage: /group kick <member>", nil
@@ -477,7 +485,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 }
 
 func (m *model) groupJoin(args string) (string, tea.Cmd) {
-	name, member, role, mode := parseGroupJoin(args)
+	name, member, role, hold := parseGroupJoin(args)
 	if g, _ := group.Current(); g != "" {
 		return fmt.Sprintf("Already in group %s; /group leave first.", g), nil
 	}
@@ -488,20 +496,20 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 	provider, model, cwd, session := m.env.LLMProvider, m.env.GetModelID(), m.env.CWD, m.env.SessionName
 	if (member != "" && role != "") || len(msgs) == 0 { // given, or nothing to summarize
 		gotName, gotRole := group.Fallback(session, cwd)
-		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), mode: mode}), nil
+		return m.finishJoin(groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), hold: hold}), nil
 	}
 	return m.fitLines(fmt.Sprintf("Joining %s — naming this session…", name)), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 		defer cancel()
 		gotName, gotRole := describeSession(ctx, provider, model, msgs, cwd, session)
-		return groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), mode: mode}
+		return groupJoinMsg{group: name, name: cmp.Or(member, gotName), role: cmp.Or(role, gotRole), hold: hold}
 	}
 }
 
 // finishJoin joins and reports the outcome; it runs on the UI goroutine.
 func (m *model) finishJoin(msg groupJoinMsg) string {
 	name := group.FreeName(msg.group, cmp.Or(group.NameFrom(msg.name), "session"))
-	self, err := group.Join(msg.group, group.Member{Name: name, Role: msg.role, Mode: msg.mode, Cwd: m.env.CWD})
+	self, err := group.Join(msg.group, group.Member{Name: name, Role: msg.role, Hold: msg.hold, Cwd: m.env.CWD})
 	if err != nil {
 		return "Could not join: " + err.Error()
 	}
@@ -511,7 +519,7 @@ func (m *model) finishJoin(msg groupJoinMsg) string {
 		// is under way, so tell the model now.
 		m.services.Reminder.Enqueue(group.Roster())
 	}
-	return m.fitLines(fmt.Sprintf("Joined %s as @%s (%s) · %s", msg.group, self.Name, self.Mode, group.MemberCount(len(group.Members(msg.group)))))
+	return m.fitLines(fmt.Sprintf("Joined %s as @%s · %s%s", msg.group, self.Name, group.MemberCount(len(group.Members(msg.group))), holdTag(self.Hold)))
 }
 
 // joinFlagSuggestions offers the join flags not yet given, once a group is named.
@@ -523,7 +531,7 @@ func joinFlagSuggestions(rest string) []suggest.Suggestion {
 	}
 	var out []suggest.Suggestion
 	for _, f := range []struct{ flag, desc string }{
-		{"--passive", "members' messages wait for you"},
+		{"--hold", "keep members' messages until you type"},
 		{"--as", "NAME · your member name"},
 		{"--role", "TEXT · what this session owns"},
 	} {
@@ -532,6 +540,22 @@ func joinFlagSuggestions(rest string) []suggest.Suggestion {
 		}
 	}
 	return out
+}
+
+// holdTag marks a member that holds messages, in what the person reads.
+func holdTag(hold bool) string {
+	if hold {
+		return " · hold"
+	}
+	return ""
+}
+
+// holdsNote marks one in what the model reads.
+func holdsNote(hold bool) string {
+	if hold {
+		return " (holds messages)"
+	}
+	return ""
 }
 
 // fitLines cuts each line to the screen: notices are not re-wrapped, so a
@@ -544,8 +568,7 @@ func (m *model) fitLines(s string) string {
 	return strings.Join(lines, "\n")
 }
 
-func parseGroupJoin(args string) (name, member, role string, mode group.Mode) {
-	mode = group.Active
+func parseGroupJoin(args string) (name, member, role string, hold bool) {
 	fields := strings.Fields(args)
 	for i := 0; i < len(fields); i++ {
 		switch fields[i] {
@@ -554,8 +577,8 @@ func parseGroupJoin(args string) (name, member, role string, mode group.Mode) {
 				member = strings.TrimPrefix(fields[i+1], "@")
 				i++
 			}
-		case "--passive":
-			mode = group.Passive
+		case "--hold":
+			hold = true
 		case "--role":
 			var words []string
 			for i++; i < len(fields) && !strings.HasPrefix(fields[i], "--"); i++ {
@@ -569,7 +592,7 @@ func parseGroupJoin(args string) (name, member, role string, mode group.Mode) {
 			}
 		}
 	}
-	return cmp.Or(name, group.DefaultName), member, role, mode
+	return cmp.Or(name, group.DefaultName), member, role, hold
 }
 
 const describeSessionPrompt = `You name a coding session that is joining a group of collaborating sessions.
@@ -626,7 +649,7 @@ func groupSuggestions(args string) []suggest.Suggestion {
 			{"members", "who is in your group, and what each is doing", joined},
 			{"join", "join or create a group", !joined},
 			{"leave", "leave your group", joined},
-			{"mode", "active: wake for members · passive: wait for you", joined},
+			{"hold", "on: keep members' messages until you type · off: act on them now", joined},
 			{"kick", "remove a member", joined},
 			{"list", "every group", true},
 			{"disband", "remove a group; its members leave", true},
@@ -662,9 +685,9 @@ func groupSuggestions(args string) []suggest.Suggestion {
 		if sub == "join" && len(out) == 0 {
 			add(group.DefaultName, "create it")
 		}
-	case "mode":
-		add("active", "members' messages start a turn")
-		add("passive", "members' messages wait for you")
+	case "hold":
+		add("on", "keep members' messages until you type")
+		add("off", "act on members' messages right away")
 	case "kick":
 		g, self := group.Current()
 		members := group.Members(g)

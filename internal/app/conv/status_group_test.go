@@ -33,3 +33,19 @@ func TestShiftTabHintShowsOnlyForAMoment(t *testing.T) {
 		t.Errorf("hint on: %q, off: %q", line(true), line(false))
 	}
 }
+
+// Holding is a quiet fact; only what waits on the person turns the group amber.
+func TestHoldShowsQuietlyInTheStatusBar(t *testing.T) {
+	render := func(waiting int) string {
+		return RenderModeStatus(OperationModeParams{ModelName: "M", Width: 100, Group: "shop", GroupSelf: "web", GroupHold: true, GroupWaiting: waiting})
+	}
+	if got := xansi.Strip(render(0)); !strings.HasPrefix(got, "  ◆ shop/web · hold") || strings.Contains(got, "waiting") {
+		t.Errorf("held, nothing waiting: %q", got)
+	}
+	if got := xansi.Strip(render(2)); !strings.HasPrefix(got, "  ◆ shop/web · hold · 2 waiting") {
+		t.Errorf("held, two waiting: %q", got)
+	}
+	if render(0) == render(2) {
+		t.Error("waiting messages should change how the group reads")
+	}
+}

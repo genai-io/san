@@ -32,11 +32,11 @@ the <group> block in your reminders; without one you are in no group.`,
 		Definition: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action": map[string]any{"type": "string", "enum": []string{"join", "leave", "mode"}},
+				"action": map[string]any{"type": "string", "enum": []string{"join", "leave", "hold"}},
 				"group":  map[string]any{"type": "string", "description": `The group to join; defaults to "default".`},
 				"as":     map[string]any{"type": "string", "description": "Your member name for join: a short kebab-case handle for what this session works on."},
 				"role":   map[string]any{"type": "string", "description": "For join: a few words on what this session owns."},
-				"mode":   map[string]any{"type": "string", "enum": []string{"active", "passive"}, "description": "For join or mode. active (default): members' messages start a turn at once. passive: they wait for your user's next input."},
+				"hold":   map[string]any{"type": "boolean", "description": "For join or hold. true: members' messages wait for your user's next input. false (default): they start a turn at once."},
 			},
 			"required": []string{"action"},
 		},
@@ -51,10 +51,13 @@ func (t *Tool) PreparePermission(ctx context.Context, params map[string]any, cwd
 	case "leave":
 		g, _ := members.Current()
 		what = "Leave group " + g
-	case "mode":
-		what = "Switch to " + tool.GetString(params, "mode") + " in the group"
+	case "hold":
+		what = "Act on members' messages right away"
+		if tool.GetBool(params, "hold") {
+			what = "Hold members' messages until you type"
+		}
 	default:
-		return nil, fmt.Errorf(`action must be join, leave or mode`)
+		return nil, fmt.Errorf(`action must be join, leave or hold`)
 	}
 	return &perm.PermissionRequest{ID: tool.GenerateRequestID(), ToolName: t.Name(), Description: what}, nil
 }
@@ -83,31 +86,31 @@ func run(params map[string]any, cwd string) (string, error) {
 		self, err := members.Join(g, members.Member{
 			Name: members.FreeName(g, name),
 			Role: cmp.Or(tool.GetString(params, "role"), role),
-			Mode: members.Mode(tool.GetString(params, "mode")),
+			Hold: tool.GetBool(params, "hold"),
 			Cwd:  cwd,
 		})
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Joined group %s as @%s (%s).\n\n%s", g, self.Name, self.Mode, members.Roster()), nil
+		return fmt.Sprintf("Joined group %s as @%s.\n\n%s", g, self.Name, members.Roster()), nil
 	case "leave":
 		g, _ := members.Current()
 		if err := members.Leave(); err != nil {
 			return "", err
 		}
 		return "Left group " + g + members.NoSendMessage, nil
-	case "mode":
-		mode, err := members.ParseMode(tool.GetString(params, "mode"))
-		if err != nil {
-			return "", err
-		}
-		if err := members.SetMode(mode); err != nil {
+	case "hold":
+		hold := tool.GetBool(params, "hold")
+		if err := members.SetHold(hold); err != nil {
 			return "", err
 		}
 		g, _ := members.Current()
-		return fmt.Sprintf("You are now %s in group %s.", mode, g), nil
+		if hold {
+			return "Holding members' messages in group " + g + "; they wait for your user's next input.", nil
+		}
+		return "Members' messages in group " + g + " start a turn right away again.", nil
 	}
-	return "", fmt.Errorf(`action must be join, leave or mode`)
+	return "", fmt.Errorf(`action must be join, leave or hold`)
 }
 
 func init() {

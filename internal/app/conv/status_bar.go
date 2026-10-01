@@ -217,6 +217,7 @@ type OperationModeParams struct {
 	UpdateInstalled   string   // release installed on disk this session, "" for none
 	Group             string   // this session's group, "" outside one
 	GroupSelf         string   // this session's member name in it
+	GroupHold         bool     // this member holds the others' messages
 	ModeHint          bool     // show "(shift+tab to cycle)": briefly, after start or a switch
 	GroupWaiting      int      // member messages waiting for the person's next input
 	GroupApproval     []string // other members whose turn waits on their user's approval
@@ -258,13 +259,18 @@ func withGroupStatus(mode string, p OperationModeParams) string {
 	return mode + "  " + group
 }
 
-// renderGroupStatus reads "◆ shop/api", then whatever waits on the person:
-// passive messages, which scroll out of sight, and members stuck on approval.
+// renderGroupStatus reads "◆ shop/api", "· hold" when it holds messages, then,
+// in amber, whatever waits on the person: held messages, which scroll out of
+// sight, and members stuck on approval.
 func renderGroupStatus(p OperationModeParams) string {
 	if p.Group == "" {
 		return ""
 	}
 	parts := []string{fmt.Sprintf("◆ %s/%s", p.Group, p.GroupSelf)}
+	if p.GroupHold {
+		parts = append(parts, "hold")
+	}
+	quiet := len(parts) // what is said before anything waits on the person
 	if p.GroupWaiting > 0 {
 		parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
 	}
@@ -274,10 +280,11 @@ func renderGroupStatus(p OperationModeParams) string {
 	case n > 1:
 		parts = append(parts, fmt.Sprintf("%s +%d need approval", p.GroupApproval[0], n-1))
 	}
-	if len(parts) == 1 {
-		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(parts[0])
+	color := kit.CurrentTheme.Muted
+	if len(parts) > quiet {
+		color = kit.CurrentTheme.Warning
 	}
-	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(strings.Join(parts, " · "))
+	return lipgloss.NewStyle().Foreground(color).Render(strings.Join(parts, " · "))
 }
 
 // renderStatusCluster composes the status line's right-hand cluster, in

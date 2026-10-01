@@ -124,14 +124,14 @@ func sentTo(m group.Member) string {
 	switch {
 	case !m.Online():
 		return fmt.Sprintf("Queued · offline; @%s sees it when its session resumes.", m.Name)
-	case m.Mode == group.Passive:
-		return fmt.Sprintf("Sent · waits for its user; @%s is passive and sees it when its user next types — don't wait for a reply.", m.Name)
+	case m.Hold:
+		return fmt.Sprintf("Sent · waits for its user; @%s holds messages until its user next types — don't wait for a reply.", m.Name)
 	case m.State == group.Approval:
-		return fmt.Sprintf("Sent · waits on its user's approval; @%s is active but stopped on an approval, so a reply may take a while.", m.Name)
+		return fmt.Sprintf("Sent · waits on its user's approval; @%s is stopped on an approval, so a reply may take a while.", m.Name)
 	case m.State == group.Working:
-		return fmt.Sprintf("Sent · reads it between steps; @%s is active and busy, so it reads it between its current steps.", m.Name)
+		return fmt.Sprintf("Sent · reads it between steps; @%s is busy, so it reads it between its current steps.", m.Name)
 	}
-	return fmt.Sprintf("Sent · reading now; @%s is active and idle, so it handles it now.", m.Name)
+	return fmt.Sprintf("Sent · reading now; @%s is idle, so it handles it now.", m.Name)
 }
 
 // recipientLabel renders a target id for tool output.
