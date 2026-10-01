@@ -476,7 +476,10 @@ func (m *model) disabledTools() map[string]bool {
 // build and shown in /tool.
 func toolsHeldOn() map[string]string {
 	if g, _ := group.Current(); g != "" {
-		return map[string]string{tool.ToolSendMessage: "on while in a group"}
+		return map[string]string{
+			tool.ToolSendMessage: "on while in a group",
+			tool.ToolGroup:       "on while in a group",
+		}
 	}
 	return nil
 }
