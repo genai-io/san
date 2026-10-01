@@ -54,7 +54,18 @@ type Member struct {
 	ProcStart string    `json:"procStart"`
 	Cwd       string    `json:"cwd"`
 	JoinedAt  time.Time `json:"joinedAt"`
+	State     State     `json:"state,omitempty"`
 }
+
+// State is what a member's session is doing, so a sender knows when a message
+// will be read, and the person sees who is stuck on them.
+type State string
+
+const (
+	Idle     State = "idle"
+	Working  State = "working"  // a turn is running
+	Approval State = "approval" // a turn waits on its user to approve a tool call
+)
 
 // Online reports whether the member's process is still the one that wrote the
 // file: a pid the system has since handed to another process does not count.
@@ -293,7 +304,7 @@ func Release() {
 	if !stillMember {
 		return
 	}
-	self.PID, self.ProcStart = 0, ""
+	self.PID, self.ProcStart, self.State = 0, "", ""
 	_ = atomicfile.WriteJSON(memberFile(g, self.Name), self, 0o600)
 }
 
@@ -355,12 +366,17 @@ func ParseMode(s string) (Mode, error) {
 }
 
 // SetMode switches this member's mode and records it in its member file.
-func SetMode(m Mode) error {
+func SetMode(m Mode) error { return updateSelf(func(self *Member) { self.Mode = m }) }
+
+// SetState records what this session is doing in its member file.
+func SetState(s State) error { return updateSelf(func(self *Member) { self.State = s }) }
+
+func updateSelf(change func(*Member)) error {
 	g, self := Current()
 	if g == "" {
 		return errNotJoined
 	}
-	self.Mode = m
+	change(&self)
 	if err := atomicfile.WriteJSON(memberFile(g, self.Name), self, 0o600); err != nil {
 		return err
 	}

@@ -211,12 +211,13 @@ type OperationModeParams struct {
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
-	ReviewApprovals   int    // auto-review approvals this session, shown next to the mode
-	ReviewEscalations int    // auto-review escalations to the user this session
-	AutopilotThinking bool   // the copilot is mid-decision — show "thinking…" on the mode indicator
-	UpdateInstalled   string // release installed on disk this session, "" for none
-	Group             string // this session's group, "" outside one
-	GroupWaiting      int    // member messages waiting for the person's next input
+	ReviewApprovals   int      // auto-review approvals this session, shown next to the mode
+	ReviewEscalations int      // auto-review escalations to the user this session
+	AutopilotThinking bool     // the copilot is mid-decision — show "thinking…" on the mode indicator
+	UpdateInstalled   string   // release installed on disk this session, "" for none
+	Group             string   // this session's group, "" outside one
+	GroupWaiting      int      // member messages waiting for the person's next input
+	GroupApproval     []string // other members whose turn waits on their user's approval
 }
 
 // RenderModeStatus renders the combined mode status line.
@@ -258,9 +259,19 @@ func renderStatusCluster(p OperationModeParams) string {
 	if p.Group != "" {
 		// Passive messages wait out of sight once scrolled away; this keeps
 		// them in view until the person's next input takes them in.
-		group := muted.Render("◆ " + p.Group)
+		parts := []string{"◆ " + p.Group}
 		if p.GroupWaiting > 0 {
-			group = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(fmt.Sprintf("◆ %s · %d waiting", p.Group, p.GroupWaiting))
+			parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
+		}
+		switch n := len(p.GroupApproval); {
+		case n == 1:
+			parts = append(parts, p.GroupApproval[0]+" needs approval")
+		case n > 1:
+			parts = append(parts, fmt.Sprintf("%s +%d need approval", p.GroupApproval[0], n-1))
+		}
+		group := muted.Render(parts[0])
+		if len(parts) > 1 { // something waits on the person
+			group = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(strings.Join(parts, " · "))
 		}
 		segments = append(segments, statusSegment{text: group, priority: 2})
 	}

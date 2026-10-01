@@ -376,6 +376,7 @@ func (m model) renderModeStatus() string {
 		UpdateInstalled:   m.updateInstalled,
 		Group:             m.grp.name,
 		GroupWaiting:      len(m.grp.announced),
+		GroupApproval:     m.membersAwaitingApproval(),
 	})
 }
 

@@ -40,15 +40,20 @@ Each session joins `shop` (created if missing):
 ```
 
 The current group, seen from `@web`: `*` marks this session and lists it
-first; only an offline member is marked `offline`:
+first; each member shows its mode and what it is doing — `idle`, `working`,
+`approval` (a turn waits on its user), or `offline`:
 
 ```
 ❭ /group
   shop · 3 members
-  * @web      active   wiring coupons into the checkout page
-    @api      active   owns the orders API
-    @migrate  passive  runs the 0042 schema migration
+  * @web      active   working   wiring coupons into the checkout page
+    @api      active   approval  owns the orders API
+    @migrate  passive  idle      runs the 0042 schema migration
 ```
+
+The status bar keeps the group in view, and turns amber when something waits
+on the person: `◆ shop · 2 waiting` (passive messages), `◆ shop · @api needs
+approval`.
 
 Completion opens the next level after each pick:
 
@@ -107,7 +112,8 @@ Member file `web.json`:
   "pid": 48213,
   "procStart": "2026-09-29T10:01:58+08:00",
   "cwd": "/Users/li/work/shop/web",
-  "joinedAt": "2026-09-29T10:02:11+08:00"
+  "joinedAt": "2026-09-29T10:02:11+08:00",
+  "state": "working"
 }
 ```
 
@@ -123,6 +129,7 @@ Message file `web.inbox/1790640123456789012-api.json`:
 
 - **Named after the member**, so a listing reads at a glance; join creates the file exclusively, so names never collide.
 - **The session ID is the member's identity**: it holds for the life of the session — `/clear` keeps it, a resume keeps it — so a resume is recognised by it. A `/fork` is a new session with a new ID and does not inherit membership.
+- **`state`** is written by the session itself, only when it changes: senders and `/group` read it, and it is never sent to the model.
 - **Message name = timestamp + sender**: name order is time order.
 - **No shared writes**: a member writes only its own file, a sender only adds to the recipient's inbox; temp file then rename, so writes are atomic. Directories 0700, files 0600.
 - **A message is deleted only once it is in the conversation**: the inbox file is its only copy. A process that exits or crashes before delivery leaves it on disk, and it is delivered next time the member is online.
@@ -333,7 +340,9 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage results
 
 ```
-Delivered to @web (active, online); they will handle it now.
+Delivered to @web (active, idle); they will handle it now.
+Delivered to @web (active, busy); they read it between their current steps.
+Delivered to @web (active, waiting on its user's approval); they read it once their user approves — a reply may take a while.
 Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
 Queued for @qa (offline); they see it when the session resumes.
 
@@ -534,6 +543,5 @@ flowchart TB
 ## Later
 
 - Coordinator mode: wake a chosen member when someone joins, e.g. to hand the newcomer work.
-- A group badge in the status bar, e.g. `group:shop(3)`.
 - `/group rename`.
 - Messaging across machines.

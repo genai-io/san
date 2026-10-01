@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/session"
@@ -177,5 +179,33 @@ func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	t.Cleanup(func() { _ = group.Leave() })
 	if m.startGroupPolling() == nil {
 		t.Error("rejoining did not start the loop again")
+	}
+}
+
+// Other members read this session's state from its member file: written as
+// the session goes idle, runs a turn, or stops on an approval.
+func TestMemberStateFollowsTheSession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession("s-self")
+	if _, err := group.Join("shop", group.Member{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = group.Leave() })
+	m := &model{services: services{Agent: &agent.Session{}}, conv: conv.NewModel(80)}
+	state := func() group.State { return group.Members("shop")[0].State }
+
+	m.syncGroupState()
+	if got := state(); got != group.Idle {
+		t.Errorf("idle session wrote %q", got)
+	}
+	m.conv.Stream.Active = true
+	m.syncGroupState()
+	if got := state(); got != group.Working {
+		t.Errorf("running turn wrote %q", got)
+	}
+	m.services.Agent.SetPendingPermission(&agent.PermGateRequest{})
+	m.syncGroupState()
+	if got := state(); got != group.Approval {
+		t.Errorf("parked approval wrote %q", got)
 	}
 }

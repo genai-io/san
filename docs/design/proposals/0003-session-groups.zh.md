@@ -34,15 +34,17 @@
   Joined group shop as @migrate (passive) — runs the 0042 schema migration
 ```
 
-在 `@web` 里查看当前 group，`*` 标出当前会话自己，排在第一个；离线成员才会标 `offline`：
+在 `@web` 里查看当前 group，`*` 标出当前会话自己，排在第一个；每个成员显示模式和正在做什么：`idle`（空闲）、`working`（工作中）、`approval`（这一轮在等用户确认）或 `offline`：
 
 ```
 ❭ /group
   shop · 3 members
-  * @web      active   wiring coupons into the checkout page
-    @api      active   owns the orders API
-    @migrate  passive  runs the 0042 schema migration
+  * @web      active   working   wiring coupons into the checkout page
+    @api      active   approval  owns the orders API
+    @migrate  passive  idle      runs the 0042 schema migration
 ```
+
+状态栏常驻显示所在的组；有需要用户处理的事时变成醒目色：`◆ shop · 2 waiting`（passive 消息待处理）、`◆ shop · @api needs approval`。
 
 输入时有补全，每选一级弹出下一级：
 
@@ -100,7 +102,8 @@
   "pid": 48213,
   "procStart": "2026-09-29T10:01:58+08:00",
   "cwd": "/Users/li/work/shop/web",
-  "joinedAt": "2026-09-29T10:02:11+08:00"
+  "joinedAt": "2026-09-29T10:02:11+08:00",
+  "state": "working"
 }
 ```
 
@@ -115,6 +118,7 @@
 ```
 
 - **按成员名命名**，一眼能看出是谁的；join 时排他创建文件，组内不会重名。
+- **`state`** 由会话自己写入，只在变化时写：发送方和 `/group` 读取它，不会发给模型。
 - **sessionID 就是成员身份**：它在会话的整个生命周期里不变，`/clear` 不变，恢复会话也不变，所以恢复会话靠它识别。`/fork` 出来的是新会话，有新的 sessionID，不继承成员身份。
 - **消息文件名 = 时间戳 + 发件人**，按文件名排序就是按时间排序。
 - **没有共享写入**：成员只写自己的文件，发件人只往对方 inbox 新增文件；先写临时文件再 rename，保证原子性。目录 0700、文件 0600。
@@ -319,7 +323,9 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage 结果
 
 ```
-Delivered to @web (active, online); they will handle it now.
+Delivered to @web (active, idle); they will handle it now.
+Delivered to @web (active, busy); they read it between their current steps.
+Delivered to @web (active, waiting on its user's approval); they read it once their user approves — a reply may take a while.
 Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
 Queued for @qa (offline); they see it when the session resumes.
 
@@ -499,6 +505,5 @@ flowchart TB
 ## 以后可以做
 
 - 协调者模式：有人加入时立即唤醒指定成员，例如给新人分配任务。
-- 状态栏显示 group 标记，例如 `group:shop(3)`。
 - `/group rename`。
 - 跨机器通信。

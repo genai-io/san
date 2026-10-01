@@ -116,6 +116,39 @@ func (m *model) startGroupPolling() tea.Cmd {
 	return m.nextGroupTick()
 }
 
+// syncGroupState keeps this member's state on disk in step with the session,
+// writing only on a change, so other members know when a message will be read.
+func (m *model) syncGroupState() {
+	g, self := group.Current()
+	if g == "" {
+		return
+	}
+	state := group.Idle
+	switch {
+	case m.services.Agent.PendingPermission() != nil:
+		state = group.Approval
+	case m.conv.Stream.Active:
+		state = group.Working
+	}
+	if state != self.State {
+		_ = group.SetState(state)
+	}
+}
+
+// membersAwaitingApproval names the other members whose turn waits on their
+// user, for the status bar.
+func (m *model) membersAwaitingApproval() []string {
+	_, self := group.Current()
+	var names []string
+	for _, e := range m.grp.roster {
+		if e.online && e.State == group.Approval && e.SessionID != self.SessionID {
+			names = append(names, "@"+e.Name)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 	group.BindSession(m.services.Session.ID())
 	var cmds []tea.Cmd

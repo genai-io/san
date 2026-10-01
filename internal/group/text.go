@@ -65,7 +65,8 @@ Unattended-Turns:
 }
 
 // Listing is what /group shows: this session first, marked *, then the
-// others; only offline members say so. Outside a group it lists the groups.
+// others, each with its mode and what it is doing. Outside a group it lists
+// the groups.
 func Listing() string {
 	g, self := Current()
 	if g == "" {
@@ -79,11 +80,11 @@ func Listing() string {
 		width = max(width, len(m.Name))
 	}
 	row := func(mark string, m Member) {
-		state := ""
-		if !m.Online() && m.SessionID != self.SessionID {
-			state = " (offline)"
+		state := cmp.Or(string(m.State), string(Idle))
+		if m.SessionID != self.SessionID && !m.Online() {
+			state = "offline"
 		}
-		fmt.Fprintf(&b, "\n%s @%-*s  %-7s  %s%s", mark, width, m.Name, m.Mode, m.Role, state)
+		fmt.Fprintf(&b, "\n%s @%-*s  %-7s  %-8s  %s", mark, width, m.Name, m.Mode, state, m.Role)
 	}
 	for _, m := range members {
 		if m.SessionID == self.SessionID {
