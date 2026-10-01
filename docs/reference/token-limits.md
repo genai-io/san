@@ -20,7 +20,7 @@ So the prompt a request can carry depends on how much it keeps for the reply:
 
 A reply cut off at `max_tokens` is continued, not lost, so holding the cap to
 32k costs nothing but frees the rest of the window for the prompt. The status
-bar's `ctx X/Y` is the last call's prompt plus its reply, read against the
+bar's `X/Y` context figure is the last call's prompt plus its reply, read against the
 window itself — the figure the model is sold with and `/context limit` sets —
 and hints "auto-compact near" as it closes on the compact point; `/context`
 shows both.

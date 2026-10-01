@@ -88,7 +88,7 @@ type Data struct {
 	// ContextBar toggles the visual context-usage bar ([██████░░░░] 71%) in
 	// the status line. Pointer so an explicit "off" persists distinctly from
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
-	// "ctx X/Y" label is unaffected and always shows.
+	// "X/Y" context label is unaffected and always shows.
 	ContextBar *bool `json:"contextBar,omitempty"`
 	// ThinkingDisplay selects how the model's reasoning is drawn: "full",
 	// "collapsed", or "hidden" (see the ThinkingDisplay* constants). Empty or

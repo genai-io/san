@@ -279,7 +279,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 		t.Fatalf("RenderModeStatus() = %q, want bar with percent", visible)
 	}
 	// The numeric label rides alongside the bar.
-	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
+	if !strings.Contains(visible, "142.0k/200.0k") {
 		t.Fatalf("RenderModeStatus() = %q, want numeric ctx label", visible)
 	}
 	// Cost segment must still render.
@@ -290,7 +290,7 @@ func TestRenderModeStatusShowsTokenUsageWithModel(t *testing.T) {
 
 // TestRenderModeStatusHidesBarByDefault confirms the visual bar is opt-in:
 // with ShowContextBar unset the [██░░] bar and its percent are gone, but the
-// numeric "ctx X/Y" label still shows.
+// numeric "X/Y" context label still shows.
 func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 	rendered := RenderModeStatus(OperationModeParams{
 		ModelName:     "claude-sonnet-4-6",
@@ -300,7 +300,7 @@ func TestRenderModeStatusHidesBarByDefault(t *testing.T) {
 		Width:         120,
 	})
 	visible := stripANSI(rendered)
-	if !strings.Contains(visible, "ctx 142.0k/200.0k") {
+	if !strings.Contains(visible, "142.0k/200.0k") {
 		t.Fatalf("numeric ctx label should still show when bar is off; got %q", visible)
 	}
 	if strings.Contains(visible, "█") || strings.Contains(visible, "71%") {
@@ -405,8 +405,8 @@ func TestRenderModeStatusShowsCtxWithoutTurnUsageArrows(t *testing.T) {
 		ContextBudget: 272000,
 		Width:         120,
 	}))
-	if !strings.Contains(visible, "ctx") {
-		t.Fatalf("RenderModeStatus() = %q, want the ctx label", visible)
+	if !strings.Contains(visible, "164.6k/272.0k") {
+		t.Fatalf("RenderModeStatus() = %q, want the context label", visible)
 	}
 	if strings.ContainsAny(visible, "↑↓") {
 		t.Fatalf("RenderModeStatus() = %q, must not render per-turn usage arrows", visible)

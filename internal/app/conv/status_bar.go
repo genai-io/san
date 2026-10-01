@@ -103,17 +103,17 @@ func RenderContextBar(used, limit int) string {
 	return style.Render(fmt.Sprintf("[%s] %d%%", bar, int(pct+0.5)))
 }
 
-// contextLabel renders the muted "ctx used/limit" segment. An empty limitText
+// contextLabel renders the muted "used/limit" segment. An empty limitText
 // renders the limit as "--" (unknown).
 func contextLabel(usedText, limitText string) string {
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	if limitText == "" {
-		return muted.Render(fmt.Sprintf("ctx %s/--", usedText))
+		return muted.Render(usedText + "/--")
 	}
-	return muted.Render(fmt.Sprintf("ctx %s/%s", usedText, limitText))
+	return muted.Render(usedText + "/" + limitText)
 }
 
-// RenderContextLabel renders the "ctx X/Y" segment using compact
+// RenderContextLabel renders the "X/Y" segment using compact
 // humanized numbers (PRD §7.4). Limit renders as "--" when unknown.
 func RenderContextLabel(used, limit int) string {
 	if limit <= 0 {
@@ -282,7 +282,7 @@ func renderGroupStatus(p OperationModeParams) string {
 
 // renderStatusCluster composes the status line's right-hand cluster, in
 // display order: model name, optional transient status message, the numeric
-// "ctx X/Y" label, the optional visual context bar, the optional compressions
+// "X/Y" context label, the optional visual context bar, the optional compressions
 // badge, and the optional cost. Each piece is a statusSegment with a drop
 // priority; fitStatusSegments drops the least important first when the
 // terminal is too narrow to hold them all.
@@ -301,7 +301,7 @@ func renderStatusCluster(p OperationModeParams) string {
 		segments = append(segments, statusSegment{text: muted.Render(p.StatusMessage), priority: 2})
 	}
 
-	// The numeric label always renders — it falls back to "ctx X/--" when the
+	// The numeric label always renders — it falls back to "X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
 		text:     RenderContextLabel(p.ContextTokens, p.ContextWindow),
