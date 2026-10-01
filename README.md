@@ -17,9 +17,6 @@
     <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
   </p>
   <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality intro ↗</a></sub>
-  <p>
-    ⚡ <strong>~0.01s</strong> cold start&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> single binary&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>zero</strong> runtime deps
-  </p>
 </div>
 
 San is an open-source terminal agent runtime: one native Go binary, no Node.js
@@ -52,6 +49,8 @@ Three properties, and San refuses to trade any one of them for the others.
 **Plug in** — nothing is hardwired. Models from Anthropic, OpenAI, Google, DeepSeek, Ollama, and a dozen more; the web search backend of your choice; extensions of every kind — skills, subagents, MCP servers, plugins, hooks.
 
 **Write** — how the agent behaves is text you own, not something baked into the binary. Compose the system prompt ([how](docs/concepts/harness-channels.md)), bundle it into a persona you can switch, give autopilot a goal, set the strategy self-learning follows.
+
+**Coordinate** — more than one agent at a time. Subagents run in parallel, each on the model that suits it; workflows arrange them as a graph ([how](docs/design/proposals/0001-workflow-orchestration.md)); and sessions on one machine join a group to message each other back and forth — anything that can wait holds for you ([session groups](docs/design/proposals/0003-session-groups.md)).
 
 **Oversee** — nothing runs unwatched. You choose how much San may do without asking, and subagents inherit that choice ([permissions](docs/concepts/permission-model.md)); the inspector replays any run exactly as the model saw it.
 
@@ -130,6 +129,7 @@ Subcommands: `inspector` · `agent` · `plugin` · `mcp` — run `san <command> 
 | Model · thinking budget | `/models` · `Ctrl+T` |
 | Permission mode | `Shift+Tab` (ask · auto-accept · autopilot) |
 | Long-running work · learning | `/autopilot` · `/goal` · `/evolve` |
+| Message your other sessions | `/group join` · `/group members` · `/group hold on\|off` |
 | All slash commands | `/help` |
 | Keys | `Enter` send · `Alt+Enter` newline · `Esc` stop · `Ctrl+O` expand tool · `Ctrl+C` cancel · `Ctrl+D` exit |
 
@@ -226,6 +226,7 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 - [System Prompt](docs/concepts/harness-channels.md) — Slot model, persona, skill/agent injection
 - [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
 - [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
+- [Workflows](docs/design/proposals/0001-workflow-orchestration.md) · [Session groups](docs/design/proposals/0003-session-groups.md) — subagents as a graph; sessions that message each other
 - [Inspector](docs/packages/2-feature/inspector.md) — local web UI for transcript replay and debugging
 - Per-package design under [`docs/packages/`](docs/packages/) — start at [Package Index](docs/packages/index.md)
 

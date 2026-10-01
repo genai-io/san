@@ -1,567 +1,837 @@
-<!DOCTYPE html>
-<!--
-  San — HyperFrames-style product intro.
-
-  "Video as HTML": one index.html *is* the video. Inspired by HeyGen's
-  HyperFrames (devtang.com/2026/05/06/generate-video-from-hyperframes):
-    · data-* attributes drive timing  (data-start / data-dur on .scene)
-    · CSS drives appearance
-    · a tiny vanilla-JS timeline drives animation (no deps)
-
-  Aesthetic: "refined technical editorial". One teal accent + a paper/ink
-  neutral ramp. Newsreader (serif italic) titles against IBM Plex Mono.
-  Film grain, vignette, a single-hue glow. Light & dark, auto-follows OS,
-  toggle ◐ or press T. SPEED scales playback.
-
-  Open in a browser. Auto-loops; click to pause/play, R restart, T theme.
-  Record at 1280x720.
-
-  Flow: boot → multi-model → multi-persona → fast interaction → self-improvement → deploy → outro.
--->
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>San — multi-model · multi-persona · fast · self-evolving</title>
+<title>San — Minimal overhead. Maximum agent.</title>
+<!--
+  San intro: a timed sequence of scenes that loops and records to MP4/GIF.
+  Click pause/play · R restart · ?t=<seconds> freezes a frame.
+-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:ital,opsz,wght@1,18..72,400;1,18..72,500;0,18..72,500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Bangers&family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet">
 <style>
+  /* ── one ink-on-paper palette ── */
   :root{
-    --mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular','Menlo','Consolas',monospace;
-    --serif:'Newsreader','Iowan Old Style','Georgia','Times New Roman',serif;
-    --ease:cubic-bezier(.22,.9,.27,1);
-  }
-  [data-theme="dark"]{
-    --bg:#0a0c10; --glow:rgba(45,212,191,.11); --vignette:rgba(0,0,0,.5);
-    --panel:#10131a; --panel-2:#0d1017; --panel-bar:#0b0e14; --inset:#090b10;
-    --border:#222a35; --border-soft:#19202a; --hairline:rgba(255,255,255,.05);
-    --fg:#d4dbe6; --fg-strong:#eef3f9; --dim:#828fa2; --faint:#4f5b69;
-    --accent:#2dd4bf; --accent-strong:#14b8a6; --accent-soft:rgba(45,212,191,.13);
-    --on-accent:#04221e;
-    --title-grad:linear-gradient(98deg,#7defde,#2dd4bf 55%,#26c0d6);
-    --shadow:rgba(0,0,0,.6); --shadow-soft:rgba(0,0,0,.4);
-  }
-  [data-theme="light"]{
-    --bg:#f5f3ee; --glow:rgba(13,148,136,.08); --vignette:rgba(40,45,40,.06);
-    --panel:#fffefb; --panel-2:#f8f6f1; --panel-bar:#f1efe9; --inset:#f2f0ea;
-    --border:#e4e0d6; --border-soft:#ece9e1; --hairline:rgba(255,255,255,.6);
-    --fg:#2c3038; --fg-strong:#15181d; --dim:#646b73; --faint:#a7a399;
-    --accent:#0d9488; --accent-strong:#0b7d72; --accent-soft:rgba(13,148,136,.11);
-    --on-accent:#fffefb;
-    --title-grad:linear-gradient(98deg,#0d9488,#0b8a8e);
-    --shadow:rgba(60,55,40,.16); --shadow-soft:rgba(60,55,40,.10);
+    --bg:#f7f6f2; --bg-deep:#eeede8; --ink:#111111; --text:#1b1b1b; --dim:#555555; --mute:#8a8a8a;
+    --line:#111111; --win:#ffffff; --winbar:#ffffff; --chip:#f2f2f2;
+    --accent:#111111; --accent-strong:#000000; --accent-soft:rgba(17,17,17,.07); --accent-line:#111111;
+    --shadow:6px 6px 0 #111;
+    --grain:0; --dots:transparent;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{height:100%;background:var(--bg);overflow:hidden;font-family:var(--mono);transition:background .4s ease}
-  #fit{position:fixed;inset:0;display:grid;place-items:center;animation:fadeIn .9s ease both}
-  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
-  .stage{width:1280px;height:720px;position:relative;overflow:hidden;border-radius:20px;
-    background:radial-gradient(125% 95% at 50% -18%, var(--glow), transparent 46%), var(--bg);
-    box-shadow:0 50px 130px var(--shadow);transform-origin:center;transition:background .4s ease,box-shadow .4s ease}
-  .vignette{position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:20px;box-shadow:inset 0 0 190px 26px var(--vignette)}
-  .grain{position:absolute;inset:-50%;z-index:9;pointer-events:none;opacity:.05;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+  html,body{height:100%;background:var(--bg-deep);overflow:hidden}
+  body{font-family:"Geist Mono","IBM Plex Mono",ui-monospace,Menlo,monospace;color:var(--text);display:flex;align-items:center;justify-content:center}
+  .frame{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:1280px;height:720px;flex:none;overflow:hidden;transform-origin:center;
+    background:
+      #f7f6f2}
+  #stage:before{content:"";position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(circle, rgba(17,17,17,.20) 1.5px, transparent 2px) 0 0/11px 11px;
+    -webkit-mask-image:radial-gradient(ellipse 80% 75% at 50% 50%, rgba(0,0,0,.35) 0%, rgba(0,0,0,.55) 45%, #000 100%);mask-image:radial-gradient(ellipse 80% 75% at 50% 50%, rgba(0,0,0,.35) 0%, rgba(0,0,0,.55) 45%, #000 100%)}
+  .grain{position:absolute;inset:-50%;pointer-events:none;opacity:var(--grain);z-index:20;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+  .vignette{display:none}
 
-  /* editorial header */
-  .brand{position:absolute;top:30px;right:36px;z-index:6;font-weight:600;letter-spacing:.5px;color:var(--accent);font-size:18px}
-  .brand b{color:var(--accent)}
-  .caption{position:absolute;left:80px;top:26px;z-index:6;opacity:0;transform:translateY(-8px);
-    transition:opacity .55s var(--ease),transform .55s var(--ease)}
+  .brand{position:absolute;top:32px;left:72px;z-index:6;font-weight:600;font-size:14px;letter-spacing:.5px;color:var(--ink)}
+  .brand b{color:var(--accent);font-weight:600}
+  .brand-r{position:absolute;top:34px;right:72px;z-index:6;font-family:Geist,sans-serif;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+
+  /* ── editorial caption, left column ── */
+  .caption{position:absolute;left:72px;top:104px;height:496px;display:flex;flex-direction:column;justify-content:center;width:372px;z-index:5;opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s cubic-bezier(.2,.7,.2,1)}
   .caption.show{opacity:1;transform:none}
-  .kicker{font-size:11.5px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:5px}
-  .ctitle{font-family:var(--serif);font-style:italic;font-size:35px;font-weight:500;line-height:1.05;
-    color:var(--accent);background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .cdesc{font-size:14px;color:var(--dim);margin-top:7px;letter-spacing:.2px}
+  .kicker{font-family:Geist,sans-serif;font-size:12px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);margin-bottom:20px;display:flex;align-items:center;gap:14px}
+  .kicker .kn{font-family:"Geist Mono",monospace;color:var(--accent);letter-spacing:.04em;padding-right:14px;border-right:1px solid var(--line)}
+  .ctitle{font-family:"Cormorant Garamond",Georgia,serif;font-weight:500;font-size:70px;line-height:.98;color:var(--ink);letter-spacing:-.6px;margin-bottom:28px}
+  .ctitle em{color:var(--accent);font-style:italic}
+  .cdesc{list-style:none;font-family:Geist,sans-serif;font-size:15.5px;line-height:1.45;color:var(--dim);border-top:1px solid var(--line)}
+  .cdesc li{position:relative;padding:11px 0;border-bottom:1px solid var(--line)}
+  .cdesc li b{color:var(--ink);font-weight:500}
+  .cdesc code{font-family:"Geist Mono",monospace;color:var(--accent);font-size:13.5px}
 
-  /* terminal */
-  .term{position:absolute;z-index:4;left:80px;top:112px;width:1120px;height:540px;transform-origin:50% 0;
-    background:var(--panel);border:1px solid var(--border);border-radius:14px;
-    box-shadow:0 28px 70px var(--shadow-soft), inset 0 1px 0 var(--hairline);
-    overflow:hidden;display:flex;flex-direction:column;transition:background .4s ease,border-color .4s ease,transform .6s var(--ease)}
-  .term.shrunk{transform:scale(.4)}
-  .bar{height:40px;flex:0 0 40px;display:flex;align-items:center;gap:8px;padding:0 15px;
-    background:var(--panel-bar);border-bottom:1px solid var(--border)}
-  .dot{width:11px;height:11px;border-radius:50%;background:var(--faint);opacity:.7}
-  .bar .title{flex:1;text-align:center;color:var(--dim);font-size:13px;letter-spacing:.3px}
-  .bar .pill{color:var(--dim);font-size:12px;border:1px solid var(--border);border-radius:20px;padding:2px 10px}
-  .bar .pill b{color:var(--accent);font-weight:500}
-  .body{position:relative;flex:1;padding:24px 28px;font-size:18px;line-height:1.6;color:var(--fg);overflow:hidden}
+  /* ── scenes ── */
+  .scene{position:absolute;inset:0;opacity:0;pointer-events:none}
+  .right{position:absolute;left:494px;top:104px;width:708px;height:496px}  /* 494 + 708 + 6px offset shadow = the 1208 right margin */
+  .r{opacity:0;transform:translateY(8px)}   /* entrances are driven from the timeline (show), not CSS transitions */
+  .r.in{opacity:1;transform:none}
+  .hide{display:none!important}
 
-  .scene{position:absolute;inset:0;padding:24px 30px;opacity:0;pointer-events:none}
-  .scene.live{pointer-events:auto}
-
-  .dim{color:var(--dim)}.muted{color:var(--dim)}.accent{color:var(--accent)}
+  /* window */
+  .win.solo{left:0;right:0;top:50%;transform:translateY(-50%)}
+  .win{position:absolute;background:var(--win);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
+  .bar{height:38px;flex:none;display:flex;align-items:center;gap:7px;padding:0 14px;background:var(--winbar);border-bottom:1px solid var(--line);font-size:12px;color:var(--mute)}
+  .bar i{width:10px;height:10px;border-radius:50%;background:rgba(52,46,30,.13);display:inline-block}
+  .bar .t{margin-left:10px;color:var(--dim)}
+  .body{flex:1;padding:20px 22px;font-size:14px;line-height:1.75;position:relative}
+  .status{flex:none;height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--mute)}
+  .status .on{color:var(--accent)}
   .prompt{color:var(--accent)}
-  .cur{display:inline-block;width:9px;height:19px;vertical-align:-3px;margin-left:2px;background:var(--accent);animation:blink 1.05s steps(1) infinite}
+  .cur{display:inline-block;width:8px;height:17px;vertical-align:-3px;margin-left:2px;background:var(--accent);animation:blink 1.05s steps(1) infinite}
   @keyframes blink{50%{opacity:0}}
-  .reveal{opacity:0;transform:translateY(7px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
-  .reveal.in{opacity:1;transform:none}
-  .reveal.fast{transition:opacity .17s ease,transform .17s ease}
+  .ink{color:var(--ink)} .dim{color:var(--dim)} .mute{color:var(--mute)} .accent{color:var(--accent)}
+  .row{display:flex;align-items:center;gap:10px}
+  .tool b{color:var(--ink);font-weight:600}
+  .tool .p{color:var(--dim)}
+  .tool .x{margin-left:auto;font-size:12px;color:var(--mute)}
+  .add{color:var(--accent)}
+  .hang{padding-left:2ch;text-indent:-2ch}
+  .sub{padding-left:20px;color:var(--mute);font-size:13px}
+  .chip{font-size:11px;padding:2px 9px;border-radius:999px;background:var(--chip);border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .chip.a{color:var(--accent);border-color:var(--accent-line);background:var(--accent-soft)}
 
-  /* boot splash */
-  .splash{height:100%;display:flex;flex-direction:column;justify-content:center;gap:13px;text-align:center}
-  .logo{font-size:70px;font-weight:600;letter-spacing:1px;color:var(--fg-strong);transition:opacity .7s ease,transform .7s var(--ease)}
+  /* splash (intro / outro) */
+  .splash{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .logo{font-size:92px;font-weight:600;color:var(--ink);letter-spacing:2px}
   .logo .sp{color:var(--accent)}
-  .logo.reveal{transform:scale(.93)}.logo.reveal.in{transform:scale(1)}
-  .tag{font-family:var(--serif);font-style:italic;font-size:25px;font-weight:500;color:var(--fg)}
-  .sub{font-size:14px;color:var(--dim);letter-spacing:.2px}
-  .pillars{font-size:13px;color:var(--accent);letter-spacing:.4px}
-  .bootline{margin-top:8px;font-size:18px;color:var(--fg)}
+  .tag{font-family:"Cormorant Garamond",Georgia,serif;font-weight:500;font-size:48px;letter-spacing:-.3px;color:var(--ink);margin-top:18px}
+  .tag em{font-style:italic}
+  .tag em{color:var(--accent)}
+  .stats{display:flex;gap:22px;margin-top:46px}
+  .stat{width:220px;padding:22px 22px;background:var(--win);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);text-align:left}
+  .stat b{display:block;font-family:"Cormorant Garamond",Georgia,serif;font-weight:500;font-size:48px;letter-spacing:-.4px;font-variant-numeric:lining-nums;color:var(--ink);line-height:1}
+  .stat span{display:block;margin-top:10px;font-size:12.5px;color:var(--dim);letter-spacing:.04em}
 
-  .cmd{font-size:19px;margin-bottom:6px}
-  .out{font-size:17px;line-height:1.55}
-  .ok{color:var(--accent)} .arrow{color:var(--faint)}
+  /* models */
+  .picker{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .search{display:flex;gap:8px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--mute);background:var(--winbar)}
+  .search .q{color:var(--ink)} .search .cnt{margin-left:auto;font-size:11.5px}
+  .mrow{display:flex;align-items:center;gap:14px;padding:6px 14px;font-size:13.5px;border-left:2px solid transparent}
+  .mrow .pv{width:84px;color:var(--mute);font-size:12px}
+  .mrow .nm{color:var(--text)}
+  .mrow .mt{margin-left:auto;font-size:11.5px;color:var(--mute)}
+  .mrow{transition:opacity .25s ease}
+  .mrow.off{opacity:.28}
+  .mrow.sel{background:var(--accent-soft);border-left-color:var(--accent)}
+  .mrow.sel .nm{color:var(--accent);font-weight:500}
 
-  /* picker overlay */
-  .picker{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%) scale(.96);
-    width:660px;background:var(--panel-2);border:1px solid var(--border);border-radius:12px;
-    box-shadow:0 28px 70px var(--shadow);opacity:0;transition:opacity .3s ease,transform .3s var(--ease);overflow:hidden}
-  .picker.in{opacity:1;transform:translate(-50%,-50%) scale(1)}
-  .tabs{display:flex;gap:4px;padding:10px 12px 0}
-  .tab{font-size:13px;padding:5px 14px;border-radius:7px 7px 0 0;color:var(--dim)}
-  .tab.on{color:var(--on-accent);background:var(--accent);font-weight:500}
-  .search{display:flex;align-items:center;gap:8px;margin:8px 12px;padding:8px 12px;font-size:14px;
-    background:var(--inset);border:1px solid var(--border);border-radius:8px;color:var(--dim)}
-  .search .cnt{margin-left:auto;color:var(--faint);font-size:12px}
-  .search #m-query{color:var(--fg)} .search #m-ph{color:var(--dim)}
-  .scur{display:inline-block;width:7px;height:15px;vertical-align:-2px;margin:0 1px;background:var(--accent);animation:blink 1.05s steps(1) infinite}
-  .more{font-size:12px;color:var(--faint);padding:5px 14px 1px;text-align:center}
-  .rows{padding:2px 8px 6px}
-  .row{display:flex;align-items:center;gap:12px;padding:8px 12px;border-radius:8px;border-left:2px solid transparent;font-size:15px}
-  .row .pchip{font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:1px 7px;min-width:74px;text-align:center}
-  .row .name{color:var(--fg)} .row .meta{margin-left:auto;color:var(--faint);font-size:12px}
-  .row.sel{background:var(--accent-soft);border-left-color:var(--accent)}
-  .row.sel .name{color:var(--fg-strong)} .row.sel .pchip{color:var(--accent);border-color:var(--accent)}
-  .row .tick{color:var(--accent);width:14px}
-  .irow{padding:7px 12px;border-radius:8px;border-left:2px solid transparent}
-  .irow .top{display:flex;align-items:center;gap:10px;font-size:15px}
-  .irow .nm{color:var(--fg)} .irow .badge{font-size:11px;color:var(--faint)}
-  .irow .desc{font-size:12.5px;color:var(--dim);padding-left:2px}
-  .irow.sel{background:var(--accent-soft);border-left-color:var(--accent)}
-  .irow.sel .nm{color:var(--fg-strong)}
-  .hints{font-size:12px;color:var(--dim);padding:9px 14px;border-top:1px solid var(--border);background:var(--inset)}
+  /* groups */
+  .gwin .body{padding:12px 16px;font-size:12.5px;line-height:1.75;overflow:hidden}
+  .gwin .bar{height:32px} .gwin .status{height:30px;font-size:11px}
+  .mail{transition:opacity .15s ease;filter:drop-shadow(0 2px 4px rgba(0,0,0,.12))}
+  .mail rect{fill:var(--win);stroke:var(--accent);stroke-width:1.4}
+  .mail path{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-linejoin:round}
+  .fly{fill:none;stroke:var(--accent-line);stroke-width:1.6;stroke-linecap:round}
+  .dot{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+  .glayer{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:3}
+  .lst{font-size:12.5px}
+  .lst .h{color:var(--ink);margin-bottom:4px}
+  .lst .lr{display:grid;grid-template-columns:14px 100px 84px 56px 1fr;color:var(--dim);white-space:nowrap}
+  .lst .held{position:absolute;right:16px;top:12px;color:var(--dim)}
+  .gs{overflow:hidden}
+  .gs.scrolled{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 26px);mask-image:linear-gradient(to bottom,transparent 0,#000 26px)}
+  .gr{display:flex;align-items:baseline;white-space:nowrap}
+  .gr .m{flex:none;width:18px}
+  .gr .c{overflow:hidden;text-overflow:ellipsis}
+  .gr.tool .c b{margin-right:10px}
+  .gr .x{margin-left:auto;padding-left:10px;font-size:12px;color:var(--mute)}
+  .gr.sub{padding-left:18px;font-size:12.5px}
+  .lst .lr b{color:var(--ink);font-weight:500}
+  .lst .st.on{color:var(--accent)}
 
-  /* fast interaction */
-  .tool{font-size:16px;color:var(--dim);margin:2px 0}
-  .tool .tn{display:inline-block;min-width:52px;color:var(--accent)}
-  .tool .pathx{color:var(--fg)}
-  .tool .ms{color:var(--faint);font-size:13px;margin-left:8px}
-  .tool .diff{color:var(--dim);font-size:13px;margin-left:6px}
-  .asst{font-size:17px;color:var(--fg);margin-top:10px}
-  .donel{font-size:16px;margin-top:10px}
-  .speedchip{margin-left:12px;font-size:12px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 9px}
-  .zap{color:var(--accent);animation:zap .9s ease-in-out infinite}
-  @keyframes zap{50%{opacity:.5}}
+  /* learn */
+  .hist{opacity:.42}
+  .evolve{margin-top:14px;padding-top:12px;border-top:2px dashed transparent;font-size:13px}
+  .evolve.on{border-top-color:#111}
+  .lrn{margin-top:4px;color:var(--text)}
+  .lrn .k{display:inline-block;width:62px;font-family:Bangers,sans-serif;font-size:15px;letter-spacing:1px;color:#111}
+  .grp{margin-top:10px}
+  .grp .k{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
 
-  /* self-improvement */
-  .hist{opacity:0;transform:translateY(6px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
-  .hist.in{opacity:1;transform:none}
-  .h-cmd{font-size:16px;color:var(--fg);margin-bottom:3px}
-  .h-tool{font-size:14px;color:var(--dim);line-height:1.55}
-  .h-tool .tn{display:inline-block;min-width:48px;color:var(--accent)}
-  .h-done{font-size:14px;color:var(--dim);margin-top:4px}
-  .sl-live{font-size:16px;color:var(--dim);font-style:italic;margin-top:12px;opacity:0;transition:opacity .3s ease}
-  .sl-live.in{opacity:1}
-  .sl-live #sl-spin{font-style:normal;color:var(--accent)}
-  .sl-live .ev{color:var(--accent)}
-  .recap{display:inline-block;border:1px dashed transparent;border-radius:10px;padding:0 18px;margin-top:0;
-    max-height:0;overflow:hidden;opacity:0;
-    transition:max-height .45s var(--ease),opacity .4s ease,padding .45s var(--ease),margin .45s var(--ease),border-color .4s ease}
-  .recap.in{border-color:var(--border);padding:11px 18px;margin-top:12px;max-height:360px;opacity:1}
-  .grp{opacity:0;transform:translateY(5px);transition:opacity .4s ease,transform .4s ease}
-  .grp.in{opacity:1;transform:none}
-  .grp + .grp{margin-top:14px}
-  .kind{font-size:15px;font-style:italic;margin-bottom:2px;color:var(--accent)}
-  .rrow{font-size:15px;font-style:italic;color:var(--dim);padding-left:4px;line-height:1.5}
-  .rc-foot{font-size:14px;color:var(--dim);margin-top:9px;padding-left:2px}
-  .rc-foot.reveal{opacity:0}
-  .rc-foot.reveal.in{opacity:.7}
+  /* group windows scroll: newest line at the bottom, older ones leave the top */
+  .gscroll{display:flex;flex-direction:column;justify-content:flex-end;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 26px);mask-image:linear-gradient(to bottom,transparent 0,#000 26px)}
+  .gscroll > *{flex-shrink:0}
+  .gl:not(.in){display:none}
+  .gl.in{animation:gin .35s cubic-bezier(.2,.7,.2,1)}
+  @keyframes gin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* workflow graph */
+  .wfstage{position:relative;height:226px;margin:16px 0 6px}
+  .wfstage > *{position:absolute;inset:0}
+  .wflist{line-height:2}
+  .wflist .ink{display:inline-block;width:92px}
+  .dag{height:226px}
+  .wfdone{position:absolute;left:22px;bottom:18px}
+  .dagl path.act{stroke:var(--accent);stroke-width:1.8}
+  .loopl{position:absolute;left:230px;top:4px;width:166px;text-align:center;font-size:11.5px;color:var(--accent);opacity:0;transition:opacity .3s ease}
+  .loopl.in{opacity:1}
+  .wn{position:absolute;width:128px;height:44px;z-index:2;background:var(--win);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;justify-content:center;padding:0 12px;font-size:13px;color:var(--dim);transition:all .3s ease}
+  .wn span{font-size:10.5px;color:var(--mute)}
+  .wn.run{border-color:var(--accent);color:var(--ink);box-shadow:0 0 0 4px var(--accent-soft)}
+  .wn.done{border-color:var(--accent-line);color:var(--ink)}
+  .wn.done:after{content:"✓";position:absolute;right:10px;top:12px;color:var(--accent);font-size:13px}
+  .dagl{position:absolute;inset:0;width:560px;height:220px;overflow:visible}
+  .dagl path{fill:none;stroke:var(--line);stroke-width:1.5;transition:stroke .3s ease}
+  .dagl path.on{stroke:var(--accent-line)}
+
+  /* deploy */
+  .bin{position:absolute;left:234px;top:200px;width:240px;height:96px;z-index:2;background:var(--win);border:1px solid var(--accent-line);border-radius:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+  .bin-n{font-weight:600;font-size:17px;color:var(--ink)}
+  .bin-d{font-size:11px;color:var(--dim)}
+  .node{position:absolute;width:156px;height:52px;z-index:2;background:var(--win);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px 16px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+  .node b{color:var(--ink);font-size:13px;font-weight:600}
+  .node{padding:8px 14px;gap:2px;transition:opacity .38s ease,transform .45s cubic-bezier(.2,.7,.2,1),border-color .3s ease,box-shadow .3s ease}
+  .node.lit{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft),var(--shadow)}
+  .spoke{stroke-width:1.2}
+  .ripple{fill:none;stroke:var(--accent);stroke-width:1.2;opacity:0}
+  .pulse{filter:none}
+  .node span{color:var(--dim);font-size:10.5px;white-space:nowrap}
+
+  /* open grid */
+  .grid{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:88px;gap:14px}
+  .tile{background:var(--win);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 20px;display:flex;gap:16px;align-items:center}
+  .tile .g{font-size:20px;color:var(--accent);line-height:1.2;width:22px;text-align:center}
+  .tile .n{color:var(--ink);font-weight:600;font-size:14.5px}
+  .tile .d{color:var(--dim);font-size:12.5px;line-height:1.55;margin-top:4px}
 
   /* outro */
-  .outro{height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:13px;text-align:center}
-  .outro .big{font-size:62px;font-weight:600;color:var(--fg-strong);letter-spacing:1px}
-  .outro .big .sp{color:var(--accent)}
-  .outro .ln{font-family:var(--serif);font-style:italic;font-size:26px;font-weight:500;
-    color:var(--accent);background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .outro .en{font-size:14px;color:var(--dim);letter-spacing:.4px}
-  .install{margin-top:10px;font-size:14px;color:var(--fg);background:var(--inset);border:1px solid var(--border);border-radius:9px;padding:11px 18px}
-  .install .p{color:var(--accent)}
-  .site{font-size:14px;color:var(--accent)}
+  .install{margin-top:40px;background:var(--win);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:16px 22px;font-size:15px;color:var(--ink);text-align:left;line-height:1.9}
+  .install{font-size:13.5px}
+  .install .os{display:inline-block;width:78px;color:var(--mute);font-size:12px}
+  .install .p{color:var(--accent);margin-right:12px}
+  .gh{opacity:0;position:relative;margin-top:44px;font-size:24px;color:#111;padding:12px 28px 12px 64px;background:#fff;border:2.5px solid #111;border-radius:26px;box-shadow:5px 5px 0 #111;transform:rotate(-2deg)}
+  .gh:before{content:"";position:absolute;left:50%;top:-16px;border-style:solid;border-width:0 10px 16px 10px;border-color:transparent transparent #111}
+  .gh:after{content:"";position:absolute;left:calc(50% + 3px);top:-11px;border-style:solid;border-width:0 7px 12px 7px;border-color:transparent transparent #fff}
+  .gh .star{position:absolute;left:12px;top:50%;margin-top:-19px;width:38px;height:38px;border-radius:50%;background:#111;color:#fff;font-size:20px;line-height:38px;text-align:center;transform:rotate(12deg)}
+  .gh b{font-weight:600}
+  .stickers{display:flex;gap:16px;margin-top:30px}
+  .stickers span{font-family:Bangers,sans-serif;font-size:24px;letter-spacing:1.5px;color:#fff;background:#111;padding:4px 14px 2px;border-radius:4px;box-shadow:3px 3px 0 rgba(17,17,17,.25);opacity:0}
+  .site{margin-top:18px;font-size:13px;color:var(--dim);letter-spacing:.06em}
+  .site b{color:var(--accent);font-weight:500}
 
-  /* deploy / fan-out — terminal shrinks, devices pop out on the stage */
-  .dlayer{position:absolute;inset:0;z-index:5;opacity:0;pointer-events:none;transition:opacity .5s ease}
-  .dlayer.on{opacity:1}
-  .dlines{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-  .dline{fill:none;stroke:var(--accent);stroke-width:1.4;stroke-dasharray:5 7;vector-effect:non-scaling-stroke;
-    opacity:0;transition:opacity .4s ease;animation:flow 1.05s linear infinite}
-  .dline.on{opacity:.5}
-  @keyframes flow{to{stroke-dashoffset:-24}}
-  .dgrid{position:absolute;left:0;right:0;top:430px;display:flex;justify-content:center;gap:20px}
-  .node{width:180px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 12px;
-    display:flex;flex-direction:column;align-items:center;gap:7px;box-shadow:0 16px 44px var(--shadow);
-    transition:border-color .35s ease,box-shadow .35s ease,opacity .4s var(--ease),transform .4s var(--ease)}
-  .node .nicon{color:var(--dim);line-height:0;transition:color .35s ease}
-  .node .nicon svg{width:30px;height:30px;display:block}
-  .node .nlabel{font-size:13px;color:var(--fg);letter-spacing:.2px}
-  .node .nrole{font-size:12px;color:var(--faint);transition:color .35s ease}
-  .node .nrole::before{content:'● ';color:var(--accent);opacity:0;transition:opacity .3s ease}
-  .node.run{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-soft),0 18px 48px var(--shadow);transform:translateY(-3px)}
-  .node.run .nicon{color:var(--accent)}
-  .node.run .nrole{color:var(--accent)}
-  .node.run .nrole::before{opacity:1;animation:zap 1.1s ease-in-out infinite}
-  .dfoot{position:absolute;left:0;right:0;bottom:84px;text-align:center;font-family:var(--serif);font-style:italic;
-    font-size:23px;font-weight:500;color:var(--accent);
-    background:var(--title-grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-
-  /* progress bar */
-  .ticks{position:absolute;left:80px;right:80px;bottom:44px;z-index:6;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);height:14px}
-  .ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+  /* timeline */
+  .ticks{display:none;position:absolute;left:72px;right:72px;bottom:42px;height:14px;z-index:6}
+  .ticks span{position:absolute;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);white-space:nowrap}
   .ticks span.on{color:var(--accent)}
-  .timeline{position:absolute;left:80px;right:80px;bottom:34px;z-index:6;height:3px;background:var(--border);border-radius:3px}
-  .timeline .fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent-strong),var(--accent));border-radius:3px}
+  .timeline{position:absolute;left:72px;right:72px;bottom:30px;height:3px;background:rgba(17,17,17,.08);border-radius:2px;z-index:6}
+  .timeline .fill{height:100%;width:0;background:var(--accent);border-radius:2px}
+  .hud{display:none;position:absolute;right:72px;bottom:8px;font-size:10.5px;color:var(--mute);z-index:6}
 
-  .hud{position:absolute;left:36px;bottom:14px;z-index:7;font-size:11px;color:var(--faint)}
-  /* embedded on the site: the key hints need focus we don't have, so drop them */
-  html[data-embed] .hud{display:none}
-  .hud kbd{border:1px solid var(--border);border-radius:4px;padding:0 5px;color:var(--dim)}
-  .theme-btn{position:absolute;right:36px;bottom:12px;z-index:8;width:30px;height:30px;border-radius:8px;
-    border:1px solid var(--border);background:var(--panel);color:var(--dim);font-size:15px;cursor:pointer;
-    display:grid;place-items:center;transition:color .2s ease,border-color .2s ease,transform .2s ease}
-  .theme-btn:hover{color:var(--accent);border-color:var(--accent);transform:rotate(180deg)}
+  /* ── comic, black and white: ink outlines, offset shadows, halftone ── */
+  .win,.stat,.node,.tile,.bin{border:2.5px solid #111!important;border-radius:10px!important;box-shadow:6px 6px 0 #111!important}
+  .bar{border-bottom:2.5px solid #111!important;color:#111}
+  .bar .t{color:#111!important;font-weight:700}
+  .bar i{border:1.5px solid #111;background:#fff!important}
+  .status{border-top:2px solid #111!important;background:repeating-linear-gradient(135deg,#fff 0 6px,#f1f1f1 6px 8px)}
+  .status .on{font-weight:700}
+  .ctitle{font-family:Bangers,Impact,sans-serif!important;font-weight:400!important;font-size:78px!important;letter-spacing:1.5px!important;line-height:.94!important;color:#111}
+  .ctitle em{font-style:normal;color:#fff;-webkit-text-stroke:2.2px #111;text-shadow:4px 4px 0 #111}
+  .kicker{font-family:Bangers,sans-serif!important;font-size:20px!important;letter-spacing:2px!important;color:#111!important}
+  .kicker .kn{background:#111;color:#fff;padding:2px 9px!important;border:none!important;border-radius:3px}
+  /* caption items: an ink diamond, the term in comic caps, the gloss in plain hand */
+  .cdesc{font-family:"Comic Neue",sans-serif!important;font-size:18px!important;color:#1d1d1d!important;border-top:none!important}
+  .cdesc li{display:flex;align-items:baseline;gap:12px;padding:6px 0!important;border-bottom:none!important}
+  .cdesc li:before{content:"";flex:none;width:9px;height:9px;background:#111;transform:rotate(45deg) translateY(-2px)}
+  .cdesc li b{font-family:Bangers,sans-serif;font-weight:400!important;font-size:22px;letter-spacing:1.2px;color:#111;min-width:96px}
+  .cdesc li span{font-weight:700;color:#2a2a2a}
+  .cdesc code{color:#111!important;background:#111;color:#fff!important;padding:0 6px;border-radius:3px}
+  .tag{font-family:Bangers,sans-serif!important;font-weight:400!important;font-size:54px!important;letter-spacing:1.5px!important;color:#111}
+  .tag em{font-style:normal;color:#fff;-webkit-text-stroke:2px #111;text-shadow:3px 3px 0 #111}
+  .stat b{font-family:Bangers,sans-serif!important;font-size:54px!important;letter-spacing:1px!important;color:#111!important}
+  .logo{text-shadow:5px 5px 0 rgba(17,17,17,.18)}
+  .wn{border:2px solid #111!important;box-shadow:3px 3px 0 #111}
+  .wn.run{background:#111;color:#fff}.wn.run span{color:#ccc}
+  .mail rect{stroke:#111;stroke-width:2;fill:#fff}.mail path{stroke:#111;stroke-width:2}
+  .mrow.sel{background:#111!important;border-left-color:#111!important}.mrow.sel .nm,.mrow.sel .mt,.mrow.sel .pv{color:#fff!important}
+  .node.lit{background:#111}.node.lit b,.node.lit span{color:#fff}
+  .chip.a{background:#111;color:#fff;border-color:#111}
+
+  /* comic logo */
+  .logo{font-family:Bangers,Impact,sans-serif!important;font-weight:400!important;font-size:168px!important;letter-spacing:8px!important;line-height:1;color:#fff!important;-webkit-text-stroke:5px #111;text-shadow:10px 10px 0 #111!important;position:relative;transform:rotate(-3deg)}
+  .logo .sp{position:absolute;top:-6px;right:-46px;font-size:56px;color:#111!important;-webkit-text-stroke:0;text-shadow:none;transform:rotate(14deg)}
+  .brand{font-family:Bangers,sans-serif!important;font-size:22px!important;letter-spacing:2px!important;font-weight:400!important}
+  .brand b{color:#111!important;font-size:14px;vertical-align:6px;margin-left:2px}
+  .bin-n{font-family:Bangers,sans-serif;font-size:30px!important;letter-spacing:2px;font-weight:400!important}
+  /* member messages: same row as any other line, marked with a small speech-bubble icon (outline = sent, filled = received) */
+  .gr.msg .m{position:relative;color:transparent}
+  .gr.msg .m:before{content:"";position:absolute;left:0;top:50%;margin-top:-6px;width:12px;height:9px;border:1.6px solid #111;border-radius:3px;background:#fff;box-sizing:border-box}
+  .gr.msg .m:after{content:"";position:absolute;left:2px;top:50%;margin-top:2.5px;border-style:solid;border-width:4px 4px 0 0;border-color:#111 transparent transparent}
+  .gr.msg.from .m:before{background:#111}
+  /* sound-effect stamps */
+  .sfx{position:absolute;z-index:8;font-family:Bangers,Impact,sans-serif;font-size:46px;letter-spacing:2px;color:#fff;-webkit-text-stroke:2px #111;text-shadow:4px 4px 0 #111;opacity:0;pointer-events:none;white-space:nowrap}
+  .burst line,.mlines line{stroke:#111;stroke-width:2.2;stroke-linecap:round}
+  .sfx-tag{position:absolute;z-index:7;opacity:0;white-space:nowrap;font-family:Bangers,sans-serif!important;font-size:17px!important;letter-spacing:1.5px!important;color:#fff!important;background:#111;padding:4px 12px 2px;border-radius:3px;box-shadow:3px 3px 0 rgba(17,17,17,.2)}
+  .brand{font-size:36px!important;letter-spacing:2.5px!important;color:#fff!important;-webkit-text-stroke:1.6px #111;text-shadow:3px 3px 0 #111;top:24px!important;transform:rotate(-3deg);transition:opacity .3s ease}
+  .brand b{-webkit-text-stroke:0;text-shadow:none;font-size:15px!important;vertical-align:12px!important}
 </style>
-<script>
-  (function(){ const p=new URLSearchParams(location.search);
-    document.documentElement.dataset.theme = p.get('theme') || 'dark'; })();   // dark by default (cinematic); ?theme=light or ◐/T for the light/site theme
-</script>
 </head>
 <body>
-<div id="fit"><div class="stage" id="stage">
-  <div class="vignette"></div>
+<div class="frame"><div id="stage">
+  <div class="brand">SAN<b>✦</b></div>
 
-  <div class="brand">&lt; SAN <b>✦</b> /&gt;</div>
   <div class="caption" id="caption">
-    <div class="kicker" id="cap-kicker">OPEN ARCHITECTURE</div>
-    <div class="ctitle" id="cap-title">Multi-model switching</div>
-    <div class="cdesc" id="cap-desc"></div>
+    <div class="kicker" id="cap-k"></div>
+    <div class="ctitle" id="cap-t"></div>
+    <ul class="cdesc" id="cap-d"></ul>
   </div>
 
-  <div class="term" id="term">
-    <div class="bar">
-      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="title">san — ~/Workspace/app</span>
-      <span class="pill" id="barpill">openai · GPT-5.5 · ◇ think</span>
-    </div>
-    <div class="body">
-
-      <!-- ░░ BOOT ░░ -->
-      <section class="scene" data-start="0" data-dur="4.4" id="boot">
-        <div class="splash">
-          <div class="logo reveal" id="b-logo">&lt; SAN <span class="sp">✦</span> /&gt;</div>
-          <div class="tag reveal" id="b-tag">An open-source unified agent runtime</div>
-          <div class="sub reveal" id="b-sub">Specialized agents, coding and beyond — shipped as a single, native Go binary</div>
-          <div class="pillars reveal" id="b-pil">Models · Search · Personas · Extensions · Evolution</div>
-          <div class="bootline reveal" id="b-prompt"><span class="prompt">❭ </span><span class="cur"></span></div>
-        </div>
-      </section>
-
-      <!-- ░░ MULTI-MODEL ░░ -->
-      <section class="scene" data-start="4.4" data-dur="7.8" id="model">
-        <div class="cmd"><span class="prompt">❭ </span><span id="m-type"></span><span class="cur" id="m-cur"></span></div>
-        <div class="picker" id="m-pick">
-          <div class="tabs"><span class="tab on">Models</span><span class="tab">Providers</span></div>
-          <div class="search">⌕ <span id="m-ph">filter models…</span><span id="m-query"></span><span class="scur" id="m-scur"></span><span class="cnt" id="m-cnt">fetched live from /models</span></div>
-          <div class="rows" id="m-rows">
-            <div class="row" data-k="anthropic claude opus"><span class="pchip">Anthropic</span><span class="name">Claude Opus 4.8</span><span class="meta">1M ctx · ◆◆◆ think</span></div>
-            <div class="row" data-k="openai gpt 5.5 chatgpt"><span class="pchip">OpenAI</span><span class="name">GPT-5.5</span><span class="meta">400K ctx · ◆ think</span></div>
-            <div class="row" data-k="openai gpt 5.5 mini chatgpt"><span class="pchip">OpenAI</span><span class="name">GPT-5.5 mini</span><span class="meta">400K ctx</span></div>
-            <div class="row" data-k="google gemini"><span class="pchip">Google</span><span class="name">Gemini 3 Pro</span><span class="meta">2M ctx</span></div>
-            <div class="row" data-k="moonshot kimi"><span class="pchip">Moonshot</span><span class="name">Kimi K2</span><span class="meta">256K ctx</span></div>
-            <div class="row" data-k="zai z.ai glm zhipu"><span class="pchip">Z.ai</span><span class="name">GLM-4.6</span><span class="meta">200K ctx</span></div>
-            <div class="row" data-k="deepseek v4 pro"><span class="pchip">DeepSeek</span><span class="name">DeepSeek V4 Pro</span><span class="meta">128K ctx · ◆ think</span></div>
-            <div class="row" data-k="deepseek v4 flash"><span class="pchip">DeepSeek</span><span class="name">DeepSeek V4 Flash</span><span class="meta">128K ctx</span></div>
-          </div>
-          <div class="more" id="m-more">↓ more models · type to filter</div>
-          <div class="hints">type to filter · ↑/↓ navigate · ⏎ select · esc · saved to ~/.san/providers.json</div>
-        </div>
-        <div id="m-confirm" style="margin-top:4px">
-          <div class="out reveal" id="m-c1"><span class="ok">✦</span> model <span class="arrow">→</span> <span class="accent">DeepSeek V4 Pro</span> <span class="dim">(was GPT-5.5)</span></div>
-          <div class="out reveal dim" id="m-c2">↳ saved to ~/.san/providers.json · reconnecting… <span class="ok">ready</span></div>
-        </div>
-      </section>
-
-      <!-- ░░ MULTI-PERSONA ░░ -->
-      <section class="scene" data-start="12.2" data-dur="7.2" id="ident">
-        <div class="cmd"><span class="prompt">❭ </span><span id="i-type"></span><span class="cur" id="i-cur"></span></div>
-        <div class="picker" id="i-pick">
-          <div class="search">⌕ <span>Type to filter personas…</span><span class="cnt">user · project scope</span></div>
-          <div class="rows" id="i-rows">
-            <div class="irow"><div class="top"><span class="tick">✓</span><span class="nm">default</span><span class="badge">active · built-in</span></div><div class="desc">Built-in San persona — software-engineering generalist</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">ml-engineer</span><span class="badge">~/.san/personas</span></div><div class="desc">ML engineering specialist (PyTorch, JAX) — rigor over hand-waving</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">security-auditor</span><span class="badge">.san/personas</span></div><div class="desc">Threat-models every diff, flags unsafe patterns, cites CWEs</div></div>
-            <div class="irow"><div class="top"><span class="tick"> </span><span class="nm">tech-writer</span><span class="badge">~/.san/personas</span></div><div class="desc">Crisp docs, examples-first, no marketing fluff</div></div>
-          </div>
-          <div class="hints">↑/↓ navigate · ⏎ select · esc · scoped to user (~/.san) or project (.san), project wins</div>
-        </div>
-        <div id="i-confirm" style="margin-top:4px">
-          <div class="out reveal" id="i-c1"><span class="ok">✦</span> persona <span class="arrow">→</span> <span class="accent">ml-engineer</span></div>
-          <div class="out reveal dim" id="i-c2">↳ persona swapped — same agent, a new mind. Security &amp; git rules stay enforced.</div>
-        </div>
-      </section>
-
-      <!-- ░░ FAST INTERACTION ░░ -->
-      <section class="scene" data-start="19.4" data-dur="9.0" id="interact">
-        <div class="cmd"><span class="prompt">❭ </span><span id="x-type"></span><span class="cur" id="x-cur"></span></div>
-        <div class="tool reveal fast" id="x-t0">⏺ <span class="tn">read</span> <span class="pathx">internal/server/router.go</span><span class="ms">12ms</span></div>
-        <div class="tool reveal fast" id="x-t1">⏺ <span class="tn">grep</span> <span class="pathx">"func register"</span> <span class="dim">· 3 hits</span><span class="ms">8ms</span></div>
-        <div class="tool reveal fast" id="x-t2">⏺ <span class="tn">edit</span> <span class="pathx">router.go</span><span class="diff">+9 −0</span></div>
-        <div class="tool reveal fast" id="x-t3">⏺ <span class="tn">write</span> <span class="pathx">server/health_test.go</span><span class="diff">+24</span></div>
-        <div class="tool reveal fast" id="x-t4">⏺ <span class="tn">run</span> <span class="pathx">go test ./internal/server</span> <span id="x-trun"></span></div>
-        <div class="asst reveal fast" id="x-asst"><span id="x-stream"></span></div>
-        <div class="donel reveal fast" id="x-done"><span class="ok">✓</span> done <span class="dim">· 1.8s · 142 tok/s · 5 tools</span><span class="speedchip"><span class="zap">⚡</span> native Go · single binary · instant start</span></div>
-      </section>
-
-      <!-- ░░ SELF-IMPROVEMENT ░░ -->
-      <section class="scene" data-start="28.4" data-dur="8.0" id="learn">
-        <div class="hist" id="l-hist">
-          <div class="h-cmd"><span class="prompt">❭ </span>add a /healthz endpoint and a test</div>
-          <div class="h-tool">⏺ <span class="tn">read</span> internal/server/router.go</div>
-          <div class="h-tool">⏺ <span class="tn">edit</span> router.go <span class="muted">+9 −0</span></div>
-          <div class="h-tool">⏺ <span class="tn">write</span> server/health_test.go <span class="muted">+24</span></div>
-          <div class="h-tool">⏺ <span class="tn">run</span> go test ./internal/server <span class="ok">✓ pass</span></div>
-          <div class="h-done"><span class="ok">✓</span> done <span class="dim">· 1.8s · 142 tok/s · 5 tools</span></div>
-        </div>
-        <div class="sl-live" id="l-live"><span id="sl-spin">|</span> <span class="ev">evolving</span><span id="sl-target"></span></div>
-        <div class="recap" id="l-recap">
-          <div class="grp" id="l-gm">
-            <div class="kind">memory</div>
-            <div class="rrow"> · index — noted this project favors table-driven tests</div>
-            <div class="rrow"> · healthz — recorded GET /healthz → 200 {"status":"ok"}</div>
-          </div>
-          <div class="grp" id="l-gs">
-            <div class="kind">skill</div>
-            <div class="rrow"> · go-testing — kept the table-test snippet, trimmed examples</div>
-            <div class="rrow"> · http-scaffolding — new skill, endpoint + test pattern</div>
-          </div>
-        </div>
-        <div class="rc-foot reveal" id="l-foot">↪ san --resume app.selflearn-review.1780412141</div>
-      </section>
-
-      <!-- ░░ DEPLOY / FAN-OUT ░░ -->
-      <section class="scene" data-start="36.4" data-dur="8.0" id="deploy">
-        <div class="splash">
-          <div class="logo reveal" id="d-logo">&lt; SAN <span class="sp">✦</span> /&gt;</div>
-          <div class="sub reveal" id="d-cap">one binary · any model</div>
-        </div>
-      </section>
-
-      <!-- ░░ OUTRO ░░ -->
-      <section class="scene" data-start="44.4" data-dur="9.5" id="outro">
-        <div class="outro">
-          <div class="big reveal" id="o-logo">&lt; SAN <span class="sp">✦</span> /&gt;</div>
-          <div class="ln reveal" id="o-cn">Models · Search · Personas · Extensions · Evolution</div>
-          <div class="en reveal" id="o-en">One binary, many specialized agents — coding and beyond</div>
-          <div class="install reveal" id="o-inst"><span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash</div>
-          <div class="site reveal" id="o-site">genai-io.github.io/san · ★ star it on GitHub</div>
-        </div>
-      </section>
-
-    </div>
-  </div>
-
-  <!-- deploy fan-out: device nodes on the stage, around the shrunk terminal -->
-  <div class="dlayer" id="dlayer">
-    <svg class="dlines" viewBox="0 0 1280 720" preserveAspectRatio="none">
-      <path class="dline" id="d-l1" d="M640 330 L240 425"/>
-      <path class="dline" id="d-l2" d="M640 330 L440 425"/>
-      <path class="dline" id="d-l3" d="M640 330 L640 425"/>
-      <path class="dline" id="d-l4" d="M640 330 L840 425"/>
-      <path class="dline" id="d-l5" d="M640 330 L1040 425"/>
-    </svg>
-    <div class="dgrid">
-      <div class="node reveal" id="d-n1">
-        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="5" width="16" height="10" rx="1"/><path d="M2.5 18.5h19l-1.2-2H3.7z"/></svg></div>
-        <div class="nlabel">laptop</div><div class="nrole">coding</div>
-      </div>
-      <div class="node reveal" id="d-n2">
-        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M8 6v12M12 6v12M16 6v12"/></svg></div>
-        <div class="nlabel">container</div><div class="nrole">pr-review</div>
-      </div>
-      <div class="node reveal" id="d-n3">
-        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="7" y="7" width="10" height="10" rx="1.2"/><path d="M10 7V4.2M14 7V4.2M10 19.8V17M14 19.8V17M7 10H4.2M7 14H4.2M19.8 10H17M19.8 14H17"/></svg></div>
-        <div class="nlabel">edge device</div><div class="nrole">log-triage</div>
-      </div>
-      <div class="node reveal" id="d-n4">
-        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 18h9.5a3.7 3.7 0 0 0 .4-7.4 5.2 5.2 0 0 0-10-1.4A3.6 3.6 0 0 0 7 18z"/></svg></div>
-        <div class="nlabel">cloud vm</div><div class="nrole">autopilot</div>
-      </div>
-      <div class="node reveal" id="d-n5">
-        <div class="nicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="1.6"/><path d="M8.2 11V8a3.8 3.8 0 0 1 7.6 0v3"/></svg></div>
-        <div class="nlabel">air-gapped host</div><div class="nrole">offline-audit</div>
+  <!-- ░░ INTRO ░░ -->
+  <section class="scene" id="intro" data-start="0" data-dur="5">
+    <svg class="glayer" viewBox="0 0 1280 720" style="position:absolute;inset:0;width:1280px;height:720px"><g class="burst" id="i-burst"></g></svg>
+    <div class="splash">
+      <div class="sfx-tag" id="i-kind" style="position:relative;margin-bottom:6px">open-source agent runtime</div>
+      <div class="logo r" id="i-logo">SAN<span class="sp">✦</span></div>
+      <div class="tag r" id="i-tag">Minimal overhead. <em>Maximum agent.</em></div>
+      <div class="stats">
+        <div class="stat r" id="i-s1"><b>0.01s</b><span>cold start</span></div>
+        <div class="stat r" id="i-s2"><b>12 MB</b><span>one native binary</span></div>
+        <div class="stat r" id="i-s3"><b>2.3k</b><span>tokens of harness</span></div>
       </div>
     </div>
-    <div class="dfoot reveal" id="d-foot">One runtime, shipped everywhere — a fleet of specialized agents</div>
-  </div>
+    <div class="sfx" id="sfx-zip" style="left:250px;top:392px">ZIP!</div>
+  </section>
+
+  <!-- ░░ ANY MODEL ░░ -->
+  <section class="scene" id="models" data-start="5" data-dur="3.4" data-pace="2.15">
+    <div class="right">
+      <div class="win solo">
+        <div class="bar"><i></i><i></i><i></i><span class="t">san — ~/shop/api</span></div>
+        <div class="body">
+          <div><span class="prompt">❭ </span><span class="ink" id="m-type"></span><span class="cur" id="m-cur"></span></div>
+          <div class="picker r" id="m-pick">
+            <div class="search">⌕ <span class="q" id="m-q"></span><span id="m-ph">filter models…</span><span class="cnt">listed live from each provider</span></div>
+            <div id="m-rows">
+              <div class="mrow" data-k="anthropic claude"><span class="pv">Anthropic</span><span class="nm">Claude Opus 4.8</span><span class="mt">1M · think</span></div>
+              <div class="mrow" data-k="openai gpt"><span class="pv">OpenAI</span><span class="nm">GPT-5.5</span><span class="mt">400K · think</span></div>
+              <div class="mrow" data-k="google gemini"><span class="pv">Google</span><span class="nm">Gemini 3 Pro</span><span class="mt">2M</span></div>
+              <div class="mrow" data-k="copilot github"><span class="pv">Copilot</span><span class="nm">GPT-5.5 via GitHub</span><span class="mt">272K</span></div>
+              <div class="mrow" data-k="deepseek flash"><span class="pv">DeepSeek</span><span class="nm">DeepSeek V4 Flash</span><span class="mt">1M</span></div>
+              <div class="mrow" data-k="deepseek pro"><span class="pv">DeepSeek</span><span class="nm">DeepSeek V4 Pro</span><span class="mt">1M · think</span></div>
+              <div class="mrow" data-k="ollama local"><span class="pv">Ollama</span><span class="nm">qwen3-coder (local)</span><span class="mt">256K</span></div>
+            </div>
+          </div>
+          <div class="r" id="m-ok" style="margin-top:14px"><span class="accent">✦</span> model <span class="mute">→</span> <span class="accent">DeepSeek V4 Pro</span> <span class="dim">· was GPT-5.5 · saved</span></div>
+        </div>
+        <div class="status"><span id="m-st">GPT-5.5 (high)</span><span>0 / 400K</span></div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ░░ SUBAGENTS ░░ -->
+  <section class="scene" id="agents" data-start="8.4" data-dur="3.6" data-pace="2.15">
+    <div class="right">
+      <div class="win solo">
+        <div class="bar"><i></i><i></i><i></i><span class="t">san — ~/shop/api</span></div>
+        <div class="body">
+          <div><span class="prompt">❭ </span><span class="ink" id="a-type"></span><span class="cur" id="a-cur"></span></div>
+          <div style="margin-top:14px">
+            <div class="row r" id="a-1"><span class="accent" id="a-1s">◐</span><b class="ink">Agent</b><span class="dim">Explore — map where tokens are stored</span><span class="chip" style="margin-left:auto">deepseek-flash</span></div>
+            <div class="sub r" id="a-1d">⎿ <span id="a-1t">Bash rg · Read ×3</span></div>
+            <div class="row r" id="a-2" style="margin-top:6px"><span class="accent" id="a-2s">◐</span><b class="ink">Agent</b><span class="dim">Reviewer — audit token handling</span><span class="chip" style="margin-left:auto">claude-opus</span></div>
+            <div class="sub r" id="a-2d">⎿ <span id="a-2t">Read ×2</span></div>
+          </div>
+          <div class="r hang" id="a-sum" style="margin-top:16px;color:var(--text)"><span class="accent">● </span>Tokens live in two places; the reviewer flagged an unhashed copy in <span class="ink">session.go:88</span> — fix drafted.</div>
+        </div>
+        <div class="status"><span>2 subagents · each on its own model</span><span id="a-st" class="on">running</span></div>
+      </div>
+    </div>
+    <div class="sfx" id="sfx-done" style="left:1060px;top:150px">DONE!</div>
+  </section>
+
+  <!-- ░░ WORKFLOWS ░░ -->
+  <section class="scene" id="workflow" data-start="12" data-dur="15.2">
+    <div class="right">
+      <div class="win solo">
+        <div class="bar"><i></i><i></i><i></i><span class="t">san — ~/shop/api</span></div>
+        <div class="body">
+          <div><span class="prompt">❭ </span><span class="ink" id="wf-type"></span><span class="cur" id="wf-cur"></span></div>
+          <div class="wfstage">
+            <div class="wflist r" id="wf-list">
+              <div class="dim">Saved workflows</div>
+              <div><span class="ink">review</span><span class="dim">3 reviewers in parallel, one report</span></div>
+              <div><span class="ink">draft</span><span class="dim">write, critique, revise until it passes</span></div>
+              <div><span class="ink">bugfix</span><span class="dim">reproduce, fix, verify, loop until green</span></div>
+              <div><span class="ink">triage</span><span class="dim">one worker per open issue</span></div>
+              <div class="mute">.san/workflows/*.md · run one with /workflow &lt;name&gt;</div>
+            </div>
+            <div class="dag r" id="wf-dag1">
+              <div class="wn" id="wa1" style="left:0;top:84px">diff<span>collect</span></div>
+              <div class="wn" id="wa2" style="left:196px;top:4px">correctness<span>claude-opus</span></div>
+              <div class="wn" id="wa3" style="left:196px;top:84px">security<span>gpt-5.5</span></div>
+              <div class="wn" id="wa4" style="left:196px;top:164px">simplify<span>deepseek</span></div>
+              <div class="wn" id="wa5" style="left:392px;top:84px">merge<span>one report</span></div>
+              <svg class="dagl" viewBox="0 0 560 220">
+                <path d="M128 106 C 160 106, 164 26, 196 26"/><path d="M128 106 L 196 106"/><path d="M128 106 C 160 106, 164 186, 196 186"/>
+                <path d="M324 26 C 356 26, 360 106, 392 106"/><path d="M324 106 L 392 106"/><path d="M324 186 C 356 186, 360 106, 392 106"/>
+              </svg>
+            </div>
+            <div class="dag r" id="wf-dag2">
+              <div class="wn" id="wb1" style="left:0;top:110px">brief<span>outline</span></div>
+              <div class="wn" id="wb2" style="left:166px;top:110px">write<span id="wb2r">draft · round 1</span></div>
+              <div class="wn" id="wb3" style="left:332px;top:110px">critic<span id="wb3r">claude-opus</span></div>
+              <div class="wn" id="wb4" style="left:498px;top:110px">publish<span>one doc</span></div>
+              <svg class="dagl" viewBox="0 0 640 240" style="width:640px;height:240px">
+                <path id="wx0" d="M128 132 L 166 132"/><path id="wx9" d="M460 132 L 498 132"/>
+                <path id="wx1" d="M294 132 L 332 132"/>
+                <path id="wx2" d="M396 110 C 396 64, 230 64, 230 110"/>
+                <path id="wx3" d="M230 154 C 230 196, 396 196, 396 154"/>
+                <path id="wx4" d="M396 110 C 396 30, 230 30, 230 110"/>
+                <path id="wx5" d="M230 154 C 230 230, 396 230, 396 154"/>
+              </svg>
+              <div class="loopl" id="wb-loop">revise · not there yet</div>
+            </div>
+          </div>
+          <div class="wfdone r" id="wf-done1"><span class="accent">◆</span> <span class="ink">review</span> done <span class="dim">· 3 reviewers in parallel · 1 summary back</span></div>
+          <div class="wfdone r" id="wf-done2"><span class="accent">◆</span> <span class="ink">draft</span> done <span class="dim">· 3 rounds · the critic signed off</span></div>
+        </div>
+        <div class="status"><span id="wf-file">.san/workflows/</span><span id="wf-st" class="on"></span></div>
+      </div>
+    </div>
+    <div class="sfx" id="sfx-ok" style="left:850px;top:262px">APPROVED!</div>
+  </section>
+
+  <!-- ░░ SESSION GROUPS ░░ -->
+  <section class="scene" id="groups" data-start="27.2" data-dur="15.5">
+    <div class="right">
+      <div class="win gwin" style="left:0;top:0;width:347px;height:306px">
+        <div class="bar"><i></i><i></i><i></i><span class="t">api</span></div>
+        <div class="body gs" id="g-abody">
+          <div class="gl gr in"><span class="m prompt">❭</span><span class="c ink"><span id="g-type"></span><span class="cur" id="g-cur"></span></span></div>
+          <div class="gl gr tool" id="ga1"><span class="m accent">●</span><span class="c"><b>Read</b><span class="p">orders.go</span></span><span class="x"></span></div>
+          <div class="gl gr tool" id="ga2"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">orders.go</span></span><span class="x"><span class="add">+4</span> −2</span></div>
+          <div class="gl gr tool" id="ga3"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">handler.go</span></span><span class="x"><span class="add">+6</span> −3</span></div>
+          <div class="gl gr tool" id="ga4"><span class="m accent">●</span><span class="c"><b>Bash</b><span class="p">go test ./...</span></span><span class="x">ok</span></div>
+          <div class="gl gr msg" id="ga5"><span class="m accent">●</span><span class="c">To <b class="accent">@web</b>: amounts are integer cents</span></div>
+          <div class="gl gr sub" id="ga5r"><span class="m">└</span><span class="c">Sent · reading now</span></div>
+          <div class="gl gr msg" id="ga6"><span class="m accent">●</span><span class="c">To <b class="accent">@migrate</b>: check the amount column</span></div>
+          <div class="gl gr sub" id="ga6r"><span class="m">└</span><span class="c">Sent · waits for its user</span></div>
+          <div class="gl gr msg from" id="ga7"><span class="m accent">◆</span><span class="c">From <b class="accent">@web</b>: checkout now uses cents</span></div>
+          <div class="gl gr tool" id="ga8"><span class="m accent">●</span><span class="c"><b>Read</b><span class="p">../web/format.ts</span></span><span class="x"></span></div>
+          <div class="gl gr msg" id="ga9"><span class="m accent">●</span><span class="c">To <b class="accent">@web</b>: avoid toFixed, use cents</span></div>
+        </div>
+        <div class="status"><span class="on">◆ shop/api</span><span id="g-ast">idle</span></div>
+      </div>
+      <div class="win gwin" style="left:361px;top:0;width:347px;height:306px">
+        <div class="bar"><i></i><i></i><i></i><span class="t">web</span></div>
+        <div class="body gs" id="g-wbody">
+          <div class="gl gr in dim"><span class="m"></span><span class="c">checkout page · idle</span></div>
+          <div class="gl gr msg from" id="gw1"><span class="m accent">◆</span><span class="c">From <b class="accent">@api</b>: amounts are integer cents</span></div>
+          <div class="gl gr tool" id="gw2"><span class="m accent">●</span><span class="c"><b>Read</b><span class="p">order.ts</span></span><span class="x"></span></div>
+          <div class="gl gr tool" id="gw3"><span class="m accent">●</span><span class="c"><b>Read</b><span class="p">cart.tsx</span></span><span class="x"></span></div>
+          <div class="gl gr tool" id="gw4"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">order.ts</span></span><span class="x"><span class="add">+3</span> −1</span></div>
+          <div class="gl gr tool" id="gw5"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">format.ts</span></span><span class="x"><span class="add">+12</span></span></div>
+          <div class="gl gr tool" id="gw6"><span class="m accent">●</span><span class="c"><b>Bash</b><span class="p">npm test</span></span><span class="x">ok</span></div>
+          <div class="gl gr msg" id="gw7"><span class="m accent">●</span><span class="c">To <b class="accent">@api</b>: checkout now uses cents</span></div>
+          <div class="gl gr msg from" id="gw8"><span class="m accent">◆</span><span class="c">From <b class="accent">@api</b>: avoid toFixed, use cents</span></div>
+          <div class="gl gr tool" id="gw9"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">format.ts</span></span><span class="x"><span class="add">+5</span> −4</span></div>
+          <div class="gl gr tool" id="gw10"><span class="m accent">●</span><span class="c"><b>Bash</b><span class="p">npm test</span></span><span class="x">ok</span></div>
+        </div>
+        <div class="status"><span class="on">◆ shop/web</span><span id="g-wst">idle</span></div>
+      </div>
+      <div class="win gwin" style="left:0;top:320px;width:708px;height:176px">
+        <div class="bar"><i></i><i></i><i></i><span class="t">migrate — /group members</span></div>
+        <div class="body lst">
+          <div class="h">shop · 3 members</div>
+          <div class="lr"><span>*</span><b>@migrate</b><span class="st on">working</span><span class="accent">hold</span><span>schema</span></div>
+          <div class="lr"><span></span><b>@api</b><span class="st" id="g-l1">working</span><span></span><span>orders</span></div>
+          <div class="lr"><span></span><b>@web</b><span class="st" id="g-l2">idle</span><span></span><span>checkout</span></div>
+          <div class="r held" id="g-held"><span class="accent">◆</span> 1 message from @api held for you · read it when you're back</div>
+        </div>
+        <div class="status"><span id="g-mst">◆ shop/migrate · hold</span><span>~/.san/groups</span></div>
+      </div>
+      <svg class="glayer" viewBox="0 0 708 496">
+        <g class="mlines" id="trail"><line/><line/><line/></g>
+        <g class="mail" id="mail"><rect x="-9" y="-6.5" width="18" height="13" rx="2"/><path d="M-9 -5.5 L0 1.5 L9 -5.5"/></g>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ░░ SELF-LEARNING ░░ -->
+  <section class="scene" id="learn" data-start="42.7" data-dur="7.6">
+    <div class="right">
+      <div class="win solo">
+        <div class="bar"><i></i><i></i><i></i><span class="t">san — ~/shop/api</span></div>
+        <div class="body">
+          <div class="gr"><span class="m prompt">❭</span><span class="c ink"><span id="l-type"></span><span class="cur" id="l-cur"></span></span></div>
+          <div class="gr tool r" id="l-1"><span class="m accent">●</span><span class="c"><b>Read</b><span class="p">server/router.go</span></span><span class="x"></span></div>
+          <div class="gr tool r" id="l-2"><span class="m accent">●</span><span class="c"><b>Edit</b><span class="p">router.go</span></span><span class="x"><span class="add">+9</span></span></div>
+          <div class="gr tool r" id="l-3"><span class="m accent">●</span><span class="c"><b>Write</b><span class="p">health_test.go</span></span><span class="x"><span class="add">+24</span></span></div>
+          <div class="gr tool r" id="l-4"><span class="m accent">●</span><span class="c"><b>Bash</b><span class="p">go test ./...</span></span><span class="x">ok</span></div>
+          <div class="gr r" id="l-5" style="margin-top:4px"><span class="m accent">●</span><span class="c ink">Added GET /healthz with a table-driven test.</span></div>
+          <div class="evolve" id="l-sep">
+            <div class="r" id="l-ev"><span class="accent" id="l-sp">◐</span> <span class="ink" id="l-evt">reviewing this session…</span></div>
+            <div class="lrn r" id="l-m"><span class="k">memory</span>this project prefers table-driven tests</div>
+            <div class="lrn r" id="l-s"><span class="k">skill</span>http-scaffolding — endpoint + test pattern</div>
+          </div>
+        </div>
+        <div class="status"><span>self-learning · on</span><span>/evolve to review</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ░░ RUNS ANYWHERE ░░ -->
+  <section class="scene" id="deploy" data-start="50.3" data-dur="6.7">
+    <div class="right">
+      <svg class="glayer" viewBox="0 0 708 496" style="z-index:1">
+        <g class="burst" id="dp-r1"></g><g class="burst" id="dp-r2"></g>
+        <path class="fly spoke" id="dl1" d="M354 248 L354 42"/>
+        <path class="fly spoke" id="dl2" d="M354 248 L514 81"/>
+        <path class="fly spoke" id="dl3" d="M354 248 L613 184"/>
+        <path class="fly spoke" id="dl4" d="M354 248 L613 312"/>
+        <path class="fly spoke" id="dl5" d="M354 248 L514 415"/>
+        <path class="fly spoke" id="dl6" d="M354 248 L354 454"/>
+        <path class="fly spoke" id="dl7" d="M354 248 L194 415"/>
+        <path class="fly spoke" id="dl8" d="M354 248 L95 312"/>
+        <path class="fly spoke" id="dl9" d="M354 248 L95 184"/>
+        <path class="fly spoke" id="dl10" d="M354 248 L194 81"/>
+        <circle class="dot" id="dd1" r="3.5"/><circle class="dot" id="dd2" r="3.5"/><circle class="dot" id="dd3" r="3.5"/><circle class="dot" id="dd4" r="3.5"/><circle class="dot" id="dd5" r="3.5"/><circle class="dot" id="dd6" r="3.5"/><circle class="dot" id="dd7" r="3.5"/><circle class="dot" id="dd8" r="3.5"/><circle class="dot" id="dd9" r="3.5"/><circle class="dot" id="dd10" r="3.5"/>
+        <circle class="dot pulse" id="dq1" r="2.5"/><circle class="dot pulse" id="dq2" r="2.5"/><circle class="dot pulse" id="dq3" r="2.5"/><circle class="dot pulse" id="dq4" r="2.5"/><circle class="dot pulse" id="dq5" r="2.5"/><circle class="dot pulse" id="dq6" r="2.5"/><circle class="dot pulse" id="dq7" r="2.5"/><circle class="dot pulse" id="dq8" r="2.5"/><circle class="dot pulse" id="dq9" r="2.5"/><circle class="dot pulse" id="dq10" r="2.5"/>
+      </svg>
+      <div class="bin r" id="dp-bin">
+        <div class="bin-n">SAN<span class="accent">✦</span></div>
+        <div class="bin-d">one binary · 12 MB · zero deps</div>
+      </div>
+      <div class="node r" id="dp-1" style="left:276px;top:16px"><b>macOS</b><span>Apple silicon · Intel</span></div>
+      <div class="node r" id="dp-2" style="left:436px;top:55px"><b>Cloud VM</b><span>ssh in, run san</span></div>
+      <div class="node r" id="dp-3" style="left:535px;top:158px"><b>Container</b><span>FROM scratch</span></div>
+      <div class="node r" id="dp-4" style="left:535px;top:286px"><b>CI runner</b><span>Actions · GitLab</span></div>
+      <div class="node r" id="dp-5" style="left:436px;top:389px"><b>Jetson</b><span>ARM64 edge AI box</span></div>
+      <div class="node r" id="dp-6" style="left:276px;top:428px"><b>Raspberry Pi</b><span>a $50 board</span></div>
+      <div class="node r" id="dp-7" style="left:116px;top:389px"><b>Industrial PC</b><span>offline, local models</span></div>
+      <div class="node r" id="dp-8" style="left:17px;top:286px"><b>Windows</b><span>x64 · ARM</span></div>
+      <div class="node r" id="dp-9" style="left:17px;top:158px"><b>Linux</b><span>x86-64 · ARM64</span></div>
+      <div class="node r" id="dp-10" style="left:116px;top:55px"><b>WSL</b><span>Linux inside Windows</span></div>
+    </div>
+  </section>
+
+  <!-- ░░ OPEN ░░ -->
+  <section class="scene" id="open" data-start="57" data-dur="6.4">
+    <div class="right">
+      <div class="grid">
+        <div class="tile r" id="o-1"><span class="g">◇</span><div><div class="n">Personas</div><div class="d">Switchable minds you write</div></div></div>
+        <div class="tile r" id="o-2"><span class="g">✎</span><div><div class="n">Skills</div><div class="d">Know-how, loaded when needed</div></div></div>
+        <div class="tile r" id="o-3"><span class="g">⑂</span><div><div class="n">Subagents</div><div class="d">Parallel, any model each</div></div></div>
+        <div class="tile r" id="o-4"><span class="g">⋔</span><div><div class="n">Workflows</div><div class="d">Subagents arranged as a graph</div></div></div>
+        <div class="tile r" id="o-5"><span class="g">◆</span><div><div class="n">Session groups</div><div class="d">Terminals that talk</div></div></div>
+        <div class="tile r" id="o-6"><span class="g">⟳</span><div><div class="n">Autopilot</div><div class="d">Give it a goal; it steers</div></div></div>
+        <div class="tile r" id="o-7"><span class="g">⌁</span><div><div class="n">MCP · plugins · hooks</div><div class="d">Plug in, react to any event</div></div></div>
+        <div class="tile r" id="o-8"><span class="g">⊙</span><div><div class="n">Inspector</div><div class="d">Replay any run as the model saw it</div></div></div>
+        <div class="tile r" id="o-9"><span class="g">⛨</span><div><div class="n">Permissions</div><div class="d">You set what runs unasked</div></div></div>
+        <div class="tile r" id="o-10"><span class="g">{}</span><div><div class="n">genai-io/sdk-go</div><div class="d">San's agent loop as a Go library</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ░░ OUTRO ░░ -->
+  <section class="scene" id="outro" data-start="63.4" data-dur="7">
+    <div class="splash">
+      <div class="logo r" id="z-logo">SAN<span class="sp">✦</span></div>
+      <div class="tag r" id="z-tag">One binary. Any model. <em>Agents that work together.</em></div>
+      <div class="gh r" id="z-in"><span class="star">★</span>github.com/<b>genai-io/san</b></div>
+      <div class="stickers"><span id="z-t1">open source</span><span id="z-t2">macOS</span><span id="z-t3">Linux</span><span id="z-t4">Windows</span></div>
+    </div>
+  </section>
 
   <div class="ticks" id="ticks"></div>
   <div class="timeline"><div class="fill" id="fill"></div></div>
-  <div class="hud">click <kbd>⏯</kbd> pause · <kbd>R</kbd> restart · <kbd>T</kbd> theme</div>
-  <button class="theme-btn" id="themeBtn" title="Toggle light / dark (T)">◐</button>
+  <div class="hud">click pause · R restart</div>
+  <div class="vignette"></div>
   <div class="grain"></div>
 </div></div>
 
 <script>
-const ASCII = ["|","/","-","\\"];
 const $ = id => document.getElementById(id);
 const root = document.documentElement;
 const params = new URLSearchParams(location.search);
-const SEEK = params.has('t') ? parseFloat(params.get('t')) : null;   // ?t=<sec> freezes the timeline (screenshots)
+const SEEK = params.has('t') ? parseFloat(params.get('t')) : null;   // freeze a frame for screenshots
+if (SEEK !== null) document.head.insertAdjacentHTML('beforeend', '<style>*,*::before,*::after{transition:none!important;animation:none!important}</style>');  // a frozen frame shows end states, not a half-finished fade
+if (params.has('flat')) document.querySelector('.grain').style.display = 'none';   // GIF: no noise to dither
 
-if (window.self !== window.top) root.dataset.embed = '1';
-
-const mq = matchMedia('(prefers-color-scheme: dark)');
-let manualTheme = true;   // dark by default (cinematic); ◐ / T toggles. ?theme=light forces light.
-function applyAuto(){ if(!manualTheme) root.dataset.theme = mq.matches ? 'dark' : 'light'; }
-mq.addEventListener('change', applyAuto);
-function toggleTheme(){ manualTheme = true; root.dataset.theme = root.dataset.theme==='dark' ? 'light' : 'dark'; }
-$('themeBtn').addEventListener('click', e=>{ e.stopPropagation(); toggleTheme(); });
-
-const scenes = [...document.querySelectorAll('.scene')].map(el=>({ el, id:el.id, start:+el.dataset.start, dur:+el.dataset.dur }));
-const TOTAL = Math.max(...scenes.map(s=>s.start+s.dur));
-const HOLD = 1.4;
-const SPEED = 1.0;   // master playback speed — <1 slower, >1 faster
+const scenes = [...document.querySelectorAll('.scene')].map(el => ({ el, id: el.id, start: +el.dataset.start, dur: +el.dataset.dur, pace: +(el.dataset.pace || 1) }));
+const TOTAL = Math.max(...scenes.map(s => s.start + s.dur));
+const HOLD = 1.0, SPEED = 1.0;
 
 function fit(){ $('stage').style.transform = `scale(${Math.min(innerWidth/1280, innerHeight/720)})`; }
-fit();
-// html is 100% of the viewport, so observing it covers window resizes as well
-// as the embedded case, where the parent's stylesheet sizes the frame after
-// this script has already run. The call above stays because the observer's
-// first callback is async — without it the stage renders one frame unscaled.
-new ResizeObserver(fit).observe(document.documentElement);
+addEventListener('resize', fit); fit();
 
 const CAPS = {
-  model:   {k:'OPEN ARCHITECTURE', t:'Multi-model switching',   d:'Switch provider or model with one command — fetched live, never hard-coded'},
-  ident:   {k:'OPEN ARCHITECTURE', t:'Multi-persona switching', d:'Same agent, many personas — Markdown bundles scoped to user or project'},
-  interact:{k:'NATIVE RUNTIME',    t:'Fast interaction',        d:'Native Go, single binary — read, edit, run the tests, stream back in seconds'},
-  learn:   {k:'SELF-EVOLVING',     t:'Learns as you work',      d:'A background reviewer studies each session — writing memory, tuning skills, leveling up'},
-  deploy:  {k:'SMALL FOOTPRINT',   t:'Runs anywhere',           d:'One ~12 MB binary, zero deps — anywhere you can copy a file, against any model you can reach'},
+  models:   {k:'Any model', t:'Bring <em>any</em> model', d:['<b>Breadth</b> — 20+ providers','<b>Anywhere</b> — cloud or local','<b>Live</b> — lists fetched fresh','<b>Switch</b> — <code>/models</code>']},
+  agents:   {k:'Subagents', t:'Delegate <em>in parallel</em>', d:['<b>Parallel</b> — side by side','<b>Per model</b> — the right one each','<b>Report</b> — results come back']},
+  workflow: {k:'Workflows', t:'Agents, <em>by recipe</em>', d:['<b>Saved</b> — <code>.san/workflows/</code>','<b>Ordered</b> — steps run as a graph','<b>Mixed</b> — a model per step','<b>Lean</b> — only the summary returns']},
+  groups:   {k:'Session groups', t:'Sessions that <em>talk</em>', d:['<b>Group</b> — <code>/group join shop</code>','<b>Message</b> — members reach each other','<b>Review</b> — peers check and correct work','<b>Hold</b> — messages wait for you','<b>Local</b> — plain files, no server']},
+  learn:    {k:'Self-learning', t:'Learns as <em>you work</em>', d:['<b>Review</b> — after each session','<b>Remember</b> — writes memory','<b>Improve</b> — tunes skills','<b>Yours</b> — plain files to edit']},
+  deploy:   {k:'Runs anywhere', t:'One binary, <em>everywhere</em>', d:['<b>Small</b> — ~12 MB, zero deps','<b>Desktop</b> — macOS · Linux · Windows','<b>Edge</b> — Pi, Jetson, industrial PCs','<b>Server</b> — cloud VMs, containers, CI','<b>Offline</b> — pair with a local model']},
+  open:     {k:'Open all the way down', t:'Yours to <em>change</em>', d:['<b>Prompts</b> — written by you','<b>Tools</b> — add or remove','<b>Providers</b> — plug in any','<b>Binary</b> — nothing baked in']},
 };
-
 const TICKS = [
-  {t:0,label:'boot'},{t:4.4,label:'multi-model'},{t:12.2,label:'multi-persona'},
-  {t:19.4,label:'fast'},{t:28.4,label:'self-evolve'},{t:36.4,label:'deploy'},{t:44.4,label:'outro'},
+  {t:0,l:'San'},{t:5,l:'models'},{t:8.4,l:'agents'},{t:12,l:'workflows'},
+  {t:27.2,l:'groups'},{t:42.7,l:'learns'},{t:50.3,l:'anywhere'},{t:57,l:'open'},{t:63.4,l:'github'},
 ];
-TICKS.forEach(tk=>{ const sp=document.createElement('span'); sp.textContent=tk.label; sp.style.left=(tk.t/TOTAL*100)+'%'; sp.dataset.t=tk.t; $('ticks').appendChild(sp); });
+TICKS.forEach(tk => { const s = document.createElement('span'); s.textContent = tk.l; s.style.left = (tk.t/TOTAL*100) + '%'; s.dataset.t = tk.t; $('ticks').appendChild(s); });
 
-function sub(full,lt,t0,t1){ if(lt<t0) return ''; if(lt>=t1) return full; return full.slice(0, Math.round(full.length*((lt-t0)/(t1-t0)))); }
-function typeInto(el,full,lt,t0,t1){ el.textContent = sub(full,lt,t0,t1); }
-const tog = (el,on) => el.classList.toggle('in', on);
-const sel = (rows,idx) => rows.forEach((r,i)=>r.classList.toggle('sel', i===idx));
+// helpers
+const clamp = (x,a,b) => Math.max(a, Math.min(b, x));
+function sub(full, lt, t0, t1){ if (lt < t0) return ''; if (lt >= t1) return full; return full.slice(0, Math.round(full.length * (lt - t0) / (t1 - t0))); }
+const typeInto = (el, full, lt, t0, t1) => { el.textContent = sub(full, lt, t0, t1); };
+const tog = (el, on) => el.classList.toggle('in', on);
+// window shows el from t0 until t1
+const win = (el, lt, t0, t1) => lt < t1 ? show(el, lt, t0) : (tog(el, false), el.style.opacity = el.style.transform = '');
+// show reveals el at t0 with a short rise-and-pop computed from lt, so seek-rendered frames move like the live page
+const show = (el, lt, t0) => {
+  const on = lt > t0; el.classList.toggle('in', on);
+  if (!on) { el.style.opacity = el.style.transform = ''; return; }
+  const k = clamp((lt - t0) / .32, 0, 1), e = 1 - (1 - k) ** 3;
+  el.style.opacity = e;
+  el.style.transform = k < 1 ? `translateY(${(1 - e) * 8}px) scale(${1 + .05 * Math.sin(Math.PI * k)})` : '';
+};
+const cursor = (el, lt, t0, t1) => { el.style.display = (lt > t0 && lt < t1) ? 'inline-block' : 'none'; };
+const SPIN = '◐◓◑◒';
+const spin = lt => SPIN[Math.floor(lt * 8) % 4];
 
-const mAllRows = [...$('m-rows').children];
-const iRows = [...$('i-rows').children];
-function mFilter(q){
-  q = q.trim().toLowerCase();
-  const matches = [];
-  mAllRows.forEach((r,i)=>{ const vis = q ? r.dataset.k.includes(q) : i < 5; r.style.display = vis ? 'flex':'none'; if(vis) matches.push(i); });
-  $('m-more').style.display = q ? 'none':'block';
-  return matches;
+// fly draws path p and moves dot d along it between t0 and t1; the trail fades after
+// stamp pops a sound-effect word in (overshoot, then settle) and holds it until t1
+function stamp(id, lt, t0, t1, rot, over = .7){
+  const el = $(id), k = lt - t0, on = lt > t0 && lt < t1;
+  el.style.opacity = on ? 1 : 0;
+  el.style.transform = `rotate(${rot}deg) scale(${k < .14 ? 1 + over * (1 - k / .14) : 1})`;
+}
+function fly(p, d, lt, t0, t1){
+  const path = $(p), dot = $(d), L = path.getTotalLength();
+  const k = clamp((lt - t0) / (t1 - t0), 0, 1);
+  path.style.strokeDasharray = `${L * k} ${L}`;
+  path.style.opacity = lt <= t0 ? 0 : lt < t1 ? 1 : clamp(1 - (lt - t1) / 1.2, 0, 1);
+  const pt = path.getPointAtLength(L * k);
+  dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+  dot.style.opacity = (lt > t0 && lt < t1) ? 1 : 0;
 }
 
-function boot(lt){
-  $('term').classList.remove('shrunk'); $('dlayer').classList.remove('on');   // reset deploy state on (re)start
-  $('barpill').textContent = 'openai · GPT-5.5 · ◇ think';   // default model before any switch
-  tog($('b-logo'),lt>0.2); tog($('b-tag'),lt>0.9); tog($('b-sub'),lt>1.5); tog($('b-pil'),lt>2.1); tog($('b-prompt'),lt>2.8);
-}
-function model(lt){
-  typeInto($('m-type'),'/models',lt,0.2,0.65);
-  $('m-cur').style.display = (lt>0.2 && lt<0.9)?'inline-block':'none';
-  const open = lt>0.85 && lt<3.6;
-  tog($('m-pick'), open);
-  let q=''; if(lt>=1.9) q='deep'; else if(lt>1.3) q=sub('deep',lt,1.3,1.9);
-  $('m-query').textContent=q; $('m-ph').style.display=q?'none':'inline';
-  $('m-scur').style.display=(open && lt>1.0 && lt<2.1)?'inline-block':'none';
-  const matches = open ? mFilter(q) : [];
-  $('m-cnt').textContent = q ? (matches.length+(matches.length===1?' result':' results')) : 'fetched live from /models';
-  sel(mAllRows, (open && q.length>=3 && matches.length) ? matches[0] : -1);
-  tog($('m-c1'), lt>3.7); tog($('m-c2'), lt>4.1);
-  if(lt>3.7) $('barpill').innerHTML='deepseek · V4 Pro · <b>◆ think</b>';   // active model after the switch
-}
-function ident(lt){
-  typeInto($('i-type'),'/persona',lt,0.2,0.75);
-  $('i-cur').style.display = (lt>0.2 && lt<1.0)?'inline-block':'none';
-  const open = lt>0.95 && lt<3.6;
-  tog($('i-pick'), open);
-  sel(iRows, open ? (lt>2.0?1:0) : -1);
-  tog($('i-c1'), lt>3.7); tog($('i-c2'), lt>4.1);
-}
-function interact(lt){
-  typeInto($('x-type'),'add a /healthz endpoint and a test',lt,0.2,1.0);
-  $('x-cur').style.display = (lt>0.2 && lt<1.15)?'inline-block':'none';
-  tog($('x-t0'),lt>1.2); tog($('x-t1'),lt>1.5); tog($('x-t2'),lt>1.85); tog($('x-t3'),lt>2.25); tog($('x-t4'),lt>2.7);
-  $('x-trun').innerHTML = lt>3.3 ? '<span class="ok">✓ pass</span><span class="ms">0.4s</span>' : '<span class="dim">…</span>';
-  tog($('x-asst'), lt>3.6);
-  typeInto($('x-stream'), 'Added GET /healthz → 200 {"status":"ok"}, covered by a table-driven test. All green.', lt, 3.7, 5.4);
-  tog($('x-done'), lt>5.7);
-}
-function learn(lt){
-  tog($('l-hist'), lt>0.3);
-  const live = lt>1.0 && lt<4.2;
-  tog($('l-live'), live);
-  if(live){ $('sl-spin').textContent=ASCII[Math.floor(lt*10)%4]; $('sl-target').textContent = lt<1.6?'':(lt<2.8?' · memory · index':' · skill · go-testing'); }
-  const show = lt>4.4;
-  tog($('l-recap'),show); tog($('l-gm'),show); tog($('l-gs'),show);
-  tog($('l-foot'), lt>4.9);
-}
-function deploy(lt){
-  $('term').classList.toggle('shrunk', lt>0.35 && lt<7.5);   // the whole terminal shrinks into a hub
-  tog($('d-logo'), lt>0.4); tog($('d-cap'), lt>0.7);
-  $('dlayer').classList.toggle('on', lt>0.9 && lt<7.55);     // devices pop out around it, on the stage
-  const L=['d-l1','d-l2','d-l3','d-l4','d-l5'];
-  L.forEach((id,i)=>{ $(id).classList.toggle('on', lt > 1.2 + i*0.1); });    // fan-out beams light up
-  const N=['d-n1','d-n2','d-n3','d-n4','d-n5'];
-  N.forEach((id,i)=>{ tog($(id), lt > 1.35 + i*0.14); });     // nodes pop in, snappy stagger
-  N.forEach((id,i)=>{ $(id).classList.toggle('run', lt > 2.0 + i*0.16); });  // each boots its agent
-  tog($('d-foot'), lt>3.8);
-}
-function outro(lt){
-  tog($('o-logo'),lt>0.2); tog($('o-cn'),lt>0.9); tog($('o-en'),lt>1.4); tog($('o-inst'),lt>2.1); tog($('o-site'),lt>2.8);
-}
-const RUN = {boot, model, ident, interact, learn, deploy, outro};
-
-let base=null, paused=false, pausedAt=0, t=0, curCap=null;
-function frame(now){
-  if(SEEK!==null){ t = SEEK; }
-  else { if(base===null) base=now; if(!paused) t = (now-base)/1000 * SPEED; if(t > TOTAL+HOLD){ base=now; t=0; } }
-
-  let act=null;
-  scenes.forEach(s=>{
-    const lt = t - s.start;
-    const on = lt>=0 && lt<s.dur;
-    let op=0;
-    if(on) op = lt<0.4 ? lt/0.4 : (lt>s.dur-0.4 ? Math.max(0,(s.dur-lt)/0.4) : 1);
-    s.el.style.opacity = op;
-    s.el.style.transform = on ? `translateY(${(1-op)*8}px)` : '';
-    s.el.classList.toggle('live', on);
-    if(on){ act={id:s.id, lt, dur:s.dur}; RUN[s.id](lt); }
+// ── scenes, by local time lt ──
+function intro(lt){
+  // the logo slams in with a burst of action lines; the cards slap down one by one, a little askew
+  stamp('i-logo', lt, .2, 99, -3);
+  show($('i-tag'), lt, .9);
+  [['i-s1', 1.8, -2], ['i-s2', 2.1, 1.5], ['i-s3', 2.4, -1]].forEach(([id, t0, rot]) => stamp(id, lt, t0, 99, rot));
+  stamp('i-kind', lt, .7, 99, -3);
+  stamp('sfx-zip', lt, 2.0, 3.2, -10);
+  const g = $('i-burst'), k = clamp((lt - .2) / 1.0, 0, 1);
+  if (!g.childElementCount) for (let j = 0; j < 32; j++) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'line'));
+  g.style.opacity = k > 0 && k < 1 ? 1 - k * k : 0;
+  [...g.children].forEach((l, j) => {
+    const a = j / 32 * Math.PI * 2 + (j % 2) * .05, r1 = 150 + 260 * k + (j % 3) * 12, r2 = r1 + 22 + (j % 4) * 10;
+    l.setAttribute('x1', 640 + r1 * Math.cos(a)); l.setAttribute('y1', 236 + r1 * Math.sin(a) * .55);
+    l.setAttribute('x2', 640 + r2 * Math.cos(a)); l.setAttribute('y2', 236 + r2 * Math.sin(a) * .55);
   });
+}
 
+function models(lt){
+  typeInto($('m-type'), '/models', lt, .3, .9); cursor($('m-cur'), lt, .2, 1.1);
+  win($('m-pick'), lt, 1.1, 4.7);
+  const q = sub('deep', lt, 2.2, 2.9);
+  $('m-q').textContent = q; $('m-ph').style.display = q ? 'none' : '';
+  const rows = [...document.querySelectorAll('#m-rows .mrow')];
+  const vis = rows.filter(r => !q || r.dataset.k.includes(q));
+  rows.forEach(r => r.classList.toggle('off', !vis.includes(r)));
+  rows.forEach(r => r.classList.remove('sel'));
+  const pick = lt < 1.7 ? 1 : lt < 3.4 ? 0 : 1;
+  vis[Math.min(pick, vis.length - 1)].classList.add('sel');
+  show($('m-ok'), lt, 4.8);
+  $('m-st').textContent = lt > 4.8 ? 'DeepSeek V4 Pro (high)' : 'GPT-5.5 (high)';
+  $('m-st').className = lt > 4.8 ? 'on' : '';
+}
+
+
+function agents(lt){
+  typeInto($('a-type'), 'audit the auth module, and map where tokens are stored', lt, .3, 1.6); cursor($('a-cur'), lt, .2, 1.8);
+  show($('a-1'), lt, 1.9); show($('a-1d'), lt, 2.1); show($('a-2'), lt, 2.2); show($('a-2d'), lt, 2.4);
+  const done1 = lt > 4.3, done2 = lt > 5.0;
+  $('a-1s').textContent = done1 ? '●' : spin(lt); $('a-2s').textContent = done2 ? '●' : spin(lt + .3);
+  $('a-1t').textContent = done1 ? 'done · 12 files mapped · 1.9s' : `Bash rg · Read ×${1 + Math.floor(clamp(lt - 2.1, 0, 2) * 3)}`;
+  $('a-2t').textContent = done2 ? 'done · 3 findings · 2.6s' : `Read ×${1 + Math.floor(clamp(lt - 2.4, 0, 2.5) * 2)}`;
+  show($('a-sum'), lt, 5.5);
+  $('a-st').textContent = done2 ? 'both done' : 'running';
+  stamp('sfx-done', lt, 5.1, 6.6, 8);
+}
+
+function workflow(lt){
+  const cmd = lt < 2.6 ? ['/workflow', .3, .8] : lt < 7.2 ? ['/workflow review pr=586', 2.7, 3.5] : ['/workflow draft topic=release-notes', 7.3, 8.2];
+  typeInto($('wf-type'), cmd[0], lt, cmd[1], cmd[2]); cursor($('wf-cur'), lt, cmd[1] - .1, cmd[2] + .2);
+  win($('wf-list'), lt, .9, 2.6);
+  const runs = [['wa', 'wf-dag1', 'wf-done1', 3.6, 7.2]];
+  for (const [id, dag, done, t0, t1] of runs) {
+    const on = lt > t0 && lt < t1, x = lt - t0;
+    win($(dag), lt, t0, t1); win($(done), lt, t0 + 3.0, t1);
+    const step = [.2, .9, .9, .9, 2.3], end = [.8, 2.0, 1.8, 2.2, 2.9];
+    for (let i = 1; i <= 5; i++) {
+      const n = $(id + i);
+      n.classList.toggle('run', x > step[i-1] && x < end[i-1]);
+      n.classList.toggle('done', x >= end[i-1]);
+    }
+    $(dag).querySelectorAll('.dagl path').forEach((p, k) => p.classList.toggle('on', x > (k < 3 ? .8 : 2.2)));
+  }
+  // draft: write and critic loop until the critic signs off
+  const y = lt - 8.4, on2 = lt > 8.4;
+  show($('wf-dag2'), lt, 8.4); show($('wf-done2'), lt, 8.4 + 5.9);
+  const span = (a, b) => y > a && y < b;
+  const loop1 = span(2.2, 2.5), loop2 = span(3.8, 4.1), between = span(1.5, 2.5) || span(3.1, 4.1);
+  const nodes = [[[.2, .8]], [[.9, 1.5], [2.5, 3.1], [4.1, 4.7]], [[1.6, 2.2], [3.2, 3.8], [4.8, 5.3]], [[5.4, 5.9]]];
+  nodes.forEach((runs2, i) => {
+    const n = $('wb' + (i + 1)), last = runs2[runs2.length - 1][1];
+    n.classList.toggle('run', runs2.some(([a, b]) => span(a, b)));
+    n.classList.toggle('done', y >= last || (i === 1 && between));
+  });
+  $('wb2r').textContent = 'draft · round ' + (y > 4.0 ? 3 : y > 2.4 ? 2 : 1);
+  $('wb3r').textContent = y > 5.3 ? 'approved' : span(2.2, 3.2) ? '3 notes' : span(3.8, 4.8) ? '1 note' : 'claude-opus';
+  // one line per pass: forward under the nodes, each revision over them
+  [[0, .8], [1, 1.5], [2, 2.2], [3, 3.1], [4, 3.8], [5, 4.7], [9, 5.3]].forEach(([i, t]) => {
+    const e = $('wx' + i);
+    e.classList.toggle('on', y > t); e.classList.toggle('act', y > t && y < t + .7);
+    if (i >= 2 && i <= 5) {  // a pass's arc only exists once that pass happens; it draws itself in
+      const L = e.getTotalLength(), k = clamp((y - t) / .45, 0, 1);
+      e.style.strokeDasharray = `${L * k} ${L}`; e.style.opacity = k > 0 ? 1 : 0;
+    }
+  });
+  $('wb-loop').textContent = loop2 ? 'revise · 1 note left' : 'revise · 3 notes';
+  tog($('wb-loop'), span(2.2, 2.9) || span(3.8, 4.5));
+  stamp('sfx-ok', lt, 8.4 + 5.3, 8.4 + 6.4, -8);
+  const cur = lt < 2.6 ? null : lt < 7.2 ? ['review', 3.6] : ['draft', 8.2];
+  $('wf-file').textContent = cur ? '.san/workflows/' + cur[0] + '.md' : '.san/workflows/';
+  $('wf-st').textContent = !cur || lt < cur[1] ? '' : lt - cur[1] > (cur[0] === 'draft' ? 6.1 : 3.0) ? 'done' : 'running';
+}
+
+function groupState(lt){
+  typeInto($('g-type'), 'switch amounts to integer cents', lt, .3, 1.3); cursor($('g-cur'), lt, .2, 1.5);
+  const at = (id, t) => show($(id), lt, t);
+  // api does its part first, then tells the others
+  at('ga1', 1.6); at('ga2', 2.2); at('ga3', 2.8); at('ga4', 3.5);
+  at('ga5', 4.3); at('ga5r', 4.6); at('gw1', 5.1);
+  at('ga6', 5.0); at('ga6r', 5.3); at('g-held', 5.8);
+  // web does its part, then reports
+  at('gw2', 5.7); at('gw3', 6.3); at('gw4', 6.9); at('gw5', 7.5); at('gw6', 8.2); at('gw7', 9.0); at('ga7', 9.8);
+  // api reviews the change and corrects it; web fixes and confirms
+  at('ga8', 10.5); at('ga9', 11.3); at('gw8', 12.1);
+  at('gw9', 12.8); at('gw10', 13.5);
+  for (const b of [$('g-abody'), $('g-wbody')]) { b.scrollTop = b.scrollHeight; b.classList.toggle('scrolled', b.scrollTop > 0); }
+  const apiBusy = (lt > 1.4 && lt < 5.4) || (lt > 9.8 && lt < 11.5);
+  const webBusy = (lt > 5.1 && lt < 9.1) || (lt > 12.1 && lt < 13.6);
+  $('g-ast').textContent = apiBusy ? 'working' : 'idle';
+  $('g-wst').textContent = webBusy ? 'working' : 'idle';
+  $('g-l1').textContent = apiBusy ? 'working' : 'idle'; $('g-l1').classList.toggle('on', apiBusy);
+  $('g-l2').textContent = webBusy ? 'working' : 'idle'; $('g-l2').classList.toggle('on', webBusy);
+  const held = lt > 5.8;
+  $('g-mst').textContent = held ? '◆ shop/migrate · hold · 1 waiting' : '◆ shop/migrate · hold';
+  $('g-mst').className = held ? 'on' : '';
+}
+// Each message: the line that sends it, where it lands, and when it is in flight.
+const MAILS = [
+  ['ga5', 'g-wbody', 4.4, 5.1], ['ga6', 'g-held', 5.1, 5.8], ['gw7', 'g-abody', 9.1, 9.8],
+  ['ga9', 'g-wbody', 11.4, 12.1],
+];
+function groups(lt){
+  groupState(lt);
+  const m = MAILS.find(([, , t0, t1]) => lt > t0 && lt < t1), mail = $('mail');
+  mail.style.opacity = $('trail').style.opacity = m ? 1 : 0;
+  if (!m) return;
+  const [from, to, t0, t1] = m, a = linePoint($(from)), b = landing($(to), a);
+  const x1 = b.x > a.left ? a.right : a.left;
+  const at = k => { const e = k * k * (3 - 2 * k); return [x1 + (b.x - x1) * e, a.y + (b.y - a.y) * e - 22 * Math.sin(Math.PI * k)]; };
+  const k = clamp((lt - t0) / (t1 - t0), 0, 1), [x, y] = at(k);
+  mail.setAttribute('transform', `translate(${x} ${y})`);
+  // comic motion lines trailing the envelope
+  const [px, py] = at(Math.max(0, k - .08)), len = Math.hypot(x - px, y - py) || 1, dx = (x - px) / len, dy = (y - py) / len;
+  [...$('trail').children].forEach((l, j) => {
+    const o = (j - 1) * 5, back = 16 + Math.abs(j - 1) * 4, n = 14 - Math.abs(j - 1) * 4;
+    const sx = x - dx * back - dy * o, sy = y - dy * back + dx * o;
+    l.setAttribute('x1', sx); l.setAttribute('y1', sy); l.setAttribute('x2', sx - dx * n); l.setAttribute('y2', sy - dy * n);
+  });
+}
+// Positions are in the scene's SVG space, from offsets: client rects would include the panes' entrance transforms.
+function linePoint(el){
+  const win = el.closest('.win'), body = el.closest('.body');
+  return { left: win.offsetLeft + 10, right: win.offsetLeft + win.offsetWidth - 10,
+           y: win.offsetTop + body.offsetTop + el.offsetTop - body.scrollTop + el.offsetHeight / 2 };
+}
+// landing is the near edge of the row where a pane's next line will appear, or the start of a note.
+function landing(el, from){
+  const win = el.closest('.win');
+  if (!el.classList.contains('body')) {
+    const body = el.closest('.body');
+    return { x: win.offsetLeft + body.offsetLeft + el.offsetLeft - 12, y: win.offsetTop + body.offsetTop + el.offsetTop + el.offsetHeight / 2 };
+  }
+  const shown = el.querySelectorAll('.gl.in'), last = shown[shown.length - 1], h = last.offsetHeight;
+  const y = Math.min(last.offsetTop - el.scrollTop + h * 1.5, el.clientHeight - 12 - h / 2);
+  const x = win.offsetLeft > from.left ? win.offsetLeft + 14 : win.offsetLeft + win.offsetWidth - 14;
+  return { x, y: win.offsetTop + el.offsetTop + y };
+}
+
+function deploy(lt){
+  show($('dp-bin'), lt, .2);
+  // the binary lands, a ripple goes out, then each target links up clockwise
+  // action lines burst out of the binary
+  [['dp-r1', .3], ['dp-r2', 3.7]].forEach(([id, t0]) => {
+    const g = $(id), k = clamp((lt - t0) / 1.1, 0, 1);
+    if (!g.childElementCount)
+      for (let j = 0; j < 28; j++) g.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'line'));
+    g.style.opacity = k > 0 && k < 1 ? 1 - k : 0;
+    [...g.children].forEach((l, j) => {
+      const a = j / 28 * Math.PI * 2 + (j % 2) * .06, r1 = 90 + 230 * k + (j % 3) * 10, r2 = r1 + 18 + (j % 4) * 8;
+      l.setAttribute('x1', 354 + r1 * Math.cos(a)); l.setAttribute('y1', 248 + r1 * Math.sin(a) * .78);
+      l.setAttribute('x2', 354 + r2 * Math.cos(a)); l.setAttribute('y2', 248 + r2 * Math.sin(a) * .78);
+    });
+  });
+  for (let i = 1; i <= 10; i++) {
+    const t0 = .8 + (i - 1) * .22;
+    fly('dl' + i, 'dd' + i, lt, t0, t0 + .45);
+    if (lt > t0 + .45) $('dl' + i).style.opacity = 1;   // the links stay drawn
+    show($('dp-' + i), lt, t0 + .38);
+    $('dp-' + i).classList.toggle('lit', lt > 3.7 + .5 && lt < 3.7 + 1.1);
+    // one update pulse out to every target at once
+    const q = $('dq' + i), k = clamp((lt - 3.7) / .6, 0, 1), path = $('dl' + i), pt = path.getPointAtLength(path.getTotalLength() * k);
+    q.setAttribute('cx', pt.x); q.setAttribute('cy', pt.y); q.style.opacity = k > 0 && k < 1 ? 1 : 0;
+  }
+}
+
+function learn(lt){
+  // the session does the work; afterwards a background review reads it back and keeps what it taught
+  typeInto($('l-type'), 'add a /healthz endpoint with a test', lt, .2, 1.0); cursor($('l-cur'), lt, .1, 1.2);
+  [1.3, 1.7, 2.1, 2.6, 3.1].forEach((t, i) => show($('l-' + (i + 1)), lt, t));
+  $('l-sep').classList.toggle('on', lt > 3.6);   // the line marks where the work ends and the learning begins
+  show($('l-ev'), lt, 3.8);
+  const learned = lt > 5.4;
+  $('l-sp').textContent = learned ? '✦' : spin(lt);
+  $('l-evt').textContent = learned ? 'learned from this session' : 'reviewing this session…';
+  show($('l-m'), lt, 5.6); show($('l-s'), lt, 6.1);
+}
+
+function open(lt){ for (let i = 1; i <= 10; i++) stamp('o-' + i, lt, .3 + i * .16, 99, [-1.5, 1, -.8, 1.4, -1.2][i % 5], .25); }   // tiles slap on like stickers
+
+function outro(lt){
+  show($('z-logo'), lt, .2); show($('z-tag'), lt, .8); stamp('z-in', lt, 1.6, 99, -2, .25);
+  [-6, 4, -3, 5].forEach((rot, i) => stamp('z-t' + (i + 1), lt, 2.3 + i * .22, 99, rot));   // stickers slap on one by one
+}
+
+const RUN = { intro, models, agents, workflow, groups, learn, deploy, open, outro };
+
+let base = null, paused = false, pausedAt = 0, t = 0, curCap = null;
+function frame(now){
+  if (SEEK !== null) t = SEEK;
+  else { if (base === null) base = now; if (!paused) t = (now - base) / 1000 * SPEED; if (t > TOTAL + HOLD) { base = now; t = 0; } }
+  let act = null;
+  scenes.forEach(s => {
+    const lt = t - s.start, on = lt >= 0 && lt < s.dur;
+    let op = 0; if (on) op = lt < .45 ? lt / .45 : (lt > s.dur - .45 ? Math.max(0, (s.dur - lt) / .45) : 1);
+    s.el.style.opacity = op;
+    s.el.style.transform = on ? `translateY(${(1 - op) * 10}px)` : '';
+    if (on) { act = { id: s.id, el: s.el, lt, dur: s.dur }; RUN[s.id](lt * s.pace); }   // pace: the scene's inner timeline runs faster than its slot
+  });
   const cap = act && CAPS[act.id];
-  if(cap && act.id!==curCap){ $('cap-kicker').textContent=cap.k; $('cap-title').textContent=cap.t; $('cap-desc').textContent=cap.d; curCap=act.id; }
-  $('caption').classList.toggle('show', !!(cap && act.lt>0.5 && act.lt<act.dur-0.4));
-
-  $('fill').style.width = (Math.min(t,TOTAL)/TOTAL*100)+'%';
-  document.querySelectorAll('.ticks span').forEach(sp=>{ sp.classList.toggle('on', t>=+sp.dataset.t-0.05); });
-
+  if (cap && act.id !== curCap) { $('cap-k').innerHTML = `<span class="kn">${String(Object.keys(CAPS).indexOf(act.id) + 1).padStart(2, '0')}</span>${cap.k}`; $('cap-t').innerHTML = cap.t; $('cap-d').innerHTML = cap.d.map(x => `<li>${x.replace('</b> — ', '</b><span>')}</span></li>`).join(''); curCap = act.id; }
+  if (cap) {   // a lone window is never shorter than the caption beside it
+    const capH = $('cap-d').offsetTop + $('cap-d').offsetHeight - $('cap-k').offsetTop;
+    act.el.querySelectorAll('.win.solo').forEach(w => { w.style.minHeight = capH + 'px'; });
+  }
+  $('caption').classList.toggle('show', !!(cap && act.lt > .35 && act.lt < act.dur - .4));
+  document.querySelector('.brand').style.opacity = act && (act.id === 'intro' || act.id === 'outro') ? 0 : 1;   // the big logo is on screen there
+  $('fill').style.width = (Math.min(t, TOTAL) / TOTAL * 100) + '%';
+  document.querySelectorAll('.ticks span').forEach(s => s.classList.toggle('on', t >= +s.dataset.t - .05));
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-$('stage').addEventListener('click', ()=>{ paused=!paused; if(paused) pausedAt=performance.now(); else if(base!==null) base += performance.now()-pausedAt; });
-addEventListener('keydown', e=>{
-  if(e.key==='r'||e.key==='R'){ base=null; t=0; paused=false; }
-  if(e.key==='t'||e.key==='T'){ toggleTheme(); }
-  if(e.key===' '){ e.preventDefault(); $('stage').click(); }
+$('stage').addEventListener('click', () => { paused = !paused; if (paused) pausedAt = performance.now(); else if (base !== null) base += performance.now() - pausedAt; });
+addEventListener('keydown', e => {
+  if (e.key === 'r' || e.key === 'R') { base = null; t = 0; paused = false; }
+  if (e.key === ' ') { e.preventDefault(); $('stage').click(); }
 });
 </script>
 </body>
