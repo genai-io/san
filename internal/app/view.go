@@ -375,6 +375,7 @@ func (m model) renderModeStatus() string {
 		AutopilotThinking: m.autopilotDeciding,
 		UpdateInstalled:   m.updateInstalled,
 		Group:             m.grp.name,
+		GroupSelf:         m.groupSelfName(),
 		GroupWaiting:      len(m.grp.announced),
 		GroupApproval:     m.membersAwaitingApproval(),
 	})

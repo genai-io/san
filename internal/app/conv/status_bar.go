@@ -216,6 +216,7 @@ type OperationModeParams struct {
 	AutopilotThinking bool     // the copilot is mid-decision — show "thinking…" on the mode indicator
 	UpdateInstalled   string   // release installed on disk this session, "" for none
 	Group             string   // this session's group, "" outside one
+	GroupSelf         string   // this session's member name in it
 	GroupWaiting      int      // member messages waiting for the person's next input
 	GroupApproval     []string // other members whose turn waits on their user's approval
 }
@@ -223,6 +224,15 @@ type OperationModeParams struct {
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
 	left := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
+	if group := renderGroupStatus(params); group != "" {
+		// Who this session is sits with how it runs, on the left; the right
+		// is what it runs on.
+		if left == "" {
+			left = "  " + group // the indent the mode indicator would have
+		} else {
+			left += "  " + group
+		}
+	}
 
 	if params.Width <= 0 {
 		return left
@@ -238,6 +248,28 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	gap := max(2, params.Width-lipgloss.Width(left)-lipgloss.Width(right)-1)
 	return left + strings.Repeat(" ", gap) + right
+}
+
+// renderGroupStatus reads "◆ shop (api)", then whatever waits on the person:
+// passive messages, which scroll out of sight, and members stuck on approval.
+func renderGroupStatus(p OperationModeParams) string {
+	if p.Group == "" {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("◆ %s (%s)", p.Group, p.GroupSelf)}
+	if p.GroupWaiting > 0 {
+		parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
+	}
+	switch n := len(p.GroupApproval); {
+	case n == 1:
+		parts = append(parts, p.GroupApproval[0]+" needs approval")
+	case n > 1:
+		parts = append(parts, fmt.Sprintf("%s +%d need approval", p.GroupApproval[0], n-1))
+	}
+	if len(parts) == 1 {
+		return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(parts[0])
+	}
+	return lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(strings.Join(parts, " · "))
 }
 
 // renderStatusCluster composes the status line's right-hand cluster, in
@@ -256,25 +288,6 @@ func renderStatusCluster(p OperationModeParams) string {
 	// Priority 1 = most important (dropped last). The model name always
 	// renders; everything else drops before it under width pressure.
 	var segments []statusSegment
-	if p.Group != "" {
-		// Passive messages wait out of sight once scrolled away; this keeps
-		// them in view until the person's next input takes them in.
-		parts := []string{"◆ " + p.Group}
-		if p.GroupWaiting > 0 {
-			parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
-		}
-		switch n := len(p.GroupApproval); {
-		case n == 1:
-			parts = append(parts, p.GroupApproval[0]+" needs approval")
-		case n > 1:
-			parts = append(parts, fmt.Sprintf("%s +%d need approval", p.GroupApproval[0], n-1))
-		}
-		group := muted.Render(parts[0])
-		if len(parts) > 1 { // something waits on the person
-			group = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Warning).Render(strings.Join(parts, " · "))
-		}
-		segments = append(segments, statusSegment{text: group, priority: 2})
-	}
 	segments = append(segments, statusSegment{text: muted.Render(p.ModelName), priority: 1})
 	if p.StatusMessage != "" {
 		segments = append(segments, statusSegment{text: muted.Render(p.StatusMessage), priority: 2})

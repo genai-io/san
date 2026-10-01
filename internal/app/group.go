@@ -135,6 +135,12 @@ func (m *model) syncGroupState() {
 	}
 }
 
+// groupSelfName is this session's member name, for the status bar.
+func (m *model) groupSelfName() string {
+	_, self := group.Current()
+	return self.Name
+}
+
 // membersAwaitingApproval names the other members whose turn waits on their
 // user, for the status bar.
 func (m *model) membersAwaitingApproval() []string {

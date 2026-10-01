@@ -51,9 +51,10 @@ first; each member shows its mode and what it is doing — `idle`, `working`,
     @migrate  passive  idle      runs the 0042 schema migration
 ```
 
-The status bar keeps the group in view, and turns amber when something waits
-on the person: `◆ shop · 2 waiting` (passive messages), `◆ shop · @api needs
-approval`.
+The status bar shows the group and this session's name in it on the left,
+after the mode, and turns amber when something waits on the person:
+`◆ shop (web)`, `◆ shop (web) · 2 waiting` (passive messages),
+`◆ shop (web) · @api needs approval`.
 
 Completion opens the next level after each pick:
 
