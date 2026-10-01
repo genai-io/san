@@ -131,7 +131,7 @@ func TestSendMessage_GroupMembers(t *testing.T) {
 	sm := NewSendMessageTool()
 	params := map[string]any{"to": "web", "message": "schema changed"}
 	res := sm.Execute(context.Background(), params, "")
-	if !res.Success || !strings.HasPrefix(res.Output, "Queued for @web · offline") {
+	if !res.Success || !strings.HasPrefix(res.Output, "Queued · offline") {
 		t.Errorf("to an offline member: %+v", res)
 	}
 

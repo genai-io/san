@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1025,10 +1024,6 @@ func extractToolArgs(input string) string {
 	return ""
 }
 
-// recipientInTrailer matches the member and the mode in a SendMessage
-// outcome: " to @web", " for @web", " (active, idle)".
-var recipientInTrailer = regexp.MustCompile(` (to|for) @[\w-]+| \([^)]*\)`)
-
 func formatToolResultSize(toolName, content string) string {
 	switch toolName {
 	case "WebFetch":
@@ -1036,16 +1031,10 @@ func formatToolResultSize(toolName, content string) string {
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
 	case tool.ToolSendMessage, tool.ToolGroup:
-		// Their first clause is the outcome, e.g. "Sent to @web · reading now
-		// (active, idle)" → "sent · reading now": the call's row already names
-		// the member, and the mode in parentheses is for the model.
+		// Their first clause is the outcome, e.g. "Sent · reading now".
 		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
 		first, _, _ = strings.Cut(first, "; ")
-		if toolName != tool.ToolSendMessage {
-			return strings.TrimSuffix(first, ".")
-		}
-		first = strings.TrimSpace(recipientInTrailer.ReplaceAllString(first, ""))
-		return strings.ToLower(first[:1]) + first[1:]
+		return strings.TrimSuffix(first, ".")
 	default:
 		return formatLineCount(content)
 	}

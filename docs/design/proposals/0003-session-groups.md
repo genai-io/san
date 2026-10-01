@@ -344,18 +344,18 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage results
 
 ```
-Sent to @web · reading now (active, idle); they will handle it now.
-Sent to @web · reads it between steps (active, busy); they read it between their current steps.
-Sent to @web · waits on its user's approval (active); they read it once their user approves — a reply may take a while.
-Sent to @migrate · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @qa · offline; they see it when the session resumes.
+Sent · reading now; @web is active and idle, so it handles it now.
+Sent · reads it between steps; @web is active and busy, so it reads it between its current steps.
+Sent · waits on its user's approval; @web is active but stopped on an approval, so a reply may take a while.
+Sent · waits for its user; @migrate is passive and sees it when its user next types — don't wait for a reply.
+Queued · offline; @qa sees it when its session resumes.
 
 no member named "front" in group shop; members: api, web, migrate
 cannot send a message to yourself
 only the main conversation can message group members; report to it instead   ← from a subagent
 ```
 
-On screen the call's row reads its first clause without the member and the mode: `└ sent · reading now`, `└ queued · offline`.
+The first clause is what the person sees under the call's row: `└ Sent · reading now`, `└ Queued · offline`.
 
 ### Automatic naming (a separate model call, not part of the conversation)
 

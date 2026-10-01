@@ -123,15 +123,15 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 func sentTo(m group.Member) string {
 	switch {
 	case !m.Online():
-		return fmt.Sprintf("Queued for @%s · offline; they see it when the session resumes.", m.Name)
+		return fmt.Sprintf("Queued · offline; @%s sees it when its session resumes.", m.Name)
 	case m.Mode == group.Passive:
-		return fmt.Sprintf("Sent to @%s · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.", m.Name)
+		return fmt.Sprintf("Sent · waits for its user; @%s is passive and sees it when its user next types — don't wait for a reply.", m.Name)
 	case m.State == group.Approval:
-		return fmt.Sprintf("Sent to @%s · waits on its user's approval (active); they read it once their user approves — a reply may take a while.", m.Name)
+		return fmt.Sprintf("Sent · waits on its user's approval; @%s is active but stopped on an approval, so a reply may take a while.", m.Name)
 	case m.State == group.Working:
-		return fmt.Sprintf("Sent to @%s · reads it between steps (active, busy); they read it between their current steps.", m.Name)
+		return fmt.Sprintf("Sent · reads it between steps; @%s is active and busy, so it reads it between its current steps.", m.Name)
 	}
-	return fmt.Sprintf("Sent to @%s · reading now (active, idle); they will handle it now.", m.Name)
+	return fmt.Sprintf("Sent · reading now; @%s is active and idle, so it handles it now.", m.Name)
 }
 
 // recipientLabel renders a target id for tool output.

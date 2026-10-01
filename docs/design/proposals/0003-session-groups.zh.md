@@ -326,18 +326,18 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage 结果
 
 ```
-Sent to @web · reading now (active, idle); they will handle it now.
-Sent to @web · reads it between steps (active, busy); they read it between their current steps.
-Sent to @web · waits on its user's approval (active); they read it once their user approves — a reply may take a while.
-Sent to @migrate · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @qa · offline; they see it when the session resumes.
+Sent · reading now; @web is active and idle, so it handles it now.
+Sent · reads it between steps; @web is active and busy, so it reads it between its current steps.
+Sent · waits on its user's approval; @web is active but stopped on an approval, so a reply may take a while.
+Sent · waits for its user; @migrate is passive and sees it when its user next types — don't wait for a reply.
+Queued · offline; @qa sees it when its session resumes.
 
 no member named "front" in group shop; members: api, web, migrate
 cannot send a message to yourself
 only the main conversation can message group members; report to it instead   ← 子 agent 调用时
 ```
 
-屏幕上这次调用的结果行，取的是第一句，去掉成员名和模式：`└ sent · reading now`、`└ queued · offline`。
+第一句就是屏幕上这次调用下方显示的结果行：`└ Sent · reading now`、`└ Queued · offline`。
 
 ### 自动命名（单独的一次模型调用，不进入对话）
 
