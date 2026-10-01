@@ -3,6 +3,7 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -374,6 +375,7 @@ func (m model) renderModeStatus() string {
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,
 		UpdateInstalled:   m.updateInstalled,
+		ModeHint:          time.Now().Before(m.modeHintUntil),
 		Group:             m.grp.name,
 		GroupSelf:         m.groupSelfName(),
 		GroupWaiting:      len(m.grp.announced),

@@ -217,23 +217,18 @@ type OperationModeParams struct {
 	UpdateInstalled   string   // release installed on disk this session, "" for none
 	Group             string   // this session's group, "" outside one
 	GroupSelf         string   // this session's member name in it
+	ModeHint          bool     // show "(shift+tab to cycle)": briefly, after start or a switch
 	GroupWaiting      int      // member messages waiting for the person's next input
 	GroupApproval     []string // other members whose turn waits on their user's approval
 }
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
-	left := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
-	if group := renderGroupStatus(params); group != "" {
-		// Who this session is sits with how it runs, on the left; the right
-		// is what it runs on.
-		if left == "" {
-			left = "  " + group // the indent the mode indicator would have
-		} else {
-			left += "  " + group
-		}
+	mode, hint := modeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
+	if params.ModeHint {
+		mode += hint
 	}
-
+	left := withGroupStatus(mode, params)
 	if params.Width <= 0 {
 		return left
 	}
@@ -248,6 +243,19 @@ func RenderModeStatus(params OperationModeParams) string {
 
 	gap := max(2, params.Width-lipgloss.Width(left)-lipgloss.Width(right)-1)
 	return left + strings.Repeat(" ", gap) + right
+}
+
+// withGroupStatus puts the group after the mode: who this session is sits
+// with how it runs, on the left; the right is what it runs on.
+func withGroupStatus(mode string, p OperationModeParams) string {
+	group := renderGroupStatus(p)
+	switch {
+	case group == "":
+		return mode
+	case mode == "":
+		return "  " + group // the indent the mode indicator would have
+	}
+	return mode + "  " + group
 }
 
 // renderGroupStatus reads "◆ shop (api)", then whatever waits on the person:
@@ -338,7 +346,14 @@ func compactStatusHint(percent float64) string {
 
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or YOLO mode.
 func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) string {
-	var icon, label string
+	label, hint := modeIndicator(mode, reviewApprovals, reviewEscalations, autopilotThinking)
+	return label + hint
+}
+
+// modeIndicator returns the mode label and, apart, its shift+tab hint, which
+// the status line shows only for a moment.
+func modeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) (label, hint string) {
+	var icon string
 	var clr kit.AdaptiveColor
 
 	switch mode {
@@ -355,7 +370,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 		label = " YOLO"
 		clr = kit.CurrentTheme.Yolo
 	default:
-		return ""
+		return "", ""
 	}
 
 	if mode == setting.ModeAutoPilot {
@@ -373,8 +388,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	}
 
 	style := lipgloss.NewStyle().Foreground(clr)
-	hint := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (shift+tab to cycle)")
-	return "  " + style.Render(icon+label) + hint
+	return "  " + style.Render(icon+label), lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (shift+tab to cycle)")
 }
 
 // ModelStatusLabel composes the status line's model segment: the model name
