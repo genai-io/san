@@ -3,6 +3,12 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.24.0] - 2026-10-01
+
+### Added
+- Sessions on one machine message each other ([@yanmxa](https://github.com/yanmxa) in [#586](https://github.com/genai-io/san/pull/586))
+- Keep notices across a resume ([@yanmxa](https://github.com/yanmxa) in [#595](https://github.com/genai-io/san/pull/595))
+
 ## [v1.23.2] - 2026-10-01
 
 ### Changed
