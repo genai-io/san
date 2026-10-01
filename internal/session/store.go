@@ -358,7 +358,7 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 	})
 	sess := &Snapshot{
 		Metadata: transcript.MetadataFromTranscript(tx),
-		Messages: messagesFromNodes(tx.Messages),
+		Messages: withNotices(messagesFromNodes(tx.Messages), tx.Notices),
 		Tasks:    trackerItemsFromViews(tx.State.Tasks),
 	}
 
@@ -369,6 +369,29 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, 
 		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Messages)
 	}
 	return sess, nil
+}
+
+// withNotices puts each saved notice back after the message it followed, or
+// first when it came before any. One whose message was compacted away goes
+// with it.
+func withNotices(msgs []core.ChatMessage, notices []transcript.NoticeRecord) []core.ChatMessage {
+	if len(notices) == 0 {
+		return msgs
+	}
+	after := map[string][]core.ChatMessage{}
+	for _, n := range notices {
+		after[n.AfterMessageID] = append(after[n.AfterMessageID], core.ChatMessage{Role: core.ChatNotice, Content: n.Text, AgentNotice: n.Agent})
+	}
+	out := make([]core.ChatMessage, 0, len(msgs)+len(notices))
+	out = append(out, after[""]...)
+	for i, m := range msgs {
+		out = append(out, m)
+		if i+1 < len(msgs) && msgs[i+1].ID == m.ID {
+			continue // rows of one parallel-call turn share an ID: follow the last
+		}
+		out = append(out, after[m.ID]...)
+	}
+	return out
 }
 
 // chatOf views a conversation as a transcript with no display state set.

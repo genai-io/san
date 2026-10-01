@@ -26,6 +26,7 @@ const (
 	PermissionRequired   = "permission.required"
 	PermissionDecided    = "permission.decided"
 	SkillStateChanged    = "skill.state.changed"
+	NoticeAdded          = "notice.added"
 )
 
 const (
@@ -86,6 +87,7 @@ type Record struct {
 	Hook       *HookRecord          `json:"hook,omitempty"`
 	Permission *PermissionRecord    `json:"permission,omitempty"`
 	Skill      *SkillRecord         `json:"skill,omitempty"`
+	Notice     *NoticeRecord        `json:"notice,omitempty"`
 }
 
 type MessageRecord struct {
@@ -244,6 +246,15 @@ type HookRecord struct {
 	Outcome   string `json:"outcome"`           // "ran" | "blocked" | "error" | "async"
 	Reason    string `json:"reason,omitempty"`  // hook-supplied block/deny message
 	LatencyMs int64  `json:"latencyMs,omitempty"`
+}
+
+// NoticeRecord is a line shown to the person and never to the model — a
+// command's output, a group change — kept so a resume shows it where it was:
+// after AfterMessageID, or before every message when that is empty.
+type NoticeRecord struct {
+	AfterMessageID string `json:"afterMessageId,omitempty"`
+	Text           string `json:"text"`
+	Agent          bool   `json:"agent,omitempty"` // drawn as an agent's notice
 }
 
 // PermissionRecord carries the payload for permission.required and

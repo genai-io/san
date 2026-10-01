@@ -359,6 +359,25 @@ func (s *FileStore) AppendHook(ctx context.Context, cmd AppendHookCommand) error
 	return s.appendRecord(s.transcriptPath(cmd.SessionID), full, false)
 }
 
+// AppendNotice records one notice.added. Non-fsync like AppendHook: a lost
+// notice costs a line on resume, never the conversation.
+func (s *FileStore) AppendNotice(ctx context.Context, cmd AppendNoticeCommand) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	rec := cmd.Record
+	return s.appendRecord(s.transcriptPath(cmd.SessionID), Record{
+		ID:        fmt.Sprintf("%s:notice:%d", cmd.SessionID, cmd.Time.UnixNano()),
+		SessionID: cmd.SessionID,
+		Time:      cmd.Time,
+		Type:      NoticeAdded,
+		Notice:    &rec,
+	}, false)
+}
+
 // AppendPermission records one permission.required or permission.decided
 // event. Non-fsync for the same reason as AppendHook.
 func (s *FileStore) AppendPermission(ctx context.Context, cmd AppendPermissionCommand) error {

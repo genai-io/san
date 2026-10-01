@@ -13,6 +13,7 @@ type Transcript struct {
 	Model    string
 
 	Messages []Node
+	Notices  []NoticeRecord // in the order they were shown
 	State    State
 }
 

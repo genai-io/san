@@ -47,6 +47,10 @@ func Project(records []Record) (*Transcript, error) {
 			if t.UpdatedAt.Before(r.Time) {
 				t.UpdatedAt = r.Time
 			}
+		case NoticeAdded:
+			if r.Notice != nil {
+				t.Notices = append(t.Notices, *r.Notice)
+			}
 		case SessionCompacted:
 			if r.Session != nil {
 				compactBoundary = r.Session.SummaryMessageID

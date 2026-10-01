@@ -40,6 +40,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaSkills()
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
+	m.conv.OnNotice = m.recordNotice
 	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
 	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
 	m.userInput.Autopilot.SetModelSource(m.autopilotModelRefs)

@@ -83,7 +83,9 @@ equivalent.
   `~/.san/projects/<hash>/`; provides Save / Load / List / Fork.
 - `Recorder` (`recorder.go`) — writes the event-sourced transcript
   (one record per inference / tool call / hook / system mutation) into
-  the `transcript` subpackage's filesystem store.
+  the `transcript` subpackage's filesystem store. It also keeps each notice
+  shown to the person (`notice.added`, placed after the last message), which
+  the model never sees; a resume puts it back where it was.
 - `transcript/` (subpackage) — record types, JSONL store, projector that
   reconstructs transcript-owned views from the event log. It does not import
   the `todo` domain package.

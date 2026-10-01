@@ -162,6 +162,10 @@ type model struct {
 	// once that chain has a single source (live agent, restart snapshot, conv).
 	systemRemindersSent bool
 
+	// earlyNotices are notices shown before the transcript's recorder exists
+	// (it starts with the first message); they are written once it does.
+	earlyNotices []core.ChatMessage
+
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState

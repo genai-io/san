@@ -42,6 +42,16 @@ func (m *model) PersistSession() error {
 	return nil
 }
 
+// recordNotice keeps a notice in the transcript, so a resume shows it where
+// it was.
+func (m *model) recordNotice(n core.ChatMessage) {
+	if rec := m.services.Session.Recorder(); rec != nil {
+		rec.RecordNotice(n.Content, n.AgentNotice)
+		return
+	}
+	m.earlyNotices = append(m.earlyNotices, n)
+}
+
 // adoptSession makes id the current session everywhere that carries it: the
 // session service and the hook engine, whose session_id and transcript_path
 // would otherwise stay on the id minted at startup after a resume or fork.
@@ -160,6 +170,7 @@ func (m *model) loadSessionByID(id string) error {
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.Messages
+	m.earlyNotices = nil // they belonged to the session being left
 	m.systemRemindersSent = slices.ContainsFunc(sess.Messages, func(msg core.ChatMessage) bool {
 		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
 	})
@@ -203,8 +214,8 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 // applyResumeWindow marks everything before the last tail messages as already
 // committed, so a resume prints only the window. The skipped messages stay in
 // conv.Messages for /history and the next save. A notice opening the window
-// says how many were skipped; like every notice it is never saved or sent to
-// the model.
+// says how many were skipped; it is inserted, not appended, so it is neither
+// saved nor sent to the model.
 func (m *model) applyResumeWindow(tail int) {
 	start := resumeWindowStart(m.conv.Messages, tail)
 	m.conv.CommittedCount = start
