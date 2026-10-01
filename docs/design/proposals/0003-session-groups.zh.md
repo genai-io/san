@@ -37,7 +37,7 @@
 在 `@web` 里查看当前 group，`*` 标出当前会话自己，排在第一个；每个成员显示模式和正在做什么：`idle`（空闲）、`working`（工作中）、`approval`（这一轮在等用户确认）或 `offline`：
 
 ```
-❭ /group
+❭ /group members
   shop · 3 members
   * @web      active   working   wiring coupons into the checkout page
     @api      active   approval  owns the orders API
@@ -49,9 +49,9 @@
 输入时有补全，每选一级弹出下一级：
 
 ```
-❭ /group ▍                              ❭ /group join ▍
+❭ /group ▍           （组内）              ❭ /group join ▍       （组外）
 ┌──────────────────────────────────┐   ┌──────────────────────────────────────┐
-│ ▎ /group join    加入或创建 group │   │ ▎ /group join shop  3 · @api @web @mi…│
+│ ▎ /group members 查看组员         │   │ ▎ /group join shop  3 · @api @web @mi…│
 │   /group leave   离开当前 group   │   │   /group join docs  1 · @writer       │
 │   /group mode    切换自己的模式   │   └──────────────────────────────────────┘
 │   /group kick    移出一个成员     │
@@ -60,13 +60,15 @@
 └──────────────────────────────────┘
 ```
 
+只列出当下可用的：组外时第一层只有 `join` · `list` · `disband`。
+
 **命令按操作对象划分**，每个动词只对应一种对象：
 
 | 对象 | 命令 |
 |---|---|
 | 自己 | `join [group] [--as NAME] [--role TEXT] [--passive]` · `leave` · `mode active\|passive` |
 | 其他成员 | `kick <member>` |
-| group | `/group`（当前 group）· `list`（所有 group）· `disband <group>`（必须写组名） |
+| group | `/group members`（当前 group，单独 `/group` 也行）· `list`（所有 group）· `disband <group>`（必须写组名） |
 
 **记不住命令时，直接说**，模型调用 `Group` 工具完成，执行前需要你确认：
 

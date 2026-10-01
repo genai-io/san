@@ -44,7 +44,7 @@ first; each member shows its mode and what it is doing — `idle`, `working`,
 `approval` (a turn waits on its user), or `offline`:
 
 ```
-❭ /group
+❭ /group members
   shop · 3 members
   * @web      active   working   wiring coupons into the checkout page
     @api      active   approval  owns the orders API
@@ -58,16 +58,18 @@ approval`.
 Completion opens the next level after each pick:
 
 ```
-❭ /group ▍                                 ❭ /group join ▍
-┌────────────────────────────────────┐    ┌───────────────────────────────────────┐
-│ ▎ /group join    join or create     │    │ ▎ /group join shop  3 · @api @web @mi…│
-│   /group leave   leave your group   │    │   /group join docs  1 · @writer       │
-│   /group mode    switch your mode   │    └───────────────────────────────────────┘
-│   /group kick    remove a member    │
-│   /group list    list every group   │
-│   /group disband disband a group    │
-└────────────────────────────────────┘
+❭ /group ▍          (in a group)          ❭ /group join ▍      (outside one)
+┌──────────────────────────────────────┐  ┌───────────────────────────────────────┐
+│ ▎ /group members  who is in it       │  │ ▎ /group join shop  3 · @api @web @mi…│
+│   /group leave    leave your group   │  │   /group join docs  1 · @writer       │
+│   /group mode     switch your mode   │  └───────────────────────────────────────┘
+│   /group kick     remove a member    │
+│   /group list     list every group   │
+│   /group disband  disband a group    │
+└──────────────────────────────────────┘
 ```
+
+Only what applies is offered: outside a group the first list is `join` · `list` · `disband`.
 
 **Commands are split by what they act on**; each verb has one object:
 
@@ -75,7 +77,7 @@ Completion opens the next level after each pick:
 |---|---|
 | yourself | `join [group] [--as NAME] [--role TEXT] [--passive]` · `leave` · `mode active\|passive` |
 | another member | `kick <member>` |
-| a group | `/group` (yours) · `list` (all) · `disband <group>` (name required) |
+| a group | `/group members` (yours; bare `/group` too) · `list` (all) · `disband <group>` (name required) |
 
 **No need to remember commands**: just say it, and the model calls the `Group`
 tool, after you confirm:

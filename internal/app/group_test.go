@@ -42,7 +42,7 @@ func TestGroupSuggestionsWalkSubcommandsThenValues(t *testing.T) {
 		}
 		return out
 	}
-	if got := names(""); !slices.Equal(got, []string{"group join", "group list", "group disband"}) {
+	if got := names(""); !slices.Equal(got, []string{"group join", "group list", "group disband"}) { // outside a group: no members, leave, mode or kick
 		t.Errorf("outside a group /group offers %v, want only what applies", got)
 	}
 	if got := names("join shop --as web "); !slices.Equal(got, []string{"group join shop --as web --passive", "group join shop --as web --role"}) {
@@ -207,5 +207,22 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 	m.syncGroupState()
 	if got := state(); got != group.Approval {
 		t.Errorf("parked approval wrote %q", got)
+	}
+}
+
+func TestInAGroupCompletionLeadsWithMembers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession(func() string { return "s-self" })
+	if _, err := group.Join("shop", group.Member{Name: "web"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = group.Leave() })
+	var got []string
+	for _, s := range groupSuggestions("") {
+		got = append(got, s.Name)
+	}
+	want := []string{"group members", "group leave", "group mode", "group kick", "group list", "group disband"}
+	if !slices.Equal(got, want) {
+		t.Errorf("in a group /group offers %v, want %v", got, want)
 	}
 }

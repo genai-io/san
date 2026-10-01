@@ -27,7 +27,7 @@ import (
 // for the main loop. The group package owns the files.
 
 const groupUsage = `Usage:
-  /group                                                     this session's group
+  /group members                                             who is in your group
   /group list                                                every group
   /group join [group] [--as NAME] [--role TEXT] [--passive]  join, creating the group if needed
   /group leave                                               leave your group
@@ -415,7 +415,7 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 	sub, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	rest = strings.TrimSpace(rest)
 	switch sub {
-	case "":
+	case "", "members":
 		return m.fitLines(group.Listing()), nil
 	case "list":
 		return group.GroupsListing(), nil
@@ -617,6 +617,7 @@ func groupSuggestions(args string) []suggest.Suggestion {
 			sub, desc string
 			show      bool
 		}{
+			{"members", "who is in your group, and what each is doing", joined},
 			{"join", "join or create a group", !joined},
 			{"leave", "leave your group", joined},
 			{"mode", "active: wake for members · passive: wait for you", joined},
