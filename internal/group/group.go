@@ -76,6 +76,7 @@ func (m Member) Online() bool {
 type Message struct {
 	From    string    `json:"from"`
 	To      string    `json:"to"`
+	Subject string    `json:"subject"` // one line, what the person sees
 	Content string    `json:"content"`
 	SentAt  time.Time `json:"sentAt"`
 	File    string    `json:"-"`
@@ -393,7 +394,7 @@ func Forget() { setCurrent("", Member{}) }
 
 // Send writes content into the inbox of the member of this process's group
 // named to, and returns that member so the caller can say when it will read it.
-func Send(to, content string) (Member, error) {
+func Send(to, subject, content string) (Member, error) {
 	g, self := Current()
 	if g == "" {
 		return Member{}, errNotJoined
@@ -412,7 +413,7 @@ func Send(to, content string) (Member, error) {
 		}
 		return Member{}, fmt.Errorf("no member named %q in group %s; members: %s", to, g, strings.Join(names, ", "))
 	}
-	msg := Message{From: self.Name, To: to, Content: content, SentAt: time.Now()}
+	msg := Message{From: self.Name, To: to, Subject: subject, Content: content, SentAt: time.Now()}
 	name := fmt.Sprintf("%020d-%s.json", msg.SentAt.UnixNano(), self.Name)
 	return members[i], atomicfile.WriteJSON(filepath.Join(inboxDir(g, to), name), msg, 0o600)
 }

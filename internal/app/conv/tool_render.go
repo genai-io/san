@@ -825,10 +825,10 @@ func formatAgentLabel(agent agentInput) string {
 }
 
 // sendMessageLabel names a SendMessage call by its recipient and opening words.
-func sendMessageParts(input string) (to, body string) {
-	var p struct{ To, Message string }
+func sendMessageParts(input string) (to, subject string) {
+	var p struct{ To, Subject string }
 	_ = json.Unmarshal([]byte(input), &p)
-	return strings.TrimPrefix(p.To, "@"), conciseAgentDescription(p.Message)
+	return strings.TrimPrefix(p.To, "@"), p.Subject
 }
 
 // memberPalette tells group members apart: "To @api" and "From @api" share

@@ -28,17 +28,18 @@ func agentEnvelopeSummary(content string) string {
 	tag, _, _ := strings.Cut(s, ">") // opening tag only, so the body can't spoof attributes
 	switch {
 	case strings.HasPrefix(s, "<group-message"):
-		// Headers, a blank line, then the body: "From @api: <first body line>".
-		head, body, _ := strings.Cut(s, "\n\n")
-		from := ""
+		// The headers say who and what: "From @api: <subject>".
+		head, _, _ := strings.Cut(s, "\n\n")
+		var from, subject string
 		for line := range strings.SplitSeq(head, "\n") {
 			if v, ok := strings.CutPrefix(line, "From: "); ok {
-				from, _, _ = strings.Cut(v, " ")
+				from = v
+			} else if v, ok := strings.CutPrefix(line, "Subject: "); ok {
+				subject = v
 			}
 		}
-		first, _, _ := strings.Cut(strings.TrimSpace(body), "\n")
 		if from != "" {
-			return "From " + from + ": " + first
+			return "From " + from + ": " + subject
 		}
 	case strings.HasPrefix(s, "<task-notification"):
 		if line := strings.TrimSpace(envelopeAttr(tag, "description") + " " + envelopeAttr(tag, "status")); line != "" {

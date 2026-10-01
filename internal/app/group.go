@@ -309,8 +309,8 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 // groupMessage renders one member message the way the model reads it. From
 // names the sender only: its role is in the roster.
 func (m *model) groupMessage(msg group.Message, unattended int) string {
-	return fmt.Sprintf("<group-message>\nFrom: @%s\nTo: @%s\nSent: %s\nUnattended-Turns: %d\n\n%s\n</group-message>",
-		msg.From, msg.To, msg.SentAt.Format("2006-01-02 15:04"), unattended, strings.TrimSpace(msg.Content))
+	return fmt.Sprintf("<group-message>\nFrom: @%s\nTo: @%s\nSubject: %s\nSent: %s\nUnattended-Turns: %d\n\n%s\n</group-message>",
+		msg.From, msg.To, msg.Subject, msg.SentAt.Format("2006-01-02 15:04"), unattended, strings.TrimSpace(msg.Content))
 }
 
 // attachWaitingMessages appends a holding member's waiting messages to the
@@ -355,8 +355,7 @@ func (m *model) deliverGroupReminder(line, text string) tea.Cmd {
 }
 
 func fromLine(msg group.Message) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(msg.Content), "\n")
-	return fmt.Sprintf("From @%s: %s", msg.From, kit.TruncateText(first, 80))
+	return fmt.Sprintf("From @%s: %s", msg.From, msg.Subject)
 }
 
 // membership is what the session record keeps, so a resume can rejoin.

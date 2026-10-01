@@ -23,6 +23,7 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-1",
+		"subject": "a note",
 		"message": "check the auth module too",
 	}, ".")
 
@@ -48,6 +49,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	ctx := tool.WithAgentID(context.Background(), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "main",
+		"subject": "a note",
 		"message": "found the root cause",
 	}, ".")
 
@@ -68,6 +70,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-gone",
+		"subject": "a note",
 		"message": "anyone home?",
 	}, ".")
 
@@ -87,6 +90,7 @@ func TestSendMessage_SelfSendRejected(t *testing.T) {
 	ctx := tool.WithAgentID(context.Background(), "task-7")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "task-7",
+		"subject": "a note",
 		"message": "hello me",
 	}, ".")
 
@@ -129,7 +133,7 @@ func TestSendMessage_GroupMembers(t *testing.T) {
 	}
 
 	sm := NewSendMessageTool()
-	params := map[string]any{"to": "web", "message": "schema changed"}
+	params := map[string]any{"to": "web", "subject": "schema changed", "message": "orders gained coupon_code"}
 	res := sm.Execute(context.Background(), params, "")
 	if !res.Success || !strings.HasPrefix(res.Output, "Queued · offline") {
 		t.Errorf("to an offline member: %+v", res)

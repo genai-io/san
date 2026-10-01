@@ -72,13 +72,13 @@ func TestSendNamesTheMembersWhenTheNameIsWrong(t *testing.T) {
 	if _, err := Join("shop", Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Send("front", "hi"); err == nil || !strings.Contains(err.Error(), "members: web") {
+	if _, err := Send("front", "hi", "hi"); err == nil || !strings.Contains(err.Error(), "members: web") {
 		t.Errorf("unknown name: err = %v, want the member list", err)
 	}
-	if _, err := Send("api", "hi"); err == nil {
+	if _, err := Send("api", "hi", "hi"); err == nil {
 		t.Error("sending to yourself was accepted")
 	}
-	to, err := Send("web", "schema changed")
+	to, err := Send("web", "schema changed", "orders gained coupon_code")
 	if err != nil || !to.Hold {
 		t.Fatalf("Send = %+v, %v; want web, holding", to, err)
 	}

@@ -128,12 +128,16 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 					"type":        "string",
 					"description": "A member's name, without \"@\", e.g. \"api\".",
 				},
+				"subject": map[string]any{
+					"type":        "string",
+					"description": "One line, under ten words, on what the message is about: the recipient's user sees it.",
+				},
 				"message": map[string]any{
 					"type":        "string",
 					"description": "The message body: just what you have to say.",
 				},
 			},
-			"required": []string{"to", "message"},
+			"required": []string{"to", "subject", "message"},
 		},
 	}
 }

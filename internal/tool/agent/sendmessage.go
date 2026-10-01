@@ -35,6 +35,10 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	if err != nil {
 		return nil, err
 	}
+	subject, err := tool.RequireString(params, "subject")
+	if err != nil {
+		return nil, err
+	}
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
 		return nil, fmt.Errorf("to is required (a subagent task id, \"main\", or a group member's name)")
@@ -42,7 +46,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), message),
+		Description: fmt.Sprintf("Message %s: %s\n\n%s", recipientLabel(to), subject, message),
 	}, nil
 }
 
@@ -61,6 +65,10 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	if message == "" {
 		return toolresult.NewErrorResult(t.Name(), "message is required")
 	}
+	subject := strings.TrimSpace(tool.GetString(params, "subject"))
+	if subject == "" {
+		return toolresult.NewErrorResult(t.Name(), "subject is required: one line on what the message is about")
+	}
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
 		return toolresult.NewErrorResult(t.Name(), "to is required (a subagent task id, \"main\", or a group member's name)")
@@ -72,7 +80,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		if tool.AgentIDFromContext(ctx) != "" {
 			return toolresult.NewErrorResult(t.Name(), "only the main conversation can message group members; report to it instead")
 		}
-		member, err := group.Send(to, message)
+		member, err := group.Send(to, subject, message)
 		if err != nil {
 			return toolresult.NewErrorResult(t.Name(), err.Error())
 		}
@@ -99,7 +107,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	delivered := broker.Send(broker.Message{
 		From:    from,
 		To:      to,
-		Subject: fmt.Sprintf("Message from %s", senderLabel(from)),
+		Subject: fmt.Sprintf("From %s: %s", senderLabel(from), subject),
 		Content: wrapAgentMessage(from, message),
 	})
 	if !delivered {
