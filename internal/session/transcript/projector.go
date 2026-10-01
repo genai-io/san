@@ -153,6 +153,12 @@ func applyStatePatch(state *State, patch *StateRecord) error {
 				return fmt.Errorf("patch %s: %w", op.Path, err)
 			}
 			state.AutoPilot = v
+		case PatchPathGroup:
+			var v string
+			if err := json.Unmarshal(op.Value, &v); err != nil {
+				return fmt.Errorf("patch %s: %w", op.Path, err)
+			}
+			state.Group = v
 		case PatchPathTasks:
 			var tasks []TrackerItemView
 			if err := json.Unmarshal(op.Value, &tasks); err != nil {

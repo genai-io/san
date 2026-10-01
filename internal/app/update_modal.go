@@ -18,6 +18,7 @@ import (
 func (m *model) cycleOperationMode() tea.Cmd {
 	allowBypass := m.services.Setting.AllowBypass()
 	m.env.OperationMode = m.env.OperationMode.NextWithBypass(allowBypass)
+	m.modeHintUntil = time.Now().Add(modeHintFor)
 	m.applyOperationMode()
 	m.persistOperationMode()
 	// Landing on AutoPilot surfaces the opening proposal (Suggest) — but debounce

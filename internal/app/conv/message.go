@@ -494,7 +494,18 @@ func RenderSystemMessage(content string) string {
 // RenderAgentNotice renders a background-agent notice (a subagent completion or
 // interim report) — a "◆" marker plus the "<description> <status>" line in the
 // accent tone, so it stands out from the dim system notices as an agent message.
-func RenderAgentNotice(content string) string {
+func RenderAgentNotice(content string, width int, colors map[string]int) string {
+	// A group member's message mirrors "To @api": "From @api: <subject>", or
+	// just "From @api" when it came without one; a " · note" may follow.
+	if rest, ok := strings.CutPrefix(content, "From @"); ok {
+		name, body, _ := strings.Cut(rest, ": ")
+		if n, note, ok := strings.Cut(name, " · "); ok {
+			name, body = n, " · "+note
+		}
+		if name != "" && !strings.Contains(name, " ") {
+			return renderMemberLine("◆", "From", name, body, width, colors) + "\n"
+		}
+	}
 	return agentNoticeStyle.Render("◆ "+content) + "\n"
 }
 
@@ -545,6 +556,7 @@ type ToolCallsParams struct {
 	OutputTokens       int
 	Blink              int
 	AgentColors        map[string]string
+	MemberColors       map[string]int
 	SpinnerView        string
 	TaskOwnerMap       map[string]string
 	MDRenderer         *MDRenderer
@@ -625,7 +637,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 			label := formatAgentLabel(agent)
 			color := configuredAgentColor(agent, params.AgentColors)
 			_, hasResult := params.ResultMap[tc.ID]
-			if hasResult {
+			if to, body := sendMessageParts(tc.Input); tc.Name == tool.ToolSendMessage && to != "" {
+				sb.WriteString(renderMemberLine("●", "To", to, body, params.Width, params.MemberColors) + "\n")
+			} else if hasResult {
 				sb.WriteString(renderAgentToolLine(label, params.Width, "●", color) + "\n")
 			} else {
 				// agentIcon blinks ●/○ off the frame counter; on the call a
@@ -641,7 +655,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				}
 				sb.WriteString("\n")
 			}
-			if params.ToolCallsExpanded && !hasResult {
+			if params.ToolCallsExpanded && !hasResult && tc.Name != tool.ToolSendMessage {
 				sb.WriteString(formatAgentDefinition(agent, params.Width))
 			}
 		} else if params.ToolCallsExpanded {
@@ -672,6 +686,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
+				if tc.Name == tool.ToolGroup {
+					args = groupCallArgs(tc.Input)
+				}
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))
@@ -686,7 +703,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			// order things happened: judged → ran → produced this output.
 			sb.WriteString(renderDecision(resultData.Decision))
 			sb.WriteString(RenderToolResultInline(resultData, params.MDRenderer))
-		} else if tool.IsAgentToolName(tc.Name) {
+		} else if tool.IsAgentToolName(tc.Name) && tc.Name != tool.ToolSendMessage { // a message runs no agent
 			limit := maxCompactAgentToolLines
 			if params.ParallelMode {
 				limit = maxParallelAgentToolLines

@@ -38,6 +38,9 @@ type State struct {
 	// unset). Stored opaque here so the transcript package stays free of an
 	// internal/setting dependency; the app marshals/unmarshals it.
 	AutoPilot string
+	// Group is the session's group membership as a JSON blob (empty when not
+	// in a group), opaque here for the same reason as AutoPilot.
+	Group string
 
 	Tasks    []TrackerItemView
 	Worktree *WorktreeState

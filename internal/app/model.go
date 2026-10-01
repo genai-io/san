@@ -24,6 +24,7 @@ package app
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -113,7 +114,11 @@ type model struct {
 	// or the release that could not be installed (a warning at exit points to
 	// `san update`). Zero until the command reports.
 	updateInstalled string
-	updateFailed    updateFailedMsg
+
+	// modeHintUntil is when the status bar's "(shift+tab to cycle)" goes: a
+	// few seconds after start and after each switch, long enough to be read.
+	modeHintUntil time.Time
+	updateFailed  updateFailedMsg
 
 	// autopilotRecoveries counts consecutive attempts to revive a run after a
 	// turn died on an error, bounding a retry loop into a sustained outage. Any
@@ -169,11 +174,19 @@ type model struct {
 	// Streaming blocks render their markdown off the UI goroutine so a completed
 	// block never stalls repaint. See flushState and model_scrollback.go.
 	flush flushState
+
+	// grp is this session's group, as the main loop tracks it (group.go).
+	grp groupState
 }
 
 var _ conv.Runtime = (*model)(nil)
 
+// modeHintFor is how long the shift+tab hint stays; the status bar redraws
+// often enough (every few hundred ms) that it goes without a timer of its own.
+const modeHintFor = 5 * time.Second
+
 func (m *model) Init() tea.Cmd {
+	m.modeHintUntil = time.Now().Add(modeHintFor)
 	cmds := []tea.Cmd{
 		m.userInput.MCP.Selector.AutoConnect(),
 		trigger.TriggerCronTickNow(),

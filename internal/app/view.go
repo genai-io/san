@@ -3,6 +3,7 @@ package app
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -374,6 +375,12 @@ func (m model) renderModeStatus() string {
 		ReviewEscalations: reviewEscalations,
 		AutopilotThinking: m.autopilotDeciding,
 		UpdateInstalled:   m.updateInstalled,
+		ModeHint:          time.Now().Before(m.modeHintUntil),
+		Group:             m.grp.name,
+		GroupSelf:         m.groupSelfName(),
+		GroupHold:         m.groupHolds(),
+		GroupWaiting:      len(m.grp.announced),
+		GroupApproval:     m.membersAwaitingApproval(),
 	})
 }
 
@@ -423,6 +430,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Decorations
 		AgentColors:  m.agentColors(),
+		MemberColors: m.grp.colors,
 		TaskActivity: m.conv.TaskActivity,
 		TaskOwnerMap: buildTaskOwnerMap(m.services.Tracker.List()),
 

@@ -35,6 +35,7 @@ const (
 	PatchPathTag        = "tag"
 	PatchPathMode       = "mode"
 	PatchPathAutoPilot  = "autoPilot"
+	PatchPathGroup      = "group"
 	PatchPathTasks      = "tasks"
 	PatchPathWorktree   = "worktree"
 )

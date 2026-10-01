@@ -53,6 +53,9 @@ func Run(opts setting.RunOptions) error {
 	}
 
 	finalModel, err := tea.NewProgram(m).Run()
+	// Every exit ends here, a failed one included: settle the group
+	// membership before anything else.
+	m.exitGroup()
 	if err != nil {
 		return fmt.Errorf("failed to run TUI: %w", err)
 	}

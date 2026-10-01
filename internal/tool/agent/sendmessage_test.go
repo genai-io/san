@@ -2,8 +2,13 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/group"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/tool"
@@ -18,6 +23,7 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-1",
+		"subject": "a note",
 		"message": "check the auth module too",
 	}, ".")
 
@@ -43,6 +49,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	ctx := tool.WithAgentID(context.Background(), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "main",
+		"subject": "a note",
 		"message": "found the root cause",
 	}, ".")
 
@@ -63,6 +70,7 @@ func TestSendMessage_UnregisteredRecipientErrors(t *testing.T) {
 
 	result := NewSendMessageTool().Execute(context.Background(), map[string]any{
 		"to":      "task-gone",
+		"subject": "a note",
 		"message": "anyone home?",
 	}, ".")
 
@@ -82,6 +90,7 @@ func TestSendMessage_SelfSendRejected(t *testing.T) {
 	ctx := tool.WithAgentID(context.Background(), "task-7")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "task-7",
+		"subject": "a note",
 		"message": "hello me",
 	}, ".")
 
@@ -103,5 +112,35 @@ func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
 	}
 	if r := toolInst.Execute(context.Background(), map[string]any{"message": "hi"}, "."); r.Success {
 		t.Fatal("missing recipient should fail")
+	}
+}
+
+func TestSendMessage_GroupMembers(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	group.BindSession(func() string { return "s-self" })
+	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = group.Leave() })
+	home, _ := os.UserHomeDir()
+	web := group.Member{Name: "web", Hold: true, SessionID: "s-web"}
+	dir := filepath.Join(home, ".san", "groups", "shop")
+	if err := os.MkdirAll(filepath.Join(dir, "web.inbox"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicfile.WriteJSON(filepath.Join(dir, "web.json"), web, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sm := NewSendMessageTool()
+	params := map[string]any{"to": "web", "subject": "schema changed", "message": "orders gained coupon_code"}
+	res := sm.Execute(context.Background(), params, "")
+	if !res.Success || !strings.HasPrefix(res.Output, "Queued · offline") {
+		t.Errorf("to an offline member: %+v", res)
+	}
+
+	sub := tool.WithAgentID(context.Background(), "task-1")
+	if res := sm.Execute(sub, params, ""); res.Success || !strings.Contains(res.Output+res.Error, "only the main conversation") {
+		t.Errorf("a subagent reached a member: %+v", res)
 	}
 }

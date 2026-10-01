@@ -544,7 +544,15 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 		m.Suggestions.MoveToEnd()
 		return nil, true
 	case "tab", "enter":
-		if selected := m.Suggestions.Selected(); selected != "" {
+		selected := m.Suggestions.Selected()
+		// Enter on a command already typed in full runs it, e.g. a bare /group;
+		// Tab, or a partial name, completes.
+		if msg.String() == "enter" && m.Suggestions.SuggestionType() != suggest.TypeFile &&
+			selected == strings.TrimSpace(m.Textarea.Value()) {
+			m.Suggestions.Hide()
+			return nil, false
+		}
+		if selected != "" {
 			if m.Suggestions.SuggestionType() == suggest.TypeFile {
 				currentValue := m.Textarea.Value()
 				if atIdx := strings.LastIndex(currentValue, "@"); atIdx >= 0 {
@@ -555,6 +563,10 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 			} else {
 				m.Textarea.SetValue(selected + " ")
 				m.Textarea.CursorEnd()
+				// Open the next level, e.g. /group's subcommands, then the
+				// groups a join can name. Nothing to offer hides the list.
+				m.Suggestions.UpdateSuggestions(m.Textarea.Value())
+				return nil, true
 			}
 			m.Suggestions.Hide()
 		}

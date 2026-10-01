@@ -97,9 +97,10 @@ func (m *model) activeOverlay() (overlayPanel, bool) {
 
 type initialPromptMsg string
 
-// Update wraps the dispatch below so one thing is observed across every branch
-// of it: an overlay closing, which is what restarts a held scrollback print —
-// whichever of the sixteen panels it was, and however it was dismissed.
+// Update wraps the dispatch below so a few things are observed across every
+// branch of it: an overlay closing, which is what restarts a held scrollback
+// print — whichever of the sixteen panels it was, and however it was
+// dismissed — and, in a group, the loop starting and this member's state.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)
@@ -108,6 +109,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, resume)
 		}
 	}
+	if poll := m.startGroupPolling(); poll != nil {
+		cmd = tea.Batch(cmd, poll)
+	}
+	m.syncGroupState()
 	return model, cmd
 }
 
@@ -190,6 +195,11 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Logger().Warn("reload settings after tool toggle failed", zap.Error(err))
 		}
 		return m, nil
+	case memberMsg:
+		return m, m.handleMemberMsg(msg)
+	case groupJoinMsg:
+		m.conv.AddNotice(m.finishJoin(msg))
+		return m, tea.Batch(m.CommitMessages()...)
 	case input.MissionRefinedMsg:
 		// The /autopilot Mission editor's refined text arrived; hand it to the
 		// panel to replace the draft (or surface an error under the editor).

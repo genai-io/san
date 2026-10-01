@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/broker"
+	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -34,14 +35,15 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	if err != nil {
 		return nil, err
 	}
+	subject := strings.TrimSpace(tool.GetString(params, "subject"))
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
-		return nil, fmt.Errorf("to is required (a subagent task id, or \"main\")")
+		return nil, fmt.Errorf("to is required (a subagent task id, \"main\", or a group member's name)")
 	}
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), message),
+		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), strings.TrimSpace(subject+"\n\n"+message)),
 	}, nil
 }
 
@@ -60,9 +62,32 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	if message == "" {
 		return toolresult.NewErrorResult(t.Name(), "message is required")
 	}
+	subject := strings.TrimSpace(tool.GetString(params, "subject"))
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
-		return toolresult.NewErrorResult(t.Name(), "to is required (a subagent task id, or \"main\")")
+		return toolresult.NewErrorResult(t.Name(), "to is required (a subagent task id, \"main\", or a group member's name)")
+	}
+
+	// A member of this session's group lives in another process: its inbox is
+	// a directory, not a broker route.
+	if _, ok := groupMember(to); ok {
+		if tool.AgentIDFromContext(ctx) != "" {
+			return toolresult.NewErrorResult(t.Name(), "only the main conversation can message group members; report to it instead")
+		}
+		member, err := group.Send(to, subject, message)
+		if err != nil {
+			return toolresult.NewErrorResult(t.Name(), err.Error())
+		}
+		return toolresult.ToolResult{
+			Success: true,
+			Output:  sentTo(member),
+			Metadata: toolresult.ResultMetadata{
+				Title:    t.Name(),
+				Icon:     t.Icon(),
+				Subtitle: "→ @" + to,
+				Duration: time.Since(start),
+			},
+		}
 	}
 
 	from := tool.AgentIDFromContext(ctx)
@@ -76,7 +101,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	delivered := broker.Send(broker.Message{
 		From:    from,
 		To:      to,
-		Subject: fmt.Sprintf("Message from %s", senderLabel(from)),
+		Subject: brokerSubject(from, subject),
 		Content: wrapAgentMessage(from, message),
 	})
 	if !delivered {
@@ -95,12 +120,50 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	}
 }
 
+// brokerSubject is the line the receiving side shows for a message.
+func brokerSubject(from, subject string) string {
+	if subject == "" {
+		return "Message from " + senderLabel(from)
+	}
+	return fmt.Sprintf("From %s: %s", senderLabel(from), subject)
+}
+
+// sentTo says when a member will read the message, so the sender knows
+// whether to wait for a reply.
+func sentTo(m group.Member) string {
+	switch {
+	case !m.Online():
+		return fmt.Sprintf("Queued · offline; @%s sees it when its session resumes.", m.Name)
+	case m.Hold:
+		return fmt.Sprintf("Sent · waits for its user; @%s holds messages until its user next types — don't wait for a reply.", m.Name)
+	case m.State == group.Approval:
+		return fmt.Sprintf("Sent · waits on its user's approval; @%s is stopped on an approval, so a reply may take a while.", m.Name)
+	case m.State == group.Working:
+		return fmt.Sprintf("Sent · reads it between steps; @%s is busy, so it reads it between its current steps.", m.Name)
+	}
+	return fmt.Sprintf("Sent · reading now; @%s is idle, so it handles it now.", m.Name)
+}
+
 // recipientLabel renders a target id for tool output.
 func recipientLabel(id string) string {
 	if id == broker.Main {
 		return "the main conversation"
 	}
+	if g, ok := groupMember(id); ok {
+		return "@" + id + " in group " + g
+	}
 	return "running " + senderLabel(id)
+}
+
+// groupMember reports whether to names a member of this session's group
+// rather than "main" or a task, and which group.
+func groupMember(to string) (string, bool) {
+	g, _ := group.Current()
+	if g == "" || to == broker.Main {
+		return "", false
+	}
+	_, isTask := task.Default().Get(to)
+	return g, !isTask
 }
 
 // senderLabel names an agent id for a human-facing notice.

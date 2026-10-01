@@ -55,6 +55,7 @@ type RenderContext struct {
 
 	// ── Decorations (color / activity maps) ─────────────────────
 	AgentColors  map[string]string
+	MemberColors map[string]int // group member → palette slot, fixed for the session
 	TaskActivity map[int][]string
 	TaskOwnerMap map[string]string
 
@@ -211,7 +212,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// Live it shows as a green notice; on resume the turn is rebuilt from
 			// the transcript, so collapse it to the same one-line notice here
 			// instead of dumping the raw <task-notification>/<agent-message> XML.
-			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content)))
+			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content), p.Width, p.MemberColors))
 		default:
 			sb.WriteString(RenderUserMessage(msg.Content, msg.DisplayContent, msg.Images, p.MDRenderer, p.Width))
 			if autopilotDriven {
@@ -220,7 +221,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 		}
 	case core.ChatNotice:
 		if msg.AgentNotice {
-			sb.WriteString(RenderAgentNotice(msg.Content))
+			sb.WriteString(RenderAgentNotice(msg.Content, p.Width, p.MemberColors))
 		} else {
 			sb.WriteString(RenderSystemMessage(msg.Content))
 		}
@@ -284,6 +285,7 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 		OutputTokens:       p.OutputTokens,
 		Blink:              p.Blink,
 		AgentColors:        p.AgentColors,
+		MemberColors:       p.MemberColors,
 		SpinnerView:        p.SpinnerView,
 		TaskOwnerMap:       p.TaskOwnerMap,
 		MDRenderer:         p.MDRenderer,

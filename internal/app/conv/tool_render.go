@@ -3,6 +3,7 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		return renderGenericToolResultInline(data)
 	case tool.ToolSkill:
 		return renderSkillResultInline(data)
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		return renderTaskResultInline(data, mdRenderer)
 	case tool.ToolEdit, tool.ToolWrite:
 		if data.Nested {
@@ -823,6 +824,83 @@ func formatAgentLabel(agent agentInput) string {
 	return fmt.Sprintf("Agent - %s", agent.Name)
 }
 
+// sendMessageLabel names a SendMessage call by its recipient and opening words.
+func sendMessageParts(input string) (to, subject string) {
+	var p struct{ To, Subject string }
+	_ = json.Unmarshal([]byte(input), &p)
+	return strings.TrimPrefix(p.To, "@"), p.Subject
+}
+
+// memberPalette tells group members apart: "To @api" and "From @api" share
+// @api's colour, so one exchange reads as a thread.
+var memberPalette = []kit.AdaptiveColor{
+	{Dark: "#93C5FD", Light: "#1D4ED8"}, // blue
+	{Dark: "#F0ABFC", Light: "#A21CAF"}, // magenta
+	{Dark: "#5EEAD4", Light: "#0F766E"}, // teal
+	{Dark: "#FCD34D", Light: "#B45309"}, // amber
+	{Dark: "#C4B5FD", Light: "#6D28D9"}, // violet
+	{Dark: "#FDA4AF", Light: "#BE123C"}, // rose
+}
+
+// memberColor is the slot the session gave name; a name it has not placed
+// yet (a resume before the roster is read) falls back to a hash.
+func memberColor(name string, colors map[string]int) kit.AdaptiveColor {
+	if i, ok := colors[name]; ok {
+		return memberPalette[i%len(memberPalette)]
+	}
+	h := fnv.New32a()
+	h.Write([]byte(name))
+	return memberPalette[h.Sum32()%uint32(len(memberPalette))]
+}
+
+// renderMemberLine draws one message to or from a group member as a single
+// line: the icon and @name in the member's colour, then the body cut to the
+// width, keeping a trailing " · note" whole.
+func renderMemberLine(icon, dir, name, body string, width int, colors map[string]int) string {
+	color := lipgloss.NewStyle().Foreground(memberColor(name, colors))
+	note := ""
+	if i := strings.LastIndex(body, " · "); i >= 0 {
+		body, note = body[:i], toolResultStyle.Render(body[i:])
+	}
+	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name)
+	if body == "" { // no subject: who it is to or from says it all
+		return head + note
+	}
+	head += toolCallStyle.Render(":")
+	room := width - lipgloss.Width(head) - lipgloss.Width(note) - 2
+	if room < 8 {
+		return head + note
+	}
+	return head + toolCallStyle.Render(" "+kit.TruncateText(body, room)) + note
+}
+
+// groupCallArgs names a Group call by what it does, e.g. "join shop as web".
+func groupCallArgs(input string) string {
+	var p struct {
+		Action, Group, As string
+		Hold              bool
+	}
+	_ = json.Unmarshal([]byte(input), &p)
+	parts := []string{p.Action}
+	switch p.Action {
+	case "join":
+		parts = append(parts, p.Group)
+		if p.As != "" {
+			parts = append(parts, "as", p.As)
+		}
+		if p.Hold {
+			parts = append(parts, "holding")
+		}
+	case "hold":
+		if p.Hold {
+			parts = append(parts, "on")
+		} else {
+			parts = append(parts, "off")
+		}
+	}
+	return strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
+}
+
 func conciseAgentDescription(desc string) string {
 	words := strings.Fields(desc)
 	if len(words) > 10 {
@@ -963,6 +1041,11 @@ func formatToolResultSize(toolName, content string) string {
 		return toolresult.FormatSize(int64(len(content)))
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
+	case tool.ToolSendMessage, tool.ToolGroup:
+		// Their first clause is the outcome, e.g. "Sent · reading now".
+		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
+		first, _, _ = strings.Cut(first, "; ")
+		return strings.TrimSuffix(first, ".")
 	default:
 		return formatLineCount(content)
 	}
@@ -1008,7 +1091,7 @@ func formatLineCountValue(lineCount int) string {
 // label, shortening the text — never the closing paren — to fit width.
 func renderBashDescription(description string, width int) string {
 	inner := width - lipgloss.Width(" ()")
-	if description == "" || inner <= 0 {
+	if description == "" || inner < 8 { // too narrow for words: "()" or "(...)"
 		return ""
 	}
 	return toolResultStyle.Render(" (" + xansi.Truncate(description, inner, "...") + ")")

@@ -103,17 +103,17 @@ func RenderContextBar(used, limit int) string {
 	return style.Render(fmt.Sprintf("[%s] %d%%", bar, int(pct+0.5)))
 }
 
-// contextLabel renders the muted "ctx used/limit" segment. An empty limitText
+// contextLabel renders the muted "used/limit" segment. An empty limitText
 // renders the limit as "--" (unknown).
 func contextLabel(usedText, limitText string) string {
 	muted := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
 	if limitText == "" {
-		return muted.Render(fmt.Sprintf("ctx %s/--", usedText))
+		return muted.Render(usedText + "/--")
 	}
-	return muted.Render(fmt.Sprintf("ctx %s/%s", usedText, limitText))
+	return muted.Render(usedText + "/" + limitText)
 }
 
-// RenderContextLabel renders the "ctx X/Y" segment using compact
+// RenderContextLabel renders the "X/Y" segment using compact
 // humanized numbers (PRD §7.4). Limit renders as "--" when unknown.
 func RenderContextLabel(used, limit int) string {
 	if limit <= 0 {
@@ -211,18 +211,34 @@ type OperationModeParams struct {
 	Compressions      int  // session compact count, drives the "compacted ×N" badge
 	ShowContextBar    bool // render the visual [██████░░░░] 71% bar (opt-in)
 	Width             int
-	ReviewApprovals   int    // auto-review approvals this session, shown next to the mode
-	ReviewEscalations int    // auto-review escalations to the user this session
-	AutopilotThinking bool   // the copilot is mid-decision — show "thinking…" on the mode indicator
-	UpdateInstalled   string // release installed on disk this session, "" for none
+	ReviewApprovals   int      // auto-review approvals this session, shown next to the mode
+	ReviewEscalations int      // auto-review escalations to the user this session
+	AutopilotThinking bool     // the copilot is mid-decision — show "thinking…" on the mode indicator
+	UpdateInstalled   string   // release installed on disk this session, "" for none
+	Group             string   // this session's group, "" outside one
+	GroupSelf         string   // this session's member name in it
+	GroupHold         bool     // this member holds the others' messages
+	ModeHint          bool     // show "(shift+tab to cycle)": briefly, after start or a switch
+	GroupWaiting      int      // member messages waiting for the person's next input
+	GroupApproval     []string // other members whose turn waits on their user's approval
 }
 
 // RenderModeStatus renders the combined mode status line.
 func RenderModeStatus(params OperationModeParams) string {
-	left := RenderOperationModeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
-
-	right := renderStatusCluster(params)
-	if right == "" || params.Width <= 0 {
+	mode, hint := modeIndicator(params.Mode, params.ReviewApprovals, params.ReviewEscalations, params.AutopilotThinking)
+	if params.ModeHint {
+		mode += hint
+	}
+	left := withGroupStatus(mode, params)
+	if params.Width <= 0 {
+		return left
+	}
+	// The cluster gets what the mode indicator leaves, so it drops its least
+	// important segments instead of running off the edge.
+	cluster := params
+	cluster.Width = params.Width - lipgloss.Width(left) - 3
+	right := renderStatusCluster(cluster)
+	if right == "" {
 		return left
 	}
 
@@ -230,9 +246,50 @@ func RenderModeStatus(params OperationModeParams) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
+// withGroupStatus puts the group after the mode: who this session is sits
+// with how it runs, on the left; the right is what it runs on.
+func withGroupStatus(mode string, p OperationModeParams) string {
+	group := renderGroupStatus(p)
+	switch {
+	case group == "":
+		return mode
+	case mode == "":
+		return "  " + group // the indent the mode indicator would have
+	}
+	return mode + "  " + group
+}
+
+// renderGroupStatus reads "◆ shop/api", "· hold" when it holds messages, then,
+// in amber, whatever waits on the person: held messages, which scroll out of
+// sight, and members stuck on approval.
+func renderGroupStatus(p OperationModeParams) string {
+	if p.Group == "" {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("◆ %s/%s", p.Group, p.GroupSelf)}
+	if p.GroupHold {
+		parts = append(parts, "hold")
+	}
+	quiet := len(parts) // what is said before anything waits on the person
+	if p.GroupWaiting > 0 {
+		parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
+	}
+	switch n := len(p.GroupApproval); {
+	case n == 1:
+		parts = append(parts, p.GroupApproval[0]+" needs approval")
+	case n > 1:
+		parts = append(parts, fmt.Sprintf("%s +%d need approval", p.GroupApproval[0], n-1))
+	}
+	color := kit.CurrentTheme.Muted
+	if len(parts) > quiet {
+		color = kit.CurrentTheme.Warning
+	}
+	return lipgloss.NewStyle().Foreground(color).Render(strings.Join(parts, " · "))
+}
+
 // renderStatusCluster composes the status line's right-hand cluster, in
 // display order: model name, optional transient status message, the numeric
-// "ctx X/Y" label, the optional visual context bar, the optional compressions
+// "X/Y" context label, the optional visual context bar, the optional compressions
 // badge, and the optional cost. Each piece is a statusSegment with a drop
 // priority; fitStatusSegments drops the least important first when the
 // terminal is too narrow to hold them all.
@@ -245,14 +302,13 @@ func renderStatusCluster(p OperationModeParams) string {
 
 	// Priority 1 = most important (dropped last). The model name always
 	// renders; everything else drops before it under width pressure.
-	segments := []statusSegment{
-		{text: muted.Render(p.ModelName), priority: 1},
-	}
+	var segments []statusSegment
+	segments = append(segments, statusSegment{text: muted.Render(p.ModelName), priority: 1})
 	if p.StatusMessage != "" {
 		segments = append(segments, statusSegment{text: muted.Render(p.StatusMessage), priority: 2})
 	}
 
-	// The numeric label always renders — it falls back to "ctx X/--" when the
+	// The numeric label always renders — it falls back to "X/--" when the
 	// limit is unknown, so the slot stays visible instead of silently hiding.
 	segments = append(segments, statusSegment{
 		text:     RenderContextLabel(p.ContextTokens, p.ContextWindow),
@@ -297,7 +353,14 @@ func compactStatusHint(percent float64) string {
 
 // RenderOperationModeIndicator returns the mode status indicator for auto-accept, auto-review, or YOLO mode.
 func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) string {
-	var icon, label string
+	label, hint := modeIndicator(mode, reviewApprovals, reviewEscalations, autopilotThinking)
+	return label + hint
+}
+
+// modeIndicator returns the mode label and, apart, its shift+tab hint, which
+// the status line shows only for a moment.
+func modeIndicator(mode setting.OperationMode, reviewApprovals, reviewEscalations int, autopilotThinking bool) (label, hint string) {
+	var icon string
 	var clr kit.AdaptiveColor
 
 	switch mode {
@@ -314,7 +377,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 		label = " YOLO"
 		clr = kit.CurrentTheme.Yolo
 	default:
-		return ""
+		return "", ""
 	}
 
 	if mode == setting.ModeAutoPilot {
@@ -332,8 +395,7 @@ func RenderOperationModeIndicator(mode setting.OperationMode, reviewApprovals, r
 	}
 
 	style := lipgloss.NewStyle().Foreground(clr)
-	hint := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (shift+tab to cycle)")
-	return "  " + style.Render(icon+label) + hint
+	return "  " + style.Render(icon+label), lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted).Render(" (shift+tab to cycle)")
 }
 
 // ModelStatusLabel composes the status line's model segment: the model name

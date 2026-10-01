@@ -34,6 +34,8 @@ const (
 	// instructions are never mixed in the prompt. See
 	// notes/active/l1-background-review.md §4.5.
 	ProviderMemoryAuto = "memory-auto"
+	// ProviderGroup is the roster of the group this session joined.
+	ProviderGroup = "group"
 )
 
 // provider is a long-lived reminder source: render produces its body on every

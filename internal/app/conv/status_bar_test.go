@@ -89,10 +89,10 @@ func TestRenderContextLabel(t *testing.T) {
 		limit int
 		want  string
 	}{
-		{"compact", 142_000, 200_000, "ctx 142.0k/200.0k"},
-		{"millions", 1_500_000, 2_000_000, "ctx 1.5M/2.0M"},
-		{"unknown-limit", 5000, 0, "ctx 5.0k/--"}, // used shown, limit unknown
-		{"zero-used", 0, 200_000, "ctx 0/200.0k"},
+		{"compact", 142_000, 200_000, "142.0k/200.0k"},
+		{"millions", 1_500_000, 2_000_000, "1.5M/2.0M"},
+		{"unknown-limit", 5000, 0, "5.0k/--"}, // used shown, limit unknown
+		{"zero-used", 0, 200_000, "0/200.0k"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -113,11 +113,8 @@ func TestRenderContextLabelStaysCompact(t *testing.T) {
 		ContextBudget: 272_000,
 		Width:         120,
 	}))
-	if !strings.Contains(visible, "ctx 0/272.0k") {
-		t.Fatalf("RenderModeStatus() = %q, want compact ctx label", visible)
-	}
-	if strings.Contains(visible, "ctx       0/272.0k") {
-		t.Fatalf("RenderModeStatus() = %q, ctx label must not pad the usage value", visible)
+	if !strings.Contains(visible, "· 0/272.0k") {
+		t.Fatalf("RenderModeStatus() = %q, want the compact context label, unpadded", visible)
 	}
 }
 
@@ -307,7 +304,7 @@ func TestContextLabelCountsAgainstTheWindow(t *testing.T) {
 		ContextBudget: 240_000,
 		Width:         120,
 	}))
-	if !strings.Contains(visible, "ctx 120.0k/272.0k") {
+	if !strings.Contains(visible, "120.0k/272.0k") {
 		t.Fatalf("status = %q, want the window as the denominator", visible)
 	}
 }

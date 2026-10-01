@@ -10,6 +10,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/genai-io/san/internal/group"
+
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/trigger"
@@ -41,6 +43,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.conv.OnNotice = m.recordNotice
+	group.BindSession(m.services.Session.ID)
 	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
 	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
 	m.userInput.Autopilot.SetModelSource(m.autopilotModelRefs)
@@ -70,6 +73,7 @@ func newBaseModel() model {
 			Setting:         svc.Setting,
 			LoadDisabled:    svc.Setting.DisabledToolsAt,
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
+			HeldOn:          toolsHeldOn,
 			Evolve: input.EvolveDeps{
 				Workspace: learnedStores.Snapshot,
 				Learned:   newLearnedSkillStore(learnedStores.Snapshot),

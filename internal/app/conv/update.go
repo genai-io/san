@@ -17,6 +17,12 @@ import (
 func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 	switch msg := msg.(type) {
 	case AgentOutboxMsg:
+		// A rebuild stops one agent and starts the next; whatever the old
+		// outbox still delivers belongs to an agent that is gone, and applying
+		// it (its stop above all) would act on the new one.
+		if cur := rt.AgentOutbox(); cur != nil && msg.Outbox != nil && msg.Outbox != cur {
+			return nil, true
+		}
 		if msg.Closed && len(msg.Batch) == 0 {
 			m.Stream.Stop()
 			return rt.OnAgentStop(nil), true

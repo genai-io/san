@@ -25,6 +25,7 @@ const (
 	ToolAskUserQuestion = "AskUserQuestion"
 
 	ToolEvolve = "Evolve"
+	ToolGroup  = "Group"
 )
 
 // IsShellTool reports whether name is a tool that runs shell commands: Bash
@@ -71,7 +72,7 @@ type SchemaOptions struct {
 var builtinToolOrder = []string{
 	ToolRead, ToolWebFetch, ToolWebSearch, ToolEdit, ToolWrite, ToolBash, ToolPowerShell, ToolAskUserQuestion,
 	ToolSkill,
-	ToolAgent, ToolAgentStop, ToolSendMessage, ToolWorkflow,
+	ToolAgent, ToolAgentStop, ToolSendMessage, ToolWorkflow, ToolGroup,
 	ToolTaskCreate, ToolTaskGet, ToolTaskUpdate,
 	ToolCron,
 }

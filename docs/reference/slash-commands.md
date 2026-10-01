@@ -41,7 +41,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
   paged back into native scrollback: `tea.Println` inserts at the frame's top, so
   a later print would land *below* what is already there and invert the order.
 - `/think` cycles through levels and updates the status bar indicator.
-- `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `ctx X/Y` says how full the window is; `/context` says what filled it. The total is the provider's measured size of the last call — its prompt plus its reply, which the next call sends back. The split across categories is estimated and scaled to that total.
+- `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `X/Y` context figure says how full the window is; `/context` says what filled it. The total is the provider's measured size of the last call — its prompt plus its reply, which the next call sends back. The split across categories is estimated and scaled to that total.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
 
 ## Automated Tests

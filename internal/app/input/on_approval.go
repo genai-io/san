@@ -260,6 +260,9 @@ func (p *ApprovalModel) renderInline() string {
 		sb.WriteString(p.skillPreview.render(contentWidth))
 	} else if p.agentPreview != nil {
 		sb.WriteString(p.agentPreview.render(contentWidth))
+	} else if p.request.ToolName == tool.ToolSendMessage {
+		_, body, _ := strings.Cut(p.request.Description, ": ")
+		sb.WriteString(renderMessagePreview(body, contentWidth))
 	}
 	sb.WriteString("\n")
 
@@ -296,8 +299,11 @@ func (p *ApprovalModel) getTitle() string {
 		title = p.request.ToolName + " command"
 	case tool.ToolSkill:
 		title = "Load skill"
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		title = "Spawn agent"
+	case tool.ToolSendMessage:
+		// "Message @web in group shop: <body>" — the body is previewed below.
+		title, _, _ = strings.Cut(p.request.Description, ": ")
 	default:
 		title = p.request.Description
 	}
@@ -360,8 +366,10 @@ func allSessionLabel(req *perm.PermissionRequest) string {
 		return "Yes, allow all commands during this session"
 	case tool.ToolSkill:
 		return "Yes, allow all skills during this session"
-	case tool.ToolAgent, tool.ToolSendMessage:
+	case tool.ToolAgent:
 		return "Yes, allow all agents during this session"
+	case tool.ToolSendMessage:
+		return "Yes, allow all messages during this session"
 	default:
 		return "Yes, allow all during this session"
 	}
@@ -407,6 +415,23 @@ func (p *ApprovalModel) Render() string {
 
 type approvalAgentPreview struct {
 	agentMeta *perm.AgentMetadata
+}
+
+// renderMessagePreview shows what a SendMessage would send, wrapped and
+// capped, so the person approves the words and not just the recipient.
+func renderMessagePreview(body string, width int) string {
+	const maxLines = 8
+	wrapped := lipgloss.NewStyle().Width(max(width-4, 20)).Render(strings.TrimSpace(body))
+	lines := strings.Split(wrapped, "\n")
+	if len(lines) > maxLines {
+		lines = append(lines[:maxLines], fmt.Sprintf("… %d more lines", len(lines)-maxLines))
+	}
+	dim := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim)
+	var sb strings.Builder
+	for _, line := range lines {
+		sb.WriteString("   " + dim.Render(strings.TrimRight(line, " ")) + "\n")
+	}
+	return sb.String()
 }
 
 func newApprovalAgentPreview(meta *perm.AgentMetadata) *approvalAgentPreview {

@@ -37,11 +37,16 @@ const commandEnvelopePattern = `<command-name>.*?</command-name>\s*(?:<skill-inv
 
 // harnessInjectedRe matches any harness-injected span. The command envelope only
 // ever leads the message, so it's anchored; reminders can appear anywhere.
-var harnessInjectedRe = regexp.MustCompile(`(?s)` + reminder.Pattern + `|^` + commandEnvelopePattern)
+var harnessInjectedRe = regexp.MustCompile(`(?s)` + reminder.Pattern + `|` + groupMessagePattern + `|^` + commandEnvelopePattern)
+
+// groupMessagePattern matches a group member's message attached to the person's
+// input (a passive member's), so a resume shows only what the person typed.
+const groupMessagePattern = `<group-message>.*?</group-message>`
 
 const (
 	SourceReminder = "reminder"
 	SourceCommand  = "command"
+	SourceGroup    = "group"
 )
 
 // isHiddenSource reports whether a content block's Source marks it as
@@ -49,7 +54,7 @@ const (
 // resume. Reminder sources carry an optional ":provider" suffix, so match by
 // prefix.
 func isHiddenSource(source string) bool {
-	return source == SourceCommand || strings.HasPrefix(source, SourceReminder)
+	return source == SourceCommand || source == SourceGroup || strings.HasPrefix(source, SourceReminder)
 }
 
 // splitTextBySource returns ContentBlocks that together reproduce the input
@@ -88,6 +93,9 @@ func splitTextBySource(text string) []ContentBlock {
 func injectedSource(text string, m []int) string {
 	if strings.HasPrefix(text[m[0]:m[1]], "<command-name>") {
 		return SourceCommand
+	}
+	if strings.HasPrefix(text[m[0]:m[1]], "<group-message>") {
+		return SourceGroup
 	}
 	if m[2] >= 0 && m[3] > m[2] {
 		return SourceReminder + ":" + text[m[2]:m[3]]

@@ -13,6 +13,7 @@ type AgentOutboxMsg struct {
 	Event  core.Event
 	Batch  []core.Event // set when multiple events were drained at once
 	Closed bool
+	Outbox <-chan core.Event // the outbox it was read from
 }
 
 // Runtime defines what the conv event handlers need from the root model. Each
@@ -53,6 +54,8 @@ type Runtime interface {
 	// call (nil if it was not auto-reviewed), to stamp onto its rendered result.
 	TakeReviewDecision(callID string) *core.ReviewDecision
 	HasRunningTasks() bool
+	// AgentOutbox is the live agent's outbox, nil when none is running.
+	AgentOutbox() <-chan core.Event
 
 	// ── Transport lifetime ──────────────────────────────────────
 	// ContinueOutbox re-arms the one-shot outbox listener. Not a service but an
@@ -70,30 +73,36 @@ type Runtime interface {
 // terminal events (OnTurn/OnStop/OnCompact) so turn boundaries aren't crossed.
 func DrainAgentOutbox(outbox <-chan core.Event) tea.Cmd {
 	return func() tea.Msg {
-		ev, ok := <-outbox
-		if !ok {
-			return AgentOutboxMsg{Closed: true}
-		}
-		if isTerminalEvent(ev) {
-			return AgentOutboxMsg{Event: ev}
-		}
-		batch := []core.Event{ev}
-		for {
-			select {
-			case next, ok := <-outbox:
-				if !ok {
-					return AgentOutboxMsg{Batch: batch, Closed: true}
-				}
-				batch = append(batch, next)
-				if isTerminalEvent(next) {
-					return AgentOutboxMsg{Batch: batch}
-				}
-			default:
-				if len(batch) == 1 {
-					return AgentOutboxMsg{Event: batch[0]}
-				}
+		msg := drainOutbox(outbox)
+		msg.Outbox = outbox
+		return msg
+	}
+}
+
+func drainOutbox(outbox <-chan core.Event) AgentOutboxMsg {
+	ev, ok := <-outbox
+	if !ok {
+		return AgentOutboxMsg{Closed: true}
+	}
+	if isTerminalEvent(ev) {
+		return AgentOutboxMsg{Event: ev}
+	}
+	batch := []core.Event{ev}
+	for {
+		select {
+		case next, ok := <-outbox:
+			if !ok {
+				return AgentOutboxMsg{Batch: batch, Closed: true}
+			}
+			batch = append(batch, next)
+			if isTerminalEvent(next) {
 				return AgentOutboxMsg{Batch: batch}
 			}
+		default:
+			if len(batch) == 1 {
+				return AgentOutboxMsg{Event: batch[0]}
+			}
+			return AgentOutboxMsg{Batch: batch}
 		}
 	}
 }

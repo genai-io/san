@@ -92,6 +92,9 @@ func (s *State) Reset() {
 }
 
 func (s *State) UpdateSuggestions(input string) {
+	// A trailing space is meaningful to a command: "/group " asks for its
+	// arguments, "/group" for commands named like it.
+	command := strings.TrimLeft(input, " \t\n")
 	input = strings.TrimSpace(input)
 
 	if atIdx := strings.LastIndex(input, "@"); atIdx >= 0 {
@@ -109,7 +112,7 @@ func (s *State) UpdateSuggestions(input string) {
 
 	if strings.HasPrefix(input, "/") {
 		s.suggestionType = typeCommand
-		s.suggestions = s.cmdMatcher(input)
+		s.suggestions = s.cmdMatcher(command)
 		s.fileSuggestions = nil
 		s.visible = len(s.suggestions) > 0
 		s.atQuery = ""
@@ -623,7 +626,7 @@ func (s *State) renderCommandSuggestions(width int) string {
 	items := s.suggestions[start:end]
 
 	boxWidth := max(width-2, 40)
-	contentWidth := max(boxWidth-2, 20)
+	innerWidth := boxWidth - 4 // border and padding
 
 	var lines []string
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
@@ -641,13 +644,16 @@ func (s *State) renderCommandSuggestions(width int) string {
 			nameWidth = w
 		}
 	}
-	// Budget: 2 (bar/indent prefix) + nameWidth + 2 (gutter) + desc, with 2
-	// cols of right margin so the focused row never wraps.
-	maxDescLen := max(contentWidth-nameWidth-6, 10)
+	// Budget: 2 (bar/indent prefix) + nameWidth + 2 (gutter) + desc; a row
+	// wider than the box wraps, so a description with no room is dropped.
+	maxDescLen := innerWidth - nameWidth - 4
 	for i, cmd := range items {
 		cmdName := "/" + cmd.Name
 		pad := strings.Repeat(" ", max(0, nameWidth-lipgloss.Width(cmdName)))
-		desc := kit.TruncateText(cmd.Description, maxDescLen)
+		desc := ""
+		if maxDescLen >= 4 {
+			desc = kit.TruncateText(cmd.Description, maxDescLen)
+		}
 
 		if start+i == s.selectedIdx {
 			bar := kit.FocusBarStyle().Render(kit.FocusBar)

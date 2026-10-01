@@ -17,7 +17,7 @@ import "strings"
 func isAgentEnvelope(content string) bool {
 	s := strings.TrimSpace(content)
 	// "<agent-message" also prefixes the "<agent-messages" batch wrapper.
-	return strings.HasPrefix(s, "<task-notification") || strings.HasPrefix(s, "<agent-message")
+	return strings.HasPrefix(s, "<task-notification") || strings.HasPrefix(s, "<agent-message") || strings.HasPrefix(s, "<group-message")
 }
 
 // agentEnvelopeSummary reduces an envelope to its one-line notice: the task's
@@ -27,6 +27,23 @@ func agentEnvelopeSummary(content string) string {
 	s := strings.TrimSpace(content)
 	tag, _, _ := strings.Cut(s, ">") // opening tag only, so the body can't spoof attributes
 	switch {
+	case strings.HasPrefix(s, "<group-message"):
+		// The headers say who and what: "From @api: <subject>".
+		head, _, _ := strings.Cut(s, "\n\n")
+		var from, subject string
+		for line := range strings.SplitSeq(head, "\n") {
+			if v, ok := strings.CutPrefix(line, "From: "); ok {
+				from = v
+			} else if v, ok := strings.CutPrefix(line, "Subject: "); ok {
+				subject = v
+			}
+		}
+		switch {
+		case from != "" && subject != "":
+			return "From " + from + ": " + subject
+		case from != "":
+			return "From " + from
+		}
 	case strings.HasPrefix(s, "<task-notification"):
 		if line := strings.TrimSpace(envelopeAttr(tag, "description") + " " + envelopeAttr(tag, "status")); line != "" {
 			return line
