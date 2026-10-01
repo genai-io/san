@@ -156,8 +156,8 @@ func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 	return tea.Batch(append(cmds, m.nextGroupTick())...)
 }
 
-// syncRoster reports who joined, left, came online or went offline, switched
-// mode or was renamed since the last poll: a line for the person and the change
+// syncRoster reports who joined, left, came online or went offline, or
+// switched mode since the last poll: a line for the person and the change
 // for the model. It never starts a turn.
 func (m *model) syncRoster(g string, self group.Member, msg memberMsg) []tea.Cmd {
 	next := msg.roster
@@ -192,12 +192,11 @@ func (m *model) placeMemberColors(roster map[string]rosterEntry, selfID string) 
 
 type rosterChange struct{ line, text string } // for the person, for the model
 
-// rosterChanges compares two roster reads: who joined, left, was renamed,
-// switched mode, or went offline or came back.
+// rosterChanges compares two roster reads: who joined, left, switched mode,
+// or went offline or came back.
 func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []rosterChange {
 	var out []rosterChange
 	say := func(line, text string) { out = append(out, rosterChange{line, "Group " + g + ": " + text}) }
-	same := func(format string, args ...any) { s := fmt.Sprintf(format, args...); say(s, s) }
 	// Mode and presence are for the person: the model learns them when it
 	// sends, from SendMessage's result.
 	show := func(format string, args ...any) { out = append(out, rosterChange{line: fmt.Sprintf(format, args...)}) }
@@ -209,8 +208,6 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		switch {
 		case !ok:
 			say(fmt.Sprintf("@%s joined group %s — %s", now.Name, g, now.Role), fmt.Sprintf("@%s joined (%s) — %s (%s)", now.Name, now.Mode, now.Role, now.Cwd))
-		case was.Name != now.Name:
-			same("@%s is now @%s", was.Name, now.Name)
 		case was.Mode != now.Mode:
 			show("@%s is now %s", now.Name, now.Mode)
 		case was.online && !now.online:

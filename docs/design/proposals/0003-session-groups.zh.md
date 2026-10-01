@@ -115,7 +115,7 @@
 ```
 
 - **按成员名命名**，一眼能看出是谁的；join 时排他创建文件，组内不会重名。
-- **sessionID 就是成员身份**：它在会话的整个生命周期里不变，`/clear` 不变，恢复会话也不变，所以改名和恢复都靠它识别。`/fork` 出来的是新会话，有新的 sessionID，不继承成员身份。
+- **sessionID 就是成员身份**：它在会话的整个生命周期里不变，`/clear` 不变，恢复会话也不变，所以恢复会话靠它识别。`/fork` 出来的是新会话，有新的 sessionID，不继承成员身份。
 - **消息文件名 = 时间戳 + 发件人**，按文件名排序就是按时间排序。
 - **没有共享写入**：成员只写自己的文件，发件人只往对方 inbox 新增文件；先写临时文件再 rename，保证原子性。目录 0700、文件 0600。
 - **消息进入对话后才删除**：inbox 文件是消息唯一的一份。进程在送达前退出或崩溃，消息仍在磁盘上，下次上线时照常送达。
@@ -177,7 +177,7 @@ sequenceDiagram
 | `Group` 工具定义 | 工具 schema | 工具列表 | 始终存在 |
 | `SendMessage` 工具定义 | 工具 schema | 工具列表 | 加入 group 后出现，离开后移除 |
 | 完整成员列表 | `<system-reminder source="group">` | 附在下一条送往模型的 user 消息末尾 | 加入、恢复、`/clear`、压缩后 |
-| 加入、离开、改名；自己的身份变化 | `<system-reminder>`，一行 | 工作中：作为一条 user 消息插在工具调用之间；空闲：附在下一条消息末尾 | 发生时 |
+| 加入、离开；自己的身份变化 | `<system-reminder>`，一行 | 工作中：作为一条 user 消息插在工具调用之间；空闲：附在下一条消息末尾 | 发生时 |
 | 组员消息 → active | `<group-message>` | 空闲：单独一条 user 消息，开启新的一轮；工作中：一条 user 消息，插在工具调用之间 | 收到时 |
 | 组员消息 → passive | `<group-message>` | 附在用户下一条输入的正文之后 | 用户下次输入时 |
 | 工具结果 | 工具结果 | `Group` / `SendMessage` 的返回值 | 每次调用 |
@@ -278,7 +278,6 @@ Unattended-Turns:
 ```
 <system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
 <system-reminder>Group shop: @qa left</system-reminder>
-<system-reminder>Group shop: @web is now @checkout</system-reminder>
 
 <system-reminder>Group shop: you are now passive; members' messages wait for your user.</system-reminder>
 <system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
@@ -352,7 +351,7 @@ flowchart TB
     T -->|"变了，或距上次完整读取已满 30 秒"| D["读取所有成员文件"]
     P["每秒：检查各成员的 pid 和进程启动时间"] --> S
     D --> S["按内容与内存快照对比"]
-    S -->|加入 · 离开 · 改名| R["变化 reminder"]
+    S -->|加入 · 离开| R["变化 reminder"]
     S -->|上下线 · 模式| U["只显示在屏幕上"]
     R --> M["模型上下文"]
     F["完整成员列表<br/>加入、恢复、/clear、压缩后"] --> M
@@ -362,7 +361,6 @@ flowchart TB
 - 组内每秒的开销：stat 两次组目录、读一次自己的成员文件、列一次自己的 inbox、每个成员一次进程检查（系统调用，不读盘）。都是很小的元数据，常驻页缓存。
 - 加入、离开、改职责、改模式都是“写临时文件再 rename”，会改变组目录的修改时间；目录没变就不读文件。
 - 有些文件系统的修改时间只精确到秒，同一秒内的第二次变化可能被漏掉，所以每 30 秒无论如何完整读一次。
-- 同一个 sessionID 换了名字，就是改名。
 - 在线 = `pid` 的进程存活，且启动时间与 `procStart` 一致（防止 pid 被别的进程复用）。没有心跳。
 - 自己的成员文件没了（被 `kick`）或组目录没了（被 `disband`）→ 离开并提示。
 - `SendMessage` 以磁盘为准，不依赖可能落后 1 秒的快照。
@@ -502,5 +500,5 @@ flowchart TB
 
 - 协调者模式：有人加入时立即唤醒指定成员，例如给新人分配任务。
 - 状态栏显示 group 标记，例如 `group:shop(3)`。
-- `/group rename`（改名识别已经具备）。
+- `/group rename`。
 - 跨机器通信。

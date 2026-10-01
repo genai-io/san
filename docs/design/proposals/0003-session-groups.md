@@ -122,7 +122,7 @@ Message file `web.inbox/1790640123456789012-api.json`:
 ```
 
 - **Named after the member**, so a listing reads at a glance; join creates the file exclusively, so names never collide.
-- **The session ID is the member's identity**: it holds for the life of the session — `/clear` keeps it, a resume keeps it — so renames and resumes are recognised by it. A `/fork` is a new session with a new ID and does not inherit membership.
+- **The session ID is the member's identity**: it holds for the life of the session — `/clear` keeps it, a resume keeps it — so a resume is recognised by it. A `/fork` is a new session with a new ID and does not inherit membership.
 - **Message name = timestamp + sender**: name order is time order.
 - **No shared writes**: a member writes only its own file, a sender only adds to the recipient's inbox; temp file then rename, so writes are atomic. Directories 0700, files 0600.
 - **A message is deleted only once it is in the conversation**: the inbox file is its only copy. A process that exits or crashes before delivery leaves it on disk, and it is delivered next time the member is online.
@@ -187,7 +187,7 @@ three ways: a tool definition, reminders, and member messages.
 | Group definition | tool schema | the tool list | always present |
 | SendMessage definition | tool schema | the tool list | present while in a group, removed on leaving |
 | Full roster | `<system-reminder source="group">` | appended to the next user message sent to the model | join, resume, `/clear`, after compaction |
-| Join, leave, rename; own membership change | `<system-reminder>`, one line | running: its own user message between tool calls; idle: appended to the next message | as it happens |
+| Join, leave; own membership change | `<system-reminder>`, one line | running: its own user message between tool calls; idle: appended to the next message | as it happens |
 | Member message → active | `<group-message>` | idle: its own user message, starting a turn; running: a user message between tool calls | on arrival |
 | Member message → passive | `<group-message>` | appended after the text of the person's next input | at that input |
 | Tool results | tool result | the return value of Group / SendMessage | every call |
@@ -291,7 +291,6 @@ SendMessage's result tells it where the member stands.
 ```
 <system-reminder>Group shop: @qa joined (active) — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
 <system-reminder>Group shop: @qa left</system-reminder>
-<system-reminder>Group shop: @web is now @checkout</system-reminder>
 
 <system-reminder>Group shop: you are now passive; members' messages wait for your user.</system-reminder>
 <system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
@@ -372,7 +371,7 @@ flowchart TB
     T -->|"changed, or 30s since the last full read"| D["read every member file"]
     P["every second: each member's pid and process start time"] --> S
     D --> S["compare contents with the snapshot"]
-    S -->|joined · left · renamed| R["change reminders"]
+    S -->|joined · left| R["change reminders"]
     S -->|offline · online · mode| U["screen only"]
     R --> M["model context"]
     F["full roster<br/>join, resume, /clear, compaction"] --> M
@@ -382,7 +381,6 @@ flowchart TB
 - Per second in a group: two stats of the group directory, a read of the session's own member file, a listing of its inbox, and one process check per member (a syscall, not disk). All small metadata that stays in the page cache.
 - Joining, leaving, a new role or mode are all a temp-file write plus rename, which changes the directory's mtime; an unchanged directory means no file is read.
 - Some filesystems keep mtime to the second, so a second change within the same second can be missed; every 30 seconds the files are read regardless.
-- The same session ID under a new name is a rename.
 - Online = the `pid`'s process is alive and its start time matches `procStart` (so a reused pid is not mistaken for the member). No heartbeat.
 - Own member file gone (`kick`ed) or group directory gone (`disband`ed) → leave and say so.
 - SendMessage checks the disk, not a snapshot up to a second old.
@@ -537,5 +535,5 @@ flowchart TB
 
 - Coordinator mode: wake a chosen member when someone joins, e.g. to hand the newcomer work.
 - A group badge in the status bar, e.g. `group:shop(3)`.
-- `/group rename` (renames are already recognised by session ID).
+- `/group rename`.
 - Messaging across machines.

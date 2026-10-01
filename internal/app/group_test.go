@@ -68,14 +68,12 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 		"s-self": entry("web", group.Active, true),
 		"s-api":  entry("api", group.Active, true),
 		"s-mig":  entry("migrate", group.Active, true),
-		"s-docs": entry("docs", group.Active, false),
 		"s-gone": entry("old", group.Active, true),
 	}
 	next := map[string]rosterEntry{
 		"s-self": entry("web", group.Passive, true), // own changes are not reported
 		"s-api":  entry("api", group.Active, false),
 		"s-mig":  entry("migrate", group.Passive, true),
-		"s-docs": entry("writer", group.Active, false),
 		"s-new":  entry("qa", group.Active, true),
 	}
 	var got []string
@@ -85,7 +83,6 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 	// Presence and mode are shown, not told: SendMessage's result says them.
 	want := []string{
 		"@api went offline | ",
-		"@docs is now @writer | Group shop: @docs is now @writer",
 		"@migrate is now passive | ",
 		"@old left group shop | Group shop: @old left",
 		"@qa joined group shop — r | Group shop: @qa joined (active) — r (/w)",
