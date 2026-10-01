@@ -86,8 +86,8 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 	want := []string{
 		"@api went offline | ",
 		"@migrate is now passive | ",
-		"@old left group shop | Group shop: @old left",
-		"@qa joined group shop — r | Group shop: @qa joined (active) — r (/w)",
+		"@old left | Group shop: @old left",
+		"@qa joined — r | Group shop: @qa joined (active) — r (/w)",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("rosterChanges =\n%q\nwant\n%q", got, want)

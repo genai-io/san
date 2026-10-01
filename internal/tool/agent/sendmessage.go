@@ -123,15 +123,15 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 func sentTo(m group.Member) string {
 	switch {
 	case !m.Online():
-		return fmt.Sprintf("Queued for @%s (offline); they see it when the session resumes.", m.Name)
+		return fmt.Sprintf("Queued for @%s · offline; they see it when the session resumes.", m.Name)
 	case m.Mode == group.Passive:
-		return fmt.Sprintf("Delivered to @%s (passive); they see it when their user next interacts — don't wait for a reply.", m.Name)
+		return fmt.Sprintf("Sent to @%s · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.", m.Name)
 	case m.State == group.Approval:
-		return fmt.Sprintf("Delivered to @%s (active, waiting on its user's approval); they read it once their user approves — a reply may take a while.", m.Name)
+		return fmt.Sprintf("Sent to @%s · waits on its user's approval (active); they read it once their user approves — a reply may take a while.", m.Name)
 	case m.State == group.Working:
-		return fmt.Sprintf("Delivered to @%s (active, busy); they read it between their current steps.", m.Name)
+		return fmt.Sprintf("Sent to @%s · reads it between steps (active, busy); they read it between their current steps.", m.Name)
 	}
-	return fmt.Sprintf("Delivered to @%s (active, idle); they will handle it now.", m.Name)
+	return fmt.Sprintf("Sent to @%s · reading now (active, idle); they will handle it now.", m.Name)
 }
 
 // recipientLabel renders a target id for tool output.

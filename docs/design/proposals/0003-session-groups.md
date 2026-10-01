@@ -344,16 +344,18 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage results
 
 ```
-Delivered to @web (active, idle); they will handle it now.
-Delivered to @web (active, busy); they read it between their current steps.
-Delivered to @web (active, waiting on its user's approval); they read it once their user approves — a reply may take a while.
-Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @qa (offline); they see it when the session resumes.
+Sent to @web · reading now (active, idle); they will handle it now.
+Sent to @web · reads it between steps (active, busy); they read it between their current steps.
+Sent to @web · waits on its user's approval (active); they read it once their user approves — a reply may take a while.
+Sent to @migrate · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.
+Queued for @qa · offline; they see it when the session resumes.
 
 no member named "front" in group shop; members: api, web, migrate
 cannot send a message to yourself
 only the main conversation can message group members; report to it instead   ← from a subagent
 ```
+
+On screen the call's row reads its first clause without the member and the mode: `└ sent · reading now`, `└ queued · offline`.
 
 ### Automatic naming (a separate model call, not part of the conversation)
 
@@ -415,7 +417,7 @@ sequenceDiagram
     FS-->>A: tool result: @web is offline, sees it on resume
     Note over W: next day 09:00 san -r 6722d9ea
     W->>FS: old pid not online → reclaims web.json by session ID,<br/>writes the new pid and procStart
-    A-->>A: on screen only: @web is back online
+    A-->>A: on screen only: @web came back online
     FS->>W: last night's queued message arrives
 ```
 

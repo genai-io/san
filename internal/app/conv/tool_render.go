@@ -1025,8 +1025,9 @@ func extractToolArgs(input string) string {
 	return ""
 }
 
-// recipientInTrailer matches " to @web" / " for @web" in a SendMessage outcome.
-var recipientInTrailer = regexp.MustCompile(` (to|for) @[\w-]+`)
+// recipientInTrailer matches the member and the mode in a SendMessage
+// outcome: " to @web", " for @web", " (active, idle)".
+var recipientInTrailer = regexp.MustCompile(` (to|for) @[\w-]+| \([^)]*\)`)
 
 func formatToolResultSize(toolName, content string) string {
 	switch toolName {
@@ -1035,11 +1036,16 @@ func formatToolResultSize(toolName, content string) string {
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
 	case tool.ToolSendMessage, tool.ToolGroup:
-		// Their first clause is the outcome, e.g. "Delivered to @web (passive)";
-		// the call's row already names the member, so the trailer drops it.
+		// Their first clause is the outcome, e.g. "Sent to @web · reading now
+		// (active, idle)" → "sent · reading now": the call's row already names
+		// the member, and the mode in parentheses is for the model.
 		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
 		first, _, _ = strings.Cut(first, "; ")
-		return recipientInTrailer.ReplaceAllString(strings.TrimSuffix(first, "."), "")
+		if toolName != tool.ToolSendMessage {
+			return strings.TrimSuffix(first, ".")
+		}
+		first = strings.TrimSpace(recipientInTrailer.ReplaceAllString(first, ""))
+		return strings.ToLower(first[:1]) + first[1:]
 	default:
 		return formatLineCount(content)
 	}

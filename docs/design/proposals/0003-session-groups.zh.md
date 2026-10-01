@@ -326,16 +326,18 @@ Please run 0043 right after 0042 finishes.
 ### SendMessage 结果
 
 ```
-Delivered to @web (active, idle); they will handle it now.
-Delivered to @web (active, busy); they read it between their current steps.
-Delivered to @web (active, waiting on its user's approval); they read it once their user approves — a reply may take a while.
-Delivered to @migrate (passive); they see it when their user next interacts — don't wait for a reply.
-Queued for @qa (offline); they see it when the session resumes.
+Sent to @web · reading now (active, idle); they will handle it now.
+Sent to @web · reads it between steps (active, busy); they read it between their current steps.
+Sent to @web · waits on its user's approval (active); they read it once their user approves — a reply may take a while.
+Sent to @migrate · waits for its user (passive); they see it when their user next interacts — don't wait for a reply.
+Queued for @qa · offline; they see it when the session resumes.
 
 no member named "front" in group shop; members: api, web, migrate
 cannot send a message to yourself
 only the main conversation can message group members; report to it instead   ← 子 agent 调用时
 ```
+
+屏幕上这次调用的结果行，取的是第一句，去掉成员名和模式：`└ sent · reading now`、`└ queued · offline`。
 
 ### 自动命名（单独的一次模型调用，不进入对话）
 
@@ -390,7 +392,7 @@ sequenceDiagram
     FS-->>A: 工具结果：@web 离线，恢复后才会看到
     Note over W: 次日 09:00 san -r 6722d9ea
     W->>FS: 原 pid 已不在线 → 按 sessionID 认领 web.json，<br/>写入新 pid 和 procStart
-    A-->>A: 仅屏幕显示：@web is back online
+    A-->>A: 仅屏幕显示：@web came back online
     FS->>W: 送达昨晚积压的消息
 ```
 

@@ -245,18 +245,18 @@ func rosterChanges(g, selfID string, prev, next map[string]rosterEntry) []roster
 		was, ok := prev[id]
 		switch {
 		case !ok:
-			say(fmt.Sprintf("@%s joined group %s — %s", now.Name, g, now.Role), fmt.Sprintf("@%s joined (%s) — %s (%s)", now.Name, now.Mode, now.Role, now.Cwd))
+			say(fmt.Sprintf("@%s joined — %s", now.Name, now.Role), fmt.Sprintf("@%s joined (%s) — %s (%s)", now.Name, now.Mode, now.Role, now.Cwd))
 		case was.Mode != now.Mode:
 			show("@%s is now %s", now.Name, now.Mode)
 		case was.online && !now.online:
 			show("@%s went offline", now.Name)
 		case !was.online && now.online:
-			show("@%s is back online", now.Name)
+			show("@%s came back online", now.Name)
 		}
 	}
 	for id, was := range prev {
 		if _, ok := next[id]; !ok && id != selfID {
-			say(fmt.Sprintf("@%s left group %s", was.Name, g), fmt.Sprintf("@%s left", was.Name))
+			say("@"+was.Name+" left", "@"+was.Name+" left")
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].line < out[j].line })
