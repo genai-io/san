@@ -73,6 +73,7 @@ func newBaseModel() model {
 			Setting:         svc.Setting,
 			LoadDisabled:    svc.Setting.DisabledToolsAt,
 			UpdateDisabled:  svc.Setting.UpdateDisabledToolsAt,
+			HeldOn:          toolsHeldOn,
 			Evolve: input.EvolveDeps{
 				Workspace: learnedStores.Snapshot,
 				Learned:   newLearnedSkillStore(learnedStores.Snapshot),

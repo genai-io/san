@@ -465,10 +465,20 @@ func firstValidDuration(vals ...string) time.Duration {
 // while this session is in a group: it is how the model messages the members.
 func (m *model) disabledTools() map[string]bool {
 	disabled := maps.Clone(m.services.Setting.DisabledTools())
-	if g, _ := group.Current(); g != "" {
-		delete(disabled, tool.ToolSendMessage)
+	for name := range toolsHeldOn() {
+		delete(disabled, name)
 	}
 	return disabled
+}
+
+// toolsHeldOn names the tools this session keeps on whatever the settings
+// say, and why: the runtime layer over the configured one, read by the agent
+// build and shown in /tool.
+func toolsHeldOn() map[string]string {
+	if g, _ := group.Current(); g != "" {
+		return map[string]string{tool.ToolSendMessage: "on while in a group"}
+	}
+	return nil
 }
 
 // disabledToolsSignature is a stable fingerprint of the effective disabled-tool

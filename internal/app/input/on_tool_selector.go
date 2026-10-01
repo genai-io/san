@@ -44,6 +44,10 @@ type ToolToggleMsg struct {
 // A tool's shown state is derived on the fly from disabledByLevel + the active
 // tab rather than cached on the item: because every tool appears under both
 // level tabs, a cached flag would go stale on every tab switch.
+//
+// State has two layers: the settings, which Toggle edits, and over them the
+// session's runtime holds (heldOn), which keep a tool on whatever the settings
+// say. A held tool shows on, with why, and its setting beside it.
 type ToolSelector struct {
 	list         tabbedList[toolItem]
 	loadDisabled func(scope setting.Scope) map[string]bool
@@ -51,16 +55,20 @@ type ToolSelector struct {
 	// disabledByScope holds each scope's explicit disabled entries, loaded
 	// once per open and mutated by Toggle.
 	disabledByScope map[setting.Scope]map[string]bool
+	heldOn          func() map[string]string
+	held            map[string]string // heldOn as of this open
 }
 
 // NewToolSelector creates a new ToolSelector with injected load/save callbacks.
 func NewToolSelector(
 	loadDisabled func(scope setting.Scope) map[string]bool,
 	saveDisabled func(disabled map[string]bool, scope setting.Scope) error,
+	heldOn func() map[string]string,
 ) ToolSelector {
 	return ToolSelector{
 		loadDisabled: loadDisabled,
 		saveDisabled: saveDisabled,
+		heldOn:       heldOn,
 		list: tabbedList[toolItem]{
 			tabs: []tabSpec{
 				{name: "Project"},
@@ -86,6 +94,10 @@ func (s *ToolSelector) EnterSelect(width, height int, mcpTools func() []core.Too
 	s.disabledByScope = map[setting.Scope]map[string]bool{
 		setting.ScopeProject: s.loadDisabled(setting.ScopeProject),
 		setting.ScopeUser:    s.loadDisabled(setting.ScopeUser),
+	}
+	s.held = nil
+	if s.heldOn != nil {
+		s.held = s.heldOn()
 	}
 
 	items := make([]toolItem, 0, len(allTools))
@@ -181,7 +193,8 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
-		if s.effectiveDisabled(scope, t.Name) {
+		held := s.held[t.Name]
+		if s.effectiveDisabled(scope, t.Name) && held == "" {
 			statusIcon = "○"
 			statusStyle = kit.SelectorStatusNone()
 		} else {
@@ -196,6 +209,13 @@ func (s *ToolSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		desc := t.Description
 		if idx := strings.IndexByte(desc, '\n'); idx != -1 {
 			desc = desc[:idx]
+		}
+		if held != "" { // the runtime layer, then the setting beneath it
+			setting := "on"
+			if s.effectiveDisabled(scope, t.Name) {
+				setting = "off"
+			}
+			desc = held + " · setting: " + setting
 		}
 
 		// Width budget for one row, accounting for the panel's Padding(1, 2)

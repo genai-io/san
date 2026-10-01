@@ -120,6 +120,8 @@ type SelectorDeps struct {
 	Setting         *coresetting.Settings
 	LoadDisabled    func(scope setting.Scope) map[string]bool
 	UpdateDisabled  func(disabled map[string]bool, scope setting.Scope) error
+	// HeldOn names the tools the session keeps on over the settings, and why.
+	HeldOn func() map[string]string
 	// Evolve bundles the /evolve popup's dependencies: the live workspace
 	// source, the learned skill/memory stores, and the recent-activity
 	// accessor. See EvolveDeps.
@@ -146,7 +148,7 @@ func New(cwd string, width int, matchFunc suggest.Matcher, deps SelectorDeps) Mo
 		MCP:       MCPState{Selector: NewMCPSelector(deps.MCPRegistry)},
 		Plugin:    NewPluginSelector(deps.PluginRegistry),
 		Provider:  ProviderState{Selector: NewProviderSelector()},
-		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled),
+		Tool:      NewToolSelector(deps.LoadDisabled, deps.UpdateDisabled, deps.HeldOn),
 		Settings:  NewSettingsSelector(deps.Setting),
 		Autopilot: NewAutopilotSelector(),
 		Evolve:    NewEvolveSelector(deps.Evolve),
