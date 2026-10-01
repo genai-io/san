@@ -200,7 +200,7 @@ three ways: a tool definition, reminders, and member messages.
 
 | What | Form | Where | When |
 |---|---|---|---|
-| Group definition | tool schema | the tool list | always present |
+| Group definition | tool schema | the tool list | present while in a group; otherwise only if enabled in `/tools` (off by default) |
 | SendMessage definition | tool schema | the tool list | present while in a group, removed on leaving |
 | Full roster | `<system-reminder source="group">` | appended to the next user message sent to the model | join, resume, `/clear`, after compaction |
 | Join, leave; own membership change | `<system-reminder>`, one line | running: its own user message between tool calls; idle: appended to the next message | as it happens |
@@ -519,7 +519,7 @@ flowchart TB
 
 ## Tools: Group and SendMessage
 
-- **`Group`** is always present and manages this session's membership: `join` / `leave` / `hold`, the same as the slash commands. Called only on the user's request, never a member's; every call needs confirmation.
+- **`Group`** is off by default and on while in a group, so joining starts from `/group join` (or `/tools`). It manages this session's membership: `join` / `leave` / `hold`, the same as the slash commands. Called only on the user's request, never a member's; every call needs confirmation.
 - **`kick` and `disband` are not in the tool**: they act on other sessions, and a single member message could talk the model into them, so only the user runs them, as slash commands.
 - While in a group, the **main agent** has SendMessage turned on; it goes back off on leaving (it is off by default).
 - `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: <subject>` and arrives as `◆ From @api: <subject>`; without a subject, just `● To @web` / `◆ From @api`. Neither side cuts a line out of the body. The definition and every result are under "Everything the model sees".
@@ -541,7 +541,7 @@ flowchart TB
   never changes** and the prompt-cache prefix holds. Joining and leaving
   rebuild the agent once (SendMessage on or off): one cache miss.
 - Holding, offline and idle members spend nothing when others message or come and go.
-- The `Group` definition is always present, about 150 tokens per request; it never changes, so it is written to the cache once.
+- `Group` is off by default, so a session in no group pays nothing for it; in a group it adds about 230 tokens per request and never changes, so it is written to the cache once.
 
 ## Where it lives
 

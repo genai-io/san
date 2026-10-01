@@ -410,6 +410,9 @@ var defaultDisabledTools = map[string]bool{
 	// its schema is the longest of any tool and lists every saved workflow, and
 	// a model that has it will reach for it where one Agent call would do.
 	"Workflow": true,
+	// Group is opt-in so the default harness stays minimal; /group join turns
+	// it on for the session's time in a group.
+	"Group": true,
 }
 
 // IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
