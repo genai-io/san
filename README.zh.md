@@ -17,9 +17,6 @@
     <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San 动态简介" width="100%"></a>
   </p>
   <sub><a href="https://genai-io.github.io/san/intro.html">打开高清完整版 ↗</a></sub>
-  <p>
-    ⚡ <strong>~0.01s</strong> 冷启动&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> 单文件&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>零</strong>运行时依赖
-  </p>
 </div>
 
 San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不需要 Node.js 或 Python。模型碰到的一切 —— prompt、工具、provider、扩展 —— 都留给你替换。

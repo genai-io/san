@@ -17,9 +17,6 @@
     <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
   </p>
   <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality intro ↗</a></sub>
-  <p>
-    ⚡ <strong>~0.01s</strong> cold start&nbsp;&nbsp;·&nbsp;&nbsp;📦 <strong>~12 MB</strong> single binary&nbsp;&nbsp;·&nbsp;&nbsp;🪶 <strong>zero</strong> runtime deps
-  </p>
 </div>
 
 San is an open-source terminal agent runtime: one native Go binary, no Node.js
