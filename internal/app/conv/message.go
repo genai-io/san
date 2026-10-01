@@ -495,10 +495,15 @@ func RenderSystemMessage(content string) string {
 // interim report) — a "◆" marker plus the "<description> <status>" line in the
 // accent tone, so it stands out from the dim system notices as an agent message.
 func RenderAgentNotice(content string, width int, colors map[string]int) string {
-	// A group member's message: "From @api: …", mirroring "To @api: …".
-	if label, rest, ok := strings.Cut(content, ": "); ok {
-		if name, ok := strings.CutPrefix(label, "From @"); ok && !strings.Contains(name, " ") {
-			return renderMemberLine("◆", "From", name, rest, width, colors) + "\n"
+	// A group member's message mirrors "To @api": "From @api: <subject>", or
+	// just "From @api" when it came without one; a " · note" may follow.
+	if rest, ok := strings.CutPrefix(content, "From @"); ok {
+		name, body, _ := strings.Cut(rest, ": ")
+		if n, note, ok := strings.Cut(name, " · "); ok {
+			name, body = n, " · "+note
+		}
+		if name != "" && !strings.Contains(name, " ") {
+			return renderMemberLine("◆", "From", name, body, width, colors) + "\n"
 		}
 	}
 	return agentNoticeStyle.Render("◆ "+content) + "\n"

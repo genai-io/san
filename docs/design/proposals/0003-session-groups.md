@@ -260,7 +260,7 @@ description: |
     be done. Don't send bare acknowledgements.
 parameters:
   to:      string, required — a member's name, without "@", e.g. "api"
-  subject: string, required — one line, under ten words, on what the message is about: the recipient's user sees it
+  subject: string, optional — one line, under ten words, on what the message is about; the recipient's user sees it, and without it only who wrote
   message: string, required — the message body: just what you have to say
 ```
 
@@ -522,7 +522,7 @@ flowchart TB
 - **`Group`** is always present and manages this session's membership: `join` / `leave` / `hold`, the same as the slash commands. Called only on the user's request, never a member's; every call needs confirmation.
 - **`kick` and `disband` are not in the tool**: they act on other sessions, and a single member message could talk the model into them, so only the user runs them, as slash commands.
 - While in a group, the **main agent** has SendMessage turned on; it goes back off on leaving (it is off by default).
-- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: <subject>` and arrives as `◆ From @api: <subject>`, so neither side cuts a line out of the body. The definition and every result are under "Everything the model sees".
+- `to` is a member's name; the body is wrapped in `<group-message>`; the call shows as `● To @web: <subject>` and arrives as `◆ From @api: <subject>`; without a subject, just `● To @web` / `◆ From @api`. Neither side cuts a line out of the body. The definition and every result are under "Everything the model sees".
 - **Subagents cannot message members.** Member addresses are open to the main
   agent only; a subagent that needs to reach one reports to the main agent,
   which decides whether to pass it on.

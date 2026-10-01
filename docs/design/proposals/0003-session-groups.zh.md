@@ -246,7 +246,7 @@ description: |
     be done. Don't send bare acknowledgements.
 parameters:
   to:      string, required — a member's name, without "@", e.g. "api"
-  subject: string, required — one line, under ten words, on what the message is about: the recipient's user sees it
+  subject: string, optional — one line, under ten words, on what the message is about; the recipient's user sees it, and without it only who wrote
   message: string, required — the message body: just what you have to say
 ```
 
@@ -490,7 +490,7 @@ flowchart TB
 - **`Group`** 始终存在，管理自己的成员身份：`join` / `leave` / `hold`，与同名斜杠命令效果相同。只在用户要求时调用，组员的要求不算；每次调用都需用户确认。
 - **`kick`、`disband` 不进工具**：它们影响别的会话，一条组员消息就可能诱导模型去执行，所以只能由用户输入斜杠命令。
 - 在组里时，**主 agent** 自动打开 `SendMessage`，离开后关闭。它原本对主 agent 默认关闭。
-- `to` 写组员名字；消息正文包在 `<group-message>` 里；发送方显示为 `● To @web: <subject>`，接收方显示为 `◆ From @api: <subject>`，两边都不用从正文里截取一行。工具定义和所有返回文字见“模型看到的全部内容”。
+- `to` 写组员名字；消息正文包在 `<group-message>` 里；发送方显示为 `● To @web: <subject>`，接收方显示为 `◆ From @api: <subject>`；没有 subject 时只显示 `● To @web` / `◆ From @api`。两边都不从正文里截取一行。工具定义和所有返回文字见“模型看到的全部内容”。
 - **子 agent 不能给组员发消息**：组员地址只对主 agent 开放。子 agent 有需要时，把内容汇报给主 agent，由主 agent 决定要不要转告。
 - 原有的“主 agent 按任务 ID 给子 agent 发消息”“子 agent 发 `"main"` 汇报”两条路径保留，不再宣传。
 

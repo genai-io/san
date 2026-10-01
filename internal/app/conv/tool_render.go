@@ -858,11 +858,15 @@ func memberColor(name string, colors map[string]int) kit.AdaptiveColor {
 // width, keeping a trailing " · note" whole.
 func renderMemberLine(icon, dir, name, body string, width int, colors map[string]int) string {
 	color := lipgloss.NewStyle().Foreground(memberColor(name, colors))
-	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name) + toolCallStyle.Render(":")
 	note := ""
 	if i := strings.LastIndex(body, " · "); i >= 0 {
 		body, note = body[:i], toolResultStyle.Render(body[i:])
 	}
+	head := color.Render(icon+" ") + toolCallStyle.Render(dir+" ") + color.Bold(true).Render("@"+name)
+	if body == "" { // no subject: who it is to or from says it all
+		return head + note
+	}
+	head += toolCallStyle.Render(":")
 	room := width - lipgloss.Width(head) - lipgloss.Width(note) - 2
 	if room < 8 {
 		return head + note

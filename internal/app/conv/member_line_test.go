@@ -20,3 +20,24 @@ func TestMemberLinesFitOneLineAndKeepTheNote(t *testing.T) {
 		}
 	}
 }
+
+// Without a subject a line names only who it is from or to: nothing is cut
+// out of the body.
+func TestMemberLinesWithoutASubject(t *testing.T) {
+	for in, want := range map[string]string{
+		"From @api · waits for you": "◆ From @api · waits for you",
+		"From @api":                 "◆ From @api",
+		"From @api: schema changed": "◆ From @api: schema changed",
+	} {
+		if got := strings.TrimSpace(xansi.Strip(RenderAgentNotice(in, 80, nil))); got != want {
+			t.Errorf("RenderAgentNotice(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := xansi.Strip(renderMemberLine("●", "To", "web", "", 80, nil)); got != "● To @web" {
+		t.Errorf("To without a subject = %q", got)
+	}
+	msg := "<group-message>\nFrom: @api\nTo: @web\nSent: 2026-09-29 10:15\nUnattended-Turns: 1\n\nbody\n</group-message>"
+	if got := agentEnvelopeSummary(msg); got != "From @api" {
+		t.Errorf("resume summary without a subject = %q", got)
+	}
+}

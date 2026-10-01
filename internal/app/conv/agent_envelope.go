@@ -38,8 +38,11 @@ func agentEnvelopeSummary(content string) string {
 				subject = v
 			}
 		}
-		if from != "" {
+		switch {
+		case from != "" && subject != "":
 			return "From " + from + ": " + subject
+		case from != "":
+			return "From " + from
 		}
 	case strings.HasPrefix(s, "<task-notification"):
 		if line := strings.TrimSpace(envelopeAttr(tag, "description") + " " + envelopeAttr(tag, "status")); line != "" {

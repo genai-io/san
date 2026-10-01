@@ -130,14 +130,14 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 				},
 				"subject": map[string]any{
 					"type":        "string",
-					"description": "One line, under ten words, on what the message is about: the recipient's user sees it.",
+					"description": "Optional: one line, under ten words, on what the message is about. The recipient's user sees it; without it they see only who wrote.",
 				},
 				"message": map[string]any{
 					"type":        "string",
 					"description": "The message body: just what you have to say.",
 				},
 			},
-			"required": []string{"to", "subject", "message"},
+			"required": []string{"to", "message"},
 		},
 	}
 }

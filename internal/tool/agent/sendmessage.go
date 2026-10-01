@@ -35,10 +35,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	if err != nil {
 		return nil, err
 	}
-	subject, err := tool.RequireString(params, "subject")
-	if err != nil {
-		return nil, err
-	}
+	subject := strings.TrimSpace(tool.GetString(params, "subject"))
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
 		return nil, fmt.Errorf("to is required (a subagent task id, \"main\", or a group member's name)")
@@ -46,7 +43,7 @@ func (t *SendMessageTool) PreparePermission(ctx context.Context, params map[stri
 	return &perm.PermissionRequest{
 		ID:          tool.GenerateRequestID(),
 		ToolName:    t.Name(),
-		Description: fmt.Sprintf("Message %s: %s\n\n%s", recipientLabel(to), subject, message),
+		Description: fmt.Sprintf("Message %s: %s", recipientLabel(to), strings.TrimSpace(subject+"\n\n"+message)),
 	}, nil
 }
 
@@ -66,9 +63,6 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		return toolresult.NewErrorResult(t.Name(), "message is required")
 	}
 	subject := strings.TrimSpace(tool.GetString(params, "subject"))
-	if subject == "" {
-		return toolresult.NewErrorResult(t.Name(), "subject is required: one line on what the message is about")
-	}
 	to := strings.TrimSpace(tool.GetString(params, "to"))
 	if to == "" {
 		return toolresult.NewErrorResult(t.Name(), "to is required (a subagent task id, \"main\", or a group member's name)")
@@ -107,7 +101,7 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 	delivered := broker.Send(broker.Message{
 		From:    from,
 		To:      to,
-		Subject: fmt.Sprintf("From %s: %s", senderLabel(from), subject),
+		Subject: brokerSubject(from, subject),
 		Content: wrapAgentMessage(from, message),
 	})
 	if !delivered {
@@ -124,6 +118,14 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 			Duration: time.Since(start),
 		},
 	}
+}
+
+// brokerSubject is the line the receiving side shows for a message.
+func brokerSubject(from, subject string) string {
+	if subject == "" {
+		return "Message from " + senderLabel(from)
+	}
+	return fmt.Sprintf("From %s: %s", senderLabel(from), subject)
 }
 
 // sentTo says when a member will read the message, so the sender knows

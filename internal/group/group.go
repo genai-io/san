@@ -76,7 +76,7 @@ func (m Member) Online() bool {
 type Message struct {
 	From    string    `json:"from"`
 	To      string    `json:"to"`
-	Subject string    `json:"subject"` // one line, what the person sees
+	Subject string    `json:"subject,omitempty"` // one line the person sees; optional
 	Content string    `json:"content"`
 	SentAt  time.Time `json:"sentAt"`
 	File    string    `json:"-"`
