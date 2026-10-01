@@ -28,6 +28,10 @@ type ConversationModel struct {
 	// ResumeWindowStart is where a resume's replay began; /history shows the
 	// messages before it. Unlike CommittedCount it never moves.
 	ResumeWindowStart int
+
+	// OnNotice sees every notice appended, so the host can keep it in the
+	// transcript; a notice never reaches the model, only the person.
+	OnNotice func(core.ChatMessage)
 }
 
 func NewConversation() ConversationModel {
@@ -45,6 +49,9 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 		msg.ID = core.NewMessageID()
 	}
 	m.Messages = append(m.Messages, msg)
+	if msg.Role == core.ChatNotice && m.OnNotice != nil {
+		m.OnNotice(msg)
+	}
 	return msg
 }
 
@@ -55,13 +62,13 @@ func (m *ConversationModel) Clear() {
 }
 
 func (m *ConversationModel) AddNotice(content string) {
-	m.Messages = append(m.Messages, core.ChatMessage{Role: core.ChatNotice, Content: content})
+	m.Append(core.ChatMessage{Role: core.ChatNotice, Content: content})
 }
 
 // AddAgentNotice adds a notice that came from a background agent (a subagent
 // completion or interim report), rendered distinctly from a plain system notice.
 func (m *ConversationModel) AddAgentNotice(content string) {
-	m.Messages = append(m.Messages, core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
+	m.Append(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
 }
 
 // LastMessageIsStreaming reports whether the stream is still writing into the

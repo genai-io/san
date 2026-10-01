@@ -132,6 +132,23 @@ func (r *Recorder) RecordHook(rec transcript.HookRecord) {
 	})
 }
 
+// RecordNotice writes one notice.added, placed after the last message
+// recorded so a resume shows it where it was.
+func (r *Recorder) RecordNotice(text string, agent bool) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	after := r.lastMessageID
+	r.mu.Unlock()
+	r.audit("notice", func(t time.Time) error {
+		return r.fs.AppendNotice(context.Background(), transcript.AppendNoticeCommand{
+			SessionID: r.sessionID, Time: t,
+			Record: transcript.NoticeRecord{AfterMessageID: after, Text: text, Agent: agent},
+		})
+	})
+}
+
 // RecordSkillState writes one skill.state.changed record.
 func (r *Recorder) RecordSkillState(rec transcript.SkillRecord) {
 	r.audit("skill state", func(t time.Time) error {

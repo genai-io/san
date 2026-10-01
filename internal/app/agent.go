@@ -158,6 +158,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	rec := m.services.Session.NewRecorder("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
 	if rec != nil {
 		onEvent = rec.OnAgentEvent
+		for _, n := range m.earlyNotices {
+			rec.RecordNotice(n.Content, n.AgentNotice)
+		}
+		m.earlyNotices = nil
 		m.services.Hook.SetAuditCallback(func(a hook.HookFiredAudit) {
 			rec.RecordHook(transcript.HookRecord{
 				Event:     a.Event,

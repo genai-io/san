@@ -87,6 +87,13 @@ type AppendHookCommand struct {
 	Record    HookRecord
 }
 
+// AppendNoticeCommand writes one notice.added record.
+type AppendNoticeCommand struct {
+	SessionID string
+	Time      time.Time
+	Record    NoticeRecord
+}
+
 // AppendSkillStateCommand writes one skill.state.changed record.
 type AppendSkillStateCommand struct {
 	SessionID string
