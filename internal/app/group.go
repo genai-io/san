@@ -306,16 +306,11 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 	return cmd
 }
 
-// groupMessage renders one member message the way the model reads it.
+// groupMessage renders one member message the way the model reads it. From
+// names the sender only: its role is in the roster.
 func (m *model) groupMessage(msg group.Message, unattended int) string {
-	from := "@" + msg.From
-	for _, e := range m.grp.roster {
-		if e.Name == msg.From && e.Role != "" {
-			from += " (" + e.Role + ")"
-		}
-	}
-	return fmt.Sprintf("<group-message>\nFrom: %s\nTo: @%s\nSent: %s\nUnattended-Turns: %d\n\n%s\n</group-message>",
-		from, msg.To, msg.SentAt.Format("2006-01-02 15:04"), unattended, strings.TrimSpace(msg.Content))
+	return fmt.Sprintf("<group-message>\nFrom: @%s\nTo: @%s\nSent: %s\nUnattended-Turns: %d\n\n%s\n</group-message>",
+		msg.From, msg.To, msg.SentAt.Format("2006-01-02 15:04"), unattended, strings.TrimSpace(msg.Content))
 }
 
 // attachWaitingMessages appends a holding member's waiting messages to the
@@ -452,12 +447,12 @@ func (m *model) groupCommand(args string) (string, tea.Cmd) {
 			return err.Error(), nil
 		}
 		m.reconcileMembership()
+		// Holding only changes when messages are delivered; the model is not
+		// told, as with presence.
 		g, _ := group.Current()
 		if hold {
-			m.services.Reminder.Enqueue("Group " + g + ": you now hold members' messages; they wait for your user's next input.")
 			return "Holding members' messages in " + g + " until you type.", nil
 		}
-		m.services.Reminder.Enqueue("Group " + g + ": you no longer hold members' messages; they start a turn right away.")
 		return "Members' messages in " + g + " are acted on right away again.", nil
 	case "kick":
 		if rest == "" {

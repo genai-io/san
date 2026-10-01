@@ -190,7 +190,7 @@ sequenceDiagram
 | 完整成员列表 | `<system-reminder source="group">` | 附在下一条送往模型的 user 消息末尾 | 加入、恢复、`/clear`、压缩后 |
 | 加入、离开；自己的身份变化 | `<system-reminder>`，一行 | 工作中：作为一条 user 消息插在工具调用之间；空闲：附在下一条消息末尾 | 发生时 |
 | 组员消息（不 hold） | `<group-message>` | 空闲：单独一条 user 消息，开启新的一轮；工作中：一条 user 消息，插在工具调用之间 | 收到时 |
-| 组员消息（hold） | `<group-message>` | 附在用户下一条输入的正文之后 | 用户下次输入时 |
+| 组员消息（hold） | `<group-message>` | 附在用户下一条输入和其他提醒之后，成员表在前 | 用户下次输入时 |
 | 工具结果 | 工具结果 | `Group` / `SendMessage` 的返回值 | 每次调用 |
 
 ### Group 工具定义
@@ -235,8 +235,9 @@ description: |
   Send a message to another session in your group, by its member name. The
   <group> reminder lists the members.
   - The recipient reads it as a message from you, not from its user: make it
-    self-contained. It arrives marked with your name and group, so don't put
-    them in the body, and skip greetings and sign-offs.
+    self-contained. It arrives with a From line, and the recipient's roster
+    already has your role: don't restate who you are, and skip greetings and
+    sign-offs. Keep it brief: what changed, what you need.
   - The result says when it will be read: now, between the recipient's steps,
     at its user's next input (it holds messages), or when its session resumes
     (offline).
@@ -293,7 +294,6 @@ Unattended-Turns:
 <system-reminder>Group shop: @qa joined — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
 <system-reminder>Group shop: @qa left</system-reminder>
 
-<system-reminder>Group shop: you now hold members' messages; they wait for your user's next input.</system-reminder>
 <system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
 <system-reminder>You were removed from group shop; SendMessage is no longer available.</system-reminder>
 <system-reminder>Group shop was disbanded; SendMessage is no longer available.</system-reminder>
@@ -305,7 +305,7 @@ Unattended-Turns:
 
 ```
 <group-message>
-From: @api (owns the orders API)
+From: @api
 To: @web
 Sent: 2026-09-29 10:15
 Unattended-Turns: 1
@@ -315,13 +315,13 @@ expired. Deployed to staging.
 </group-message>
 ```
 
-hold：附在用户这次输入的正文之后。用户刚输入，所以 `Unattended-Turns` 是 0。
+hold：附在用户这次输入和其他提醒之后。用户刚输入，所以 `Unattended-Turns` 是 0。
 
 ```
 迁移跑完了吗
 
 <group-message>
-From: @api (owns the orders API)
+From: @api
 To: @migrate
 Sent: 2026-09-29 10:20
 Unattended-Turns: 0

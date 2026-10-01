@@ -113,8 +113,9 @@ func (t *SendMessageTool) Schema() core.ToolSchema {
 		Description: `Send a message to another session in your group, by its member name. The
 <group> reminder lists the members.
 - The recipient reads it as a message from you, not from its user: make it
-  self-contained. It arrives marked with your name and group, so don't put
-  them in the body, and skip greetings and sign-offs.
+  self-contained. It arrives with a From line, and the recipient's roster
+  already has your role: don't restate who you are, and skip greetings and
+  sign-offs. Keep it brief: what changed, what you need.
 - The result says when it will be read: now, between the recipient's steps,
   at its user's next input (it holds messages), or when its session resumes
   (offline).

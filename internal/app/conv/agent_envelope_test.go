@@ -79,7 +79,7 @@ func TestRenderMessageCollapsesResumedAgentEnvelope(t *testing.T) {
 }
 
 func TestAGroupMessageSummarizesToItsSender(t *testing.T) {
-	msg := "<group-message>\nFrom: @api (owns the orders API)\nTo: @web\nSent: 2026-09-29 10:15\nUnattended-Turns: 1\n\nOrders API now accepts coupon_code.\nMore detail.\n</group-message>"
+	msg := "<group-message>\nFrom: @api\nTo: @web\nSent: 2026-09-29 10:15\nUnattended-Turns: 1\n\nOrders API now accepts coupon_code.\nMore detail.\n</group-message>"
 	if !isAgentEnvelope(msg) {
 		t.Fatal("a group message is not recognised as an envelope")
 	}

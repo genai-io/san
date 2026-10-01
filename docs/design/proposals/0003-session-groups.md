@@ -204,7 +204,7 @@ three ways: a tool definition, reminders, and member messages.
 | Full roster | `<system-reminder source="group">` | appended to the next user message sent to the model | join, resume, `/clear`, after compaction |
 | Join, leave; own membership change | `<system-reminder>`, one line | running: its own user message between tool calls; idle: appended to the next message | as it happens |
 | Member message (not holding) | `<group-message>` | idle: its own user message, starting a turn; running: a user message between tool calls | on arrival |
-| Member message (holding) | `<group-message>` | appended after the text of the person's next input | at that input |
+| Member message (holding) | `<group-message>` | appended after the person's next input and any reminders, so the roster comes first | at that input |
 | Tool results | tool result | the return value of Group / SendMessage | every call |
 
 ### Group definition
@@ -249,8 +249,9 @@ description: |
   Send a message to another session in your group, by its member name. The
   <group> reminder lists the members.
   - The recipient reads it as a message from you, not from its user: make it
-    self-contained. It arrives marked with your name and group, so don't put
-    them in the body, and skip greetings and sign-offs.
+    self-contained. It arrives with a From line, and the recipient's roster
+    already has your role: don't restate who you are, and skip greetings and
+    sign-offs. Keep it brief: what changed, what you need.
   - The result says when it will be read: now, between the recipient's steps,
     at its user's next input (it holds messages), or when its session resumes
     (offline).
@@ -310,7 +311,6 @@ SendMessage's result tells it where the member stands.
 <system-reminder>Group shop: @qa joined — writes the e2e tests for checkout (~/work/shop/e2e)</system-reminder>
 <system-reminder>Group shop: @qa left</system-reminder>
 
-<system-reminder>Group shop: you now hold members' messages; they wait for your user's next input.</system-reminder>
 <system-reminder>You left group shop; SendMessage is no longer available.</system-reminder>
 <system-reminder>You were removed from group shop; SendMessage is no longer available.</system-reminder>
 <system-reminder>Group shop was disbanded; SendMessage is no longer available.</system-reminder>
@@ -322,7 +322,7 @@ Not holding: a user message of its own.
 
 ```
 <group-message>
-From: @api (owns the orders API)
+From: @api
 To: @web
 Sent: 2026-09-29 10:15
 Unattended-Turns: 1
@@ -332,14 +332,14 @@ expired. Deployed to staging.
 </group-message>
 ```
 
-Holding: appended after the text of the person's input. The person just typed,
+Holding: appended after the person's input and any reminders. The person just typed,
 so `Unattended-Turns` is 0.
 
 ```
 is the migration done?
 
 <group-message>
-From: @api (owns the orders API)
+From: @api
 To: @migrate
 Sent: 2026-09-29 10:20
 Unattended-Turns: 0

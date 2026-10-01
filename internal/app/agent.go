@@ -610,12 +610,13 @@ func (m *model) attachPendingReminders(msg core.Message) core.Message {
 		m.services.Reminder.RequeueSystemReminders()
 		m.systemRemindersSent = true
 	}
-	text := m.attachWaitingMessages(msg.Text())
-	pending := m.services.Reminder.Drain()
-	if len(pending) == 0 && text == msg.Text() {
+	// Reminders (the roster among them) come before held member messages, so
+	// the model reads who is who before what they said.
+	text := m.attachWaitingMessages(reminder.AttachToContent(msg.Text(), m.services.Reminder.Drain()))
+	if text == msg.Text() {
 		return msg
 	}
-	content := ai.TextContent(reminder.AttachToContent(text, pending))
+	content := ai.TextContent(text)
 	for _, block := range msg.Content {
 		if block.Type != ai.BlockText {
 			content = append(content, block)
