@@ -96,7 +96,7 @@ func TestRosterChangesSayWhatHappened(t *testing.T) {
 
 func TestAPassiveMembersMessagesRideOnTheNextInput(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	group.BindSession("s-self")
+	group.BindSession(func() string { return "s-self" })
 	if _, err := group.Join("shop", group.Member{Name: "migrate", Mode: group.Passive}); err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestAPassiveMembersMessagesRideOnTheNextInput(t *testing.T) {
 // than staying offline for good.
 func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	group.BindSession("s-new")
+	group.BindSession(func() string { return "s-new" })
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	if m.startGroupPolling() != nil {
 		t.Fatal("a loop started outside any group")
 	}
-	group.BindSession("s-self")
+	group.BindSession(func() string { return "s-self" })
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	if next := m.handleMemberMsg(memberMsg{status: group.NotJoined}); m.grp.polling || next != nil {
 		t.Error("the loop outlived the membership")
 	}
-	group.BindSession("s-self")
+	group.BindSession(func() string { return "s-self" })
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 // the session goes idle, runs a turn, or stops on an approval.
 func TestMemberStateFollowsTheSession(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	group.BindSession("s-self")
+	group.BindSession(func() string { return "s-self" })
 	if _, err := group.Join("shop", group.Member{Name: "web"}); err != nil {
 		t.Fatal(err)
 	}

@@ -150,7 +150,6 @@ func (m *model) membersAwaitingApproval() []string {
 }
 
 func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
-	group.BindSession(m.services.Session.ID())
 	var cmds []tea.Cmd
 	g, self := group.Current()
 	switch msg.status {
@@ -401,7 +400,6 @@ func (m *model) exitGroup() {
 func (m *model) rejoinGroup(blob string) {
 	group.Release() // the session this process ran before goes offline
 	m.grp = groupState{polling: m.grp.polling}
-	group.BindSession(m.services.Session.ID())
 	var ms membership
 	if blob != "" && json.Unmarshal([]byte(blob), &ms) == nil && ms.Group != "" {
 		if self, err := group.Reclaim(ms.Group, ms.Name); err != nil {
@@ -414,7 +412,6 @@ func (m *model) rejoinGroup(blob string) {
 }
 
 func (m *model) groupCommand(args string) (string, tea.Cmd) {
-	group.BindSession(m.services.Session.ID())
 	sub, rest, _ := strings.Cut(strings.TrimSpace(args), " ")
 	rest = strings.TrimSpace(rest)
 	switch sub {
@@ -497,7 +494,6 @@ func (m *model) groupJoin(args string) (string, tea.Cmd) {
 
 // finishJoin joins and reports the outcome; it runs on the UI goroutine.
 func (m *model) finishJoin(msg groupJoinMsg) string {
-	group.BindSession(m.services.Session.ID())
 	name := group.FreeName(msg.group, cmp.Or(group.NameFrom(msg.name), "session"))
 	self, err := group.Join(msg.group, group.Member{Name: name, Role: msg.role, Mode: msg.mode, Cwd: m.env.CWD})
 	if err != nil {

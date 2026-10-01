@@ -113,7 +113,7 @@ func TestSendMessage_RequiresRecipientAndBody(t *testing.T) {
 
 func TestSendMessage_GroupMembers(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	group.BindSession("s-self")
+	group.BindSession(func() string { return "s-self" })
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}

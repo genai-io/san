@@ -111,7 +111,7 @@ var (
 	}
 
 	mu      sync.Mutex
-	session string // the session this process runs, stamped on joins
+	session = func() string { return "" } // reads the session this process runs; see BindSession
 	current struct {
 		group string
 		self  Member
@@ -144,12 +144,20 @@ func readJSON(path string, v any) error {
 	return json.Unmarshal(data, v)
 }
 
-// BindSession records which session this process runs, so a join is stamped
-// with it and a resume can recognise its own member file.
-func BindSession(id string) {
+// BindSession tells the package where to read the session this process runs,
+// so a join is stamped with it and a resume recognises its own member file.
+// It is read at each use: a join can come from any goroutine, any time.
+func BindSession(id func() string) {
 	mu.Lock()
 	session = id
 	mu.Unlock()
+}
+
+func currentSession() string {
+	mu.Lock()
+	id := session
+	mu.Unlock()
+	return id()
 }
 
 // Current returns the group this process is in and its own entry, or "".
@@ -214,9 +222,7 @@ func Join(g string, self Member) (Member, error) {
 	if self.Mode != Passive {
 		self.Mode = Active
 	}
-	mu.Lock()
-	self.SessionID = session
-	mu.Unlock()
+	self.SessionID = currentSession()
 	self.PID = os.Getpid()
 	self.ProcStart, _ = proc.StartTime(self.PID)
 	self.JoinedAt = time.Now()
@@ -272,10 +278,7 @@ func Reclaim(g, name string) (Member, error) {
 		}
 		return Member{}, fmt.Errorf("this session was removed from group %s", g)
 	}
-	mu.Lock()
-	sid := session
-	mu.Unlock()
-	if self.SessionID != sid {
+	if self.SessionID != currentSession() {
 		return Member{}, fmt.Errorf("@%s in group %s now belongs to another session", name, g)
 	}
 	if self.PID != os.Getpid() && self.Online() {

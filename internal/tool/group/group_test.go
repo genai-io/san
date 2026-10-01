@@ -9,7 +9,7 @@ import (
 
 func TestJoinModeLeave(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	members.BindSession("s-self")
+	members.BindSession(func() string { return "s-self" })
 	cwd := "/work/shop/web"
 
 	out, err := run(map[string]any{"action": "join", "group": "shop", "role": "the checkout page"}, cwd)

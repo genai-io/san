@@ -17,7 +17,7 @@ func isolate(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
 	root = func() string { return dir }
-	BindSession("s-self")
+	BindSession(func() string { return "s-self" })
 	t.Cleanup(func() { setCurrent("", Member{}) })
 }
 
@@ -168,5 +168,22 @@ func TestHomeRelative(t *testing.T) {
 		if got := homeRelative(path); got != want {
 			t.Errorf("homeRelative(%q) = %q, want %q", path, got, want)
 		}
+	}
+}
+
+// The session is read when a join happens, not when it was bound: the Group
+// tool joins from the agent's goroutine in a session /group never touched.
+func TestAJoinIsStampedWithTheSessionAsItIsThen(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	id := ""
+	BindSession(func() string { return id })
+	id = "s-now"
+	self, err := Join("shop", Member{Name: "web"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = Leave() })
+	if self.SessionID != "s-now" {
+		t.Errorf("joined as session %q, want the current one", self.SessionID)
 	}
 }
