@@ -258,13 +258,13 @@ func withGroupStatus(mode string, p OperationModeParams) string {
 	return mode + "  " + group
 }
 
-// renderGroupStatus reads "◆ shop (api)", then whatever waits on the person:
+// renderGroupStatus reads "◆ shop/api", then whatever waits on the person:
 // passive messages, which scroll out of sight, and members stuck on approval.
 func renderGroupStatus(p OperationModeParams) string {
 	if p.Group == "" {
 		return ""
 	}
-	parts := []string{fmt.Sprintf("◆ %s (%s)", p.Group, p.GroupSelf)}
+	parts := []string{fmt.Sprintf("◆ %s/%s", p.Group, p.GroupSelf)}
 	if p.GroupWaiting > 0 {
 		parts = append(parts, fmt.Sprintf("%d waiting", p.GroupWaiting))
 	}

@@ -53,8 +53,8 @@ first; each member shows its mode and what it is doing — `idle`, `working`,
 
 The status bar shows the group and this session's name in it on the left,
 after the mode, and turns amber when something waits on the person:
-`◆ shop (web)`, `◆ shop (web) · 2 waiting` (passive messages),
-`◆ shop (web) · @api needs approval`.
+`◆ shop/web`, `◆ shop/web · 2 waiting` (passive messages),
+`◆ shop/web · @api needs approval`.
 
 Completion opens the next level after each pick:
 

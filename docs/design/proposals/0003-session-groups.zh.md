@@ -44,7 +44,7 @@
     @migrate  passive  idle      runs the 0042 schema migration
 ```
 
-状态栏左侧、模式提示之后，常驻显示所在的组和自己在组里的名字；有需要用户处理的事时变成醒目色：`◆ shop (web)`、`◆ shop (web) · 2 waiting`（passive 消息待处理）、`◆ shop (web) · @api needs approval`。
+状态栏左侧、模式提示之后，常驻显示所在的组和自己在组里的名字；有需要用户处理的事时变成醒目色：`◆ shop/web`、`◆ shop/web · 2 waiting`（passive 消息待处理）、`◆ shop/web · @api needs approval`。
 
 输入时有补全，每选一级弹出下一级：
 
