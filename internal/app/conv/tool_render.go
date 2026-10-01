@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1024,6 +1025,9 @@ func extractToolArgs(input string) string {
 	return ""
 }
 
+// recipientInTrailer matches " to @web" / " for @web" in a SendMessage outcome.
+var recipientInTrailer = regexp.MustCompile(` (to|for) @[\w-]+`)
+
 func formatToolResultSize(toolName, content string) string {
 	switch toolName {
 	case "WebFetch":
@@ -1031,10 +1035,11 @@ func formatToolResultSize(toolName, content string) string {
 	case "Write", "Edit":
 		return extractParenContent(content, "completed")
 	case tool.ToolSendMessage, tool.ToolGroup:
-		// Their first clause is the outcome, e.g. "Delivered to @web (passive)".
+		// Their first clause is the outcome, e.g. "Delivered to @web (passive)";
+		// the call's row already names the member, so the trailer drops it.
 		first, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
 		first, _, _ = strings.Cut(first, "; ")
-		return strings.TrimSuffix(first, ".")
+		return recipientInTrailer.ReplaceAllString(strings.TrimSuffix(first, "."), "")
 	default:
 		return formatLineCount(content)
 	}

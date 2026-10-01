@@ -242,14 +242,15 @@ description: |
   Send a message to another session in your group, by its member name. The
   <group> reminder lists the members.
   - The recipient reads it as a message from you, not from its user: make it
-    self-contained.
+    self-contained. It arrives marked with your name and group, so don't put
+    them in the body, and skip greetings and sign-offs.
   - The result says when it will be read: now (active), at its user's next
     input (passive), or when its session resumes (offline).
   - When you were asked for something, report back when it is done or can't
     be done. Don't send bare acknowledgements.
 parameters:
   to:      string, required — a member's name, without "@", e.g. "api"
-  message: string, required — the message body
+  message: string, required — the message body: just what you have to say
 ```
 
 ### Full roster
