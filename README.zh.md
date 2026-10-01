@@ -51,6 +51,8 @@ San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不�
 
 **写** —— Agent 怎么做事，是你能改的文本，不是编死在二进制里的东西。拼装 system prompt（[原理](docs/concepts/harness-channels.md)），打包成可随时切换的 persona，给 Autopilot 一个目标，为自我学习定一套策略。
 
+**协** —— 不止一个 agent 在干活。subagents 并行跑，各用最合适的模型；workflow 把它们编排成一张图（[原理](docs/design/proposals/0001-workflow-orchestration.zh.md)）；同一台机器上的多个会话加入同一个组，彼此来回发消息 —— 能等的事先替你扣着（[会话组](docs/design/proposals/0003-session-groups.zh.md)）。
+
 **看** —— 没有一步是暗箱。San 能自作主张到什么程度由你定，subagent 继承同一个选择（[权限模型](docs/concepts/permission-model.md)）；Inspector 回放任意一次运行，模型看到的一切原样呈现。
 
 
@@ -128,6 +130,7 @@ san --resume                 # 选择历史会话恢复
 | 模型 · thinking 级别 | `/models` · `Ctrl+T` |
 | 权限模式 | `Shift+Tab`（询问 · 自动接受 · 自动审查） |
 | 长任务 · 自我学习 | `/autopilot` · `/goal` · `/evolve` |
+| 给其他会话发消息 | `/group join` · `/group members` · `/group hold on\|off` |
 | 全部 slash 命令 | `/help` |
 | 快捷键 | `Enter` 发送 · `Alt+Enter` 换行 · `Esc` 停止 · `Ctrl+O` 展开工具 · `Ctrl+C` 取消 · `Ctrl+D` 退出 |
 
@@ -224,6 +227,7 @@ plugins-local/      # 本地插件（git-ignored）
 - [系统 Prompt](docs/concepts/harness-channels.md) —— Slot 模型、persona、技能/agent 注入
 - [Subagents](docs/packages/2-feature/subagent.md) · [Skills](docs/packages/2-feature/skill.md) · [Plugins](docs/packages/2-feature/plugin.md) · [MCP](docs/packages/2-feature/mcp.md)
 - [Hooks](docs/packages/2-feature/hook.md) · [Permissions](docs/concepts/permission-model.md) · [Tasks](docs/packages/2-feature/task.md)
+- [Workflow](docs/design/proposals/0001-workflow-orchestration.zh.md) · [会话组](docs/design/proposals/0003-session-groups.zh.md) —— 把 subagents 编排成图；会话之间互相发消息
 - [Inspector](docs/packages/2-feature/inspector.md) —— 本地 Web UI，用于转录回放与调试
 - 每个包的设计文档见 [`docs/packages/`](docs/packages/)，从[包索引](docs/packages/index.md)开始
 
