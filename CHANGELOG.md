@@ -3,6 +3,10 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.24.1] - 2026-10-05
+
+### Changed
+- Redo the intro animation in a black-and-white comic style ([@yanmxa](https://github.com/yanmxa) in [#598](https://github.com/genai-io/san/pull/598))
 ## [v1.24.0] - 2026-10-01
 
 ### Added
