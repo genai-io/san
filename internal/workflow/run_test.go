@@ -24,6 +24,12 @@ type stubRunner struct {
 	peak    atomic.Int32
 }
 
+type nodeRunnerFunc func(context.Context, Call) (string, error)
+
+func (f nodeRunnerFunc) RunNode(ctx context.Context, c Call) (string, error) {
+	return f(ctx, c)
+}
+
 func (s *stubRunner) RunNode(ctx context.Context, c Call) (string, error) {
 	key := c.Node.ID
 	if c.Label != "" {
@@ -241,6 +247,28 @@ func TestRunCancelKeepsFinishedWork(t *testing.T) {
 	}
 	if !res.Failed(w) {
 		t.Fatal("a cancelled run is a failed run")
+	}
+}
+
+func TestRunCancelDoesNotStartDownstreamAfterLateSuccess(t *testing.T) {
+	w := mustParse(t, chain)
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls []string
+	res := Run(ctx, w, nodeRunnerFunc(func(_ context.Context, c Call) (string, error) {
+		calls = append(calls, c.Node.ID)
+		cancel()
+		return "late answer", nil
+	}), Options{})
+	if !slices.Equal(calls, []string{"a"}) {
+		t.Fatalf("calls after stop = %v; downstream must not start", calls)
+	}
+	if !errors.Is(res.Nodes["a"].Err, context.Canceled) {
+		t.Fatalf("a = %+v, want canceled despite its late answer", res.Nodes["a"])
+	}
+	for _, id := range []string{"b", "c"} {
+		if status := res.Nodes[id].Status; status != StatusSkipped && status != StatusFailed {
+			t.Fatalf("%s = %s; want canceled before it starts", id, status)
+		}
 	}
 }
 

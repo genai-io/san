@@ -30,7 +30,7 @@ This feature exists to document the contract that was previously split across th
 
 - The agent inherits the parent model unless explicitly overridden.
 - In explore mode, the subagent tool schema only exposes non-mutating tools.
-- Explore mode must not expose `Bash`, `Write`, or `Edit`.
+- Use `Read` for file contents and excerpts. Use `Bash` for search, file discovery, and git inspection; its calls must be classified as read-only. `Write` and `Edit` are unavailable.
 - The agent returns a normal agent tool result to the parent conversation; the parent conversation must continue cleanly after the result arrives.
 - Interleaved `notice` messages must not prevent the parent conversation from recognizing that the agent finished.
 

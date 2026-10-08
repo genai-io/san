@@ -10,9 +10,21 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 )
+
+// IsWorkflowStopCommand identifies the one slash command that must bypass the
+// foreground turn's input queue: waiting for that turn would delay cancellation.
+func IsWorkflowStopCommand(input string) bool {
+	name, args, ok := command.ParseCommand(input)
+	if !ok || name != "workflow" {
+		return false
+	}
+	fields := strings.Fields(args)
+	return len(fields) > 0 && fields[0] == "stop"
+}
 
 // workflowRunner is what /workflow needs from the Workflow tool.
 type workflowRunner interface {

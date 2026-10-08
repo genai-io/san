@@ -116,6 +116,15 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 					opts.OnStatus(n, st)
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				s.res.Err = err
+				if len(n.upstream) > 0 {
+					setStatus(StatusSkipped)
+				} else {
+					setStatus(StatusFailed)
+				}
+				return
+			}
 
 			// Settle upstreams first. Waiting holds no semaphore slot, so a
 			// deep graph cannot starve itself.
@@ -131,7 +140,18 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			}
 			for _, e := range n.upstream {
 				up := slots[e.From]
-				<-up.done
+				select {
+				case <-up.done:
+				case <-ctx.Done():
+					s.res.Err = ctx.Err()
+					setStatus(StatusSkipped)
+					return
+				}
+				if err := ctx.Err(); err != nil {
+					s.res.Err = err
+					setStatus(StatusSkipped)
+					return
+				}
 				switch up.res.Status {
 				case StatusSucceeded:
 					if e.Label == "" || strings.TrimSpace(up.res.Output) == e.Label {
@@ -157,6 +177,11 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 				case StatusSkipped:
 					blocked = true
 				}
+			}
+			if err := ctx.Err(); err != nil {
+				s.res.Err = err
+				setStatus(StatusSkipped)
+				return
 			}
 			switch {
 			case blocked:
@@ -261,14 +286,24 @@ func unanswered(n *Node, out string) error {
 // run1 takes a shared slot for the length of one turn. Waiting for a slot
 // happens here and nowhere else, so a node never holds one while it waits.
 func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call, onStart func()) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	select {
 	case sem <- struct{}{}:
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
 	defer func() { <-sem }()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	onStart()
-	return runner.RunNode(ctx, c)
+	out, err := runner.RunNode(ctx, c)
+	if err == nil && ctx.Err() != nil {
+		return out, ctx.Err()
+	}
+	return out, err
 }
 
 // Summary renders the run for the conversation that launched it: one status

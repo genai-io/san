@@ -97,7 +97,8 @@ original `●/◉` pulse. Running Activity calls use a `| / - \` line spinner.
 The workflow's separate Background row is hidden while this view is visible.
 The full event trail remains in the task log. The launch notice includes
 `/workflow stop <task-id>`; `/workflow stop` also works when only one workflow
-is running.
+is running. Stop executes immediately even while the main agent is streaming;
+the scheduler does not start more nodes after cancellation.
 
 A file is parsed when it is run, not at startup: a broken definition is
 reported to whoever tried to run it, and never blocks the session.

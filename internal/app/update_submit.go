@@ -34,6 +34,12 @@ func (m *model) handleSubmit() tea.Cmd {
 	m.grp.unattended, m.grp.userTyped = 0, true
 
 	if m.conv.Stream.Active {
+		// A workflow may keep running while the parent model streams. Its stop
+		// command must reach the task now, not after that model turn ends.
+		if input.IsWorkflowStopCommand(raw) {
+			cmd, _ := m.runSlashCommandIfMatched(raw)
+			return cmd
+		}
 		log.Logger().Sugar().Debugf("handleSubmit: stream active, enqueue %q", raw)
 		return m.enqueueWhileStreaming(raw)
 	}
