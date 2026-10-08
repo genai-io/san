@@ -107,6 +107,15 @@ Worth knowing beyond the names:
 - Per-call: `NewClient(model, maxTokens)` produces a `*Client` for one
   inference; the client wraps `Provider.Infer`.
 
+OpenAI subscription discovery uses the ChatGPT Codex catalog, with
+`codexClientVersion` in `vendor_models.go` pinned to Codex CLI `0.161.0`
+([official changelog](https://learn.chatgpt.com/docs/changelog)). The backend
+uses that version to select the lineup; update it when new models require a
+newer client. `/models` shows the cache immediately and refreshes connected
+providers in the background, so reopening it after a San upgrade fetches the
+new lineup. Model availability and reasoning levels come from the account's
+live catalog, including models absent from the built-in snapshot.
+
 ## Model data
 
 The SDK's catalog says how to reach a vendor and speak its protocol — endpoint,
@@ -170,6 +179,7 @@ internal/llm/provider_test.go — the optional-extension defaults.
 internal/llm/store_test.go    — provider config persistence.
 internal/llm/cost_test.go     — pricing dispatch and the multi-currency total.
 internal/llm/vendor_test.go   — the vendor seam, against stub endpoints.
+internal/llm/vendor_models_test.go — Codex catalog requests and live capabilities.
 internal/llm/vendor_data_test.go — the data layers, the models.dev trim, and
                                 each model's ladder against its protocol.
 internal/llm/vendor_live_test.go — one real turn per configured vendor,

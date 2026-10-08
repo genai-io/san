@@ -444,6 +444,40 @@ func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
 	}
 }
 
+// Responses can return to reasoning after commentary. Earlier text must not
+// make each new thinking delta look like a finished paragraph: that prints
+// individual words as separate scrollback blocks.
+func TestFlushStreamingBlocksHoldsThinkingAfterContent(t *testing.T) {
+	m := flushTestModel(core.ChatMessage{Role: core.ChatAssistant})
+	m.conv.Stream.Active = true
+	m.conv.AppendToLast("I'll implement the environment changes.\n\n", "")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	m.conv.AppendToLast("", "**Implementing environment changes**\n\n")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	committed := m.conv.Messages[0].ThinkingCommittedLen
+	prints := len(m.flush.pendingPrints)
+
+	for _, delta := range []string{"I'm", " moving", " forward", " with", " the task."} {
+		m.conv.AppendToLast("", delta)
+		if cmds := m.FlushStreamingBlocks(); len(cmds) != 0 {
+			t.Fatalf("thinking delta %q must stay live until its paragraph completes", delta)
+		}
+		if got := m.conv.Messages[0].ThinkingCommittedLen; got != committed {
+			t.Fatalf("thinking commit offset advanced mid-paragraph: %d, want %d", got, committed)
+		}
+	}
+
+	// The next text fragment finishes the reasoning paragraph as one block.
+	m.conv.AppendToLast("Here is the change.", "")
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	if got := len(m.flush.pendingPrints); got != prints+1 {
+		t.Fatalf("queued %d prints, want %d (one complete paragraph)", got, prints+1)
+	}
+	if got := ansi.Strip(queuedScrollbackPayload(m)); !strings.Contains(got, "I'm moving forward with the task.") {
+		t.Fatalf("thinking paragraph should remain on one line at width 80:\n%s", got)
+	}
+}
+
 // Only one block render is in flight at a time: while one is rendering off-
 // thread, a second flush is suppressed so the scrollback Printlns stay ordered.
 func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {

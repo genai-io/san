@@ -186,8 +186,7 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	// cleared this in OnCompacted, but a failed compaction falls straight through
 	// to here, so clear the in-progress indicator either way.
 	m.Compact.Clear()
-	m.Stream.Active = true
-	m.Stream.BuildingTool = ""
+	m.Stream = StreamState{Active: true}
 	commitCmds := rt.CommitMessages()
 	m.Append(core.ChatMessage{Role: core.ChatAssistant, Content: ""})
 	cmds := append(commitCmds, m.Spinner.Tick)
@@ -215,7 +214,7 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
-		m.Stream.Active = false
+		m.Stream.Stop()
 		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)
 		}

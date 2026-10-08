@@ -10,11 +10,15 @@ import (
 type StreamState struct {
 	Active       bool
 	BuildingTool string
+	// ThinkingActive follows the latest text/thinking delta. Responses may
+	// return to reasoning after commentary in the same assistant message.
+	ThinkingActive bool
 }
 
 func (s *StreamState) Stop() {
 	s.Active = false
 	s.BuildingTool = ""
+	s.ThinkingActive = false
 }
 
 type ConversationModel struct {
@@ -97,9 +101,11 @@ func (m *ConversationModel) AppendToLast(text, thinking string) {
 		return
 	}
 	if thinking != "" {
+		m.Stream.ThinkingActive = true
 		m.Messages[idx].AppendThinking(thinking, time.Now())
 	}
 	if text != "" {
+		m.Stream.ThinkingActive = false
 		m.Messages[idx].Content += text
 	}
 }
