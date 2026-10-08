@@ -10,8 +10,26 @@ import (
 	tea "charm.land/bubbletea/v2"
 	xansi "github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
 )
+
+func TestSuggestionCompletesInputKeyWithoutAddingSpace(t *testing.T) {
+	m := Model{Textarea: newTextarea(80), Suggestions: suggest.NewState(func(query string) []suggest.Suggestion {
+		if query == "/workflow run demo " {
+			return []suggest.Suggestion{{Name: "workflow run demo topic="}}
+		}
+		return nil
+	})}
+	m.Textarea.SetValue("/workflow run demo ")
+	m.Suggestions.UpdateSuggestions(m.Textarea.Value())
+	if _, handled := m.HandleSuggestionKey(tea.KeyPressMsg{Code: tea.KeyTab}); !handled {
+		t.Fatal("Tab did not accept the input key")
+	}
+	if got := m.Textarea.Value(); got != "/workflow run demo topic=" {
+		t.Fatalf("completed input = %q", got)
+	}
+}
 
 // The box has to cover every row the textarea actually draws, or the viewport
 // silently clips the overflow. Predicting that by counting characters is what

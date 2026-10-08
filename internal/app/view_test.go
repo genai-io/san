@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,10 +16,77 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 )
+
+func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wf := task.NewAgentTask("wf-1", "workflow", "/workflow demo", ctx, cancel, "")
+	wf.SetLiveView("Workflow demo (1/3 finished)\n  ╭────╮\n  │ ●  │\n  ╰────╯")
+	other := task.NewAgentTask("other", "Explore", "search", ctx, cancel, "")
+	view := appendLiveWorkflowViews("Background", []task.BackgroundTask{other, wf}, 0, 100)
+	if !strings.Contains(view, "Workflow demo (1/3 finished)") || strings.Contains(view, "search") {
+		t.Fatalf("live workflow graph was not attached selectively:\n%s", view)
+	}
+}
+
+func TestLiveWorkflowReflowsAndPulses(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wf := task.NewAgentTask("wf-width", "workflow", "/workflow demo", ctx, cancel, "")
+	wf.SetLiveView("snapshot ●")
+	wf.SetLiveViewRenderer(func(width int) string { return fmt.Sprintf("width %d ●", width) })
+	running := []task.BackgroundTask{wf}
+	if got := ansi.Strip(appendLiveWorkflowViews("", running, 0, 80)); got != "width 80 ●" {
+		t.Fatalf("initial view = %q", got)
+	}
+	if got := ansi.Strip(appendLiveWorkflowViews("", running, 3, 120)); got != "width 120 ◉" {
+		t.Fatalf("resized pulse = %q", got)
+	}
+	if got := ansi.Strip(appendLiveWorkflowViews("", running, 6, 120)); got != "width 120 ●" {
+		t.Fatalf("pulse did not return to solid = %q", got)
+	}
+}
+
+func TestLiveWorkflowSpinsOnlyActivityAndKeepsFinishedMarkersFixed(t *testing.T) {
+	activity := "  Activity\n    │  ● running\n    │  ✓ done\n    │  ✗ failed"
+	graph := "  Workflow demo · 0/1 finished\n    map ● → next ○"
+	input := activity + "\n\n" + graph
+	for frame, marker := range []string{"|", "/", "-", "\\", "|"} {
+		got := styleWorkflowLiveView(input, frame)
+		graphFrame := graph
+		if (frame/3)%2 == 1 {
+			graphFrame = strings.Replace(graph, "●", "◉", 1)
+		}
+		want := strings.Replace(activity, "● running", marker+" running", 1) + "\n\n" + graphFrame
+		if ansi.Strip(got) != want {
+			t.Fatalf("frame %d: got %q, want %q", frame, got, want)
+		}
+		if !strings.Contains(got, activityDoneStyle.Render("✓")) || !strings.Contains(got, activityFailedStyle.Render("✗")) {
+			t.Fatalf("frame %d: finished markers lost their styles: %q", frame, got)
+		}
+	}
+}
+
+func TestLiveWorkflowReplacesItsBackgroundTrackerRow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mgr := task.NewManager()
+	tracker := todo.NewStore()
+	wf := mgr.CreateAgentTask("wf-tracker", "workflow", "/workflow demo", ctx, cancel)
+	wf.SetLiveView("Workflow demo · 0/1 finished\n  map ●")
+	todo.TrackWorker(tracker, wf.GetStatus())
+	m := &model{env: env{Width: 100}, services: services{Tracker: tracker, Task: mgr, Subagent: subagent.NewRegistry()}, conv: conv.NewModel(100)}
+	m.conv.ShowTasks = true
+	view := m.renderTrackerList()
+	if strings.Contains(view, "Background") || !strings.Contains(view, "Workflow demo · 0/1 finished") {
+		t.Fatalf("duplicate tracker row:\n%s", view)
+	}
+}
 
 // The composer prints the "❭ " prompt once, on the first row, while inputCursor
 // offsets the cursor by that prompt's width on every row. hangComposerRows is

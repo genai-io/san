@@ -142,6 +142,9 @@ func TestWorkflow_SectioningThroughRealSubagents(t *testing.T) {
 	if !strings.Contains(info.Output, "## report\nship it") {
 		t.Fatalf("summary lost the sink output:\n%s", info.Output)
 	}
+	if !strings.Contains(info.LiveView, "› ship it") {
+		t.Fatalf("streamed model text is absent from the live activity:\n%s", info.LiveView)
+	}
 	// Four nodes, four turns: a node is one subagent turn, not a retry loop.
 	if got := len(provider.prompts()); got != 4 {
 		t.Fatalf("model was called %d times, want one per node:\n%q", got, provider.prompts())

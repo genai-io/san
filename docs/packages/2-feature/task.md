@@ -54,7 +54,11 @@ func ResetDefaultTracker()         // test-only
   `AgentTask`.
 - `BashTask` (`bash_task.go`) — wraps `*exec.Cmd`, streams stdout/stderr
   to disk, exposes `Tail`/`Read`.
-- `AgentTask` (`agent_task.go`) — wraps a subagent invocation.
+- `AgentTask` (`agent_task.go`) — wraps a subagent invocation. Callers may
+  publish an in-memory `LiveView` snapshot and an optional width-aware renderer
+  for the TUI, independently of append-only progress events in the output
+  file. Workflows reflow their activity and graph when the terminal resizes;
+  the full event trail stays in the task log.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the

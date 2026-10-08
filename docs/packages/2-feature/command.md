@@ -15,9 +15,9 @@ builtin prompt command of the same name.
 ## Purpose
 
 Slash commands are the user-input side of the TUI's command palette. This
-package owns the unified lookup surface: `Get("/help")`, `List()`,
-fuzzy-prefix matching for the autocompleter, and the registry of custom
-commands loaded from disk.
+package owns the unified lookup surface: `Get("help")`, `List()`,
+fuzzy matching for top-level commands, one-level-at-a-time matching for
+built-in subcommands, and the registry of custom commands loaded from disk.
 
 ## Contract
 
@@ -57,6 +57,10 @@ func ResetDefaultRegistry()          // test-only
     `<project>/.san/commands/`, plus plugin-scoped paths returned by
     `PluginCommandPaths`.
 - `Info` carries name, description, namespace, source path.
+- `subcommands.go` — static command paths and descriptions for the slash
+  palette. The app adds suggestions that require live state: `/group` values
+  and saved names after `/workflow show` or `/workflow run`. Each handler
+  still owns execution and argument validation.
 
 ## Lifecycle
 

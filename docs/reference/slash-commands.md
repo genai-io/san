@@ -26,12 +26,12 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/reload-plugins` | Reload plugins and refresh plugin-backed components |
 | `/think` | Cycle the active model's advertised reasoning efforts; `/think <effort>` selects one directly |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
-| `/workflow` | Run a saved workflow directly (`/workflow <name> [key=value …]`), or list them |
+| `/workflow` | List saved workflows; `show <name>` previews, `run <name> [key=value …]` starts, and `stop [task-id]` cancels one |
 | `/search` | Select search engine for web search |
 
 ## UI Interactions
 
-- Commands are matched against the registry as the user types; a suggestion dropdown appears.
+- Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/workflow `, `/plugin `, `/mcp `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/workflow show ` and `/workflow run ` offer saved workflow names; after `/workflow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
 - `/history` opens a fullscreen reader over the messages a resumed session did

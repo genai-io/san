@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/cron"
@@ -203,23 +201,4 @@ func pluginMCPServers() []mcp.PluginServer {
 		}
 	}
 	return servers
-}
-
-func commandSuggestionMatcher(cmdSvc *command.Registry) func(string) []suggest.Suggestion {
-	return func(query string) []suggest.Suggestion {
-		// Past the command name the list completes its arguments, which only
-		// /group offers.
-		if name, args, ok := strings.Cut(strings.TrimPrefix(query, "/"), " "); ok {
-			if name == "group" {
-				return groupSuggestions(args)
-			}
-			return nil
-		}
-		cmds := cmdSvc.Matching(query)
-		result := make([]suggest.Suggestion, len(cmds))
-		for i, c := range cmds {
-			result[i] = suggest.Suggestion{Name: c.Name, Description: c.Description}
-		}
-		return result
-	}
 }

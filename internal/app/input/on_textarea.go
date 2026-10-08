@@ -561,7 +561,11 @@ func (m *Model) HandleSuggestionKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 					m.Textarea.CursorEnd()
 				}
 			} else {
-				m.Textarea.SetValue(selected + " ")
+				completed := selected
+				if !strings.HasSuffix(completed, "=") {
+					completed += " "
+				}
+				m.Textarea.SetValue(completed)
 				m.Textarea.CursorEnd()
 				// Open the next level, e.g. /group's subcommands, then the
 				// groups a join can name. Nothing to offer hides the list.

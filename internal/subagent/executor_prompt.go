@@ -87,6 +87,10 @@ var toolActivityParams = map[string]string{
 
 // formatToolActivity creates an activity line for a tool call in ToolName(args) format.
 func formatToolActivity(toolName string, params map[string]any) string {
+	return formatToolActivityLimit(toolName, params, 60)
+}
+
+func formatToolActivityLimit(toolName string, params map[string]any, maxChars int) string {
 	if toolName == "Agent" {
 		if label := formatAgentActivity(params); label != "" {
 			return label
@@ -109,8 +113,11 @@ func formatToolActivity(toolName string, params map[string]any) string {
 		return fmt.Sprintf("%s()", toolName)
 	}
 
-	if len(value) > 60 {
-		value = value[:57] + "..."
+	if maxChars <= 0 {
+		maxChars = 60
+	}
+	if text := []rune(value); len(text) > maxChars {
+		value = string(text[:maxChars-1]) + "…"
 	}
 
 	return fmt.Sprintf("%s(%s)", toolName, value)

@@ -114,6 +114,41 @@ func TestRunFanOutHonoursMaxParallel(t *testing.T) {
 	}
 }
 
+func TestRunningStatusWaitsForAnExecutionSlot(t *testing.T) {
+	src := "---\nmax_parallel: 1\n---\n```mermaid\nflowchart LR\n  a --> x & y\n```\n\n## a\ngo\n\n## x\ngo\n\n## y\ngo\n"
+	w := mustParse(t, src)
+	release := make(chan struct{})
+	releaseNode := sync.OnceFunc(func() { close(release) })
+	defer releaseNode()
+	r := &stubRunner{block: map[string]chan struct{}{"x": release, "y": release}}
+	started := make(chan string, 2)
+	done := make(chan struct{})
+	go func() {
+		Run(context.Background(), w, r, Options{OnStatus: func(n *Node, s Status) {
+			if s == StatusRunning && n.ID != "a" {
+				started <- n.ID
+			}
+		}})
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no child entered its execution slot")
+	}
+	select {
+	case id := <-started:
+		t.Fatalf("%s was marked running while the only slot was occupied", id)
+	case <-time.After(30 * time.Millisecond):
+	}
+	releaseNode()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("workflow did not finish")
+	}
+}
+
 func TestRunConditionalEdgesOmitTheBranchNotTaken(t *testing.T) {
 	src := "```mermaid\nflowchart LR\n  triage -->|HIGH| deep\n  triage -->|LOW| quick\n  deep & quick --> report\n```\n\n## triage\nhow bad\n\n## deep\n{{triage}}\n\n## quick\n{{triage}}\n\n## report\nD=[{{deep}}] Q=[{{quick}}]\n"
 	w := mustParse(t, src)
