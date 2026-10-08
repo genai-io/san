@@ -10,3 +10,4 @@ Building, testing, releasing, and operating San.
 | [`troubleshooting`](troubleshooting.md) | Common development issues. |
 | [`benchmark`](benchmark.md) | Reproduce the performance benchmark numbers. |
 | [`footprint`](footprint.md) | Why the single binary stays small and portable. |
+| [`site`](site.md) | Website preview and README intro GIF generation. |

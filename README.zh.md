@@ -14,9 +14,12 @@
     <a href="README.md">English</a> · <strong>简体中文</strong>
   </p>
   <p>
-    <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San 动态简介" width="100%"></a>
+    <a href="https://genai-io.github.io/san/intro.html?variant=readme"><picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/san-intro-dark.gif">
+      <img src="assets/san-intro.gif" alt="San 动态简介" width="100%">
+    </picture></a>
   </p>
-  <sub><a href="https://genai-io.github.io/san/intro.html">打开高清完整版 ↗</a></sub>
+  <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">打开高清完整版 ↗</a></sub>
 </div>
 
 San 是一个开源的终端 Agent 运行时：一个原生 Go 二进制，不需要 Node.js 或 Python。模型碰到的一切 —— prompt、工具、provider、扩展 —— 都留给你替换。
@@ -238,20 +241,8 @@ plugins-local/      # 本地插件（git-ignored）
 
 两个入口 —— 国内用微信，海外用 Slack，欢迎入群一起讨论：
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="50%">
-  <img src="assets/wechat.jpg" alt="极客外传公众号二维码" width="200"><br>
-  <sub>关注公众号「极客外传」· 回复 <code>san</code> 或 <code>三</code> 入群</sub>
-</td>
-<td align="center" width="50%">
-  <img src="assets/slack.png" alt="San Slack 二维码" width="200"><br>
-  <sub>扫码或<a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">点击加入 Slack</a></sub>
-</td>
-</tr>
-</table>
-</div>
+- **微信** — 关注公众号「极客外传」· 回复 `san` 或 `三` 入群
+- **Slack** — [点击加入 Slack](https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg)
 
 ## 贡献
 

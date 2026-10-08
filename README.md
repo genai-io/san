@@ -14,9 +14,12 @@
     <strong>English</strong> · <a href="README.zh.md">简体中文</a>
   </p>
   <p>
-    <a href="https://genai-io.github.io/san/intro.html"><img src="assets/san-intro.gif" alt="San — animated intro" width="100%"></a>
+    <a href="https://genai-io.github.io/san/intro.html?variant=readme"><picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/san-intro-dark.gif">
+      <img src="assets/san-intro.gif" alt="San — animated intro" width="100%">
+    </picture></a>
   </p>
-  <sub><a href="https://genai-io.github.io/san/intro.html">Open the full-quality intro ↗</a></sub>
+  <sub><a href="https://genai-io.github.io/san/intro.html?variant=readme">Open the full-quality intro ↗</a></sub>
 </div>
 
 San is an open-source terminal agent runtime: one native Go binary, no Node.js
@@ -240,20 +243,8 @@ Comparable feature sets — the gap is client-side overhead, not capability. [`d
 
 Two ways in — WeChat for the Chinese community, Slack for everyone else:
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="50%">
-  <img src="assets/wechat.jpg" alt="WeChat official account 极客外传 QR code" width="200"><br>
-  <sub>关注公众号「极客外传」· 回复 <code>san</code> 或 <code>三</code> 入群</sub>
-</td>
-<td align="center" width="50%">
-  <img src="assets/slack.png" alt="San Slack QR code" width="200"><br>
-  <sub>Scan or <a href="https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg">join our Slack</a></sub>
-</td>
-</tr>
-</table>
-</div>
+- **WeChat** — 关注公众号「极客外传」· 回复 `san` 或 `三` 入群
+- **Slack** — [Join our Slack](https://join.slack.com/t/sanaico/shared_invite/zt-3zvfr8v6f-dchFpvpufY7fKA7tG7lhIg)
 
 ## Contributing
 
