@@ -124,11 +124,11 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 		return nil
 	}
 
-	// Once content starts, flush thinking's trailing paragraph too (it has no
-	// terminating blank line, but reasoning is done). Content arriving is also
-	// the only proof that reasoning is over: a block boundary alone can fall
-	// mid-thought, and committing a reasoning prefix would strand the rest.
-	reasoningDone := len(msg.Content) > 0
+	// A text delta finishes the current reasoning paragraph, even without a
+	// trailing blank line. Earlier commentary does not: Responses may return
+	// to thinking within the same message, and that new paragraph must stay
+	// live until it completes rather than committing each token on its own.
+	reasoningDone := len(msg.Content) > 0 && !m.conv.Stream.ThinkingActive
 	var thinkingSlice, contentSlice, collapsedThinking string
 	thinkingEnd := msg.ThinkingCommittedLen
 	if setting.DrawsThinkingBody(m.env.ThinkingDisplay) {

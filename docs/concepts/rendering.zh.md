@@ -118,6 +118,12 @@ RenderMessageAt ─┤
 flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印的字节，
 这样之后整段重建时不会再把它从未展示过的正文捞回来。
 
+同一条回复可能在正文和思考之间多次切换。`Stream.ThinkingActive` 跟踪最新
+文本片段的类型：新正文片段会结束当前思考段落；新思考片段会让尚未结束的
+段落继续留在重绘区，即使这条消息已经有先前的正文。如果只检查 `Content`
+是否非空，后续思考的每个 token 都会单独写入 scrollback，形成每行一个词、
+中间夹空行的显示问题。
+
 `renderAssistantWithTools` **不会**扫消息列表去找它的配对 result——
 `ctx.InlinedResults` 在渲染开始就预算好了，告诉它哪个
 `ToolCallID → ToolResultData` 该 inline。见下面"工具调用 + inline 结果"。

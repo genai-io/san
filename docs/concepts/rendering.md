@@ -126,6 +126,13 @@ draws nothing. In the suppressed modes the flush still advances
 `ThinkingCommittedLen` / `ThinkingEmitted` past the bytes it did not print, so a
 later full rebuild cannot resurrect the body it never showed.
 
+A response can alternate between commentary and reasoning. `Stream.ThinkingActive`
+tracks the latest text/thinking delta: a new text delta finishes the current
+reasoning paragraph, while a new thinking delta keeps its unfinished paragraph
+live even if earlier commentary remains in the message. Testing only whether
+`Content` is nonempty would commit each resumed reasoning token as its own
+scrollback block, displaying one word per line with blank lines between them.
+
 `renderAssistantWithTools` does **not** scan the message list to find
 its paired results — `ctx.InlinedResults` was precomputed once at the
 top of the render pass and tells it which `ToolCallID → ToolResultData`
