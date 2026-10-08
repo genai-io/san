@@ -24,7 +24,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/mcp` | Manage MCP servers |
 | `/plugin` | Manage plugins |
 | `/reload-plugins` | Reload plugins and refresh plugin-backed components |
-| `/think` | Cycle thinking level (off / normal / high / ultra) |
+| `/think` | Cycle the active model's advertised reasoning efforts; `/think <effort>` selects one directly |
 | `/loop` | Schedule recurring or one-shot prompts and manage loop jobs |
 | `/workflow` | Run a saved workflow directly (`/workflow <name> [key=value …]`), or list them |
 | `/search` | Select search engine for web search |
@@ -40,7 +40,12 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
   show" when the whole transcript is already on screen. Earlier history cannot be
   paged back into native scrollback: `tea.Println` inserts at the frame's top, so
   a later print would land *below* what is already there and invert the order.
-- `/think` cycles through levels and updates the status bar indicator.
+- `/think` cycles through the active model's advertised efforts and updates the
+  status bar indicator. Available values depend on the model and connection:
+  OpenAI API models may offer `max`, while a ChatGPT subscription model offers
+  `ultra` only if its live Codex catalog lists it. An unsupported value prints
+  the values available for the current model. `/think ultra` selects a catalog
+  effort; it does not enable Codex Ultra's multi-agent mode.
 - `/context` prints a stacked bar and a per-category breakdown into the transcript. The status bar's `X/Y` context figure says how full the window is; `/context` says what filled it. The total is the provider's measured size of the last call — its prompt plus its reply, which the next call sends back. The split across categories is estimated and scaled to that total.
 - `/loop` has a dedicated reference page: see [Loop Scheduling Command](./loop.md).
 
@@ -81,7 +86,7 @@ func TestSlashCompact_TriggersCompaction(t *testing.T) {
 }
 
 func TestSlashThink_CyclesLevels(t *testing.T) {
-    // /think must cycle off → normal → high → ultra → off
+    // /think cycles through the active model's advertised efforts.
 }
 
 func TestSlashModels_SwitchesModel(t *testing.T) {
@@ -138,7 +143,7 @@ tmux capture-pane -t t_cmds -p
 tmux send-keys -t t_cmds '/think' Enter
 sleep 1
 tmux capture-pane -t t_cmds -p
-# Expected: thinking level options (off / normal / high / ultra)
+# Expected: the next effort advertised for the active model
 
 # Test 4: /models (tabbed picker for models and providers)
 tmux send-keys -t t_cmds '/models' Enter
