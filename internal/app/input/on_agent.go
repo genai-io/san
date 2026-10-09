@@ -196,7 +196,7 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 	}
 	selected.Enabled = !selected.Enabled
 	for i := range s.list.items {
-		if s.list.items[i].Name == selected.Name {
+		if !s.list.items[i].ModePreview && s.list.items[i].Name == selected.Name {
 			s.list.items[i].Enabled = selected.Enabled
 			break
 		}
