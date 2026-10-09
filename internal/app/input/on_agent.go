@@ -125,12 +125,12 @@ func builtinModeItems() []agentItem {
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Explorer", Summary: "explore · read-only", Description: "Bash is read-only; settings may narrow tools.",
+			Name: "Explorer", Summary: "explore · read-only",
 			Model: "inherit", PermissionMode: "explore", Tools: toolNames(subagent.PermissionExplore),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Editor", Summary: "edit · file edits", Description: "Bash is read-only; settings may narrow tools.",
+			Name: "Editor", Summary: "edit · file edits; Bash read-only",
 			Model: "inherit", PermissionMode: "edit", Tools: toolNames(subagent.PermissionAcceptEdits),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
@@ -307,13 +307,15 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		// Description sub-line aligned under the agent name (4 cols in:
 		// 2 cursor + 1 icon + 1 space).
-		if i == s.list.nav.Selected && a.Description != "" {
+		if i == s.list.nav.Selected && (a.Description != "" || a.ModePreview && a.Tools != "") {
 			subStyle := lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted).
 				PaddingLeft(4)
 			descLineWidth := max(10, panel.ContentWidth()-8)
-			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
-			sb.WriteString("\n")
+			if a.Description != "" {
+				sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
+				sb.WriteString("\n")
+			}
 			if a.ModePreview && a.Tools != "" {
 				toolsLine := "Tools: " + a.Tools
 				for _, line := range wrapAgentToolNames(toolsLine, descLineWidth) {

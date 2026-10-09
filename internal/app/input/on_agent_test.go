@@ -44,3 +44,33 @@ func TestDefaultModePreviewUsesOneCompactRow(t *testing.T) {
 		t.Fatalf("default mode repeats its dynamic tool access:\n%s", rendered)
 	}
 }
+
+func TestModePreviewShowsToolsOnSecondLine(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		index int
+	}{
+		{name: "Explorer", index: 1},
+		{name: "Editor", index: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			selector := NewAgentSelector(subagent.NewRegistry())
+			if err := selector.EnterSelect(120, 30); err != nil {
+				t.Fatal(err)
+			}
+			selector.list.filtered[tc.index].Tools = "Read, Bash"
+			selector.list.nav.Selected = tc.index
+			lines := strings.Split(xansi.Strip(selector.Render()), "\n")
+			for i, line := range lines {
+				if !strings.Contains(line, tc.name) || !strings.Contains(line, "◇") {
+					continue
+				}
+				if i+2 >= len(lines) || !strings.Contains(lines[i+1], "Tools: Read, Bash") || strings.TrimSpace(lines[i+2]) != "" {
+					t.Fatalf("mode preview is not two lines:\n%s", strings.Join(lines, "\n"))
+				}
+				return
+			}
+			t.Fatalf("mode row not rendered:\n%s", strings.Join(lines, "\n"))
+		})
+	}
+}
