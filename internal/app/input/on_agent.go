@@ -31,6 +31,7 @@ type agentItem struct {
 	Source         string // "built-in", "user", "project", "plugin"
 	PluginName     string // populated when Source == "plugin" or name has "ns:" prefix
 	Enabled        bool
+	ModePreview    bool // runtime mode description, not a toggleable definition
 }
 
 // AgentToggleMsg is sent when an agent's enabled state is toggled.
@@ -52,18 +53,18 @@ func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 		registry: reg,
 		list: tabbedList[agentItem]{
 			tabs: []tabSpec{
-				{name: "Built-in", disableIfEmpty: true},
+				{name: "Modes", disableIfEmpty: true},
 				{name: "Project"},
 				{name: "User"},
 			},
-			// Project first, then User, then Built-in (built-in agents are
-			// rarely the thing the user came to toggle).
+			// Project and User hold toggleable definitions; Modes explains
+			// the unnamed Agent tool's runtime modes.
 			preferred:   []int{int(agentTabProject), int(agentTabUser), int(agentTabBuiltin)},
 			noun:        "agents",
 			placeholder: "Type to filter agents...",
-			hints:       []string{"↑/↓ navigate", "Enter toggle", "←/→/Tab switch tab", "Esc cancel"},
+			hints:       []string{"↑/↓ navigate", "Enter toggle configured agents", "←/→/Tab switch tab", "Esc cancel"},
 			matchesTab:  agentMatchesTab,
-			searchKeys:  func(a agentItem) []string { return []string{a.Name, a.Description} },
+			searchKeys:  func(a agentItem) []string { return []string{a.Name, a.Description, a.PermissionMode} },
 			nav:         kit.ListNav{MaxVisible: 10},
 		},
 	}
@@ -77,7 +78,8 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		setting.ScopeUser:    s.registry.DisabledAt(setting.ScopeUser),
 	}
 
-	agents := make([]agentItem, 0, len(configs))
+	agents := make([]agentItem, 0, len(configs)+3)
+	agents = append(agents, builtinModeItems()...)
 	for _, c := range configs {
 		cfg := subagent.ToAgentConfigInfo(c)
 		lowerName := strings.ToLower(cfg.Name)
@@ -106,6 +108,32 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 
 	s.list.load(agents, width, height)
 	return nil
+}
+
+// builtinModeItems are read-only explanations of the unnamed Agent tool's
+// modes. They are not registered agent definitions, so Enter cannot disable
+// them or make their display names callable as named agents.
+func builtinModeItems() []agentItem {
+	toolNames := func(mode subagent.PermissionMode) string {
+		return strings.Join(subagent.BuiltinToolNames(mode), ", ")
+	}
+	return []agentItem{
+		{
+			Name: "Default", Description: "mode=default inherits the parent session's permissions.",
+			Model: "inherit", PermissionMode: "default", Tools: "follows session mode",
+			Source: "built-in", Enabled: true, ModePreview: true,
+		},
+		{
+			Name: "Explorer", Description: "mode=explore is read-only; Bash runs read-only commands.",
+			Model: "inherit", PermissionMode: "explore", Tools: toolNames(subagent.PermissionExplore),
+			Source: "built-in", Enabled: true, ModePreview: true,
+		},
+		{
+			Name: "Editor", Description: "mode=edit allows file edits; Bash runs read-only commands.",
+			Model: "inherit", PermissionMode: "edit", Tools: toolNames(subagent.PermissionAcceptEdits),
+			Source: "built-in", Enabled: true, ModePreview: true,
+		},
+	}
 }
 
 func formatAgentPermMode(mode string) string {
@@ -162,6 +190,9 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 		return nil
 	}
 	selected := &s.list.filtered[s.list.nav.Selected]
+	if selected.ModePreview {
+		return nil
+	}
 	selected.Enabled = !selected.Enabled
 	for i := range s.list.items {
 		if s.list.items[i].Name == selected.Name {
@@ -211,7 +242,10 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
-		if a.Enabled {
+		if a.ModePreview {
+			statusIcon = "◇"
+			statusStyle = kit.SelectorStatusNone()
+		} else if a.Enabled {
 			statusIcon = "●"
 			statusStyle = kit.SelectorStatusConnected()
 		} else {
@@ -236,7 +270,7 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		case a.PluginName != "":
 			badgeText = "[Plugin: " + a.PluginName + "]"
 		case a.Source == "built-in":
-			badgeText = "[Built-in]"
+			badgeText = "[Mode]"
 		}
 
 		// Width budget for one row, accounting for the panel's Padding(1, 2)
@@ -280,6 +314,13 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 			descLineWidth := max(10, panel.ContentWidth()-8)
 			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
 			sb.WriteString("\n")
+			if a.ModePreview {
+				toolsLine := "Built-in tools (settings may restrict): " + a.Tools
+				for _, line := range wrapAgentToolNames(toolsLine, descLineWidth) {
+					sb.WriteString(subStyle.Render(line))
+					sb.WriteString("\n")
+				}
+			}
 		}
 
 		// Spacer for breathing room between rows (skip after the last item;
@@ -293,4 +334,28 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		sb.WriteString(kit.MoreBelow())
 		sb.WriteString("\n")
 	}
+}
+
+// wrapAgentToolNames keeps the selected built-in mode's tool list readable
+// without cutting names at the right edge of the panel.
+func wrapAgentToolNames(list string, width int) []string {
+	parts := strings.Split(list, ", ")
+	lines := make([]string, 0, 2)
+	line := ""
+	for _, part := range parts {
+		next := part
+		if line != "" {
+			next = line + ", " + part
+		}
+		if lipgloss.Width(next) > width && line != "" {
+			lines = append(lines, line)
+			line = part
+		} else {
+			line = next
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
 }
