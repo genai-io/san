@@ -28,6 +28,7 @@ type agentItem struct {
 	Model          string
 	PermissionMode string
 	Tools          string
+	Summary        string // compact label for a runtime mode preview
 	Source         string // "built-in", "user", "project", "plugin"
 	PluginName     string // populated when Source == "plugin" or name has "ns:" prefix
 	Enabled        bool
@@ -53,18 +54,18 @@ func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 		registry: reg,
 		list: tabbedList[agentItem]{
 			tabs: []tabSpec{
-				{name: "Modes", disableIfEmpty: true},
+				{name: "Built-in", disableIfEmpty: true},
 				{name: "Project"},
 				{name: "User"},
 			},
-			// Project and User hold toggleable definitions; Modes explains
+			// Project and User hold toggleable definitions; Built-in explains
 			// the unnamed Agent tool's runtime modes.
 			preferred:   []int{int(agentTabProject), int(agentTabUser), int(agentTabBuiltin)},
 			noun:        "agents",
 			placeholder: "Type to filter agents...",
 			hints:       []string{"↑/↓ navigate", "Enter toggle configured agents", "←/→/Tab switch tab", "Esc cancel"},
 			matchesTab:  agentMatchesTab,
-			searchKeys:  func(a agentItem) []string { return []string{a.Name, a.Description, a.PermissionMode} },
+			searchKeys:  func(a agentItem) []string { return []string{a.Name, a.Description, a.PermissionMode, a.Summary} },
 			nav:         kit.ListNav{MaxVisible: 10},
 		},
 	}
@@ -119,17 +120,17 @@ func builtinModeItems() []agentItem {
 	}
 	return []agentItem{
 		{
-			Name: "Default", Description: "mode=default inherits the parent session's permissions.",
-			Model: "inherit", PermissionMode: "default", Tools: "follows session mode",
+			Name: "Default", Summary: "inherits session permissions and tools",
+			Model: "inherit", PermissionMode: "default",
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Explorer", Description: "mode=explore is read-only; Bash runs read-only commands.",
+			Name: "Explorer", Summary: "explore · read-only", Description: "Bash is read-only; settings may narrow tools.",
 			Model: "inherit", PermissionMode: "explore", Tools: toolNames(subagent.PermissionExplore),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Editor", Description: "mode=edit allows file edits; Bash runs read-only commands.",
+			Name: "Editor", Summary: "edit · file edits", Description: "Bash is read-only; settings may narrow tools.",
 			Model: "inherit", PermissionMode: "edit", Tools: toolNames(subagent.PermissionAcceptEdits),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
@@ -258,43 +259,42 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		name := kit.TruncateText(a.Name, maxNameLen)
 		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-lipgloss.Width(name)))
 
-		model := kit.TruncateText(a.Model, 14)
-		paddedModel := model + strings.Repeat(" ", max(0, 14-lipgloss.Width(model)))
+		var line string
+		if a.ModePreview {
+			line = fmt.Sprintf("%s %s  %s", statusStyle.Render(statusIcon), paddedName, descStyle.Render(a.Summary))
+		} else {
+			model := kit.TruncateText(a.Model, 14)
+			paddedModel := model + strings.Repeat(" ", max(0, 14-lipgloss.Width(model)))
 
-		mode := kit.TruncateText(a.PermissionMode, 8)
-		paddedMode := mode + strings.Repeat(" ", max(0, 8-lipgloss.Width(mode)))
+			mode := kit.TruncateText(a.PermissionMode, 8)
+			paddedMode := mode + strings.Repeat(" ", max(0, 8-lipgloss.Width(mode)))
 
-		// Reserve room for an inline source badge on the right.
-		badgeText := ""
-		switch {
-		case a.PluginName != "":
-			badgeText = "[Plugin: " + a.PluginName + "]"
-		case a.Source == "built-in":
-			badgeText = "[Mode]"
-		}
+			badgeText := ""
+			switch {
+			case a.PluginName != "":
+				badgeText = "[Plugin: " + a.PluginName + "]"
+			case a.Source == "built-in":
+				badgeText = "[Built-in]"
+			}
 
-		// Width budget for one row, accounting for the panel's Padding(1, 2)
-		// (4 cols total) plus the row's own decoration:
-		//   2 ("> ") + 1 (icon) + 1 (space) + name + 2 (sep) +
-		//   14 (model) + 2 (sep) + 8 (mode) + 2 (sep) + tools
-		//   [+ 1 space + badge]
-		// The trailing -4 is a right-margin safety buffer.
-		rowFixed := 2 + 1 + 1 + maxNameLen + 2 + 14 + 2 + 8 + 2
-		if badgeText != "" {
-			rowFixed += 1 + len(badgeText)
-		}
-		toolsWidth := max(8, panel.ContentWidth()-4-rowFixed-4)
-		tools := kit.TruncateText(a.Tools, toolsWidth)
+			// Leave the remaining width for the configured tool list.
+			rowFixed := 2 + 1 + 1 + maxNameLen + 2 + 14 + 2 + 8 + 2
+			if badgeText != "" {
+				rowFixed += 1 + len(badgeText)
+			}
+			toolsWidth := max(8, panel.ContentWidth()-4-rowFixed-4)
+			tools := kit.TruncateText(a.Tools, toolsWidth)
 
-		line := fmt.Sprintf("%s %s  %s  %s  %s",
-			statusStyle.Render(statusIcon),
-			paddedName,
-			paddedModel,
-			paddedMode,
-			descStyle.Render(tools),
-		)
-		if badgeText != "" {
-			line += " " + badge.Render(badgeText)
+			line = fmt.Sprintf("%s %s  %s  %s  %s",
+				statusStyle.Render(statusIcon),
+				paddedName,
+				paddedModel,
+				paddedMode,
+				descStyle.Render(tools),
+			)
+			if badgeText != "" {
+				line += " " + badge.Render(badgeText)
+			}
 		}
 
 		// Render the row without the selector row styles' PaddingLeft(2) so
@@ -314,8 +314,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 			descLineWidth := max(10, panel.ContentWidth()-8)
 			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
 			sb.WriteString("\n")
-			if a.ModePreview {
-				toolsLine := "Built-in tools (settings may restrict): " + a.Tools
+			if a.ModePreview && a.Tools != "" {
+				toolsLine := "Tools: " + a.Tools
 				for _, line := range wrapAgentToolNames(toolsLine, descLineWidth) {
 					sb.WriteString(subStyle.Render(line))
 					sb.WriteString("\n")

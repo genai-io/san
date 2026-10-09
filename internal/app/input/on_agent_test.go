@@ -1,7 +1,10 @@
 package input
 
 import (
+	"strings"
 	"testing"
+
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/subagent"
 )
@@ -25,5 +28,19 @@ func TestAgentSelectorShowsRuntimeModesWithoutTreatingThemAsDefinitions(t *testi
 	}
 	if len(registry.ListConfigs()) != 0 {
 		t.Fatal("mode previews were registered as named agents")
+	}
+}
+
+func TestDefaultModePreviewUsesOneCompactRow(t *testing.T) {
+	selector := NewAgentSelector(subagent.NewRegistry())
+	if err := selector.EnterSelect(80, 24); err != nil {
+		t.Fatal(err)
+	}
+	rendered := xansi.Strip(selector.Render())
+	if strings.Count(rendered, "inherits session permissions and tools") != 1 {
+		t.Fatalf("default mode inheritance is missing or repeated:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Tools:") || strings.Contains(rendered, "follows session mode") {
+		t.Fatalf("default mode repeats its dynamic tool access:\n%s", rendered)
 	}
 }
