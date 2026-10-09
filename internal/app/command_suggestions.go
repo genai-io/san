@@ -2,6 +2,7 @@ package app
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/command"
@@ -32,9 +33,12 @@ func commandSuggestionMatcher(cmdSvc *command.Registry, toolSvc *tool.Registry) 
 }
 
 func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Suggestion, bool) {
-	verb, rest, hasName := strings.Cut(args, " ")
-	verb = strings.ToLower(verb)
-	if !hasName || (verb != "show" && verb != "run") {
+	fields, _ := command.ScanArguments(args)
+	if len(fields) == 0 {
+		return nil, false
+	}
+	verb := strings.ToLower(fields[0].Value)
+	if (len(fields) == 1 && fields[0].End == len(args)) || (verb != "show" && verb != "run") {
 		return nil, false
 	}
 	if toolSvc == nil {
@@ -51,18 +55,22 @@ func workflowNameSuggestions(toolSvc *tool.Registry, args string) ([]suggest.Sug
 	if !ok {
 		return nil, true
 	}
-	name, argsAfterName, hasInput := strings.Cut(rest, " ")
-	if hasInput {
+	name := ""
+	if len(fields) > 1 {
+		name = fields[1].Value
+	}
+	if len(fields) > 1 && fields[1].End < len(args) {
 		if verb == "show" {
 			return nil, true
 		}
+		argsAfterName := strings.TrimLeftFunc(args[fields[1].End:], unicode.IsSpace)
 		return workflowInputSuggestions(lister, name, argsAfterName), true
 	}
 	var out []suggest.Suggestion
 	for _, definition := range lister.SavedDefinitions() {
-		if strings.HasPrefix(strings.ToLower(definition.Name), strings.ToLower(rest)) {
+		if strings.HasPrefix(strings.ToLower(definition.Name), strings.ToLower(name)) {
 			out = append(out, suggest.Suggestion{
-				Name: "workflow " + verb + " " + definition.Name, Description: definition.Description,
+				Name: "workflow " + verb + " " + command.QuoteArgument(definition.Name), Description: definition.Description,
 			})
 		}
 	}
@@ -76,24 +84,29 @@ func workflowInputSuggestions(lister interface {
 	if err != nil {
 		return nil
 	}
-	at := strings.LastIndex(args, " ")
-	prefix, fragment := "", args
-	if at >= 0 {
-		prefix, fragment = args[:at+1], args[at+1:]
+	fields, err := command.ScanArguments(args)
+	if err != nil {
+		return nil // still inside a quoted value
+	}
+	prefix, fragment := args, ""
+	if len(fields) > 0 && fields[len(fields)-1].End == len(args) {
+		last := fields[len(fields)-1]
+		prefix, fragment = args[:last.Start], last.Value
+		fields = fields[:len(fields)-1]
 	}
 	if strings.Contains(fragment, "=") {
 		return nil // a value is free-form
 	}
 	used := make(map[string]bool)
-	for _, field := range strings.Fields(prefix) {
-		if key, _, ok := strings.Cut(field, "="); ok {
+	for _, field := range fields {
+		if key, _, ok := strings.Cut(field.Value, "="); ok {
 			used[key] = true
 		}
 	}
 	var out []suggest.Suggestion
 	for _, key := range keys {
 		if !used[key] && strings.HasPrefix(key, fragment) {
-			out = append(out, suggest.Suggestion{Name: "workflow run " + name + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
+			out = append(out, suggest.Suggestion{Name: "workflow run " + command.QuoteArgument(name) + " " + prefix + key + "=", Description: "Value for {{input." + key + "}}"})
 		}
 	}
 	return out

@@ -37,8 +37,11 @@ func (m *model) handleSubmit() tea.Cmd {
 		// A workflow may keep running while the parent model streams. Its stop
 		// command must reach the task now, not after that model turn ends.
 		if input.IsWorkflowStopCommand(raw) {
-			cmd, _ := m.runSlashCommandIfMatched(raw)
-			return cmd
+			result, cmd, _ := m.executeCommand(context.Background(), raw)
+			m.userInput.Reset()
+			// A streaming assistant owns the conversation tail. Cancel now, but
+			// let the existing notice queue display the result at a safe boundary.
+			return tea.Batch(cmd, m.deliverNotice(mainNotice{Display: result}))
 		}
 		log.Logger().Sugar().Debugf("handleSubmit: stream active, enqueue %q", raw)
 		return m.enqueueWhileStreaming(raw)

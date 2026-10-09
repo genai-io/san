@@ -26,6 +26,10 @@ definition paths. The command registry owns static subcommand suggestions;
 the app adds saved workflow names after `show` and `run`, then completes
 referenced input keys after `run <name>`. `Workflow.InputNames` derives those
 keys from node templates; direct slash runs report missing keys before launch.
+Execution and completion share `command.ScanArguments` quote boundaries;
+generated preview and completion commands use `command.QuoteArgument` for
+saved names. Stop cancels immediately during a foreground stream, while its
+display-only result passes through the app's held-notice queue.
 
 ## Contract
 
@@ -155,6 +159,8 @@ internal/workflow/loop_test.go   — unrolled shape, previous-round binding, ear
 internal/workflow/view_test.go   — box graph branches, live phases, conditional fallback, and folded retry rounds.
 internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, a failed run becoming a failed task.
 internal/app/input/slash_workflow_test.go — /workflow listing, launching through Launch with no model turn, the task naming the command, bad input.
+internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
+internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
 tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), and a truncated turn failing its node.
 ```
 

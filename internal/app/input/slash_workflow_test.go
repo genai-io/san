@@ -126,6 +126,30 @@ func TestWorkflowCommandPreviewsWithoutRunning(t *testing.T) {
 	}
 }
 
+func TestWorkflowPreviewCommandRunsQuotedName(t *testing.T) {
+	body := strings.Replace(savedReview, "name: review", "name: release review", 1)
+	c := workflowController(t, map[string]string{"release": body})
+	preview, _, err := c.handleWorkflowCommand(context.Background(), `show "release review"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, run, ok := strings.Cut(preview, "Run: /workflow ")
+	if !ok || run != `run "release review" base=<value>` {
+		t.Fatalf("preview run command = %q", run)
+	}
+	run = strings.Replace(run, "base=<value>", `base="main branch"`, 1)
+	notice, _, err := c.handleWorkflowCommand(context.Background(), run)
+	if err != nil {
+		t.Fatalf("generated command %q failed: %v", run, err)
+	}
+	_, rest, _ := strings.Cut(notice, "Task ID: ")
+	id, _, _ := strings.Cut(rest, "\n")
+	bg, ok := task.Default().Get(id)
+	if !ok || !bg.WaitForCompletion(5*time.Second) || bg.GetStatus().Status != task.StatusCompleted {
+		t.Fatalf("generated command did not complete: task=%q", id)
+	}
+}
+
 func TestWorkflowCommandStartsLiveRepaint(t *testing.T) {
 	c := workflowController(t, map[string]string{"review": savedReview})
 	c.env.SpinnerTickCmd = func() tea.Cmd {
@@ -194,15 +218,4 @@ func TestWorkflowStopTargetsOnlyWorkflowTasks(t *testing.T) {
 	}
 	other.Stop()
 	other.Complete(otherCtx.Err())
-}
-
-func TestSplitQuotedKeepsQuotedValuesWhole(t *testing.T) {
-	got, err := splitQuoted(`review base="main branch"  note='say "hi"' x=`)
-	want := []string{"review", "base=main branch", `note=say "hi"`, "x="}
-	if err != nil || strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("got %q, err %v; want %q", got, err, want)
-	}
-	if _, err := splitQuoted(`review base="main`); err == nil {
-		t.Fatal("unclosed quote accepted")
-	}
 }

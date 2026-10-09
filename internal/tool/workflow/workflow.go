@@ -15,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/command"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
@@ -245,7 +246,7 @@ func (t *WorkflowTool) Preview(name string, width int) (string, error) {
 	if len(inputs) > 0 {
 		preview += "\nInputs: " + strings.Join(inputs, ", ")
 	}
-	preview += "\nRun: /workflow run " + name
+	preview += "\nRun: /workflow run " + command.QuoteArgument(name)
 	for _, key := range inputs {
 		preview += " " + key + "=<value>"
 	}
@@ -300,7 +301,7 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 	}
 	turns, _ := w.Bounds()
 	summary := fmt.Sprintf("Started workflow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
-	return summary, t.start(w, inputs, "/workflow "+name, width), nil
+	return summary, t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width), nil
 }
 
 // start runs the workflow under one background task and returns its id.

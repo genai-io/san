@@ -37,6 +37,11 @@ func (s *Registry) IsCustomCommand(cmd string) (*CustomCommand, bool)
 func (s *Registry) BuiltinNames() map[string]Info
 func (s *Registry) CustomCommands() []Info
 
+// Quoted arguments shared by execution, completion, and generated commands.
+func ScanArguments(args string) ([]Argument, error)
+func SplitArguments(args string) ([]string, error)
+func QuoteArgument(value string) string
+
 // Package-level access
 func Initialize(opts Options)
 func Default() *Registry
@@ -61,6 +66,9 @@ func ResetDefaultRegistry()          // test-only
   palette. The app adds suggestions that require live state: `/group` values
   and saved names after `/workflow show` or `/workflow run`. Each handler
   still owns execution and argument validation.
+- `arguments.go` — quote-aware argument parsing with source ranges for
+  completion. Scanning preserves unfinished quoted fields; execution rejects
+  unfinished quotes. Generated arguments use the same quoting rules.
 
 ## Lifecycle
 
@@ -75,6 +83,8 @@ func ResetDefaultRegistry()          // test-only
 ```
 internal/command/registry_test.go    — name lookup, fuzzy matching,
                                         custom + built-in precedence.
+internal/command/arguments_test.go   — quoted values, unfinished fields,
+                                        Unicode byte ranges, generated argument round trips.
 ```
 
 ## See Also

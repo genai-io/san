@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -40,7 +39,7 @@ type workflowRunner interface {
 // model's call; and because a tool the model is not offered is still
 // registered, this works with the tool disabled.
 func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args string) (string, tea.Cmd, error) {
-	fields, err := splitQuoted(args)
+	fields, err := command.SplitArguments(args)
 	if err != nil {
 		return "", nil, err
 	}
@@ -146,38 +145,3 @@ func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, e
 }
 
 const workflowUsage = "Commands:\n  /workflow list                         List saved workflows\n  /workflow show <name>                  Preview a graph\n  /workflow run <name> [key=value …]     Run a workflow\n  /workflow stop [task-id]               Stop a running workflow"
-
-// splitQuoted splits args on whitespace, keeping a run inside single or double
-// quotes together (quotes dropped), so key="two words" is one field.
-func splitQuoted(args string) ([]string, error) {
-	var fields []string
-	var cur strings.Builder
-	var quote rune
-	inField := false
-	for _, r := range args {
-		switch {
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote != 0:
-			cur.WriteRune(r)
-		case r == '"' || r == '\'':
-			quote, inField = r, true
-		case unicode.IsSpace(r):
-			if inField {
-				fields = append(fields, cur.String())
-				cur.Reset()
-				inField = false
-			}
-		default:
-			cur.WriteRune(r)
-			inField = true
-		}
-	}
-	if quote != 0 {
-		return nil, fmt.Errorf("unclosed %c quote", quote)
-	}
-	if inField {
-		fields = append(fields, cur.String())
-	}
-	return fields, nil
-}

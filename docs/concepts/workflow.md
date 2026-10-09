@@ -85,7 +85,10 @@ ready-to-fill `/workflow run` command. When typing that command,
 Tab completes saved names and input keys such as `topic=`. A direct run
 reports a missing referenced input before starting. San launches it without
 a model turn. Quote an input value that contains spaces, for example
-`/workflow run demo topic="HTTP caching"`.
+`/workflow run demo topic="HTTP caching"`. Quote a saved name containing spaces
+too: `/workflow run "release review" base=main`. Previews and name suggestions
+add those quotes automatically. Input-key completion treats a quoted value as
+one argument, including while its closing quote is still being typed.
 
 The preview and live view draw a small branch-and-join graph for parallel
 stages. Other simple stages use one line; graphs with more complex edges show
@@ -98,7 +101,9 @@ The workflow's separate Background row is hidden while this view is visible.
 The full event trail remains in the task log. The launch notice includes
 `/workflow stop <task-id>`; `/workflow stop` also works when only one workflow
 is running. Stop executes immediately even while the main agent is streaming;
-the scheduler does not start more nodes after cancellation.
+the scheduler does not start more nodes after cancellation. If an assistant
+message is still streaming, the stop notice waits until that message releases
+the conversation tail, so later text and tool-call details continue to arrive.
 With an empty input and no foreground response, Ctrl+C stops the sole running
 workflow. If several workflows are running, it shows their task IDs so you can
 choose one with `/workflow stop <task-id>`. While the main agent is responding,
