@@ -46,6 +46,9 @@ does it ahead of time. The configured linters report defects rather than style,
 so the tree is kept at zero findings — see the comment at the top of
 `.golangci.yml` for the rule on adding one.
 
+After upgrading Go, run `make install-lint-tools` again. The pinned linter
+must support the compiler's export format as well as the Go language version.
+
 ## Vulnerability Scanning
 
 ```bash
