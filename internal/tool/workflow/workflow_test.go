@@ -215,6 +215,42 @@ func TestWorkflowToolResultSummaryStaysSmallAndReadable(t *testing.T) {
 	}
 }
 
+func TestWorkflowToolFailedStreamKeepsAcceptedAndParallelText(t *testing.T) {
+	firstStreaming, secondStreaming, firstDiscarded := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
+		if strings.HasSuffix(req.Description, "/a") {
+			req.OnTextDelta("previous accepted")
+			req.OnTextEnd(nil)
+			req.OnTextDelta(strings.Repeat("discarded draft ", 16))
+			req.OnTextDelta("unflushed tail")
+			close(firstStreaming)
+			<-secondStreaming
+			req.OnTextEnd(errors.New("stream failed"))
+			close(firstDiscarded)
+			req.OnTextDelta("accepted retry")
+			req.OnTextEnd(nil)
+		} else {
+			<-firstStreaming
+			req.OnTextDelta("parallel accepted")
+			close(secondStreaming)
+			<-firstDiscarded
+			req.OnTextEnd(nil)
+		}
+	}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	const definition = "```mermaid\nflowchart LR\n  a\n  b\n```\n\n## a\ngo\n\n## b\ngo\n"
+	info := runToCompletion(t, wt, map[string]any{"definition": definition})
+	for _, text := range []string{"previous accepted", "accepted retry", "parallel accepted"} {
+		if !strings.Contains(info.LiveView, text) {
+			t.Fatalf("accepted text %q disappeared:\n%s", text, info.LiveView)
+		}
+	}
+	if strings.Contains(info.LiveView, "discarded draft") || strings.Contains(info.LiveView, "unflushed tail") {
+		t.Fatalf("failed text remains:\n%s", info.LiveView)
+	}
+}
+
 func TestWorkflowToolRejectsBeforeRunning(t *testing.T) {
 	wt := NewWorkflowTool()
 	wt.SetExecutor(&scriptedExecutor{disabled: "explorer"})
@@ -344,6 +380,21 @@ func TestWorkflowToolNameErrors(t *testing.T) {
 	}
 	if _, err := wt.PreparePermission(context.Background(), map[string]any{"name": "review", "definition": definition}, "."); err == nil || !strings.Contains(err.Error(), "not both") {
 		t.Fatalf("both err = %v", err)
+	}
+}
+
+func TestWorkflowToolMissingInputQuotesSavedName(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Replace(definition, "name: review", "name: release review", 1)
+	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{})
+	wt.SetSearchPaths([]string{dir})
+	_, _, err := wt.Launch("release review", nil, 100)
+	if err == nil || !strings.Contains(err.Error(), `use /workflow show "release review"`) {
+		t.Fatalf("missing-input command is not quoted: %v", err)
 	}
 }
 

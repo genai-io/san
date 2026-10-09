@@ -72,6 +72,21 @@ func TestLiveWorkflowSpinsOnlyActivityAndKeepsFinishedMarkersFixed(t *testing.T)
 	}
 }
 
+func TestLiveWorkflowActivityPreservesToolContent(t *testing.T) {
+	const activity = "  Activity\n    ╭─ map\n" +
+		"    │  ● Bash(printf '● ✓ ✗')\n" +
+		"    │  ✓ Bash(printf '●')\n" +
+		"    │    └ ● ✓ ✗\n" +
+		"    │      ● wrapped result\n    ╰─"
+	for frame, marker := range []string{"|", "/", "-", "\\"} {
+		got := ansi.Strip(styleWorkflowActivity(activity, frame))
+		want := strings.Replace(activity, "│  ● Bash", "│  "+marker+" Bash", 1)
+		if got != want {
+			t.Fatalf("frame %d changed tool content:\n%s\nwant:\n%s", frame, got, want)
+		}
+	}
+}
+
 func TestLiveWorkflowReplacesItsBackgroundTrackerRow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

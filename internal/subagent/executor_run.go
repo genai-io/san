@@ -65,7 +65,7 @@ func (r *preparedRun) forwardEvent(ev core.Event) {
 		}
 	case sdkagent.MessageEnd:
 		if r.req.OnTextEnd != nil {
-			r.req.OnTextEnd()
+			r.req.OnTextEnd(event.Err)
 		}
 		r.recordUsage(event.Response)
 	case sdkagent.ToolStart:

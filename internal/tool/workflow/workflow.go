@@ -297,7 +297,7 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 		}
 	}
 	if len(missing) > 0 {
-		return "", "", fmt.Errorf("workflow %s needs input %s; use /workflow show %s to see the run command", name, strings.Join(missing, ", "), name)
+		return "", "", fmt.Errorf("workflow %s needs input %s; use /workflow show %s to see the run command", name, strings.Join(missing, ", "), command.QuoteArgument(name))
 	}
 	turns, _ := w.Bounds()
 	summary := fmt.Sprintf("Started workflow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
@@ -374,7 +374,8 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 				text := []rune(content)
 				for len(text) > 0 {
 					n := min(len(text), 160)
-					addEvent(nodeID, worker, "› "+string(text[:n]))
+					events = append(events, workflow.ActivityEvent{Node: nodeID, Worker: worker, Text: "› " + string(text[:n]), TextPending: true})
+					trimEvents()
 					text = text[n:]
 				}
 			}
@@ -390,9 +391,21 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 			}
 			progressMu.Unlock()
 		}
-		runner.onTextEnd = func(nodeID, worker string) {
+		runner.onTextEnd = func(nodeID, worker string, err error) {
 			progressMu.Lock()
-			flushText(nodeID, worker)
+			if err != nil {
+				delete(textBuffers, nodeID+"·"+worker)
+				events = slices.DeleteFunc(events, func(event workflow.ActivityEvent) bool {
+					return event.Node == nodeID && event.Worker == worker && event.TextPending
+				})
+			} else {
+				flushText(nodeID, worker)
+				for i := range events {
+					if events[i].Node == nodeID && events[i].Worker == worker {
+						events[i].TextPending = false
+					}
+				}
+			}
 			bg.SetLiveView(liveView(width))
 			progressMu.Unlock()
 		}
@@ -471,7 +484,7 @@ type nodeRunner struct {
 	name           string
 	onActivity     func(nodeID, label, msg string)
 	onTextDelta    func(nodeID, label, fragment string)
-	onTextEnd      func(nodeID, label string)
+	onTextEnd      func(nodeID, label string, err error)
 	onToolStart    func(nodeID, worker, id, call string)
 	onToolResult   func(nodeID, worker, id, call, summary string, failed bool)
 	onWorkerStatus func(nodeID, worker string, status workflow.Status)
@@ -509,9 +522,9 @@ func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, erro
 				r.onTextDelta(n.ID, c.Label, fragment)
 			}
 		},
-		OnTextEnd: func() {
+		OnTextEnd: func(err error) {
 			if r.onTextEnd != nil {
-				r.onTextEnd(n.ID, c.Label)
+				r.onTextEnd(n.ID, c.Label, err)
 			}
 		},
 		OnToolStart: func(id, call string) {

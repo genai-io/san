@@ -82,7 +82,7 @@ type AgentExecRequest struct {
 	// them. Zero keeps the short default used by ordinary agent summaries.
 	ActivityMaxChars int
 	OnTextDelta      func(string)                             // streamed assistant text for a live view
-	OnTextEnd        func()                                   // flush the last partial text span
+	OnTextEnd        func(error)                              // finishes or discards this inference's text
 	OnToolStart      func(id, call string)                    // one live row per tool call
 	OnToolResult     func(id, call, output string, err error) // completes that row by call ID
 	OnQuestion       AskQuestionFunc

@@ -239,6 +239,9 @@ model text appear as they arrive. Activity calls rotate a teal `| / - \`
 while running, then hold a green `✓` or red `✗` when finished. Their bounded
 result preview appears indented below the same call, matched by tool ID even
 when several calls finish out of order.
+Animation changes only the call's status marker; command and result text stay
+unchanged. If a model request fails and retries, its partial text disappears
+from Activity. Accepted text and other nodes' output stay visible.
 Repeated token-usage lines stay in the task log so the newest eight visible
 events focus on work and outcomes. The full trail remains in the task log. The
 launch notice gives the task ID and stop command. `Alt+T` hides or shows the

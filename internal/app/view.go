@@ -417,11 +417,30 @@ func styleWorkflowLiveView(live string, frame int) string {
 func styleWorkflowActivity(activity string, frame int) string {
 	lineSpinner := [...]string{"|", "/", "-", "\\"}
 	running := lineSpinner[frame%len(lineSpinner)]
-	return strings.NewReplacer(
-		"●", activityRunningStyle.Render(running),
-		"✓", activityDoneStyle.Render("✓"),
-		"✗", activityFailedStyle.Render("✗"),
-	).Replace(activity)
+	const prefix = "    │  "
+	lines := strings.Split(activity, "\n")
+	for i, line := range lines {
+		content, ok := strings.CutPrefix(line, prefix)
+		if !ok {
+			continue
+		}
+		marker, text, ok := strings.Cut(content, " ")
+		if !ok {
+			continue
+		}
+		switch marker {
+		case "●":
+			marker = activityRunningStyle.Render(running)
+		case "✓":
+			marker = activityDoneStyle.Render(marker)
+		case "✗":
+			marker = activityFailedStyle.Render(marker)
+		default:
+			continue
+		}
+		lines[i] = prefix + marker + " " + text
+	}
+	return strings.Join(lines, "\n")
 }
 
 func pulseWorkflowGraph(graph string, frame int) string {

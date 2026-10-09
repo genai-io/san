@@ -75,10 +75,8 @@ func (w *Workflow) InputNames() []string
 // ActivityStreamView groups and wraps the latest node and worker events, including
 // bounded tool-result summaries. The app asks an
 // AgentTask for a width-aware rendering on each frame and pulses running marks.
-// ProgressView remains the larger box diagram renderer for callers that want it.
 func (w *Workflow) CompactProgressView(statuses map[string]Status, width int) string
 func (w *Workflow) ActivityStreamView(events []ActivityEvent, width int) string
-func (w *Workflow) ProgressView(statuses map[string]Status) string
 func (w *Workflow) PreviewSteps(width int) string
 ```
 
@@ -135,9 +133,13 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   `for_each` node's finished workers, nothing from a plain turn.
 - `Summary` is one status line per node followed by the output of each
   succeeded sink; intermediate outputs stay in the node transcripts.
-- `view.go` renders a compact box-and-arrow graph with live node phases for
+- `view.go` renders a compact branch-and-join graph with live node phases for
   launch previews and the TUI's task area. Dense graphs fall back to a
   dependency list so no edges disappear from the display.
+- Streamed text stays provisional until that inference succeeds. A failed
+  inference removes its buffered and displayed text before retrying, while
+  accepted text and other nodes' activity remain. Animation styles only the
+  leading call-status marker, preserving command and result content.
 
 `tests/integration/workflow/` covers the node ↔ subagent-turn seam the
 unit tests stub out; graph semantics stay with the unit tests.
@@ -156,12 +158,12 @@ internal/workflow/parse_test.go  — the release-check example, ancestor referen
 internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit (and that it never runs), scope along taken paths, failure contagion and continue_on_error, cancellation, the summary's shape.
 internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
 internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
-internal/workflow/view_test.go   — box graph branches, live phases, conditional fallback, and folded retry rounds.
-internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, a failed run becoming a failed task.
+internal/workflow/view_test.go   — compact branches, live phases, conditional fallback, activity grouping and wrapping.
+internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, quoted missing-input commands, failed stream cleanup preserving accepted and parallel text, a failed run becoming a failed task.
 internal/app/input/slash_workflow_test.go — /workflow listing, launching through Launch with no model turn, the task naming the command, bad input.
 internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
 internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
-tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), and a truncated turn failing its node.
+tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), a truncated turn failing its node, and failed stream text being discarded on retry.
 ```
 
 ## See Also

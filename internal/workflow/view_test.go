@@ -89,79 +89,18 @@ func TestPreviewStepsCountsChineseDisplayColumns(t *testing.T) {
 	}
 }
 
-func TestProgressViewDrawsLiveBranchAndJoin(t *testing.T) {
-	src := "```mermaid\nflowchart LR\n  start --> left & right --> done\n```\n\n## start\ngo\n\n## left\ngo\n\n## right\ngo\n\n## done\ngo\n"
-	w, err := Parse(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := w.ProgressView(map[string]Status{
-		"start": StatusSucceeded,
-		"left":  StatusRunning,
-	})
-	for _, want := range []string{"Workflow (unnamed) (1/4 finished)", "│ start", "│ left", "│ right", "│ done", "✓", "●", "○", "▶", "╭", "╯"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("graph missing %q:\n%s", want, view)
-		}
-	}
-	if strings.Contains(view, "←") {
-		t.Fatalf("small graph fell back to a list:\n%s", view)
-	}
-	for line := range strings.SplitSeq(view, "\n") {
-		if len([]rune(line)) > graphWidth {
-			t.Fatalf("line wider than %d columns: %q", graphWidth, line)
-		}
-	}
-}
-
-func TestProgressViewKeepsConditionalAndLongEdges(t *testing.T) {
+func TestCompactWorkflowViewKeepsConditionalAndLongEdges(t *testing.T) {
 	src := "```mermaid\nflowchart LR\n  a --> b --> c\n  a -->|YES| c\n```\n\n## a\ngo\n\n## b\ngo\n\n## c\ngo\n"
 	w, err := Parse(src)
 	if err != nil {
 		t.Fatal(err)
 	}
-	view := w.ProgressView(nil)
-	if !strings.Contains(view, "c  ← b, a [YES]") {
+	view := w.CompactProgressView(nil, 100)
+	if !strings.Contains(view, "c ← b, a [YES]") {
 		t.Fatalf("long edge or condition disappeared from fallback:\n%s", view)
 	}
 	if strings.Contains(view, "○") {
 		t.Fatalf("structural preview contains run status:\n%s", view)
-	}
-}
-
-func TestProgressViewFoldsRetryRoundsIntoOneGraph(t *testing.T) {
-	src := "```mermaid\nflowchart LR\n  spec --> draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## spec\ngo\n\n## draft\ngo\n\n## review\ngo\n\n## ship\ngo\n"
-	w, err := Parse(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := w.ProgressView(map[string]Status{
-		"spec":     StatusSucceeded,
-		"draft#1":  StatusSucceeded,
-		"review#1": StatusSucceeded,
-		"draft#2":  StatusRunning,
-	})
-	for _, want := range []string{"│ draft", "│ review", "▶", "↶ review ─FAIL x3→ draft (round 2/3)"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("retry graph missing %q:\n%s", want, view)
-		}
-	}
-	if strings.Contains(view, "draft#2") || strings.Contains(view, "←") {
-		t.Fatalf("retry graph expanded into a dependency list:\n%s", view)
-	}
-}
-
-func TestProgressViewShowsNodeModelInsideBox(t *testing.T) {
-	src := "```mermaid\nflowchart LR\n  a --> b\n```\n\n## a\nmode: explore\n\ngo\n\n## b\nmodel: opus\n\ngo\n"
-	w, err := Parse(src)
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := w.ProgressView(nil)
-	for _, want := range []string{"│ explore", "│ opus", "▶"} {
-		if !strings.Contains(view, want) {
-			t.Errorf("node detail missing %q:\n%s", want, view)
-		}
 	}
 }
 
