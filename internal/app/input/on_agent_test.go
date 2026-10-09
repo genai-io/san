@@ -65,6 +65,9 @@ func TestModePreviewShowsToolsOnSecondLine(t *testing.T) {
 				if !strings.Contains(line, tc.name) || !strings.Contains(line, "◇") {
 					continue
 				}
+				if !strings.Contains(line, "Bash is read-only; settings may narrow tools.") {
+					t.Fatalf("mode description is missing from the first line:\n%s", strings.Join(lines, "\n"))
+				}
 				if i+2 >= len(lines) || !strings.Contains(lines[i+1], "Tools: Read, Bash") || strings.TrimSpace(lines[i+2]) != "" {
 					t.Fatalf("mode preview is not two lines:\n%s", strings.Join(lines, "\n"))
 				}

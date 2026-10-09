@@ -125,12 +125,12 @@ func builtinModeItems() []agentItem {
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Explorer", Summary: "explore · read-only",
+			Name: "Explorer", Summary: "explore · read-only", Description: "Bash is read-only; settings may narrow tools.",
 			Model: "inherit", PermissionMode: "explore", Tools: toolNames(subagent.PermissionExplore),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
 		{
-			Name: "Editor", Summary: "edit · file edits; Bash read-only",
+			Name: "Editor", Summary: "edit · file edits", Description: "Bash is read-only; settings may narrow tools.",
 			Model: "inherit", PermissionMode: "edit", Tools: toolNames(subagent.PermissionAcceptEdits),
 			Source: "built-in", Enabled: true, ModePreview: true,
 		},
@@ -261,7 +261,12 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var line string
 		if a.ModePreview {
-			line = fmt.Sprintf("%s %s  %s", statusStyle.Render(statusIcon), paddedName, descStyle.Render(a.Summary))
+			preview := a.Summary
+			if a.Description != "" {
+				preview += "  " + a.Description
+			}
+			previewWidth := max(8, panel.ContentWidth()-4-(2+1+1+maxNameLen+2)-4)
+			line = fmt.Sprintf("%s %s  %s", statusStyle.Render(statusIcon), paddedName, descStyle.Render(kit.TruncateText(preview, previewWidth)))
 		} else {
 			model := kit.TruncateText(a.Model, 14)
 			paddedModel := model + strings.Repeat(" ", max(0, 14-lipgloss.Width(model)))
@@ -307,12 +312,12 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		// Description sub-line aligned under the agent name (4 cols in:
 		// 2 cursor + 1 icon + 1 space).
-		if i == s.list.nav.Selected && (a.Description != "" || a.ModePreview && a.Tools != "") {
+		if i == s.list.nav.Selected && (!a.ModePreview && a.Description != "" || a.ModePreview && a.Tools != "") {
 			subStyle := lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted).
 				PaddingLeft(4)
 			descLineWidth := max(10, panel.ContentWidth()-8)
-			if a.Description != "" {
+			if !a.ModePreview && a.Description != "" {
 				sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
 				sb.WriteString("\n")
 			}
