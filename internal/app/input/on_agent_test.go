@@ -1,12 +1,14 @@
 package input
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/subagent"
+	_ "github.com/genai-io/san/internal/tool/register"
 )
 
 func TestAgentSelectorShowsRuntimeModesWithoutTreatingThemAsDefinitions(t *testing.T) {
@@ -114,34 +116,38 @@ func TestDefaultModePreviewUsesOneCompactRow(t *testing.T) {
 }
 
 func TestModePreviewShowsToolsOnSecondLine(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		index int
-	}{
-		{name: "Explorer", index: 1},
-		{name: "Editor", index: 2},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			selector := NewAgentSelector(subagent.NewRegistry())
-			if err := selector.EnterSelect(120, 30); err != nil {
-				t.Fatal(err)
-			}
-			selector.list.filtered[tc.index].Tools = "Read, Bash"
-			selector.list.nav.Selected = tc.index
-			lines := strings.Split(xansi.Strip(selector.Render()), "\n")
-			for i, line := range lines {
-				if !strings.Contains(line, tc.name) || !strings.Contains(line, "◇") {
-					continue
+	for _, width := range []int{80, 120} {
+		for _, tc := range []struct {
+			name  string
+			index int
+		}{
+			{name: "Explorer", index: 1},
+			{name: "Editor", index: 2},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
+				selector := NewAgentSelector(subagent.NewRegistry())
+				if err := selector.EnterSelect(width, 30); err != nil {
+					t.Fatal(err)
 				}
-				if !strings.Contains(line, "Bash is read-only; settings may narrow tools.") {
-					t.Fatalf("mode description is missing from the first line:\n%s", strings.Join(lines, "\n"))
+				selector.list.nav.Selected = tc.index
+				lines := strings.Split(xansi.Strip(selector.Render()), "\n")
+				for i, line := range lines {
+					if !strings.Contains(line, tc.name) || !strings.Contains(line, "◇") {
+						continue
+					}
+					if !strings.Contains(line, "Bash is read-only") || width == 120 && !strings.Contains(line, "settings may narrow tools.") {
+						t.Fatalf("mode description is missing from the first line:\n%s", strings.Join(lines, "\n"))
+					}
+					if i+2 >= len(lines) || !strings.Contains(lines[i+1], "Tools: Read, WebFetch, WebSearch") || strings.TrimSpace(lines[i+2]) != "" {
+						t.Fatalf("mode preview is not two lines:\n%s", strings.Join(lines, "\n"))
+					}
+					if width == 80 && !strings.Contains(lines[i+1], "…") || width == 120 && !strings.Contains(lines[i+1], "SendMessage") {
+						t.Fatalf("tool list should truncate only in the narrow panel:\n%s", strings.Join(lines, "\n"))
+					}
+					return
 				}
-				if i+2 >= len(lines) || !strings.Contains(lines[i+1], "Tools: Read, Bash") || strings.TrimSpace(lines[i+2]) != "" {
-					t.Fatalf("mode preview is not two lines:\n%s", strings.Join(lines, "\n"))
-				}
-				return
-			}
-			t.Fatalf("mode row not rendered:\n%s", strings.Join(lines, "\n"))
-		})
+				t.Fatalf("mode row not rendered:\n%s", strings.Join(lines, "\n"))
+			})
+		}
 	}
 }

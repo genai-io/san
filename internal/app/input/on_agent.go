@@ -323,10 +323,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 			}
 			if a.ModePreview && a.Tools != "" {
 				toolsLine := "Tools: " + a.Tools
-				for _, line := range wrapAgentToolNames(toolsLine, descLineWidth) {
-					sb.WriteString(subStyle.Render(line))
-					sb.WriteString("\n")
-				}
+				sb.WriteString(subStyle.Render(kit.TruncateText(toolsLine, descLineWidth)))
+				sb.WriteString("\n")
 			}
 		}
 
@@ -341,28 +339,4 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		sb.WriteString(kit.MoreBelow())
 		sb.WriteString("\n")
 	}
-}
-
-// wrapAgentToolNames keeps the selected built-in mode's tool list readable
-// without cutting names at the right edge of the panel.
-func wrapAgentToolNames(list string, width int) []string {
-	parts := strings.Split(list, ", ")
-	lines := make([]string, 0, 2)
-	line := ""
-	for _, part := range parts {
-		next := part
-		if line != "" {
-			next = line + ", " + part
-		}
-		if lipgloss.Width(next) > width && line != "" {
-			lines = append(lines, line)
-			line = part
-		} else {
-			line = next
-		}
-	}
-	if line != "" {
-		lines = append(lines, line)
-	}
-	return lines
 }
