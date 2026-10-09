@@ -272,7 +272,7 @@ func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ strin
 	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120)
 	return toolresult.ToolResult{
 		Success: true,
-		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nStop: /workflow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
+		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nStop: Ctrl+C (when foreground idle) or /workflow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
 			w.Name, id, id, w.CompactProgressView(nil, 120)),
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),

@@ -98,7 +98,7 @@ func (c *SlashCommandController) handleWorkflowCommand(_ context.Context, args s
 	if c.env.SpinnerTickCmd != nil {
 		tick = c.env.SpinnerTickCmd()
 	}
-	return bounds + "\nTask ID: " + id + "\nLive activity: task area (Alt+T) · Stop: /workflow stop " + id, tick, nil
+	return bounds + "\nTask ID: " + id + "\nLive activity: task area (Alt+T) · Stop: Ctrl+C (when idle) or /workflow stop " + id, tick, nil
 }
 
 func (c *SlashCommandController) stopWorkflow(args []string) (string, tea.Cmd, error) {

@@ -99,6 +99,11 @@ The full event trail remains in the task log. The launch notice includes
 `/workflow stop <task-id>`; `/workflow stop` also works when only one workflow
 is running. Stop executes immediately even while the main agent is streaming;
 the scheduler does not start more nodes after cancellation.
+With an empty input and no foreground response, Ctrl+C stops the sole running
+workflow. If several workflows are running, it shows their task IDs so you can
+choose one with `/workflow stop <task-id>`. While the main agent is responding,
+Ctrl+C interrupts that foreground response first. With no running workflow,
+the existing double Ctrl+C shortcut exits San.
 
 A file is parsed when it is run, not at startup: a broken definition is
 reported to whoever tried to run it, and never blocks the session.

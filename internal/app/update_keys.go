@@ -135,6 +135,11 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 			m.userInput.LastCtrlC = time.Time{}
 			return m.handleStreamCancel(), true
 		}
+		if m.hasRunningWorkflow() {
+			m.userInput.LastCtrlC = time.Time{}
+			cmd, _ := m.runSlashCommandIfMatched("/workflow stop")
+			return cmd, true
+		}
 		// Idle with nothing typed: arm exit, never clear — Ctrl+L and /clear do that.
 		now := time.Now()
 		if !m.userInput.LastCtrlC.IsZero() && now.Sub(m.userInput.LastCtrlC) < ctrlCExitWindow {
@@ -202,6 +207,18 @@ func (m *model) handleTextareaShortcut(msg tea.KeyMsg) (tea.Cmd, bool) {
 	// via KeyMap.InsertNewline — see newTextarea.
 
 	return nil, false
+}
+
+func (m *model) hasRunningWorkflow() bool {
+	if m.services.Task == nil {
+		return false
+	}
+	for _, bg := range m.services.Task.ListRunning() {
+		if bg.GetStatus().AgentName == "workflow" {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *model) cycleThinkingEffort() tea.Cmd {
