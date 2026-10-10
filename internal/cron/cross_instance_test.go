@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestOtherWindowDoesNotResurrectDeletedJob(t *testing.T) {
@@ -62,7 +63,7 @@ func TestUnrelatedSaveKeepsOtherWindowsSchedule(t *testing.T) {
 	b := instanceOn(t, path)
 	a.mu.Lock()
 	a.jobs[job.ID].FiredCount = 7
-	a.dirtyDurable[job.ID] = true
+	a.durableChanges[job.ID] = true
 	err = a.saveDurableLocked()
 	a.mu.Unlock()
 	if err != nil {
@@ -80,10 +81,11 @@ func TestUnrelatedSaveKeepsOtherWindowsSchedule(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, got := range jobs {
-		if got.ID == job.ID && got.FiredCount != 7 {
-			t.Fatalf("other window's schedule overwritten: %+v", got)
+		if got.ID == job.ID && got.FiredCount == 7 {
+			return
 		}
 	}
+	t.Fatal("other window's job was lost or its schedule overwritten")
 }
 
 func TestSaveRefusesCorruptDurableFile(t *testing.T) {
@@ -103,34 +105,46 @@ func TestSaveRefusesCorruptDurableFile(t *testing.T) {
 	}
 }
 
-func TestFailedDeleteKeepsJobForRetry(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
-	s := instanceOn(t, path)
-	job, err := s.Create("*/5 * * * *", "new", true, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	good, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("{broken"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Delete(job.ID); err == nil {
-		t.Fatal("delete hid persistence failure")
-	}
-	if len(s.List()) != 1 {
-		t.Fatal("failed deletion removed the in-memory job")
-	}
-	if err := os.WriteFile(path, good, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Delete(job.ID); err != nil {
-		t.Fatal(err)
-	}
-	if ids := durableIDsOnDisk(t, path); len(ids) != 0 {
-		t.Fatalf("retry left jobs: %v", ids)
+func TestJobDeletionRetriesAfterPersistenceFailure(t *testing.T) {
+	for _, operation := range []string{"Delete", "Tick"} {
+		t.Run(operation, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+			s := instanceOn(t, path)
+			job, err := s.Create("*/5 * * * *", "new", false, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			good, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("{broken"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "Delete" {
+				if err := s.Delete(job.ID); err == nil || s.Empty() {
+					t.Fatal("failed deletion must return an error and retain the job")
+				}
+			} else {
+				job.NextFire = time.Now().Add(-time.Minute)
+				if fired := s.Tick(); len(fired) != 1 || !s.Empty() {
+					t.Fatal("one-shot job must fire once despite persistence failure")
+				}
+			}
+			if err := os.WriteFile(path, good, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "Delete" {
+				if err := s.Delete(job.ID); err != nil {
+					t.Fatal(err)
+				}
+			} else if fired := s.Tick(); len(fired) != 0 {
+				t.Fatal("persistence retry fired the one-shot job twice")
+			}
+			if ids := durableIDsOnDisk(t, path); len(ids) != 0 {
+				t.Fatalf("retry left jobs: %v", ids)
+			}
+		})
 	}
 }
 

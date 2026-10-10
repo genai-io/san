@@ -96,7 +96,7 @@ func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responde
 		}
 	}()
 
-	var out shellOutput
+	var out outputCapture
 	var pending bytes.Buffer
 	answers := 0
 	stoppedAnswering := false

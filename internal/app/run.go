@@ -169,7 +169,7 @@ func runPrint(userMessage, personaName string) error {
 	if err != nil {
 		return err
 	}
-	params, err := printBuildParams(cwd, personaName)
+	params, err := buildPrintParams(cwd, personaName)
 	if err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func runPrint(userMessage, personaName string) error {
 	return nil
 }
 
-func printBuildParams(cwd, personaName string) (agentpkg.BuildParams, error) {
+func buildPrintParams(cwd, personaName string) (agentpkg.BuildParams, error) {
 	settings, err := setting.LoadForCwd(cwd)
 	if err != nil {
 		return agentpkg.BuildParams{}, err

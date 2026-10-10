@@ -3,10 +3,8 @@ package cron
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -48,19 +46,19 @@ type Job struct {
 // Session-only jobs are cleared when the process exits.
 // Durable jobs persist to storagePath across sessions.
 type Scheduler struct {
-	mu           sync.RWMutex
-	jobs         map[string]*Job
-	storagePath  string // file path for durable job persistence (empty = disabled)
-	knownDurable map[string]bool
-	dirtyDurable map[string]bool // true: upsert, false: delete
+	mu             sync.RWMutex
+	jobs           map[string]*Job
+	storagePath    string // file path for durable job persistence (empty = disabled)
+	knownDurable   map[string]bool
+	durableChanges map[string]bool // true: upsert, false: delete
 }
 
 // NewScheduler creates a new in-memory *Scheduler.
 func NewScheduler() *Scheduler {
 	return &Scheduler{
-		jobs:         make(map[string]*Job),
-		knownDurable: make(map[string]bool),
-		dirtyDurable: make(map[string]bool),
+		jobs:           make(map[string]*Job),
+		knownDurable:   make(map[string]bool),
+		durableChanges: make(map[string]bool),
 	}
 }
 
@@ -103,10 +101,10 @@ func (s *Scheduler) Create(cronExpr, prompt string, recurring, durable bool) (*J
 	s.jobs[job.ID] = job
 
 	if durable {
-		s.dirtyDurable[job.ID] = true
+		s.durableChanges[job.ID] = true
 		if err := s.saveDurableLocked(); err != nil {
 			delete(s.jobs, job.ID)
-			delete(s.dirtyDurable, job.ID)
+			delete(s.durableChanges, job.ID)
 			return nil, err
 		}
 	}
@@ -123,18 +121,17 @@ func (s *Scheduler) Delete(id string) error {
 	if !ok {
 		return fmt.Errorf("cron: job %q not found", id)
 	}
-	wasDurable := job.Durable
-	wasDirty, hadDirty := s.dirtyDurable[id]
+	previousChange, hadChange := s.durableChanges[id]
 	delete(s.jobs, id)
 
-	if wasDurable {
-		s.dirtyDurable[id] = false
+	if job.Durable {
+		s.durableChanges[id] = false
 		if err := s.saveDurableLocked(); err != nil {
 			s.jobs[id] = job
-			if hadDirty {
-				s.dirtyDurable[id] = wasDirty
+			if hadChange {
+				s.durableChanges[id] = previousChange
 			} else {
-				delete(s.dirtyDurable, id)
+				delete(s.durableChanges, id)
 			}
 			return err
 		}
@@ -175,15 +172,11 @@ func (s *Scheduler) Tick() []FiredJob {
 	now := time.Now()
 	var fired []FiredJob
 	var toDelete []string
-	changed := false
 
 	for _, job := range s.jobs {
 		// Check expiry
 		if !job.ExpiresAt.IsZero() && now.After(job.ExpiresAt) {
 			toDelete = append(toDelete, job.ID)
-			if job.Durable {
-				changed = true
-			}
 			continue
 		}
 
@@ -200,8 +193,7 @@ func (s *Scheduler) Tick() []FiredJob {
 		job.LastFired = now
 		job.FiredCount++
 		if job.Durable {
-			changed = true
-			s.dirtyDurable[job.ID] = true
+			s.durableChanges[job.ID] = true
 		}
 
 		if !job.Recurring {
@@ -224,14 +216,12 @@ func (s *Scheduler) Tick() []FiredJob {
 
 	for _, id := range toDelete {
 		if s.jobs[id].Durable {
-			s.dirtyDurable[id] = false
+			s.durableChanges[id] = false
 		}
 		delete(s.jobs, id)
 	}
-	if changed {
-		if err := s.saveDurableLocked(); err != nil {
-			log.Logger().Error("cron: persist durable jobs", zap.Error(err))
-		}
+	if err := s.saveDurableLocked(); err != nil {
+		log.Logger().Error("cron: persist durable jobs", zap.Error(err))
 	}
 
 	return fired
@@ -282,23 +272,23 @@ func (s *Scheduler) Add(job Job) error {
 	}
 
 	previous := s.jobs[j.ID]
-	wasDirty, hadDirty := s.dirtyDurable[j.ID]
+	previousChange, hadChange := s.durableChanges[j.ID]
 	wasKnown := s.knownDurable[j.ID]
 	s.jobs[j.ID] = j
 
 	if j.Durable {
 		delete(s.knownDurable, j.ID)
-		s.dirtyDurable[j.ID] = true
+		s.durableChanges[j.ID] = true
 		if err := s.saveDurableLocked(); err != nil {
 			if previous != nil {
 				s.jobs[j.ID] = previous
 			} else {
 				delete(s.jobs, j.ID)
 			}
-			if hadDirty {
-				s.dirtyDurable[j.ID] = wasDirty
+			if hadChange {
+				s.durableChanges[j.ID] = previousChange
 			} else {
-				delete(s.dirtyDurable, j.ID)
+				delete(s.durableChanges, j.ID)
 			}
 			s.knownDurable[j.ID] = wasKnown
 			return err
@@ -319,7 +309,7 @@ func (s *Scheduler) Reset() {
 	defer s.mu.Unlock()
 	for id, job := range s.jobs {
 		if job.Durable {
-			s.dirtyDurable[id] = false
+			s.durableChanges[id] = false
 		}
 	}
 	s.jobs = make(map[string]*Job)
@@ -345,17 +335,9 @@ func (s *Scheduler) LoadDurable() error {
 		return nil
 	}
 
-	data, err := os.ReadFile(s.storagePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("cron: failed to read durable jobs: %w", err)
-	}
-
 	var jobs []*Job
-	if err := json.Unmarshal(data, &jobs); err != nil {
-		return fmt.Errorf("cron: failed to parse durable jobs: %w", err)
+	if err := atomicfile.ReadJSON(s.storagePath, &jobs); err != nil {
+		return fmt.Errorf("cron: load durable jobs: %w", err)
 	}
 
 	now := time.Now()
@@ -445,7 +427,7 @@ func estimateRecurringPeriod(expr *expression, base time.Time) time.Duration {
 // Apply only local mutations to the latest shared file; stale jobs must not
 // undo another window's deletion or scheduling update.
 func (s *Scheduler) saveDurableLocked() error {
-	if s.storagePath == "" || len(s.dirtyDurable) == 0 {
+	if s.storagePath == "" || len(s.durableChanges) == 0 {
 		return nil
 	}
 	return atomicfile.WithLock(s.storagePath+".lock", func() error {
@@ -460,13 +442,13 @@ func (s *Scheduler) saveDurableLocked() error {
 			}
 			onDisk[job.ID] = job
 		}
-		for id, present := range s.dirtyDurable {
+		for id, present := range s.durableChanges {
 			if !present {
 				delete(onDisk, id)
-			} else if !s.knownDurable[id] || onDisk[id] != nil {
-				if job := s.jobs[id]; job != nil && job.Durable {
-					onDisk[id] = job
-				}
+				continue
+			}
+			if job := s.jobs[id]; job != nil && job.Durable && (!s.knownDurable[id] || onDisk[id] != nil) {
+				onDisk[id] = job
 			}
 		}
 		durable = make([]*Job, 0, len(onDisk))
@@ -482,10 +464,10 @@ func (s *Scheduler) saveDurableLocked() error {
 				delete(s.jobs, id)
 			}
 		}
-		for id := range s.dirtyDurable {
+		for id := range s.durableChanges {
 			s.knownDurable[id] = true
 		}
-		clear(s.dirtyDurable)
+		clear(s.durableChanges)
 		return nil
 	})
 }

@@ -381,7 +381,7 @@ func TestLoadDurable_OneShotPastDueFiresOnNextTick(t *testing.T) {
 
 	store.mu.Lock()
 	store.jobs[job.ID].NextFire = time.Now().Add(-2 * time.Hour)
-	store.dirtyDurable[job.ID] = true
+	store.durableChanges[job.ID] = true
 	err = store.saveDurableLocked()
 	store.mu.Unlock()
 	if err != nil {

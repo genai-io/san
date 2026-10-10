@@ -32,7 +32,7 @@ func TestPrintUsesEffectiveToolAndPermissionSettings(t *testing.T) {
 	persona.SetDefault(persona.NewRegistry(cwd))
 	t.Cleanup(func() { persona.SetDefault(old) })
 	for _, name := range []string{"", "restricted"} {
-		params, err := printBuildParams(cwd, name)
+		params, err := buildPrintParams(cwd, name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,7 +53,7 @@ func TestPrintUsesEffectiveToolAndPermissionSettings(t *testing.T) {
 			}
 		}
 	}
-	if _, err := printBuildParams(cwd, "missing"); err == nil {
+	if _, err := buildPrintParams(cwd, "missing"); err == nil {
 		t.Fatal("unknown persona accepted")
 	}
 }

@@ -139,7 +139,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	}
 	cmd.WaitDelay = 5 * time.Second
 
-	var stdout, stderr shellOutput
+	var stdout, stderr outputCapture
 	// Count output as it streams so the UI can show a live line counter; when
 	// nothing is listening, tee returns the bare buffer and this costs nothing.
 	progress := &outputProgress{report: tool.BashProgressFromContext(ctx)}
@@ -160,8 +160,8 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		err = nil
 	}
 
-	output := stdout.Decoded()
-	errOutput := stderr.Decoded()
+	output := stdout.String()
+	errOutput := stderr.String()
 
 	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount())
 }
@@ -175,19 +175,14 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		fullOutput += errOutput
 	}
 
-	// Count lines
 	if lineCount < 0 && fullOutput != "" {
 		lineCount = strings.Count(strings.TrimSuffix(fullOutput, "\n"), "\n") + 1
 	} else if lineCount < 0 {
 		lineCount = 0
 	}
 
-	// Truncate if too long
-	truncated := false
-	if len(fullOutput) > maxShellOutputBytes {
-		fullOutput = truncateShellOutput(fullOutput)
-		truncated = true
-	}
+	truncated := len(fullOutput) > maxShellOutputBytes
+	fullOutput = truncateShellOutput(fullOutput)
 
 	// Build CC-compatible structured response for hooks
 	hookResponse := map[string]any{
@@ -351,7 +346,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		defer outputPipe.Close()
 		drained := make(chan struct{})
 		go func() {
-			copyTaskOutput(bgTask, outputPipe)
+			streamTaskOutput(bgTask, outputPipe)
 			close(drained)
 		}()
 		err := cmd.Wait()

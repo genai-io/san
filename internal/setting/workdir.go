@@ -77,7 +77,7 @@ func cleanPath(path string) string {
 	return filepath.Clean(path)
 }
 
-// resolvePath resolves symlinks in a path. Returns the cleaned path on error.
+// resolvePath follows symlinks, retaining the original path on error.
 func resolvePath(path string) string {
 	resolved, err := atomicfile.ResolvePath(path)
 	if err != nil {

@@ -123,17 +123,12 @@ func (s *Data) confirmationPromptReason(toolName string, args map[string]any, se
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
 		if toolName == "Edit" || toolName == "Write" {
-			if fp, ok := filePathArg(args); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
+			if fp, ok := args["file_path"].(string); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
 				return "outside working directory", false
 			}
 		}
 	}
 	return "", false
-}
-
-func filePathArg(args map[string]any) (string, bool) {
-	fp, ok := args["file_path"].(string)
-	return fp, ok
 }
 
 // ModeDefault is step 7 of the permission pipeline: the decision for a tool
@@ -274,7 +269,7 @@ func BuildRule(toolName string, args map[string]any) string {
 		}
 
 	case "Read", "Write", "Edit":
-		if fp, ok := filePathArg(args); ok {
+		if fp, ok := args["file_path"].(string); ok {
 			argStr = fp
 		}
 
@@ -618,7 +613,7 @@ func RecoverableReason(toolName string, args map[string]any) string {
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
-		if fp, ok := filePathArg(args); ok {
+		if fp, ok := args["file_path"].(string); ok {
 			if reason := isSensitivePath(fp); reason != "" {
 				return reason
 			}

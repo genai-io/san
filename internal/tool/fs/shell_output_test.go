@@ -14,18 +14,18 @@ import (
 	"github.com/genai-io/san/internal/task"
 )
 
-func TestShellOutputStaysBoundedWhileCountingFullStream(t *testing.T) {
-	var out shellOutput
+func TestOutputCaptureStaysBoundedWhileCountingFullStream(t *testing.T) {
+	var out outputCapture
 	chunk := []byte(strings.Repeat("中文\n", 20000))
 	for range 10 {
 		if n, err := out.Write(chunk); err != nil || n != len(chunk) {
 			t.Fatalf("write = %d, %v", n, err)
 		}
 	}
-	if len(out.Bytes()) > maxShellOutputBytes+1 || out.total != int64(len(chunk)*10) || out.LineCount() != 200000 {
-		t.Fatalf("retained = %d, total = %d, lines = %d", len(out.Bytes()), out.total, out.LineCount())
+	if out.buf.Len() > maxShellOutputBytes+1 || out.LineCount() != 200000 {
+		t.Fatalf("retained = %d, lines = %d", out.buf.Len(), out.LineCount())
 	}
-	if got := truncateShellOutput(out.Decoded()); !utf8.ValidString(got) || !strings.Contains(got, "truncated") {
+	if got := truncateShellOutput(out.String()); !utf8.ValidString(got) || !strings.Contains(got, "truncated") {
 		t.Fatalf("bad truncated UTF-8: %q", got[len(got)-40:])
 	}
 }
