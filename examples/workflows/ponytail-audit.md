@@ -1,65 +1,214 @@
 ---
 name: ponytail-audit
-description: 只读审计指定范围的正确性、安全、负载、测试、性能和冗余代码；给出有证据的排序报告
+description: >
+  Quality audit of a whole repo: bugs, security holes, what breaks under real
+  load, risky code without tests, slow paths, and what to delete, merge or
+  split. Ranked, each finding explained in plain English. One-shot report,
+  changes nothing. Use for "audit this codebase", "review the whole repo",
+  "find bloat", "what can I delete", /workflow run ponytail-audit scope=.
 max_parallel: 3
 ---
 
 ```mermaid
 flowchart LR
-  map --> bugs & risk & lean --> report
+  understand_repo --> correctness & safety & maintainability --> verify_findings --> report
 ```
 
-## map
+## understand_repo
 mode: explore
 
-只读调查 {{input.scope}}。scope 为 . 时审计整个仓库；也可以是一个目录或包。不要修改文件。
-先读 README、构建和部署配置、依赖清单、入口（main、路由、处理器、后台作业、CLI）以及测试。判断这里的预期负载是单人脚本，还是多用户、多进程服务，并明确写出假设。
-沿主要路径追踪输入、存储和输出；优先看用户输入、认证、金额、数据写入、后台作业和跨进程共享状态。仓库很大时，深入检查出错代价最高的路径，并列出尚未读到的部分。
+Understand the repository, its scope, expected load, and main data flows.
 
-输出一份简洁的地图，包含：仓库做什么、审计范围、预期负载、入口与关键数据流、高风险路径、未检查的范围。附关键文件路径。只做地图，不在这一步写审计结论。
+Audit the whole repo like the senior developer who just inherited it and
+will be paged when it breaks. Order of importance: correct, safe, holds under
+load, tested, fast, lean. Lean still matters: every extra line must be read,
+tested and fixed later. This is a report the user asked for, so give it in full.
 
-## bugs
+### 1. Map first
+
+- Audit what the user names: a folder, a package, or the whole repo.
+  Nothing named: the whole repo.
+- Read the README, the deploy and build config, the dependency list, the
+  entry points (main, routes, handlers, jobs, CLI commands) and the tests.
+- Find the expected load: one person running a script, or many users and
+  processes at once. Judge scale against that, and say which load you assumed.
+- Trace the main flows end to end: where data comes in, what is stored,
+  what goes out. Read those paths fully: input from users, money, auth,
+  data writes, background jobs, anything shared between processes.
+- Big repo: go deep where a mistake costs the most, not file by file. Say
+  which parts you did not read.
+
+Workflow handoff: This node covers understanding only. The requested scope is
+{{input.scope}}; `.` means the whole repository, and an empty scope means
+nothing was named. Change no code. Return the repo's purpose, scope, assumed
+load, entry points, main data flows, costly failure paths, key file locations,
+and what you did not read. The parallel checks will use this context.
+
+## correctness
 mode: explore
 
-审计 {{input.scope}} 的正确性。先使用这份地图定位关键路径：
-{{map}}
+Check bugs and risky logic without a test that catches failures.
 
-查错误结果、崩溃、空值和边界值、时间与舍入问题，以及调用方与函数契约不一致、同一规则在不同路径上实现不同的情况。沿关键数据流读完整的相关路径。
-每个候选问题必须有具体触发输入或情境、可核对的 file:line 证据、影响、最小修复办法，以及不修复的后果。没有具体复现路径就不要报。只读，不改代码；没有发现可复现问题就明确说出。
+### 2. Look for — bugs and missing tests
 
-## risk
+1. **Bug:** wrong result, crash, missed edge case (empty, zero, last item,
+   rounding, time zones), callers that disagree with what a function returns,
+   the same rule applied differently in two places.
+
+4. **Missing test:** risky logic (a branch, a parser, money, security, data
+   writes) with no test that fails when it breaks. One good test, not coverage.
+
+Workflow handoff: Inspect the relevant source and existing tests using the
+repo context below. Change no code. Return candidate findings with a concrete
+input or situation, file:line evidence, the smallest fix, and the consequence
+of skipping it. Say which paths you checked and which you could not check;
+if you found nothing, say so. Evidence is verified in the next node.
+
+Repo context:
+{{understand_repo}}
+
+## safety
 mode: explore
 
-审计 {{input.scope}} 的安全、数据完整性和预期负载。以地图中的负载假设和关键路径为准：
-{{map}}
+Check security, data integrity, and failures at the expected load.
 
-检查注入、弱随机数、泄露的秘密、缺失的输入检查、吞掉的错误、错误的写入顺序和缺失的事务；再查并发下的先检查后写入、每个进程重复执行的工作、无限增长的内存或列表、逐项查询、明显的 O(n²) 热路径，以及本应共享却只保存在进程内的状态。
-每个候选问题必须给出实际触发情境、file:line 证据、影响、最小修复办法和不修复的后果。只报告会在预期负载下发生的问题，不把单人脚本的假想规模当作故障。只读，不改代码；没有发现可复现问题就明确说出。
+### 2. Look for — risk and scale
 
-## lean
+2. **Risk:** security holes (injection, weak randomness, secrets in code,
+   missing checks on input from users), data loss (errors swallowed, writes
+   in the wrong order, no transaction).
+
+3. **Scale:** fine for one user, wrong for many: check-then-write races, the
+   same work done by every process, memory or lists that only grow, a query
+   per item, O(n^2) on big input, per-process state that must be shared.
+
+Workflow handoff: Inspect the relevant source using the repo context and its
+assumed load below. Change no code. Return candidate findings with a concrete
+input or situation, file:line evidence, the smallest fix, and the consequence
+of skipping it. Say which paths you checked and which you could not check;
+if you found nothing, say so. Evidence is verified in the next node.
+
+Repo context:
+{{understand_repo}}
+
+## maintainability
 mode: explore
 
-审计 {{input.scope}} 中高风险逻辑的测试、实际慢路径与冗余代码。先看地图：
-{{map}}
+Check real slowdowns and code to delete, reuse, replace, merge, or split.
 
-找缺少一个能在逻辑出错时失败的测试的解析器、分支、安全检查或数据写入；找真正影响使用的慢路径；找可删的死代码和无用选项、重复 helper、标准库已经能完成的工作、只有一个实现的多余抽象，以及因混合了不同职责而难以理解的函数。
-说某段代码“未使用”之前，必须搜索整个仓库，包括测试、配置、fixture、字符串引用和动态调用。标有 ponytail: 注释且说明限制的捷径，只有在预期负载越过限制时才算问题。每条都要有具体情境、file:line 证据、最小修复办法和不修复的后果。不要提出纯风格意见；倾向于能删代码的修复。只读，不改代码；没有可靠发现就明确说出。
+### 2. Look for — speed and lean code
+
+5. **Speed:** big slowdowns are problems. Small wins (work repeated in a hot
+   loop) are suggestions; some software counts every millisecond.
+
+6. **Lean:** code that should not exist or should be smaller.
+   - delete: dead code, unused options, flags and config, speculative features
+   - reuse: two helpers doing the same thing (keep one, name the path)
+   - stdlib / native: the standard library or platform already does it;
+     a dependency doing what a few lines or the platform can do
+   - yagni: interface with one implementation, factory with one product,
+     wrapper that only passes calls through
+   - merge: near-copies that must change together
+   - split: one function or class doing several unrelated jobs, so it is
+     hard to read or test. Split by job, never by line count, and never into
+     helpers that exist only to make a function shorter.
+
+Workflow handoff: Inspect the relevant source using the repo context below.
+Change no code. Return candidate findings with a concrete input or situation,
+file:line evidence, the smallest fix, and the consequence of skipping it.
+For lean findings, include supported estimates of removable lines and
+unneeded dependencies. Say which paths you checked and which you could not
+check; if you found nothing, say so. Evidence is verified in the next node.
+
+Repo context:
+{{understand_repo}}
+
+## verify_findings
+mode: explore
+
+Verify concrete triggers and source evidence before accepting findings.
+
+### 3. Check before you report
+
+- Every finding needs a concrete case: "this input or situation leads to this
+  wrong result". No case, no finding.
+- Before calling code unused, grep the whole tree for it, including tests,
+  fixtures, config, and string or dynamic references.
+- A shortcut marked with a `shortcut:` (or older `ponytail:`) comment that names its limit is a
+  decision, not a finding, unless the expected load already crosses it.
+- Propose the smallest fix that works. Prefer fixes that delete code. Never
+  add layers, frameworks or config the problem does not need.
+- No style taste, no "consider", no vague worries.
+
+Workflow handoff: Re-read the cited source and trace each claimed trigger.
+Change no code. Deduplicate the three sets of candidates and discard claims
+that fail these checks. Rank valid findings by correct, safe, holds under
+load, tested, fast, lean. Keep at most 20 findings and say how many smaller
+ones were left out. Return the verified findings, their categories, supported
+lean estimates, and the combined list of unexamined or unrun checks. Preserve
+the assumed load. Only the report node writes the user-facing report.
+
+Repo context:
+{{understand_repo}}
+
+Bugs and missing tests:
+{{correctness}}
+
+Risk and scale:
+{{safety}}
+
+Speed and lean code:
+{{maintainability}}
 
 ## report
 mode: explore
 
-把地图和三份独立审计合成一份完整的英文报告：
+Write the complete audit report from verified findings.
 
-地图：{{map}}
+### 4. Output
 
-正确性：{{bugs}}
+Very simple English: short sentences, everyday words. Explain a technical
+term the first time you use it. The reader may never have seen this code.
 
-安全与负载：{{risk}}
+Start with `What this repo does:` in two or three sentences, and the load
+you assumed.
 
-测试、性能与精简：{{lean}}
+Then the findings in three groups, most important first, skip empty groups:
+- **Must fix:** bug, security, data loss, breaks at the expected load.
+- **Should fix:** risky code without a test, real slowness, duplication, a
+  function that mixes jobs, code that should not exist.
+- **Nice to have:** small speed-ups, shorter forms.
 
-报告前重新核对每条候选结论的源码位置和触发情境；对“未使用”的判断重新搜索整个仓库。去重，删除没有具体情境或证据的推测。按正确、安全、预期负载、测试、速度、精简的优先级排序。最多 20 条；如舍弃了更小的问题，注明数量。不要修改文件。
+Number findings across all groups, so the user can say "fix 2 and 5". At
+most 20 findings; if you left smaller ones out, say how many.
+Every finding has all four parts, each one or two short sentences:
 
-用简单、短句的英文。开头写 `What this repo does:`，用两三句话说明仓库用途与负载假设。随后只输出非空的 **Must fix**、**Should fix**、**Nice to have** 组，所有组共用连续编号。每条包含加粗标题与 `file:line`，以及各一两句的 **What this is:**、**Problem:**、**Fix:**、**If we skip it:**。修复建议优先选择能删除代码的最小办法，不增添不必要的框架或配置。
+2. **Orders land on the wrong day** (`billing/close_day.py:L40-52`)
+   - **What this is:** At midnight this job closes the day and bills all orders of that day.
+   - **Problem:** It takes "today" from the server clock, which runs in UTC. An order placed
+     at 00:30 in Berlin is billed on the day before.
+   - **Fix:** Compute the day once in the shop's time zone:
+     `datetime.now(ZoneInfo("Europe/Berlin")).date()`. One line, nothing else changes.
+   - **If we skip it:** Late orders show the wrong date, and accounting fixes them by hand.
 
-结尾写一行 `Verdict:`。只有精简发现有可核实的估算时才写 `Lean: -<N> lines, -<M> dependencies possible.`；最后写 `Not checked:` 并列出实际未检查或无法运行的部分。若没有可靠发现，只写 `What this repo does:`、`Healthy. Nothing to fix.` 和检查范围的一行说明。
+End with:
+- `Verdict:` one line: healthy, or what to fix first.
+- `Lean: -<N> lines, -<M> dependencies possible.` when lean findings exist.
+- `Not checked:` the parts you did not read or could not run.
+
+Nothing found: `What this repo does:`, then `Healthy. Nothing to fix.` and
+one line on what you checked.
+
+One-shot report, changes no code.
+
+Workflow handoff: Write the full report using only the verified findings and
+repo context below. Follow the original format above, including empty-group
+omission, continuous numbering, the 20-finding limit, the four parts per
+finding, lean totals when lean findings exist, and the nothing-found format.
+Change no code. Do not invent findings or turn this into a summary.
+
+Repo context:
+{{understand_repo}}
+
+Verified findings:
+{{verify_findings}}

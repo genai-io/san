@@ -116,11 +116,25 @@ reported to whoever tried to run it, and never blocks the session.
 ### Try a full repository audit
 
 [`examples/workflows/ponytail-audit.md`](../../examples/workflows/ponytail-audit.md)
-is a read-only audit adapted from a senior-developer review prompt. It first
-maps the requested scope and expected load, then starts three independent
-checks for bugs, safety and scale, and tests, speed and lean code. A final
-node verifies the evidence, ranks at most 20 findings, and writes the report.
-The run uses five subagent turns, with three checks running in parallel:
+preserves the original `ponytail-audit` instructions in a read-only workflow.
+It keeps all six check categories, the evidence rules, the report format and
+its example. The instructions are split into six subagent turns:
+
+- `understand_repo`: establish the scope, assumed load, entry points and main
+  data flows; record high-risk paths and unread areas.
+- `correctness`: check bugs and risky logic without a useful test.
+- `safety`: check security, data loss and failures at the expected load.
+- `maintainability`: check real slowness and code to delete, reuse, replace
+  with native features, merge or split.
+- `verify_findings`: re-read evidence, confirm concrete triggers, search all
+  references before declaring code unused, deduplicate and rank findings.
+- `report`: write the full report in the original simple-English format,
+  including the three groups, continuous numbering, four parts per finding,
+  verdict, lean totals and unexamined areas.
+
+The three checks run in parallel after `understand_repo`. Verification waits
+for all three, then hands accepted findings to `report`. Every node runs in
+`explore` mode and changes no code. To install the self-contained example:
 
 ```bash
 mkdir -p .san/workflows
@@ -129,11 +143,10 @@ cp examples/workflows/ponytail-audit.md .san/workflows/ponytail-audit.md
 
 In the TUI, use `/workflow show ponytail-audit` to inspect the structure,
 then `/workflow run ponytail-audit scope=.` for the whole repository, or
-`scope=internal/workflow` for one package. The task view shows `bugs`, `risk`,
-and `lean` as separate concurrent agents; the final `report` starts after
-all three settle. The task log keeps their full tool activity. The earlier
-`demo` only exercises graph rendering, so this example better shows the
-parallel work and evidence handoff.
+`scope=internal/workflow` for one package. The task view names each stage by
+its job, so concurrent checks and the separate verification step are visible.
+The task log keeps their full tool activity. The example embeds its prompts;
+installing a separate Ponytail skill is not required.
 
 ## Fanning out over a plan
 

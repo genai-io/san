@@ -152,16 +152,24 @@ func TestPonytailAuditExampleHasParallelChecksAndJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	turns, _ := w.Bounds()
-	if turns != 5 || len(w.Nodes) != 5 || w.MaxParallel != 3 {
+	if turns != 6 || len(w.Nodes) != 6 || w.MaxParallel != 3 {
 		t.Fatalf("audit demo shape: turns=%d nodes=%d parallel=%d", turns, len(w.Nodes), w.MaxParallel)
 	}
-	for _, id := range []string{"bugs", "risk", "lean"} {
-		n, ok := w.Node(id)
-		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "map" {
-			t.Errorf("%s is not an independent check after map", id)
+	for _, n := range w.Nodes {
+		if n.Config["mode"] != "explore" {
+			t.Errorf("%s is not read-only", n.ID)
 		}
 	}
-	if report, ok := w.Node("report"); !ok || len(report.Upstream()) != 3 {
-		t.Fatal("report does not join all three checks")
+	for _, id := range []string{"correctness", "safety", "maintainability"} {
+		n, ok := w.Node(id)
+		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "understand_repo" {
+			t.Errorf("%s is not an independent check after understand_repo", id)
+		}
+	}
+	if verify, ok := w.Node("verify_findings"); !ok || len(verify.Upstream()) != 3 {
+		t.Fatal("verification does not join all three checks")
+	}
+	if report, ok := w.Node("report"); !ok || len(report.Upstream()) != 1 || report.Upstream()[0].From != "verify_findings" {
+		t.Fatal("report does not wait for verified findings")
 	}
 }
