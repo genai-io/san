@@ -310,10 +310,12 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 	}
 
 	if details, ok := data.Details.(toolresult.FileChangeDetails); ok {
-		block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, nestedBodyPrefix)
-		sb.WriteString(block)
-		if details.TruncatedDiffLines > 0 {
-			sb.WriteString(truncatedStyle.Render(fmt.Sprintf(nestedBodyPrefix+"… diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+		if !data.CollapseDiff {
+			block, _ := renderStoredFileDiffIndented(details.UnifiedDiff, width, 0, nestedBodyPrefix)
+			sb.WriteString(block)
+			if details.TruncatedDiffLines > 0 {
+				sb.WriteString(truncatedStyle.Render(fmt.Sprintf(nestedBodyPrefix+"… diff truncated (%d more lines)", details.TruncatedDiffLines)) + "\n")
+			}
 		}
 		sb.WriteString(renderNestedToolTrailer(fileChangeSummary(details), toolResultStyle))
 		return sb.String()
@@ -442,6 +444,9 @@ func renderFileChangeResultInline(data ToolResultData) string {
 
 	var sb strings.Builder
 	sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  %s → %s", toolResultIcon(false), data.ToolName, summary)) + "\n")
+	if data.CollapseDiff {
+		return sb.String()
+	}
 
 	width := data.Width
 	if width <= 0 {

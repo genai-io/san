@@ -161,6 +161,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case ctrlOSingleTickMsg:
 		return m, m.handleCtrlOSingleTick()
+	case historyLoadedMsg:
+		m.historyLoaded(msg)
+		return m, nil
 	case ctrlCExpiredMsg:
 		// A later press re-armed the window; its own tick will disarm it.
 		if time.Since(m.userInput.LastCtrlC) >= ctrlCExitWindow {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // numberedLines builds n distinguishable, single-row lines.
@@ -14,6 +15,68 @@ func numberedLines(n int) []string {
 		lines[i] = "line-" + string(rune('A'+i%26)) + "-" + strings.Repeat("x", i%3)
 	}
 	return lines
+}
+
+func TestTranscriptToolsNavigateAndExpandIndependently(t *testing.T) {
+	var h TranscriptViewer
+	renders := [2]int{}
+	entries := []TranscriptEntry{{Render: func(int, bool) string { return "prompt\n" }}}
+	for i := range 2 {
+		entries = append(entries, TranscriptEntry{Label: string(rune('A' + i)), Tool: true, Render: func(width int, expanded bool) string {
+			renders[i]++
+			if expanded {
+				return string(rune('A'+i)) + " body\n" + strings.Repeat("output\n", 40)
+			}
+			return string(rune('A'+i)) + " summary\n"
+		}})
+	}
+	h.EnterEntries(entries, 80, 24)
+	if !strings.Contains(h.Render(), "tool 2/2 · B") || !strings.Contains(h.Render(), "B body") {
+		t.Fatal("the latest tool should open expanded")
+	}
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if !strings.Contains(h.Render(), "tool 1/2 · A") || !strings.Contains(ansi.Strip(h.Render()), "› A summary") {
+		t.Fatal("left should select the previous tool")
+	}
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !h.entries[1].expanded || !h.entries[2].expanded || renders != [2]int{2, 1} {
+		t.Fatal("expansion should re-render only the selected tool")
+	}
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if h.entries[1].expanded || !h.entries[2].expanded {
+		t.Fatal("collapsing one result should leave the other expanded")
+	}
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
+	if h.selected != 1 {
+		t.Fatal("tool navigation must clamp at the last tool")
+	}
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if len(h.entries) != 0 || len(h.tools) != 0 || len(h.offsets) != 0 {
+		t.Fatal("close must release source callbacks and rendered caches")
+	}
+}
+
+func TestTranscriptEntryResizeRerendersAtNewWidth(t *testing.T) {
+	var h TranscriptViewer
+	h.EnterEntries([]TranscriptEntry{{Label: "中文文件", Tool: true, Render: func(width int, expanded bool) string {
+		if !expanded {
+			return "summary"
+		}
+		return ansi.Wrap(strings.Repeat("中文 text ", 40), width-1, " ")
+	}}}, 80, 24)
+	h.Resize(30, 14)
+	if h.body.PastBottom() {
+		t.Fatal("resizing should keep the viewport within its content")
+	}
+	for _, line := range strings.Split(h.Render(), "\n") {
+		if ansi.StringWidth(line) > 30 {
+			t.Fatalf("narrow terminal has an overflowing line: %q", line)
+		}
+	}
+	if rows := strings.Count(h.Render(), "\n") + 1; rows != 12 {
+		t.Fatalf("resized viewer has %d rows, want 12", rows)
+	}
 }
 
 func TestTranscriptViewerEnterAndCancel(t *testing.T) {
@@ -66,6 +129,11 @@ func TestTranscriptViewerClampsScroll(t *testing.T) {
 func TestTranscriptViewerShortBodyHasNoScrollRange(t *testing.T) {
 	var h TranscriptViewer
 	h.Enter("t", []string{"only"}, 80, 24)
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyLeft})
+	h.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyRight})
+	if !strings.Contains(h.Render(), "only") {
+		t.Fatal("tool navigation must leave static content intact")
+	}
 	if strings.Contains(h.hint(), " of ") {
 		t.Fatalf("a body that fits should not report a position: %q", h.hint())
 	}

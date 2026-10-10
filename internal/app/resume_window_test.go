@@ -90,9 +90,6 @@ func TestApplyResumeWindowSeedsCommittedCount(t *testing.T) {
 	if m.conv.CommittedCount != 7 {
 		t.Fatalf("CommittedCount = %d, want 7 (the snapped window start)", m.conv.CommittedCount)
 	}
-	if m.conv.ResumeWindowStart != 7 {
-		t.Fatalf("ResumeWindowStart = %d, want 7", m.conv.ResumeWindowStart)
-	}
 	if notice := m.conv.Messages[7]; notice.Role != core.ChatNotice || !strings.Contains(notice.Content, "7 messages earlier") {
 		t.Fatalf("the window must open with a notice of what it skipped, got %+v", notice)
 	}
@@ -117,8 +114,7 @@ func TestApplyResumeWindowStaysSilentWhenNothingIsSkipped(t *testing.T) {
 }
 
 // The replay commits only the window, and opens it with the count it skipped —
-// once. ResumeWindowStart has to stay put after the replay prints, because
-// /history reads it for the rest of the session.
+// once. The skipped messages remain available in the history viewer.
 func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1) // window = [assistant c, result c], 7 skipped
@@ -140,10 +136,6 @@ func TestResumeReplayPrintsOnlyTheWindowAndAnnouncesTheRest(t *testing.T) {
 		if strings.Contains(payload, old) {
 			t.Fatalf("message %q is outside the window but was printed: %q", old, payload)
 		}
-	}
-	if m.conv.ResumeWindowStart != 7 {
-		t.Fatalf("ResumeWindowStart = %d after the replay, want 7 — /history reads it later",
-			m.conv.ResumeWindowStart)
 	}
 
 	// A second commit (the next turn ending) must not repeat the notice.
@@ -182,38 +174,22 @@ func TestResumeReplayOfNothingPrintsTheNoticeOnce(t *testing.T) {
 	}
 }
 
-// /history reads the skipped prefix through ResumeWindowStart, which indexes
-// into Messages. Anything that shortens the transcript must not turn the viewer
-// into a slice panic, and an empty prefix must report nothing to show rather
-// than opening an empty frame.
-func TestRenderSkippedMessages(t *testing.T) {
+// History includes both the skipped prefix and the printed resume window.
+func TestHistoryIncludesResumedMessages(t *testing.T) {
 	m := commitTestModel(longTranscript()...)
 	m.applyResumeWindow(1)
 
-	title, lines := m.renderSkippedMessages()
-	if len(lines) == 0 {
-		t.Fatal("the skipped prefix should render")
+	var rendered strings.Builder
+	for _, entry := range m.historyEntries(m.conv.Messages) {
+		rendered.WriteString(entry.Render(80, true))
 	}
-	if !strings.Contains(title, "7 messages") {
-		t.Fatalf("title = %q, want the skipped count", title)
-	}
-	joined := ansi.Strip(strings.Join(lines, "\n"))
-	for _, want := range []string{"prompt a", "out a", "prompt b", "out b"} {
+	joined := ansi.Strip(rendered.String())
+	for _, want := range []string{"prompt a", "out a", "prompt b", "out b", "thinking about c", "out c"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("the skipped prefix is missing %q", want)
 		}
 	}
-	if strings.Contains(joined, "thinking about c") {
-		t.Error("the window is on screen, not skipped, and must not be repeated in /history")
-	}
-
-	// A transcript that shrank under the bound must clamp, not panic.
-	m.conv.Messages = m.conv.Messages[:2]
-	if _, lines := m.renderSkippedMessages(); len(lines) == 0 {
-		t.Fatal("a clamped prefix should still render")
-	}
-	m.conv.Messages = nil
-	if _, lines := m.renderSkippedMessages(); lines != nil {
-		t.Fatalf("nothing to show should report nothing, got %d lines", len(lines))
+	if m.conv.CommittedCount != 7 || len(m.flush.pendingPrints) != 0 {
+		t.Fatal("rendering history changed scrollback state")
 	}
 }

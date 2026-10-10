@@ -238,6 +238,10 @@ func (m *model) handleCtrlO() tea.Cmd {
 		m.userInput.Approval.TogglePreview()
 		return nil
 	}
+	if !m.conv.Stream.Active {
+		m.userInput.LastCtrlO = time.Time{}
+		return m.openHistory()
+	}
 
 	now := time.Now()
 	if !m.userInput.LastCtrlO.IsZero() && now.Sub(m.userInput.LastCtrlO) < ctrlODoubleTapWindow {
@@ -256,6 +260,12 @@ func (m *model) handleCtrlOSingleTick() tea.Cmd {
 		return nil
 	}
 	m.userInput.LastCtrlO = time.Time{}
+	if _, active := m.activeOverlay(); active {
+		return nil
+	}
+	if !m.conv.Stream.Active {
+		return m.openHistory()
+	}
 	m.conv.ToggleMostRecentExpandable()
 	return nil
 }

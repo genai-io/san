@@ -404,6 +404,41 @@ invariant 6 covers the rewrap arithmetic the redraw depends on.
 `commitAllMessages()`. Only the replay window is committed — earlier messages are
 kept but never printed, and `/history` reads them (see `resumeWindowMessages`).
 
+## Inspecting completed tool results
+
+Native scrollback stays immutable. Idle Ctrl+O and `/history` instead open the
+existing transcript overlay in the alternate screen. `model_history.go` reads
+`session.Store.LoadHistory` asynchronously; the transcript projector follows the
+same selected parent chain as resume but continues past compaction boundaries.
+The normal conversion and tool-result blob hydration also apply. Before a
+transcript has been saved, the current conversation supplies the view. Other
+read failures are displayed instead of silently hiding older history.
+
+The app supplies one rendered entry per message or tool call to
+`input.TranscriptViewer`, using `RenderSingleMessage`, `RenderToolCalls` and
+`RenderToolResultInline`. Streaming commit offsets are cleared on the display
+copy. Parallel results pair by call ID and expand independently. The viewer
+starts at the latest tool, expanded; Left/Right selects a tool, Enter toggles
+its result, and the usual scrolling keys navigate the full conversation.
+Changing terminal width re-renders entries at the new width. Scroll and tool
+selection reuse rendered lines; expansion re-renders only the selected entry.
+The viewer wraps any remaining overlong lines before caching rows and offsets,
+so every part of the output is reachable by vertical scrolling. Edit and Write
+diffs also follow the viewer's expansion state; native scrollback still prints
+their complete stored diffs.
+
+The viewer owns only temporary selection, expansion and rendered lines. Closing
+releases them and restores the original prompt and cursor. A generation token
+discards asynchronous loads after close/reopen. Neither loading nor navigation
+changes `CommittedCount`, native print queues, the model's context or execution
+state. New messages appear the next time the viewer opens. No setting or new
+dependency is required.
+
+Regression coverage lives in `model_history_test.go`,
+`input/transcript_view_test.go`, `session/history_test.go` and the transcript
+projector tests: completed and resumed results, independent parallel expansion,
+compaction, persisted full output, resize, stale loads and input preservation.
+
 ## File pointers
 
 | Concern | File |
@@ -416,4 +451,5 @@ kept but never printed, and `/history` reads them (see `resumeWindowMessages`).
 | Compact / agent activity / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go), [`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go), [`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
 | `MDRenderer` lifecycle | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
+| History inspection | [`internal/app/model_history.go`](../../internal/app/model_history.go), [`internal/app/input/transcript_view.go`](../../internal/app/input/transcript_view.go) |
 | Resize | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |

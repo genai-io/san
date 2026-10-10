@@ -60,7 +60,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		SetActivePersona:        m.setActivePersona,
 		RenameSession:           m.renameSession,
 		GroupCommand:            m.groupCommand,
-		RenderSkippedMessages:   m.renderSkippedMessages,
+		OpenHistory:             m.openHistory,
 	}
 }
 
