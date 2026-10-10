@@ -1,16 +1,20 @@
 package app
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -22,6 +26,136 @@ func flushTestModel(msg core.ChatMessage) *model {
 	m := &model{env: env{Width: 80}, conv: conv.NewModel(80)}
 	m.conv.Messages = []core.ChatMessage{msg}
 	return m
+}
+
+func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "Recent reply stays visible."}}
+	m.CommitMessages()
+	if m.conv.CommittedCount != 1 || len(m.flush.pendingPrints) != 0 {
+		t.Fatal("short reply should settle without a native print")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("committing hid the recent reply")
+	}
+	for _, line := range m.flush.visible {
+		if len(line) > 0 && isPadding(&line[len(line)-1]) {
+			t.Fatal("retained rows carry full-width padding into the live frame")
+		}
+	}
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+	if len(m.flush.pendingPrints) != 0 || !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("resize hid or unnecessarily printed the recent reply")
+	}
+
+	// Shrinking height hands only the oldest physical rows to native history.
+	m.queueScrollbackPrint(strings.Repeat("older row\n", 12)+"LATEST-REPLY", 0)
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 10})
+	footer, _ := m.renderFooter("")
+	if len(m.flush.visible) > 10-rowCount(footer) || len(m.flush.pendingPrints) == 0 {
+		t.Fatal("resize did not bound the retained rows and print overflow")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "LATEST-REPLY") {
+		t.Fatal("shrinking the terminal hid the latest reply")
+	}
+}
+
+func TestClearDiscardsRecentSettledRows(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.services.Agent = &agent.Session{}
+	m.services.Reminder = reminder.NewService()
+	m.queueScrollbackPrint("OLD-REPLY", 0)
+	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
+		t.Fatal("clear command was not handled")
+	}
+	if len(m.flush.visible) != 0 || strings.Contains(m.View().Content, "OLD-REPLY") {
+		t.Fatal("clear resurrected a retained reply")
+	}
+}
+
+func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.services.Agent = &agent.Session{}
+	m.services.Reminder = reminder.NewService()
+	var rows []string
+	for i := 0; i < 19; i++ {
+		rows = append(rows, fmt.Sprintf("OLD-%02d", i))
+	}
+	m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if len(m.flush.pendingPrints) == 0 {
+		t.Fatal("suggestions did not displace the retained reply")
+	}
+	oldID := m.flush.pendingPrints[0].id
+	_, wipe, handled := m.executeCommand(context.Background(), "/clear")
+	if !handled || wipe == nil || strings.Contains(m.View().Content, "OLD-") {
+		t.Fatal("clear left queued content in the managed view")
+	}
+	if _, cmd := m.Update(scrollbackPrintReadyMsg{id: oldID}); cmd != nil {
+		t.Fatal("clear allowed a delayed ready message to print old content")
+	}
+	m.queueScrollbackPrint(strings.Repeat("NEW-REPLY\n", 30), 0)
+	newID := m.flush.pendingPrints[0].id
+	if newID <= oldID {
+		t.Fatal("clear reused a print identity")
+	}
+	if _, ok := m.prepareScrollbackPrint(newID); !ok {
+		t.Fatal("new conversation did not start printing")
+	}
+	m.Update(scrollbackPrintDoneMsg{id: oldID})
+	if m.flush.pendingPrints[0].id != newID || m.flush.frameForPrint == nil {
+		t.Fatal("old completion changed the new conversation's print")
+	}
+}
+
+func TestSettledReplyReflowsAfterNarrowingAndWidening(t *testing.T) {
+	for _, text := range []string{
+		"LEFT-" + strings.Repeat("x", 60) + "-RIGHT\nsecond hard line",
+		"\x1b[31m" + strings.Repeat("中文🙂 ", 8) + "END\x1b[0m\nsecond hard line",
+	} {
+		m := fixedComposerModel(80, 24)
+		m.queueScrollbackPrint(text, 0)
+		before := m.View().Content
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+		if strings.Contains(ansi.Strip(m.View().Content), ansi.Strip(strings.Split(text, "\n")[0])) {
+			t.Fatal("fixture did not wrap at the narrow width")
+		}
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 80, Height: 24})
+		if got := m.View().Content; got != before {
+			t.Fatalf("80 -> 40 -> 80 changed settled output:\nbefore: %q\nafter: %q", before, got)
+		}
+	}
+}
+
+func TestSettledLineReflowsAfterPartialHistoryHandoff(t *testing.T) {
+	for _, text := range []string{strings.Repeat("0123456789", 30), "\x1b[31mL" + strings.Repeat("中🙂", 80) + "END\x1b[0m"} {
+		m := fixedComposerModel(80, 7)
+		m.queueScrollbackPrint(text, 0)
+		if len(m.flush.pendingPrints) != 1 {
+			t.Fatal("long line did not overflow into history")
+		}
+		printed := strings.ReplaceAll(ansi.Strip(m.flush.pendingPrints[0].remaining), "\n", "")
+		retained := ansi.Strip(renderScrollbackLines(m.flush.visible))
+		if printed+retained != ansi.Strip(text) || strings.Contains(retained, "\n") {
+			t.Fatalf("partial handoff lost text or stored soft wraps: printed=%q, retained=%q", printed, retained)
+		}
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 160, Height: 7})
+		if got := ansi.Strip(m.View().Content); !strings.Contains(got, retained) {
+			t.Fatalf("widening did not rejoin the retained suffix: %q", got)
+		}
+	}
+}
+
+func TestLiveOutputMovesCompletedReplyIntoHistory(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.queueScrollbackPrint("SETTLED-REPLY", 0)
+	m.conv.Stream.Active = true
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "```text\n" + strings.Repeat("live output\n", 30)}}
+	m.Update(tea.KeyReleaseMsg{})
+	if len(m.flush.visible) != 0 || len(m.flush.pendingPrints) != 1 ||
+		!strings.Contains(m.flush.pendingPrints[0].remaining, "SETTLED-REPLY") {
+		t.Fatal("growing live output hid settled text without queuing it for history")
+	}
 }
 
 // applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
@@ -415,7 +549,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	// has not started is not drawn: it would be a second copy of content that is
 	// still waiting for its own Println.
 	liveFrame := "LIVE_EDIT_ACTIVITY\n" + strings.Repeat("\n", 12) + "INPUT_SENTINEL\nFOOTER_SENTINEL"
-	managed := m.renderChatSection(liveFrame, "")
+	managed := m.renderChatSection(liveFrame)
 	if !strings.Contains(managed, "BASH_RESULT_SENTINEL") {
 		t.Fatalf("managed frame lost the in-flight handoff copy: %q", managed)
 	}

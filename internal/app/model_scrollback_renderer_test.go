@@ -2,6 +2,9 @@ package app
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -9,6 +12,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/ActiveState/vt10x"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/reminder"
 )
 
 const (
@@ -410,5 +418,361 @@ func runNativeHistoryCommits(t *testing.T, m *nativeHistoryModel) {
 			t.Fatalf("terminal rows are not FIFO at %q:\n%s", row, all)
 		}
 		previous = at
+	}
+}
+
+type fixedComposerCommitMsg string
+
+type clearScrollbackBeginMsg struct{}
+type clearScrollbackSettledMsg struct{}
+
+type clearScrollbackRendererModel struct {
+	*model
+	started bool
+	settled chan struct{}
+}
+
+func (m *clearScrollbackRendererModel) Init() tea.Cmd { return nil }
+
+func (m *clearScrollbackRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	ack := func() tea.Msg { return clearScrollbackSettledMsg{} }
+	switch msg := msg.(type) {
+	case clearScrollbackBeginMsg:
+		var rows []string
+		for i := 0; i < 100; i++ {
+			rows = append(rows, fmt.Sprintf("OLD-%02d", i))
+		}
+		print := m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+		m.queueScrollbackPrint(strings.Repeat("OLD-QUEUED\n", 30), 0)
+		if m.started {
+			id := m.flush.pendingPrints[0].id
+			content, _ := m.prepareScrollbackPrint(id)
+			print = tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: id} })
+		}
+		_, wipe, _ := m.executeCommand(context.Background(), "/clear")
+		return m, tea.Sequence(wipe, print)
+	case scrollbackPrintReadyMsg:
+		content, ok := m.prepareScrollbackPrint(msg.id)
+		if !ok {
+			return m, ack
+		}
+		return m, tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} })
+	case scrollbackPrintDoneMsg:
+		next := m.finishScrollbackPrint(msg.id)
+		if len(m.flush.pendingPrints) > 0 {
+			return m, next
+		}
+		return m, tea.Sequence(next, ack)
+	case clearScrollbackSettledMsg:
+		select {
+		case m.settled <- struct{}{}:
+		default:
+		}
+		return m, nil
+	default:
+		_, cmd := m.model.Update(msg)
+		return m, cmd
+	}
+}
+
+func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
+	for _, started := range []bool{false, true} {
+		t.Run(fmt.Sprintf("started=%v", started), func(t *testing.T) {
+			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
+			m.services.Agent = &agent.Session{}
+			m.services.Reminder = reminder.NewService()
+			m.userInput.Textarea.SetValue("LIVE-DRAFT")
+			terminal := newTerminalHistoryState(80, 24)
+			output := &synchronizedOutput{writes: make(chan struct{}, 1)}
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(io.MultiWriter(terminal, output)),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+				tea.WithFPS(60), tea.WithWindowSize(80, 24))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Errorf("stop clear model: %v", err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping clear model")
+				}
+			}()
+			if !output.WaitFor("LIVE-DRAFT", 3*time.Second) {
+				t.Fatal("initial composer did not render")
+			}
+			program.Send(clearScrollbackBeginMsg{})
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("clear did not finish")
+			}
+			fullClear := ansi.CursorHomePosition + ansi.EraseEntireScreen + ansi.EraseEntireDisplay
+			if !output.WaitFor(fullClear, 3*time.Second) {
+				t.Fatal("terminal wipe did not reach the output")
+			}
+			trace := output.String()
+			wipe := strings.LastIndex(trace, fullClear)
+			if wipe < 0 || strings.LastIndex(trace, "OLD-") > wipe {
+				t.Fatalf("old content printed after the terminal wipe: %q", trace)
+			}
+			if (!started && strings.Contains(trace, "OLD-")) || strings.Contains(trace, "OLD-99") || strings.Contains(trace, "OLD-QUEUED") {
+				t.Fatalf("clear printed canceled content: %q", trace)
+			}
+			_, screen := terminal.snapshot()
+			if strings.Contains(screen, "OLD-") {
+				t.Fatalf("old content survived clear:\n%s", screen)
+			}
+		})
+	}
+}
+
+func TestTallWorkflowKeepsNativeCursorInComposer(t *testing.T) {
+	m := &fixedComposerRendererModel{model: fixedComposerModel(80, 24), settled: make(chan struct{}, 1)}
+	addTallWorkflowActivity(t, m.model)
+	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
+	terminal := newTerminalHistoryState(80, 24)
+	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+		tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+		tea.WithFPS(60), tea.WithWindowSize(80, 24))
+	done := make(chan error, 1)
+	go func() { _, err := program.Run(); done <- err }()
+	defer func() {
+		program.Quit()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("stop workflow model: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			program.Kill()
+			<-done
+			t.Error("timed out stopping workflow model")
+		}
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		_, screen := terminal.snapshot()
+		if strings.Contains(screen, "COMPOSER-LIVE") {
+			terminal.mu.Lock()
+			_, y := terminal.state.Cursor()
+			terminal.mu.Unlock()
+			if y != 21 || !strings.Contains(strings.Split(screen, "\n")[y], "COMPOSER-LIVE") {
+				t.Fatalf("workflow moved cursor outside composer to row %d:\n%s", y, screen)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for workflow composer:\n%s", screen)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+type fixedComposerRendererModel struct {
+	*model
+	settled chan struct{}
+}
+
+func (m *fixedComposerRendererModel) Init() tea.Cmd { return nil }
+
+func (m *fixedComposerRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case fixedComposerCommitMsg:
+		cmd := m.queueScrollbackPrint(string(msg), 0)
+		if cmd == nil {
+			m.settled <- struct{}{}
+		}
+		return m, cmd
+	case scrollbackPrintReadyMsg:
+		content, ok := m.prepareScrollbackPrint(msg.id)
+		if ok {
+			return m, tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} })
+		}
+	case scrollbackPrintDoneMsg:
+		cmd := m.finishScrollbackPrint(msg.id)
+		if len(m.flush.pendingPrints) == 0 {
+			m.settled <- struct{}{}
+		}
+		return m, cmd
+	default:
+		_, cmd := m.model.Update(msg)
+		return m, cmd
+	}
+	return m, nil
+}
+
+func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
+	for _, candidates := range []int{2, 8} {
+		t.Run(fmt.Sprintf("%d candidates", candidates), func(t *testing.T) {
+			const width, height = 80, 24
+			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
+			if candidates == 8 {
+				m.userInput.Suggestions = suggest.NewState(func(string) []suggest.Suggestion {
+					var items []suggest.Suggestion
+					for i := 0; i < candidates; i++ {
+						items = append(items, suggest.Suggestion{Name: fmt.Sprintf("command%d", i), Description: "Show commands"})
+					}
+					return items
+				})
+			}
+			terminal := newTerminalHistoryState(width, height)
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+				tea.WithFPS(60), tea.WithWindowSize(width, height))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Errorf("stop fixed composer model: %v", err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping fixed composer model")
+				}
+			}()
+			waitFor := func(markers ...string) (string, string) {
+				t.Helper()
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					history, screen := terminal.snapshot()
+					found := true
+					for _, marker := range markers {
+						found = found && strings.Contains(screen, marker)
+					}
+					if found {
+						return history, screen
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %q:\n%s", markers, screen)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitFor("❭")
+			var rows []string
+			for i := 0; i < 19; i++ {
+				rows = append(rows, fmt.Sprintf("SETTLED-%02d", i))
+			}
+			program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("timed out settling the initial replies")
+			}
+			waitFor("SETTLED-00", "SETTLED-18")
+			program.Send(tea.KeyPressMsg{Code: '/', Text: "/"})
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("timed out printing rows displaced by suggestions")
+			}
+			history, screen := waitFor("Show commands", "SETTLED-18")
+			all := history + "\n" + screen
+			previous := -1
+			for _, row := range rows {
+				at := strings.Index(all, row)
+				if strings.Count(all, row) != 1 || at <= previous {
+					t.Fatalf("menu opening lost, duplicated, or reordered %q:\n%s", row, all)
+				}
+				previous = at
+			}
+			if strings.Contains(history, "❭") || strings.Contains(history, "Show commands") {
+				t.Fatalf("composer or suggestions leaked into history:\n%s", history)
+			}
+			terminal.mu.Lock()
+			_, y := terminal.state.Cursor()
+			terminal.mu.Unlock()
+			if y != height-3 {
+				t.Fatalf("menu moved the composer cursor to row %d", y)
+			}
+		})
+	}
+}
+
+// Exercise the real padded View and its print geometry, not a stand-in frame.
+func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
+	const width, height = 80, 24
+	m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
+	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
+	terminal := newTerminalHistoryState(width, height)
+	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+		tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+		tea.WithFPS(60), tea.WithWindowSize(width, height))
+	done := make(chan error, 1)
+	go func() { _, err := program.Run(); done <- err }()
+	defer func() {
+		program.Quit()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("stop fixed composer model: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			program.Kill()
+			<-done
+			t.Error("timed out stopping fixed composer model")
+		}
+	}()
+	waitFor := func(marker string) (string, string) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			history, screen := terminal.snapshot()
+			if strings.Contains(screen, marker) && strings.Contains(screen, "COMPOSER-LIVE") {
+				terminal.mu.Lock()
+				_, y := terminal.state.Cursor()
+				terminal.mu.Unlock()
+				if y == height-3 {
+					return history, screen
+				}
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %q with composer at bottom:\n%s", marker, screen)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	waitFor("COMPOSER-LIVE")
+	waitForCommit := func() {
+		t.Helper()
+		select {
+		case <-m.settled:
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for the native print queue to drain")
+		}
+	}
+	program.Send(fixedComposerCommitMsg("REPLY-000"))
+	waitForCommit()
+	history, _ := waitFor("REPLY-000")
+	if strings.Contains(history, "REPLY-000") {
+		t.Fatal("short reply should remain visible")
+	}
+	var rows []string
+	for i := 1; i <= height*2; i++ {
+		rows = append(rows, fmt.Sprintf("REPLY-%03d", i))
+	}
+	program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
+	waitForCommit()
+	history, screen := waitFor(rows[len(rows)-1])
+	all := history + "\n" + screen
+	previous := -1
+	for _, row := range append([]string{"REPLY-000"}, rows...) {
+		at := strings.Index(all, row)
+		if strings.Count(all, row) != 1 || at <= previous {
+			t.Fatalf("reply missing, duplicated, or out of order at %q:\n%s", row, all)
+		}
+		previous = at
+	}
+	if strings.Contains(history, "COMPOSER-LIVE") {
+		t.Fatalf("input leaked into native history:\n%s", history)
 	}
 }

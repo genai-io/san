@@ -1,8 +1,7 @@
 // Window resize handling. handleWindowResize runs the first time we get a
 // window size (the deferred initial paint), where it commits any resumed
-// conversation. On later width changes there is nothing to recompute: the live
-// tail re-renders at the new width on the next frame, and already-committed
-// scrollback is immutable to us — the terminal rewraps it on its own.
+// conversation. The retained settled rows rewrap here; the active tail renders
+// at the new width next frame. The terminal rewraps native scrollback itself.
 package app
 
 import (
@@ -50,5 +49,5 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	}
 
 	m.userInput.Textarea.SetWidth(msg.Width - 4 - 2)
-	return nil
+	return m.flushVisibleOverflow()
 }

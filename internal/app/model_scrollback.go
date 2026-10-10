@@ -1,7 +1,6 @@
 // Scrollback rendering: convert pending conversation messages into ANSI
-// terminal output and emit them via tea.Println. The bubbletea alt-screen
-// only paints the bottom input area; rendered messages live in the
-// terminal's native scrollback above.
+// terminal output. Recent settled rows stay above the composer; older rows
+// enter the terminal's native scrollback through tea.Println.
 //
 // The frame rule everything here obeys: insertAbove prints above the managed
 // frame, and the inline renderer only redraws the frame's current extent — so
@@ -13,8 +12,7 @@
 package app
 
 import (
-	"github.com/genai-io/san/internal/core"
-
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -22,6 +20,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/app/conv"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 )
 
@@ -87,12 +86,14 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width         int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
-	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
-	frameForPrint *tea.View                // freeze insertAbove geometry until the print completes
+	rendering       bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer        *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width           int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID     uint64                   // monotonic identity for queued scrollback prints
+	pendingPrints   []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	frameForPrint   *tea.View                // freeze insertAbove geometry until the print completes
+	visible         []uv.Line                // unwrapped settled lines not yet in native scrollback
+	clearAfterPrint tea.Cmd                  // wipe only after an already-issued Println finishes
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -242,7 +243,7 @@ func (m *model) handleFlushResult(msg flushResultMsg) tea.Cmd {
 	var cmds []tea.Cmd
 	if msg.printed != "" {
 		// No budget: a streamed block leaves the tail as its rendered self.
-		cmds = append(cmds, m.flush.queueScrollbackPrint(msg.printed, 0))
+		cmds = append(cmds, m.queueScrollbackPrint(msg.printed, 0))
 	}
 	// Catch a block that completed while this one rendered — Stream.Active means
 	// the row is still uncommitted, so it's safe.
@@ -306,7 +307,72 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	if banner := m.takeWelcomeBanner(); banner != "" {
 		parts = append([]string{banner}, parts...)
 	}
-	return []tea.Cmd{m.flush.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)}
+	return []tea.Cmd{m.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)}
+}
+
+// Keep the latest settled rows visible; only overflow enters immutable history.
+func (m *model) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
+	if !m.env.Ready || m.env.Height <= 0 {
+		return m.flush.queueScrollbackPrint(content, frameRows)
+	}
+	m.flush.visible = append(m.flush.visible, scrollbackPhysicalLines(content, 0)...)
+	for i, line := range m.flush.visible {
+		m.flush.visible[i] = trimPadding(line)
+	}
+	return m.flushVisibleOverflow()
+}
+
+// Layout changes must hand settled rows to history before the view crops them.
+func (m *model) flushVisibleOverflow() tea.Cmd {
+	if !m.env.Ready || m.env.Height <= 0 || len(m.flush.visible) == 0 {
+		return nil
+	}
+	footer, _ := m.renderFooter("")
+	bottom := footer
+	params := m.messageRenderParams()
+	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
+		bottom = "\n\n" + ov.Render()
+		params.DockedModalActive = true
+	}
+	bottom = m.renderChatIndicators(m.renderTrackerList(), bottom) + bottom
+	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveContent(params)))
+	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
+	overflow := len(rows) - keep
+	if overflow <= 0 {
+		return nil
+	}
+	for _, row := range rows[:overflow] {
+		m.flush.visible[0] = m.flush.visible[0][len(row):]
+		if len(m.flush.visible[0]) == 0 {
+			m.flush.visible = m.flush.visible[1:]
+		}
+	}
+	if len(m.flush.visible) > 0 {
+		m.flush.visible[0] = slices.Clone(m.flush.visible[0])
+	}
+	m.flush.visible = slices.Clone(m.flush.visible)
+	printed := renderScrollbackLines(rows[:overflow])
+	return m.flush.queueScrollbackPrint(printed, 0)
+}
+
+// Split at cell boundaries without turning soft wraps into stored newlines.
+func wrapScrollbackLines(lines []uv.Line, width int) []uv.Line {
+	if width <= 0 {
+		return slices.Clone(lines)
+	}
+	var rows []uv.Line
+	for _, line := range lines {
+		start, columns := 0, 0
+		for i, cell := range line {
+			if columns+cell.Width > width && i > start {
+				rows = append(rows, line[start:i])
+				start, columns = i, 0
+			}
+			columns += cell.Width
+		}
+		rows = append(rows, line[start:])
+	}
+	return rows
 }
 
 // resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.
@@ -356,20 +422,39 @@ func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
 	return next
 }
 
+func (m *model) clearScrollback(wipe tea.Cmd) tea.Cmd {
+	f := &m.flush
+	f.visible = nil
+	if len(f.pendingPrints) > 0 && f.pendingPrints[0].current != "" {
+		// Cancel future chunks, but keep the frame until the issued insert finishes.
+		f.pendingPrints = slices.Clone(f.pendingPrints[:1])
+		f.pendingPrints[0].remaining = ""
+		f.clearAfterPrint = wipe
+		return nil
+	}
+	f.pendingPrints = nil
+	f.frameForPrint = nil
+	return wipe
+}
+
 func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id {
 		return nil
 	}
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
+	var next tea.Cmd
 	if f.pendingPrints[0].remaining != "" {
-		return printScrollback(id)
+		next = printScrollback(id)
+	} else {
+		f.pendingPrints = f.pendingPrints[1:]
+		if len(f.pendingPrints) > 0 {
+			next = printScrollback(f.pendingPrints[0].id)
+		}
 	}
-	f.pendingPrints = f.pendingPrints[1:]
-	if len(f.pendingPrints) == 0 {
-		return nil
-	}
-	return printScrollback(f.pendingPrints[0].id)
+	wipe := f.clearAfterPrint
+	f.clearAfterPrint = nil
+	return tea.Sequence(wipe, next)
 }
 
 func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
@@ -378,6 +463,14 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	// than the terminal occupies more rows than it has newlines, and counting
 	// the two differently overstates the room above the frame.
 	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
+	if frameFillsScreen(frameHeight, m.env.Height) && m.env.Ready {
+		// Make room for history insertion without hiding the user's draft.
+		separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
+		footer, inputRow := m.renderFooter(separator)
+		frame = tea.NewView(footer)
+		frame.Cursor = m.inputCursor(inputRow)
+		frameHeight = len(scrollbackPhysicalLines(frame.Content, m.env.Width))
+	}
 	content, ok := m.flush.prepareScrollbackPrint(
 		id,
 		m.env.Width,

@@ -7,8 +7,9 @@ Accepted — 2026-09-13.
 ## Context
 
 San draws inline. The managed frame — the live tail plus the input strip —
-is the bottom rows of the terminal's primary screen; everything settled is
-committed above it into the terminal's native scrollback with `tea.Println`.
+is the bottom rows of the terminal's primary screen. Recent settled rows remain
+in a bounded display buffer above the bottom-fixed composer; older rows are
+committed above the managed frame into native scrollback with `tea.Println`.
 Native scrollback is immutable: every row that scrolls through the top of
 the terminal stays there forever, and a row that should not have gone there
 cannot be taken back.
@@ -56,9 +57,11 @@ chunking, resize — keeps all of them or it is wrong.
    `capacity = H − h` in `flushState.prepareScrollbackPrint`; the queue is
    single-flight FIFO so no two inserts interleave.
 
-3. **The frame never has zero rows.** When the real frame leaves no room
-   above it, the print runs under `minimalScrollbackFrame` — one blank row —
-   with `capacity = H − 1`. `insertAbove` positions relative to a frame row;
+3. **The frame never has zero rows.** When the padded frame leaves no room
+   above it, the print runs under the composer footer, measured and frozen
+   before insertion. If that footer also fills the terminal, the fallback is
+   `minimalScrollbackFrame` — one blank row — with `capacity = H − 1`.
+   `insertAbove` positions relative to a frame row;
    a zero-row frame puts the block one row low and leaks a blank row into
    history.
 
@@ -117,10 +120,20 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   replaces `charm.land/bubbletea/v2` with. Bumping upstream means carrying
   the `agent/*` patches forward; dropping one reopens its round of this
   family.
-- Reducing how often a frame fills the screen — committing a tool result the
-  moment it lands instead of showing it live first — would make invariant 3
-  rare rather than routine. It is a separate change; the protocol above holds
-  either way.
+- The normal frame fills the screen to keep the composer stable. A short
+  completed reply stays in the retained display buffer; only its oldest
+  overflowing rows print. Each Update checks overflow against the space left
+  by active content and bottom controls. Retained lines keep their original
+  hard breaks; soft wraps are rebuilt at the current width, including after
+  a partial line enters history. History handoffs temporarily compact the frame
+  to the footer, then restore the padded view. The composer stays present and
+  transient tracker/spinner rows are excluded from the handoff frame.
+- Activity is capped after reserving the composer or docked modal, with the
+  same cap in the view and overflow check, so a tall workflow cannot displace
+  the input cursor or modal options.
+- `/clear` cancels retained rows and future print chunks. An issued chunk keeps
+  its frozen frame until completion, then the terminal wipe precedes new prints.
+  Print IDs stay monotonic so late ready/done messages cannot affect a new queue.
 
 ## References
 

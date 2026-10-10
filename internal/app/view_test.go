@@ -12,7 +12,10 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
+	"github.com/genai-io/san/internal/app/kit/suggest"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/hook"
+	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -20,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/workflow"
 )
 
 func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
@@ -155,6 +159,112 @@ func TestComposerCursorAlignsWithEveryRow(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestComposerStaysAtBottomAcrossLiveUpdates(t *testing.T) {
+	for _, height := range []int{24, 40} {
+		m := fixedComposerModel(80, height)
+		for _, value := range []string{"COMPOSER", "first line\nsecond line", strings.Repeat("中文输入", 30)} {
+			m.userInput.Textarea.SetValue(value)
+			m.userInput.Textarea.CursorEnd()
+			for _, content := range []string{"", "short reply", strings.Repeat("streaming line\n", height*2), "done"} {
+				m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: content}}
+				for _, suggestions := range []bool{false, true} {
+					if suggestions {
+						m.userInput.Suggestions.UpdateSuggestions("/")
+					} else {
+						m.userInput.Suggestions.Reset()
+					}
+					frame, cursor := m.viewString()
+					if cursor == nil || cursor.Position.Y != height-3 {
+						t.Fatalf("height %d, input %q, suggestions %v: cursor = %#v, want row %d:\n%s", height, value, suggestions, cursor, height-3, ansi.Strip(frame))
+					}
+					if rows := rowCount(frame); rows != height {
+						t.Fatalf("frame has %d rows, want %d", rows, height)
+					}
+				}
+			}
+		}
+	}
+}
+
+func fixedComposerModel(width, height int) *model {
+	m := &model{
+		env:  env{Width: width, Height: height, Ready: true},
+		conv: conv.NewModel(width),
+		userInput: input.New("", width, func(string) []suggest.Suggestion {
+			return []suggest.Suggestion{{Name: "help", Description: "Show commands"}, {Name: "history", Description: "Inspect conversation"}}
+		}, input.SelectorDeps{}),
+		services: services{
+			Tracker: todo.NewStore(), Subagent: subagent.NewRegistry(),
+			Setting: &setting.Settings{}, Hook: hook.NewEngine(nil, "", "", ""), LLM: &llm.Conn{},
+		},
+	}
+	m.userInput.Textarea.SetWidth(width - 6)
+	m.userInput.SetTerminalHeight(height)
+	return m
+}
+
+func addTallWorkflowActivity(t *testing.T, m *model) {
+	t.Helper()
+	w, err := workflow.Parse("```mermaid\nflowchart LR\n plan --> review --> merge\n```\n\n## plan\nPlan\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\n\nReview {{item.prompt}}\n\n## merge\nMerge\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []workflow.ActivityEvent
+	for i := 0; i < 8; i++ {
+		events = append(events, workflow.ActivityEvent{
+			Node: "review", Worker: fmt.Sprintf("worker-%d", i),
+			Text: "Read(file.go)", ToolID: fmt.Sprintf("tool-%d", i),
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wf := task.NewAgentTask("workflow-height", "workflow", "review", ctx, cancel, "")
+	wf.SetLiveView(w.ActivityStreamView(events, m.env.Width) + "\n\n" + w.CompactProgressView(nil, m.env.Width))
+	m.services.Task = task.NewManager()
+	m.services.Task.RegisterTask(wf)
+}
+
+func TestActivityReservesComposerAndModalSpace(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	for i := 0; i < 9; i++ {
+		m.services.Tracker.Create(fmt.Sprintf("TASK-%d", i), "", "", nil)
+	}
+	m.userInput.Textarea.SetValue(strings.TrimSuffix(strings.Repeat("draft line\n", 10), "\n"))
+	m.userInput.Textarea.CursorEnd()
+	frame, cursor := m.viewString()
+	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
+		t.Fatalf("tasks displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
+	}
+	addTallWorkflowActivity(t, m)
+	frame, cursor = m.viewString()
+	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
+		t.Fatalf("workflow displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
+	}
+	modal := dockedModalModel(t, "why this command is needed")
+	addTallWorkflowActivity(t, modal)
+	frame, _ = modal.viewString()
+	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+		t.Fatalf("workflow displaced approval options:\n%s", ansi.Strip(frame))
+	}
+}
+
+func TestShortConversationGrowsFromTopWhileActivityStaysDocked(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	for _, content := range []string{"FIRST-ROW", "FIRST-ROW\n\nsecond paragraph"} {
+		m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: content}}
+		frame, cursor := m.renderNormalView("separator", "TRACKER-LIVE")
+		plain := ansi.Strip(frame)
+		first := strings.Index(plain, "FIRST-ROW")
+		if first < 0 || strings.Count(plain[:first], "\n") != 1 {
+			t.Fatalf("short conversation moved from the top:\n%s", plain)
+		}
+		tracker := strings.Index(plain, "TRACKER-LIVE")
+		if tracker < 0 || strings.Count(plain[:tracker], "\n") != cursor.Position.Y-2 {
+			t.Fatalf("activity did not stay above the composer:\n%s", plain)
+		}
 	}
 }
 

@@ -7,10 +7,9 @@
 
 > **"渲染"在这个代码库里的意思是：返回一个字符串。** 所有 `Render*`
 > 函数返回的就是 `string`——ANSI 转义码控制颜色和样式，UTF-8 字符是
-> 内容。没有 off-screen buffer，没有 canvas。Bubble Tea 的 `View()`
-> 返回一个 string，框架把它写到终端；`tea.Println` 接受一个 string，
-> 把它写到 alt-screen 区域之上。下面的"渲染管线"全程都是字符串组装；
-> 真正的"画"是终端干的。
+> 内容。行缓冲区负责换行和保留最近输出。Bubble Tea 的 `View()` 把组合好的
+> 字符串和光标位置包装成 `tea.View`，框架把它写到终端；`tea.Println` 把
+> 字符串写到行内托管帧上方。全屏选择器使用备用屏幕。
 
 ## 心智模型：两块表面
 
@@ -22,26 +21,35 @@ m.conv.Messages = [ msg0, msg1, msg2, msg3 | msg4, msg5 ]
                                             CommittedCount = 4
 
 ┌─ 表面 ───────────────────┬─ 写入方式 ─────────┬─ 内容 ────────────────┐
-│ 终端原生 scrollback       │ tea.Println        │ msg0..msg3            │
-│ （写入即冻结；可以        │ （每条 commit 消息  │ — 已 commit 的消息    │
+│ 终端原生 scrollback       │ tea.Println        │ 较早的已完成输出      │
+│ （写入即冻结；可以        │ （每个溢出块       │ — 已 commit 的消息    │
 │  滚轮翻回去看）           │  调一次）           │                       │
 ├──────────────────────────┼────────────────────┼───────────────────────┤
-│ Bubble Tea 重绘区         │ View()             │ msg4..msg5 +          │
-│ （底部 N 行；每次 Update  │ （每次 Update      │ pending spinner +     │
+│ Bubble Tea 重绘区         │ View()             │ 最近的已完成输出 +    │
+│ （填满终端高度；Update    │ （每次 Update      │ msg4..msg5 + spinner  │
 │  整块重画）               │  都调）             │ 输入条                │
 └──────────────────────────┴────────────────────┴───────────────────────┘
 ```
 
 **流式中**的 assistant 回复待在重绘区，期间 `Stream.Active == true`；
-流完时 `CommitMessages` 调一次 `tea.Println`，把**同一段渲染好的字符串**
-搬到上面的 scrollback。`CommittedCount` 前进一格，重绘区就不再画这条。
-用户看到的是一次视觉过渡，不是重复显示。防止双重渲染的规则在
+流完时 `CommitMessages` 把渲染结果放入最近输出的有界行缓冲区，并推进
+`CommittedCount`，实时消息渲染器不再画这条。只有缓冲区装不下的较早行才
+进入串行 `tea.Println` 队列。短回复结束后仍然显示在固定输入框上方。
+防止过早提交的规则在
 `renderAndCommit(checkReady=true)` 里：`Stream.Active` 为 true 时绝不
 commit 最后一条消息。
 
 **两块表面用同一套渲染函数。** `RenderMessageAt` 产出每条消息的字符串；
-差别只在消息索引范围（scrollback：`0..CommittedCount`；重绘区：
-`CommittedCount..len(Messages)`）。
+差别在消息索引范围（已完成渲染：`0..CommittedCount`；实时渲染：
+`CommittedCount..len(Messages)`）。重绘区还包含最近已完成的行，直接复用
+它们的渲染结果，不会重新渲染对应消息。
+
+缓存保留终端自动换行前的原始行。每次 `Update` 都按实时输出、任务状态、
+候选菜单和底部弹窗占用后的剩余空间，把放不下的已完成内容移入历史打印队列。
+缩放时重新折行这些原始行，因此窗口放宽后会消除缩窄产生的自动换行，保留原本的换行。
+任务状态区只使用为输入框或底部弹窗预留后剩下的行数；显示与历史交接共用这个上限。
+`/clear` 丢弃保留行并取消待打印内容。若一条 `Println` 已经发出，则等它完成后擦除
+终端，再开始新的打印；打印 ID 单调递增，迟到的旧消息不会让清除的输出重新出现。
 
 ## View() 组合出重绘区
 
@@ -49,7 +57,7 @@ commit 最后一条消息。
 `(*model).View()` 每次 `Update` 后都跑一遍，返回重绘区那串字符。
 
 ```go
-func (m *model) View() string {
+func (m *model) View() tea.View {
     //   ^ Go 里 *model 上的方法；`m` 是当前实例
     //     （相当于其它语言的 `this`/`self`）。
     //     整个 codebase 都用 `m` 指代前台 model。
@@ -73,12 +81,13 @@ View()
   3. 有 modal 活动？           ──► modal.Render() 夹在分隔符之间
                                    （Question modal、Approval modal）
   4. 否则（普通模式）         ──► renderNormalView()
-        ├─ chat section        ── conv.RenderActiveContent
-        ├─ 本回合 token 用量
-        ├─ 分隔符
+        ├─ chat section        ── 最近输出 + conv.RenderActiveContent
+        ├─ 留白                ── 短对话从顶部向下增长，位置稳定
+        ├─ 活动状态            ── 任务、压缩和自学习进度
         ├─ 队列预览            ── 流式期间排队的输入
-        ├─ textarea
         ├─ suggestion list     ── /-命令、@-文件名的自动补全
+        ├─ 分隔符
+        ├─ textarea            ── 多行输入向上展开
         ├─ 分隔符
         └─ status line         ── 模型名、token、模式
 ```
@@ -352,19 +361,20 @@ for i in CommittedCount..len(Messages):    // i = 1, 2
          InlinedResults.IsResultInlined(2) = true → return ""    ← 跳过
   if rendered != "": 加到 parts
 
-tea.Println(strings.Join(parts, "\n"))       // 一次 Println，一整块
+m.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)
+                                             // 保留最近行，打印溢出行
 CommittedCount = 3                           // 追上
 ```
 
 屏幕上的变化：
 
-- **Scrollback** 多出一整块：
-  `● 我用 ls 列一下。 / ● Bash(ls) / ⎿ file1 / file2`。冻在那儿。
-- **重绘区** 现在空了（`CommittedCount == len(Messages)`）。
-- 下一次 `View()` 只画底部输入条——等下一条用户消息。
+- **最近输出缓冲区** 多出 assistant 和工具结果这一整块。
+- **实时消息区** 现在空了（`CommittedCount == len(Messages)`）。
+- 下一次 `View()` 仍显示最近输出，输入框固定在底部。
+  较早的溢出行分块进入原生 scrollback。
 
-刚才用户看到一直在增长的同一段字符，现在原原本本住进了 scrollback——
-通过**一次** `tea.Println` 写过去的。`RenderSingleMessage` 里
+刚才一直在增长的字符，结束后仍保持可见，之后只会进入一次原生历史。
+`RenderSingleMessage` 里
 `IsResultInlined` 的 short-circuit 是阻止 ToolResult 被独立 Println
 一遍的关键。
 
@@ -378,6 +388,11 @@ CommittedCount = 3                           // 追上
 终端自己会重排它已经持有的内容，而滚到屏幕顶部的行再也收不回来——见
 [ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md)，
 其不变式 6 覆盖了重画依赖的换行算术。
+
+最近的已完成行尚未进入原生历史。缩放会重排这些渲染行，按输入框上方的
+新空间裁剪缓冲区，只把较早的溢出行加入打印队列。普通视图填满终端高度；
+历史插入期间临时缩为输入区和状态栏组成的底部块。测量并冻结该块，再使用
+原有 FIFO 协议打印，避免把临时界面行滚进历史。
 
 `handleWindowResize` 同时承担**延迟的首次绘制**：第一个 `WindowSizeMsg`
 才把 resume 出来的对话通过 `commitAllMessages()` 提交。只有重放窗口会被
