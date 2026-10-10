@@ -287,14 +287,20 @@ func updateSettingsFile(scope Scope, mutate func(*Data)) error {
 }
 
 // UpdateSelfLearnAt persists the L1 self-learning config at the requested
-// settings level, rewriting only the selfLearn block. Returns Validate's error
-// verbatim if the new config is illegal (§3.1) so the caller can surface it
-// inline before touching disk.
+// settings level, syncing the Evolve tool toggle with the enabled capabilities.
+// Returns Validate's error verbatim if the new config is illegal (§3.1) so the
+// caller can surface it inline before touching disk.
 func UpdateSelfLearnAt(cfg SelfLearnSettings, scope Scope) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	return updateSettingsFile(scope, func(d *Data) { d.SelfLearn = cfg })
+	return updateSettingsFile(scope, func(d *Data) {
+		d.SelfLearn = cfg
+		if d.DisabledTools == nil {
+			d.DisabledTools = make(map[string]bool)
+		}
+		d.DisabledTools["Evolve"] = !cfg.Memory.Enabled && !cfg.Skills.Active()
+	})
 }
 
 // UpdateAutoPilotAt persists the autopilot config at the requested settings
@@ -410,6 +416,11 @@ var defaultDisabledTools = map[string]bool{
 	// its schema is the longest of any tool and lists every saved workflow, and
 	// a model that has it will reach for it where one Agent call would do.
 	"Workflow": true,
+	// Group is opt-in so the default harness stays minimal; /group join turns
+	// it on for the session's time in a group.
+	"Group": true,
+	// Self-learning is opt-in; saving /evolve capabilities enables its trigger.
+	"Evolve": true,
 }
 
 // IsDefaultDisabledTool reports whether the tool ships disabled. The /tool
