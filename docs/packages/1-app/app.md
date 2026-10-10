@@ -135,8 +135,11 @@ buffer, with older output entering the serialized native print queue. Every
 rows reach history before being cropped. The buffer keeps unwrapped source
 lines; resize rewraps them and prints any overflow. Full-height history inserts
 temporarily use the composer footer as their frozen frame, preserving the
-existing print safety protocol. `/clear` discards the retained display rows
-before the terminal wipe. This layout needs no configuration.
+existing print safety protocol. Activity indicators fit within the rows left
+by the composer or docked modal; the view and overflow check share that cap.
+`/clear` discards retained rows and cancels queued prints. An already-issued
+print finishes before the terminal wipe, and stale print messages cannot revive
+cleared output. This layout needs no configuration.
 
 The task tracker above the input shows at most eight task rows and one overflow
 summary. Background work has no fixed heading or repeated executor-kind labels:

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -69,6 +70,41 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	}
 	if len(m.flush.visible) != 0 || strings.Contains(m.View().Content, "OLD-REPLY") {
 		t.Fatal("clear resurrected a retained reply")
+	}
+}
+
+func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.services.Agent = &agent.Session{}
+	m.services.Reminder = reminder.NewService()
+	var rows []string
+	for i := 0; i < 19; i++ {
+		rows = append(rows, fmt.Sprintf("OLD-%02d", i))
+	}
+	m.queueScrollbackPrint(strings.Join(rows, "\n"), 0)
+	m.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if len(m.flush.pendingPrints) == 0 {
+		t.Fatal("suggestions did not displace the retained reply")
+	}
+	oldID := m.flush.pendingPrints[0].id
+	_, wipe, handled := m.executeCommand(context.Background(), "/clear")
+	if !handled || wipe == nil || strings.Contains(m.View().Content, "OLD-") {
+		t.Fatal("clear left queued content in the managed view")
+	}
+	if _, cmd := m.Update(scrollbackPrintReadyMsg{id: oldID}); cmd != nil {
+		t.Fatal("clear allowed a delayed ready message to print old content")
+	}
+	m.queueScrollbackPrint(strings.Repeat("NEW-REPLY\n", 30), 0)
+	newID := m.flush.pendingPrints[0].id
+	if newID <= oldID {
+		t.Fatal("clear reused a print identity")
+	}
+	if _, ok := m.prepareScrollbackPrint(newID); !ok {
+		t.Fatal("new conversation did not start printing")
+	}
+	m.Update(scrollbackPrintDoneMsg{id: oldID})
+	if m.flush.pendingPrints[0].id != newID || m.flush.frameForPrint == nil {
+		t.Fatal("old completion changed the new conversation's print")
 	}
 }
 

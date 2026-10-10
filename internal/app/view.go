@@ -97,7 +97,7 @@ func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView st
 	// the turn is parked on an answer — everything animated holds still.
 	params.DockedModalActive = true
 
-	bottom := m.renderChatIndicators(trackerView) + modal
+	bottom := m.renderChatIndicators(trackerView, modal) + modal
 	return m.chatTailAbove(bottom, params) + bottom
 }
 
@@ -123,7 +123,7 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 	// Render the footer first so the chat section can be capped to whatever
 	// height it leaves free.
 	footer, inputRow := m.renderFooter(separator)
-	indicators := m.renderChatIndicators(trackerView)
+	indicators := m.renderChatIndicators(trackerView, footer)
 	chatSection := m.chatTailAbove(indicators+footer, m.messageRenderParams())
 
 	// The footer's row offsets are relative to its own first line; the chat
@@ -274,8 +274,8 @@ func (m model) renderChatSection(activeContent string) string {
 	return strings.Join(parts, "\n")
 }
 
-// Activity stays above the composer; spare space belongs between it and chat.
-func (m model) renderChatIndicators(trackerView string) string {
+// Activity uses only the rows left by the composer or docked modal.
+func (m model) renderChatIndicators(trackerView, bottom string) string {
 	var parts []string
 
 	if trackerView != "" {
@@ -306,7 +306,7 @@ func (m model) renderChatIndicators(trackerView string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return "\n" + strings.Join(parts, "\n")
+	return tailLines("\n"+strings.Join(parts, "\n"), m.env.Height-strings.Count(bottom, "\n"))
 }
 
 // liveWelcome returns the startup splash for the live view while it is still

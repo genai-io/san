@@ -87,6 +87,7 @@ type SlashCommandEnv struct {
 	ReconfigureAgentTool    func()
 	StopAgentSession        func()
 	ResetAgentSession       func()
+	ClearScrollback         func(tea.Cmd) tea.Cmd
 	FireSessionEnd          func(reason string)
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
 	SpinnerTickCmd          func() tea.Cmd
@@ -325,7 +326,7 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 			return nil
 		})
 	}
-	return "", tea.Sequence(cmds...), nil
+	return "", c.env.ClearScrollback(tea.Sequence(cmds...)), nil
 }
 
 func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) (string, tea.Cmd, error) {

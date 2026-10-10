@@ -128,6 +128,12 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   a partial line enters history. History handoffs temporarily compact the frame
   to the footer, then restore the padded view. The composer stays present and
   transient tracker/spinner rows are excluded from the handoff frame.
+- Activity is capped after reserving the composer or docked modal, with the
+  same cap in the view and overflow check, so a tall workflow cannot displace
+  the input cursor or modal options.
+- `/clear` cancels retained rows and future print chunks. An issued chunk keeps
+  its frozen frame until completion, then the terminal wipe precedes new prints.
+  Print IDs stay monotonic so late ready/done messages cannot affect a new queue.
 
 ## References
 

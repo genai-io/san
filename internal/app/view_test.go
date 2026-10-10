@@ -23,6 +23,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/workflow"
 )
 
 func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
@@ -203,6 +204,51 @@ func fixedComposerModel(width, height int) *model {
 	m.userInput.Textarea.SetWidth(width - 6)
 	m.userInput.SetTerminalHeight(height)
 	return m
+}
+
+func addTallWorkflowActivity(t *testing.T, m *model) {
+	t.Helper()
+	w, err := workflow.Parse("```mermaid\nflowchart LR\n plan --> review --> merge\n```\n\n## plan\nPlan\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\n\nReview {{item.prompt}}\n\n## merge\nMerge\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []workflow.ActivityEvent
+	for i := 0; i < 8; i++ {
+		events = append(events, workflow.ActivityEvent{
+			Node: "review", Worker: fmt.Sprintf("worker-%d", i),
+			Text: "Read(file.go)", ToolID: fmt.Sprintf("tool-%d", i),
+		})
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wf := task.NewAgentTask("workflow-height", "workflow", "review", ctx, cancel, "")
+	wf.SetLiveView(w.ActivityStreamView(events, m.env.Width) + "\n\n" + w.CompactProgressView(nil, m.env.Width))
+	m.services.Task = task.NewManager()
+	m.services.Task.RegisterTask(wf)
+}
+
+func TestActivityReservesComposerAndModalSpace(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	for i := 0; i < 9; i++ {
+		m.services.Tracker.Create(fmt.Sprintf("TASK-%d", i), "", "", nil)
+	}
+	m.userInput.Textarea.SetValue(strings.TrimSuffix(strings.Repeat("draft line\n", 10), "\n"))
+	m.userInput.Textarea.CursorEnd()
+	frame, cursor := m.viewString()
+	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
+		t.Fatalf("tasks displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
+	}
+	addTallWorkflowActivity(t, m)
+	frame, cursor = m.viewString()
+	if rowCount(frame) != m.env.Height || cursor.Position.Y != m.env.Height-3 {
+		t.Fatalf("workflow displaced multiline input: cursor=%#v\n%s", cursor, ansi.Strip(frame))
+	}
+	modal := dockedModalModel(t, "why this command is needed")
+	addTallWorkflowActivity(t, modal)
+	frame, _ = modal.viewString()
+	if rowCount(frame) != modal.env.Height || !strings.Contains(ansi.Strip(frame), "Do you want to proceed?") {
+		t.Fatalf("workflow displaced approval options:\n%s", ansi.Strip(frame))
+	}
 }
 
 func TestShortConversationGrowsFromTopWhileActivityStaysDocked(t *testing.T) {

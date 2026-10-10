@@ -86,13 +86,14 @@ type flushSnapshot struct {
 // conversation block (thinking, content) off the UI goroutine and commits the
 // result to scrollback. See FlushStreamingBlocks and model_scrollback.go.
 type flushState struct {
-	rendering     bool                     // one render in flight at a time, so Printlns stay ordered
-	renderer      *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
-	width         int                      // width the renderer was built for; rebuild when it changes
-	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
-	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
-	frameForPrint *tea.View                // freeze insertAbove geometry until the print completes
-	visible       []uv.Line                // unwrapped settled lines not yet in native scrollback
+	rendering       bool                     // one render in flight at a time, so Printlns stay ordered
+	renderer        *conv.MDRenderer         // background renderer, off the live-view MDRenderer's mutex
+	width           int                      // width the renderer was built for; rebuild when it changes
+	nextPrintID     uint64                   // monotonic identity for queued scrollback prints
+	pendingPrints   []pendingScrollbackPrint // FIFO queue; only the head may be in flight
+	frameForPrint   *tea.View                // freeze insertAbove geometry until the print completes
+	visible         []uv.Line                // unwrapped settled lines not yet in native scrollback
+	clearAfterPrint tea.Cmd                  // wipe only after an already-issued Println finishes
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -327,13 +328,13 @@ func (m *model) flushVisibleOverflow() tea.Cmd {
 		return nil
 	}
 	footer, _ := m.renderFooter("")
-	indicators := m.renderChatIndicators(m.renderTrackerList())
-	bottom := indicators + footer
+	bottom := footer
 	params := m.messageRenderParams()
 	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
-		bottom = indicators + "\n\n" + ov.Render()
+		bottom = "\n\n" + ov.Render()
 		params.DockedModalActive = true
 	}
+	bottom = m.renderChatIndicators(m.renderTrackerList(), bottom) + bottom
 	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveContent(params)))
 	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
 	overflow := len(rows) - keep
@@ -421,20 +422,39 @@ func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
 	return next
 }
 
+func (m *model) clearScrollback(wipe tea.Cmd) tea.Cmd {
+	f := &m.flush
+	f.visible = nil
+	if len(f.pendingPrints) > 0 && f.pendingPrints[0].current != "" {
+		// Cancel future chunks, but keep the frame until the issued insert finishes.
+		f.pendingPrints = slices.Clone(f.pendingPrints[:1])
+		f.pendingPrints[0].remaining = ""
+		f.clearAfterPrint = wipe
+		return nil
+	}
+	f.pendingPrints = nil
+	f.frameForPrint = nil
+	return wipe
+}
+
 func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id {
 		return nil
 	}
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
+	var next tea.Cmd
 	if f.pendingPrints[0].remaining != "" {
-		return printScrollback(id)
+		next = printScrollback(id)
+	} else {
+		f.pendingPrints = f.pendingPrints[1:]
+		if len(f.pendingPrints) > 0 {
+			next = printScrollback(f.pendingPrints[0].id)
+		}
 	}
-	f.pendingPrints = f.pendingPrints[1:]
-	if len(f.pendingPrints) == 0 {
-		return nil
-	}
-	return printScrollback(f.pendingPrints[0].id)
+	wipe := f.clearAfterPrint
+	f.clearAfterPrint = nil
+	return tea.Sequence(wipe, next)
 }
 
 func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
