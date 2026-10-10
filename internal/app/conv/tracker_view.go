@@ -11,10 +11,7 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-// maxVisibleItems caps the rows drawn. The window sits on the newest items,
-// not the oldest, because the list outlives the turn that filled it (see
-// OnTurnEnd): taking from the front would pin the panel to the turn that
-// stalled and hide the work in flight.
+// maxVisibleItems caps task rows; overflow is summarized in one extra row.
 const maxVisibleItems = 8
 
 // trackerPulseTicks is the number of spinner frames per ●/◌ swap of an
@@ -87,21 +84,12 @@ func RenderTrackerList(params TrackerListParams) string {
 	}
 	sb.WriteString("\n")
 
-	// Items stay in ID order so rows hold their place as work advances — no
-	// reshuffle churn. When the list overflows the row budget, the oldest
-	// cleanly-finished items fold into one summary line: active and pending
-	// work, which is what the panel exists to surface, is never hidden.
-	folded := leadingFinishedToFold(params.Items)
-	visible := params.Items[folded:]
-	if folded > 0 {
-		sb.WriteString(renderFoldedLine(folded))
-	}
+	visible, hidden := visibleTrackerItems(params.Items)
+	sb.WriteString(renderFoldedLine(hidden))
 
 	idWidth := itemIDWidth(visible)
 
-	// Classify only the rows actually drawn. Liveness is the expensive input and
-	// the header above does not need it — progress counts finished work, which
-	// no worker can still be advancing.
+	// Query executor liveness only for visible rows; counts use recorded status.
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
 		sb.WriteString(renderItem(t, phase, params.Width, idWidth, params.Blockers, params.Blink, params.AgentColors))
@@ -110,27 +98,60 @@ func RenderTrackerList(params TrackerListParams) string {
 	return sb.String()
 }
 
-// leadingFinishedToFold reports how many items at the front of the list should
-// collapse into a summary line: the contiguous run of cleanly-finished items,
-// capped at the overflow past maxVisibleItems. An aborted/failed item breaks the
-// run, so a failure is never folded out of sight.
-func leadingFinishedToFold(items []*todo.Item) int {
+// visibleTrackerItems keeps the newest items in each priority group, then draws
+// them in their original order. Successful completions yield space first.
+func visibleTrackerItems(items []*todo.Item) ([]*todo.Item, [itemFinished + 1]int) {
+	var hidden [itemFinished + 1]int
 	if len(items) <= maxVisibleItems {
-		return 0
+		return items, hidden
 	}
-	overflow := len(items) - maxVisibleItems
-	folded := 0
-	for folded < overflow && phaseOf(items[folded], false) == itemFinished {
-		folded++
+	for _, t := range items {
+		hidden[phaseOf(t, false)]++
 	}
-	return folded
+	remaining := maxVisibleItems
+	for _, phase := range []itemPhase{itemStalled, itemAborted, itemWaiting, itemFinished} {
+		shown := min(hidden[phase], remaining)
+		hidden[phase] -= shown
+		remaining -= shown
+	}
+
+	skip := hidden
+	visible := make([]*todo.Item, 0, maxVisibleItems)
+	for _, t := range items {
+		phase := phaseOf(t, false)
+		if skip[phase] > 0 {
+			skip[phase]--
+			continue
+		}
+		visible = append(visible, t)
+	}
+	return visible, hidden
 }
 
-// renderFoldedLine renders the collapsed-finished summary row that stands in for
-// the leading run of completed items.
-func renderFoldedLine(n int) string {
+func renderFoldedLine(hidden [itemFinished + 1]int) string {
+	var parts []string
+	for _, group := range []struct {
+		phase itemPhase
+		label string
+	}{
+		{itemStalled, "more in progress"},
+		{itemAborted, "failed/stopped"},
+		{itemWaiting, "more pending"},
+		{itemFinished, "completed"},
+	} {
+		if n := hidden[group.phase]; n > 0 {
+			text := fmt.Sprintf("%d %s", n, group.label)
+			if group.phase == itemAborted {
+				text = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Render(text)
+			}
+			parts = append(parts, text)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
-	return "  " + trackerCompletedStyle.Render("●") + "  " + mutedStyle.Render(fmt.Sprintf("%d completed", n)) + "\n"
+	return "  " + mutedStyle.Render("…  "+strings.Join(parts, ", ")) + "\n"
 }
 
 // itemPhase is how an item reads to the user. It collapses the recorded status,

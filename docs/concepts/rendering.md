@@ -164,11 +164,13 @@ holds, and committed rows cannot be taken back (see Resize below).
 renders the tool-calls block under an assistant message:
 
 ```
-● Bash(npm test)                        ← tool name + summary args
-    ⎿  > vitest run                     ← collapsed result preview
-        ✓ src/foo.test.ts (12)
-        ✓ src/bar.test.ts (8)
-       … 47 more lines (Ctrl-O to expand)
+● Read(src/foo.go)                      ← tool name + summary args
+  └ 128 lines                          ← collapsed result summary
+● Bash(npm test)
+  ┊ > vitest run                       ← expanded output
+  ┊ ✓ src/foo.test.ts (12)
+  ┊ ✓ src/bar.test.ts (8)
+  └ 3 lines
 ```
 
 State that drives it:
@@ -177,13 +179,17 @@ State that drives it:
   until its `ToolResult` arrives. While pending, the tool name shows
   a spinner.
 - **Expanded / collapsed** — per-message `Expanded` flag, toggled by
-  Ctrl-O. Collapsed = preview + line count; expanded = full content.
-- **Error** — `ToolResult.IsError` flips the icon ✓ → ✗ and tints the result.
+  Ctrl-O. Nested Read and shell results collapse to a summary; expanded
+  content shares the summary's connector column.
+- **Error** — nested failures show their diagnostic and a tinted `failed` trailer.
 - **Parallel mode** — when multiple tool calls run in parallel, each
-  call shows its own progress.
+  call shows its own progress. Completion is tracked by call ID, since results
+  arrive in completion order. The batch stays live until every call finishes,
+  then calls and their paired results commit to scrollback together. Cancellation
+  closes only unfinished calls, regardless of their position in the batch.
 
 The pairing between an assistant's tool calls and their result messages
-is precomputed by `PrecomputeInlinedResults(messages)` and lives on
+is precomputed by `PrecomputeInlinedResults(messages, from)` and lives on
 `RenderContext.InlinedResults`. Three lookups consume it:
 
 ```

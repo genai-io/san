@@ -169,9 +169,7 @@ func TestRenderTrackerListVisibility(t *testing.T) {
 	}
 }
 
-// When the list overflows the row budget, the oldest cleanly-finished items
-// fold into one summary line; the active and pending tail — the work still in
-// flight — always stays on screen.
+// Completed rows yield space to unfinished work when the list overflows.
 func TestRenderTrackerListFoldsLeadingFinished(t *testing.T) {
 	tasks := make([]*todo.Item, 0, maxVisibleItems+3)
 	for i := 1; i <= maxVisibleItems+3; i++ {
@@ -201,6 +199,126 @@ func TestRenderTrackerListFoldsLeadingFinished(t *testing.T) {
 	}
 	if !strings.Contains(plain, "3 completed") {
 		t.Fatalf("folded finished items should be summarized, not dropped silently:\n%s", plain)
+	}
+}
+
+func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
+	cases := []struct {
+		name          string
+		count         int
+		status        string
+		overrides     map[int]string
+		wantIDs       []string
+		wantSummaries []string
+	}{
+		{
+			name:    "at the limit",
+			count:   8,
+			status:  todo.StatusInProgress,
+			wantIDs: []string{"1", "2", "3", "4", "5", "6", "7", "8"},
+		},
+		{
+			name:   "interleaved completions",
+			count:  11,
+			status: todo.StatusCompleted,
+			overrides: map[int]string{
+				1: todo.StatusInProgress, 3: todo.StatusInProgress,
+				5: todo.StatusPending, 9: todo.StatusInProgress,
+			},
+			wantIDs:       []string{"1", "3", "5", "7", "8", "9", "10", "11"},
+			wantSummaries: []string{"3 completed"},
+		},
+		{
+			name:          "many running agents",
+			count:         25,
+			status:        todo.StatusInProgress,
+			wantIDs:       []string{"18", "19", "20", "21", "22", "23", "24", "25"},
+			wantSummaries: []string{"17 more in progress"},
+		},
+		{
+			name:          "in progress before pending",
+			count:         11,
+			status:        todo.StatusPending,
+			overrides:     map[int]string{1: todo.StatusInProgress},
+			wantIDs:       []string{"1", "5", "6", "7", "8", "9", "10", "11"},
+			wantSummaries: []string{"3 more pending"},
+		},
+		{
+			name:          "abnormal endings before completions",
+			count:         11,
+			status:        todo.StatusCompleted,
+			overrides:     map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
+			wantIDs:       []string{"1", "2", "3", "4", "8", "9", "10", "11"},
+			wantSummaries: []string{"3 completed"},
+		},
+		{
+			name:          "many failed agents",
+			count:         11,
+			status:        "failed",
+			wantIDs:       []string{"4", "5", "6", "7", "8", "9", "10", "11"},
+			wantSummaries: []string{"3 failed/stopped"},
+		},
+		{
+			name:          "hidden failures stay in the summary",
+			count:         11,
+			status:        todo.StatusInProgress,
+			overrides:     map[int]string{11: "failed"},
+			wantIDs:       []string{"3", "4", "5", "6", "7", "8", "9", "10"},
+			wantSummaries: []string{"2 more in progress", "1 failed/stopped"},
+		},
+	}
+	rowRE := regexp.MustCompile(`\bTask (\d+)\b`)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			items := make([]*todo.Item, 0, tc.count)
+			for i := 1; i <= tc.count; i++ {
+				id := strconv.Itoa(i)
+				status := tc.status
+				if override, ok := tc.overrides[i]; ok {
+					status = override
+				}
+				metadata := map[string]any{
+					"background_task_id":   "bg-" + id,
+					"background_task_type": "agent",
+				}
+				switch status {
+				case "failed", "killed", "stopped", todo.StatusDetailInterrupted:
+					metadata["background_status_detail"] = status
+					status = todo.StatusCompleted
+				}
+				items = append(items, &todo.Item{ID: id, Subject: "Task " + id, Status: status, Metadata: metadata})
+			}
+			checks := 0
+			plain := stripANSI(RenderTrackerList(TrackerListParams{
+				Items: items, StreamActive: true, Width: 120,
+				Executing: func(*todo.Item) bool {
+					checks++
+					return true
+				},
+			}))
+			var ids []string
+			for _, match := range rowRE.FindAllStringSubmatch(plain, -1) {
+				ids = append(ids, match[1])
+			}
+			if !slices.Equal(ids, tc.wantIDs) {
+				t.Fatalf("visible tasks = %v, want %v:\n%s", ids, tc.wantIDs, plain)
+			}
+			for _, want := range tc.wantSummaries {
+				if !strings.Contains(plain, want) {
+					t.Fatalf("missing overflow summary %q:\n%s", want, plain)
+				}
+			}
+			wantLines := 1 + len(tc.wantIDs)
+			if len(tc.wantSummaries) > 0 {
+				wantLines++
+			}
+			if lines := strings.Count(plain, "\n"); lines != wantLines {
+				t.Fatalf("panel has %d lines, want %d:\n%s", lines, wantLines, plain)
+			}
+			if checks != len(tc.wantIDs) {
+				t.Fatalf("queried %d executors for %d visible rows", checks, len(tc.wantIDs))
+			}
+		})
 	}
 }
 

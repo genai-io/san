@@ -152,24 +152,28 @@ flush 仍会把 `ThinkingCommittedLen` / `ThinkingEmitted` 推过它没有打印
 渲染 assistant 下面的工具调用块：
 
 ```
-● Bash(npm test)                        ← 工具名 + 摘要参数
-    ⎿  > vitest run                     ← 折叠的结果预览
-        ✓ src/foo.test.ts (12)
-        ✓ src/bar.test.ts (8)
-       … 47 more lines (Ctrl-O to expand)
+● Read(src/foo.go)                      ← 工具名 + 摘要参数
+  └ 128 lines                          ← 折叠的结果摘要
+● Bash(npm test)
+  ┊ > vitest run                       ← 展开的输出
+  ┊ ✓ src/foo.test.ts (12)
+  ┊ ✓ src/bar.test.ts (8)
+  └ 3 lines
 ```
 
 驱动渲染的状态：
 
 - **Pending vs done** — 工具调用在 `m.conv.Tool.PendingCalls` 里直到
   对应的 `ToolResult` 到达；pending 期间工具名旁显示 spinner。
-- **Expanded / collapsed** — 消息级别的 `Expanded`，Ctrl-O 切换。折叠
-  显示预览 + 行数；展开显示全部内容。
-- **错误** — `ToolResult.IsError` 翻转图标 ✓ → ✗ 并把结果染色。
-- **并行模式** — 多个工具调用并发跑时，每个调用独立显示进度。
+- **Expanded / collapsed** — 消息级别的 `Expanded`，Ctrl-O 切换。嵌套的
+  Read 和 shell 结果折叠时只显示摘要；展开内容和摘要的连接符保持同一列。
+- **错误** — 嵌套的失败结果显示诊断信息，并以带错误颜色的 `failed` 行收尾。
+- **并行模式** — 多个工具调用并发跑时，每个调用独立显示进度。结果按完成
+  顺序到达，因此按调用 ID 记录完成状态；整批结束后才将调用和配对结果一起
+  写入历史。取消时只关闭尚未完成的调用，不依赖它们在列表中的位置。
 
 assistant 的工具调用和它的 result 消息怎么配对——一开始就由
-`PrecomputeInlinedResults(messages)` 预算好，挂在
+`PrecomputeInlinedResults(messages, from)` 预算好，挂在
 `RenderContext.InlinedResults` 上。三个 lookup 消费它：
 
 ```
