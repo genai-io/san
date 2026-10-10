@@ -68,8 +68,10 @@ already in `go.mod` surfaces without waiting for the next pull request.
 The standard-library half of the report reflects **your local toolchain**, not
 the CI pin, so a contributor on a newer Go than CI can see findings CI does not
 (and should still upgrade their own Go — the binary they build really is
-affected). To reproduce exactly what CI sees:
+affected). To reproduce exactly what CI sees, build the scanner with CI's Go
+version:
 
 ```bash
-GOTOOLCHAIN=go1.26.8 make vulncheck
+GOTOOLCHAIN=go1.27.2 go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+GOTOOLCHAIN=go1.27.2 make vulncheck
 ```

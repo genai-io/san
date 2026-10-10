@@ -88,6 +88,13 @@ func ResetDefaultRegistry()           // test-only
   plugin paths; lower-priority sources load first so higher ones win by
   name. Accepts alias frontmatter keys (`tools`, `allowed-tools`,
   `permission-mode`) alongside the canonical ones.
+- `preview.go` — supplies the Agent panel's Built-in tab with the built-in
+  tool names visible to unnamed `explore` and `edit` runs, using the same
+  schema filter as the executor. The panel also explains `default`, which
+  inherits the parent session's mode; its tool list therefore depends on
+  the session. These mode previews are not named agent definitions and
+  cannot be toggled. Settings
+  can disable tools, and connected MCP servers can add tools at run time.
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
 - `activity_tools.go` — the gate that streams each call into the
