@@ -32,7 +32,7 @@ func TestAllowRulesForIsExact(t *testing.T) {
 		{"WebFetch", "https://go.dev/doc", []string{"WebFetch(domain:go.dev)"}},
 	}
 	for _, tc := range cases {
-		args := map[string]any{"command": tc.arg, "path": tc.arg, "url": tc.arg}
+		args := map[string]any{"command": tc.arg, "file_path": tc.arg, "url": tc.arg}
 		got := ExactAllowRules(tc.tool, args)
 		if !slices.Equal(got, tc.want) {
 			t.Errorf("%s(%q) = %v, want %v", tc.tool, tc.arg, got, tc.want)

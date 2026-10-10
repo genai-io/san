@@ -107,6 +107,15 @@ equivalent.
 - Per-run: agent emits events → `Recorder` writes records → `Snapshot`
   reconstructible at any point.
 - Forks copy the underlying transcript file and assign a new session ID.
+- Reads tolerate a malformed final JSONL record without modifying the file.
+  The first append in a process repairs that tail under a file lock, retaining
+  complete records (including one missing only its newline). Interior damage
+  remains an error. Each successful message append updates the cached chain
+  leaf so switching away and back preserves its parent links.
+- Index updates stay batched until a turn boundary. A stable
+  `transcripts-index.json.lock` protects the read/merge/replace operation across
+  windows; only locally changed entries are merged into the latest disk index.
+  Reads notice replacement of the index and include other windows' sessions.
 
 ## Tests
 
@@ -115,6 +124,9 @@ internal/session/recorder_test.go         — recorder writes events correctly.
 internal/session/recorder_order_test.go   — record ordering invariants.
 internal/session/message_convert_test.go  — message ↔ record roundtrips.
 internal/session/transcript/projector_test.go — replay correctness.
+internal/session/transcript/torn_record_test.go — resume and append after a torn tail.
+internal/session/transcript/index_recovery_test.go — recovery and concurrent windows.
+internal/session/fork_recorder_test.go — session switching preserves history.
 ```
 
 ## See Also

@@ -90,7 +90,7 @@ func TestBuildRule(t *testing.T) {
 		{
 			"edit file",
 			"Edit",
-			map[string]any{"path": "/path/to/file.go", "edits": []any{map[string]any{"oldText": "foo", "newText": "bar"}}},
+			map[string]any{"file_path": "/path/to/file.go", "old_string": "foo", "new_string": "bar"},
 			"Edit(/path/to/file.go)",
 		},
 		{
@@ -517,13 +517,13 @@ func TestSensitivePathsRequireConfirmation(t *testing.T) {
 		{
 			"edit .git/hooks blocked even with AllowAllEdits",
 			"Edit",
-			map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
 			perm.Prompt,
 		},
 		{
 			"edit .claude/settings blocked even with allow rule",
 			"Edit",
-			map[string]any{"path": "/repo/.claude/settings.json"},
+			map[string]any{"file_path": "/repo/.claude/settings.json"},
 			perm.Prompt,
 		},
 		{
@@ -535,7 +535,7 @@ func TestSensitivePathsRequireConfirmation(t *testing.T) {
 		{
 			"edit normal file allowed with session",
 			"Edit",
-			map[string]any{"path": "/repo/internal/main.go"},
+			map[string]any{"file_path": "/repo/internal/main.go"},
 			perm.Permit,
 		},
 	}
@@ -669,7 +669,7 @@ func TestCheckPermissionWithReason(t *testing.T) {
 		},
 		{
 			"sensitive path has reason",
-			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			"Edit", map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
 			perm.Prompt, "confirmation: .git/ directory",
 		},
 		{
@@ -707,7 +707,7 @@ func TestCheckPermissionWithReason_WorkingDirectoryConstraint(t *testing.T) {
 	}
 
 	d := settings.HasPermissionToUseTool("Edit", map[string]any{
-		"path": "/etc/passwd",
+		"file_path": "/etc/passwd",
 	}, session)
 
 	if d.Behavior != perm.Prompt {
@@ -760,7 +760,7 @@ func TestBypassPermissionsMode(t *testing.T) {
 	}{
 		{
 			"bypass allows normal edit",
-			"Edit", map[string]any{"path": "/repo/main.go"},
+			"Edit", map[string]any{"file_path": "/repo/main.go"},
 			perm.Permit,
 		},
 		{
@@ -795,7 +795,7 @@ func TestBypassPermissionsMode(t *testing.T) {
 		},
 		{
 			"bypass permits protected path writes",
-			"Edit", map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			"Edit", map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
 			perm.Permit,
 		},
 		{
@@ -843,7 +843,7 @@ func TestDontAskMode(t *testing.T) {
 		},
 		{
 			"dontAsk: edit auto-denied",
-			"Edit", map[string]any{"path": "/repo/main.go"},
+			"Edit", map[string]any{"file_path": "/repo/main.go"},
 			perm.Reject,
 		},
 		{
@@ -876,7 +876,7 @@ func TestAcceptEditsModeAllowsEditsButPromptsBash(t *testing.T) {
 		AllowedPatterns: make(map[string]bool),
 	}
 
-	if got := settings.CheckPermission("Edit", map[string]any{"path": "/repo/main.go"}, session); got != perm.Permit {
+	if got := settings.CheckPermission("Edit", map[string]any{"file_path": "/repo/main.go"}, session); got != perm.Permit {
 		t.Fatalf("acceptEdits Edit = %v, want Allow", got)
 	}
 	if got := settings.CheckPermission("Bash", map[string]any{"command": "go build ./..."}, session); got != perm.Prompt {
@@ -943,12 +943,12 @@ func TestWorkingDirectoryConstraint(t *testing.T) {
 	}{
 		{
 			"edit inside cwd allowed",
-			"Edit", map[string]any{"path": "/home/user/project/src/main.go"},
+			"Edit", map[string]any{"file_path": "/home/user/project/src/main.go"},
 			perm.Permit,
 		},
 		{
 			"edit outside cwd prompts",
-			"Edit", map[string]any{"path": "/etc/passwd"},
+			"Edit", map[string]any{"file_path": "/etc/passwd"},
 			perm.Prompt,
 		},
 		{
@@ -973,7 +973,7 @@ func TestWorkingDirectoryConstraint(t *testing.T) {
 		},
 		{
 			"prefix attack blocked",
-			"Edit", map[string]any{"path": "/home/user/project-evil/file.go"},
+			"Edit", map[string]any{"file_path": "/home/user/project-evil/file.go"},
 			perm.Prompt,
 		},
 	}
@@ -1064,7 +1064,7 @@ func TestResolveHookAllow(t *testing.T) {
 		{
 			"sensitive path blocks edit .git",
 			"Edit",
-			map[string]any{"path": "/repo/.git/hooks/pre-commit"},
+			map[string]any{"file_path": "/repo/.git/hooks/pre-commit"},
 			false,
 		},
 		{

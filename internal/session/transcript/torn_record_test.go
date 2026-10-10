@@ -59,6 +59,56 @@ func TestLoadRecoversFromATornFinalRecord(t *testing.T) {
 	if len(tr.Messages) == 0 {
 		t.Fatal("the intact records before the tear were lost")
 	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != string(append(body, []byte(`{"id":"partial","sessi`)...)) {
+		t.Fatal("read-only Load modified the transcript")
+	}
+	parent := "crashed-second"
+	for _, id := range []string{"continued-1", "continued-2"} {
+		if err := reopened.AppendMessage(context.Background(), AppendMessageCommand{
+			SessionID: "crashed", MessageID: id, ParentID: parent, Time: time.Now(),
+			Role: "user", Content: []ContentBlock{{Type: "text", Text: id}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		parent = id
+	}
+	continued, err := reopened.Load(context.Background(), "crashed")
+	if err != nil {
+		t.Fatalf("continued transcript cannot be loaded: %v", err)
+	}
+	if len(continued.Messages) != 3 {
+		t.Fatalf("continued chain has %d messages, want 3", len(continued.Messages))
+	}
+	if got, err := os.ReadFile(path); err != nil || !strings.HasPrefix(string(got), string(body)) {
+		t.Fatal("tail repair changed intact earlier records")
+	}
+}
+
+func TestAppendPreservesCompleteUnterminatedRecord(t *testing.T) {
+	fs, err := NewFileStore(t.TempDir(), "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTwoTurns(t, fs, "no-newline")
+	path := fs.TranscriptPath("no-newline")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.TrimRight(string(body), "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewFileStore(fs.baseDir, "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.AppendNotice(context.Background(), AppendNoticeCommand{SessionID: "no-newline", Time: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	records, err := reopened.loadRecordsLocked(path)
+	if err != nil || len(records) != 4 {
+		t.Fatalf("records = %d, err = %v", len(records), err)
+	}
 }
 
 // Damage in the middle is not a crash signature. Dropping it silently would
@@ -93,5 +143,8 @@ func TestLoadStillRejectsDamageInTheMiddle(t *testing.T) {
 	if _, err := reopened.Load(context.Background(), "corrupt"); err == nil {
 		t.Error("a damaged record in the middle was skipped silently; " +
 			"the replayed conversation would have an invisible hole")
+	}
+	if err := reopened.AppendNotice(context.Background(), AppendNoticeCommand{SessionID: "corrupt", Time: time.Now()}); err == nil {
+		t.Fatal("append accepted damage in the middle")
 	}
 }

@@ -1,10 +1,73 @@
 package setting
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/genai-io/san/internal/tool/perm"
 )
+
+func TestFilePermissionsFollowSensitiveSymlinks(t *testing.T) {
+	dir := t.TempDir()
+	git := filepath.Join(dir, ".git")
+	if err := os.Mkdir(git, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(git, "config")
+	if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "ordinary.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	dirLink := filepath.Join(dir, "ordinary-dir")
+	if err := os.Symlink(git, dirLink); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(dir, "new-link")
+	if err := os.Symlink(filepath.Join(git, "missing-file"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	inner := filepath.Join(git, "inner")
+	if err := os.Mkdir(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	innerLink := filepath.Join(dir, "inner-link")
+	if err := os.Symlink(inner, innerLink); err != nil {
+		t.Fatal(err)
+	}
+	traversal := innerLink + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "new-file"
+	d := NewData()
+	s := &SessionPermissions{Mode: ModeAutoAccept, WorkingDirectories: []string{dir}}
+	for _, tool := range []string{"Write", "Edit"} {
+		for _, path := range []string{target, link, dangling, traversal, filepath.Join(dirLink, "new-dir", "new-file")} {
+			decision := d.HasPermissionToUseTool(tool, map[string]any{"file_path": path}, s)
+			if decision.Behavior != perm.Prompt || decision.Reviewable {
+				t.Errorf("%s(%s) = %+v, want human confirmation", tool, path, decision)
+			}
+		}
+	}
+	// A sensitive name remains sensitive even when it links to a harmless target.
+	startup := filepath.Join(dir, ".zshrc")
+	if err := os.Symlink(filepath.Join(dir, "missing"), startup); err != nil {
+		t.Fatal(err)
+	}
+	if isSensitivePath(startup) == "" {
+		t.Fatal("sensitive original name was ignored")
+	}
+}
+
+func TestEditDenyUsesFilePath(t *testing.T) {
+	d := NewData()
+	d.Permissions.Deny = []string{"Edit(**/.env)"}
+	s := &SessionPermissions{Mode: ModeAutoAccept}
+	args := map[string]any{"file_path": "/repo/.env", "old_string": "old", "new_string": "new"}
+	if got := d.HasPermissionToUseTool("Edit", args, s); got.Behavior != perm.Reject {
+		t.Fatalf("Edit deny = %+v, want Reject", got)
+	}
+}
 
 func TestIsReadOnlyBashCommand(t *testing.T) {
 	readOnly := []string{

@@ -135,6 +135,23 @@ func TerminateGroup(cmd *exec.Cmd, sig syscall.Signal) error
   is complete on Windows.
 - Code: `internal/proc/`.
 
+## `internal/atomicfile`
+
+Writes a unique temporary file beside the destination, then replaces the path
+by rename. Failed writes remove the temporary file and retain the old contents.
+
+- `Write` / `WriteJSON` apply the exact requested permissions; `ReadJSON`
+  refuses malformed input before a read/modify/write can replace it.
+- `WriteFile` follows symlinks, checks existing write access and preserves its
+  permissions. New files honor the umask. `ResolvePath` also handles missing
+  parent directories and dangling symlink targets for file permission checks.
+- `WithLock(path, fn)` uses a stable separate lock file for cross-process
+  read/modify/write operations. Keep that file in place: locking a replaced data
+  file, or removing an active lock file, would allow writers to lock different
+  inodes. Locks release when the callback exits or the process dies.
+- Tests: `internal/atomicfile/` covers concurrent replacement, process locking,
+  permissions and path resolution.
+
 ## `internal/autoupdate`
 
 Replaces the running `san` binary with a newer GitHub release. The running

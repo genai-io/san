@@ -1,9 +1,27 @@
 package setting
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestWorkingDirectoryRejectsSymlinkParentTraversal(t *testing.T) {
+	cwd, outside := t.TempDir(), t.TempDir()
+	inner := filepath.Join(outside, "inner")
+	if err := os.Mkdir(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(cwd, "link")
+	if err := os.Symlink(inner, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	path := link + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "new-file"
+	if isInWorkingDirectory(path, []string{cwd}) {
+		t.Fatal("symlink traversal outside cwd was permitted")
+	}
+}
 
 func Test_isInWorkingDirectory(t *testing.T) {
 	tests := []struct {

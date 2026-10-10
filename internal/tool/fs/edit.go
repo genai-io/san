@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -98,11 +99,7 @@ func (t *EditTool) ExecuteApproved(ctx context.Context, params map[string]any, c
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(filePath); err == nil {
-		mode = info.Mode()
-	}
-	if err := os.WriteFile(filePath, []byte(newContent), mode); err != nil {
+	if err := atomicfile.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
 	recordFileWritten(filePath)

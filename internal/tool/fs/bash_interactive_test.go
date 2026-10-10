@@ -183,6 +183,20 @@ func Test_trimToLine(t *testing.T) {
 			t.Errorf("trimToLine(%q) = %q, want %q", in, got, want)
 		}
 	}
+	var long bytes.Buffer
+	long.WriteString(strings.Repeat("x", 10000) + "Password:")
+	trimToLine(&long)
+	if long.Len() > 4096 || !strings.HasSuffix(long.String(), "Password:") {
+		t.Fatal("unfinished prompt line is not bounded")
+	}
+}
+
+func TestRunInteractiveCapsOutputAndStillAnswersLaterPrompt(t *testing.T) {
+	r := &fakeResponder{answer: "yes", answerOK: true}
+	out := runScript(t, `yes audit | head -c 2097152; read -p "Continue? " a; [ "$a" = yes ]`, r)
+	if len(out) > maxShellOutputBytes+1 || r.answerCalls != 1 {
+		t.Fatalf("retained = %d, prompts = %d", len(out), r.answerCalls)
+	}
 }
 
 func TestBashExecuteApproved_usesBashPromptResponderFromContext(t *testing.T) {

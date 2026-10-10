@@ -13,6 +13,7 @@ package atomicfile
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,18 +28,57 @@ const dirPerm os.FileMode = 0o755
 // needed. The temporary file is removed on every failure path, so a failed
 // write leaves nothing behind.
 func Write(path string, data []byte, perm os.FileMode) error {
+	return write(path, data, perm, true)
+}
+
+// WriteFile atomically replaces regular file contents: follow symlinks, retain
+// existing permission bits, and honor the umask when creating a new file.
+func WriteFile(path string, data []byte, perm os.FileMode) error {
+	_, originalErr := os.Stat(path)
+	if originalErr != nil && !os.IsNotExist(originalErr) {
+		return originalErr
+	}
+	target, err := ResolvePath(path)
+	if err != nil {
+		return err
+	}
+	path = target
+	exists := false
+	if info, err := os.Stat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("not a regular file: %s", path)
+		}
+		if os.IsNotExist(originalErr) {
+			return fmt.Errorf("target now exists: %s; read it before replacing", path)
+		}
+		exists, perm = true, info.Mode()
+		// Rename only needs directory access; keep the target's write check too.
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return write(path, data, perm, exists)
+}
+
+func write(path string, data []byte, perm os.FileMode, exactPerm bool) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return fmt.Errorf("create dir for %s: %w", path, err)
 	}
 
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	tmpName := filepath.Join(dir, ".atomic-"+rand.Text()+".tmp")
+	tmp, err := os.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
 		return fmt.Errorf("create temp for %s: %w", path, err)
 	}
 	// Armed until the rename succeeds, so every failure below — including a
 	// panic — leaves nothing behind. Both calls are no-ops once they have run.
-	tmpName := tmp.Name()
 	defer func() {
 		tmp.Close()
 		os.Remove(tmpName)
@@ -50,10 +90,10 @@ func Write(path string, data []byte, perm os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", path, err)
 	}
-	// CreateTemp always makes the file 0600; widen or narrow it to the caller's
-	// mode before it becomes visible under the target name.
-	if err := os.Chmod(tmpName, perm); err != nil {
-		return fmt.Errorf("chmod %s: %w", path, err)
+	if exactPerm {
+		if err := os.Chmod(tmpName, perm); err != nil {
+			return fmt.Errorf("chmod %s: %w", path, err)
+		}
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("rename %s: %w", path, err)

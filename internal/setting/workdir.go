@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/genai-io/san/internal/atomicfile"
 )
 
 // isInWorkingDirectory checks if a file path is within any of the allowed
@@ -20,11 +22,11 @@ func isInWorkingDirectory(filePath string, workingDirs []string) bool {
 
 	// Normalize the input path
 	origPath := cleanPath(filePath)
-	resolvedPath := resolvePath(origPath)
+	resolvedPath := resolvePath(filePath)
 
 	for _, dir := range workingDirs {
 		origDir := cleanPath(dir)
-		resolvedDir := resolvePath(origDir)
+		resolvedDir := resolvePath(dir)
 
 		// Both original and resolved forms must be within some form of the
 		// working directory to prevent symlink escapes.
@@ -75,15 +77,10 @@ func cleanPath(path string) string {
 	return filepath.Clean(path)
 }
 
-// resolvePath resolves symlinks in a path. Returns the cleaned path on error.
+// resolvePath follows symlinks, retaining the original path on error.
 func resolvePath(path string) string {
-	resolved, err := filepath.EvalSymlinks(path)
+	resolved, err := atomicfile.ResolvePath(path)
 	if err != nil {
-		// If the file doesn't exist yet, try resolving the parent directory
-		dir := filepath.Dir(path)
-		if resolvedDir, err := filepath.EvalSymlinks(dir); err == nil {
-			return filepath.Join(resolvedDir, filepath.Base(path))
-		}
 		return path
 	}
 	return resolved

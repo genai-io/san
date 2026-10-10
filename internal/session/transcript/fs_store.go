@@ -2,6 +2,7 @@ package transcript
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -31,28 +32,17 @@ type FileStore struct {
 	// at once.
 	sessions map[string]*sessionCache
 
-	// cachedIndex holds the parsed transcript index so hot writes (every
-	// message append and every state patch) stop re-reading and re-parsing the
-	// whole transcripts-index.json each call. It is populated by saveIndexLocked
-	// (the sole writer of the file) and read through by loadIndexLocked; writes
-	// stay write-through, so on-disk durability is unchanged. nil until the
-	// first load or save.
-	cachedIndex *fileIndex
-
-	// indexDirty marks that cachedIndex holds hot-path mutations not yet written
-	// to disk. Every message append and state patch used to re-serialize and
-	// rewrite the whole index file — O(sessions) work, ~7-12 times per turn.
-	// Those mutations now stage in memory (cachedIndex stays authoritative for
-	// in-process reads) and flush once at a turn boundary / on shutdown via
-	// FlushIndex. The index is a pure derived cache — a crash that loses an
-	// unflushed update is recovered by rebuildIndexLocked on the next List.
-	indexDirty bool
+	// Cache the disk generation, overlaying only this process's pending entries.
+	cachedIndex  *fileIndex
+	indexInfo    os.FileInfo
+	indexChanges map[string]bool // true: upsert, false: delete
 }
 
 // sessionCache holds the derived state we keep in memory to avoid re-scanning
 // the transcript on every write. All fields are mu-guarded.
 type sessionCache struct {
 	warmed        bool                // forward scan completed
+	tailChecked   bool                // tail validated before this process's first append
 	persistedIDs  map[string]struct{} // dedup for AppendMessage
 	lastGitBranch string              // sparse-emit base
 	leafMessageID string              // parent pointer for next message
@@ -210,6 +200,7 @@ func (s *FileStore) AppendMessage(ctx context.Context, cmd AppendMessageCommand)
 		return err
 	}
 	seen[cmd.MessageID] = struct{}{}
+	s.cacheLocked(cmd.SessionID).leafMessageID = cmd.MessageID
 	if emitBranch != "" {
 		s.setLastBranchLocked(cmd.SessionID, emitBranch)
 	}
@@ -662,7 +653,9 @@ func (s *FileStore) Delete(ctx context.Context, transcriptID string) error {
 			}
 		}
 		index.Entries = filtered
-		return s.saveIndexLocked(index)
+		s.stageIndexLocked(index, transcriptID)
+		s.indexChanges[transcriptID] = false
+		return s.flushIndexLocked()
 	}
 	return nil
 }
@@ -694,28 +687,100 @@ func (s *FileStore) indexPath() string {
 // Single-process per file: the append+close pair preserves order regardless
 // of fsync; durability is the only thing the flag toggles.
 func (s *FileStore) appendRecord(path string, rec Record, sync bool) error {
-	// NewFileStore creates transcripts/ at construction; no per-record MkdirAll.
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return fmt.Errorf("open transcript file: %w", err)
-	}
+	return atomicfile.WithLock(path+".lock", func() error {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
+		if err != nil {
+			return fmt.Errorf("open transcript file: %w", err)
+		}
+		defer f.Close()
+		c := s.cacheLocked(rec.SessionID)
+		if !c.tailChecked {
+			if err := repairTranscriptTail(f); err != nil {
+				return err
+			}
+			c.tailChecked = true
+		}
 
-	enc := json.NewEncoder(f)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(rec); err != nil {
-		f.Close()
-		return fmt.Errorf("append transcript record: %w", err)
+		enc := json.NewEncoder(f)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(rec); err != nil {
+			c.tailChecked = false
+			return fmt.Errorf("append transcript record: %w", err)
+		}
+		if sync {
+			if err := f.Sync(); err != nil {
+				return fmt.Errorf("sync transcript file: %w", err)
+			}
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("close transcript file: %w", err)
+		}
+		return nil
+	})
+}
+
+func repairTranscriptTail(f *os.File) error {
+	validEnd, err := scanTranscript(f, nil)
+	if err != nil {
+		return err
 	}
-	if sync {
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return fmt.Errorf("sync transcript file: %w", err)
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if validEnd < info.Size() {
+		return f.Truncate(validEnd)
+	}
+	if validEnd > 0 {
+		var last [1]byte
+		if _, err := f.ReadAt(last[:], validEnd-1); err != nil {
+			return err
+		}
+		if last[0] != '\n' {
+			// Keep a complete JSON value that only lost its final newline.
+			_, err := f.WriteString("\n")
+			return err
 		}
 	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("close transcript file: %w", err)
-	}
 	return nil
+}
+
+// scanTranscript visits complete records and returns the last valid byte offset.
+// Only a malformed final record is recoverable; earlier damage is an error.
+func scanTranscript(f *os.File, visit func(Record)) (int64, error) {
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	var validEnd, lineEnd int64
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		advance, token, err := bufio.ScanLines(data, atEOF)
+		if token != nil {
+			lineEnd += int64(advance)
+		}
+		return advance, token, err
+	})
+	for scanner.Scan() {
+		if len(bytes.TrimSpace(scanner.Bytes())) == 0 {
+			validEnd = lineEnd
+			continue
+		}
+		var rec Record
+		if err := json.Unmarshal(scanner.Bytes(), &rec); err != nil {
+			if scanner.Scan() {
+				return 0, fmt.Errorf("decode transcript record: %w", err)
+			}
+			log.Logger().Warn("transcript: dropping torn final record",
+				zap.String("path", f.Name()), zap.Error(err))
+			break
+		}
+		if visit != nil {
+			visit(rec)
+		}
+		validEnd = lineEnd
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, fmt.Errorf("scan transcript file: %w", err)
+	}
+	return validEnd, nil
 }
 
 // cacheLocked returns the per-session cache, creating an empty (unwarmed)
@@ -856,49 +921,34 @@ func (s *FileStore) loadRecordsLocked(path string) ([]Record, error) {
 	defer f.Close()
 
 	var records []Record
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var rec Record
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			// The file is append-only and appendRecord fsyncs only on turn
-			// boundaries, so a crash mid-append leaves a partial final line.
-			// That is the one place a torn record can be, and rejecting the
-			// whole file for it means an interrupted turn costs the user the
-			// entire session — every record before it is intact.
-			//
-			// A malformed line anywhere else is not a crash, and silently
-			// dropping it would leave a hole in the replayed conversation with
-			// nothing to show for it, so that still fails loudly.
-			if scanner.Scan() {
-				return nil, fmt.Errorf("decode transcript record: %w", err)
-			}
-			log.Logger().Warn("transcript: dropping torn final record",
-				zap.String("path", path), zap.Error(err))
-			break
-		}
+	_, err = scanTranscript(f, func(rec Record) {
 		records = append(records, rec)
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan transcript file: %w", err)
+	})
+	if err != nil {
+		return nil, err
 	}
 	return records, nil
 }
 
-// loadIndexLocked returns the transcript index, served from the in-memory
-// cache when populated. On a cache miss it reads and parses the file but does
-// NOT populate s.cachedIndex — populating is left to saveIndexLocked so this
-// stays a pure read, safe to call while holding only the read lock
-// (listIndexEntries). A read miss (e.g. no index file yet) returns the error
-// for the caller to handle (rebuild, or start a fresh index).
+// Safe under RLock: a changed disk generation is returned without caching it.
 func (s *FileStore) loadIndexLocked() (*fileIndex, error) {
-	if s.cachedIndex != nil {
+	info, err := os.Stat(s.indexPath())
+	if err != nil {
+		return nil, err
+	}
+	if s.cachedIndex != nil && s.indexInfo != nil && os.SameFile(info, s.indexInfo) &&
+		info.Size() == s.indexInfo.Size() && info.ModTime().Equal(s.indexInfo.ModTime()) {
 		return s.cachedIndex, nil
 	}
+	index, err := s.readIndexLocked()
+	if err != nil {
+		return nil, err
+	}
+	s.mergeIndexChangesLocked(index)
+	return index, nil
+}
+
+func (s *FileStore) readIndexLocked() (*fileIndex, error) {
 	data, err := os.ReadFile(s.indexPath())
 	if err != nil {
 		return nil, err
@@ -910,12 +960,8 @@ func (s *FileStore) loadIndexLocked() (*fileIndex, error) {
 	return &index, nil
 }
 
-// saveIndexLocked writes the index through to disk and caches it. It is the
-// sole writer of the index file, so caching here keeps s.cachedIndex coherent
-// with disk. Callers hold the write lock.
 func (s *FileStore) saveIndexLocked(index *fileIndex) error {
-	// Compact (not indented): the index is a machine-read derived cache rewritten
-	// every turn, so pretty-print whitespace is pure write amplification.
+	s.mergeIndexChangesLocked(index)
 	data, err := json.Marshal(index)
 	if err != nil {
 		return fmt.Errorf("marshal transcript index: %w", err)
@@ -924,29 +970,52 @@ func (s *FileStore) saveIndexLocked(index *fileIndex) error {
 		return fmt.Errorf("write transcript index: %w", err)
 	}
 	s.cachedIndex = index
-	s.indexDirty = false
+	s.indexInfo, err = os.Stat(s.indexPath())
+	if err != nil {
+		return err
+	}
+	clear(s.indexChanges)
 	return nil
 }
 
-// stageIndexLocked records that cachedIndex diverges from disk without writing
-// it, so a burst of hot-path appends (a turn's tool results, a subagent's
-// message dump) collapses to a single index write at the next FlushIndex
-// instead of one full re-serialization per message. The caller has already
-// mutated the entry in place; `index` must be (or become) s.cachedIndex.
-// Callers hold the write lock.
-func (s *FileStore) stageIndexLocked(index *fileIndex) {
-	s.cachedIndex = index
-	s.indexDirty = true
+func (s *FileStore) mergeIndexChangesLocked(index *fileIndex) {
+	if len(s.indexChanges) == 0 {
+		return
+	}
+	index.Entries = slices.DeleteFunc(index.Entries, func(e fileIndexEntry) bool {
+		_, changed := s.indexChanges[e.SessionID]
+		return changed
+	})
+	for _, entry := range s.cachedIndex.Entries {
+		if s.indexChanges[entry.SessionID] {
+			index.Entries = append(index.Entries, entry)
+		}
+	}
 }
 
-// flushIndexLocked writes staged index mutations to disk, if any. Callers hold
-// the write lock. A dirty index always has a non-nil cachedIndex — stageIndexLocked
-// sets both together — so the dirty flag alone gates the write.
+// Batch hot-path entry changes until the turn boundary.
+func (s *FileStore) stageIndexLocked(index *fileIndex, transcriptID string) {
+	s.cachedIndex = index
+	if s.indexChanges == nil {
+		s.indexChanges = make(map[string]bool)
+	}
+	s.indexChanges[transcriptID] = true
+}
+
 func (s *FileStore) flushIndexLocked() error {
-	if !s.indexDirty {
+	if len(s.indexChanges) == 0 {
 		return nil
 	}
-	return s.saveIndexLocked(s.cachedIndex)
+	return atomicfile.WithLock(s.indexPath()+".lock", func() error {
+		index, err := s.readIndexLocked()
+		if err != nil {
+			index, err = s.buildIndexLocked()
+			if err != nil {
+				return err
+			}
+		}
+		return s.saveIndexLocked(index)
+	})
 }
 
 // FlushIndex writes any index mutations the hot append path staged in memory
@@ -960,9 +1029,19 @@ func (s *FileStore) FlushIndex() error {
 }
 
 func (s *FileStore) rebuildIndexLocked() error {
+	return atomicfile.WithLock(s.indexPath()+".lock", func() error {
+		index, err := s.buildIndexLocked()
+		if err != nil {
+			return err
+		}
+		return s.saveIndexLocked(index)
+	})
+}
+
+func (s *FileStore) buildIndexLocked() (*fileIndex, error) {
 	entries, err := os.ReadDir(filepath.Join(s.baseDir, "transcripts"))
 	if err != nil {
-		return fmt.Errorf("read transcripts dir: %w", err)
+		return nil, fmt.Errorf("read transcripts dir: %w", err)
 	}
 
 	index := &fileIndex{
@@ -991,7 +1070,7 @@ func (s *FileStore) rebuildIndexLocked() error {
 			IsSidechain:  item.IsSidechain,
 		})
 	}
-	return s.saveIndexLocked(index)
+	return index, nil
 }
 
 // upsertIndexEntryLocked applies an incremental mutation to the index entry
@@ -1004,69 +1083,50 @@ func (s *FileStore) rebuildIndexLocked() error {
 func (s *FileStore) upsertIndexEntryLocked(transcriptID string, mutate func(e *fileIndexEntry, fresh bool)) error {
 	index, err := s.loadIndexLocked()
 	if err != nil {
-		// Rebuild from the transcripts on disk before giving up on them.
-		// Start runs at the first turn of every new session, so an empty index
-		// written here reaches disk before anything reads it — and
-		// listIndexEntries' own recovery then loads a perfectly valid
-		// one-entry file and never rebuilds. Every earlier session becomes
-		// permanently invisible in /resume while its .jsonl sits untouched
-		// beside it. A genuinely fresh store has no transcripts dir, so the
-		// rebuild fails and the empty index below is the right answer.
-		if rbErr := s.rebuildIndexLocked(); rbErr == nil {
-			index, err = s.loadIndexLocked()
+		if err := s.rebuildIndexLocked(); err != nil {
+			return err
 		}
+		index, err = s.loadIndexLocked()
 		if err != nil {
-			index = &fileIndex{Version: 1, ProjectID: s.projectID}
+			return err
 		}
 	}
 	for i := range index.Entries {
 		if index.Entries[i].SessionID == transcriptID {
 			mutate(&index.Entries[i], false)
-			s.stageIndexLocked(index)
+			s.stageIndexLocked(index, transcriptID)
 			return nil
 		}
 	}
 	entry := fileIndexEntry{SessionID: transcriptID}
 	mutate(&entry, true)
 	index.Entries = append(index.Entries, entry)
-	s.stageIndexLocked(index)
+	s.stageIndexLocked(index, transcriptID)
 	return nil
 }
 
 func (s *FileStore) refreshIndexLocked(transcriptID string) error {
-	index, err := s.loadIndexLocked()
-	if err != nil {
-		index = &fileIndex{
-			Version:   1,
-			ProjectID: s.projectID,
-		}
-	}
-
 	item, err := s.buildListItemLocked(transcriptID)
 	if err != nil {
 		return err
 	}
 
-	entry := fileIndexEntry{
-		SessionID:    item.SessionID,
-		FullPath:     item.FullPath,
-		CreatedAt:    item.CreatedAt,
-		UpdatedAt:    item.UpdatedAt,
-		Title:        indexPreview(item.Title),
-		LastPrompt:   indexPreview(item.LastPrompt),
-		MessageCount: item.MessageCount,
-		GitBranch:    item.GitBranch,
-		IsSidechain:  item.IsSidechain,
-	}
-
-	for i := range index.Entries {
-		if index.Entries[i].SessionID == transcriptID {
-			index.Entries[i] = entry
-			return s.saveIndexLocked(index)
+	if err := s.upsertIndexEntryLocked(transcriptID, func(entry *fileIndexEntry, _ bool) {
+		*entry = fileIndexEntry{
+			SessionID:    item.SessionID,
+			FullPath:     item.FullPath,
+			CreatedAt:    item.CreatedAt,
+			UpdatedAt:    item.UpdatedAt,
+			Title:        indexPreview(item.Title),
+			LastPrompt:   indexPreview(item.LastPrompt),
+			MessageCount: item.MessageCount,
+			GitBranch:    item.GitBranch,
+			IsSidechain:  item.IsSidechain,
 		}
+	}); err != nil {
+		return err
 	}
-	index.Entries = append(index.Entries, entry)
-	return s.saveIndexLocked(index)
+	return s.flushIndexLocked()
 }
 
 func (s *FileStore) buildListItemLocked(transcriptID string) (ListItem, error) {

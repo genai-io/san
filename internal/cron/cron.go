@@ -149,16 +149,15 @@ func (e *expression) nextAfter(after time.Time) time.Time {
 			continue
 		}
 		if !e.DOM.values[t.Day()] || !e.DOW.values[int(t.Weekday())] {
-			t = t.Add(24 * time.Hour)
-			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+			next := time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, t.Location())
+			// A nonexistent midnight can normalize back into the previous day.
+			if !next.After(t) {
+				next = t.Add(time.Minute)
+			}
+			t = next
 			continue
 		}
-		if !e.Hour.values[t.Hour()] {
-			t = t.Add(time.Hour)
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
-			continue
-		}
-		if !e.Minute.values[t.Minute()] {
+		if !e.Hour.values[t.Hour()] || !e.Minute.values[t.Minute()] {
 			t = t.Add(time.Minute)
 			continue
 		}

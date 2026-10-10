@@ -4,12 +4,54 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
+
+func TestFileToolsKeepSymlinkAndPermissions(t *testing.T) {
+	for _, name := range []string{"Write", "Edit"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			target := filepath.Join(dir, "target.txt")
+			if err := os.WriteFile(target, []byte("original"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			link := filepath.Join(dir, "link.txt")
+			if err := os.Symlink(target, link); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			readForEdit(t, link, dir)
+			var result toolresult.ToolResult
+			if name == "Write" {
+				result = (&WriteTool{}).ExecuteApproved(context.Background(), map[string]any{
+					"file_path": link, "content": "replacement", "mode": 0o777,
+				}, dir)
+			} else {
+				result = editOnce(link, "original", "replacement", dir)
+			}
+			if !result.Success {
+				t.Fatal(result.Error)
+			}
+			if got, err := os.ReadFile(target); err != nil || string(got) != "replacement" {
+				t.Fatalf("target = %q, err = %v", got, err)
+			}
+			if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("symlink replaced: info = %v, err = %v", info, err)
+			}
+			info, err := os.Stat(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+				t.Fatalf("permissions = %v, want 0600", info.Mode().Perm())
+			}
+		})
+	}
+}
 
 func editOnce(filePath, oldString, newString, cwd string) toolresult.ToolResult {
 	return (&EditTool{}).ExecuteApproved(context.Background(), map[string]any{

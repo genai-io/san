@@ -1,17 +1,14 @@
 package fs
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -109,7 +106,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	shell, err := t.resolve()
 	if err != nil {
-		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd)
+		return t.foregroundResult(ctx, description, "", "", err, time.Since(start), timeout, "", cwd, 0)
 	}
 
 	trackedCommand, trackedFile, cleanup := prepareCwdTracking(shell, command)
@@ -125,7 +122,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil {
 		if out, handled, err := runWithResponder(ctx, command, cmd, responder); handled {
 			duration := time.Since(start)
-			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd)
+			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, -1)
 		}
 		// Off unix there is no pty; fall through to the normal execution path.
 	}
@@ -142,7 +139,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	}
 	cmd.WaitDelay = 5 * time.Second
 
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr outputCapture
 	// Count output as it streams so the UI can show a live line counter; when
 	// nothing is listening, tee returns the bare buffer and this costs nothing.
 	progress := &outputProgress{report: tool.BashProgressFromContext(ctx)}
@@ -163,13 +160,13 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		err = nil
 	}
 
-	output := decodeOutput(stdout.Bytes())
-	errOutput := decodeOutput(stderr.Bytes())
+	output := stdout.String()
+	errOutput := stderr.String()
 
-	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd)
+	return t.foregroundResult(ctx, description, output, errOutput, err, duration, timeout, trackedFile, cwd, stdout.LineCount()+stderr.LineCount())
 }
 
-func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string) toolresult.ToolResult {
+func (t *ShellTool) foregroundResult(ctx context.Context, description, output, errOutput string, err error, duration time.Duration, timeout time.Duration, trackedFile, cwd string, lineCount int) toolresult.ToolResult {
 	fullOutput := output
 	if errOutput != "" {
 		if fullOutput != "" && !strings.HasSuffix(fullOutput, "\n") {
@@ -178,24 +175,19 @@ func (t *ShellTool) foregroundResult(ctx context.Context, description, output, e
 		fullOutput += errOutput
 	}
 
-	// Count lines
-	lineCount := 0
-	if fullOutput != "" {
+	if lineCount < 0 && fullOutput != "" {
 		lineCount = strings.Count(strings.TrimSuffix(fullOutput, "\n"), "\n") + 1
+	} else if lineCount < 0 {
+		lineCount = 0
 	}
 
-	// Truncate if too long
-	const maxLen = 30000
-	truncated := false
-	if len(fullOutput) > maxLen {
-		fullOutput = fullOutput[:maxLen] + "\n... (output truncated)"
-		truncated = true
-	}
+	truncated := len(fullOutput) > maxShellOutputBytes
+	fullOutput = truncateShellOutput(fullOutput)
 
 	// Build CC-compatible structured response for hooks
 	hookResponse := map[string]any{
-		"stdout":           output,
-		"stderr":           errOutput,
+		"stdout":           truncateShellOutput(output),
+		"stderr":           truncateShellOutput(errOutput),
 		"interrupted":      ctx.Err() == context.DeadlineExceeded,
 		"isImage":          false,
 		"noOutputExpected": false,
@@ -320,36 +312,17 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	// inherited the stdout/stderr pipe and refuses to close it.
 	cmd.WaitDelay = 5 * time.Second
 
-	// Set up pipes for stdout and stderr
-	stdout, err := cmd.StdoutPipe()
+	outputPipe, childOutput, err := os.Pipe()
 	if err != nil {
 		cancel()
-		return toolresult.ToolResult{
-			Success: false,
-			Error:   fmt.Sprintf("failed to create stdout pipe: %v", err),
-			Metadata: toolresult.ResultMetadata{
-				Title: t.Name(),
-				Icon:  t.Icon(),
-			},
-		}
+		return toolresult.NewErrorResult(t.Name(), "failed to create output pipe: "+err.Error())
 	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		stdout.Close()
-		cancel()
-		return toolresult.ToolResult{
-			Success: false,
-			Error:   fmt.Sprintf("failed to create stderr pipe: %v", err),
-			Metadata: toolresult.ResultMetadata{
-				Title: t.Name(),
-				Icon:  t.Icon(),
-			},
-		}
-	}
+	cmd.Stdout, cmd.Stderr = childOutput, childOutput
 
 	// Start the command
 	if err := proc.StartGroup(cmd); err != nil {
+		outputPipe.Close()
+		childOutput.Close()
 		cancel()
 		return toolresult.ToolResult{
 			Success: false,
@@ -361,6 +334,8 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 		}
 	}
 
+	childOutput.Close()
+
 	// Register with task manager
 	bgTask := task.Default().CreateBashTask(cmd, command, description, cancel)
 
@@ -368,34 +343,21 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	go func() {
 		defer cancel()
 
-		// Read stdout and stderr concurrently
-		var stdoutBuf, stderrBuf bytes.Buffer
-		var wg sync.WaitGroup
-		wg.Add(2)
+		defer outputPipe.Close()
+		drained := make(chan struct{})
 		go func() {
-			defer wg.Done()
-			_, _ = io.Copy(&stdoutBuf, stdout)
+			streamTaskOutput(bgTask, outputPipe)
+			close(drained)
 		}()
-		go func() {
-			defer wg.Done()
-			_, _ = io.Copy(&stderrBuf, stderr)
-		}()
-
-		// Wait for command to complete, then wait for pipe drains
 		err := cmd.Wait()
-		// The PGID is no longer ours to signal from this moment on.
 		bgTask.MarkReaped()
-		wg.Wait()
-
-		// Combine output
-		output := decodeOutput(stdoutBuf.Bytes())
-		if stderrBuf.Len() > 0 {
-			if output != "" {
-				output += "\n"
-			}
-			output += decodeOutput(stderrBuf.Bytes())
+		// A grandchild may inherit the pipe after its parent exits.
+		select {
+		case <-drained:
+		case <-time.After(5 * time.Second):
+			outputPipe.Close()
+			<-drained
 		}
-		bgTask.AppendOutput([]byte(output))
 
 		// Get exit code
 		exitCode := 0

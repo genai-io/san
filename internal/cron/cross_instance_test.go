@@ -4,8 +4,149 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
+
+func TestOtherWindowDoesNotResurrectDeletedJob(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	a := instanceOn(t, path)
+	deleted, err := a.Create("*/10 * * * *", "first", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := instanceOn(t, path)
+	if err := a.Delete(deleted.ID); err != nil {
+		t.Fatal(err)
+	}
+	created, err := b.Create("*/5 * * * *", "second", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := durableIDsOnDisk(t, path)
+	if ids[deleted.ID] || !ids[created.ID] || len(ids) != 1 {
+		t.Fatalf("durable jobs after delete and stale save = %v", ids)
+	}
+	if len(b.List()) != 1 {
+		t.Fatal("deleted job remains in the stale window after saving")
+	}
+}
+
+func TestConcurrentWindowsKeepAllNewJobs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	a, b := instanceOn(t, path), instanceOn(t, path)
+	var wg sync.WaitGroup
+	for _, scheduler := range []*Scheduler{a, b} {
+		wg.Go(func() {
+			for range 10 {
+				if _, err := scheduler.Create("*/5 * * * *", "new", true, true); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	if ids := durableIDsOnDisk(t, path); len(ids) != 20 {
+		t.Fatalf("jobs = %d, want 20", len(ids))
+	}
+}
+
+func TestUnrelatedSaveKeepsOtherWindowsSchedule(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	a := instanceOn(t, path)
+	job, err := a.Create("*/10 * * * *", "first", true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := instanceOn(t, path)
+	a.mu.Lock()
+	a.jobs[job.ID].FiredCount = 7
+	a.durableChanges[job.ID] = true
+	err = a.saveDurableLocked()
+	a.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Create("*/5 * * * *", "second", true, true); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jobs []*Job
+	if err := json.Unmarshal(data, &jobs); err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range jobs {
+		if got.ID == job.ID && got.FiredCount == 7 {
+			return
+		}
+	}
+	t.Fatal("other window's job was lost or its schedule overwritten")
+}
+
+func TestSaveRefusesCorruptDurableFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+	s := instanceOn(t, path)
+	if err := os.WriteFile(path, []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create("*/5 * * * *", "new", true, true); err == nil {
+		t.Fatal("save hid parse failure")
+	}
+	if !s.Empty() {
+		t.Fatal("failed creation left a runnable job")
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "{broken" {
+		t.Fatalf("damaged file overwritten: %q, %v", got, err)
+	}
+}
+
+func TestJobDeletionRetriesAfterPersistenceFailure(t *testing.T) {
+	for _, operation := range []string{"Delete", "Tick"} {
+		t.Run(operation, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "scheduled_tasks.json")
+			s := instanceOn(t, path)
+			job, err := s.Create("*/5 * * * *", "new", false, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			good, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("{broken"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "Delete" {
+				if err := s.Delete(job.ID); err == nil || s.Empty() {
+					t.Fatal("failed deletion must return an error and retain the job")
+				}
+			} else {
+				job.NextFire = time.Now().Add(-time.Minute)
+				if fired := s.Tick(); len(fired) != 1 || !s.Empty() {
+					t.Fatal("one-shot job must fire once despite persistence failure")
+				}
+			}
+			if err := os.WriteFile(path, good, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if operation == "Delete" {
+				if err := s.Delete(job.ID); err != nil {
+					t.Fatal(err)
+				}
+			} else if fired := s.Tick(); len(fired) != 0 {
+				t.Fatal("persistence retry fired the one-shot job twice")
+			}
+			if ids := durableIDsOnDisk(t, path); len(ids) != 0 {
+				t.Fatalf("retry left jobs: %v", ids)
+			}
+		})
+	}
+}
 
 // instanceOn models a san process attached to a project's storage file.
 func instanceOn(t *testing.T, path string) *Scheduler {
