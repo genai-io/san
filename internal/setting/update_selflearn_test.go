@@ -58,6 +58,46 @@ func TestUpdateSelfLearnAtPersistsDisable(t *testing.T) {
 	}
 }
 
+func TestUpdateSelfLearnAtSyncsEvolveTool(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	file := userSettingsFile(home)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(`{"disabledTools":null}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	denied := SelfLearnSkills{DenyCreate: true, DenyUpdate: true, DenyDelete: true}
+	for _, tc := range []struct {
+		name     string
+		cfg      SelfLearnSettings
+		disabled bool
+	}{
+		{"memory", SelfLearnSettings{Memory: SelfLearnMemory{Enabled: true}, Skills: denied}, false},
+		{"off", SelfLearnSettings{Skills: denied}, true},
+		{"skills", SelfLearnSettings{}, false},
+		{"off again", SelfLearnSettings{Skills: denied}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := UpdateSelfLearnAt(tc.cfg, ScopeUser); err != nil {
+				t.Fatal(err)
+			}
+			d, err := NewLoader().LoadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if disabled, ok := d.DisabledTools["Evolve"]; !ok || disabled != tc.disabled {
+				t.Fatalf("Evolve disabled = %v (explicit: %v), want %v", disabled, ok, tc.disabled)
+			}
+			if WithDefaultDisabledTools(d.DisabledTools)["Evolve"] != tc.disabled {
+				t.Fatal("saved toggle did not override the Evolve factory default")
+			}
+		})
+	}
+}
+
 // TestUpdateLastOperationMode confirms the user-wide startup preference is
 // written without changing unrelated settings.
 func TestUpdateLastOperationMode(t *testing.T) {
@@ -103,7 +143,7 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark"}`), 0o644); err != nil {
+	if err := os.WriteFile(file, []byte(`{"model":"claude-x","theme":"dark","disabledTools":{"Evolve":true,"Bash":true}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,5 +164,8 @@ func TestUpdateSelfLearnAtPreservesOtherSettings(t *testing.T) {
 	}
 	if !d.SelfLearn.Memory.Enabled {
 		t.Fatalf("selfLearn not written: %+v", d.SelfLearn)
+	}
+	if d.DisabledTools["Evolve"] || !d.DisabledTools["Bash"] {
+		t.Fatalf("Evolve should be enabled without changing other tools: %+v", d.DisabledTools)
 	}
 }

@@ -24,9 +24,12 @@ every setting.
 
 ## Triggers & flow
 
-Triggering is entirely model-decided — there is no cadence. When self-learning
-is active the main agent is given an `Evolve` tool; the per-arm settings are
-permission / store config only (skill create/update/delete gates, memory
+Triggering is entirely model-decided — there is no cadence. `Evolve` ships
+disabled. Saving `/evolve` enables its tool when memory or any skill action is
+allowed, and disables it when every capability is off, at the selected settings
+level. Opening the panel alone changes nothing. `/tools` can also toggle the
+trigger independently; project and persona overrides still apply. The per-arm
+settings bound what a review may save (skill create/update/delete gates, memory
 enable + cap + path, a shared strategy override).
 
 End-to-end when the model calls `Evolve`:
@@ -46,11 +49,11 @@ capabilities (`evolve.Capabilities`) so the model is only invited to flag
 learnings the review can act on — memory off never mentions memory — and is
 injected through the toolset's generic `ExtraTools` hook. The writes affect
 future sessions, not the current turn; at most one review runs at a time.
-Capability changes are reconciled at the next turn start: `ensureAgentSession`
-records what the toolset was built with (`agentEvolveCaps`) and rebuilds the
-agent on drift — covering /evolve saves and external settings edits with one
-mechanism. `SAN_DISABLE_SELF_LEARN=1` is a hard runtime switch: it suppresses
-both the reviewer and the `Evolve` tool regardless of layered settings.
+Capability and tool-toggle changes are reconciled at the next turn start:
+`ensureAgentSession` records what the toolset was built with and rebuilds the
+agent on drift — covering /evolve saves, /tools toggles, and external settings
+edits with one mechanism. `SAN_DISABLE_SELF_LEARN=1` is a hard runtime switch:
+it suppresses both the reviewer and the `Evolve` tool regardless of layered settings.
 
 The skills JSON retains an explicit `enabled` compatibility marker. Legacy
 empty `skills` objects came from `enabled:false` being omitted and migrate to
@@ -197,9 +200,10 @@ internal/app/selflearn_review_fixes_test.go — runtime gates, layered overrides
 ### Testing the trigger manually
 
 1. `/evolve` → keep at least one skill permission on (or enable memory), then
-   **Save**. Saving rebuilds the agent so the `Evolve` tool is injected.
+   **Save**. This also enables the `Evolve` tool at the selected settings level;
+   the updated toolset takes effect on the next turn without a restart.
 2. Confirm injection: ask the agent to list its tools — `Evolve` appears only
-   when self-learning is active.
+   when its tool is enabled and at least one learning capability is allowed.
 3. Do skill-worthy work, then have the agent call `Evolve` (e.g. reason
    "testing the trigger").
 4. Watch: the status-bar indicator (`evolving… → evolved` / `nothing`), the
