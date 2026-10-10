@@ -23,6 +23,26 @@ func TestWriteCreatesParentDirs(t *testing.T) {
 	}
 }
 
+func TestWriteSupportsLongFilenames(t *testing.T) {
+	for name, write := range map[string]func(string, []byte, os.FileMode) error{
+		"Write": Write, "WriteFile": WriteFile,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), strings.Repeat("a", 230))
+			if err := os.WriteFile(path, []byte("original"), 0o600); err != nil {
+				t.Skipf("filesystem rejects the filename: %v", err)
+			}
+			if err := write(path, []byte("replacement"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != "replacement" {
+				t.Fatalf("contents = %q, err = %v", got, err)
+			}
+			assertNoTempLeft(t, filepath.Dir(path))
+		})
+	}
+}
+
 // The caller's exact mode is applied before replacement — secrets stay 0600,
 // shared config becomes 0644.
 func TestWriteAppliesRequestedPerm(t *testing.T) {

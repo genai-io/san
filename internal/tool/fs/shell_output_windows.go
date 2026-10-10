@@ -78,11 +78,16 @@ func (r *codePageReader) Read(p []byte) (int, error) {
 	if n > 0 {
 		return r.reader.Read(p[:min(n, len(p))])
 	}
-	// Wait only for enough bytes to distinguish UTF-8 from the console code page.
-	b, err := r.reader.Peek(utf8.UTFMax)
-	b, _ = r.reader.Peek(r.reader.Buffered())
+	// Complete an unfinished character without waiting for unrelated output.
+	for !utf8.FullRune(b) {
+		_, err := r.reader.Peek(len(b) + 1)
+		b, _ = r.reader.Peek(r.reader.Buffered())
+		if err != nil {
+			break
+		}
+	}
 	validUTF8 := utf8.Valid(b)
-	if !validUTF8 && err == nil {
+	if !validUTF8 && len(b) >= utf8.UTFMax {
 		for trim := 1; trim < utf8.UTFMax; trim++ {
 			if utf8.Valid(b[:len(b)-trim]) {
 				validUTF8 = true
@@ -93,7 +98,16 @@ func (r *codePageReader) Read(p []byte) (int, error) {
 	r.decoded = r.reader
 	// shortcut: infer encoding from the first non-ASCII block; use explicit encoding for mixed-encoding commands.
 	if r.cp != 65001 && !validUTF8 {
-		for _, name := range []string{fmt.Sprintf("windows-%d", r.cp), fmt.Sprintf("cp%d", r.cp), fmt.Sprintf("IBM%d", r.cp)} {
+		encodingName := fmt.Sprintf("windows-%d", r.cp)
+		switch r.cp {
+		case 932:
+			encodingName = "Shift_JIS"
+		case 949:
+			encodingName = "EUC-KR"
+		case 950:
+			encodingName = "Big5"
+		}
+		for _, name := range []string{encodingName, fmt.Sprintf("cp%d", r.cp), fmt.Sprintf("IBM%d", r.cp)} {
 			if enc, err := ianaindex.IANA.Encoding(name); err == nil && enc != nil {
 				r.decoded = transform.NewReader(r.reader, enc.NewDecoder())
 				break

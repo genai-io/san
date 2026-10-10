@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+func TestWriteFilePreservesBackslashInDirectoryName(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("backslash is a path separator")
+	}
+	dir := t.TempDir()
+	parent := filepath.Join(dir, `project\`)
+	if err := os.Mkdir(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(parent, "new.txt")
+	if err := WriteFile(path, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "new" {
+		t.Fatalf("requested target = %q, err = %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "project")); !os.IsNotExist(err) {
+		t.Fatalf("unrequested sibling directory exists: %v", err)
+	}
+}
+
 func TestResolvePathWithMissingParentsAndSymlinkTargets(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")

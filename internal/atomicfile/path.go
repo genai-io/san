@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // ResolvePath follows symlinks even when the file or its parents are new.
@@ -42,7 +41,10 @@ func ResolvePath(path string) (string, error) {
 			candidate = target
 			continue
 		}
-		parent := strings.TrimRight(dir, "/\\")
+		parent := dir
+		for len(parent) > 0 && os.IsPathSeparator(parent[len(parent)-1]) {
+			parent = parent[:len(parent)-1]
+		}
 		if len(parent) <= len(filepath.VolumeName(dir)) {
 			parent = dir
 		}

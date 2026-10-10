@@ -72,7 +72,7 @@ func write(path string, data []byte, perm os.FileMode, exactPerm bool) error {
 		return fmt.Errorf("create dir for %s: %w", path, err)
 	}
 
-	tmpName := filepath.Join(dir, "."+filepath.Base(path)+"."+rand.Text()+".tmp")
+	tmpName := filepath.Join(dir, ".atomic-"+rand.Text()+".tmp")
 	tmp, err := os.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
 		return fmt.Errorf("create temp for %s: %w", path, err)

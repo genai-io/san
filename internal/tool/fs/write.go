@@ -104,12 +104,6 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 		filePath = filepath.Join(cwd, filePath)
 	}
 
-	// Create parent directories if needed
-	dir := filepath.Dir(filePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return toolresult.NewErrorResult(t.Name(), "failed to create directory: "+err.Error())
-	}
-
 	// Check if file exists (for status message)
 	_, statErr := os.Stat(filePath)
 	isNewFile := os.IsNotExist(statErr)
