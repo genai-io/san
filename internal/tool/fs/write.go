@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -133,7 +134,7 @@ func (t *WriteTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	mode := os.FileMode(tool.GetInt(params, "mode", 0o644)) & 0o7777
 
 	// Write file
-	if err := os.WriteFile(filePath, []byte(content), mode); err != nil {
+	if err := atomicfile.WriteFile(filePath, []byte(content), mode); err != nil {
 		return toolresult.NewErrorResult(t.Name(), "failed to write file: "+err.Error())
 	}
 	recordFileWritten(filePath)

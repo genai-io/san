@@ -26,9 +26,8 @@ type outputProgress struct {
 	lastReport time.Time
 }
 
-// tee wraps buf so writes to it also feed the counter. The returned writer is
-// the command's stdout or stderr; buf still receives the full output verbatim.
-func (p *outputProgress) tee(buf *bytes.Buffer) io.Writer {
+// tee counts the full stream even when its destination discards excess bytes.
+func (p *outputProgress) tee(buf io.Writer) io.Writer {
 	if p == nil || p.report == nil {
 		return buf
 	}
@@ -53,11 +52,9 @@ func (p *outputProgress) observe(n int, chunk []byte) {
 	}
 }
 
-// countingWriter forwards every write to the underlying buffer unchanged, then
-// counts it. It never alters or withholds bytes, so the command's captured
-// output is identical to writing straight to the buffer.
+// countingWriter observes the accepted bytes without changing the destination's policy.
 type countingWriter struct {
-	buf      *bytes.Buffer
+	buf      io.Writer
 	progress *outputProgress
 }
 

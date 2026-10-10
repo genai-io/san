@@ -48,14 +48,11 @@ type Job struct {
 // Session-only jobs are cleared when the process exits.
 // Durable jobs persist to storagePath across sessions.
 type Scheduler struct {
-	mu          sync.RWMutex
-	jobs        map[string]*Job
-	storagePath string // file path for durable job persistence (empty = disabled)
-	// knownDurable records every durable job id this process has held, so a
-	// save can tell "I removed this" from "another instance created it". The
-	// storage file is per-project, not per-process, and two san windows open on
-	// one repo share it.
+	mu           sync.RWMutex
+	jobs         map[string]*Job
+	storagePath  string // file path for durable job persistence (empty = disabled)
 	knownDurable map[string]bool
+	dirtyDurable map[string]bool // true: upsert, false: delete
 }
 
 // NewScheduler creates a new in-memory *Scheduler.
@@ -63,6 +60,7 @@ func NewScheduler() *Scheduler {
 	return &Scheduler{
 		jobs:         make(map[string]*Job),
 		knownDurable: make(map[string]bool),
+		dirtyDurable: make(map[string]bool),
 	}
 }
 
@@ -105,7 +103,12 @@ func (s *Scheduler) Create(cronExpr, prompt string, recurring, durable bool) (*J
 	s.jobs[job.ID] = job
 
 	if durable {
-		s.saveDurableLocked()
+		s.dirtyDurable[job.ID] = true
+		if err := s.saveDurableLocked(); err != nil {
+			delete(s.jobs, job.ID)
+			delete(s.dirtyDurable, job.ID)
+			return nil, err
+		}
 	}
 
 	return job, nil
@@ -121,10 +124,20 @@ func (s *Scheduler) Delete(id string) error {
 		return fmt.Errorf("cron: job %q not found", id)
 	}
 	wasDurable := job.Durable
+	wasDirty, hadDirty := s.dirtyDurable[id]
 	delete(s.jobs, id)
 
 	if wasDurable {
-		s.saveDurableLocked()
+		s.dirtyDurable[id] = false
+		if err := s.saveDurableLocked(); err != nil {
+			s.jobs[id] = job
+			if hadDirty {
+				s.dirtyDurable[id] = wasDirty
+			} else {
+				delete(s.dirtyDurable, id)
+			}
+			return err
+		}
 	}
 	return nil
 }
@@ -188,6 +201,7 @@ func (s *Scheduler) Tick() []FiredJob {
 		job.FiredCount++
 		if job.Durable {
 			changed = true
+			s.dirtyDurable[job.ID] = true
 		}
 
 		if !job.Recurring {
@@ -209,10 +223,15 @@ func (s *Scheduler) Tick() []FiredJob {
 	}
 
 	for _, id := range toDelete {
+		if s.jobs[id].Durable {
+			s.dirtyDurable[id] = false
+		}
 		delete(s.jobs, id)
 	}
 	if changed {
-		s.saveDurableLocked()
+		if err := s.saveDurableLocked(); err != nil {
+			log.Logger().Error("cron: persist durable jobs", zap.Error(err))
+		}
 	}
 
 	return fired
@@ -262,10 +281,28 @@ func (s *Scheduler) Add(job Job) error {
 		return fmt.Errorf("cron: no valid fire time found for %q", job.Cron)
 	}
 
+	previous := s.jobs[j.ID]
+	wasDirty, hadDirty := s.dirtyDurable[j.ID]
+	wasKnown := s.knownDurable[j.ID]
 	s.jobs[j.ID] = j
 
 	if j.Durable {
-		s.saveDurableLocked()
+		delete(s.knownDurable, j.ID)
+		s.dirtyDurable[j.ID] = true
+		if err := s.saveDurableLocked(); err != nil {
+			if previous != nil {
+				s.jobs[j.ID] = previous
+			} else {
+				delete(s.jobs, j.ID)
+			}
+			if hadDirty {
+				s.dirtyDurable[j.ID] = wasDirty
+			} else {
+				delete(s.dirtyDurable, j.ID)
+			}
+			s.knownDurable[j.ID] = wasKnown
+			return err
+		}
 	}
 	return nil
 }
@@ -273,28 +310,22 @@ func (s *Scheduler) Add(job Job) error {
 // Remove removes a job by ID, satisfying the Service interface.
 // Returns true if the job was found and removed.
 func (s *Scheduler) Remove(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	job, ok := s.jobs[id]
-	if !ok {
-		return false
-	}
-	wasDurable := job.Durable
-	delete(s.jobs, id)
-
-	if wasDurable {
-		s.saveDurableLocked()
-	}
-	return true
+	return s.Delete(id) == nil
 }
 
 // Reset removes all jobs.
 func (s *Scheduler) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for id, job := range s.jobs {
+		if job.Durable {
+			s.dirtyDurable[id] = false
+		}
+	}
 	s.jobs = make(map[string]*Job)
-	s.saveDurableLocked()
+	if err := s.saveDurableLocked(); err != nil {
+		log.Logger().Error("cron: persist durable jobs", zap.Error(err))
+	}
 }
 
 // SetStoragePath sets the file path for durable job persistence.
@@ -303,35 +334,6 @@ func (s *Scheduler) SetStoragePath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.storagePath = path
-}
-
-// foreignDurableLocked returns the durable jobs currently on disk that belong
-// to another instance: ones this process has never held. Read failures yield
-// nothing, which degrades to the previous behaviour rather than refusing the
-// save.
-func (s *Scheduler) foreignDurableLocked(mine []*Job) []*Job {
-	data, err := os.ReadFile(s.storagePath)
-	if err != nil {
-		return nil
-	}
-	var onDisk []*Job
-	if err := json.Unmarshal(data, &onDisk); err != nil {
-		return nil
-	}
-
-	held := make(map[string]bool, len(mine))
-	for _, job := range mine {
-		held[job.ID] = true
-	}
-
-	var foreign []*Job
-	for _, job := range onDisk {
-		if held[job.ID] || s.knownDurable[job.ID] {
-			continue
-		}
-		foreign = append(foreign, job)
-	}
-	return foreign
 }
 
 // LoadDurable reads durable jobs from the storage file and merges them into the store.
@@ -358,6 +360,9 @@ func (s *Scheduler) LoadDurable() error {
 
 	now := time.Now()
 	for _, job := range jobs {
+		if job == nil {
+			return fmt.Errorf("cron: null durable job")
+		}
 		// Skip expired jobs
 		if !job.ExpiresAt.IsZero() && now.After(job.ExpiresAt) {
 			continue
@@ -437,38 +442,52 @@ func estimateRecurringPeriod(expr *expression, base time.Time) time.Duration {
 	return next.Sub(base)
 }
 
-// saveDurableLocked writes this process's durable jobs, preserving any the
-// file holds that belong to another instance.
-//
-// The storage path is per-project, so two san windows open on one repo write
-// the same file. Writing only the in-memory view erased whatever the other
-// instance had added since this one booted — LoadDurable runs once, at
-// startup, so a job created in the other window was simply not in this view.
-// A durable job could vanish from disk without either user doing anything to
-// it.
-//
-// Jobs this process never knew about are carried over verbatim: their
-// schedule state belongs to the instance that owns them, and adopting them
-// into s.jobs would put them through LoadDurable's boot-time NextFire
-// recalculation, which is wrong mid-session. Jobs it did know about and no
-// longer holds were deliberately removed, so they stay removed.
-func (s *Scheduler) saveDurableLocked() {
-	if s.storagePath == "" {
-		return
+// Apply only local mutations to the latest shared file; stale jobs must not
+// undo another window's deletion or scheduling update.
+func (s *Scheduler) saveDurableLocked() error {
+	if s.storagePath == "" || len(s.dirtyDurable) == 0 {
+		return nil
 	}
-
-	var durable []*Job
-	for _, job := range s.jobs {
-		if job.Durable {
-			durable = append(durable, job)
-			s.knownDurable[job.ID] = true
+	return atomicfile.WithLock(s.storagePath+".lock", func() error {
+		var durable []*Job
+		if err := atomicfile.ReadJSON(s.storagePath, &durable); err != nil {
+			return err
 		}
-	}
-	durable = append(durable, s.foreignDurableLocked(durable)...)
-
-	if err := atomicfile.WriteJSON(s.storagePath, durable, 0o644); err != nil {
-		log.Logger().Error("cron: persist durable jobs", zap.Error(err))
-	}
+		onDisk := make(map[string]*Job, len(durable))
+		for _, job := range durable {
+			if job == nil {
+				return fmt.Errorf("cron: null durable job")
+			}
+			onDisk[job.ID] = job
+		}
+		for id, present := range s.dirtyDurable {
+			if !present {
+				delete(onDisk, id)
+			} else if !s.knownDurable[id] || onDisk[id] != nil {
+				if job := s.jobs[id]; job != nil && job.Durable {
+					onDisk[id] = job
+				}
+			}
+		}
+		durable = make([]*Job, 0, len(onDisk))
+		for _, job := range onDisk {
+			durable = append(durable, job)
+		}
+		sort.Slice(durable, func(i, j int) bool { return durable[i].ID < durable[j].ID })
+		if err := atomicfile.WriteJSON(s.storagePath, durable, 0o644); err != nil {
+			return err
+		}
+		for id := range s.knownDurable {
+			if onDisk[id] == nil {
+				delete(s.jobs, id)
+			}
+		}
+		for id := range s.dirtyDurable {
+			s.knownDurable[id] = true
+		}
+		clear(s.dirtyDurable)
+		return nil
+	})
 }
 
 func generateID() string {

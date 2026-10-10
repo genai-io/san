@@ -165,55 +165,26 @@ func runPrint(userMessage, personaName string) error {
 		return err
 	}
 
-	var personaParts system.Persona
-	var disabledTools map[string]bool
-	if personaName != "" {
-		cwd, _ := os.Getwd()
-		p, _ := persona.Default().Get(personaName)
-
-		base, _ := setting.LoadForCwd(cwd)
-		var overlay *setting.Data
-		if p.Settings != nil {
-			overlay = &p.Settings.Data
-		}
-		merged := setting.ApplyPersonaOverlay(base, overlay)
-		disabledTools = setting.WithDefaultDisabledTools(merged.DisabledTools)
-
-		personaParts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
-
-		if merged.Model != "" {
-			if models, err := llmProvider.ListModels(ctx); err == nil {
-				for _, m := range models {
-					if m.ID == merged.Model {
-						modelID = merged.Model
-						break
-					}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	params, err := printBuildParams(cwd, personaName)
+	if err != nil {
+		return err
+	}
+	if personaName != "" && params.ModelID != "" {
+		if models, err := llmProvider.ListModels(ctx); err == nil {
+			for _, m := range models {
+				if m.ID == params.ModelID {
+					modelID = params.ModelID
+					break
 				}
 			}
 		}
-	} else {
-		disabledTools = setting.WithDefaultDisabledTools(nil)
 	}
-
-	cwd, _ := os.Getwd()
-	settings, _ := setting.LoadForCwd(cwd)
-	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
-	res, err := agentpkg.RunOnce(ctx, agentpkg.BuildParams{
-		Provider:      llmProvider,
-		ModelID:       modelID,
-		MaxTokens:     setting.DefaultMaxTokens,
-		CWD:           cwd,
-		Persona:       personaParts,
-		DisabledTools: disabledTools,
-		// The settings decide, as they do interactively. What differs is that
-		// nobody is at the keyboard, which the pipeline already has a name for:
-		// ShouldAvoidPrompts turns a call that would prompt into a refusal
-		// rather than parking the turn on an answer that will never come.
-		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
-			d := settings.HasPermissionToUseTool(name, args, headless)
-			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
-		},
-	}, core.UserMessage(userMessage, nil), func(text string) { fmt.Print(text) })
+	params.Provider, params.ModelID = llmProvider, modelID
+	res, err := agentpkg.RunOnce(ctx, params, core.UserMessage(userMessage, nil), func(text string) { fmt.Print(text) })
 	if err != nil {
 		return err
 	}
@@ -225,6 +196,37 @@ func runPrint(userMessage, personaName string) error {
 	}
 	fmt.Println()
 	return nil
+}
+
+func printBuildParams(cwd, personaName string) (agentpkg.BuildParams, error) {
+	settings, err := setting.LoadForCwd(cwd)
+	if err != nil {
+		return agentpkg.BuildParams{}, err
+	}
+	var parts system.Persona
+	if personaName != "" {
+		p, ok := persona.Default().Get(personaName)
+		if !ok {
+			return agentpkg.BuildParams{}, fmt.Errorf("unknown persona %q", personaName)
+		}
+		if p.Settings != nil {
+			settings = setting.ApplyPersonaOverlay(settings, &p.Settings.Data)
+		}
+		parts = system.Persona{Identity: p.Identity, Behavior: p.Behavior, Rules: p.Rules}
+	}
+	headless := &setting.SessionPermissions{ShouldAvoidPrompts: true}
+	return agentpkg.BuildParams{
+		ModelID:       settings.Model,
+		MaxTokens:     setting.DefaultMaxTokens,
+		CWD:           cwd,
+		Persona:       parts,
+		DisabledTools: setting.WithDefaultDisabledTools(settings.DisabledTools),
+		// Headless uses the same effective policy; prompts become refusals.
+		PermissionRules: func(name string, args map[string]any) agentpkg.PermDecisionResult {
+			d := settings.HasPermissionToUseTool(name, args, headless)
+			return agentpkg.PermDecisionResult{Decision: d.Behavior, Reason: d.Reason, ToolName: name}
+		},
+	}, nil
 }
 
 // resolveProvider connects to the best available provider for a one-shot,

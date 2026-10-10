@@ -46,6 +46,32 @@ func TestNewRecorderRebindsAfterTheSessionIDChanges(t *testing.T) {
 	}
 }
 
+func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
+	store, err := NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	setup := &Setup{Store: store, SessionID: "original"}
+	rec := setup.NewRecorder("main", "fake", "fake", 1000)
+	msg := core.UserMessage("old conversation", nil)
+	msg.ID = "old"
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+	setup.SetID("other")
+	setup.NewRecorder("main", "fake", "fake", 1000)
+	setup.SetID("original")
+	rec = setup.NewRecorder("main", "fake", "fake", 1000)
+	msg = core.UserMessage("new turn", nil)
+	msg.ID = "new"
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+	snap, err := store.Load("original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Messages) != 2 || snap.Messages[0].ID != "old" || snap.Messages[1].ID != "new" {
+		t.Fatalf("history after returning = %+v", snap.Messages)
+	}
+}
+
 // Setup.Recorder deliberately refuses a stale recorder rather than letting a
 // caller write into the wrong transcript. That guard is what the agent's
 // captured closure bypasses, so it is worth pinning.

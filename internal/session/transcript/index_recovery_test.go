@@ -2,11 +2,75 @@ package transcript
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 )
+
+func TestWindowsMergeOnlyTheirOwnIndexEntries(t *testing.T) {
+	dir := t.TempDir()
+	a, err := NewFileStore(dir, "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewFileStore(dir, "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	startSession(t, a, "A")
+	startSession(t, b, "B")
+	if err := a.AppendMessage(context.Background(), AppendMessageCommand{
+		SessionID: "A", MessageID: "A2", ParentID: "A-m1", Time: time.Now(), Role: "user",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.FlushIndex(); err != nil {
+		t.Fatal(err)
+	}
+	for _, store := range []*FileStore{a, b} {
+		if ids := listIDs(t, store); !contains(ids, "A") || !contains(ids, "B") {
+			t.Fatalf("visible sessions = %v", ids)
+		}
+	}
+	if err := b.Delete(context.Background(), "B"); err != nil {
+		t.Fatal(err)
+	}
+	startSession(t, a, "C")
+	if ids := listIDs(t, b); contains(ids, "B") || !contains(ids, "C") {
+		t.Fatalf("stale index after deletion = %v", ids)
+	}
+}
+
+func TestConcurrentWindowsKeepAllSessionIndexEntries(t *testing.T) {
+	dir := t.TempDir()
+	var wg sync.WaitGroup
+	for window := range 2 {
+		store, err := NewFileStore(dir, "proj")
+		if err != nil {
+			t.Fatal(err)
+		}
+		wg.Go(func() {
+			for i := range 10 {
+				id := fmt.Sprintf("window-%d-%d", window, i)
+				if err := store.Start(context.Background(), StartCommand{SessionID: id, Time: time.Now()}); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+	store, err := NewFileStore(dir, "proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := listIDs(t, store); len(ids) != 20 {
+		t.Fatalf("sessions = %d, want 20", len(ids))
+	}
+}
 
 // startSession writes a transcript the way a real session does.
 func startSession(t *testing.T, fs *FileStore, id string) {

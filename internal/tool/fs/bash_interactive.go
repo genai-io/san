@@ -96,7 +96,8 @@ func runInteractive(ctx context.Context, command string, cmd *exec.Cmd, responde
 		}
 	}()
 
-	var out, pending bytes.Buffer
+	var out shellOutput
+	var pending bytes.Buffer
 	answers := 0
 	stoppedAnswering := false
 
@@ -126,7 +127,7 @@ loop:
 			if !ok {
 				break loop // process finished and closed the pty
 			}
-			out.Write(b)
+			_, _ = out.Write(b)
 			pending.Write(b)
 			trimToLine(&pending)
 			rearm()
@@ -181,7 +182,7 @@ drainLoop:
 			if !ok {
 				break drainLoop
 			}
-			out.Write(b)
+			_, _ = out.Write(b)
 		case <-drainDeadline.C:
 			break drainLoop
 		}
@@ -237,6 +238,10 @@ func trimToLine(pending *bytes.Buffer) {
 		tail := append([]byte(nil), b[i+1:]...)
 		pending.Reset()
 		pending.Write(tail)
+	}
+	if pending.Len() > 4096 {
+		b := pending.Bytes()
+		pending.Truncate(copy(b, b[len(b)-4096:]))
 	}
 }
 

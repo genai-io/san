@@ -123,7 +123,7 @@ func (s *Data) confirmationPromptReason(toolName string, args map[string]any, se
 
 	if session != nil && len(session.WorkingDirectories) > 0 {
 		if toolName == "Edit" || toolName == "Write" {
-			if fp, ok := filePathArg(toolName, args); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
+			if fp, ok := filePathArg(args); ok && !isInWorkingDirectory(fp, session.WorkingDirectories) {
 				return "outside working directory", false
 			}
 		}
@@ -131,17 +131,8 @@ func (s *Data) confirmationPromptReason(toolName string, args map[string]any, se
 	return "", false
 }
 
-// filePathArg extracts the file-path argument for a file tool, honoring each
-// tool's own parameter name: Edit takes "path"; Read, Write, and NotebookEdit
-// take "file_path". ok is false when the argument is absent. This is the single
-// source of truth for the mapping, so Edit's path-key divergence lives here
-// rather than being re-checked at every call site.
-func filePathArg(toolName string, args map[string]any) (string, bool) {
-	key := "file_path"
-	if toolName == "Edit" {
-		key = "path"
-	}
-	fp, ok := args[key].(string)
+func filePathArg(args map[string]any) (string, bool) {
+	fp, ok := args["file_path"].(string)
 	return fp, ok
 }
 
@@ -283,7 +274,7 @@ func BuildRule(toolName string, args map[string]any) string {
 		}
 
 	case "Read", "Write", "Edit":
-		if fp, ok := filePathArg(toolName, args); ok {
+		if fp, ok := filePathArg(args); ok {
 			argStr = fp
 		}
 
@@ -627,7 +618,7 @@ func RecoverableReason(toolName string, args map[string]any) string {
 func UnrecoverableReason(toolName string, args map[string]any) string {
 	switch toolName {
 	case "Edit", "Write", "NotebookEdit":
-		if fp, ok := filePathArg(toolName, args); ok {
+		if fp, ok := filePathArg(args); ok {
 			if reason := isSensitivePath(fp); reason != "" {
 				return reason
 			}

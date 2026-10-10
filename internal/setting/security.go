@@ -334,19 +334,13 @@ var sensitiveFiles = map[string]string{
 // requires user confirmation (unrecoverable tier; bypass mode skips it).
 // Returns a human-readable reason if sensitive, or empty string if safe.
 func isSensitivePath(filePath string) string {
-	// Resolve symlinks to prevent bypass via symlink chains
-	resolved, err := filepath.EvalSymlinks(filepath.Dir(filePath))
-	if err == nil {
-		filePath = filepath.Join(resolved, filepath.Base(filePath))
+	if reason := sensitivePathReason(cleanPath(filePath)); reason != "" {
+		return reason
 	}
+	return sensitivePathReason(resolvePath(filePath))
+}
 
-	// Normalize to absolute path
-	if !filepath.IsAbs(filePath) {
-		if abs, err := filepath.Abs(filePath); err == nil {
-			filePath = abs
-		}
-	}
-
+func sensitivePathReason(filePath string) string {
 	// Check each path component for sensitive directories
 	parts := strings.Split(filePath, string(os.PathSeparator))
 	for _, part := range parts {

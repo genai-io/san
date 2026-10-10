@@ -23,9 +23,8 @@ func TestWriteCreatesParentDirs(t *testing.T) {
 	}
 }
 
-// CreateTemp always makes 0600, so the caller's mode has to be applied before
-// the file becomes visible under the target name — secrets stay 0600, shared
-// config becomes 0644.
+// The caller's exact mode is applied before replacement — secrets stay 0600,
+// shared config becomes 0644.
 func TestWriteAppliesRequestedPerm(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("unix file modes")

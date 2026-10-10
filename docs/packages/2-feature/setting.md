@@ -77,6 +77,12 @@ func ResetDefaultSettings()              // test-only
   atomically.
 - Per-call: permission checks are mutex-protected reads against the
   current snapshot.
+- File permissions use the tools' `file_path` argument. Sensitive-path checks
+  examine both the requested name and the full symlink target, including targets
+  or parent directories that have not been created yet.
+- Print mode (`san -p`) loads the base settings once and applies the selected
+  persona once. That same effective configuration supplies disabled tools and
+  allow/deny/ask rules; a headless prompt becomes a refusal.
 
 ## Tests
 
@@ -87,6 +93,8 @@ internal/setting/config_extra_test.go    — config merge semantics.
 internal/setting/bash_ast_test.go        — bash command parsing for
                                             permission patterns.
 internal/setting/workdir_test.go         — cwd resolution.
+internal/setting/security_test.go        — Edit deny rules and sensitive symlink targets.
+internal/app/print_test.go               — effective print-mode tools and permission policy.
 ```
 
 ## See Also

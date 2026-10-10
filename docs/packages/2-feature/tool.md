@@ -69,6 +69,16 @@ func ResetDefaultRegistry()           // test-only
   before that, `Default()` already returns `defaultRegistry`, so
   `init()`-time registrations are not lost.
 - Per-call: `Execute` is goroutine-safe; the registry uses an RWMutex.
+- `Write` and `Edit` replace file contents through `atomicfile.WriteFile` so
+  failed writes leave the original intact. Existing permissions and symlink
+  targets are retained; new files honor the umask. Replacement changes the
+  inode, so hard-link aliases retain their old contents; devices, pipes and
+  other non-regular targets are rejected.
+- Foreground shell capture is bounded while the full stream is drained and
+  counted. Model output and hook stdout/stderr each retain at most 30,000 bytes
+  plus a truncation notice. Interactive capture and unfinished prompt text are
+  bounded too. Background output streams directly to the task log, with the
+  existing 512 KiB in-memory preview; stdout/stderr share their arrival order.
 
 ## Tests
 
@@ -76,6 +86,8 @@ func ResetDefaultRegistry()           // test-only
 internal/tool/execute_test.go         — dispatch and not-found behavior.
 internal/tool/schema_registry_test.go — schema generation, including the Agent tool.
 internal/tool/pretool_hook_test.go    — PreToolUse hook outcomes and the permission gate.
+internal/tool/fs/write_failure_test.go — failed writes preserve original contents.
+internal/tool/fs/shell_output_test.go — bounded capture and complete background logs.
 ```
 
 ## See Also

@@ -59,13 +59,22 @@ func ResetDefaultScheduler()        // test-only
   from disk.
 - Per-tick: the TUI calls `Tick()` once per UI tick; returned `FiredJob`s
   are converted to user messages and routed through the agent.
-- Persistence: durable jobs are written to `<storagePath>` on Add/Delete.
+- Persistence: durable mutations are merged into the latest `<storagePath>`
+  under `<storagePath>.lock`. Unchanged jobs from a stale window cannot undo
+  another window's deletion or scheduling update. A corrupt storage file is
+  reported and left untouched; failed Add/Create/Delete operations retain
+  their previous in-memory state.
+- Calendar days advance by date; hour/minute searches advance in elapsed
+  minutes. Both remain monotonic across repeated hours and missing midnights
+  during daylight-saving transitions.
 
 ## Tests
 
 ```
 internal/cron/cron_test.go    — expression parsing, next-fire, durability.
 internal/cron/loop_test.go    — tick semantics.
+internal/cron/dst_test.go     — skipped/repeated hours and missing midnights.
+internal/cron/cross_instance_test.go — shared persistence, deletion and write errors.
 ```
 
 ## See Also
