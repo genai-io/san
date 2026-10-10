@@ -21,6 +21,16 @@ execution enters through `NodeRunner` — so it can move to sdk-go as
 [`design/proposals/0001-workflow-orchestration.md`](../../design/proposals/0001-workflow-orchestration.md);
 user-facing behaviour: [`concepts/workflow.md`](../../concepts/workflow.md).
 
+The app's `/workflow list|show|run|stop` commands use the Workflow tool's saved
+definition paths. The command registry owns static subcommand suggestions;
+the app adds saved workflow names after `show` and `run`, then completes
+referenced input keys after `run <name>`. `Workflow.InputNames` derives those
+keys from node templates; direct slash runs report missing keys before launch.
+Execution and completion share `command.ScanArguments` quote boundaries;
+generated preview and completion commands use `command.QuoteArgument` for
+saved names. Stop cancels immediately during a foreground stream, while its
+display-only result passes through the app's held-notice queue.
+
 ## Contract
 
 ```go
@@ -56,6 +66,18 @@ func (r *Result) Summary(w *Workflow) string
 // Bounds reports the worst case a run can reach: how many subagent turns it
 // can start, and the fan-out bound of each for_each node.
 func (w *Workflow) Bounds() (turns int, fanOut []string)
+
+// InputNames lists the distinct {{input.key}} references in node prompts.
+func (w *Workflow) InputNames() []string
+
+// CompactProgressView draws a short branch-and-join graph for parallel stages,
+// a line for simple stages, or an exact dependency list for complex edges.
+// ActivityStreamView groups and wraps the latest node and worker events, including
+// bounded tool-result summaries. The app asks an
+// AgentTask for a width-aware rendering on each frame and pulses running marks.
+func (w *Workflow) CompactProgressView(statuses map[string]Status, width int) string
+func (w *Workflow) ActivityStreamView(events []ActivityEvent, width int) string
+func (w *Workflow) PreviewSteps(width int) string
 ```
 
 `Workflow`, `Node`, `Edge`, `Options`, `Result` and `NodeResult` are plain
@@ -103,12 +125,21 @@ structs; `Node.Config` carries the host-facing keys (`agent`, `mode`,
   *taken* edge, inherited downstream; an untaken conditional edge hides that
   branch.
 - Node phases: `pending → running → succeeded | failed | skipped | omitted`.
+  A node becomes `running` only after it acquires a shared execution slot, so
+  work waiting at `max_parallel` remains pending in the live graph.
   `skipped` is contagion from an upstream failure; `omitted` means no
   upstream edge was taken. `continue_on_error` on the failing node stops the
   contagion, and `whole` decides what its `{{id}}` still carries: a
   `for_each` node's finished workers, nothing from a plain turn.
 - `Summary` is one status line per node followed by the output of each
   succeeded sink; intermediate outputs stay in the node transcripts.
+- `view.go` renders a compact branch-and-join graph with live node phases for
+  launch previews and the TUI's task area. Dense graphs fall back to a
+  dependency list so no edges disappear from the display.
+- Streamed text stays provisional until that inference succeeds. A failed
+  inference removes its buffered and displayed text before retrying, while
+  accepted text and other nodes' activity remain. Animation styles only the
+  leading call-status marker, preserving command and result content.
 
 `tests/integration/workflow/` covers the node ↔ subagent-turn seam the
 unit tests stub out; graph semantics stay with the unit tests.
@@ -127,9 +158,12 @@ internal/workflow/parse_test.go  — the release-check example, ancestor referen
 internal/workflow/run_test.go    — order and data flow, max_parallel, conditional omit (and that it never runs), scope along taken paths, failure contagion and continue_on_error, cancellation, the summary's shape.
 internal/workflow/expand_test.go — for_each over objects and strings, max_workers as cap and as refusal, malformed plans, for_each validation, Bounds, Load/Find priority.
 internal/workflow/loop_test.go   — unrolled shape, previous-round binding, early escape, exhaustion, an off-script round, gates outside and inside a loop still stopping quietly, the xN cap, loops in sequence, multi-node bodies, every loop rejection.
-internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, a failed run becoming a failed task.
+internal/workflow/view_test.go   — compact branches, live phases, conditional fallback, activity grouping and wrapping.
+internal/tool/workflow/workflow_test.go — the tool end to end against a scripted executor: pre-flight rejection and bounds (including an Execute an allow rule let skip approval), node requests, fan-out labels, saved workflows, quoted missing-input commands, failed stream cleanup preserving accepted and parallel text, a failed run becoming a failed task.
 internal/app/input/slash_workflow_test.go — /workflow listing, launching through Launch with no model turn, the task naming the command, bad input.
-tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), and a truncated turn failing its node.
+internal/app/command_suggestion_test.go — saved-name and input-key completion, quoted names and values, unfinished quotes.
+internal/app/update_submit_test.go — immediate stop without losing streamed text or tool metadata; Ctrl+C foreground/background routing.
+tests/integration/workflow/workflow_test.go — the same tool through the real subagent.Executor and San's own agent loop: a prompt reaching the model and its answer coming back as the node's output (sectioning, for_each), a truncated turn failing its node, and failed stream text being discarded on retry.
 ```
 
 ## See Also

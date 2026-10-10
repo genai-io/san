@@ -182,6 +182,7 @@ type SubagentBrief struct {
 	Description     string   // one-line role description
 	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
+	ToolGuidance    string   // cross-tool choice, only when both tools are offered
 	CustomPrompt    string   // AGENT.md body
 }
 
@@ -217,6 +218,9 @@ func renderSubagentIdentity(b SubagentBrief) string {
 	}
 	if len(b.ToolConstraints) > 0 {
 		fmt.Fprintf(&sb, "Tool constraints: %s.\n", strings.Join(b.ToolConstraints, "; "))
+	}
+	if b.ToolGuidance != "" {
+		fmt.Fprintf(&sb, "Tool choice: %s\n", b.ToolGuidance)
 	}
 	if body := strings.TrimSpace(b.CustomPrompt); body != "" {
 		sb.WriteString("\n")

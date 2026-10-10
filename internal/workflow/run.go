@@ -116,6 +116,15 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 					opts.OnStatus(n, st)
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				s.res.Err = err
+				if len(n.upstream) > 0 {
+					setStatus(StatusSkipped)
+				} else {
+					setStatus(StatusFailed)
+				}
+				return
+			}
 
 			// Settle upstreams first. Waiting holds no semaphore slot, so a
 			// deep graph cannot starve itself.
@@ -131,7 +140,18 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			}
 			for _, e := range n.upstream {
 				up := slots[e.From]
-				<-up.done
+				select {
+				case <-up.done:
+				case <-ctx.Done():
+					s.res.Err = ctx.Err()
+					setStatus(StatusSkipped)
+					return
+				}
+				if err := ctx.Err(); err != nil {
+					s.res.Err = err
+					setStatus(StatusSkipped)
+					return
+				}
 				switch up.res.Status {
 				case StatusSucceeded:
 					if e.Label == "" || strings.TrimSpace(up.res.Output) == e.Label {
@@ -158,6 +178,11 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 					blocked = true
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				s.res.Err = err
+				setStatus(StatusSkipped)
+				return
+			}
 			switch {
 			case blocked:
 				setStatus(StatusSkipped)
@@ -168,9 +193,9 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 			}
 
 			s.scope = scope
-			setStatus(StatusRunning)
 			t0 := time.Now()
-			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem)
+			started := sync.OnceFunc(func() { setStatus(StatusRunning) })
+			out, err := execute(ctx, n, scope, opts.Inputs, runner, sem, started)
 			s.res.Duration = time.Since(t0)
 			s.res.Output = out
 			if err == nil {
@@ -196,9 +221,9 @@ func Run(ctx context.Context, w *Workflow, runner NodeRunner, opts Options) *Res
 
 // execute runs a node: one turn, or — with for_each — one turn per plan item,
 // bounded by the node's max_workers and by the run's shared slots.
-func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runner NodeRunner, sem chan struct{}) (string, error) {
+func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runner NodeRunner, sem chan struct{}, onStart func()) (string, error) {
 	if n.ForEach == "" {
-		return run1(ctx, runner, sem, Call{Node: n, Prompt: render(n.Prompt, scope, inputs, nil)})
+		return run1(ctx, runner, sem, Call{Node: n, Prompt: render(n.Prompt, scope, inputs, nil)}, onStart)
 	}
 	items, err := plan(n, scope)
 	if err != nil {
@@ -216,7 +241,7 @@ func execute(ctx context.Context, n *Node, scope, inputs map[string]string, runn
 				Node:   n,
 				Prompt: render(n.Prompt, scope, inputs, item),
 				Label:  item[itemName],
-			})
+			}, onStart)
 		})
 	}
 	wg.Wait()
@@ -260,14 +285,25 @@ func unanswered(n *Node, out string) error {
 
 // run1 takes a shared slot for the length of one turn. Waiting for a slot
 // happens here and nowhere else, so a node never holds one while it waits.
-func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call) (string, error) {
+func run1(ctx context.Context, runner NodeRunner, sem chan struct{}, c Call, onStart func()) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	select {
 	case sem <- struct{}{}:
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
 	defer func() { <-sem }()
-	return runner.RunNode(ctx, c)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	onStart()
+	out, err := runner.RunNode(ctx, c)
+	if err == nil && ctx.Err() != nil {
+		return out, ctx.Err()
+	}
+	return out, err
 }
 
 // Summary renders the run for the conversation that launched it: one status
@@ -311,6 +347,8 @@ func statusGlyph(s Status) string {
 		return "↷"
 	case StatusOmitted:
 		return "⊘"
+	case StatusRunning:
+		return "●"
 	default:
 		return "○"
 	}

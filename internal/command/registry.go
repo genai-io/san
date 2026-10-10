@@ -46,7 +46,7 @@ func builtinCommands() []Info {
 		{Name: "reload-plugins", Description: "Reload plugins and refresh plugin-backed skills, agents, MCP, and hooks"},
 		{Name: "think", Description: "Toggle provider-native thinking effort"},
 		{Name: "loop", Description: "Schedule recurring or one-shot prompts and manage loop jobs"},
-		{Name: "workflow", Description: "Run a saved workflow from .san/workflows/ (/workflow <name> [key=value …]), or list them"},
+		{Name: "workflow", Description: "List, preview, or run saved workflows (/workflow list|show|run)"},
 		{Name: "search", Description: "Select search engine for web search"},
 		{Name: "settings", Description: "Configure appearance, permissions and other settings"},
 		{Name: "evolve", Description: "Configure self-learning (skills & memory)"},
@@ -196,6 +196,9 @@ func (s *Registry) List() []Info {
 
 func (s *Registry) Matching(prefix string) []Info {
 	query := strings.ToLower(strings.TrimPrefix(prefix, "/"))
+	if strings.Contains(query, " ") {
+		return matchingSubcommands(query)
+	}
 	matches := make([]Info, 0)
 	seen := make(map[string]bool)
 

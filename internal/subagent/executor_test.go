@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/tool"
@@ -391,6 +392,18 @@ func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
 	}
 	if slices.Contains(brief.ToolConstraints, "Bash(git diff*)") {
 		t.Fatalf("tool constraints should describe effective policy, got %#v", brief.ToolConstraints)
+	}
+}
+
+func TestSubagentPrefersReadWhenReadAndShellAreAvailable(t *testing.T) {
+	schemas := filterSchemasForPermission(newAgentToolSet(nil, nil, nil, nil).Tools(), PermissionExplore, nil)
+	brief := system.SubagentBrief{ToolGuidance: fileReadToolGuidance(schemas)}
+	prompt := system.Build(core.ScopeSubagent, system.WithSubagentIdentity(brief)).Prompt()
+	if !strings.Contains(prompt, "Use Read for file contents") || !strings.Contains(prompt, "avoid cat/head/tail/sed") {
+		t.Fatalf("subagent prompt lacks file-read guidance:\n%s", prompt)
+	}
+	if got := fileReadToolGuidance([]core.ToolSchema{{Name: "Bash"}}); got != "" {
+		t.Fatalf("guidance named an unavailable Read tool: %q", got)
 	}
 }
 

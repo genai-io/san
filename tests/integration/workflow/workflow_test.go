@@ -24,6 +24,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	_ "github.com/genai-io/san/internal/tool/register"
 	toolworkflow "github.com/genai-io/san/internal/tool/workflow"
+	"github.com/genai-io/san/tests/integration/testutil"
 )
 
 // scriptedProvider answers by what it was asked rather than by call order:
@@ -142,6 +143,9 @@ func TestWorkflow_SectioningThroughRealSubagents(t *testing.T) {
 	if !strings.Contains(info.Output, "## report\nship it") {
 		t.Fatalf("summary lost the sink output:\n%s", info.Output)
 	}
+	if !strings.Contains(info.LiveView, "› ship it") {
+		t.Fatalf("streamed model text is absent from the live activity:\n%s", info.LiveView)
+	}
 	// Four nodes, four turns: a node is one subagent turn, not a retry loop.
 	if got := len(provider.prompts()); got != 4 {
 		t.Fatalf("model was called %d times, want one per node:\n%q", got, provider.prompts())
@@ -200,5 +204,20 @@ func TestWorkflow_TruncatedTurnFailsItsNode(t *testing.T) {
 	// Downstream of the failed node never reaches the model at all.
 	if provider.asked("second") || provider.asked("third") {
 		t.Fatalf("a node downstream of a failure reached the model:\n%q", provider.prompts())
+	}
+}
+
+func TestWorkflow_RetryDiscardsFailedStreamText(t *testing.T) {
+	provider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
+		{Content: ai.TextContent(strings.Repeat("discarded draft ", 16)), Err: &ai.Error{Kind: ai.KindNetwork, Message: "stream stalled"}},
+		{Content: ai.TextContent("accepted reply"), StopReason: ai.StopEndTurn},
+	}}
+	const definition = "```mermaid\nflowchart LR\n  a\n```\n\n## a\nmode: explore\n\nCheck a\n"
+	info := run(t, provider, map[string]any{"definition": definition})
+	if info.Status != task.StatusCompleted || len(provider.Calls) != 2 || !strings.Contains(info.Output, "accepted reply") {
+		t.Fatalf("retry did not succeed: calls=%d status=%s error=%s output=%s", len(provider.Calls), info.Status, info.Error, info.Output)
+	}
+	if strings.Contains(info.LiveView, "discarded draft") || !strings.Contains(info.LiveView, "› accepted reply") {
+		t.Fatalf("failed stream text remains, or accepted text is missing:\n%s", info.LiveView)
 	}
 }

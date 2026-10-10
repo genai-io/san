@@ -2,6 +2,7 @@
 package app
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -331,8 +333,29 @@ func (m *model) renderTrackerList() string {
 	if !m.conv.ShowTasks {
 		return ""
 	}
-	return conv.RenderTrackerList(conv.TrackerListParams{
-		Items:        m.services.Tracker.List(),
+	items := m.services.Tracker.List()
+	var running []task.BackgroundTask
+	if m.services.Task != nil {
+		running = m.services.Task.ListRunning()
+		liveWorkflowIDs := make(map[string]bool)
+		for _, bg := range running {
+			info := bg.GetStatus()
+			if info.AgentName == "workflow" && info.LiveView != "" {
+				liveWorkflowIDs[info.ID] = true
+			}
+		}
+		if len(liveWorkflowIDs) > 0 {
+			filtered := make([]*todo.Item, 0, len(items))
+			for _, item := range items {
+				if !liveWorkflowIDs[todo.BackgroundTaskID(item)] {
+					filtered = append(filtered, item)
+				}
+			}
+			items = filtered
+		}
+	}
+	view := conv.RenderTrackerList(conv.TrackerListParams{
+		Items:        items,
 		StreamActive: m.conv.Stream.Active,
 		Width:        m.env.Width,
 		Blockers:     m.services.Tracker.OpenBlockers,
@@ -340,6 +363,91 @@ func (m *model) renderTrackerList() string {
 		Blink:        m.conv.Spinner.Frame(),
 		AgentColors:  m.agentColors(),
 	})
+	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
+}
+
+func appendLiveWorkflowViews(view string, running []task.BackgroundTask, frame, width int) string {
+	type liveWorkflow struct {
+		info task.TaskInfo
+		task task.BackgroundTask
+	}
+	var workflows []liveWorkflow
+	for _, bg := range running {
+		info := bg.GetStatus()
+		if info.AgentName == "workflow" && info.LiveView != "" {
+			workflows = append(workflows, liveWorkflow{info: info, task: bg})
+		}
+	}
+	sort.Slice(workflows, func(i, j int) bool {
+		if workflows[i].info.StartTime.Equal(workflows[j].info.StartTime) {
+			return workflows[i].info.ID < workflows[j].info.ID
+		}
+		return workflows[i].info.StartTime.Before(workflows[j].info.StartTime)
+	})
+	for _, wf := range workflows {
+		if view != "" {
+			view += "\n"
+		}
+		live := wf.info.LiveView
+		if renderer, ok := wf.task.(interface{ RenderLiveView(int) string }); ok {
+			live = renderer.RenderLiveView(width)
+		}
+		view += styleWorkflowLiveView(live, frame)
+	}
+	return view
+}
+
+var (
+	activityRunningStyle = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Focus).Bold(true)
+	activityDoneStyle    = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Success).Bold(true)
+	activityFailedStyle  = lipgloss.NewStyle().Foreground(kit.CurrentTheme.Error).Bold(true)
+)
+
+func styleWorkflowLiveView(live string, frame int) string {
+	if strings.HasPrefix(live, "  Activity") {
+		activity, graph, found := strings.Cut(live, "\n\n")
+		if found {
+			return styleWorkflowActivity(activity, frame) + "\n\n" + pulseWorkflowGraph(graph, frame)
+		}
+		return styleWorkflowActivity(activity, frame)
+	}
+	return pulseWorkflowGraph(live, frame)
+}
+
+func styleWorkflowActivity(activity string, frame int) string {
+	lineSpinner := [...]string{"|", "/", "-", "\\"}
+	running := lineSpinner[frame%len(lineSpinner)]
+	const prefix = "    │  "
+	lines := strings.Split(activity, "\n")
+	for i, line := range lines {
+		content, ok := strings.CutPrefix(line, prefix)
+		if !ok {
+			continue
+		}
+		marker, text, ok := strings.Cut(content, " ")
+		if !ok {
+			continue
+		}
+		switch marker {
+		case "●":
+			marker = activityRunningStyle.Render(running)
+		case "✓":
+			marker = activityDoneStyle.Render(marker)
+		case "✗":
+			marker = activityFailedStyle.Render(marker)
+		default:
+			continue
+		}
+		lines[i] = prefix + marker + " " + text
+	}
+	return strings.Join(lines, "\n")
+}
+
+func pulseWorkflowGraph(graph string, frame int) string {
+	if (frame/3)%2 == 1 {
+		return strings.ReplaceAll(graph, "●", "◉")
+	}
+	return graph
 }
 
 func (m model) renderModeStatus() string {

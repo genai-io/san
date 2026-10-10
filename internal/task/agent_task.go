@@ -26,10 +26,12 @@ type AgentTask struct {
 	ctx    context.Context    // Task context
 	cancel context.CancelFunc // Cancel function
 
-	mu       sync.RWMutex  // Protects mutable fields
-	output   bytes.Buffer  // Collected output from the agent
-	done     chan struct{} // Closed when task completes
-	doneOnce sync.Once     // Guards done channel close
+	mu         sync.RWMutex     // Protects mutable fields
+	output     bytes.Buffer     // Collected output from the agent
+	liveView   string           // Current structured progress, if the caller supplies one.
+	liveRender func(int) string // Optional width-aware live renderer.
+	done       chan struct{}    // Closed when task completes
+	doneOnce   sync.Once        // Guards done channel close
 }
 
 // Verify AgentTask implements BackgroundTask
@@ -141,6 +143,34 @@ func (t *AgentTask) AppendProgress(msg string) {
 	})
 }
 
+// SetLiveView replaces the task's compact, in-memory progress display.
+// The task log still records individual progress events for later inspection.
+func (t *AgentTask) SetLiveView(view string) {
+	t.mu.Lock()
+	t.liveView = view
+	t.mu.Unlock()
+}
+
+// SetLiveViewRenderer lets a structured task reflow its live view when the
+// terminal width changes. The caller owns synchronization of renderer state.
+func (t *AgentTask) SetLiveViewRenderer(render func(int) string) {
+	t.mu.Lock()
+	t.liveRender = render
+	t.mu.Unlock()
+}
+
+// RenderLiveView returns a width-aware view when supplied, otherwise the last
+// snapshot. It never calls the renderer while holding the task lock.
+func (t *AgentTask) RenderLiveView(width int) string {
+	t.mu.RLock()
+	render, snapshot := t.liveRender, t.liveView
+	t.mu.RUnlock()
+	if render != nil {
+		return render(width)
+	}
+	return snapshot
+}
+
 // GetOutput returns the current output
 func (t *AgentTask) GetOutput() string {
 	t.mu.RLock()
@@ -246,6 +276,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		AgentSessionID: t.SessionID,
 		StepCount:      t.StepCount,
 		TokenUsage:     t.TokenUsage,
+		LiveView:       t.liveView,
 	}
 }
 

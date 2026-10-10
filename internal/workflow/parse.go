@@ -513,6 +513,23 @@ func (n *Node) refs() []string {
 	return out
 }
 
+// InputNames lists the input keys referenced by the workflow's node prompts.
+// Unrolled loop copies are deduplicated, and names are stable for display.
+func (w *Workflow) InputNames() []string {
+	seen := map[string]bool{}
+	var names []string
+	for _, n := range w.Nodes {
+		for _, ref := range n.refs() {
+			if key, ok := strings.CutPrefix(ref, "input."); ok && !seen[key] {
+				seen[key] = true
+				names = append(names, key)
+			}
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
 // ancestors returns every node with a path into n. Templates may reference
 // any of them: data flows along edges, not just across the last one.
 func (w *Workflow) ancestors(n *Node) map[string]bool {

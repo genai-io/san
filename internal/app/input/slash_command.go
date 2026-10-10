@@ -25,6 +25,7 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/skill"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/fs"
@@ -59,6 +60,7 @@ type SlashCommandEnv struct {
 	Tracker *todo.Store
 	Cron    *cron.Scheduler
 	ToolSvc *tool.Registry
+	TaskSvc *task.Manager
 	Command *command.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and

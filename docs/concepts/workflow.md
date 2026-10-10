@@ -68,13 +68,110 @@ Definitions live in `.san/workflows/*.md` (project) and
 `~/.san/workflows/*.md` (user); the project copy wins when both define the
 same name, and the `name:` in frontmatter beats the filename. The `Workflow`
 tool lists what it finds in its own description, so the model can run one by
-`name` instead of rewriting it. `/workflow` with no argument lists them, and
-`/workflow <name> key=value …` runs one directly — San launches it itself,
-with no model turn in between, and shows the plan's bounds and the task id.
-Input values are split on spaces, so a value cannot contain one.
+`name` instead of rewriting it. The input box suggests subcommands after
+`/workflow ` and saved names after `/workflow show ` or `/workflow run `:
+
+| Command | Result |
+| --- | --- |
+| `/workflow list` | List saved definitions (`/workflow` also works). |
+| `/workflow show <name>` | Preview the compact dependency graph without starting a task. |
+| `/workflow run <name> [key=value …]` | Run it directly; the notice gives the task ID and the task area shows grouped activity above one status graph. |
+| `/workflow stop [task-id]` | Stop the sole running workflow, or name a task ID when several run at once. |
+
+`/workflow <name> [key=value …]` remains a shortcut for existing users.
+The preview labels itself as a preview, pairs graph node names with the first
+line of each step's prompt, shows referenced input keys, and prints a
+ready-to-fill `/workflow run` command. When typing that command,
+Tab completes saved names and input keys such as `topic=`. A direct run
+reports a missing referenced input before starting. San launches it without
+a model turn. Quote an input value that contains spaces, for example
+`/workflow run demo topic="HTTP caching"`. Quote a saved name containing spaces
+too: `/workflow run "release review" base=main`. Previews and name suggestions
+add those quotes automatically. Input-key completion treats a quoted value as
+one argument, including while its closing quote is still being typed.
+
+The preview and live view draw a small branch-and-join graph for parallel
+stages. Other simple stages use one line; graphs with more complex edges show
+an exact dependency list. During a run, the task area (Alt+T) groups the
+latest eight events in bordered blocks by node or `for_each` worker. Long calls
+wrap to about 90% of the current window width and reflow on resize. The
+single status graph sits below the activity. Its running mark keeps the
+original `●/◉` pulse. Running Activity calls use a `| / - \` line spinner.
+The workflow's separate Background row is hidden while this view is visible.
+The full event trail remains in the task log. The launch notice includes
+`/workflow stop <task-id>`; `/workflow stop` also works when only one workflow
+is running. Stop executes immediately even while the main agent is streaming;
+the scheduler does not start more nodes after cancellation. If an assistant
+message is still streaming, the stop notice waits until that message releases
+the conversation tail, so later text and tool-call details continue to arrive.
+With an empty input and no foreground response, Ctrl+C stops the sole running
+workflow. If several workflows are running, it shows their task IDs so you can
+choose one with `/workflow stop <task-id>`. While the main agent is responding,
+Ctrl+C interrupts that foreground response first. With no running workflow,
+the existing double Ctrl+C shortcut exits San.
 
 A file is parsed when it is run, not at startup: a broken definition is
 reported to whoever tried to run it, and never blocks the session.
+
+### Try a full repository audit
+
+[`examples/workflows/ponytail-audit.md`](../../examples/workflows/ponytail-audit.md)
+preserves the original `ponytail-audit` instructions in a read-only workflow.
+It keeps all six check categories, the evidence rules, the report format and
+its example. The instructions are split into five subagent turns:
+
+- `inspect`: the original audit priorities and **1. Map first**. Establish
+  the scope, assumed load, entry points and main data flows; hand off source
+  evidence, tests and unread areas.
+- `correctness`: original checks **1. Bug** and **4. Missing test**.
+- `security`: original checks **2. Risk** and **3. Scale**, including data
+  loss and failures at the expected load.
+- `maintenance`: original checks **5. Speed** and **6. Lean**, including all
+  six lean checks: delete, reuse, stdlib / native, yagni, merge and split.
+- `report`: the complete **3. Check before you report** and **4. Output**.
+  Collect candidates, re-read evidence, confirm concrete triggers,
+  search all references before declaring code unused, deduplicate and rank.
+  Write the full report in the original simple-English format, including the
+  three groups, continuous numbering, four parts per finding, verdict, lean
+  totals and unexamined areas.
+
+The three checks run in parallel after `inspect`; `report` waits for all three.
+Verification and report writing share one node, avoiding another agent call
+and handoff. Every node runs in `explore` mode and changes no code.
+
+Five nodes do not mean five full repository scans. The first node surveys the
+repository and passes focused source evidence to the three checks. They reuse
+that evidence and read more where needed. The checks are separate reviews of
+the requested scope, not three reviews launched for every file read. The
+`report` node verifies candidates, including whole-tree reference searches
+for unused code, then writes the report. These are prompt instructions, not
+enforced read limits.
+Nodes have separate conversations and receive upstream output text, not its
+full tool history. Each parallel check receives the same repository context,
+and overlapping reads remain possible; both can add token cost. The original
+skill keeps its work in one agent context and can also re-read files to verify
+a finding; it does not promise exactly one scan.
+
+This example demonstrates parallel review, evidence handoff and verification.
+It is not the cheapest way to audit a repository, and parallel execution does
+not guarantee a speedup. For a quick first run, scope it to a small package.
+A review of changed files, split into non-overlapping file groups, is a more
+bounded demonstration of distributing work; this audit deliberately keeps
+the original whole-repository checks.
+
+To install the self-contained example:
+
+```bash
+mkdir -p .san/workflows
+cp examples/workflows/ponytail-audit.md .san/workflows/ponytail-audit.md
+```
+
+In the TUI, use `/workflow show ponytail-audit` to inspect the structure,
+then `/workflow run ponytail-audit scope=.` for the whole repository, or
+`scope=internal/workflow` for one package. The task view names each stage by
+its job, so the initial inspection, concurrent checks and final report are
+visible. The task log keeps their full tool activity. The example embeds its
+prompts; installing a separate Ponytail skill is not required.
 
 ## Fanning out over a plan
 
@@ -171,6 +268,24 @@ to 3 rounds`.
 
 ## How it runs
 
+While a workflow runs, the task area above the input shows a rolling activity
+trail grouped by node, then one small status graph. The preview has no status
+symbols; the live graph marks waiting (`○`), running (`●/◉` pulse), succeeded
+(`✓`), failed (`✗`), skipped (`↷`), and omitted (`⊘`) nodes. A `for_each`
+worker gets its own activity block. Model, mode, tool calls, and streamed
+model text appear as they arrive. Activity calls rotate a teal `| / - \`
+while running, then hold a green `✓` or red `✗` when finished. Their bounded
+result preview appears indented below the same call, matched by tool ID even
+when several calls finish out of order.
+Animation changes only the call's status marker; command and result text stay
+unchanged. If a model request fails and retries, its partial text disappears
+from Activity. Accepted text and other nodes' output stay visible.
+Repeated token-usage lines stay in the task log so the newest eight visible
+events focus on work and outcomes. The full trail remains in the task log. The
+launch notice gives the task ID and stop command. `Alt+T` hides or shows the
+task area. Conditional and retry graphs use a dependency list when a compact
+branch view would hide their topology.
+
 - A node starts once every upstream has settled. At most `max_parallel`
   nodes run at once.
 - `a -->|HIGH| b` runs `b` only when `a`'s trimmed output equals `HIGH`. A
@@ -223,10 +338,9 @@ workflow review succeeded in 1m24s
 …
 ```
 
-## Not yet
+## Limits
 
-A graph view in the panel is the last phase of
-[`design/proposals/0001-workflow-orchestration.md`](../design/proposals/0001-workflow-orchestration.md),
-and only if the run's progress lines prove insufficient. An unbounded cycle
-stays rejected: cost, progress and convergence are all undecidable without a
-bound.
+The terminal graph is compact; it falls back to a dependency list for wide
+graphs, more than three nodes in one column, or edges that skip columns. An
+unbounded cycle stays rejected: cost, progress and convergence are all
+undecidable without a bound.

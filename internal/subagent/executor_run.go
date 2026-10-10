@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -54,6 +55,38 @@ func (r *preparedRun) recordUsage(resp *ai.Response) {
 	}
 }
 
+func (r *preparedRun) forwardEvent(ev core.Event) {
+	switch event := ev.(type) {
+	case sdkagent.MessageUpdate:
+		if r.req.OnTextDelta != nil {
+			if fragment := event.Text(); fragment != "" {
+				r.req.OnTextDelta(fragment)
+			}
+		}
+	case sdkagent.MessageEnd:
+		if r.req.OnTextEnd != nil {
+			r.req.OnTextEnd(event.Err)
+		}
+		r.recordUsage(event.Response)
+	case sdkagent.ToolStart:
+		if r.req.OnToolStart != nil {
+			r.req.OnToolStart(event.ID, r.toolCallLabel(event.Name, event.Args))
+		}
+	case sdkagent.ToolEnd:
+		if r.req.OnToolResult != nil {
+			r.req.OnToolResult(event.ID, r.toolCallLabel(event.Name, event.Args), sdkagent.ResultText(event.Result, event.Err), event.Err)
+		}
+	}
+}
+
+func (r *preparedRun) toolCallLabel(name, rawArgs string) string {
+	var args map[string]any
+	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil || args == nil {
+		return name
+	}
+	return formatToolActivityLimit(name, args, r.req.ActivityMaxChars)
+}
+
 func (e *Executor) prepareRun(ctx context.Context, req tool.AgentExecRequest) (*preparedRun, error) {
 	if err := e.validateRequest(req); err != nil {
 		return nil, err
@@ -88,14 +121,17 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 		run.streamActivity(fmt.Sprintf("Model: %s", run.cfg.modelID))
 		run.streamActivity(fmt.Sprintf("Mode: %s · max %d steps", displayPermissionMode(run.cfg.permMode), run.cfg.maxSteps))
 		onToolExec = func(name string, params map[string]any) {
-			run.recordActivity(formatToolActivity(name, params))
+			msg := formatToolActivityLimit(name, params, run.req.ActivityMaxChars)
+			if run.req.OnToolStart != nil {
+				// The structured ToolStart row is already live. Keep the
+				// parent-visible trail without streaming a second call row.
+				run.activity = append(run.activity, msg)
+			} else {
+				run.recordActivity(msg)
+			}
 		}
 	}
-	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, func(ev core.Event) {
-		if e, ok := ev.(sdkagent.MessageEnd); ok {
-			run.recordUsage(e.Response)
-		}
-	})
+	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, run.forwardEvent)
 	if err != nil {
 		return nil, err
 	}

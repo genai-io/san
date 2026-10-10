@@ -64,7 +64,7 @@ func newBaseModel() model {
 	environment := newEnv(svc.LLM, appCwd, svc.Setting.IsGitRepo(appCwd))
 	applyStartupSettings(&environment, svc.Setting.Snapshot(), appCwd, svc.Setting.AllowBypass(), svc.Hook)
 	return model{
-		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command), input.SelectorDeps{
+		userInput: input.New(appCwd, defaultWidth, commandSuggestionMatcher(svc.Command, svc.Tool), input.SelectorDeps{
 			AgentRegistry:   svc.Subagent,
 			PersonaRegistry: svc.Persona,
 			SkillRegistry:   svc.Skill,

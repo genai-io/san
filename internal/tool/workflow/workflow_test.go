@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,16 +21,35 @@ type scriptedExecutor struct {
 	reqs     []tool.AgentExecRequest
 	outputs  map[string]string // node id -> content
 	disabled string
+	started  chan struct{}
+	release  chan struct{}
 	// unknown is a name the registry does not hold; it resolves to a display
 	// label with no Source, the way subagent.Registry answers a typo.
-	unknown string
+	unknown    string
+	activity   string
+	toolResult string
+	toolEvents func(tool.AgentExecRequest)
 }
 
 func (e *scriptedExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
 	e.mu.Lock()
 	e.reqs = append(e.reqs, req)
 	e.mu.Unlock()
+	if e.activity != "" && req.OnActivity != nil {
+		req.OnActivity(e.activity)
+	}
+	if e.toolResult != "" && req.OnToolResult != nil {
+		req.OnToolStart("call-1", "Read(example.go)")
+		req.OnToolResult("call-1", "Read(example.go)", e.toolResult, nil)
+	}
+	if e.toolEvents != nil {
+		e.toolEvents(req)
+	}
 	id := req.Description[strings.LastIndex(req.Description, "/")+1:]
+	if e.started != nil {
+		close(e.started)
+		<-e.release
+	}
 	return &tool.AgentExecResult{Success: true, Content: e.outputs[id], StepCount: 1}, nil
 }
 func (e *scriptedExecutor) RunBackground(tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
@@ -70,6 +90,9 @@ func TestWorkflowToolRunsNodesThroughTheExecutor(t *testing.T) {
 	if info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s (%s)", info.Status, info.Error)
 	}
+	if !strings.Contains(info.LiveView, "╭─ diff") || !strings.Contains(info.LiveView, "Result: D") || strings.Contains(info.LiveView, "\nNodes\n") {
+		t.Fatalf("node result handoff is missing from live view:\n%s", info.LiveView)
+	}
 	if !strings.Contains(info.Output, "workflow review succeeded") || !strings.Contains(info.Output, "## report\nR") {
 		t.Fatalf("output:\n%s", info.Output)
 	}
@@ -90,6 +113,141 @@ func TestWorkflowToolRunsNodesThroughTheExecutor(t *testing.T) {
 	}
 	if report := byNode["review/report"]; report.Prompt != "Merge S P" {
 		t.Fatalf("report prompt = %q", report.Prompt)
+	}
+}
+
+func TestWorkflowToolPublishesLiveNodeGraph(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	releaseNode := sync.OnceFunc(func() { close(release) })
+	defer releaseNode()
+	exec := &scriptedExecutor{outputs: map[string]string{"only": "done"}, started: started, release: release, toolResult: "package main\nfunc main() {}\n"}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	src := "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"
+	result := wt.Execute(context.Background(), map[string]any{"definition": src}, ".")
+	if !result.Success {
+		t.Fatalf("launch: %+v", result)
+	}
+	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
+	id, _, _ := strings.Cut(rest, "\n")
+	bg, ok := task.Default().Get(id)
+	if !ok {
+		t.Fatalf("task %q not registered", id)
+	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("node did not start")
+	}
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "only ●") || !strings.Contains(view, "╭─ only") || !strings.Contains(view, "│  ✓ Read(example.go)") || !strings.Contains(view, "└ 2 lines ·") || strings.Count(view, "Read(example.go)") != 1 {
+		t.Fatalf("running node or activity missing from live view:\n%s", view)
+	}
+	releaseNode()
+	if !bg.WaitForCompletion(5 * time.Second) {
+		t.Fatal("workflow did not complete")
+	}
+	if view := bg.GetStatus().LiveView; !strings.Contains(view, "Workflow (unnamed) · 1/1 finished") || !strings.Contains(view, "✓") {
+		t.Fatalf("finished graph did not update:\n%s", view)
+	}
+}
+
+func TestWorkflowToolPairsParallelResultsWithTheirCalls(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	releaseNode := sync.OnceFunc(func() { close(release) })
+	defer releaseNode()
+	exec := &scriptedExecutor{
+		outputs: map[string]string{"only": "done"}, started: started, release: release,
+		toolEvents: func(req tool.AgentExecRequest) {
+			req.OnToolStart("first", "Bash(cat first.go)")
+			req.OnToolStart("second", "Bash(cat second.go)")
+			req.OnToolResult("second", "Bash(cat second.go)", "second result", nil)
+			req.OnToolResult("first", "Bash(cat first.go)", "first result", nil)
+		},
+	}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	result := wt.Execute(context.Background(), map[string]any{"definition": "```mermaid\nflowchart LR\n  only\n```\n\n## only\ngo\n"}, ".")
+	if !result.Success {
+		t.Fatalf("launch: %+v", result)
+	}
+	_, rest, _ := strings.Cut(result.Output, "Task ID: ")
+	id, _, _ := strings.Cut(rest, "\n")
+	bg, ok := task.Default().Get(id)
+	if !ok {
+		t.Fatalf("task %q not registered", id)
+	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("node did not start")
+	}
+	view := bg.GetStatus().LiveView
+	for _, want := range []string{
+		"│  ✓ Bash(cat first.go)\n    │    └ first result",
+		"│  ✓ Bash(cat second.go)\n    │    └ second result",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("result is not paired with its call (%q):\n%s", want, view)
+		}
+	}
+	if strings.Count(view, "Bash(cat first.go)") != 1 || strings.Count(view, "Bash(cat second.go)") != 1 {
+		t.Fatalf("calls are repeated in the live view:\n%s", view)
+	}
+	releaseNode()
+	if !bg.WaitForCompletion(5 * time.Second) {
+		t.Fatal("workflow did not complete")
+	}
+}
+
+func TestWorkflowToolResultSummaryStaysSmallAndReadable(t *testing.T) {
+	if got := workflowToolResultSummary("hello", nil); got != "hello" {
+		t.Fatalf("short result = %q", got)
+	}
+	if got := workflowToolResultSummary("", nil); got != "no output" {
+		t.Fatalf("empty result = %q", got)
+	}
+	if got := workflowToolResultSummary("", errors.New("permission denied")); got != "permission denied" {
+		t.Fatalf("failed result = %q", got)
+	}
+	got := workflowToolResultSummary("\x1b[31mfirst\x1b[0m\nsecond\n", nil)
+	if !strings.Contains(got, "2 lines") || !strings.HasSuffix(got, " · first") || strings.Contains(got, "\x1b") {
+		t.Fatalf("multiline result = %q", got)
+	}
+}
+
+func TestWorkflowToolFailedStreamKeepsAcceptedAndParallelText(t *testing.T) {
+	firstStreaming, secondStreaming, firstDiscarded := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	exec := &scriptedExecutor{toolEvents: func(req tool.AgentExecRequest) {
+		if strings.HasSuffix(req.Description, "/a") {
+			req.OnTextDelta("previous accepted")
+			req.OnTextEnd(nil)
+			req.OnTextDelta(strings.Repeat("discarded draft ", 16))
+			req.OnTextDelta("unflushed tail")
+			close(firstStreaming)
+			<-secondStreaming
+			req.OnTextEnd(errors.New("stream failed"))
+			close(firstDiscarded)
+			req.OnTextDelta("accepted retry")
+			req.OnTextEnd(nil)
+		} else {
+			<-firstStreaming
+			req.OnTextDelta("parallel accepted")
+			close(secondStreaming)
+			<-firstDiscarded
+			req.OnTextEnd(nil)
+		}
+	}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	const definition = "```mermaid\nflowchart LR\n  a\n  b\n```\n\n## a\ngo\n\n## b\ngo\n"
+	info := runToCompletion(t, wt, map[string]any{"definition": definition})
+	for _, text := range []string{"previous accepted", "accepted retry", "parallel accepted"} {
+		if !strings.Contains(info.LiveView, text) {
+			t.Fatalf("accepted text %q disappeared:\n%s", text, info.LiveView)
+		}
+	}
+	if strings.Contains(info.LiveView, "discarded draft") || strings.Contains(info.LiveView, "unflushed tail") {
+		t.Fatalf("failed text remains:\n%s", info.LiveView)
 	}
 }
 
@@ -163,6 +321,9 @@ func TestWorkflowToolFansOutOverAPlan(t *testing.T) {
 	if info.Status != task.StatusCompleted {
 		t.Fatalf("status = %s (%s)", info.Status, info.Error)
 	}
+	if !strings.Contains(info.LiveView, "╭─ review·llm") || !strings.Contains(info.LiveView, "Result: L") || !strings.Contains(info.LiveView, "╭─ review·tool") || !strings.Contains(info.LiveView, "Result: T") {
+		t.Fatalf("fan-out workers were not separate in live view:\n%s", info.LiveView)
+	}
 	byNode := map[string]tool.AgentExecRequest{}
 	exec.mu.Lock()
 	for _, r := range exec.reqs {
@@ -219,6 +380,21 @@ func TestWorkflowToolNameErrors(t *testing.T) {
 	}
 	if _, err := wt.PreparePermission(context.Background(), map[string]any{"name": "review", "definition": definition}, "."); err == nil || !strings.Contains(err.Error(), "not both") {
 		t.Fatalf("both err = %v", err)
+	}
+}
+
+func TestWorkflowToolMissingInputQuotesSavedName(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Replace(definition, "name: review", "name: release review", 1)
+	if err := os.WriteFile(filepath.Join(dir, "release.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(&scriptedExecutor{})
+	wt.SetSearchPaths([]string{dir})
+	_, _, err := wt.Launch("release review", nil, 100)
+	if err == nil || !strings.Contains(err.Error(), `use /workflow show "release review"`) {
+		t.Fatalf("missing-input command is not quoted: %v", err)
 	}
 }
 

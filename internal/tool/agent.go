@@ -78,7 +78,14 @@ type AgentExecRequest struct {
 	// for foreground runs.
 	TaskID     string
 	OnActivity ActivityFunc
-	OnQuestion AskQuestionFunc
+	// ActivityMaxChars widens tool-call descriptions for views that can wrap
+	// them. Zero keeps the short default used by ordinary agent summaries.
+	ActivityMaxChars int
+	OnTextDelta      func(string)                             // streamed assistant text for a live view
+	OnTextEnd        func(error)                              // finishes or discards this inference's text
+	OnToolStart      func(id, call string)                    // one live row per tool call
+	OnToolResult     func(id, call, output string, err error) // completes that row by call ID
+	OnQuestion       AskQuestionFunc
 }
 
 // AgentExecResult contains the result of agent execution.

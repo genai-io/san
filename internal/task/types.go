@@ -100,4 +100,5 @@ type TaskInfo struct {
 	AgentSessionID string
 	StepCount      int
 	TokenUsage     int
+	LiveView       string // Current display for a running structured task, if any.
 }

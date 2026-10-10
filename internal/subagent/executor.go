@@ -360,15 +360,6 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
-	// Subagent system prompt deliberately omits skills and memory — those
-	// ride on the first user message as <system-reminder> blocks built by
-	// loadConversation, keeping subagents on the same harness channel
-	// pattern as the main agent.
-	sys := system.Build(core.ScopeSubagent,
-		system.WithSubagentIdentity(rc.brief),
-		system.WithEnvironment(system.Environment{Cwd: agentCwd, Shell: proc.DefaultShellName()}),
-	)
-
 	// Tools — adapt legacy tool registry + MCP tools
 	var mcpGetter func() []core.ToolSchema
 	if e.mcpManager != nil {
@@ -376,6 +367,16 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
+	brief := rc.brief
+	brief.ToolGuidance = fileReadToolGuidance(schemas)
+	// Subagent system prompt deliberately omits skills and memory — those
+	// ride on the first user message as <system-reminder> blocks built by
+	// loadConversation, keeping subagents on the same harness channel
+	// pattern as the main agent.
+	sys := system.Build(core.ScopeSubagent,
+		system.WithSubagentIdentity(brief),
+		system.WithEnvironment(system.Environment{Cwd: agentCwd, Shell: proc.DefaultShellName()}),
+	)
 	var ag core.Agent
 	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
 		if ag == nil {
@@ -415,6 +416,22 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	})
 
 	return ag, cleanup, nil
+}
+
+func fileReadToolGuidance(schemas []core.ToolSchema) string {
+	read, shell := false, false
+	for _, schema := range schemas {
+		switch {
+		case schema.Name == tool.ToolRead:
+			read = true
+		case tool.IsShellTool(schema.Name):
+			shell = true
+		}
+	}
+	if read && shell {
+		return "Use Read for file contents, with offset/limit for excerpts. Use the shell for search, file discovery, git, and commands; avoid cat/head/tail/sed just to display a file."
+	}
+	return ""
 }
 
 // subagentCompactFunc summarizes the conversation on the run's own model so
