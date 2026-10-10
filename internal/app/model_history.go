@@ -99,6 +99,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 				data := results[r.ToolCallID]
 				entries = append(entries, input.TranscriptEntry{Label: r.ToolName, Tool: true, Render: func(width int, expanded bool) string {
 					data.Width, data.Expanded = width, expanded
+					data.CollapseDiff = !expanded
 					return conv.RenderToolResultInline(data, renderer(width))
 				}})
 			}
@@ -122,6 +123,7 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 				resultMap := make(map[string]conv.ToolResultData)
 				if hasResult {
 					data.Expanded = expanded
+					data.CollapseDiff = !expanded
 					resultMap[call.ID] = data
 				}
 				return conv.RenderToolCalls(conv.ToolCallsParams{

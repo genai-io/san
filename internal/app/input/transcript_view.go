@@ -99,7 +99,7 @@ func (h *TranscriptViewer) renderEntry(i int) {
 	text := strings.TrimRight(entry.Render(max(1, h.width-2), entry.expanded), "\n")
 	entry.lines = nil
 	if text != "" {
-		entry.lines = strings.Split(text, "\n")
+		entry.lines = strings.Split(ansi.Wrap(text, max(1, h.width-2), " "), "\n")
 	}
 }
 

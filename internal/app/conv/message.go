@@ -608,6 +608,8 @@ type ToolResultData struct {
 	ToolInput   string
 	Width       int
 	Details     any
+	// CollapseDiff hides file-change bodies in transient viewers; immutable scrollback keeps them.
+	CollapseDiff bool
 	// Nested indicates this result is rendering immediately below its tool call.
 	// Nested results show a terminal state without repeating the tool name.
 	Nested bool

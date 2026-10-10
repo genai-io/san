@@ -422,6 +422,10 @@ starts at the latest tool, expanded; Left/Right selects a tool, Enter toggles
 its result, and the usual scrolling keys navigate the full conversation.
 Changing terminal width re-renders entries at the new width. Scroll and tool
 selection reuse rendered lines; expansion re-renders only the selected entry.
+The viewer wraps any remaining overlong lines before caching rows and offsets,
+so every part of the output is reachable by vertical scrolling. Edit and Write
+diffs also follow the viewer's expansion state; native scrollback still prints
+their complete stored diffs.
 
 The viewer owns only temporary selection, expansion and rendered lines. Closing
 releases them and restores the original prompt and cursor. A generation token

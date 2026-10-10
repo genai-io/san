@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 func TestIdleCtrlOInspectsCommittedResultsAndPreservesDraft(t *testing.T) {
@@ -191,6 +193,70 @@ func TestHistoryToolOutputRewrapsWithoutLosingContent(t *testing.T) {
 			if ansi.StringWidth(line) > width {
 				t.Fatalf("width %d produced an overflowing row: %q", width, line)
 			}
+		}
+	}
+}
+
+func TestHistorySkillOutputKeepsLongLinesReadable(t *testing.T) {
+	messages := turnOf("skill", "tc")
+	messages[1].ToolCalls[0].Name = "Skill"
+	messages[1].ToolCalls[0].Input = `{"skill":"demo"}`
+	messages[2].ToolResult.ToolName = "Skill"
+	messages[2].ToolResult.Content = ai.TextContent("<skill-invocation name=\"demo\">\n" +
+		strings.Repeat("中文 word ", 50) + "TAIL_SENTINEL\n</skill-invocation>")
+	m := commitTestModel(messages...)
+	m.userInput.Transcript.EnterEntries(m.historyEntries(messages), 80, 24)
+	for _, width := range []int{80, 30, 120} {
+		m.userInput.Transcript.Resize(width, 14)
+		m.userInput.Transcript.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyHome})
+		var pages strings.Builder
+		for range 30 {
+			page := ansi.Strip(m.userInput.Transcript.Render())
+			for _, line := range strings.Split(page, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("width %d produced an overflowing row: %q", width, line)
+				}
+			}
+			pages.WriteString(page)
+			m.userInput.Transcript.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyPgDown})
+		}
+		if !strings.Contains(pages.String(), "TAIL_SENTINEL") {
+			t.Fatalf("width %d hid the end of the expanded skill instructions", width)
+		}
+	}
+}
+
+func TestHistoryFileDiffsExpandAndCollapse(t *testing.T) {
+	for _, name := range []string{"Edit", "Write"} {
+		for _, orphan := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/orphan=%t", name, orphan), func(t *testing.T) {
+				messages := turnOf("change", "tc")
+				messages[1].ToolCalls[0].Name = name
+				messages[1].ToolCalls[0].Input = `{"file_path":"a.go"}`
+				if orphan {
+					messages[1].ToolCalls = nil
+				}
+				messages[2].ToolResult.ToolName = name
+				messages[2].ToolDetails = toolresult.FileChangeDetails{
+					Path: "a.go", EditCount: 1, AddedLines: 1, RemovedLines: 1,
+					UnifiedDiff: "@@ -1 +1 @@\n-OLD_SENTINEL\n+NEW_SENTINEL",
+				}
+				m := commitTestModel(messages...)
+				m.userInput.Transcript.EnterEntries(m.historyEntries(messages), 80, 24)
+				before := ansi.Strip(m.userInput.Transcript.Render())
+				if !strings.Contains(before, "NEW_SENTINEL") {
+					t.Fatal("history did not expand the latest file diff")
+				}
+				m.userInput.Transcript.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+				collapsed := ansi.Strip(m.userInput.Transcript.Render())
+				if strings.Contains(collapsed, "NEW_SENTINEL") || !strings.Contains(collapsed, "+1 -1") {
+					t.Fatal("collapsing must hide the diff body and retain its summary")
+				}
+				m.userInput.Transcript.HandleKeypress(tea.KeyPressMsg{Code: tea.KeyEnter})
+				if ansi.Strip(m.userInput.Transcript.Render()) != before {
+					t.Fatal("re-expanding must restore the complete diff")
+				}
+			})
 		}
 	}
 }
