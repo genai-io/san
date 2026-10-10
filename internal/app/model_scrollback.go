@@ -284,6 +284,10 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 			if i == lastIdx && msg.Role == core.ChatAssistant && m.conv.Stream.Active {
 				break
 			}
+			// Keep calls live until their whole batch can be printed with its results.
+			if msg.Role == core.ChatAssistant && len(msg.ToolCalls) > 0 && len(m.conv.Tool.PendingCalls) > 0 {
+				break
+			}
 		}
 
 		if rendered := conv.RenderSingleMessage(params, i); rendered != "" {

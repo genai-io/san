@@ -307,6 +307,59 @@ func TestScrollbackPrintQueueIsSingleFlightFIFO(t *testing.T) {
 	}
 }
 
+func TestToolBatchCommitsCallsAndResultsTogether(t *testing.T) {
+	m := &model{
+		env:  env{Width: 100, Height: 24},
+		conv: conv.NewModel(100),
+		services: services{
+			Subagent: subagent.NewRegistry(),
+			Tracker:  todo.NewStore(),
+		},
+	}
+	calls := []core.ToolCall{
+		{ID: "read-1", Name: "Read", Input: `{"file_path":"first.go"}`},
+		{ID: "read-2", Name: "Read", Input: `{"file_path":"second.go"}`},
+		{ID: "read-3", Name: "Read", Input: `{"file_path":"third.go"}`},
+	}
+	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: calls})
+	m.conv.Stream.Active = true
+	m.conv.Tool.Track(calls)
+	for i, idx := range []int{2, 0, 1} {
+		m.conv.Tool.MarkComplete(calls[idx].ID)
+		m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{
+			ToolCallID: calls[idx].ID,
+			ToolName:   "Read",
+			Content:    ai.TextContent(strings.Repeat("file content\n", idx+1)),
+		}})
+		if i == 0 {
+			m.conv.AddNotice("Background task finished")
+		}
+		cmds := m.CommitMessages()
+		if i < 2 {
+			if len(cmds) != 0 || m.conv.CommittedCount != 0 {
+				t.Fatalf("committed an incomplete batch after result %s", calls[idx].ID)
+			}
+			continue
+		}
+		if len(cmds) != 1 || m.conv.CommittedCount != len(m.conv.Messages) {
+			t.Fatalf("completed batch must commit together: commands=%d, committed=%d", len(cmds), m.conv.CommittedCount)
+		}
+	}
+	printed := ansi.Strip(m.flush.pendingPrints[0].remaining)
+	for _, pair := range []string{
+		"● Read(first.go)\n  └ 1 line\n",
+		"● Read(second.go)\n  └ 2 lines\n",
+		"● Read(third.go)\n  └ 3 lines",
+	} {
+		if strings.Count(printed, pair) != 1 {
+			t.Fatalf("call and result must appear together once; missing %q:\n%s", pair, printed)
+		}
+	}
+	if strings.Contains(printed, "Read →") || strings.Count(printed, "Background task finished") != 1 {
+		t.Fatalf("batch should have no standalone results and retain its notice:\n%s", printed)
+	}
+}
+
 func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testing.T) {
 	m := &model{
 		env:       env{Width: 100, Height: 24},

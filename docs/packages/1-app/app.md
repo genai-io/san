@@ -123,6 +123,13 @@ Sub-model packages:
 | `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 
+The task tracker above the input shows at most eight task rows and one overflow
+summary. In-progress items take priority, followed by failed or interrupted
+items, pending items, and successful completions. Within each group the newest
+items stay visible, while displayed rows retain their original order. Overflow
+counts distinguish in-progress, failed/stopped, pending, and completed items;
+folding only changes the display and leaves task records intact.
+
 ## Lifecycle
 
 - `cmd/san` calls `app.Run()` which builds the `tea.Program`,

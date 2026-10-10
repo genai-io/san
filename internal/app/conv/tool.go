@@ -11,6 +11,7 @@ import (
 type ToolExecState struct {
 	PendingCalls []core.ToolCall
 	CurrentIdx   int
+	completed    map[string]bool
 	// StartedAt stamps when each call began executing (its PreToolEvent),
 	// keyed by tool-call ID. The view reads it to show a live elapsed timer
 	// on a running row, so a long command no longer looks stuck. Only
@@ -35,15 +36,8 @@ func (t *ToolExecState) Reset() {
 }
 
 func (t *ToolExecState) Track(calls []core.ToolCall) {
-	t.StartedAt = nil
-	t.Progress = nil
-	t.AwaitingApprovalID = ""
-	if len(calls) == 0 {
-		t.ClearPending()
-		return
-	}
+	t.Reset()
 	t.PendingCalls = append([]core.ToolCall(nil), calls...)
-	t.CurrentIdx = 0
 }
 
 func (t *ToolExecState) MarkCurrent(toolCallID string) {
@@ -104,38 +98,37 @@ func (t *ToolExecState) IndexOf(toolCallID string) int {
 }
 
 func (t *ToolExecState) MarkComplete(toolCallID string) bool {
-	completedIdx := -1
-	for i, tc := range t.PendingCalls {
-		if tc.ID == toolCallID {
-			completedIdx = i
-			break
-		}
-	}
-	if completedIdx == -1 {
+	if t.IndexOf(toolCallID) < 0 || t.completed[toolCallID] {
 		return false
 	}
-
-	batchComplete := completedIdx >= len(t.PendingCalls)-1
-	if batchComplete {
-		t.ClearPending()
-		return true
+	if t.completed == nil {
+		t.completed = make(map[string]bool)
 	}
-	t.CurrentIdx = completedIdx + 1
-	return false
+	t.completed[toolCallID] = true
+	for i, tc := range t.PendingCalls {
+		if !t.completed[tc.ID] {
+			t.CurrentIdx = i
+			return false
+		}
+	}
+	t.ClearPending()
+	return true
 }
 
 func (t *ToolExecState) ClearPending() {
 	t.PendingCalls = nil
 	t.CurrentIdx = 0
+	t.completed = nil
 }
 
-// DrainPendingCalls returns any remaining pending tool calls (from CurrentIdx
-// onward), then resets state.
+// DrainPendingCalls returns unfinished calls regardless of completion order.
 func (t *ToolExecState) DrainPendingCalls() []core.ToolCall {
-	if t.PendingCalls == nil || t.CurrentIdx >= len(t.PendingCalls) {
-		return nil
+	var calls []core.ToolCall
+	for _, tc := range t.PendingCalls {
+		if !t.completed[tc.ID] {
+			calls = append(calls, tc)
+		}
 	}
-	calls := t.PendingCalls[t.CurrentIdx:]
 	t.Reset()
 	return calls
 }

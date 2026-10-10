@@ -37,6 +37,45 @@ func TestPostToolDrainsQueuedInputAfterEntireToolBatch(t *testing.T) {
 	}
 }
 
+func TestPostToolDrainsQueuedInputAfterOutOfOrderToolBatch(t *testing.T) {
+	m := NewModel(80)
+	m.Tool.Track([]core.ToolCall{{ID: "tc-1", Name: "Read"}, {ID: "tc-2", Name: "Read"}, {ID: "tc-3", Name: "Read"}})
+	rt := &postToolRuntime{}
+	for i, id := range []string{"tc-3", "tc-3", "tc-1", "tc-2"} {
+		applyPostTool(rt, &m, core.ToolResult{ToolCallID: id, ToolName: "Read"}, nil)
+		wantDrains := 0
+		if i == 3 {
+			wantDrains = 1
+		}
+		if rt.drainCalls != wantDrains {
+			t.Fatalf("after result %d (%s): drained %d times, want %d", i, id, rt.drainCalls, wantDrains)
+		}
+	}
+	if len(m.Messages) != 3 || m.Tool.PendingCalls != nil {
+		t.Fatalf("completed batch should have three results and no pending calls: %+v", m)
+	}
+}
+
+func TestDrainPendingCallsAfterOutOfOrderCompletion(t *testing.T) {
+	state := ToolExecState{}
+	state.Track([]core.ToolCall{{ID: "tc-1"}, {ID: "tc-2"}, {ID: "tc-3"}})
+	if state.MarkComplete("unknown") || state.MarkComplete("tc-2") {
+		t.Fatal("neither an unknown result nor the middle call completes the batch")
+	}
+	state.MarkCurrent("tc-3")
+	calls := state.DrainPendingCalls()
+	if len(calls) != 2 || calls[0].ID != "tc-1" || calls[1].ID != "tc-3" {
+		t.Fatalf("cancelled calls = %+v, want only tc-1 and tc-3", calls)
+	}
+	if state.PendingCalls != nil || state.CurrentIdx != 0 {
+		t.Fatalf("draining should reset the batch: %+v", state)
+	}
+	state.Track([]core.ToolCall{{ID: "tc-2"}})
+	if !state.MarkComplete("tc-2") {
+		t.Fatal("completion state must not carry over to a new batch")
+	}
+}
+
 func TestHandleActivityWithoutAgentToUIDoesNotPanic(t *testing.T) {
 	m := OutputModel{Spinner: newFrameClock(), MDRenderer: NewMDRenderer(80)}
 
