@@ -125,11 +125,18 @@ Sub-model packages:
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 
 The task tracker above the input shows at most eight task rows and one overflow
-summary. In-progress items take priority, followed by failed or interrupted
-items, pending items, and successful completions. Within each group the newest
-items stay visible, while displayed rows retain their original order. Overflow
-counts distinguish in-progress, failed/stopped, pending, and completed items;
-folding only changes the display and leaves task records intact.
+summary. Background work has no fixed heading or repeated executor-kind labels:
+rows lead with a status icon and work description, with dim elapsed time after
+a middle dot. Long descriptions truncate to leave room for elapsed time or an
+exception status. Successful background tasks leave the tracker immediately,
+even while the main agent is streaming; completion notices and output records
+remain available. Failed, stopped, or interrupted work stays visible when idle.
+Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
+when the main agent becomes idle. In-progress items take priority, followed by
+failed or interrupted items, pending items, and completed plan items. Within
+each group the newest items stay visible, while displayed rows retain their
+original order. Overflow counts distinguish in-progress, failed/stopped,
+pending, and completed plan items; rendering leaves task records intact.
 
 ## Lifecycle
 

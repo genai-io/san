@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/todo"
 )
@@ -134,13 +137,16 @@ func TestRenderTaskHoldsStillWhenStalled(t *testing.T) {
 	}
 }
 
-// The panel's visibility gate. It hides only once every item is marked
-// completed, so a stalled item — in progress with nothing executing it — is
-// unfinished work and must keep the list on screen. Gating on executors instead
-// would hide exactly the row #342 added to surface.
+// Only successful completions can hide the panel; stalled or aborted work stays.
 func TestRenderTrackerListVisibility(t *testing.T) {
 	stalled := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusInProgress}
 	done := &todo.Item{ID: "1", Subject: "Fix auth module", Status: todo.StatusCompleted}
+	worker := func(detail string) *todo.Item {
+		return &todo.Item{ID: "2", Subject: "Upload video", Status: todo.StatusCompleted, Metadata: map[string]any{
+			"background_task_id":       "bg-1",
+			"background_status_detail": detail,
+		}}
+	}
 
 	cases := []struct {
 		name         string
@@ -152,6 +158,12 @@ func TestRenderTrackerListVisibility(t *testing.T) {
 		{"complete and idle", []*todo.Item{done}, false, false},
 		{"complete but still streaming", []*todo.Item{done}, true, true},
 		{"stalled item keeps the list up", []*todo.Item{stalled}, false, true},
+		{"worker complete and idle", []*todo.Item{worker("completed")}, false, false},
+		{"worker complete while streaming", []*todo.Item{worker("completed")}, true, false},
+		{"failed worker stays when idle", []*todo.Item{worker("failed")}, false, true},
+		{"killed worker stays when idle", []*todo.Item{worker("killed")}, false, true},
+		{"stopped worker stays when idle", []*todo.Item{worker("stopped")}, false, true},
+		{"interrupted worker stays when idle", []*todo.Item{worker(todo.StatusDetailInterrupted)}, false, true},
 	}
 
 	for _, tc := range cases {
@@ -225,8 +237,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 				1: todo.StatusInProgress, 3: todo.StatusInProgress,
 				5: todo.StatusPending, 9: todo.StatusInProgress,
 			},
-			wantIDs:       []string{"1", "3", "5", "7", "8", "9", "10", "11"},
-			wantSummaries: []string{"3 completed"},
+			wantIDs: []string{"1", "3", "5", "9"},
 		},
 		{
 			name:          "many running agents",
@@ -244,12 +255,11 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 			wantSummaries: []string{"3 more pending"},
 		},
 		{
-			name:          "abnormal endings before completions",
-			count:         11,
-			status:        todo.StatusCompleted,
-			overrides:     map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
-			wantIDs:       []string{"1", "2", "3", "4", "8", "9", "10", "11"},
-			wantSummaries: []string{"3 completed"},
+			name:      "abnormal endings stay after completions leave",
+			count:     11,
+			status:    todo.StatusCompleted,
+			overrides: map[int]string{1: "failed", 2: "killed", 3: "stopped", 4: todo.StatusDetailInterrupted},
+			wantIDs:   []string{"1", "2", "3", "4"},
 		},
 		{
 			name:          "many failed agents",
@@ -308,7 +318,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 					t.Fatalf("missing overflow summary %q:\n%s", want, plain)
 				}
 			}
-			wantLines := 1 + len(tc.wantIDs)
+			wantLines := len(tc.wantIDs)
 			if len(tc.wantSummaries) > 0 {
 				wantLines++
 			}
@@ -395,9 +405,8 @@ func TestPhaseOf(t *testing.T) {
 	}
 }
 
-// Background rows lead with their kind, not a tracker ID the user cannot act
-// on, and stay out of the plan's progress; with no plan the header says so.
-func TestRenderTrackerListLabelsBackgroundTasks(t *testing.T) {
+// Background rows describe the work directly and stay out of plan progress.
+func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	todo.Initialize()
 	t.Cleanup(func() { todo.Default().Reset() })
 
@@ -415,16 +424,62 @@ func TestRenderTrackerListLabelsBackgroundTasks(t *testing.T) {
 	}
 
 	plain := render()
-	if !strings.Contains(plain, "Background") || strings.Contains(plain, "%") {
-		t.Errorf("worker-only header should read Background without progress:\n%s", plain)
+	if strings.Contains(plain, "Background") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 1 {
+		t.Errorf("a worker should render one row without a header:\n%s", plain)
 	}
-	if !strings.Contains(plain, "bash  Save Jenkins script") || taskIDRe.MatchString(plain) {
-		t.Errorf("worker row should lead with its kind, not an ID:\n%s", plain)
+	if !strings.Contains(plain, "●  Save Jenkins script") || strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
+		t.Errorf("worker row should lead with the work description:\n%s", plain)
 	}
 
 	plan := todo.Default().Create("Write tests", "", "", nil)
 	_ = todo.Default().Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
 	if plain := render(); !strings.Contains(plain, "Tasks (100%)") {
 		t.Errorf("progress should count plan items only:\n%s", plain)
+	}
+}
+
+func TestRenderTrackerListRetiresCompletedWorkerWithoutDeletingIt(t *testing.T) {
+	store := todo.NewStore()
+	done := store.Create("Upload finished", "", "", map[string]any{"background_task_id": "bg-done"})
+	if err := store.Update(done.ID, todo.WithStatus(todo.StatusCompleted)); err != nil {
+		t.Fatal(err)
+	}
+	store.Create("Compress video", "", "", map[string]any{"background_task_id": "bg-active"})
+	for _, streaming := range []bool{false, true} {
+		plain := stripANSI(RenderTrackerList(TrackerListParams{Items: store.List(), StreamActive: streaming, Width: 80}))
+		if strings.Contains(plain, "Upload finished") || strings.Contains(plain, "completed") || !strings.Contains(plain, "Compress video") {
+			t.Fatalf("successful worker should leave without a history summary:\n%s", plain)
+		}
+	}
+	if items := store.List(); len(items) != 2 || items[0].Status != todo.StatusCompleted {
+		t.Fatalf("rendering changed task records: %+v", items)
+	}
+}
+
+func TestRenderTrackerRowReservesSpaceForStatus(t *testing.T) {
+	for _, subject := range []string{strings.Repeat("Compress video ", 10), strings.Repeat("压缩视频", 10)} {
+		item := &todo.Item{
+			Subject: subject, ActiveForm: subject, Status: todo.StatusInProgress,
+			StatusChangedAt: time.Now().Add(-70 * time.Second),
+			Metadata:        map[string]any{"background_task_id": "bg-1", "background_status_detail": "failed"},
+		}
+		for _, tc := range []struct {
+			phase  itemPhase
+			detail string
+		}{
+			{itemRunning, "· 1m "},
+			{itemStalled, "[stalled]"},
+			{itemAborted, "[failed]"},
+		} {
+			for _, width := range []int{1, 12, 40, 80} {
+				plain := stripANSI(renderItem(item, tc.phase, width, 0, nil, 0, nil))
+				if lipgloss.Width(plain) > width || strings.Count(plain, "\n") != 1 {
+					t.Fatalf("row exceeded %d columns:\n%s", width, plain)
+				}
+				if width >= 40 && (!strings.Contains(plain, "…") || !strings.Contains(plain, tc.detail)) {
+					t.Fatalf("long description hid %q:\n%s", tc.detail, plain)
+				}
+			}
+		}
 	}
 }
