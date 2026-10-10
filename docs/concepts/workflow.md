@@ -120,21 +120,42 @@ preserves the original `ponytail-audit` instructions in a read-only workflow.
 It keeps all six check categories, the evidence rules, the report format and
 its example. The instructions are split into six subagent turns:
 
-- `understand_repo`: establish the scope, assumed load, entry points and main
-  data flows; record high-risk paths and unread areas.
-- `correctness`: check bugs and risky logic without a useful test.
-- `safety`: check security, data loss and failures at the expected load.
-- `maintainability`: check real slowness and code to delete, reuse, replace
+- `inspect_repo`: establish the scope, assumed load, entry points and main
+  data flows; hand off source evidence, tests and unread areas.
+- `check_bugs_tests`: check bugs and risky logic without a useful test.
+- `check_security_scale`: check security, data loss and failures at the
+  expected load.
+- `check_speed_bloat`: check real slowness and code to delete, reuse, replace
   with native features, merge or split.
 - `verify_findings`: re-read evidence, confirm concrete triggers, search all
   references before declaring code unused, deduplicate and rank findings.
-- `report`: write the full report in the original simple-English format,
+- `write_report`: write the full report in the original simple-English format,
   including the three groups, continuous numbering, four parts per finding,
   verdict, lean totals and unexamined areas.
 
-The three checks run in parallel after `understand_repo`. Verification waits
-for all three, then hands accepted findings to `report`. Every node runs in
-`explore` mode and changes no code. To install the self-contained example:
+The three checks run in parallel after `inspect_repo`. Verification waits
+for all three, then hands accepted findings to `write_report`. Every node
+runs in `explore` mode and changes no code.
+
+Six nodes do not mean six full repository scans. The first node surveys the
+repository and passes focused source evidence to the three checks. They reuse
+that evidence and read more where needed. Verification checks candidate
+findings, including whole-tree reference searches for unused code. The final
+node is instructed to write from the supplied results without reading files
+or running tools. These are prompt instructions, not enforced read limits.
+Nodes have separate conversations and receive upstream output text, not its
+full tool history, so overlapping reads remain possible. The original skill
+keeps its work in one agent context and can also re-read files to verify a
+finding; it does not promise exactly one scan.
+
+This example demonstrates parallel review, evidence handoff and verification.
+It is not the cheapest way to audit a repository, and parallel execution does
+not guarantee a speedup. For a quick first run, scope it to a small package.
+A review of changed files, split into non-overlapping file groups, is a more
+bounded demonstration of distributing work; this audit deliberately keeps
+the original whole-repository checks.
+
+To install the self-contained example:
 
 ```bash
 mkdir -p .san/workflows

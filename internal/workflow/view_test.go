@@ -160,16 +160,16 @@ func TestPonytailAuditExampleHasParallelChecksAndJoin(t *testing.T) {
 			t.Errorf("%s is not read-only", n.ID)
 		}
 	}
-	for _, id := range []string{"correctness", "safety", "maintainability"} {
+	for _, id := range []string{"check_bugs_tests", "check_security_scale", "check_speed_bloat"} {
 		n, ok := w.Node(id)
-		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "understand_repo" {
-			t.Errorf("%s is not an independent check after understand_repo", id)
+		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "inspect_repo" {
+			t.Errorf("%s is not an independent check after inspect_repo", id)
 		}
 	}
 	if verify, ok := w.Node("verify_findings"); !ok || len(verify.Upstream()) != 3 {
 		t.Fatal("verification does not join all three checks")
 	}
-	if report, ok := w.Node("report"); !ok || len(report.Upstream()) != 1 || report.Upstream()[0].From != "verify_findings" {
+	if report, ok := w.Node("write_report"); !ok || len(report.Upstream()) != 1 || report.Upstream()[0].From != "verify_findings" {
 		t.Fatal("report does not wait for verified findings")
 	}
 }
