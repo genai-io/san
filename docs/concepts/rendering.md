@@ -7,11 +7,10 @@ becomes state; this doc covers how state becomes characters on screen.
 
 > **"Render" means: return a string.** Every `Render*` function in
 > this codebase returns a `string` — ANSI escape codes for color and
-> style, plain UTF-8 for content. No off-screen buffers, no canvases.
-> Bubble Tea's `View()` returns a string and the framework writes it
-> to the terminal; `tea.Println` takes a string and writes it above
-> the alt-screen region. The "rendering pipeline" below is entirely
-> string composition; the terminal does the actual drawing.
+> style, plain UTF-8 for content. Row buffers support wrapping and retention.
+> Bubble Tea's `View()` wraps the composed string and cursor in a `tea.View`;
+> the framework writes it to the terminal. `tea.Println` writes above the
+> inline managed frame. Fullscreen overlays use the alternate screen.
 
 ## Mental model: two surfaces
 
@@ -24,29 +23,30 @@ m.conv.Messages = [ msg0, msg1, msg2, msg3 | msg4, msg5 ]
                                             CommittedCount = 4
 
 ┌─ surface ──────────────────┬─ written by ───────┬─ contents ────────────┐
-│ Native terminal scrollback │ tea.Println        │ msg0..msg3            │
+│ Native terminal scrollback │ tea.Println        │ older settled rows    │
 │ (frozen once written;      │ (one call per      │ — committed messages  │
-│  you can scroll up to it)  │  committed message)│                       │
+│  you can scroll up to it)  │  overflow chunk)   │                       │
 ├────────────────────────────┼────────────────────┼───────────────────────┤
-│ Bubble Tea repaint zone    │ View()             │ msg4..msg5 +          │
-│ (bottom N lines; rebuilt   │ (called every      │ pending spinners +    │
+│ Bubble Tea repaint zone    │ View()             │ recent settled rows + │
+│ (fills terminal height;    │ (called every      │ msg4..msg5 + spinners │
 │  on every Update)          │  Update)           │ input strip           │
 └────────────────────────────┴────────────────────┴───────────────────────┘
 ```
 
 A **streaming** assistant reply lives in the repaint zone while
-`Stream.Active == true`; when the stream finishes, `CommitMessages`
-makes one `tea.Println` call to **move** the same rendered string into
-scrollback above. `CommittedCount` then advances so the repaint zone
-stops re-drawing it. The user sees one visual transition, not a
-duplicate. The rule that prevents double-rendering is in
+`Stream.Active == true`. `CommitMessages` moves its settled rendering into
+the bounded recent-row buffer and advances `CommittedCount`, so the active
+message renderer stops drawing it. Only rows overflowing that buffer enter
+the serialized `tea.Println` queue. Short replies therefore remain visible
+above the fixed composer after completion. The rule preventing premature commits is in
 `renderAndCommit(checkReady=true)`: never commit the last message while
 `Stream.Active` is true.
 
 **Both surfaces share the same render functions.** `RenderMessageAt`
 is what produces each message's string; what differs is the index
-range (scrollback: `0..CommittedCount`; repaint zone:
-`CommittedCount..len(Messages)`).
+range (settled rendering: `0..CommittedCount`; active rendering:
+`CommittedCount..len(Messages)`). The repaint zone also includes retained
+settled rows, without rendering those messages again.
 
 ## View() composes the repaint zone
 
@@ -54,7 +54,7 @@ range (scrollback: `0..CommittedCount`; repaint zone:
 runs after every `Update` and returns the string for the repaint zone.
 
 ```go
-func (m *model) View() string {
+func (m *model) View() tea.View {
     //   ^ Go method on *model; `m` is the instance (Go's
     //     equivalent of `this`/`self`). The whole codebase uses `m`
     //     for the foreground model.
@@ -79,12 +79,13 @@ View()
                                    separator bars
                                    (Question modal, Approval modal)
   4. otherwise (normal mode) ──► renderNormalView()
-        ├─ chat section        ── conv.RenderActiveContent
-        ├─ turn-usage summary
-        ├─ separator
+        ├─ chat section        ── recent settled rows + conv.RenderActiveContent
+        ├─ spare space         ── keeps short conversations stable at the top
+        ├─ activity indicators ── tracker, compact and self-learning status
         ├─ queue preview       ── if input was queued during a stream
-        ├─ textarea
         ├─ suggestion list     ── /-command and @-file autocomplete
+        ├─ separator
+        ├─ textarea            ── grows upward as input wraps
         ├─ separator
         └─ status line         ── model name, tokens, mode
 ```
@@ -370,20 +371,20 @@ for i in CommittedCount..len(Messages):    // i = 1, 2
          InlinedResults.IsResultInlined(2) = true → return ""       ← skipped
   if rendered != "": append to parts
 
-tea.Println(strings.Join(parts, "\n"))       // ONE Println, ONE block
+m.queueScrollbackPrint(strings.Join(parts, "\n"), preCommitRows)
+                                             // retain recent rows, print overflow
 CommittedCount = 3                           // caught up
 ```
 
 What changed on screen:
 
-- **Scrollback** gains one block:
-  `● I'll list them with ls. / ● Bash(ls) / ⎿ file1 / file2`. Frozen.
-- **Repaint zone** is now empty (`CommittedCount == len(Messages)`).
-- The next `View()` paints just the input strip — ready for the next
-  user prompt.
+- **Recent settled rows** gain the assistant and tool block.
+- **Active messages** are now empty (`CommittedCount == len(Messages)`).
+- The next `View()` shows the retained block above the bottom-fixed input.
+  Older overflowing rows enter native scrollback in safe chunks.
 
-The user watched the same string grow in the repaint zone; now that
-same string lives in scrollback, written exactly once. The
+The user watched the same string grow in the repaint zone; its settled
+rendering remains visible and eventually enters native history once. The
 `IsResultInlined` short-circuit in `RenderSingleMessage` is what stops
 the ToolResult from also being Println'd standalone.
 
@@ -398,6 +399,12 @@ not reprint committed messages: the terminal rewraps what it already holds on it
 own, and a row that reached the top of the screen cannot be taken back — see
 [ADR-0002](../design/decisions/0002-native-scrollback-commit-protocol.md), whose
 invariant 6 covers the rewrap arithmetic the redraw depends on.
+
+Recent settled rows have not entered native history yet. Resize rewraps these
+rendered rows and trims their buffer to the new space above the composer,
+queuing only the oldest overflow. The fixed-height normal frame temporarily
+compacts to the composer footer during a history insert; the footer's measured
+height and the existing FIFO protocol keep transient UI out of native history.
 
 `handleWindowResize` is also the **deferred initial paint**: the first
 `WindowSizeMsg` is where a resumed conversation is committed, via

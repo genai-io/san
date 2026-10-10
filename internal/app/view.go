@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
@@ -96,7 +97,8 @@ func (m *model) renderDockedModalView(ov overlayPanel, separator, trackerView st
 	// the turn is parked on an answer — everything animated holds still.
 	params.DockedModalActive = true
 
-	return m.chatTailAbove(modal, params, trackerView) + modal
+	bottom := m.renderChatIndicators(trackerView) + modal
+	return m.chatTailAbove(bottom, params) + bottom
 }
 
 // isDockedModal reports whether the active overlay docks above the input area
@@ -114,22 +116,19 @@ func isDockedModal(ov overlayPanel) bool {
 // renderNormalView composes the standard layout: chat scrollback area,
 // queue preview, textarea + suggestions, and the bottom status line.
 //
-// Only the active (uncommitted) tail is rendered here; finished messages are
-// already in the terminal's native scrollback (committed via tea.Println, see
-// model_scrollback.go). The chat section is height-limited so the View()
-// output never exceeds the terminal height: when the live tail is taller than
-// the space above the input area, its last lines (the latest content) are
-// shown and earlier lines scroll off — the full message lands in native
-// scrollback at turn end, which the terminal scrolls back through natively.
+// Recent settled rows and the active tail share the space above the composer.
+// Older settled rows enter native scrollback through model_scrollback.go.
+// Padding the unused space keeps the composer at the bottom as content changes.
 func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cursor) {
 	// Render the footer first so the chat section can be capped to whatever
 	// height it leaves free.
 	footer, inputRow := m.renderFooter(separator)
-	chatSection := m.chatTailAbove(footer, m.messageRenderParams(), trackerView)
+	indicators := m.renderChatIndicators(trackerView)
+	chatSection := m.chatTailAbove(indicators+footer, m.messageRenderParams())
 
 	// The footer's row offsets are relative to its own first line; the chat
 	// section above it shifts them all down.
-	return chatSection + footer, m.inputCursor(strings.Count(chatSection, "\n") + inputRow)
+	return chatSection + indicators + footer, m.inputCursor(strings.Count(chatSection+indicators, "\n") + inputRow)
 }
 
 // chatTailAbove renders the live chat tail to fill the rows the bottom-anchored
@@ -137,15 +136,16 @@ func (m *model) renderNormalView(separator, trackerView string) (string, *tea.Cu
 // one. Both layouts anchor to the bottom of the screen, so this is the single
 // place the height budget is decided: the tail is capped to what is left, and
 // its earliest lines are the ones that scroll off.
-func (m *model) chatTailAbove(bottom string, params conv.RenderContext, trackerView string) string {
+func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	// A non-positive budget means the bottom block is taller than the screen on
 	// its own. tailLines would drop the tail anyway; bailing here skips the
 	// render that produced it, which is the whole cost on a short terminal.
-	maxContentHeight := m.env.Height - strings.Count(bottom, "\n")
-	if maxContentHeight <= 0 {
+	available := m.env.Height - strings.Count(bottom, "\n")
+	if available <= 0 {
 		return ""
 	}
-	return tailLines(m.renderChatSection(conv.RenderActiveContent(params), trackerView), maxContentHeight)
+	content := tailLines(m.renderChatSection(conv.RenderActiveContent(params)), available)
+	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.
@@ -193,15 +193,16 @@ func (m *model) renderFooter(separator string) (string, int) {
 		b.WriteString("\n")
 		b.WriteString(queuePreview)
 	}
+	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
+		// Candidates grow upward so opening them does not move the composer.
+		b.WriteString("\n")
+		b.WriteString(suggestions)
+	}
 	b.WriteString("\n")
 	b.WriteString(separator)
 	b.WriteString("\n")
 	inputRow := strings.Count(b.String(), "\n")
 	b.WriteString(m.renderInputView())
-	if suggestions := m.userInput.Suggestions.Render(m.env.Width); suggestions != "" {
-		b.WriteString("\n")
-		b.WriteString(suggestions)
-	}
 	b.WriteString("\n")
 	b.WriteString(separator)
 	b.WriteString("\n")
@@ -248,14 +249,16 @@ func hangComposerRows(view string) string {
 	return strings.Join(lines, "\n")
 }
 
-// renderChatSection assembles the active chat content (uncommitted messages,
-// tracker, transient spinners) into a single string. Height-limiting is
-// applied by the caller (tailLines).
-func (m model) renderChatSection(activeContent, trackerView string) string {
+// renderChatSection assembles recent settled rows and active messages.
+// The caller limits its height with tailLines.
+func (m model) renderChatSection(activeContent string) string {
 	var parts []string
 
 	if pending := m.pendingScrollbackView(); pending != "" {
 		parts = append(parts, pending)
+	}
+	if len(m.flush.visible) > 0 {
+		parts = append(parts, uv.Lines(m.flush.visible).Render())
 	}
 
 	if banner := m.liveWelcome(); banner != "" {
@@ -268,6 +271,12 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 	if activeContent != "" {
 		parts = append(parts, activeContent)
 	}
+	return strings.Join(parts, "\n")
+}
+
+// Activity stays above the composer; spare space belongs between it and chat.
+func (m model) renderChatIndicators(trackerView string) string {
+	var parts []string
 
 	if trackerView != "" {
 		// Leading "\n" forces a blank line between the assistant content
@@ -294,7 +303,10 @@ func (m model) renderChatSection(activeContent, trackerView string) string {
 		parts = append(parts, "", live, "")
 	}
 
-	return strings.Join(parts, "\n")
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(parts, "\n")
 }
 
 // liveWelcome returns the startup splash for the live view while it is still

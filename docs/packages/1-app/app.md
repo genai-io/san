@@ -89,7 +89,7 @@ Root files (no business logic; pure glue):
 | `model.go` | Root `model` struct + `Init()`. Behaviour split across siblings. |
 | `model_lifecycle.go` | Construction + run-option application + task lifecycle wiring + SessionEnd shutdown. |
 | `model_session.go` | Session save/load + per-session task storage + fork. |
-| `model_scrollback.go` | Render committed messages into terminal scrollback via `tea.Println`. |
+| `model_scrollback.go` | Retain recent settled rows above the composer; print older rows into native scrollback via `tea.Println`. |
 | `model_agent_events.go` | `conv.Runtime` callbacks (turn start, tokens, tool results, turn end, stop). |
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
@@ -123,6 +123,17 @@ Sub-model packages:
 | [`broker`](../2-feature/broker.md) | Source 2 (agent → main) | Process-wide message queue (not an app sub-package); root registers `broker.Main`. |
 | `app/trigger/` | Source 3 (system) | File watcher, cron poll, async hook callback. |
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
+
+The normal view fills the terminal height and anchors the composer and status
+line to the bottom. Short conversations grow downward from the top, with spare
+space between the conversation and the docked activity/input area. Multiline
+input grows upward; command and file candidates
+appear above its separator. Recent settled output remains in a bounded row
+buffer, with older output entering the serialized native print queue. Resize
+rewraps the retained rows and prints any overflow. Full-height history inserts
+temporarily use the composer footer as their frozen frame, preserving the
+existing print safety protocol. `/clear` discards the retained display rows
+before the terminal wipe. This layout needs no configuration.
 
 The task tracker above the input shows at most eight task rows and one overflow
 summary. Background work has no fixed heading or repeated executor-kind labels:
@@ -161,6 +172,9 @@ The root package has focused lifecycle/state tests and broader coverage through
 internal/app/conv/message_test.go              — message rendering.
 internal/app/conv/markdown_test.go             — markdown renderer.
 internal/app/conv/tracker_view_test.go         — task tracker view.
+internal/app/view_test.go                     — fixed composer, multiline input and candidates.
+internal/app/model_scrollback_test.go          — recent output retention and resize.
+internal/app/model_scrollback_renderer_test.go — native history integrity through the real renderer.
 internal/app/agent_restart_test.go             — message-chain integrity across stop/restart.
 internal/app/input/on_approval_test.go         — approval flow.
 internal/app/input/on_mcp_test.go              — MCP slash command.

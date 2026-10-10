@@ -1,16 +1,19 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -22,6 +25,51 @@ func flushTestModel(msg core.ChatMessage) *model {
 	m := &model{env: env{Width: 80}, conv: conv.NewModel(80)}
 	m.conv.Messages = []core.ChatMessage{msg}
 	return m
+}
+
+func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "Recent reply stays visible."}}
+	m.CommitMessages()
+	if m.conv.CommittedCount != 1 || len(m.flush.pendingPrints) != 0 {
+		t.Fatal("short reply should settle without a native print")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("committing hid the recent reply")
+	}
+	for _, line := range m.flush.visible {
+		if len(line) > 0 && isPadding(&line[len(line)-1]) {
+			t.Fatal("retained rows carry full-width padding into the live frame")
+		}
+	}
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+	if len(m.flush.pendingPrints) != 0 || !strings.Contains(ansi.Strip(m.View().Content), "Recent reply stays visible.") {
+		t.Fatal("resize hid or unnecessarily printed the recent reply")
+	}
+
+	// Shrinking height hands only the oldest physical rows to native history.
+	m.queueScrollbackPrint(strings.Repeat("older row\n", 12)+"LATEST-REPLY", 0)
+	m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 10})
+	footer, _ := m.renderFooter("")
+	if len(m.flush.visible) > 10-rowCount(footer) || len(m.flush.pendingPrints) == 0 {
+		t.Fatal("resize did not bound the retained rows and print overflow")
+	}
+	if !strings.Contains(ansi.Strip(m.View().Content), "LATEST-REPLY") {
+		t.Fatal("shrinking the terminal hid the latest reply")
+	}
+}
+
+func TestClearDiscardsRecentSettledRows(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.services.Agent = &agent.Session{}
+	m.services.Reminder = reminder.NewService()
+	m.queueScrollbackPrint("OLD-REPLY", 0)
+	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
+		t.Fatal("clear command was not handled")
+	}
+	if len(m.flush.visible) != 0 || strings.Contains(m.View().Content, "OLD-REPLY") {
+		t.Fatal("clear resurrected a retained reply")
+	}
 }
 
 // applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
@@ -415,7 +463,7 @@ func TestConsecutiveToolCommitsStayOutOfManagedFrameAndPrintOnceInOrder(t *testi
 	// has not started is not drawn: it would be a second copy of content that is
 	// still waiting for its own Println.
 	liveFrame := "LIVE_EDIT_ACTIVITY\n" + strings.Repeat("\n", 12) + "INPUT_SENTINEL\nFOOTER_SENTINEL"
-	managed := m.renderChatSection(liveFrame, "")
+	managed := m.renderChatSection(liveFrame)
 	if !strings.Contains(managed, "BASH_RESULT_SENTINEL") {
 		t.Fatalf("managed frame lost the in-flight handoff copy: %q", managed)
 	}
