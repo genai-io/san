@@ -66,7 +66,7 @@ type Model struct {
 	Settings   PanelPopup        // /settings: appearance, permissions, general
 	Evolve     PanelPopup        // /evolve: self-learning skills + memory
 	Autopilot  AutopilotSelector // /autopilot: the session copilot
-	Transcript TranscriptViewer  // /history: earlier messages a resume did not replay
+	Transcript TranscriptViewer  // /history and idle Ctrl+O: inspect session messages and tool results
 
 	// Selectors carrying ambient state (the picker is the .Selector field).
 	Skill    SkillState    // + pending skill invocation

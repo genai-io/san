@@ -467,6 +467,9 @@ func (m model) renderModeStatus() string {
 	if !m.userInput.LastCtrlC.IsZero() {
 		statusMessage = ctrlCExitHint
 	}
+	if statusMessage == "" && !m.conv.Stream.Active && len(m.conv.Messages) > 0 {
+		statusMessage = "ctrl+o history"
+	}
 	window, budget := kit.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
 	return conv.RenderModeStatus(conv.OperationModeParams{
 		Mode:              m.env.OperationMode,

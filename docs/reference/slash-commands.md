@@ -11,7 +11,7 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 | `/clear` | Clear chat history |
 | `/fork` | Fork the current session |
 | `/resume` | Resume a previous session |
-| `/history` | Read the earlier messages a resumed session did not replay |
+| `/history` | Browse session history and expand tool results |
 | `/help` | Show available commands |
 | `/tools` | Enable / disable tools |
 | `/plan` | Enter plan mode |
@@ -34,12 +34,15 @@ Slash commands are typed directly in the TUI input box. They trigger local UI ac
 - Commands are matched against the registry as the user types; a suggestion dropdown appears. A space after a command opens its subcommands (for example `/workflow `, `/plugin `, `/mcp `, `/memory `, `/loop `). Tab or Enter completes the highlighted path; another space opens the next level. `/workflow show ` and `/workflow run ` offer saved workflow names; after `/workflow run <name> ` the referenced input keys are offered as `key=` so the value can be typed immediately.
 - Selector commands (`/models`, `/skills`, `/search`, etc.) open a scrollable picker overlay.
 - `/clear` immediately resets the visible conversation.
-- `/history` opens a fullscreen reader over the messages a resumed session did
-  not replay into scrollback (see `resumeWindowMessages` in
-  [Configuration System](./configuration.md)). It reports "nothing earlier to
-  show" when the whole transcript is already on screen. Earlier history cannot be
-  paged back into native scrollback: `tea.Println` inserts at the frame's top, so
-  a later print would land *below* what is already there and invert the order.
+- `/history`, or **Ctrl+O when idle**, opens the session transcript in the
+  alternate screen, with the most recent tool result expanded. **Left/Right**
+  (also `p`/`n` or Shift+Tab/Tab) selects a tool; **Enter** expands or collapses
+  that result independently. Up/Down and PgUp/PgDn scroll; Home/End jumps to
+  the transcript's ends. **Esc** returns with the prompt draft and cursor
+  unchanged. While a turn runs, Ctrl+O keeps its existing inline expansion.
+  The viewer includes messages skipped by resume and messages before context
+  compaction. Loading is asynchronous, and the view is a snapshot when opened.
+  It does not execute tools or print history back into native scrollback.
 - `/think` cycles through the active model's advertised efforts and updates the
   status bar indicator. Available values depend on the model and connection:
   OpenAI API models may offer `max`, while a ChatGPT subscription model offers

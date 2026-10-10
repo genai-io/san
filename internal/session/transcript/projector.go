@@ -7,6 +7,12 @@ import (
 )
 
 func Project(records []Record) (*Transcript, error) {
+	return project(records, true)
+}
+
+// project keeps the same parent chain for both resume and history; only resume
+// stops at the latest compaction boundary.
+func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 	t := &Transcript{}
 	messageMap := make(map[string]Node, len(records))
 	order := make([]string, 0, len(records))
@@ -52,7 +58,7 @@ func Project(records []Record) (*Transcript, error) {
 				t.Notices = append(t.Notices, *r.Notice)
 			}
 		case SessionCompacted:
-			if r.Session != nil {
+			if stopAtCompaction && r.Session != nil {
 				compactBoundary = r.Session.SummaryMessageID
 			}
 			if t.ID == "" {

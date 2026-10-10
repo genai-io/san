@@ -546,6 +546,15 @@ func rewriteRecordSessionID(id, oldSessionID, newSessionID string) string {
 }
 
 func (s *FileStore) Load(ctx context.Context, transcriptID string) (*Transcript, error) {
+	return s.load(ctx, transcriptID, true)
+}
+
+// LoadHistory reads the selected branch including messages before compaction.
+func (s *FileStore) LoadHistory(ctx context.Context, transcriptID string) (*Transcript, error) {
+	return s.load(ctx, transcriptID, false)
+}
+
+func (s *FileStore) load(ctx context.Context, transcriptID string, stopAtCompaction bool) (*Transcript, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -557,7 +566,7 @@ func (s *FileStore) Load(ctx context.Context, transcriptID string) (*Transcript,
 	if err != nil {
 		return nil, err
 	}
-	return Project(records)
+	return project(records, stopAtCompaction)
 }
 
 func (s *FileStore) List(ctx context.Context, projectID string, opts ListOptions) ([]ListItem, error) {

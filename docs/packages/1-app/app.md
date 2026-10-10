@@ -99,6 +99,7 @@ Root files (no business logic; pure glue):
 | `model_actions.go` | Identity switch + slash-command dispatch from selector hotkeys. |
 | `update.go` | `Update()` dispatch + `routeFeatureUpdate` + `overlaySelectors`. |
 | `update_keys.go` | Keyboard handling + active-modal delegation + Ctrl+O double-tap. |
+| `model_history.go` | Asynchronous session-history loading and existing message/tool renderers for the transcript viewer. |
 | `update_resize.go` | Window resize + scrollback reflow. |
 | `update_submit.go` | Submit + provider turn + skill invocation. |
 | `update_command.go` | Slash command deps + execution. |

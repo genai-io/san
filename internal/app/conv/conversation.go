@@ -29,10 +29,6 @@ type ConversationModel struct {
 	Modal          ModalState
 	Tool           ToolExecState
 
-	// ResumeWindowStart is where a resume's replay began; /history shows the
-	// messages before it. Unlike CommittedCount it never moves.
-	ResumeWindowStart int
-
 	// OnNotice sees every notice appended, so the host can keep it in the
 	// transcript; a notice never reaches the model, only the person.
 	OnNotice func(core.ChatMessage)
@@ -62,7 +58,6 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 func (m *ConversationModel) Clear() {
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
-	m.ResumeWindowStart = 0
 }
 
 func (m *ConversationModel) AddNotice(content string) {

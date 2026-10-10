@@ -140,6 +140,35 @@ func TestProjectCompactBoundaryTruncatesActiveChain(t *testing.T) {
 	}
 }
 
+func TestHistoryFollowsSelectedBranchAcrossCompactions(t *testing.T) {
+	records := []Record{
+		{Type: MessageAppended, Message: &MessageRecord{MessageID: "start", Role: "user"}},
+		{Type: MessageAppended, ParentID: "start", Message: &MessageRecord{MessageID: "abandoned", Role: "assistant"}},
+		{Type: MessageAppended, ParentID: "start", Message: &MessageRecord{MessageID: "selected", Role: "assistant"}},
+		{Type: SessionCompacted, Session: &SessionRecord{SummaryMessageID: "selected"}},
+		{Type: MessageAppended, ParentID: "selected", Message: &MessageRecord{MessageID: "summary2", Role: "user"}},
+		{Type: SessionCompacted, Session: &SessionRecord{SummaryMessageID: "summary2"}},
+		{Type: MessageAppended, ParentID: "summary2", Message: &MessageRecord{MessageID: "last", Role: "assistant"}},
+	}
+	history, err := project(records, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"start", "selected", "summary2", "last"}
+	if len(history.Messages) != len(want) {
+		t.Fatalf("history has %d messages, want %d", len(history.Messages), len(want))
+	}
+	for i, node := range history.Messages {
+		if node.ID != want[i] {
+			t.Fatalf("history followed the wrong branch: %+v", history.Messages)
+		}
+	}
+	resumed, err := Project(records)
+	if err != nil || len(resumed.Messages) != 2 || resumed.Messages[0].ID != "summary2" {
+		t.Fatalf("resume boundary changed: %+v, %v", resumed, err)
+	}
+}
+
 // Unknown patch paths are silently ignored so older readers tolerate records
 // produced by newer schemas. The rest of the patch list must still apply.
 func TestProjectUnknownPatchPathIsIgnored(t *testing.T) {

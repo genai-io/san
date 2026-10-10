@@ -126,7 +126,7 @@ func (s *Store) Latest() (*Snapshot, error) {
 		return nil, fmt.Errorf("no sessions found")
 	}
 	meta := transcript.MetadataFromListItem(items[0], s.cwd)
-	return s.loadSnapshot(context.Background(), meta.ID)
+	return s.loadSnapshot(context.Background(), meta.ID, false)
 }
 
 func (s *Store) Delete(id string) error {
@@ -145,11 +145,23 @@ func (s *Store) Load(id string) (*Snapshot, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sess, err := s.loadSnapshot(context.Background(), id)
+	sess, err := s.loadSnapshot(context.Background(), id, false)
 	if err != nil {
 		return nil, err
 	}
 	return sess, nil
+}
+
+// LoadHistory shares resume's conversion and blob hydration, but includes the
+// selected branch's messages before compaction. It never changes model context.
+func (s *Store) LoadHistory(id string) ([]core.ChatMessage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	sess, err := s.loadSnapshot(context.Background(), id, true)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Messages, nil
 }
 
 // Save persists the snapshot via append-only writes:
@@ -274,7 +286,7 @@ func (s *Store) Fork(sourceID string) (*Snapshot, error) {
 	}); err != nil {
 		return nil, err
 	}
-	forked, err := s.loadSnapshot(context.Background(), newID)
+	forked, err := s.loadSnapshot(context.Background(), newID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load forked session: %w", err)
 	}
@@ -339,11 +351,15 @@ func (s *Store) ImagesDir(sessionID string) string {
 	return filepath.Join(s.projectDir, "blobs", "image", sessionID)
 }
 
-func (s *Store) loadSnapshot(ctx context.Context, sessionID string) (*Snapshot, error) {
+func (s *Store) loadSnapshot(ctx context.Context, sessionID string, history bool) (*Snapshot, error) {
 	if s.transcriptStore == nil || sessionID == "" {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
-	tx, err := s.transcriptStore.Load(ctx, sessionID)
+	load := s.transcriptStore.Load
+	if history {
+		load = s.transcriptStore.LoadHistory
+	}
+	tx, err := load(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("load transcript %s: %w", sessionID, err)
 	}

@@ -81,6 +81,11 @@ equivalent.
   `Store`, and the current `Recorder` under a mutex.
 - `Store` (`store.go`) — filesystem-backed JSON store under
   `~/.san/projects/<hash>/`; provides Save / Load / List / Fork.
+  `LoadHistory(id)` reads the same selected branch as Load, including messages
+  before compaction, and reuses message conversion and full tool-output blob
+  hydration. It is for display only; Load still stops at the latest compaction
+  boundary for the model's context. `history_test.go` covers both views and
+  verifies that viewing history leaves the resume boundary unchanged.
 - `Recorder` (`recorder.go`) — writes the event-sourced transcript
   (one record per inference / tool call / hook / system mutation) into
   the `transcript` subpackage's filesystem store. It also keeps each notice

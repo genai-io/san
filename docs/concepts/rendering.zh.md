@@ -384,6 +384,31 @@ CommittedCount = 3                           // 追上
 提交——更早的消息被保留但从不打印，由 `/history` 按需读取（见
 `resumeWindowMessages`）。
 
+## 查看运行结束后的工具结果
+
+终端的原生历史保持不变。空闲时按 Ctrl+O，或输入 `/history`，会在备用屏幕
+打开现有历史查看器。`model_history.go` 异步读取 `session.Store.LoadHistory`；
+投影器沿恢复会话所用的同一条父消息链读取，但不会在上下文压缩的边界停下。
+消息转换和工具结果文件的加载复用恢复会话的逻辑。会话尚未保存时，使用当前
+对话；其他读取失败会明确显示，避免把缺少早期消息的内容误当成完整历史。
+
+每条消息和每个工具调用分别交给 `input.TranscriptViewer`，渲染复用
+`RenderSingleMessage`、`RenderToolCalls` 和 `RenderToolResultInline`。
+显示副本会清除流式打印的偏移；并行结果按调用 ID 配对，可以单独展开。
+打开时默认定位到最近的工具并展开结果。左右键选择工具，Enter 展开或收起，
+上下键和翻页键滚动完整对话，Home/End 到首尾。调整终端宽度会重新排版；
+滚动和切换工具复用已渲染的行，展开只重新渲染当前工具。
+
+查看器只保存临时的选择、展开状态和渲染结果。Esc 关闭后释放这些内容，恢复
+原来的输入和光标。代次标识会丢弃关闭或重新打开前发出的异步加载结果。
+查看过程不改变 `CommittedCount`、终端打印队列、模型上下文或执行状态，
+也不会重新执行工具；新消息在下次打开时显示。不需要新增配置或依赖。
+运行中的 Ctrl+O 仍使用原来的行内展开行为。
+
+回归测试位于 `model_history_test.go`、`input/transcript_view_test.go`、
+`session/history_test.go` 和投影器测试中，覆盖运行结束和恢复后的结果、
+并行工具独立展开、上下文压缩、完整结果文件、缩放、过期加载和输入保留。
+
 ## 文件指路
 
 | 关注点 | 文件 |
@@ -396,4 +421,5 @@ CommittedCount = 3                           // 追上
 | Compact / 智能体活动 / tracker | [`internal/app/conv/compact.go`](../../internal/app/conv/compact.go)、[`agent_to_ui.go`](../../internal/app/conv/agent_to_ui.go)、[`tracker_view.go`](../../internal/app/conv/tracker_view.go) |
 | `MDRenderer` 生命周期 | [`internal/app/conv/model.go`](../../internal/app/conv/model.go) |
 | Scrollback commit | [`internal/app/model_scrollback.go`](../../internal/app/model_scrollback.go) |
+| 历史查看 | [`internal/app/model_history.go`](../../internal/app/model_history.go)、[`internal/app/input/transcript_view.go`](../../internal/app/input/transcript_view.go) |
 | Resize | [`internal/app/update_resize.go`](../../internal/app/update_resize.go) |
