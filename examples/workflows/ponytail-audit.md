@@ -11,10 +11,10 @@ max_parallel: 3
 
 ```mermaid
 flowchart LR
-  inspect_repo --> check_bugs_tests & check_security_scale & check_speed_bloat --> verify_findings --> write_report
+  inspect --> correctness & security & maintenance --> report
 ```
 
-## inspect_repo
+## inspect
 mode: explore
 
 Understand the repository, its scope, expected load, and main data flows.
@@ -47,7 +47,7 @@ critical behavior, and relevant tests or known gaps. Keep this evidence
 focused on the main flows; do not copy whole files. The parallel checks will
 reuse it and read source only where their checks need more evidence.
 
-## check_bugs_tests
+## correctness
 mode: explore
 
 Check bugs and risky logic without a test that catches failures.
@@ -66,13 +66,13 @@ the repository survey. Read relevant source and tests where the supplied
 evidence is insufficient for this check. Change no code. Return candidate
 findings with a concrete input or situation, file:line evidence, the smallest
 fix, and the consequence of skipping it. Say which paths you checked and which
-you could not check; if you found nothing, say so. Evidence is verified in the
-next node.
+you could not check; if you found nothing, say so. The report node verifies
+the evidence before accepting findings.
 
 Repo context:
-{{inspect_repo}}
+{{inspect}}
 
-## check_security_scale
+## security
 mode: explore
 
 Check security, data integrity, and failures at the expected load.
@@ -92,13 +92,13 @@ Do not repeat the repository survey. Read relevant source where the supplied
 evidence is insufficient for this check. Change no code. Return candidate
 findings with a concrete input or situation, file:line evidence, the smallest
 fix, and the consequence of skipping it. Say which paths you checked and which
-you could not check; if you found nothing, say so. Evidence is verified in the
-next node.
+you could not check; if you found nothing, say so. The report node verifies
+the evidence before accepting findings.
 
 Repo context:
-{{inspect_repo}}
+{{inspect}}
 
-## check_speed_bloat
+## maintenance
 mode: explore
 
 Check real slowdowns and code to delete, reuse, replace, merge, or split.
@@ -127,15 +127,16 @@ concrete input or situation, file:line evidence, the smallest fix, and the
 consequence of skipping it.
 For lean findings, include supported estimates of removable lines and
 unneeded dependencies. Say which paths you checked and which you could not
-check; if you found nothing, say so. Evidence is verified in the next node.
+check; if you found nothing, say so. The report node verifies the evidence
+before accepting findings.
 
 Repo context:
-{{inspect_repo}}
+{{inspect}}
 
-## verify_findings
+## report
 mode: explore
 
-Verify concrete triggers and source evidence before accepting findings.
+Verify evidence, deduplicate and rank findings, and write the complete report.
 
 ### 3. Check before you report
 
@@ -148,33 +149,6 @@ Verify concrete triggers and source evidence before accepting findings.
 - Propose the smallest fix that works. Prefer fixes that delete code. Never
   add layers, frameworks or config the problem does not need.
 - No style taste, no "consider", no vague worries.
-
-Workflow handoff: Re-read the cited source and trace each claimed trigger.
-Check the candidates below; do not start another repository audit. Search the
-whole tree when needed to verify unused code, as required above. Change no code.
-Deduplicate the three sets of candidates and discard claims that fail these
-checks. Rank valid findings by correct, safe, holds under
-load, tested, fast, lean. Keep at most 20 findings and say how many smaller
-ones were left out. Return the verified findings, their categories, supported
-lean estimates, and the combined list of unexamined or unrun checks. Preserve
-the assumed load. Only the write_report node writes the user-facing report.
-
-Repo context:
-{{inspect_repo}}
-
-Bugs and missing tests:
-{{check_bugs_tests}}
-
-Risk and scale:
-{{check_security_scale}}
-
-Speed and lean code:
-{{check_speed_bloat}}
-
-## write_report
-mode: explore
-
-Write the complete audit report from verified findings.
 
 ### 4. Output
 
@@ -212,16 +186,24 @@ one line on what you checked.
 
 One-shot report, changes no code.
 
-Workflow handoff: Write the full report using only the verified findings and
-repo context below. Follow the original format above, including empty-group
-omission, continuous numbering, the 20-finding limit, the four parts per
-finding, lean totals when lean findings exist, and the nothing-found format.
-Change no code. Do not read repository files or run tools; the preceding nodes
-must supply the evidence. Carry unresolved checks into `Not checked` rather
-than starting another audit. Do not invent findings or turn this into a summary.
+Workflow handoff: Combine the three sets of candidates below. Re-read cited
+source and trace each claimed trigger; search the whole tree when needed to
+verify unused code. Check the candidates, without starting another repository
+audit. Discard claims that fail the evidence rules and deduplicate valid
+findings. Rank by correct, safe, holds under load, tested, fast, lean. Write
+the full report following the original checks and output format above.
+Preserve the assumed load, supported lean estimates, and combined list of
+unexamined or unrun checks. Change no code. Do not invent findings or turn
+this into a summary.
 
 Repo context:
-{{inspect_repo}}
+{{inspect}}
 
-Verified findings:
-{{verify_findings}}
+Bugs and missing tests:
+{{correctness}}
+
+Risk and scale:
+{{security}}
+
+Speed and lean code:
+{{maintenance}}

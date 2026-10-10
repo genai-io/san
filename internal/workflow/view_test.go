@@ -152,7 +152,7 @@ func TestPonytailAuditExampleHasParallelChecksAndJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	turns, _ := w.Bounds()
-	if turns != 6 || len(w.Nodes) != 6 || w.MaxParallel != 3 {
+	if turns != 5 || len(w.Nodes) != 5 || w.MaxParallel != 3 {
 		t.Fatalf("audit demo shape: turns=%d nodes=%d parallel=%d", turns, len(w.Nodes), w.MaxParallel)
 	}
 	for _, n := range w.Nodes {
@@ -160,16 +160,37 @@ func TestPonytailAuditExampleHasParallelChecksAndJoin(t *testing.T) {
 			t.Errorf("%s is not read-only", n.ID)
 		}
 	}
-	for _, id := range []string{"check_bugs_tests", "check_security_scale", "check_speed_bloat"} {
+	for _, id := range []string{"correctness", "security", "maintenance"} {
 		n, ok := w.Node(id)
-		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "inspect_repo" {
-			t.Errorf("%s is not an independent check after inspect_repo", id)
+		if !ok || len(n.Upstream()) != 1 || n.Upstream()[0].From != "inspect" {
+			t.Errorf("%s is not an independent check after inspect", id)
 		}
 	}
-	if verify, ok := w.Node("verify_findings"); !ok || len(verify.Upstream()) != 3 {
-		t.Fatal("verification does not join all three checks")
+	if report, ok := w.Node("report"); !ok || len(report.Upstream()) != 3 {
+		t.Fatal("report does not join all three checks")
 	}
-	if report, ok := w.Node("write_report"); !ok || len(report.Upstream()) != 1 || report.Upstream()[0].From != "verify_findings" {
-		t.Fatal("report does not wait for verified findings")
+	runner := &stubRunner{outputs: map[string]string{
+		"inspect":     "[REPOSITORY EVIDENCE]",
+		"correctness": "[CORRECTNESS CANDIDATES]",
+		"security":    "[SECURITY CANDIDATES]",
+		"maintenance": "[MAINTENANCE CANDIDATES]",
+		"report":      "Audit report",
+	}}
+	result := Run(t.Context(), w, runner, Options{Inputs: map[string]string{"scope": "internal/workflow"}})
+	if result.Failed(w) {
+		t.Fatalf("audit example failed: %s", result.Summary(w))
+	}
+	if !strings.Contains(runner.prompts["inspect"], "internal/workflow") {
+		t.Fatal("inspection did not receive the requested scope")
+	}
+	for _, id := range []string{"correctness", "security", "maintenance", "report"} {
+		if !strings.Contains(runner.prompts[id], runner.outputs["inspect"]) {
+			t.Errorf("%s did not receive the repository evidence", id)
+		}
+	}
+	for _, id := range []string{"correctness", "security", "maintenance"} {
+		if !strings.Contains(runner.prompts["report"], runner.outputs[id]) {
+			t.Errorf("report did not receive %s candidates", id)
+		}
 	}
 }
