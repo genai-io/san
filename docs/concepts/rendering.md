@@ -42,6 +42,11 @@ above the fixed composer after completion. The rule preventing premature commits
 `renderAndCommit(checkReady=true)`: never commit the last message while
 `Stream.Active` is true.
 
+The buffer stores lines before terminal soft wrapping. Each `Update` moves
+settled rows that no longer fit beside live output, activity, suggestions,
+or a docked modal into the print queue. Resizing wraps the original retained
+lines again, so widening removes the breaks introduced by narrowing.
+
 **Both surfaces share the same render functions.** `RenderMessageAt`
 is what produces each message's string; what differs is the index
 range (settled rendering: `0..CommittedCount`; active rendering:

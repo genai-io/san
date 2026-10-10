@@ -104,6 +104,9 @@ type initialPromptMsg string
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)
+	if print := m.flushVisibleOverflow(); print != nil {
+		cmd = tea.Batch(cmd, print)
+	}
 	if _, hasOverlay := m.activeOverlay(); hadOverlay && !hasOverlay {
 		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
 			cmd = tea.Batch(cmd, resume)

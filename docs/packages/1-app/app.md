@@ -125,12 +125,15 @@ Sub-model packages:
 | `app/kit/` | shared | Reusable TUI widgets (panel, listnav, theme, suggest, history). |
 
 The normal view fills the terminal height and anchors the composer and status
-line to the bottom. Short conversations grow downward from the top, with spare
-space between the conversation and the docked activity/input area. Multiline
+line to the bottom. Matching neutral rules frame the input area. Short
+conversations grow downward from the top, with spare space between the
+conversation and the docked activity/input area. Multiline
 input grows upward; command and file candidates
 appear above its separator. Recent settled output remains in a bounded row
-buffer, with older output entering the serialized native print queue. Resize
-rewraps the retained rows and prints any overflow. Full-height history inserts
+buffer, with older output entering the serialized native print queue. Every
+`Update` checks the space left by live output and bottom controls, so settled
+rows reach history before being cropped. The buffer keeps unwrapped source
+lines; resize rewraps them and prints any overflow. Full-height history inserts
 temporarily use the composer footer as their frozen frame, preserving the
 existing print safety protocol. `/clear` discards the retained display rows
 before the terminal wipe. This layout needs no configuration.

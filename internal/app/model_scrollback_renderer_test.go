@@ -10,6 +10,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/ActiveState/vt10x"
+
+	"github.com/genai-io/san/internal/app/kit/suggest"
 )
 
 const (
@@ -442,8 +444,103 @@ func (m *fixedComposerRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.settled <- struct{}{}
 		}
 		return m, cmd
+	default:
+		_, cmd := m.model.Update(msg)
+		return m, cmd
 	}
 	return m, nil
+}
+
+func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
+	for _, candidates := range []int{2, 8} {
+		t.Run(fmt.Sprintf("%d candidates", candidates), func(t *testing.T) {
+			const width, height = 80, 24
+			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
+			if candidates == 8 {
+				m.userInput.Suggestions = suggest.NewState(func(string) []suggest.Suggestion {
+					var items []suggest.Suggestion
+					for i := 0; i < candidates; i++ {
+						items = append(items, suggest.Suggestion{Name: fmt.Sprintf("command%d", i), Description: "Show commands"})
+					}
+					return items
+				})
+			}
+			terminal := newTerminalHistoryState(width, height)
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
+				tea.WithFPS(60), tea.WithWindowSize(width, height))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Errorf("stop fixed composer model: %v", err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping fixed composer model")
+				}
+			}()
+			waitFor := func(markers ...string) (string, string) {
+				t.Helper()
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					history, screen := terminal.snapshot()
+					found := true
+					for _, marker := range markers {
+						found = found && strings.Contains(screen, marker)
+					}
+					if found {
+						return history, screen
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %q:\n%s", markers, screen)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitFor("❭")
+			var rows []string
+			for i := 0; i < 19; i++ {
+				rows = append(rows, fmt.Sprintf("SETTLED-%02d", i))
+			}
+			program.Send(fixedComposerCommitMsg(strings.Join(rows, "\n")))
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("timed out settling the initial replies")
+			}
+			waitFor("SETTLED-00", "SETTLED-18")
+			program.Send(tea.KeyPressMsg{Code: '/', Text: "/"})
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("timed out printing rows displaced by suggestions")
+			}
+			history, screen := waitFor("Show commands", "SETTLED-18")
+			all := history + "\n" + screen
+			previous := -1
+			for _, row := range rows {
+				at := strings.Index(all, row)
+				if strings.Count(all, row) != 1 || at <= previous {
+					t.Fatalf("menu opening lost, duplicated, or reordered %q:\n%s", row, all)
+				}
+				previous = at
+			}
+			if strings.Contains(history, "❭") || strings.Contains(history, "Show commands") {
+				t.Fatalf("composer or suggestions leaked into history:\n%s", history)
+			}
+			terminal.mu.Lock()
+			_, y := terminal.state.Cursor()
+			terminal.mu.Unlock()
+			if y != height-3 {
+				t.Fatalf("menu moved the composer cursor to row %d", y)
+			}
+		})
+	}
 }
 
 // Exercise the real padded View and its print geometry, not a stand-in frame.

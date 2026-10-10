@@ -49,9 +49,5 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 	}
 
 	m.userInput.Textarea.SetWidth(msg.Width - 4 - 2)
-	if len(m.flush.visible) > 0 {
-		m.flush.visible = scrollbackPhysicalLines(renderScrollbackLines(m.flush.visible), msg.Width)
-		return m.queueScrollbackPrint("", 0)
-	}
-	return nil
+	return m.flushVisibleOverflow()
 }

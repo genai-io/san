@@ -122,8 +122,11 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   family.
 - The normal frame fills the screen to keep the composer stable. A short
   completed reply stays in the retained display buffer; only its oldest
-  overflowing rows print. History handoffs temporarily compact the frame to
-  the footer, then restore the padded view. The composer stays present and
+  overflowing rows print. Each Update checks overflow against the space left
+  by active content and bottom controls. Retained lines keep their original
+  hard breaks; soft wraps are rebuilt at the current width, including after
+  a partial line enters history. History handoffs temporarily compact the frame
+  to the footer, then restore the padded view. The composer stays present and
   transient tracker/spinner rows are excluded from the handoff frame.
 
 ## References

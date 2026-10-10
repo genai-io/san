@@ -62,10 +62,9 @@ var (
 			Foreground(kit.CurrentTheme.TextBright).
 			Bold(true)
 
-	// Footer rules are a faint hairline so they frame the input without
-	// drawing ink — softer than the bluish Separator used between messages.
+	// Matching neutral rules give the composer one stable boundary.
 	SeparatorStyle = lipgloss.NewStyle().
-			Foreground(kit.AdaptiveColor{Dark: "#3F3F46", Light: "#E4E4E7"})
+			Foreground(kit.AdaptiveColor{Dark: "#71717A", Light: "#A1A1AA"})
 
 	ThinkingStyle = lipgloss.NewStyle().
 			Foreground(kit.CurrentTheme.Muted)

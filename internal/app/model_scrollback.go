@@ -92,7 +92,7 @@ type flushState struct {
 	nextPrintID   uint64                   // monotonic identity for queued scrollback prints
 	pendingPrints []pendingScrollbackPrint // FIFO queue; only the head may be in flight
 	frameForPrint *tea.View                // freeze insertAbove geometry until the print completes
-	visible       []uv.Line                // settled output still on screen, not yet in native scrollback
+	visible       []uv.Line                // unwrapped settled lines not yet in native scrollback
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -314,19 +314,64 @@ func (m *model) queueScrollbackPrint(content string, frameRows int) tea.Cmd {
 	if !m.env.Ready || m.env.Height <= 0 {
 		return m.flush.queueScrollbackPrint(content, frameRows)
 	}
-	m.flush.visible = append(m.flush.visible, scrollbackPhysicalLines(content, m.env.Width)...)
+	m.flush.visible = append(m.flush.visible, scrollbackPhysicalLines(content, 0)...)
 	for i, line := range m.flush.visible {
 		m.flush.visible[i] = trimPadding(line)
 	}
+	return m.flushVisibleOverflow()
+}
+
+// Layout changes must hand settled rows to history before the view crops them.
+func (m *model) flushVisibleOverflow() tea.Cmd {
+	if !m.env.Ready || m.env.Height <= 0 || len(m.flush.visible) == 0 {
+		return nil
+	}
 	footer, _ := m.renderFooter("")
-	keep := max(0, m.env.Height-rowCount(footer))
-	overflow := len(m.flush.visible) - keep
+	indicators := m.renderChatIndicators(m.renderTrackerList())
+	bottom := indicators + footer
+	params := m.messageRenderParams()
+	if ov, active := m.activeOverlay(); active && isDockedModal(ov) {
+		bottom = indicators + "\n\n" + ov.Render()
+		params.DockedModalActive = true
+	}
+	keep := max(0, m.env.Height-rowCount(bottom)-rowCount(conv.RenderActiveContent(params)))
+	rows := wrapScrollbackLines(m.flush.visible, m.env.Width)
+	overflow := len(rows) - keep
 	if overflow <= 0 {
 		return nil
 	}
-	printed := renderScrollbackLines(m.flush.visible[:overflow])
-	m.flush.visible = slices.Clone(m.flush.visible[overflow:])
+	for _, row := range rows[:overflow] {
+		m.flush.visible[0] = m.flush.visible[0][len(row):]
+		if len(m.flush.visible[0]) == 0 {
+			m.flush.visible = m.flush.visible[1:]
+		}
+	}
+	if len(m.flush.visible) > 0 {
+		m.flush.visible[0] = slices.Clone(m.flush.visible[0])
+	}
+	m.flush.visible = slices.Clone(m.flush.visible)
+	printed := renderScrollbackLines(rows[:overflow])
 	return m.flush.queueScrollbackPrint(printed, 0)
+}
+
+// Split at cell boundaries without turning soft wraps into stored newlines.
+func wrapScrollbackLines(lines []uv.Line, width int) []uv.Line {
+	if width <= 0 {
+		return slices.Clone(lines)
+	}
+	var rows []uv.Line
+	for _, line := range lines {
+		start, columns := 0, 0
+		for i, cell := range line {
+			if columns+cell.Width > width && i > start {
+				rows = append(rows, line[start:i])
+				start, columns = i, 0
+			}
+			columns += cell.Width
+		}
+		rows = append(rows, line[start:])
+	}
+	return rows
 }
 
 // resumeDeferredScrollbackPrint restarts the queue once no panel owns the frame.

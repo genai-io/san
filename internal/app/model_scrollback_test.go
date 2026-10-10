@@ -72,6 +72,56 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	}
 }
 
+func TestSettledReplyReflowsAfterNarrowingAndWidening(t *testing.T) {
+	for _, text := range []string{
+		"LEFT-" + strings.Repeat("x", 60) + "-RIGHT\nsecond hard line",
+		"\x1b[31m" + strings.Repeat("中文🙂 ", 8) + "END\x1b[0m\nsecond hard line",
+	} {
+		m := fixedComposerModel(80, 24)
+		m.queueScrollbackPrint(text, 0)
+		before := m.View().Content
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 40, Height: 24})
+		if strings.Contains(ansi.Strip(m.View().Content), ansi.Strip(strings.Split(text, "\n")[0])) {
+			t.Fatal("fixture did not wrap at the narrow width")
+		}
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 80, Height: 24})
+		if got := m.View().Content; got != before {
+			t.Fatalf("80 -> 40 -> 80 changed settled output:\nbefore: %q\nafter: %q", before, got)
+		}
+	}
+}
+
+func TestSettledLineReflowsAfterPartialHistoryHandoff(t *testing.T) {
+	for _, text := range []string{strings.Repeat("0123456789", 30), "\x1b[31mL" + strings.Repeat("中🙂", 80) + "END\x1b[0m"} {
+		m := fixedComposerModel(80, 7)
+		m.queueScrollbackPrint(text, 0)
+		if len(m.flush.pendingPrints) != 1 {
+			t.Fatal("long line did not overflow into history")
+		}
+		printed := strings.ReplaceAll(ansi.Strip(m.flush.pendingPrints[0].remaining), "\n", "")
+		retained := ansi.Strip(renderScrollbackLines(m.flush.visible))
+		if printed+retained != ansi.Strip(text) || strings.Contains(retained, "\n") {
+			t.Fatalf("partial handoff lost text or stored soft wraps: printed=%q, retained=%q", printed, retained)
+		}
+		m.handleWindowResize(tea.WindowSizeMsg{Width: 160, Height: 7})
+		if got := ansi.Strip(m.View().Content); !strings.Contains(got, retained) {
+			t.Fatalf("widening did not rejoin the retained suffix: %q", got)
+		}
+	}
+}
+
+func TestLiveOutputMovesCompletedReplyIntoHistory(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.queueScrollbackPrint("SETTLED-REPLY", 0)
+	m.conv.Stream.Active = true
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "```text\n" + strings.Repeat("live output\n", 30)}}
+	m.Update(tea.KeyReleaseMsg{})
+	if len(m.flush.visible) != 0 || len(m.flush.pendingPrints) != 1 ||
+		!strings.Contains(m.flush.pendingPrints[0].remaining, "SETTLED-REPLY") {
+		t.Fatal("growing live output hid settled text without queuing it for history")
+	}
+}
+
 // applyFlush runs the off-thread render Cmd that FlushStreamingBlocks kicked off
 // and lands its result, mirroring the real render → handleFlushResult path
 // so tests can assert the committed offsets the landing advances.

@@ -258,7 +258,7 @@ func (m model) renderChatSection(activeContent string) string {
 		parts = append(parts, pending)
 	}
 	if len(m.flush.visible) > 0 {
-		parts = append(parts, uv.Lines(m.flush.visible).Render())
+		parts = append(parts, uv.Lines(wrapScrollbackLines(m.flush.visible, m.env.Width)).Render())
 	}
 
 	if banner := m.liveWelcome(); banner != "" {
