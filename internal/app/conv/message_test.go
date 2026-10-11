@@ -547,6 +547,74 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 }
 
+func TestRenderToolCallsKeepsLongRunningShellCompact(t *testing.T) {
+	command := "monitor " + strings.Repeat("transfer ", 50)
+	call := core.ToolCall{ID: "transfer", Name: "Bash", Input: `{"command":"` + command + `","description":"Monitor upload progress"}`}
+	params := ToolCallsParams{
+		ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
+		CurrentIdx: 0, SpinnerView: "⋯", Width: 100,
+		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
+	}
+	live := stripANSI(RenderToolCalls(params))
+	if strings.Contains(live, "monitor transfer") || strings.Count(live, "\n") != 1 {
+		t.Fatalf("running shell should occupy one status row, got %q", live)
+	}
+	if !strings.Contains(live, "Monitor upload progress") || !strings.Contains(live, "· 28s") {
+		t.Fatalf("running shell lost its purpose or timer: %q", live)
+	}
+	params.ToolCallsExpanded = true
+	if expanded := stripANSI(RenderToolCalls(params)); !strings.Contains(expanded, "monitor transfer") {
+		t.Fatalf("expanded shell lost its command: %q", expanded)
+	}
+	params.ToolCallsExpanded = false
+	params.ResultMap = map[string]ToolResultData{call.ID: {ToolName: "Bash", Content: "done"}}
+	done := stripANSI(RenderToolCalls(params))
+	if !strings.Contains(done, "monitor transfer") || !strings.Contains(done, "└ 1 line") || strings.Contains(done, "28s") {
+		t.Fatalf("completed shell lost its command/result or retained its timer: %q", done)
+	}
+}
+
+func TestRenderToolCallsFitsNarrowTerminal(t *testing.T) {
+	calls := []core.ToolCall{
+		{ID: "shell", Name: "PowerShell", Input: `{"command":"monitor transfer progress repeatedly","description":"Monitor a long running upload"}`},
+		{ID: "fetch", Name: "WebFetch", Input: `{"url":"https://example.com/"}`},
+		{ID: "agent", Name: "Agent", Input: `{"name":"Explore","description":"Inspect the upload status"}`},
+	}
+	for _, call := range calls {
+		for _, width := range []int{10, 20, 40, 60} {
+			for _, expanded := range []bool{false, true} {
+				t.Run(call.Name+"/"+strconv.Itoa(width)+"/"+strconv.FormatBool(expanded), func(t *testing.T) {
+					out := RenderToolCalls(ToolCallsParams{
+						ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
+						SpinnerView: "⋯", Width: width, ToolCallsExpanded: expanded, Interactive: true,
+						ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
+						ToolProgress:  map[string]string{call.ID: "123.4k lines"},
+					})
+					for line := range strings.SplitSeq(out, "\n") {
+						if got := lipgloss.Width(line); got > width {
+							t.Fatalf("row width %d exceeds terminal width %d: %q", got, width, stripANSI(line))
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRenderToolCallsOmitsAgentExpandHintWhenItDoesNotFit(t *testing.T) {
+	params := ToolCallsParams{
+		ToolCalls: []core.ToolCall{{Name: tool.ToolAgent, Input: `{"agent":"explorer","description":"检查上传状态和输出结果"}`}},
+		Width:     100, Interactive: true,
+	}
+	if got := RenderToolCalls(params); !strings.Contains(got, "ctrl+o") {
+		t.Fatalf("wide agent row should offer expansion: %q", stripANSI(got))
+	}
+	params.Width = 30
+	if got := RenderToolCalls(params); strings.Contains(got, "ctrl+o") {
+		t.Fatalf("narrow agent row should omit the hint: %q", stripANSI(got))
+	}
+}
+
 func TestRenderToolCallsShowsOutputCounterNextToTimer(t *testing.T) {
 	call := core.ToolCall{ID: "tc-1", Name: "Bash", Input: `{"command":"npm test"}`}
 	params := ToolCallsParams{

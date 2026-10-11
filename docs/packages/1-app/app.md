@@ -141,6 +141,14 @@ by the composer or docked modal; the view and overflow check share that cap.
 print finishes before the terminal wipe, and stale print messages cannot revive
 cleared output. This layout needs no configuration.
 
+While a tool-call batch is pending, the conversation tail docks above the
+activity/input area, with spare rows above it. Long shell commands show only
+their header and elapsed/progress detail until expanded or completed; short
+commands that fit stay on the header. This reduces the transient content xterm
+can push into native history during a narrowing and shortening resize. Tool
+headers reserve width for running detail, optional agent hints appear only when
+they fit, and expanded tool content wraps explicitly to the terminal width.
+
 The task tracker above the input shows at most eight task rows and one overflow
 summary. Background work has no fixed heading or repeated executor-kind labels:
 rows lead with a status icon and work description, with dim elapsed time after

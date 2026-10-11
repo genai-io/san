@@ -145,7 +145,12 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 		return ""
 	}
 	content := tailLines(m.renderChatSection(conv.RenderActiveContent(params)), available)
-	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	padding := strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	if len(params.PendingCalls) > 0 {
+		// A shrinking terminal should shed empty rows before transient tool status.
+		return padding + content
+	}
+	return content + padding
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.

@@ -1119,7 +1119,7 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
 	command, description := extractBashCommand(input)
 	description = strings.Join(strings.Fields(description), " ")
-	labelWidth := max(3, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
+	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
 		commandLabel := fmt.Sprintf("%s(%s)", toolName, command)
@@ -1136,9 +1136,10 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 
 	var sb strings.Builder
 
-	// Header line: ● Bash (description) · running detail. Only the description
-	// may be shortened; the command is rendered separately below.
-	header := toolCallStyle.Render(toolName) + renderBashDescription(description, labelWidth-lipgloss.Width(toolName))
+	// Header line: ● Bash (description) · running detail. The command is
+	// rendered separately below without abbreviation.
+	displayName := xansi.Truncate(toolName, labelWidth, "…")
+	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
 
@@ -1242,17 +1243,13 @@ func bashPreviewLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	return max(20, width-lipgloss.Width("● "))
+	return max(1, width-lipgloss.Width("● "))
 }
 
 func maxToolLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	maxWidth := max(width*80/100, 50)
-	labelWidth := maxWidth - lipgloss.Width("● ")
-	if labelWidth < 20 {
-		return 20
-	}
-	return labelWidth
+	maxWidth := min(width, max(width*80/100, 50))
+	return max(1, maxWidth-lipgloss.Width("● "))
 }

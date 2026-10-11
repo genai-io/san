@@ -4,6 +4,7 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -650,9 +651,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
-				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
-				if !params.ToolCallsExpanded && params.expandHints() {
-					sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
+				row := renderAgentToolLine(label, params.Width, icon, color)
+				sb.WriteString(row)
+				hint := "  (ctrl+o to expand)"
+				if !params.ToolCallsExpanded && params.expandHints() && (params.Width <= 0 || lipgloss.Width(row)+lipgloss.Width(hint) <= params.Width) {
+					sb.WriteString(ThinkingStyle.Render(hint))
 				}
 				sb.WriteString("\n")
 			}
@@ -678,19 +681,30 @@ func RenderToolCalls(params ToolCallsParams) string {
 		} else {
 			icon := toolCallIcon(tc, params)
 			detail := runningRowDetail(tc, params)
+			rowWidth := params.Width
+			if rowWidth > 0 {
+				detail = xansi.Truncate(detail, max(0, rowWidth-lipgloss.Width("● "+tc.Name)), "")
+				rowWidth = max(1, rowWidth-lipgloss.Width(detail))
+			}
 			var row string
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			} else if tool.IsShellTool(tc.Name) {
 				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
+				_, completed := params.ResultMap[tc.ID]
+				if !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID }) {
+					// In-flight command bodies stay compact; expansion and history retain every line.
+					header, _, _ := strings.Cut(row, "\n")
+					row = header + "\n"
+				}
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
 				if tc.Name == tool.ToolGroup {
 					args = groupCallArgs(tc.Input)
 				}
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))
 		}
@@ -717,6 +731,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 		}
 	}
 
+	if params.Width > 0 {
+		return xansi.Wrap(sb.String(), params.Width, " ")
+	}
 	return sb.String()
 }
 

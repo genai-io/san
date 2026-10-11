@@ -189,6 +189,30 @@ func TestComposerStaysAtBottomAcrossLiveUpdates(t *testing.T) {
 	}
 }
 
+func TestPendingToolCallsStayNearComposer(t *testing.T) {
+	for _, height := range []int{24, 56} {
+		m := fixedComposerModel(100, height)
+		call := core.ToolCall{ID: "transfer", Name: "Bash", Input: `{"command":"monitor ` + strings.Repeat("transfer ", 50) + `","description":"RUNNING-TRANSFER"}`}
+		m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}}}
+		m.conv.Tool.Track([]core.ToolCall{call})
+		m.conv.Tool.MarkCurrent(call.ID)
+		m.conv.Stream.Active = true
+		frame, cursor := m.viewString()
+		plain := ansi.Strip(frame)
+		start := strings.Index(plain, "RUNNING-TRANSFER")
+		if start < 0 {
+			t.Fatalf("live frame lost its tool status:\n%s", plain)
+		}
+		row := strings.Count(plain[:start], "\n")
+		if row < height-8 || row >= cursor.Position.Y {
+			t.Fatalf("tool row %d should stay near composer row %d:\n%s", row, cursor.Position.Y, plain)
+		}
+		if cursor.Position.Y != height-3 || rowCount(frame) != height {
+			t.Fatalf("pending call displaced composer: cursor=%#v, rows=%d", cursor, rowCount(frame))
+		}
+	}
+}
+
 func fixedComposerModel(width, height int) *model {
 	m := &model{
 		env:  env{Width: width, Height: height, Ready: true},
