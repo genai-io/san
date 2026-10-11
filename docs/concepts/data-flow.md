@@ -283,18 +283,19 @@ Update                                     update.go
         └─ onMainNotice(n)                 model_turn_queue.go
               ├─ deliverNotice(n)
               │    ├─ idle           → injectAsNewTurn(n): line + a fresh turn
-              │    └─ turn running   → sendToAgent(content) now, and
-              │         ├─ tail free (a tool is running) → show the line now
-              │         └─ stream owns the tail → hold the line in
-              │              m.heldNotices; shown at OnStepEnd / OnTurnEnd
+              │    └─ turn running   → show the line now + sendToAgent(content)
               └─ start awaitMainNotice again so the next publish wakes us
 ```
 
-A notice has two halves with different constraints, and only the display line
-waits on the screen. The content reaches the agent on arrival; its queue enters
-it before the next inference of the running turn, and a turn does not end with
-it unread — so the model never keeps working blind to a result that is already
-on screen.
+A notice has two halves with different constraints. The display line appears
+immediately, even during inference: `MessageStart` binds stream updates,
+rendering, and scrollback commits to a message ID, independent of display order.
+`MessageEnd` releases the identity after final metadata; cancellation clears it,
+and retries bind a new message. Non-empty content is queued on arrival and enters the agent's context
+before its next inference; an in-flight request cannot consume it. A turn does
+not end with that queued content unread. Subagent tool errors use display-only
+notices, so their reasons appear without waking the model or waiting for the
+worker's next inference.
 
 The producer side: a subagent (or any background task) finishes →
 `notifyTaskCompleted` → the task-lifecycle handler registered in
@@ -418,7 +419,7 @@ Update → routeToSubModel                update.go
         │
         ▼
    OnChunk (one per LLM token batch)    applyChunk
-       ├─ m.AppendToLast(text)          grow the in-progress message
+       ├─ m.AppendStream(text)          grow the in-progress message
        └─ if chunk.Done && no tools:
               Stream.Active = false
               rt.CommitMessages()       promote to scrollback (see below)
@@ -497,8 +498,8 @@ scrollback above:
 ```
 
 The rule preventing the message from appearing in both places at once
-is in `renderAndCommit(checkReady=true)`: it never commits the last
-message while `Stream.Active == true`. So during streaming the message
+is in `renderAndCommit(checkReady=true)`: it never commits the message owned by
+`Stream.MessageID` while `Stream.Active == true`. So during streaming the message
 is only in the repaint zone; once the stream finishes, exactly one
 `tea.Println` moves it to scrollback and `CommittedCount` advances so
 the repaint zone no longer redraws it.
@@ -544,10 +545,10 @@ follow-up user message resumes the same session through `Append`.
        │      └─ <-h.done   (≤ 250 ms)  ◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
        │
        │ 2. conv-side UI updates (display only — never sync into agent)
-       │      ├─ Stream.Stop / hide modals / drain pending questions
+       │      ├─ hide modals / drain pending questions
        │      ├─ cancelPendingToolCalls   → cancelled tool_result rows
-       │      └─ MarkLastInterrupted      → ⏸ interrupted badge on
-       │                                    the last assistant
+       │      ├─ MarkStreamInterrupted   → ⏸ badge on the owned message
+       │      └─ Stream.Stop             → clear the inference identity
        │
        │ 3. CommitMessages + drainInputQueueAfterCancel
        │

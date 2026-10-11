@@ -109,21 +109,18 @@ type flushResultMsg struct {
 }
 
 // FlushStreamingBlocks starts one turn of the streaming-flush pipeline above:
-// it freezes the last message's newly-completed blocks into a flushSnapshot and
+// it freezes the inference message's completed blocks into a flushSnapshot and
 // kicks off their background render. Returns nil when a render is already in
 // flight or nothing new is ready to flush.
 func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	if m.flush.rendering {
 		return nil // a block is already rendering off-thread; wait for it to land
 	}
-	idx := len(m.conv.Messages) - 1
+	idx := m.conv.StreamMessageIndex()
 	if idx < 0 {
 		return nil
 	}
 	msg := &m.conv.Messages[idx]
-	if msg.Role != core.ChatAssistant {
-		return nil
-	}
 
 	// A text delta finishes the current reasoning paragraph, even without a
 	// trailing blank line. Earlier commentary does not: Responses may return
@@ -273,7 +270,7 @@ func (m *model) commitAllMessages() []tea.Cmd {
 
 func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 	var parts []string
-	lastIdx := len(m.conv.Messages) - 1
+	assistantIdx := m.conv.StreamMessageIndex()
 	params := m.messageRenderParams()
 	// What the loop below is about to take out of the frame.
 	preCommitRows := rowCount(conv.RenderActiveContent(params))
@@ -282,7 +279,7 @@ func (m *model) renderAndCommit(checkReady bool) []tea.Cmd {
 		msg := m.conv.Messages[i]
 
 		if checkReady {
-			if i == lastIdx && msg.Role == core.ChatAssistant && m.conv.Stream.Active {
+			if i == assistantIdx && m.conv.Stream.Active {
 				break
 			}
 			// Keep calls live until their whole batch can be printed with its results.

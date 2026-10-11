@@ -368,7 +368,8 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
 	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
 	brief := rc.brief
-	brief.ToolGuidance = fileReadToolGuidance(schemas)
+	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
+	brief.ToolGuidance = fileReadToolGuidance(schemas, rc.permMode)
 	// Subagent system prompt deliberately omits skills and memory — those
 	// ride on the first user message as <system-reminder> blocks built by
 	// loadConversation, keeping subagents on the same harness channel
@@ -418,20 +419,36 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	return ag, cleanup, nil
 }
 
-func fileReadToolGuidance(schemas []core.ToolSchema) string {
-	read, shell := false, false
+func fileReadToolGuidance(schemas []core.ToolSchema, mode PermissionMode) string {
+	read, shell := false, ""
 	for _, schema := range schemas {
 		switch {
 		case schema.Name == tool.ToolRead:
 			read = true
 		case tool.IsShellTool(schema.Name):
-			shell = true
+			shell = schema.Name
 		}
 	}
-	if read && shell {
-		return "Use Read for file contents, with offset/limit for excerpts. Use the shell for search, file discovery, git, and commands; avoid cat/head/tail/sed just to display a file."
+	if read {
+		guidance := "Use Read for file contents, with offset/limit for excerpts."
+		if shell != "" {
+			guidance += " Use the shell for search, file discovery, git, and commands; avoid cat/head/tail/sed just to display a file."
+		}
+		return guidance
 	}
-	return ""
+	var guidance string
+	switch shell {
+	case tool.ToolBash:
+		guidance = "Read is unavailable. Read file contents with Bash using cat path, head -n 100 path, or rg -n '^' path, subject to the tool constraints."
+	case tool.ToolPowerShell:
+		guidance = "Read is unavailable. Read file contents with PowerShell using Get-Content path or Get-Content path -TotalCount 100, subject to the tool constraints."
+	default:
+		return "No built-in file-reading tool is available. Report the task as blocked if the source cannot be inspected with the tools offered; do not claim an unverified review is complete."
+	}
+	if NormalizePermissionMode(string(mode)) == PermissionExplore {
+		guidance += " Python, Node, and other interpreters are not classified as read-only, even when a script only reads files."
+	}
+	return guidance
 }
 
 // subagentCompactFunc summarizes the conversation on the run's own model so
@@ -691,6 +708,7 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 				if setting.IsReadOnlyShellCommand(name, command) {
 					return true, ""
 				}
+				return false, fmt.Sprintf("tool %s is denied in %s mode: only commands classified as read-only are allowed; general-purpose interpreters are not classified as read-only", name, display)
 			}
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
 		}

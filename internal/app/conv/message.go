@@ -215,7 +215,7 @@ type AssistantParams struct {
 	ThinkingEmitted      bool
 }
 
-// InterruptedMarker is the literal suffix MarkLastInterrupted appends to an
+// InterruptedMarker is the literal suffix MarkStreamInterrupted appends to an
 // assistant message's Content when the user cancels mid-stream. It lives on
 // the conv-side ChatMessage only — handleStreamCancel no longer pushes conv
 // state back into the agent, so the marker reaches the LLM only via session

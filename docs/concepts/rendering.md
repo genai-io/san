@@ -39,8 +39,8 @@ the bounded recent-row buffer and advances `CommittedCount`, so the active
 message renderer stops drawing it. Only rows overflowing that buffer enter
 the serialized `tea.Println` queue. Short replies therefore remain visible
 above the fixed composer after completion. The rule preventing premature commits is in
-`renderAndCommit(checkReady=true)`: never commit the last message while
-`Stream.Active` is true.
+`renderAndCommit(checkReady=true)`: never commit the message owned by `Stream.MessageID` while
+`Stream.Active` is true. Notices after it remain visible in the live view.
 
 The buffer stores lines before terminal soft wrapping. Each `Update` moves
 settled rows that no longer fit beside live output, activity, suggestions,
@@ -234,8 +234,9 @@ Enter handler).
 
 ```
 event:           sdkagent.MessageStart
-applyPreInfer:   m.Stream.Active = true
-                 m.Append({Role: assistant, Content: ""})
+applyPreInfer:   m.Stream.Stop(); rt.CommitMessages()
+                 msg := m.Append({Role: assistant, Content: ""})
+                 m.Stream = {Active: true, MessageID: msg.ID}
                  start spinner
 
 conv.Messages:   [user, assistant{Content:""}]
@@ -251,7 +252,7 @@ View → renderNormalView
          = {} (no ToolCalls anywhere yet)
        → RenderMessageRange(ctx, startIdx=1, endIdx=2, includeSpinner=true)
          i=1: ownerOf(1) = -1 (not a result) → don't skip
-              isStreaming = (1 == lastIdx && Stream.Active && role==assistant)
+              isStreaming = (msg.ID == Stream.MessageID && Stream.Active)
                           = true
               → RenderMessageAt(ctx, 1, isStreaming=true)
                 → renderAssistantWithTools(ctx, msg, 1, isLast=true)
@@ -267,7 +268,7 @@ Repaint zone shows `● ▮ ⋯`. Scrollback unchanged.
 
 ```
 event:           sdkagent.MessageUpdate{Delta: {Block: {Type: text, Text: "I'll list them with ls."}}}
-applyChunk:      m.AppendToLast(text, "")
+applyChunk:      m.AppendStream(text, "")
 
 conv.Messages:   [user, assistant{Content:"I'll list them with ls."}]
 Stream.Active:   still true (Done=false)
@@ -276,14 +277,14 @@ Stream.Active:   still true (Done=false)
 Same call chain as Step 1, but `RenderAssistantMessage` now has
 non-empty content and `MDRenderer.Render` styles it. Repaint zone:
 `● I'll list them with ls. ▮ ⋯`. More OnChunks may follow — each is
-`AppendToLast` + a View() repaint.
+`AppendStream` + a View() repaint.
 
 ### Step 3 — PostInfer: tool calls land on the assistant message
 
 ```
 event:           sdkagent.MessageEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
 applyPostInfer:  rt.OnInference(resp)
-                 m.SetLastToolCalls(resp.ToolCalls)
+                 m.SetStreamToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
 
 conv.Messages:   [user,
@@ -361,7 +362,7 @@ Repaint zone:
 
 ```
 event:           sdkagent.MessageEnd{Response: {...}}
-applyChunk:      m.AppendToLast(...)       (possibly a final text chunk)
+applyChunk:      m.AppendStream(...)       (possibly a final text chunk)
                  if chunk.Done && no tool calls remaining:
                      m.Stream.Active = false
                      return rt.CommitMessages()
@@ -372,7 +373,7 @@ applyChunk:      m.AppendToLast(...)       (possibly a final text chunk)
 ```
 for i in CommittedCount..len(Messages):    // i = 1, 2
   msg = Messages[i]
-  if checkReady && i == lastIdx && role==assistant && Stream.Active:
+  if checkReady && i == StreamMessageIndex() && Stream.Active:
       break                                  // but Stream.Active is now false
   rendered = conv.RenderSingleMessage(ctx, i)
     i=1: RenderMessageAt(ctx, 1, false)      // no longer streaming → no cursor

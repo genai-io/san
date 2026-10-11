@@ -16,11 +16,11 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
 	m.services.Agent.InterruptTurn()
-	m.conv.Stream.Stop()
 	m.conv.AgentToUI.DrainPendingQuestions()
 	m.conv.Modal.Question.Hide()
 	m.cancelPendingToolCalls()
-	m.conv.MarkLastInterrupted()
+	m.conv.MarkStreamInterrupted()
+	m.conv.Stream.Stop()
 
 	cmds := m.CommitMessages()
 	if cmd := m.drainInputQueueWhileIdle(); cmd != nil {
@@ -31,11 +31,8 @@ func (m *model) handleStreamCancel() tea.Cmd {
 
 func (m *model) cancelPendingToolCalls() {
 	toolCalls := m.conv.Tool.DrainPendingCalls()
-	if toolCalls == nil && len(m.conv.Messages) > 0 {
-		lastMsg := m.conv.Messages[len(m.conv.Messages)-1]
-		if lastMsg.Role == core.ChatAssistant {
-			toolCalls = lastMsg.ToolCalls
-		}
+	if idx := m.conv.StreamMessageIndex(); toolCalls == nil && idx >= 0 {
+		toolCalls = m.conv.Messages[idx].ToolCalls
 	}
 	m.conv.AppendCancelledToolResults(toolCalls, func(tc core.ToolCall) string {
 		return "Tool execution interrupted because the user sent a new message."

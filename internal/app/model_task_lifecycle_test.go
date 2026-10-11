@@ -78,14 +78,15 @@ func TestCompletedWorkerWaitsForVisibleNotice(t *testing.T) {
 			assertRetained()
 			m.conv.Stream.Active = true
 			if tc.streaming {
-				m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Before "})
+				owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "Before "})
+				m.conv.Stream.MessageID = owner.ID
 			} else {
 				m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 			}
 			m.deliverNotice(<-m.mainNotices)
 			if tc.streaming {
-				assertRetained()
-				m.conv.AppendToLast("after", "")
+				assertNoticeShown(t, m)
+				m.conv.AppendStream("after", "")
 				if got := m.conv.Messages[0].Content; got != "Before after" {
 					t.Fatalf("completion displaced streaming output: %q", got)
 				}
@@ -126,7 +127,7 @@ func TestTurnEndKeepsWorkerAwaitingCompletionNotice(t *testing.T) {
 	if !ok {
 		t.Fatal("completed worker produced no notice")
 	}
-	m.heldNotices = append(m.heldNotices, fromBrokerMessage(msg))
+	m.deliverNotice(fromBrokerMessage(msg))
 	m.OnTurnEnd(core.Result{StopReason: core.StopEndTurn})
 	assertNoticeShown(t, m)
 	if len(m.services.Tracker.List()) != 0 {

@@ -34,7 +34,7 @@ type Runtime interface {
 	// structured form the interface draws arrives separately, on ToolEnd.
 	OnToolResult(tr core.ToolResult) *core.ToolResult
 	// OnStepEnd fires when a tool batch completes and the turn continues, so
-	// pending work (parked notices, one queued user message) can reach the
+	// pending work (one queued user message) can reach the
 	// agent in time for its next step.
 	OnStepEnd() tea.Cmd
 	OnTurnEnd(result core.Result) tea.Cmd

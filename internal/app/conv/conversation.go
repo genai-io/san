@@ -8,6 +8,7 @@ import (
 )
 
 type StreamState struct {
+	MessageID    string // Inference output belongs to this message, independent of display order.
 	Active       bool
 	BuildingTool string
 	// ThinkingActive follows the latest text/thinking delta. Responses may
@@ -16,6 +17,7 @@ type StreamState struct {
 }
 
 func (s *StreamState) Stop() {
+	s.MessageID = ""
 	s.Active = false
 	s.BuildingTool = ""
 	s.ThinkingActive = false
@@ -56,6 +58,7 @@ func (m *ConversationModel) Append(msg core.ChatMessage) core.ChatMessage {
 }
 
 func (m *ConversationModel) Clear() {
+	m.Stream.Stop()
 	m.Messages = []core.ChatMessage{}
 	m.CommittedCount = 0
 }
@@ -70,29 +73,21 @@ func (m *ConversationModel) AddAgentNotice(content string) {
 	m.Append(core.ChatMessage{Role: core.ChatNotice, Content: content, AgentNotice: true})
 }
 
-// LastMessageIsStreaming reports whether the stream is still writing into the
-// last message. Everything that feeds a live message finds it by position rather
-// than by ID — AppendToLast, SetLastToolCalls and SetLastThinkingSignature all
-// reach for the last message and bail on anything else, and renderAndCommit
-// holds a streaming last message back from scrollback. So while this holds, an
-// append takes the slot the stream is using: the next chunk lands on the wrong
-// message, and the half-streamed one freezes into scrollback.
-//
-// Tool execution does not hold it. A completed call appends its result, so the
-// last message is a tool-result row that anything may append after.
-func (m *ConversationModel) LastMessageIsStreaming() bool {
-	if !m.Stream.Active || len(m.Messages) == 0 {
-		return false
+func (m *ConversationModel) StreamMessageIndex() int {
+	if m.Stream.MessageID == "" {
+		return -1
 	}
-	return m.Messages[len(m.Messages)-1].Role == core.ChatAssistant
+	for i := len(m.Messages) - 1; i >= 0; i-- {
+		if m.Messages[i].ID == m.Stream.MessageID && m.Messages[i].Role == core.ChatAssistant {
+			return i
+		}
+	}
+	return -1
 }
 
-func (m *ConversationModel) AppendToLast(text, thinking string) {
-	if len(m.Messages) == 0 {
-		return
-	}
-	idx := len(m.Messages) - 1
-	if m.Messages[idx].Role != core.ChatAssistant {
+func (m *ConversationModel) AppendStream(text, thinking string) {
+	idx := m.StreamMessageIndex()
+	if idx < 0 {
 		return
 	}
 	if thinking != "" {
@@ -105,29 +100,20 @@ func (m *ConversationModel) AppendToLast(text, thinking string) {
 	}
 }
 
-func (m *ConversationModel) SetLastToolCalls(calls []core.ToolCall) {
-	if len(m.Messages) == 0 {
+func (m *ConversationModel) SetStreamToolCalls(calls []core.ToolCall) {
+	idx := m.StreamMessageIndex()
+	if idx < 0 {
 		return
 	}
-	last := &m.Messages[len(m.Messages)-1]
-	// Defensive: tool_calls only belong on an assistant message. Without
-	// this check, a late PostInfer event landing after the cancel handler
-	// has appended a trailing user marker would corrupt that marker.
-	if last.Role != core.ChatAssistant {
-		return
-	}
-	last.ToolCalls = calls
+	m.Messages[idx].ToolCalls = calls
 }
 
-func (m *ConversationModel) SetLastThinkingSignature(sig string) {
-	if sig == "" || len(m.Messages) == 0 {
+func (m *ConversationModel) SetStreamThinkingSignature(sig string) {
+	idx := m.StreamMessageIndex()
+	if sig == "" || idx < 0 {
 		return
 	}
-	last := &m.Messages[len(m.Messages)-1]
-	if last.Role != core.ChatAssistant {
-		return
-	}
-	last.ThinkingSignature = sig
+	m.Messages[idx].ThinkingSignature = sig
 }
 
 // SetLastAutopilotNote hangs a "⎿ autopilot · <note>" mark under the last
@@ -161,34 +147,31 @@ func (m *ConversationModel) AppendCancelledToolResults(calls []core.ToolCall, co
 	}
 }
 
-// DropStreamingAssistant removes the trailing assistant row that the in-flight
+// DropStreamingAssistant removes the message that the in-flight
 // (now failed) inference was streaming into, so a retry re-streams onto a clean
 // tail instead of duplicating or interleaving partial output. Only uncommitted
 // rows are eligible, so committed scrollback is never touched.
 func (m *ConversationModel) DropStreamingAssistant() {
-	n := len(m.Messages)
-	if n == 0 || n <= m.CommittedCount {
+	idx := m.StreamMessageIndex()
+	if idx < m.CommittedCount {
 		return
 	}
-	if m.Messages[n-1].Role == core.ChatAssistant {
-		m.Messages = m.Messages[:n-1]
-	}
+	m.Messages = append(m.Messages[:idx], m.Messages[idx+1:]...)
+	m.Stream.MessageID = ""
 }
 
-func (m *ConversationModel) MarkLastInterrupted() {
-	for i := len(m.Messages) - 1; i >= 0; i-- {
-		msg := &m.Messages[i]
-		if msg.Role != core.ChatAssistant {
-			continue
-		}
-		if len(msg.ToolCalls) == 0 {
-			if msg.Content == "" {
-				msg.Content = InterruptedMarker
-			} else {
-				msg.Content += " " + InterruptedMarker
-			}
-		}
+func (m *ConversationModel) MarkStreamInterrupted() {
+	idx := m.StreamMessageIndex()
+	if idx < 0 {
 		return
+	}
+	msg := &m.Messages[idx]
+	if len(msg.ToolCalls) == 0 {
+		if msg.Content == "" {
+			msg.Content = InterruptedMarker
+		} else {
+			msg.Content += " " + InterruptedMarker
+		}
 	}
 }
 

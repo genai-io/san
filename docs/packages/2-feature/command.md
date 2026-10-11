@@ -78,6 +78,13 @@ func ResetDefaultRegistry()          // test-only
 - Reload on plugin reload: callers re-call `Initialize` with refreshed
   provider closures.
 
+The built-in `/simplify` requests four read-only foreground Agent calls in one
+batch. The agent runtime runs them concurrently and joins the batch before
+the parent infers again; background notification turns are unnecessary because
+the fixes depend on all four reports. Reviewers receive the diff commands and
+paths and inspect source through their own effective tools. Blocked coverage
+is reported explicitly rather than retried with source pasted by the parent.
+
 ## Tests
 
 ```

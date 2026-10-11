@@ -539,6 +539,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Streaming + tool execution
 		StreamActive:       m.conv.Stream.Active,
+		StreamMessageID:    m.conv.Stream.MessageID,
 		BuildingTool:       m.conv.Stream.BuildingTool,
 		PendingCalls:       m.conv.Tool.PendingCalls,
 		CurrentIdx:         m.conv.Tool.CurrentIdx,

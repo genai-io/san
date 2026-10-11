@@ -30,7 +30,6 @@ package app
 type model struct {
     userInput       input.Model        // Source 1: user keyboard
     mainNotices     chan mainNotice    // Source 2: notices bound for the main loop
-    heldNotices     []mainNotice       // notice lines held while the stream owns the tail
     systemInput     trigger.Model      // Source 3: cron / async hook / file watcher
     conv            conv.Model         // agent outbox → conversation view
     env             env                // app-local TUI state
@@ -164,12 +163,15 @@ Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
 exception status. Successful background tasks leave the tracker after their
-completion notice enters the conversation. While a notice waits for a safe
-stream boundary, its row stays still and shows `[completed]`; turn end cannot
-reset it before the notice appears. Completion notices and output records
-remain available. Resumed completed records whose workers are absent have no
-live notice to wait for. Failed, stopped, or interrupted work stays visible when
-idle.
+completion notice enters the conversation. Notices appear immediately during
+inference. Each inference binds to a message ID at `MessageStart`; stream
+updates, rendering, and scrollback commits use that identity regardless of
+display order. `MessageEnd` releases the identity after final metadata arrives;
+cancellation clears it immediately, and retries bind a new message. Turn end
+cannot reset a worker before its notice arrives.
+Completion notices and output records remain available. Resumed completed
+records whose workers are absent have no live notice to wait for. Failed,
+stopped, or interrupted work stays visible when idle.
 Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
 when the main agent becomes idle. In-progress items take priority, followed by
 failed or interrupted items, pending items, and completed plan items. Within

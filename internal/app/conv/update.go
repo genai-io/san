@@ -2,6 +2,10 @@
 package conv
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	tea "charm.land/bubbletea/v2"
@@ -154,13 +158,20 @@ func applyAgentEvent(rt Runtime, m *Model, ev core.Event) tea.Cmd {
 		// its own: what was drawn for the previous attempt is void, and the
 		// next one re-streams from scratch.
 		if e.Attempt > 1 {
-			m.Stream.Stop()
 			m.DropStreamingAssistant()
+			m.Stream.Stop()
 		}
 		return applyPreInfer(rt, m)
 	case sdkagent.MessageUpdate:
 		return applyChunk(rt, m, e.Delta)
 	case sdkagent.MessageEnd:
+		if e.Err != nil {
+			rt.OnInference(e.Response)
+			if !errors.Is(e.Err, context.Canceled) {
+				m.AddNotice(fmt.Sprintf("Inference attempt %d failed: %v", e.Attempt, e.Err))
+			}
+			return tea.Batch(rt.CommitMessages()...)
+		}
 		return applyPostInfer(rt, m, e.Response)
 	case sdkagent.ToolStart:
 		applyPreTool(m, core.ToolCall{ID: e.ID, Name: e.Name, Input: e.Args})
@@ -186,16 +197,17 @@ func applyPreInfer(rt Runtime, m *Model) tea.Cmd {
 	// cleared this in OnCompacted, but a failed compaction falls straight through
 	// to here, so clear the in-progress indicator either way.
 	m.Compact.Clear()
-	m.Stream = StreamState{Active: true}
+	m.Stream.Stop()
 	commitCmds := rt.CommitMessages()
-	m.Append(core.ChatMessage{Role: core.ChatAssistant, Content: ""})
+	msg := m.Append(core.ChatMessage{Role: core.ChatAssistant})
+	m.Stream = StreamState{Active: true, MessageID: msg.ID}
 	cmds := append(commitCmds, m.Spinner.Tick)
 	return tea.Batch(cmds...)
 }
 
 func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	// Late chunks after handleStreamCancel has flipped Stream off and
-	// appended the [Interrupted] marker would otherwise call AppendToLast
+	// appended the [Interrupted] marker would otherwise call AppendStream
 	// and bleed text past the marker. RenderAssistantMessage's suffix
 	// strip then fails and a literal "[Interrupted]" renders inline.
 	if !m.Stream.Active {
@@ -206,15 +218,17 @@ func applyChunk(rt Runtime, m *Model, chunk ai.Event) tea.Cmd {
 	if chunk.Type == ai.EventBlockDelta && chunk.Block.Text != "" {
 		switch chunk.Block.Type {
 		case ai.BlockText:
-			m.AppendToLast(chunk.Block.Text, "")
+			m.AppendStream(chunk.Block.Text, "")
 		case ai.BlockThinking:
-			m.AppendToLast("", chunk.Block.Text)
+			m.AppendStream("", chunk.Block.Text)
 		}
 	}
 	// Final chunk of a text-only turn: commit the streaming message's remaining
 	// tail (its completed blocks are already in scrollback) in a single Println.
 	if chunk.Type == ai.EventDone && chunk.Response != nil && len(chunk.Response.ToolCalls()) == 0 {
-		m.Stream.Stop()
+		// MessageEnd still needs the identity to attach final metadata.
+		m.Stream.Active = false
+		m.Stream.ThinkingActive = false
 		if commitCmds := rt.CommitMessages(); len(commitCmds) > 0 {
 			return tea.Batch(commitCmds...)
 		}
@@ -234,20 +248,19 @@ func applyPostInfer(rt Runtime, m *Model, resp *ai.Response) tea.Cmd {
 	}
 	rt.OnInference(resp)
 	m.Compact.WarningSuppressed = false
-	// No Stream.Active guard: SetLastThinkingSignature / SetLastToolCalls
-	// already bail on non-assistant tails, which is the only way a late
-	// PostInfer could corrupt conv state (after cancelPendingToolCalls
-	// appended user-role rows). A guard on Stream.Active would also
-	// suppress these setters for normal text-only completions, since
-	// applyChunk flips Stream.Active=false on the Done chunk that arrives
-	// just before this PostInfer — silently dropping ThinkingSignature.
+	// Done closes text streaming before MessageEnd attaches metadata; cancellation
+	// clears the identity instead, so late metadata cannot revive a cancelled call.
+	if m.StreamMessageIndex() < 0 {
+		return nil
+	}
 	if sig := resp.Content.ThinkingSignature(); sig != "" {
-		m.SetLastThinkingSignature(sig)
+		m.SetStreamThinkingSignature(sig)
 	}
 	if calls := resp.Content.ToolCalls(); len(calls) > 0 {
-		m.SetLastToolCalls(calls)
+		m.SetStreamToolCalls(calls)
 		m.Tool.Track(calls)
 	}
+	m.Stream.MessageID = ""
 	m.Stream.BuildingTool = ""
 	return nil
 }
