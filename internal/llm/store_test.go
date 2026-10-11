@@ -208,6 +208,29 @@ func TestStore_CachedModelDisplayNamePrefersRealNameAndIsStable(t *testing.T) {
 	}
 }
 
+func TestStore_CachedModelDisplayNameResolvesConflictingAliases(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, err := NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for auth, name := range map[AuthMethod]string{
+		AuthAPIKey:       "GPT-6.1 Sol",
+		AuthSubscription: "GPT-6.1-Sol",
+	} {
+		if err := store.CacheModels(OpenAI, auth, []ModelInfo{{
+			ID: "gpt-6.1-sol", Name: name, DisplayName: name,
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 1000 {
+		if got := store.CachedModelDisplayName("gpt-6.1-sol"); got != "GPT-6.1 Sol" {
+			t.Fatalf("render %d: model name = %q, want stable GPT-6.1 Sol", i, got)
+		}
+	}
+}
+
 // A model can be cached under several provider keys where only some report a
 // context window: an aggregator echoes the ID with no limit, while the native
 // provider knows the real one. CachedModelLimits must prefer the known window

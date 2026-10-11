@@ -230,6 +230,23 @@ func fixedComposerModel(width, height int) *model {
 	return m
 }
 
+func TestModeStatusOmitsPersistentHistoryHint(t *testing.T) {
+	m := fixedComposerModel(120, 24)
+	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "test-model"}
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "done"}}
+	for _, active := range []bool{false, true} {
+		m.conv.Stream.Active = active
+		status := ansi.Strip(m.renderModeStatus())
+		if strings.Contains(status, "ctrl+o history") || !strings.Contains(status, "test-model") {
+			t.Fatalf("stream active=%v: unexpected status %q", active, status)
+		}
+	}
+	m.userInput.Provider.StatusMessage = "Model list refreshed"
+	if status := ansi.Strip(m.renderModeStatus()); !strings.Contains(status, "Model list refreshed") {
+		t.Fatalf("temporary status disappeared: %q", status)
+	}
+}
+
 func addTallWorkflowActivity(t *testing.T, m *model) {
 	t.Helper()
 	w, err := workflow.Parse("```mermaid\nflowchart LR\n plan --> review --> merge\n```\n\n## plan\nPlan\n\n## review\nfor_each: plan.tasks\nmax_workers: 4\n\nReview {{item.prompt}}\n\n## merge\nMerge\n")

@@ -107,13 +107,14 @@ func (s *Store) RemoveCachedModels(provider ProviderID, authMethod AuthMethod) e
 // ("deepseek-v4-pro"). Returning whichever entry we hit first would make the
 // status bar flicker between the two, because Go randomizes map iteration
 // order between renders. So we prefer a real display name — one that differs
-// from the ID — and only fall back to the raw name/ID when no real name
-// exists. Scans in place without allocating, since it runs on every render.
+// from the ID — choosing the lexically first when providers disagree — and
+// only fall back to the raw name/ID when no real name exists. Scans in place
+// without allocating, since it runs on every render.
 func (s *Store) CachedModelDisplayName(id string) string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	raw := "" // the raw ID echoed back as a name; used only if no real name is found
+	raw, displayName := "", ""
 	for _, cache := range s.data.Models {
 		for _, m := range cache.Models {
 			if m.ID != id {
@@ -124,10 +125,16 @@ func (s *Store) CachedModelDisplayName(id string) string {
 				name = m.Name
 			}
 			if name != "" && name != id {
-				return name // a real, human-readable display name
+				if displayName == "" || name < displayName {
+					displayName = name
+				}
+			} else if name != "" {
+				raw = name
 			}
-			raw = name // keep scanning in case another provider has a real name
 		}
+	}
+	if displayName != "" {
+		return displayName
 	}
 	return raw
 }

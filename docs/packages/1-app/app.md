@@ -141,6 +141,10 @@ by the composer or docked modal; the view and overflow check share that cap.
 print finishes before the terminal wipe, and stale print messages cannot revive
 cleared output. This layout needs no configuration.
 
+The footer keeps the model, reasoning effort, usage, and temporary status
+messages. It does not add a persistent history shortcut hint when a turn ends;
+idle Ctrl+O and `/history` still open the transcript viewer.
+
 While a tool-call batch is pending, the conversation tail docks above the
 activity/input area, with spare rows above it. Long shell commands show only
 their header and elapsed/progress detail until expanded or completed; short
