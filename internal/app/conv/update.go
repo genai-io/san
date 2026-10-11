@@ -39,21 +39,14 @@ func Update(rt Runtime, m *Model, msg tea.Msg) (tea.Cmd, bool) {
 		return rt.HandlePermGate(msg.Request), true
 	case CompactResultMsg:
 		return rt.HandleCompactResult(msg), true
+	case AgentActivityBatchMsg:
+		for _, activity := range msg {
+			m.applyActivity(activity)
+		}
+		return m.HandleActivityTick(rt.HasRunningTasks() || m.Stream.Active), true
 	case AgentActivityMsg:
-		if msg.Index < 0 && msg.ToolCallID != "" {
-			msg.Index = m.Tool.IndexOf(msg.ToolCallID)
-		}
-		if msg.Index < 0 {
-			return m.HandleActivityTick(rt.HasRunningTasks()), true
-		}
-		// A non-agent tool (Bash) reports a single live status — its output
-		// counter — rather than a feed: store it as the row's replaceable
-		// progress instead of appending it to the activity history.
-		if msg.Index < len(m.Tool.PendingCalls) && !tool.IsAgentToolName(m.Tool.PendingCalls[msg.Index].Name) {
-			m.Tool.SetProgress(msg.ToolCallID, msg.Message)
-			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check()), true
-		}
-		return m.HandleActivity(msg), true
+		m.applyActivity(msg)
+		return m.HandleActivityTick(rt.HasRunningTasks() || m.Stream.Active), true
 	case AgentToUITickMsg:
 		return m.HandleActivityTick(rt.HasRunningTasks()), true
 	default:
@@ -310,15 +303,29 @@ func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cm
 
 // --- Activity handling (operates on output Model directly) ---
 
-func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
+func (m *Model) applyActivity(msg AgentActivityMsg) {
+	if msg.ToolCallID != "" {
+		msg.Index = m.Tool.IndexOf(msg.ToolCallID)
+	}
+	if msg.Index < 0 || msg.Index >= len(m.Tool.PendingCalls) {
+		return // Late activity from a retired batch must not land on its successor.
+	}
+	if !tool.IsAgentToolName(m.Tool.PendingCalls[msg.Index].Name) {
+		m.Tool.SetProgress(msg.ToolCallID, msg.Message)
+		return
+	}
+	m.retainActivity(msg)
+}
+
+func (m *OutputModel) retainActivity(msg AgentActivityMsg) {
 	if m.TaskActivity == nil {
 		m.TaskActivity = make(map[int][]string)
 	}
-	m.TaskActivity[msg.Index] = append(m.TaskActivity[msg.Index], msg.Message)
-	// Cap activity entries per agent to prevent unbounded growth
-	if len(m.TaskActivity[msg.Index]) > maxAgentActivityHistory {
-		m.TaskActivity[msg.Index] = m.TaskActivity[msg.Index][len(m.TaskActivity[msg.Index])-maxAgentActivityHistory:]
-	}
+	m.TaskActivity[msg.Index] = retainAgentActivity(m.TaskActivity[msg.Index], msg.Message)
+}
+
+func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
+	m.retainActivity(msg)
 
 	if m.AgentToUI == nil {
 		return m.Spinner.Tick

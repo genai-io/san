@@ -18,6 +18,9 @@ func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode, sche
 			constraints = append(constraints, schema.Name+" limited to commands classified as read-only")
 			continue
 		}
+		if NormalizePermissionMode(string(permMode)) == PermissionAcceptEdits && tool.IsShellTool(schema.Name) {
+			constraints = append(constraints, schema.Name+" limited to read-only commands unless explicitly allowed; tests/build require an explicit allowed command or parent validation. Tool availability is not execution approval. Do not retry denied commands; report the exact command and ask the parent to validate.")
+		}
 		for _, rule := range config.AllowTools {
 			if rule.Pattern != "" && rule.names(schema.Name) {
 				constraints = append(constraints, rule.Rule())

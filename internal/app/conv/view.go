@@ -1,11 +1,14 @@
 package conv
 
 import (
+	"fmt"
 	"html"
 	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // RenderContext bundles everything per-message rendering needs to read.
@@ -338,6 +341,168 @@ func RenderSingleMessage(p RenderContext, idx int) string {
 	}
 
 	return strings.TrimRight(RenderMessageAt(p, idx, false), "\n")
+}
+
+type activeWorkerCall struct {
+	call     core.ToolCall
+	expanded bool
+}
+
+// activeWorkerCalls includes ordinary pending siblings when a worker layout is
+// needed. Replacing the tail must not silently remove a running shell or fetch.
+func activeWorkerCalls(p RenderContext) []activeWorkerCall {
+	pending := make(map[string]bool, len(p.PendingCalls))
+	for _, call := range p.PendingCalls {
+		pending[call.ID] = true
+	}
+	var calls []activeWorkerCall
+	hasWorker := false
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		msg := p.Messages[i]
+		results := p.InlinedResults.resultsFor(i)
+		for _, call := range msg.ToolCalls {
+			if _, done := results[call.ID]; done || !pending[call.ID] {
+				continue
+			}
+			delete(pending, call.ID)
+			calls = append(calls, activeWorkerCall{call: call, expanded: msg.ToolCallsExpanded})
+			hasWorker = hasWorker || (tool.IsAgentToolName(call.Name) && call.Name != tool.ToolSendMessage)
+		}
+	}
+	if !hasWorker {
+		return nil
+	}
+	return calls
+}
+
+func latestActiveNoticeIndex(p RenderContext) int {
+	for i := len(p.Messages) - 1; i >= p.CommittedCount; i-- {
+		if p.Messages[i].Role == core.ChatNotice {
+			return i
+		}
+	}
+	return -1
+}
+
+// ActiveWorkerRows reserves one identity per pending tool, plus the latest
+// notice, before background indicators spend the remaining terminal height.
+// It returns zero when no foreground worker layout is needed.
+func ActiveWorkerRows(p RenderContext) int {
+	rows := len(activeWorkerCalls(p))
+	if rows > 0 && latestActiveNoticeIndex(p) >= 0 {
+		rows++
+	}
+	return rows
+}
+
+// RenderActiveWorkers reserves identities before spending rows on recent details.
+// Ordinary pending tool siblings share the same budget rather than disappearing.
+// The bool reports whether the worker layout owns the active tail this frame.
+func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
+	var headers, details []string
+	omittedLabel := "active workers omitted"
+	for _, active := range activeWorkerCalls(p) {
+		call := active.call
+		expanded := active.expanded
+		if !tool.IsAgentToolName(call.Name) || call.Name == tool.ToolSendMessage {
+			omittedLabel = "active tools omitted"
+			// Ordinary siblings need their compact command/description on the
+			// identity row, not an expanded body that may receive no detail rows.
+			expanded = false
+		}
+		rendered := RenderToolCalls(ToolCallsParams{
+			ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: expanded,
+			PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
+			ParallelMode: len(p.PendingCalls) > 1, Width: p.Width,
+			Blink: p.Blink, AgentColors: p.AgentColors,
+			DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
+		})
+		lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
+		headers = append(headers, lines[0])
+		details = append(details, strings.Join(lines[1:], "\n"))
+	}
+	if len(headers) == 0 {
+		return "", false
+	}
+	if height <= 0 {
+		return "", true
+	}
+	// Keep the newest notice visible while workers run. Reserving identities
+	// must not hide the error delivery fixed in #613.
+	notice := ""
+	if i := latestActiveNoticeIndex(p); i >= 0 {
+		notice = strings.TrimSpace(RenderMessageAt(p, i, false))
+		notice = strings.Join(strings.Fields(notice), " ")
+	}
+	workerHeight := height
+	if notice != "" {
+		workerHeight--
+	}
+	if len(headers) > workerHeight {
+		rows := []string{}
+		if workerHeight > 0 {
+			visible := max(0, workerHeight-1)
+			rows = append(rows, headers[:visible]...)
+			rows = append(rows, fmt.Sprintf("  … %d %s", len(headers)-visible, omittedLabel))
+		}
+		if notice != "" {
+			rows = append(rows, notice)
+		}
+		return boundedWorkerRows(rows, p.Width), true
+	}
+	budget := workerHeight - len(headers)
+	var detailLines [][]string
+	total := 0
+	for _, detail := range details {
+		var lines []string
+		if detail != "" {
+			lines = strings.Split(detail, "\n")
+		}
+		detailLines = append(detailLines, lines)
+		total += len(lines)
+	}
+	showOmissions := total > budget && budget > 0
+	if showOmissions {
+		budget--
+	}
+	allocated := make([]int, len(headers))
+	for budget > 0 {
+		advanced := false
+		for i, lines := range detailLines {
+			if allocated[i] < len(lines) && budget > 0 {
+				allocated[i]++
+				budget--
+				advanced = true
+			}
+		}
+		if !advanced {
+			break
+		}
+	}
+	var rows []string
+	shown := 0
+	for i, header := range headers {
+		rows = append(rows, header)
+		n := allocated[i]
+		lines := detailLines[i]
+		// Keep the newest action, not an arbitrary slice of the briefing.
+		rows = append(rows, lines[len(lines)-n:]...)
+		shown += n
+	}
+	if showOmissions {
+		rows = append(rows, fmt.Sprintf("  … %d detail rows omitted", total-shown))
+	}
+	if notice != "" {
+		rows = append(rows, notice)
+	}
+	return boundedWorkerRows(rows, p.Width), true
+}
+
+func boundedWorkerRows(rows []string, width int) string {
+	for i, row := range rows {
+		rows[i] = kit.TruncateText(row, max(1, width))
+	}
+	return strings.Join(rows, "\n")
 }
 
 func RenderActiveContent(p RenderContext) string {

@@ -121,6 +121,9 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 
 	if responder := tool.BashPromptResponderFromContext(ctx); responder != nil {
 		if out, handled, err := runWithResponder(ctx, command, cmd, responder); handled {
+			if cmd.Process == nil {
+				err = diagnoseShellStart(cmd, err)
+			}
 			duration := time.Since(start)
 			return t.foregroundResult(ctx, description, out, "", err, duration, timeout, trackedFile, cwd, -1)
 		}
@@ -146,7 +149,7 @@ func (t *ShellTool) ExecuteApproved(ctx context.Context, params map[string]any, 
 	cmd.Stdout = progress.tee(&stdout)
 	cmd.Stderr = progress.tee(&stderr)
 
-	err = proc.StartGroup(cmd)
+	err = diagnoseShellStart(cmd, proc.StartGroup(cmd))
 	if err == nil {
 		err = cmd.Wait()
 	}
@@ -320,7 +323,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	cmd.Stdout, cmd.Stderr = childOutput, childOutput
 
 	// Start the command
-	if err := proc.StartGroup(cmd); err != nil {
+	if err := diagnoseShellStart(cmd, proc.StartGroup(cmd)); err != nil {
 		outputPipe.Close()
 		childOutput.Close()
 		cancel()
@@ -403,6 +406,34 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 			Subtitle: fmt.Sprintf("[background] %s", bgTask.ID),
 		},
 	}
+}
+
+// diagnoseShellStart adds observations made after a failed start, not a
+// preflight guarantee. Never change directories or substitute another shell.
+func diagnoseShellStart(cmd *exec.Cmd, err error) error {
+	if err == nil {
+		return nil
+	}
+	var diagnostics []string
+	if cmd.Dir != "" {
+		info, statErr := os.Stat(cmd.Dir)
+		if statErr != nil {
+			diagnostics = append(diagnostics, fmt.Sprintf("working directory %q unavailable: %v; restore it or select an existing working directory", cmd.Dir, statErr))
+		} else if !info.IsDir() {
+			diagnostics = append(diagnostics, fmt.Sprintf("working directory %q is not a directory", cmd.Dir))
+		}
+	}
+	shellPath := cmd.Path
+	if !filepath.IsAbs(shellPath) && strings.ContainsAny(shellPath, `/\\`) && cmd.Dir != "" {
+		shellPath = filepath.Join(cmd.Dir, shellPath)
+	}
+	if _, statErr := os.Stat(shellPath); statErr != nil {
+		diagnostics = append(diagnostics, fmt.Sprintf("shell executable %q unavailable: %v; configure an installed shell", shellPath, statErr))
+	}
+	if len(diagnostics) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w (%s)", err, strings.Join(diagnostics, "; "))
 }
 
 // prepareCwdTracking wraps command so that, however it exits, the directory

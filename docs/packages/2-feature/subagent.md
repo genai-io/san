@@ -16,7 +16,8 @@ Where [`packages/agent.md`](agent.md) owns the *foreground* agent session,
 this package owns the subagents that session spawns via the Agent tool.
 Each subagent runs its own `core.Agent` loop (event observation via
 `OnEvent`; no outbox) with an isolated conversation and its own
-tool/permission set, sharing the session's working directory. A foreground subagent blocks the
+tool/permission set, starting in the session's working directory. Each run owns
+later cwd changes; they do not change the parent or sibling workers. A foreground subagent blocks the
 spawning turn and returns its result as the tool result; a background
 subagent runs in a goroutine under a `task.AgentTask` and registers its task
 id with the [`broker`](broker.md) for the length of the run — main can
@@ -124,7 +125,13 @@ func ResetDefaultRegistry()           // test-only
   `Agent` tool is parent-only in `tool.Set`, so a subagent never sees it —
   nothing to enforce at runtime.
 - Concurrency: multiple executors may run in parallel; the registry is
-  RWMutex-protected.
+  RWMutex-protected. Tool side effects are routed through a per-run handler:
+  model tool-call IDs may repeat across workers and must not share handoff keys.
+- Every `ToolEnd` drains its worker's handoff, including canceled calls. Absolute
+  cwd handoffs apply only after the batch ends; all siblings use the initial
+  batch directory, and the last cwd-changing call in request order wins. Only
+  the worker's Environment section changes, and the next inference refreshes
+  the system prompt. The parent/global cwd never changes.
 - File-reading guidance is built from the effective schemas after global
   disables, per-agent allow/deny lists, and mode filtering. When `Read` is
   unavailable, workers are told how to inspect source with their offered
@@ -198,6 +205,9 @@ func ResetDefaultRegistry()           // test-only
 
 ```
 internal/subagent/executor_test.go      — end-to-end run scenarios.
+internal/subagent/executor_cwd_test.go  — deterministic batch handoffs and cancellation.
+internal/subagent/executor_cwd_isolation_test.go — repeated IDs cannot cross worker/main ownership.
+tests/integration/agent/cwd_test.go     — live adapters and next-inference Environment refresh.
 internal/subagent/lazy_loading_test.go  — config files read on demand.
 internal/subagent/scenarios_test.go     — common invocation shapes.
 tests/integration/agent/agent_test.go    — runtime, permissions, failed transcript projection.

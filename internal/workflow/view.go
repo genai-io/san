@@ -166,11 +166,12 @@ func (w *Workflow) ActivityStreamView(events []ActivityEvent, width int) string 
 		width = 108
 	}
 	width = max(8, width-2)
-	if len(events) > ActivityWindow {
-		events = events[len(events)-ActivityWindow:]
-	}
+	events, omitted := activityViewWindow(events)
 	var b strings.Builder
 	b.WriteString("  Activity")
+	if omitted > 0 {
+		fmt.Fprintf(&b, " · %d recent entries omitted", omitted)
+	}
 	if len(events) == 0 {
 		b.WriteString("\n    Waiting for the first node")
 		return b.String()
@@ -226,6 +227,63 @@ func (w *Workflow) ActivityStreamView(events []ActivityEvent, width int) string 
 		b.WriteString("\n    ╰─")
 	}
 	return b.String()
+}
+
+// activityViewWindow pins unfinished calls and shares the recent-entry budget
+// round-robin between workers. Selection never changes the stored run history.
+func activityViewWindow(events []ActivityEvent) ([]ActivityEvent, int) {
+	selected := make(map[int]bool)
+	var workers []string
+	queues := make(map[string][]int)
+	latestCall := make(map[string]int)
+	for i, event := range events {
+		if event.ToolID != "" {
+			latestCall[event.Node+"\x00"+event.Worker+"\x00"+event.ToolID] = i
+		}
+	}
+	for i, event := range events {
+		worker := event.Node + "\x00" + event.Worker
+		if event.ToolID != "" {
+			if latestCall[worker+"\x00"+event.ToolID] != i {
+				continue
+			}
+			if !event.ToolFinished {
+				selected[i] = true
+				continue
+			}
+		}
+		if _, exists := queues[worker]; !exists {
+			workers = append(workers, worker)
+		}
+		queues[worker] = append(queues[worker], i)
+	}
+	budget := ActivityWindow
+	for budget > 0 {
+		advanced := false
+		for _, worker := range workers {
+			queue := queues[worker]
+			if len(queue) == 0 {
+				continue
+			}
+			selected[queue[len(queue)-1]] = true
+			queues[worker] = queue[:len(queue)-1]
+			advanced = true
+			budget--
+			if budget == 0 {
+				break
+			}
+		}
+		if !advanced {
+			break
+		}
+	}
+	result := make([]ActivityEvent, 0, len(selected))
+	for i, event := range events {
+		if selected[i] {
+			result = append(result, event)
+		}
+	}
+	return result, len(events) - len(result)
 }
 
 func wrapActivity(s string, width int, indent string) string {

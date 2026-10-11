@@ -5,11 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -17,11 +22,21 @@ import (
 )
 
 type preparedRun struct {
-	req       tool.AgentExecRequest
-	cfg       *runConfig
-	cwd       string
-	startedAt time.Time
-	hookID    string
+	req         tool.AgentExecRequest
+	cfg         *runConfig
+	cwdMu       sync.RWMutex // Tool adapters read cwd from parallel goroutines.
+	cwd         string
+	system      core.System
+	sideEffects sync.Map // Each run owns handoffs, even when model call IDs repeat.
+	// Batch handoffs are owned by the turn goroutine. All sibling tools use
+	// the pre-batch cwd; the last cwd-changing call in request order wins,
+	// regardless of completion order.
+	batchTools   []string
+	pendingTools int
+	batchCwd     string
+	batchCwdIdx  int
+	startedAt    time.Time
+	hookID       string
 	// activity is the inspection trail, carried as display details by Agent.
 	// Model, mode, usage, and spinner status go only to the live display.
 	activity     []string
@@ -54,6 +69,39 @@ func (r *preparedRun) recordUsage(resp *ai.Response) {
 	}
 }
 
+func (r *preparedRun) currentCwd() string {
+	r.cwdMu.RLock()
+	defer r.cwdMu.RUnlock()
+	return r.cwd
+}
+
+func (r *preparedRun) storeSideEffect(id string, effect any) {
+	r.sideEffects.Store(id, effect)
+}
+
+func (r *preparedRun) finishCwdHandoff(id string, canceled bool) {
+	effect, _ := r.sideEffects.LoadAndDelete(id)
+	handoff, _ := effect.(map[string]any)
+	cwd, _ := handoff["cwd"].(string)
+	index := slices.Index(r.batchTools, id)
+	if !canceled && filepath.IsAbs(cwd) && index >= 0 && index >= r.batchCwdIdx {
+		r.batchCwd, r.batchCwdIdx = cwd, index
+	}
+	if r.pendingTools > 0 {
+		r.pendingTools--
+	}
+	if r.pendingTools != 0 || canceled || r.batchCwd == "" {
+		return
+	}
+	r.cwdMu.Lock()
+	r.cwd = r.batchCwd
+	r.cwdMu.Unlock()
+	if r.system != nil {
+		r.system.Use(system.EnvironmentSection(system.Environment{Cwd: r.batchCwd, Shell: proc.DefaultShellName()}), "subagent:cwd")
+	}
+	r.batchCwd = ""
+}
+
 func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 	// Legacy tools can turn cancellation into an ordinary exit error. Check the
 	// worker context too, without hiding tool-local timeouts or run deadlines.
@@ -74,10 +122,19 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 		}
 		r.recordUsage(event.Response)
 	case sdkagent.ToolStart:
+		if r.pendingTools == 0 {
+			r.batchTools = nil
+			r.batchCwd, r.batchCwdIdx = "", -1
+		}
+		r.batchTools = append(r.batchTools, event.ID)
+		r.pendingTools++
 		if r.req.OnToolStart != nil {
 			r.req.OnToolStart(event.ID, r.toolCallLabel(event.Name, event.Args))
 		}
 	case sdkagent.ToolEnd:
+		// Every worker owns its adapter handoff, even without UI callbacks or
+		// when cancellation suppresses error notices. Never leave it for main.
+		r.finishCwdHandoff(event.ID, canceled)
 		report := !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled)
 		if report || r.req.OnToolResult != nil {
 			label := r.toolCallLabel(event.Name, event.Args)

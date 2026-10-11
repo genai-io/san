@@ -97,6 +97,16 @@ confirmation tiers — unrecoverable (destructive commands, sensitive paths,
 data exfiltration) and recoverable (work-discarding git,
 out-of-working-dir writes) — are skipped by `bypassPermissions` mode.
 
+Git global path options (`-C`, `--git-dir`, `--work-tree`) are parsed with their
+operands before classifying the subcommand. Unknown options, configuration and
+executable overrides, and unsafe output/helper flags do not qualify as reads.
+`symbolic-ref` is read-only only for a one-ref query with known query flags;
+two-ref writes and deletion are rejected. `reflog` permits the no-argument query
+and explicit `show`, `exists`, or `list` modes, not metadata mutations such as
+`expire`, `delete`, `drop`, or `write`. Use `reflog show` for queries with options.
+These checks live in `bash_ast.go`; `bash_git_options_test.go` and
+`bash_git_mutation_test.go` cover path options and metadata query/write forms.
+
 ## Subagent Permission Resolution
 
 The foreground and subagent gates both use `setting.ModeDefault` for

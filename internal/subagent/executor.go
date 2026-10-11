@@ -352,7 +352,6 @@ func (e *Executor) fireSubagentStart(req tool.AgentExecRequest, agentHookID stri
 
 func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec func(string, map[string]any), onEvent func(core.Event)) (core.Agent, func(), error) {
 	rc := run.cfg
-	agentCwd := run.cwd
 	cleanup := func() {}
 
 	if len(rc.config.McpServers) > 0 && e.mcpManager != nil {
@@ -381,21 +380,25 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	// pattern as the main agent.
 	sys := system.Build(core.ScopeSubagent,
 		system.WithSubagentIdentity(brief),
-		system.WithEnvironment(system.Environment{Cwd: agentCwd, Shell: proc.DefaultShellName()}),
+		system.WithEnvironment(system.Environment{Cwd: run.currentCwd(), Shell: proc.DefaultShellName()}),
 	)
+	run.system = sys
 	var ag core.Agent
-	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
-		if ag == nil {
-			return nil
-		}
-		return ag.Messages()
-	})}
+	adaptOpts := []tool.AdaptOption{
+		tool.WithSideEffectHandler(run.storeSideEffect),
+		tool.WithMessagesGetterProvider(func() []core.Message {
+			if ag == nil {
+				return nil
+			}
+			return ag.Messages()
+		}),
+	}
 	// Foreground runs route AskUserQuestion through the spawning turn's UI.
 	// Background runs have no question channel (OnQuestion is stripped).
 	if run.req.OnQuestion != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(tool.AskUserFunc(run.req.OnQuestion)))
 	}
-	tools := tool.AdaptToolRegistry(schemas, func() string { return agentCwd }, adaptOpts...)
+	tools := tool.AdaptToolRegistry(schemas, run.currentCwd, adaptOpts...)
 
 	// Add MCP tool executors
 	if e.mcpManager != nil {

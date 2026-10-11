@@ -69,7 +69,7 @@ func Build(scope core.Scope, opts ...Option) core.System {
 
 	// Environment (slot 3): volatile footer, only when supplied.
 	if cfg.env != nil {
-		sys.Use(environmentSection(*cfg.env), caller)
+		sys.Use(EnvironmentSection(*cfg.env), caller)
 	}
 
 	return sys

@@ -40,7 +40,7 @@ func agentSchema(agentDirectory string) core.ToolSchema {
 		sb.WriteString(agentDirectory)
 		sb.WriteString("\n\n")
 	}
-	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Use explore for read-only investigation and edit for file changes.\n\n")
+	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Use explore for read-only investigation and edit for file changes. Edit permits file edits plus read-only shell commands, not arbitrary shell execution: tests/build require an explicit allowed command or parent validation. Include the validation plan in the brief; shell tool availability does not imply go test or other builds are allowed. Do not retry denied commands.\n\n")
 	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Once work is delegated, do not also do it yourself; wait for the result. Verify the result before reporting it.")
 
 	return core.ToolSchema{
@@ -75,7 +75,7 @@ var agentToolParameters = map[string]any{
 		},
 		"mode": map[string]any{
 			"type":        "string",
-			"description": "Permission mode for the spawned agent: explore = read-only; edit = can modify files; default = use the named definition's configured mode, or inherit the parent session when name is empty.",
+			"description": "Permission mode for the spawned agent: explore = read-only; edit = file edits plus read-only shell, tests/build require an explicit allowed command or parent validation; default = use the named definition's configured mode, or inherit the parent session when name is empty.",
 			"enum":        []string{"explore", "edit", "default"},
 		},
 	},

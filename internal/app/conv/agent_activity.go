@@ -40,6 +40,10 @@ func renderAgentActivity(activity []string) string {
 	}
 
 	var sb strings.Builder
+	sb.WriteString(toolResultStyle.Render("  ⎿  Recent activity") + "\n")
+	if omitted := len(activity) - len(visible); omitted > 0 {
+		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  ⎿  … %d retained entries omitted", omitted)) + "\n")
+	}
 	for _, p := range visible {
 		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  ⎿  %s", p)) + "\n")
 	}
@@ -98,12 +102,49 @@ func agentSummary(input string, activity []string, stats AgentStats) string {
 		parts = append(parts, "mode: "+mode)
 	}
 	if n := len(agentToolLines(activity, 0)); n > 0 {
-		parts = append(parts, fmt.Sprintf("tools: %d", n))
+		parts = append(parts, fmt.Sprintf("recent tools: %d", n))
 	}
 	if tokens := agentTokens(activity, stats); tokens != "" {
 		parts = append(parts, "tokens: "+tokens)
 	}
+	for _, line := range activity {
+		if omitted, ok := strings.CutPrefix(line, "Omitted: "); ok {
+			parts = append(parts, omitted+" updates omitted")
+		}
+	}
 	return strings.Join(parts, "   ")
+}
+
+// activityMetadataKey identifies replaceable status lines in the existing
+// worker activity protocol; these do not consume the recent-tool budget.
+func activityMetadataKey(line string) string {
+	for _, prefix := range []string{"Model: ", "Mode: ", "Usage: ", "Omitted: "} {
+		if strings.HasPrefix(line, prefix) {
+			return prefix
+		}
+	}
+	return ""
+}
+
+func retainAgentActivity(activity []string, message string) []string {
+	return retainAgentActivityLimit(activity, message, maxAgentActivityHistory)
+}
+
+func retainAgentActivityLimit(activity []string, message string, limit int) []string {
+	var metadata, recent []string
+	for _, line := range append(activity, message) {
+		key := activityMetadataKey(line)
+		if key == "" {
+			recent = append(recent, line)
+			continue
+		}
+		metadata = slices.DeleteFunc(metadata, func(old string) bool { return strings.HasPrefix(old, key) })
+		metadata = append(metadata, line)
+	}
+	if len(recent) > limit {
+		recent = recent[len(recent)-limit:]
+	}
+	return append(metadata, recent...)
 }
 
 func agentModel(activity []string, fallback string) string {
@@ -174,7 +215,7 @@ func parseUsageActivity(line string) (int, int, bool) {
 func agentStatus(activity []string) string {
 	for _, a := range slices.Backward(activity) {
 		line := strings.TrimSpace(a)
-		if line == "" || isAgentToolLine(line) || strings.HasPrefix(line, "Mode: ") || strings.HasPrefix(line, "Model: ") || strings.HasPrefix(line, "Usage: ") {
+		if line == "" || isAgentToolLine(line) || activityMetadataKey(line) != "" {
 			continue
 		}
 		return line
@@ -197,7 +238,7 @@ func agentToolLines(activity []string, limit int) []string {
 
 func isAgentToolLine(line string) bool {
 	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "Mode: ") || strings.HasPrefix(line, "Model: ") || strings.HasPrefix(line, "Usage: ") || line == "Thinking..." {
+	if line == "" || activityMetadataKey(line) != "" || line == "Thinking..." {
 		return false
 	}
 	return true

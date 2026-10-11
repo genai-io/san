@@ -156,6 +156,20 @@ they fit, and expanded tool content wraps explicitly to the terminal width.
 Wrapping command bodies and string parameters preserves spaces, including
 spaces inside quoted arguments.
 
+When foreground workers overflow the live tail, `conv.RenderActiveWorkers`
+reserves their identity rows and compact rows for ordinary pending tool siblings
+before sharing recent details. The latest notice also keeps a row. Background
+tracker/workflow indicators spend only the height left after this reservation,
+so a long workflow cannot hide every foreground worker. Clipped indicator blocks
+keep their leading newline; they never merge onto a tool's identity row. Space
+shortages show explicit tool/worker or detail omission counts. The composer and
+docked modal retain priority over all activity.
+
+Worker activity travels through per-call bounded buffers in `AgentToUI` and is
+applied as one poll batch. Model/mode/usage metadata is retained separately from
+recent tools; metadata is the worker's, not a fallback from the parent. Background
+progress shares the existing tracker row instead of adding a second row.
+
 The task tracker above the input uses one shared `Tasks` heading and shows at
 most eight task rows and one overflow summary. The heading appears only while
 the tracker is visible, and shows progress only when plan items are present.
@@ -224,6 +238,8 @@ internal/app/conv/git_bar_test.go              — Git row content, CJK widths a
 internal/app/model_git_bar_test.go             — polling, stale events, settings and footer height.
 internal/app/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
 internal/app/view_test.go                     — fixed composer, multiline input and candidates.
+internal/app/view_observability_test.go        — worker identities, modal height, notices and progress.
+internal/app/view_worker_budget_test.go        — mixed tools and competing workflow height budgets.
 internal/app/model_scrollback_test.go          — recent output retention and resize.
 internal/app/model_scrollback_renderer_test.go — native history integrity through the real renderer.
 internal/app/agent_restart_test.go             — message-chain integrity across stop/restart.

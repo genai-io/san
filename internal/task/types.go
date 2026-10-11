@@ -88,6 +88,8 @@ type TaskInfo struct {
 	EndTime     time.Time
 	Output      string
 	OutputFile  string
+	OutputError string // First output-log failure, separate from execution outcome.
+	Progress    string // Latest meaningful activity, separate from final model-facing output.
 	Error       string
 
 	// Bash-specific fields

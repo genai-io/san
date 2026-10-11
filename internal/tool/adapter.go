@@ -39,6 +39,7 @@ type adaptConfig struct {
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
+	sideEffectFn    func(string, any)
 }
 
 // WithAskUser sets the handler the AskUserQuestion tool uses to ask the user.
@@ -63,18 +64,33 @@ func WithBashPromptResponderProvider(fn BashPromptResponderProvider) AdaptOption
 	return func(c *adaptConfig) { c.promptResponder = fn }
 }
 
+// WithSideEffectHandler routes handoffs to their owning run instead of the
+// default main-agent store. Tool call IDs are not unique across conversations.
+func WithSideEffectHandler(fn func(string, any)) AdaptOption {
+	return func(c *adaptConfig) { c.sideEffectFn = fn }
+}
+
 // AdaptTool wraps a legacy Tool as a core.Tool with a dynamic CWD resolver.
-func AdaptTool(t Tool, schema core.ToolSchema, cwd func() string) core.Tool {
-	return &toolAdapter{inner: t, schema: schema, cwd: cwd}
+func AdaptTool(t Tool, schema core.ToolSchema, cwd func() string, opts ...AdaptOption) core.Tool {
+	return adaptTool(t, schema, cwd, adaptationConfig(opts))
+}
+
+func adaptationConfig(opts []AdaptOption) adaptConfig {
+	var cfg adaptConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return cfg
+}
+
+func adaptTool(t Tool, schema core.ToolSchema, cwd func() string, cfg adaptConfig) *toolAdapter {
+	return &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder, sideEffectFn: cfg.sideEffectFn}
 }
 
 // AdaptToolRegistry wraps all tools from the global registry as core.Tools.
 // The schema list maps tool names to their JSON schemas.
 func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...AdaptOption) *core.Tools {
-	var cfg adaptConfig
-	for _, o := range opts {
-		o(&cfg)
-	}
+	cfg := adaptationConfig(opts)
 
 	schemaByName := make(map[string]core.ToolSchema, len(schemas))
 	for _, s := range schemas {
@@ -86,7 +102,7 @@ func AdaptToolRegistry(schemas []core.ToolSchema, cwd func() string, opts ...Ada
 	var adapted []core.Tool
 	for name, schema := range schemaByName {
 		if t, ok := Get(name); ok {
-			adapted = append(adapted, &toolAdapter{inner: t, schema: schema, cwd: cwd, askFn: cfg.askFn, messagesGetter: cfg.messagesGetter, activityFn: cfg.activityFn, promptResponder: cfg.promptResponder})
+			adapted = append(adapted, adaptTool(t, schema, cwd, cfg))
 		}
 	}
 	return core.NewTools(adapted...)
@@ -101,6 +117,7 @@ type toolAdapter struct {
 	messagesGetter  MessagesGetter
 	activityFn      func(toolCallID string, msg string)
 	promptResponder BashPromptResponderProvider
+	sideEffectFn    func(string, any)
 }
 
 func (a *toolAdapter) Schema() core.ToolSchema { return a.schema }
@@ -163,8 +180,10 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 		result = a.inner.Execute(ctx, input, cwd)
 	}
 
-	if callID := core.ToolCallIDFromContext(ctx); callID != "" {
-		if result.HookResponse != nil {
+	if callID := core.ToolCallIDFromContext(ctx); callID != "" && result.HookResponse != nil {
+		if a.sideEffectFn != nil {
+			a.sideEffectFn(callID, result.HookResponse)
+		} else {
 			sideEffects.Store(callID, result.HookResponse)
 		}
 	}

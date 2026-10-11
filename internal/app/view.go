@@ -144,7 +144,13 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 	if available <= 0 {
 		return ""
 	}
-	content := tailLines(m.renderChatSection(conv.RenderActiveContent(params)), available)
+	section := m.renderChatSection(conv.RenderActiveContent(params))
+	content := tailLines(section, available)
+	if strings.Count(section, "\n")+1 > available {
+		if workers, active := conv.RenderActiveWorkers(params, available); active {
+			content = workers
+		}
+	}
 	padding := strings.Repeat("\n", available-1-strings.Count(content, "\n"))
 	if len(params.PendingCalls) > 0 {
 		// A shrinking terminal should shed empty rows before transient tool status.
@@ -315,7 +321,15 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return tailLines("\n"+strings.Join(parts, "\n"), m.env.Height-strings.Count(bottom, "\n"))
+	available := m.env.Height - strings.Count(bottom, "\n") - 1
+	available -= min(max(0, available), conv.ActiveWorkerRows(m.messageRenderParams()))
+	if available <= 0 {
+		return ""
+	}
+	// A clipped block must still start on its own row. Otherwise the last
+	// foreground identity and the first indicator are joined on one line.
+	indicators := "\n" + strings.Join(parts, "\n")
+	return "\n" + tailLines(strings.TrimPrefix(indicators, "\n"), available)
 }
 
 // liveWelcome returns the startup splash for the live view while it is still
@@ -356,7 +370,6 @@ func (m *model) renderTrackerList() string {
 	}
 	items := m.services.Tracker.List()
 	var running []task.BackgroundTask
-	activity := make(map[string]string)
 	if m.services.Task != nil {
 		running = m.services.Task.ListRunning()
 		liveWorkflowIDs := make(map[string]bool)
@@ -364,8 +377,6 @@ func (m *model) renderTrackerList() string {
 			info := bg.GetStatus()
 			if info.AgentName == "workflow" && info.LiveView != "" {
 				liveWorkflowIDs[info.ID] = true
-			} else {
-				activity[info.ID] = info.LiveView
 			}
 		}
 		if len(liveWorkflowIDs) > 0 {
@@ -387,7 +398,14 @@ func (m *model) renderTrackerList() string {
 		Executing:       m.executingTrackerItem,
 		Blink:           m.conv.Spinner.Frame(),
 		AgentColors:     m.agentColors(),
-		Activity:        activity,
+		WorkerStatus: func(id string) task.TaskInfo {
+			if m.services.Task != nil {
+				if worker, ok := m.services.Task.Get(id); ok {
+					return worker.GetStatus()
+				}
+			}
+			return task.TaskInfo{}
+		},
 	})
 	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }
