@@ -724,11 +724,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 			if params.ParallelMode {
 				limit = maxParallelAgentToolLines
 			}
-			sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, limit, AgentStats{
-				Model:        params.ModelName,
-				InputTokens:  params.InputTokens,
-				OutputTokens: params.OutputTokens,
-			}, params.Width))
+			sb.WriteString(renderAgentActivityInline(tc, params.PendingCalls, params.TaskActivity, params.ToolCallsExpanded, limit, AgentStats{}, params.Width))
 		}
 	}
 

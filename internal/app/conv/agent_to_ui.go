@@ -3,6 +3,7 @@ package conv
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -24,14 +25,23 @@ type AgentActivityMsg struct {
 // ready, so the poll re-arms without blocking.
 type AgentToUITickMsg struct{}
 
-// AgentToUI is the instance-scoped transport from running agents and tools
-// to the TUI. It multiplexes three kinds of traffic: activity lines to display,
-// interactive questions to ask (AskUser lands here), and masked secret prompts
-// (RequestSecret lands here). The agent side sends; the TUI side polls Check.
+// AgentActivityBatchMsg applies a whole poll without a timer per activity line.
+type AgentActivityBatchMsg []AgentActivityMsg
+
+type pendingActivity struct {
+	lines   []string
+	omitted int
+}
+
+// AgentToUI transports per-worker activity, questions, and masked secret prompts.
+// The agent side sends; the TUI polls Check. Activity never blocks on a user prompt.
 type AgentToUI struct {
-	ch  chan AgentActivityMsg
-	qch chan QuestionRequestMsg
-	sch chan SecretPromptRequestMsg
+	mu      sync.Mutex
+	pending map[string]*pendingActivity
+	order   []string
+	limit   int // Per-worker recent lines; a noisy sibling cannot evict another.
+	qch     chan QuestionRequestMsg
+	sch     chan SecretPromptRequestMsg
 }
 
 // NewAgentToUI creates an AgentToUI with the given buffer size.
@@ -40,18 +50,49 @@ func NewAgentToUI(buffer int) *AgentToUI {
 		buffer = 100
 	}
 	return &AgentToUI{
-		ch:  make(chan AgentActivityMsg, buffer),
-		qch: make(chan QuestionRequestMsg, buffer),
-		sch: make(chan SecretPromptRequestMsg, buffer),
+		pending: make(map[string]*pendingActivity),
+		limit:   buffer,
+		qch:     make(chan QuestionRequestMsg, buffer),
+		sch:     make(chan SecretPromptRequestMsg, buffer),
 	}
 }
 
 // SendForToolCall enqueues an activity line for a specific tool call.
 func (h *AgentToUI) SendForToolCall(toolCallID string, msg string) {
-	select {
-	case h.ch <- AgentActivityMsg{Index: -1, ToolCallID: toolCallID, Message: msg}:
-	default:
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	pending := h.pending[toolCallID]
+	if pending == nil {
+		pending = &pendingActivity{}
+		h.pending[toolCallID] = pending
+		h.order = append(h.order, toolCallID)
 	}
+	before := len(pending.lines)
+	pending.lines = retainAgentActivityLimit(pending.lines, msg, h.limit)
+	if activityMetadataKey(msg) == "" && len(pending.lines) <= before {
+		pending.omitted++
+	}
+}
+
+// takeActivity drains a bounded snapshot in one poll rather than one line per
+// 100ms. Metadata is coalesced, recent history is bounded per worker, and the
+// newest state always survives a burst. Questions use their own channels.
+func (h *AgentToUI) takeActivity() AgentActivityBatchMsg {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var batch AgentActivityBatchMsg
+	for _, id := range h.order {
+		pending := h.pending[id]
+		if pending.omitted > 0 {
+			batch = append(batch, AgentActivityMsg{Index: -1, ToolCallID: id, Message: fmt.Sprintf("Omitted: %d", pending.omitted)})
+		}
+		for _, line := range pending.lines {
+			batch = append(batch, AgentActivityMsg{Index: -1, ToolCallID: id, Message: line})
+		}
+		delete(h.pending, id)
+	}
+	h.order = nil
+	return batch
 }
 
 // Ask enqueues an interactive question and waits for the user's response.
@@ -111,11 +152,12 @@ func (h *AgentToUI) Check() tea.Cmd {
 			return q
 		case s := <-h.sch:
 			return s
-		case u := <-h.ch:
-			return u
 		default:
-			return AgentToUITickMsg{}
 		}
+		if batch := h.takeActivity(); len(batch) > 0 {
+			return batch
+		}
+		return AgentToUITickMsg{}
 	})
 }
 
@@ -139,24 +181,6 @@ func (h *AgentToUI) DrainPendingQuestions() {
 			}
 		default:
 			return
-		}
-	}
-}
-
-// Drain pulls all pending activity lines into taskActivity.
-func (h *AgentToUI) Drain(taskActivity map[int][]string) map[int][]string {
-	for {
-		select {
-		case u := <-h.ch:
-			if taskActivity == nil {
-				taskActivity = make(map[int][]string)
-			}
-			taskActivity[u.Index] = append(taskActivity[u.Index], u.Message)
-			if len(taskActivity[u.Index]) > maxAgentActivityHistory {
-				taskActivity[u.Index] = taskActivity[u.Index][len(taskActivity[u.Index])-maxAgentActivityHistory:]
-			}
-		default:
-			return taskActivity
 		}
 	}
 }

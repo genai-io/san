@@ -391,6 +391,9 @@ func (a *agent) hooks() sdkagent.Hook {
 // vendor's headers depend on what the turn sends — an interactive endpoint
 // bills a user-initiated turn differently from an agent-initiated one.
 func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
+	// A cwd or other system-section change between tools must reach the next
+	// inference in this exchange, not only the next ThinkAct call.
+	inf.System = a.system.Prompt()
 	if a.client != nil {
 		client, err := a.client(inf.Messages)
 		if err != nil {

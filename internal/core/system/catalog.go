@@ -268,7 +268,9 @@ func WithEnvironment(env Environment) Option {
 	}
 }
 
-func environmentSection(env Environment) core.Section {
+// EnvironmentSection replaces only the volatile environment, leaving the
+// agent's identity and safety constraints intact.
+func EnvironmentSection(env Environment) core.Section {
 	return core.Section{
 		Slot: core.SlotEnvironment, Name: "environment", Source: core.Dynamic,
 		Render: func() string { return renderEnvironment(env) },

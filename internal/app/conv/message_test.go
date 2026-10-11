@@ -951,8 +951,8 @@ func TestRenderToolCallsShowsSingleAgentRuntimeActivity(t *testing.T) {
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("RenderToolCalls() = %q, want agent header", rendered)
 	}
-	if !strings.Contains(rendered, "model: gpt-5.4-mini") || !strings.Contains(rendered, "mode: explore") || !strings.Contains(rendered, "tools: 4") {
-		t.Fatalf("RenderToolCalls() = %q, want runtime summary", rendered)
+	if strings.Contains(rendered, "gpt-5.4-mini") || strings.Contains(rendered, "tokens:") || !strings.Contains(rendered, "mode: explore") || !strings.Contains(rendered, "recent tools: 4") {
+		t.Fatalf("RenderToolCalls() = %q, want worker-only runtime summary", rendered)
 	}
 	if strings.Contains(rendered, "Read(internal/tool/schema_agent.go)") {
 		t.Fatalf("RenderToolCalls() = %q, want only the latest three tool calls", rendered)
@@ -987,8 +987,8 @@ func TestRenderToolCallsShowsAgentStatusBeforeToolCalls(t *testing.T) {
 	}
 
 	rendered := stripANSI(RenderToolCalls(params))
-	if !strings.Contains(rendered, "model: gpt-5.4-mini") || !strings.Contains(rendered, "mode: explore") {
-		t.Fatalf("RenderToolCalls() = %q, want runtime summary before tool calls", rendered)
+	if strings.Contains(rendered, "gpt-5.4-mini") || !strings.Contains(rendered, "mode: explore") {
+		t.Fatalf("RenderToolCalls() = %q, want only known worker metadata before tool calls", rendered)
 	}
 	if !strings.Contains(rendered, "Thinking...") {
 		t.Fatalf("RenderToolCalls() = %q, want status before tool calls", rendered)

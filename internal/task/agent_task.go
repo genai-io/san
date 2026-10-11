@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,6 +29,8 @@ type AgentTask struct {
 
 	mu         sync.RWMutex     // Protects mutable fields
 	output     bytes.Buffer     // Collected output from the agent
+	progress   string           // Latest non-metadata activity for the live tracker.
+	outputErr  string           // First output-log failure; a nonempty path alone is not proof of durability.
 	liveView   string           // Current structured progress, if the caller supplies one.
 	liveRender func(int) string // Optional width-aware live renderer.
 	done       chan struct{}    // Closed when task completes
@@ -39,18 +42,22 @@ var _ BackgroundTask = (*AgentTask)(nil)
 
 // NewAgentTask creates a new agent task; outputPath "" keeps output in memory.
 func NewAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc, outputPath string) *AgentTask {
+	outputFile, outputErr := initOutputFile(outputPath)
 	task := &AgentTask{
 		ID:          id,
 		AgentName:   agentName,
 		Description: description,
 		Status:      StatusRunning,
 		StartTime:   time.Now(),
-		OutputFile:  initOutputFile(outputPath),
+		OutputFile:  outputFile,
 		ctx:         ctx,
 		cancel:      cancel,
 		done:        make(chan struct{}),
 	}
-	appendOutputFile(task.OutputFile, outputRecord{
+	if outputErr != nil {
+		task.outputErr = outputErr.Error()
+	}
+	task.recordOutput(task.OutputFile, outputRecord{
 		Event:       "task.started",
 		TaskType:    string(TaskTypeAgent),
 		Description: description,
@@ -77,7 +84,7 @@ func (t *AgentTask) SetIdentity(agentName, sessionID string) {
 	t.mu.Unlock()
 
 	if changed {
-		appendOutputFile(outputFile, outputRecord{
+		t.recordOutput(outputFile, outputRecord{
 			Event: "agent.identity",
 			Metadata: map[string]any{
 				"agent_name": agentName,
@@ -100,7 +107,7 @@ func (t *AgentTask) SetOutputFile(path string) {
 func (t *AgentTask) GetOutputFile() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return t.OutputFile
+	return usableOutputPath(t.OutputFile, t.outputErr)
 }
 
 // GetID returns the unique task identifier
@@ -125,7 +132,7 @@ func (t *AgentTask) AppendOutput(data []byte) {
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
-	appendOutputFile(outputFile, outputRecord{
+	t.recordOutput(outputFile, outputRecord{
 		Event:   "task.output",
 		Content: string(data),
 	})
@@ -133,14 +140,30 @@ func (t *AgentTask) AppendOutput(data []byte) {
 
 // AppendProgress appends a progress message
 func (t *AgentTask) AppendProgress(msg string) {
+	msg = strings.TrimSpace(msg)
 	t.mu.Lock()
+	if msg != "" && !strings.HasPrefix(msg, "Model: ") && !strings.HasPrefix(msg, "Mode: ") && !strings.HasPrefix(msg, "Usage: ") {
+		// The tracker needs the latest action, not a token line that replaces it.
+		// Tool descriptions are already bounded by the executor.
+		t.progress = msg
+	}
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
-	appendOutputFile(outputFile, outputRecord{
+	t.recordOutput(outputFile, outputRecord{
 		Event:   "task.progress",
 		Content: msg,
 	})
+}
+
+func (t *AgentTask) recordOutput(path string, record outputRecord) {
+	if err := appendOutputFile(path, record); err != nil {
+		t.mu.Lock()
+		if t.outputErr == "" {
+			t.outputErr = err.Error()
+		}
+		t.mu.Unlock()
+	}
 }
 
 // SetLiveView replaces the task's compact, in-memory progress display.
@@ -210,7 +233,7 @@ func (t *AgentTask) finalize(status TaskStatus, errText string) {
 	t.mu.Unlock()
 
 	// File I/O and done channel outside lock
-	appendOutputFile(outputFile, outputRecord{
+	t.recordOutput(outputFile, outputRecord{
 		Event:  "task.completed",
 		Status: string(status),
 		Metadata: map[string]any{
@@ -271,7 +294,9 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		EndTime:        t.EndTime,
 		Error:          t.Error,
 		Output:         t.output.String(),
-		OutputFile:     t.OutputFile,
+		OutputFile:     usableOutputPath(t.OutputFile, t.outputErr),
+		OutputError:    t.outputErr,
+		Progress:       t.progress,
 		AgentName:      t.AgentName,
 		AgentSessionID: t.SessionID,
 		StepCount:      t.StepCount,

@@ -39,14 +39,15 @@ type BashTask struct {
 	// atomic for the same reason as stopRequested.
 	reaped atomic.Bool
 
-	mu       sync.RWMutex  // Protects mutable fields below
-	status   TaskStatus    // Current status
-	endTime  time.Time     // When the task ended (if completed)
-	exitCode int           // Exit code (if completed)
-	errMsg   string        // Error message (if failed)
-	output   bytes.Buffer  // Collected stdout/stderr
-	done     chan struct{} // Closed when task completes
-	doneOnce sync.Once     // Guards done channel close
+	mu        sync.RWMutex  // Protects mutable fields below
+	status    TaskStatus    // Current status
+	endTime   time.Time     // When the task ended (if completed)
+	exitCode  int           // Exit code (if completed)
+	errMsg    string        // Error message (if failed)
+	outputErr string        // First output-log failure.
+	output    bytes.Buffer  // Collected stdout/stderr
+	done      chan struct{} // Closed when task completes
+	doneOnce  sync.Once     // Guards done channel close
 }
 
 // Verify BashTask implements BackgroundTask
@@ -54,6 +55,7 @@ var _ BackgroundTask = (*BashTask)(nil)
 
 // NewBashTask creates a new bash task; outputPath "" keeps output in memory.
 func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.CancelFunc, outputPath string) *BashTask {
+	outputFile, outputErr := initOutputFile(outputPath)
 	task := &BashTask{
 		ID:          id,
 		Command:     command,
@@ -61,12 +63,15 @@ func NewBashTask(id, command, description string, cmd *exec.Cmd, cancel context.
 		status:      StatusRunning,
 		PID:         cmd.Process.Pid,
 		StartTime:   time.Now(),
-		OutputFile:  initOutputFile(outputPath),
+		OutputFile:  outputFile,
 		cmd:         cmd,
 		cancel:      cancel,
 		done:        make(chan struct{}),
 	}
-	appendOutputFile(task.OutputFile, outputRecord{
+	if outputErr != nil {
+		task.outputErr = outputErr.Error()
+	}
+	task.recordOutput(task.OutputFile, outputRecord{
 		Event:       "task.started",
 		TaskType:    string(TaskTypeBash),
 		Description: description,
@@ -100,10 +105,20 @@ func (t *BashTask) AppendOutput(data []byte) {
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
-	appendOutputFile(outputFile, outputRecord{
+	t.recordOutput(outputFile, outputRecord{
 		Event:   "task.output",
 		Content: string(data),
 	})
+}
+
+func (t *BashTask) recordOutput(path string, record outputRecord) {
+	if err := appendOutputFile(path, record); err != nil {
+		t.mu.Lock()
+		if t.outputErr == "" {
+			t.outputErr = err.Error()
+		}
+		t.mu.Unlock()
+	}
 }
 
 // GetOutput returns the current output
@@ -176,7 +191,7 @@ func (t *BashTask) finalize(status TaskStatus, exitCode int, errMsg string) {
 	outputFile := t.OutputFile
 	t.mu.Unlock()
 
-	appendOutputFile(outputFile, outputRecord{
+	t.recordOutput(outputFile, outputRecord{
 		Event:  "task.completed",
 		Status: string(status),
 		Metadata: map[string]any{
@@ -272,7 +287,8 @@ func (t *BashTask) GetStatus() TaskInfo {
 		StartTime:   t.StartTime,
 		EndTime:     t.endTime,
 		ExitCode:    t.exitCode,
-		OutputFile:  t.OutputFile,
+		OutputFile:  usableOutputPath(t.OutputFile, t.outputErr),
+		OutputError: t.outputErr,
 		Error:       t.errMsg,
 		Output:      t.output.String(),
 	}

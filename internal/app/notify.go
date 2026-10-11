@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
@@ -84,10 +85,14 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	if description != "" {
 		fmt.Fprintf(&b, ` description="%s"`, html.EscapeString(description))
 	}
-	if info.OutputFile != "" {
+	if info.OutputFile != "" && info.OutputError == "" {
 		fmt.Fprintf(&b, ` output-file="%s"`, html.EscapeString(info.OutputFile))
 	}
 	b.WriteString(">\n")
+	if info.OutputError != "" {
+		b.WriteString(tool.EscapeXMLText("Output log unavailable: " + info.OutputError))
+		b.WriteString("\n")
+	}
 	if info.Error != "" {
 		b.WriteString("Error: ")
 		b.WriteString(tool.EscapeXMLText(info.Error))
@@ -96,6 +101,13 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		}
 	}
 	switch {
+	case len(result) > maxTaskOutputInNotification && info.OutputError != "":
+		end := maxTaskOutputInNotification
+		for end > 0 && !utf8.RuneStart(result[end]) {
+			end--
+		}
+		b.WriteString(tool.EscapeXMLText(result[:end]))
+		fmt.Fprintf(&b, "\n… %d retained bytes omitted. The output log is incomplete; this is only a preview.", len(result)-end)
 	case len(result) > maxTaskOutputInNotification && info.OutputFile != "":
 		// Too large to inline without bloating the main context. Point at the
 		// full result instead of dumping a partial preview.
@@ -105,10 +117,14 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	}
 	b.WriteString("\n</task-notification>")
 
+	subject := fmt.Sprintf("%s %s", description, status)
+	if info.OutputError != "" {
+		subject += " · output log unavailable"
+	}
 	return broker.Message{
 		From:    info.ID,
 		To:      broker.Main,
-		Subject: fmt.Sprintf("%s %s", description, status),
+		Subject: subject,
 		Content: b.String(),
 	}, true
 }

@@ -1,11 +1,14 @@
 package conv
 
 import (
+	"fmt"
 	"html"
 	"strings"
 	"time"
 
+	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool"
 )
 
 // RenderContext bundles everything per-message rendering needs to read.
@@ -338,6 +341,124 @@ func RenderSingleMessage(p RenderContext, idx int) string {
 	}
 
 	return strings.TrimRight(RenderMessageAt(p, idx, false), "\n")
+}
+
+// RenderActiveWorkers reserves identities before spending rows on recent details.
+// The bool reports whether the worker layout owns the active tail this frame.
+func RenderActiveWorkers(p RenderContext, height int) (string, bool) {
+	var headers, details []string
+	seen := make(map[string]bool)
+	for i := p.CommittedCount; i < len(p.Messages); i++ {
+		msg := p.Messages[i]
+		for _, call := range msg.ToolCalls {
+			if !tool.IsAgentToolName(call.Name) || call.Name == tool.ToolSendMessage || seen[call.ID] {
+				continue
+			}
+			pending := false
+			for _, candidate := range p.PendingCalls {
+				pending = pending || candidate.ID == call.ID
+			}
+			if _, done := p.InlinedResults.resultsFor(i)[call.ID]; done || !pending {
+				continue
+			}
+			seen[call.ID] = true
+			rendered := RenderToolCalls(ToolCallsParams{
+				ToolCalls: []core.ToolCall{call}, ToolCallsExpanded: msg.ToolCallsExpanded,
+				PendingCalls: p.PendingCalls, TaskActivity: p.TaskActivity,
+				ParallelMode: len(p.PendingCalls) > 1, Width: p.Width,
+				Blink: p.Blink, AgentColors: p.AgentColors,
+				DockedModalActive: p.DockedModalActive, AwaitingApprovalID: p.AwaitingApprovalID,
+			})
+			lines := strings.Split(strings.TrimRight(rendered, "\n"), "\n")
+			headers = append(headers, lines[0])
+			details = append(details, strings.Join(lines[1:], "\n"))
+		}
+	}
+	if len(headers) == 0 {
+		return "", false
+	}
+	if height <= 0 {
+		return "", true
+	}
+	// Keep the newest notice visible while workers run. Reserving identities
+	// must not hide the error delivery fixed in #613.
+	notice := ""
+	for i := len(p.Messages) - 1; i >= p.CommittedCount; i-- {
+		if p.Messages[i].Role == core.ChatNotice {
+			notice = strings.TrimSpace(RenderMessageAt(p, i, false))
+			notice = strings.Join(strings.Fields(notice), " ")
+			break
+		}
+	}
+	workerHeight := height
+	if notice != "" {
+		workerHeight--
+	}
+	if len(headers) > workerHeight {
+		rows := []string{}
+		if workerHeight > 0 {
+			visible := max(0, workerHeight-1)
+			rows = append(rows, headers[:visible]...)
+			rows = append(rows, fmt.Sprintf("  … %d active workers omitted", len(headers)-visible))
+		}
+		if notice != "" {
+			rows = append(rows, notice)
+		}
+		return boundedWorkerRows(rows, p.Width), true
+	}
+	budget := workerHeight - len(headers)
+	var detailLines [][]string
+	total := 0
+	for _, detail := range details {
+		var lines []string
+		if detail != "" {
+			lines = strings.Split(detail, "\n")
+		}
+		detailLines = append(detailLines, lines)
+		total += len(lines)
+	}
+	showOmissions := total > budget && budget > 0
+	if showOmissions {
+		budget--
+	}
+	allocated := make([]int, len(headers))
+	for budget > 0 {
+		advanced := false
+		for i, lines := range detailLines {
+			if allocated[i] < len(lines) && budget > 0 {
+				allocated[i]++
+				budget--
+				advanced = true
+			}
+		}
+		if !advanced {
+			break
+		}
+	}
+	var rows []string
+	shown := 0
+	for i, header := range headers {
+		rows = append(rows, header)
+		n := allocated[i]
+		lines := detailLines[i]
+		// Keep the newest action, not an arbitrary slice of the briefing.
+		rows = append(rows, lines[len(lines)-n:]...)
+		shown += n
+	}
+	if showOmissions {
+		rows = append(rows, fmt.Sprintf("  … %d detail rows omitted", total-shown))
+	}
+	if notice != "" {
+		rows = append(rows, notice)
+	}
+	return boundedWorkerRows(rows, p.Width), true
+}
+
+func boundedWorkerRows(rows []string, width int) string {
+	for i, row := range rows {
+		rows[i] = kit.TruncateText(row, max(1, width))
+	}
+	return strings.Join(rows, "\n")
 }
 
 func RenderActiveContent(p RenderContext) string {

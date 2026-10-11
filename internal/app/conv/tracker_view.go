@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
 )
 
@@ -42,8 +43,8 @@ type TrackerListParams struct {
 	// agent's launch line in the flow. Plain user todos have no owner and keep
 	// the status palette.
 	AgentColors map[string]string
-	// Activity is the latest worker-local progress, keyed by background task ID.
-	Activity map[string]string
+	// WorkerStatus provides display-only live activity and output-log health.
+	WorkerStatus func(taskID string) task.TaskInfo
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
@@ -93,13 +94,28 @@ func RenderTrackerList(params TrackerListParams) string {
 	// Query executor liveness only for visible rows; counts use recorded status.
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
-		sb.WriteString(renderItem(t, phase, params.Width, idWidth, params.Blockers, params.Blink, params.AgentColors))
-		if phase == itemRunning {
-			if activity := params.Activity[todo.BackgroundTaskID(t)]; activity != "" {
-				line, _, _ := strings.Cut(activity, "\n")
-				sb.WriteString(renderNestedToolBody(kit.TruncateText(line, max(1, params.Width-8)), params.Width))
+		progress := ""
+		if id := todo.BackgroundTaskID(t); id != "" && params.WorkerStatus != nil {
+			info := params.WorkerStatus(id)
+			progress = info.Progress
+			if progress == "" {
+				// Structured callers may supply only LiveView. Keep its first-line
+				// preview without copying a whole diagnostic body.
+				progress, _, _ = strings.Cut(info.LiveView, "\n")
+			}
+			progress = strings.Join(strings.Fields(progress), " ")
+			if info.OutputError != "" {
+				progress = "output log unavailable · " + progress
 			}
 		}
+		// Keep one row per worker. Activity must not double tracker height and
+		// push sibling identities out of a short terminal.
+		suffix := ""
+		if progress != "" {
+			suffix = mutedStyle.Render(kit.TruncateText(" · "+progress, max(1, params.Width/2)))
+		}
+		line := renderItem(t, phase, max(1, params.Width-lipgloss.Width(suffix)), idWidth, params.Blockers, params.Blink, params.AgentColors)
+		sb.WriteString(kit.TruncateText(strings.TrimSuffix(line, "\n")+suffix, max(1, params.Width)) + "\n")
 	}
 
 	return sb.String()

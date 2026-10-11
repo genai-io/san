@@ -7,18 +7,28 @@ import (
 	"time"
 )
 
-func initOutputFile(path string) string {
+func initOutputFile(path string) (string, error) {
 	if path == "" {
-		return ""
+		return "", nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return ""
+		return "", err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// usableOutputPath never advertises an incomplete log as the full result.
+func usableOutputPath(path, outputErr string) string {
+	if outputErr != "" {
 		return ""
 	}
-	_ = f.Close()
 	return path
 }
 
@@ -32,20 +42,23 @@ type outputRecord struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
-func appendOutputFile(path string, record outputRecord) {
+func appendOutputFile(path string, record outputRecord) error {
 	if path == "" || record.Event == "" {
-		return
+		return nil
 	}
 	record.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
 	data, err := json.Marshal(record)
 	if err != nil {
-		return
+		return err
 	}
 	data = append(data, '\n')
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		return
+		return err
 	}
-	defer f.Close()
-	_, _ = f.Write(data)
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
