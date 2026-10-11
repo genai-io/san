@@ -118,7 +118,7 @@ func PrecomputeInlinedResults(messages []core.ChatMessage, from int) inlinedTool
 		}
 		for j := i + 1; j < len(messages); j++ {
 			next := messages[j]
-			if next.Role == core.ChatNotice {
+			if next.Role == core.ChatNotice || (next.Role == core.ChatUser && next.ToolResult == nil && IsAgentEnvelope(next.Content)) {
 				continue
 			}
 			if next.ToolResult == nil {
@@ -212,7 +212,7 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// A background-agent envelope (task completion / relayed message) is
 			// submitted to the model as a user turn and persisted as raw XML.
 			// Live and resume share this summary; history can expose the body.
-			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content), p.Width, p.MemberColors))
+			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content, p.Width), p.Width, p.MemberColors))
 			if msg.Expanded {
 				tag, body, _ := strings.Cut(msg.Content, ">")
 				if end := strings.LastIndex(body, "</"); end >= 0 {

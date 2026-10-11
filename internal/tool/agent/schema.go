@@ -71,7 +71,7 @@ var agentToolParameters = map[string]any{
 		},
 		"max_steps": map[string]any{
 			"type":        "number",
-			"description": "Maximum number of LLM inference steps. Overrides the agent's budget; defaults to 500 when unset.",
+			"description": "Maximum number of LLM inference steps. Defaults to 500; lower values are raised to 500.",
 		},
 		"mode": map[string]any{
 			"type":        "string",

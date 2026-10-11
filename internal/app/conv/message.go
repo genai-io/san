@@ -728,7 +728,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				Model:        params.ModelName,
 				InputTokens:  params.InputTokens,
 				OutputTokens: params.OutputTokens,
-			}))
+			}, params.Width))
 		}
 	}
 

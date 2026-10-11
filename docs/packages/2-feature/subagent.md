@@ -154,9 +154,11 @@ func ResetDefaultRegistry()           // test-only
   The UI does not parse these values out of worker prose. Legacy header-based
   transcripts still render, including `Tokens: in=N out=M`.
 - Cancellation and inference failure can return both an unfinished result and
-  an error. `ExecutorAdapter` and the Agent tool preserve the partial content,
+  an error. `ExecutorAdapter`, the Agent tool, Workflow, and headless `agent run` preserve the partial content,
   usage, agent session id, and transcript path. A failed foreground tool result
   includes its transcript path so the parent can inspect work already done.
+  Workflow records unfinished node findings and inspection pointers in the task
+  output, and counts failed workers' steps and tokens while retaining failure.
 - Legacy tool adaptation keeps stdout/stderr and the failure reason in the
   model-facing content, but uses the separate error reason for error notices.
   Command output should not be duplicated into an error summary.
@@ -169,16 +171,19 @@ func ResetDefaultRegistry()           // test-only
   live display and persistence; it does not additionally record `notice.added`.
   Display-only notices still use notice records. Existing notice records are
   retained; this change does not rewrite older transcripts.
+- Injected notices do not interrupt tool/result pairing; actual user input does.
+  Notification summaries reserve terminal status and reason before shortening
+  descriptions. Failure reasons come from the first error line, not partial
+  findings. Group batches persist their count and unattended-turn context.
 - Tool failures are collapsed by default, with a bounded reason. `ctrl+o` or
   `/history` exposes full diagnostics and partial results; background completion
   messages can also expand in history. Display limits do not truncate stored
   content. Task descriptions and file pointers are escaped as XML attributes.
+- Live foreground progress also limits each activity entry to one display row.
+  Expanding it retains the full diagnostic; the stored activity is unchanged.
 
 ## Configuration and limits
 
-- A positive request `max_steps` overrides the agent definition's `max-steps`,
-  including a smaller budget. A positive definition value is respected. The
-  fallback remains 500 when no positive budget is provided.
 - Subagents start with fresh conversations. Supply the actual working directory,
   source paths, relevant constraints, and a concrete expected result in the
   delegated prompt. Spawning another worker does not resume the previous one.
@@ -202,7 +207,9 @@ internal/app/notify_test.go              — bounded successful and partial fail
 internal/app/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
 internal/app/model_history_test.go       — inspectable background results without state mutation.
 internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
-tests/integration/agent/result_view_test.go — real result → adapter → recorder → resumed UI; step budget.
+tests/integration/agent/result_view_test.go — real result → adapter → recorder → resumed UI.
+internal/tool/workflow/workflow_test.go    — unfinished node output, identity, and parallel usage.
+internal/app/group_test.go                — live and persisted batch context.
 tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.
 ```
 

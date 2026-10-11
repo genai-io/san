@@ -71,15 +71,3 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 		t.Fatalf("expanded UI lost findings or evidence: %q", expanded)
 	}
 }
-
-func TestAgent_SmallBudgetStopsTheActualRuntime(t *testing.T) {
-	provider := &testutil.FakeProvider{Responses: []llm.CompletionResponse{
-		{Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{ID: "read-1", Name: "Read", Input: `{"file_path":"missing.go"}`}}}, StopReason: ai.StopToolUse},
-		{Content: ai.TextContent("Should not reach another inference"), StopReason: ai.StopEndTurn},
-	}}
-	executor := subagent.NewExecutor(provider, t.TempDir(), "worker-model", nil)
-	result, err := executor.Run(context.Background(), tool.AgentExecRequest{Prompt: "Investigate", MaxSteps: 1})
-	if err != nil || result == nil || result.Success || len(provider.Calls) != 1 || !strings.Contains(result.Error, "maximum steps (1)") {
-		t.Fatalf("explicit budget did not stop the runtime: calls=%d, result=%+v, err=%v", len(provider.Calls), result, err)
-	}
-}

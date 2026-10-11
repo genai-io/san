@@ -4,8 +4,34 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/toolresult"
 )
+
+func TestLiveAgentErrorsAreBoundedUntilExpanded(t *testing.T) {
+	call := core.ToolCall{ID: "worker", Name: "Agent", Input: `{"prompt":"Review"}`}
+	activity := map[int][]string{0: {"Read(main.go) failed: " + strings.Repeat("诊断 details\n", 1000)}}
+	for _, width := range []int{30, 80} {
+		params := ToolCallsParams{ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call}, TaskActivity: activity, Width: width}
+		collapsed := stripANSI(RenderToolCalls(params))
+		spinner := stripANSI(RenderPendingToolSpinner(PendingToolSpinnerParams{PendingCalls: []core.ToolCall{call}, TaskActivity: activity, Width: width}))
+		for _, view := range []string{collapsed, spinner} {
+			if strings.Count(view, "\n") > 6 || !strings.Contains(view, "failed") {
+				t.Fatalf("width %d: live error occupies %d lines or loses its status", width, strings.Count(view, "\n"))
+			}
+			for line := range strings.SplitSeq(view, "\n") {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("width %d: activity row overflows: %q", width, line)
+				}
+			}
+		}
+		params.ToolCallsExpanded = true
+		if expanded := stripANSI(RenderToolCalls(params)); strings.Count(strings.Join(strings.Fields(expanded), ""), "诊断details") != 1000 {
+			t.Fatal("expansion lost the full diagnostics")
+		}
+	}
+}
 
 func TestFailedToolBodiesRespectExpansion(t *testing.T) {
 	output := strings.Repeat("diagnostic output\n", 1000)

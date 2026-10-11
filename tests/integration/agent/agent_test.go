@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
@@ -24,6 +26,41 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func TestHeadlessAgentPrintsPartialResultBeforeReturningError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Chdir(t.TempDir())
+	providerID := llm.ProviderID("headless-test")
+	provider := &testutil.FakeProvider{ErrorAt: 2, ErrorValue: errors.New("invalid API credentials"), Responses: []llm.CompletionResponse{
+		{Content: ai.Content{ai.TextBlock("verified partial finding"), ai.ToolCallBlock(core.ToolCall{ID: "unknown", Name: "UnknownTool", Input: "{}"})}, StopReason: ai.StopToolUse},
+	}}
+	llm.Register(llm.Meta{Provider: providerID, AuthMethod: llm.AuthAPIKey}, func(context.Context) (llm.Provider, error) { return provider, nil })
+	t.Cleanup(func() { llm.Unregister(providerID, llm.AuthAPIKey) })
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetCurrentModel("fake-model", providerID, llm.AuthAPIKey); err != nil {
+		t.Fatal(err)
+	}
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	defer write.Close()
+	stdout := os.Stdout
+	os.Stdout = write
+	t.Cleanup(func() { os.Stdout = stdout })
+	runErr := app.RunAgent(app.AgentRunOptions{Prompt: "Investigate"})
+	os.Stdout = stdout
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	if err != nil || runErr == nil || !strings.Contains(string(output), "verified partial finding") || !strings.Contains(string(output), "success=false") {
+		t.Fatalf("headless failure lost its partial result: output=%q runErr=%v readErr=%v", output, runErr, err)
+	}
+}
 
 func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
 	store, err := session.NewStoreWithDir(t.TempDir())

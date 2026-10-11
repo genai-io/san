@@ -5,10 +5,34 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
 )
+
+func TestTaskFailureSummaryKeepsTerminalReasonAndStatus(t *testing.T) {
+	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusStopped, task.StatusCompleted} {
+		for _, description := range []string{"review", strings.Repeat("审查 source ", 20)} {
+			msg, _ := taskCompletionMessage(task.TaskInfo{ID: "worker", Status: status, Description: description,
+				Error: "provider unavailable", Output: "partial findings\nError: nested diagnostic"})
+			m := commitTestModel()
+			m.showNoticeLine(fromBrokerMessage(msg))
+			for _, width := range []int{30, 80} {
+				view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: width}, 0))
+				if !strings.Contains(view, string(status)) || strings.Contains(view, "nested diagnostic") {
+					t.Fatalf("status %s, width %d: summary lost outcome or took a reason from partial output: %q", status, width, view)
+				}
+				if status != task.StatusCompleted && width == 80 && !strings.Contains(view, "provider unavailable") {
+					t.Fatalf("summary lost the terminal reason: %q", view)
+				}
+				if ansi.StringWidth(strings.TrimSpace(view)) > width {
+					t.Fatalf("summary overflows width %d: %q", width, view)
+				}
+			}
+		}
+	}
+}
 
 // A broker message routed to main is an agent message, so its notice is marked
 // FromAgent and merging preserves that whenever any component came from an agent.

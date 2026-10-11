@@ -294,14 +294,11 @@ func (m *model) deliverMemberMessages(g string, self group.Member, msgs []group.
 	for i, msg := range msgs {
 		bodies[i] = m.groupMessage(msg, m.grp.unattended)
 	}
-	display := fromLine(msgs[0])
+	content := strings.Join(bodies, "\n\n")
 	if len(msgs) > 1 {
-		display += fmt.Sprintf(" (+%d more)", len(msgs)-1)
+		content = fmt.Sprintf("<group-messages count=\"%d\">\n%s\n</group-messages>", len(msgs), content)
 	}
-	if m.grp.unattended >= 2 {
-		display += fmt.Sprintf(" · unattended %d", m.grp.unattended)
-	}
-	cmd := m.deliverNotice(mainNotice{Display: display, Content: strings.Join(bodies, "\n\n"), FromAgent: true})
+	cmd := m.deliverNotice(mainNotice{Content: content, FromAgent: true})
 	group.Delivered(msgs)
 	return cmd
 }

@@ -60,7 +60,7 @@ func TestAgentEnvelopeSummary(t *testing.T) {
 			if !tt.isEnv {
 				return
 			}
-			if got := agentEnvelopeSummary(tt.content); got != tt.want {
+			if got := agentEnvelopeSummary(tt.content, 80); got != tt.want {
 				t.Fatalf("agentEnvelopeSummary = %q, want %q", got, tt.want)
 			}
 		})
@@ -89,7 +89,7 @@ func TestAGroupMessageSummarizesToItsSender(t *testing.T) {
 	if !IsAgentEnvelope(msg) {
 		t.Fatal("a group message is not recognised as an envelope")
 	}
-	if got := agentEnvelopeSummary(msg); got != "From @api: coupon_code is live" {
+	if got := agentEnvelopeSummary(msg, 80); got != "From @api: coupon_code is live" {
 		t.Errorf("summary = %q", got)
 	}
 }

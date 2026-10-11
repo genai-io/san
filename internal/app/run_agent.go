@@ -82,17 +82,20 @@ func RunAgent(opts AgentRunOptions) error {
 		},
 	}
 	result, err := executor.Run(ctx, req)
+	if result != nil {
+		if result.Content != "" {
+			fmt.Println(result.Content)
+		}
+		fmt.Printf("\n---\nDone: %d steps, %d tool uses (success=%t)\n", result.StepCount, result.ToolUses, result.Success)
+		if result.TranscriptPath != "" {
+			fmt.Printf("Transcript: %s\n", result.TranscriptPath)
+		}
+		if result.Error != "" {
+			fmt.Printf("Error: %s\n", result.Error)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("agent failed: %w", err)
-	}
-
-	if result.Content != "" {
-		fmt.Println(result.Content)
-	}
-
-	fmt.Printf("\n---\nDone: %d steps, %d tool uses (success=%t)\n", result.StepCount, result.ToolUses, result.Success)
-	if result.Error != "" {
-		fmt.Printf("Error: %s\n", result.Error)
 	}
 	return nil
 }

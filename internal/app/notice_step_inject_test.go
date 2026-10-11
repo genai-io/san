@@ -63,6 +63,22 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	}
 }
 
+func TestAgentNoticeKeepsForegroundResultPaired(t *testing.T) {
+	m := commitTestModel(core.ChatMessage{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{
+		{ID: "foreground", Name: "Agent", Input: `{"prompt":"Review"}`},
+	}})
+	m.showNoticeLine(taskNotice())
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "foreground", ToolName: "Agent"}})
+	if !m.messageRenderParams().InlinedResults.IsResultInlined(2) {
+		t.Fatal("background notice detached the foreground result")
+	}
+	// Real user input still ends the batch's result scan.
+	m.conv.Messages[1].Content = "review a different file"
+	if m.messageRenderParams().InlinedResults.IsResultInlined(2) {
+		t.Fatal("result pairing crossed real user input")
+	}
+}
+
 // noticeDeliveryModel returns a model whose agent session is live, plus the
 // provider that records the message chain of its next inference — which is how
 // these tests see what the model actually got to read.
