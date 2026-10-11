@@ -518,6 +518,16 @@ func SaveContextBar(on bool) error {
 	return nil
 }
 
+// SaveGitBar persists the optional Git status row to ~/.san/settings.json.
+// An explicit false is retained so switching the bar off survives a reload.
+func SaveGitBar(on bool) error {
+	if err := NewLoader().SaveToUser(&Data{GitBar: &on}); err != nil {
+		return err
+	}
+	invalidateLoaded()
+	return nil
+}
+
 // SaveThinkingDisplay persists the reasoning-display choice to
 // ~/.san/settings.json, replacing the field. Callers pass one of the
 // ThinkingDisplay* constants; an unrecognized value resolves to the default on

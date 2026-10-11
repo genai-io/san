@@ -102,6 +102,7 @@ func applyStartupSettings(environment *env, settings *setting.Data, cwd string, 
 	environment.ApplyDefaultPermissionMode(settings.StartupMode(), cwd, allowBypass)
 	hookEngine.SetPermissionMode(environment.OperationModeName())
 	environment.ShowContextBar = settings.ShowContextBar()
+	environment.ShowGitBar = settings.ShowGitBar()
 	environment.ThinkingDisplay = settings.ThinkingDisplayMode()
 	environment.AutoPilot = settings.AutoPilot.Clone()
 }

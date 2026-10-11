@@ -63,6 +63,7 @@ type model struct {
 	env             env                  // Shared app state: provider, session, permission, plan, config
 	services        services             // Domain service singletons, injected at construction
 	learnedStores   *learnedStoreContext // live cwd/settings source for /evolve inventories
+	gitBar          gitBarState          // optional local repository snapshot and poll generation
 
 	// welcomePending marks the startup splash as not yet frozen into scrollback.
 	// While set, the splash renders live above the input (visible from launch
@@ -199,6 +200,7 @@ func (m *model) Init() tea.Cmd {
 		awaitSelfLearnStart(m.selfLearnStarts),
 		autoUpdate(m.env.Version, m.services.Setting.AutoUpdate()),
 		refreshModelData(),
+		m.syncGitBar(),
 	}
 	if m.env.InitialPrompt != "" {
 		prompt := m.env.InitialPrompt

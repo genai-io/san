@@ -51,6 +51,8 @@ type env struct {
 	// bar. Cached here so the hot render path never snapshots settings.
 	// Set at startup and whenever the /settings Appearance panel saves.
 	ShowContextBar bool
+	// ShowGitBar enables the optional, locally polled repository status row.
+	ShowGitBar bool
 	// ThinkingDisplay mirrors the persisted reasoning-display preference
 	// ("full" / "collapsed" / "hidden"); one of the setting.ThinkingDisplay*
 	// constants, already resolved through setting.Data.ThinkingDisplayMode so

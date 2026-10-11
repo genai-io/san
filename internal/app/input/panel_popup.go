@@ -86,6 +86,14 @@ func NewSettingsSelector(settings *setting.Settings) PanelPopup {
 		newAppearancePanel(settings), newPermissionsPanel(settings), newGeneralPanel(settings))
 }
 
+// SetSettings rebinds the Settings panels while keeping the active tab and popup state.
+func (c *PanelPopup) SetSettings(settings *setting.Settings) {
+	c.panels = NewSettingsSelector(settings).panels
+	if c.active {
+		c.activePanel().Enter()
+	}
+}
+
 // Enter activates the popup, re-focusing whichever panel was last open (the
 // index survives between openings, so /settings reopens where you left it).
 func (c *PanelPopup) Enter(width, height int) {
@@ -292,7 +300,7 @@ func (c *PanelPopup) renderHint(panelHint string) string {
 	}
 	parts = append(parts, "esc close")
 	if len(c.panels) > 1 {
-		parts = append(parts, "tab switch panel")
+		parts = append(parts, "tab panels")
 	}
 	return kit.HintLine(parts...)
 }

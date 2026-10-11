@@ -104,6 +104,9 @@ type initialPromptMsg string
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)
+	if refresh := m.syncGitBar(); refresh != nil {
+		cmd = tea.Batch(cmd, refresh)
+	}
 	if print := m.flushVisibleOverflow(); print != nil {
 		cmd = tea.Batch(cmd, print)
 	}
@@ -130,6 +133,10 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateFailedMsg:
 		m.updateFailed = msg
 		return m, nil
+	case gitStatusMsg:
+		return m, m.handleGitStatus(msg)
+	case gitBarTickMsg:
+		return m, m.handleGitBarTick(msg)
 	case tea.KeyPressMsg:
 		if c, ok := m.routeKeypress(msg); ok {
 			return m, c
@@ -285,6 +292,23 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.conv.AddNotice("Context bar on")
 		} else {
 			m.conv.AddNotice("Context bar off")
+		}
+		return m, nil
+	case input.GitBarSavedMsg:
+		m.env.ShowGitBar = msg.On
+		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
+			log.Logger().Warn("reload settings after Git-bar save failed", zap.Error(err))
+		} else {
+			m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()
+		}
+		state := "off"
+		if m.env.ShowGitBar {
+			state = "on"
+		}
+		if m.env.ShowGitBar != msg.On {
+			m.conv.AddNotice("Saved, but a project setting keeps Git bar " + state)
+		} else {
+			m.conv.AddNotice("Git bar " + state)
 		}
 		return m, nil
 	case input.ThinkingDisplaySavedMsg:

@@ -152,6 +152,24 @@ by rename. Failed writes remove the temporary file and retain the old contents.
 - Tests: `internal/atomicfile/` covers concurrent replacement, process locking,
   permissions and path resolution.
 
+## `internal/proc`
+
+Cross-platform process/shell helpers and small external-command adapters.
+`ReadGitStatus(ctx, cwd)` (`internal/proc/git.go`) reads a local worktree snapshot
+for the optional TUI Git bar. It uses NUL-delimited porcelain v2 output to handle
+renames and arbitrary filenames, including unborn branches and linked/detached
+worktrees. It disables optional index locks and fsmonitor hooks, never fetches,
+and strips credentials from remote display labels. The caller supplies a bounded
+context; cancellation terminates Git and its child processes, with a 100 ms
+backstop for output pipes held open after exit. Commands have no controlling
+terminal. No configuration or process-wide state is stored by this helper.
+
+Tests in `internal/proc/git_test.go` cover parsing, repository discovery, worktrees,
+remote-label privacy, cancellation (including clean-filter children) and missing
+Git. Non-repositories return an
+error for the consumer to handle quietly; do not display raw remote URLs or treat
+failed reads as clean worktrees.
+
 ## `internal/autoupdate`
 
 Replaces the running `san` binary with a newer GitHub release. The running

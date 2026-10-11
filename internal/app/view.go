@@ -216,6 +216,10 @@ func (m *model) renderFooter(separator string) (string, int) {
 	} else {
 		b.WriteString(" ")
 	}
+	if gitBar := m.renderGitBar(); gitBar != "" {
+		b.WriteString("\n")
+		b.WriteString(gitBar)
+	}
 	return b.String(), inputRow
 }
 

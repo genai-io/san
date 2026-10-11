@@ -126,8 +126,8 @@ func TestAppearancePanelEnterSaveFailureSurfacesError(t *testing.T) {
 	}
 }
 
-// TestAppearancePanelContextBarSavesAndEmits confirms selecting the "On"
-// context-bar row persists contextBar=true to the user settings file,
+// TestAppearancePanelContextBarSavesAndEmits confirms toggling context usage
+// On persists contextBar=true to the user settings file,
 // advances the bar baseline, and emits a ContextBarSavedMsg.
 func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
 	home := t.TempDir()
@@ -140,8 +140,9 @@ func TestAppearancePanelContextBarSavesAndEmits(t *testing.T) {
 		t.Fatalf("context bar should default off")
 	}
 
-	// Walk down to the "On" context-bar row (index 3) and select it.
-	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown}) // auto → On
+	// Walk down to Context usage (index 3), preview On, and apply it.
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyDown})  // auto → Context usage
+	p.HandleKey(tea.KeyPressMsg{Code: tea.KeyRight}) // Off → On
 	cmd, done := p.HandleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !done {
 		t.Fatalf("enter should dismiss the popup (done=true)")

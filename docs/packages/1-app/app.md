@@ -94,6 +94,7 @@ Root files (no business logic; pure glue):
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |
+| `model_git_bar.go` | Optional asynchronous Git snapshot polling, cancellation and footer adapter. |
 | `model_turn_queue.go` | Notice delivery, turn-end queue drain + prompt injection + stop-hook gate. |
 | `model_deps.go` | Deps builders for sub-features (`overlayDeps`, `triggerDeps`, etc.). |
 | `model_actions.go` | Identity switch + slash-command dispatch from selector hotkeys. |
@@ -176,6 +177,38 @@ each group the newest items stay visible, while displayed rows retain their
 original order. Overflow counts distinguish in-progress, failed/stopped,
 pending, and completed plan items; rendering leaves task records intact.
 
+### Optional Git information bar
+
+- **Entrypoint/configuration:** `/settings` → Appearance → STATUS BAR groups
+  Context usage and Git information in two aligned, compact Off / On controls.
+  Left / Right previews a value; Enter saves the focused preference and closes
+  the popup. Moving to another row discards an un-applied toggle preview. The
+  Git control writes the user-level `gitBar` preference (default off);
+  `input.GitBarSavedMsg` reloads settings and applies the effective value
+  immediately. The footer uses plain terminal text without extra colors, a
+  `git` prefix, background or rule. It omits `clean` and zero counts, so an
+  unchanged repository shows only branch and remote.
+- **Core packages/flow:** `setting` persists and merges the tri-state preference;
+  root `model_git_bar.go` starts a bounded `tea.Cmd` read through
+  `proc.ReadGitStatus`; `conv.RenderGitBar` draws the cached snapshot beneath the
+  normal status line. `renderFooter` includes the extra row in the shared height
+  budget and composer cursor placement.
+- **Lifecycle:** startup, enabling and cwd changes request a snapshot immediately;
+  each result schedules the next read after three seconds. Disabling or changing
+  cwd cancels the active read; generation tags reject obsolete results and ticks.
+  An already-scheduled trailing tick is ignored and cannot restart polling.
+  Project-service reloads rebind the Settings panels to the current settings
+  handle while preserving the active tab and whether the popup is open.
+- **Pitfalls:** never invoke Git from `View` or synchronously in `Update`; hide an
+  unavailable snapshot rather than claiming it is clean. Counts use local refs,
+  not a network fetch, and remote labels must never expose credentials. The
+  Appearance generates row text and cursor/section positions together, then
+  windows around its hovered section on short terminals and reserves explicit
+  save-error rows so the added group does not overflow the popup. Compact section spacing keeps both
+  bar controls visible when Appearance first opens on an 80×24 terminal; shared
+  label widths and short hints keep descriptions aligned and avoid lone words
+  wrapping below the controls.
+
 ## Lifecycle
 
 - `cmd/san` calls `app.Run()` which builds the `tea.Program`,
@@ -199,6 +232,9 @@ The root package has focused lifecycle/state tests and broader coverage through
 internal/app/conv/message_test.go              — message rendering.
 internal/app/conv/markdown_test.go             — markdown renderer.
 internal/app/conv/tracker_view_test.go         — task tracker view.
+internal/app/conv/git_bar_test.go              — Git row content, CJK widths and truncation.
+internal/app/model_git_bar_test.go             — polling, stale events, settings and footer height.
+internal/app/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
 internal/app/view_test.go                     — fixed composer, multiline input and candidates.
 internal/app/model_scrollback_test.go          — recent output retention and resize.
 internal/app/model_scrollback_renderer_test.go — native history integrity through the real renderer.
