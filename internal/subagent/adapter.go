@@ -25,7 +25,7 @@ var _ tool.AgentExecutor = (*ExecutorAdapter)(nil)
 // fields the tool layer does not need).
 func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
 	result, err := a.Executor.Run(ctx, req)
-	if err != nil {
+	if result == nil {
 		return nil, err
 	}
 
@@ -43,7 +43,7 @@ func (a *ExecutorAdapter) Run(ctx context.Context, req tool.AgentExecRequest) (*
 		Duration:          result.Duration,
 		Activity:          result.Activity,
 		Error:             result.Error,
-	}, nil
+	}, err
 }
 
 // RunBackground executes an agent in background

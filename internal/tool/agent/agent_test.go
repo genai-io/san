@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/genai-io/san/internal/tool"
@@ -12,11 +14,64 @@ type recordingExecutor struct {
 	configOK          bool
 	resolvedConfig    any
 	runReq            tool.AgentExecRequest
+	runResult         *tool.AgentExecResult
+	runErr            error
 }
 
 func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
 	e.runReq = req
+	if e.runResult != nil || e.runErr != nil {
+		return e.runResult, e.runErr
+	}
 	return &tool.AgentExecResult{Success: true, Content: "done"}, nil
+}
+
+func TestAgentToolPreservesUnfinishedResult(t *testing.T) {
+	for _, cause := range []error{context.Canceled, errors.New("provider unavailable")} {
+		t.Run(cause.Error(), func(t *testing.T) {
+			executor := &recordingExecutor{
+				configOK: true, runErr: cause,
+				runResult: &tool.AgentExecResult{
+					Content: "partial findings", Error: "execution stopped",
+					AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
+				},
+			}
+			agentTool := NewAgentTool()
+			agentTool.SetExecutor(executor)
+			result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
+			if result.Success || !strings.Contains(result.Output, "partial findings") || result.Error != "execution stopped" {
+				t.Fatalf("unfinished result lost output or status: %#v", result)
+			}
+			if !strings.Contains(result.Output, "/tmp/child-1.jsonl") {
+				t.Fatalf("model cannot inspect unfinished transcript: %q", result.Output)
+			}
+			hook, ok := result.HookResponse.(map[string]any)
+			if !ok || hook["agentId"] != "child-1" || hook["outputFile"] != "/tmp/child-1.jsonl" || hook["status"] != "error" {
+				t.Fatalf("unfinished result lost inspection metadata: %#v", result.HookResponse)
+			}
+		})
+	}
+}
+
+func TestAgentToolExecutionErrorWithoutResult(t *testing.T) {
+	agentTool := NewAgentTool()
+	agentTool.SetExecutor(&recordingExecutor{configOK: true, runErr: errors.New("failed to initialize")})
+	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
+	if result.Success || !strings.Contains(result.Error, "failed to initialize") {
+		t.Fatalf("startup failure = %#v", result)
+	}
+}
+
+func TestAgentToolExecutionErrorOverridesSuccess(t *testing.T) {
+	agentTool := NewAgentTool()
+	agentTool.SetExecutor(&recordingExecutor{
+		configOK: true, runErr: errors.New("provider unavailable"),
+		runResult: &tool.AgentExecResult{Success: true, Content: "partial findings"},
+	})
+	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
+	if result.Success || result.Output != "partial findings" || result.Error != "provider unavailable" {
+		t.Fatalf("execution error must win over the result's success flag: %#v", result)
+	}
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	e.runReq = req

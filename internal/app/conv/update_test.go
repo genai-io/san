@@ -1,12 +1,43 @@
 package conv
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/core"
 )
+
+func TestFinishingAgentKeepsSiblingActivity(t *testing.T) {
+	for _, first := range []int{0, 1} {
+		m := NewModel(100)
+		calls := []core.ToolCall{
+			{ID: "agent-1", Name: "Agent", Input: `{"description":"first"}`},
+			{ID: "agent-2", Name: "Agent", Input: `{"description":"second"}`},
+		}
+		m.Tool.Track(calls)
+		m.TaskActivity = map[int][]string{0: {"Read(first.go)"}, 1: {"Read(second.go)"}}
+		sibling := 1 - first
+		want := m.TaskActivity[sibling][0]
+		rt := &postToolRuntime{}
+		applyPostTool(rt, &m, core.ToolResult{ToolCallID: calls[first].ID, ToolName: "Agent"}, nil)
+		if _, ok := m.TaskActivity[first]; ok {
+			t.Fatalf("completed agent %d retained live activity", first)
+		}
+		rendered := stripANSI(RenderToolCalls(ToolCallsParams{
+			ToolCalls: calls, ResultMap: map[string]ToolResultData{calls[first].ID: {ToolName: "Agent"}}, PendingCalls: m.Tool.PendingCalls,
+			TaskActivity: m.TaskActivity, CurrentIdx: m.Tool.CurrentIdx, Width: 100,
+		}))
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("finishing agent %d hid sibling activity %q: %s", first, want, rendered)
+		}
+		applyPostTool(rt, &m, core.ToolResult{ToolCallID: calls[sibling].ID, ToolName: "Agent"}, nil)
+		if len(m.TaskActivity) != 0 {
+			t.Fatalf("completed batch retained live activity: %#v", m.TaskActivity)
+		}
+	}
+}
 
 type postToolRuntime struct {
 	Runtime

@@ -175,6 +175,10 @@ func (a *toolAdapter) Run(ctx context.Context, call ai.ToolCall) (agent.Result, 
 	res := agent.TextResult(text)
 	res.Details = result.Details
 	if !result.Success {
+		// Keep full output in Content, and use only the reason in error notices.
+		if result.Error != "" {
+			return res, fmt.Errorf("%s", result.Error)
+		}
 		return res, fmt.Errorf("%s", text)
 	}
 	return res, nil

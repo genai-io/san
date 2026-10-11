@@ -72,6 +72,10 @@ func ResetDefaultTracker()         // test-only
   `Remove(id)` evicts the record after completion.
 - Concurrency: registry is mutex-protected; per-task streams use their
   own buffers.
+- Terminal notifications carry the error reason and any partial output
+  together. Output above the notification's inline-size limit points at the
+  task log, including when the task failed or was stopped; the failure status
+  remains explicit.
 
 ## Tests
 

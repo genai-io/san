@@ -83,3 +83,24 @@ func TestTaskCompletionMessageOversizedWithoutFileInlines(t *testing.T) {
 		t.Fatalf("without an output file the full result must be inlined, got %d-byte content", len(msg.Content))
 	}
 }
+
+func TestTaskCompletionMessagePreservesFailedOutput(t *testing.T) {
+	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusStopped} {
+		for _, output := range []string{"partial <findings>", strings.Repeat("x", maxTaskOutputInNotification+1)} {
+			msg, ok := taskCompletionMessage(task.TaskInfo{
+				ID: "failed-task", Type: task.TaskTypeAgent, Status: status,
+				Error: "provider <unavailable>", Output: output, OutputFile: "/tmp/failed-task.log",
+			})
+			if !ok || !strings.Contains(msg.Content, "provider &lt;unavailable&gt;") {
+				t.Fatalf("terminal notice lost error: %#v", msg)
+			}
+			if len(output) <= maxTaskOutputInNotification {
+				if !strings.Contains(msg.Content, "partial &lt;findings&gt;") {
+					t.Fatalf("terminal notice lost partial findings: %s", msg.Content)
+				}
+			} else if !strings.Contains(msg.Content, "too large to inline") || strings.Contains(msg.Content, "xxxx") {
+				t.Fatalf("large partial findings must use output-file pointer: %s", msg.Content)
+			}
+		}
+	}
+}

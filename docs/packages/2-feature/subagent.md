@@ -135,12 +135,34 @@ func ResetDefaultRegistry()           // test-only
   was fulfilled. Callers must read the result and retain any incomplete
   coverage or blockers; a permission-denied review is not a clean review.
 
+## Results and display
+
+- A normal end of the model turn produces `Success=true`; this records the
+  execution outcome, not proof that the requested work was fulfilled. The
+  parent must verify the returned findings or changes.
+- Cancellation and inference failure can return both an unfinished result and
+  an error. `ExecutorAdapter` and the Agent tool preserve the partial content,
+  usage, agent session id, and transcript path. A failed foreground tool result
+  includes its transcript path so the parent can inspect work already done.
+- Legacy tool adaptation keeps stdout/stderr and the failure reason in the
+  model-facing content, but uses the separate error reason for error notices.
+  Command output should not be duplicated into an error summary.
+- Completing a foreground Agent call clears only that call's live activity;
+  other agents in the same parallel tool batch keep their progress.
+- Background failure and stop notifications include partial output under the
+  same inline-size limit as successful output. Larger results point at the
+  task output file. A failure must not hide usable findings.
+
 ## Tests
 
 ```
 internal/subagent/executor_test.go      — end-to-end run scenarios.
 internal/subagent/lazy_loading_test.go  — config files read on demand.
 internal/subagent/scenarios_test.go     — common invocation shapes.
+tests/integration/agent/agent_test.go    — runtime, permissions, failed transcript projection.
+internal/tool/agent/agent_test.go        — foreground result and error preservation.
+internal/app/conv/update_test.go         — sibling activity survives agent completion.
+internal/app/notify_test.go              — bounded successful and partial failure notices.
 ```
 
 ## See Also

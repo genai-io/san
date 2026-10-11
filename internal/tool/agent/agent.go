@@ -220,8 +220,14 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	// Foreground execution
 	result, err := t.executor.Run(ctx, req)
-	if err != nil {
+	if err != nil && result == nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent execution failed: %v", err))
+	}
+	if err != nil {
+		result.Success = false
+		if result.Error == "" {
+			result.Error = err.Error()
+		}
 	}
 
 	duration := time.Since(start)
@@ -229,9 +235,13 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	displayName := displayAgentLabel(agentName, mode)
 	if !result.Success {
 		hookResponse := buildAgentHookResponse(result, agentName, prompt)
+		output := result.Content
+		if result.OutputFile != "" {
+			output += "\n\nTranscript: " + result.OutputFile
+		}
 		return toolresult.ToolResult{
 			Success:      false,
-			Output:       result.Content,
+			Output:       output,
 			Error:        result.Error,
 			HookResponse: hookResponse,
 			Metadata: toolresult.ResultMetadata{

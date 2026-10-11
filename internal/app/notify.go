@@ -87,9 +87,13 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		fmt.Fprintf(&b, " output-file=%q", info.OutputFile)
 	}
 	b.WriteString(">\n")
-	switch {
-	case info.Error != "":
+	if info.Error != "" {
 		b.WriteString(tool.EscapeXMLText(info.Error))
+		if result != "" {
+			b.WriteString("\n\nPartial output:\n")
+		}
+	}
+	switch {
 	case len(result) > maxTaskOutputInNotification && info.OutputFile != "":
 		// Too large to inline without bloating the main context. Point at the
 		// full result instead of dumping a partial preview.
