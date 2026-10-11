@@ -154,21 +154,16 @@ by rename. Failed writes remove the temporary file and retain the old contents.
 
 ## `internal/proc`
 
-Cross-platform process/shell helpers and small external-command adapters.
-`ReadGitStatus(ctx, cwd)` (`internal/proc/git.go`) reads a local worktree snapshot
-for the optional TUI Git bar. It uses NUL-delimited porcelain v2 output to handle
-renames and arbitrary filenames, including unborn branches and linked/detached
-worktrees. It disables optional index locks and fsmonitor hooks, never fetches,
-and strips credentials from remote display labels. The caller supplies a bounded
-context; cancellation terminates Git and its child processes, with a 100 ms
-backstop for output pipes held open after exit. Commands have no controlling
-terminal. No configuration or process-wide state is stored by this helper.
+Cross-platform process helpers. `ReadGitStatus(ctx, cwd)` in `internal/proc/git.go`
+reads local worktree metadata using NUL-delimited porcelain v2, supporting
+renames, unborn/detached HEAD and linked worktrees. It never fetches, disables
+optional index locks and fsmonitor hooks, and sanitizes repository labels.
+The caller bounds the context; cancellation kills Git and its children, with a
+100 ms pipe backstop. The adapter stores no configuration or global state.
 
-Tests in `internal/proc/git_test.go` cover parsing, repository discovery, worktrees,
-remote-label privacy, cancellation (including clean-filter children) and missing
-Git. Non-repositories return an
-error for the consumer to handle quietly; do not display raw remote URLs or treat
-failed reads as clean worktrees.
+`internal/proc/git_test.go` covers parsing, discovery, worktrees, remote privacy,
+missing Git and cancellation. Consumers should hide read failures, not treat
+failed reads as clean or display raw remote URLs.
 
 ## `internal/autoupdate`
 

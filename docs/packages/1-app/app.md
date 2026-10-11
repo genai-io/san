@@ -179,35 +179,21 @@ pending, and completed plan items; rendering leaves task records intact.
 
 ### Optional Git information bar
 
-- **Entrypoint/configuration:** `/settings` → Appearance → STATUS BAR groups
-  Context usage and Git information in two aligned, compact Off / On controls.
-  Left / Right previews a value; Enter saves the focused preference and closes
-  the popup. Moving to another row discards an un-applied toggle preview. The
-  Git control writes the user-level `gitBar` preference (default off);
-  `input.GitBarSavedMsg` reloads settings and applies the effective value
-  immediately. The footer uses plain terminal text without extra colors, a
-  `git` prefix, background or rule. It omits `clean` and zero counts, so an
-  unchanged repository shows only branch and remote.
-- **Core packages/flow:** `setting` persists and merges the tri-state preference;
-  root `model_git_bar.go` starts a bounded `tea.Cmd` read through
-  `proc.ReadGitStatus`; `conv.RenderGitBar` draws the cached snapshot beneath the
-  normal status line. `renderFooter` includes the extra row in the shared height
-  budget and composer cursor placement.
-- **Lifecycle:** startup, enabling and cwd changes request a snapshot immediately;
-  each result schedules the next read after three seconds. Disabling or changing
-  cwd cancels the active read; generation tags reject obsolete results and ticks.
-  An already-scheduled trailing tick is ignored and cannot restart polling.
-  Project-service reloads rebind the Settings panels to the current settings
-  handle while preserving the active tab and whether the popup is open.
-- **Pitfalls:** never invoke Git from `View` or synchronously in `Update`; hide an
-  unavailable snapshot rather than claiming it is clean. Counts use local refs,
-  not a network fetch, and remote labels must never expose credentials. The
-  Appearance generates row text and cursor/section positions together, then
-  windows around its hovered section on short terminals and reserves explicit
-  save-error rows so the added group does not overflow the popup. Compact section spacing keeps both
-  bar controls visible when Appearance first opens on an 80×24 terminal; shared
-  label widths and short hints keep descriptions aligned and avoid lone words
-  wrapping below the controls.
+- **Configuration:** `/settings` → Appearance → STATUS BAR groups Context usage
+  and Git information in compact Off / On controls. Left / Right previews; Enter
+  saves the focused preference. `gitBar` defaults off; `input.GitBarSavedMsg`
+  reloads the effective setting. See [configuration](../../reference/configuration.md).
+- **Flow:** `model_git_bar.go` reads through `proc.ReadGitStatus` in a bounded
+  `tea.Cmd`; `conv.RenderGitBar` draws a plain-text snapshot beneath the normal
+  status line. `renderFooter` accounts for its height and composer cursor.
+- **Lifecycle:** startup, enabling and cwd changes read immediately, then poll
+  after three seconds. Disabling or changing cwd cancels the read; generation
+  tags reject stale results and ticks. Service reloads rebind Settings panels
+  without closing the popup or changing its tab.
+- **Layout/pitfalls:** both toggles fit on initial open at 80×24; short panels
+  window around recorded cursor/section rows and pin save errors. Never run Git
+  from `View` or synchronously in `Update`, expose remote credentials, or treat
+  an unavailable snapshot as clean.
 
 ## Lifecycle
 

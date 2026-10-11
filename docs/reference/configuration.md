@@ -41,35 +41,27 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
 
 ### `gitBar`
 
-Optional Git information row beneath the normal status line. Defaults to `false`.
-Configure both bars together in `/settings` → Appearance → STATUS BAR. Select
-Git information, use Left / Right to preview Off / On, then Enter to apply; the
-choice is saved in `~/.san/settings.json`. Project/local settings can override
-that user preference, following the load priority above.
-
-The row shows the current branch (or short commit for detached HEAD), repository,
-working-tree changes and commits ahead/behind the configured tracking branch.
-It uses ordinary terminal text without a redundant `git` prefix or extra colors:
+Optional plain-text Git row beneath the normal status line; defaults to `false`.
+Set it in `/settings` → Appearance → STATUS BAR → Git information: Left / Right
+previews Off / On; Enter saves to `~/.san/settings.json`. Project/local settings
+can override this preference.
 
 ```text
   main · +2 ~3 ?1 · ↑1 ↓2 · github.com/owner/repo
 ```
 
-- `+N`: staged paths; `~N`: modified unstaged paths; `?N`: untracked files;
-  `!N`: conflicted paths. Zero counts and redundant `clean` labels are omitted,
-  so an unchanged worktree shows just the branch and repository.
-- `↑N` / `↓N`: commits ahead / behind the locally known upstream. No fetch is
-  performed, so these counts reflect the last fetch, not live GitHub state.
-- Repository labels prefer the branch's tracking remote, then `origin`, then
-  another configured remote. Repositories without remotes use their root name.
-  Remote credentials, URL query parameters and local parent paths are omitted.
+- `+N`: staged paths; `~N`: unstaged modified paths; `?N`: untracked files;
+  `!N`: conflicts. `↑N` / `↓N`: commits ahead / behind locally known tracking refs.
+- Zero counts, `clean`, the `git` prefix and extra colors are omitted. Detached
+  HEAD shows a short commit; narrow rows prioritize branch/status over repository.
+- Repository labels prefer the tracking remote, then `origin`, then another
+  remote; without remotes, the root name. Credentials, query/fragment data and
+  local parent paths are omitted.
 
-Reads run asynchronously with a two-second limit and a three-second delay between
-polls. Changing workspaces immediately clears the old snapshot and starts a new
-read; disabling cancels an in-flight read and stops further polling. The row is
-hidden outside a repository, if Git is unavailable, or when a read fails. Narrow
-terminals truncate the repository label before sacrificing branch/status space.
-GitHub authentication and network access are not required.
+Reads are asynchronous (two-second timeout, three-second delay between polls),
+local-only and never fetch. Workspace changes clear the snapshot and reread;
+disabling cancels polling. The row hides outside a repository, without Git, or
+on read failure.
 
 ### `thinkingDisplay`
 

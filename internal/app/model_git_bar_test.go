@@ -31,28 +31,28 @@ func TestGitBarStartupPreference(t *testing.T) {
 
 func TestGitBarEnableDisableAndStaleResults(t *testing.T) {
 	m := &model{env: env{CWD: t.TempDir()}}
-	if cmd := m.syncGitBar(); cmd != nil || m.gitBar.active {
+	if cmd := m.syncGitBar(); cmd != nil || m.gitBar.cwd != "" {
 		t.Fatal("disabled Git bar started polling")
 	}
 	m.env.ShowGitBar = true
 	cmd := m.syncGitBar()
-	if cmd == nil || !m.gitBar.active || !m.gitBar.pending {
+	if cmd == nil || m.gitBar.cwd != m.env.CWD || m.gitBar.cancel == nil {
 		t.Fatal("enabling must immediately start an asynchronous read")
 	}
 	defer m.cancelGitBarRead()
-	if cmd := m.syncGitBar(); cmd != nil {
+	if m.syncGitBar() != nil || m.refreshGitBar() != nil {
 		t.Fatal("ordinary updates must not duplicate an in-flight read")
 	}
 	generation := m.gitBar.generation
 	msg := gitStatusMsg{generation: generation, cwd: m.env.CWD, status: proc.GitStatus{Branch: "main"}}
-	if cmd := m.handleGitStatus(msg); cmd == nil || m.gitBar.pending || m.gitBar.status.Branch != "main" {
+	if cmd := m.handleGitStatus(msg); cmd == nil || m.gitBar.cancel != nil || m.gitBar.status.Branch != "main" {
 		t.Fatal("valid result must update the snapshot and schedule a poll")
 	}
-	if cmd := m.handleGitBarTick(gitBarTickMsg{generation: generation}); cmd == nil || !m.gitBar.pending {
+	if cmd := m.handleGitBarTick(gitBarTickMsg{generation: generation}); cmd == nil || m.gitBar.cancel == nil {
 		t.Fatal("valid poll tick did not start a read")
 	}
 	m.env.ShowGitBar = false
-	if cmd := m.syncGitBar(); cmd != nil || m.gitBar.active || m.gitBar.cancel != nil {
+	if cmd := m.syncGitBar(); cmd != nil || m.gitBar.cwd != "" || m.gitBar.cancel != nil {
 		t.Fatal("disabling must cancel and stop polling")
 	}
 	if cmd := m.handleGitStatus(msg); cmd != nil || m.gitBar.status.Branch != "" {
@@ -142,6 +142,9 @@ func TestGitBarReadFailureHidesSnapshot(t *testing.T) {
 	if !ok || msg.status != (proc.GitStatus{}) {
 		t.Fatalf("non-repository read = %#v", msg)
 	}
+	if m.refreshGitBar() != nil {
+		t.Fatal("completed read must block another read until its result is handled")
+	}
 	m.gitBar.status = proc.GitStatus{Branch: "stale"}
 	m.handleGitStatus(msg)
 	if got := m.renderGitBar(); got != "" {
@@ -186,7 +189,7 @@ func TestGitBarSavedAppliesEffectivePreference(t *testing.T) {
 			t.Fatal(err)
 		}
 		m.Update(input.GitBarSavedMsg{On: on})
-		if m.gitBar.active != on || m.gitBar.pending != on {
+		if (m.gitBar.cwd != "") != on || (m.gitBar.cancel != nil) != on {
 			t.Fatalf("saved on=%v did not start/stop polling", on)
 		}
 		if m.env.ShowGitBar != on || m.services.Setting.Snapshot().ShowGitBar() != on {
@@ -203,14 +206,14 @@ func TestGitBarSavedAppliesEffectivePreference(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Update(input.GitBarSavedMsg{On: true})
-	if m.env.ShowGitBar || m.gitBar.active {
+	if m.env.ShowGitBar || m.gitBar.cwd != "" {
 		t.Fatal("user preference incorrectly overrode a project-level false")
 	}
 }
 
 func TestGitBarDisableCancelsReadContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &model{gitBar: gitBarState{active: true, cancel: cancel}}
+	m := &model{gitBar: gitBarState{cwd: t.TempDir(), cancel: cancel}}
 	m.syncGitBar()
 	if ctx.Err() == nil {
 		t.Fatal("disable did not cancel the active read")

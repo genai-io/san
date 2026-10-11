@@ -19,11 +19,9 @@ const (
 )
 
 type gitBarState struct {
-	active     bool
-	cwd        string
+	cwd        string // empty when polling is disabled
 	generation uint64
-	pending    bool
-	cancel     context.CancelFunc
+	cancel     context.CancelFunc // non-nil until the read result is handled
 	status     proc.GitStatus
 }
 
@@ -39,18 +37,17 @@ type gitBarTickMsg struct{ generation uint64 }
 // setting off, no timer or Git command is started.
 func (m *model) syncGitBar() tea.Cmd {
 	if !m.env.ShowGitBar || m.env.CWD == "" {
-		if m.gitBar.active {
+		if m.gitBar.cwd != "" {
 			m.cancelGitBarRead()
 			m.gitBar = gitBarState{generation: m.gitBar.generation + 1}
 		}
 		return nil
 	}
-	if m.gitBar.active && m.gitBar.cwd == m.env.CWD {
+	if m.gitBar.cwd == m.env.CWD {
 		return nil
 	}
 	m.cancelGitBarRead()
 	m.gitBar = gitBarState{
-		active:     true,
 		cwd:        m.env.CWD,
 		generation: m.gitBar.generation,
 	}
@@ -65,11 +62,10 @@ func (m *model) cancelGitBarRead() {
 }
 
 func (m *model) refreshGitBar() tea.Cmd {
-	if m.gitBar.pending {
+	if m.gitBar.cancel != nil {
 		return nil
 	}
 	m.gitBar.generation++
-	m.gitBar.pending = true
 	generation, cwd := m.gitBar.generation, m.gitBar.cwd
 	ctx, cancel := context.WithTimeout(context.Background(), gitBarReadTimeout)
 	m.gitBar.cancel = cancel
@@ -83,10 +79,9 @@ func (m *model) refreshGitBar() tea.Cmd {
 }
 
 func (m *model) handleGitStatus(msg gitStatusMsg) tea.Cmd {
-	if !m.env.ShowGitBar || !m.gitBar.active || msg.generation != m.gitBar.generation || msg.cwd != m.env.CWD {
+	if !m.env.ShowGitBar || m.gitBar.cwd == "" || msg.generation != m.gitBar.generation || msg.cwd != m.env.CWD {
 		return nil
 	}
-	m.gitBar.pending = false
 	m.cancelGitBarRead()
 	m.gitBar.status = msg.status
 	return tea.Tick(gitBarPollInterval, func(time.Time) tea.Msg {
@@ -95,7 +90,7 @@ func (m *model) handleGitStatus(msg gitStatusMsg) tea.Cmd {
 }
 
 func (m *model) handleGitBarTick(msg gitBarTickMsg) tea.Cmd {
-	if !m.env.ShowGitBar || !m.gitBar.active || msg.generation != m.gitBar.generation || m.gitBar.cwd != m.env.CWD {
+	if !m.env.ShowGitBar || m.gitBar.cwd == "" || msg.generation != m.gitBar.generation || m.gitBar.cwd != m.env.CWD {
 		return nil
 	}
 	return m.refreshGitBar()
