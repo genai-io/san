@@ -1,10 +1,10 @@
-// /settings Appearance panel: three radio groups the user navigates as one
-// flat list.
+// /settings Appearance panel: three preference groups navigated as one list.
+// Theme and thinking use radio choices; the status bars use compact toggles.
 //
 //   - COLOR THEME — light / dark / auto. Applied live and persisted to the
 //     user-level settings file.
-//   - CONTEXT BAR — on / off. Toggles the visual context-usage bar
-//     ([██████░░░░] 71%) in the status line. Off by default.
+//   - STATUS BAR — independent context-usage and Git-information toggles.
+//     Both default off; left/right previews Off/On, Enter applies the row.
 //   - THINKING — full / collapsed / hidden. How the model's reasoning is
 //     drawn. Full by default (the reasoning streams as before); collapsed
 //     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
@@ -40,6 +40,11 @@ type ContextBarSavedMsg struct {
 	On bool
 }
 
+// GitBarSavedMsg is emitted after persisting the Git-bar on/off choice.
+type GitBarSavedMsg struct {
+	On bool
+}
+
 // ThinkingDisplaySavedMsg is emitted after the appearance panel persists the
 // reasoning-display choice so the app can update its live render flag, refresh
 // its settings handle, and show a confirmation. The value is already written to
@@ -54,12 +59,13 @@ type appearanceKind int
 const (
 	kindTheme appearanceKind = iota
 	kindContextBar
+	kindGitBar
 	kindThinkingDisplay
 )
 
 // appearanceOption is one selectable row. section heads the group it belongs
 // to (printed once, above the group's first row). Exactly one value field is
-// meaningful, selected by kind: theme for kindTheme, barOn for kindContextBar,
+// meaningful, selected by kind: theme for kindTheme, barOn for either bar kind,
 // thinkingDisplay for kindThinkingDisplay.
 type appearanceOption struct {
 	section         string
@@ -67,7 +73,7 @@ type appearanceOption struct {
 	label           string
 	desc            string
 	theme           string // kindTheme: the theme value to apply
-	barOn           bool   // kindContextBar: the on/off value to apply
+	barOn           bool   // kindContextBar / kindGitBar: the on/off value to apply
 	thinkingDisplay string // kindThinkingDisplay: the display mode to apply
 }
 
@@ -79,8 +85,8 @@ func appearanceOptions() []appearanceOption {
 		{section: "COLOR THEME", kind: kindTheme, label: "Dark", desc: "Dark background terminal", theme: "dark"},
 		{section: "COLOR THEME", kind: kindTheme, label: "Light", desc: "Light background terminal", theme: "light"},
 		{section: "COLOR THEME", kind: kindTheme, label: "Auto", desc: "Match terminal appearance automatically", theme: "auto"},
-		{section: "CONTEXT BAR", kind: kindContextBar, label: "On", desc: "Show the visual context-usage bar", barOn: true},
-		{section: "CONTEXT BAR", kind: kindContextBar, label: "Off", desc: "Hide the bar (numeric ctx X/Y still shows)", barOn: false},
+		{section: "STATUS BAR", kind: kindContextBar, label: "Context usage", desc: "Visual context meter"},
+		{section: "STATUS BAR", kind: kindGitBar, label: "Git information", desc: "Branch, repository and changes"},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2 s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2 s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
@@ -98,6 +104,7 @@ type appearancePanel struct {
 	// from its baseline.
 	themeBaseline    string
 	barBaseline      bool
+	gitBarBaseline   bool
 	thinkingBaseline string
 
 	// saveErr holds the last failed persist so Render can surface it inline
@@ -115,6 +122,7 @@ func (p *appearancePanel) Enter() {
 	p.options = appearanceOptions()
 	p.themeBaseline = "auto"
 	p.barBaseline = false
+	p.gitBarBaseline = false
 	p.thinkingBaseline = setting.DefaultThinkingDisplay
 	if p.settings != nil {
 		if data := p.settings.Snapshot(); data != nil {
@@ -122,9 +130,11 @@ func (p *appearancePanel) Enter() {
 				p.themeBaseline = data.Theme
 			}
 			p.barBaseline = data.ShowContextBar()
+			p.gitBarBaseline = data.ShowGitBar()
 			p.thinkingBaseline = data.ThinkingDisplayMode()
 		}
 	}
+	p.resetBarChoices()
 	p.cursor = indexOfTheme(p.themeBaseline)
 	p.saveErr = nil
 }
@@ -139,14 +149,21 @@ func (p *appearancePanel) HandleKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "up", "k":
 		if p.cursor > 0 {
+			p.resetBarChoices()
 			p.cursor--
 		}
 		p.saveErr = nil
 	case "down", "j":
 		if p.cursor < len(p.options)-1 {
+			p.resetBarChoices()
 			p.cursor++
 		}
 		p.saveErr = nil
+	case "left", "h", "right", "l":
+		if isAppearanceBar(p.options[p.cursor]) {
+			p.options[p.cursor].barOn = msg.String() == "right" || msg.String() == "l"
+			p.saveErr = nil
+		}
 	case "enter", " ":
 		return p.apply(p.options[p.cursor])
 	}
@@ -181,6 +198,13 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 		}
 		p.barBaseline = opt.barOn
 		return func() tea.Msg { return ContextBarSavedMsg{On: opt.barOn} }, true
+	case kindGitBar:
+		if err := setting.SaveGitBar(opt.barOn); err != nil {
+			p.saveErr = err
+			return nil, false
+		}
+		p.gitBarBaseline = opt.barOn
+		return func() tea.Msg { return GitBarSavedMsg{On: opt.barOn} }, true
 	case kindThinkingDisplay:
 		if err := setting.SaveThinkingDisplay(opt.thinkingDisplay); err != nil {
 			p.saveErr = err
@@ -192,31 +216,11 @@ func (p *appearancePanel) apply(opt appearanceOption) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (p *appearancePanel) HintLine() string { return radioHintLine() }
-
-func (p *appearancePanel) Render(width, _ int) string {
-	var b strings.Builder
-
-	prevSection := ""
-	for i, opt := range p.options {
-		if opt.section != prevSection {
-			if prevSection != "" {
-				b.WriteString("\n")
-			}
-			b.WriteString(renderAppearanceSection(opt.section, width))
-			b.WriteString("\n\n")
-			prevSection = opt.section
-		}
-		b.WriteString(renderRadioRow(opt.label, opt.desc, i == p.cursor, p.isCurrent(opt)))
-		b.WriteString("\n")
+func (p *appearancePanel) HintLine() string {
+	if isAppearanceBar(p.options[p.cursor]) {
+		return keycap("↑↓") + " move  " + keycap("←→") + " off/on  " + keycap("enter") + " apply"
 	}
-
-	if p.saveErr != nil {
-		b.WriteString("\n")
-		b.WriteString(appearanceErrorStyle.Render("⚠ couldn't save: " + p.saveErr.Error()))
-		b.WriteString("\n")
-	}
-	return b.String()
+	return radioHintLine()
 }
 
 // renderAppearanceSection renders a section heading followed by a rule that
@@ -245,13 +249,13 @@ func renderRadioRow(label, desc string, hovered, current bool) string {
 		tag = "  " + appearanceCurrentStyle.Render("current")
 	}
 
-	labelCell := rendered + strings.Repeat(" ", max(8-lipgloss.Width(label), 1))
+	labelCell := rendered + strings.Repeat(" ", max(10-lipgloss.Width(label), 1))
 	return caret + radio + " " + labelCell + appearanceDescStyle.Render(desc) + tag
 }
 
 // radioHintLine is the shared bottom hint for a radio-group panel.
 func radioHintLine() string {
-	return keycap("↑↓") + " navigate  " + keycap("enter") + " apply"
+	return keycap("↑↓") + " move  " + keycap("enter") + " apply"
 }
 
 // isCurrent reports whether opt matches the persisted value for its group.
@@ -259,6 +263,8 @@ func (p *appearancePanel) isCurrent(opt appearanceOption) bool {
 	switch opt.kind {
 	case kindContextBar:
 		return opt.barOn == p.barBaseline
+	case kindGitBar:
+		return opt.barOn == p.gitBarBaseline
 	case kindThinkingDisplay:
 		return opt.thinkingDisplay == p.thinkingBaseline
 	default:

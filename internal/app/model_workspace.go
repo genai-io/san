@@ -38,6 +38,7 @@ func (m *model) ReloadProjectContext(cwd string) {
 	// feature services that depend on them and re-point at them.
 	discoverPlugins(cwd)
 	m.reloadProjectServices(cwd)
+	m.env.ShowGitBar = m.services.Setting.Snapshot().ShowGitBar()
 	m.syncSettingsToHookEngine()
 }
 

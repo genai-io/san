@@ -94,6 +94,7 @@ Root files (no business logic; pure glue):
 | `model_compact.go` | Conversation compaction (auto + `/compact`). |
 | `model_tool_effects.go` | Side effects from tool calls (cwd, files, agent launches, overflow). |
 | `model_workspace.go` | cwd / file change reactions + FileWatcher setup. |
+| `model_git_bar.go` | Optional asynchronous Git snapshot polling, cancellation and footer adapter. |
 | `model_turn_queue.go` | Notice delivery, turn-end queue drain + prompt injection + stop-hook gate. |
 | `model_deps.go` | Deps builders for sub-features (`overlayDeps`, `triggerDeps`, etc.). |
 | `model_actions.go` | Identity switch + slash-command dispatch from selector hotkeys. |
@@ -176,6 +177,24 @@ each group the newest items stay visible, while displayed rows retain their
 original order. Overflow counts distinguish in-progress, failed/stopped,
 pending, and completed plan items; rendering leaves task records intact.
 
+### Optional Git information bar
+
+- **Configuration:** `/settings` → Appearance → STATUS BAR groups Context usage
+  and Git information in compact Off / On controls. Left / Right previews; Enter
+  saves the focused preference. `gitBar` defaults off; `input.GitBarSavedMsg`
+  reloads the effective setting. See [configuration](../../reference/configuration.md).
+- **Flow:** `model_git_bar.go` reads through `proc.ReadGitStatus` in a bounded
+  `tea.Cmd`; `conv.RenderGitBar` draws a plain-text snapshot beneath the normal
+  status line. `renderFooter` accounts for its height and composer cursor.
+- **Lifecycle:** startup, enabling and cwd changes read immediately, then poll
+  after three seconds. Disabling or changing cwd cancels the read; generation
+  tags reject stale results and ticks. Service reloads rebind Settings panels
+  without closing the popup or changing its tab.
+- **Layout/pitfalls:** both toggles fit on initial open at 80×24; short panels
+  window around recorded cursor/section rows and pin save errors. Never run Git
+  from `View` or synchronously in `Update`, expose remote credentials, or treat
+  an unavailable snapshot as clean.
+
 ## Lifecycle
 
 - `cmd/san` calls `app.Run()` which builds the `tea.Program`,
@@ -199,6 +218,9 @@ The root package has focused lifecycle/state tests and broader coverage through
 internal/app/conv/message_test.go              — message rendering.
 internal/app/conv/markdown_test.go             — markdown renderer.
 internal/app/conv/tracker_view_test.go         — task tracker view.
+internal/app/conv/git_bar_test.go              — Git row content, CJK widths and truncation.
+internal/app/model_git_bar_test.go             — polling, stale events, settings and footer height.
+internal/app/input/config_git_bar_test.go      — Appearance toggle, persistence and short panels.
 internal/app/view_test.go                     — fixed composer, multiline input and candidates.
 internal/app/model_scrollback_test.go          — recent output retention and resize.
 internal/app/model_scrollback_renderer_test.go — native history integrity through the real renderer.

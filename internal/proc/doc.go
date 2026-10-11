@@ -8,5 +8,6 @@
 //
 // It also holds the small cross-platform launchers that are not about lifecycle
 // at all — OpenURL hands a URL to the OS default handler — so the per-GOOS
-// command tables live in one place.
+// command tables live in one place. ReadGitStatus is a bounded, read-only
+// adapter for local Git worktree metadata; it never contacts a remote.
 package proc

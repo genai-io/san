@@ -90,6 +90,9 @@ type Data struct {
 	// "unset"; nil (unset) means off — the bar is opt-in. The numeric
 	// "X/Y" context label is unaffected and always shows.
 	ContextBar *bool `json:"contextBar,omitempty"`
+	// GitBar enables the optional repository status row. Nil means off;
+	// a pointer preserves an explicit false across settings overlays.
+	GitBar *bool `json:"gitBar,omitempty"`
 	// ThinkingDisplay selects how the model's reasoning is drawn: "full",
 	// "collapsed", or "hidden" (see the ThinkingDisplay* constants). Empty or
 	// unrecognized resolves to DefaultThinkingDisplay. Read via
@@ -432,6 +435,11 @@ func (s SelfLearnSettings) Validate() error {
 // Nil (unset) resolves to off — the bar is opt-in.
 func (s *Data) ShowContextBar() bool {
 	return s != nil && s.ContextBar != nil && *s.ContextBar
+}
+
+// ShowGitBar reports whether the optional repository status row is enabled.
+func (s *Data) ShowGitBar() bool {
+	return s != nil && s.GitBar != nil && *s.GitBar
 }
 
 // ThinkingDisplayMode resolves how reasoning is drawn, mapping an unset or
@@ -841,6 +849,10 @@ func (s *Data) Clone() *Data {
 	if s.ContextBar != nil {
 		v := *s.ContextBar
 		dst.ContextBar = &v
+	}
+	if s.GitBar != nil {
+		v := *s.GitBar
+		dst.GitBar = &v
 	}
 	dst.ThinkingDisplay = s.ThinkingDisplay
 	if s.ResumeWindowMessages != nil {

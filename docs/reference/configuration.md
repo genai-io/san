@@ -33,10 +33,35 @@ Configuration is loaded from multiple files at different scopes. Higher-priority
   "disabledTools": { "WebSearch": true, "Cron": false },
   "theme": "dark",
   "contextBar": true,
+  "gitBar": true,
   "thinkingDisplay": "collapsed",
   "resumeWindowMessages": 20
 }
 ```
+
+### `gitBar`
+
+Optional plain-text Git row beneath the normal status line; defaults to `false`.
+Set it in `/settings` → Appearance → STATUS BAR → Git information: Left / Right
+previews Off / On; Enter saves to `~/.san/settings.json`. Project/local settings
+can override this preference.
+
+```text
+  main · +2 ~3 ?1 · ↑1 ↓2 · github.com/owner/repo
+```
+
+- `+N`: staged paths; `~N`: unstaged modified paths; `?N`: untracked files;
+  `!N`: conflicts. `↑N` / `↓N`: commits ahead / behind locally known tracking refs.
+- Zero counts, `clean`, the `git` prefix and extra colors are omitted. Detached
+  HEAD shows a short commit; narrow rows prioritize branch/status over repository.
+- Repository labels prefer the tracking remote, then `origin`, then another
+  remote; without remotes, the root name. Credentials, query/fragment data and
+  local parent paths are omitted.
+
+Reads are asynchronous (two-second timeout, three-second delay between polls),
+local-only and never fetch. Workspace changes clear the snapshot and reread;
+disabling cancels polling. The row hides outside a repository, without Git, or
+on read failure.
 
 ### `thinkingDisplay`
 
