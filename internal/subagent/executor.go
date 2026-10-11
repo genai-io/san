@@ -315,8 +315,11 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 
 	permMode := e.requestPermissionMode(config, req)
 
-	maxSteps := max(config.MaxSteps, defaultMaxSteps)
-	if req.MaxSteps > maxSteps {
+	maxSteps := config.MaxSteps
+	if maxSteps <= 0 {
+		maxSteps = defaultMaxSteps
+	}
+	if req.MaxSteps > 0 {
 		maxSteps = req.MaxSteps
 	}
 
