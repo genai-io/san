@@ -372,13 +372,14 @@ func (m *model) renderTrackerList() string {
 		}
 	}
 	view := conv.RenderTrackerList(conv.TrackerListParams{
-		Items:        items,
-		StreamActive: m.conv.Stream.Active,
-		Width:        m.env.Width,
-		Blockers:     m.services.Tracker.OpenBlockers,
-		Executing:    m.executingTrackerItem,
-		Blink:        m.conv.Spinner.Frame(),
-		AgentColors:  m.agentColors(),
+		Items:           items,
+		StreamActive:    m.conv.Stream.Active,
+		Width:           m.env.Width,
+		CompletionShown: m.taskCompletionShown,
+		Blockers:        m.services.Tracker.OpenBlockers,
+		Executing:       m.executingTrackerItem,
+		Blink:           m.conv.Spinner.Frame(),
+		AgentColors:     m.agentColors(),
 	})
 	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }

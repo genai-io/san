@@ -26,6 +26,9 @@ type TrackerListParams struct {
 	StreamActive bool
 	Width        int
 	Blockers     func(itemID string) []string
+	// CompletionShown keeps a successful worker visible until its notice is shown.
+	// Nil treats completions as already announced.
+	CompletionShown func(taskID string) bool
 	// Executing reports whether the executor behind an item is running right
 	// now. An in_progress item only animates when Executing says so: the
 	// status field records intent and outlives the process that wrote it, so
@@ -42,24 +45,22 @@ type TrackerListParams struct {
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
-// Successful background tasks leave immediately; finished plans stay until idle.
+// Successful workers leave after their notice is shown; finished plans stay until idle.
 func RenderTrackerList(params TrackerListParams) string {
 	if len(params.Items) == 0 {
 		return ""
 	}
 
 	items := make([]*todo.Item, 0, len(params.Items))
-	ended, plans, plansDone := 0, 0, 0
+	plans, plansDone := 0, 0
 	for _, t := range params.Items {
 		done := phaseOf(t, false) == itemFinished
-		if todo.BackgroundTaskID(t) != "" && done {
+		id := todo.BackgroundTaskID(t)
+		if id != "" && done && (params.CompletionShown == nil || params.CompletionShown(id)) {
 			continue
 		}
 		items = append(items, t)
-		if done {
-			ended++
-		}
-		if todo.BackgroundTaskID(t) == "" {
+		if id == "" {
 			plans++
 			if done {
 				plansDone++
@@ -68,7 +69,7 @@ func RenderTrackerList(params TrackerListParams) string {
 	}
 
 	// Keep exceptions visible even when idle; only the plan waits for turn end.
-	if len(items) == 0 || (ended == len(items) && !params.StreamActive) {
+	if len(items) == 0 || (plansDone == len(items) && !params.StreamActive) {
 		return ""
 	}
 
@@ -223,7 +224,11 @@ func renderItem(t *todo.Item, phase itemPhase, width, idWidth int, blockers func
 		return renderItemLine(indent, abortedStyle.Render("!"), idTag, subject, detail, width)
 
 	case itemFinished:
-		return renderItemLine(indent, tint(trackerCompletedStyle).Render("●"), idTag, tint(lipgloss.NewStyle()).Render(subject), "", width)
+		detail := ""
+		if todo.BackgroundTaskID(t) != "" {
+			detail = mutedStyle.Render("[completed]")
+		}
+		return renderItemLine(indent, tint(trackerCompletedStyle).Render("●"), idTag, tint(lipgloss.NewStyle()).Render(subject), detail, width)
 
 	case itemStalled:
 		// Nothing is executing this item, so draw it at rest. Reaching here

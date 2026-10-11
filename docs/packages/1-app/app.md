@@ -162,9 +162,13 @@ the tracker is visible, and shows progress only when plan items are present.
 Background rows lead with a status icon and work description, without repeated
 executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
 truncate to leave room for elapsed time or an
-exception status. Successful background tasks leave the tracker immediately,
-even while the main agent is streaming; completion notices and output records
-remain available. Failed, stopped, or interrupted work stays visible when idle.
+exception status. Successful background tasks leave the tracker after their
+completion notice enters the conversation. While a notice waits for a safe
+stream boundary, its row stays still and shows `[completed]`; turn end cannot
+reset it before the notice appears. Completion notices and output records
+remain available. Resumed completed records whose workers are absent have no
+live notice to wait for. Failed, stopped, or interrupted work stays visible when
+idle.
 Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
 when the main agent becomes idle. In-progress items take priority, followed by
 failed or interrupted items, pending items, and completed plan items. Within

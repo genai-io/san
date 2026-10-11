@@ -38,12 +38,18 @@ type mainNotice struct {
 	// completion or interim report), so the UI renders its Display line as an
 	// inbound agent message rather than a plain system notice.
 	FromAgent bool
+	// FinishedTaskID ties a terminal task notice to its tracker row.
+	FinishedTaskID string
 }
 
 // fromBrokerMessage converts a message the broker routed to "main" (a subagent
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
-	return mainNotice{Display: m.Subject, Content: m.Content, FromAgent: true}
+	n := mainNotice{Display: m.Subject, Content: m.Content, FromAgent: true}
+	if strings.HasPrefix(m.Content, "<task-notification ") {
+		n.FinishedTaskID = m.From
+	}
+	return n
 }
 
 // maxTaskOutputInNotification is the largest task output, in bytes, inlined
