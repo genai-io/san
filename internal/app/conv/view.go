@@ -1,6 +1,7 @@
 package conv
 
 import (
+	"html"
 	"strings"
 	"time"
 
@@ -207,13 +208,22 @@ func RenderMessageAt(p RenderContext, idx int, isStreaming bool) string {
 			// model reads it, and it persists/seeds resume), but it's shown as a
 			// system notice — not a "❭" user turn — so the transcript stays clean.
 			sb.WriteString(RenderSystemMessage(msg.DisplayContent))
-		case isAgentEnvelope(msg.Content):
+		case IsAgentEnvelope(msg.Content):
 			// A background-agent envelope (task completion / relayed message) is
 			// submitted to the model as a user turn and persisted as raw XML.
-			// Live it shows as a green notice; on resume the turn is rebuilt from
-			// the transcript, so collapse it to the same one-line notice here
-			// instead of dumping the raw <task-notification>/<agent-message> XML.
+			// Live and resume share this summary; history can expose the body.
 			sb.WriteString(RenderAgentNotice(agentEnvelopeSummary(msg.Content), p.Width, p.MemberColors))
+			if msg.Expanded {
+				tag, body, _ := strings.Cut(msg.Content, ">")
+				if end := strings.LastIndex(body, "</"); end >= 0 {
+					body = body[:end]
+				}
+				body = html.UnescapeString(strings.TrimSpace(body))
+				if file := envelopeAttr(tag, "output-file"); file != "" {
+					body += "\n\nOutput file: " + file
+				}
+				sb.WriteString(renderNestedToolBody(body, p.Width))
+			}
 		default:
 			sb.WriteString(RenderUserMessage(msg.Content, msg.DisplayContent, msg.Images, p.MDRenderer, p.Width))
 			if autopilotDriven {

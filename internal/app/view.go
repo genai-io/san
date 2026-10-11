@@ -356,6 +356,7 @@ func (m *model) renderTrackerList() string {
 	}
 	items := m.services.Tracker.List()
 	var running []task.BackgroundTask
+	activity := make(map[string]string)
 	if m.services.Task != nil {
 		running = m.services.Task.ListRunning()
 		liveWorkflowIDs := make(map[string]bool)
@@ -363,6 +364,8 @@ func (m *model) renderTrackerList() string {
 			info := bg.GetStatus()
 			if info.AgentName == "workflow" && info.LiveView != "" {
 				liveWorkflowIDs[info.ID] = true
+			} else {
+				activity[info.ID] = info.LiveView
 			}
 		}
 		if len(liveWorkflowIDs) > 0 {
@@ -384,6 +387,7 @@ func (m *model) renderTrackerList() string {
 		Executing:       m.executingTrackerItem,
 		Blink:           m.conv.Spinner.Frame(),
 		AgentColors:     m.agentColors(),
+		Activity:        activity,
 	})
 	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }

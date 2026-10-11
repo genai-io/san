@@ -13,6 +13,7 @@ import (
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/subagent"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -59,9 +60,11 @@ func TestAgentExploreReadsFilesWithReadDisabled(t *testing.T) {
 	t.Fatal("source contents never reached the reviewer")
 }
 
-func TestAgentExploreReportsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
+func TestBackgroundAgentShowsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	task.Initialize(task.Options{OutputDir: t.TempDir()})
+	t.Cleanup(task.ResetDefaultTracker)
 	shell, err := proc.DefaultShell()
 	if err != nil {
 		t.Fatal(err)
@@ -81,28 +84,31 @@ func TestAgentExploreReportsDeniedToolBeforeNextInferenceEnds(t *testing.T) {
 		ID: "denied-read", Name: shell.Kind.ToolName(), Input: `{"command":"python3 read.py"}`,
 	}), blocked)
 	executor := subagent.NewExecutor(driverProvider{&testutil.FakeProvider{}, driver}, t.TempDir(), "fake-model", nil)
-	done := make(chan error, 1)
-	go func() {
-		_, err := executor.Run(ctx, tool.AgentExecRequest{TaskID: "review-1", Mode: "explore", Description: "Review source", Prompt: "Read the source"})
-		done <- err
-	}()
+	worker, err := executor.RunBackground(tool.AgentExecRequest{Mode: "explore", Description: "Review source", Prompt: "Read the source"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer worker.Stop()
 	select {
 	case <-started:
 	case <-ctx.Done():
 		t.Fatal("next inference did not start")
 	}
+	info := worker.GetStatus()
+	if !strings.Contains(info.LiveView, "denied in Explore mode") {
+		t.Fatalf("permission denial stayed hidden behind inference: %+v", info)
+	}
+	log, err := os.ReadFile(info.OutputFile)
+	if err != nil || !strings.Contains(string(log), "denied in Explore mode") {
+		t.Fatalf("worker-local failure was not persisted: %s, %v", log, err)
+	}
 	select {
 	case notice := <-notices:
-		if !strings.Contains(notice.Subject, "denied in Explore mode") || notice.Content != "" {
-			t.Fatalf("permission denial was not reported directly: %+v", notice)
-		}
-	case <-ctx.Done():
-		t.Fatal("permission denial stayed hidden behind inference")
+		t.Fatalf("recoverable permission error polluted the main conversation: %+v", notice)
+	default:
 	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
+	worker.Stop()
+	if !worker.WaitForCompletion(time.Second) {
 		t.Fatal("cancellation did not release the worker")
 	}
 }

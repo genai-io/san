@@ -129,20 +129,23 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 // injectAsNewTurn delivers a notice with no turn running: the line is shown and the
 // body, if any, starts a fresh turn.
 func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
-	m.showNoticeLine(n)
+	message := m.showNoticeLine(n)
 	if n.Content == "" {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.SubmitToAgent(core.UserMessage(n.Content, nil))
+	return m.SubmitToAgent(message)
 }
 
-func (m *model) showNoticeLine(n mainNotice) {
-	if n.Display == "" {
-		return
-	}
-	if n.FromAgent {
+func (m *model) showNoticeLine(n mainNotice) core.Message {
+	message := core.UserMessage(n.Content, nil)
+	if n.FromAgent && n.Content != "" {
+		// The envelope is already recorded by the agent. Render that same row
+		// live rather than persisting a second notice for resume to repeat.
+		chat := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: n.Content})
+		message.ID = chat.ID
+	} else if n.FromAgent && n.Display != "" {
 		m.conv.AddAgentNotice(n.Display)
-	} else {
+	} else if n.Display != "" {
 		m.conv.AddNotice(n.Display)
 	}
 	if n.FinishedTaskID != "" {
@@ -151,6 +154,7 @@ func (m *model) showNoticeLine(n mainNotice) {
 		}
 		m.taskCompletionsShown[n.FinishedTaskID] = true
 	}
+	return message
 }
 
 func (m *model) taskCompletionShown(id string) bool {
@@ -188,10 +192,10 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 		return m.injectAsNewTurn(n)
 	}
 	var send tea.Cmd
+	message := m.showNoticeLine(n)
 	if n.Content != "" { // display-only notices have nothing for the model to read
-		send = m.sendToAgent(core.UserMessage(n.Content, nil))
+		send = m.sendToAgent(message)
 	}
-	m.showNoticeLine(n)
 	return tea.Batch(append(m.CommitMessages(), send)...)
 }
 

@@ -58,7 +58,9 @@ func ResetDefaultTracker()         // test-only
   publish an in-memory `LiveView` snapshot and an optional width-aware renderer
   for the TUI, independently of append-only progress events in the output
   file. Workflows reflow their activity and graph when the terminal resizes;
-  the full event trail stays in the task log.
+  the full event trail stays in the task log. Ordinary subagents publish their
+  latest progress under the existing tracker row; recoverable errors stay there
+  rather than becoming independent main-conversation notices.
 - `output_store.go` — filesystem-backed per-task output files under
   `<output-dir>/<task-id>.log`.
 - Agent planning items are a separate capability in `internal/todo`; the

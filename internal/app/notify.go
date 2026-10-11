@@ -17,6 +17,7 @@ package app
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/genai-io/san/internal/broker"
@@ -76,18 +77,19 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 	result := strings.TrimSpace(info.Output)
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "<task-notification task-id=%q status=%q", info.ID, status)
+	fmt.Fprintf(&b, `<task-notification task-id="%s" status="%s"`, html.EscapeString(info.ID), status)
 	if info.AgentSessionID != "" {
-		fmt.Fprintf(&b, " agent-id=%q", info.AgentSessionID)
+		fmt.Fprintf(&b, ` agent-id="%s"`, html.EscapeString(info.AgentSessionID))
 	}
 	if description != "" {
-		fmt.Fprintf(&b, " description=%q", description)
+		fmt.Fprintf(&b, ` description="%s"`, html.EscapeString(description))
 	}
 	if info.OutputFile != "" {
-		fmt.Fprintf(&b, " output-file=%q", info.OutputFile)
+		fmt.Fprintf(&b, ` output-file="%s"`, html.EscapeString(info.OutputFile))
 	}
 	b.WriteString(">\n")
 	if info.Error != "" {
+		b.WriteString("Error: ")
 		b.WriteString(tool.EscapeXMLText(info.Error))
 		if result != "" {
 			b.WriteString("\n\nPartial output:\n")

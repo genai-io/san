@@ -483,14 +483,18 @@ func (m *model) needsSpinner() bool {
 
 // executingTrackerItem reports whether the executor behind a tracker item is
 // running right now. A worker item names a background task, so todo resolves
-// it against the task manager. A plan item authored by the model has no
+// it against this session's task manager. A plan item authored by the model has no
 // executor of its own — the main agent loop advances it, so it runs exactly
 // while that loop streams.
 func (m *model) executingTrackerItem(t *todo.Item) bool {
 	if todo.BackgroundTaskID(t) == "" {
 		return m.conv.Stream.Active
 	}
-	return todo.WorkerRunning(t)
+	if m.services.Task == nil {
+		return false
+	}
+	worker, known := m.services.Task.Get(todo.BackgroundTaskID(t))
+	return known && worker.IsRunning()
 }
 
 func (m *model) updateTextarea(msg tea.Msg) tea.Cmd {

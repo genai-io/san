@@ -202,6 +202,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	req.TaskID = agentTask.GetID()
 	req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
+		agentTask.SetLiveView(msg)
 	}
 	// Background subagents run unattended: no interactive question channel.
 	req.OnQuestion = nil
@@ -314,8 +315,11 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 
 	permMode := e.requestPermissionMode(config, req)
 
-	maxSteps := max(config.MaxSteps, defaultMaxSteps)
-	if req.MaxSteps > maxSteps {
+	maxSteps := config.MaxSteps
+	if maxSteps <= 0 {
+		maxSteps = defaultMaxSteps
+	}
+	if req.MaxSteps > 0 {
 		maxSteps = req.MaxSteps
 	}
 

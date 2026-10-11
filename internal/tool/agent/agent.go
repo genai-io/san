@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -198,6 +199,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,
+			Details: toolresult.AgentDetails{TaskID: taskInfo.TaskID},
 			Output: fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s"+tool.BackgroundLaunchSuffix,
 				taskInfo.TaskID, displayAgentLabel(agentName, mode), description),
 			HookResponse: map[string]any{
@@ -223,6 +225,9 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	if err != nil && result == nil {
 		return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("agent execution failed: %v", err))
 	}
+	if result == nil {
+		return toolresult.NewErrorResult(t.Name(), "agent returned no result")
+	}
 	if err != nil {
 		result.Success = false
 		if result.Error == "" {
@@ -233,35 +238,29 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	duration := time.Since(start)
 
 	displayName := displayAgentLabel(agentName, mode)
-	if !result.Success {
-		hookResponse := buildAgentHookResponse(result, agentName, prompt)
-		output := result.Content
-		if result.OutputFile != "" {
-			output += "\n\nTranscript: " + result.OutputFile
-		}
-		return toolresult.ToolResult{
-			Success:      false,
-			Output:       output,
-			Error:        result.Error,
-			HookResponse: hookResponse,
-			Metadata: toolresult.ResultMetadata{
-				Title:    t.Name(),
-				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("%s: failed", displayName),
-				Duration: duration,
-			},
-		}
+	agentDuration := result.Duration
+	if agentDuration == 0 {
+		agentDuration = duration
 	}
-
-	hookResponse := buildAgentHookResponse(result, agentName, prompt)
+	status := "finished"
+	if !result.Success {
+		status = "failed"
+	}
 	return toolresult.ToolResult{
-		Success:      true,
-		Output:       formatForegroundAgentResult(displayName, result, duration),
-		HookResponse: hookResponse,
+		Success:      result.Success,
+		Output:       formatForegroundAgentResult(result),
+		Error:        result.Error,
+		HookResponse: buildAgentHookResponse(result, agentName, prompt),
+		Details: toolresult.AgentDetails{
+			Model: result.Model, ToolUses: result.ToolUses,
+			InputTokens: result.TotalInputTokens, OutputTokens: result.TotalOutputTokens,
+			Duration: agentDuration, Activity: result.Activity, Error: result.Error,
+			Stopped: errors.Is(err, context.Canceled),
+		},
 		Metadata: toolresult.ResultMetadata{
 			Title:    t.Name(),
 			Icon:     t.Icon(),
-			Subtitle: fmt.Sprintf("%s: done (%d steps)", displayName, result.StepCount),
+			Subtitle: fmt.Sprintf("%s: %s (%d steps)", displayName, status, result.StepCount),
 			Duration: duration,
 		},
 	}

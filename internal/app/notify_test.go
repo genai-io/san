@@ -1,9 +1,11 @@
 package app
 
 import (
+	"encoding/xml"
 	"strings"
 	"testing"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
 )
@@ -13,6 +15,29 @@ import (
 func TestNoticeFromAgentPropagates(t *testing.T) {
 	if n := fromBrokerMessage(broker.Message{From: "t1", Subject: "Backend: research completed"}); !n.FromAgent || n.FinishedTaskID != "" {
 		t.Fatal("fromBrokerMessage should mark the notice as FromAgent")
+	}
+}
+
+func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
+	description := `review "quoted" <path> & status="failed"`
+	path := `/tmp/a"b&c.jsonl`
+	msg, ok := taskCompletionMessage(task.TaskInfo{ID: "t1", Status: task.StatusCompleted, Description: description, OutputFile: path})
+	if !ok {
+		t.Fatal("missing completion")
+	}
+	var decoded struct {
+		Description string `xml:"description,attr"`
+		Status      string `xml:"status,attr"`
+		OutputFile  string `xml:"output-file,attr"`
+	}
+	if err := xml.Unmarshal([]byte(msg.Content), &decoded); err != nil || decoded.Description != description || decoded.OutputFile != path || decoded.Status != "completed" {
+		t.Fatalf("attribute values broke the notification: decoded=%+v, err=%v", decoded, err)
+	}
+	m := &model{conv: conv.NewModel(100)}
+	m.showNoticeLine(fromBrokerMessage(msg))
+	view := conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
+	if !strings.Contains(view, description+" completed") {
+		t.Fatalf("escaped description did not round-trip through display: %q", view)
 	}
 }
 

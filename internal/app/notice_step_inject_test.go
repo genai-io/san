@@ -11,8 +11,10 @@ import (
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/todo"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 // runCmd executes cmd, flattening tea.Batch so the leaf commands (the ones that
@@ -25,6 +27,38 @@ func runCmd(cmd tea.Cmd) {
 	if batch, ok := cmd().(tea.BatchMsg); ok {
 		for _, sub := range batch {
 			runCmd(sub)
+		}
+	}
+}
+
+func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
+	store, err := session.NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := (&session.Setup{Store: store, SessionID: "notice-1"}).NewRecorder("main", "p", "m", 1000)
+	m := &model{conv: conv.NewModel(80)}
+	m.conv.OnNotice = func(msg core.ChatMessage) { rec.RecordNotice(msg.Content, msg.AgentNotice) }
+	n := taskNotice()
+	message := m.showNoticeLine(n)
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: message})
+	for _, load := range []func(string) ([]core.ChatMessage, error){store.LoadHistory, func(id string) ([]core.ChatMessage, error) {
+		snapshot, err := store.Load(id)
+		if err != nil {
+			return nil, err
+		}
+		return snapshot.Messages, nil
+	}} {
+		messages, err := load("notice-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(messages) != 1 || len(m.conv.Messages) != 1 || messages[0].Content != m.conv.Messages[0].Content {
+			t.Fatalf("completion has separate display and model records: live=%+v, saved=%+v", m.conv.Messages, messages)
+		}
+		p := conv.RenderContext{Messages: messages, Width: 80}
+		if got, want := conv.RenderSingleMessage(p, 0), conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, 0); got != want {
+			t.Fatalf("live and resumed completion differ: %q != %q", got, want)
 		}
 	}
 }
@@ -56,7 +90,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 func taskNotice() mainNotice {
 	return mainNotice{
 		Display:   "Backend: research completed",
-		Content:   `<task-notification task-id="t1" status="completed">done</task-notification>`,
+		Content:   `<task-notification task-id="t1" status="completed" description="Backend: research">done</task-notification>`,
 		FromAgent: true,
 	}
 }
@@ -65,8 +99,8 @@ func taskNotice() mainNotice {
 // conversation.
 func assertNoticeShown(t *testing.T, m *model) {
 	t.Helper()
-	for _, msg := range m.conv.Messages {
-		if msg.Role == core.ChatNotice && strings.Contains(msg.Content, "research completed") {
+	for i := range m.conv.Messages {
+		if strings.Contains(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 80}, i), "research completed") {
 			return
 		}
 	}

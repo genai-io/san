@@ -19,7 +19,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
 
-func TestAgentRunningShellErrorNotices(t *testing.T) {
+func TestAgentRunningShellErrorsStayWithWorker(t *testing.T) {
 	shell, err := proc.DefaultShell()
 	if err != nil {
 		t.Fatal(err)
@@ -107,8 +107,10 @@ func TestAgentRunningShellErrorNotices(t *testing.T) {
 						t.Fatalf("cancellation leaked a fallback error notice: %q", line)
 					}
 				}
-			} else if len(notices) != 1 || !strings.Contains(notices[0].Subject, "command timed out") || notices[0].Content != "" {
-				t.Fatalf("tool-local timeout must still produce a display-only notice: %+v", notices)
+			} else {
+				if len(notices) != 0 || !strings.Contains(toolErr.Error(), "command timed out") {
+					t.Fatalf("tool-local timeout must remain visible in worker progress: notices=%v, activity=%v", notices, activity)
+				}
 			}
 		})
 	}

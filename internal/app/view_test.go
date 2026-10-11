@@ -38,6 +38,26 @@ func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
 	}
 }
 
+func TestBackgroundAgentProgressStaysWithItsTrackerRow(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mgr := task.NewManager()
+	tracker := todo.NewStore()
+	worker := mgr.CreateAgentTask("review-1", "Reviewer", "Audit", ctx, cancel)
+	worker.SetLiveView("Read(main.go) failed: file missing\n" + strings.Repeat("diagnostics", 1000))
+	todo.TrackWorker(tracker, worker.GetStatus())
+	m := fixedComposerModel(80, 40)
+	m.services.Task, m.services.Tracker = mgr, tracker
+	m.conv.ShowTasks = true
+	view := ansi.Strip(m.renderTrackerList())
+	if !strings.Contains(view, "Audit") || !strings.Contains(view, "Read(main.go) failed: file missing") || strings.Contains(view, "diagnostics") {
+		t.Fatalf("worker-local progress missing or unbounded: %q", view)
+	}
+	if len(m.conv.Messages) != 0 {
+		t.Fatal("worker progress became a conversation message")
+	}
+}
+
 func TestLiveWorkflowReflowsAndPulses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

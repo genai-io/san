@@ -16,11 +16,12 @@ type recordingExecutor struct {
 	runReq            tool.AgentExecRequest
 	runResult         *tool.AgentExecResult
 	runErr            error
+	emptyResult       bool
 }
 
 func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
 	e.runReq = req
-	if e.runResult != nil || e.runErr != nil {
+	if e.runResult != nil || e.runErr != nil || e.emptyResult {
 		return e.runResult, e.runErr
 	}
 	return &tool.AgentExecResult{Success: true, Content: "done"}, nil
@@ -62,6 +63,15 @@ func TestAgentToolExecutionErrorWithoutResult(t *testing.T) {
 	}
 }
 
+func TestAgentToolRejectsMissingResult(t *testing.T) {
+	agentTool := NewAgentTool()
+	agentTool.SetExecutor(&recordingExecutor{emptyResult: true})
+	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
+	if result.Success || result.Error == "" {
+		t.Fatalf("missing executor result must be an error: %#v", result)
+	}
+}
+
 func TestAgentToolExecutionErrorOverridesSuccess(t *testing.T) {
 	agentTool := NewAgentTool()
 	agentTool.SetExecutor(&recordingExecutor{
@@ -71,6 +81,29 @@ func TestAgentToolExecutionErrorOverridesSuccess(t *testing.T) {
 	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
 	if result.Success || result.Output != "partial findings" || result.Error != "provider unavailable" {
 		t.Fatalf("execution error must win over the result's success flag: %#v", result)
+	}
+}
+
+func TestAgentToolKeepsDisplayMetadataOutOfModelContext(t *testing.T) {
+	agentTool := NewAgentTool()
+	agentTool.SetExecutor(&recordingExecutor{runResult: &tool.AgentExecResult{
+		Success: true, Content: "Verified finding", Model: "worker-model", ToolUses: 2,
+		TotalInputTokens: 100, TotalOutputTokens: 25, Activity: []string{"Read(main.go)"},
+		AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
+	}})
+	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Investigate"}, ".")
+	if !result.Success || result.Details == nil {
+		t.Fatalf("agent display metadata is missing: %#v", result)
+	}
+	for _, noise := range []string{"Tokens:", "ToolUses:", "Read(main.go)"} {
+		if strings.Contains(result.FormatForLLM(), noise) {
+			t.Fatalf("display metadata leaked into model context: %q", result.FormatForLLM())
+		}
+	}
+	for _, evidence := range []string{"Verified finding", "child-1", "/tmp/child-1.jsonl"} {
+		if !strings.Contains(result.FormatForLLM(), evidence) {
+			t.Fatalf("result lost evidence %q: %q", evidence, result.FormatForLLM())
+		}
 	}
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {

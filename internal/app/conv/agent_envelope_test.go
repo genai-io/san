@@ -27,6 +27,12 @@ func TestAgentEnvelopeSummary(t *testing.T) {
 			true,
 		},
 		{
+			"relayed message preserves its escaped subject",
+			`<agent-message from="task-9" subject="From task 9: blocked &quot;test&quot; &amp; &lt;build&gt;">found a blocker</agent-message>`,
+			`From task 9: blocked "test" & <build>`,
+			true,
+		},
+		{
 			"merged batch gets a generic label",
 			"<agent-messages>\n<task-notification status=\"completed\"></task-notification>\n</agent-messages>",
 			"Messages from background agents",
@@ -48,8 +54,8 @@ func TestAgentEnvelopeSummary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isAgentEnvelope(tt.content); got != tt.isEnv {
-				t.Fatalf("isAgentEnvelope = %v, want %v", got, tt.isEnv)
+			if got := IsAgentEnvelope(tt.content); got != tt.isEnv {
+				t.Fatalf("IsAgentEnvelope = %v, want %v", got, tt.isEnv)
 			}
 			if !tt.isEnv {
 				return
@@ -80,7 +86,7 @@ func TestRenderMessageCollapsesResumedAgentEnvelope(t *testing.T) {
 
 func TestAGroupMessageSummarizesToItsSender(t *testing.T) {
 	msg := "<group-message>\nFrom: @api\nTo: @web\nSubject: coupon_code is live\nSent: 2026-09-29 10:15\nUnattended-Turns: 1\n\nOrders API now accepts coupon_code.\nMore detail.\n</group-message>"
-	if !isAgentEnvelope(msg) {
+	if !IsAgentEnvelope(msg) {
 		t.Fatal("a group message is not recognised as an envelope")
 	}
 	if got := agentEnvelopeSummary(msg); got != "From @api: coupon_code is live" {

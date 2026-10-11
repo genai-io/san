@@ -221,11 +221,12 @@ type ContentBlock struct {
 	Name  string          `json:"name,omitempty"`
 	Input json.RawMessage `json:"input,omitempty"`
 
-	ToolUseID   string          `json:"tool_use_id,omitempty"`
-	Content     []ContentBlock  `json:"content,omitempty"`
-	IsError     bool            `json:"is_error,omitempty"`
-	EditDetails json.RawMessage `json:"edit_details,omitempty"`
-	BashDetails json.RawMessage `json:"bash_details,omitempty"`
+	ToolUseID    string          `json:"tool_use_id,omitempty"`
+	Content      []ContentBlock  `json:"content,omitempty"`
+	IsError      bool            `json:"is_error,omitempty"`
+	EditDetails  json.RawMessage `json:"edit_details,omitempty"`
+	BashDetails  json.RawMessage `json:"bash_details,omitempty"`
+	AgentDetails json.RawMessage `json:"agent_details,omitempty"`
 
 	// Source marks the provenance of injected content (e.g. "hook:UserPromptSubmit",
 	// "command:/identity", "reminder:system-reminder"). Empty for user-authored

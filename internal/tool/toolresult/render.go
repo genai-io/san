@@ -3,6 +3,7 @@ package toolresult
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 // FileChangeDetails describes an applied Edit or Write for UI rendering.
@@ -22,6 +23,19 @@ type FileChangeDetails struct {
 type BashDetails struct {
 	Error     string `json:"error"`
 	LineCount int    `json:"lineCount"`
+}
+
+// AgentDetails keeps display metadata out of the parent model's result text.
+type AgentDetails struct {
+	Model        string
+	ToolUses     int
+	InputTokens  int
+	OutputTokens int
+	Duration     time.Duration
+	Activity     []string
+	Error        string
+	Stopped      bool
+	TaskID       string // set only for a background launch
 }
 
 // ToolResult represents the result of a tool execution

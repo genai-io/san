@@ -87,6 +87,23 @@ func TestHistoryShowsCancelledOrphanResult(t *testing.T) {
 	}
 }
 
+func TestHistoryExpandsBackgroundResultsWithoutChangingConversation(t *testing.T) {
+	content := "<task-notification status=\"failed\" description=\"review\">\nError: provider unavailable\n\nPartial output:\nverified &lt;finding&gt;\n</task-notification>"
+	m := commitTestModel(core.ChatMessage{Role: core.ChatUser, Content: content})
+	entries := m.historyEntries(m.conv.Messages)
+	if len(entries) != 1 || !entries[0].Tool {
+		t.Fatal("background result has no inspection entry")
+	}
+	collapsed := ansi.Strip(entries[0].Render(80, false))
+	if !strings.Contains(collapsed, "review failed · provider unavailable") || strings.Contains(collapsed, "finding") {
+		t.Fatalf("background failure must show only the concise reason: %q", collapsed)
+	}
+	expanded := ansi.Strip(entries[0].Render(80, true))
+	if !strings.Contains(expanded, "verified <finding>") || m.conv.Messages[0].Expanded || m.conv.Messages[0].Content != content {
+		t.Fatalf("inspection lost output or mutated the source: %q", expanded)
+	}
+}
+
 func TestHistoryParallelResultsExpandIndependently(t *testing.T) {
 	messages := []core.ChatMessage{
 		{Role: core.ChatAssistant, Content: "already printed", ContentCommittedLen: len("already printed"), BulletEmitted: true,

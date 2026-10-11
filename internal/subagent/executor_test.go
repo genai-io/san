@@ -75,7 +75,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 	}
 }
 
-func TestPrepareRunConfigDoesNotLowerMinimumMaxSteps(t *testing.T) {
+func TestPrepareRunConfigHonorsSmallerStepBudget(t *testing.T) {
 	executor := &Executor{parentModelID: "parent-model"}
 
 	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
@@ -85,8 +85,18 @@ func TestPrepareRunConfigDoesNotLowerMinimumMaxSteps(t *testing.T) {
 		t.Fatalf("prepareRunConfig() error: %v", err)
 	}
 
-	if rc.maxSteps != defaultMaxSteps {
-		t.Fatalf("expected low max steps override to be raised to %d, got %d", defaultMaxSteps, rc.maxSteps)
+	if rc.maxSteps != 20 {
+		t.Fatalf("expected explicit budget of 20, got %d", rc.maxSteps)
+	}
+}
+
+func TestPrepareRunConfigHonorsAgentStepBudget(t *testing.T) {
+	executor := &Executor{parentModelID: "parent-model"}
+	rc, err := executor.prepareRunConfig(context.Background(), tool.AgentExecRequest{
+		ResolvedAgentConfig: &AgentConfig{Name: "reviewer", MaxSteps: 10},
+	})
+	if err != nil || rc.maxSteps != 10 {
+		t.Fatalf("configured budget ignored: config=%+v, err=%v", rc, err)
 	}
 }
 
