@@ -1,18 +1,67 @@
 package app
 
 import (
+	"encoding/xml"
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/task"
 )
+
+func TestTaskFailureSummaryKeepsTerminalReasonAndStatus(t *testing.T) {
+	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusStopped, task.StatusCompleted} {
+		for _, description := range []string{"review", strings.Repeat("审查 source ", 20)} {
+			msg, _ := taskCompletionMessage(task.TaskInfo{ID: "worker", Status: status, Description: description,
+				Error: "provider unavailable", Output: "partial findings\nError: nested diagnostic"})
+			m := commitTestModel()
+			m.showNoticeLine(fromBrokerMessage(msg))
+			for _, width := range []int{30, 80} {
+				view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: width}, 0))
+				if !strings.Contains(view, string(status)) || strings.Contains(view, "nested diagnostic") {
+					t.Fatalf("status %s, width %d: summary lost outcome or took a reason from partial output: %q", status, width, view)
+				}
+				if status != task.StatusCompleted && width == 80 && !strings.Contains(view, "provider unavailable") {
+					t.Fatalf("summary lost the terminal reason: %q", view)
+				}
+				if ansi.StringWidth(strings.TrimSpace(view)) > width {
+					t.Fatalf("summary overflows width %d: %q", width, view)
+				}
+			}
+		}
+	}
+}
 
 // A broker message routed to main is an agent message, so its notice is marked
 // FromAgent and merging preserves that whenever any component came from an agent.
 func TestNoticeFromAgentPropagates(t *testing.T) {
 	if n := fromBrokerMessage(broker.Message{From: "t1", Subject: "Backend: research completed"}); !n.FromAgent || n.FinishedTaskID != "" {
 		t.Fatal("fromBrokerMessage should mark the notice as FromAgent")
+	}
+}
+
+func TestTaskCompletionMessageEscapesAttributeValues(t *testing.T) {
+	description := `review "quoted" <path> & status="failed"`
+	path := `/tmp/a"b&c.jsonl`
+	msg, ok := taskCompletionMessage(task.TaskInfo{ID: "t1", Status: task.StatusCompleted, Description: description, OutputFile: path})
+	if !ok {
+		t.Fatal("missing completion")
+	}
+	var decoded struct {
+		Description string `xml:"description,attr"`
+		Status      string `xml:"status,attr"`
+		OutputFile  string `xml:"output-file,attr"`
+	}
+	if err := xml.Unmarshal([]byte(msg.Content), &decoded); err != nil || decoded.Description != description || decoded.OutputFile != path || decoded.Status != "completed" {
+		t.Fatalf("attribute values broke the notification: decoded=%+v, err=%v", decoded, err)
+	}
+	m := &model{conv: conv.NewModel(100)}
+	m.showNoticeLine(fromBrokerMessage(msg))
+	view := conv.RenderSingleMessage(conv.RenderContext{Messages: m.conv.Messages, Width: 100}, 0)
+	if !strings.Contains(view, description+" completed") {
+		t.Fatalf("escaped description did not round-trip through display: %q", view)
 	}
 }
 
@@ -81,5 +130,26 @@ func TestTaskCompletionMessageOversizedWithoutFileInlines(t *testing.T) {
 	})
 	if !strings.Contains(msg.Content, big) {
 		t.Fatalf("without an output file the full result must be inlined, got %d-byte content", len(msg.Content))
+	}
+}
+
+func TestTaskCompletionMessagePreservesFailedOutput(t *testing.T) {
+	for _, status := range []task.TaskStatus{task.StatusFailed, task.StatusStopped} {
+		for _, output := range []string{"partial <findings>", strings.Repeat("x", maxTaskOutputInNotification+1)} {
+			msg, ok := taskCompletionMessage(task.TaskInfo{
+				ID: "failed-task", Type: task.TaskTypeAgent, Status: status,
+				Error: "provider <unavailable>", Output: output, OutputFile: "/tmp/failed-task.log",
+			})
+			if !ok || !strings.Contains(msg.Content, "provider &lt;unavailable&gt;") {
+				t.Fatalf("terminal notice lost error: %#v", msg)
+			}
+			if len(output) <= maxTaskOutputInNotification {
+				if !strings.Contains(msg.Content, "partial &lt;findings&gt;") {
+					t.Fatalf("terminal notice lost partial findings: %s", msg.Content)
+				}
+			} else if !strings.Contains(msg.Content, "too large to inline") || strings.Contains(msg.Content, "xxxx") {
+				t.Fatalf("large partial findings must use output-file pointer: %s", msg.Content)
+			}
+		}
 	}
 }

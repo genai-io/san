@@ -203,6 +203,8 @@ func toolResultToBlocks(tr *core.ToolResult, details any) []ContentBlock {
 		block.EditDetails, _ = json.Marshal(details)
 	case toolresult.BashDetails:
 		block.BashDetails, _ = json.Marshal(details)
+	case toolresult.AgentDetails:
+		block.AgentDetails, _ = json.Marshal(details)
 	}
 	if text := tr.Content.Text(); text != "" {
 		block.Content = []ContentBlock{{Type: "text", Text: text}}
@@ -251,6 +253,11 @@ func extractUserContent(blocks []ContentBlock, msg *core.ChatMessage) {
 			} else if len(block.BashDetails) > 0 {
 				var details toolresult.BashDetails
 				if json.Unmarshal(block.BashDetails, &details) == nil {
+					msg.ToolDetails = details
+				}
+			} else if len(block.AgentDetails) > 0 {
+				var details toolresult.AgentDetails
+				if json.Unmarshal(block.AgentDetails, &details) == nil {
 					msg.ToolDetails = details
 				}
 			}

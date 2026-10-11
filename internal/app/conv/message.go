@@ -510,7 +510,8 @@ func RenderAgentNotice(content string, width int, colors map[string]int) string 
 			return renderMemberLine("◆", "From", name, body, width, colors) + "\n"
 		}
 	}
-	return agentNoticeStyle.Render("◆ "+content) + "\n"
+	content = strings.Join(strings.Fields(content), " ")
+	return agentNoticeStyle.Render(kit.TruncateText("◆ "+content, max(1, width))) + "\n"
 }
 
 // renderDecision renders the auto-review outcome as a one-line annotation
@@ -727,7 +728,7 @@ func RenderToolCalls(params ToolCallsParams) string {
 				Model:        params.ModelName,
 				InputTokens:  params.InputTokens,
 				OutputTokens: params.OutputTokens,
-			}))
+			}, params.Width))
 		}
 	}
 

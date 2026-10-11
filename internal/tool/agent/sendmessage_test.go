@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,7 +35,7 @@ func TestSendMessage_DeliversToRegisteredAgent(t *testing.T) {
 		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
 	}
 	if !strings.Contains(got.Content, "check the auth module too") ||
-		!strings.Contains(got.Content, `<agent-message from="main">`) {
+		!strings.Contains(got.Content, `<agent-message from="main" `) {
 		t.Fatalf("delivered content malformed: %q", got.Content)
 	}
 }
@@ -49,7 +50,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	ctx := tool.WithAgentID(context.Background(), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "main",
-		"subject": "a note",
+		"subject": `blocked "test" & <build>`,
 		"message": "found the root cause",
 	}, ".")
 
@@ -59,8 +60,14 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	if got.From != "task-9" || got.To != broker.Main {
 		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
 	}
-	if !strings.Contains(got.Content, `<agent-message from="task-9">`) {
+	if !strings.Contains(got.Content, `<agent-message from="task-9" `) {
 		t.Fatalf("sender envelope missing: %q", got.Content)
+	}
+	var decoded struct {
+		Subject string `xml:"subject,attr"`
+	}
+	if err := xml.Unmarshal([]byte(got.Content), &decoded); err != nil || decoded.Subject != got.Subject {
+		t.Fatalf("model envelope lost its display subject: subject=%q, decoded=%+v, err=%v", got.Subject, decoded, err)
 	}
 }
 

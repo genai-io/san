@@ -488,8 +488,9 @@ type nodeRunner struct {
 	onToolStart    func(nodeID, worker, id, call string)
 	onToolResult   func(nodeID, worker, id, call, summary string, failed bool)
 	onWorkerStatus func(nodeID, worker string, status workflow.Status)
-	steps          atomic.Int64
-	tokens         atomic.Int64
+	usageMu        sync.Mutex
+	steps          int
+	tokens         int
 }
 
 func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, error) {
@@ -545,19 +546,38 @@ func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, erro
 			}
 		},
 	})
+	output := ""
+	if res != nil {
+		output = res.Content
+		r.usageMu.Lock()
+		r.steps += res.StepCount
+		r.tokens += res.TotalInputTokens + res.TotalOutputTokens
+		r.task.UpdateProgress(r.steps, r.tokens)
+		r.usageMu.Unlock()
+		if err == nil && !res.Success {
+			err = fmt.Errorf("%s", res.Error)
+		}
+	} else if err == nil {
+		err = fmt.Errorf("agent returned no result")
+	}
 	if err != nil {
+		if res != nil {
+			partial := output
+			if res.AgentID != "" {
+				partial += "\n\nAgentID: " + res.AgentID
+			}
+			if res.OutputFile != "" {
+				partial += "\n\nTranscript: " + res.OutputFile
+			}
+			if strings.TrimSpace(partial) != "" {
+				r.task.AppendOutput([]byte(fmt.Sprintf("\n## %s (unfinished)\n%s\n", label, partial)))
+			}
+		}
 		if r.onActivity != nil {
 			r.onActivity(n.ID, c.Label, "Error: "+err.Error())
 		}
 		r.workerFinished(n.ID, c.Label, workflow.StatusFailed)
-		return "", err
-	}
-	steps := r.steps.Add(int64(res.StepCount))
-	tokens := r.tokens.Add(int64(res.TotalInputTokens + res.TotalOutputTokens))
-	r.task.UpdateProgress(int(steps), int(tokens))
-	if !res.Success {
-		r.workerFinished(n.ID, c.Label, workflow.StatusFailed)
-		return res.Content, fmt.Errorf("%s", res.Error)
+		return output, err
 	}
 	if preview := workflowResultPreview(res.Content); preview != "" && !streamedText.Load() {
 		activity := "Result: " + preview

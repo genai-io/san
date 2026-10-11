@@ -110,8 +110,14 @@ func (m *model) historyEntries(messages []core.ChatMessage) []input.TranscriptEn
 		msg.ContentCommittedLen, msg.ThinkingCommittedLen = 0, 0
 		msg.BulletEmitted, msg.ThinkingEmitted = false, false
 		if msg.Content != "" || msg.Thinking != "" || len(msg.Images) > 0 {
-			entries = append(entries, input.TranscriptEntry{Render: func(width int, _ bool) string {
+			agentMessage := msg.Role == core.ChatUser && conv.IsAgentEnvelope(msg.Content)
+			label := ""
+			if agentMessage {
+				label = "Agent message"
+			}
+			entries = append(entries, input.TranscriptEntry{Label: label, Tool: agentMessage, Render: func(width int, expanded bool) string {
 				p := params
+				msg.Expanded = expanded
 				p.Width, p.MDRenderer = width, renderer(width)
 				p.Messages = []core.ChatMessage{msg}
 				return conv.RenderSingleMessage(p, 0)

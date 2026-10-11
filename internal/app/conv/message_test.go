@@ -852,7 +852,7 @@ func TestRenderToolCallsNestsGenericFailureWithoutRepeatingToolName(t *testing.T
 	rendered := stripANSI(RenderToolCalls(ToolCallsParams{
 		ToolCalls: []core.ToolCall{call},
 		ResultMap: map[string]ToolResultData{
-			call.ID: {ToolName: "WebSearch", Content: "Error: request failed\n   \nretry later\n\n", IsError: true},
+			call.ID: {ToolName: "WebSearch", Content: "Error: request failed\n   \nretry later\n\n", IsError: true, Expanded: true},
 		},
 		Width: 100,
 	}))
@@ -1129,6 +1129,7 @@ func TestRenderToolCallsNestsBashFailureUnderCommand(t *testing.T) {
 			call.ID: {
 				ToolName: "Bash",
 				Content:  "test output\nstderr detail\nError: exit code 1",
+				Expanded: true,
 				IsError:  true,
 				Details:  toolresult.BashDetails{Error: "exit code 1", LineCount: 2},
 			},
@@ -1155,6 +1156,7 @@ func TestRenderToolCallsKeepsBashOutputConnectorAcrossBlankLines(t *testing.T) {
 			call.ID: {
 				ToolName: "Bash",
 				Content:  "first\n\nthird\nError: exit code 1",
+				Expanded: true,
 				IsError:  true,
 				Details:  toolresult.BashDetails{Error: "exit code 1", LineCount: 3},
 			},
@@ -1175,6 +1177,7 @@ func TestRenderToolCallsRestoresLegacyBashFailureSummary(t *testing.T) {
 			call.ID: {
 				ToolName: "Bash",
 				Content:  "first\n\nthird\nError: exit code 1",
+				Expanded: true,
 				IsError:  true,
 			},
 		},
@@ -1221,6 +1224,7 @@ func TestRenderToolCallsSummarizesBashTimeout(t *testing.T) {
 			call.ID: {
 				ToolName: "Bash",
 				Content:  "started\nError: " + reason,
+				Expanded: true,
 				IsError:  true,
 				Details:  toolresult.BashDetails{Error: reason, LineCount: 1},
 			},

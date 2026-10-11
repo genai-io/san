@@ -36,89 +36,70 @@ func TestPreparedRunForwardsCompletedToolResult(t *testing.T) {
 	}
 }
 
-func TestPreparedRunToolErrorForwardsLabelAndCancellation(t *testing.T) {
+func TestPreparedRunErrorsStayWithWorker(t *testing.T) {
 	var notices []broker.Message
 	broker.Register(broker.Main, func(message broker.Message) bool {
 		notices = append(notices, message)
 		return true
 	})
 	t.Cleanup(func() { broker.Unregister(broker.Main) })
-	var label string
+	var activity []string
+	var output string
 	var gotErr error
+	callbacks := 0
 	run := &preparedRun{req: tool.AgentExecRequest{
 		Description: "Review dependencies",
-		OnToolResult: func(_, call, _ string, err error) {
-			label, gotErr = call, err
-			if len(notices) != 1 {
-				t.Fatal("error notice must arrive before the tool-result callback")
-			}
+		OnActivity:  func(line string) { activity = append(activity, line) },
+		OnToolResult: func(_, _, text string, err error) {
+			callbacks++
+			output, gotErr = text, err
 		},
+		OnTextEnd: func(err error) { callbacks++; gotErr = err },
 	}}
 	wantErr := errors.New("permission denied")
-	run.forwardEvent(context.Background(), sdkagent.ToolEnd{ID: "read-1", Name: "Read", Args: `{"file_path":"main.go"}`, Err: wantErr})
-	if label != "Read(main.go)" || gotErr != wantErr || notices[0].Subject != "Review dependencies: "+label+" failed: "+wantErr.Error() {
-		t.Fatalf("tool label differs between callback and notice: label=%q, error=%v, notices=%+v", label, gotErr, notices)
+	run.forwardEvent(context.Background(), sdkagent.ToolEnd{
+		ID: "read-1", Name: "Read", Args: `{"file_path":"main.go"}`,
+		Result: sdkagent.TextResult("partial diagnostics"), Err: wantErr,
+	})
+	if output != "partial diagnostics" || gotErr != wantErr || len(activity) != 0 || len(run.activity) != 1 || run.activity[0] != "Read(main.go) failed: permission denied" {
+		t.Fatalf("local tool failure lost its reason or output: activity=%v, output=%q, err=%v", activity, output, gotErr)
 	}
-
-	cancelErr := errors.Join(errors.New("worker stopped"), context.Canceled)
-	run.forwardEvent(context.Background(), sdkagent.ToolEnd{ID: "read-2", Name: "Read", Args: `{"file_path":"other.go"}`, Err: cancelErr})
-	if label != "Read(other.go)" || gotErr != cancelErr || len(notices) != 1 {
-		t.Fatalf("cancellation must still reach the callback without a notice: label=%q, error=%v, notices=%+v", label, gotErr, notices)
+	run.forwardEvent(context.Background(), sdkagent.MessageEnd{Attempt: 1, Err: errors.New("provider unavailable")})
+	if len(activity) != 1 || !strings.Contains(activity[0], "inference attempt 1 failed") {
+		t.Fatalf("retry failure missing from worker progress: %v", activity)
+	}
+	// A later successful attempt must not turn these intermediate failures into
+	// independent parent failures. Details retain them for inspection.
+	run.forwardEvent(context.Background(), sdkagent.ToolEnd{Name: "Read", Result: sdkagent.TextResult("recovered")})
+	run.forwardEvent(context.Background(), sdkagent.MessageEnd{})
+	if gotErr != nil || len(notices) != 0 || len(activity) != 1 || len(run.activity) != 2 || callbacks != 4 {
+		t.Fatalf("recovered worker polluted the parent: notices=%v, activity=%v, callbacks=%d", notices, activity, callbacks)
 	}
 }
 
-func TestPreparedRunErrorDelivery(t *testing.T) {
-	for _, route := range []string{"absent", "rejected", "accepted"} {
-		t.Run(route, func(t *testing.T) {
-			broker.Unregister(broker.Main)
-			t.Cleanup(func() { broker.Unregister(broker.Main) })
-			var notices []broker.Message
-			if route != "absent" {
-				broker.Register(broker.Main, func(message broker.Message) bool {
-					if route == "rejected" {
-						return false
-					}
-					notices = append(notices, message)
-					return true
-				})
-			}
-			var activity []string
-			callbacks := 0
-			assertReported := func() {
-				t.Helper()
-				callbacks++
-				if len(notices)+len(activity) != callbacks {
-					t.Fatal("error must be reported once, before its result callback")
-				}
-			}
-			run := &preparedRun{req: tool.AgentExecRequest{
-				Description:  "Review source",
-				OnActivity:   func(line string) { activity = append(activity, line) },
-				OnToolResult: func(_, _, _ string, _ error) { assertReported() },
-				OnTextEnd:    func(error) { assertReported() },
-			}}
-			run.forwardEvent(context.Background(), sdkagent.ToolEnd{Name: "Bash", Args: `{"command":"python3 read.py"}`, Err: errors.New("interpreter denied")})
-			run.forwardEvent(context.Background(), sdkagent.MessageEnd{Attempt: 1, Err: errors.New("provider unavailable")})
-			want := []string{
-				"Review source: Bash(python3 read.py) failed: interpreter denied",
-				"Review source: inference attempt 1 failed: provider unavailable",
-			}
-			if route == "accepted" {
-				if len(activity) != 0 || len(notices) != len(want) {
-					t.Fatalf("broker delivery duplicated activity: notices=%+v, activity=%v", notices, activity)
-				}
-				for i, notice := range notices {
-					if notice.Subject != want[i] || notice.Content != "" {
-						t.Fatalf("notice is not display-only: %+v", notice)
-					}
-				}
-			} else if len(activity) != len(want) || activity[0] != want[0] || activity[1] != want[1] {
-				t.Fatalf("undelivered errors hidden from activity: %v", activity)
-			}
-			if len(run.activity) != 0 {
-				t.Fatalf("display errors leaked into parent-visible tool history: %v", run.activity)
-			}
-		})
+func TestPreparedRunCancellationStillReachesCallbacks(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancelErr := errors.New("exit code -1")
+		if wrapped {
+			cancelErr = errors.Join(cancelErr, context.Canceled)
+		} else {
+			cancel()
+		}
+		var activity []string
+		var gotErr error
+		callbacks := 0
+		run := &preparedRun{req: tool.AgentExecRequest{
+			OnActivity:   func(line string) { activity = append(activity, line) },
+			OnToolResult: func(_, _, _ string, err error) { callbacks++; gotErr = err },
+			OnTextEnd:    func(err error) { callbacks++; gotErr = err },
+		}}
+		run.forwardEvent(ctx, sdkagent.ToolEnd{Name: "Bash", Err: cancelErr})
+		run.forwardEvent(ctx, sdkagent.MessageEnd{Err: cancelErr})
+		cancel()
+		if gotErr != cancelErr || callbacks != 2 || len(activity) != 0 {
+			t.Fatalf("cancellation must finish callbacks without failure noise: activity=%v, callbacks=%d, err=%v", activity, callbacks, gotErr)
+		}
 	}
 }
 
@@ -134,40 +115,5 @@ func TestPreparedRunDeadlineStillReportsErrors(t *testing.T) {
 	run.forwardEvent(ctx, sdkagent.MessageEnd{Err: context.DeadlineExceeded})
 	if len(activity) != 2 {
 		t.Fatalf("run deadlines must not be hidden as deliberate cancellation: %v", activity)
-	}
-}
-
-func TestSubagentToolErrorIsReportedBeforeRunEnds(t *testing.T) {
-	var notices []broker.Message
-	broker.Register(broker.Main, func(message broker.Message) bool {
-		notices = append(notices, message)
-		return true
-	})
-	t.Cleanup(func() { broker.Unregister(broker.Main) })
-	run := &preparedRun{req: tool.AgentExecRequest{TaskID: "review-1", Description: "Review dependencies"}}
-	run.forwardEvent(context.Background(), sdkagent.ToolEnd{ID: "read-1", Name: "Bash", Args: `{"command":"python3 read.py"}`, Err: errors.New("interpreter denied in explore mode")})
-	if len(notices) != 1 {
-		t.Fatalf("got %d notices before the next inference, want 1", len(notices))
-	}
-	if notices[0].From != "review-1" || notices[0].Content != "" || !strings.Contains(notices[0].Subject, "interpreter denied") {
-		t.Fatalf("tool error must be a display-only notice with its reason: %+v", notices[0])
-	}
-	run.forwardEvent(context.Background(), sdkagent.ToolEnd{ID: "read-2", Name: "Bash", Result: sdkagent.TextResult("contents")})
-	if len(notices) != 1 {
-		t.Fatal("successful tools should not produce error notices")
-	}
-	run.req.TaskID = ""
-	run.hookID = "foreground-review"
-	run.forwardEvent(context.Background(), sdkagent.ToolEnd{ID: "read-3", Name: "Read", Err: errors.New("file missing")})
-	if len(notices) != 2 || notices[1].From != "foreground-review" || !strings.Contains(notices[1].Subject, "file missing") {
-		t.Fatalf("foreground worker hid its error: %+v", notices)
-	}
-	run.forwardEvent(context.Background(), sdkagent.MessageEnd{Attempt: 1, Err: errors.New("provider unavailable")})
-	if len(notices) != 3 || !strings.Contains(notices[2].Subject, "inference attempt 1 failed: provider unavailable") {
-		t.Fatalf("inference error stayed hidden before retry: %+v", notices)
-	}
-	run.forwardEvent(context.Background(), sdkagent.MessageEnd{Err: context.Canceled})
-	if len(notices) != 3 {
-		t.Fatal("deliberate cancellation should not produce an error notice")
 	}
 }

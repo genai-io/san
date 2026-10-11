@@ -98,7 +98,7 @@ func ResetDefaultRegistry()           // test-only
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
 - `activity_tools.go` — the gate that streams each call into the
-  parent-visible activity trail. It refuses nothing; it is a gate rather than a
+  worker's inspection trail. It refuses nothing; it is a gate rather than a
   wrapper because that is what the loop asks once per call.
 
 ## Lifecycle
@@ -110,13 +110,13 @@ func ResetDefaultRegistry()           // test-only
   turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
-- Subagent errors send a display-only broker notice as soon as `ToolEnd` or
-  `MessageEnd` reports an error, including permission denials and failed
-  inference attempts. They do not wait for the
-  worker's next inference or its final report. A tool error does not mark the
-  whole task failed: the worker may recover and the normal completion result
-  still reports the run's terminal state. Foreground calls use their hook id as
-  the sender; background calls use their task id.
+- Recoverable tool errors and inference retries stay in the worker's progress
+  and inspection trail. Foreground calls stream them into their own activity;
+  background calls append them to the task log and update the task's `LiveView`.
+  Structured workflow callbacks finish the existing tool row rather than
+  adding a duplicate error row. These events do not send broker notices to main:
+  a failed attempt is not a failed task. Terminal results and explicit
+  `SendMessage` calls are the parent communication boundary.
 - Every exit path — success, cancel, error — fires `SubagentStop` with
   the same agent id `SubagentStart` carried. Subagents are one-shot: a run
   is not resumable; to continue a line of work, spawn a fresh subagent.
@@ -135,12 +135,82 @@ func ResetDefaultRegistry()           // test-only
   was fulfilled. Callers must read the result and retain any incomplete
   coverage or blockers; a permission-denied review is not a clean review.
 
+## Results and display
+
+- Delegation should return usable evidence at less total effort than the parent
+  doing the same work. Treat runtime state, task fulfillment, and display as
+  separate concerns: a tool failure can recover, an ended turn can still report
+  blocked work, and a full diagnostic belongs in inspection rather than every
+  summary. Adding retries or widening permissions does not fix missing context
+  or a stale path.
+- A normal end of the model turn produces `Success=true`; this records the
+  execution outcome, not proof that the requested work was fulfilled. The
+  parent must verify the returned findings or changes. New foreground result
+  rows say `Finished`, `Failed`, or `Stopped` to describe execution.
+- Foreground success and failure share one result projection. The model-facing
+  text contains findings, agent identity, and a transcript pointer. Model, token
+  usage, duration, and the activity/error trail travel as
+  `toolresult.AgentDetails`; session records preserve them under `agent_details`.
+  The UI does not parse these values out of worker prose. Legacy header-based
+  transcripts still render, including `Tokens: in=N out=M`.
+- Cancellation and inference failure can return both an unfinished result and
+  an error. `ExecutorAdapter`, the Agent tool, Workflow, and headless `agent run` preserve the partial content,
+  usage, agent session id, and transcript path. A failed foreground tool result
+  includes its transcript path so the parent can inspect work already done.
+  Workflow records unfinished node findings and inspection pointers in the task
+  output, and counts failed workers' steps and tokens while retaining failure.
+- Legacy tool adaptation keeps stdout/stderr and the failure reason in the
+  model-facing content, but uses the separate error reason for error notices.
+  Command output should not be duplicated into an error summary.
+- Completing a foreground Agent call clears only that call's live activity;
+  other agents in the same parallel tool batch keep their progress.
+- Background failure and stop notifications include partial output under the
+  same inline-size limit as successful output. Larger results point at the
+  task output file. A failure must not hide usable findings.
+- An agent notice carrying model content uses that same envelope message for
+  live display and persistence; it does not additionally record `notice.added`.
+  Display-only notices still use notice records. Existing notice records are
+  retained; this change does not rewrite older transcripts.
+- Injected notices do not interrupt tool/result pairing; actual user input does.
+  Notification summaries reserve terminal status and reason before shortening
+  descriptions. Failure reasons come from the first error line, not partial
+  findings. Group batches persist their count and unattended-turn context.
+- Tool failures are collapsed by default, with a bounded reason. `ctrl+o` or
+  `/history` exposes full diagnostics and partial results; background completion
+  messages can also expand in history. Display limits do not truncate stored
+  content. Task descriptions and file pointers are escaped as XML attributes.
+- Live foreground progress also limits each activity entry to one display row.
+  Expanding it retains the full diagnostic; the stored activity is unchanged.
+
+## Configuration and limits
+
+- Subagents start with fresh conversations. Supply the actual working directory,
+  source paths, relevant constraints, and a concrete expected result in the
+  delegated prompt. Spawning another worker does not resume the previous one.
+- Tool visibility and permissions are separate: `explore` rejects interpreters
+  even if the script only reads; `edit` permits file edits but does not grant
+  unrestricted Bash. An unattended permission denial needs a compatible tool or
+  a blocked-work report, not repetition of the same command.
+- Workers share the filesystem. Cancellation stops execution, not edits already
+  applied; independent conversations do not isolate overlapping writes.
+
 ## Tests
 
 ```
 internal/subagent/executor_test.go      — end-to-end run scenarios.
 internal/subagent/lazy_loading_test.go  — config files read on demand.
 internal/subagent/scenarios_test.go     — common invocation shapes.
+tests/integration/agent/agent_test.go    — runtime, permissions, failed transcript projection.
+internal/tool/agent/agent_test.go        — foreground result and error preservation.
+internal/app/conv/update_test.go         — sibling activity survives agent completion.
+internal/app/notify_test.go              — bounded successful and partial failure notices.
+internal/app/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
+internal/app/model_history_test.go       — inspectable background results without state mutation.
+internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
+tests/integration/agent/result_view_test.go — real result → adapter → recorder → resumed UI.
+internal/tool/workflow/workflow_test.go    — unfinished node output, identity, and parallel usage.
+internal/app/group_test.go                — live and persisted batch context.
+tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.
 ```
 
 ## See Also

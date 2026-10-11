@@ -42,9 +42,9 @@ func RenderToolResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 	// use the shared layout without repeating the call's tool name.
 	if data.Nested && data.IsError {
 		switch toolName {
-		case tool.ToolBash, tool.ToolPowerShell, tool.ToolEdit, tool.ToolWrite:
+		case tool.ToolBash, tool.ToolPowerShell, tool.ToolEdit, tool.ToolWrite, tool.ToolAgent:
 		default:
-			return renderNestedFailure(data.Content, data.Width)
+			return renderNestedFailure(data)
 		}
 	}
 
@@ -86,7 +86,7 @@ const (
 
 func renderNestedReadResultInline(data ToolResultData) string {
 	if data.IsError {
-		return renderNestedFailure(data.Content, data.Width)
+		return renderNestedFailure(data)
 	}
 
 	content := strings.TrimSuffix(data.Content, "\n")
@@ -170,14 +170,28 @@ func renderNestedToolTrailer(summary string, style lipgloss.Style) string {
 	return style.Render(nestedTrailerPrefix+summary) + "\n"
 }
 
-func renderNestedFailure(content string, width int) string {
-	content = strings.TrimPrefix(content, "Error: ")
-	return renderNestedToolBody(content, width) + renderNestedToolTrailer("failed", errorStyle)
+func renderNestedFailure(data ToolResultData) string {
+	content := strings.TrimPrefix(data.Content, "Error: ")
+	if !data.Expanded {
+		content = compactFailureReason(data.Content, data.Width)
+	}
+	return renderNestedToolBody(content, data.Width) + renderNestedToolTrailer("failed", errorStyle)
+}
+
+func compactFailureReason(content string, width int) string {
+	if _, reason, ok := splitBashFailureContent(content); ok {
+		content = reason
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(content), "\n")
+	if width <= 0 {
+		width = 80
+	}
+	return kit.TruncateText(visibleLine(line), max(1, width-8))
 }
 
 func renderNestedGenericToolResultInline(data ToolResultData) string {
 	if data.IsError {
-		return renderNestedFailure(data.Content, data.Width)
+		return renderNestedFailure(data)
 	}
 
 	content := strings.TrimSuffix(data.Content, "\n")
@@ -232,9 +246,12 @@ func renderBashToolResultInline(data ToolResultData) string {
 	}
 
 	var sb strings.Builder
-	showBody := (data.Expanded || data.IsError) && content != ""
+	showBody := data.Expanded && content != ""
 	if showBody {
 		sb.WriteString(renderNestedToolBodyContinuous(content, data.Width))
+	}
+	if data.IsError && !data.Expanded {
+		summary = compactFailureReason(summary, data.Width)
 	}
 	sb.WriteString(renderNestedToolTrailer(summary, style))
 	return sb.String()
@@ -305,7 +322,8 @@ func renderNestedFileChangeResultInline(data ToolResultData) string {
 	var sb strings.Builder
 	if data.IsError {
 		sb.WriteString(renderFileChangeInputPreview(data.ToolInput, data.Content, width))
-		sb.WriteString(renderNestedFailure(data.Content, width))
+		data.Width = width
+		sb.WriteString(renderNestedFailure(data))
 		return sb.String()
 	}
 
@@ -470,9 +488,6 @@ func renderGenericToolResultInline(data ToolResultData) string {
 	}
 	sizeInfo := formatToolResultSize(toolName, data.Content)
 	if data.IsError {
-		// The reason is shown in full on the expanded lines below (always
-		// rendered for errors), so keep the summary a plain "failed" rather than
-		// repeating the first content line.
 		sizeInfo = "failed"
 	}
 	icon := toolResultIcon(data.IsError)
@@ -484,8 +499,12 @@ func renderGenericToolResultInline(data ToolResultData) string {
 
 	var sb strings.Builder
 	sb.WriteString(summaryStyle.Render(fmt.Sprintf("  %s  %s → %s", icon, toolName, sizeInfo)) + "\n")
+	content := data.Content
+	if data.IsError && !data.Expanded {
+		content = compactFailureReason(content, data.Width)
+	}
 	if data.Expanded || data.IsError {
-		for line := range strings.SplitSeq(data.Content, "\n") {
+		for line := range strings.SplitSeq(content, "\n") {
 			if data.IsError {
 				line = " " + line
 			}
@@ -574,15 +593,20 @@ func renderSkillResultInline(data ToolResultData) string {
 }
 
 func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string {
+	if details, ok := data.Details.(toolresult.AgentDetails); ok {
+		return renderAgentResultDetails(data, details, mdRenderer)
+	}
+	// Legacy transcripts stored the display header in the model-facing text.
 	icon := toolResultIcon(data.IsError)
 
 	var sb strings.Builder
 	content := data.Content
 
 	if data.IsError {
-		sb.WriteString(toolResultStyle.Render(fmt.Sprintf("  %s  Agent → Error", icon)) + "\n")
-		sb.WriteString(toolResultExpandedStyle.Render("    "+content) + "\n")
-		return sb.String()
+		if data.Nested {
+			return renderNestedFailure(data)
+		}
+		return renderGenericToolResultInline(data)
 	}
 
 	taskID := extractField(content, "Task ID: ", "")
@@ -594,6 +618,12 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 
 	toolUses := extractIntField(content, "ToolUses: ")
 	tokens := extractIntField(content, "Tokens: ")
+	if tokens == 0 {
+		var input, output int
+		if _, err := fmt.Sscanf(extractField(content, "Tokens: ", ""), "in=%d out=%d", &input, &output); err == nil {
+			tokens = input + output
+		}
+	}
 	duration := extractField(content, "Duration: ", "")
 	resultModel := extractField(content, "Model: ", "\n")
 	doneStats := buildDoneStats(toolUses, tokens, duration, resultModel)
@@ -650,6 +680,60 @@ func renderTaskResultInline(data ToolResultData, mdRenderer *MDRenderer) string 
 		resultLine += " (" + doneStats + ")"
 	}
 	sb.WriteString(toolResultStyle.Render(resultLine) + "\n")
+	return sb.String()
+}
+
+func renderAgentResultDetails(data ToolResultData, details toolresult.AgentDetails, mdRenderer *MDRenderer) string {
+	if details.TaskID != "" {
+		return toolResultStyle.Render(fmt.Sprintf("  %s  → background (Task ID: %s)", toolResultIcon(false), details.TaskID)) + "\n"
+	}
+	status, style := "Finished", toolResultStyle
+	if data.IsError {
+		status, style = "Failed", errorStyle
+		if details.Stopped {
+			status, style = "Stopped", toolResultStyle
+		}
+		if details.Error != "" {
+			status += " · " + compactFailureReason(details.Error, data.Width)
+		}
+	}
+	if stats := buildDoneStats(details.ToolUses, details.InputTokens+details.OutputTokens, toolresult.FormatDuration(details.Duration), details.Model); stats != "" {
+		status += " (" + stats + ")"
+	}
+	var sb strings.Builder
+	if data.Expanded {
+		width := data.Width
+		if width <= 0 {
+			width = 80
+		}
+		sb.WriteString(formatAgentDefinition(parseAgentInput(data.ToolInput), width))
+		activity := details.Activity
+		const maxActivityLines = 30
+		if len(activity) > maxActivityLines {
+			sb.WriteString(renderNestedToolBody(fmt.Sprintf("(%d earlier tool calls omitted)", len(activity)-maxActivityLines), data.Width))
+			activity = activity[len(activity)-maxActivityLines:]
+		}
+		sb.WriteString(renderNestedToolBody(strings.Join(activity, "\n"), data.Width))
+		response := data.Content
+		if mdRenderer != nil {
+			if md, err := mdRenderer.agentBodyRenderer().Render(response); err == nil {
+				response = strings.TrimSpace(md)
+			}
+		}
+		sb.WriteString(renderNestedToolBody(response, data.Width))
+	}
+	if data.IsError && !data.Expanded {
+		status = compactFailureReason(status, data.Width)
+	}
+	if data.Nested {
+		sb.WriteString(style.Render(nestedTrailerPrefix + status))
+	} else {
+		sb.WriteString(style.Render(fmt.Sprintf("  %s  Agent → %s", toolResultIcon(data.IsError && !details.Stopped), status)))
+	}
+	if !data.Expanded && data.Interactive {
+		sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
+	}
+	sb.WriteString("\n")
 	return sb.String()
 }
 

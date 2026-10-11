@@ -10,10 +10,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/task"
+	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func TestAdaptedBashSeparatesErrorFromOutput(t *testing.T) {
+	cwd := t.TempDir()
+	adapted := tool.AdaptTool(bashTool(t), core.ToolSchema{Name: "Bash"}, func() string { return cwd })
+	result, err := adapted.Run(context.Background(), ai.ToolCall{
+		Name: "Bash", Input: `{"command":"printf 'partial output\\n'; exit 7"}`,
+	})
+	if err == nil || err.Error() != "exit code 7" {
+		t.Fatalf("error = %v, want concise exit code without command output", err)
+	}
+	if got := agent.ResultText(result, err); got != "partial output\n\nError: exit code 7" {
+		t.Fatalf("model result = %q, want full output and failure reason", got)
+	}
+	details, ok := result.Details.(toolresult.BashDetails)
+	if !ok || details.LineCount != 1 || details.Error != "exit code 7" {
+		t.Fatalf("display details lost: %#v", result.Details)
+	}
+}
 
 func TestBashFailurePreservesStructuredDisplayDetails(t *testing.T) {
 	result := bashTool(t).ExecuteApproved(context.Background(), map[string]any{

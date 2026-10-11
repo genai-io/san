@@ -37,7 +37,7 @@ func TestMemberLinesWithoutASubject(t *testing.T) {
 		t.Errorf("To without a subject = %q", got)
 	}
 	msg := "<group-message>\nFrom: @api\nTo: @web\nSent: 2026-09-29 10:15\nUnattended-Turns: 1\n\nbody\n</group-message>"
-	if got := agentEnvelopeSummary(msg); got != "From @api" {
+	if got := agentEnvelopeSummary(msg, 80); got != "From @api" {
 		t.Errorf("resume summary without a subject = %q", got)
 	}
 }

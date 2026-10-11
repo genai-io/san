@@ -42,6 +42,8 @@ type TrackerListParams struct {
 	// agent's launch line in the flow. Plain user todos have no owner and keep
 	// the status palette.
 	AgentColors map[string]string
+	// Activity is the latest worker-local progress, keyed by background task ID.
+	Activity map[string]string
 }
 
 // RenderTrackerList renders the tracker panel above the input area.
@@ -92,6 +94,12 @@ func RenderTrackerList(params TrackerListParams) string {
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
 		sb.WriteString(renderItem(t, phase, params.Width, idWidth, params.Blockers, params.Blink, params.AgentColors))
+		if phase == itemRunning {
+			if activity := params.Activity[todo.BackgroundTaskID(t)]; activity != "" {
+				line, _, _ := strings.Cut(activity, "\n")
+				sb.WriteString(renderNestedToolBody(kit.TruncateText(line, max(1, params.Width-8)), params.Width))
+			}
+		}
 	}
 
 	return sb.String()

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -98,11 +99,12 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 		return toolresult.NewErrorResult(t.Name(), "cannot send a message to yourself")
 	}
 
+	display := brokerSubject(from, subject)
 	delivered := broker.Send(broker.Message{
 		From:    from,
 		To:      to,
-		Subject: brokerSubject(from, subject),
-		Content: wrapAgentMessage(from, message),
+		Subject: display,
+		Content: wrapAgentMessage(from, display, message),
 	})
 	if !delivered {
 		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to))
@@ -203,9 +205,9 @@ func undeliverableReason(to string) string {
 // input, mirroring the <task-notification> convention. The body keeps its
 // newlines (tool.EscapeXMLText only neutralizes &, <, >), so multi-line
 // messages read naturally in the recipient's context.
-func wrapAgentMessage(from, text string) string {
+func wrapAgentMessage(from, subject, text string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "<agent-message from=%q>\n", from)
+	fmt.Fprintf(&b, "<agent-message from=\"%s\" subject=\"%s\">\n", html.EscapeString(from), html.EscapeString(subject))
 	b.WriteString(tool.EscapeXMLText(text))
 	b.WriteString("\n</agent-message>")
 	return b.String()

@@ -2,6 +2,9 @@ package subagent_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/internal/app"
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
@@ -21,6 +26,102 @@ import (
 	"github.com/genai-io/san/tests/integration/testutil"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
+
+func TestHeadlessAgentPrintsPartialResultBeforeReturningError(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	t.Chdir(t.TempDir())
+	providerID := llm.ProviderID("headless-test")
+	provider := &testutil.FakeProvider{ErrorAt: 2, ErrorValue: errors.New("invalid API credentials"), Responses: []llm.CompletionResponse{
+		{Content: ai.Content{ai.TextBlock("verified partial finding"), ai.ToolCallBlock(core.ToolCall{ID: "unknown", Name: "UnknownTool", Input: "{}"})}, StopReason: ai.StopToolUse},
+	}}
+	llm.Register(llm.Meta{Provider: providerID, AuthMethod: llm.AuthAPIKey}, func(context.Context) (llm.Provider, error) { return provider, nil })
+	t.Cleanup(func() { llm.Unregister(providerID, llm.AuthAPIKey) })
+	store, err := llm.NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetCurrentModel("fake-model", providerID, llm.AuthAPIKey); err != nil {
+		t.Fatal(err)
+	}
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer read.Close()
+	defer write.Close()
+	stdout := os.Stdout
+	os.Stdout = write
+	t.Cleanup(func() { os.Stdout = stdout })
+	runErr := app.RunAgent(app.AgentRunOptions{Prompt: "Investigate"})
+	os.Stdout = stdout
+	_ = write.Close()
+	output, err := io.ReadAll(read)
+	if err != nil || runErr == nil || !strings.Contains(string(output), "verified partial finding") || !strings.Contains(string(output), "success=false") {
+		t.Fatalf("headless failure lost its partial result: output=%q runErr=%v readErr=%v", output, runErr, err)
+	}
+}
+
+func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
+	store, err := session.NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := subagent.NewExecutor(&testutil.FakeProvider{
+		ErrorAt: 1, ErrorValue: errors.New("invalid API credentials"),
+	}, t.TempDir(), "fake-model", nil)
+	executor.SetSessionStore(store, "parent-1")
+	result, runErr := subagent.NewExecutorAdapter(executor).Run(context.Background(), tool.AgentExecRequest{Prompt: "Investigate"})
+	if runErr == nil || result == nil || result.Success || result.AgentID == "" || result.OutputFile == "" {
+		t.Fatalf("failed execution lost transcript identity: result=%#v, err=%v", result, runErr)
+	}
+	saved, err := store.Load(result.AgentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Metadata.ParentSessionID != "parent-1" || len(saved.Messages) == 0 {
+		t.Fatalf("failed transcript not linked to parent: %#v", saved)
+	}
+}
+
+func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
+	for _, taskLog := range []bool{false, true} {
+		t.Run(fmt.Sprint(taskLog), func(t *testing.T) {
+			options := task.Options{}
+			if taskLog {
+				options.OutputDir = t.TempDir()
+			}
+			task.Initialize(options)
+			t.Cleanup(task.ResetDefaultTracker)
+			store, err := session.NewStoreWithDir(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			executor := subagent.NewExecutor(&testutil.FakeProvider{
+				ErrorAt: 1, ErrorValue: errors.New("invalid API credentials"),
+			}, t.TempDir(), "fake-model", nil)
+			executor.SetSessionStore(store, "parent-1")
+			worker, err := executor.RunBackground(tool.AgentExecRequest{Prompt: "Investigate"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			initialFile := worker.GetOutputFile()
+			if !worker.WaitForCompletion(time.Second) {
+				t.Fatal("background failure did not complete")
+			}
+			info := worker.GetStatus()
+			if info.Status != task.StatusFailed || info.AgentSessionID == "" || info.OutputFile == "" {
+				t.Fatalf("failure lost inspection metadata: %#v", info)
+			}
+			if taskLog && info.OutputFile != initialFile {
+				t.Fatalf("failure replaced the task log: %q -> %q", initialFile, info.OutputFile)
+			}
+			if !taskLog && info.OutputFile != store.SessionPath(info.AgentSessionID) {
+				t.Fatalf("without a task log failure must link the transcript: %#v", info)
+			}
+		})
+	}
+}
 
 func TestAgent_GeneralExploreMode(t *testing.T) {
 	mp := &testutil.FakeProvider{

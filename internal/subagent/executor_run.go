@@ -22,16 +22,14 @@ type preparedRun struct {
 	cwd       string
 	startedAt time.Time
 	hookID    string
-	// activity is the tool-call trail included in the parent-visible result.
-	// Status lines (model, mode, token usage, spinner text) go only to
-	// OnActivity for the UI — they would be noise in the parent's context.
+	// activity is the inspection trail, carried as display details by Agent.
+	// Model, mode, usage, and spinner status go only to the live display.
 	activity     []string
 	inputTokens  int
 	outputTokens int
 }
 
-// recordActivity adds a tool-call line to the parent-visible result trail and
-// also streams it to the UI.
+// recordActivity keeps an inspection line and streams it to the worker's UI.
 func (r *preparedRun) recordActivity(msg string) {
 	r.activity = append(r.activity, msg)
 	r.streamActivity(msg)
@@ -69,7 +67,7 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 		}
 	case sdkagent.MessageEnd:
 		if !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled) {
-			r.reportError(fmt.Sprintf("inference attempt %d", event.Attempt), event.Err)
+			r.recordActivity(fmt.Sprintf("inference attempt %d failed: %v", event.Attempt, event.Err))
 		}
 		if r.req.OnTextEnd != nil {
 			r.req.OnTextEnd(event.Err)
@@ -84,28 +82,18 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 		if report || r.req.OnToolResult != nil {
 			label := r.toolCallLabel(event.Name, event.Args)
 			if report {
-				r.reportError(label, event.Err)
+				// Keep recoverable failures with the worker. Structured views
+				// already finish their tool row through OnToolResult below.
+				line := fmt.Sprintf("%s failed: %v", label, event.Err)
+				r.activity = append(r.activity, line)
+				if r.req.OnToolResult == nil {
+					r.streamActivity(line)
+				}
 			}
 			if r.req.OnToolResult != nil {
 				r.req.OnToolResult(event.ID, label, sdkagent.ResultText(event.Result, event.Err), event.Err)
 			}
 		}
-	}
-}
-
-func (r *preparedRun) reportError(operation string, err error) {
-	from := r.req.TaskID
-	if from == "" {
-		from = r.hookID
-	}
-	message := broker.Message{
-		From: from, To: broker.Main,
-		Subject: fmt.Sprintf("%s: %s failed: %v", r.req.Description, operation, err),
-	}
-	if !broker.Send(message) {
-		// Headless runs have no main recipient. Keep errors visible without
-		// adding them to the parent-visible tool-call history.
-		r.streamActivity(message.Subject)
 	}
 }
 
@@ -154,7 +142,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 			msg := formatToolActivityLimit(name, params, run.req.ActivityMaxChars)
 			if run.req.OnToolStart != nil {
 				// The structured ToolStart row is already live. Keep the
-				// parent-visible trail without streaming a second call row.
+				// inspection trail without streaming a second call row.
 				run.activity = append(run.activity, msg)
 			} else {
 				run.recordActivity(msg)

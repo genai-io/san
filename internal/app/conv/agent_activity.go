@@ -46,7 +46,7 @@ func renderAgentActivity(activity []string) string {
 	return sb.String()
 }
 
-func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, limit int, stats AgentStats) string {
+func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, taskActivity map[int][]string, expanded bool, limit int, stats AgentStats, width int) string {
 	idx := -1
 	for i, pending := range pendingCalls {
 		if pending.ID == tc.ID {
@@ -62,21 +62,29 @@ func renderAgentActivityInline(tc core.ToolCall, pendingCalls []core.ToolCall, t
 	if expanded {
 		return renderAgentActivity(activity)
 	}
-	return renderAgentActivityCompact(tc.Input, activity, limit, stats)
+	return renderAgentActivityCompact(tc.Input, activity, limit, stats, width)
 }
 
-func renderAgentActivityCompact(input string, activity []string, limit int, stats AgentStats) string {
+func renderAgentActivityCompact(input string, activity []string, limit int, stats AgentStats, width int) string {
+	if width <= 0 {
+		width = 80
+	}
 	var sb strings.Builder
+	writeLine := func(line string) {
+		line, _, _ = strings.Cut(strings.TrimSpace(line), "\n")
+		line = strings.Join(strings.Fields(visibleLine(line)), " ")
+		sb.WriteString(toolResultStyle.Render("  ⎿  "+kit.TruncateText(line, max(1, width-5))) + "\n")
+	}
 	if summary := agentSummary(input, activity, stats); summary != "" {
-		sb.WriteString(toolResultStyle.Render("  ⎿  "+summary) + "\n")
+		writeLine(summary)
 	}
 
 	toolLines := agentToolLines(activity, limit)
 	for _, line := range toolLines {
-		sb.WriteString(toolResultStyle.Render("  ⎿  "+line) + "\n")
+		writeLine(line)
 	}
 	if len(toolLines) == 0 {
-		sb.WriteString(toolResultStyle.Render("  ⎿  "+agentStatus(activity)) + "\n")
+		writeLine(agentStatus(activity))
 	}
 	return sb.String()
 }
@@ -250,7 +258,11 @@ func RenderPendingToolSpinner(params PendingToolSpinnerParams) string {
 			label := formatAgentLabel(agent)
 			sb.WriteString(renderAgentToolLine(label, params.Width, agentIcon(params.Blink), configuredAgentColor(agent, params.AgentColors)) + "\n")
 		}
-		sb.WriteString(renderAgentActivity(params.TaskActivity[params.CurrentIdx]))
+		input := ""
+		if params.PendingCalls != nil && params.CurrentIdx < len(params.PendingCalls) {
+			input = params.PendingCalls[params.CurrentIdx].Input
+		}
+		sb.WriteString(renderAgentActivityCompact(input, params.TaskActivity[params.CurrentIdx], maxCompactAgentToolLines, AgentStats{}, params.Width))
 		return sb.String()
 	}
 

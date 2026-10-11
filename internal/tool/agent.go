@@ -49,6 +49,8 @@ func GetMessagesGetter(ctx context.Context) MessagesGetter {
 // AgentExecutor is the interface for executing agents.
 // This allows the Agent tool to be decoupled from the agent package.
 type AgentExecutor interface {
+	// Run may return an unfinished result alongside an error; callers must
+	// preserve its partial content and transcript identity.
 	Run(ctx context.Context, req AgentExecRequest) (*AgentExecResult, error)
 	RunBackground(req AgentExecRequest) (AgentTaskInfo, error)
 	AgentConfig(name string) (AgentConfigInfo, bool)

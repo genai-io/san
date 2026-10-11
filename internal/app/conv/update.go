@@ -274,7 +274,7 @@ func applyPreTool(m *Model, tc core.ToolCall) {
 func applyPostTool(rt Runtime, m *Model, tr core.ToolResult, details any) tea.Cmd {
 	m.Stream.BuildingTool = ""
 	if tool.IsAgentToolName(tr.ToolName) {
-		m.TaskActivity = nil
+		delete(m.TaskActivity, m.Tool.IndexOf(tr.ToolCallID))
 	}
 	batchComplete := m.Tool.MarkComplete(tr.ToolCallID)
 	// A tool that completed just before the user pressed Esc may have its

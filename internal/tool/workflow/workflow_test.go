@@ -12,6 +12,7 @@ import (
 
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
+	workflowmodel "github.com/genai-io/san/internal/workflow"
 )
 
 // scriptedExecutor answers each node by its description suffix and records
@@ -69,6 +70,51 @@ func (e *scriptedExecutor) ResolveAgentSelection(name string) (tool.AgentConfigI
 	return tool.AgentConfigInfo{Name: name, Source: "project"}, "cfg:" + name, true
 }
 func (e *scriptedExecutor) ParentModelID() string { return "parent" }
+
+type unfinishedExecutor struct {
+	scriptedExecutor
+	result *tool.AgentExecResult
+	err    error
+}
+
+func (e *unfinishedExecutor) Run(context.Context, tool.AgentExecRequest) (*tool.AgentExecResult, error) {
+	return e.result, e.err
+}
+
+func TestWorkflowPreservesUnfinishedResultsAndUsage(t *testing.T) {
+	task.Initialize(task.Options{OutputDir: t.TempDir()})
+	t.Cleanup(task.ResetDefaultTracker)
+	for _, runErr := range []error{errors.New("provider unavailable"), context.Canceled, nil} {
+		exec := &unfinishedExecutor{result: &tool.AgentExecResult{
+			Content: "verified partial findings", Error: "step budget exhausted", AgentID: "child-1", OutputFile: "/tmp/child-1.jsonl",
+			StepCount: 2, TotalInputTokens: 100, TotalOutputTokens: 25,
+		}, err: runErr}
+		wt := NewWorkflowTool()
+		wt.SetExecutor(exec)
+		info := runToCompletion(t, wt, map[string]any{"definition": "```mermaid\nflowchart LR\n  first\n  second\n```\n\n## first\nReview\n\n## second\nReview\n"})
+		if info.Status != task.StatusFailed || info.StepCount != 4 || info.TokenUsage != 250 {
+			t.Fatalf("unfinished run lost failure or usage: %+v", info)
+		}
+		for _, want := range []string{"verified partial findings", "child-1", "/tmp/child-1.jsonl", "unfinished"} {
+			if !strings.Contains(info.Output, want) {
+				t.Fatalf("workflow lost %q: %q", want, info.Output)
+			}
+		}
+		stored, err := os.ReadFile(info.OutputFile)
+		if err != nil || !strings.Contains(string(stored), "verified partial findings") || !strings.Contains(string(stored), "/tmp/child-1.jsonl") {
+			t.Fatalf("unfinished results were not persisted: err=%v", err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	worker := task.NewAgentTask("workflow-1", "workflow", "Review", ctx, cancel, "")
+	runErr := errors.New("provider unavailable")
+	runner := &nodeRunner{exec: &unfinishedExecutor{err: runErr}, task: worker, name: "review"}
+	output, err := runner.RunNode(ctx, workflowmodel.Call{Node: &workflowmodel.Node{ID: "only", Config: map[string]string{}}})
+	if output != "" || !errors.Is(err, runErr) {
+		t.Fatalf("failure before any result changed: output=%q err=%v", output, err)
+	}
+}
 
 const definition = "---\nname: review\n---\n```mermaid\nflowchart LR\n  diff --> sec & perf --> report\n```\n\n## diff\nagent: explorer\n\nSummarize {{input.base}}..HEAD\n\n## sec\nmode: explore\n\nSecurity: {{diff}}\n\n## perf\nmode: explore\n\nPerf: {{diff}}\n\n## report\nMerge {{sec}} {{perf}}\n"
 

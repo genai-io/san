@@ -9,12 +9,47 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/atomicfile"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/session"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
+
+func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
+	store, err := session.NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := commitTestModel()
+	m.services.Agent = &agent.Session{}
+	m.conv.Stream.Active = true
+	m.grp.unattended = 2
+	m.deliverMemberMessages("test", group.Member{}, []group.Message{
+		{From: "api", Subject: "API ready", Content: "first finding"},
+		{From: "web", Subject: "UI ready", Content: "second finding"},
+	})
+	live := m.conv.Messages[0]
+	rec := (&session.Setup{Store: store, SessionID: "group-batch"}).NewRecorder("main", "p", "m", 1000)
+	message := core.UserMessage(live.Content, nil)
+	message.ID = live.ID
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: message})
+	saved, err := store.LoadHistory("group-batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, messages := range [][]core.ChatMessage{m.conv.Messages, saved} {
+		view := ansi.Strip(conv.RenderSingleMessage(conv.RenderContext{Messages: messages, Width: 80}, 0))
+		for _, want := range []string{"From @api: API ready", "(+1 more)", "unattended 2"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("group summary lost %q: %q", want, view)
+			}
+		}
+	}
+}
 
 func TestParseGroupJoin(t *testing.T) {
 	type want struct {

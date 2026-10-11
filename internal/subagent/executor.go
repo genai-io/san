@@ -202,6 +202,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	req.TaskID = agentTask.GetID()
 	req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
+		agentTask.SetLiveView(msg)
 	}
 	// Background subagents run unattended: no interactive question channel.
 	req.OnQuestion = nil
@@ -218,6 +219,7 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 					agentTask.AppendOutput([]byte(result.Content + "\n"))
 				}
 				agentTask.SetIdentity(identity, result.AgentID)
+				agentTask.SetOutputFile(result.TranscriptPath)
 				agentTask.UpdateProgress(result.StepCount, result.TokenUsage.Input+result.TokenUsage.Output)
 			}
 			agentTask.AppendOutput([]byte(fmt.Sprintf("Error: %v\n", err)))
