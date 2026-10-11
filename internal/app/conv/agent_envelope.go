@@ -53,11 +53,15 @@ func agentEnvelopeSummary(content string, width int) string {
 			if subject != "" {
 				line += ": " + subject
 			}
+			var notes []string
 			if count, _ := strconv.Atoi(envelopeAttr(tag, "count")); count > 1 {
-				line += fmt.Sprintf(" (+%d more)", count-1)
+				notes = append(notes, fmt.Sprintf("(+%d more)", count-1))
 			}
 			if turns, _ := strconv.Atoi(unattended); turns >= 2 {
-				line += fmt.Sprintf(" · unattended %d", turns)
+				notes = append(notes, fmt.Sprintf("unattended %d", turns))
+			}
+			if len(notes) > 0 {
+				line += " · " + strings.Join(notes, ", ")
 			}
 			return line
 		}

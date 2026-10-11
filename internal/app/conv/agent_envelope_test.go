@@ -93,3 +93,15 @@ func TestAGroupMessageSummarizesToItsSender(t *testing.T) {
 		t.Errorf("summary = %q", got)
 	}
 }
+
+func TestGroupBatchSummaryKeepsMetadataForLongSubjects(t *testing.T) {
+	content := "<group-messages count=\"2\">\n<group-message>\nFrom: @api\nSubject: " + strings.Repeat("接口更新 ", 20) + "\nUnattended-Turns: 2\n\nfindings\n</group-message>\n</group-messages>"
+	for _, width := range []int{40, 80} {
+		view := stripANSI(RenderSingleMessage(RenderContext{Messages: []core.ChatMessage{{Role: core.ChatUser, Content: content}}, Width: width}, 0))
+		for _, want := range []string{"From @api", "(+1 more)", "unattended 2"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("width %d: long Group subject hid %q: %q", width, want, view)
+			}
+		}
+	}
+}
