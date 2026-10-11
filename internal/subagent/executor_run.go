@@ -22,11 +22,12 @@ import (
 )
 
 type preparedRun struct {
-	req    tool.AgentExecRequest
-	cfg    *runConfig
-	cwdMu  sync.RWMutex // Tool adapters read cwd from parallel goroutines.
-	cwd    string
-	system core.System
+	req         tool.AgentExecRequest
+	cfg         *runConfig
+	cwdMu       sync.RWMutex // Tool adapters read cwd from parallel goroutines.
+	cwd         string
+	system      core.System
+	sideEffects sync.Map // Each run owns handoffs, even when model call IDs repeat.
 	// Batch handoffs are owned by the turn goroutine. All sibling tools use
 	// the pre-batch cwd; the last cwd-changing call in request order wins,
 	// regardless of completion order.
@@ -74,8 +75,13 @@ func (r *preparedRun) currentCwd() string {
 	return r.cwd
 }
 
+func (r *preparedRun) storeSideEffect(id string, effect any) {
+	r.sideEffects.Store(id, effect)
+}
+
 func (r *preparedRun) finishCwdHandoff(id string, canceled bool) {
-	handoff, _ := tool.PopSideEffect(id).(map[string]any)
+	effect, _ := r.sideEffects.LoadAndDelete(id)
+	handoff, _ := effect.(map[string]any)
 	cwd, _ := handoff["cwd"].(string)
 	index := slices.Index(r.batchTools, id)
 	if !canceled && filepath.IsAbs(cwd) && index >= 0 && index >= r.batchCwdIdx {

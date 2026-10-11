@@ -75,9 +75,16 @@ func ResetDefaultTracker()         // test-only
 - Concurrency: registry is mutex-protected; per-task streams use their
   own buffers.
 - Terminal notifications carry the error reason and any partial output
-  together. Output above the notification's inline-size limit points at the
-  task log, including when the task failed or was stopped; the failure status
-  remains explicit.
+  together. Output above the notification's inline-size limit points at a
+  healthy task log, including when the task failed or was stopped; the failure
+  status remains explicit.
+- Log initialization, append, and close errors are retained in `OutputError`,
+  independently of execution status. An incomplete log is not advertised through
+  `OutputFile`; completion notices use a bounded UTF-8-safe preview instead.
+  Only initialization creates the file. If a log disappears while a task runs,
+  subsequent appends fail rather than recreating a partial file as a full report.
+- `Progress` holds the latest ordinary worker activity for a single tracker row;
+  it is display-only and does not become the final/model-facing output.
 
 ## Tests
 
@@ -85,6 +92,8 @@ func ResetDefaultTracker()         // test-only
 internal/task/manager_test.go        — register / get / list / kill.
 internal/task/bash_task_test.go      — output streaming and cancel.
 internal/task/hooks_test.go          — lifecycle hook emission.
+internal/task/output_observability_test.go — log errors and display-only progress.
+internal/task/output_disappearance_test.go — removed logs do not become false full reports.
 ```
 
 ## See Also

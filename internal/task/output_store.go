@@ -52,7 +52,9 @@ func appendOutputFile(path string, record outputRecord) error {
 		return err
 	}
 	data = append(data, '\n')
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	// Initialization owns creation. Recreating a removed log would lose earlier
+	// records while still advertising this path as the complete report.
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}

@@ -321,7 +321,15 @@ func (m model) renderChatIndicators(trackerView, bottom string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	return tailLines("\n"+strings.Join(parts, "\n"), m.env.Height-strings.Count(bottom, "\n"))
+	available := m.env.Height - strings.Count(bottom, "\n") - 1
+	available -= min(max(0, available), conv.ActiveWorkerRows(m.messageRenderParams()))
+	if available <= 0 {
+		return ""
+	}
+	// A clipped block must still start on its own row. Otherwise the last
+	// foreground identity and the first indicator are joined on one line.
+	indicators := "\n" + strings.Join(parts, "\n")
+	return "\n" + tailLines(strings.TrimPrefix(indicators, "\n"), available)
 }
 
 // liveWelcome returns the startup splash for the live view while it is still

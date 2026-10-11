@@ -384,12 +384,15 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 	)
 	run.system = sys
 	var ag core.Agent
-	adaptOpts := []tool.AdaptOption{tool.WithMessagesGetterProvider(func() []core.Message {
-		if ag == nil {
-			return nil
-		}
-		return ag.Messages()
-	})}
+	adaptOpts := []tool.AdaptOption{
+		tool.WithSideEffectHandler(run.storeSideEffect),
+		tool.WithMessagesGetterProvider(func() []core.Message {
+			if ag == nil {
+				return nil
+			}
+			return ag.Messages()
+		}),
+	}
 	// Foreground runs route AskUserQuestion through the spawning turn's UI.
 	// Background runs have no question channel (OnQuestion is stripped).
 	if run.req.OnQuestion != nil {

@@ -26,14 +26,12 @@ func TestTaskOutputLogFailureIsSeparateFromOutcome(t *testing.T) {
 				} else {
 					worker = NewBashTask("test", "true", "Test", &exec.Cmd{Process: &os.Process{Pid: 123}}, nil, path)
 				}
-				if phase != "init" {
+				if phase == "append" {
 					if err := os.Remove(path); err != nil {
 						t.Fatal(err)
 					}
-					if phase == "append" {
-						if err := os.Mkdir(path, 0o700); err != nil {
-							t.Fatal(err)
-						}
+					if err := os.Mkdir(path, 0o700); err != nil {
+						t.Fatal(err)
 					}
 				}
 				worker.AppendOutput([]byte("REPORT"))

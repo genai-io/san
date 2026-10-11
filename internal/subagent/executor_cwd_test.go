@@ -24,9 +24,13 @@ func (t cwdHandoffTool) Execute(context.Context, map[string]any, string) toolres
 	return toolresult.ToolResult{Success: true, HookResponse: map[string]any{"cwd": t.cwd}}
 }
 
-func putCwdHandoff(t *testing.T, id, cwd string) {
+func putCwdHandoff(t *testing.T, id, cwd string, runs ...*preparedRun) {
 	t.Helper()
-	adapter := tool.AdaptTool(cwdHandoffTool{cwd: cwd}, core.ToolSchema{Name: "CwdHandoff"}, nil)
+	var opts []tool.AdaptOption
+	if len(runs) > 0 {
+		opts = append(opts, tool.WithSideEffectHandler(runs[0].storeSideEffect))
+	}
+	adapter := tool.AdaptTool(cwdHandoffTool{cwd: cwd}, core.ToolSchema{Name: "CwdHandoff"}, nil, opts...)
 	if _, err := adapter.Run(core.WithToolCallID(context.Background(), id), ai.ToolCall{ID: id, Input: `{}`}); err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +45,8 @@ func TestWorkerCwdBatchOrderAndCancellation(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			run.forwardEvent(ctx, sdkagent.ToolStart{ID: "first"})
 			run.forwardEvent(ctx, sdkagent.ToolStart{ID: "last"})
-			putCwdHandoff(t, "first", first)
-			putCwdHandoff(t, "last", last)
+			putCwdHandoff(t, "first", first, run)
+			putCwdHandoff(t, "last", last, run)
 			ids := []string{"first", "last"}
 			if reversed {
 				ids[0], ids[1] = ids[1], ids[0]
@@ -80,6 +84,9 @@ func TestWorkerCwdBatchOrderAndCancellation(t *testing.T) {
 				t.Fatalf("reversed=%v canceled=%v cwd=%s want=%s", reversed, canceled, got, want)
 			}
 			for _, id := range ids {
+				if effect, ok := run.sideEffects.Load(id); ok {
+					t.Fatalf("worker handoff not drained: %+v", effect)
+				}
 				if effect := tool.PopSideEffect(id); effect != nil {
 					t.Fatalf("handoff leaked: %+v", effect)
 				}

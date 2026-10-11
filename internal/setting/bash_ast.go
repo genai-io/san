@@ -380,22 +380,20 @@ var dangerousBuiltins = map[string]bool{
 }
 
 var readOnlyGitSubcommands = map[string]bool{
-	"blame":        true,
-	"cat-file":     true,
-	"describe":     true,
-	"diff":         true,
-	"grep":         true,
-	"log":          true,
-	"ls-files":     true,
-	"ls-tree":      true,
-	"merge-base":   true,
-	"reflog":       true,
-	"rev-parse":    true,
-	"shortlog":     true,
-	"show":         true,
-	"show-ref":     true,
-	"status":       true,
-	"symbolic-ref": true,
+	"blame":      true,
+	"cat-file":   true,
+	"describe":   true,
+	"diff":       true,
+	"grep":       true,
+	"log":        true,
+	"ls-files":   true,
+	"ls-tree":    true,
+	"merge-base": true,
+	"rev-parse":  true,
+	"shortlog":   true,
+	"show":       true,
+	"show-ref":   true,
+	"status":     true,
 }
 
 // checkASTSecurity performs security checks on the parsed AST.
@@ -475,6 +473,12 @@ func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	}
 
 	switch subcommand {
+	case "symbolic-ref":
+		return isReadOnlyGitSymbolicRef(rest)
+	case "reflog":
+		// Other forms include expire/delete/drop/write. Only explicit queries
+		// (or the no-argument default query) qualify for the read-only gate.
+		return len(rest) == 0 || rest[0] == "show" || rest[0] == "exists" || rest[0] == "list"
 	case "tag":
 		return isReadOnlyGitTag(rest)
 	case "branch":
@@ -484,6 +488,25 @@ func isReadOnlyGitCommand(cmd parsedCommand) bool {
 	default:
 		return false
 	}
+}
+
+func isReadOnlyGitSymbolicRef(args []string) bool {
+	refs := 0
+	options := true
+	for _, arg := range args {
+		switch {
+		case options && arg == "--":
+			options = false
+		case options && (arg == "-q" || arg == "--quiet" || arg == "--short" || arg == "--recurse" || arg == "--no-recurse"):
+		case options && strings.HasPrefix(arg, "-"):
+			return false
+		default:
+			refs++
+		}
+	}
+	// One ref reads; two refs write. Delete and reflog-message flags above
+	// are deliberately excluded even when only one ref follows.
+	return refs == 1
 }
 
 func hasUnsafeReadOnlyGitFlag(args []string) bool {
