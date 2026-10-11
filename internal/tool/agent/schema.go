@@ -67,7 +67,7 @@ var agentToolParameters = map[string]any{
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
-			"description": "Set to true to run this agent in the background. You will be notified when it completes.",
+			"description": "Defaults to false: foreground calls in the same batch run concurrently, and the batch waits for all results before your next inference. Set true only when your next step does not depend on this result; background completion will be notified separately.",
 		},
 		"max_steps": map[string]any{
 			"type":        "number",

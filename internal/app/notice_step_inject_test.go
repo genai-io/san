@@ -99,35 +99,46 @@ func TestNoticeDuringToolExecutionIsShownAndDelivered(t *testing.T) {
 
 	runCmd(m.deliverNotice(taskNotice()))
 
-	if len(m.heldNotices) != 0 {
-		t.Fatalf("notice line was held even though the tail was not streaming: %+v", m.heldNotices)
-	}
 	assertNoticeShown(t, m)
 	assertAgentRead(t, provider)
 }
 
-// The stream finds its message by position, so a notice's line cannot be
-// appended while it is writing. Only the line waits for the next step: the
-// content goes to the agent at once.
-func TestNoticeWhileStreamingHoldsOnlyTheLine(t *testing.T) {
+func TestNoticeWhileStreamingIsShownAndDelivered(t *testing.T) {
 	m, provider := noticeDeliveryModel(t)
 	m.conv.Stream.Active = true
-	m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "thinking out loud"})
+	owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "thinking out loud"})
+	m.conv.Stream.MessageID = owner.ID
 
 	runCmd(m.deliverNotice(taskNotice()))
-	if len(m.heldNotices) != 1 {
-		t.Fatalf("notice line was appended while the stream was writing: %+v", m.conv.Messages)
-	}
+	assertNoticeShown(t, m)
 	assertAgentRead(t, provider)
 
 	// The tool batch completes: its result lands, leaving an appendable tail.
 	m.conv.Append(core.ChatMessage{Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "c1"}})
 	runCmd(m.OnStepEnd())
 
-	if len(m.heldNotices) != 0 {
-		t.Fatalf("notice line still held after a step boundary: %+v", m.heldNotices)
-	}
 	assertNoticeShown(t, m)
+}
+
+func TestNoticeIsVisibleBeforeInferenceEnds(t *testing.T) {
+	m, _ := noticeDeliveryModel(t)
+	m.env.Width = 80
+	m.conv.Stream.Active = true
+	owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant})
+	m.conv.Stream.MessageID = owner.ID
+	m.deliverNotice(taskNotice())
+
+	view := conv.RenderActiveContent(m.messageRenderParams())
+	if !strings.Contains(view, "research completed") || !strings.Contains(view, "Thinking") {
+		t.Fatalf("completion must be visible while inference is still running:\n%s", view)
+	}
+	if m.conv.CommittedCount != 0 {
+		t.Fatal("notice committed the unfinished inference")
+	}
+	m.conv.AppendStream("continuing", "")
+	if got := m.conv.Messages[0].Content; got != "continuing" {
+		t.Fatalf("notice displaced subsequent stream output: %q", got)
+	}
 }
 
 // With nothing parked and nothing queued, a step boundary must not disturb the

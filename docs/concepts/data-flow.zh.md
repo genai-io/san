@@ -269,16 +269,16 @@ Update                                     update.go
         └─ onMainNotice(n)                 model_turn_queue.go
               ├─ deliverNotice(n)
               │    ├─ 空闲          → injectAsNewTurn(n)：显示一行 + 开新一轮
-              │    └─ 有轮次在跑    → 立刻 sendToAgent(content)，并且
-              │         ├─ 末尾空闲（工具在跑）→ 立刻显示那一行
-              │         └─ 流式输出占着末尾 → 那一行先存进 m.heldNotices，
-              │              在 OnStepEnd / OnTurnEnd 显示
+              │    └─ 有轮次在跑    → 立刻显示那一行 + sendToAgent(content)
               └─ 重新挂一次 awaitMainNotice，等下一条唤醒
 ```
 
-通知分两半，约束不同，只有显示那一行需要等屏幕。内容一到就交给 agent：
-它的队列会在当前轮次的下一次推理前把内容放进对话，而且一轮不会带着没读的
-内容结束——所以不会出现"结果已经显示在屏幕上，模型还在盲跑"。
+通知分两半，约束不同。显示行立即出现，包括主 agent 正在推理时。
+`MessageStart` 用消息 ID 绑定流式更新、渲染和 scrollback 提交，归属不依赖
+显示顺序。`MessageEnd` 在最终元数据到齐后释放 ID；取消立即清除 ID，重试绑定新消息。
+非空内容一到就进入 agent 队列，在下一次推理前放进上下文；已经发出的推理
+请求无法中途读到它。一轮不会带着未读的队列内容结束。子任务工具错误使用仅
+显示通知，所以原因会立即出现，无须唤醒主模型或等待子任务的下一次推理。
 
 生产者一侧：subagent（或任何后台 task）完成 → `notifyTaskCompleted` →
 `wireTaskLifecycle` 里注册的 lifecycle handler 把完成消息发到 "main" 地址
@@ -395,7 +395,7 @@ Update → routeToSubModel                update.go
         │
         ▼
    OnChunk（一个 token batch 来一次）   applyChunk
-       ├─ m.AppendToLast(text)          扩长进行中的 message
+       ├─ m.AppendStream(text)          扩长进行中的 message
        └─ 如果 chunk.Done && 无工具调用:
               Stream.Active = false
               rt.CommitMessages()       搬到 scrollback（见下）
@@ -437,7 +437,7 @@ Update → routeToSubModel                update.go
 它通过 `tea.Println` 写出去的常规终端输出。
 
 **消息流式期间**，正在生成的文字活在**重绘区**而**不**在 scrollback。
-每条 OnChunk 让 `m.conv.Messages` 里最后那条 assistant message 增长，
+每条 OnChunk 让 `Stream.MessageID` 对应的 assistant message 增长，
 View() 把重绘区重新画一遍，用户就看见文字逐字 token 蹦出来：
 
 ```
@@ -469,7 +469,7 @@ View() 把重绘区重新画一遍，用户就看见文字逐字 token 蹦出来
 ```
 
 防止消息**同时**出现在两边的规则在 `renderAndCommit(checkReady=true)`
-里：`Stream.Active == true` 时它绝不 commit 最后一条 message。
+里：`Stream.Active == true` 时它绝不 commit `Stream.MessageID` 对应的消息。
 所以流式期间该消息只在重绘区；流完，一次 `tea.Println` 搬它去
 scrollback，`CommittedCount` 前进一格，重绘区不再画它。
 
@@ -513,9 +513,10 @@ scrollback。`go.mod` 中的替代依赖固定到
        │      └─ <-h.done   （≤ 250 ms）◀ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
        │
        │ 2. conv 侧 UI 更新（仅显示，不回写 agent）
-       │      ├─ Stream.Stop / 隐藏弹窗 / 清空 pending 问题
+       │      ├─ 隐藏弹窗 / 清空 pending 问题
        │      ├─ cancelPendingToolCalls    → 显示已取消的 tool_result
-       │      └─ MarkLastInterrupted       → assistant 末尾 ⏸ 徽章
+       │      ├─ MarkStreamInterrupted    → 当前归属消息的 ⏸ 徽章
+       │      └─ Stream.Stop              → 清除推理绑定的消息 ID
        │
        │ 3. CommitMessages + drainInputQueueAfterCancel
        │

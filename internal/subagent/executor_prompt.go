@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/skill"
@@ -11,20 +12,20 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
-func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode) []string {
-	constraints := config.AllowTools.ConstrainedDisplayNames()
-	if NormalizePermissionMode(string(permMode)) != PermissionExplore ||
-		(config.AllowTools != nil && !config.AllowTools.HasName(tool.ToolBash)) {
-		return constraints
-	}
-
-	filtered := make([]string, 0, len(constraints)+1)
-	for _, constraint := range constraints {
-		if !strings.HasPrefix(constraint, tool.ToolBash+"(") && !strings.HasPrefix(constraint, tool.ToolPowerShell+"(") {
-			filtered = append(filtered, constraint)
+func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode, schemas []core.ToolSchema) []string {
+	var constraints []string
+	for _, schema := range schemas {
+		if NormalizePermissionMode(string(permMode)) == PermissionExplore && tool.IsShellTool(schema.Name) {
+			constraints = append(constraints, schema.Name+" limited to commands classified as read-only")
+			continue
+		}
+		for _, rule := range config.AllowTools {
+			if rule.Pattern != "" && rule.names(schema.Name) {
+				constraints = append(constraints, rule.Rule())
+			}
 		}
 	}
-	return append(filtered, shellToolName()+" limited to commands classified as read-only")
+	return constraints
 }
 
 // shellToolName is the shell tool this platform registers.
@@ -36,10 +37,8 @@ func shellToolName() string {
 }
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.
-// It bundles the agent's charter (name, description, mode, tool pattern
-// constraints) plus the AGENT.md body and any preloaded skills, all of which
-// land in the subagent's identity slot — there is no separate "assignment"
-// section anymore.
+// It bundles the charter and preloaded skills. buildAgent adds the constraints
+// and reading guidance after resolving the tools actually offered to this run.
 func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) system.SubagentBrief {
 	custom := strings.TrimSpace(config.GetSystemPrompt())
 
@@ -63,11 +62,10 @@ func (e *Executor) buildBrief(config *AgentConfig, permMode PermissionMode) syst
 	}
 
 	return system.SubagentBrief{
-		AgentName:       config.Name,
-		Description:     config.Description,
-		Mode:            string(permMode),
-		ToolConstraints: effectiveToolConstraints(config, permMode),
-		CustomPrompt:    custom,
+		AgentName:    config.Name,
+		Description:  config.Description,
+		Mode:         string(permMode),
+		CustomPrompt: custom,
 	}
 }
 

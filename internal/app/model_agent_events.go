@@ -54,15 +54,13 @@ func (m *model) OnInference(resp *ai.Response) {
 func (m *model) HasRunningTasks() bool { return m.services.Task.HasRunning() }
 
 // OnStepEnd releases pending work into a still-running turn at a step
-// boundary (a PostTool, where the turn continues): notice lines the stream held
-// back, plus one queued user message — the cap is what keeps the queue
-// editable until release. Counterpart to drainTurnQueues, which runs once the
-// turn has ended.
+// boundary (a PostTool, where the turn continues): one queued user message — the
+// cap keeps the queue editable until release. Counterpart to drainTurnQueues,
+// which runs once the turn has ended.
 func (m *model) OnStepEnd() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	m.showHeldNotices()
 	notices := tea.Batch(m.CommitMessages()...)
 	if m.drainedThisStep {
 		return notices
@@ -102,7 +100,6 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// A dismissed start/resume offer comes back once the turn is over.
 	m.autopilotOfferDismissed = false
-	m.showHeldNotices()
 	// Only a list the model closed out is safe to discard. An item left open —
 	// pending, or in_progress with nothing executing it — is unfinished work, so
 	// the list survives the turn and stays on screen.

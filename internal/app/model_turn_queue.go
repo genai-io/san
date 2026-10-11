@@ -126,15 +126,6 @@ func (m *model) drainTurnQueues() (tea.Cmd, bool) {
 	return nil, false
 }
 
-// showHeldNotices adds the lines deliverNotice held back while the stream
-// owned the tail. Their content already reached the agent.
-func (m *model) showHeldNotices() {
-	for _, n := range m.heldNotices {
-		m.showNoticeLine(n)
-	}
-	m.heldNotices = nil
-}
-
 // injectAsNewTurn delivers a notice with no turn running: the line is shown and the
 // body, if any, starts a fresh turn.
 func (m *model) injectAsNewTurn(n mainNotice) tea.Cmd {
@@ -190,20 +181,15 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 	return tea.Batch(m.deliverNotice(n), awaitMainNotice(m.mainNotices))
 }
 
-// deliverNotice hands a notice's content to the agent now and shows its line
-// as soon as the conversation can take one (see notify.go).
+// deliverNotice shows the notice immediately; its content reaches the running
+// agent at the next step boundary (see notify.go).
 func (m *model) deliverNotice(n mainNotice) tea.Cmd {
-	streaming := m.conv.LastMessageIsStreaming()
-	if !streaming && !m.conv.Stream.Active {
+	if !m.conv.Stream.Active {
 		return m.injectAsNewTurn(n)
 	}
 	var send tea.Cmd
 	if n.Content != "" { // display-only notices have nothing for the model to read
 		send = m.sendToAgent(core.UserMessage(n.Content, nil))
-	}
-	if streaming {
-		m.heldNotices = append(m.heldNotices, mainNotice{Display: n.Display, FromAgent: n.FromAgent, FinishedTaskID: n.FinishedTaskID})
-		return send
 	}
 	m.showNoticeLine(n)
 	return tea.Batch(append(m.CommitMessages(), send)...)

@@ -39,8 +39,7 @@ func (m *model) handleSubmit() tea.Cmd {
 		if input.IsWorkflowStopCommand(raw) {
 			result, cmd, _ := m.executeCommand(context.Background(), raw)
 			m.userInput.Reset()
-			// A streaming assistant owns the conversation tail. Cancel now, but
-			// let the existing notice queue display the result at a safe boundary.
+			// Show the stop result even while the parent inference continues.
 			return tea.Batch(cmd, m.deliverNotice(mainNotice{Display: result}))
 		}
 		log.Logger().Sugar().Debugf("handleSubmit: stream active, enqueue %q", raw)

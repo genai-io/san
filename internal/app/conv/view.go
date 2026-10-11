@@ -22,10 +22,11 @@ type RenderContext struct {
 	InlinedResults inlinedToolResults
 
 	// ── Streaming + in-flight tool execution ────────────────────
-	StreamActive bool
-	BuildingTool string
-	PendingCalls []core.ToolCall
-	CurrentIdx   int
+	StreamActive    bool
+	StreamMessageID string
+	BuildingTool    string
+	PendingCalls    []core.ToolCall
+	CurrentIdx      int
 	// ToolStartedAt maps a running tool call's ID to when it began executing,
 	// so its row can show a live elapsed timer. Only in-flight calls appear.
 	ToolStartedAt map[string]time.Time
@@ -299,9 +300,6 @@ func renderAssistantWithTools(p RenderContext, msg core.ChatMessage, idx int, is
 func RenderMessageRange(p RenderContext, startIdx, endIdx int, includeSpinner bool) string {
 	var sb strings.Builder
 
-	lastIdx := endIdx - 1
-	isLastStreaming := p.StreamActive && lastIdx >= 0 && p.Messages[lastIdx].Role == core.ChatAssistant
-
 	for i := startIdx; i < endIdx; i++ {
 		// Skip a ToolResult that will be drawn inline with its owning
 		// assistant — but only if the owner is also being rendered in
@@ -309,7 +307,7 @@ func RenderMessageRange(p RenderContext, startIdx, endIdx int, includeSpinner bo
 		if owner := p.InlinedResults.ownerOf(i); owner >= startIdx {
 			continue
 		}
-		isStreaming := i == lastIdx && isLastStreaming
+		isStreaming := p.StreamActive && p.StreamMessageID != "" && p.Messages[i].ID == p.StreamMessageID
 		sb.WriteString(RenderMessageAt(p, i, isStreaming))
 	}
 

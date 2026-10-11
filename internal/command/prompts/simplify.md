@@ -17,11 +17,18 @@ argument, review that target instead. Treat this diff as the review scope.
 ## Phase 1 — Review (4 cleanup agents in parallel)
 
 Launch **4 independent review agents** via the Agent tool, all in a single
-message so they run concurrently. Tell each agent how to reproduce the diff
+message with `mode: "explore"` and `run_in_background: false` so they run
+concurrently and the tool batch waits for all four results before your next
+inference. These reviews block the fixes; do not launch them in the background.
+Tell each agent how to reproduce the diff
 (the exact git command and directory) and give it ONE of the four angles
 below. Each returns its findings with `file`, `line`, a one-line `summary`,
 and the concrete cost (what is duplicated, wasted, or harder to maintain).
 Tell agents to verify each finding against the current file before reporting.
+Each reviewer must distinguish a verified review from work it could not
+complete, listing any inaccessible files. Give paths and exact diff commands;
+let reviewers inspect source with their own available tools instead of copying
+source into their prompts.
 
 ### Reuse
 
@@ -56,7 +63,12 @@ and string-matching against message content where a typed value belongs.
 
 ## Phase 2 — Apply the fixes
 
-Wait for all four agents to complete, dedup findings that point at the same
+Read all four returned reports. A finished agent run is not evidence that its
+review was complete. If a review is blocked, report the missing coverage and
+the blocker; do not silently replace it with a clean result or launch another
+review with pasted source to get around the restriction.
+
+Dedup verified findings that point at the same
 line or mechanism, and fix each remaining one directly. Skip any finding
 whose fix would change intended behavior, require changes well outside the
 reviewed diff, or that you judge to be a false positive — note the skip

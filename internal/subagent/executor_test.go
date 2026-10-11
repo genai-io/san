@@ -378,32 +378,68 @@ Use conventional commits.
 }
 
 func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
-	executor := &Executor{}
-	brief := executor.buildBrief(&AgentConfig{
+	config := &AgentConfig{
 		Name: "subagent",
 		AllowTools: ToolList{
 			{Name: "Read"},
 			{Name: "Bash", Pattern: "git diff*"},
 		},
-	}, PermissionExplore)
-
-	if !slices.Contains(brief.ToolConstraints, "Bash limited to commands classified as read-only") {
-		t.Fatalf("tool constraints = %#v, want read-only Bash policy", brief.ToolConstraints)
 	}
-	if slices.Contains(brief.ToolConstraints, "Bash(git diff*)") {
-		t.Fatalf("tool constraints should describe effective policy, got %#v", brief.ToolConstraints)
+	constraints := effectiveToolConstraints(config, PermissionExplore, []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}})
+
+	if !slices.Contains(constraints, "Bash limited to commands classified as read-only") {
+		t.Fatalf("tool constraints = %#v, want read-only Bash policy", constraints)
+	}
+	if slices.Contains(constraints, "Bash(git diff*)") {
+		t.Fatalf("tool constraints should describe effective policy, got %#v", constraints)
+	}
+	if constraints := effectiveToolConstraints(config, PermissionExplore, []core.ToolSchema{{Name: "Read"}}); len(constraints) != 0 {
+		t.Fatalf("constraints describe an unavailable shell: %#v", constraints)
 	}
 }
 
 func TestSubagentPrefersReadWhenReadAndShellAreAvailable(t *testing.T) {
 	schemas := filterSchemasForPermission(newAgentToolSet(nil, nil, nil, nil).Tools(), PermissionExplore, nil)
-	brief := system.SubagentBrief{ToolGuidance: fileReadToolGuidance(schemas)}
+	brief := system.SubagentBrief{ToolGuidance: fileReadToolGuidance(schemas, PermissionExplore)}
 	prompt := system.Build(core.ScopeSubagent, system.WithSubagentIdentity(brief)).Prompt()
 	if !strings.Contains(prompt, "Use Read for file contents") || !strings.Contains(prompt, "avoid cat/head/tail/sed") {
 		t.Fatalf("subagent prompt lacks file-read guidance:\n%s", prompt)
 	}
-	if got := fileReadToolGuidance([]core.ToolSchema{{Name: "Bash"}}); got != "" {
-		t.Fatalf("guidance named an unavailable Read tool: %q", got)
+}
+
+func TestSubagentFileReadingGuidanceFollowsEffectiveTools(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		schemas []core.ToolSchema
+		want    string
+	}{
+		{"read only", []core.ToolSchema{{Name: "Read"}}, "Use Read for file contents"},
+		{"bash only", []core.ToolSchema{{Name: "Bash"}}, "cat path"},
+		{"powershell only", []core.ToolSchema{{Name: "PowerShell"}}, "Get-Content path"},
+		{"no file tools", nil, "Report the task as blocked"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			guide := fileReadToolGuidance(tc.schemas, PermissionExplore)
+			if !strings.Contains(guide, tc.want) {
+				t.Fatalf("guidance = %q, want %q", guide, tc.want)
+			}
+		})
+	}
+	for _, shell := range []struct{ name, command string }{
+		{"Bash", "cat path"}, {"PowerShell", "Get-Content path"},
+	} {
+		guide := fileReadToolGuidance([]core.ToolSchema{{Name: shell.name}}, PermissionExplore)
+		if !strings.Contains(guide, "interpreters") || strings.Contains(guide, "Use Read") {
+			t.Fatalf("shell-only explore guidance = %q", guide)
+		}
+		allowed, reason := subagentPermissionFunc(PermissionExplore, nil, nil)(context.Background(), shell.name, map[string]any{"command": shell.command})
+		if !allowed {
+			t.Fatalf("suggested command %q is denied: %s", shell.command, reason)
+		}
+	}
+	allowed, reason := subagentPermissionFunc(PermissionExplore, nil, nil)(context.Background(), tool.ToolBash, map[string]any{"command": "python3 -c 'print(1)'"})
+	if allowed || !strings.Contains(reason, "interpreters") {
+		t.Fatalf("explore interpreter permission = %v, %q", allowed, reason)
 	}
 }
 

@@ -37,7 +37,7 @@ m.conv.Messages = [ msg0, msg1, msg2, msg3 | msg4, msg5 ]
 进入串行 `tea.Println` 队列。短回复结束后仍然显示在固定输入框上方。
 防止过早提交的规则在
 `renderAndCommit(checkReady=true)` 里：`Stream.Active` 为 true 时绝不
-commit 最后一条消息。
+commit `Stream.MessageID` 对应的消息；后面的通知仍会立即显示。
 
 **两块表面用同一套渲染函数。** `RenderMessageAt` 产出每条消息的字符串；
 差别在消息索引范围（已完成渲染：`0..CommittedCount`；实时渲染：
@@ -215,8 +215,9 @@ InlinedResults.IsResultInlined(idx)      // 这条 result 是否会被
 
 ```
 event:           sdkagent.MessageStart
-applyPreInfer:   m.Stream.Active = true
-                 m.Append({Role: assistant, Content: ""})
+applyPreInfer:   m.Stream.Stop(); rt.CommitMessages()
+                 msg := m.Append({Role: assistant, Content: ""})
+                 m.Stream = {Active: true, MessageID: msg.ID}
                  启动 spinner
 
 conv.Messages:   [user, assistant{Content:""}]
@@ -232,7 +233,7 @@ View → renderNormalView
          = {} （还没有 ToolCalls）
        → RenderMessageRange(ctx, startIdx=1, endIdx=2, includeSpinner=true)
          i=1: ownerOf(1) = -1（不是 result）→ 不跳过
-              isStreaming = (1 == lastIdx && Stream.Active && role==assistant)
+              isStreaming = (msg.ID == Stream.MessageID && Stream.Active)
                           = true
               → RenderMessageAt(ctx, 1, isStreaming=true)
                 → renderAssistantWithTools(ctx, msg, 1, isLast=true)
@@ -248,7 +249,7 @@ View → renderNormalView
 
 ```
 event:           sdkagent.MessageUpdate{Delta: {Block: {Type: text, Text: "我用 ls 列一下。"}}}
-applyChunk:      m.AppendToLast(text, "")
+applyChunk:      m.AppendStream(text, "")
 
 conv.Messages:   [user, assistant{Content:"我用 ls 列一下。"}]
 Stream.Active:   仍然 true（Done=false）
@@ -256,14 +257,14 @@ Stream.Active:   仍然 true（Done=false）
 
 和 Step 1 同样的调用链，但 `RenderAssistantMessage` 这次看到非空内容，
 `MDRenderer.Render` 给它上 style。重绘区：`● 我用 ls 列一下。 ▮ ⋯`。
-后面还会来几个 OnChunk，每个都是 `AppendToLast` + 一次 View() 重画。
+后面还会来几个 OnChunk，每个都是 `AppendStream` + 一次 View() 重画。
 
 ### Step 3 — PostInfer：工具调用挂到 assistant 消息上
 
 ```
 event:           sdkagent.MessageEnd{Response: {Content: [ToolCall{ID:"tc-1", Name:"Bash", Input:{cmd:"ls"}}]}}
 applyPostInfer:  rt.OnInference(resp)
-                 m.SetLastToolCalls(resp.ToolCalls)
+                 m.SetStreamToolCalls(resp.ToolCalls)
                  m.Tool.Track(resp.ToolCalls)
 
 conv.Messages:   [user,
@@ -341,7 +342,7 @@ RenderMessageRange(ctx, 1, 3, includeSpinner=true):
 
 ```
 event:           sdkagent.MessageEnd{Response: {...}}
-applyChunk:      m.AppendToLast(...)       （可能还有最后一段文字 chunk）
+applyChunk:      m.AppendStream(...)       （可能还有最后一段文字 chunk）
                  if chunk.Done && 没有未完成的工具调用:
                      m.Stream.Active = false
                      return rt.CommitMessages()
@@ -352,7 +353,7 @@ applyChunk:      m.AppendToLast(...)       （可能还有最后一段文字 chu
 ```
 for i in CommittedCount..len(Messages):    // i = 1, 2
   msg = Messages[i]
-  if checkReady && i == lastIdx && role==assistant && Stream.Active:
+  if checkReady && i == StreamMessageIndex() && Stream.Active:
       break                                  // Stream.Active 已经是 false
   rendered = conv.RenderSingleMessage(ctx, i)
     i=1: RenderMessageAt(ctx, 1, false)      // 不再 streaming → 不画光标

@@ -6,10 +6,9 @@
 // A notice has two halves with different constraints. Its content goes to the
 // agent at once: with a turn running it enters at the next step boundary (the
 // agent's queue sees to that, and a turn does not end with it unread);
-// otherwise it starts a fresh turn. Its display line can only be appended
-// where that is safe — anywhere except the last slot while the stream is still
-// writing into it (conv.LastMessageIsStreaming) — so there it is held and shown
-// at the next step or turn end. The agent never waits on the screen.
+// otherwise it starts a fresh turn. Its display line appears immediately,
+// including during inference: stream updates belong to their message ID, not
+// the last display row. The agent never waits on the screen.
 //
 // m.mainNotices is a TUI staging channel, not the agent's queue: the main
 // conversation is UI-attached and has the display half to place, which is why

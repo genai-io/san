@@ -3,6 +3,7 @@ package subagent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -64,6 +65,7 @@ func (r *preparedRun) forwardEvent(ev core.Event) {
 			}
 		}
 	case sdkagent.MessageEnd:
+		r.reportError(fmt.Sprintf("inference attempt %d", event.Attempt), event.Err)
 		if r.req.OnTextEnd != nil {
 			r.req.OnTextEnd(event.Err)
 		}
@@ -73,10 +75,25 @@ func (r *preparedRun) forwardEvent(ev core.Event) {
 			r.req.OnToolStart(event.ID, r.toolCallLabel(event.Name, event.Args))
 		}
 	case sdkagent.ToolEnd:
+		r.reportError(r.toolCallLabel(event.Name, event.Args), event.Err)
 		if r.req.OnToolResult != nil {
 			r.req.OnToolResult(event.ID, r.toolCallLabel(event.Name, event.Args), sdkagent.ResultText(event.Result, event.Err), event.Err)
 		}
 	}
+}
+
+func (r *preparedRun) reportError(operation string, err error) {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return
+	}
+	from := r.req.TaskID
+	if from == "" {
+		from = r.hookID
+	}
+	broker.Send(broker.Message{
+		From: from, To: broker.Main,
+		Subject: fmt.Sprintf("%s: %s failed: %v", r.req.Description, operation, err),
+	})
 }
 
 func (r *preparedRun) toolCallLabel(name, rawArgs string) string {

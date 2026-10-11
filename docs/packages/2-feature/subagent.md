@@ -110,6 +110,13 @@ func ResetDefaultRegistry()           // test-only
   turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
+- Subagent errors send a display-only broker notice as soon as `ToolEnd` or
+  `MessageEnd` reports an error, including permission denials and failed
+  inference attempts. They do not wait for the
+  worker's next inference or its final report. A tool error does not mark the
+  whole task failed: the worker may recover and the normal completion result
+  still reports the run's terminal state. Foreground calls use their hook id as
+  the sender; background calls use their task id.
 - Every exit path — success, cancel, error — fires `SubagentStop` with
   the same agent id `SubagentStart` carried. Subagents are one-shot: a run
   is not resumable; to continue a line of work, spawn a fresh subagent.
@@ -118,6 +125,15 @@ func ResetDefaultRegistry()           // test-only
   nothing to enforce at runtime.
 - Concurrency: multiple executors may run in parallel; the registry is
   RWMutex-protected.
+- File-reading guidance is built from the effective schemas after global
+  disables, per-agent allow/deny lists, and mode filtering. When `Read` is
+  unavailable, workers are told how to inspect source with their offered
+  shell. Explore still rejects arbitrary interpreters such as Python; the
+  file-reading guidance does not widen permissions. Workers with no built-in
+  reader are told to report inaccessible source as blocked work.
+- A successful run means the agent ended normally, not that its stated task
+  was fulfilled. Callers must read the result and retain any incomplete
+  coverage or blockers; a permission-denied review is not a clean review.
 
 ## Tests
 

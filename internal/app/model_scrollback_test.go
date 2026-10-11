@@ -24,7 +24,8 @@ import (
 
 func flushTestModel(msg core.ChatMessage) *model {
 	m := &model{env: env{Width: 80}, conv: conv.NewModel(80)}
-	m.conv.Messages = []core.ChatMessage{msg}
+	appended := m.conv.Append(msg)
+	m.conv.Stream.MessageID = appended.ID
 	return m
 }
 
@@ -637,15 +638,15 @@ func TestFlushStreamingBlocksFlushesTrailingThinkingOnContent(t *testing.T) {
 func TestFlushStreamingBlocksHoldsThinkingAfterContent(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{Role: core.ChatAssistant})
 	m.conv.Stream.Active = true
-	m.conv.AppendToLast("I'll implement the environment changes.\n\n", "")
+	m.conv.AppendStream("I'll implement the environment changes.\n\n", "")
 	applyFlush(t, m, m.FlushStreamingBlocks())
-	m.conv.AppendToLast("", "**Implementing environment changes**\n\n")
+	m.conv.AppendStream("", "**Implementing environment changes**\n\n")
 	applyFlush(t, m, m.FlushStreamingBlocks())
 	committed := m.conv.Messages[0].ThinkingCommittedLen
 	prints := len(m.flush.pendingPrints)
 
 	for _, delta := range []string{"I'm", " moving", " forward", " with", " the task."} {
-		m.conv.AppendToLast("", delta)
+		m.conv.AppendStream("", delta)
 		if cmds := m.FlushStreamingBlocks(); len(cmds) != 0 {
 			t.Fatalf("thinking delta %q must stay live until its paragraph completes", delta)
 		}
@@ -655,7 +656,7 @@ func TestFlushStreamingBlocksHoldsThinkingAfterContent(t *testing.T) {
 	}
 
 	// The next text fragment finishes the reasoning paragraph as one block.
-	m.conv.AppendToLast("Here is the change.", "")
+	m.conv.AppendStream("Here is the change.", "")
 	applyFlush(t, m, m.FlushStreamingBlocks())
 	if got := len(m.flush.pendingPrints); got != prints+1 {
 		t.Fatalf("queued %d prints, want %d (one complete paragraph)", got, prints+1)
@@ -681,6 +682,27 @@ func TestFlushStreamingBlocksGatesWhileRendering(t *testing.T) {
 	}
 	if cmds := m.FlushStreamingBlocks(); cmds != nil {
 		t.Fatal("a second flush must be suppressed while one render is in flight")
+	}
+}
+
+func TestFlushStreamingBlocksWithNoticeAfterAssistant(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	owner := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: "completed paragraph\n\n"})
+	m.conv.Stream.MessageID = owner.ID
+	m.conv.Stream.Active = true
+	m.conv.AddAgentNotice("background task failed")
+	if cmds := m.CommitMessages(); len(cmds) != 0 || m.conv.CommittedCount != 0 {
+		t.Fatal("notice froze the unfinished inference into scrollback")
+	}
+	applyFlush(t, m, m.FlushStreamingBlocks())
+	if got := m.conv.Messages[0].ContentCommittedLen; got != len("completed paragraph\n\n") {
+		t.Fatalf("notice stopped progressive block commits: %d", got)
+	}
+	m.conv.AppendStream("remaining text", "")
+	m.conv.Stream.Stop()
+	m.CommitMessages()
+	if m.conv.CommittedCount != 2 {
+		t.Fatal("finished inference did not commit its notice")
 	}
 }
 

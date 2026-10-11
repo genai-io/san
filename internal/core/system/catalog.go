@@ -182,7 +182,7 @@ type SubagentBrief struct {
 	Description     string   // one-line role description
 	Mode            string   // "explore" / "default" / "acceptEdits" / "bypass"
 	ToolConstraints []string // e.g. "Bash limited to git diff*"
-	ToolGuidance    string   // cross-tool choice, only when both tools are offered
+	ToolGuidance    string   // how to use the effective tool set
 	CustomPrompt    string   // AGENT.md body
 }
 
