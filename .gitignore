@@ -27,6 +27,7 @@ coverage.out
 .san/*
 !.san/skills/
 !.san/personas/
+.agents/
 .claude/
 .mcp.json
 CLAUDE.md
