@@ -164,7 +164,7 @@ type ChatMessage struct {
 	ThinkingEmitted      bool // the "✦ " thinking marker has already been emitted
 
 	// Reasoning time, first thinking delta to latest (see AppendThinking).
-	// Shown as "Thought for 3.2s" in collapsed mode. Not persisted.
+	// Shown as "Thought for 3.2 s" in collapsed mode. Not persisted.
 	ThinkingStartedAt time.Time
 	ThinkingDuration  time.Duration
 }

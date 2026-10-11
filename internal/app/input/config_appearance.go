@@ -7,7 +7,7 @@
 //     ([██████░░░░] 71%) in the status line. Off by default.
 //   - THINKING — full / collapsed / hidden. How the model's reasoning is
 //     drawn. Full by default (the reasoning streams as before); collapsed
-//     drops the body everywhere and shows one "✦ Thought for 3.2s" line
+//     drops the body everywhere and shows one "✦ Thought for 3.2 s" line
 //     instead.
 //
 // All are personal preferences, so — unlike Self-Learning — they have no
@@ -82,8 +82,8 @@ func appearanceOptions() []appearanceOption {
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "On", desc: "Show the visual context-usage bar", barOn: true},
 		{section: "CONTEXT BAR", kind: kindContextBar, label: "Off", desc: "Hide the bar (numeric ctx X/Y still shows)", barOn: false},
 		{section: "THINKING", kind: kindThinkingDisplay, label: "Full", desc: "Draw the reasoning as it streams", thinkingDisplay: setting.ThinkingDisplayFull},
-		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
-		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Collapsed", desc: "One line, \"Thought for 3.2 s\" — no reasoning body", thinkingDisplay: setting.ThinkingDisplayCollapsed},
+		{section: "THINKING", kind: kindThinkingDisplay, label: "Hidden", desc: "Draw nothing at all, not even \"Thought for 3.2 s\"", thinkingDisplay: setting.ThinkingDisplayHidden},
 	}
 }
 

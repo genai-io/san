@@ -75,7 +75,7 @@ type flushSnapshot struct {
 	showBullet       bool
 	width            int
 	md               *conv.MDRenderer
-	// collapsedThinking is the collapsed mode's rendered "Thought for 3.2s"
+	// collapsedThinking is the collapsed mode's rendered "Thought for 3.2 s"
 	// line, committed instead of a reasoning body. thinkingSlice is empty in
 	// that case: the body never reaches scrollback in the collapsed and hidden
 	// modes.
@@ -143,7 +143,7 @@ func (m *model) FlushStreamingBlocks() []tea.Cmd {
 	} else if reasoningDone && !msg.ThinkingEmitted && len(msg.Thinking) > 0 {
 		// Collapsed/hidden: the body must never reach the screen, so nothing is
 		// sliced for commit. The offsets still advance past it, and collapsed
-		// commits one "Thought for 3.2s" line instead — which is why this
+		// commits one "Thought for 3.2 s" line instead — which is why this
 		// waits for reasoningDone rather than the first completed block.
 		thinkingEnd = len(msg.Thinking)
 		if m.env.ThinkingDisplay == setting.ThinkingDisplayCollapsed {
