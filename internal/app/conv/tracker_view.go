@@ -75,12 +75,12 @@ func RenderTrackerList(params TrackerListParams) string {
 	var sb strings.Builder
 	headerStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.TextDim).Bold(true)
 	mutedStyle := lipgloss.NewStyle().Foreground(kit.CurrentTheme.Muted)
+	header := "  " + headerStyle.Render("Tasks")
 	// Progress is the plan's: a background task finishing is not a step of it.
 	if plans > 0 {
-		sb.WriteString("  " + headerStyle.Render("Tasks") + " " +
-			mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans)))
-		sb.WriteString("\n")
+		header += " " + mutedStyle.Render(fmt.Sprintf("(%d%%)", plansDone*100/plans))
 	}
+	sb.WriteString(kit.TruncateText(header, max(1, params.Width)) + "\n")
 
 	visible, hidden := visibleTrackerItems(items)
 	sb.WriteString(renderFoldedLine(hidden))

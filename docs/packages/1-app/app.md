@@ -156,10 +156,12 @@ they fit, and expanded tool content wraps explicitly to the terminal width.
 Wrapping command bodies and string parameters preserves spaces, including
 spaces inside quoted arguments.
 
-The task tracker above the input shows at most eight task rows and one overflow
-summary. Background work has no fixed heading or repeated executor-kind labels:
-rows lead with a status icon and work description, with dim elapsed time after
-a middle dot. Long descriptions truncate to leave room for elapsed time or an
+The task tracker above the input uses one shared `Tasks` heading and shows at
+most eight task rows and one overflow summary. The heading appears only while
+the tracker is visible, and shows progress only when plan items are present.
+Background rows lead with a status icon and work description, without repeated
+executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
+truncate to leave room for elapsed time or an
 exception status. Successful background tasks leave the tracker immediately,
 even while the main agent is streaming; completion notices and output records
 remain available. Failed, stopped, or interrupted work stays visible when idle.

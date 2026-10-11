@@ -318,7 +318,7 @@ func TestRenderTrackerListLimitsBackgroundTasks(t *testing.T) {
 					t.Fatalf("missing overflow summary %q:\n%s", want, plain)
 				}
 			}
-			wantLines := len(tc.wantIDs)
+			wantLines := len(tc.wantIDs) + 1 // shared Tasks heading
 			if len(tc.wantSummaries) > 0 {
 				wantLines++
 			}
@@ -424,8 +424,8 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 	}
 
 	plain := render()
-	if strings.Contains(plain, "Background") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 1 {
-		t.Errorf("a worker should render one row without a header:\n%s", plain)
+	if !strings.HasPrefix(plain, "  Tasks\n") || strings.Contains(plain, "%") || strings.Count(plain, "\n") != 2 {
+		t.Errorf("a worker should render under the shared Tasks heading without plan progress:\n%s", plain)
 	}
 	if !strings.Contains(plain, "●  Save Jenkins script") || strings.Contains(plain, "bash") || taskIDRe.MatchString(plain) {
 		t.Errorf("worker row should lead with the work description:\n%s", plain)
@@ -433,8 +433,24 @@ func TestRenderTrackerListBackgroundRowsDescribeWork(t *testing.T) {
 
 	plan := todo.Default().Create("Write tests", "", "", nil)
 	_ = todo.Default().Update(plan.ID, todo.WithStatus(todo.StatusCompleted))
-	if plain := render(); !strings.Contains(plain, "Tasks (100%)") {
+	if plain := render(); !strings.Contains(plain, "Tasks (100%)") || strings.Count(plain, "Tasks") != 1 {
 		t.Errorf("progress should count plan items only:\n%s", plain)
+	}
+}
+
+func TestRenderTrackerListHeadingFitsNarrowTerminal(t *testing.T) {
+	worker := &todo.Item{Subject: "Compress video", Status: todo.StatusPending,
+		Metadata: map[string]any{"background_task_id": "bg-1"}}
+	plan := &todo.Item{ID: "1", Subject: "Write tests", Status: todo.StatusCompleted}
+	for _, items := range [][]*todo.Item{{worker}, {worker, plan}} {
+		for _, width := range []int{1, 4, 7, 12, 80} {
+			plain := stripANSI(RenderTrackerList(TrackerListParams{Items: items, StreamActive: true, Width: width}))
+			for line := range strings.SplitSeq(strings.TrimSuffix(plain, "\n"), "\n") {
+				if lipgloss.Width(line) > width {
+					t.Fatalf("tracker exceeded %d columns:\n%s", width, plain)
+				}
+			}
+		}
 	}
 }
 
