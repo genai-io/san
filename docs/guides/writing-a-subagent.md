@@ -50,7 +50,7 @@ Be terse. No code suggestions — that is the parent agent's job.
 | `deny_tools` | no | Removes tools or `Tool(pattern)` rules. |
 | `mode` | no | `default`, `explore`, `edit` (`acceptEdits`), or `bypassPermissions`; alias: `permission-mode`. |
 | `model` | no | Defaults to the parent's model. Aliases/bare IDs use its provider; `vendor/model` uses a connected provider or falls back to the parent. |
-| `max-steps` | no | Maximum LLM steps; default: 100. Alias: `max_steps`. |
+| `max-steps` | no | Maximum LLM steps; default: 500. Alias: `max_steps`. A positive `Agent(max_steps=...)` overrides this budget, including a smaller limit. |
 | `skills` | no | Skills preloaded into the agent charter. |
 
 Canonical keys win when both a canonical key and its alias are present.

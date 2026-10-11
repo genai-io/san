@@ -368,7 +368,7 @@ type AgentResult struct {
 const (
 	baseAgentDescription = "Subagent for research and implementation tasks."
 
-	// defaultMaxSteps is both the default and minimum number of LLM inference steps.
+	// defaultMaxSteps applies when no positive inference-step budget is set.
 	defaultMaxSteps = 500
 )
 
