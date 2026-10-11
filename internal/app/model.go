@@ -51,6 +51,9 @@ type model struct {
 	// appending to the conversation is unsafe; their content already went to
 	// the agent. Shown at the next step or turn end.
 	heldNotices []mainNotice
+	// taskCompletionsShown records notices appended on the UI goroutine, so
+	// completed tracker rows do not disappear while their notice is waiting.
+	taskCompletionsShown map[string]bool
 	// drainedThisStep caps OnStepEnd to one queued message per step
 	// (PostTool fires once per tool). Reset each step in OnInference (PostInfer).
 	drainedThisStep bool

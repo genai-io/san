@@ -154,6 +154,21 @@ func (m *model) showNoticeLine(n mainNotice) {
 	} else {
 		m.conv.AddNotice(n.Display)
 	}
+	if n.FinishedTaskID != "" {
+		if m.taskCompletionsShown == nil {
+			m.taskCompletionsShown = make(map[string]bool)
+		}
+		m.taskCompletionsShown[n.FinishedTaskID] = true
+	}
+}
+
+func (m *model) taskCompletionShown(id string) bool {
+	if id == "" || m.taskCompletionsShown[id] || m.services.Task == nil {
+		return true
+	}
+	// Resumed records whose workers are gone have no live notice to wait for.
+	_, known := m.services.Task.Get(id)
+	return !known
 }
 
 // mainNoticeMsg wraps one Source-2 notice for the Update loop.
@@ -187,7 +202,7 @@ func (m *model) deliverNotice(n mainNotice) tea.Cmd {
 		send = m.sendToAgent(core.UserMessage(n.Content, nil))
 	}
 	if streaming {
-		m.heldNotices = append(m.heldNotices, mainNotice{Display: n.Display, FromAgent: n.FromAgent})
+		m.heldNotices = append(m.heldNotices, mainNotice{Display: n.Display, FromAgent: n.FromAgent, FinishedTaskID: n.FinishedTaskID})
 		return send
 	}
 	m.showNoticeLine(n)

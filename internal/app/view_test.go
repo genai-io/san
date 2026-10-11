@@ -189,6 +189,30 @@ func TestComposerStaysAtBottomAcrossLiveUpdates(t *testing.T) {
 	}
 }
 
+func TestPendingToolCallsStayNearComposer(t *testing.T) {
+	for _, height := range []int{24, 56} {
+		m := fixedComposerModel(100, height)
+		call := core.ToolCall{ID: "transfer", Name: "Bash", Input: `{"command":"monitor ` + strings.Repeat("transfer ", 50) + `","description":"RUNNING-TRANSFER"}`}
+		m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, ToolCalls: []core.ToolCall{call}}}
+		m.conv.Tool.Track([]core.ToolCall{call})
+		m.conv.Tool.MarkCurrent(call.ID)
+		m.conv.Stream.Active = true
+		frame, cursor := m.viewString()
+		plain := ansi.Strip(frame)
+		start := strings.Index(plain, "RUNNING-TRANSFER")
+		if start < 0 {
+			t.Fatalf("live frame lost its tool status:\n%s", plain)
+		}
+		row := strings.Count(plain[:start], "\n")
+		if row < height-8 || row >= cursor.Position.Y {
+			t.Fatalf("tool row %d should stay near composer row %d:\n%s", row, cursor.Position.Y, plain)
+		}
+		if cursor.Position.Y != height-3 || rowCount(frame) != height {
+			t.Fatalf("pending call displaced composer: cursor=%#v, rows=%d", cursor, rowCount(frame))
+		}
+	}
+}
+
 func fixedComposerModel(width, height int) *model {
 	m := &model{
 		env:  env{Width: width, Height: height, Ready: true},
@@ -204,6 +228,23 @@ func fixedComposerModel(width, height int) *model {
 	m.userInput.Textarea.SetWidth(width - 6)
 	m.userInput.SetTerminalHeight(height)
 	return m
+}
+
+func TestModeStatusOmitsPersistentHistoryHint(t *testing.T) {
+	m := fixedComposerModel(120, 24)
+	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "test-model"}
+	m.conv.Messages = []core.ChatMessage{{Role: core.ChatAssistant, Content: "done"}}
+	for _, active := range []bool{false, true} {
+		m.conv.Stream.Active = active
+		status := ansi.Strip(m.renderModeStatus())
+		if strings.Contains(status, "ctrl+o history") || !strings.Contains(status, "test-model") {
+			t.Fatalf("stream active=%v: unexpected status %q", active, status)
+		}
+	}
+	m.userInput.Provider.StatusMessage = "Model list refreshed"
+	if status := ansi.Strip(m.renderModeStatus()); !strings.Contains(status, "Model list refreshed") {
+		t.Fatalf("temporary status disappeared: %q", status)
+	}
 }
 
 func addTallWorkflowActivity(t *testing.T, m *model) {

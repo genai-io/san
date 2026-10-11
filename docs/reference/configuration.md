@@ -46,8 +46,12 @@ provider is asked to reason about (that is thinking effort, `/think`).
 | Value | Live tail | Scrollback |
 | --- | --- | --- |
 | `full` (default) | the reasoning body | the reasoning body |
-| `collapsed` | a `Thinking…` indicator | one `Thought for 3.2s` line |
+| `collapsed` | a `Thinking…` indicator | one `Thought for 3.2 s` line |
 | `hidden` | nothing | nothing |
+
+The collapsed duration uses seconds with a space before `s`: short durations
+round to tenths (`0.3 s`), then switch to whole seconds at `10 s` (`12 s`).
+An unmeasured duration displays just `Thought`.
 
 An unset or unrecognized value resolves to `full`, so the preference is opt-in:
 nothing about an existing transcript changes until you ask for it. Set

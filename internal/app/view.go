@@ -145,7 +145,12 @@ func (m *model) chatTailAbove(bottom string, params conv.RenderContext) string {
 		return ""
 	}
 	content := tailLines(m.renderChatSection(conv.RenderActiveContent(params)), available)
-	return content + strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	padding := strings.Repeat("\n", available-1-strings.Count(content, "\n"))
+	if len(params.PendingCalls) > 0 {
+		// A shrinking terminal should shed empty rows before transient tool status.
+		return padding + content
+	}
+	return content + padding
 }
 
 // inputCursor returns where the terminal cursor belongs inside the composer.
@@ -367,13 +372,14 @@ func (m *model) renderTrackerList() string {
 		}
 	}
 	view := conv.RenderTrackerList(conv.TrackerListParams{
-		Items:        items,
-		StreamActive: m.conv.Stream.Active,
-		Width:        m.env.Width,
-		Blockers:     m.services.Tracker.OpenBlockers,
-		Executing:    m.executingTrackerItem,
-		Blink:        m.conv.Spinner.Frame(),
-		AgentColors:  m.agentColors(),
+		Items:           items,
+		StreamActive:    m.conv.Stream.Active,
+		Width:           m.env.Width,
+		CompletionShown: m.taskCompletionShown,
+		Blockers:        m.services.Tracker.OpenBlockers,
+		Executing:       m.executingTrackerItem,
+		Blink:           m.conv.Spinner.Frame(),
+		AgentColors:     m.agentColors(),
 	})
 	return appendLiveWorkflowViews(view, running, m.conv.Spinner.Frame(), m.env.Width)
 }
@@ -478,9 +484,6 @@ func (m model) renderModeStatus() string {
 	statusMessage := m.userInput.Provider.StatusMessage
 	if !m.userInput.LastCtrlC.IsZero() {
 		statusMessage = ctrlCExitHint
-	}
-	if statusMessage == "" && !m.conv.Stream.Active && len(m.conv.Messages) > 0 {
-		statusMessage = "ctrl+o history"
 	}
 	window, budget := kit.GetContextLimits(m.services.LLM.Store(), m.env.CurrentModel)
 	return conv.RenderModeStatus(conv.OperationModeParams{

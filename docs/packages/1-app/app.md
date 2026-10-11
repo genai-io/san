@@ -141,13 +141,34 @@ by the composer or docked modal; the view and overflow check share that cap.
 print finishes before the terminal wipe, and stale print messages cannot revive
 cleared output. This layout needs no configuration.
 
-The task tracker above the input shows at most eight task rows and one overflow
-summary. Background work has no fixed heading or repeated executor-kind labels:
-rows lead with a status icon and work description, with dim elapsed time after
-a middle dot. Long descriptions truncate to leave room for elapsed time or an
-exception status. Successful background tasks leave the tracker immediately,
-even while the main agent is streaming; completion notices and output records
-remain available. Failed, stopped, or interrupted work stays visible when idle.
+The footer keeps the model, reasoning effort, usage, and temporary status
+messages. It does not add a persistent history shortcut hint when a turn ends;
+idle Ctrl+O and `/history` still open the transcript viewer.
+
+While a tool-call batch is pending, the conversation tail docks above the
+activity/input area, with spare rows above it. Long shell commands show only
+their header and elapsed/progress detail until expanded or completed. When the
+description is empty, the header uses a shortened command preview; short
+commands that fit stay on the header. This reduces the transient content xterm
+can push into native history during a narrowing and shortening resize. Tool
+headers reserve width for running detail, optional agent hints appear only when
+they fit, and expanded tool content wraps explicitly to the terminal width.
+Wrapping command bodies and string parameters preserves spaces, including
+spaces inside quoted arguments.
+
+The task tracker above the input uses one shared `Tasks` heading and shows at
+most eight task rows and one overflow summary. The heading appears only while
+the tracker is visible, and shows progress only when plan items are present.
+Background rows lead with a status icon and work description, without repeated
+executor-kind labels. Dim elapsed time follows a middle dot. Long descriptions
+truncate to leave room for elapsed time or an
+exception status. Successful background tasks leave the tracker after their
+completion notice enters the conversation. While a notice waits for a safe
+stream boundary, its row stays still and shows `[completed]`; turn end cannot
+reset it before the notice appears. Completion notices and output records
+remain available. Resumed completed records whose workers are absent have no
+live notice to wait for. Failed, stopped, or interrupted work stays visible when
+idle.
 Plan items keep their IDs and `Tasks` progress heading, and a finished plan hides
 when the main agent becomes idle. In-progress items take priority, followed by
 failed or interrupted items, pending items, and completed plan items. Within

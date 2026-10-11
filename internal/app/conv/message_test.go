@@ -125,7 +125,7 @@ func Test_extractToolArgsPreservesFullCommand(t *testing.T) {
 }
 
 func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
-	raw := renderShellToolCall("Bash", `{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "")
+	raw := renderShellToolCall("Bash", `{"command":"git status","description":"inspect\nrepository"}`, 100, "●", "", false)
 	out := stripANSI(raw)
 	if out != "● Bash(git status) (inspect repository)\n" {
 		t.Fatalf("single-line command should render as one preview row, got %q", out)
@@ -140,7 +140,7 @@ func Test_renderBashToolCallSingleLineStylesDescriptionAsDimmed(t *testing.T) {
 }
 
 func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
-	out := stripANSI(renderShellToolCall("Bash", `{}`, 100, "●", ""))
+	out := stripANSI(renderShellToolCall("Bash", `{}`, 100, "●", "", false))
 	if strings.Contains(out, "Bash(") || !strings.Contains(out, "Bash\n  $ (no command)\n") {
 		t.Fatalf("empty command should retain the Bash command block, got %q", out)
 	}
@@ -148,7 +148,7 @@ func Test_renderBashToolCallEmptyCommandUsesCommandBlock(t *testing.T) {
 
 func Test_renderBashToolCallMultiLineShowsEveryLine(t *testing.T) {
 	input := `{"command":"for f in a b; do\n  echo \"$f\"\ndone","description":"loop over files"}`
-	out := renderShellToolCall("Bash", input, 100, "●", "")
+	out := renderShellToolCall("Bash", input, 100, "●", "", false)
 
 	// Every command line renders in the block, not folded away behind ctrl+o.
 	for _, want := range []string{"for f in a b; do", `echo "$f"`, "done"} {
@@ -177,7 +177,7 @@ func Test_renderBashToolCallShowsShellPrompt(t *testing.T) {
 	// block: the first row is led by a "$" prompt and later rows use connectors.
 	// No gutter bar or background fill is added.
 	long := `{"command":"git log --oneline --graph --all --decorate --abbrev-commit --since='2 weeks ago' | head -50\necho done"}`
-	raw := renderShellToolCall("Bash", long, 70, "●", "")
+	raw := renderShellToolCall("Bash", long, 70, "●", "", false)
 	if strings.ContainsAny(raw, "│") || strings.Contains(raw, "48;2;") {
 		t.Fatalf("command block should have no bar and no background, got %q", raw)
 	}
@@ -213,19 +213,19 @@ func Test_renderBashToolCallKeepsConnectorsContinuousAcrossBlankLines(t *testing
 		`{"command":"first\n\nthird"}`,
 		`{"command":"first\n   \nthird"}`,
 	} {
-		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", ""))
+		out := stripANSI(renderShellToolCall("Bash", input, 100, "●", "", false))
 		if !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n"+nestedBodyPrefix+"third\n") {
 			t.Fatalf("blank command lines should retain the connector, got %q", out)
 		}
 	}
 
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"first\n"}`, 100, "●", "", false)); !strings.Contains(out, bashPrompt+"first\n"+nestedBodyPrefix+"\n") {
 		t.Fatalf("trailing blank command line should retain the connector, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "")); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"\nfirst"}`, 100, "●", "", false)); strings.Contains(out, nestedBodyPrefix+"\n") || !strings.Contains(out, bashPrompt+"first\n") {
 		t.Fatalf("leading blank lines should be skipped and first visible command should retain the shell prompt, got %q", out)
 	}
-	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "")); !strings.Contains(out, bashPrompt+"(no command)\n") {
+	if out := stripANSI(renderShellToolCall("Bash", `{"command":"   "}`, 100, "●", "", false)); !strings.Contains(out, bashPrompt+"(no command)\n") {
 		t.Fatalf("whitespace-only command should use the empty-command fallback, got %q", out)
 	}
 }
@@ -235,7 +235,7 @@ func Test_renderBashToolCallMovesOversizedSingleLineCommandToFullBlock(t *testin
 	input := `{"command":` + strconv.Quote(command) + `,"description":"Inspect pull request details and review status"}`
 	const width = 80
 
-	rendered := stripANSI(renderShellToolCall("Bash", input, width, "●", ""))
+	rendered := stripANSI(renderShellToolCall("Bash", input, width, "●", "", false))
 	if !strings.HasPrefix(rendered, "● Bash (Inspect pull request details and review status)\n") {
 		t.Fatalf("oversized command should use a Bash header, got %q", rendered)
 	}
@@ -480,7 +480,7 @@ func Test_renderBashToolCallKeepsFullCommandWhenRunningDetailNeedsSpace(t *testi
 	detail := toolResultStyle.Render(" · 12s · 1.2k lines")
 	rendered := stripANSI(renderShellToolCall("Bash",
 		`{"command":"git log --oneline --graph --all --decorate --abbrev-commit","description":"inspect repository history"}`,
-		width, "⋯", detail,
+		width, "⋯", detail, false,
 	))
 
 	if !strings.HasPrefix(rendered, "⋯ Bash (inspect repository history) · 12s · 1.2k lines\n") {
@@ -544,6 +544,138 @@ func TestRenderToolCallsShowsElapsedTimerOnRunningBash(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "· 12s") {
 		t.Fatalf("RenderToolCalls() = %q, want an elapsed timer on the running row", rendered)
+	}
+}
+
+func TestRenderToolCallsKeepsLongRunningShellCompact(t *testing.T) {
+	command := "monitor " + strings.Repeat("transfer ", 50)
+	call := core.ToolCall{ID: "transfer", Name: "Bash", Input: `{"command":"` + command + `","description":"Monitor upload progress"}`}
+	params := ToolCallsParams{
+		ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
+		CurrentIdx: 0, SpinnerView: "⋯", Width: 100,
+		ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
+	}
+	live := stripANSI(RenderToolCalls(params))
+	if strings.Contains(live, "monitor transfer") || strings.Count(live, "\n") != 1 {
+		t.Fatalf("running shell should occupy one status row, got %q", live)
+	}
+	if !strings.Contains(live, "Monitor upload progress") || !strings.Contains(live, "· 28s") {
+		t.Fatalf("running shell lost its purpose or timer: %q", live)
+	}
+	params.ToolCallsExpanded = true
+	if expanded := stripANSI(RenderToolCalls(params)); !strings.Contains(expanded, "monitor transfer") {
+		t.Fatalf("expanded shell lost its command: %q", expanded)
+	}
+	params.ToolCallsExpanded = false
+	params.ResultMap = map[string]ToolResultData{call.ID: {ToolName: "Bash", Content: "done"}}
+	done := stripANSI(RenderToolCalls(params))
+	if !strings.Contains(done, "monitor transfer") || !strings.Contains(done, "└ 1 line") || strings.Contains(done, "28s") {
+		t.Fatalf("completed shell lost its command/result or retained its timer: %q", done)
+	}
+}
+
+func TestRenderToolCallsExpandedCommandPreservesSpaces(t *testing.T) {
+	for _, command := range []string{
+		"printf '%s' 'AAAAAAAAAAAAAAAAAAAA     BBBBBBBBBBBBBBBBBBBB'",
+		"printf '%s' '你好世界你好     你好'",
+	} {
+		out := stripANSI(RenderToolCalls(ToolCallsParams{
+			ToolCalls:         []core.ToolCall{{Name: "Bash", Input: `{"command":` + strconv.Quote(command) + `}`}},
+			ToolCallsExpanded: true, Width: 30,
+		}))
+		_, body, ok := strings.Cut(out, "\n")
+		if !ok {
+			t.Fatalf("expanded command has no body: %q", out)
+		}
+		got := strings.TrimPrefix(strings.ReplaceAll(strings.TrimRight(body, "\n"), "\n", ""), "    command: ")
+		if got != command {
+			t.Fatalf("wrapping changed command: got %q, want %q", got, command)
+		}
+		for line := range strings.SplitSeq(out, "\n") {
+			if lipgloss.Width(line) > 30 {
+				t.Fatalf("expanded command exceeds terminal width: %q", line)
+			}
+		}
+	}
+}
+
+func TestRenderToolCallsCompletedCommandPreservesSpaces(t *testing.T) {
+	command := "printf '%s' 'AAAAAAAAAAAAAAAAAAAA     BBBBBBBBBBBBBBBBBBBB'"
+	out := stripANSI(RenderToolCalls(ToolCallsParams{
+		ToolCalls: []core.ToolCall{{ID: "cmd", Name: "Bash", Input: `{"command":` + strconv.Quote(command) + `}`}},
+		ResultMap: map[string]ToolResultData{"cmd": {ToolName: "Bash", Content: "done"}}, Width: 30,
+	}))
+	var got strings.Builder
+	for line := range strings.SplitSeq(out, "\n") {
+		if text, ok := strings.CutPrefix(line, bashPrompt); ok {
+			got.WriteString(text)
+		} else if text, ok := strings.CutPrefix(line, nestedBodyPrefix); ok {
+			got.WriteString(text)
+		}
+	}
+	if got.String() != command {
+		t.Fatalf("wrapping changed completed command: got %q, want %q", got.String(), command)
+	}
+}
+
+func TestRenderToolCallsIdentifiesPendingShellWithoutDescription(t *testing.T) {
+	for _, shell := range []string{"Bash", "PowerShell"} {
+		for _, description := range []string{"", " \n\t "} {
+			calls := []core.ToolCall{
+				{ID: "test", Name: shell, Input: `{"command":"go test ./...\necho test-done","description":` + strconv.Quote(description) + `}`},
+				{ID: "vet", Name: shell, Input: `{"command":"go vet ./...\necho vet-done","description":` + strconv.Quote(description) + `}`},
+			}
+			out := stripANSI(RenderToolCalls(ToolCallsParams{
+				ToolCalls: calls, PendingCalls: calls, ParallelMode: true, SpinnerView: "⋯", Width: 80,
+			}))
+			if !strings.Contains(out, "go test") || !strings.Contains(out, "go vet") {
+				t.Fatalf("pending %s commands lost their identities: %q", shell, out)
+			}
+			if strings.Count(out, "\n") != 2 {
+				t.Fatalf("pending commands should occupy one row each: %q", out)
+			}
+		}
+	}
+}
+
+func TestRenderToolCallsFitsNarrowTerminal(t *testing.T) {
+	calls := []core.ToolCall{
+		{ID: "shell", Name: "PowerShell", Input: `{"command":"monitor transfer progress repeatedly","description":"Monitor a long running upload"}`},
+		{ID: "fetch", Name: "WebFetch", Input: `{"url":"https://example.com/"}`},
+		{ID: "agent", Name: "Agent", Input: `{"name":"Explore","description":"Inspect the upload status"}`},
+	}
+	for _, call := range calls {
+		for _, width := range []int{10, 20, 40, 60} {
+			for _, expanded := range []bool{false, true} {
+				t.Run(call.Name+"/"+strconv.Itoa(width)+"/"+strconv.FormatBool(expanded), func(t *testing.T) {
+					out := RenderToolCalls(ToolCallsParams{
+						ToolCalls: []core.ToolCall{call}, PendingCalls: []core.ToolCall{call},
+						SpinnerView: "⋯", Width: width, ToolCallsExpanded: expanded, Interactive: true,
+						ToolStartedAt: map[string]time.Time{call.ID: time.Now().Add(-28 * time.Second)},
+						ToolProgress:  map[string]string{call.ID: "123.4k lines"},
+					})
+					for line := range strings.SplitSeq(out, "\n") {
+						if got := lipgloss.Width(line); got > width {
+							t.Fatalf("row width %d exceeds terminal width %d: %q", got, width, stripANSI(line))
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRenderToolCallsOmitsAgentExpandHintWhenItDoesNotFit(t *testing.T) {
+	params := ToolCallsParams{
+		ToolCalls: []core.ToolCall{{Name: tool.ToolAgent, Input: `{"agent":"explorer","description":"检查上传状态和输出结果"}`}},
+		Width:     100, Interactive: true,
+	}
+	if got := RenderToolCalls(params); !strings.Contains(got, "ctrl+o") {
+		t.Fatalf("wide agent row should offer expansion: %q", stripANSI(got))
+	}
+	params.Width = 30
+	if got := RenderToolCalls(params); strings.Contains(got, "ctrl+o") {
+		t.Fatalf("narrow agent row should omit the hint: %q", stripANSI(got))
 	}
 }
 

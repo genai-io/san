@@ -43,7 +43,7 @@ type RenderContext struct {
 	// ThinkingDisplay is the resolved reasoning-display mode (one of the
 	// setting.ThinkingDisplay* constants), threaded down to the assistant
 	// renderer so it knows whether to draw the reasoning body, a
-	// "Thought for 3.2s" line, or nothing.
+	// "Thought for 3.2 s" line, or nothing.
 	ThinkingDisplay string
 
 	// ── Per-tick UI state ───────────────────────────────────────

@@ -4,6 +4,7 @@ package conv
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool"
-	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 const (
@@ -196,12 +196,12 @@ type AssistantParams struct {
 
 	// ThinkingDisplay is the resolved reasoning-display mode, one of the
 	// setting.ThinkingDisplay* constants. Only "full" draws the reasoning body;
-	// "collapsed" replaces it with one "✦ Thought for 3.2s" line, "hidden"
+	// "collapsed" replaces it with one "✦ Thought for 3.2 s" line, "hidden"
 	// draws nothing. Empty is treated as "full" so a caller that has not been
 	// taught the setting keeps the historical behaviour.
 	ThinkingDisplay string
 	// ThinkingDuration is how long the message reasoned, reported by the
-	// collapsed mode's "Thought for 3.2s" line.
+	// collapsed mode's "Thought for 3.2 s" line.
 	ThinkingDuration time.Duration
 
 	// Streaming-commit offsets: how much of Content/Thinking is already in
@@ -223,7 +223,7 @@ type AssistantParams struct {
 // instead of inline text.
 const InterruptedMarker = "[Interrupted]"
 
-// collapsedThinking is the "Thought for 3.2s" line collapsed mode prints, or
+// collapsedThinking is the "Thought for 3.2 s" line collapsed mode prints, or
 // "". It waits until reasoning ends, since scrollback cannot be rewritten, and
 // skips a message whose line the flush already printed (ThinkingEmitted).
 func (p AssistantParams) collapsedThinking() string {
@@ -236,12 +236,17 @@ func (p AssistantParams) collapsedThinking() string {
 	return RenderCollapsedThinking(p.ThinkingDuration)
 }
 
-// RenderCollapsedThinking renders "✦ Thought for 3.2s". An untimed message
+// RenderCollapsedThinking renders "✦ Thought for 3.2 s". An untimed message
 // (restored from disk) shows just "✦ Thought".
 func RenderCollapsedThinking(d time.Duration) string {
 	label := "Thought"
 	if d >= 50*time.Millisecond {
-		label += " for " + toolresult.FormatDuration(d)
+		rounded := d.Round(100 * time.Millisecond)
+		if rounded < 10*time.Second {
+			label += fmt.Sprintf(" for %.1f s", rounded.Seconds())
+		} else {
+			label += fmt.Sprintf(" for %.0f s", d.Round(time.Second).Seconds())
+		}
 	}
 	return thinkingGutter(true) + ThinkingStyle.Render(label)
 }
@@ -650,9 +655,11 @@ func RenderToolCalls(params ToolCallsParams) string {
 				if params.parkedOnUser(tc.ID) {
 					icon = "●"
 				}
-				sb.WriteString(renderAgentToolLine(label, params.Width, icon, color))
-				if !params.ToolCallsExpanded && params.expandHints() {
-					sb.WriteString(ThinkingStyle.Render("  (ctrl+o to expand)"))
+				row := renderAgentToolLine(label, params.Width, icon, color)
+				sb.WriteString(row)
+				hint := "  (ctrl+o to expand)"
+				if !params.ToolCallsExpanded && params.expandHints() && (params.Width <= 0 || lipgloss.Width(row)+lipgloss.Width(hint) <= params.Width) {
+					sb.WriteString(ThinkingStyle.Render(hint))
 				}
 				sb.WriteString("\n")
 			}
@@ -678,19 +685,26 @@ func RenderToolCalls(params ToolCallsParams) string {
 		} else {
 			icon := toolCallIcon(tc, params)
 			detail := runningRowDetail(tc, params)
+			rowWidth := params.Width
+			if rowWidth > 0 {
+				detail = xansi.Truncate(detail, max(0, rowWidth-lipgloss.Width("● "+tc.Name)), "")
+				rowWidth = max(1, rowWidth-lipgloss.Width(detail))
+			}
 			var row string
 			if tc.Name == tool.ToolTaskGet && params.TaskOwnerMap != nil {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			} else if tool.IsShellTool(tc.Name) {
-				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
+				_, completed := params.ResultMap[tc.ID]
+				compact := !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID })
+				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail, compact)
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
 				if tc.Name == tool.ToolGroup {
 					args = groupCallArgs(tc.Input)
 				}
-				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), params.Width, icon) + "\n"
+				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			}
 			sb.WriteString(appendRowDetail(row, detail))
 		}
@@ -717,6 +731,10 @@ func RenderToolCalls(params ToolCallsParams) string {
 		}
 	}
 
+	if params.Width > 0 {
+		// Spaces inside commands and string parameters must survive wrapping.
+		return xansi.Hardwrap(sb.String(), params.Width, true)
+	}
 	return sb.String()
 }
 

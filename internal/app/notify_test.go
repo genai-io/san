@@ -11,7 +11,7 @@ import (
 // A broker message routed to main is an agent message, so its notice is marked
 // FromAgent and merging preserves that whenever any component came from an agent.
 func TestNoticeFromAgentPropagates(t *testing.T) {
-	if n := fromBrokerMessage(broker.Message{Subject: "Backend: research completed"}); !n.FromAgent {
+	if n := fromBrokerMessage(broker.Message{From: "t1", Subject: "Backend: research completed"}); !n.FromAgent || n.FinishedTaskID != "" {
 		t.Fatal("fromBrokerMessage should mark the notice as FromAgent")
 	}
 }
@@ -29,6 +29,9 @@ func TestTaskCompletionMessageInlinesSmallResult(t *testing.T) {
 	})
 	if !ok {
 		t.Fatal("taskCompletionMessage returned ok=false for a completed task")
+	}
+	if n := fromBrokerMessage(msg); n.FinishedTaskID != "t1" {
+		t.Fatalf("completion notice lost its task identity: %+v", n)
 	}
 	if !strings.Contains(msg.Content, "the full report") {
 		t.Fatalf("small result should be inlined whole, got %q", msg.Content)

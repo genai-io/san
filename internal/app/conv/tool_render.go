@@ -146,7 +146,7 @@ func renderGutteredLine(prefix, line string, width int) string {
 	wrapWidth := max(1, width-lipgloss.Width(nestedBodyPrefix))
 
 	var sb strings.Builder
-	for segment := range strings.SplitSeq(xansi.Wrap(line, wrapWidth, " "), "\n") {
+	for segment := range strings.SplitSeq(xansi.Hardwrap(line, wrapWidth, true), "\n") {
 		sb.WriteString(toolResultStyle.Render(prefix+segment) + "\n")
 		prefix = nestedBodyPrefix
 	}
@@ -1111,15 +1111,15 @@ func renderToolLineWithIcon(label string, width int, iconText string) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, icon, toolCallStyle.Render(truncateToolLabel(label, width)))
 }
 
-// renderShellToolCall renders a shell tool call without ever truncating its
-// command. A single-line command stays in Bash(command) form only when that
+// renderShellToolCall renders the full command unless compact keeps only its
+// header. A single-line command stays in Bash(command) form only when that
 // complete label fits; its optional description may be shortened to keep the
 // row within the terminal. Commands that contain a newline or do not fit become
 // a full command block below the Bash header and soft-wrap without ellipses.
-func renderShellToolCall(toolName, input string, width int, icon, detail string) string {
+func renderShellToolCall(toolName, input string, width int, icon, detail string, compact bool) string {
 	command, description := extractBashCommand(input)
 	description = strings.Join(strings.Fields(description), " ")
-	labelWidth := max(3, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
+	labelWidth := max(1, bashPreviewLabelWidth(width)-lipgloss.Width(detail))
 
 	if strings.TrimSpace(command) != "" && !strings.Contains(command, "\n") {
 		commandLabel := fmt.Sprintf("%s(%s)", toolName, command)
@@ -1133,14 +1133,21 @@ func renderShellToolCall(toolName, input string, width int, icon, detail string)
 	if strings.TrimSpace(command) == "" {
 		command = "(no command)"
 	}
+	if compact && description == "" {
+		description = strings.Join(strings.Fields(command), " ")
+	}
 
 	var sb strings.Builder
 
-	// Header line: ● Bash (description) · running detail. Only the description
-	// may be shortened; the command is rendered separately below.
-	header := toolCallStyle.Render(toolName) + renderBashDescription(description, labelWidth-lipgloss.Width(toolName))
+	// Header line: ● Bash (description) · running detail. The command is
+	// rendered separately below without abbreviation.
+	displayName := xansi.Truncate(toolName, labelWidth, "…")
+	header := toolCallStyle.Render(displayName) + renderBashDescription(description, labelWidth-lipgloss.Width(displayName))
 	iconCell := toolCallStyle.Width(2).Render(icon)
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, iconCell, header) + detail + "\n")
+	if compact {
+		return sb.String()
+	}
 
 	// Soft-wrap every command line to the terminal width. The first row carries
 	// the shell prompt; every later row uses the connector so the command and its
@@ -1242,17 +1249,13 @@ func bashPreviewLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	return max(20, width-lipgloss.Width("● "))
+	return max(1, width-lipgloss.Width("● "))
 }
 
 func maxToolLabelWidth(width int) int {
 	if width <= 0 {
 		return 80
 	}
-	maxWidth := max(width*80/100, 50)
-	labelWidth := maxWidth - lipgloss.Width("● ")
-	if labelWidth < 20 {
-		return 20
-	}
-	return labelWidth
+	maxWidth := min(width, max(width*80/100, 50))
+	return max(1, maxWidth-lipgloss.Width("● "))
 }

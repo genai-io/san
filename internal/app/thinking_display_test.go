@@ -92,7 +92,7 @@ func TestCollapsedThinkingCommitsOneLineNotTheBody(t *testing.T) {
 	if strings.Contains(payload, reasoningSentinel) {
 		t.Fatalf("collapsed mode leaked the reasoning body into scrollback: %q", payload)
 	}
-	if !strings.Contains(ansi.Strip(payload), "Thought for 3.2s") {
+	if !strings.Contains(ansi.Strip(payload), "Thought for 3.2 s") {
 		t.Fatalf("collapsed mode should commit one Thought-for line, payload = %q", payload)
 	}
 
@@ -175,7 +175,7 @@ func TestCollapsedThinkingIsNotResurrectedByTheTurnEndCommit(t *testing.T) {
 	if strings.Contains(payload, reasoningSentinel) {
 		t.Fatalf("the turn-end commit rendered suppressed reasoning: %q", payload)
 	}
-	if !strings.Contains(ansi.Strip(payload), "Thought for 2.0s") {
+	if !strings.Contains(ansi.Strip(payload), "Thought for 2.0 s") {
 		t.Fatalf("the turn-end commit should carry the Thought-for line: %q", payload)
 	}
 }

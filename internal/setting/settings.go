@@ -31,13 +31,13 @@ const (
 	ThinkingDisplayFull = "full"
 	// ThinkingDisplayCollapsed draws no reasoning body anywhere; the live tail
 	// shows a "Thinking…" indicator and the settled turn a single
-	// "✦ Thought for 3.2s" line. Opt in when a reasoning model's transcript is
+	// "✦ Thought for 3.2 s" line. Opt in when a reasoning model's transcript is
 	// mostly thinking and it buries the operations and the answer — committed
 	// scrollback is permanent (ADR-0002), so the noise cannot be cleaned up
 	// after the fact.
 	ThinkingDisplayCollapsed = "collapsed"
 	// ThinkingDisplayHidden draws nothing at all, not even the
-	// "Thought for 3.2s" line.
+	// "Thought for 3.2 s" line.
 	ThinkingDisplayHidden = "hidden"
 )
 

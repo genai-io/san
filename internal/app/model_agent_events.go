@@ -10,12 +10,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -100,15 +102,19 @@ func (m *model) OnToolResult(tr core.ToolResult) *core.ToolResult {
 func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	// A dismissed start/resume offer comes back once the turn is over.
 	m.autopilotOfferDismissed = false
+	m.showHeldNotices()
 	// Only a list the model closed out is safe to discard. An item left open —
 	// pending, or in_progress with nothing executing it — is unfinished work, so
 	// the list survives the turn and stays on screen.
+	// Completed workers also wait until their completion notice is shown.
 	//
 	// This is the sole automatic reset, so one item the model never closes keeps
 	// the list alive and growing for the rest of the session. That is why the
 	// tracker windows on its newest rows (see maxVisibleTasks) rather than
 	// assuming it renders a single turn's worth.
-	if m.services.Tracker.AllMarkedCompleted() {
+	if m.services.Tracker.AllMarkedCompleted() && !slices.ContainsFunc(m.services.Tracker.List(), func(item *todo.Item) bool {
+		return !m.taskCompletionShown(todo.BackgroundTaskID(item))
+	}) {
 		m.services.Tracker.Reset()
 	}
 	// The turn reached its end, so whatever failure the copilot was recovering
@@ -126,7 +132,6 @@ func (m *model) OnTurnEnd(result core.Result) tea.Cmd {
 	m.skillUsedThisTurn = false
 	m.evolveRequestedThisTurn = false
 	log.Logger().Sugar().Debugf("OnTurnEnd: starting queueLen=%d", m.userInput.Queue.Len())
-	m.showHeldNotices()
 	commitCmds := m.CommitMessages()
 
 	// User-initiated cancel surfaces here as a Result with StopCanceled now

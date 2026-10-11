@@ -92,6 +92,9 @@ Worth knowing beyond the names:
   provider advertises them; `effort.go` prefers that metadata and falls back to
   `ThinkingEffortProvider`, which answers from San's model data for listings
   (such as the standard OpenAI `/v1/models` response) that omit it.
+- **Cached display names are stable.** Cross-provider lookup prefers a name
+  over the raw ID. When listings disagree on the name, the lexically first
+  alias wins, so repeated renders do not depend on map iteration order.
 - **`vendor*.go` is one adapter, not one package per vendor.** The wire
   protocols, their streaming shapes and their reasoning dialects belong to the
   SDK's drivers; what stays here is the seam — `Provider` on one side,
