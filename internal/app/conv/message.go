@@ -691,13 +691,9 @@ func RenderToolCalls(params ToolCallsParams) string {
 				args := extractTaskGetDisplay(tc.Input, params.TaskOwnerMap)
 				row = renderToolLineWithIcon(fmt.Sprintf("%s(%s)", tc.Name, args), rowWidth, icon) + "\n"
 			} else if tool.IsShellTool(tc.Name) {
-				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail)
 				_, completed := params.ResultMap[tc.ID]
-				if !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID }) {
-					// In-flight command bodies stay compact; expansion and history retain every line.
-					header, _, _ := strings.Cut(row, "\n")
-					row = header + "\n"
-				}
+				compact := !completed && slices.ContainsFunc(params.PendingCalls, func(call core.ToolCall) bool { return call.ID == tc.ID })
+				row = renderShellToolCall(tc.Name, tc.Input, params.Width, icon, detail, compact)
 				detail = ""
 			} else {
 				args := extractToolArgs(tc.Input)
@@ -732,7 +728,8 @@ func RenderToolCalls(params ToolCallsParams) string {
 	}
 
 	if params.Width > 0 {
-		return xansi.Wrap(sb.String(), params.Width, " ")
+		// Spaces inside commands and string parameters must survive wrapping.
+		return xansi.Hardwrap(sb.String(), params.Width, true)
 	}
 	return sb.String()
 }

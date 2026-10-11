@@ -147,11 +147,14 @@ idle Ctrl+O and `/history` still open the transcript viewer.
 
 While a tool-call batch is pending, the conversation tail docks above the
 activity/input area, with spare rows above it. Long shell commands show only
-their header and elapsed/progress detail until expanded or completed; short
+their header and elapsed/progress detail until expanded or completed. When the
+description is empty, the header uses a shortened command preview; short
 commands that fit stay on the header. This reduces the transient content xterm
 can push into native history during a narrowing and shortening resize. Tool
 headers reserve width for running detail, optional agent hints appear only when
 they fit, and expanded tool content wraps explicitly to the terminal width.
+Wrapping command bodies and string parameters preserves spaces, including
+spaces inside quoted arguments.
 
 The task tracker above the input shows at most eight task rows and one overflow
 summary. Background work has no fixed heading or repeated executor-kind labels:
