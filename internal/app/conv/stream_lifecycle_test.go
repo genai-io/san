@@ -15,7 +15,9 @@ func (*streamRuntime) CommitMessages() []tea.Cmd       { return nil }
 func (*streamRuntime) FlushStreamingBlocks() []tea.Cmd { return nil }
 func (*streamRuntime) OnInference(*ai.Response)        {}
 
-func TestInferenceIdentitySurvivesNoticesAndDone(t *testing.T) {
+func TestInferenceIdentitySurvivesNoticesAndDefensiveDone(t *testing.T) {
+	// sdk-go consumes EventDone internally. This covers defensive handling;
+	// app/model_inference_lifecycle_test.go exercises the normal terminal path.
 	m, rt := NewModel(80), &streamRuntime{}
 	applyAgentEvent(rt, &m, sdkagent.MessageStart{})
 	owner := m.Stream.MessageID

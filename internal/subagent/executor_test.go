@@ -565,6 +565,27 @@ func TestExploreModeAllowsOnlyGitDiffBash(t *testing.T) {
 	}
 }
 
+func TestExploreModeBlocksCompoundOutputRedirects(t *testing.T) {
+	for _, allowTools := range []ToolList{nil, ToolNames("Bash")} {
+		check := subagentPermissionFunc(PermissionExplore, allowTools, nil)
+		for _, tc := range []struct {
+			command string
+			allowed bool
+		}{
+			{"{ cat example.go; } > review-copy.go", false},
+			{"(cat example.go) >> review-copy.go", false},
+			{"{ (cat example.go); } > review-copy.go", false},
+			{"{ cat example.go; }", true},
+			{"{ cat example.go; } > /dev/null", true},
+		} {
+			got, reason := check(context.Background(), tool.ToolBash, map[string]any{"command": tc.command})
+			if got != tc.allowed {
+				t.Fatalf("explore Bash(%q), allow_tools=%v: allowed=%v, want %v (reason=%q)", tc.command, allowTools, got, tc.allowed, reason)
+			}
+		}
+	}
+}
+
 func TestExploreModeCannotElevateThroughAllowTools(t *testing.T) {
 	cases := []struct {
 		name    string

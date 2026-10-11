@@ -139,19 +139,6 @@ func (t ToolList) DisplayNames() []string {
 	return names
 }
 
-// ConstrainedDisplayNames returns only rules with parameter constraints,
-// for surfacing in the agent's system prompt.
-func (t ToolList) ConstrainedDisplayNames() []string {
-	names := make([]string, 0, len(t))
-	for _, rule := range t {
-		if rule.Pattern == "" {
-			continue
-		}
-		names = append(names, rule.Rule())
-	}
-	return names
-}
-
 func (t ToolList) HasName(name string) bool {
 	for _, rule := range t {
 		if rule.names(name) {

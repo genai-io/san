@@ -6,7 +6,6 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/core/system"
-	"github.com/genai-io/san/internal/proc"
 	"github.com/genai-io/san/internal/skill"
 	"github.com/genai-io/san/internal/todo"
 	"github.com/genai-io/san/internal/tool"
@@ -26,14 +25,6 @@ func effectiveToolConstraints(config *AgentConfig, permMode PermissionMode, sche
 		}
 	}
 	return constraints
-}
-
-// shellToolName is the shell tool this platform registers.
-func shellToolName() string {
-	if shell, err := proc.DefaultShell(); err == nil {
-		return shell.Kind.ToolName()
-	}
-	return tool.ToolBash
 }
 
 // buildBrief renders the SubagentBrief consumed by system.WithSubagentIdentity.

@@ -56,7 +56,10 @@ func (r *preparedRun) recordUsage(resp *ai.Response) {
 	}
 }
 
-func (r *preparedRun) forwardEvent(ev core.Event) {
+func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
+	// Legacy tools can turn cancellation into an ordinary exit error. Check the
+	// worker context too, without hiding tool-local timeouts or run deadlines.
+	canceled := ctx.Err() == context.Canceled
 	switch event := ev.(type) {
 	case sdkagent.MessageUpdate:
 		if r.req.OnTextDelta != nil {
@@ -65,7 +68,9 @@ func (r *preparedRun) forwardEvent(ev core.Event) {
 			}
 		}
 	case sdkagent.MessageEnd:
-		r.reportError(fmt.Sprintf("inference attempt %d", event.Attempt), event.Err)
+		if !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled) {
+			r.reportError(fmt.Sprintf("inference attempt %d", event.Attempt), event.Err)
+		}
 		if r.req.OnTextEnd != nil {
 			r.req.OnTextEnd(event.Err)
 		}
@@ -75,25 +80,33 @@ func (r *preparedRun) forwardEvent(ev core.Event) {
 			r.req.OnToolStart(event.ID, r.toolCallLabel(event.Name, event.Args))
 		}
 	case sdkagent.ToolEnd:
-		r.reportError(r.toolCallLabel(event.Name, event.Args), event.Err)
-		if r.req.OnToolResult != nil {
-			r.req.OnToolResult(event.ID, r.toolCallLabel(event.Name, event.Args), sdkagent.ResultText(event.Result, event.Err), event.Err)
+		report := !canceled && event.Err != nil && !errors.Is(event.Err, context.Canceled)
+		if report || r.req.OnToolResult != nil {
+			label := r.toolCallLabel(event.Name, event.Args)
+			if report {
+				r.reportError(label, event.Err)
+			}
+			if r.req.OnToolResult != nil {
+				r.req.OnToolResult(event.ID, label, sdkagent.ResultText(event.Result, event.Err), event.Err)
+			}
 		}
 	}
 }
 
 func (r *preparedRun) reportError(operation string, err error) {
-	if err == nil || errors.Is(err, context.Canceled) {
-		return
-	}
 	from := r.req.TaskID
 	if from == "" {
 		from = r.hookID
 	}
-	broker.Send(broker.Message{
+	message := broker.Message{
 		From: from, To: broker.Main,
 		Subject: fmt.Sprintf("%s: %s failed: %v", r.req.Description, operation, err),
-	})
+	}
+	if !broker.Send(message) {
+		// Headless runs have no main recipient. Keep errors visible without
+		// adding them to the parent-visible tool-call history.
+		r.streamActivity(message.Subject)
+	}
 }
 
 func (r *preparedRun) toolCallLabel(name, rawArgs string) string {
@@ -148,7 +161,9 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 			}
 		}
 	}
-	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, run.forwardEvent)
+	ag, cleanupAgent, err := e.buildAgent(ctx, run, onToolExec, func(ev core.Event) {
+		run.forwardEvent(ctx, ev)
+	})
 	if err != nil {
 		return nil, err
 	}

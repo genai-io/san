@@ -76,28 +76,34 @@ func extractCommandsAST(file *syntax.File) []parsedCommand {
 func extractFromStmt(stmt *syntax.Stmt, inPipe, inSubshell bool) []parsedCommand {
 	var commands []parsedCommand
 
-	// Collect redirections
+	// Collect redirects that can open a file for writing.
 	var redirPaths []string
 	for _, redir := range stmt.Redirs {
-		if redir.Op == syntax.RdrOut || redir.Op == syntax.AppOut ||
-			redir.Op == syntax.RdrAll || redir.Op == syntax.AppAll {
-			if redir.Word != nil {
-				path := wordToString(redir.Word)
-				if path != "" {
-					redirPaths = append(redirPaths, path)
-				}
+		switch redir.Op {
+		case syntax.RdrOut, syntax.AppOut, syntax.RdrAll, syntax.AppAll,
+			syntax.RdrClob, syntax.RdrInOut, syntax.DplOut:
+		default:
+			continue
+		}
+		if redir.Word == nil {
+			continue
+		}
+		path := wordToString(redir.Word)
+		if redir.Op == syntax.DplOut {
+			// >& can open a file, but static descriptor duplication/closing is safe.
+			fd := strings.TrimSuffix(path, "-")
+			if path == "-" || (fd != "" && strings.Trim(fd, "0123456789") == "") {
+				continue
 			}
 		}
-	}
-
-	if stmt.Cmd == nil {
-		return commands
+		if path != "" {
+			redirPaths = append(redirPaths, path)
+		}
 	}
 
 	switch cmd := stmt.Cmd.(type) {
 	case *syntax.CallExpr:
 		parsed := extractFromCall(cmd, inPipe, inSubshell)
-		parsed.RedirPaths = append(parsed.RedirPaths, redirPaths...)
 		if parsed.Name != "" {
 			commands = append(commands, parsed)
 		}
@@ -165,7 +171,6 @@ func extractFromStmt(stmt *syntax.Stmt, inPipe, inSubshell bool) []parsedCommand
 				Name:       name,
 				HasPipe:    inPipe,
 				InSubshell: inSubshell,
-				RedirPaths: redirPaths,
 			})
 		}
 
@@ -179,6 +184,16 @@ func extractFromStmt(stmt *syntax.Stmt, inPipe, inSubshell bool) []parsedCommand
 		// no command execution — nothing to extract.
 	}
 
+	// Outer redirects also apply to compound statements and all their children.
+	if len(redirPaths) > 0 {
+		if len(commands) == 0 {
+			// Redirect-only statements still open/truncate files.
+			return []parsedCommand{{RedirPaths: redirPaths}}
+		}
+		for i := range commands {
+			commands[i].RedirPaths = append(commands[i].RedirPaths, redirPaths...)
+		}
+	}
 	return commands
 }
 
