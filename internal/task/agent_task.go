@@ -27,14 +27,15 @@ type AgentTask struct {
 	ctx    context.Context    // Task context
 	cancel context.CancelFunc // Cancel function
 
-	mu         sync.RWMutex     // Protects mutable fields
-	output     bytes.Buffer     // Collected output from the agent
-	progress   string           // Latest non-metadata activity for the live tracker.
-	outputErr  string           // First output-log failure; a nonempty path alone is not proof of durability.
-	liveView   string           // Current structured progress, if the caller supplies one.
-	liveRender func(int) string // Optional width-aware live renderer.
-	done       chan struct{}    // Closed when task completes
-	doneOnce   sync.Once        // Guards done channel close
+	mu             sync.RWMutex     // Protects mutable fields
+	permissionMode string           // Effective mode resolved before the worker starts.
+	output         bytes.Buffer     // Collected output from the agent
+	progress       string           // Latest non-metadata activity for the live tracker.
+	outputErr      string           // First output-log failure; a nonempty path alone is not proof of durability.
+	liveView       string           // Current structured progress, if the caller supplies one.
+	liveRender     func(int) string // Optional width-aware live renderer.
+	done           chan struct{}    // Closed when task completes
+	doneOnce       sync.Once        // Guards done channel close
 }
 
 // Verify AgentTask implements BackgroundTask
@@ -92,6 +93,18 @@ func (t *AgentTask) SetIdentity(agentName, sessionID string) {
 			},
 		})
 	}
+}
+
+// SetPermissionMode records the already-resolved policy before execution starts.
+func (t *AgentTask) SetPermissionMode(mode string) {
+	t.mu.Lock()
+	t.permissionMode = mode
+	outputFile := t.OutputFile
+	t.mu.Unlock()
+	t.recordOutput(outputFile, outputRecord{
+		Event:    "agent.permissions",
+		Metadata: map[string]any{"mode": mode},
+	})
 }
 
 // SetOutputFile stores the stable transcript/output path for later inspection.
@@ -298,6 +311,7 @@ func (t *AgentTask) GetStatus() TaskInfo {
 		OutputError:    t.outputErr,
 		Progress:       t.progress,
 		AgentName:      t.AgentName,
+		PermissionMode: t.permissionMode,
 		AgentSessionID: t.SessionID,
 		StepCount:      t.StepCount,
 		TokenUsage:     t.TokenUsage,

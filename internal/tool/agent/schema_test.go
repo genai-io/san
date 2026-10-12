@@ -60,7 +60,9 @@ func TestAgentSchemaRetainsDelegationGuidance(t *testing.T) {
 	description := agentSchema("").Description
 	for _, want := range []string{
 		"all context it needs",
-		"Use explore for read-only investigation and edit for file changes",
+		"Use default for general-purpose work",
+		"Select explore explicitly for read-only investigation",
+		"Select edit only when you deliberately want narrower file-edit permissions",
 		"Launch independent agents concurrently",
 		"Use background mode only for work that does not block your next step",
 		"Verify the result before reporting it",

@@ -17,6 +17,7 @@ type recordingExecutor struct {
 	runResult         *tool.AgentExecResult
 	runErr            error
 	emptyResult       bool
+	backgroundMode    string
 }
 
 func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
@@ -25,6 +26,19 @@ func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*
 		return e.runResult, e.runErr
 	}
 	return &tool.AgentExecResult{Success: true, Content: "done"}, nil
+}
+
+func TestBackgroundLaunchReportsEffectivePermissions(t *testing.T) {
+	agentTool := NewAgentTool()
+	executor := &recordingExecutor{configOK: true, backgroundMode: "YOLO"}
+	agentTool.SetExecutor(executor)
+	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Validate", "run_in_background": true}, ".")
+	if !result.Success || !strings.Contains(result.Output, "Permissions: YOLO") {
+		t.Fatalf("launch hid the effective permissions: %#v", result)
+	}
+	if executor.runReq.Mode != "" {
+		t.Fatalf("omitted mode silently became an edit override: %q", executor.runReq.Mode)
+	}
 }
 
 func TestAgentToolPreservesUnfinishedResult(t *testing.T) {
@@ -108,7 +122,7 @@ func TestAgentToolKeepsDisplayMetadataOutOfModelContext(t *testing.T) {
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	e.runReq = req
-	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent}, nil
+	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent, PermissionMode: e.backgroundMode}, nil
 }
 func (e *recordingExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	e.selectedAgentName = name

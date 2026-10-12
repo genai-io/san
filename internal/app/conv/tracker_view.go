@@ -95,19 +95,32 @@ func RenderTrackerList(params TrackerListParams) string {
 	for _, t := range visible {
 		phase := phaseOf(t, params.Executing != nil && params.Executing(t))
 		progress := ""
+		if phase == itemAborted {
+			progress = todo.BackgroundError(t)
+		}
 		if id := todo.BackgroundTaskID(t); id != "" && params.WorkerStatus != nil {
 			info := params.WorkerStatus(id)
-			progress = info.Progress
-			if progress == "" {
-				// Structured callers may supply only LiveView. Keep its first-line
-				// preview without copying a whole diagnostic body.
-				progress, _, _ = strings.Cut(info.LiveView, "\n")
+			if phase == itemAborted {
+				// A final reason outranks stale activity (e.g. the last Read call).
+				if info.Error != "" {
+					progress = info.Error
+				}
+			} else {
+				progress = info.Progress
+				if progress == "" {
+					// Structured callers may supply only LiveView.
+					progress, _, _ = strings.Cut(info.LiveView, "\n")
+				}
 			}
-			progress = strings.Join(strings.Fields(progress), " ")
 			if info.OutputError != "" {
-				progress = "output log unavailable · " + progress
+				if phase == itemAborted && progress != "" {
+					progress += " · output log unavailable"
+				} else {
+					progress = "output log unavailable · " + progress
+				}
 			}
 		}
+		progress = strings.Join(strings.Fields(progress), " ")
 		// Keep one row per worker. Activity must not double tracker height and
 		// push sibling identities out of a short terminal.
 		suffix := ""

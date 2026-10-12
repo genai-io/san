@@ -109,9 +109,10 @@ type AgentExecResult struct {
 
 // AgentTaskInfo contains info about a background agent task.
 type AgentTaskInfo struct {
-	TaskID     string
-	AgentName  string
-	OutputFile string
+	TaskID         string
+	AgentName      string
+	OutputFile     string
+	PermissionMode string // Effective launch-time mode, not the requested override.
 }
 
 // AgentConfigInfo contains agent configuration for display. It is the single

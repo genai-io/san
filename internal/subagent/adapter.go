@@ -55,10 +55,12 @@ func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTa
 		return tool.AgentTaskInfo{}, err
 	}
 
+	info := agentTask.GetStatus()
 	return tool.AgentTaskInfo{
-		TaskID:     agentTask.GetID(),
-		AgentName:  agentTask.AgentName,
-		OutputFile: agentTask.GetOutputFile(),
+		TaskID:         info.ID,
+		AgentName:      info.AgentName,
+		OutputFile:     info.OutputFile,
+		PermissionMode: displayPermissionMode(PermissionMode(info.PermissionMode)),
 	}, nil
 }
 

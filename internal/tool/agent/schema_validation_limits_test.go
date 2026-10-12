@@ -16,6 +16,9 @@ func TestAgentSchemaDisclosesEditValidationLimits(t *testing.T) {
 	}
 	properties := agentToolParameters["properties"].(map[string]any)
 	mode := properties["mode"].(map[string]any)["description"].(string)
+	if !strings.Contains(mode, "including YOLO") || !strings.Contains(mode, "read-only ceiling") || properties["mode"].(map[string]any)["default"] != "default" {
+		t.Fatalf("schema does not prefer inheritance with an explicit explorer ceiling: %v", properties["mode"])
+	}
 	if !strings.Contains(mode, "tests/build require an explicit allowed command or parent validation") {
 		t.Fatalf("mode does not disclose validation limits: %s", mode)
 	}

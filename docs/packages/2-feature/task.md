@@ -85,6 +85,13 @@ func ResetDefaultTracker()         // test-only
   subsequent appends fail rather than recreating a partial file as a full report.
 - `Progress` holds the latest ordinary worker activity for a single tracker row;
   it is display-only and does not become the final/model-facing output.
+- Subagent launch metadata includes its resolved `PermissionMode`, recorded as
+  `agent.permissions` before execution. YOLO inheritance does not widen an
+  explicit explore/edit request or override a definition's deny rules.
+- Failed/stopped tracker rows show the terminal error immediately after the
+  status, rather than stale tool activity. `todo` persists that reason so the
+  row remains diagnostic after restart. Tool progress puts the tool name and
+  failure reason before the command preview; full diagnostics remain in the log.
 
 ## Tests
 

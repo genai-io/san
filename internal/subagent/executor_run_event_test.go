@@ -13,6 +13,21 @@ import (
 	"github.com/genai-io/san/internal/tool"
 )
 
+func TestDeniedToolActivityPutsReasonBeforeCommand(t *testing.T) {
+	command := "go test " + strings.Repeat("./long/package/path ", 10)
+	gate := subagentPermissionFunc(PermissionAcceptEdits, nil, nil)
+	allowed, reason := gate(context.Background(), "Bash", map[string]any{"command": command})
+	if allowed || !strings.Contains(reason, "Bash permission denied") || !strings.Contains(reason, "Accept Edits") || !strings.Contains(reason, "allow_tools") {
+		t.Fatalf("denial hid tool, mode or required approval: %v, %q", allowed, reason)
+	}
+	var progress string
+	run := &preparedRun{req: tool.AgentExecRequest{OnActivity: func(line string) { progress = line }}}
+	run.forwardEvent(context.Background(), sdkagent.ToolEnd{Name: "Bash", Args: `{"command":"` + command + `"}`, Err: errors.New(reason)})
+	if !strings.HasPrefix(progress, "Bash failed: Bash permission denied") || !strings.HasSuffix(progress, "…)") {
+		t.Fatalf("command preview displaced the failure reason: %q", progress)
+	}
+}
+
 func TestPreparedRunForwardsCompletedToolResult(t *testing.T) {
 	var id, name, output string
 	var gotErr error
@@ -61,7 +76,7 @@ func TestPreparedRunErrorsStayWithWorker(t *testing.T) {
 		ID: "read-1", Name: "Read", Args: `{"file_path":"main.go"}`,
 		Result: sdkagent.TextResult("partial diagnostics"), Err: wantErr,
 	})
-	if output != "partial diagnostics" || gotErr != wantErr || len(activity) != 0 || len(run.activity) != 1 || run.activity[0] != "Read(main.go) failed: permission denied" {
+	if output != "partial diagnostics" || gotErr != wantErr || len(activity) != 0 || len(run.activity) != 1 || run.activity[0] != "Read failed: permission denied · Read(main.go)" {
 		t.Fatalf("local tool failure lost its reason or output: activity=%v, output=%q, err=%v", activity, output, gotErr)
 	}
 	run.forwardEvent(context.Background(), sdkagent.MessageEnd{Attempt: 1, Err: errors.New("provider unavailable")})

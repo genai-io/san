@@ -196,12 +196,16 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to start background agent: %v", err))
 		}
 
+		output := fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s",
+			taskInfo.TaskID, displayAgentLabel(agentName, mode), description)
+		if taskInfo.PermissionMode != "" {
+			output += "\nPermissions: " + taskInfo.PermissionMode
+		}
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,
 			Details: toolresult.AgentDetails{TaskID: taskInfo.TaskID},
-			Output: fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s"+tool.BackgroundLaunchSuffix,
-				taskInfo.TaskID, displayAgentLabel(agentName, mode), description),
+			Output:  output + tool.BackgroundLaunchSuffix,
 			HookResponse: map[string]any{
 				"backgroundTask": map[string]any{
 					"taskId":      taskInfo.TaskID,

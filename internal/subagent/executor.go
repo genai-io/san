@@ -157,6 +157,10 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 		return nil, err
 	}
 
+	return e.runPrepared(ctx, run)
+}
+
+func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentResult, error) {
 	e.logRunStart(run)
 	e.fireSubagentStart(run.req, run.hookID)
 
@@ -179,16 +183,16 @@ func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentRe
 
 // RunBackground executes an agent in the background and returns the task.
 func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
-	if err := e.validateRequest(req); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	// Resolve inherited permissions before registration and goroutine scheduling,
+	// not later when the parent may already have changed modes.
+	req.OnQuestion = nil // Background workers have no interactive question channel.
+	run, err := e.prepareRun(ctx, req)
+	if err != nil {
+		cancel()
 		return nil, err
 	}
-	config, ok := e.resolveRequestAgentConfig(req)
-	if !ok {
-		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
-	}
-
-	identity := config.Name
-	ctx, cancel := context.WithCancel(context.Background())
+	identity := run.cfg.config.Name
 
 	agentTask := task.Default().CreateAgentTask(
 		generateShortID(),
@@ -198,19 +202,18 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 		cancel,
 	)
 	agentTask.SetIdentity(identity, "")
+	agentTask.SetPermissionMode(string(run.cfg.permMode))
 
-	req.TaskID = agentTask.GetID()
-	req.OnActivity = func(msg string) {
+	run.req.TaskID = agentTask.GetID()
+	run.req.OnActivity = func(msg string) {
 		agentTask.AppendProgress(msg)
 		agentTask.SetLiveView(msg)
 	}
-	// Background subagents run unattended: no interactive question channel.
-	req.OnQuestion = nil
 
 	go func() {
 		defer cancel()
 
-		result, err := e.Run(ctx, req)
+		result, err := e.runPrepared(ctx, run)
 		if err != nil {
 			// A cancelled run still returns its partial work — keep it in the
 			// task output and record its persisted session for inspection.
@@ -311,9 +314,8 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		return nil, fmt.Errorf("unknown or disabled agent: %s", req.Agent)
 	}
 
-	displayName := e.displayNameFor(config, req)
-
 	permMode := e.requestPermissionMode(config, req)
+	displayName := displayAgentName(config.Name, permMode)
 
 	maxSteps := config.MaxSteps
 	if maxSteps <= 0 {
@@ -756,7 +758,7 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 		case perm.Reject:
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
 		default: // perm.Prompt — subagents cannot ask
-			return false, fmt.Sprintf("tool %s would require approval; subagent in %s mode denies it", name, display)
+			return false, fmt.Sprintf("%s permission denied: command or tool would require approval in %s mode; subagents cannot ask. Pre-authorize it in allow_tools or have the parent execute it", name, display)
 		}
 	}
 }

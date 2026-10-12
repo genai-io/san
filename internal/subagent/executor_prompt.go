@@ -199,8 +199,8 @@ func displayAgentName(name string, mode PermissionMode) string {
 			return "Explorer"
 		case PermissionAcceptEdits, PermissionAuto:
 			return "Editor"
-		case PermissionBypass:
-			return "Bypass"
+		case PermissionDefault, PermissionBypass:
+			return "General"
 		}
 		switch strings.ToLower(strings.TrimSpace(name)) {
 		case "explore", "explorer":
@@ -245,7 +245,7 @@ func displayPermissionMode(mode PermissionMode) string {
 	case PermissionAcceptEdits:
 		return "Accept Edits"
 	case PermissionBypass:
-		return "Bypass"
+		return "YOLO"
 	case PermissionDontAsk:
 		return "Don't Ask"
 	case PermissionAuto:

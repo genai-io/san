@@ -111,6 +111,13 @@ func ResetDefaultRegistry()           // test-only
   turn, returns the aggregated `AgentResult`. `RunBackground(req)` wraps
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
+- Background permissions are resolved before task registration and goroutine
+  scheduling. The launch result reports the effective mode, and the task log
+  records it as `agent.permissions`; later parent-mode changes affect new runs,
+  not a worker already launched. General-purpose/default workers inherit the
+  parent session, including YOLO (`bypassPermissions`). Explicit `explore` stays
+  read-only; explicit `edit` keeps its narrower permissions. Registered named
+  definitions retain their configured policy and `deny_tools` still wins.
 - Recoverable tool errors and inference retries stay in the worker's progress
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
