@@ -25,7 +25,7 @@ func TestLoadPersona_AllowListRestrictsVisibility(t *testing.T) {
 	if r.IsEnabled("implementer") {
 		t.Error("agents off the allow-list should be hidden")
 	}
-	section := r.AgentsSection()
+	section := r.AgentCatalog()
 	if !strings.Contains(section, "reviewer") {
 		t.Error("agents directory should list the allowed agent")
 	}

@@ -119,6 +119,16 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, poll)
 	}
 	m.syncGroupState()
+	if m.flush.output != nil && m.flush.frameForPrint == nil {
+		// Hold the pre-ready redraw too; it can still contain the whole payload
+		// rather than the single chunk that prepareScrollbackPrint will select.
+		_, hasOverlay := m.activeOverlay()
+		if len(m.flush.pendingPrints) > 0 && !hasOverlay {
+			m.flush.output.Begin()
+		} else if err := m.flush.output.Flush(); err != nil {
+			return model, tea.Quit
+		}
+	}
 	return model, cmd
 }
 

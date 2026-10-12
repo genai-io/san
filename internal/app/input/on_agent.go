@@ -28,11 +28,11 @@ type agentItem struct {
 	Model          string
 	PermissionMode string
 	Tools          string
-	Summary        string // compact label for a runtime mode preview
+	Summary        string // compact label for the default worker
 	Source         string // "built-in", "user", "project", "plugin"
 	PluginName     string // populated when Source == "plugin" or name has "ns:" prefix
 	Enabled        bool
-	ModePreview    bool // runtime mode description, not a toggleable definition
+	BuiltinPreview bool // default worker description, not a toggleable definition
 }
 
 // AgentToggleMsg is sent when an agent's enabled state is toggled.
@@ -58,8 +58,7 @@ func NewAgentSelector(reg *subagent.Registry) AgentSelector {
 				{name: "Project"},
 				{name: "User"},
 			},
-			// Project and User hold toggleable definitions; Built-in explains
-			// the unnamed Agent tool's runtime modes.
+			// Project and User hold definitions; Built-in describes the default worker.
 			preferred:   []int{int(agentTabProject), int(agentTabUser), int(agentTabBuiltin)},
 			noun:        "agents",
 			placeholder: "Type to filter agents...",
@@ -79,8 +78,8 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 		setting.ScopeUser:    s.registry.DisabledAt(setting.ScopeUser),
 	}
 
-	agents := make([]agentItem, 0, len(configs)+3)
-	agents = append(agents, builtinModeItems()...)
+	agents := make([]agentItem, 0, len(configs)+1)
+	agents = append(agents, builtinAgentItems()...)
 	for _, c := range configs {
 		cfg := subagent.ToAgentConfigInfo(c)
 		lowerName := strings.ToLower(cfg.Name)
@@ -111,30 +110,12 @@ func (s *AgentSelector) EnterSelect(width, height int) error {
 	return nil
 }
 
-// builtinModeItems are read-only explanations of the unnamed Agent tool's
-// modes. They are not registered agent definitions, so Enter cannot disable
-// them or make their display names callable as named agents.
-func builtinModeItems() []agentItem {
-	toolNames := func(mode subagent.PermissionMode) string {
-		return strings.Join(subagent.BuiltinToolNames(mode), ", ")
-	}
-	return []agentItem{
-		{
-			Name: "Default", Summary: "inherits session permissions and tools",
-			Model: "inherit", PermissionMode: "default",
-			Source: "built-in", Enabled: true, ModePreview: true,
-		},
-		{
-			Name: "Explorer", Summary: "explore · read-only", Description: "Bash is read-only; settings may narrow tools.",
-			Model: "inherit", PermissionMode: "explore", Tools: toolNames(subagent.PermissionExplore),
-			Source: "built-in", Enabled: true, ModePreview: true,
-		},
-		{
-			Name: "Editor", Summary: "edit · file edits", Description: "Bash is read-only; settings may narrow tools.",
-			Model: "inherit", PermissionMode: "edit", Tools: toolNames(subagent.PermissionAcceptEdits),
-			Source: "built-in", Enabled: true, ModePreview: true,
-		},
-	}
+// builtinAgentItems describes the sole default worker, not a registered definition.
+func builtinAgentItems() []agentItem {
+	return []agentItem{{
+		Name: "Agent", Summary: "inherits session permissions; model comes from configuration",
+		Model: "inherit", Source: "built-in", Enabled: true, BuiltinPreview: true,
+	}}
 }
 
 func formatAgentPermMode(mode string) string {
@@ -191,12 +172,12 @@ func (s *AgentSelector) Toggle() tea.Cmd {
 		return nil
 	}
 	selected := &s.list.filtered[s.list.nav.Selected]
-	if selected.ModePreview {
+	if selected.BuiltinPreview {
 		return nil
 	}
 	selected.Enabled = !selected.Enabled
 	for i := range s.list.items {
-		if !s.list.items[i].ModePreview && s.list.items[i].Name == selected.Name {
+		if !s.list.items[i].BuiltinPreview && s.list.items[i].Name == selected.Name {
 			s.list.items[i].Enabled = selected.Enabled
 			break
 		}
@@ -243,7 +224,7 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		var statusIcon string
 		var statusStyle lipgloss.Style
-		if a.ModePreview {
+		if a.BuiltinPreview {
 			statusIcon = "◇"
 			statusStyle = kit.SelectorStatusNone()
 		} else if a.Enabled {
@@ -260,7 +241,7 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 		paddedName := name + strings.Repeat(" ", max(0, maxNameLen-lipgloss.Width(name)))
 
 		var line string
-		if a.ModePreview {
+		if a.BuiltinPreview {
 			preview := a.Summary
 			if a.Description != "" {
 				preview += "  " + a.Description
@@ -312,20 +293,13 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 
 		// Description sub-line aligned under the agent name (4 cols in:
 		// 2 cursor + 1 icon + 1 space).
-		if i == s.list.nav.Selected && (!a.ModePreview && a.Description != "" || a.ModePreview && a.Tools != "") {
+		if i == s.list.nav.Selected && !a.BuiltinPreview && a.Description != "" {
 			subStyle := lipgloss.NewStyle().
 				Foreground(kit.CurrentTheme.Muted).
 				PaddingLeft(4)
 			descLineWidth := max(10, panel.ContentWidth()-8)
-			if !a.ModePreview && a.Description != "" {
-				sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
-				sb.WriteString("\n")
-			}
-			if a.ModePreview && a.Tools != "" {
-				toolsLine := "Tools: " + a.Tools
-				sb.WriteString(subStyle.Render(kit.TruncateText(toolsLine, descLineWidth)))
-				sb.WriteString("\n")
-			}
+			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
+			sb.WriteString("\n")
 		}
 
 		// Spacer for breathing room between rows (skip after the last item;

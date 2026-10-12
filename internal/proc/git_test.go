@@ -92,6 +92,7 @@ func TestReadGitStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	got, err := ReadGitStatus(ctx, repo)
+	cancel()
 	if err != nil || got.Branch != "main" || got.Repository != filepath.Base(repo) {
 		t.Fatalf("unborn repository = %#v, err = %v", got, err)
 	}
@@ -110,6 +111,9 @@ func TestReadGitStatus(t *testing.T) {
 	// Repository discovery must follow cwd, not an inherited Git environment.
 	t.Setenv("GIT_DIR", filepath.Join(t.TempDir(), "not-a-repo"))
 	t.Setenv("GIT_WORK_TREE", t.TempDir())
+	// Fixture setup must not consume the deadline for this separate Git read.
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	got, err = ReadGitStatus(ctx, subdir)
 	if err != nil {
 		t.Fatal(err)

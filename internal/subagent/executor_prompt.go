@@ -153,7 +153,6 @@ func formatTaskToolActivity(toolName string, params map[string]any) string {
 func formatAgentActivity(params map[string]any) string {
 	requestedName, _ := params["name"].(string)
 	agentName := requestedName
-	mode, _ := params["mode"].(string)
 	desc, _ := params["description"].(string)
 	if desc == "" {
 		desc, _ = params["prompt"].(string)
@@ -162,15 +161,11 @@ func formatAgentActivity(params map[string]any) string {
 		}
 	}
 
-	agentName = displayAgentName(agentName, PermissionMode(mode))
+	agentName = displayAgentName(agentName)
 	if desc == "" {
 		return fmt.Sprintf("Agent - %s", agentName)
 	}
 	return fmt.Sprintf("Agent - %s: %s", agentName, desc)
-}
-
-func (e *Executor) displayNameFor(config *AgentConfig, req tool.AgentExecRequest) string {
-	return displayAgentName(config.Name, e.requestPermissionMode(config, req))
 }
 
 func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExecRequest) PermissionMode {
@@ -192,24 +187,9 @@ func (e *Executor) requestPermissionMode(config *AgentConfig, req tool.AgentExec
 	}
 }
 
-func displayAgentName(name string, mode PermissionMode) string {
+func displayAgentName(name string) string {
 	if strings.TrimSpace(name) == "" {
-		switch NormalizePermissionMode(string(mode)) {
-		case PermissionExplore, PermissionDontAsk:
-			return "Explorer"
-		case PermissionAcceptEdits, PermissionAuto:
-			return "Editor"
-		case PermissionBypass:
-			return "Bypass"
-		}
-		switch strings.ToLower(strings.TrimSpace(name)) {
-		case "explore", "explorer":
-			return "Explorer"
-		case "editor":
-			return "Editor"
-		default:
-			return "General"
-		}
+		return "Agent"
 	}
 	return shortAgentName(name)
 }
@@ -245,7 +225,7 @@ func displayPermissionMode(mode PermissionMode) string {
 	case PermissionAcceptEdits:
 		return "Accept Edits"
 	case PermissionBypass:
-		return "Bypass"
+		return "YOLO"
 	case PermissionDontAsk:
 		return "Don't Ask"
 	case PermissionAuto:

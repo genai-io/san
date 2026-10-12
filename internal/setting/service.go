@@ -115,6 +115,16 @@ func (s *Settings) DisabledTools() map[string]bool {
 	return WithDefaultDisabledTools(s.data.DisabledTools)
 }
 
+// SubagentModel returns the configured worker model; empty means inherit.
+func (s *Settings) SubagentModel() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.data == nil {
+		return ""
+	}
+	return s.data.SubagentModel
+}
+
 func (s *Settings) SearchProvider() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

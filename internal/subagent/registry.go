@@ -187,17 +187,15 @@ func (r *Registry) isDisabledInternal(name string) bool {
 	return false
 }
 
-// AgentsSection returns the body of the agents directory for the system
-// prompt. Only enabled agents, sorted by name (deterministic output).
-//
-// Returns plain body text without the outer XML tag; the system catalog
-// wraps it in <agents>…</agents>.
-func (r *Registry) AgentsSection() string {
+// AgentCatalog returns discovery metadata for the Agent tool description.
+// Only enabled definitions are listed, sorted by name. Full prompts, models,
+// tool rules and permission modes are not included.
+func (r *Registry) AgentCatalog() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	type entry struct {
-		name, desc, whenToUse, tools string
+		name, desc, whenToUse string
 	}
 
 	var entries []entry
@@ -205,15 +203,10 @@ func (r *Registry) AgentsSection() string {
 		if r.isDisabledInternal(name) {
 			continue
 		}
-		toolsDesc := "*"
-		if config.AllowTools != nil {
-			toolsDesc = strings.Join(config.AllowTools.DisplayNames(), ", ")
-		}
 		entries = append(entries, entry{
 			name:      config.Name,
-			desc:      config.Description,
-			whenToUse: config.WhenToUse,
-			tools:     toolsDesc,
+			desc:      strings.Join(strings.Fields(config.Description), " "),
+			whenToUse: strings.Join(strings.Fields(config.WhenToUse), " "),
 		})
 	}
 
@@ -226,13 +219,12 @@ func (r *Registry) AgentsSection() string {
 	})
 
 	var sb strings.Builder
-	sb.WriteString("Available agents for the Agent tool:\n\n")
+	sb.WriteString("Available predefined agents:\n\n")
 	for i, e := range entries {
 		sb.WriteString("- " + e.name + ": " + e.desc)
 		if e.whenToUse != "" {
 			sb.WriteString("\n  Use when: " + e.whenToUse)
 		}
-		sb.WriteString("\n  Tools: " + e.tools)
 		if i < len(entries)-1 {
 			sb.WriteString("\n")
 		}

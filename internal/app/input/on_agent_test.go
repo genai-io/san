@@ -1,7 +1,6 @@
 package input
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -11,17 +10,17 @@ import (
 	_ "github.com/genai-io/san/internal/tool/register"
 )
 
-func TestAgentSelectorShowsRuntimeModesWithoutTreatingThemAsDefinitions(t *testing.T) {
+func TestAgentSelectorShowsOnlyOneDefaultAgent(t *testing.T) {
 	registry := subagent.NewRegistry()
 	selector := NewAgentSelector(registry)
 	if err := selector.EnterSelect(120, 40); err != nil {
 		t.Fatal(err)
 	}
-	if selector.list.activeTab != int(agentTabBuiltin) || len(selector.list.filtered) != 3 {
-		t.Fatalf("built-in tab = %d, rows = %d; want three mode previews", selector.list.activeTab, len(selector.list.filtered))
+	if selector.list.activeTab != int(agentTabBuiltin) || len(selector.list.filtered) != 1 || selector.list.filtered[0].Name != "Agent" {
+		t.Fatalf("built-in tab = %d, rows = %+v; want only Agent", selector.list.activeTab, selector.list.filtered)
 	}
 	for _, item := range selector.list.filtered {
-		if !item.ModePreview || item.Source != "built-in" {
+		if !item.BuiltinPreview || item.Source != "built-in" {
 			t.Fatalf("mode row is toggleable: %+v", item)
 		}
 	}
@@ -33,7 +32,7 @@ func TestAgentSelectorShowsRuntimeModesWithoutTreatingThemAsDefinitions(t *testi
 	}
 }
 
-func TestAgentSelectorToggleWithModePreviewName(t *testing.T) {
+func TestAgentSelectorToggleWithBuiltinPreviewName(t *testing.T) {
 	for _, tc := range []struct {
 		source string
 		tab    agentTab
@@ -41,7 +40,7 @@ func TestAgentSelectorToggleWithModePreviewName(t *testing.T) {
 		{source: "user", tab: agentTabUser},
 		{source: "project", tab: agentTabProject},
 	} {
-		for _, name := range []string{"Default", "Explorer", "Editor"} {
+		for _, name := range []string{"Agent", "Default", "Explorer", "Editor"} {
 			t.Run(tc.source+"/"+name, func(t *testing.T) {
 				home := t.TempDir()
 				t.Setenv("HOME", home)
@@ -71,7 +70,7 @@ func TestAgentSelectorToggleWithModePreviewName(t *testing.T) {
 
 					selector.list.cycleTab(-int(tc.tab))
 					for _, preview := range selector.list.filtered {
-						if !preview.ModePreview || !preview.Enabled {
+						if !preview.BuiltinPreview || !preview.Enabled {
 							t.Fatalf("toggle changed mode preview: %+v", preview)
 						}
 					}
@@ -101,13 +100,13 @@ func TestAgentSelectorToggleWithModePreviewName(t *testing.T) {
 	}
 }
 
-func TestDefaultModePreviewUsesOneCompactRow(t *testing.T) {
+func TestDefaultBuiltinPreviewUsesOneCompactRow(t *testing.T) {
 	selector := NewAgentSelector(subagent.NewRegistry())
 	if err := selector.EnterSelect(80, 24); err != nil {
 		t.Fatal(err)
 	}
 	rendered := xansi.Strip(selector.Render())
-	if strings.Count(rendered, "inherits session permissions and tools") != 1 {
+	if strings.Count(rendered, "inherits session permissions") != 1 {
 		t.Fatalf("default mode inheritance is missing or repeated:\n%s", rendered)
 	}
 	if strings.Contains(rendered, "Tools:") || strings.Contains(rendered, "follows session mode") {
@@ -115,39 +114,17 @@ func TestDefaultModePreviewUsesOneCompactRow(t *testing.T) {
 	}
 }
 
-func TestModePreviewShowsToolsOnSecondLine(t *testing.T) {
+func TestAgentBuiltinPreviewDoesNotAdvertiseVariants(t *testing.T) {
 	for _, width := range []int{80, 120} {
-		for _, tc := range []struct {
-			name  string
-			index int
-		}{
-			{name: "Explorer", index: 1},
-			{name: "Editor", index: 2},
-		} {
-			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
-				selector := NewAgentSelector(subagent.NewRegistry())
-				if err := selector.EnterSelect(width, 30); err != nil {
-					t.Fatal(err)
-				}
-				selector.list.nav.Selected = tc.index
-				lines := strings.Split(xansi.Strip(selector.Render()), "\n")
-				for i, line := range lines {
-					if !strings.Contains(line, tc.name) || !strings.Contains(line, "◇") {
-						continue
-					}
-					if !strings.Contains(line, "Bash is read-only") || width == 120 && !strings.Contains(line, "settings may narrow tools.") {
-						t.Fatalf("mode description is missing from the first line:\n%s", strings.Join(lines, "\n"))
-					}
-					if i+2 >= len(lines) || !strings.Contains(lines[i+1], "Tools: Read, WebFetch, WebSearch") || strings.TrimSpace(lines[i+2]) != "" {
-						t.Fatalf("mode preview is not two lines:\n%s", strings.Join(lines, "\n"))
-					}
-					if width == 80 && !strings.Contains(lines[i+1], "…") || width == 120 && !strings.Contains(lines[i+1], "SendMessage") {
-						t.Fatalf("tool list should truncate only in the narrow panel:\n%s", strings.Join(lines, "\n"))
-					}
-					return
-				}
-				t.Fatalf("mode row not rendered:\n%s", strings.Join(lines, "\n"))
-			})
+		selector := NewAgentSelector(subagent.NewRegistry())
+		if err := selector.EnterSelect(width, 30); err != nil {
+			t.Fatal(err)
+		}
+		view := xansi.Strip(selector.Render())
+		for _, removed := range []string{"Explorer", "Editor", "General", "explore ·", "edit ·", "Tools:"} {
+			if strings.Contains(view, removed) {
+				t.Fatalf("default Agent advertises %q:\n%s", removed, view)
+			}
 		}
 	}
 }

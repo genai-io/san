@@ -439,6 +439,8 @@ func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "san-test")
 	cmd := exec.Command("go", "build", "-o", bin, "./cmd/san")
+	// Match the release/CI prebuild, even when the parent coverage test enables CGO.
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	cmd.Dir = projectRoot(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

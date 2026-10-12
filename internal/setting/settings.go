@@ -57,14 +57,16 @@ const DefaultResumeWindowMessages = 20
 
 // Data represents the complete San configuration.
 type Data struct {
-	Permissions    PermissionSettings `json:"permissions"`
-	Model          string             `json:"model,omitempty"`
-	Hooks          map[string][]Hook  `json:"hooks,omitempty"`
-	Env            map[string]string  `json:"env,omitempty"`
-	EnabledPlugins map[string]bool    `json:"enabledPlugins,omitempty"`
-	DisabledTools  map[string]bool    `json:"disabledTools,omitempty"`
-	Theme          string             `json:"theme,omitempty"`
-	SearchProvider string             `json:"searchProvider,omitempty"`
+	Permissions PermissionSettings `json:"permissions"`
+	Model       string             `json:"model,omitempty"`
+	// SubagentModel selects the default worker model; empty or "inherit" uses the parent.
+	SubagentModel  string            `json:"subagentModel,omitempty"`
+	Hooks          map[string][]Hook `json:"hooks,omitempty"`
+	Env            map[string]string `json:"env,omitempty"`
+	EnabledPlugins map[string]bool   `json:"enabledPlugins,omitempty"`
+	DisabledTools  map[string]bool   `json:"disabledTools,omitempty"`
+	Theme          string            `json:"theme,omitempty"`
+	SearchProvider string            `json:"searchProvider,omitempty"`
 	// AllowBypass gates Bypass Permissions mode. Opt-out: nil/absent means
 	// allowed (bypass is in the Shift+Tab cycle by default); set false to
 	// lock it out. Read via Settings.AllowBypass().
@@ -829,6 +831,7 @@ func (s *Data) Clone() *Data {
 	dst.Permissions.Deny = append([]string(nil), s.Permissions.Deny...)
 	dst.Permissions.Ask = append([]string(nil), s.Permissions.Ask...)
 	dst.Model = s.Model
+	dst.SubagentModel = s.SubagentModel
 	dst.Theme = s.Theme
 	dst.SearchProvider = s.SearchProvider
 	dst.StreamFirstChunkTimeout = s.StreamFirstChunkTimeout

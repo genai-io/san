@@ -141,7 +141,7 @@ func (r *preparedRun) forwardEvent(ctx context.Context, ev core.Event) {
 			if report {
 				// Keep recoverable failures with the worker. Structured views
 				// already finish their tool row through OnToolResult below.
-				line := fmt.Sprintf("%s failed: %v", label, event.Err)
+				line := fmt.Sprintf("%s failed: %v · %s", event.Name, event.Err, label)
 				r.activity = append(r.activity, line)
 				if r.req.OnToolResult == nil {
 					r.streamActivity(line)

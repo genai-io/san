@@ -15,6 +15,7 @@ func mergeSettings(base, overlay *Data) *Data {
 	result := NewData()
 	result.Permissions = mergePermissions(base.Permissions, overlay.Permissions)
 	result.Model = coalesce(overlay.Model, base.Model)
+	result.SubagentModel = coalesce(overlay.SubagentModel, base.SubagentModel)
 	result.Theme = coalesce(overlay.Theme, base.Theme)
 	result.Hooks = mergeHooks(base.Hooks, overlay.Hooks)
 	result.Env = mergeMaps(base.Env, overlay.Env)

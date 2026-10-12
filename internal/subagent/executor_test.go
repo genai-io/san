@@ -58,7 +58,7 @@ func TestPrepareRunConfigRespectsOverrides(t *testing.T) {
 		t.Fatalf("prepareRunConfig() error: %v", err)
 	}
 
-	if rc.displayName != "Editor" {
+	if rc.displayName != "Agent" {
 		t.Fatalf("expected mode-based display name, got %q", rc.displayName)
 	}
 	if rc.modelID != "override-model" {
@@ -301,15 +301,15 @@ func TestFormatToolActivityPreservesLiteralSubagentName(t *testing.T) {
 	}
 }
 
-func TestFormatToolActivityNamesGeneralAgentByMode(t *testing.T) {
+func TestFormatToolActivityUsesOneDefaultAgentLabel(t *testing.T) {
 	for _, tc := range []struct {
 		agent string
 		mode  string
 		desc  string
 		want  string
 	}{
-		{agent: "", mode: "explore", desc: "inspect repo", want: "Agent - Explorer: inspect repo"},
-		{agent: "", mode: "acceptEdits", desc: "update files", want: "Agent - Editor: update files"},
+		{agent: "", mode: "explore", desc: "inspect repo", want: "Agent - Agent: inspect repo"},
+		{agent: "", mode: "acceptEdits", desc: "update files", want: "Agent - Agent: update files"},
 		{agent: "subagent", mode: "explore", desc: "inspect repo", want: "Agent - Subagent: inspect repo"},
 		{agent: "explorer", mode: "acceptEdits", desc: "update files", want: "Agent - Explorer: update files"},
 	} {

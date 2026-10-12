@@ -122,6 +122,9 @@ func TestCompleteWorkerTracksFailure(t *testing.T) {
 	})
 
 	items := Default().List()
+	if got := BackgroundError(items[0]); got != "compilation error" {
+		t.Fatalf("terminal reason = %q, want compilation error", got)
+	}
 	if metadataStr(items[0].Metadata, metaStatusDetail) != string(task.StatusFailed) {
 		t.Fatalf("status detail = %q, want %q", metadataStr(items[0].Metadata, metaStatusDetail), task.StatusFailed)
 	}

@@ -42,14 +42,10 @@ func IsAgentToolName(name string) bool {
 
 // SchemaOptions configures dynamic content embedded in tool schemas.
 //
-// Both fields are getters (called at schema build time) so tool descriptions
-// stay in sync with whatever the harness has loaded most recently. Either may
-// be nil — a nil MCPTools yields no MCP tools, and a nil AgentDirectory yields
-// an Agent tool whose description omits the available-types listing (useful
-// for subagent contexts where recursive spawning is discouraged).
+// Getters are evaluated at schema build time and may be nil.
 type SchemaOptions struct {
-	MCPTools       func() []core.ToolSchema
-	AgentDirectory func() string
+	MCPTools     func() []core.ToolSchema
+	AgentCatalog func() string // summaries of enabled predefined agents
 
 	// ExtraTools are caller-supplied schemas appended to the registered set —
 	// the hook for conditionally-present tools whose schema the caller builds
@@ -78,8 +74,7 @@ var builtinToolOrder = []string{
 }
 
 // GetToolSchemas returns core.ToolSchema definitions for all registered tools
-// with no dynamic content (no MCP tools, no agent directory). For
-// directory-aware schemas use GetToolSchemasWith.
+// with no dynamic MCP tools or agent catalog. Use GetToolSchemasWith for dynamic schemas.
 func GetToolSchemas() []core.ToolSchema {
 	return GetToolSchemasWith(SchemaOptions{})
 }
@@ -114,14 +109,12 @@ func GetManageableToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 
 // GetToolSchemasWith returns tool schemas with dynamic content from opts.
 // Built-in schemas are sourced from each registered tool's Schema (the single
-// source of truth), in builtinToolOrder; the Agent tool's description embeds
-// the available-agents directory when one is supplied.
+// source of truth), in builtinToolOrder.
 func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
-	var agentDirectory string
-	if opts.AgentDirectory != nil {
-		agentDirectory = opts.AgentDirectory()
+	var agentCatalog string
+	if opts.AgentCatalog != nil {
+		agentCatalog = opts.AgentCatalog()
 	}
-
 	tools := make([]core.ToolSchema, 0, len(builtinToolOrder)+len(opts.ExtraTools)+8)
 	for _, name := range builtinToolOrder {
 		t, ok := Get(name)
@@ -130,9 +123,9 @@ func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 			// correctly wired binary (TestBuiltinToolsAllRegistered).
 			continue
 		}
-		if agentDirectory != "" {
-			if da, ok := t.(AgentDirectoryAwareTool); ok {
-				tools = append(tools, da.SchemaWithAgentDirectory(agentDirectory))
+		if agentCatalog != "" {
+			if aware, ok := t.(AgentCatalogAwareTool); ok {
+				tools = append(tools, aware.SchemaWithAgentCatalog(agentCatalog))
 				continue
 			}
 		}

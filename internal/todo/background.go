@@ -10,6 +10,7 @@ const (
 	metaTaskID       = "background_task_id"
 	metaTaskType     = "background_task_type"
 	metaStatusDetail = "background_status_detail"
+	metaError        = "background_error"
 )
 
 // An Item is one of two kinds. A plan item is authored by the model and
@@ -42,6 +43,11 @@ func BackgroundTaskType(item *Item) string {
 // that mirror no background task, and for those that ended normally.
 func BackgroundStatusDetail(item *Item) string {
 	return metadataString(item, metaStatusDetail)
+}
+
+// BackgroundError returns the persisted terminal reason, including after restart.
+func BackgroundError(item *Item) string {
+	return metadataString(item, metaError)
 }
 
 // WorkerRunning reports whether the background task behind this item is
@@ -90,6 +96,7 @@ func TrackWorker(svc *Store, info task.TaskInfo) {
 		metaTaskID:       info.ID,
 		metaTaskType:     string(info.Type),
 		metaStatusDetail: string(task.StatusRunning),
+		metaError:        "",
 	}
 
 	if existing := svc.FindByMetadata(metaTaskID, info.ID); existing != nil {
@@ -134,6 +141,7 @@ func CompleteWorker(svc *Store, info task.TaskInfo) {
 		WithMetadata(map[string]any{
 			metaTaskID:       info.ID,
 			metaStatusDetail: statusDetail,
+			metaError:        info.Error,
 		}),
 	)
 }

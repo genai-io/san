@@ -107,11 +107,16 @@ func (m *model) applyPersonaAgents() {
 // second hand-written literal would silently under-report.
 func (m *model) promptParams() agent.BuildParams {
 	return agent.BuildParams{
-		CWD:            m.env.CWD,
-		Persona:        m.personaPrompt(),
-		AgentDirectory: func() string { return m.services.Subagent.AgentsSection() },
-		DisabledTools:  m.disabledTools(),
-		MCPTools:       mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
+		CWD:     m.env.CWD,
+		Persona: m.personaPrompt(),
+		AgentCatalog: func() string {
+			if m.services.Subagent == nil {
+				return ""
+			}
+			return m.services.Subagent.AgentCatalog()
+		},
+		DisabledTools: m.disabledTools(),
+		MCPTools:      mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
 
 		// Inject the Evolve trigger tool (tailored to the enabled capabilities)
 		// so the model can queue its own self-learning reviews.
@@ -840,6 +845,7 @@ func (m *model) ReconfigureAgentTool() {
 	m.ensureMemoryContextLoaded()
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
+	executor.SetDefaultModel(m.services.Setting.SubagentModel())
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
 	perms := m.env.SessionPermissions
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {

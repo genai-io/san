@@ -1006,7 +1006,7 @@ func displayAgentName(agentName, mode string) string {
 		case "edit":
 			return "Editor"
 		}
-		return "General"
+		return "Agent"
 	}
 	return shortAgentName(agentName)
 }

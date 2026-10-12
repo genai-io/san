@@ -99,6 +99,7 @@ type TaskInfo struct {
 
 	// Agent-specific fields
 	AgentName      string
+	PermissionMode string // Effective launch-time mode for ordinary subagent tasks.
 	AgentSessionID string
 	StepCount      int
 	TokenUsage     int

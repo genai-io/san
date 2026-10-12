@@ -54,7 +54,7 @@ func TestForegroundAgentsRunInParallelAndJoinBeforeParentInference(t *testing.T)
 	for i := range calls {
 		calls[i] = ai.ToolCall{
 			ID: fmt.Sprintf("review-%d", i), Name: tool.ToolAgent,
-			Input: fmt.Sprintf(`{"description":"Review changes","prompt":"review-%d","mode":"explore","run_in_background":false}`, i),
+			Input: fmt.Sprintf(`{"description":"Review changes","prompt":"review-%d","run_in_background":false}`, i),
 		}
 	}
 	model := aitest.New(aitest.Asks(calls...), aitest.Says("All reviews received"))

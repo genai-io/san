@@ -33,11 +33,9 @@ type BuildParams struct {
 	StreamFirstChunkTimeout time.Duration
 	StreamIdleTimeout       time.Duration
 
-	// AgentDirectory, when non-nil, supplies the available-agents listing
-	// embedded into the Agent tool's description. Returning an empty string
-	// hides the listing entirely (used by subagent contexts to discourage
-	// recursive spawning).
-	AgentDirectory func() string
+	// AgentCatalog provides discovery summaries of enabled predefined agents.
+	// Full agent prompts stay in the worker's own context.
+	AgentCatalog func() string
 
 	// Persona overrides the system-prompt parts (identity / behavior / rules)
 	// from the active persona. Empty fields keep San's built-in defaults.
@@ -100,9 +98,9 @@ func (p BuildParams) System() core.System {
 // than schemas, and are wired in separately.
 func (p BuildParams) Schemas() []core.ToolSchema {
 	return (&tool.Set{
-		Disabled:       p.DisabledTools,
-		AgentDirectory: p.AgentDirectory,
-		ExtraTools:     p.ExtraTools,
+		Disabled:     p.DisabledTools,
+		AgentCatalog: p.AgentCatalog,
+		ExtraTools:   p.ExtraTools,
 	}).Tools()
 }
 
