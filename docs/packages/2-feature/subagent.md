@@ -34,7 +34,7 @@ no producer-side role interface earns its keep — TEMPLATE Rule 3.
 |---|---|
 | `cmd/san agent` | `Get` (CLI argument validation) |
 | TUI view | `ListConfigs` (color enumeration) |
-| Agent build site | `AgentsSection` |
+| Executor selection | `LookupAgent` for an optional custom definition; no catalog is sent to the main model |
 | TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `DisabledAt` for the `/agent` menu |
 
 Executor construction goes through the package-level `NewExecutor`
@@ -89,13 +89,9 @@ func ResetDefaultRegistry()           // test-only
   plugin paths; lower-priority sources load first so higher ones win by
   name. Accepts alias frontmatter keys (`tools`, `allowed-tools`,
   `permission-mode`) alongside the canonical ones.
-- `preview.go` — supplies the Agent panel's Built-in tab with the built-in
-  tool names visible to unnamed `explore` and `edit` runs, using the same
-  schema filter as the executor. The panel also explains `default`, which
-  inherits the parent session's mode; its tool list therefore depends on
-  the session. These mode previews are not named agent definitions and
-  cannot be toggled. Settings
-  can disable tools, and connected MCP servers can add tools at run time.
+- The Agent panel's Built-in tab contains one default `Agent` entry. Explorer
+  and Editor presets are removed. User/project definitions remain manageable,
+  but the main tool schema does not embed a catalog of agent types.
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
 - `activity_tools.go` — the gate that streams each call into the
@@ -112,12 +108,17 @@ func ResetDefaultRegistry()           // test-only
   the same run in a `task.AgentTask` goroutine and registers with the broker under
   the task id so main can message it mid-run.
 - Background permissions are resolved before task registration and goroutine
-  scheduling. The launch result reports the effective mode, and the task log
-  records it as `agent.permissions`; later parent-mode changes affect new runs,
-  not a worker already launched. General-purpose/default workers inherit the
-  parent session, including YOLO (`bypassPermissions`). Explicit `explore` stays
-  read-only; explicit `edit` keeps its narrower permissions. Registered named
-  definitions retain their configured policy and `deny_tools` still wins.
+  scheduling, and recorded internally as `agent.permissions`. Later parent-mode
+  changes affect new runs, not a worker already launched. The main Agent tool
+  exposes only task briefing, an optional name, background execution, and step
+  budget; neither `mode` nor `model` is a tool parameter. Ordinary workers inherit
+  parent permissions, including YOLO. Named definitions and internal workflow
+  policies retain their configured limits; `deny_tools` still wins.
+- Worker models are configuration-driven: `subagentModel` in scoped
+  `settings.json` selects the default worker model (ID, alias, or `vendor/model`).
+  Empty/unset uses the current main-session model; `"inherit"` explicitly resets
+  a lower-scope override. A named custom definition retains its own `model:`
+  setting. The tool caller does not choose a model.
 - Recoverable tool errors and inference retries stay in the worker's progress
   and inspection trail. Foreground calls stream them into their own activity;
   background calls append them to the task log and update the task's `LiveView`.
@@ -201,10 +202,11 @@ func ResetDefaultRegistry()           // test-only
 - Subagents start with fresh conversations. Supply the actual working directory,
   source paths, relevant constraints, and a concrete expected result in the
   delegated prompt. Spawning another worker does not resume the previous one.
-- Tool visibility and permissions are separate: `explore` rejects interpreters
-  even if the script only reads; `edit` permits file edits but does not grant
-  unrestricted Bash. An unattended permission denial needs a compatible tool or
-  a blocked-work report, not repetition of the same command.
+- Custom definition and workflow policies still distinguish read-only inspection
+  from edits and unrestricted shell execution. These are internal/configured
+  constraints, not default Agent presets or model-facing selectors. An unattended
+  permission denial needs a compatible tool or a blocked-work report, not
+  repetition of the same command.
 - Workers share the filesystem. Cancellation stops execution, not edits already
   applied; independent conversations do not isolate overlapping writes.
 

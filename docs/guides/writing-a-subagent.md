@@ -102,7 +102,13 @@ for the full decision pipeline.
 
 ## How the Parent Spawns It
 
-The foreground agent calls the `Agent` tool with:
+The foreground agent calls the single `Agent` tool. `name` is optional: it
+labels a new worker or selects an existing custom definition. There are no
+built-in Explorer/Edit presets and no tool arguments for `mode` or `model`.
+A named definition supplies its configured model; ordinary workers use the
+`subagentModel` setting, or the current main-session model when unset.
+
+Example using a configured definition:
 
 ```json
 {

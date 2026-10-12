@@ -51,10 +51,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	}
 
 	runBackground := tool.GetBool(params, "run_in_background")
-	requestModel := tool.GetString(params, "model")
-
-	mode, err := parseAndValidateRequestMode(params)
-	if err != nil {
+	if err := validateAgentParams(params); err != nil {
 		return nil, err
 	}
 
@@ -72,9 +69,9 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	params["_resolvedAgentConfig"] = resolvedConfig
 
 	// Determine effective model for permission display.
-	effectiveModel := requestModel
-	if effectiveModel == "" && config.Model != "" && config.Model != "inherit" {
-		effectiveModel = config.Model
+	effectiveModel := config.Model
+	if effectiveModel == "inherit" {
+		effectiveModel = ""
 	}
 	if effectiveModel == "" {
 		effectiveModel = t.executor.ParentModelID()
@@ -84,7 +81,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	}
 
 	// Build description
-	displayName := displayAgentLabel(config.Name, mode)
+	displayName := displayAgentLabel(config.Name)
 	desc := fmt.Sprintf("Spawn %s agent: %s", displayName, description)
 	if runBackground {
 		desc += " (background)"
@@ -98,7 +95,7 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 			AgentName:      config.Name,
 			Description:    config.Description,
 			Model:          effectiveModel,
-			PermissionMode: effectivePermissionMode(mode, config),
+			PermissionMode: config.PermissionMode,
 			Tools:          config.Tools,
 			Prompt:         prompt,
 			Background:     runBackground,
@@ -106,24 +103,14 @@ func (t *AgentTool) PreparePermission(ctx context.Context, params map[string]any
 	}, nil
 }
 
-// effectivePermissionMode returns the mode the run will actually use — the
-// request's mode override when present, the agent config's mode otherwise —
-// so the permission dialog shows what the user is approving.
-func effectivePermissionMode(mode string, config tool.AgentConfigInfo) string {
-	if mode != "" && mode != "default" {
-		return mode
+// Reject removed selectors rather than silently widening an old read-only request.
+func validateAgentParams(params map[string]any) error {
+	for _, field := range []string{"mode", "model"} {
+		if _, exists := params[field]; exists {
+			return fmt.Errorf("Agent does not accept %q; worker configuration comes from session settings or its definition", field)
+		}
 	}
-	return config.PermissionMode
-}
-
-func parseAndValidateRequestMode(params map[string]any) (string, error) {
-	mode := tool.GetString(params, "mode")
-	switch mode {
-	case "", "default", "explore", "edit":
-		return mode, nil
-	default:
-		return "", fmt.Errorf("invalid agent mode %q: must be explore, edit, or default", mode)
-	}
+	return nil
 }
 
 // ExecuteApproved executes the agent after user approval
@@ -151,9 +138,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	description := tool.GetString(params, "description")
 	runBackground := tool.GetBool(params, "run_in_background")
-	model := tool.GetString(params, "model")
-	mode, err := parseAndValidateRequestMode(params)
-	if err != nil {
+	if err := validateAgentParams(params); err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
 	}
 
@@ -182,9 +167,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 		Prompt:              prompt,
 		Description:         description,
 		Background:          runBackground,
-		Model:               model,
 		MaxSteps:            maxSteps,
-		Mode:                mode,
 		OnActivity:          onActivity,
 		OnQuestion:          onQuestion,
 	}
@@ -196,11 +179,8 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			return toolresult.NewErrorResult(t.Name(), fmt.Sprintf("failed to start background agent: %v", err))
 		}
 
-		output := fmt.Sprintf("Agent started in background.\nTask ID: %s\nAgent: %s\nDescription: %s",
-			taskInfo.TaskID, displayAgentLabel(agentName, mode), description)
-		if taskInfo.PermissionMode != "" {
-			output += "\nPermissions: " + taskInfo.PermissionMode
-		}
+		output := fmt.Sprintf("Agent started in background.\nTask ID: %s\nDescription: %s",
+			taskInfo.TaskID, description)
 		duration := time.Since(start)
 		return toolresult.ToolResult{
 			Success: true,
@@ -218,7 +198,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 			Metadata: toolresult.ResultMetadata{
 				Title:    t.Name(),
 				Icon:     t.Icon(),
-				Subtitle: fmt.Sprintf("[background] %s: %s", displayAgentLabel(agentName, mode), taskInfo.TaskID),
+				Subtitle: fmt.Sprintf("[background] %s: %s", displayAgentLabel(agentName), taskInfo.TaskID),
 				Duration: duration,
 			},
 		}
@@ -241,7 +221,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 
 	duration := time.Since(start)
 
-	displayName := displayAgentLabel(agentName, mode)
+	displayName := displayAgentLabel(agentName)
 	agentDuration := result.Duration
 	if agentDuration == 0 {
 		agentDuration = duration
@@ -270,18 +250,11 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	}
 }
 
-func displayAgentLabel(name, mode string) string {
+func displayAgentLabel(name string) string {
 	if name != "" {
 		return name
 	}
-	switch mode {
-	case "explore":
-		return "Explorer"
-	case "edit":
-		return "Editor"
-	default:
-		return "General"
-	}
+	return "Agent"
 }
 
 // buildAgentHookResponse creates a structured response for PostToolUse hooks.

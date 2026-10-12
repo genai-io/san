@@ -37,6 +37,7 @@ func (s *Settings) AllowBypass() bool
 func (s *Settings) IsGitRepo(cwd string) bool
 func (s *Settings) Reload(cwd string) error
 func (s *Settings) DisabledTools() map[string]bool
+func (s *Settings) SubagentModel() string
 func (s *Settings) SearchProvider() string
 func (s *Settings) SetSearchProvider(provider string)
 func (s *Settings) Hooks() map[string][]Hook
@@ -83,6 +84,13 @@ func ResetDefaultSettings()              // test-only
 - Print mode (`san -p`) loads the base settings once and applies the selected
   persona once. That same effective configuration supplies disabled tools and
   allow/deny/ask rules; a headless prompt becomes a refusal.
+
+- `subagentModel` optionally selects the default worker model from scoped
+  settings, independently of the main-session model. Example:
+  `{"subagentModel":"deepseek/deepseek-v4"}`. Unset/empty inherits the current
+  main model; `"inherit"` overrides a lower-scope worker-model setting. Named
+  custom agent definitions retain their `model:` configuration. Agent tool
+  invocations never need a `model` parameter.
 
 ## Tests
 

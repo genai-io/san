@@ -4,43 +4,17 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/tool"
 )
 
-// AgentTool describes itself with the available-agents directory embedded when
-// one is supplied at build time.
-var _ tool.AgentDirectoryAwareTool = (*AgentTool)(nil)
-
-// Schema returns the model-facing tool definition for Agent, without an
-// available-agents directory. GetToolSchemasWith injects the directory via
-// SchemaWithAgentDirectory when one is available.
+// Schema returns the single model-facing Agent tool definition.
 func (t *AgentTool) Schema() core.ToolSchema {
-	return agentSchema("")
+	return agentSchema()
 }
 
-// SchemaWithAgentDirectory returns the Agent schema with the available-agents
-// directory embedded in the description. It satisfies tool.AgentDirectoryAwareTool
-// so the schema follows the live agent catalog on each rebuild. An empty
-// directory yields the same result as Schema.
-func (t *AgentTool) SchemaWithAgentDirectory(agentDirectory string) core.ToolSchema {
-	return agentSchema(agentDirectory)
-}
-
-// agentSchema builds the Agent tool schema with the given agent-directory body
-// embedded directly in the description. The directory is rendered before the
-// usage notes so the LLM sees the available agent names right after the
-// opening line.
-func agentSchema(agentDirectory string) core.ToolSchema {
-	agentDirectory = strings.TrimSpace(agentDirectory)
-
+func agentSchema() core.ToolSchema {
 	var sb strings.Builder
 	sb.WriteString("Launch a subagent only when separate context or parallel execution materially helps. Handle clear, bounded work directly, even when it requires multiple tool calls.\n\n")
-	if agentDirectory != "" {
-		sb.WriteString("Available agent definitions:\n\n")
-		sb.WriteString(agentDirectory)
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Use default for general-purpose work so the worker inherits the parent session's permissions, including YOLO. Select explore explicitly for read-only investigation. Select edit only when you deliberately want narrower file-edit permissions, even under a YOLO parent. Edit permits file edits plus read-only shell commands, not arbitrary shell execution: tests/build require an explicit allowed command or parent validation. Include the validation plan in the brief; shell tool availability does not imply go test or other builds are allowed. Do not retry denied commands.\n\n")
+	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Once work is delegated, do not also do it yourself; wait for the result. Verify the result before reporting it.")
 
 	return core.ToolSchema{
@@ -63,7 +37,7 @@ var agentToolParameters = map[string]any{
 		},
 		"name": map[string]any{
 			"type":        "string",
-			"description": "Choose an available agent, or name a new general-purpose agent for this task. New names are for display only.",
+			"description": "Optional name for this agent. New names label the task; an existing custom definition supplies its configuration.",
 		},
 		"run_in_background": map[string]any{
 			"type":        "boolean",
@@ -72,12 +46,6 @@ var agentToolParameters = map[string]any{
 		"max_steps": map[string]any{
 			"type":        "number",
 			"description": "Maximum number of LLM inference steps. Overrides the agent's budget; defaults to 500 when unset.",
-		},
-		"mode": map[string]any{
-			"type":        "string",
-			"description": "Permission mode for the spawned agent. Prefer default for general-purpose work: use the named definition's configured mode, or inherit the parent session (including YOLO) for an unnamed or new display-only agent. explore = explicit read-only ceiling even under YOLO; edit = explicit narrower file-edit permissions plus read-only shell, tests/build require an explicit allowed command or parent validation.",
-			"default":     "default",
-			"enum":        []string{"explore", "edit", "default"},
 		},
 	},
 	"required": []string{"description", "prompt"},

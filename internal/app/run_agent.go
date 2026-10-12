@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 )
@@ -49,8 +50,12 @@ func RunAgent(opts AgentRunOptions) error {
 	}
 
 	cwd, _ := os.Getwd()
+	workerSettings, err := setting.LoadForCwd(cwd)
+	if err != nil {
+		return fmt.Errorf("failed to load agent settings: %w", err)
+	}
 
-	// Initialize agent registry — loads built-ins and any user/project AGENT.md.
+	// Initialize agent registry from user/project definitions.
 	if err := subagent.Initialize(subagent.Options{CWD: cwd}); err != nil {
 		return fmt.Errorf("failed to initialize agent registry: %w", err)
 	}
@@ -64,6 +69,7 @@ func RunAgent(opts AgentRunOptions) error {
 	// same permission gate (deny_tools / confirmation floor / allow_tools / mode)
 	// as TUI-spawned subagents.
 	executor := subagent.NewExecutor(provider, cwd, modelID, nil)
+	executor.SetDefaultModel(workerSettings.SubagentModel)
 	executor.SetResolver(llm.NewProviderPool(llm.Default().Store()))
 
 	if opts.Name != "" {

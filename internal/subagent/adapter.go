@@ -57,10 +57,9 @@ func (a *ExecutorAdapter) RunBackground(req tool.AgentExecRequest) (tool.AgentTa
 
 	info := agentTask.GetStatus()
 	return tool.AgentTaskInfo{
-		TaskID:         info.ID,
-		AgentName:      info.AgentName,
-		OutputFile:     info.OutputFile,
-		PermissionMode: displayPermissionMode(PermissionMode(info.PermissionMode)),
+		TaskID:     info.ID,
+		AgentName:  info.AgentName,
+		OutputFile: info.OutputFile,
 	}, nil
 }
 
@@ -72,6 +71,7 @@ func (a *ExecutorAdapter) ResolveAgentSelection(name string) (tool.AgentConfigIn
 		return tool.AgentConfigInfo{}, nil, false
 	}
 	info := ToAgentConfigInfo(config)
+	info.Model = a.Executor.configuredModel(config, name)
 	if strings.TrimSpace(name) == "" || config.displayOnly {
 		info.PermissionMode = string(a.Executor.currentParentPermissionMode())
 	}

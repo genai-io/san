@@ -39,6 +39,7 @@ type Executor struct {
 	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
 	cwd                        string
 	parentModelID              string // Parent conversation's model ID (used when inheriting)
+	defaultModel               string // Configured model for the default worker; empty inherits.
 	parentPermissionModeGetter func() PermissionMode
 	hooks                      hook.Handler
 	sessionStore               SubagentSessionStore // Optional: when set, subagent sessions are persisted
@@ -138,6 +139,19 @@ func (e *Executor) disabledToolsSnapshot() map[string]bool {
 func (e *Executor) SetSessionStore(store SubagentSessionStore, parentSessionID string) {
 	e.sessionStore = store
 	e.parentSessionID = parentSessionID
+}
+
+// SetDefaultModel configures the default worker independently of tool arguments.
+// Configure before launching runs. Empty or "inherit" selects the parent model.
+func (e *Executor) SetDefaultModel(model string) {
+	e.defaultModel = strings.TrimSpace(model)
+}
+
+func (e *Executor) configuredModel(config *AgentConfig, name string) string {
+	if strings.TrimSpace(name) == "" || config.displayOnly {
+		return e.defaultModel
+	}
+	return config.Model
 }
 
 // ParentModelID returns the parent model ID
@@ -315,7 +329,7 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 	}
 
 	permMode := e.requestPermissionMode(config, req)
-	displayName := displayAgentName(config.Name, permMode)
+	displayName := displayAgentName(config.Name)
 
 	maxSteps := config.MaxSteps
 	if maxSteps <= 0 {
@@ -325,7 +339,7 @@ func (e *Executor) prepareRunConfig(ctx context.Context, req tool.AgentExecReque
 		maxSteps = req.MaxSteps
 	}
 
-	provider, modelID, err := e.resolveModel(ctx, req.Model, config.Model)
+	provider, modelID, err := e.resolveModel(ctx, req.Model, e.configuredModel(config, req.Agent))
 	if err != nil {
 		return nil, err
 	}

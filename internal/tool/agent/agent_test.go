@@ -7,17 +7,18 @@ import (
 	"testing"
 
 	"github.com/genai-io/san/internal/tool"
+	"github.com/genai-io/san/internal/tool/toolresult"
 )
 
 type recordingExecutor struct {
 	selectedAgentName string
 	configOK          bool
+	configModel       string
 	resolvedConfig    any
 	runReq            tool.AgentExecRequest
 	runResult         *tool.AgentExecResult
 	runErr            error
 	emptyResult       bool
-	backgroundMode    string
 }
 
 func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*tool.AgentExecResult, error) {
@@ -28,16 +29,51 @@ func (e *recordingExecutor) Run(_ context.Context, req tool.AgentExecRequest) (*
 	return &tool.AgentExecResult{Success: true, Content: "done"}, nil
 }
 
-func TestBackgroundLaunchReportsEffectivePermissions(t *testing.T) {
+func TestBackgroundLaunchUsesInheritedConfiguration(t *testing.T) {
 	agentTool := NewAgentTool()
-	executor := &recordingExecutor{configOK: true, backgroundMode: "YOLO"}
+	executor := &recordingExecutor{configOK: true}
 	agentTool.SetExecutor(executor)
 	result := agentTool.Execute(context.Background(), map[string]any{"prompt": "Validate", "run_in_background": true}, ".")
-	if !result.Success || !strings.Contains(result.Output, "Permissions: YOLO") {
-		t.Fatalf("launch hid the effective permissions: %#v", result)
+	if !result.Success || strings.Contains(result.Output, "General") || strings.Contains(result.Output, "Permissions:") {
+		t.Fatalf("launch exposed worker variants: %#v", result)
 	}
-	if executor.runReq.Mode != "" {
-		t.Fatalf("omitted mode silently became an edit override: %q", executor.runReq.Mode)
+	if executor.runReq.Mode != "" || executor.runReq.Model != "" {
+		t.Fatalf("launch supplied model or permission overrides: %+v", executor.runReq)
+	}
+}
+
+func TestAgentUsesConfiguredModelWithoutToolArgument(t *testing.T) {
+	for _, tc := range []struct{ configured, want string }{{"", "parent-model"}, {"inherit", "parent-model"}, {"worker-model", "worker-model"}} {
+		executor := &recordingExecutor{configOK: true, configModel: tc.configured}
+		agentTool := NewAgentTool()
+		agentTool.SetExecutor(executor)
+		params := map[string]any{"name": "review", "prompt": "Inspect"}
+		permission, err := agentTool.PreparePermission(context.Background(), params, ".")
+		if err != nil || permission.AgentMeta.Model != tc.want {
+			t.Fatalf("permission model = %+v, %v", permission, err)
+		}
+		result := agentTool.ExecuteApproved(context.Background(), params, ".")
+		if !result.Success || executor.runReq.Model != "" || executor.runReq.Mode != "" || executor.runReq.Agent != "review" {
+			t.Fatalf("tool manufactured an override: result=%+v request=%+v", result, executor.runReq)
+		}
+	}
+}
+
+func TestAgentRejectsRemovedOverridesBeforeExecution(t *testing.T) {
+	for _, field := range []string{"mode", "model"} {
+		executor := &recordingExecutor{configOK: true}
+		agentTool := NewAgentTool()
+		agentTool.SetExecutor(executor)
+		params := map[string]any{"prompt": "Inspect", field: "explore"}
+		if _, err := agentTool.PreparePermission(context.Background(), params, "."); err == nil {
+			t.Fatalf("approval accepted removed %s argument", field)
+		}
+		for _, run := range []func(context.Context, map[string]any, string) toolresult.ToolResult{agentTool.Execute, agentTool.ExecuteApproved} {
+			result := run(context.Background(), params, ".")
+			if result.Success || !strings.Contains(result.Error, field) || executor.runReq.Prompt != "" {
+				t.Fatalf("removed %s argument reached executor: %+v", field, result)
+			}
+		}
 	}
 }
 
@@ -122,21 +158,21 @@ func TestAgentToolKeepsDisplayMetadataOutOfModelContext(t *testing.T) {
 }
 func (e *recordingExecutor) RunBackground(req tool.AgentExecRequest) (tool.AgentTaskInfo, error) {
 	e.runReq = req
-	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent, PermissionMode: e.backgroundMode}, nil
+	return tool.AgentTaskInfo{TaskID: "task-1", AgentName: req.Agent}, nil
 }
 func (e *recordingExecutor) AgentConfig(name string) (tool.AgentConfigInfo, bool) {
 	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, false
 	}
-	return tool.AgentConfigInfo{Name: name, PermissionMode: "default"}, true
+	return tool.AgentConfigInfo{Name: name, Model: e.configModel, PermissionMode: "default"}, true
 }
 func (e *recordingExecutor) ResolveAgentSelection(name string) (tool.AgentConfigInfo, any, bool) {
 	e.selectedAgentName = name
 	if !e.configOK {
 		return tool.AgentConfigInfo{}, nil, false
 	}
-	return tool.AgentConfigInfo{Name: name, PermissionMode: "default"}, e.resolvedConfig, true
+	return tool.AgentConfigInfo{Name: name, Model: e.configModel, PermissionMode: "default"}, e.resolvedConfig, true
 }
 func (e *recordingExecutor) ParentModelID() string { return "parent-model" }
 
