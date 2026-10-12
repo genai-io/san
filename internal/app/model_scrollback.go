@@ -31,6 +31,8 @@ type scrollbackPrintDoneMsg struct{ id uint64 }
 type pendingScrollbackPrint struct {
 	id        uint64
 	remaining string
+	rows      []uv.Line
+	width     int
 	current   string
 	frameRows int  // chat rows this print's content occupied in the live tail
 	started   bool // first chunk prepared; the rest is no longer the frame's job
@@ -94,6 +96,7 @@ type flushState struct {
 	frameForPrint   *tea.View                // freeze insertAbove geometry until the print completes
 	visible         []uv.Line                // unwrapped settled lines not yet in native scrollback
 	clearAfterPrint tea.Cmd                  // wipe only after an already-issued Println finishes
+	output          *terminalOutput          // redraw and history insertion reach the terminal together
 }
 
 // flushResultMsg is the result of rendering a flushSnapshot off-thread, carrying
@@ -412,6 +415,11 @@ func (f *flushState) queueScrollbackPrint(content string, frameRows int) tea.Cmd
 // out-of-order done message is ignored; the next chunk or queued print cannot
 // start until the current Println has been processed.
 func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
+	if len(m.flush.pendingPrints) > 0 && m.flush.pendingPrints[0].id == id && m.flush.output != nil {
+		if err := m.flush.output.Flush(); err != nil {
+			return tea.Quit
+		}
+	}
 	next := m.flush.finishScrollbackPrint(id)
 	if len(m.flush.pendingPrints) == 0 {
 		m.showDeferredApproval()
@@ -423,9 +431,11 @@ func (m *model) clearScrollback(wipe tea.Cmd) tea.Cmd {
 	f := &m.flush
 	f.visible = nil
 	if len(f.pendingPrints) > 0 && f.pendingPrints[0].current != "" {
-		// Cancel future chunks, but keep the frame until the issued insert finishes.
+		// Clear canceled display rows while keeping room for the issued insert.
+		m.useMinimalScrollbackFrame()
 		f.pendingPrints = slices.Clone(f.pendingPrints[:1])
 		f.pendingPrints[0].remaining = ""
+		f.pendingPrints[0].rows = nil
 		f.clearAfterPrint = wipe
 		return nil
 	}
@@ -441,7 +451,7 @@ func (f *flushState) finishScrollbackPrint(id uint64) tea.Cmd {
 	f.frameForPrint = nil
 	f.pendingPrints[0].current = ""
 	var next tea.Cmd
-	if f.pendingPrints[0].remaining != "" {
+	if f.pendingPrints[0].remaining != "" || len(f.pendingPrints[0].rows) > 0 {
 		next = printScrollback(id)
 	} else {
 		f.pendingPrints = f.pendingPrints[1:]
@@ -460,13 +470,9 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	// than the terminal occupies more rows than it has newlines, and counting
 	// the two differently overstates the room above the frame.
 	frameHeight := len(scrollbackPhysicalLines(frame.Content, m.env.Width))
-	if frameFillsScreen(frameHeight, m.env.Height) && m.env.Ready {
-		// Make room for history insertion without hiding the user's draft.
-		separator := conv.SeparatorStyle.Render(strings.Repeat("─", max(1, m.env.Width-1)))
-		footer, inputRow := m.renderFooter(separator)
-		frame = tea.NewView(footer)
-		frame.Cursor = m.inputCursor(inputRow)
-		frameHeight = len(scrollbackPhysicalLines(frame.Content, m.env.Width))
+	compact := frameFillsScreen(frameHeight, m.env.Height) && m.env.Ready
+	if compact {
+		frameHeight = max(1, m.env.Height-1)
 	}
 	content, ok := m.flush.prepareScrollbackPrint(
 		id,
@@ -477,10 +483,26 @@ func (m *model) prepareScrollbackPrint(id uint64) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	if compact {
+		// shortcut: one row per insert; batch more rows when the renderer supports a full-height frame.
+		// Capture this chunk's handoff copy, not the entire queued remainder.
+		frame = m.View()
+		rows := rowCount(frame.Content)
+		frame.Content = tailLines(frame.Content, frameHeight)
+		if frame.Cursor != nil {
+			cursor := *frame.Cursor
+			cursor.Position.Y = max(0, cursor.Position.Y-(rows-rowCount(frame.Content)))
+			frame.Cursor = &cursor
+		}
+		frameHeight = len(scrollbackPhysicalLines(frame.Content, m.env.Width))
+	}
 	if frameFillsScreen(frameHeight, m.env.Height) {
 		frame = minimalScrollbackFrame()
 	}
 	m.flush.frameForPrint = &frame
+	if m.flush.output != nil {
+		m.flush.output.Begin()
+	}
 	return content, true
 }
 
@@ -509,11 +531,20 @@ func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeigh
 	if len(f.pendingPrints) == 0 || f.pendingPrints[0].id != id || f.pendingPrints[0].current != "" {
 		return "", false
 	}
-	lines := scrollbackPhysicalLines(f.pendingPrints[0].remaining, width)
+	head := &f.pendingPrints[0]
+	if head.remaining != "" {
+		head.rows = scrollbackPhysicalLines(head.remaining, width)
+		head.remaining = ""
+		head.width = width
+	} else if len(head.rows) > 0 && head.width != width {
+		head.rows = scrollbackPhysicalLines(renderScrollbackLines(head.rows), width)
+		head.width = width
+	}
+	lines := head.rows
 	if len(lines) == 0 {
 		return "", false
 	}
-	f.pendingPrints[0].started = true
+	head.started = true
 
 	capacity := len(lines)
 	if height > 0 {
@@ -524,9 +555,10 @@ func (f *flushState) prepareScrollbackPrint(id uint64, width, height, frameHeigh
 		capacity = max(1, height-min(max(frameHeight, 0), height))
 	}
 	capacity = min(capacity, len(lines))
-	f.pendingPrints[0].current = renderScrollbackLines(lines[:capacity])
-	f.pendingPrints[0].remaining = renderScrollbackLines(lines[capacity:])
-	return f.pendingPrints[0].current, true
+	head.current = renderScrollbackLines(lines[:capacity])
+	clear(lines[:capacity])
+	head.rows = lines[capacity:]
+	return head.current, true
 }
 
 func (m *model) scrollbackFrameForPrint() (tea.View, bool) {

@@ -413,9 +413,15 @@ invariant 6 covers the rewrap arithmetic the redraw depends on.
 
 Recent settled rows have not entered native history yet. Resize rewraps these
 rendered rows and trims their buffer to the new space above the composer,
-queuing only the oldest overflow. The fixed-height normal frame temporarily
-compacts to the composer footer during a history insert; the footer's measured
-height and the existing FIFO protocol keep transient UI out of native history.
+queuing only the oldest overflow. During a history insert, the fixed-height
+normal frame yields one row while retaining the live tail and composer. The
+one-row print chunk is selected before capturing this frozen frame, so the
+handoff copy matches the inserted row. This prevents the conversation flashing
+blank while the existing FIFO protocol keeps live UI out of native history.
+The terminal writer buffers the temporary redraw and history insert into one
+write; synchronized output, when enabled, stays open across both. Queued rows
+are parsed once and consumed by chunk, with remaining rows rewrapped only after
+a width change.
 
 `handleWindowResize` is also the **deferred initial paint**: the first
 `WindowSizeMsg` is where a resumed conversation is committed, via

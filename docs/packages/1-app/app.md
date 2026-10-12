@@ -134,12 +134,27 @@ buffer, with older output entering the serialized native print queue. Every
 `Update` checks the space left by live output and bottom controls, so settled
 rows reach history before being cropped. The buffer keeps unwrapped source
 lines; resize rewraps them and prints any overflow. Full-height history inserts
-temporarily use the composer footer as their frozen frame, preserving the
-existing print safety protocol. Activity indicators fit within the rows left
+reserve one row above the live tail instead of hiding the conversation. The
+frozen frame is captured after selecting that one-row print chunk, preserving
+the existing print safety protocol. `terminalOutput` writes the temporary frame
+and history insert together, keeping synchronized output open across both when
+supported. The queue caches parsed rows and rewraps the remainder only on width
+changes. Activity indicators fit within the rows left
 by the composer or docked modal; the view and overflow check share that cap.
 `/clear` discards retained rows and cancels queued prints. An already-issued
 print finishes before the terminal wipe, and stale print messages cannot revive
 cleared output. This layout needs no configuration.
+
+The live welcome banner uses the first message's leading newline for spacing,
+matching its settled rendering. Adding another blank row to the live banner
+moves the first user message upward when the first inference commits it.
+
+Submitting an idle turn immediately shows the response spinner while waiting
+for the first inference event. This waiting state is display-only; the agent's
+`MessageStart` creates the actual assistant message. Input during the wait is
+queued, and cancellation or a failed send clears the spinner.
+`Session.Send` is nonblocking and runs before the submit handler returns, so an
+Esc cannot be followed by a delayed command sending the cancelled request.
 
 The footer keeps the model, reasoning effort, usage, and temporary status
 messages. It does not add a persistent history shortcut hint when a turn ends;

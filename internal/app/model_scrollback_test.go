@@ -316,6 +316,71 @@ func TestScrollbackChunkingPreservesStyledWrappedContent(t *testing.T) {
 	}
 }
 
+func TestScrollbackDrainAllocationsGrowWithRows(t *testing.T) {
+	allocations := func(rows int) float64 {
+		content := strings.Repeat("A settled reply with enough text to look like a normal terminal line.\n", rows-1) + "LAST"
+		return testing.AllocsPerRun(1, func() {
+			var flush flushState
+			flush.queueScrollbackPrint(content, 0)
+			for len(flush.pendingPrints) > 0 {
+				id := flush.pendingPrints[0].id
+				if _, ok := flush.prepareScrollbackPrint(id, 80, 24, 23); !ok {
+					t.Fatal("queued history did not drain")
+				}
+				flush.finishScrollbackPrint(id)
+			}
+		})
+	}
+	small, large := allocations(128), allocations(256)
+	if large > small*2.6 {
+		t.Fatalf("doubling rows grew allocations from %.0f to %.0f; remaining history is being parsed repeatedly", small, large)
+	}
+}
+
+func TestScrollbackRemainingRowsRewrapAfterResize(t *testing.T) {
+	var flush flushState
+	flush.queueScrollbackPrint("\x1b[31mabcdefg\x1b[0m\nlast!", 0)
+	id := flush.pendingPrints[0].id
+	first, ok := flush.prepareScrollbackPrint(id, 4, 5, 4)
+	if !ok {
+		t.Fatal("first chunk did not prepare")
+	}
+	flush.finishScrollbackPrint(id)
+	chunks := []string{first}
+	for len(flush.pendingPrints) > 0 {
+		chunk, ok := flush.prepareScrollbackPrint(id, 2, 5, 4)
+		if !ok {
+			t.Fatal("resized chunk did not prepare")
+		}
+		chunks = append(chunks, chunk)
+		flush.finishScrollbackPrint(id)
+	}
+	if got := ansi.Strip(strings.Join(chunks, "\n")); got != "abcd\nef\ng\nla\nst\n!\n" {
+		t.Fatalf("resized chunks = %q", got)
+	}
+}
+
+func BenchmarkScrollbackHistoryDrain(b *testing.B) {
+	for _, rows := range []int{512, 2048} {
+		b.Run(fmt.Sprintf("%d_rows", rows), func(b *testing.B) {
+			content := strings.Repeat("A settled reply with enough text to look like a normal terminal line.\n", rows-1) + "LAST"
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				m := fixedComposerModel(80, 24)
+				m.flush.queueScrollbackPrint(content, 0)
+				for len(m.flush.pendingPrints) > 0 {
+					id := m.flush.pendingPrints[0].id
+					if _, ok := m.prepareScrollbackPrint(id); !ok {
+						b.Fatal("queued history did not drain")
+					}
+					m.flush.finishScrollbackPrint(id)
+				}
+			}
+		})
+	}
+}
+
 func TestScrollbackFullHeightFrameMinimizesAndRestores(t *testing.T) {
 	m := flushTestModel(core.ChatMessage{})
 	m.env.Height = 1
@@ -832,7 +897,7 @@ func TestHandoffCopyTracksThePrintInFlight(t *testing.T) {
 	if !ok {
 		t.Fatal("the print did not prepare")
 	}
-	if m.flush.pendingPrints[0].remaining == "" {
+	if len(m.flush.pendingPrints[0].rows) == 0 {
 		t.Fatal("the payload fit in one chunk; this test needs it split")
 	}
 	if view := m.pendingScrollbackView(); view != chunk {

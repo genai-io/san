@@ -27,6 +27,7 @@ type RenderContext struct {
 
 	// ── Streaming + in-flight tool execution ────────────────────
 	StreamActive    bool
+	StreamWaiting   bool
 	StreamMessageID string
 	BuildingTool    string
 	PendingCalls    []core.ToolCall
@@ -507,10 +508,14 @@ func boundedWorkerRows(rows []string, width int) string {
 
 func RenderActiveContent(p RenderContext) string {
 	p.Interactive = true
-	if p.CommittedCount >= len(p.Messages) {
-		return renderPendingToolSpinnerFromParams(p, false)
+	content := RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
+	if p.StreamWaiting {
+		content += "\n" + RenderAssistantMessage(AssistantParams{
+			StreamActive: true, IsLast: true, SpinnerView: p.SpinnerView,
+			DockedModalActive: p.DockedModalActive, Width: p.Width,
+		})
 	}
-	return RenderMessageRange(p, p.CommittedCount, len(p.Messages), true)
+	return content
 }
 
 func renderPendingToolSpinnerFromParams(p RenderContext, suppressAgentLabel bool) string {

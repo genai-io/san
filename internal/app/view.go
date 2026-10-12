@@ -277,10 +277,8 @@ func (m model) renderChatSection(activeContent string) string {
 	}
 
 	if banner := m.liveWelcome(); banner != "" {
-		// Trailing blank line so the splash isn't cramped against the
-		// separator/input strip below it — matching the blank line it gets
-		// in scrollback, where the first message's leading newline supplies it.
-		parts = append(parts, banner, "")
+		// Messages supply the blank row, matching the banner's settled rendering.
+		parts = append(parts, banner)
 	}
 
 	if activeContent != "" {
@@ -561,6 +559,7 @@ func (m model) messageRenderParams() conv.RenderContext {
 
 		// Streaming + tool execution
 		StreamActive:       m.conv.Stream.Active,
+		StreamWaiting:      m.conv.Stream.Waiting,
 		StreamMessageID:    m.conv.Stream.MessageID,
 		BuildingTool:       m.conv.Stream.BuildingTool,
 		PendingCalls:       m.conv.Tool.PendingCalls,
