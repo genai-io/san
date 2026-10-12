@@ -298,15 +298,8 @@ func (s *AgentSelector) renderItemList(sb *strings.Builder, panel kit.Panel) {
 				Foreground(kit.CurrentTheme.Muted).
 				PaddingLeft(4)
 			descLineWidth := max(10, panel.ContentWidth()-8)
-			if !a.BuiltinPreview && a.Description != "" {
-				sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
-				sb.WriteString("\n")
-			}
-			if a.BuiltinPreview && a.Tools != "" {
-				toolsLine := "Tools: " + a.Tools
-				sb.WriteString(subStyle.Render(kit.TruncateText(toolsLine, descLineWidth)))
-				sb.WriteString("\n")
-			}
+			sb.WriteString(subStyle.Render(kit.TruncateText(a.Description, descLineWidth)))
+			sb.WriteString("\n")
 		}
 
 		// Spacer for breathing room between rows (skip after the last item;
