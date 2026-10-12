@@ -3,6 +3,28 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.24.2] - 2026-10-12
+
+### Added
+- Add an optional Git information bar to the TUI ([@yanmxa](https://github.com/yanmxa) in [#611](https://github.com/genai-io/san/pull/611))
+- Inspect completed tool results in session history, including wrapped output and folded file diffs ([@yanmxa](https://github.com/yanmxa) in [#606](https://github.com/genai-io/san/pull/606))
+- Add live workflow progress, command completion, quoted inputs, and immediate cancellation ([@yanmxa](https://github.com/yanmxa) in [#603](https://github.com/genai-io/san/pull/603))
+
+### Changed
+- Make Group and Evolve opt-in, enabling them when group participation or saved learning capabilities need them ([@yanmxa](https://github.com/yanmxa) in [#596](https://github.com/genai-io/san/pull/596))
+
+### Fixed
+- Preserve worker identities, activity, and runtime diagnostics; isolate worker cwd changes, tighten read-only Git checks, and report incomplete output logs ([@yanmxa](https://github.com/yanmxa) in [#615](https://github.com/genai-io/san/pull/615))
+- Honor configured and requested subagent step budgets ([@yanmxa](https://github.com/yanmxa) in [#616](https://github.com/genai-io/san/pull/616))
+- Keep subagent failures inspectable, preserve unfinished results, and retain sibling activity and group batch metadata ([@yanmxa](https://github.com/yanmxa) in [#614](https://github.com/genai-io/san/pull/614))
+- Surface task notices and errors during inference without misrouting streamed output, and block compound shell redirects in explore mode ([@yanmxa](https://github.com/yanmxa) in [#613](https://github.com/genai-io/san/pull/613))
+- Stabilize live task rendering and the footer, preserve command spacing, and retire workers after their completion notice appears ([@yanmxa](https://github.com/yanmxa) in [#610](https://github.com/genai-io/san/pull/610))
+- Anchor the composer and preserve recent output across layout changes while bounding activity and canceling cleared history ([@yanmxa](https://github.com/yanmxa) in [#609](https://github.com/genai-io/san/pull/609))
+- Keep background task status compact and readable ([@yanmxa](https://github.com/yanmxa) in [#608](https://github.com/genai-io/san/pull/608))
+- Harden permissions, persistence, cron, and shell execution, including file paths and Windows output decoding ([@yanmxa](https://github.com/yanmxa) in [#607](https://github.com/genai-io/san/pull/607))
+- Bound task tracker rows and keep parallel tool results paired with their calls ([@yanmxa](https://github.com/yanmxa) in [#605](https://github.com/genai-io/san/pull/605))
+- Show built-in Agent permission modes, preserve configured tool toggles when mode names collide, and keep narrow-terminal previews readable ([@yanmxa](https://github.com/yanmxa) in [#604](https://github.com/genai-io/san/pull/604))
+
 ## [v1.24.1] - 2026-10-05
 
 ### Changed
