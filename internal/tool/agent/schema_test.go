@@ -6,18 +6,18 @@ import (
 )
 
 func TestAgentToolSchemaMatchesBuilder(t *testing.T) {
-	if got := (&AgentTool{}).Schema().Description; got != agentSchema().Description {
+	if got := (&AgentTool{}).Schema().Description; got != agentSchema("").Description {
 		t.Fatalf("Agent schema differs from its builder: %q", got)
 	}
 	for _, removed := range []string{"Available agent definitions", "Select explore", "Select edit", "YOLO", "General"} {
-		if strings.Contains(agentSchema().Description, removed) {
+		if strings.Contains(agentSchema("").Description, removed) {
 			t.Fatalf("Agent description still exposes worker variants: %q", removed)
 		}
 	}
 }
 
 func TestAgentSchemaEncouragesDirectWorkForClearScope(t *testing.T) {
-	description := agentSchema().Description
+	description := agentSchema("").Description
 	for _, want := range []string{
 		"separate context or parallel execution materially helps",
 		"Handle clear, bounded work directly",
@@ -30,7 +30,7 @@ func TestAgentSchemaEncouragesDirectWorkForClearScope(t *testing.T) {
 }
 
 func TestAgentSchemaRetainsDelegationGuidance(t *testing.T) {
-	description := agentSchema().Description
+	description := agentSchema("").Description
 	for _, want := range []string{
 		"all context it needs",
 		"Include the validation plan",

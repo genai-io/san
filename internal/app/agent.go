@@ -107,8 +107,14 @@ func (m *model) applyPersonaAgents() {
 // second hand-written literal would silently under-report.
 func (m *model) promptParams() agent.BuildParams {
 	return agent.BuildParams{
-		CWD:           m.env.CWD,
-		Persona:       m.personaPrompt(),
+		CWD:     m.env.CWD,
+		Persona: m.personaPrompt(),
+		AgentCatalog: func() string {
+			if m.services.Subagent == nil {
+				return ""
+			}
+			return m.services.Subagent.AgentCatalog()
+		},
 		DisabledTools: m.disabledTools(),
 		MCPTools:      mcp.AsCoreTools(m.services.MCP.ToolSchemas(), m.services.MCP),
 

@@ -34,7 +34,8 @@ no producer-side role interface earns its keep — TEMPLATE Rule 3.
 |---|---|
 | `cmd/san agent` | `Get` (CLI argument validation) |
 | TUI view | `ListConfigs` (color enumeration) |
-| Executor selection | `LookupAgent` for an optional custom definition; no catalog is sent to the main model |
+| Executor selection | `LookupAgent` for an optional custom definition |
+| Main tool schema | `AgentCatalog` for enabled predefined-agent discovery metadata |
 | TUI selector adapter | full surface — `ListConfigs`, `IsEnabled`, `SetEnabled`, `DisabledAt` for the `/agent` menu |
 
 Executor construction goes through the package-level `NewExecutor`
@@ -58,8 +59,8 @@ func (r *Registry) IsEnabled(name string) bool
 func (r *Registry) SetEnabled(name string, enabled bool, scope setting.Scope) error
 func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool
 
-// System prompt
-func (r *Registry) AgentsSection() string
+// Tool-description discovery metadata
+func (r *Registry) AgentCatalog() string
 
 // Loader bootstrapping
 func (r *Registry) Register(config *AgentConfig)
@@ -90,8 +91,16 @@ func ResetDefaultRegistry()           // test-only
   name. Accepts alias frontmatter keys (`tools`, `allowed-tools`,
   `permission-mode`) alongside the canonical ones.
 - The Agent panel's Built-in tab contains one default `Agent` entry. Explorer
-  and Editor presets are removed. User/project definitions remain manageable,
-  but the main tool schema does not embed a catalog of agent types.
+  and Editor presets are removed. Enabled user/project/plugin definitions are
+  automatically discoverable through **Available predefined agents** in the
+  Agent tool description. `AgentCatalog` lists only names, descriptions, and
+  optional `when-to-use` hints; full charters, models, tool rules and permission
+  modes stay out of the main discovery context. Disabled and persona-hidden
+  definitions are omitted, and the catalog refreshes whenever schemas rebuild.
+- Catalog discovery reflects the loaded registry, not continuous file hot-reload.
+  Definition files are scanned during initialization/project-service reload;
+  their bodies are loaded lazily and cached. Adding, modifying or deleting files
+  is not guaranteed to affect the next invocation without a definition reload.
 - `match.go` — `ToolList` pattern matching (allow/deny semantics) shared
   with the permission gate.
 - `activity_tools.go` — the gate that streams each call into the

@@ -42,9 +42,10 @@ func IsAgentToolName(name string) bool {
 
 // SchemaOptions configures dynamic content embedded in tool schemas.
 //
-// MCPTools is evaluated at schema build time and may be nil.
+// Getters are evaluated at schema build time and may be nil.
 type SchemaOptions struct {
-	MCPTools func() []core.ToolSchema
+	MCPTools     func() []core.ToolSchema
+	AgentCatalog func() string // summaries of enabled predefined agents
 
 	// ExtraTools are caller-supplied schemas appended to the registered set —
 	// the hook for conditionally-present tools whose schema the caller builds
@@ -73,7 +74,7 @@ var builtinToolOrder = []string{
 }
 
 // GetToolSchemas returns core.ToolSchema definitions for all registered tools
-// with no dynamic MCP tools. Use GetToolSchemasWith for dynamic schemas.
+// with no dynamic MCP tools or agent catalog. Use GetToolSchemasWith for dynamic schemas.
 func GetToolSchemas() []core.ToolSchema {
 	return GetToolSchemasWith(SchemaOptions{})
 }
@@ -110,6 +111,10 @@ func GetManageableToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 // Built-in schemas are sourced from each registered tool's Schema (the single
 // source of truth), in builtinToolOrder.
 func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
+	var agentCatalog string
+	if opts.AgentCatalog != nil {
+		agentCatalog = opts.AgentCatalog()
+	}
 	tools := make([]core.ToolSchema, 0, len(builtinToolOrder)+len(opts.ExtraTools)+8)
 	for _, name := range builtinToolOrder {
 		t, ok := Get(name)
@@ -117,6 +122,12 @@ func GetToolSchemasWith(opts SchemaOptions) []core.ToolSchema {
 			// The shell slot's other tool; otherwise unreachable in a
 			// correctly wired binary (TestBuiltinToolsAllRegistered).
 			continue
+		}
+		if agentCatalog != "" {
+			if aware, ok := t.(AgentCatalogAwareTool); ok {
+				tools = append(tools, aware.SchemaWithAgentCatalog(agentCatalog))
+				continue
+			}
 		}
 		tools = append(tools, t.Schema())
 	}

@@ -33,6 +33,10 @@ type BuildParams struct {
 	StreamFirstChunkTimeout time.Duration
 	StreamIdleTimeout       time.Duration
 
+	// AgentCatalog provides discovery summaries of enabled predefined agents.
+	// Full agent prompts stay in the worker's own context.
+	AgentCatalog func() string
+
 	// Persona overrides the system-prompt parts (identity / behavior / rules)
 	// from the active persona. Empty fields keep San's built-in defaults.
 	Persona system.Persona
@@ -94,8 +98,9 @@ func (p BuildParams) System() core.System {
 // than schemas, and are wired in separately.
 func (p BuildParams) Schemas() []core.ToolSchema {
 	return (&tool.Set{
-		Disabled:   p.DisabledTools,
-		ExtraTools: p.ExtraTools,
+		Disabled:     p.DisabledTools,
+		AgentCatalog: p.AgentCatalog,
+		ExtraTools:   p.ExtraTools,
 	}).Tools()
 }
 

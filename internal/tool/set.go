@@ -43,14 +43,15 @@ func IsParentOnlyTool(name string) bool {
 // If Static is non-nil, it is returned directly (for fixed agent tool sets).
 // Otherwise, tools are resolved dynamically using the config fields.
 type Set struct {
-	Static      []core.ToolSchema        // fixed tool list (overrides dynamic)
-	Disabled    map[string]bool          // excluded tools
-	MCP         func() []core.ToolSchema // MCP tools getter
-	Allow       []string                 // agent allow list (nil = all tools, non-nil = only these)
-	Disallow    []string                 // agent deny list (excluded after allow filtering)
-	IsAgent     bool                     // true for subagent tool sets (excludes parent-only tools)
-	ExtraTools  []core.ToolSchema        // caller-built conditional tools (e.g. Evolve; main agent only)
-	disallowSet map[string]bool          // eagerly-initialized normalized lookup cache for Disallow
+	Static       []core.ToolSchema        // fixed tool list (overrides dynamic)
+	Disabled     map[string]bool          // excluded tools
+	MCP          func() []core.ToolSchema // MCP tools getter
+	AgentCatalog func() string            // predefined-agent summaries; main conversation only
+	Allow        []string                 // agent allow list (nil = all tools, non-nil = only these)
+	Disallow     []string                 // agent deny list (excluded after allow filtering)
+	IsAgent      bool                     // true for subagent tool sets (excludes parent-only tools)
+	ExtraTools   []core.ToolSchema        // caller-built conditional tools (e.g. Evolve; main agent only)
+	disallowSet  map[string]bool          // eagerly-initialized normalized lookup cache for Disallow
 }
 
 // Tools returns the resolved tool set for a turn.
@@ -77,8 +78,9 @@ func (s *Set) Tools() []core.ToolSchema {
 // defaultTools returns the full tool set filtered by disabled tools.
 func (s *Set) defaultTools() []core.ToolSchema {
 	tools := GetToolSchemasWith(SchemaOptions{
-		MCPTools:   s.MCP,
-		ExtraTools: s.ExtraTools,
+		MCPTools:     s.MCP,
+		AgentCatalog: s.AgentCatalog,
+		ExtraTools:   s.ExtraTools,
 	})
 
 	filtered := make([]core.ToolSchema, 0, len(tools))

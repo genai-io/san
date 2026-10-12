@@ -4,16 +4,28 @@ import (
 	"strings"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool"
 )
+
+var _ tool.AgentCatalogAwareTool = (*AgentTool)(nil)
 
 // Schema returns the single model-facing Agent tool definition.
 func (t *AgentTool) Schema() core.ToolSchema {
-	return agentSchema()
+	return agentSchema("")
 }
 
-func agentSchema() core.ToolSchema {
+// SchemaWithAgentCatalog adds predefined-agent discovery metadata.
+func (t *AgentTool) SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema {
+	return agentSchema(agentCatalog)
+}
+
+func agentSchema(agentCatalog string) core.ToolSchema {
 	var sb strings.Builder
 	sb.WriteString("Launch a subagent only when separate context or parallel execution materially helps. Handle clear, bounded work directly, even when it requires multiple tool calls.\n\n")
+	if catalog := strings.TrimSpace(agentCatalog); catalog != "" {
+		sb.WriteString(catalog)
+		sb.WriteString("\n\nUse name to select a predefined agent. Otherwise, use the default Agent.\n\n")
+	}
 	sb.WriteString("Brief the agent with all context it needs: the goal, relevant paths, constraints, and what is already known. Include the validation plan in the brief. Do not retry denied commands; report the failed tool and reason to the parent.\n\n")
 	sb.WriteString("Launch independent agents concurrently. Use background mode only for work that does not block your next step. Once work is delegated, do not also do it yourself; wait for the result. Verify the result before reporting it.")
 

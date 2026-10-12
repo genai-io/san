@@ -28,6 +28,13 @@ type Tool interface {
 	Execute(ctx context.Context, params map[string]any, cwd string) toolresult.ToolResult
 }
 
+// AgentCatalogAwareTool adds predefined-agent summaries to a tool's schema.
+// The catalog contains discovery metadata, not full agent prompts or settings.
+type AgentCatalogAwareTool interface {
+	Tool
+	SchemaWithAgentCatalog(agentCatalog string) core.ToolSchema
+}
+
 // PermissionAwareTool is a tool that requires user permission before execution
 type PermissionAwareTool interface {
 	Tool

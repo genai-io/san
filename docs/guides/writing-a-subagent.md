@@ -108,6 +108,11 @@ built-in Explorer/Edit presets and no tool arguments for `mode` or `model`.
 A named definition supplies its configured model; ordinary workers use the
 `subagentModel` setting, or the current main-session model when unset.
 
+The Agent tool description lists enabled definitions under **Available
+predefined agents**, using only their names, descriptions, and optional
+`when-to-use` hints. Disabled or persona-hidden definitions are omitted. Full
+prompt bodies are loaded only into the selected worker's system context.
+
 Example using a configured definition:
 
 ```json
