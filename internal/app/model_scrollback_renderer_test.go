@@ -15,8 +15,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/genai-io/san/internal/agent"
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit/suggest"
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/reminder"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 const (
@@ -484,7 +488,8 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
 			output := &synchronizedOutput{writes: make(chan struct{}, 1)}
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(io.MultiWriter(terminal, output)),
+			m.flush.output = &terminalOutput{writer: io.MultiWriter(terminal, output)}
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 				tea.WithFPS(60), tea.WithWindowSize(80, 24))
 			done := make(chan error, 1)
@@ -621,7 +626,8 @@ func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
 				})
 			}
 			terminal := newTerminalHistoryState(width, height)
-			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+			m.flush.output = &terminalOutput{writer: terminal}
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 				tea.WithFPS(60), tea.WithWindowSize(width, height))
 			done := make(chan error, 1)
@@ -648,7 +654,10 @@ func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
 					for _, marker := range markers {
 						found = found && strings.Contains(screen, marker)
 					}
-					if found {
+					terminal.mu.Lock()
+					_, cursorY := terminal.state.Cursor()
+					terminal.mu.Unlock()
+					if found && cursorY == height-3 {
 						return history, screen
 					}
 					if time.Now().After(deadline) {
@@ -704,7 +713,8 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 	m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
 	m.userInput.Textarea.SetValue("COMPOSER-LIVE")
 	terminal := newTerminalHistoryState(width, height)
-	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(terminal),
+	m.flush.output = &terminalOutput{writer: terminal}
+	program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
 		tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=Apple_Terminal"}),
 		tea.WithFPS(60), tea.WithWindowSize(width, height))
 	done := make(chan error, 1)
@@ -774,5 +784,182 @@ func TestFixedComposerKeepsRecentRepliesAndNativeHistory(t *testing.T) {
 	}
 	if strings.Contains(history, "COMPOSER-LIVE") {
 		t.Fatalf("input leaked into native history:\n%s", history)
+	}
+}
+
+type firstTurnTerminal struct {
+	*terminalHistoryState
+	frames []string
+}
+
+func (o *firstTurnTerminal) Write(p []byte) (int, error) {
+	n, err := o.terminalHistoryState.Write(p)
+	o.mu.Lock()
+	o.frames = append(o.frames, o.state.String())
+	o.mu.Unlock()
+	return n, err
+}
+
+func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
+	for _, height := range []int{24, 40} {
+		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
+			m := &fixedComposerRendererModel{model: fixedComposerModel(100, height), settled: make(chan struct{}, 1)}
+			m.services.Agent = &agent.Session{}
+			m.welcomePending = true
+			m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
+			m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
+			terminal := &firstTurnTerminal{terminalHistoryState: newTerminalHistoryState(100, height)}
+			m.flush.output = &terminalOutput{writer: terminal}
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=vscode"}),
+				tea.WithFPS(60), tea.WithWindowSize(100, height))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Error(err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping first-turn renderer")
+				}
+			}()
+			waitFor := func(marker string) {
+				t.Helper()
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					_, screen := terminal.snapshot()
+					if strings.Contains(screen, marker) {
+						return
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %q:\n%s", marker, screen)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitFor("❭ hi")
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageStart{}})
+			waitFor("Thinking...")
+			const reply = "Hi! What can I help you with?"
+			var streamed string
+			for _, delta := range []string{"Hi!", " What", " can I", " help", " you with?"} {
+				streamed += delta
+				program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: delta}}}})
+				waitFor(streamed)
+			}
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageEnd{Response: &ai.Response{Content: ai.TextContent(reply)}}})
+			waitFor("● " + reply)
+			terminal.mu.Lock()
+			defer terminal.mu.Unlock()
+			initialRow := -1
+			replySeen := false
+			for i, frame := range terminal.frames {
+				if strings.Contains(frame, "Hi!") {
+					replySeen = true
+				} else if replySeen {
+					t.Errorf("terminal frame %d erased streamed text:\n%s", i, frame)
+				}
+				at := strings.Index(frame, "❭ hi")
+				if at < 0 {
+					continue
+				}
+				row := strings.Count(frame[:at], "\n")
+				if initialRow < 0 {
+					initialRow = row
+				} else if row != initialRow {
+					t.Errorf("terminal frame %d moved hi from row %d to %d:\n%s", i, initialRow, row, frame)
+				}
+			}
+		})
+	}
+}
+
+func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
+	for _, synchronized := range []bool{false, true} {
+		t.Run(fmt.Sprintf("synchronized=%v", synchronized), func(t *testing.T) {
+			const width, height = 80, 24
+			const anchor, continuation = "LIVE-ANCHOR", "CONTINUATION"
+			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
+			m.services.Agent = &agent.Session{}
+			msg := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: anchor})
+			m.conv.Stream = conv.StreamState{Active: true, MessageID: msg.ID}
+			var rows []string
+			for i := 0; i < height-8; i++ {
+				rows = append(rows, fmt.Sprintf("SETTLED-%02d", i))
+			}
+			if cmd := m.queueScrollbackPrint(strings.Join(rows, "\n"), 0); cmd != nil {
+				t.Fatal("fixture must fit before the next streaming paragraph")
+			}
+			terminal := &firstTurnTerminal{terminalHistoryState: newTerminalHistoryState(width, height)}
+			m.flush.output = &terminalOutput{writer: terminal}
+			program := tea.NewProgram(m, tea.WithInput(nil), tea.WithOutput(m.flush.output),
+				tea.WithEnvironment([]string{"TERM=xterm-256color", "TERM_PROGRAM=vscode"}),
+				tea.WithFPS(60), tea.WithWindowSize(width, height))
+			done := make(chan error, 1)
+			go func() { _, err := program.Run(); done <- err }()
+			defer func() {
+				program.Quit()
+				select {
+				case err := <-done:
+					if err != nil {
+						t.Error(err)
+					}
+				case <-time.After(3 * time.Second):
+					program.Kill()
+					<-done
+					t.Error("timed out stopping streaming renderer")
+				}
+			}()
+			waitFor := func(marker string) {
+				t.Helper()
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					_, screen := terminal.snapshot()
+					if strings.Contains(screen, marker) {
+						return
+					}
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %q:\n%s", marker, screen)
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+			waitFor(anchor)
+			if synchronized {
+				program.Send(tea.ModeReportMsg{Mode: ansi.ModeSynchronizedOutput, Value: ansi.ModeReset})
+			}
+			program.Send(conv.AgentOutboxMsg{Event: sdkagent.MessageUpdate{Delta: ai.Event{
+				Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: "\n\n" + continuation},
+			}}})
+			select {
+			case <-m.settled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("streaming paragraph did not finish its history handoff")
+			}
+			waitFor(continuation)
+			terminal.mu.Lock()
+			defer terminal.mu.Unlock()
+			seen := false
+			final := terminal.state.String()
+			finalRow := strings.Count(final[:strings.Index(final, anchor)], "\n")
+			for i, frame := range terminal.frames {
+				if strings.Contains(frame, anchor) {
+					seen = true
+					if strings.Contains(frame, continuation) {
+						row := strings.Count(frame[:strings.Index(frame, anchor)], "\n")
+						if row != finalRow {
+							t.Errorf("streaming frame %d moved text to row %d before returning to row %d", i, row, finalRow)
+						}
+					}
+				} else if seen {
+					t.Errorf("streaming frame %d temporarily erased visible text:\n%s", i, frame)
+				}
+			}
+		})
 	}
 }

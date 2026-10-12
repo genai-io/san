@@ -10,6 +10,7 @@ import (
 type StreamState struct {
 	MessageID    string // Inference output belongs to this message, independent of display order.
 	Active       bool
+	Waiting      bool // Submission accepted by the UI; the first inference has not started.
 	BuildingTool string
 	// ThinkingActive follows the latest text/thinking delta. Responses may
 	// return to reasoning after commentary in the same assistant message.
@@ -19,6 +20,7 @@ type StreamState struct {
 func (s *StreamState) Stop() {
 	s.MessageID = ""
 	s.Active = false
+	s.Waiting = false
 	s.BuildingTool = ""
 	s.ThinkingActive = false
 }

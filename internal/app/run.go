@@ -52,7 +52,11 @@ func Run(opts setting.RunOptions) error {
 		m.welcomePending = true
 	}
 
-	finalModel, err := tea.NewProgram(m).Run()
+	m.flush.output = &terminalOutput{writer: os.Stdout}
+	finalModel, err := tea.NewProgram(m, tea.WithOutput(m.flush.output)).Run()
+	if outputErr := m.flush.output.Flush(); err == nil {
+		err = outputErr
+	}
 	// Every exit ends here, a failed one included: settle the group
 	// membership before anything else.
 	m.exitGroup()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -16,6 +17,7 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
+	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
@@ -24,6 +26,8 @@ import (
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/workflow"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func TestLiveWorkflowGraphAppearsWithTasks(t *testing.T) {
@@ -248,6 +252,147 @@ func fixedComposerModel(width, height int) *model {
 	m.userInput.Textarea.SetWidth(width - 6)
 	m.userInput.SetTerminalHeight(height)
 	return m
+}
+
+func TestFirstTurnKeepsMessageRowsAcrossCommit(t *testing.T) {
+	for _, height := range []int{24, 40} {
+		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
+			m := fixedComposerModel(80, height)
+			m.services.Agent = &agent.Session{}
+			m.welcomePending = true
+			deliver := func(event core.Event) {
+				conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: event})
+			}
+			messageRow := func(marker string) int {
+				t.Helper()
+				view := m.View()
+				if rowCount(view.Content) != height || view.Cursor == nil || view.Cursor.Position.Y != height-3 {
+					t.Fatalf("message update changed frame height or composer position: %#v", view.Cursor)
+				}
+				frame := ansi.Strip(view.Content)
+				at := strings.Index(frame, marker)
+				if at < 0 {
+					t.Fatalf("missing %q in frame:\n%s", marker, frame)
+				}
+				return strings.Count(frame[:at], "\n")
+			}
+			for _, turn := range []struct{ user, reply string }{{"嗨", "你好。"}, {"再见", "下次见。"}} {
+				m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: turn.user})
+				userRow := messageRow(turn.user)
+				deliver(sdkagent.MessageStart{})
+				if got := messageRow(turn.user); got != userRow {
+					t.Errorf("inference moved %q from row %d to %d", turn.user, userRow, got)
+				}
+				deliver(sdkagent.MessageUpdate{Delta: ai.Event{Type: ai.EventBlockDelta, Block: ai.Block{Type: ai.BlockText, Text: turn.reply}}})
+				replyRow := messageRow(turn.reply)
+				if gap := replyRow - messageRow(turn.user) - 1; gap != 1 {
+					t.Errorf("user/reply gap = %d blank rows, want 1", gap)
+				}
+				deliver(sdkagent.MessageEnd{Response: &ai.Response{Content: ai.TextContent(turn.reply)}})
+				deliver(core.TurnEnded{Result: core.Result{StopReason: core.StopEndTurn}})
+				if got := messageRow(turn.reply); got != replyRow {
+					t.Errorf("settling reply moved it from row %d to %d", replyRow, got)
+				}
+			}
+			if len(m.flush.pendingPrints) != 0 {
+				t.Error("short first turn unnecessarily entered native scrollback")
+			}
+		})
+	}
+}
+
+func TestSubmissionShowsSpinnerBeforeAgentEvents(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
+	m.services.Agent = &agent.Session{}
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "test"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer m.services.Agent.Stop()
+	m.env.LLMProvider = provider
+	m.services.Reminder = reminder.NewService()
+	m.agentEvolveCaps = m.selfLearnCapabilities()
+	m.agentDisabledToolsSignature = m.disabledToolsSignature()
+	m.welcomePending = true
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"}).ToMessage()
+	if cmd := m.SubmitToAgent(msg); cmd == nil {
+		t.Fatal("submission returned no send command")
+	}
+	if frame := ansi.Strip(m.View().Content); !strings.Contains(frame, "Thinking...") {
+		t.Fatalf("submitted input has no response indicator before the agent starts:\n%s", frame)
+	}
+	if !m.conv.Stream.Active || !m.conv.Stream.Waiting || len(m.conv.Messages) != 1 {
+		t.Fatal("waiting for the agent should mark the turn busy without adding a transcript message")
+	}
+	m.userInput.Textarea.SetValue("second input")
+	m.handleSubmit()
+	if m.userInput.Queue.Len() != 1 || len(m.conv.Messages) != 1 {
+		t.Fatal("input during submission waiting should queue until the turn ends")
+	}
+	conv.Update(m, &m.conv, conv.AgentOutboxMsg{Event: sdkagent.MessageStart{}})
+	if m.conv.Stream.Waiting || m.conv.Stream.MessageID == "" || len(m.conv.Messages) != 2 {
+		t.Fatal("first inference did not replace the waiting indicator with one assistant message")
+	}
+}
+
+func TestFailedSubmissionClearsWaitingSpinner(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
+	m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
+	m.dispatch(agentSendFailedMsg{err: agent.ErrSessionStopped})
+	frame := ansi.Strip(m.View().Content)
+	if m.conv.Stream.Active || m.conv.Stream.Waiting || strings.Contains(frame, "Thinking...") ||
+		!strings.Contains(frame, "Failed to send message:") {
+		t.Fatalf("failed submission left a waiting spinner or hid its error:\n%s", frame)
+	}
+}
+
+func TestWaitingSubmissionCanBeCancelled(t *testing.T) {
+	m := fixedComposerModel(80, 24)
+	m.services.Agent = &agent.Session{}
+	m.services.Reminder = reminder.NewService()
+	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
+	started, release := make(chan struct{}), make(chan struct{})
+	if err := m.services.Agent.Start(agent.BuildParams{
+		Provider: provider, ModelID: "test",
+		OnEvent: func(event core.Event) {
+			if _, ok := event.(core.AgentStarted); ok {
+				close(started)
+				<-release
+			}
+		},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer m.services.Agent.Stop()
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	<-started
+	msg, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"}).ToMessage()
+	cmd := m.sendToAgent(msg)
+	m.handleStreamCancel()
+	runCmd(cmd)
+	close(release)
+	if m.conv.Stream.Active || m.conv.Stream.Waiting || strings.Contains(ansi.Strip(m.View().Content), "Thinking...") {
+		t.Fatal("cancelling a submission left its waiting spinner")
+	}
+	select {
+	case <-provider.requests:
+		t.Fatal("cancelled waiting submission still reached inference")
+	case <-time.After(100 * time.Millisecond):
+	}
+	next, _ := m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "next"}).ToMessage()
+	runCmd(m.sendToAgent(next))
+	select {
+	case <-provider.requests:
+	case <-time.After(time.Second):
+		t.Fatal("cancellation prevented the next submission from running")
+	}
 }
 
 func TestModeStatusOmitsPersistentHistoryHint(t *testing.T) {

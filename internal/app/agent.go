@@ -604,14 +604,16 @@ func (m *model) sendToAgent(msg core.Message) tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	svc := m.services.Agent
 	msg = m.attachPendingReminders(msg)
-	return func() tea.Msg {
-		if err := svc.Send(msg); err != nil {
-			return agentSendFailedMsg{err: err}
-		}
-		return nil
+	// Send is nonblocking; enqueue before Esc can cancel this submission.
+	if err := m.services.Agent.Send(msg); err != nil {
+		return func() tea.Msg { return agentSendFailedMsg{err: err} }
 	}
+	if !m.conv.Stream.Active {
+		m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
+		return m.conv.Spinner.Tick
+	}
+	return nil
 }
 
 // attachPendingReminders drains the reminder queue and appends any pending

@@ -58,8 +58,16 @@ chunking, resize — keeps all of them or it is wrong.
    single-flight FIFO so no two inserts interleave.
 
 3. **The frame never has zero rows.** When the padded frame leaves no room
-   above it, the print runs under the composer footer, measured and frozen
-   before insertion. If that footer also fills the terminal, the fallback is
+   above it, a one-row print runs above its retained bottom `H − 1` rows.
+   Select the print chunk before capturing this frozen frame: the handoff copy
+   must represent that chunk, not the whole pending payload. Keeping recent
+   text visible prevents a blank flash at each streaming paragraph handoff.
+   `terminalOutput` buffers the temporary redraw and its insert until the matching
+   done event, then writes both together. When synchronized output is enabled,
+   its closing sequence follows the insert, so the temporary one-row shift is
+   never painted on its own. Shutdown flushes any unfinished batch and reports
+   write failures.
+   If the retained frame still fills the terminal, the fallback is
    `minimalScrollbackFrame` — one blank row — with `capacity = H − 1`.
    `insertAbove` positions relative to a frame row;
    a zero-row frame puts the block one row low and leaks a blank row into
@@ -71,7 +79,7 @@ chunking, resize — keeps all of them or it is wrong.
    makes shrinking a routine step of every full-screen print, so this is
    load-bearing, not a corner.
 
-5. **Nothing transient rides in the inline frame while a print is pending.**
+5. **Overlay prompts never enter a history handoff.**
    Full-screen panels render in the alternate screen (#517), where a print
    would vanish with the buffer; docked prompts (approval, question) render
    inline in the composer's place (#573), where insertAbove would carry the
@@ -135,14 +143,17 @@ scrollback behaviour with `tmux set scroll-on-clear off` or outside tmux.
   overflowing rows print. Each Update checks overflow against the space left
   by active content and bottom controls. Retained lines keep their original
   hard breaks; soft wraps are rebuilt at the current width, including after
-  a partial line enters history. History handoffs temporarily compact the frame
-  to the footer, then restore the padded view. The composer stays present and
-  transient tracker/spinner rows are excluded from the handoff frame.
+  a partial line enters history. History handoffs retain the bottom `H − 1`
+  rows, print one row, then restore the padded view. Recent text, the composer,
+  and live activity stay visible; the chunk capacity keeps them out of history.
+  Queued payloads are parsed into physical rows once, then consumed without
+  reparsing the remainder on every chunk. A width change rewraps only the
+  remaining rows. `/clear` drops both unparsed payloads and cached rows.
 - Activity is capped after reserving the composer or docked modal, with the
   same cap in the view and overflow check, so a tall workflow cannot displace
   the input cursor or modal options.
-- `/clear` cancels retained rows and future print chunks. An issued chunk keeps
-  its frozen frame until completion, then the terminal wipe precedes new prints.
+- `/clear` cancels retained rows and future print chunks. An issued chunk uses
+  the minimal frame until completion, then the terminal wipe precedes new prints.
   Print IDs stay monotonic so late ready/done messages cannot affect a new queue.
 
 ## References

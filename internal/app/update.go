@@ -399,6 +399,9 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case agentSendFailedMsg:
 		log.Logger().Warn("failed to send message to agent", zap.Error(msg.err))
+		if m.conv.Stream.Waiting {
+			m.conv.Stream.Stop()
+		}
 		m.conv.AddNotice("Failed to send message: " + msg.err.Error())
 		return m, tea.Batch(m.CommitMessages()...)
 	case flushResultMsg:
