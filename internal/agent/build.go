@@ -76,6 +76,9 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
 	OnEvent func(core.Event)
+	// outboxBuf is private because only RunOnce changes the delivery mode.
+	// Direct execution uses synchronous observers and has no outbox consumer.
+	outboxBuf int
 
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
@@ -181,6 +184,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		ResultFilter:  p.ResultFilter,
 		CompactFunc:   compactFunc,
 		OnEvent:       p.OnEvent,
+		OutboxBuf:     p.outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
@@ -217,6 +221,7 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 			}
 		}
 	}
+	p.outboxBuf = -1
 	ag, gate, err := buildAgent(p)
 	if err != nil {
 		return nil, err
