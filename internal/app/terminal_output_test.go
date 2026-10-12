@@ -7,17 +7,38 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/term"
 )
 
-func TestTerminalOutputPreservesFileDescriptor(t *testing.T) {
+func TestTerminalOutputPreservesTerminalFile(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "terminal-output")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer file.Close()
 	writer := &terminalOutput{writer: file}
-	if writer.Fd() != file.Fd() {
+	terminal, ok := any(writer).(term.File)
+	if !ok {
+		t.Fatal("Bubble Tea cannot detect the wrapped terminal or its window size")
+	}
+	if terminal.Fd() != file.Fd() {
 		t.Fatal("wrapping terminal output changed its descriptor")
+	}
+	if _, err := file.WriteString("test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	var data [4]byte
+	if _, err := io.ReadFull(terminal, data[:]); err != nil || string(data[:]) != "test" {
+		t.Fatalf("wrapped terminal read = %q, err=%v", data, err)
+	}
+	if err := terminal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Read(data[:]); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("closing the wrapper did not close the terminal file: %v", err)
 	}
 }
 

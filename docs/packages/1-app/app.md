@@ -138,7 +138,10 @@ reserve one row above the live tail instead of hiding the conversation. The
 frozen frame is captured after selecting that one-row print chunk, preserving
 the existing print safety protocol. `terminalOutput` writes the temporary frame
 and history insert together, keeping synchronized output open across both when
-supported. The queue caches parsed rows and rewraps the remainder only on width
+supported. Its `Read`, `Write`, `Close`, and `Fd` methods preserve Bubble Tea's
+terminal-file contract; forwarding only `Fd` prevents terminal-size detection
+and leaves normal interactive startup with a zero-size frame. The queue caches
+parsed rows and rewraps the remainder only on width
 changes. Activity indicators fit within the rows left
 by the composer or docked modal; the view and overflow check share that cap.
 `/clear` discards retained rows and cancels queued prints. An already-issued

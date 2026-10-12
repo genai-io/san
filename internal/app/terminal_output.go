@@ -17,6 +17,21 @@ type terminalOutput struct {
 	err      error
 }
 
+// Bubble Tea recognizes a TTY through ReadWriteCloser and Fd, not Fd alone.
+func (o *terminalOutput) Read(p []byte) (int, error) {
+	if reader, ok := o.writer.(io.Reader); ok {
+		return reader.Read(p)
+	}
+	return 0, io.EOF
+}
+
+func (o *terminalOutput) Close() error {
+	if closer, ok := o.writer.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
 func (o *terminalOutput) Fd() uintptr {
 	if file, ok := o.writer.(interface{ Fd() uintptr }); ok {
 		return file.Fd()
