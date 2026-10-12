@@ -578,6 +578,8 @@ func TestTallWorkflowKeepsNativeCursorInComposer(t *testing.T) {
 	}
 }
 
+type fixedComposerFrameMsg chan string
+
 type fixedComposerRendererModel struct {
 	*model
 	settled chan struct{}
@@ -587,19 +589,21 @@ func (m *fixedComposerRendererModel) Init() tea.Cmd { return nil }
 
 func (m *fixedComposerRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case fixedComposerFrameMsg:
+		if m.flush.rendering || len(m.flush.pendingPrints) > 0 {
+			msg <- ""
+		} else {
+			msg <- m.View().Content
+		}
+		return m, nil
 	case fixedComposerCommitMsg:
 		cmd := m.queueScrollbackPrint(string(msg), 0)
 		if cmd == nil {
 			m.settled <- struct{}{}
 		}
 		return m, cmd
-	case scrollbackPrintReadyMsg:
-		content, ok := m.prepareScrollbackPrint(msg.id)
-		if ok {
-			return m, tea.Sequence(tea.Println(content), func() tea.Msg { return scrollbackPrintDoneMsg{id: msg.id} })
-		}
 	case scrollbackPrintDoneMsg:
-		cmd := m.finishScrollbackPrint(msg.id)
+		_, cmd := m.model.Update(msg)
 		if len(m.flush.pendingPrints) == 0 {
 			m.settled <- struct{}{}
 		}
@@ -608,7 +612,6 @@ func (m *fixedComposerRendererModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		_, cmd := m.model.Update(msg)
 		return m, cmd
 	}
-	return m, nil
 }
 
 func TestFixedComposerSuggestionsKeepSettledRowsInTerminal(t *testing.T) {
@@ -942,19 +945,54 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 				t.Fatal("streaming paragraph did not finish its history handoff")
 			}
 			waitFor(continuation)
+			// The queue's done signal precedes the restored View's renderer flush.
+			// Compare with that View, not a frozen handoff frame that has the same text.
+			normalize := func(frame string) string {
+				lines := strings.Split(strings.TrimSuffix(ansi.Strip(frame), "\n"), "\n")
+				for i := range lines {
+					lines[i] = strings.TrimRight(lines[i], " ")
+				}
+				return strings.Join(lines, "\n")
+			}
+			reply := make(fixedComposerFrameMsg, 1)
+			deadline := time.Now().Add(3 * time.Second)
+			timer := time.NewTimer(time.Until(deadline))
+			defer timer.Stop()
+			for {
+				program.Send(reply)
+				var expected string
+				select {
+				case expected = <-reply:
+				case err := <-done:
+					done <- err // Leave the result available for deferred shutdown.
+					t.Fatalf("renderer stopped before replying with its final frame: %v", err)
+				case <-timer.C:
+					t.Fatal("timed out waiting for the restored streaming frame")
+				}
+				_, screen := terminal.snapshot()
+				if expected != "" && normalize(screen) == normalize(expected) {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("restored streaming frame did not reach the terminal:\n%s", screen)
+				}
+				time.Sleep(time.Millisecond)
+			}
 			terminal.mu.Lock()
 			defer terminal.mu.Unlock()
 			seen := false
-			final := terminal.state.String()
-			finalRow := strings.Count(final[:strings.Index(final, anchor)], "\n")
+			previousRow := height
 			for i, frame := range terminal.frames {
 				if strings.Contains(frame, anchor) {
 					seen = true
 					if strings.Contains(frame, continuation) {
 						row := strings.Count(frame[:strings.Index(frame, anchor)], "\n")
-						if row != finalRow {
-							t.Errorf("streaming frame %d moved text to row %d before returning to row %d", i, row, finalRow)
+						// New paragraphs and history can move text up, never down
+						// again when the temporary handoff frame is restored.
+						if row > previousRow {
+							t.Errorf("streaming frame %d moved text down from row %d to row %d", i, previousRow, row)
 						}
+						previousRow = row
 					}
 				} else if seen {
 					t.Errorf("streaming frame %d temporarily erased visible text:\n%s", i, frame)

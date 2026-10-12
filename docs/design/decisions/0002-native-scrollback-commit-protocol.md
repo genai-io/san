@@ -62,8 +62,12 @@ chunking, resize — keeps all of them or it is wrong.
    Select the print chunk before capturing this frozen frame: the handoff copy
    must represent that chunk, not the whole pending payload. Keeping recent
    text visible prevents a blank flash at each streaming paragraph handoff.
-   `terminalOutput` buffers the temporary redraw and its insert until the matching
-   done event, then writes both together. When synchronized output is enabled,
+   `terminalOutput` starts buffering in the Update that queues a runnable handoff,
+   before the renderer can paint a pre-ready view containing the whole payload.
+   It holds that redraw, the chunk-specific redraw, and the insert until the matching
+   done event, then writes them together. Canceling a queued print or deferring it
+   behind an overlay releases the batch so the interactive UI remains visible.
+   When synchronized output is enabled,
    its closing sequence follows the insert, so the temporary one-row shift is
    never painted on its own. Shutdown flushes any unfinished batch and reports
    write failures.
