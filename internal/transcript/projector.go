@@ -25,6 +25,9 @@ func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 		case SessionForked:
 			applyForked(t, r)
 		case ConversationReplaced:
+			if err := validateMessages(r.Messages); err != nil {
+				return nil, err
+			}
 			messageMap = make(map[string]MessageNode, len(r.Messages))
 			order = nil
 			compactBoundary = ""

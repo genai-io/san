@@ -103,7 +103,12 @@ func (r *Writer) SessionID() string {
 // not propagate failures — audit telemetry must never block the writer's
 // caller (hook engine, permission decider, skill registry).
 func (r *Writer) audit(name string, write func(time.Time) error) {
-	if r == nil || r.store == nil || r.sessionID == "" || r.isClosed() {
+	if r == nil || r.store == nil || r.sessionID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.err != nil {
 		return
 	}
 	if err := write(time.Now()); err != nil {
@@ -143,9 +148,8 @@ func (r *Writer) recordPermission(typ string, rec transcript.PermissionRecord) {
 }
 
 // OnAgentEvent is the core.Config.OnEvent callback. It dispatches by event
-// type and writes the corresponding transcript record. Errors are logged
-// rather than propagated — failing to record telemetry must not break the
-// running session.
+// type and writes the corresponding transcript record. Conversation failures
+// stop later writes and remain visible through Err; audit failures are logged.
 func (r *Writer) OnAgentEvent(ev core.Event) {
 	if r == nil || r.store == nil || r.sessionID == "" {
 		return

@@ -72,7 +72,7 @@ func TestReturningToSessionKeepsEarlierMessages(t *testing.T) {
 	}
 }
 
-// Active.Writer deliberately refuses a stale recorder rather than letting a
+// Active.Writer deliberately refuses a stale writer rather than letting a
 // caller write into the wrong transcript. That guard is what the agent's
 // captured closure bypasses, so it is worth pinning.
 func TestSetupWriterRefusesAStaleWriter(t *testing.T) {

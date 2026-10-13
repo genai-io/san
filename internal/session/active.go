@@ -2,10 +2,11 @@ package session
 
 import (
 	"fmt"
+	"os"
 	"sync"
 )
 
-// defaultActive is the package-level session setup, initialized by Initialize().
+// defaultActive is the process session, initialized by Initialize().
 var defaultActive = &Active{}
 
 // Active holds the initialized session infrastructure needed by the app layer.
@@ -56,7 +57,7 @@ func (s *Active) ID() string {
 	return s.id
 }
 
-// SetID updates the current session ID.
+// SetID updates the current session ID, retiring the previous session's writer.
 func (s *Active) SetID(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -115,26 +116,59 @@ func (s *Active) Flush() error {
 	return st.Flush()
 }
 
-// Load loads a session by ID via the store.
-func (s *Active) Load(id string) (*Snapshot, error) {
-	s.mu.RLock()
-	st := s.store
-	s.mu.RUnlock()
-	if st == nil {
+// Resume owns the writer lease before reading the native conversation. Holding
+// the lease while idle prevents another process from invalidating that seed.
+// Failed resumes leave the current session intact.
+func (s *Active) Resume(id string) (*Snapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.store == nil {
 		return nil, fmt.Errorf("session store not initialized")
 	}
-	return st.Load(id)
+	st := s.store
+	if _, err := os.Stat(st.SessionPath(id)); err != nil {
+		return nil, fmt.Errorf("resume session %s: %w", id, err)
+	}
+	if s.id == id && s.writer != nil {
+		if s.writer.Err() == nil && !s.writer.isClosed() {
+			return st.Load(id)
+		}
+		s.writer.Close()
+		s.writer = nil
+	}
+	w := NewWriter(WriterOptions{Store: st.transcriptStore, SessionID: id, AgentID: "main", Cwd: st.cwd})
+	if err := w.Err(); err != nil {
+		w.Close()
+		return nil, err
+	}
+	snapshot, err := st.Load(id)
+	if err != nil {
+		w.Close()
+		return nil, err
+	}
+	if s.writer != nil {
+		s.writer.Close()
+	}
+	s.id, s.writer = id, w
+	return snapshot, nil
 }
 
-// LoadLatest loads the most recent session via the store.
-func (s *Active) LoadLatest() (*Snapshot, error) {
+// ResumeLatest adopts the most recent session under its writer lease.
+func (s *Active) ResumeLatest() (*Snapshot, error) {
 	s.mu.RLock()
 	st := s.store
 	s.mu.RUnlock()
 	if st == nil {
 		return nil, fmt.Errorf("session store not initialized")
 	}
-	return st.Latest()
+	items, err := st.List()
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, fmt.Errorf("no saved sessions")
+	}
+	return s.Resume(items[0].ID)
 }
 
 // Fork forks a session by ID via the store.

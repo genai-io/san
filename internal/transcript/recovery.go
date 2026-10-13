@@ -79,6 +79,9 @@ func (s *Store) Claim(id string) (func(), error) {
 		return nil, fmt.Errorf("claim session %s: %w", id, err)
 	}
 	s.writers[id] = &writerLock{file: f}
+	// Another process may have appended since our previous lease or Load.
+	// Rebuild the leaf, counters, state, and tail-repair status from the log.
+	delete(s.sessions, id)
 	return func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()

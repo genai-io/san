@@ -116,9 +116,6 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 
 	msgs := m.services.Agent.Messages()
 	if len(msgs) == 0 {
-		msgs = m.agentRestartMessages
-	}
-	if len(msgs) == 0 {
 		msgs = m.conv.ConvertToProvider()
 	}
 
@@ -159,7 +156,12 @@ func (m *model) loadSessionByID(id string) error {
 		return err
 	}
 
-	sess, err := m.services.Session.Load(id)
+	// Finish pending writes before reading, including a resume of this same ID.
+	m.StopAgentRuntime()
+	if m.services.Agent.Active() {
+		return fmt.Errorf("previous agent is still stopping")
+	}
+	sess, err := m.services.Session.Resume(id)
 	if err != nil {
 		return err
 	}
@@ -187,7 +189,7 @@ func (m *model) loadSessionByID(id string) error {
 func (m *model) restoreSessionData(sess *session.Snapshot) {
 	m.conv.Messages = sess.ChatRows()
 	m.earlyNotices = nil
-	m.agentRestartMessages = sess.Messages
+	m.services.Agent.SetMessages(sess.Messages)
 	m.systemRemindersSent = slices.ContainsFunc(m.conv.Messages, func(msg core.ChatMessage) bool {
 		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
 	})
@@ -334,7 +336,7 @@ func (m *model) forkSession() (string, error) {
 	}
 	originalID := forked.Metadata.ParentSessionID
 	m.adoptSession(forked.Metadata.ID)
-	m.agentRestartMessages = forked.Messages
+	m.services.Agent.SetMessages(forked.Messages)
 	// Same storage switch as loadSessionByID: clear the tracker so
 	// initTaskStorage adopts the fork's directory, then re-import the tasks
 	// that SetStorageDir's disk load replaced.

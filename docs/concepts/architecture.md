@@ -21,7 +21,7 @@ see [`reference/dependency-rules.md`](../reference/dependency-rules.md) and
    Four extension primitives; *plugin* is one *source* among many — see
    [`concepts/extension-model.md`](extension-model.md).
 4. **Sessions** — transcript persistence, resume, fork, projection
-   (`internal/session`). Replayable in the inspector
+   (`internal/session` and `internal/transcript`). Replayable in the inspector
    (`internal/inspector`).
 5. **Providers** — every LLM vendor through one adapter
    (`internal/llm/vendor*.go`, over `genai-io/sdk-go`) and search backends

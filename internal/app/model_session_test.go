@@ -27,7 +27,8 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	old := active.NewWriter("main", "test", "model", 100)
 	history := []ai.Message{{ID: "old-message", Role: ai.RoleUser, Content: ai.TextContent("old text")}}
 	old.OnAgentEvent(sdkagent.MessageAdded{Message: history[0]})
-	m := model{services: services{Agent: &agent.Runtime{}, Session: active, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewService(), Hook: hook.NewEngine(nil, "old", "", active.TranscriptPath())}, conv: conv.NewModel(80), agentRestartMessages: history}
+	m := model{services: services{Agent: &agent.Runtime{}, Session: active, Tracker: todo.NewStore(), Task: task.NewManager(), Reminder: reminder.NewService(), Hook: hook.NewEngine(nil, "old", "", active.TranscriptPath())}, conv: conv.NewModel(80)}
+	m.services.Agent.SetMessages(history)
 	m.env.SessionName = "old title"
 	if err := m.clearSession(); err != nil {
 		t.Fatal(err)
@@ -36,7 +37,7 @@ func TestClearStartsAFreshDurableSession(t *testing.T) {
 	if id == "old" || id == "" {
 		t.Fatalf("clear kept old identity: %q", id)
 	}
-	if m.env.SessionName != "" || len(m.agentRestartMessages) != 0 {
+	if m.env.SessionName != "" || len(m.services.Agent.Messages()) != 0 {
 		t.Fatal("clear retained old session state")
 	}
 	if filepath.Base(m.services.Tracker.StorageDir()) != id {

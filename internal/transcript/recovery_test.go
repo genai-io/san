@@ -130,3 +130,98 @@ func TestOldFormatIsRejected(t *testing.T) {
 		t.Fatal("old transcript format was accepted")
 	}
 }
+
+func TestWriterLeaseRefreshesExternalHistoryAndCounters(t *testing.T) {
+	dir := t.TempDir()
+	a, err := NewStore(dir, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := NewStore(dir, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := a.Start(ctx, StartCommand{SessionID: "s", Time: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	appendMessage := func(s *Store, id string) {
+		t.Helper()
+		if err := s.Append(ctx, Record{SessionID: "s", Type: MessageAppended, Message: &ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendMessage(a, "m1")
+	if _, err := b.Load(ctx, "s"); err != nil {
+		t.Fatal(err)
+	}
+	release, err := a.Claim("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendMessage(a, "m2")
+	if err := a.Append(ctx, Record{SessionID: "s", Type: InferenceRequested, Inference: &InferenceRecord{Sequence: 2, Exchange: 3}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Append(ctx, Record{SessionID: "s", Type: SessionStatePatched, State: &StateRecord{Ops: []PatchOp{PatchTitle("updated by A")}}}); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	release, err = b.Claim("s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	leaf, inference, exchange, err := b.Position(ctx, "s")
+	if err != nil || leaf != "m2" || inference != 2 || exchange != 3 {
+		t.Fatalf("position after lease handoff = %q, %d, %d, %v", leaf, inference, exchange, err)
+	}
+	state, err := b.LoadState(ctx, "s")
+	if err != nil || state.Title != "updated by A" {
+		t.Fatalf("state after lease handoff = %+v, %v", state, err)
+	}
+	appendMessage(b, "m3")
+	got, err := a.Load(ctx, "s")
+	if err != nil || len(got.Messages) != 3 || got.Messages[1].ID != "m2" {
+		t.Fatalf("writer handoff lost intervening messages: %+v, %v", got, err)
+	}
+}
+
+func TestWriterLeaseRepairsANewTornTail(t *testing.T) {
+	s, err := NewStore(t.TempDir(), "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := s.Start(ctx, StartCommand{SessionID: "s", Time: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	write := func(id string) {
+		t.Helper()
+		release, err := s.Claim("s")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		if err := s.Append(ctx, Record{SessionID: "s", Type: MessageAppended, Message: &ai.Message{ID: id, Role: ai.RoleUser, Content: ai.TextContent(id)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("m1")
+	// Simulate another process crashing during its next write.
+	f, err := os.OpenFile(s.TranscriptPath("s"), os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"id":"torn"`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	write("m2")
+	got, err := s.Load(ctx, "s")
+	if err != nil || len(got.Messages) != 2 {
+		t.Fatalf("reclaimed writer did not repair the tail: %+v, %v", got, err)
+	}
+}

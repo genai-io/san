@@ -150,10 +150,8 @@ func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
 		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()},
 		conv:     conv.NewModel(80),
-		agentRestartMessages: []core.Message{
-			{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")},
-		},
 	}
+	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
 	m.ResetAgentRuntime()
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
@@ -203,32 +201,34 @@ func chainWithImage() []core.Message {
 
 // A conversation that began on a vision-capable model carries its images in the
 // chain. Handing them to a text-only model replays image parts the provider
-// rejects on every later turn, so the seed has to drop them — keeping the text.
-func TestSeedAgentMessagesDropsImagesForTextOnlyModel(t *testing.T) {
+// rejects on every later turn. Only inference input should drop them.
+func TestSeedAgentMessagesKeepsNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
-	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
 	seeded := m.seedAgentMessages("")
 	if len(seeded) != len(original) {
 		t.Fatalf("seedAgentMessages() length = %d, want %d", len(seeded), len(original))
 	}
-	if n := imageBlocks(seeded[0]); n != 0 {
-		t.Errorf("seeded user message kept %d image(s), want none", n)
+	if n := imageBlocks(seeded[0]); n != 1 {
+		t.Errorf("native seed has %d image(s), want one", n)
 	}
 	if seeded[0].Text() != original[0].Text() {
 		t.Errorf("seeded user message content = %q, want %q", seeded[0].Text(), original[0].Text())
 	}
 	// The retained snapshot must survive intact: switching back to a
 	// vision-capable model has to restore the images.
-	if imageBlocks(m.agentRestartMessages[0]) != 1 {
+	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
 		t.Error("stripping mutated the retained restart chain")
 	}
 }
 
 // Vision-capable providers are the common case and must see the chain untouched.
 func TestSeedAgentMessagesKeepsImagesForVisionModel(t *testing.T) {
-	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
 	seeded := m.seedAgentMessages("")

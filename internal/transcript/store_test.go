@@ -66,6 +66,36 @@ func TestStoreStartAppendListLoad(t *testing.T) {
 	}
 }
 
+func TestReplacementRejectsInvalidMessageIdentities(t *testing.T) {
+	for _, messages := range [][]ai.Message{
+		{{Role: ai.RoleUser, Content: ai.TextContent("missing ID")}},
+		{{ID: "same", Role: ai.RoleUser}, {ID: "same", Role: ai.RoleUser}},
+	} {
+		s, err := NewStore(t.TempDir(), "p")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx := context.Background()
+		if err := s.Start(ctx, StartCommand{SessionID: "s", Time: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.ReadFile(s.TranscriptPath("s"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Append(ctx, Record{SessionID: "s", Type: ConversationReplaced, Messages: messages}); err == nil {
+			t.Fatal("replacement accepted invalid message IDs")
+		}
+		if _, err := Project([]Record{{Type: ConversationReplaced, Messages: messages}}); err == nil {
+			t.Fatal("projection accepted invalid message IDs")
+		}
+		after, err := os.ReadFile(s.TranscriptPath("s"))
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatalf("invalid replacement changed the log: %v", err)
+		}
+	}
+}
+
 func TestStoreCompactAndFork(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir, "proj-1")

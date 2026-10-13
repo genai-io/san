@@ -11,7 +11,10 @@ owns the running agent; `internal/transcript` owns the append-only event log.
 ## Entrypoints and core types
 
 - `Active` (`active.go`) binds the current ID, `Store`, and main `Writer`.
-  `SetID` retires the previous writer. `Close` releases it at shutdown.
+  `SetID` retires the previous session's writer. Same-ID adoption is idempotent.
+  `Resume` owns the writer lease before reading the native chain; an idle resumed
+  session keeps that lease. It also recreates a failed writer on same-ID resume.
+  `Close` releases the writer at shutdown.
 - `Snapshot` (`snapshot.go`) holds `Metadata`, native `[]core.Message`
   (`ai.Message`), todo items, notices, and tool presentation details. Messages remain native;
   notices and display details are separate from model input.
@@ -36,6 +39,8 @@ JSONL → transcript.Project → Snapshot.Messages → agent.Runtime.Start
 without converting the rendered rows back into provider messages. Thinking
 signatures, encrypted reasoning, tool-call signatures, tool-result images, and
 content order survive unchanged. Live turn saves contain product state only.
+Runtime retains that chain when a run fails or stops. Model capability filtering
+applies to each inference's input, preserving historical images in the log.
 A snapshot import uses `conversation.replaced`; repeated identical imports or
 resume announcements produce no duplicate history.
 
@@ -55,18 +60,15 @@ encode ancestry. `LoadHistory` displays the selected branch across compaction bo
 resume still uses only the active context. Notices retain their positions and
 tool diffs come from separate `tool.completed` events.
 
-Schema version `2` appears on `session.started`; messages and
-schemas use SDK-native JSON. Older formats and directories are unsupported.
-
-Each transcript has its own derived summary, validated against log size and
-modification time. Listing discovers log files directly, so one process cannot
-overwrite another session's shared index. Missing or corrupt summaries rebuild
-from the log. Transcript records are authoritative.
+The [transcript package](transcript.md) defines the native schema, writer leases,
+crash recovery, projections, and derived summaries. Older formats and directories
+are unsupported.
 
 ## Lifecycle and failure handling
 
 - Resume seeds message position and inference/exchange counters from the log.
   Model, provider, output budget, and attempt belong to each inference.
+  A new writer lease refreshes caches after another process has owned the session.
 - A session permits one live writer, enforced by a file lock across processes.
   Runtime rebuilds reuse the main writer; child runtimes use independent IDs.
 - `/clear` stops the runtime, retires the writer, adopts a fresh identity,
@@ -78,6 +80,9 @@ from the log. Transcript records are authoritative.
   fragment first; corruption in a terminated record remains an error.
 - A failed append never advances the writer's parent pointer. The app surfaces
   persistence errors instead of acknowledging a successful save.
+- Manual compaction before a resumed runtime starts writes the native summary
+  and boundary immediately. The UI and next inference share that summary ID;
+  earlier messages remain available to history browsing.
 
 ## Tests and pitfalls
 
@@ -88,6 +93,8 @@ writer lease, and summary tests live under `internal/transcript`.
 `history_test.go` and `notice_test.go` preserve mainline history and notice behavior.
 `internal/app/model_session_test.go` covers the clear boundary; integration tests
 live in `tests/integration/session`.
+`internal/app/session_resume_test.go` exercises failure/retry with parallel tool
+results, compaction before runtime startup, and image-preserving model switches.
 
 Never use UI rows as the live persistence source. Close a writer before creating
 another writer for the same ID. Summary files may be deleted and rebuilt; the
@@ -96,5 +103,6 @@ JSONL and its blobs are the durable session.
 ## See also
 
 - [Agent runtime](agent.md)
+- [Native transcript log](transcript.md)
 - [Inspector](inspector.md)
 - [Package map](../../reference/package-map.md)

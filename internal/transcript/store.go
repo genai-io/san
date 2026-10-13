@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -23,7 +22,7 @@ type Store struct {
 	// sessions holds per-transcript caches keyed by session ID. Populated
 	// lazily on first access via warmupCachesLocked, which does one forward
 	// scan and fills every field together so resumed sessions pay one O(N)
-	// scan per process. Delete clears the entry to evict all derived state
+	// scan per writer lease. Claim and Delete evict all derived state
 	// at once.
 	sessions map[string]*sessionCache
 
@@ -41,8 +40,8 @@ type sessionCache struct {
 	repaired      bool
 	inference     int
 	exchange      int
-	messages      []ai.Message
-	latestState   State // projected state (cold-Save diff base)
+	messageIDs    []string // active immutable message identities
+	latestState   State    // projected state (cold-Save diff base)
 }
 
 func NewStore(baseDir, projectID string) (*Store, error) {
@@ -124,7 +123,12 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 			rec.GitBranch = ""
 		}
 	case ConversationReplaced:
-		if reflect.DeepEqual(c.messages, rec.Messages) {
+		if err := validateMessages(rec.Messages); err != nil {
+			return err
+		}
+		// A resumed chain can hydrate blob-backed outputs for display. Message
+		// identities, not those derived contents, determine whether it changed.
+		if sameMessageIDs(c.messageIDs, rec.Messages) {
 			return nil
 		}
 	case SessionStatePatched:
@@ -192,12 +196,13 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 	if rec.Message != nil {
 		c.persistedIDs[rec.Message.ID] = struct{}{}
 		c.leafMessageID = rec.Message.ID
-		c.messages = append(c.messages, *rec.Message)
+		c.messageIDs = append(c.messageIDs, rec.Message.ID)
 	}
 	if rec.Type == ConversationReplaced {
-		c.messages = append([]ai.Message(nil), rec.Messages...)
+		c.messageIDs = make([]string, 0, len(rec.Messages))
 		c.leafMessageID = ""
 		for _, m := range rec.Messages {
+			c.messageIDs = append(c.messageIDs, m.ID)
 			c.persistedIDs[m.ID] = struct{}{}
 			c.leafMessageID = m.ID
 		}
@@ -511,10 +516,10 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 		}
 	}
 	c.latestState = tx.State
-	c.messages = make([]ai.Message, len(tx.Messages))
+	c.messageIDs = make([]string, len(tx.Messages))
 	c.leafMessageID = ""
 	for i, n := range tx.Messages {
-		c.messages[i] = n.Message
+		c.messageIDs[i] = n.ID
 		c.leafMessageID = n.ID
 	}
 	c.warmed = true

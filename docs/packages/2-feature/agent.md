@@ -33,6 +33,9 @@ type Runtime struct { /* internal fields */ }
 func (s *Runtime) Start(params BuildParams, messages []core.Message) error
 func (s *Runtime) Stop()
 func (s *Runtime) StopContext(ctx context.Context) error
+func (s *Runtime) Reset()
+func (s *Runtime) Messages() []core.Message
+func (s *Runtime) SetMessages(messages []core.Message)
 func (s *Runtime) Active() bool
 func (s *Runtime) Send(msg core.Message) error
 func (s *Runtime) Outbox() <-chan core.Event
@@ -49,6 +52,8 @@ func Default() *Runtime
 - `runtime.go` tracks one `run` (`core.Agent`, cancel, done) plus its
   `PermissionGate`. A generation is not cleared until `Run` returns, so a
   stop and restart cannot overlap.
+  The native message chain survives both deliberate stops and unexpected exits;
+  resume can seed it before the first run. `Reset` clears it after shutdown.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
@@ -77,8 +82,10 @@ func Default() *Runtime
 ## Tests
 
 ```
-internal/agent/session_test.go — lifecycle serialization, message identity,
+internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
+internal/app/session_resume_test.go — native error retry, inactive compaction,
+                                      and image-preserving model switches.
 internal/agent/runonce_stream_test.go — headless streams exceeding the default
                                        outbox capacity, with and without text
                                        callbacks, preserving event observers.

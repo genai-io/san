@@ -130,15 +130,14 @@ func (m *model) dispatchSubmission(raw string) tea.Cmd {
 	// Text-only models can't receive image parts, so inline each image's path
 	// into the content and let the model decide how to use it (e.g. call an
 	// MCP tool to inspect the file) instead of refusing the turn. The appended
-	// message keeps its images; only the provider send drops them.
-	content, providerImages := m.adaptTurnForProvider(msg.Content, msg.Images)
-	msg.Content = content
+	// message keeps its images; only inference input drops them.
+	msg.Content = m.describeImages(msg.Content, msg.Images)
 	msg.AutopilotNote = autopilotNote
 	msg = m.conv.Append(msg)
 	m.userInput.Reset()
-	providerMsg := core.UserMessage(msg.Content, providerImages)
-	providerMsg.ID = msg.ID
-	return m.SubmitToAgent(providerMsg)
+	message := core.UserMessage(msg.Content, msg.Images)
+	message.ID = msg.ID
+	return m.SubmitToAgent(message)
 }
 
 // runSlashCommandIfMatched returns (cmd, true) if `raw` is a slash command
@@ -171,23 +170,11 @@ func (m *model) buildUserMessage(raw string) (core.ChatMessage, bool) {
 	}, true
 }
 
-// adaptTurnForProvider fits a user turn to the active model's image capability,
-// returning the content to send and the images the provider may receive. A
-// vision-capable model takes both unchanged. A text-only one cannot receive
-// image parts at all, so each image's path is inlined into the content and no
-// image comes back — the model then decides how to use the path (e.g. call an
-// MCP image-description tool) rather than the app refusing the turn.
-//
-// Callers keep the original slice on the message they append to conv, so the
-// image stays visible in the transcript and a later switch to a vision-capable
-// model can still use it; dropImagesTextOnlyModelRejects strips those on the
-// way back out when a session is rebuilt. It does not cover the live turn:
-// seedAgentMessages drops the pending message from the chain, and an already
-// active session skips seeding altogether — which is why the images must not
-// reach Send in the first place.
-func (m *model) adaptTurnForProvider(content string, images []core.Attachment) (string, []core.Attachment) {
+// describeImages adds file paths when a model cannot view attached images.
+// Native attachments remain in history; RequestMessages filters inference input.
+func (m *model) describeImages(content string, images []core.Attachment) string {
 	if len(images) == 0 || llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
-		return content, images
+		return content
 	}
 	var sb strings.Builder
 	if content != "" {
@@ -210,7 +197,7 @@ func (m *model) adaptTurnForProvider(content string, images []core.Attachment) (
 		}
 		fmt.Fprintf(&sb, "[Image #%d: %s]\n", i+1, path)
 	}
-	return strings.TrimSpace(sb.String()), nil
+	return strings.TrimSpace(sb.String())
 }
 
 // drainInputQueueWhileIdle pops one queued item (if any) and runs it

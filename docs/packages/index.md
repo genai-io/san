@@ -50,13 +50,14 @@ visible right next to its original. Every page follows [`TEMPLATE.md`](TEMPLATE.
 | [`plugin`](2-feature/plugin.md) | Plugin loader / installer / marketplace; pushes contributions to other feature packages. |
 | [`reminder`](2-feature/reminder.md) | `<system-reminder>` queue with provider re-emission. |
 | [`search`](2-feature/search.md) | Pluggable web search backends behind a small `Provider` interface. |
-| [`session`](2-feature/session.md) | Transcript persistence, resume, fork, projection. |
+| [`session`](2-feature/session.md) | Durable identity, product state, native message writer, resume, and fork. |
 | [`setting`](2-feature/setting.md) | Settings loader + central permission decision gate. |
 | [`selflearn`](2-feature/selflearn.md) | Background review loop that writes durable memory and agent-created skills. |
 | [`skill`](2-feature/skill.md) | Skill loader, state store, active-skills block consumed by the `skills-directory` reminder. |
 | [`subagent`](2-feature/subagent.md) | Subagent registry + `Executor` that spawns background `core.Agent` instances. |
 | [`task`](2-feature/task.md) | Background task manager (bash and agent tasks). |
 | [`tool`](2-feature/tool.md) | Tool registry, schemas, permission gate, side-effect store. |
+| [`transcript`](2-feature/transcript.md) | Native event log, ancestry, recovery, writer leases, and derived summaries. |
 | [`workflow`](2-feature/workflow.md) | Markdown-defined graph of subagent turns: parser, validation, scheduler, summary. |
 
 ## 3 · core

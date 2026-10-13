@@ -69,17 +69,13 @@ func brokenImagePath(t *testing.T, m *model) string {
 	return path
 }
 
-// A text-only model gets the image's path as text and no attachment: the path
-// is something it can act on (an MCP tool can read the file), the attachment is
-// what the provider rejects.
-func TestAdaptTurnForProviderWithholdsImagesFromTextOnlyModel(t *testing.T) {
+// A text-only model gets an inspectable image path in its input text. The
+// attachment stays native and is filtered only when making the request.
+func TestDescribeImagesAddsPathsForTextOnlyModels(t *testing.T) {
 	m, _ := textOnlyModel(t)
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{chartImage()})
+	content := m.describeImages("what does this show", []core.Attachment{chartImage()})
 
-	if len(providerImages) != 0 {
-		t.Fatalf("provider images = %+v, want none — a text-only provider rejects image parts", providerImages)
-	}
 	if !strings.Contains(content, "[Image #1: /tmp/chart.png]") {
 		t.Fatalf("content = %q, want the image path inlined", content)
 	}
@@ -88,23 +84,18 @@ func TestAdaptTurnForProviderWithholdsImagesFromTextOnlyModel(t *testing.T) {
 	}
 }
 
-func TestAdaptTurnForProviderLeavesVisionModelsAlone(t *testing.T) {
+func TestDescribeImagesLeavesVisionModelTextUnchanged(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	m.env.LLMProvider = &restartStubProvider{} // no ImageSupportProvider — images supported
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{chartImage()})
+	content := m.describeImages("what does this show", []core.Attachment{chartImage()})
 
-	if len(providerImages) != 1 {
-		t.Fatalf("provider images = %d, want the attachment passed through", len(providerImages))
-	}
 	if content != "what does this show" {
 		t.Fatalf("content = %q, want it untouched", content)
 	}
 }
 
-// The turn-boundary release is a second send path, and it reaches the provider
-// without passing through seedAgentMessages — the session is already active by
-// then, so nothing downstream strips the images.
+// Queued turns use the same per-inference filter as direct submissions.
 func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	m, provider := textOnlyModel(t)
 	m.userInput.Queue.Enqueue("what does this show", []core.Attachment{chartImage()})
@@ -139,6 +130,9 @@ func TestReleasedQueuedImageNeverReachesATextOnlyProvider(t *testing.T) {
 	if len(last.Images) != 1 {
 		t.Fatalf("conversation message carries %d image(s), want 1: %+v", len(last.Images), last)
 	}
+	if chain := m.services.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
+		t.Fatal("text-only request filtering erased the native attachment")
+	}
 }
 
 // The queued text keeps the [Image #N] markers the textarea used to position
@@ -160,6 +154,28 @@ func TestReleasedQueuedMessageSplitsDisplayFromContent(t *testing.T) {
 	}
 	if !strings.Contains(last.DisplayContent, "[Image #1]") {
 		t.Errorf("display content = %q, want the marker kept for rendering", last.DisplayContent)
+	}
+}
+
+func TestQueuedInlineImageKeepsItsPathForTextOnlyInference(t *testing.T) {
+	m, provider := textOnlyModel(t)
+	m.userInput.Queue.Enqueue("look at [Image #1] please", []core.Attachment{chartImage()})
+	cmd, released := m.releaseQueuedMessage()
+	if !released {
+		t.Fatal("queued inline image was not released")
+	}
+	runCmd(cmd)
+	select {
+	case request := <-provider.requests:
+		last := request[len(request)-1]
+		if !strings.Contains(last.Text(), "/tmp/chart.png") || strings.Contains(last.Text(), "[Image #1] please") || imageBlocks(last) != 0 {
+			t.Fatalf("text-only inline image lost its path or filtering: %+v", last)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("queued inline image did not reach inference")
+	}
+	if chain := m.services.Agent.Messages(); len(chain) == 0 || imageBlocks(chain[0]) != 1 {
+		t.Fatal("queued inline image was removed from native history")
 	}
 }
 
@@ -243,10 +259,7 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 	m, _ := textOnlyModel(t)
 	pasted := core.Attachment{Image: ai.Image{MediaType: "image/png", Data: "ZmFrZQ==", FileName: "clipboard_120000.png"}}
 
-	content, providerImages := m.adaptTurnForProvider("what does this show", []core.Attachment{pasted})
-	if len(providerImages) != 0 {
-		t.Fatalf("provider images = %+v, want none", providerImages)
-	}
+	content := m.describeImages("what does this show", []core.Attachment{pasted})
 	store := m.services.Session.Store()
 	entries, err := os.ReadDir(store.ImagesDir("sess-1"))
 	if err != nil || len(entries) != 1 {

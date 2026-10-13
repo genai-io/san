@@ -22,13 +22,14 @@ import (
 )
 
 func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
+	client := m.buildLLMClient()
 	return conv.CompactRequest{
 		Ctx:    context.Background(),
-		Client: m.buildLLMClient(),
+		Client: client,
 		// Summarization runs on the active model, so the chain has to clear the
 		// same bar as an agent turn: a text-only provider rejects image parts,
 		// and the conversation keeps images even when the model can't read them.
-		Messages:     m.dropImagesTextOnlyModelRejects(m.conv.ConvertToProvider()),
+		Messages:     client.RequestMessages(m.seedAgentMessages("")),
 		SummaryFocus: focus,
 		HookEngine:   m.services.Hook,
 		Trigger:      trigger,
@@ -79,6 +80,7 @@ func (m *model) OnCompacted(info core.Compacted) tea.Cmd {
 	// notice (see RenderMessageAt: IsCompactSummary), so the transcript shows
 	// one clean line instead of the raw summary markdown or a "❭" user turn.
 	m.conv.Append(core.ChatMessage{
+		ID:             info.SummaryMessageID,
 		Role:           core.ChatUser,
 		Content:        core.FormatCompactSummary(info.Summary),
 		DisplayContent: fmt.Sprintf("≡ Conversation compacted — %s summarized (scroll up for history)", kit.Plural(info.OriginalCount, "message")),
@@ -148,9 +150,30 @@ func (m *model) HandleCompactResult(msg conv.CompactResultMsg) tea.Cmd {
 	if m.services.Agent.Compact(msg.Summary) {
 		return tea.Batch(m.CommitMessages()...)
 	}
-	return m.OnCompacted(core.Compacted{
-		Summary:       msg.Summary,
-		OriginalCount: msg.OriginalCount,
-		Trigger:       "manual",
-	})
+	// A resumed conversation may not have a runtime yet. Record the same
+	// native summary and boundary as live compaction before replacing the UI.
+	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
+		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
+		return tea.Batch(m.CommitMessages()...)
+	}
+	provider := ""
+	if m.env.LLMProvider != nil {
+		provider = m.env.LLMProvider.Name()
+	}
+	w := m.services.Session.NewWriter("main", provider, m.env.GetModelID(), 0)
+	if w == nil || w.Err() != nil {
+		m.conv.Compact.Complete("Compaction could not be saved: session writer unavailable", true)
+		return tea.Batch(m.CommitMessages()...)
+	}
+	summary := core.UserMessage(core.FormatCompactSummary(msg.Summary), nil)
+	summary.ID = core.NewMessageID()
+	info := core.Compacted{Summary: msg.Summary, OriginalCount: msg.OriginalCount, SummaryMessageID: summary.ID, Trigger: "manual"}
+	w.OnAgentEvent(sdkagent.MessageAdded{Message: summary})
+	w.OnAgentEvent(info)
+	if err := w.Err(); err != nil {
+		m.conv.Compact.Complete(fmt.Sprintf("Compaction could not be saved: %v", err), true)
+		return tea.Batch(m.CommitMessages()...)
+	}
+	m.services.Agent.SetMessages([]core.Message{summary})
+	return m.OnCompacted(info)
 }

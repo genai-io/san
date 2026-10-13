@@ -535,10 +535,6 @@ func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
 	}
-	// Keep the snapshot across a failed Start so the user can retry without
-	// losing history; a successful replacement owns its own copy now.
-	m.agentRestartMessages = nil
-
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
@@ -556,12 +552,10 @@ func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 }
 
 // seedAgentMessages returns the authoritative chain for a newly-built main
-// agent. A deliberate stop snapshots the live core.Agent before discarding it;
-// that snapshot wins over the UI rendering model, whose rows may have been
-// committed, cleared, or assigned different IDs. Cold starts and restored
-// sessions have no snapshot and therefore seed from the UI conversation.
+// agent. Runtime retains native messages across stops and errors; UI rows are
+// only a fallback before any native conversation exists.
 func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
-	coreMessages := m.agentRestartMessages
+	coreMessages := m.services.Agent.Messages()
 	if len(coreMessages) == 0 {
 		coreMessages = m.conv.ConvertToProvider()
 	}
@@ -571,32 +565,7 @@ func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}
-	return m.dropImagesTextOnlyModelRejects(coreMessages)
-}
-
-// dropImagesTextOnlyModelRejects removes image attachments from a seeded chain
-// the active model can't accept, keeping the surrounding text. The adaptTurnForProvider
-// call in the submit path handles new turns, but history predating the current model
-// still holds them — switch a conversation from a vision-capable model to a
-// text-only one and every later turn replays those images, which the provider
-// rejects outright. Every rebuild passes through here, so the switch itself
-// (which stops the session) is enough to clear them.
-func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Message {
-	if llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
-		return msgs
-	}
-	stripped := make([]core.Message, len(msgs))
-	for i, msg := range msgs {
-		content := make(ai.Content, 0, len(msg.Content))
-		for _, block := range msg.Content {
-			if block.Type != ai.BlockImage {
-				content = append(content, block)
-			}
-		}
-		msg.Content = content
-		stripped[i] = msg
-	}
-	return stripped
+	return coreMessages
 }
 
 // agentSendFailedMsg reports a message the agent never accepted; a delivered
@@ -684,12 +653,6 @@ func (m *model) wireReminderProviders() {
 }
 
 func (m *model) StopAgentRuntime() {
-	// Capture before Stop retires the active run. This also covers stops that
-	// happen before ensureAgentRuntime runs (agent toggles, provider changes,
-	// terminal outbox events), which the old rebuild-local carry-over missed.
-	if messages := m.services.Agent.Messages(); len(messages) > 0 {
-		m.agentRestartMessages = messages
-	}
 	m.services.Agent.Stop()
 	m.teardownSelfLearn()
 }
@@ -698,8 +661,7 @@ func (m *model) StopAgentRuntime() {
 // the next rebuild. Use it when the conversation itself is being cleared or
 // replaced (for example /clear and /resume).
 func (m *model) ResetAgentRuntime() {
-	m.agentRestartMessages = nil
-	m.services.Agent.Stop()
+	m.services.Agent.Reset()
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.

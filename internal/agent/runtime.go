@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type run struct {
 type Runtime struct {
 	mu         sync.RWMutex
 	run        *run
+	messages   []core.Message // native chain retained between runs
 	permGate   *PermissionGate
 	pluginRoot string // see SetPluginRoot
 	// build is set by tests to substitute the agent; nil means buildAgent.
@@ -57,6 +59,7 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	run := &run{agent: ag, cancel: cancel, done: make(chan struct{})}
 	s.run = run
+	s.messages = nil
 	s.permGate = pg
 	go s.execute(run, ctx)
 
@@ -70,6 +73,7 @@ func (s *Runtime) execute(run *run, ctx context.Context) {
 	_ = run.agent.Run(ctx)
 
 	s.mu.Lock()
+	s.messages = run.agent.Messages()
 	s.run = nil
 	s.permGate = nil
 	s.pluginRoot = ""
@@ -121,18 +125,39 @@ func (s *Runtime) Active() bool {
 	return s.run != nil
 }
 
-// Messages returns a snapshot of the running agent's conversation chain, or nil
-// when no agent is active. This is the authoritative context the agent is
-// actually sending to the model — used to carry history into a rebuilt agent so
-// a mid-conversation rebuild never drops the conversation.
+// Messages returns the native conversation, including after a run exits.
+// Provider errors and deliberate stops retain the same chain for retry.
 func (s *Runtime) Messages() []core.Message {
 	s.mu.RLock()
 	run := s.run
+	messages := slices.Clone(s.messages)
 	s.mu.RUnlock()
 	if run == nil {
-		return nil
+		return messages
 	}
 	return run.agent.Messages()
+}
+
+// SetMessages replaces the native chain, including before the first run.
+// Resume and inactive compaction use this without rebuilding from UI rows.
+func (s *Runtime) SetMessages(messages []core.Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run != nil {
+		s.run.agent.SetMessages(messages)
+		return
+	}
+	s.messages = slices.Clone(messages)
+}
+
+// Reset stops the run and discards its conversation once shutdown completes.
+func (s *Runtime) Reset() {
+	s.Stop()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.run == nil {
+		s.messages = nil
+	}
 }
 
 // Send delivers a message to the active agent. Callers create the Message once
