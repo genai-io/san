@@ -22,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"go.uber.org/zap"
 )
 
@@ -34,6 +35,7 @@ type ProviderResolver interface {
 
 // Executor runs agent LLM loops
 type Executor struct {
+	interactions               tool.AgentInteractions
 	provider                   llm.Provider
 	registry                   *Registry
 	resolver                   ProviderResolver // resolves "vendor/model" overrides; nil = same-provider only
@@ -77,6 +79,11 @@ func NewExecutor(llmProvider llm.Provider, cwd string, parentModelID string, hoo
 		parentModelID: parentModelID,
 		hooks:         hookEngine,
 	}
+}
+
+// SetInteractions configures UI forwarding before any workers are launched.
+func (e *Executor) SetInteractions(interactions tool.AgentInteractions) {
+	e.interactions = interactions
 }
 
 // SetParentPermissionMode provides the parent session's live permission mode.
@@ -166,6 +173,9 @@ func (e *Executor) ParentModelID() string {
 // SubagentStart hook carried. Cancelled runs persist their conversation and
 // partial output for inspection.
 func (e *Executor) Run(ctx context.Context, req tool.AgentExecRequest) (*AgentResult, error) {
+	if req.ParentToolCallID == "" {
+		req.ParentToolCallID = core.ToolCallIDFromContext(ctx)
+	}
 	run, err := e.prepareRun(ctx, req)
 	if err != nil {
 		return nil, err
@@ -200,7 +210,9 @@ func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, er
 	ctx, cancel := context.WithCancel(context.Background())
 	// Resolve inherited permissions before registration and goroutine scheduling,
 	// not later when the parent may already have changed modes.
-	req.OnQuestion = nil // Background workers have no interactive question channel.
+	if e.interactions == nil {
+		req.OnQuestion = nil // Headless background workers have no question channel.
+	}
 	run, err := e.prepareRun(ctx, req)
 	if err != nil {
 		cancel()
@@ -386,7 +398,7 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		mcpGetter = e.mcpManager.ToolSchemas
 	}
 	toolSet := newAgentToolSet(rc.config.AllowTools.Names(), rc.config.DenyTools.BareNames(), e.disabledToolsSnapshot(), mcpGetter)
-	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools)
+	schemas := filterSchemasForPermission(toolSet.Tools(), rc.permMode, rc.config.AllowTools, e.interactions != nil)
 	brief := rc.brief
 	brief.ToolConstraints = effectiveToolConstraints(rc.config, rc.permMode, schemas)
 	brief.ToolGuidance = fileReadToolGuidance(schemas, rc.permMode)
@@ -409,9 +421,11 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 			return ag.Messages()
 		}),
 	}
-	// Foreground runs route AskUserQuestion through the spawning turn's UI.
-	// Background runs have no question channel (OnQuestion is stripped).
-	if run.req.OnQuestion != nil {
+	if e.interactions != nil {
+		adaptOpts = append(adaptOpts, tool.WithAskUser(func(ctx context.Context, request *tool.QuestionRequest) (*tool.QuestionResponse, error) {
+			return e.interactions.Ask(ctx, run.interactionSource(ctx), request)
+		}))
+	} else if run.req.OnQuestion != nil {
 		adaptOpts = append(adaptOpts, tool.WithAskUser(tool.AskUserFunc(run.req.OnQuestion)))
 	}
 	tools := tool.AdaptToolRegistry(schemas, run.currentCwd, adaptOpts...)
@@ -423,8 +437,15 @@ func (e *Executor) buildAgent(ctx context.Context, run *preparedRun, onToolExec 
 		}
 	}
 
-	permFn := subagentPermissionFunc(rc.permMode, rc.config.AllowTools, rc.config.DenyTools)
-	gate := core.Gates(activity(onToolExec), tool.Permission(permFn))
+	var prompt perm.PermissionFunc
+	if e.interactions != nil {
+		prompt = e.interactionApproval(run)
+	}
+	permFn := subagentPermissionFuncWithPrompt(rc.permMode, rc.config.AllowTools, rc.config.DenyTools, prompt)
+	permissionGate := tool.Permission(permFn)
+	gate := core.Gates(activity(onToolExec), func(ctx context.Context, call sdkagent.PreToolContext) (sdkagent.Decision, error) {
+		return permissionGate(core.WithToolCallID(ctx, call.Call.ID), call)
+	})
 
 	llmClient := llm.NewClient(rc.provider, rc.modelID, 0)
 	ag = core.NewAgent(core.Config{
@@ -523,7 +544,7 @@ func (e *Executor) taskPrompt(rc *runConfig, req tool.AgentExecRequest) string {
 func (e *Executor) collectSubagentReminders(skills string, mode PermissionMode, allow ToolList) []string {
 	var reminders []string
 	reminders = append(reminders, wrapNonEmpty(skills)...)
-	if canEditWorkspace(mode, allow) {
+	if canEditWorkspace(mode, allow, e.interactions != nil) {
 		reminders = append(reminders, wrapNonEmpty(reminder.WrapMemory("project", e.projectInstructions))...)
 	}
 	return reminders
@@ -540,13 +561,15 @@ func wrapNonEmpty(body string) []string {
 // workspace — the signal for whether project conventions are worth handing it.
 // True when the permission mode auto-accepts mutations (edit/bypass), or when
 // an explicit allow_tools rule grants an edit-class tool (Edit/Write/…) even
-// under a mode, such as default, that would otherwise deny them.
-func canEditWorkspace(mode PermissionMode, allow ToolList) bool {
+// under a mode, such as default, that would otherwise deny them. A live UI can
+// approve default-mode edits once, so those workers need the same conventions.
+func canEditWorkspace(mode PermissionMode, allow ToolList, canPrompt bool) bool {
 	switch operationMode(mode) {
 	case setting.ModeAutoAccept, setting.ModeBypassPermissions:
 		return true
 	}
-	return slices.ContainsFunc(allow.Names(), perm.IsEditTool)
+	return slices.ContainsFunc(allow.Names(), perm.IsEditTool) ||
+		(canPrompt && allow == nil && setting.ModeDefault(tool.ToolWrite, operationMode(mode)).Behavior == perm.Prompt)
 }
 
 func interpretStopReason(result *core.Result, maxSteps int) (success bool, errMsg string) {
@@ -624,9 +647,8 @@ func shouldRetryWithParentModel(err error, modelID, parentModelID string) bool {
 }
 
 // operationMode maps a subagent PermissionMode to the setting.OperationMode that
-// drives the shared mode-default table (setting.ModeDefault). dontAsk folds to a
-// read-only-style denial since subagents never prompt; auto aliases to
-// acceptEdits until the safety classifier ships.
+// drives the shared mode-default table (setting.ModeDefault). dontAsk never
+// prompts; auto aliases to acceptEdits until the safety classifier ships.
 func operationMode(mode PermissionMode) setting.OperationMode {
 	switch NormalizePermissionMode(string(mode)) {
 	case PermissionExplore:
@@ -675,8 +697,8 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 
 // subagentPermissionFunc returns the subagent permission gate. The pipeline
 // matches docs/concepts/permission-model.md: deny_tools, circuit breaker,
-// confirmation tiers, allow_tools, mode default, with Prompt collapsing to
-// Deny because subagents cannot ask. bypassPermissions mode skips the
+// confirmation tiers, allow_tools, mode default. Ordinary Prompt decisions use
+// the configured UI responder, or fail closed when none is available. bypassPermissions skips the
 // confirmation tiers — only the root/home-removal circuit breaker holds in
 // every mode.
 //
@@ -689,17 +711,20 @@ func (e *Executor) skillsDirectoryFor(config *AgentConfig) string {
 // not gated here: the Agent tool is parent-only, so workers never see it — the
 // agent model is flat.
 func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList) perm.PermissionFunc {
+	return subagentPermissionFuncWithPrompt(mode, allowRules, denyRules, nil)
+}
+
+func subagentPermissionFuncWithPrompt(mode PermissionMode, allowRules, denyRules ToolList, prompt perm.PermissionFunc) perm.PermissionFunc {
 	mode = NormalizePermissionMode(string(mode))
 	opMode := operationMode(mode)
 	display := displayPermissionMode(mode)
 
-	return func(_ context.Context, name string, input map[string]any) (bool, string) {
+	return func(ctx context.Context, name string, input map[string]any) (bool, string) {
 		if denyRules.Matches(name, input) {
 			return false, fmt.Sprintf("tool %s is blocked by deny_tools", name)
 		}
 		// Circuit breaker: a recursive removal of the filesystem root or the
-		// home directory is denied in every mode, bypass included — subagents
-		// cannot ask, so the breaker is a hard deny.
+		// home directory is a hard deny in every mode, bypass included.
 		if reason := setting.CircuitBreakerReason(name, input); reason != "" {
 			return false, fmt.Sprintf("tool %s blocked: %s", name, reason)
 		}
@@ -771,8 +796,11 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 			return true, ""
 		case perm.Reject:
 			return false, fmt.Sprintf("tool %s is denied in %s mode", name, display)
-		default: // perm.Prompt — subagents cannot ask
-			return false, fmt.Sprintf("%s permission denied: command or tool would require approval in %s mode; subagents cannot ask. Pre-authorize it in allow_tools or have the parent execute it", name, display)
+		default: // perm.Prompt only; hard rejects above never reach the UI.
+			if prompt != nil {
+				return prompt(ctx, name, input)
+			}
+			return false, fmt.Sprintf("%s permission denied: command or tool would require approval in %s mode; no live session UI is available. Pre-authorize it in allow_tools or have the parent execute it", name, display)
 		}
 	}
 }
@@ -781,7 +809,7 @@ func subagentPermissionFunc(mode PermissionMode, allowRules, denyRules ToolList)
 // agent can actually use under its mode + allow_tools. UX hint only — the
 // permission gate is still authoritative. A non-nil allowTools acts as a
 // whitelist regardless of mode.
-func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, allowTools ToolList) []core.ToolSchema {
+func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, allowTools ToolList, canPrompt bool) []core.ToolSchema {
 	mode = NormalizePermissionMode(string(mode))
 	whitelist := allowTools != nil
 
@@ -793,7 +821,7 @@ func filterSchemasForPermission(schemas []core.ToolSchema, mode PermissionMode, 
 			}
 			continue
 		}
-		if modeAllowsSchema(mode, schema.Name) {
+		if modeAllowsSchema(mode, schema.Name) || (canPrompt && !tool.IsParentOnlyTool(schema.Name) && setting.ModeDefault(schema.Name, operationMode(mode)).Behavior == perm.Prompt) {
 			filtered = append(filtered, schema)
 		}
 	}

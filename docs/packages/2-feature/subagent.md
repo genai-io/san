@@ -123,6 +123,14 @@ func ResetDefaultRegistry()           // test-only
   budget; neither `mode` nor `model` is a tool parameter. Ordinary workers inherit
   parent permissions, including YOLO. Named definitions and internal workflow
   policies retain their configured limits; `deny_tools` still wins.
+- `executor_interaction.go` binds each UI request to its worker/task, spawning
+  and worker tool-call IDs, current cwd and resolved permission mode.
+  `SetInteractions` is supplied internally by the TUI, never by model arguments.
+  Foreground and background prompts share the main UI's FIFO; replies resume only
+  their original caller. Worker approvals are once/reject, not parent grants.
+  Actual questions also forward in YOLO. Hard denials remain hard denials, and
+  absent/closed UI fails promptly. Interactive default workers can request edits,
+  so their reachable edit schemas and project instructions are retained.
 - Worker models are configuration-driven: `subagentModel` in scoped
   `settings.json` selects the default worker model (ID, alias, or `vendor/model`).
   Empty/unset uses the current main-session model; `"inherit"` explicitly resets
@@ -222,6 +230,10 @@ func ResetDefaultRegistry()           // test-only
 ## Tests
 
 ```
+tests/integration/agent/interaction_forwarding_test.go — real tool execution after approval/rejection.
+tests/integration/agent/interaction_questions_test.go — YOLO questions, independent cancellation, unavailable UI.
+internal/app/interactions_renderer_test.go — real TUI keyboard approval/answer routing to workers.
+internal/app/conv/interaction_test.go — original reply endpoints and transport closure.
 internal/subagent/executor_test.go      — end-to-end run scenarios.
 internal/subagent/executor_cwd_test.go  — deterministic batch handoffs and cancellation.
 internal/subagent/executor_cwd_isolation_test.go — repeated IDs cannot cross worker/main ownership.

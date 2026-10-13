@@ -102,6 +102,7 @@ type initialPromptMsg string
 // print — whichever of the sixteen panels it was, and however it was
 // dismissed — and, in a group, the loop starting and this member's state.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.pruneInteractions()
 	_, hadOverlay := m.activeOverlay()
 	model, cmd := m.dispatch(msg)
 	if refresh := m.syncGitBar(); refresh != nil {
@@ -119,6 +120,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Batch(cmd, poll)
 	}
 	m.syncGroupState()
+	if next := m.advanceInteractions(); next != nil {
+		cmd = tea.Batch(cmd, next)
+	}
+	switch msg.(type) {
+	case conv.InteractionRequestMsg, conv.AgentActivityBatchMsg, conv.AgentActivityMsg, conv.AgentToUITickMsg:
+		cmd = tea.Batch(cmd, m.conv.AgentToUI.Check())
+	}
 	if m.flush.output != nil && m.flush.frameForPrint == nil {
 		// Hold the pre-ready redraw too; it can still contain the whole payload
 		// rather than the single chunk that prepareScrollbackPrint will select.
@@ -134,6 +142,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case conv.PermGateMsg:
+		if msg.Gate != nil && msg.Gate != m.services.Agent.PermissionGate() {
+			return m, nil
+		}
+		return m, m.HandlePermGate(msg.Request)
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
 		return m, m.handleSubmit()

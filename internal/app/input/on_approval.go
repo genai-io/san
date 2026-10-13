@@ -2,6 +2,7 @@ package input
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -251,6 +252,11 @@ func (p *ApprovalModel) renderInline() string {
 	sb.WriteString(" ")
 	sb.WriteString(approvalTitleStyle().Render(title))
 	sb.WriteString("\n\n")
+	if p.request.WorkingDirectory != "" {
+		context := p.request.PermissionMode + " · cwd: " + strconv.QuoteToGraphic(p.request.WorkingDirectory)
+		sb.WriteString(" " + approvalHintStyle().Render(kit.TruncateText(context, contentWidth-2)))
+		sb.WriteString("\n\n")
+	}
 
 	if p.diffPreview != nil {
 		sb.WriteString(p.diffPreview.render(contentWidth))
@@ -332,11 +338,11 @@ type approvalOption struct {
 // reordering — happens here and propagates to renderMenu, HandleKeypress,
 // and BuildApprovalOptions automatically.
 func buildApprovalOptionRows(req *perm.PermissionRequest) []approvalOption {
-	rows := []approvalOption{
-		{Label: "Yes", Approved: true},
-		{Label: allSessionLabel(req), Hint: "(shift+tab)", Approved: true, AllowAll: true},
+	rows := []approvalOption{{Label: "Yes", Approved: true}}
+	if req == nil || !req.OnceOnly {
+		rows = append(rows, approvalOption{Label: allSessionLabel(req), Hint: "(shift+tab)", Approved: true, AllowAll: true})
 	}
-	if req != nil && len(req.AllowRules) > 0 {
+	if req != nil && !req.OnceOnly && len(req.AllowRules) > 0 {
 		rows = append(rows, approvalOption{Label: alwaysAllowLabel(req.AllowRules), Approved: true, Persist: true})
 	}
 	return append(rows, approvalOption{Label: "No"})

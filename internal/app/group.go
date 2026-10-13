@@ -125,7 +125,7 @@ func (m *model) syncGroupState() {
 	}
 	state := group.Idle
 	switch {
-	case m.services.Agent.PendingPermission() != nil:
+	case m.interactions.active != nil:
 		state = group.Approval
 	case m.conv.Stream.Active:
 		state = group.Working

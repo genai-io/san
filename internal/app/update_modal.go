@@ -78,73 +78,41 @@ func (m *model) handleAutopilotModeSettled() tea.Cmd {
 }
 
 func (m *model) updateMode(msg tea.Msg) (tea.Cmd, bool) {
-	switch msg := msg.(type) {
-	case conv.QuestionRequestMsg:
-		// Questions arrive via AgentToUI.Check(); re-arm the poll so the next
-		// progress update or question keeps flowing while the modal is up.
-		cmd := m.handleQuestionRequest(msg)
-		if m.conv.AgentToUI != nil {
-			cmd = tea.Batch(cmd, m.conv.AgentToUI.Check())
-		}
-		return cmd, true
-	case conv.SecretPromptRequestMsg:
-		cmd := m.handleSecretPromptRequest(msg)
-		if m.conv.AgentToUI != nil {
-			cmd = tea.Batch(cmd, m.conv.AgentToUI.Check())
-		}
-		return cmd, true
+	if msg, ok := msg.(conv.InteractionRequestMsg); ok {
+		return m.enqueueInteraction(msg.Request), true
 	}
 	return nil, false
 }
 
-func (m *model) handleQuestionRequest(msg conv.QuestionRequestMsg) tea.Cmd {
-	m.conv.Modal.PendingQuestion = msg.Request
-	m.conv.Modal.PendingQuestionReply = msg.Reply
-	m.conv.Modal.Question.Show(msg.Request, m.env.Width)
-	cmds := m.CommitMessages()
-	// Question steer (#4): show the modal, then let the copilot try to answer it
-	// on the user's behalf (it defers back to the human when unsure).
-	if cmd := m.autopilotAnswerQuestionCmd(msg.Request); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-	return tea.Batch(cmds...)
-}
-
 func (m *model) handleQuestionResponse(msg conv.QuestionResponseMsg) tea.Cmd {
-	reply := m.conv.Modal.PendingQuestionReply
-	m.conv.Modal.PendingQuestionReply = nil
-	defer func() { m.conv.Modal.PendingQuestion = nil }()
-
-	if reply == nil {
+	req := m.interactions.active
+	if !m.validInteraction(req) || req.Question == nil || req.Question.Request != msg.Request {
 		return nil
 	}
-
+	response := msg.Response
 	if msg.Cancelled {
-		reply <- &tool.QuestionResponse{
-			RequestID: msg.Request.ID,
-			Cancelled: true,
-		}
+		response = &tool.QuestionResponse{RequestID: msg.Request.ID, Cancelled: true}
+	}
+	if response == nil || response.RequestID != msg.Request.ID {
 		return nil
 	}
-	reply <- msg.Response
-	return nil
-}
-
-func (m *model) handleSecretPromptRequest(msg conv.SecretPromptRequestMsg) tea.Cmd {
-	m.conv.Modal.PendingSecretReply = msg.Reply
-	m.userInput.Secret.Show(msg.Prompt, m.env.Width)
-	return nil
+	select {
+	case req.Question.Reply <- response:
+	default:
+	}
+	m.finishInteraction()
+	return m.advanceInteractions()
 }
 
 func (m *model) handleSecretPromptResponse(msg input.SecretPromptResponseMsg) tea.Cmd {
-	reply := m.conv.Modal.PendingSecretReply
-	m.conv.Modal.PendingSecretReply = nil
-	if reply == nil {
+	req := m.interactions.active
+	if !m.validInteraction(req) || req.Secret == nil || req.ID != msg.RequestID {
 		return nil
 	}
-	reply <- conv.SecretPromptResponse{
-		Value:     msg.Value,
-		Cancelled: msg.Cancelled,
+	select {
+	case req.Secret.Reply <- conv.SecretPromptResponse{Value: msg.Value, Cancelled: msg.Cancelled}:
+	default:
 	}
-	return nil
+	m.finishInteraction()
+	return m.advanceInteractions()
 }

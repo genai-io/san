@@ -64,6 +64,21 @@ on `*model`, never reaching down into root from a sub-model. Source 2
 (agent → main) is not an app sub-package: it is the process-wide
 [`broker`](../2-feature/broker.md), which the root opens as `broker.Main`.
 
+### Human interactions
+
+`conv.AgentToUI` carries context-bound requests over one session-owned channel.
+`interactions.go` owns a FIFO and one active request across approvals, questions
+and secret prompts. A modal never replaces another unanswered request; existing
+panels and native-history handoffs finish before the next prompt is shown.
+The transport poll continues while the main agent is idle or a modal is open.
+
+Each response must match the active request. Cancellation retires only its
+caller; reset and shutdown close the transport logically and reject late delivery.
+Worker permission metadata comes from its backend-prepared context, not the
+parent's cwd or grants. Only once/reject is offered for worker approvals.
+`interactions_renderer_test.go` drives real modal keys and verifies that worker
+tool execution and the next inference receive the decision/answer.
+
 ### Known Violations
 
 - **`services` snapshots 16 singletons via `Default()` at construction.**

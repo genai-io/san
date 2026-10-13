@@ -963,7 +963,8 @@ func validQuestionLabels(q tool.Question, labels []string) []string {
 func (m *model) handleAutopilotQuestion(msg autopilotQuestionMsg) tea.Cmd {
 	// Drop if the question is no longer pending (human answered, or agent stopped
 	// and drained it).
-	if m.conv.Modal.PendingQuestion != msg.req || m.conv.Modal.PendingQuestionReply == nil {
+	pending := m.interactions.active
+	if !m.validInteraction(pending) || pending.Question == nil || pending.Question.Request != msg.req {
 		return nil
 	}
 	// The human may have left AutoPilot (or turned the Question steer off) while

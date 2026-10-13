@@ -238,7 +238,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 	if got := state(); got != group.Working {
 		t.Errorf("running turn wrote %q", got)
 	}
-	m.services.Agent.SetPendingPermission(&agent.PermGateRequest{})
+	m.interactions.active = &conv.InteractionRequest{Permission: &agent.PermGateRequest{}}
 	m.syncGroupState()
 	if got := state(); got != group.Approval {
 		t.Errorf("parked approval wrote %q", got)

@@ -25,11 +25,10 @@ type sessionRun struct {
 }
 
 type Session struct {
-	mu                 sync.RWMutex
-	run                *sessionRun
-	permGate           *PermissionGate
-	pendingPermRequest *PermGateRequest
-	pluginRoot         string // see SetPluginRoot
+	mu         sync.RWMutex
+	run        *sessionRun
+	permGate   *PermissionGate
+	pluginRoot string // see SetPluginRoot
 	// build is set by tests to substitute the agent; nil means buildAgent.
 	build func(BuildParams) (core.Agent, *PermissionGate, error)
 }
@@ -73,7 +72,6 @@ func (s *Session) execute(run *sessionRun, ctx context.Context) {
 	s.mu.Lock()
 	s.run = nil
 	s.permGate = nil
-	s.pendingPermRequest = nil
 	s.pluginRoot = ""
 	close(run.done)
 	s.mu.Unlock()
@@ -189,14 +187,6 @@ const interruptDrainTimeout = 250 * time.Millisecond
 // Run loop and waits briefly for the turn to actually unwind. The next
 // Send goes through the same inbox channel and resumes the session in
 // place — no rebuild, no Stop/Start event pair.
-//
-// Also clears pendingPermRequest: a permission prompt that was open at
-// the moment of interrupt is dropped along with the turn, so the
-// dangling *PermGateRequest must not survive into the next turn (a
-// later SetPendingPermission would then race a stale request against a
-// fresh one). The clear runs AFTER the agent quiesces so an in-flight
-// PermissionFunc can't repopulate pendingPermRequest via PollPermGate
-// → SetPendingPermission between the clear and the cancel.
 func (s *Session) InterruptTurn() {
 	s.mu.RLock()
 	run := s.run
@@ -211,9 +201,6 @@ func (s *Session) InterruptTurn() {
 	case <-done:
 	case <-timer.C:
 	}
-	s.mu.Lock()
-	s.pendingPermRequest = nil
-	s.mu.Unlock()
 }
 
 func (s *Session) Outbox() <-chan core.Event {
@@ -229,18 +216,6 @@ func (s *Session) PermissionGate() *PermissionGate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.permGate
-}
-
-func (s *Session) PendingPermission() *PermGateRequest {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.pendingPermRequest
-}
-
-func (s *Session) SetPendingPermission(req *PermGateRequest) {
-	s.mu.Lock()
-	s.pendingPermRequest = req
-	s.mu.Unlock()
 }
 
 func (s *Session) System() core.System {

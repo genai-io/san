@@ -6,11 +6,13 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/log"
 )
 
 type bashPromptResponder struct {
-	model *model
+	model  *model
+	bridge *conv.AgentToUI
 }
 
 // RequestAnswer delegates an ordinary prompt to the auto-review LLM, which
@@ -35,7 +37,7 @@ func (r bashPromptResponder) RequestAnswer(ctx context.Context, command, prompt 
 }
 
 func (r bashPromptResponder) RequestSecret(ctx context.Context, prompt string) (string, bool) {
-	secret, ok, err := r.model.conv.AgentToUI.RequestSecret(ctx, prompt)
+	secret, ok, err := r.bridge.RequestSecret(ctx, prompt)
 	if err != nil {
 		log.Logger().Debug("secret prompt failed", zap.Error(err))
 		return "", false

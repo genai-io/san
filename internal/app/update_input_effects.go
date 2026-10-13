@@ -16,8 +16,7 @@ func (m *model) handleStreamCancel() tea.Cmd {
 	// The truncated reply and the cancelled tool results already tell the
 	// model the turn was cut short; no extra reminder is needed.
 	m.services.Agent.InterruptTurn()
-	m.conv.AgentToUI.DrainPendingQuestions()
-	m.conv.Modal.Question.Hide()
+	m.pruneInteractions()
 	m.cancelPendingToolCalls()
 	m.conv.MarkStreamInterrupted()
 	m.conv.Stream.Stop()

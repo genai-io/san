@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/agent"
-	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/session/transcript"
@@ -60,43 +59,43 @@ func permScope(d permissionDecision) string {
 }
 
 func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
-	if !m.services.Agent.Active() {
+	pending := m.interactions.active
+	if !m.validInteraction(pending) || pending.Permission == nil || !m.interactions.shown || decision.Request != m.interactions.permission {
 		return nil
 	}
-	req := m.services.Agent.PendingPermission()
-	m.services.Agent.SetPendingPermission(nil)
-	if req == nil {
-		return nil
+	req := pending.Permission
+	if m.interactions.permission.OnceOnly {
+		decision.AllowAll, decision.Persist = false, false
 	}
-	m.conv.Tool.ClearAwaitingApproval()
 	var noticeCmd tea.Cmd
 	reason := "user denied"
 	if decision.Approved {
 		reason = "user approved"
-		// Restamp: the call has been sitting on its PreToolEvent stamp since
-		// before the prompt went up, so the row's elapsed timer would otherwise
-		// report how long the user deliberated as execution time.
-		m.conv.Tool.MarkStarted(req.ToolCallID)
-		if decision.AllowAll && m.env.SessionPermissions != nil && decision.Request != nil {
+		callID := req.ToolCallID
+		if pending.Source.AgentID != "" {
+			callID = pending.Source.ParentToolCallID
+		}
+		m.conv.Tool.MarkStarted(callID)
+		if decision.AllowAll && m.env.SessionPermissions != nil {
 			m.env.SessionPermissions.AllowTool(decision.Request.ToolName)
 		}
-		if decision.Persist && decision.Request != nil {
+		if decision.Persist {
 			noticeCmd = m.saveAllowRules(decision.Request.AllowRules)
 		}
 	}
-	// Snapshot the request before releasing the permission gate. Agent tools
-	// add runtime callbacks to their input map as soon as the response wakes
-	// them; serializing that shared map afterward can otherwise race the
-	// write and crash the process with concurrent map iteration/write.
-	permRecord := permDecisionRecord(req, decision, reason, m.env.SessionMode())
+	// Snapshot and record before waking the worker: tool input can acquire
+	// runtime callbacks as soon as its gate resumes.
+	permRecord := permDecisionRecord(req, decision, reason, pending.Source.PermissionMode)
+	permRecord.Detail = interactionPermissionDetail(pending, decision.Request)
+	if rec := m.services.Session.Recorder(); rec != nil {
+		rec.RecordPermissionDecided(permRecord)
+	}
 	select {
 	case req.Response <- agent.PermGateResponse{Allow: decision.Approved, Reason: reason}:
 	default:
 	}
-	if rec := m.services.Session.Recorder(); rec != nil {
-		rec.RecordPermissionDecided(permRecord)
-	}
-	return tea.Batch(noticeCmd, conv.PollPermGate(m.services.Agent.PermissionGate()))
+	m.finishInteraction()
+	return tea.Batch(noticeCmd, m.advanceInteractions())
 }
 
 func permDecisionRecord(req *agent.PermGateRequest, decision permissionDecision, reason, mode string) transcript.PermissionRecord {

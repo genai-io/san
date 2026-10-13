@@ -603,6 +603,8 @@ func TestHandlePermGateMarksTheCallItAsksAbout(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 	m.services.Agent = &agent.Session{}
 	m.services.Session = &session.Setup{}
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.userInput.Approval.Hide()
 	m.conv.Tool.ClearAwaitingApproval()
 
 	m.HandlePermGate(&agent.PermGateRequest{
@@ -627,6 +629,8 @@ func TestHandlePermGateWithoutCallIDFallsBackToTheModalFreeze(t *testing.T) {
 	m := dockedModalModel(t, "about to check the disk")
 	m.services.Agent = &agent.Session{}
 	m.services.Session = &session.Setup{}
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.userInput.Approval.Hide()
 	spinnerGlyph := ansi.Strip(m.conv.Spinner.View())
 
 	m.HandlePermGate(&agent.PermGateRequest{

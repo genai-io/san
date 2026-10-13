@@ -12,13 +12,15 @@ import (
 // SecretPromptModel is a masked one-line prompt for secrets requested by an
 // already-approved interactive command.
 type SecretPromptModel struct {
-	active bool
-	prompt string
-	width  int
-	input  textinput.Model
+	active    bool
+	requestID uint64
+	prompt    string
+	width     int
+	input     textinput.Model
 }
 
 type SecretPromptResponseMsg struct {
+	RequestID uint64
 	Value     string
 	Cancelled bool
 }
@@ -46,7 +48,13 @@ func (p *SecretPromptModel) Show(prompt string, width int) {
 	// Width is sized by Render from p.width before the input is ever displayed.
 }
 
+func (p *SecretPromptModel) ShowRequest(prompt string, width int, id uint64) {
+	p.Show(prompt, width)
+	p.requestID = id
+}
+
 func (p *SecretPromptModel) Hide() {
+	p.requestID = 0
 	p.active = false
 	p.prompt = ""
 	p.input.SetValue("")
@@ -68,14 +76,15 @@ func (p *SecretPromptModel) HandleKeypress(msg tea.KeyMsg) tea.Cmd {
 	if !p.active {
 		return nil
 	}
+	id := p.requestID
 	switch msg.String() {
 	case "enter":
 		value := p.input.Value()
 		p.Hide()
-		return func() tea.Msg { return SecretPromptResponseMsg{Value: value} }
+		return func() tea.Msg { return SecretPromptResponseMsg{RequestID: id, Value: value} }
 	case "esc", "ctrl+c":
 		p.Hide()
-		return func() tea.Msg { return SecretPromptResponseMsg{Cancelled: true} }
+		return func() tea.Msg { return SecretPromptResponseMsg{RequestID: id, Cancelled: true} }
 	default:
 		var cmd tea.Cmd
 		p.input, cmd = p.input.Update(msg)

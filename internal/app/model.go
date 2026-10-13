@@ -34,7 +34,6 @@ import (
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/evolve"
-	"github.com/genai-io/san/internal/tool/perm"
 )
 
 const defaultWidth = 80
@@ -69,11 +68,7 @@ type model struct {
 	// model_scrollback.go (takeWelcomeBanner).
 	welcomePending bool
 
-	// deferredApproval waits for an in-flight scrollback handoff to finish before
-	// opening a permission prompt. Bubble Tea's insertAbove preserves its managed
-	// frame, so opening the prompt first would write the temporary approval panel
-	// into native terminal history.
-	deferredApproval *perm.PermissionRequest
+	interactions interactionState // UI-owned FIFO; one active reply endpoint across prompt kinds.
 
 	// reviewerApprovals / reviewerEscalations count auto-review outcomes this
 	// session for the status bar: gray-zone tool calls the judge auto-approved
@@ -188,6 +183,7 @@ const modeHintFor = 5 * time.Second
 func (m *model) Init() tea.Cmd {
 	m.modeHintUntil = time.Now().Add(modeHintFor)
 	cmds := []tea.Cmd{
+		m.conv.AgentToUI.Check(),
 		m.userInput.MCP.Selector.AutoConnect(),
 		trigger.TriggerCronTickNow(),
 		trigger.StartCronTicker(),

@@ -59,6 +59,9 @@ type PermHookAllowFunc func(name string, args map[string]any) bool
 // the request goes out: without the ID no view can tell the call waiting on
 // the user apart from a batch sibling that really is executing.
 type PermGateRequest struct {
+	// Context ends when the caller cancels, the gate closes, or the prompt returns.
+	// Resolvers can use it to retire requests that no longer await a decision.
+	Context     context.Context
 	RequestID   string
 	ToolCallID  string
 	ToolName    string
@@ -77,6 +80,8 @@ type PermGateResponse struct {
 // through a channel pair. The agent side blocks on the response; the TUI
 // side receives requests and sends back decisions.
 type PermissionGate struct {
+	ctx         context.Context
+	cancel      context.CancelFunc
 	requests    chan *PermGateRequest
 	decideFn    PermDecisionFunc
 	reviewFn    PermReviewFunc    // optional; judges reviewable gray-zone prompts
@@ -84,7 +89,10 @@ type PermissionGate struct {
 }
 
 func NewPermissionGate(decideFn PermDecisionFunc) *PermissionGate {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &PermissionGate{
+		ctx:      ctx,
+		cancel:   cancel,
 		requests: make(chan *PermGateRequest, 1),
 		decideFn: decideFn,
 	}
@@ -161,34 +169,64 @@ func (pg *PermissionGate) Check(ctx context.Context, name string, input map[stri
 }
 
 // prompt sends a permission request to the resolver (TUI) and blocks until
-// it responds or ctx is cancelled.
+// it responds, ctx is cancelled, or the gate closes.
 //
 // The tool call ID is taken from the context the agent stamps before Execute
 // (core.WithToolCallID), the only place that knows which call this check runs
 // for — the permission func signature carries the tool name, not the call.
 func (pg *PermissionGate) prompt(ctx context.Context, req *PermGateRequest) (bool, string) {
+	requestCtx, cancel := context.WithCancel(ctx)
+	req.Context = requestCtx
+	stop := context.AfterFunc(pg.ctx, cancel)
+	defer func() {
+		stop()
+		cancel()
+	}()
+	// AfterFunc runs asynchronously; reject an already closed gate immediately.
+	if pg.ctx.Err() != nil {
+		cancel()
+	}
+	if req.Context.Err() != nil {
+		return false, "cancelled"
+	}
+
 	req.ToolCallID = core.ToolCallIDFromContext(ctx)
 	req.Response = make(chan PermGateResponse, 1)
 
 	select {
 	case pg.requests <- req:
-	case <-ctx.Done():
+	case <-req.Context.Done():
 		return false, "cancelled"
 	}
 
 	select {
-	case <-ctx.Done():
+	case <-req.Context.Done():
 		return false, "cancelled"
 	case resp := <-req.Response:
+		if req.Context.Err() != nil || pg.ctx.Err() != nil {
+			return false, "cancelled"
+		}
 		return resp.Allow, resp.Reason
 	}
 }
 
 func (pg *PermissionGate) Recv() (*PermGateRequest, bool) {
-	req, ok := <-pg.requests
-	return req, ok
+	if pg.ctx.Err() != nil {
+		return nil, false
+	}
+	select {
+	case <-pg.ctx.Done():
+		return nil, false
+	case req := <-pg.requests:
+		if pg.ctx.Err() != nil {
+			return nil, false
+		}
+		return req, true
+	}
 }
 
+// Close cancels pending prompts and receivers. The producer-facing channel
+// stays open so concurrent prompts cannot panic while enqueueing a request.
 func (pg *PermissionGate) Close() {
-	close(pg.requests)
+	pg.cancel()
 }

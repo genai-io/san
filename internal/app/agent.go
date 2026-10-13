@@ -19,7 +19,6 @@ import (
 
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
-	"github.com/genai-io/san/internal/app/input"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
@@ -213,12 +212,11 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	params.CWDFunc = func() string { return m.env.CWD }
 	params.HookEngine = m.services.Hook
 
+	bridge := m.conv.AgentToUI
 	params.AskUser = func(ctx context.Context, req *tool.QuestionRequest) (*tool.QuestionResponse, error) {
-		return m.conv.AgentToUI.Ask(ctx, 0, req)
+		return bridge.Ask(ctx, tool.AgentInteractionSource{}, req)
 	}
-	params.ToolActivity = func(toolCallID string, msg string) {
-		m.conv.AgentToUI.SendForToolCall(toolCallID, msg)
-	}
+	params.ToolActivity = bridge.SendForToolCall
 	params.BashPromptResponder = func(ctx context.Context) tool.BashPromptResponder {
 		// Interactive answering is opt-in via the Bash steer, read live (via
 		// the synchronized snapshot — this runs on the agent goroutine) so a
@@ -227,7 +225,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		if !m.autopilotEngaged() || !m.liveAutopilotConfig().Steers.BashPrompt {
 			return nil
 		}
-		return bashPromptResponder{model: m}
+		return bashPromptResponder{model: m, bridge: bridge}
 	}
 
 	params.ResultFilter = m.filterOversizedResult
@@ -551,9 +549,6 @@ func (m *model) ensureAgentSession(pendingMessageID string) (tea.Cmd, error) {
 		conv.DrainAgentOutbox(m.services.Agent.Outbox()),
 		conv.PollPermGate(m.services.Agent.PermissionGate()),
 	}
-	if m.conv.AgentToUI != nil {
-		cmds = append(cmds, m.conv.AgentToUI.Check())
-	}
 	return tea.Batch(cmds...), nil
 }
 
@@ -702,6 +697,7 @@ func (m *model) StopAgentSession() {
 func (m *model) ResetAgentSession() {
 	m.agentRestartMessages = nil
 	m.services.Agent.Stop()
+	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.
 	m.services.Reminder.DiscardPendingNotices()
@@ -726,57 +722,13 @@ func (m *model) ContinueOutbox() tea.Cmd {
 }
 
 func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
-	m.services.Agent.SetPendingPermission(req)
-	if req == nil {
-		m.conv.Tool.ClearAwaitingApproval()
-		return nil
+	if req == nil || (req.Context != nil && req.Context.Err() != nil) {
+		return conv.PollPermGate(m.services.Agent.PermissionGate())
 	}
-	// The call was stamped as started by its PreToolEvent, which fired before
-	// this request: name it so its row reports waiting on the user while its
-	// batch siblings keep reporting the work they really are doing. A request
-	// with no ID names nothing, which leaves the rows on the blunt freeze the
-	// modal already forces (see conv.modalNamesNoCall) — correct, but only
-	// because it degrades, so say so rather than let a future caller lose the
-	// per-call state without a trace.
-	if req.ToolCallID == "" {
-		log.Logger().Warn("permission request carries no tool call ID; every in-flight row falls back to the docked-modal freeze",
-			zap.String("tool", req.ToolName))
-	}
-	m.conv.Tool.MarkAwaitingApproval(req.ToolCallID)
-
-	permReq := m.preparePermissionRequest(req)
-	// Emit permission.required with the metadata about to be rendered to the
-	// user — that way the audit captures the same context the user saw.
-	if rec := m.services.Session.Recorder(); rec != nil {
-		rec.RecordPermissionRequired(transcript.PermissionRecord{
-			RequestID:      req.RequestID,
-			Tool:           req.ToolName,
-			Input:          marshalPermInput(req.Input),
-			Detail:         permDetail(permReq),
-			OptionsOffered: input.BuildApprovalOptions(permReq),
-			Source:         transcript.PermissionSourceAsk,
-			Mode:           m.env.SessionMode(),
-		})
-	}
-	if len(m.flush.pendingPrints) != 0 {
-		m.deferredApproval = permReq
-		return nil
-	}
-	m.userInput.Approval.Show(permReq, m.env.Width, m.env.Height)
-	return nil
-}
-
-// showDeferredApproval opens a permission panel only after every queued
-// insertAbove has finished. Its contents are ephemeral UI, never transcript
-// output, so it must not be present in the managed frame Bubble Tea preserves
-// around a scrollback print.
-func (m *model) showDeferredApproval() {
-	if m.deferredApproval == nil || len(m.flush.pendingPrints) != 0 {
-		return
-	}
-	request := m.deferredApproval
-	m.deferredApproval = nil
-	m.userInput.Approval.Show(request, m.env.Width, m.env.Height)
+	return tea.Batch(m.enqueueInteraction(&conv.InteractionRequest{
+		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: m.preparePermissionRequest(req),
+		Source: tool.AgentInteractionSource{Cwd: m.env.CWD, PermissionMode: m.env.SessionMode()},
+	}), conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
 
 // permDetail serializes the *derived* permission context — fields the
@@ -827,13 +779,18 @@ func (m *model) preparePermissionRequest(req *agent.PermGateRequest) *perm.Permi
 		ToolName:    req.ToolName,
 		Description: req.Description,
 	}
+	ctx := req.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if resolved, ok := tool.Get(req.ToolName); ok {
 		if pat, ok := resolved.(tool.PermissionAwareTool); ok {
-			if rich, err := pat.PreparePermission(context.Background(), req.Input, m.env.CWD); err == nil && rich != nil {
+			if rich, err := pat.PreparePermission(ctx, req.Input, m.env.CWD); err == nil && rich != nil {
 				permReq = rich
 			}
 		}
 	}
+	permReq.ID = req.RequestID
 	permReq.AllowRules = m.services.Setting.AlwaysAllowRules(req.ToolName, req.Input, m.env.SessionPermissions)
 	return permReq
 }
@@ -845,6 +802,7 @@ func (m *model) ReconfigureAgentTool() {
 	m.ensureMemoryContextLoaded()
 
 	executor := subagent.NewExecutor(m.env.LLMProvider, m.env.CWD, m.env.GetModelID(), m.services.Hook)
+	executor.SetInteractions(m.conv.AgentToUI)
 	executor.SetDefaultModel(m.services.Setting.SubagentModel())
 	executor.SetResolver(llm.NewProviderPool(m.services.LLM.Store()))
 	perms := m.env.SessionPermissions

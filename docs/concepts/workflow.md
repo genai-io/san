@@ -307,12 +307,12 @@ branch view would hide their topology.
   its own — step cap, truncation, refusal, cancellation, error. A model that
   stops early having done half the job reports success; a converging node
   that reviews its inputs is the guard for that.
-- Every node passes the same permission gate as a background `Agent`: a
-  prompt for confirmation collapses to a deny, and a definition cannot ask
-  for `bypass` — `mode` accepts `explore`, `edit` and `default` only, so a
-  file in the project directory is trusted no further than any other file
-  there. What `default` resolves to is the subagent layer's business, the
-  same as for `Agent`.
+- Every node passes the same permission gate as a background `Agent`.
+  Ordinary prompts can reach the live session UI; without it they fail closed.
+  A definition cannot request `bypass` — internal node `mode` accepts
+  `explore`, `edit` and `default` only. A UI answer grants that invocation once,
+  never overrides hard denials or changes the node's policy. What `default`
+  resolves to remains the subagent layer's business, the same as for `Agent`.
 - `AgentStop` on the workflow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
 - The `Workflow` tool is parent-only, like `Agent`: a subagent cannot start
