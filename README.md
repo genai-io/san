@@ -98,7 +98,7 @@ curl -fsSL https://raw.githubusercontent.com/genai-io/san/main/install.sh | bash
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/genai-io/san/main/install.ps1))) uninstall
 ```
 
-**Go Install (requires Go 1.26.0+)**
+**Go Install (requires Go 1.26.9+)**
 
 ```bash
 go install github.com/genai-io/san/cmd/san@latest
