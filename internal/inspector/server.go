@@ -21,7 +21,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/inspector/ui"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // replayCacheCapacity is the upper bound on cached replay states across all
@@ -33,9 +34,9 @@ const replayCacheCapacity = 64
 
 // Server hosts the trace viewer for a single project directory.
 type Server struct {
-	projectDir string // .../.san/projects/<encoded-cwd>
+	projectDir string // .../.san/projects/<workdir-hash>
 	mux        *http.ServeMux
-	store      *transcript.FileStore // shared with the writer; reads use the index
+	store      *transcript.Store // reads logs and derived summaries
 
 	mu          sync.Mutex
 	watchers    map[string]*tailer // sessionID -> active tailer
@@ -49,9 +50,9 @@ func New(projectDir string) *Server {
 		watchers:    make(map[string]*tailer),
 		replayCache: newReplayLRU(replayCacheCapacity),
 	}
-	// Best-effort: the viewer falls back to a directory walk if the index
+	// Best-effort: the viewer falls back to a directory walk if the store
 	// isn't constructable (missing project dir, permission error, etc.).
-	if store, err := transcript.NewFileStore(projectDir, ""); err == nil {
+	if store, err := transcript.NewStore(projectDir, ""); err == nil {
 		s.store = store
 	}
 	s.routes()
@@ -87,13 +88,12 @@ type sessionListItem struct {
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	if s.store != nil {
-		items, err := s.listFromIndex(r.Context())
+		items, err := s.listFromSummaries(r.Context())
 		if err == nil {
 			writeJSON(w, items)
 			return
 		}
-		// Fall through to the directory walk on index error — the index is
-		// best-effort and the writer might not have created it yet.
+		// Fall back to the directory when a transcript cannot be projected.
 	}
 	items, err := s.listFromDir()
 	if err != nil {
@@ -103,10 +103,8 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, items)
 }
 
-// listFromIndex serves the session list out of transcripts-index.json. Title
-// and UpdatedAt come from the index entry the writer maintains. Size is a
-// cheap per-file Stat — we still surface it because the UI shows KB.
-func (s *Server) listFromIndex(ctx context.Context) ([]sessionListItem, error) {
+// listFromSummaries reads derived per-transcript previews.
+func (s *Server) listFromSummaries(ctx context.Context) ([]sessionListItem, error) {
 	entries, err := s.store.List(ctx, "", transcript.ListOptions{IncludeSidechain: true})
 	if err != nil {
 		return nil, err
@@ -118,7 +116,7 @@ func (s *Server) listFromIndex(ctx context.Context) ([]sessionListItem, error) {
 			size = info.Size()
 		}
 		items = append(items, sessionListItem{
-			ID:        e.SessionID,
+			ID:        e.ID,
 			Title:     e.Title,
 			UpdatedAt: e.UpdatedAt,
 			Size:      size,
@@ -127,9 +125,7 @@ func (s *Server) listFromIndex(ctx context.Context) ([]sessionListItem, error) {
 	return items, nil
 }
 
-// listFromDir is the fallback path used when the FileStore couldn't be
-// constructed or the index is unreadable. Slower (opens every transcript for
-// the title preview) but self-contained.
+// listFromDir provides file access when the store cannot project a transcript.
 func (s *Server) listFromDir() ([]sessionListItem, error) {
 	entries, err := os.ReadDir(s.transcriptsDir())
 	if err != nil {
@@ -350,34 +346,24 @@ func previewTitle(path string) string {
 	}
 	defer f.Close()
 
-	dec := json.NewDecoder(f)
-	for dec.More() {
-		var rec struct {
-			Type    string `json:"type"`
-			Message *struct {
-				Role    string `json:"role"`
-				Content []struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"message"`
-		}
-		if err := dec.Decode(&rec); err != nil {
+	for rec, err := range transcript.Read(f) {
+		if err != nil {
 			return ""
 		}
-		if rec.Type != "message.appended" || rec.Message == nil || rec.Message.Role != "user" {
-			continue
+		messages := rec.Messages
+		if rec.Message != nil {
+			messages = []ai.Message{*rec.Message}
 		}
-		for _, c := range rec.Message.Content {
-			if c.Type == "text" {
-				t := strings.TrimSpace(c.Text)
-				if t == "" {
-					continue
+		for _, msg := range messages {
+			if msg.Role != ai.RoleUser || len(msg.ToolResults()) > 0 {
+				continue
+			}
+			if text := strings.TrimSpace(msg.Text()); text != "" {
+				runes := []rune(text)
+				if len(runes) > 80 {
+					return string(runes[:80]) + "…"
 				}
-				if len(t) > 80 {
-					t = t[:80] + "…"
-				}
-				return t
+				return text
 			}
 		}
 	}

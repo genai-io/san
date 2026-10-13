@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
 	session "github.com/genai-io/san/internal/session"
 )
 
@@ -193,17 +195,14 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 
 	// 1. Create and save the original session.
 	original := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:       "source-session",
 			Title:    "Source",
 			Provider: "fake",
 			Model:    "fake-model",
 			Cwd:      dir,
 		},
-		Messages: []core.ChatMessage{
-			{ID: "u1", Role: core.ChatUser, Content: "original message"},
-			{ID: "a1", Role: core.ChatAssistant, Content: "original reply"},
-		},
+		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.TextContent("original message")}, ai.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.TextContent("original reply")}},
 	}
 	if err := store.Save(original); err != nil {
 		t.Fatalf("Save(original): %v", err)
@@ -224,7 +223,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	if len(forked.Messages) != len(original.Messages) {
 		t.Fatalf("fork should have %d entries, got %d", len(original.Messages), len(forked.Messages))
 	}
-	if forked.Messages[0].Content != "original message" {
+	if forked.Messages[0].Text() != "original message" {
 		t.Errorf("fork message[0] text mismatch")
 	}
 
@@ -234,11 +233,7 @@ func TestSessionFork_IsIndependent(t *testing.T) {
 	}
 
 	// 3. Append a new entry to the fork and save it.
-	forked.Messages = append(forked.Messages, core.ChatMessage{
-		ID:      "u2",
-		Role:    core.ChatUser,
-		Content: "fork-only message",
-	})
+	forked.Messages = append(forked.Messages, core.Message{ID: "u2", Role: ai.RoleUser, Content: ai.TextContent("fork-only message")})
 	if err := store.Save(forked); err != nil {
 		t.Fatalf("Save(forked): %v", err)
 	}

@@ -226,7 +226,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.ToolToggleMsg:
 		// The selector already persisted the enable/disable to disk. Refresh the
 		// in-memory settings so DisabledTools() (read by the built-in and MCP
-		// tool filters at agent-build time) reflects it; ensureAgentSession then
+		// tool filters at agent-build time) reflects it; ensureAgentRuntime then
 		// rebuilds on the next turn when the disabled set drifts, so the toggle
 		// takes effect without interrupting an in-flight turn.
 		if err := m.services.Setting.Reload(m.env.CWD); err != nil {
@@ -292,7 +292,7 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Re-wire the L1 reviewer so the saved values take effect on the
 		// running session. If the save also changed the Evolve tool's
 		// capabilities, the toolset is reconciled when the next turn starts —
-		// ensureAgentSession rebuilds on capability drift (agentEvolveCaps),
+		// ensureAgentRuntime rebuilds on capability drift (agentEvolveCaps),
 		// which covers external settings edits the same way.
 		if m.services.Agent.Active() {
 			m.wireSelfLearn(m.buildAgentParams())
@@ -408,18 +408,19 @@ func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case input.AgentToggleMsg:
 		// Why stop on toggle: the agents directory lives in the Agent tool's
 		// description, which is frozen at agent build time. Stopping forces
-		// ensureAgentSession to rebuild on the next user turn with the new
+		// ensureAgentRuntime to rebuild on the next user turn with the new
 		// directory. Why guard on Stream.Active: stopping mid-stream would
 		// orphan in-flight tool calls and the partial assistant turn —
-		// leave the toggle pending; ensureAgentSession will see the updated
+		// leave the toggle pending; ensureAgentRuntime will see the updated
 		// store the next time it actually rebuilds.
 		if m.services.Agent.Active() && !m.conv.Stream.Active {
-			m.StopAgentSession()
+			m.StopAgentRuntime()
 		}
 		return m, nil
 	case persistSessionDoneMsg:
 		if msg.err != nil {
 			log.Logger().Warn("async session persist failed", zap.Error(msg.err))
+			m.conv.AddNotice("Session was not saved: " + msg.err.Error())
 		}
 		return m, nil
 	case agentSendFailedMsg:

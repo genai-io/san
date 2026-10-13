@@ -101,7 +101,7 @@ methods don't earn an interface; TEMPLATE Rule 3.
 - `matcher.go` resolves which hooks fire for an event by matching against
   patterns (tool name globs, regex, exact match).
 - `audit` callback is the single observation seam used by the session
-  recorder to write one `hook.fired` transcript record per invocation —
+  writer to write one `hook.fired` transcript record per invocation —
   the hook package does not import `transcript`.
 
 ## Lifecycle

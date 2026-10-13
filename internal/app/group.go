@@ -164,6 +164,12 @@ func (m *model) membersAwaitingApproval() []string {
 func (m *model) handleMemberMsg(msg memberMsg) tea.Cmd {
 	var cmds []tea.Cmd
 	g, self := group.Current()
+	if g == "" {
+		// A tick can arrive after a session switch already released membership.
+		m.reconcileMembership()
+		m.grp.polling = false
+		return nil
+	}
 	switch msg.status {
 	case group.Removed, group.Disbanded:
 		name := m.grp.name

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,8 +12,7 @@ import (
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/session/transcript"
-	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 type Store struct {
@@ -20,33 +20,7 @@ type Store struct {
 	cwd             string
 	projectID       string
 	projectDir      string
-	transcriptStore *transcript.FileStore
-
-	// lastEmittedState caches the projected state most recently written for each
-	// session so Save emits only changed paths. Cold-start after a process
-	// restart pays one full snapshot per session (no item in the cache means
-	// every non-default field looks "changed" vs the zero state, which is what
-	// we want — the projector still applies last-wins).
-	lastEmittedState map[string]transcript.State
-}
-
-type Snapshot struct {
-	Metadata SessionMetadata
-	Messages []core.ChatMessage
-	Tasks    []todo.Item
-
-	// OmitMessageWrites skips the per-item AppendMessage loop in Save. Used
-	// by the main TUI path where the agent's Recorder already persists every
-	// message in causal order via the OnAppend event — running Save's loop on
-	// top would write a second copy under a different ID (the TUI
-	// ChatMessage.ID, which doesn't match the agent's core.Message.ID).
-	//
-	// The subagent path leaves this false: its agent has no Recorder wired,
-	// so Save is the only writer for those messages.
-	//
-	// Messages are still used to derive title / lastPrompt / messageCount in
-	// NormalizeMetadata regardless of this flag.
-	OmitMessageWrites bool
+	transcriptStore *transcript.Store
 }
 
 func NewStore(cwd string) (*Store, error) {
@@ -55,13 +29,13 @@ func NewStore(cwd string) (*Store, error) {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	projectID := EncodePath(cwd)
+	projectID := ProjectID(cwd)
 	projectDir := filepath.Join(confdir.Dir(homeDir), "projects", projectID)
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create project directory: %w", err)
 	}
 
-	txStore, err := transcript.NewFileStore(projectDir, projectID)
+	txStore, err := transcript.NewStore(projectDir, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,13 +52,13 @@ func NewStoreWithDir(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
-	txStore, err := transcript.NewFileStore(dir, EncodePath(dir))
+	txStore, err := transcript.NewStore(dir, ProjectID(dir))
 	if err != nil {
 		return nil, fmt.Errorf("create transcript store: %w", err)
 	}
 	return &Store{
 		cwd:             dir,
-		projectID:       EncodePath(dir),
+		projectID:       ProjectID(dir),
 		projectDir:      dir,
 		transcriptStore: txStore,
 	}, nil
@@ -97,21 +71,8 @@ func (s *Store) SessionPath(sessionID string) string {
 	return filepath.Join(s.projectDir, "transcripts", sessionID+".jsonl")
 }
 
-func (s *Store) List() ([]*SessionMetadata, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	items, err := s.transcriptStore.List(context.Background(), s.projectID, transcript.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	out := make([]*SessionMetadata, 0, len(items))
-	for _, item := range items {
-		meta := transcript.MetadataFromListItem(item, s.cwd)
-		out = append(out, &meta)
-	}
-	return out, nil
+func (s *Store) List() ([]Summary, error) {
+	return s.transcriptStore.List(context.Background(), s.projectID, transcript.ListOptions{})
 }
 
 func (s *Store) Latest() (*Snapshot, error) {
@@ -125,8 +86,7 @@ func (s *Store) Latest() (*Snapshot, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("no sessions found")
 	}
-	meta := transcript.MetadataFromListItem(items[0], s.cwd)
-	return s.loadSnapshot(context.Background(), meta.ID, false)
+	return s.loadSnapshot(context.Background(), items[0].ID, false)
 }
 
 func (s *Store) Delete(id string) error {
@@ -136,9 +96,7 @@ func (s *Store) Delete(id string) error {
 	if err := s.transcriptStore.Delete(context.Background(), id); err != nil {
 		return err
 	}
-	_ = os.RemoveAll(s.toolResultsDir(id))
-	_ = os.RemoveAll(s.ImagesDir(id))
-	return nil
+	return errors.Join(os.RemoveAll(s.toolResultsDir(id)), os.RemoveAll(s.ImagesDir(id)))
 }
 
 func (s *Store) Load(id string) (*Snapshot, error) {
@@ -152,34 +110,33 @@ func (s *Store) Load(id string) (*Snapshot, error) {
 	return sess, nil
 }
 
-// LoadHistory shares resume's conversion and blob hydration, but includes the
-// selected branch's messages before compaction. It never changes model context.
+// LoadHistory reads the selected branch before compaction for display only.
 func (s *Store) LoadHistory(id string) ([]core.ChatMessage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	sess, err := s.loadSnapshot(context.Background(), id, true)
+	snap, err := s.loadSnapshot(context.Background(), id, true)
 	if err != nil {
 		return nil, err
 	}
-	return sess.Messages, nil
+	return snap.ChatRows(), nil
 }
 
-// Save persists the snapshot via append-only writes:
-//
-//  1. Start (idempotent; no-op if the transcript already exists)
-//  2. AppendMessage per item (deduped by message ID — cheap re-saves)
-//  3. PatchState with the full projected state (last-wins on read)
-//
-// No file rewrites; each call writes only the records that didn't already
-// exist plus a single state-patch record.
+// Save imports a full conversation snapshot and its product state.
 func (s *Store) Save(sess *Snapshot) error {
+	return s.save(sess, true)
+}
+
+// SaveState saves product state; the live writer owns message appends.
+func (s *Store) SaveState(sess *Snapshot) error {
+	return s.save(sess, false)
+}
+
+func (s *Store) save(sess *Snapshot, messages bool) error {
 	if sess == nil {
 		return fmt.Errorf("session is nil")
 	}
 
-	// Shell out before acquiring the lock to avoid blocking other store ops.
 	gitBranch := getGitBranch(s.cwd)
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -192,33 +149,33 @@ func (s *Store) Save(sess *Snapshot) error {
 
 	ctx := context.Background()
 	id := sess.Metadata.ID
+	if messages {
+		release, err := s.transcriptStore.Claim(id)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 
 	if err := s.transcriptStore.Start(ctx, transcript.StartCommand{
-		SessionID: id,
-		ProjectID: s.projectID,
-		Cwd:       sess.Metadata.Cwd,
-		Provider:  sess.Metadata.Provider,
-		Model:     sess.Metadata.Model,
-		ParentID:  sess.Metadata.ParentSessionID,
-		Time:      sess.Metadata.CreatedAt,
+		SessionID:       id,
+		Cwd:             sess.Metadata.Cwd,
+		Provider:        sess.Metadata.Provider,
+		Model:           sess.Metadata.Model,
+		ParentSessionID: sess.Metadata.ParentSessionID,
+		Time:            sess.Metadata.CreatedAt,
 	}); err != nil {
 		return err
 	}
 
-	if !sess.OmitMessageWrites {
-		nodes := messagesToNodes(sess.Messages, sess.Metadata.Cwd, sess.Metadata.CreatedAt, gitBranch)
-		for _, n := range nodes {
-			if err := s.transcriptStore.AppendMessage(ctx, transcript.AppendMessageCommand{
-				SessionID: id,
-				MessageID: n.ID,
-				ParentID:  n.ParentID,
-				Time:      n.Time,
-				GitBranch: n.GitBranch,
-				Role:      n.Role,
-				Content:   n.Content,
-			}); err != nil {
-				return err
+	if messages {
+		for i := range sess.Messages {
+			if sess.Messages[i].ID == "" {
+				sess.Messages[i].ID = core.NewMessageID()
 			}
+		}
+		if err := s.transcriptStore.Append(ctx, transcript.Record{SessionID: id, Time: now, Type: transcript.ConversationReplaced, Messages: sess.Messages}); err != nil {
+			return err
 		}
 	}
 
@@ -229,56 +186,56 @@ func (s *Store) Save(sess *Snapshot) error {
 		Mode:       sess.Metadata.Mode,
 		AutoPilot:  sess.Metadata.AutoPilot,
 		Group:      sess.Metadata.Group,
-		Tasks:      trackerItemViewsFromItems(sess.Tasks),
+		Tasks:      todoSnapshots(sess.Tasks),
 	}
-	if s.lastEmittedState == nil {
-		s.lastEmittedState = make(map[string]transcript.State)
-	}
-	// On the first save in this process the cache is cold; without
-	// rehydrating prev from disk, a clear (e.g. title "Foo" → "") would
-	// look like zero→zero and emit no op, leaving the stale value on disk.
-	prev, hadPrev := s.lastEmittedState[id]
-	if !hadPrev {
-		if loaded, err := s.transcriptStore.LoadState(ctx, id); err == nil {
-			prev = loaded
-		}
-	}
-	ops := transcript.StateOpsDiff(prev, next)
-	if err := s.transcriptStore.PatchState(ctx, transcript.PatchStateCommand{
-		SessionID: id,
-		Time:      now,
-		Ops:       ops,
-	}); err != nil {
+	prev, err := s.transcriptStore.LoadState(ctx, id)
+	if err != nil {
 		return err
 	}
-	s.lastEmittedState[id] = next
-	// End of a turn (main path) or of a subagent's message dump: flush the
-	// index mutations the appends above staged in memory to disk in one write.
-	if err := s.transcriptStore.FlushIndex(); err != nil {
+
+	ops := transcript.StateOpsDiff(prev, next)
+	if err := s.transcriptStore.Append(ctx, transcript.Record{SessionID: id, Time: now, GitBranch: gitBranch, Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: ops}}); err != nil {
+		return err
+	}
+	// Refresh only the summaries changed by this save.
+	if err := s.transcriptStore.Flush(); err != nil {
 		return err
 	}
 	return nil
 }
 
-// FlushIndex writes any transcript-index mutations the hot append path staged
-// in memory out to disk. Callers invoke it on shutdown; Save already flushes at
-// each turn boundary. The in-memory index stays authoritative for in-process
-// reads, and a crash that loses an unflushed update is recovered by the
-// rebuild-from-transcripts path on the next List.
-func (s *Store) FlushIndex() error {
+// Flush refreshes derived summaries; transcript writes are already durable.
+func (s *Store) Flush() error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.transcriptStore == nil {
 		return nil
 	}
-	return s.transcriptStore.FlushIndex()
+	return s.transcriptStore.Flush()
 }
 
 func (s *Store) Fork(sourceID string) (*Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	newID := generateSessionID()
+	newID := NewSessionID()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.RemoveAll(s.toolResultsDir(newID))
+			_ = os.RemoveAll(s.ImagesDir(newID))
+		}
+	}()
+	for _, paths := range [][2]string{{s.toolResultsDir(sourceID), s.toolResultsDir(newID)}, {s.ImagesDir(sourceID), s.ImagesDir(newID)}} {
+		if _, err := os.Stat(paths[0]); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		if err := os.CopyFS(paths[1], os.DirFS(paths[0])); err != nil {
+			return nil, fmt.Errorf("copy fork assets: %w", err)
+		}
+	}
 	if err := s.transcriptStore.Fork(context.Background(), transcript.ForkCommand{
 		SourceSessionID: sourceID,
 		NewSessionID:    newID,
@@ -286,9 +243,19 @@ func (s *Store) Fork(sourceID string) (*Snapshot, error) {
 	}); err != nil {
 		return nil, err
 	}
+	committed = true
 	forked, err := s.loadSnapshot(context.Background(), newID, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load forked session: %w", err)
+	}
+	// Group membership belongs to the source identity, not its conversation.
+	if forked.Metadata.Group != "" {
+		now := time.Now()
+		if err := s.transcriptStore.Append(context.Background(), transcript.Record{SessionID: newID, Time: now, Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchGroup("")}}}); err != nil {
+			return nil, fmt.Errorf("clear forked group membership: %w", err)
+		}
+		forked.Metadata.Group = ""
+		forked.Metadata.UpdatedAt = now
 	}
 	return forked, nil
 }
@@ -322,7 +289,7 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 	}
 
 	sess := &Snapshot{
-		Metadata: SessionMetadata{
+		Metadata: Metadata{
 			Title:           title,
 			Model:           modelID,
 			Cwd:             cwd,
@@ -330,7 +297,7 @@ func (s *Store) SaveSubagentConversation(parentSessionID, title, modelID, cwd st
 		},
 		// A subagent has no interface, so its transcript is its conversation
 		// with nothing drawn on it — which is what ToChat gives.
-		Messages: chatOf(messages),
+		Messages: messages,
 	}
 	if err := s.Save(sess); err != nil {
 		return "", "", err
@@ -374,9 +341,15 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string, history bool
 		return string(data), nil
 	})
 	sess := &Snapshot{
-		Metadata: transcript.MetadataFromTranscript(tx),
-		Messages: withNotices(messagesFromNodes(tx.Messages), tx.Notices),
-		Tasks:    trackerItemsFromViews(tx.State.Tasks),
+		Metadata:    transcript.MetadataFromTranscript(tx),
+		Notices:     tx.Notices,
+		ToolDetails: tx.ToolDetails,
+		Messages:    make([]core.Message, len(tx.Messages)),
+		Tasks:       todoItems(tx.State.Tasks),
+	}
+
+	for i, n := range tx.Messages {
+		sess.Messages[i] = n.Message
 	}
 
 	if sess.Metadata.Title == "" {
@@ -386,36 +359,4 @@ func (s *Store) loadSnapshot(ctx context.Context, sessionID string, history bool
 		sess.Metadata.LastPrompt = ExtractLastUserText(sess.Messages)
 	}
 	return sess, nil
-}
-
-// withNotices puts each saved notice back after the message it followed, or
-// first when it came before any. One whose message was compacted away goes
-// with it.
-func withNotices(msgs []core.ChatMessage, notices []transcript.NoticeRecord) []core.ChatMessage {
-	if len(notices) == 0 {
-		return msgs
-	}
-	after := map[string][]core.ChatMessage{}
-	for _, n := range notices {
-		after[n.AfterMessageID] = append(after[n.AfterMessageID], core.ChatMessage{Role: core.ChatNotice, Content: n.Text, AgentNotice: n.Agent})
-	}
-	out := make([]core.ChatMessage, 0, len(msgs)+len(notices))
-	out = append(out, after[""]...)
-	for i, m := range msgs {
-		out = append(out, m)
-		if i+1 < len(msgs) && msgs[i+1].ID == m.ID {
-			continue // rows of one parallel-call turn share an ID: follow the last
-		}
-		out = append(out, after[m.ID]...)
-	}
-	return out
-}
-
-// chatOf views a conversation as a transcript with no display state set.
-func chatOf(msgs []core.Message) []core.ChatMessage {
-	out := make([]core.ChatMessage, 0, len(msgs))
-	for _, m := range msgs {
-		out = append(out, core.ChatRowsOf(m)...)
-	}
-	return out
 }

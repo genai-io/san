@@ -1,0 +1,42 @@
+package transcript
+
+import "time"
+
+type Metadata struct {
+	ID              string
+	Title           string
+	LastPrompt      string
+	Tag             string
+	Mode            string
+	AutoPilot       string
+	Group           string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Provider        string
+	Model           string
+	Cwd             string
+	MessageCount    int
+	ParentSessionID string
+}
+
+func MetadataFromTranscript(t *Transcript) Metadata {
+	if t == nil {
+		return Metadata{}
+	}
+	return Metadata{
+		ID:              t.ID,
+		Title:           t.State.Title,
+		LastPrompt:      t.State.LastPrompt,
+		Tag:             t.State.Tag,
+		Mode:            t.State.Mode,
+		AutoPilot:       t.State.AutoPilot,
+		Group:           t.State.Group,
+		CreatedAt:       t.CreatedAt,
+		UpdatedAt:       t.UpdatedAt,
+		Provider:        t.Provider,
+		Model:           t.Model,
+		Cwd:             t.Cwd,
+		MessageCount:    len(t.Messages),
+		ParentSessionID: t.ParentSessionID,
+	}
+}

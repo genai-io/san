@@ -26,7 +26,7 @@ func namedTool(name string) core.Tool {
 // wired, Registry.SetOnToolsChanged had no caller outside a test, so the whole
 // notification chain ended in a nil callback.
 func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
-	sess := &agent.Session{}
+	sess := &agent.Runtime{}
 	if err := sess.Start(agent.BuildParams{Provider: &testutil.FakeProvider{}, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestSyncMCPToolsReachesTheRunningAgent(t *testing.T) {
 // it — the ordinary startup path, not an edge.
 func TestSyncMCPToolsBeforeAnAgentExists(t *testing.T) {
 	m := &model{services: services{
-		Agent:   &agent.Session{},
+		Agent:   &agent.Runtime{},
 		MCP:     mcp.NewManagerForTest(nil),
 		Setting: setting.Default(),
 	}}

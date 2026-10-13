@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
@@ -45,7 +46,7 @@ func (m *model) PersistSession() error {
 // recordNotice keeps a notice in the transcript, so a resume shows it where
 // it was.
 func (m *model) recordNotice(n core.ChatMessage) {
-	if rec := m.services.Session.Recorder(); rec != nil {
+	if rec := m.services.Session.Writer(); rec != nil {
 		rec.RecordNotice(n.Content, n.AgentNotice)
 		return
 	}
@@ -58,6 +59,12 @@ func (m *model) recordNotice(n core.ChatMessage) {
 func (m *model) adoptSession(id string) {
 	m.services.Session.SetID(id)
 	m.services.Hook.SetSession(id, m.services.Session.TranscriptPath())
+	if g, self := group.Current(); g != "" && self.SessionID != id {
+		// Membership belongs to the previous durable identity. Drop it before
+		// any input or reminder can consume that session's pending messages.
+		group.Release()
+		m.grp = groupState{polling: m.grp.polling}
+	}
 }
 
 type persistSessionDoneMsg struct{ err error }
@@ -73,10 +80,17 @@ func (m *model) persistSessionCmd() tea.Cmd {
 		return nil
 	}
 
-	store := m.services.Session.GetStore()
+	store := m.services.Session.Store()
+	writer := m.services.Session.Writer()
 	return func() tea.Msg {
 		if store == nil {
 			return persistSessionDoneMsg{err: fmt.Errorf("no session store")}
+		}
+		if writer != nil {
+			if err := writer.Err(); err != nil {
+				return persistSessionDoneMsg{err: err}
+			}
+			return persistSessionDoneMsg{err: store.SaveState(sess)}
 		}
 		return persistSessionDoneMsg{err: store.Save(sess)}
 	}
@@ -107,7 +121,10 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 		return nil
 	}
 
-	msgs := m.conv.Messages
+	msgs := m.services.Agent.Messages()
+	if len(msgs) == 0 {
+		msgs = m.conv.ConvertToProvider()
+	}
 
 	var providerName, modelID string
 	if m.env.CurrentModel != nil {
@@ -116,7 +133,7 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 	}
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:         m.services.Session.ID(),
 			Provider:   providerName,
 			Model:      modelID,
@@ -126,9 +143,8 @@ func (m *model) buildSessionSnapshot() *session.Snapshot {
 			AutoPilot:  marshalAutoPilot(m.env.AutoPilot),
 			Group:      currentMembership(),
 		},
-		Messages:          msgs,
-		Tasks:             m.services.Tracker.Export(),
-		OmitMessageWrites: m.services.Session.Recorder() != nil,
+		Messages: msgs,
+		Tasks:    m.services.Tracker.Export(),
 	}
 
 	if sess.Metadata.Title == "" {
@@ -147,7 +163,12 @@ func (m *model) loadSessionByID(id string) error {
 		return err
 	}
 
-	sess, err := m.services.Session.Load(id)
+	// Finish pending writes before reading, including a resume of this same ID.
+	m.StopAgentRuntime()
+	if m.services.Agent.Active() {
+		return fmt.Errorf("previous agent is still stopping")
+	}
+	sess, err := m.services.Session.Resume(id)
 	if err != nil {
 		return err
 	}
@@ -156,7 +177,10 @@ func (m *model) loadSessionByID(id string) error {
 	// restart snapshot override the selected transcript on the next turn, and
 	// don't let the previous conversation's Reads satisfy Edit's
 	// read-before-modify gate in this one.
-	m.ResetAgentSession()
+	m.ResetAgentRuntime()
+	if m.services.Agent.Active() {
+		return fmt.Errorf("previous agent is still stopping")
+	}
 	fs.ResetFileViews()
 	m.restoreSessionData(sess)
 
@@ -170,9 +194,10 @@ func (m *model) loadSessionByID(id string) error {
 }
 
 func (m *model) restoreSessionData(sess *session.Snapshot) {
-	m.conv.Messages = sess.Messages
-	m.earlyNotices = nil // they belonged to the session being left
-	m.systemRemindersSent = slices.ContainsFunc(sess.Messages, func(msg core.ChatMessage) bool {
+	m.conv.Messages = sess.ChatRows()
+	m.earlyNotices = nil
+	m.services.Agent.SetMessages(sess.Messages)
+	m.systemRemindersSent = slices.ContainsFunc(m.conv.Messages, func(msg core.ChatMessage) bool {
 		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
 	})
 	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeWindowMessageCount())
@@ -308,24 +333,17 @@ func (m *model) forkSession() (string, error) {
 	if m.services.Session.ID() == "" {
 		return "", fmt.Errorf("no active session to fork")
 	}
+	m.StopAgentRuntime()
+	if m.services.Agent.Active() {
+		return "", fmt.Errorf("agent is still stopping")
+	}
 	forked, err := m.services.Session.Fork(m.services.Session.ID())
 	if err != nil {
 		return "", err
 	}
 	originalID := forked.Metadata.ParentSessionID
 	m.adoptSession(forked.Metadata.ID)
-	// The live agent holds an onEvent closure over a Recorder bound to the
-	// parent's id, and a Recorder's session is fixed at construction. Without
-	// this stop it keeps writing the fork's messages, inferences, permissions
-	// and hooks into the parent transcript — so resuming the original, which is
-	// exactly what the UI tells the user to do, replays post-fork history and
-	// the parent is no longer frozen at the fork point.
-	//
-	// Stop rather than Reset: a fork continues the conversation under a new id,
-	// so the chain has to survive into the rebuilt agent. The next turn's
-	// ensureAgentSession rebuilds with a Recorder bound to the new id, since
-	// NewRecorder invalidates its cache on exactly that mismatch.
-	m.StopAgentSession()
+	m.services.Agent.SetMessages(forked.Messages)
 	// Same storage switch as loadSessionByID: clear the tracker so
 	// initTaskStorage adopts the fork's directory, then re-import the tasks
 	// that SetStorageDir's disk load replaced.
@@ -341,4 +359,18 @@ func (m *model) forkSession() (string, error) {
 func (m *model) renameSession(name string) error {
 	m.env.SessionName = name
 	return m.PersistSession()
+}
+
+// clearSession starts a fresh durable identity after retiring the previous writer.
+func (m *model) clearSession() error {
+	m.ResetAgentRuntime()
+	if m.services.Agent.Active() {
+		return fmt.Errorf("agent is still stopping")
+	}
+	m.adoptSession(session.NewSessionID())
+	m.env.SessionName = ""
+	m.earlyNotices = nil
+	m.setTrackerStorageDir("")
+	m.initTaskStorage(m.services.Session.ID())
+	return nil
 }

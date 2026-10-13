@@ -1,7 +1,6 @@
 package inspector
 
 import (
-	"bufio"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -9,23 +8,24 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 type replayState struct {
-	RecordID       string                      `json:"recordId,omitempty"`
-	RecordType     string                      `json:"recordType,omitempty"`
-	Provider       string                      `json:"provider,omitempty"`
-	Model          string                      `json:"model,omitempty"`
-	ComposedSystem string                      `json:"composedSystem,omitempty"`
-	MaxTokens      int                         `json:"maxTokens,omitempty"`
-	Cwd            string                      `json:"cwd,omitempty"`
-	AgentID        string                      `json:"agentId,omitempty"`
-	System         []replaySystemSection       `json:"system"`
-	Tools          []transcript.ToolSchemaView `json:"tools"`
-	Messages       []replayMessage             `json:"messages"`
-	Digests        replayDigests               `json:"digests"`
-	Integrity      []replayIntegrityCheck      `json:"integrity,omitempty"`
+	RecordID       string                 `json:"recordId,omitempty"`
+	RecordType     string                 `json:"recordType,omitempty"`
+	Provider       string                 `json:"provider,omitempty"`
+	Model          string                 `json:"model,omitempty"`
+	ComposedSystem string                 `json:"composedSystem,omitempty"`
+	MaxTokens      int                    `json:"maxTokens,omitempty"`
+	Cwd            string                 `json:"cwd,omitempty"`
+	AgentID        string                 `json:"agentId,omitempty"`
+	System         []replaySystemSection  `json:"system"`
+	Tools          []ai.Schema            `json:"tools"`
+	Messages       []replayMessage        `json:"messages"`
+	Digests        replayDigests          `json:"digests"`
+	Integrity      []replayIntegrityCheck `json:"integrity,omitempty"`
 }
 
 type replaySystemSection struct {
@@ -36,10 +36,10 @@ type replaySystemSection struct {
 }
 
 type replayMessage struct {
-	ID       string                    `json:"id"`
-	ParentID string                    `json:"parentId,omitempty"`
-	Role     string                    `json:"role"`
-	Content  []transcript.ContentBlock `json:"content,omitempty"`
+	ID              string     `json:"id"`
+	ParentMessageID string     `json:"parentMessageId,omitempty"`
+	Role            string     `json:"role"`
+	Content         ai.Content `json:"content,omitempty"`
 }
 
 type replayDigests struct {
@@ -73,16 +73,9 @@ func replayFile(path, targetID string) (replayState, bool, error) {
 	defer f.Close()
 
 	var st replayBuilder
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	var found bool
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var rec transcript.Record
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+	for rec, err := range transcript.Read(f) {
+		if err != nil {
 			return replayState{}, false, err
 		}
 		st.apply(rec)
@@ -90,9 +83,6 @@ func replayFile(path, targetID string) (replayState, bool, error) {
 			found = true
 			break
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return replayState{}, false, err
 	}
 	if targetID != "" && !found {
 		return replayState{}, false, nil
@@ -109,10 +99,10 @@ type replayBuilder struct {
 	cwd        string
 	agentID    string
 	seq        int
-	sections   map[string]replaySectionEntry        // section name -> latest section
-	tools      map[string]transcript.ToolSchemaView // tool name -> latest schema
-	messages   map[string]replayMessage             // message id -> message node
-	order      []string                             // message append order
+	sections   map[string]replaySectionEntry // section name -> latest section
+	tools      map[string]ai.Schema          // tool name -> latest schema
+	messages   map[string]replayMessage      // message id -> message node
+	order      []string                      // message append order
 	boundaryID string
 	integrity  []replayIntegrityCheck
 }
@@ -123,15 +113,15 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 	switch rec.Type {
 	case transcript.SessionStarted:
 		b.cwd = rec.Cwd
-		if rec.Session != nil {
-			b.provider = rec.Session.Provider
-			b.model = rec.Session.Model
-			b.maxTokens = rec.Session.MaxTokens
-			b.agentID = rec.Session.AgentID
+		if rec.Start != nil {
+			b.provider = rec.Start.Provider
+			b.model = rec.Start.Model
+			b.maxTokens = rec.Start.MaxTokens
+			b.agentID = rec.Start.AgentID
 		}
 	case transcript.SessionCompacted:
-		if rec.Session != nil {
-			b.boundaryID = rec.Session.SummaryMessageID
+		if rec.Compaction != nil {
+			b.boundaryID = rec.Compaction.MessageID
 		}
 	case transcript.SystemSectionAdded:
 		if rec.System == nil {
@@ -161,12 +151,22 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 			return
 		}
 		if b.tools == nil {
-			b.tools = make(map[string]transcript.ToolSchemaView)
+			b.tools = make(map[string]ai.Schema)
 		}
 		b.tools[rec.Tool.Schema.Name] = *rec.Tool.Schema
 	case transcript.ToolRemoved:
 		if rec.Tool != nil && b.tools != nil {
 			delete(b.tools, rec.Tool.Name)
+		}
+	case transcript.ConversationReplaced:
+		b.messages = make(map[string]replayMessage)
+		b.order = nil
+		b.boundaryID = ""
+		parent := ""
+		for _, msg := range rec.Messages {
+			b.messages[msg.ID] = replayMessage{ID: msg.ID, ParentMessageID: parent, Role: string(msg.Role), Content: msg.Content}
+			b.order = append(b.order, msg.ID)
+			parent = msg.ID
 		}
 	case transcript.MessageAppended:
 		if rec.Message != nil {
@@ -174,16 +174,25 @@ func (b *replayBuilder) apply(rec transcript.Record) {
 				b.messages = make(map[string]replayMessage)
 			}
 			msg := replayMessage{
-				ID:       rec.Message.MessageID,
-				ParentID: rec.ParentID,
-				Role:     rec.Message.Role,
-				Content:  append([]transcript.ContentBlock(nil), rec.Message.Content...),
+				ID:              rec.Message.ID,
+				ParentMessageID: rec.ParentMessageID,
+				Role:            string(rec.Message.Role),
+				Content:         rec.Message.Content,
 			}
 			b.messages[msg.ID] = msg
 			b.order = append(b.order, msg.ID)
 		}
 	case transcript.InferenceRequested:
 		if rec.Inference != nil {
+			if rec.Inference.Provider != "" {
+				b.provider = rec.Inference.Provider
+			}
+			if rec.Inference.Model != "" {
+				b.model = rec.Inference.Model
+			}
+			if rec.Inference.MaxTokens != 0 {
+				b.maxTokens = rec.Inference.MaxTokens
+			}
 			b.checkInference(rec.Inference)
 		}
 	}
@@ -266,11 +275,11 @@ func (b *replayBuilder) sortedSections() []replaySystemSection {
 	return out
 }
 
-func (b *replayBuilder) sortedTools() []transcript.ToolSchemaView {
+func (b *replayBuilder) sortedTools() []ai.Schema {
 	if len(b.tools) == 0 {
 		return nil
 	}
-	out := make([]transcript.ToolSchemaView, 0, len(b.tools))
+	out := make([]ai.Schema, 0, len(b.tools))
 	for _, t := range b.tools {
 		out = append(out, t)
 	}
@@ -286,8 +295,8 @@ func (b *replayBuilder) activeMessages() []replayMessage {
 	hasChild := make(map[string]bool, len(b.order))
 	for _, id := range b.order {
 		n := b.messages[id]
-		if n.ParentID != "" {
-			hasChild[n.ParentID] = true
+		if n.ParentMessageID != "" {
+			hasChild[n.ParentMessageID] = true
 		}
 	}
 
@@ -319,7 +328,7 @@ func (b *replayBuilder) activeMessages() []replayMessage {
 		if b.boundaryID != "" && cur == b.boundaryID {
 			break
 		}
-		cur = n.ParentID
+		cur = n.ParentMessageID
 	}
 
 	out := make([]replayMessage, 0, len(reversed))

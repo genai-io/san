@@ -65,7 +65,7 @@ function isToolResultMessage(msg) {
 function classify(type) {
   if (!type) return "unknown";
   if (type.startsWith("session."))         return "session";
-  if (type.startsWith("message."))         return "message";
+  if (type === "conversation.replaced" || type.startsWith("message."))         return "message";
   if (type.startsWith("inference."))       return "inference";
   if (type === "tool.added" || type === "tool.removed") return "tool";
   if (type === "tool.invoked" || type === "tool.completed") return "tool";
@@ -95,7 +95,7 @@ function labelFor(rec) {
   if (rec.tool && rec.tool.schema) label += "  " + rec.tool.schema.name;
   if (rec.tool && rec.tool.name)   label += "  " + rec.tool.name;
   if (rec.inference) {
-    label += "  turn " + (rec.inference.turn || "?");
+    label += "  inference " + (rec.inference.sequence || "?");
     // A failed attempt is the one inference row worth reading without
     // clicking: say what broke and how the loop classified it. "not-retryable"
     // is not "the turn died" — a too-long prompt classifies that way and the
@@ -280,22 +280,40 @@ function openSession(id, li) {
 // only event that retroactively kicks messages off the chain is
 // session.compacted, where we recompute and refresh the DOM once.
 function ingestForChain(rec) {
-  if (rec.type === "message.appended" && rec.message && rec.message.messageId) {
-    const id = rec.message.messageId;
-    const parent = rec.parentId || "";
+  if (rec.type === "conversation.replaced") {
+    state.messageParents.clear();
+    state.messageLookup.clear();
+    state.compactBoundary = "";
+    let parent = "";
+    for (const msg of rec.messages || []) {
+      state.messageParents.set(msg.id, parent);
+      state.messageLookup.set(msg.id, {role: isToolResultMessage(msg) ? "tool" : msg.role, text: firstTextSnippet(msg.content)});
+      parent = msg.id;
+    }
+    state.activeChain = computeActiveChain(state.messageParents, "");
+    state.activeLeaf = parent;
+    rehighlightMessageRows();
+    return;
+  }
+  if (rec.type === "message.appended" && rec.message && rec.message.id) {
+    const id = rec.message.id;
+    const parent = rec.parentMessageId || "";
     state.messageParents.set(id, parent);
     state.messageLookup.set(id, {
       role: isToolResultMessage(rec.message) ? "tool" : (rec.message.role || "?"),
       text: firstTextSnippet(rec.message.content),
     });
-    if (parent === "" || parent === state.activeLeaf) {
+    if (parent === state.activeLeaf) {
       state.activeChain.add(id);
-      state.activeLeaf = id;
+    } else {
+      state.activeChain = computeActiveChain(state.messageParents, state.compactBoundary);
+      rehighlightMessageRows();
     }
+    state.activeLeaf = id;
     return;
   }
   if (rec.type === "session.compacted") {
-    state.compactBoundary = (rec.session && rec.session.summaryMessageId) || "";
+    state.compactBoundary = (rec.compaction && rec.compaction.messageId) || "";
     state.activeChain = computeActiveChain(state.messageParents, state.compactBoundary);
     state.activeLeaf = lastChainLeaf(state.activeChain);
     rehighlightMessageRows();
@@ -326,7 +344,7 @@ function computeActiveChain(parents, boundary) {
     if (boundary && cur === boundary) break;
     cur = parents.get(cur) || "";
   }
-  return chain;
+  return new Set([...chain].reverse());
 }
 
 function rehighlightMessageRows() {
@@ -334,7 +352,7 @@ function rehighlightMessageRows() {
     const idx = Number(row.dataset.idx);
     const rec = state.records[idx];
     if (!rec || !rec.message) continue;
-    row.classList.toggle("off-chain", !state.activeChain.has(rec.message.messageId));
+    row.classList.toggle("off-chain", !state.activeChain.has(rec.message.id));
   }
 }
 
@@ -348,8 +366,8 @@ function appendRow(rec, idx) {
   // Mark messages that aren't on the current active chain so users can see
   // at a glance what the model still sees vs. what was compacted out or
   // belongs to an abandoned branch.
-  if (klass === "message" && rec.message && rec.message.messageId &&
-      !state.activeChain.has(rec.message.messageId)) {
+  if (klass === "message" && rec.message && rec.message.id &&
+      !state.activeChain.has(rec.message.id)) {
     row.classList.add("off-chain");
   }
   // Tool-result messages share the "tool" color so they read as part of the
@@ -602,7 +620,7 @@ function firstTextSnippet(content) {
       const t = b.text.replace(/\s+/g, " ").trim();
       return t.length > 80 ? t.slice(0, 80) + "…" : t;
     }
-    if (b.type === "tool_use")    return "[tool_use: " + (b.name || "?") + "]";
+    if (b.type === "tool_call")    return "[tool_use: " + (b.tool_call?.name || "?") + "]";
     if (b.type === "tool_result") return "[tool_result]";
     if (b.type === "image")       return "[image]";
   }
@@ -703,7 +721,7 @@ function messageDetailNodes(msg) {
     (byKind[kind] = byKind[kind] || []).push(b);
   }
 
-  const order = ["author", "reminder", "hook", "command", "tool_use", "tool_result", "thinking", "image"];
+  const order = ["author", "reminder", "hook", "command", "tool_call", "tool_result", "thinking", "image"];
   const sorted = order.filter((k) => byKind[k]).concat(Object.keys(byKind).filter((k) => !order.includes(k)));
 
   for (const kind of sorted) {
@@ -793,24 +811,23 @@ function renderContentBlock(b) {
     return renderProseBlock(b.text || "");
   }
   if (b && b.type === "thinking") {
-    return renderProseBlock(b.thinking || "");
+    return renderProseBlock(b.text || "");
   }
 
   const pre = document.createElement("pre");
   pre.style.cssText = blockPreStyle();
   let body = "";
   switch (b && b.type) {
-    case "tool_use":
-      body = "name: " + (b.name || "") + "\nid: " + (b.id || "") +
-        "\ninput: " + (typeof b.input === "string" ? b.input : JSON.stringify(b.input, null, 2));
+    case "tool_call":
+      body = JSON.stringify(b.tool_call, null, 2);
       break;
     case "tool_result":
-      body = "tool_use_id: " + (b.tool_use_id || "") +
-        (b.is_error ? "\nis_error: true" : "") +
-        "\ncontent:\n" + renderToolResultContent(b.content);
+      body = "tool_call_id: " + (b.tool_result?.tool_call_id || "") +
+        (b.tool_result?.is_error ? "\nis_error: true" : "") +
+        "\ncontent:\n" + renderToolResultContent(b.tool_result?.content);
       break;
     case "image":
-      body = "(image " + (b.imageSource && b.imageSource.media_type || "") + ")";
+      body = "(image " + (b.image && b.image.media_type || "") + ")";
       break;
     default:
       body = JSON.stringify(b, null, 2);
@@ -923,7 +940,7 @@ function messagePreview(m) {
     }
   }
   for (const b of blocks) {
-    if (b && b.type === "tool_use") return "  — " + (b.name || "tool_use");
+    if (b && b.type === "tool_call") return "  — " + (b.tool_call?.name || "tool_call");
     if (b && b.type === "tool_result") return "  — tool_result";
     if (b && b.type === "image") return "  — image";
   }
@@ -954,7 +971,7 @@ function renderToolSchema(t) {
     wrap.appendChild(descBody);
   }
 
-  const schema = t.input_schema || t.parameters;
+  const schema = t.definition || t.definition;
   if (schema) {
     const schemaDetails = document.createElement("details");
     schemaDetails.className = "tool-schema-details";
@@ -1022,9 +1039,9 @@ function replayToggle(rec) {
 // schema for anyone who wants it.
 function condenseReplay(rec, replay) {
   const out = Object.assign({}, replay);
-  if (rec.type === "session.started" && rec.session) {
+  if (rec.type === "session.started" && rec.start) {
     for (const k of ["provider", "model", "maxTokens", "agentId", "cwd"]) {
-      if (rec.session[k] === out[k] || rec.cwd === out[k]) delete out[k];
+      if (rec.start[k] === out[k] || rec.cwd === out[k]) delete out[k];
     }
   }
   if (Array.isArray(out.tools)) {

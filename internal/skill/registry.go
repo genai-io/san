@@ -31,8 +31,8 @@ type Registry struct {
 	cwd          string // Current working directory for project store
 
 	// onStateChange fires every time a skill transitions between states.
-	// Used by the session recorder to emit skill.state.changed records.
-	// Called with the read lock NOT held — recorder may do I/O.
+	// Used by the session writer to emit skill.state.changed records.
+	// Called with the read lock NOT held — writer may do I/O.
 	onStateChange func(name, previous, current, caller string)
 
 	// personaSkills records the skills the active persona loaded into the
@@ -48,7 +48,7 @@ type StateChangeObserver func(name, previous, current, caller string)
 
 // SetStateChangeObserver registers a callback for state transitions. nil
 // clears it. Replaces any prior observer; the registry supports a single
-// recorder consumer at a time, which is enough today (one main session).
+// writer consumer at a time, which is enough today (one main session).
 func (r *Registry) SetStateChangeObserver(cb StateChangeObserver) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -249,7 +249,7 @@ func (r *Registry) SetState(name string, state SkillState, scope setting.Scope) 
 
 	err := r.store(scope).SetState(fullName, state)
 
-	// Fire observer after the write so the recorder sees the durable state
+	// Fire observer after the write so the writer sees the durable state
 	// transition, not a no-op or rollback-on-error.
 	if err == nil && observer != nil && previous != state {
 		observer(fullName, string(previous), string(state), "user:/skills:"+string(scope))

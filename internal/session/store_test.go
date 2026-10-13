@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
@@ -12,14 +12,11 @@ func TestStoreSaveAndLoadPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.ChatMessage{
-		{Role: core.ChatUser, Content: "hello"},
-		{Role: core.ChatAssistant, Content: "world"},
-	}
+	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}, ai.Message{Role: ai.RoleAssistant, Content: ai.TextContent("world")}}
 
 	// Save with a custom title
 	sess := &Snapshot{
-		Metadata: SessionMetadata{
+		Metadata: Metadata{
 			Title: "My Custom Session",
 		},
 		Messages: msgs,
@@ -49,13 +46,11 @@ func TestStoreSaveTitleChangePersists(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.ChatMessage{
-		{Role: core.ChatUser, Content: "hello"},
-	}
+	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("hello")}}
 
 	// Save with initial title
 	sess := &Snapshot{
-		Metadata: SessionMetadata{
+		Metadata: Metadata{
 			Title: "Initial Title",
 		},
 		Messages: msgs,
@@ -88,12 +83,10 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 		t.Fatalf("NewStore(): %v", err)
 	}
 
-	msgs := []core.ChatMessage{
-		{Role: core.ChatUser, Content: "first message"},
-	}
+	msgs := []ai.Message{ai.Message{Role: ai.RoleUser, Content: ai.TextContent("first message")}}
 
 	sess := &Snapshot{
-		Metadata: SessionMetadata{
+		Metadata: Metadata{
 			Title: "Session From Listing",
 		},
 		Messages: msgs,

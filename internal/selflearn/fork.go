@@ -36,7 +36,7 @@ type ForkConfig struct {
 	// replaces the built-in guidance for both arms.
 	Strategy string
 	// OnEvent receives the fork agent's lifecycle events (PreInfer /
-	// PostInfer / OnAppend / …). Wire a sidechain recorder here to land
+	// PostInfer / OnAppend / …). Wire a sidechain writer here to land
 	// the fork's LLM calls in the main session transcript so the
 	// inspector can replay them. nil = no recording (legacy behavior).
 	OnEvent func(core.Event)

@@ -483,7 +483,8 @@ func TestClearCancelsHistoryBeforeAndDuringNativePrint(t *testing.T) {
 	for _, started := range []bool{false, true} {
 		t.Run(fmt.Sprintf("started=%v", started), func(t *testing.T) {
 			m := &clearScrollbackRendererModel{model: fixedComposerModel(80, 24), started: started, settled: make(chan struct{}, 1)}
-			m.services.Agent = &agent.Session{}
+			initClearSessionTest(t, m.model)
+			m.services.Agent = &agent.Runtime{}
 			m.services.Reminder = reminder.NewService()
 			m.userInput.Textarea.SetValue("LIVE-DRAFT")
 			terminal := newTerminalHistoryState(80, 24)
@@ -807,7 +808,7 @@ func TestFirstReplyKeepsUserRowInEveryTerminalFrame(t *testing.T) {
 	for _, height := range []int{24, 40} {
 		t.Run(fmt.Sprintf("height %d", height), func(t *testing.T) {
 			m := &fixedComposerRendererModel{model: fixedComposerModel(100, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &agent.Session{}
+			m.services.Agent = &agent.Runtime{}
 			m.welcomePending = true
 			m.conv.Append(core.ChatMessage{Role: core.ChatUser, Content: "hi"})
 			m.conv.Stream = conv.StreamState{Active: true, Waiting: true}
@@ -888,7 +889,7 @@ func TestStreamingHistoryHandoffKeepsVisibleText(t *testing.T) {
 			const width, height = 80, 24
 			const anchor, continuation = "LIVE-ANCHOR", "CONTINUATION"
 			m := &fixedComposerRendererModel{model: fixedComposerModel(width, height), settled: make(chan struct{}, 1)}
-			m.services.Agent = &agent.Session{}
+			m.services.Agent = &agent.Runtime{}
 			msg := m.conv.Append(core.ChatMessage{Role: core.ChatAssistant, Content: anchor})
 			m.conv.Stream = conv.StreamState{Active: true, MessageID: msg.ID}
 			var rows []string

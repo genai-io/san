@@ -8,7 +8,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
@@ -17,12 +17,12 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	snap := &Snapshot{
-		Metadata: SessionMetadata{ID: "history-test"},
-		Messages: []core.ChatMessage{
-			{ID: "prompt", Role: core.ChatUser, Content: "run a command"},
-			{ID: "call", Role: core.ChatAssistant, ToolCalls: []core.ToolCall{{ID: "tc", Name: "Bash", Input: `{"command":"test"}`}}},
-			{ID: "result", Role: core.ChatUser, ToolResult: &core.ToolResult{ToolCallID: "tc", Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/history-test/tc]")}},
-			{ID: "summary", Role: core.ChatUser, Content: "compacted summary"},
+		Metadata: Metadata{ID: "history-test"},
+		Messages: []core.Message{
+			{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("run a command")},
+			{ID: "call", Role: ai.RoleAssistant, Content: ai.Content{ai.ToolCallBlock(ai.ToolCall{ID: "tc", Name: "Bash", Input: `{"command":"test"}`})}},
+			{ID: "result", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "tc", ToolName: "Bash", Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/history-test/tc]")})}},
+			{ID: "summary", Role: ai.RoleUser, Content: ai.TextContent("compacted summary")},
 		},
 	}
 	if err := store.Save(snap); err != nil {
@@ -31,7 +31,7 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if err := store.PersistToolResult(snap.Metadata.ID, "tc", "full output\nLAST_LINE"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.transcriptStore.Compact(context.Background(), transcript.CompactCommand{SessionID: snap.Metadata.ID, SummaryMessageID: "summary", Time: time.Now()}); err != nil {
+	if err := store.transcriptStore.Append(context.Background(), transcript.Record{SessionID: snap.Metadata.ID, Time: time.Now(), Type: transcript.SessionCompacted, Compaction: &transcript.Compaction{MessageID: "summary"}}); err != nil {
 		t.Fatal(err)
 	}
 	resumed, err := store.Load(snap.Metadata.ID)

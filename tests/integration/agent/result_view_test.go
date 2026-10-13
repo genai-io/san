@@ -40,7 +40,7 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if strings.Contains(text, "Tokens:") || !strings.Contains(text, "Transcript:") {
 		t.Fatalf("model result must contain findings and inspection pointers: %q", text)
 	}
-	rec := (&session.Setup{Store: store, SessionID: "parent-1"}).NewRecorder("main", "p", "m", 1000)
+	rec := session.NewActive(store, "parent-1").NewWriter("main", "p", "m", 1000)
 	owner := core.Message{ID: "call-1", Role: ai.RoleAssistant, Content: ai.Content{{Type: ai.BlockToolCall, ToolCall: &ai.ToolCall{
 		ID: "worker-1", Name: "Agent", Input: `{"prompt":"Investigate"}`,
 	}}}}
@@ -53,10 +53,10 @@ func TestAgent_ResultSurvivesPersistenceAndRendering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Messages) != 2 || loaded.Messages[1].ToolDetails == nil {
-		t.Fatalf("agent details lost on resume: %+v", loaded.Messages)
+	if len(loaded.ChatRows()) != 2 || loaded.ChatRows()[1].ToolDetails == nil {
+		t.Fatalf("agent details lost on resume: %+v", loaded.ChatRows())
 	}
-	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.Messages[1].ToolResult.Content.Text(), Details: loaded.Messages[1].ToolDetails, Width: 100}
+	data := conv.ToolResultData{ToolName: "Agent", Content: loaded.ChatRows()[1].ToolResult.Content.Text(), Details: loaded.ChatRows()[1].ToolDetails, Width: 100}
 	collapsed := ansi.Strip(conv.RenderToolResultInline(data, nil))
 	for _, want := range []string{"Finished", "125 tokens", "worker-model"} {
 		if !strings.Contains(collapsed, want) {

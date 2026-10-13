@@ -53,7 +53,7 @@ type SlashCommandEnv struct {
 	// later command reads (e.g. /disabled-tools then /tools).
 	Setting *setting.Settings
 	LLM     *llm.Conn
-	Session *session.Setup
+	Session *session.Active
 	Skill   *skill.Registry
 	Plugin  *plugin.Registry
 	MCP     *mcp.Manager
@@ -85,8 +85,9 @@ type SlashCommandEnv struct {
 	ReloadAfterPluginChange func() error
 	PersistSession          func() error
 	ReconfigureAgentTool    func()
-	StopAgentSession        func()
-	ResetAgentSession       func()
+	StopAgentRuntime        func()
+	ResetAgentRuntime       func()
+	ClearSession            func() error
 	ClearScrollback         func(tea.Cmd) tea.Cmd
 	FireSessionEnd          func(reason string)
 	BuildCompactRequest     func(focus, trigger string) conv.CompactRequest
@@ -237,7 +238,7 @@ func (c SlashCommandController) executeExitCommand(cmdName string) (string, tea.
 	if cmdName != "exit" && cmdName != "quit" {
 		return "", nil, false
 	}
-	c.env.StopAgentSession()
+	c.env.StopAgentRuntime()
 	c.env.Conversation.Stream.Stop()
 	c.env.FireSessionEnd("prompt_input_exit")
 	return "", tea.Quit, true
@@ -301,7 +302,16 @@ func (c *SlashCommandController) handleHelpCommand(_ context.Context, _ string) 
 }
 
 func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	c.env.ResetAgentSession()
+	if c.env.ClearSession != nil {
+		if err := c.env.ClearSession(); err != nil {
+			return "", nil, err
+		}
+	} else {
+		c.env.ResetAgentRuntime()
+		if c.env.Session != nil {
+			c.env.Session.SetID(session.NewSessionID())
+		}
+	}
 	c.env.Conversation.Stream.Stop()
 	c.env.Tool.Reset()
 	c.env.Conversation.Clear()
@@ -351,7 +361,7 @@ func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string
 	if err := c.env.Session.EnsureStore(c.env.Cwd); err != nil {
 		return "", nil, fmt.Errorf("failed to initialize session store: %w", err)
 	}
-	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.Session.GetStore(), c.env.Cwd); err != nil {
+	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.Session.Store(), c.env.Cwd); err != nil {
 		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
 	}
 	return "", nil, nil

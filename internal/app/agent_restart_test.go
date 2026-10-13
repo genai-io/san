@@ -46,11 +46,11 @@ func flattenAI(msgs []ai.Message) []core.Message {
 func (*restartStubProvider) ListModels(context.Context) ([]llm.ModelInfo, error) { return nil, nil }
 func (*restartStubProvider) Name() string                                        { return "restart-stub" }
 
-// A stop may happen before the next call to ensureAgentSession (for example an
+// A stop may happen before the next call to ensureAgentRuntime (for example an
 // agent toggle or a terminal outbox event). The live core chain must survive
 // that gap and win over the UI rendering model when the replacement is seeded.
-func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
-	sess := &agent.Session{}
+func TestStopAgentRuntimePreservesLiveChainForRestart(t *testing.T) {
+	sess := &agent.Runtime{}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	inferences := make(chan []string, 1)
 	live := []core.Message{
@@ -65,9 +65,9 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 		services: services{Agent: sess},
 		conv:     conv.NewModel(80),
 	}
-	m.StopAgentSession()
+	m.StopAgentRuntime()
 	if sess.Active() {
-		t.Fatal("Session remained active after StopAgentSession")
+		t.Fatal("Session remained active after StopAgentRuntime")
 	}
 
 	// A background completion is already represented in the UI when
@@ -146,15 +146,13 @@ func TestStopAgentSessionPreservesLiveChainForRestart(t *testing.T) {
 
 // Clearing or replacing a conversation must explicitly discard a retained
 // chain; otherwise the next user message would resurrect the old session.
-func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
+func TestResetAgentRuntimeDiscardsRestartChain(t *testing.T) {
 	m := model{
-		services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()},
+		services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()},
 		conv:     conv.NewModel(80),
-		agentRestartMessages: []core.Message{
-			{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")},
-		},
 	}
-	m.ResetAgentSession()
+	m.services.Agent.SetMessages([]core.Message{{ID: "old-u1", Role: ai.RoleUser, Content: ai.TextContent("old session")}})
+	m.ResetAgentRuntime()
 	m.conv.Append(core.ChatMessage{ID: "new-u1", Role: core.ChatUser, Content: "new session"})
 
 	if got := m.seedAgentMessages("new-u1"); len(got) != 0 {
@@ -165,7 +163,7 @@ func TestResetAgentSessionDiscardsRestartChain(t *testing.T) {
 // Skills/memory reminders ride on a conversation's first message only;
 // replacing the conversation drops old notices and sends them again.
 func TestSystemRemindersOncePerConversation(t *testing.T) {
-	m := model{services: services{Agent: &agent.Session{}, Reminder: reminder.NewService()}}
+	m := model{services: services{Agent: &agent.Runtime{}, Reminder: reminder.NewService()}}
 	m.services.Reminder.Register(reminder.ProviderSkillsDirectory, func() string { return "skills" })
 	send := func(text string) string {
 		return m.attachPendingReminders(core.Message{Role: ai.RoleUser, Content: ai.TextContent(text)}).Text()
@@ -179,7 +177,7 @@ func TestSystemRemindersOncePerConversation(t *testing.T) {
 	}
 
 	m.services.Reminder.Enqueue("old hook context")
-	m.ResetAgentSession()
+	m.ResetAgentRuntime()
 	got := send("after reset")
 	if !reminder.HasSystemReminder(got) || strings.Contains(got, "old hook context") {
 		t.Fatalf("after reset = %q, want the skills reminder and no old notice", got)
@@ -203,32 +201,34 @@ func chainWithImage() []core.Message {
 
 // A conversation that began on a vision-capable model carries its images in the
 // chain. Handing them to a text-only model replays image parts the provider
-// rejects on every later turn, so the seed has to drop them — keeping the text.
-func TestSeedAgentMessagesDropsImagesForTextOnlyModel(t *testing.T) {
+// rejects on every later turn. Only inference input should drop them.
+func TestSeedAgentMessagesKeepsNativeImagesForTextOnlyModel(t *testing.T) {
 	original := chainWithImage()
-	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &textOnlyStubProvider{}
 
 	seeded := m.seedAgentMessages("")
 	if len(seeded) != len(original) {
 		t.Fatalf("seedAgentMessages() length = %d, want %d", len(seeded), len(original))
 	}
-	if n := imageBlocks(seeded[0]); n != 0 {
-		t.Errorf("seeded user message kept %d image(s), want none", n)
+	if n := imageBlocks(seeded[0]); n != 1 {
+		t.Errorf("native seed has %d image(s), want one", n)
 	}
 	if seeded[0].Text() != original[0].Text() {
 		t.Errorf("seeded user message content = %q, want %q", seeded[0].Text(), original[0].Text())
 	}
 	// The retained snapshot must survive intact: switching back to a
 	// vision-capable model has to restore the images.
-	if imageBlocks(m.agentRestartMessages[0]) != 1 {
+	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
 		t.Error("stripping mutated the retained restart chain")
 	}
 }
 
 // Vision-capable providers are the common case and must see the chain untouched.
 func TestSeedAgentMessagesKeepsImagesForVisionModel(t *testing.T) {
-	m := model{conv: conv.NewModel(80), agentRestartMessages: chainWithImage()}
+	m := model{conv: conv.NewModel(80), services: services{Agent: &agent.Runtime{}}}
+	m.services.Agent.SetMessages(chainWithImage())
 	m.env.LLMProvider = &restartStubProvider{}
 
 	seeded := m.seedAgentMessages("")
@@ -255,7 +255,7 @@ func imageBlocks(m core.Message) int {
 // A rebuild stops the old agent and starts a new one; the old agent's stop
 // event reaches the UI afterwards. It must not stop its replacement.
 func TestAReplacedAgentsLateStopLeavesTheNewOneRunning(t *testing.T) {
-	sess := &agent.Session{}
+	sess := &agent.Runtime{}
 	provider := &restartStubProvider{requests: make(chan []core.Message, 1)}
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)

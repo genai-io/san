@@ -14,7 +14,7 @@ Before this decision, the repository had:
   …) that had grown chronologically rather than by reader goal.
 - Each package exposed a kitchen-sink `Service` interface bundling every
   method the concrete type happened to have, with several "escape hatch"
-  methods (`Engine()`, `Registry()`, `GetStore()`) that let callers
+  methods (`Engine()`, `Registry()`, `Store()`) that let callers
   bypass the interface entirely.
 - No mechanical enforcement of dependency direction.
 - `CONTRIBUTING.md` referenced `internal/provider/`, `internal/config/`,
@@ -107,7 +107,7 @@ A separate PR-3 addresses:
 
 - Splitting kitchen-sink `Service` interfaces into 2–4 narrow
   consumer-defined interfaces per package.
-- Dropping `Engine()` / `Registry()` / `GetStore()` escape hatches.
+- Dropping `Engine()` / `Registry()` / `Store()` escape hatches.
 - Moving construction from per-package `Default()` singletons into the
   `cmd/san` composition root.
 

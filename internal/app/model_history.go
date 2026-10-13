@@ -26,7 +26,7 @@ func (m *model) openHistory() tea.Cmd {
 	var load func(string) ([]core.ChatMessage, error)
 	if m.services.Session != nil {
 		msg.sessionID = m.services.Session.ID()
-		if store := m.services.Session.GetStore(); store != nil && msg.sessionID != "" {
+		if store := m.services.Session.Store(); store != nil && msg.sessionID != "" {
 			load = store.LoadHistory
 		}
 	}

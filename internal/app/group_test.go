@@ -25,7 +25,7 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := commitTestModel()
-	m.services.Agent = &agent.Session{}
+	m.services.Agent = &agent.Runtime{}
 	m.conv.Stream.Active = true
 	m.grp.unattended = 2
 	m.deliverMemberMessages("test", group.Member{}, []group.Message{
@@ -33,7 +33,7 @@ func TestGroupBatchSummarySurvivesPersistence(t *testing.T) {
 		{From: "web", Subject: "UI ready", Content: "second finding"},
 	})
 	live := m.conv.Messages[0]
-	rec := (&session.Setup{Store: store, SessionID: "group-batch"}).NewRecorder("main", "p", "m", 1000)
+	rec := session.NewActive(store, "group-batch").NewWriter("main", "p", "m", 1000)
 	message := core.UserMessage(live.Content, nil)
 	message.ID = live.ID
 	rec.OnAgentEvent(sdkagent.MessageAdded{Message: message})
@@ -167,7 +167,7 @@ func TestAnUnsavedSessionLeavesItsGroupAtExit(t *testing.T) {
 	if _, err := group.Join("shop", group.Member{Name: "api"}); err != nil {
 		t.Fatal(err)
 	}
-	m := model{services: services{Session: &session.Setup{}}}
+	m := model{services: services{Session: &session.Active{}}}
 	m.exitGroup()
 	if members := group.Members("shop"); len(members) != 0 {
 		t.Errorf("members after exit = %+v, want none", members)
@@ -192,7 +192,7 @@ func TestMemberColorsGoInOrderOfArrivalAndStay(t *testing.T) {
 // ends with the tick that finds the session gone from its group.
 func TestTheGroupLoopRunsOnlyWhileInAGroup(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	m := &model{services: services{Session: &session.Setup{}}}
+	m := &model{services: services{Session: &session.Active{}}}
 	if m.startGroupPolling() != nil {
 		t.Fatal("a loop started outside any group")
 	}
@@ -226,7 +226,7 @@ func TestMemberStateFollowsTheSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = group.Leave() })
-	m := &model{services: services{Agent: &agent.Session{}}, conv: conv.NewModel(80)}
+	m := &model{services: services{Agent: &agent.Runtime{}}, conv: conv.NewModel(80)}
 	state := func() group.State { return group.Members("shop")[0].State }
 
 	m.syncGroupState()

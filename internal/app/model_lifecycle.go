@@ -174,7 +174,7 @@ func (m *model) applyContinueOption() error {
 		return fmt.Errorf("failed to initialize session store: %w", err)
 	}
 
-	sess, err := m.services.Session.LoadLatest()
+	sess, err := m.services.Session.ResumeLatest()
 	if err != nil {
 		return fmt.Errorf("no previous session to continue: %w", err)
 	}
@@ -189,7 +189,7 @@ func (m *model) applyResumeOption(resumeID string) error {
 	}
 
 	if resumeID != "" {
-		sess, err := m.services.Session.Load(resumeID)
+		sess, err := m.services.Session.Resume(resumeID)
 		if err != nil {
 			return fmt.Errorf("failed to load session %s: %w", resumeID, err)
 		}

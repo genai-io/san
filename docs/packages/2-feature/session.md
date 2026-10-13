@@ -5,132 +5,107 @@ layer: feature
 
 # session
 
-Persists conversation transcripts to disk, generates session IDs, and
-exposes save/load/list/fork operations. The deeper transcript event model
-lives in the `transcript` subpackage.
+Owns durable session identity and application state. `internal/agent.Runtime`
+owns the running agent; `internal/transcript` owns the append-only event log.
 
-## Purpose
+## Entrypoints and core types
 
-Each san run is a session. Sessions are auto-saved as JSONL transcripts
-under `~/.san/projects/<workdir-hash>/`. `--continue` and `--resume` use the
-list/load APIs here to restore a previous session's messages; `--fork`
-duplicates one mid-stream.
+- `Active` (`active.go`) binds the current ID, `Store`, and main `Writer`.
+  `SetID` retires the previous session's writer. Same-ID adoption is idempotent.
+  `Resume` owns the writer lease before reading the native chain; an idle resumed
+  session keeps that lease. It also recreates a failed writer on same-ID resume.
+  `Close` releases the writer at shutdown.
+- `Snapshot` (`snapshot.go`) holds `Metadata`, native `[]core.Message`
+  (`ai.Message`), todo items, notices, and tool presentation details. Messages remain native;
+  notices and display details are separate from model input.
+- `Store` (`store.go`) provides save, load, list, fork, and delete. `Save`
+  imports a complete conversation; `SaveState` saves product state when the
+  live writer already owns message persistence. `List` returns `[]Summary`.
+- `Writer` (`writer.go`) consumes agent events and calls `transcript.Store.Append`.
+  It records native messages without an intermediate content DTO. `Err` exposes
+  the first persistence failure and stops subsequent conversation writes.
+- `initialize.go` wires the process default. `todo.go` adapts todo snapshots;
+  `title.go` and `title_text.go` derive display titles without changing history.
 
-## Contract
+## Flow
 
-No producer-side `Service` interface. Consumers of session don't share
-a narrow common surface — the agent loop wants `NewRecorder` + `ID`;
-the app composition root wants `Save` / `Load` / `LoadLatest` /
-`EnsureStore` / `SetID`; the TUI selector wants `*Store` directly. A
-union interface would just be `*Setup` with a rename, which TEMPLATE
-Rule 3 forbids. If a future caller benefits from narrowing, declare a
-small consumer-defined interface in that caller's package.
-
-```go
-package session
-
-// Setup is the per-process session state: ID, store, recorder. Owned
-// by the app composition root; accessed by feature packages through
-// the methods below.
-type Setup struct {
-    Store     *Store
-    SessionID string
-    /* unexported */
-}
-
-// Identity + store
-func (s *Setup) ID() string
-func (s *Setup) SetID(id string)
-func (s *Setup) TranscriptPath() string
-func (s *Setup) GetStore() *Store
-func (s *Setup) EnsureStore(cwd string) error
-
-// Persistence (delegates to *Store)
-func (s *Setup) Save(snap *Snapshot) error
-func (s *Setup) Load(id string) (*Snapshot, error)
-func (s *Setup) LoadLatest() (*Snapshot, error)
-func (s *Setup) Fork(id string) (*Snapshot, error)
-
-// Recorder
-func (s *Setup) NewRecorder(agentID, provider, model string, maxTokens int) *Recorder
-func (s *Setup) Recorder() *Recorder
-
-// Package-level access.
-func Initialize(opts Options)
-func Default() *Setup
-func SetDefaultSetup(s *Setup)   // test-only
-func ResetDefaultSetup()         // test-only
+```text
+user / model → ai.Message → Writer → transcript.Store.Append → JSONL
+JSONL → transcript.Project → Snapshot.Messages → agent.Runtime.Start
+                                            → ChatRows → conversation UI
 ```
 
-### Why no interface
+`ChatRows` is a display projection. Restored native messages seed the agent
+without converting the rendered rows back into provider messages. Thinking
+signatures, encrypted reasoning, tool-call signatures, tool-result images, and
+content order survive unchanged. Live turn saves contain product state only.
+Runtime retains that chain when a run fails or stops. Model capability filtering
+applies to each inference's input, preserving historical images in the log.
+A snapshot import uses `conversation.replaced`; repeated identical imports or
+resume announcements produce no duplicate history.
 
-Consumers of session each use a different subset of `*Setup`'s
-surface (agent loop wants `NewRecorder` + `ID`; app composition root
-wants `Save` / `Load` / `LoadLatest` / `EnsureStore` / `SetID`; TUI
-selector and subagent session bridge want `*Store` directly). With no
-shared narrow surface a producer-side interface would just be
-`*Setup` renamed — TEMPLATE Rule 3.
+## Storage and configuration
 
-Callers that want `*Store` can read `m.services.Session.Store` (the
-exported field) or call `GetStore()` (mutex-protected); both are
-equivalent.
-
-## Internals
-
-- `Setup` (`setup.go`) — concrete implementation, holds `SessionID`,
-  `Store`, and the current `Recorder` under a mutex.
-- `Store` (`store.go`) — filesystem-backed JSON store under
-  `~/.san/projects/<hash>/`; provides Save / Load / List / Fork.
-  `LoadHistory(id)` reads the same selected branch as Load, including messages
-  before compaction, and reuses message conversion and full tool-output blob
-  hydration. It is for display only; Load still stops at the latest compaction
-  boundary for the model's context. `history_test.go` covers both views and
-  verifies that viewing history leaves the resume boundary unchanged.
-- `Recorder` (`recorder.go`) — writes the event-sourced transcript
-  (one record per inference / tool call / hook / system mutation) into
-  the `transcript` subpackage's filesystem store. It also keeps each notice
-  shown to the person (`notice.added`, placed after the last message), which
-  the model never sees; a resume puts it back where it was.
-- `transcript/` (subpackage) — record types, JSONL store, projector that
-  reconstructs transcript-owned views from the event log. It does not import
-  the `todo` domain package.
-- `task_views.go` — adapts `todo.Item` at the session boundary and preserves
-  task metadata and slice ownership in both directions.
-- `chat_convert.go`, `message_convert.go`, `node_convert.go` — translate
-  `core.Message` between the conversation view-model, transcript content
-  blocks, and transcript nodes.
-
-## Lifecycle
-
-- Construction: `Initialize(Options{CWD})` creates the store and a fresh
-  session ID. Singleton thereafter.
-- Per-run: agent emits events → `Recorder` writes records → `Snapshot`
-  reconstructible at any point.
-- Forks copy the underlying transcript file and assign a new session ID.
-- Reads tolerate a malformed final JSONL record without modifying the file.
-  The first append in a process repairs that tail under a file lock, retaining
-  complete records (including one missing only its newline). Interior damage
-  remains an error. Each successful message append updates the cached chain
-  leaf so switching away and back preserves its parent links.
-- Index updates stay batched until a turn boundary. A stable
-  `transcripts-index.json.lock` protects the read/merge/replace operation across
-  windows; only locally changed entries are merged into the latest disk index.
-  Reads notice replacement of the index and include other windows' sessions.
-
-## Tests
-
-```
-internal/session/recorder_test.go         — recorder writes events correctly.
-internal/session/recorder_order_test.go   — record ordering invariants.
-internal/session/message_convert_test.go  — message ↔ record roundtrips.
-internal/session/transcript/projector_test.go — replay correctness.
-internal/session/transcript/torn_record_test.go — resume and append after a torn tail.
-internal/session/transcript/index_recovery_test.go — recovery and concurrent windows.
-internal/session/fork_recorder_test.go — session switching preserves history.
+```text
+~/.san/projects/<24-hex-workdir-hash>/
+  transcripts/<24-hex-session-id>.jsonl
+  transcripts/<session-id>.jsonl.meta
+  blobs/tool-result/<session-id>/<tool-call-id>
+  blobs/image/<session-id>/...
 ```
 
-## See Also
+The project key hashes the absolute working directory; the session ID is random.
+Parent relationships live in explicit `parentSessionId` fields. Paths do not
+encode ancestry. `LoadHistory` displays the selected branch across compaction boundaries;
+resume still uses only the active context. Notices retain their positions and
+tool diffs come from separate `tool.completed` events.
 
-- Code: `internal/session/`, `internal/session/transcript/`
-- Replay UI: [`packages/inspector.md`](inspector.md)
-- Layer: `feature`
+The [transcript package](transcript.md) defines the native schema, writer leases,
+crash recovery, projections, and derived summaries. Older formats and directories
+are unsupported.
+
+## Lifecycle and failure handling
+
+- Resume seeds message position and inference/exchange counters from the log.
+  Model, provider, output budget, and attempt belong to each inference.
+  A new writer lease refreshes caches after another process has owned the session.
+- A session permits one live writer, enforced by a file lock across processes.
+  Runtime rebuilds reuse the main writer; child runtimes use independent IDs.
+- `/clear` stops the runtime, retires the writer, adopts a fresh identity,
+  updates hook input and task storage, and clears conversation state.
+- Fork stops the runtime before copying history and attachments. It preserves
+  historical timestamps, rewrites tool-output references to the child's blobs,
+  and records the source ID on the child's fork event.
+  The source retains its group membership; the child's membership is empty.
+  Clear, fork, and resume release a previous identity's group immediately,
+  so its pending messages cannot enter the new session before the next poll.
+- Reads ignore an incomplete final JSON fragment. The next append repairs that
+  fragment first; corruption in a terminated record remains an error.
+- A failed append never advances the writer's parent pointer. The app surfaces
+  persistence errors instead of acknowledging a successful save.
+- Manual compaction before a resumed runtime starts writes the native summary
+  and boundary immediately. The UI and next inference share that summary ID;
+  earlier messages remain available to history browsing.
+
+## Tests and pitfalls
+
+`message_test.go` covers native roundtrips, failed writes, actual inference
+configuration, resume deduplication, and independent fork output.
+`writer_*_test.go` covers lifecycle ordering and compaction. Transcript recovery,
+writer lease, and summary tests live under `internal/transcript`.
+`history_test.go` and `notice_test.go` preserve mainline history and notice behavior.
+`internal/app/model_session_test.go` covers the clear boundary; integration tests
+live in `tests/integration/session`.
+`internal/app/session_resume_test.go` exercises failure/retry with parallel tool
+results, compaction before runtime startup, and image-preserving model switches.
+
+Never use UI rows as the live persistence source. Close a writer before creating
+another writer for the same ID. Summary files may be deleted and rebuilt; the
+JSONL and its blobs are the durable session.
+
+## See also
+
+- [Agent runtime](agent.md)
+- [Native transcript log](transcript.md)
+- [Inspector](inspector.md)
+- [Package map](../../reference/package-map.md)

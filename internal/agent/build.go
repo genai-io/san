@@ -74,7 +74,7 @@ type BuildParams struct {
 	BashPromptResponder tool.BashPromptResponderProvider
 
 	// OnEvent observes every agent lifecycle event synchronously, alongside
-	// outbox delivery. Used by the trace recorder; nil leaves recording off.
+	// outbox delivery. Used by the trace writer; nil leaves recording off.
 	OnEvent func(core.Event)
 
 	// FileCache tracks the files the session touched; an automatic compaction
@@ -175,17 +175,18 @@ func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *Permission
 	}
 
 	ag = core.NewAgent(core.Config{
-		ID:            "main",
-		Client:        client.TurnClient,
-		CallOptions:   client.CallOptions,
-		ContextBudget: client.ContextBudget,
-		System:        sys,
-		Tools:         tools,
-		Gate:          tool.HookedPermission(p.HookEngine, pg),
-		ResultFilter:  p.ResultFilter,
-		CompactFunc:   compactFunc,
-		OnEvent:       p.OnEvent,
-		OutboxBuf:     outboxBuf,
+		ID:              "main",
+		Client:          client.TurnClient,
+		PrepareMessages: client.RequestMessages,
+		CallOptions:     client.CallOptions,
+		ContextBudget:   client.ContextBudget,
+		System:          sys,
+		Tools:           tools,
+		Gate:            tool.HookedPermission(p.HookEngine, pg),
+		ResultFilter:    p.ResultFilter,
+		CompactFunc:     compactFunc,
+		OnEvent:         p.OnEvent,
+		OutboxBuf:       outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,

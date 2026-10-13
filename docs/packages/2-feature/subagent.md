@@ -255,7 +255,7 @@ internal/app/notify_test.go              — bounded successful and partial fail
 internal/app/notice_step_inject_test.go  — one live/persisted completion, delivery during inference.
 internal/app/model_history_test.go       — inspectable background results without state mutation.
 internal/app/conv/failure_render_test.go  — collapsed/expanded diagnostics and legacy usage.
-tests/integration/agent/result_view_test.go — real result → adapter → recorder → resumed UI.
+tests/integration/agent/result_view_test.go — real result → adapter → writer → resumed UI.
 internal/tool/workflow/workflow_test.go    — unfinished node output, identity, and parallel usage.
 internal/app/group_test.go                — live and persisted batch context.
 tests/integration/agent/file_read_test.go — unattended errors stay in live task progress and log.

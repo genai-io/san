@@ -349,7 +349,7 @@ func buildApprovalOptionRows(req *perm.PermissionRequest) []approvalOption {
 }
 
 // BuildApprovalOptions returns just the labels in display order. Used by the
-// trace recorder; the modal renderer uses buildApprovalOptionRows directly.
+// trace writer; the modal renderer uses buildApprovalOptionRows directly.
 func BuildApprovalOptions(req *perm.PermissionRequest) []string {
 	rows := buildApprovalOptionRows(req)
 	out := make([]string, len(rows))

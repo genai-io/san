@@ -87,16 +87,16 @@ func (m *model) releaseQueuedMessage() (tea.Cmd, bool) {
 	content = strings.TrimSpace(core.InlineImageTokenRe.ReplaceAllString(content, ""))
 	// Text-only models can't receive image parts; inline each image's path so
 	// the model can decide how to use it (e.g. via an MCP tool).
-	content, providerImages := m.adaptTurnForProvider(content, images)
+	content = m.describeImages(content, images)
 	chat := m.conv.Append(core.ChatMessage{
 		Role:           core.ChatUser,
 		Content:        content,
 		DisplayContent: displayContent,
 		Images:         images,
 	})
-	providerMsg := core.UserMessage(content, providerImages)
-	providerMsg.ID = chat.ID
-	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(providerMsg))...), true
+	message := core.UserMessage(content, images)
+	message.ID = chat.ID
+	return tea.Batch(append(m.CommitMessages(), m.sendToAgent(message))...), true
 }
 
 func (m *model) drainTurnQueues() (tea.Cmd, bool) {

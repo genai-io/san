@@ -21,36 +21,39 @@ same `Send` path used by user input.
 
 ## Contract
 
-Foreground agent lifecycle. `Session` owns exactly one run generation plus its
-permission gate. The package exposes the concrete `*Session`; no producer-side
+Foreground agent lifecycle. `Runtime` owns exactly one run generation plus its
+permission gate. The package exposes the concrete `*Runtime`; no producer-side
 service interface is required.
 
 ```go
 package agent
 
-type Session struct { /* internal fields */ }
+type Runtime struct { /* internal fields */ }
 
-func (s *Session) Start(params BuildParams, messages []core.Message) error
-func (s *Session) Stop()
-func (s *Session) StopContext(ctx context.Context) error
-func (s *Session) Active() bool
-func (s *Session) Send(msg core.Message) error
-func (s *Session) Outbox() <-chan core.Event
-func (s *Session) PermissionGate() *PermissionGate
+func (s *Runtime) Start(params BuildParams, messages []core.Message) error
+func (s *Runtime) Stop()
+func (s *Runtime) StopContext(ctx context.Context) error
+func (s *Runtime) Reset()
+func (s *Runtime) Messages() []core.Message
+func (s *Runtime) SetMessages(messages []core.Message)
+func (s *Runtime) Active() bool
+func (s *Runtime) Send(msg core.Message) error
+func (s *Runtime) Outbox() <-chan core.Event
+func (s *Runtime) PermissionGate() *PermissionGate
 
 // Package-level access
 func Initialize(opts Options)
-func Default() *Session
-func SetDefaultSession(s *Session) // test-only
-func ResetDefaultSession()         // test-only
+func Default() *Runtime
 ```
 
 
 ## Internals
 
-- `session.go` tracks one `sessionRun` (`core.Agent`, cancel, done) plus its
+- `runtime.go` tracks one `run` (`core.Agent`, cancel, done) plus its
   `PermissionGate`. A generation is not cleared until `Run` returns, so a
   stop and restart cannot overlap.
+  The native message chain survives both deliberate stops and unexpected exits;
+  resume can seed it before the first run. `Reset` clears it after shutdown.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,
   permission mode, cwd, ...) into a `core.Config` for `core.NewAgent`.
 - `permission.go` owns the gate: a thread-safe channel pair that turns
@@ -79,8 +82,10 @@ func ResetDefaultSession()         // test-only
 ## Tests
 
 ```
-internal/agent/session_test.go — lifecycle serialization, message identity,
+internal/agent/runtime_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
+internal/app/session_resume_test.go — native error retry, inactive compaction,
+                                      and image-preserving model switches.
 internal/agent/runonce_stream_test.go — headless streams exceeding the default
                                        outbox capacity, with and without text
                                        callbacks, preserving event observers.

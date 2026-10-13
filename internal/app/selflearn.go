@@ -65,7 +65,7 @@ func (m *model) resolveSelfLearnConfig() (selflearn.Config, error) {
 		return selflearn.Config{}, nil
 	}
 	// Settings.SelfLearn() reads just the value-typed field — no whole-Data
-	// clone — so the per-turn drift check in ensureAgentSession stays cheap.
+	// clone — so the per-turn drift check in ensureAgentRuntime stays cheap.
 	return selflearn.ResolveSettings(m.services.Setting.SelfLearn())
 }
 
@@ -74,7 +74,7 @@ func (m *model) resolveSelfLearnConfig() (selflearn.Config, error) {
 // with the same provider/model/max-tokens for prefix-cache parity
 // (§6 invariant #2).
 func (m *model) wireSelfLearn(params agent.BuildParams) {
-	// Tear down first — ensureAgentSession can re-enter after a stopped agent
+	// Tear down first — ensureAgentRuntime can re-enter after a stopped agent
 	// and would otherwise overwrite reviewCancel un-called, leaking the context
 	// and pinning the old fork for up to forkDeadline.
 	m.teardownSelfLearn()
@@ -155,13 +155,13 @@ func (m *model) wireSelfLearn(params agent.BuildParams) {
 
 		client := llm.NewClient(params.Provider, params.ModelID, params.MaxTokens)
 		client.SetThinkingEffort(params.ThinkingEffort)
-		// Sidechain recorder: each L1 fork gets its OWN session ID
+		// Sidechain writer: each L1 fork gets its OWN session ID
 		// (formatted "<parent>.selflearn-review.<unix>") so
 		// `san --resume <fork-id>` replays exactly that review's LLM
 		// calls in isolation. The recap row surfaces this fork ID.
 		var forkOnEvent func(core.Event)
 		var forkSessionID string
-		if rec := m.services.Session.NewSidechainRecorder("selflearn-review", params.Provider.Name(), params.ModelID, params.MaxTokens); rec != nil {
+		if rec := m.services.Session.NewChildWriter("selflearn-review", params.Provider.Name(), params.ModelID, params.MaxTokens); rec != nil {
 			forkOnEvent = rec.OnAgentEvent
 			forkSessionID = rec.SessionID()
 		}
@@ -344,7 +344,7 @@ func newLearnedSkillStore(source func() (string, *setting.Settings)) input.Learn
 
 // teardownSelfLearn unwires the current L1 reviewer: cancels the
 // session-scoped fork context, flips the liveness gate false, and drops the
-// session. Idempotent. Called from StopAgentSession and the top of
+// session. Idempotent. Called from StopAgentRuntime and the top of
 // wireSelfLearn so a rebuild never leaks the prior context.
 func (m *model) teardownSelfLearn() {
 	s := m.services.SelfLearn.session

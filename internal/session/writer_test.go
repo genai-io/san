@@ -1,0 +1,393 @@
+package session
+
+import (
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
+	"github.com/genai-io/sdk-go/pkg/ai"
+
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/tool/toolresult"
+	"github.com/genai-io/san/internal/transcript"
+)
+
+// One turn through PreInfer + PostInfer must produce one inference.requested
+// and one inference.responded record, with the request's MessageIDs/digests
+// preserved and the response's usage/stop_reason populated. The turn counter
+// links the pair.
+func TestWriterWritesRequestedAndRespondedPerTurn(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-1", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewWriter(WriterOptions{
+		Store: fs, SessionID: "sess-1", AgentID: "main",
+		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
+	})
+
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+		System:   "you are san",
+		Messages: []core.Message{{ID: "m1"}, {ID: "m2"}},
+	}})
+	rec.OnAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
+		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 42, Output: 8, CacheRead: 10},
+	}})
+
+	tx, err := fs.Load(context.Background(), "sess-1")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	// Project() flattens to messages; inspect raw records via a re-load instead.
+	// Easiest path: read the file directly via Load and look at the messages —
+	// but inference records aren't messages. Use the file to read raw records.
+	_ = tx
+
+	// Read raw records from disk to assert on inference records.
+	records := readAllRecords(t, dir, "sess-1")
+
+	var reqs, resps []transcript.Record
+	for _, r := range records {
+		switch r.Type {
+		case transcript.InferenceRequested:
+			reqs = append(reqs, r)
+		case transcript.InferenceResponded:
+			resps = append(resps, r)
+		}
+	}
+	if len(reqs) != 1 {
+		t.Fatalf("inference.requested count = %d, want 1", len(reqs))
+	}
+	if len(resps) != 1 {
+		t.Fatalf("inference.responded count = %d, want 1", len(resps))
+	}
+
+	req := reqs[0].Inference
+	if req == nil {
+		t.Fatal("request record missing Inference payload")
+	}
+	if req.Sequence != 1 {
+		t.Fatalf("requested.Turn = %d, want 1", req.Sequence)
+	}
+	// The digests are the writer's own now, taken from the inference rather
+	// than handed to it. What they must be is content-addressed: the same
+	// system prompt digests the same way, and a different one does not.
+	if req.SystemDigest != transcript.DigestSystem("you are san") {
+		t.Fatalf("requested.SystemDigest = %q, want the digest of what was sent", req.SystemDigest)
+	}
+	if req.ToolsDigest != transcript.DigestTools(nil) {
+		t.Fatalf("requested.ToolsDigest = %q, want the digest of an empty toolset", req.ToolsDigest)
+	}
+	if len(req.MessageIDs) != 2 || req.MessageIDs[0] != "m1" {
+		t.Fatalf("requested.MessageIDs = %+v", req.MessageIDs)
+	}
+
+	resp := resps[0].Inference
+	if resp == nil {
+		t.Fatal("response record missing Inference payload")
+	}
+	if resp.Sequence != 1 {
+		t.Fatalf("responded.Turn = %d, want 1 (must match request)", resp.Sequence)
+	}
+	if resp.StopReason != string(ai.StopEndTurn) {
+		t.Fatalf("responded.StopReason = %q", resp.StopReason)
+	}
+	if resp.Usage == nil || resp.Usage.InputTokens != 42 || resp.Usage.OutputTokens != 8 || resp.Usage.CacheReadInputTokens != 10 {
+		t.Fatalf("responded.Usage = %+v", resp.Usage)
+	}
+}
+
+// System mutations must produce one system.section.added per added/replaced
+// section and one system.section.removed per dropped section. Caller info is
+// preserved verbatim so trace consumers can answer "who changed this?".
+func TestWriterWritesSystemSectionEvents(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-sys", Cwd: "/tmp", Provider: "p", Model: "m", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewWriter(WriterOptions{
+		Store: fs, SessionID: "sess-sys", AgentID: "main",
+		Provider: "p", Model: "m", MaxTokens: 1,
+	})
+
+	rec.OnAgentEvent(core.SystemChange{
+		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
+	})
+	rec.OnAgentEvent(core.SystemChange{
+		Name: "identity", Slot: 0, Content: "You are Y", Caller: "command:/identity",
+	})
+	rec.OnAgentEvent(core.SystemChange{
+		Name: "policy", Removed: true, Caller: "test:teardown",
+	})
+
+	records := readAllRecords(t, dir, "sess-sys")
+	var added, removed []transcript.Record
+	for _, r := range records {
+		switch r.Type {
+		case transcript.SystemSectionAdded:
+			added = append(added, r)
+		case transcript.SystemSectionRemoved:
+			removed = append(removed, r)
+		}
+	}
+	if len(added) != 2 {
+		t.Fatalf("system.section.added count = %d, want 2", len(added))
+	}
+	if len(removed) != 1 {
+		t.Fatalf("system.section.removed count = %d, want 1", len(removed))
+	}
+	if added[1].System.Caller != "command:/identity" || added[1].System.Content != "You are Y" {
+		t.Fatalf("replaced section payload = %+v", added[1].System)
+	}
+	if removed[0].System.Name != "policy" || removed[0].System.Caller != "test:teardown" {
+		t.Fatalf("removed section payload = %+v", removed[0].System)
+	}
+}
+
+// Tool registry changes must produce one tool.added per Add and one
+// tool.removed per Remove. Schema/Name and Caller are preserved.
+func TestWriterWritesToolsChangeEvents(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-tools", Cwd: "/tmp", Provider: "p", Model: "m", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewWriter(WriterOptions{
+		Store: fs, SessionID: "sess-tools", AgentID: "main",
+		Provider: "p", Model: "m", MaxTokens: 1,
+	})
+
+	rec.OnAgentEvent(core.ToolsChange{
+		Schema: core.ToolSchema{Name: "Read", Description: "read a file"},
+		Caller: "tools:init",
+	})
+	rec.OnAgentEvent(core.ToolsChange{
+		Schema: core.ToolSchema{Name: "Bash", Description: "run shell"},
+		Caller: "mcp:Bash",
+	})
+	rec.OnAgentEvent(core.ToolsChange{
+		Name: "Bash", Removed: true, Caller: "mode:plan",
+	})
+
+	records := readAllRecords(t, dir, "sess-tools")
+	var added, removed []transcript.Record
+	for _, r := range records {
+		switch r.Type {
+		case transcript.ToolAdded:
+			added = append(added, r)
+		case transcript.ToolRemoved:
+			removed = append(removed, r)
+		}
+	}
+	if len(added) != 2 {
+		t.Fatalf("tool.added count = %d, want 2", len(added))
+	}
+	if len(removed) != 1 {
+		t.Fatalf("tool.removed count = %d, want 1", len(removed))
+	}
+	if added[0].Tool.Schema == nil || added[0].Tool.Schema.Name != "Read" || added[0].Tool.Caller != "tools:init" {
+		t.Fatalf("first added record = %+v", added[0].Tool)
+	}
+	if removed[0].Tool.Name != "Bash" || removed[0].Tool.Caller != "mode:plan" {
+		t.Fatalf("removed record = %+v", removed[0].Tool)
+	}
+}
+
+// Compaction must persist the summary as a message.appended and a
+// session.compacted record whose SummaryMessageID is that summary's ID, so replay
+// reconstructs the compacted chain instead of the summarized-away history.
+func TestWriterWritesCompactionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-c", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewWriter(WriterOptions{
+		Store: fs, SessionID: "sess-c", AgentID: "main",
+		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
+	})
+
+	// A pre-compaction message, then the summary append + compaction boundary.
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
+	rec.OnAgentEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
+
+	records := readAllRecords(t, dir, "sess-c")
+	var summaryAppended bool
+	var boundary string
+	for _, r := range records {
+		if r.Type == transcript.MessageAppended && r.Message != nil && r.Message.ID == "sum-1" {
+			summaryAppended = true
+		}
+		if r.Type == transcript.SessionCompacted && r.Compaction != nil {
+			boundary = r.Compaction.MessageID
+		}
+	}
+	if !summaryAppended {
+		t.Fatal("summary message.appended was not recorded")
+	}
+	if boundary != "sum-1" {
+		t.Fatalf("compaction boundary = %q, want sum-1", boundary)
+	}
+}
+
+// A nil-safe writer (no Store) must accept events without panicking.
+func TestWriterNilSafe(t *testing.T) {
+	var rec *Writer
+	rec.OnAgentEvent(sdkagent.MessageStart{})
+
+	empty := NewWriter(WriterOptions{})
+	empty.OnAgentEvent(sdkagent.MessageStart{})
+}
+
+func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record {
+	t.Helper()
+	fs, err := transcript.NewStore(baseDir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore (reread): %v", err)
+	}
+	path := fs.TranscriptPath(sessionID)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open transcript: %v", err)
+	}
+	defer f.Close()
+
+	var out []transcript.Record
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var r transcript.Record
+		if err := json.Unmarshal([]byte(line), &r); err != nil {
+			t.Fatalf("decode record: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("scan transcript: %v", err)
+	}
+	return out
+}
+
+// A failed call must land on disk as inference.failed, closing the pending
+// inference.requested so every request ends in exactly one terminal record.
+func TestWriterWritesInferenceFailed(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-fail")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-f", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	rec := NewWriter(WriterOptions{
+		Store: fs, SessionID: "sess-f", AgentID: "main",
+		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
+	})
+
+	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+		System: "you are san", Messages: []core.Message{{ID: "m1"}},
+	}})
+	rec.OnAgentEvent(sdkagent.MessageEnd{
+		Attempt: 2,
+		Err:     &ai.Error{Kind: ai.KindOverloaded, Status: 529, Message: "overloaded"},
+	})
+	// Second failure with no request open: the first one consumed it, so this
+	// must not claim the same turn.
+	rec.OnAgentEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
+
+	var failed []*transcript.InferenceRecord
+	for _, r := range readAllRecords(t, dir, "sess-f") {
+		if r.Type == transcript.InferenceFailed {
+			failed = append(failed, r.Inference)
+		}
+	}
+	if len(failed) != 2 {
+		t.Fatalf("inference.failed records = %d, want 2", len(failed))
+	}
+	if !strings.Contains(failed[0].Error, "overloaded") || failed[0].Attempt != 2 || failed[0].Sequence != 1 {
+		t.Errorf("paired failure = %+v, want turn 1, attempt 2 and its error preserved", failed[0])
+	}
+	if !failed[0].Retryable {
+		t.Errorf("529 classified as not-retryable: %+v", failed[0])
+	}
+	if failed[1].Sequence != 0 {
+		t.Errorf("orphan failure claimed turn %d, want 0", failed[1].Sequence)
+	}
+	if failed[1].Retryable {
+		t.Errorf("a plain error classified as retryable: %+v", failed[1])
+	}
+}
+
+// A tool's details — an edit's diff — are recorded with its result, so a
+// resumed session can draw them again. They arrive on ToolEnd, before the
+// message carrying the result.
+func TestWriterKeepsToolDetailsWithTheResult(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := transcript.NewStore(dir, "proj-1")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := fs.Start(context.Background(), transcript.StartCommand{
+		SessionID: "sess-d", Cwd: "/tmp", Provider: "anthropic", Model: "claude-x", Time: time.Now(),
+	}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	rec := NewWriter(WriterOptions{Store: fs, SessionID: "sess-d", AgentID: "main"})
+
+	diff := toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "@@ -1 +1 @@\n-old\n+new\n", AddedLines: 1, RemovedLines: 1}
+	rec.OnAgentEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
+	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "call-1", ToolName: "Edit", Content: ai.TextContent("Edited a.go")})
+	msg.ID = "m-result"
+	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+
+	got, err := fs.Load(context.Background(), "sess-d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if details := got.ToolDetails["call-1"].FileChange; details == nil || details.UnifiedDiff != diff.UnifiedDiff {
+		t.Fatalf("diff lost: %+v", details)
+	}
+	if len(got.Messages) != 1 || got.Messages[0].ToolResults()[0].Text() != "Edited a.go" {
+		t.Fatal("model result changed")
+	}
+}

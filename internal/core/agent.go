@@ -137,6 +137,9 @@ type Config struct {
 	// an endpoint's headers can depend on what the turn sends — see
 	// llm.TurnHeaders.
 	Client func(msgs []Message) (*ai.Client, error)
+	// PrepareMessages adapts one inference's input without changing the native
+	// conversation. Nil sends the chain unchanged.
+	PrepareMessages func([]Message) []Message
 	// CallOptions are per-call settings — the output cap, the reasoning rung —
 	// asked for fresh each inference, so a change mid-session lands on the next
 	// call. Nil leaves the model's defaults.
@@ -221,19 +224,20 @@ func NewAgent(cfg Config) Agent {
 	}
 
 	a := &agent{
-		id:            cfg.ID,
-		system:        cfg.System,
-		tools:         cfg.Tools,
-		compactFunc:   cfg.CompactFunc,
-		gate:          cfg.Gate,
-		resultFilter:  cfg.ResultFilter,
-		client:        cfg.Client,
-		callOptions:   cfg.CallOptions,
-		contextBudget: cfg.ContextBudget,
-		inbox:         make(chan Inbound, cfg.InboxBuf),
-		wake:          make(chan struct{}, 1),
-		outbox:        outbox,
-		onEvent:       cfg.OnEvent,
+		id:              cfg.ID,
+		system:          cfg.System,
+		tools:           cfg.Tools,
+		compactFunc:     cfg.CompactFunc,
+		gate:            cfg.Gate,
+		resultFilter:    cfg.ResultFilter,
+		client:          cfg.Client,
+		prepareMessages: cfg.PrepareMessages,
+		callOptions:     cfg.CallOptions,
+		contextBudget:   cfg.ContextBudget,
+		inbox:           make(chan Inbound, cfg.InboxBuf),
+		wake:            make(chan struct{}, 1),
+		outbox:          outbox,
+		onEvent:         cfg.OnEvent,
 	}
 
 	// The SDK agent needs a client and San has none yet: which one answers a
@@ -263,7 +267,7 @@ func NewAgent(cfg Config) Agent {
 	a.inner = inner
 	// Mirror system + tools mutations onto the event bus. Attach after
 	// construction so each registry replays its initial members back to the
-	// observer — the recorder sees a complete event chain from t0.
+	// observer — the writer sees a complete event chain from t0.
 	cfg.System.SetObserver(func(c SystemChange) {
 		a.emitTelemetry(c)
 	})
@@ -313,7 +317,7 @@ type TurnEnded struct{ Result Result }
 type Compacted struct {
 	Summary       string
 	OriginalCount int
-	// SummaryMessageID names the summary that replaced the chain. The recorder
+	// SummaryMessageID names the summary that replaced the chain. The writer
 	// writes it as the transcript boundary, so replay truncates there instead
 	// of resurrecting the summarized-away messages.
 	SummaryMessageID string
@@ -322,7 +326,7 @@ type Compacted struct {
 }
 
 // SystemChange is one mutation to the system prompt's section map, emitted on
-// Use/Drop. The recorder writes these as system.section.added / .removed.
+// Use/Drop. The writer writes these as system.section.added / .removed.
 type SystemChange struct {
 	Name    string // stable across mutations
 	Slot    int

@@ -108,7 +108,7 @@ MANUAL  (/compact [focus], app layer)
      │  PreCompact hook  (focus += AdditionalContext)
      │  summarize ──▶ stop the agent ──▶ conv := [summary]
      │                                ──▶ restore recently-accessed files
-     └─ next user message ──▶ ensureAgentSession reseeds the agent from conv ──▶ Run
+     └─ next user message ──▶ ensureAgentRuntime reseeds the agent from conv ──▶ Run
 ```
 
 ### Commonalities
@@ -161,7 +161,7 @@ Without the boundary, replay would walk all the way back through `m1…m2…` an
 reconstruct the *pre*-compaction chain — which is exactly the
 "`messageIds — 2 expected vs 7 replayed`" mismatch the inspector reports when
 the summary append and boundary are missing. `materializeActiveChain`
-(`internal/session/transcript/projector.go`) stops at the boundary so the
+(`internal/transcript/projector.go`) stops at the boundary so the
 reconstructed chain matches what the live agent actually sent.
 
 ## Reminder freshness
@@ -182,7 +182,7 @@ changed), but reminders are deliberately rebuilt.
 | Summary text (reminders stripped) | `internal/core/message.go` (`BuildCompactionText`) |
 | Compaction LLM call | `internal/agent/build.go`, `internal/app/conv/compact.go` |
 | Boundary recording | `internal/session/recorder.go` (`onCompact`) → `transcript.FileStore.Compact` |
-| Replay truncation | `internal/session/transcript/projector.go` (`materializeActiveChain`) |
+| Replay truncation | `internal/transcript/projector.go` (`materializeActiveChain`) |
 | App-side handlers + memory refresh | `internal/app/model_compact.go` |
 
 ## See Also

@@ -60,6 +60,7 @@ registry.go    every provider/auth pair San can open, and its connection status
 auth.go        interactive (OAuth) sign-in, as the registry sees it
 conn.go        the package-level *Conn, provider resolution, the cross-vendor pool
 client.go      Client: a Provider plus a model; hands the loop a per-turn *ai.Client
+request_messages.go  per-inference capability filtering, retaining native history
 store.go       providers.json — what the user connected and chose
 modelcache.go  the cached listings, and the context window resolved from them
 cost.go        Money, the multi-currency total, and per-provider/auth pricing
@@ -193,5 +194,5 @@ internal/llm/vendor_live_test.go — one real turn per configured vendor,
 
 - Code: `internal/llm/`
 - Primitive: [`packages/core.md`](../3-core/core.md) (`LLM` interface)
-- Cost tracking surfaced via [`packages/session.md`](session.md) recorder.
+- Cost tracking surfaced via [`packages/session.md`](session.md) writer.
 - Layer: `feature`

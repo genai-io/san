@@ -8,9 +8,9 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 type interactionState struct {
@@ -112,7 +112,7 @@ func (m *model) showActiveInteraction() tea.Cmd {
 			view.AllowRules = nil
 		}
 		m.conv.Tool.MarkAwaitingApproval(callID)
-		if rec := m.services.Session.Recorder(); rec != nil {
+		if rec := m.services.Session.Writer(); rec != nil {
 			rec.RecordPermissionRequired(transcript.PermissionRecord{
 				RequestID: req.Permission.RequestID, Tool: req.Permission.ToolName,
 				Input: marshalPermInput(req.Permission.Input), Detail: interactionPermissionDetail(req, view),

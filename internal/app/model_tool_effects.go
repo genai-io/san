@@ -77,7 +77,7 @@ func (m *model) filterOversizedResult(_ context.Context, c sdkagent.PostToolCont
 	// rest.
 	out := c.Result
 	if sess := m.services.Session; sess != nil && sess.EnsureStore(m.env.CWD) == nil && sess.ID() != "" {
-		if err := sess.GetStore().PersistToolResult(sess.ID(), c.Call.ID, full); err == nil {
+		if err := sess.Store().PersistToolResult(sess.ID(), c.Call.ID, full); err == nil {
 			out.Content = ai.TextContent(fmt.Sprintf("%s\n\n[Full output persisted to blobs/tool-result/%s/%s]",
 				preview, sess.ID(), c.Call.ID))
 			return &out, nil

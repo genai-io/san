@@ -1,4 +1,4 @@
-// Agent session lifecycle: building params, delegating to *agent.Session,
+// Agent session lifecycle: building params, delegating to *agent.Runtime,
 // and wrapping channels in tea.Cmds for the TUI.
 package app
 
@@ -31,11 +31,11 @@ import (
 	"github.com/genai-io/san/internal/persona"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/reviewer"
-	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 // ============================================================
@@ -97,7 +97,7 @@ func (m *model) applyPersonaAgents() {
 
 // promptParams fills in the fields that shape the system prompt and the
 // toolset, and only those. It is free of side effects, unlike buildAgentParams
-// below, which layers the recorder, hook wiring, and permission closures on
+// below, which layers the writer, hook wiring, and permission closures on
 // top — so anything that only wants to know what the agent would send (see
 // contextUsage) can call this without starting anything.
 //
@@ -161,7 +161,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 
 	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	var onEvent func(core.Event)
-	rec := m.services.Session.NewRecorder("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
+	rec := m.services.Session.NewWriter("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
 	if rec != nil {
 		onEvent = rec.OnAgentEvent
 		for _, n := range m.earlyNotices {
@@ -488,7 +488,7 @@ func toolsHeldOn() map[string]string {
 }
 
 // disabledToolsSignature is a stable fingerprint of the effective disabled-tool
-// set. ensureAgentSession compares it against the live agent's build-time value
+// set. ensureAgentRuntime compares it against the live agent's build-time value
 // so a /tool enable/disable (which the built-in and MCP tool filters both read)
 // rebuilds the toolset on the next turn.
 func (m *model) disabledToolsSignature() string {
@@ -503,12 +503,12 @@ func (m *model) disabledToolsSignature() string {
 	return strings.Join(names, "\x00")
 }
 
-// ensureAgentSession lazily starts the agent goroutine, preloading the
+// ensureAgentRuntime lazily starts the agent goroutine, preloading the
 // existing conversation. If pendingMessageID is non-empty and matches the
 // trailing user message in m.conv, it is dropped from the preload — the
 // caller is about to re-deliver it via sendToAgent and we'd otherwise see
 // the input twice. Pass "" when the caller has not appended the message.
-func (m *model) ensureAgentSession(pendingMessageID string) (tea.Cmd, error) {
+func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 	if m.services.Agent.Active() {
 		// The toolset is fixed at agent-build time. If the enabled Evolve
 		// capabilities or the disabled-tool set drifted since the build (a
@@ -520,22 +520,21 @@ func (m *model) ensureAgentSession(pendingMessageID string) (tea.Cmd, error) {
 			m.disabledToolsSignature() == m.agentDisabledToolsSignature {
 			return nil, nil
 		}
-		m.StopAgentSession()
+		m.StopAgentRuntime()
 	}
 
 	// Rebuild the subagent executor alongside the main agent so it inherits the
 	// same effective disabled-tool snapshot after settings/persona drift.
 	m.ReconfigureAgentTool()
 	params := m.buildAgentParams()
+	if w := m.services.Session.Writer(); w != nil && w.Err() != nil {
+		return nil, w.Err()
+	}
 	coreMessages := m.seedAgentMessages(pendingMessageID)
 
 	if err := m.services.Agent.Start(params, coreMessages); err != nil {
 		return nil, err
 	}
-	// Keep the snapshot across a failed Start so the user can retry without
-	// losing history; a successful replacement owns its own copy now.
-	m.agentRestartMessages = nil
-
 	// Record what the toolset was built with, for the drift check above.
 	m.agentEvolveCaps = m.selfLearnCapabilities()
 	m.agentDisabledToolsSignature = m.disabledToolsSignature()
@@ -553,12 +552,10 @@ func (m *model) ensureAgentSession(pendingMessageID string) (tea.Cmd, error) {
 }
 
 // seedAgentMessages returns the authoritative chain for a newly-built main
-// agent. A deliberate stop snapshots the live core.Agent before discarding it;
-// that snapshot wins over the UI rendering model, whose rows may have been
-// committed, cleared, or assigned different IDs. Cold starts and restored
-// sessions have no snapshot and therefore seed from the UI conversation.
+// agent. Runtime retains native messages across stops and errors; UI rows are
+// only a fallback before any native conversation exists.
 func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
-	coreMessages := m.agentRestartMessages
+	coreMessages := m.services.Agent.Messages()
 	if len(coreMessages) == 0 {
 		coreMessages = m.conv.ConvertToProvider()
 	}
@@ -568,32 +565,7 @@ func (m *model) seedAgentMessages(pendingMessageID string) []core.Message {
 			coreMessages = coreMessages[:len(coreMessages)-1]
 		}
 	}
-	return m.dropImagesTextOnlyModelRejects(coreMessages)
-}
-
-// dropImagesTextOnlyModelRejects removes image attachments from a seeded chain
-// the active model can't accept, keeping the surrounding text. The adaptTurnForProvider
-// call in the submit path handles new turns, but history predating the current model
-// still holds them — switch a conversation from a vision-capable model to a
-// text-only one and every later turn replays those images, which the provider
-// rejects outright. Every rebuild passes through here, so the switch itself
-// (which stops the session) is enough to clear them.
-func (m *model) dropImagesTextOnlyModelRejects(msgs []core.Message) []core.Message {
-	if llm.SupportsImages(m.env.LLMProvider, m.env.GetModelID()) {
-		return msgs
-	}
-	stripped := make([]core.Message, len(msgs))
-	for i, msg := range msgs {
-		content := make(ai.Content, 0, len(msg.Content))
-		for _, block := range msg.Content {
-			if block.Type != ai.BlockImage {
-				content = append(content, block)
-			}
-		}
-		msg.Content = content
-		stripped[i] = msg
-	}
-	return stripped
+	return coreMessages
 }
 
 // agentSendFailedMsg reports a message the agent never accepted; a delivered
@@ -680,23 +652,16 @@ func (m *model) wireReminderProviders() {
 	})
 }
 
-func (m *model) StopAgentSession() {
-	// Capture before Stop retires the active run. This also covers stops that
-	// happen before ensureAgentSession runs (agent toggles, provider changes,
-	// terminal outbox events), which the old rebuild-local carry-over missed.
-	if messages := m.services.Agent.Messages(); len(messages) > 0 {
-		m.agentRestartMessages = messages
-	}
+func (m *model) StopAgentRuntime() {
 	m.services.Agent.Stop()
 	m.teardownSelfLearn()
 }
 
-// ResetAgentSession stops the agent without making its live chain eligible for
+// ResetAgentRuntime stops the agent without making its live chain eligible for
 // the next rebuild. Use it when the conversation itself is being cleared or
 // replaced (for example /clear and /resume).
-func (m *model) ResetAgentSession() {
-	m.agentRestartMessages = nil
-	m.services.Agent.Stop()
+func (m *model) ResetAgentRuntime() {
+	m.services.Agent.Reset()
 	m.resetInteractions()
 	// The next conversation carries neither the old notices nor, until its
 	// first message, the skills/memory reminders.
@@ -809,8 +774,8 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {
 		return subagent.InheritedPermissionMode(perms.CurrentMode())
 	})
-	if m.services.Session.GetStore() != nil && m.services.Session.ID() != "" {
-		executor.SetSessionStore(m.services.Session.GetStore(), m.services.Session.ID())
+	if m.services.Session.Store() != nil && m.services.Session.ID() != "" {
+		executor.SetSessionStore(m.services.Session.Store(), m.services.Session.ID())
 	}
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())

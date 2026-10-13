@@ -50,7 +50,7 @@ learnings the review can act on — memory off never mentions memory — and is
 injected through the toolset's generic `ExtraTools` hook. The writes affect
 future sessions, not the current turn; at most one review runs at a time.
 Capability and tool-toggle changes are reconciled at the next turn start:
-`ensureAgentSession` records what the toolset was built with and rebuilds the
+`ensureAgentRuntime` records what the toolset was built with and rebuilds the
 agent on drift — covering /evolve saves, /tools toggles, and external settings
 edits with one mechanism. `SAN_DISABLE_SELF_LEARN=1` is a hard runtime switch:
 it suppresses both the reviewer and the `Evolve` tool regardless of layered settings.

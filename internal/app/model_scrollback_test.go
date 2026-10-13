@@ -64,7 +64,8 @@ func TestCompletedReplyRemainsVisibleAfterCommitAndResize(t *testing.T) {
 
 func TestClearDiscardsRecentSettledRows(t *testing.T) {
 	m := fixedComposerModel(80, 24)
-	m.services.Agent = &agent.Session{}
+	initClearSessionTest(t, m)
+	m.services.Agent = &agent.Runtime{}
 	m.services.Reminder = reminder.NewService()
 	m.queueScrollbackPrint("OLD-REPLY", 0)
 	if _, _, handled := m.executeCommand(context.Background(), "/clear"); !handled {
@@ -77,7 +78,8 @@ func TestClearDiscardsRecentSettledRows(t *testing.T) {
 
 func TestClearCancelsQueuedHistoryAndIgnoresStaleMessages(t *testing.T) {
 	m := fixedComposerModel(80, 24)
-	m.services.Agent = &agent.Session{}
+	initClearSessionTest(t, m)
+	m.services.Agent = &agent.Runtime{}
 	m.services.Reminder = reminder.NewService()
 	var rows []string
 	for i := 0; i < 19; i++ {
@@ -445,7 +447,7 @@ func TestScrollbackPrintWaitsForApprovalModalToClose(t *testing.T) {
 // prompt until the final Println completes, then open it on the clean live frame.
 func TestDeferredApprovalWaitsForScrollbackHandoff(t *testing.T) {
 	m := dockedModalModel(t, "about to inspect the repository")
-	m.services.Session = &session.Setup{}
+	m.services.Session = &session.Active{}
 	m.userInput.Approval.Hide()
 	view := &perm.PermissionRequest{
 		ToolName: "Bash",

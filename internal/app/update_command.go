@@ -49,7 +49,8 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		ReloadAfterPluginChange: m.ReloadAfterPluginChange,
 		PersistSession:          m.PersistSession,
 		ReconfigureAgentTool:    m.ReconfigureAgentTool,
-		StopAgentSession:        m.StopAgentSession,
+		StopAgentRuntime:        m.StopAgentRuntime,
+		ClearSession:            m.clearSession,
 		FireSessionEnd:          m.FireSessionEnd,
 		BuildCompactRequest:     m.BuildCompactRequest,
 		SpinnerTickCmd:          m.SpinnerTickCmd,
@@ -60,7 +61,7 @@ func (m *model) slashCommandEnv() input.SlashCommandEnv {
 		RenameSession:           m.renameSession,
 		GroupCommand:            m.groupCommand,
 		OpenHistory:             m.openHistory,
-		ResetAgentSession:       m.ResetAgentSession,
+		ResetAgentRuntime:       m.ResetAgentRuntime,
 		ClearScrollback:         m.clearScrollback,
 	}
 }

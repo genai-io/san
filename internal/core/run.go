@@ -25,18 +25,19 @@ import (
 // Two things an exchange asks for live elsewhere: what the model may call is
 // toolset.go, and shortening the conversation is compact.go.
 type agent struct {
-	id            string
-	system        System
-	tools         *Tools
-	compactFunc   func(ctx context.Context, msgs []Message) (string, error)
-	gate          Gate
-	resultFilter  ResultFilter
-	client        func(msgs []Message) (*ai.Client, error)
-	callOptions   func() []ai.Option
-	contextBudget func() int
-	inbox         chan Inbound
-	outbox        chan Event
-	onEvent       func(Event)
+	id              string
+	system          System
+	tools           *Tools
+	compactFunc     func(ctx context.Context, msgs []Message) (string, error)
+	gate            Gate
+	resultFilter    ResultFilter
+	client          func(msgs []Message) (*ai.Client, error)
+	prepareMessages func([]Message) []Message
+	callOptions     func() []ai.Option
+	contextBudget   func() int
+	inbox           chan Inbound
+	outbox          chan Event
+	onEvent         func(Event)
 
 	// inner holds the conversation and runs one exchange at a time.
 	inner *sdkagent.Agent
@@ -394,6 +395,9 @@ func (a *agent) preInfer(_ context.Context, inf *sdkagent.Inference) error {
 	// A cwd or other system-section change between tools must reach the next
 	// inference in this exchange, not only the next ThinkAct call.
 	inf.System = a.system.Prompt()
+	if a.prepareMessages != nil {
+		inf.Messages = a.prepareMessages(inf.Messages)
+	}
 	if a.client != nil {
 		client, err := a.client(inf.Messages)
 		if err != nil {
