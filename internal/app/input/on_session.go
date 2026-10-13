@@ -12,8 +12,8 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/genai-io/san/internal/app/kit"
-	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/session"
+	"github.com/genai-io/sdk-go/pkg/ai"
 )
 
 // sessionSelectedMsg is sent when a session is selected.
@@ -24,8 +24,8 @@ type sessionSelectedMsg struct {
 // SessionSelector holds the state for the session selector.
 type SessionSelector struct {
 	active   bool
-	sessions []*session.SessionMetadata
-	filtered []*session.SessionMetadata
+	sessions []session.Summary
+	filtered []session.Summary
 	nav      kit.ListNav
 	width    int
 	height   int
@@ -105,7 +105,7 @@ func (s *SessionSelector) Cancel() {
 
 func (s *SessionSelector) updateFilter() {
 	query := strings.ToLower(s.nav.Search)
-	s.filtered = make([]*session.SessionMetadata, 0, len(s.sessions))
+	s.filtered = make([]session.Summary, 0, len(s.sessions))
 
 	for _, sess := range s.sessions {
 		if query != "" && !kit.FuzzyMatch(strings.ToLower(sess.Title), query) &&
@@ -153,7 +153,7 @@ func (s *SessionSelector) HandleKeypress(key tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-func sessionFormatCompactMetadata(sess *session.SessionMetadata) string {
+func sessionFormatCompactMetadata(sess session.Summary) string {
 	return fmt.Sprintf("%d msgs · %s", sess.MessageCount, sessionFormatRelativeTime(sess.UpdatedAt))
 }
 
@@ -168,7 +168,7 @@ func sessionTruncateToFirstLine(content string, maxLen int) string {
 	return kit.TruncateText(content, maxLen)
 }
 
-func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
+func (s *SessionSelector) getLastMessage(sess session.Summary) string {
 	cacheKey := sess.ID + ":last"
 	if cached, ok := s.messageCache[cacheKey]; ok {
 		return cached
@@ -192,13 +192,13 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 
 	for _, msg := range slices.Backward(fullSession.Messages) {
 
-		if msg.Role != core.ChatUser && msg.Role != core.ChatAssistant {
+		if msg.Role != ai.RoleUser && msg.Role != ai.RoleAssistant {
 			continue
 		}
-		blocks := session.MessageToBlocks(msg)
+		blocks := msg.Content
 		skip := false
 		for _, block := range blocks {
-			if block.Type == "tool_result" || block.Type == "tool_use" {
+			if block.Type == ai.BlockToolResult || block.Type == ai.BlockToolCall {
 				skip = true
 				break
 			}
@@ -219,7 +219,7 @@ func (s *SessionSelector) getLastMessage(sess *session.SessionMetadata) string {
 	return ""
 }
 
-func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetadata) string {
+func (s *SessionSelector) getFirstSubstantiveMessage(sess session.Summary) string {
 	cacheKey := sess.ID + ":subst"
 	if cached, ok := s.messageCache[cacheKey]; ok {
 		return cached
@@ -235,13 +235,13 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 	}
 
 	for _, msg := range fullSession.Messages {
-		if msg.Role != core.ChatUser {
+		if msg.Role != ai.RoleUser {
 			continue
 		}
-		blocks := session.MessageToBlocks(msg)
+		blocks := msg.Content
 		isToolResult := false
 		for _, block := range blocks {
-			if block.Type == "tool_result" {
+			if block.Type == ai.BlockToolResult {
 				isToolResult = true
 				break
 			}
@@ -262,7 +262,7 @@ func (s *SessionSelector) getFirstSubstantiveMessage(sess *session.SessionMetada
 	return ""
 }
 
-func (s *SessionSelector) renderSession(sess *session.SessionMetadata, isSelected bool, sb *strings.Builder, boxWidth int) {
+func (s *SessionSelector) renderSession(sess session.Summary, isSelected bool, sb *strings.Builder, boxWidth int) {
 	// RenderSelectableRow adds a 4-char left prefix for unselected rows
 	// ("  " + PaddingLeft(2)) and the same 4-char visual offset for
 	// selected rows ("  ▎ "). We account for that below so the row is

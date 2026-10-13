@@ -36,8 +36,8 @@ func (m *model) handleWindowResize(msg tea.WindowSizeMsg) tea.Cmd {
 
 		if m.userInput.Session.PendingSelector {
 			m.userInput.Session.PendingSelector = false
-			if m.services.Session.GetStore() != nil {
-				_ = m.userInput.Session.Selector.EnterSelect(m.env.Width, m.env.Height, m.services.Session.GetStore(), m.env.CWD)
+			if m.services.Session.Store() != nil {
+				_ = m.userInput.Session.Selector.EnterSelect(m.env.Width, m.env.Height, m.services.Session.Store(), m.env.CWD)
 			}
 		}
 

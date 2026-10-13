@@ -9,7 +9,7 @@ import (
 
 // Before the first message there is no recorder; notices wait for it.
 func TestNoticesBeforeTheRecorderWaitForIt(t *testing.T) {
-	m := &model{services: services{Session: &session.Setup{}}, conv: conv.NewModel(80)}
+	m := &model{services: services{Session: &session.Active{}}, conv: conv.NewModel(80)}
 	m.conv.OnNotice = m.recordNotice
 	m.conv.AddNotice("Joined shop as @api")
 	if len(m.earlyNotices) != 1 {

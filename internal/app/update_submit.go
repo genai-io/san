@@ -200,7 +200,7 @@ func (m *model) adaptTurnForProvider(content string, images []core.Attachment) (
 	// resolving for as long as the transcript can be resumed.
 	imagesDir := ""
 	if err := m.services.Session.EnsureStore(m.env.CWD); err == nil {
-		imagesDir = m.services.Session.GetStore().ImagesDir(m.services.Session.ID())
+		imagesDir = m.services.Session.Store().ImagesDir(m.services.Session.ID())
 	}
 	for i, img := range images {
 		path, err := image.EnsureFilePath(img, imagesDir)
@@ -245,7 +245,7 @@ func (m *model) drainInputQueueWhileIdle() tea.Cmd {
 // hook continuation, hub notification. Ensures the agent session is up,
 // pushes the already-identified message onto its inbox, returns the
 // outbox-poll cmd.
-// On no-provider or ensureAgentSession failure, posts a notice and
+// On no-provider or ensureAgentRuntime failure, posts a notice and
 // returns a commit cmd (the agent is not contacted).
 func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 	content := msg.Text()
@@ -254,7 +254,7 @@ func (m *model) SubmitToAgent(msg core.Message) tea.Cmd {
 		return m.notifyNoProvider()
 	}
 
-	startCmd, err := m.ensureAgentSession(msg.ID)
+	startCmd, err := m.ensureAgentRuntime(msg.ID)
 	if err != nil {
 		m.conv.AddNotice("Failed to start agent: " + err.Error())
 		return tea.Batch(m.CommitMessages()...)

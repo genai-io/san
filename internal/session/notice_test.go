@@ -8,7 +8,7 @@ import (
 	"github.com/genai-io/sdk-go/pkg/ai"
 
 	"github.com/genai-io/san/internal/core"
-	"github.com/genai-io/san/internal/session/transcript"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 // A notice is shown to the person, never the model; it is kept so a resume
@@ -19,7 +19,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := (&Setup{Store: store, SessionID: "s"}).NewRecorder("main", "p", "m", 1000)
+	rec := NewActive(store, "s").NewWriter("main", "p", "m", 1000)
 	add := func(id string, role ai.Role, text string) {
 		rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
 	}
@@ -34,7 +34,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 		t.Fatal(err)
 	}
 	var got []string
-	for _, m := range sess.Messages {
+	for _, m := range sess.ChatRows() {
 		got = append(got, string(m.Role)+":"+m.Content)
 	}
 	want := []string{
@@ -52,7 +52,7 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 			t.Errorf("message %d = %q, want %q", i, got[i], want[i])
 		}
 	}
-	if !sess.Messages[3].AgentNotice {
+	if !sess.ChatRows()[3].AgentNotice {
 		t.Error("an agent notice came back as a plain one")
 	}
 }

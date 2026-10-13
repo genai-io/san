@@ -22,7 +22,7 @@ func TestSDKInferenceLifecycleCommitsAssistantAndNotices(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m := fixedComposerModel(80, 40)
-			m.services.Agent = &agent.Session{}
+			m.services.Agent = &agent.Runtime{}
 			m.services.Tool = tool.NewRegistry()
 			m.pendingDecisions = &sync.Map{}
 			deliver := func(event core.Event) {

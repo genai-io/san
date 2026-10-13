@@ -137,13 +137,13 @@ type model struct {
 	evolveRequestedThisTurn bool
 
 	// agentEvolveCaps records the self-learning capabilities the live agent's
-	// toolset was built with. ensureAgentSession compares them against the
+	// toolset was built with. ensureAgentRuntime compares them against the
 	// current settings on every turn start and rebuilds on drift — covering
 	// /evolve saves and external settings edits with one mechanism.
 	agentEvolveCaps evolve.Capabilities
 
 	// agentDisabledToolsSignature is the disabledToolsSignature() the live
-	// agent's toolset was built with; ensureAgentSession rebuilds when it no
+	// agent's toolset was built with; ensureAgentRuntime rebuilds when it no
 	// longer matches the current one, so a /tool enable/disable takes effect on
 	// the next turn.
 	agentDisabledToolsSignature string
@@ -152,7 +152,7 @@ type model struct {
 	// deliberate stop. The UI conversation is a rendering model and can be
 	// empty or temporarily divergent, so it is not authoritative for rebuilding
 	// a stopped agent. The snapshot is cleared only after a replacement starts,
-	// or explicitly by ResetAgentSession when the conversation itself changes.
+	// or explicitly by ResetAgentRuntime when the conversation itself changes.
 	agentRestartMessages []core.Message
 
 	// systemRemindersSent reports whether the current conversation already

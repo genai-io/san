@@ -13,8 +13,8 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/log"
-	"github.com/genai-io/san/internal/session/transcript"
 	"github.com/genai-io/san/internal/tool/perm"
+	"github.com/genai-io/san/internal/transcript"
 )
 
 type permissionDecision struct {
@@ -87,7 +87,7 @@ func (m *model) handlePermGateDecision(decision permissionDecision) tea.Cmd {
 	// runtime callbacks as soon as its gate resumes.
 	permRecord := permDecisionRecord(req, decision, reason, pending.Source.PermissionMode)
 	permRecord.Detail = interactionPermissionDetail(pending, decision.Request)
-	if rec := m.services.Session.Recorder(); rec != nil {
+	if rec := m.services.Session.Writer(); rec != nil {
 		rec.RecordPermissionDecided(permRecord)
 	}
 	select {

@@ -162,12 +162,19 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap := &session.Snapshot{Messages: turnOf("stored", "tc")}
+	rows := turnOf("stored", "tc")
+	native := make([]core.Message, 0, len(rows))
+	for _, row := range rows {
+		if message, ok := row.ToMessage(); ok {
+			native = append(native, message)
+		}
+	}
+	snap := &session.Snapshot{Messages: native}
 	if err := store.Save(snap); err != nil {
 		t.Fatal(err)
 	}
 	m := commitTestModel(core.ChatMessage{Role: core.ChatUser, Content: "only the current context"})
-	m.services.Session = &session.Setup{Store: store, SessionID: snap.Metadata.ID}
+	m.services.Session = session.NewActive(store, snap.Metadata.ID)
 	load := m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "out stored") {

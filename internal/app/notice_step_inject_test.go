@@ -36,7 +36,7 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := (&session.Setup{Store: store, SessionID: "notice-1"}).NewRecorder("main", "p", "m", 1000)
+	rec := session.NewActive(store, "notice-1").NewWriter("main", "p", "m", 1000)
 	m := &model{conv: conv.NewModel(80)}
 	m.conv.OnNotice = func(msg core.ChatMessage) { rec.RecordNotice(msg.Content, msg.AgentNotice) }
 	n := taskNotice()
@@ -47,7 +47,7 @@ func TestAgentCompletionHasOneLiveAndPersistedMessage(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		return snapshot.Messages, nil
+		return snapshot.ChatRows(), nil
 	}} {
 		messages, err := load("notice-1")
 		if err != nil {
@@ -86,7 +86,7 @@ func noticeDeliveryModel(t *testing.T) (*model, *restartStubProvider) {
 	t.Helper()
 
 	provider := &restartStubProvider{requests: make(chan []core.Message, 2)}
-	sess := &agent.Session{}
+	sess := &agent.Runtime{}
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "m"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

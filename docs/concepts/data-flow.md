@@ -149,7 +149,7 @@ routeKeypress → handleTextareaShortcut
                   │     every send; it keeps its own internal message
                   │     history. The two stay in sync via events
                   │     (see Path D). conv.Append is read-only by the
-                  │     agent in one case only: ensureAgentSession
+                  │     agent in one case only: ensureAgentRuntime
                   │     uses it to seed a freshly-started agent.
                   │
                   ├─ userInput.Reset()
@@ -167,7 +167,7 @@ routeKeypress → handleTextareaShortcut
                         ▼
    SubmitToAgent
         ├─ provider connected?    yes
-        ├─ ensureAgentSession()    starts agent goroutine if needed
+        ├─ ensureAgentRuntime()    starts agent goroutine if needed
         ├─ sendToAgent ───────────► core.Agent.Append
         │                           (any goroutine; never blocks)
         │
@@ -196,7 +196,7 @@ handleSubmit → dispatchSubmission
               │ ParseCommand("/clear") → ("clear", "")
               ▼
    handleClearCommand(c, ctx, "")
-        ├─ env.StopAgentSession()         clears agent state
+        ├─ env.StopAgentRuntime()         clears agent state
         ├─ env.PersistSession()           saves current conv
         ├─ env.Conversation.Clear()       wipes display
         ├─ env.Input.Reset()
@@ -330,7 +330,7 @@ each inject*
 ```
 
 All three converge on **SubmitToAgent**. Same provider check, same
-`ensureAgentSession`, same `sendToAgent` push. There is no other way
+`ensureAgentRuntime`, same `sendToAgent` push. There is no other way
 to reach the agent from the TUI. The conversation projection and the
 agent input share the same message ID; restart preloading removes the pending
 message by ID rather than by matching its text.
@@ -564,7 +564,7 @@ follow-up user message resumes the same session through `Append`.
 
    user types "do B instead"
    ──▶ SubmitToAgent
-       └─ ensureAgentSession sees Active=true — NO rebuild
+       └─ ensureAgentRuntime sees Active=true — NO rebuild
        └─ sendToAgent → "do B"
        └─ Agent.Send ──────────▶  Append + wake
                                   waitForInput unblocks
@@ -623,6 +623,6 @@ prompt cache behaviour).
 | Conv event router | [`internal/app/conv/update.go`](../../internal/app/conv/update.go) |
 | `agent.Send` / outbox poll | [`internal/app/agent.go`](../../internal/app/agent.go) |
 | Cancel mid-stream | [`internal/app/update_input_effects.go`](../../internal/app/update_input_effects.go) |
-| `InterruptTurn` | [`internal/agent/session.go`](../../internal/agent/session.go) |
+| `InterruptTurn` | [`internal/agent/runtime.go`](../../internal/agent/runtime.go) |
 | `turn` / `InterruptCurrentTurn` / Run loop | [`internal/core/run.go`](../../internal/core/run.go) |
 | Bottom UI compose | [`internal/app/view.go`](../../internal/app/view.go) |

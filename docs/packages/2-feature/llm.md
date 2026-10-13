@@ -193,5 +193,5 @@ internal/llm/vendor_live_test.go — one real turn per configured vendor,
 
 - Code: `internal/llm/`
 - Primitive: [`packages/core.md`](../3-core/core.md) (`LLM` interface)
-- Cost tracking surfaced via [`packages/session.md`](session.md) recorder.
+- Cost tracking surfaced via [`packages/session.md`](session.md) writer.
 - Layer: `feature`

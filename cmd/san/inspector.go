@@ -94,7 +94,7 @@ in your default browser. Use --no-open to skip the browser launch and
 // session.encodePath without importing internals.
 func projectDirFor(cwd string) string {
 	home, _ := os.UserHomeDir()
-	encoded := session.EncodePath(cwd)
+	encoded := session.ProjectID(cwd)
 	return filepath.Join(confdir.Dir(home), "projects", encoded)
 }
 

@@ -90,7 +90,7 @@ func (m *model) overlayDeps() input.OverlayDeps {
 		CommitMessages:    m.CommitMessages,
 		CommitAllMessages: m.commitAllMessages,
 		SwitchProvider: func(p llm.Provider) {
-			m.StopAgentSession()
+			m.StopAgentRuntime()
 			m.switchProvider(p)
 			m.ReconfigureAgentTool()
 		},

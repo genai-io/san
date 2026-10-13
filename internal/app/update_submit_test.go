@@ -153,7 +153,7 @@ func TestCtrlCStopsForegroundBeforeBackgroundWorkflow(t *testing.T) {
 	defer cancel()
 	wf := manager.CreateAgentTask("workflow-in-background", "workflow", "audit", ctx, cancel)
 	m := workflowInputModel(manager)
-	m.services.Agent = &agent.Session{}
+	m.services.Agent = &agent.Runtime{}
 	m.conv.Stream.Active = true
 
 	m.handleTextareaShortcut(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})

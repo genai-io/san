@@ -21,34 +21,32 @@ same `Send` path used by user input.
 
 ## Contract
 
-Foreground agent lifecycle. `Session` owns exactly one run generation plus its
-permission gate. The package exposes the concrete `*Session`; no producer-side
+Foreground agent lifecycle. `Runtime` owns exactly one run generation plus its
+permission gate. The package exposes the concrete `*Runtime`; no producer-side
 service interface is required.
 
 ```go
 package agent
 
-type Session struct { /* internal fields */ }
+type Runtime struct { /* internal fields */ }
 
-func (s *Session) Start(params BuildParams, messages []core.Message) error
-func (s *Session) Stop()
-func (s *Session) StopContext(ctx context.Context) error
-func (s *Session) Active() bool
-func (s *Session) Send(msg core.Message) error
-func (s *Session) Outbox() <-chan core.Event
-func (s *Session) PermissionGate() *PermissionGate
+func (s *Runtime) Start(params BuildParams, messages []core.Message) error
+func (s *Runtime) Stop()
+func (s *Runtime) StopContext(ctx context.Context) error
+func (s *Runtime) Active() bool
+func (s *Runtime) Send(msg core.Message) error
+func (s *Runtime) Outbox() <-chan core.Event
+func (s *Runtime) PermissionGate() *PermissionGate
 
 // Package-level access
 func Initialize(opts Options)
-func Default() *Session
-func SetDefaultSession(s *Session) // test-only
-func ResetDefaultSession()         // test-only
+func Default() *Runtime
 ```
 
 
 ## Internals
 
-- `session.go` tracks one `sessionRun` (`core.Agent`, cancel, done) plus its
+- `runtime.go` tracks one `run` (`core.Agent`, cancel, done) plus its
   `PermissionGate`. A generation is not cleared until `Run` returns, so a
   stop and restart cannot overlap.
 - `build.go` translates `BuildParams` (model, identity, skills, tools,

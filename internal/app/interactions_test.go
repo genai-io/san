@@ -18,7 +18,7 @@ import (
 
 func interactionModel() *model {
 	m := fixedComposerModel(80, 24)
-	m.services.Session = &session.Setup{}
+	m.services.Session = &session.Active{}
 	m.services.Task = task.NewManager()
 	return m
 }

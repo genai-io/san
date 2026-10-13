@@ -3,7 +3,7 @@
 // rendering of the active-skills section consumed by core.System.
 //
 // The package exposes *Registry directly. Skill's consumers (TUI
-// selector, slash-command lookup, system-prompt rendering, recorder
+// selector, slash-command lookup, system-prompt rendering, writer
 // observer) each use a different subset of the registry surface; no
 // shared narrow surface ⇒ no producer-side role interface. Consumers
 // hold *Registry as an opaque handle and call its methods.

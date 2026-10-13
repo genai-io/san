@@ -28,7 +28,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 	t.Setenv("HOME", t.TempDir())
 
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 2)}}
-	sess := &agent.Session{}
+	sess := &agent.Runtime{}
 	if err := sess.Start(agent.BuildParams{Provider: provider, ModelID: "deepseek-chat"}, nil); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -41,7 +41,7 @@ func textOnlyModel(t *testing.T) (*model, *textOnlyStubProvider) {
 			Tracker:  todo.NewStore(),
 			Subagent: subagent.NewRegistry(),
 			Reminder: reminder.NewService(),
-			Session:  &session.Setup{SessionID: "sess-1"},
+			Session:  session.NewActive(nil, "sess-1"),
 		},
 		conv: conv.NewModel(80),
 	}
@@ -247,7 +247,7 @@ func TestPastedImageFileLivesWithTheSession(t *testing.T) {
 	if len(providerImages) != 0 {
 		t.Fatalf("provider images = %+v, want none", providerImages)
 	}
-	store := m.services.Session.GetStore()
+	store := m.services.Session.Store()
 	entries, err := os.ReadDir(store.ImagesDir("sess-1"))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("session image dir holds %v, %v; want the one pasted file", entries, err)

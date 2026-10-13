@@ -263,7 +263,7 @@ func NewAgent(cfg Config) Agent {
 	a.inner = inner
 	// Mirror system + tools mutations onto the event bus. Attach after
 	// construction so each registry replays its initial members back to the
-	// observer — the recorder sees a complete event chain from t0.
+	// observer — the writer sees a complete event chain from t0.
 	cfg.System.SetObserver(func(c SystemChange) {
 		a.emitTelemetry(c)
 	})
@@ -313,7 +313,7 @@ type TurnEnded struct{ Result Result }
 type Compacted struct {
 	Summary       string
 	OriginalCount int
-	// SummaryMessageID names the summary that replaced the chain. The recorder
+	// SummaryMessageID names the summary that replaced the chain. The writer
 	// writes it as the transcript boundary, so replay truncates there instead
 	// of resurrecting the summarized-away messages.
 	SummaryMessageID string
@@ -322,7 +322,7 @@ type Compacted struct {
 }
 
 // SystemChange is one mutation to the system prompt's section map, emitted on
-// Use/Drop. The recorder writes these as system.section.added / .removed.
+// Use/Drop. The writer writes these as system.section.added / .removed.
 type SystemChange struct {
 	Name    string // stable across mutations
 	Slot    int

@@ -6,7 +6,7 @@ layer: feature
 # inspector
 
 Local web UI for replaying session transcripts. Reads the JSONL files
-under `~/.san/projects/<cwd-hash>/<session-id>.jsonl` and exposes a
+under `~/.san/projects/<cwd-hash>/transcripts/<session-id>.jsonl` and exposes a
 small HTTP API + SSE live-tail to an embedded single-page UI.
 
 ## Purpose
@@ -48,7 +48,7 @@ return type, no god interface. Notes:
 ## Internals
 
 - `Server` (`server.go`) — HTTP server. Routes:
-  - `GET /api/sessions` — session list (from `FileStore.Index`).
+  - `GET /api/sessions` — session list (from per-transcript summaries).
   - `GET /api/sessions/{id}` — full transcript records as JSONL.
   - `GET /api/sessions/{id}/replay/{idx}` — materialized replay state
     at record N (system prompt + tool schemas + active message chain).
@@ -80,5 +80,5 @@ internal/inspector/server_test.go    — HTTP routes, SSE dedup across
 
 - Code: `internal/inspector/`, `internal/inspector/ui/`
 - User guide: [`docs/inspector.md`](../../guides/inspector.md)
-- Source data: [`packages/session.md`](session.md) (`session/transcript`)
+- Source data: [`packages/session.md`](session.md) (`internal/transcript`)
 - Layer: `feature`

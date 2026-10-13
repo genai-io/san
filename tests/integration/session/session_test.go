@@ -30,32 +30,32 @@ func newTestStore(t *testing.T) *session.Store {
 }
 
 // makeUserEntry creates a user text message for testing.
-func makeUserEntry(uuid, text string) core.ChatMessage {
-	return core.ChatMessage{ID: uuid, Role: core.ChatUser, Content: text}
+func makeUserEntry(uuid, text string) core.Message {
+	return core.Message{ID: uuid, Role: ai.RoleUser, Content: ai.TextContent(text)}
 }
 
 // makeAssistantEntry creates an assistant text message for testing.
-func makeAssistantEntry(uuid, text string) core.ChatMessage {
-	return core.ChatMessage{ID: uuid, Role: core.ChatAssistant, Content: text}
+func makeAssistantEntry(uuid, text string) core.Message {
+	return core.Message{ID: uuid, Role: ai.RoleAssistant, Content: ai.TextContent(text)}
 }
 
 // getEntryText returns a message's text.
-func getEntryText(m core.ChatMessage) string {
-	return m.Content
+func getEntryText(m core.Message) string {
+	return m.Text()
 }
 
 func TestSession_SaveAndLoad(t *testing.T) {
 	store := newTestStore(t)
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:       "test-1",
 			Title:    "Test Session",
 			Provider: "fake",
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Messages: []core.ChatMessage{
+		Messages: []ai.Message{
 			makeUserEntry("u1", "hello"),
 			makeAssistantEntry("a1", "hi there"),
 		},
@@ -89,7 +89,7 @@ func TestSession_List(t *testing.T) {
 
 	for i, title := range []string{"First", "Second", "Third"} {
 		sess := &session.Snapshot{
-			Metadata: session.SessionMetadata{
+			Metadata: session.Metadata{
 				ID:        title,
 				Title:     title,
 				UpdatedAt: time.Now().Add(time.Duration(i) * time.Second),
@@ -121,7 +121,7 @@ func TestSession_GetLatest(t *testing.T) {
 	store := newTestStore(t)
 
 	sess1 := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "old", Title: "Old"},
+		Metadata: session.Metadata{ID: "old", Title: "Old"},
 	}
 	if err := store.Save(sess1); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -130,7 +130,7 @@ func TestSession_GetLatest(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	sess2 := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "new", Title: "New"},
+		Metadata: session.Metadata{ID: "new", Title: "New"},
 	}
 	if err := store.Save(sess2); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -150,7 +150,7 @@ func TestSession_Delete(t *testing.T) {
 	store := newTestStore(t)
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "to-delete", Title: "Delete Me"},
+		Metadata: session.Metadata{ID: "to-delete", Title: "Delete Me"},
 	}
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -171,11 +171,11 @@ func TestSession_AppendBehavior(t *testing.T) {
 
 	// First save with 1 entry
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:    "append-test",
 			Title: "Append Test",
 		},
-		Messages: []core.ChatMessage{
+		Messages: []ai.Message{
 			makeUserEntry("u1", "hello"),
 		},
 	}
@@ -209,11 +209,11 @@ func TestSession_MetadataUpdatesOnNewMessage(t *testing.T) {
 	store := newTestStore(t)
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:    "metadata-update-test",
 			Title: "Metadata Update Test",
 		},
-		Messages: []core.ChatMessage{
+		Messages: []ai.Message{
 			makeUserEntry("u1", "hello"),
 		},
 	}
@@ -252,29 +252,16 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	store := newTestStore(t)
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:       "message-types-roundtrip",
 			Title:    "Message Types Roundtrip",
 			Provider: "fake",
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Messages: []core.ChatMessage{
-			makeUserEntry("u1", "read this file"),
-			{
-				ID:                "a1",
-				Role:              core.ChatAssistant,
-				Content:           "I'll inspect it.",
-				Thinking:          "need to inspect the file",
-				ThinkingSignature: "sig-1",
-				ToolCalls:         []core.ToolCall{{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test.txt"}`}},
-			},
-			{
-				ID:         "u2",
-				Role:       core.ChatUser,
-				ToolResult: &core.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: ai.TextContent("file contents")},
-			},
-			makeAssistantEntry("a2", "done"),
+		Messages: []ai.Message{
+			makeUserEntry("u1", "read this file"), ai.Message{ID: "a1", Role: ai.RoleAssistant, Content: ai.Content{ai.TextBlock("I'll inspect it."), ai.ThinkingBlock("need to inspect the file",
+				"sig-1"), ai.ToolCallBlock(ai.ToolCall{ID: "tc-1", Name: "Read", Input: `{"file_path":"/tmp/test.txt"}`})}}, ai.Message{ID: "u2", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: "tc-1", ToolName: "Read", Content: ai.TextContent("file contents")})}}, makeAssistantEntry("a2", "done"),
 		},
 	}
 
@@ -291,26 +278,26 @@ func TestSession_MessageTypes_PersistRoundTrip(t *testing.T) {
 	}
 
 	assistant := loaded.Messages[1]
-	if assistant.Thinking != "need to inspect the file" || assistant.ThinkingSignature != "sig-1" {
+	if assistant.Content.Thinking() != "need to inspect the file" || assistant.Content.ThinkingSignature() != "sig-1" {
 		t.Errorf("thinking did not round-trip: %+v", assistant)
 	}
-	if assistant.Content != "I'll inspect it." {
-		t.Errorf("assistant content did not round-trip: %q", assistant.Content)
+	if assistant.Text() != "I'll inspect it." {
+		t.Errorf("assistant content did not round-trip: %q", assistant.Text())
 	}
-	if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].Name != "Read" {
-		t.Errorf("tool_use did not round-trip: %+v", assistant.ToolCalls)
+	if len(assistant.ToolCalls()) != 1 || assistant.ToolCalls()[0].Name != "Read" {
+		t.Errorf("tool_use did not round-trip: %+v", assistant.ToolCalls())
 	}
 
 	userResult := loaded.Messages[2]
-	if userResult.ToolResult == nil || userResult.ToolResult.ToolCallID != "tc-1" {
-		t.Fatalf("tool_result did not round-trip: %+v", userResult.ToolResult)
+	if len(userResult.ToolResults()) == 0 || userResult.ToolResults()[0].ToolCallID != "tc-1" {
+		t.Fatalf("tool_result did not round-trip: %+v", userResult.ToolResults()[0])
 	}
-	if userResult.ToolResult.Content.Text() != "file contents" {
-		t.Errorf("tool_result content mismatch: %q", userResult.ToolResult.Content.Text())
+	if userResult.ToolResults()[0].Content.Text() != "file contents" {
+		t.Errorf("tool_result content mismatch: %q", userResult.ToolResults()[0].Content.Text())
 	}
 	// ToolName is backfilled from the assistant tool_use block on load.
-	if userResult.ToolResult.ToolName != "Read" {
-		t.Errorf("tool_result ToolName = %q, want Read", userResult.ToolResult.ToolName)
+	if userResult.ToolResults()[0].ToolName != "Read" {
+		t.Errorf("tool_result ToolName = %q, want Read", userResult.ToolResults()[0].ToolName)
 	}
 }
 
@@ -343,20 +330,11 @@ func TestSession_PersistToolResult(t *testing.T) {
 	}
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:    sessionID,
 			Title: "Overflow",
 		},
-		Messages: []core.ChatMessage{
-			{
-				ID:   "u1",
-				Role: core.ChatUser,
-				ToolResult: &core.ToolResult{
-					ToolCallID: toolCallID,
-					Content:    ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]"),
-				},
-			},
-		},
+		Messages: []ai.Message{ai.Message{ID: "u1", Role: ai.RoleUser, Content: ai.Content{ai.ToolResultBlock(ai.ToolResult{ToolCallID: toolCallID, Content: ai.TextContent("preview\n\n[Full output persisted to blobs/tool-result/" + sessionID + "/" + toolCallID + "]")})}}},
 	}
 	if err := store.Save(sess); err != nil {
 		t.Fatalf("Save() error: %v", err)
@@ -366,7 +344,7 @@ func TestSession_PersistToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	got := loaded.Messages[0].ToolResult.Content.Text()
+	got := loaded.Messages[0].ToolResults()[0].Content.Text()
 	if got != content {
 		t.Fatalf("hydrated tool result len = %d, want %d", len(got), len(content))
 	}
@@ -383,14 +361,14 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 	}
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:       "jsonl-integrity-test",
 			Title:    "JSONL Integrity Test",
 			Provider: "fake",
 			Model:    "fake-model",
 			Cwd:      "/tmp/project",
 		},
-		Messages: []core.ChatMessage{
+		Messages: []ai.Message{
 			makeUserEntry("u1", "first message"),
 			makeAssistantEntry("a1", "first response"),
 			makeUserEntry("u2", "second message"),
@@ -423,9 +401,9 @@ func TestSession_JSONL_Integrity(t *testing.T) {
 		}
 	}
 
-	// Expect at least entries + 1 metadata line
-	if validLines < len(sess.Messages)+1 {
-		t.Errorf("expected at least %d valid JSON lines, got %d", len(sess.Messages)+1, validLines)
+	// A snapshot import writes one header, one native conversation, and one state patch.
+	if validLines != 3 {
+		t.Errorf("expected 3 JSON lines, got %d", validLines)
 	}
 }
 
@@ -445,7 +423,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 		{"user", "thanks"},
 	}
 
-	var entries []core.ChatMessage
+	var entries []core.Message
 	for i, turn := range turns {
 		uuid := fmt.Sprintf("id-%d", i)
 		switch turn.role {
@@ -457,7 +435,7 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 	}
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{
+		Metadata: session.Metadata{
 			ID:       "continue-test",
 			Title:    "Continue Test",
 			Provider: "fake",
@@ -487,9 +465,9 @@ func TestSession_ContinueRestoresMessages(t *testing.T) {
 			t.Errorf("entry[%d]: want %q, got %q", i, want.text, got)
 		}
 
-		wantRole := core.ChatUser
+		wantRole := ai.RoleUser
 		if want.role == "assistant" {
-			wantRole = core.ChatAssistant
+			wantRole = ai.RoleAssistant
 		}
 		if loaded.Messages[i].Role != wantRole {
 			t.Errorf("entry[%d]: want role %q, got %q", i, wantRole, loaded.Messages[i].Role)
@@ -505,8 +483,8 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	store := newTestStore(t)
 
 	sess := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "save-twice"},
-		Messages: []core.ChatMessage{
+		Metadata: session.Metadata{ID: "save-twice"},
+		Messages: []ai.Message{
 			makeUserEntry("m1", "hello"),
 			makeAssistantEntry("m2", "hi"),
 		},
@@ -534,13 +512,12 @@ func TestSession_SaveTwice_NoDuplication(t *testing.T) {
 	}
 	count := 0
 	for line := range strings.SplitSeq(string(raw), "\n") {
-		if strings.Contains(line, `"type":"message.appended"`) ||
-			strings.Contains(line, `"type":"transcript.message.appended"`) {
+		if strings.Contains(line, `"type":"conversation.replaced"`) {
 			count++
 		}
 	}
-	if count != 2 {
-		t.Fatalf("on-disk message records = %d, want 2 (dedup leaked duplicates)", count)
+	if count != 1 {
+		t.Fatalf("on-disk conversation records = %d, want 1 (dedup leaked duplicates)", count)
 	}
 }
 
@@ -560,8 +537,8 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("NewStoreWithDir: %v", err)
 	}
 	first := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "restart-tag", Tag: "urgent"},
-		Messages: []core.ChatMessage{makeUserEntry("m1", "hi")},
+		Metadata: session.Metadata{ID: "restart-tag", Tag: "urgent"},
+		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := store1.Save(first); err != nil {
 		t.Fatalf("Save first: %v", err)
@@ -573,8 +550,8 @@ func TestSession_FirstSaveAfterRestart_PicksUpDiskState(t *testing.T) {
 		t.Fatalf("NewStoreWithDir #2: %v", err)
 	}
 	cleared := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "restart-tag", Tag: ""},
-		Messages: []core.ChatMessage{makeUserEntry("m1", "hi")},
+		Metadata: session.Metadata{ID: "restart-tag", Tag: ""},
+		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 	}
 	if err := store2.Save(cleared); err != nil {
 		t.Fatalf("Save cleared: %v", err)
@@ -597,8 +574,8 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	store := newTestStore(t)
 
 	withTasks := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "clear-tasks"},
-		Messages: []core.ChatMessage{makeUserEntry("m1", "hi")},
+		Metadata: session.Metadata{ID: "clear-tasks"},
+		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks: []taskTracker.Item{{
 			ID: "t1", Subject: "do thing", Status: "in_progress",
 			CreatedAt: time.Now(), UpdatedAt: time.Now(),
@@ -609,8 +586,8 @@ func TestSession_SaveClearedTasks_ClearsOnReload(t *testing.T) {
 	}
 
 	cleared := &session.Snapshot{
-		Metadata: session.SessionMetadata{ID: "clear-tasks"},
-		Messages: []core.ChatMessage{makeUserEntry("m1", "hi")},
+		Metadata: session.Metadata{ID: "clear-tasks"},
+		Messages: []ai.Message{makeUserEntry("m1", "hi")},
 		Tasks:    nil,
 	}
 	if err := store.Save(cleared); err != nil {

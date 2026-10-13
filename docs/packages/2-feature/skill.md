@@ -35,7 +35,7 @@ different subset of the registry surface — the TUI selector goes wide
 (`List` / `StatesAt` / `SetState`), the slash-command flow uses
 narrow lookups (`Get` / `FindByPartialName` / `SkillInvocationPrompt`),
 the system-prompt builder uses one method (`PromptSection`), and the
-session recorder attaches an observer (`SetStateChangeObserver`). No
+session writer attaches an observer (`SetStateChangeObserver`). No
 shared narrow surface ⇒ no producer-side role interface earns its keep.
 
 ```go
@@ -65,7 +65,7 @@ func (r *Registry) DisabledAt(scope setting.Scope) map[string]bool
 func (r *Registry) PromptSection() string
 func (r *Registry) SkillInvocationPrompt(name string) string
 
-// Recorder observer (used by the session recorder)
+// Writer observer (used by the session writer)
 func (r *Registry) SetStateChangeObserver(cb StateChangeObserver)
 
 // Package-level access

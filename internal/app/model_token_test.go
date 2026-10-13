@@ -116,7 +116,7 @@ func TestAgentMessageEchoIsIgnored(t *testing.T) {
 	m := &model{
 		userInput: input.Model{Queue: input.NewQueue()},
 		conv:      conv.NewModel(80),
-		services:  services{Tracker: todo.NewStore(), Agent: &agent.Session{}},
+		services:  services{Tracker: todo.NewStore(), Agent: &agent.Runtime{}},
 	}
 
 	echo := sdkagent.MessageAdded{Message: core.UserMessage("anything", nil)}

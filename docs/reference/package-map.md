@@ -33,11 +33,11 @@ Agent, persistence, and orchestration:
 
 | Path | Layer | Responsibility |
 | --- | --- | --- |
-| `internal/agent` | `feature` | Agent construction, permission adapter, and session-facing setup. |
+| `internal/agent` | `feature` | Agent construction, permission adapter, and runtime lifecycle. |
 | `internal/llm` | `feature` | The active connection, the provider registry, the model store, error classification, cost tracking, and the `vendor_*` adapter reaching every vendor through `genai-io/sdk-go`. |
 | `internal/tool` | `feature` | Built-in tool schemas, registry, adapters, permission checks, execution. Subpackages hold the tool adapters, named after the capability they expose (`fs`, `agent`, `cron`, `skill`, `todo`, `web`, `ask`, `evolve`, `workflow`, `group`); `register` blank-imports them all to trigger registration; `perm` and `toolresult` are shared types. |
-| `internal/session` | `feature` | Session metadata, transcript persistence, resume, projection, message conversion. |
-| `internal/session/transcript` | `feature` | Transcript records, filesystem store, projection, renderable views. |
+| `internal/session` | `feature` | Durable session identity, product state, native message writing, resume, and fork. |
+| `internal/transcript` | `feature` | Native event log, active-chain and history projection, and derived summaries. |
 | `internal/task` | `feature` | Background task management, bash and agent task execution, output storage. |
 | `internal/todo` | `feature` | Agent to-do list state and background tracker service (lifted from `task/tracker`). |
 | `internal/subagent` | `feature` | Subagent registry, loading, matching, execution, storage, progress tools. |

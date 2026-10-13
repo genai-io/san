@@ -31,7 +31,7 @@ type services struct {
 	LLM      *llm.Conn
 	Tool     *tool.Registry
 	Hook     *hook.Engine
-	Session  *session.Setup
+	Session  *session.Active
 	Skill    *skill.Registry
 	Subagent *subagent.Registry
 	Command  *command.Registry
@@ -40,7 +40,7 @@ type services struct {
 	Cron     *cron.Scheduler
 	MCP      *mcp.Manager
 	Plugin   *plugin.Registry
-	Agent    *agent.Session
+	Agent    *agent.Runtime
 	Persona  *persona.Registry
 	Reminder *reminder.Service
 

@@ -1,0 +1,85 @@
+package session
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/todo"
+	"github.com/genai-io/san/internal/transcript"
+	"github.com/genai-io/sdk-go/pkg/ai"
+)
+
+// Snapshot is the durable conversation and its application state.
+type Snapshot struct {
+	Metadata    Metadata
+	Messages    []core.Message
+	Tasks       []todo.Item
+	Notices     []transcript.NoticeRecord
+	ToolDetails map[string]transcript.ToolDetailsRecord
+}
+
+// ChatRows projects the conversation for display. It is never a persistence source.
+func ChatRows(messages []core.Message) []core.ChatMessage {
+	var rows []core.ChatMessage
+	for _, msg := range messages {
+		for _, row := range core.ChatRowsOf(msg) {
+			if row.Role == core.ChatUser && row.ToolResult == nil {
+				var display strings.Builder
+				image := 0
+				for _, block := range msg.Content {
+					switch block.Type {
+					case ai.BlockText:
+						display.WriteString(harnessInjectedRe.ReplaceAllString(block.Text, ""))
+					case ai.BlockImage:
+						image++
+						fmt.Fprintf(&display, "[Image #%d]", image)
+					}
+				}
+				row.DisplayContent = strings.TrimRight(display.String(), "\n")
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// ChatRows builds the display from native messages and separate presentation events.
+func (s *Snapshot) ChatRows() []core.ChatMessage {
+	rows := ChatRows(s.Messages)
+	for i := range rows {
+		if rows[i].ToolResult == nil {
+			continue
+		}
+		details := s.ToolDetails[rows[i].ToolResult.ToolCallID]
+		switch {
+		case details.FileChange != nil:
+			rows[i].ToolDetails = *details.FileChange
+		case details.Bash != nil:
+			rows[i].ToolDetails = *details.Bash
+		case details.Agent != nil:
+			rows[i].ToolDetails = *details.Agent
+		}
+	}
+	return withNotices(rows, s.Notices)
+}
+
+func withNotices(rows []core.ChatMessage, notices []transcript.NoticeRecord) []core.ChatMessage {
+	if len(notices) == 0 {
+		return rows
+	}
+	after := make(map[string][]core.ChatMessage)
+	for _, n := range notices {
+		after[n.AfterMessageID] = append(after[n.AfterMessageID], core.ChatMessage{Role: core.ChatNotice, Content: n.Text, AgentNotice: n.Agent})
+	}
+	out := make([]core.ChatMessage, 0, len(rows)+len(notices))
+	out = append(out, after[""]...)
+	for i, row := range rows {
+		out = append(out, row)
+		if i+1 < len(rows) && rows[i+1].ID == row.ID {
+			continue
+		}
+		out = append(out, after[row.ID]...)
+	}
+	return out
+}

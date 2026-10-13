@@ -18,7 +18,7 @@ import (
 type LLMCompleter func(ctx context.Context, systemPrompt, userMessage, model string) (string, error)
 
 // HookFiredAudit is the payload delivered to AuditCallback after every hook
-// invocation. The session recorder uses this to write one hook.fired
+// invocation. The session writer uses this to write one hook.fired
 // transcript record per invocation.
 type HookFiredAudit struct {
 	Event    string // hook EventType as a string
@@ -233,7 +233,7 @@ func outcomeOf(r HookOutcome) string {
 
 // Package-local mirrors of transcript.HookOutcome* so the hook package
 // doesn't import the transcript package. The two sides are joined by an
-// audit consumer (session.Recorder) that does the final mapping.
+// audit consumer (session.Writer) that does the final mapping.
 const (
 	outcomeRan     = "ran"
 	outcomeBlocked = "blocked"

@@ -142,7 +142,7 @@ routeKeypress → handleTextareaShortcut
                   │     发送时读取这个切片；它维护自己独立的内部消息
                   │     历史。两边通过事件保持同步（见 Path D）。
                   │     conv.Append 被 agent 读取仅有一种情况：
-                  │     ensureAgentSession 用它给新启动的 agent 喂种子。
+                  │     ensureAgentRuntime 用它给新启动的 agent 喂种子。
                   │
                   ├─ userInput.Reset()
                   │     清空 textarea + 待发送的图片，用户可以开始
@@ -159,7 +159,7 @@ routeKeypress → handleTextareaShortcut
                         ▼
    SubmitToAgent
         ├─ provider 连上了吗？     是
-        ├─ ensureAgentSession()    必要时启动 agent goroutine
+        ├─ ensureAgentRuntime()    必要时启动 agent goroutine
         ├─ sendToAgent ───────────► core.Agent.Append
         │                           （任意 goroutine，永不阻塞）
         │
@@ -186,7 +186,7 @@ handleSubmit → dispatchSubmission
               │ ParseCommand("/clear") → ("clear", "")
               ▼
    handleClearCommand(c, ctx, "")
-        ├─ env.StopAgentSession()         清掉 agent 状态
+        ├─ env.StopAgentRuntime()         清掉 agent 状态
         ├─ env.PersistSession()           存当前对话
         ├─ env.Conversation.Clear()       擦掉显示
         ├─ env.Input.Reset()
@@ -311,7 +311,7 @@ Go channel、两个 block-receive cmd、一个 Update 循环。没有 polling、
 ```
 
 三条路径都汇聚到 **SubmitToAgent**。一样的 provider 检查、一样的
-`ensureAgentSession`、一样的 `sendToAgent` 推入。**没有别的途径**
+`ensureAgentRuntime`、一样的 `sendToAgent` 推入。**没有别的途径**
 能把消息交给 agent。conversation projection 与 agent input 复用同一个
 message ID；重启时按 ID 去掉待发送消息，不再靠文本内容碰运气匹配。
 
@@ -532,7 +532,7 @@ scrollback。`go.mod` 中的替代依赖固定到
 
    用户输入 "改做 B"
    ──▶ SubmitToAgent
-       └─ ensureAgentSession 检查到 Active=true —— 不重建
+       └─ ensureAgentRuntime 检查到 Active=true —— 不重建
        └─ sendToAgent → "改做 B"
        └─ Agent.Send ──────────▶  Append + wake
                                   waitForInput 解除阻塞

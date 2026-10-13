@@ -74,7 +74,7 @@ type BuildParams struct {
 	BashPromptResponder tool.BashPromptResponderProvider
 
 	// OnEvent observes every agent lifecycle event synchronously, alongside
-	// outbox delivery. Used by the trace recorder; nil leaves recording off.
+	// outbox delivery. Used by the trace writer; nil leaves recording off.
 	OnEvent func(core.Event)
 
 	// FileCache tracks the files the session touched; an automatic compaction
