@@ -248,6 +248,15 @@ func (s *Store) Fork(sourceID string) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load forked session: %w", err)
 	}
+	// Group membership belongs to the source identity, not its conversation.
+	if forked.Metadata.Group != "" {
+		now := time.Now()
+		if err := s.transcriptStore.Append(context.Background(), transcript.Record{SessionID: newID, Time: now, Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchGroup("")}}}); err != nil {
+			return nil, fmt.Errorf("clear forked group membership: %w", err)
+		}
+		forked.Metadata.Group = ""
+		forked.Metadata.UpdatedAt = now
+	}
 	return forked, nil
 }
 

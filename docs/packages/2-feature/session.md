@@ -76,6 +76,9 @@ are unsupported.
 - Fork stops the runtime before copying history and attachments. It preserves
   historical timestamps, rewrites tool-output references to the child's blobs,
   and records the source ID on the child's fork event.
+  The source retains its group membership; the child's membership is empty.
+  Clear, fork, and resume release a previous identity's group immediately,
+  so its pending messages cannot enter the new session before the next poll.
 - Reads ignore an incomplete final JSON fragment. The next append repairs that
   fragment first; corruption in a terminated record remains an error.
 - A failed append never advances the writer's parent pointer. The app surfaces

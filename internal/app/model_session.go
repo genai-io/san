@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/app/kit"
 	"github.com/genai-io/san/internal/confdir"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/reminder"
 	"github.com/genai-io/san/internal/session"
@@ -58,6 +59,12 @@ func (m *model) recordNotice(n core.ChatMessage) {
 func (m *model) adoptSession(id string) {
 	m.services.Session.SetID(id)
 	m.services.Hook.SetSession(id, m.services.Session.TranscriptPath())
+	if g, self := group.Current(); g != "" && self.SessionID != id {
+		// Membership belongs to the previous durable identity. Drop it before
+		// any input or reminder can consume that session's pending messages.
+		group.Release()
+		m.grp = groupState{polling: m.grp.polling}
+	}
 }
 
 type persistSessionDoneMsg struct{ err error }

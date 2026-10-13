@@ -8,6 +8,7 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/core"
+	"github.com/genai-io/san/internal/group"
 	"github.com/genai-io/san/internal/hook"
 	"github.com/genai-io/san/internal/llm"
 	"github.com/genai-io/san/internal/reminder"
@@ -223,5 +224,48 @@ func TestRenameKeepsTheLiveWriterForFollowingMessages(t *testing.T) {
 	loaded, err := store.Load("s")
 	if err != nil || loaded.Metadata.Title != "renamed" || len(loaded.Messages) < 3 || loaded.Messages[2].ID != "after-name" {
 		t.Fatalf("rename stopped durable message recording: %+v, %v", loaded, err)
+	}
+}
+
+func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
+	for _, action := range []string{"clear", "fork"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, parallelResultChain())
+			group.BindSession(m.services.Session.ID)
+			t.Cleanup(group.Forget)
+			if _, err := group.Join("shop", group.Member{Name: "me", Hold: true}); err != nil {
+				t.Fatal(err)
+			}
+			m.reconcileMembership()
+			var err error
+			if action == "clear" {
+				err = m.clearSession()
+			} else {
+				_, err = m.forkSession()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if g, self := group.Current(); g != "" {
+				t.Fatalf("new session %s retained group %s under old identity %s before polling", m.services.Session.ID(), g, self.SessionID)
+			}
+			members := group.Members("shop")
+			if len(members) != 1 || members[0].SessionID != "s" || members[0].Online() {
+				t.Fatalf("session switch changed the source membership: %+v", members)
+			}
+			source, err := store.Load("s")
+			if err != nil || source.Metadata.Group == "" {
+				t.Fatalf("source lost its persisted membership: %+v, %v", source, err)
+			}
+			if action == "fork" {
+				forked, err := store.Load(m.services.Session.ID())
+				if err != nil || forked.Metadata.Group != "" {
+					t.Fatalf("fork inherited the source's group identity: %+v, %v", forked, err)
+				}
+			}
+			if cmd := m.handleMemberMsg(memberMsg{status: group.Joined}); cmd != nil {
+				t.Fatal("delayed group poll produced effects in the new session")
+			}
+		})
 	}
 }
