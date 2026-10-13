@@ -76,9 +76,6 @@ type BuildParams struct {
 	// OnEvent observes every agent lifecycle event synchronously, alongside
 	// outbox delivery. Used by the trace recorder; nil leaves recording off.
 	OnEvent func(core.Event)
-	// outboxBuf is private because only RunOnce changes the delivery mode.
-	// Direct execution uses synchronous observers and has no outbox consumer.
-	outboxBuf int
 
 	// FileCache tracks the files the session touched; an automatic compaction
 	// restores the most recent ones. Nil restores none.
@@ -108,6 +105,10 @@ func (p BuildParams) Schemas() []core.ToolSchema {
 }
 
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
+	return buildAgentWithOutbox(p, 0)
+}
+
+func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -184,7 +185,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		ResultFilter:  p.ResultFilter,
 		CompactFunc:   compactFunc,
 		OnEvent:       p.OnEvent,
-		OutboxBuf:     p.outboxBuf,
+		OutboxBuf:     outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
@@ -221,8 +222,8 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 			}
 		}
 	}
-	p.outboxBuf = -1
-	ag, gate, err := buildAgent(p)
+	// Direct execution uses callbacks and has no outbox consumer.
+	ag, gate, err := buildAgentWithOutbox(p, -1)
 	if err != nil {
 		return nil, err
 	}
