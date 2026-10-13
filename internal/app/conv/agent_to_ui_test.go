@@ -57,8 +57,8 @@ func TestActivityPollPrioritizesQuestionAndDrainsBurst(t *testing.T) {
 	for i := range 50 {
 		bridge.SendForToolCall("worker", fmt.Sprint(i))
 	}
-	bridge.qch <- QuestionRequestMsg{Index: 7}
-	if question, ok := bridge.Check()().(QuestionRequestMsg); !ok || question.Index != 7 {
+	bridge.requests <- &InteractionRequest{ID: 7, Question: &QuestionRequestMsg{}}
+	if question, ok := bridge.Check()().(InteractionRequestMsg); !ok || question.Request.ID != 7 {
 		t.Fatal("activity delayed an interactive question")
 	}
 	batch, ok := bridge.Check()().(AgentActivityBatchMsg)

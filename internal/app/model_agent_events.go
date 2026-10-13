@@ -186,8 +186,7 @@ func (m *model) OnAgentStop(err error) tea.Cmd {
 		m.conv.AddNotice(fmt.Sprintf("Agent error: %v", err))
 		m.fireStopFailureHook(core.LastAssistantChatContent(m.conv.Messages), err)
 	}
-	m.conv.AgentToUI.DrainPendingQuestions()
-	m.conv.Modal.Question.Hide()
+	m.pruneInteractions()
 	commitCmds := m.CommitMessages()
 	m.StopAgentSession()
 	// An unattended run must survive a failed turn: schedule the copilot to look

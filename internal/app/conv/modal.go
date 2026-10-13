@@ -5,10 +5,7 @@ import (
 )
 
 type ModalState struct {
-	Question             *QuestionPrompt
-	PendingQuestion      *tool.QuestionRequest
-	PendingQuestionReply chan *tool.QuestionResponse
-	PendingSecretReply   chan SecretPromptResponse
+	Question *QuestionPrompt
 }
 
 func NewModalState() ModalState {
@@ -17,10 +14,9 @@ func NewModalState() ModalState {
 	}
 }
 
-// QuestionRequestMsg is sent when AskUserQuestion tool is called. Index
-// identifies the agent that raised it (0 = the top-level agent).
+// QuestionRequestMsg is the question payload and its original reply endpoint.
+// Worker attribution and lifetime belong to the enclosing InteractionRequest.
 type QuestionRequestMsg struct {
-	Index   int
 	Request *tool.QuestionRequest
 	Reply   chan *tool.QuestionResponse
 }

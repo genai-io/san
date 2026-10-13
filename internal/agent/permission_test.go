@@ -2,7 +2,9 @@ package agent
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -154,10 +156,17 @@ func TestPermissionGateStampsToolCallIDFromContext(t *testing.T) {
 	if req.ToolCallID != "toolu_42" {
 		t.Fatalf("request tool call ID = %q, want the ID stamped on the execution context", req.ToolCallID)
 	}
+	if core.ToolCallIDFromContext(req.Context) != "toolu_42" {
+		t.Fatal("request context lost the tool call correlation")
+	}
+	if cap(req.Response) != 1 {
+		t.Fatal("response must remain buffered for late resolver replies")
+	}
 	req.Response <- PermGateResponse{Allow: true, Reason: "user approved"}
 	if !<-done {
 		t.Fatal("expected the approval to permit")
 	}
+	waitPermissionSignal(t, req.Context.Done())
 }
 
 // A hook-forced prompt bypasses the decider but goes through the same gate, so
@@ -181,4 +190,165 @@ func TestPermissionGateStampsToolCallIDOnForcedPrompt(t *testing.T) {
 		t.Fatalf("forced prompt tool call ID = %q, want the ID stamped on the execution context", req.ToolCallID)
 	}
 	req.Response <- PermGateResponse{Allow: true, Reason: "user approved"}
+}
+
+func waitPermissionSignal(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("permission lifecycle did not unblock")
+	}
+}
+
+func startCancelledPermissionPrompt(t *testing.T, gate *PermissionGate, ctx context.Context, req *PermGateRequest) <-chan struct{} {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		allow, reason := gate.prompt(ctx, req)
+		if allow || reason != "cancelled" {
+			t.Errorf("prompt = (%v, %q), want (false, cancelled)", allow, reason)
+		}
+	}()
+	return done
+}
+
+func TestPermissionGateCancelledBeforeEnqueue(t *testing.T) {
+	gate := NewPermissionGate(nil)
+	t.Cleanup(gate.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := &PermGateRequest{}
+	waitPermissionSignal(t, startCancelledPermissionPrompt(t, gate, ctx, req))
+	if len(gate.requests) != 0 {
+		t.Fatal("already cancelled prompt was enqueued")
+	}
+	waitPermissionSignal(t, req.Context.Done())
+}
+
+func TestPermissionGateCancellationWithFullBuffer(t *testing.T) {
+	for _, closeGate := range []bool{false, true} {
+		name := "caller"
+		if closeGate {
+			name = "gate"
+		}
+		t.Run(name, func(t *testing.T) {
+			gate := NewPermissionGate(nil)
+			t.Cleanup(gate.Close)
+			// Occupy the buffer so the next prompt cannot enqueue.
+			queued := &PermGateRequest{}
+			gate.requests <- queued
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			req := &PermGateRequest{}
+			done := startCancelledPermissionPrompt(t, gate, ctx, req)
+			if closeGate {
+				gate.Close()
+			} else {
+				cancel()
+			}
+			waitPermissionSignal(t, done)
+			waitPermissionSignal(t, req.Context.Done())
+			if len(gate.requests) != 1 {
+				t.Fatal("blocked prompt changed the full queue")
+			}
+			if closeGate {
+				if req, ok := gate.Recv(); req != nil || ok {
+					t.Fatal("closed gate returned a buffered request")
+				}
+			}
+		})
+	}
+}
+
+func TestPermissionGateCancellationPendingReply(t *testing.T) {
+	for _, closeGate := range []bool{false, true} {
+		name := "caller"
+		if closeGate {
+			name = "gate"
+		}
+		t.Run(name, func(t *testing.T) {
+			gate := NewPermissionGate(nil)
+			t.Cleanup(gate.Close)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			req := &PermGateRequest{}
+			done := startCancelledPermissionPrompt(t, gate, ctx, req)
+			received := make(chan struct{})
+			go func() {
+				defer close(received)
+				if got, ok := gate.Recv(); !ok || got != req {
+					t.Error("expected the pending prompt")
+				}
+			}()
+			waitPermissionSignal(t, received)
+			if closeGate {
+				gate.Close()
+			} else {
+				cancel()
+			}
+			waitPermissionSignal(t, done)
+			waitPermissionSignal(t, req.Context.Done())
+			// A resolver that races cancellation can still send its one reply.
+			req.Response <- PermGateResponse{Allow: true}
+		})
+	}
+}
+
+func TestPermissionGateCloseConcurrentPromptsAndRecv(t *testing.T) {
+	gate := NewPermissionGate(nil)
+	t.Cleanup(gate.Close)
+	var workers sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		workers.Add(2)
+		go func() {
+			defer workers.Done()
+			allow, reason := gate.prompt(context.Background(), &PermGateRequest{})
+			if allow || reason != "cancelled" {
+				t.Errorf("prompt = (%v, %q), want cancellation", allow, reason)
+			}
+		}()
+		go func() {
+			defer workers.Done()
+			gate.Close()
+		}()
+	}
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		for {
+			req, ok := gate.Recv()
+			if !ok {
+				if req != nil {
+					t.Error("closed receive must return nil")
+				}
+				return
+			}
+		}
+	}()
+	done := make(chan struct{})
+	go func() {
+		workers.Wait()
+		close(done)
+	}()
+	waitPermissionSignal(t, done)
+	gate.Close()
+	if req, ok := gate.Recv(); req != nil || ok {
+		t.Fatal("receive after repeated close must return (nil, false)")
+	}
+}
+
+func TestPermissionGateCloseUnblocksEmptyRecv(t *testing.T) {
+	gate := NewPermissionGate(nil)
+	t.Cleanup(gate.Close)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if req, ok := gate.Recv(); req != nil || ok {
+			t.Error("closed receive must return (nil, false)")
+		}
+	}()
+	gate.Close()
+	waitPermissionSignal(t, done)
 }

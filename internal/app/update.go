@@ -102,7 +102,9 @@ type initialPromptMsg string
 // print — whichever of the sixteen panels it was, and however it was
 // dismissed — and, in a group, the loop starting and this member's state.
 func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	_, hadOverlay := m.activeOverlay()
+	// Cancellation can dismiss a modal before dispatch, so observe it first.
+	_, overlayWasActive := m.activeOverlay()
+	m.pruneInteractions()
 	model, cmd := m.dispatch(msg)
 	if refresh := m.syncGitBar(); refresh != nil {
 		cmd = tea.Batch(cmd, refresh)
@@ -110,15 +112,23 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if print := m.flushVisibleOverflow(); print != nil {
 		cmd = tea.Batch(cmd, print)
 	}
-	if _, hasOverlay := m.activeOverlay(); hadOverlay && !hasOverlay {
-		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
-			cmd = tea.Batch(cmd, resume)
-		}
-	}
 	if poll := m.startGroupPolling(); poll != nil {
 		cmd = tea.Batch(cmd, poll)
 	}
 	m.syncGroupState()
+	if next := m.advanceInteractions(); next != nil {
+		cmd = tea.Batch(cmd, next)
+	}
+	// Advancing can also dismiss a request canceled during this Update.
+	if _, overlayIsActive := m.activeOverlay(); overlayWasActive && !overlayIsActive {
+		if resume := m.resumeDeferredScrollbackPrint(); resume != nil {
+			cmd = tea.Batch(cmd, resume)
+		}
+	}
+	switch msg.(type) {
+	case conv.InteractionRequestMsg, conv.AgentActivityBatchMsg, conv.AgentActivityMsg, conv.AgentToUITickMsg:
+		cmd = tea.Batch(cmd, m.conv.AgentToUI.Check())
+	}
 	if m.flush.output != nil && m.flush.frameForPrint == nil {
 		// Hold the pre-ready redraw too; it can still contain the whole payload
 		// rather than the single chunk that prepareScrollbackPrint will select.
@@ -134,6 +144,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) dispatch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case conv.PermGateMsg:
+		if msg.Gate != nil && msg.Gate != m.services.Agent.PermissionGate() {
+			return m, nil
+		}
+		return m, m.HandlePermGate(msg.Request)
 	case initialPromptMsg:
 		m.userInput.Textarea.SetValue(string(msg))
 		return m, m.handleSubmit()

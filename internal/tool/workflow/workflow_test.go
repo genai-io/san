@@ -118,6 +118,23 @@ func TestWorkflowPreservesUnfinishedResultsAndUsage(t *testing.T) {
 
 const definition = "---\nname: review\n---\n```mermaid\nflowchart LR\n  diff --> sec & perf --> report\n```\n\n## diff\nagent: explorer\n\nSummarize {{input.base}}..HEAD\n\n## sec\nmode: explore\n\nSecurity: {{diff}}\n\n## perf\nmode: explore\n\nPerf: {{diff}}\n\n## report\nMerge {{sec}} {{perf}}\n"
 
+func TestNodeRunnerWorkflowOrigin(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	bg := task.NewAgentTask("workflow-run", "workflow", "review", ctx, cancel, "")
+	exec := &scriptedExecutor{}
+	runner := &nodeRunner{exec: exec, task: bg, name: "review", parentToolCallID: "spawning-call"}
+	_, err := runner.RunNode(ctx, workflowmodel.Call{Node: &workflowmodel.Node{ID: "check", Config: map[string]string{}}, Label: "item-2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := exec.reqs[0]
+	want := tool.WorkflowOrigin{TaskID: "workflow-run", Name: "review", NodeID: "check", WorkerLabel: "item-2"}
+	if req.Workflow == nil || *req.Workflow != want || req.ParentToolCallID != "spawning-call" || req.TaskID != "" {
+		t.Fatalf("wrong attribution or shared broker address: %+v", req)
+	}
+}
+
 func TestWorkflowToolRunsNodesThroughTheExecutor(t *testing.T) {
 	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
 	wt := NewWorkflowTool()
@@ -381,6 +398,33 @@ func TestWorkflowToolFansOutOverAPlan(t *testing.T) {
 	}
 	if got := byNode["split/merge"].Prompt; !strings.Contains(got, "## llm\nL") || !strings.Contains(got, "## tool\nT") {
 		t.Fatalf("merge prompt = %q", got)
+	}
+}
+
+func TestWorkflowLaunchHasOriginWithoutSpawningCall(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "review.md"), []byte(definition), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exec := &scriptedExecutor{outputs: map[string]string{"diff": "D", "sec": "S", "perf": "P", "report": "R"}}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(exec)
+	wt.SetSearchPaths([]string{dir})
+	_, runID, err := wt.Launch("review", map[string]string{"base": "main"}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bg, ok := task.Default().Get(runID)
+	if !ok || !bg.WaitForCompletion(5*time.Second) {
+		t.Fatal("slash-launched workflow did not finish")
+	}
+	if len(exec.reqs) != 4 {
+		t.Fatalf("executed %d nodes, want 4", len(exec.reqs))
+	}
+	for _, req := range exec.reqs {
+		if req.Workflow == nil || req.Workflow.TaskID != runID || req.Workflow.Name != "review" || req.Workflow.NodeID == "" || req.ParentToolCallID != "" || req.TaskID != "" {
+			t.Fatalf("slash launch lost workflow origin or acquired a shared worker address: %+v", req)
+		}
 	}
 }
 

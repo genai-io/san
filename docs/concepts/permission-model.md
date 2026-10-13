@@ -112,22 +112,35 @@ These checks live in `bash_ast.go`; `bash_git_options_test.go` and
 The foreground and subagent gates both use `setting.ModeDefault` for
 mode-specific default decisions, but otherwise have separate pipelines:
 foreground requests may use settings, session rules, hooks, and the approval
-bridge, while subagents apply their `deny_tools`/`allow_tools` rules and deny
-requests that would require a user prompt.
+bridge, while subagents apply their own `deny_tools`/`allow_tools` rules.
+A live main-session UI can answer a subagent's ordinary `ask` decision; it cannot
+override a backend `deny`.
 
-- Foreground: yes. `agent.PermissionGate` synchronously waits for the
-  TUI approval, then routes the answer back into the running tool call.
-- Subagent: no. There's no user attached to the subagent's loop, so `ask`
-  collapses to `deny`. What remains is the mode's own auto-allow surface:
-  - `explore` — reads only; mutations are denied outright.
-  - `default` — reads auto-allow; everything that would ask is denied.
-  - `acceptEdits` (spelled `edit` on the Agent tool) — Edit/Write
-    auto-allow; other gated tools are denied.
-  - `bypassPermissions` — everything allowed after `deny_tools` and the
-    root/home-removal circuit breaker; parent-only tools stay blocked.
+- Main conversation: `agent.PermissionGate` waits for the UI, then routes the
+  decision to the original tool call.
+- Foreground and background subagents: `Executor.SetInteractions` binds the
+  session UI. The backend forwards only ordinary prompts:
+  - `explore` — reads only; mutations remain hard denials.
+  - `default` — reads auto-allow; other ordinary actions require approval.
+  - `acceptEdits` — Edit/Write auto-allow; other ordinary gated actions prompt.
+  - `dontAsk` — prompting decisions remain denials.
+  - `bypassPermissions` — ordinary actions skip approval after `deny_tools` and
+    the root/home-removal circuit breaker; parent-only tools stay blocked.
+- A subagent with no live UI fails a prompting tool call promptly. It never
+  silently grants permission or waits on an unpolled channel.
+- Existing worker safety/confirmation hard denials, read-only boundaries and
+  constrained tool rules remain authoritative, including after a user approval.
+- Worker approvals offer **Yes / No** for that invocation only. They do not
+  add parent-session or persistent rules. The UI records the worker's identity,
+  tool-call correlation, working directory and effective mode.
+- Real `AskUserQuestion` requests still need an answer in YOLO. The parent's
+  copilot does not invent answers to worker questions.
 
-Both gates share the same mode table (`setting.ModeDefault`); the subagent
-side only swaps "prompt the user" for "deny".
+The UI owns one FIFO across approvals, questions and secret prompts. An answer
+resumes exactly the suspended caller. Cancellation removes its request without
+canceling independent background workers; session reset/close invalidates the
+transport and all its outstanding requests. Stale answers cannot resolve a
+successor request. Both gates retain `setting.ModeDefault` as their mode table.
 
 One subagent-specific rule composes with the pipeline:
 
@@ -163,8 +176,8 @@ The reviewer itself lives in `internal/reviewer/`.
 
 ## Hooks Can Mutate Permissions
 
-The `PermissionRequest` hook fires before the modal is shown (or before
-the auto-deny in subagent mode). The hook can:
+In the main conversation, the `PermissionRequest` hook fires before the modal
+is shown. The hook can:
 
 - Force `allow` or `deny` for this single call.
 - Append session-scope rules to be applied to subsequent calls.

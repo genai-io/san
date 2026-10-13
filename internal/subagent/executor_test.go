@@ -409,7 +409,7 @@ func TestExploreBriefDescribesEffectiveReadOnlyBashConstraint(t *testing.T) {
 }
 
 func TestSubagentPrefersReadWhenReadAndShellAreAvailable(t *testing.T) {
-	schemas := filterSchemasForPermission(newAgentToolSet(nil, nil, nil, nil).Tools(), PermissionExplore, nil)
+	schemas := filterSchemasForPermission(newAgentToolSet(nil, nil, nil, nil).Tools(), PermissionExplore, nil, false)
 	brief := system.SubagentBrief{ToolGuidance: fileReadToolGuidance(schemas, PermissionExplore)}
 	prompt := system.Build(core.ScopeSubagent, system.WithSubagentIdentity(brief)).Prompt()
 	if !strings.Contains(prompt, "Use Read for file contents") || !strings.Contains(prompt, "avoid cat/head/tail/sed") {
@@ -469,20 +469,24 @@ func TestSkillsDirectoryFollowsReachableTools(t *testing.T) {
 
 func TestCanEditWorkspace(t *testing.T) {
 	cases := []struct {
-		name  string
-		mode  PermissionMode
-		allow ToolList
-		want  bool
+		name      string
+		mode      PermissionMode
+		allow     ToolList
+		canPrompt bool
+		want      bool
 	}{
-		{"edit mode can edit", PermissionAcceptEdits, nil, true},
-		{"bypass mode can edit", PermissionBypass, nil, true},
-		{"explore mode is read-only", PermissionExplore, nil, false},
-		{"default mode alone cannot edit", PermissionDefault, nil, false},
-		{"default with read-only allow list cannot edit", PermissionDefault, ToolNames("Read", "Grep"), false},
-		{"default with an edit tool in the allow list can edit", PermissionDefault, ToolNames("Read", "Edit"), true},
+		{"edit mode can edit", PermissionAcceptEdits, nil, false, true},
+		{"bypass mode can edit", PermissionBypass, nil, false, true},
+		{"explore mode is read-only", PermissionExplore, nil, false, false},
+		{"default mode alone cannot edit", PermissionDefault, nil, false, false},
+		{"default with read-only allow list cannot edit", PermissionDefault, ToolNames("Read", "Grep"), false, false},
+		{"default with an edit tool in the allow list can edit", PermissionDefault, ToolNames("Read", "Edit"), false, true},
+		{"interactive default can ask to edit", PermissionDefault, nil, true, true},
+		{"interactive readonly cannot edit", PermissionExplore, nil, true, false},
+		{"interactive whitelist stays readonly", PermissionDefault, ToolNames("Read"), true, false},
 	}
 	for _, tc := range cases {
-		if got := canEditWorkspace(tc.mode, tc.allow); got != tc.want {
+		if got := canEditWorkspace(tc.mode, tc.allow, tc.canPrompt); got != tc.want {
 			t.Errorf("%s: canEditWorkspace(%q, %v) = %v, want %v", tc.name, tc.mode, tc.allow.Names(), got, tc.want)
 		}
 	}
@@ -498,7 +502,7 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 
 	allowedBash := ToolList{{Name: "Bash", Pattern: "git diff*"}}
 
-	got := filterSchemasForPermission(schemas, PermissionExplore, allowedBash)
+	got := filterSchemasForPermission(schemas, PermissionExplore, allowedBash, false)
 	want := []core.ToolSchema{{Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)
@@ -506,7 +510,7 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 
 	// Bash stays visible without an allow list: read-only invocations are
 	// explore mode's search tool. Write is still filtered out.
-	got = filterSchemasForPermission(schemas, PermissionExplore, nil)
+	got = filterSchemasForPermission(schemas, PermissionExplore, nil, false)
 	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}, {Name: "WebSearch"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas without git diff = %+v, want %+v", got, want)
@@ -515,13 +519,13 @@ func TestExploreModeFiltersMutatingToolSchemas(t *testing.T) {
 	// Explore remains read-only even when a custom definition over-requests
 	// mutating schemas. Bash stays visible because each call is classified.
 	overbroad := ToolNames("Read", "Write", "Edit", "Bash")
-	got = filterSchemasForPermission(schemas, PermissionExplore, overbroad)
+	got = filterSchemasForPermission(schemas, PermissionExplore, overbroad, false)
 	want = []core.ToolSchema{{Name: "Read"}, {Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered overbroad explore schemas = %+v, want %+v", got, want)
 	}
 
-	got = filterSchemasForPermission(schemas, PermissionExplore, ToolNames("Write"))
+	got = filterSchemasForPermission(schemas, PermissionExplore, ToolNames("Write"), false)
 	if len(got) != 0 {
 		t.Fatalf("write-only explore schema = %+v, want none", got)
 	}
@@ -684,7 +688,7 @@ func TestAcceptEditsModeFiltersApprovalOnlyToolSchemas(t *testing.T) {
 	// Bash stays visible (read-only invocations auto-permit). Agent never
 	// reaches this filter for workers — it is parent-only at the tool.Set
 	// level.
-	got := filterSchemasForPermission(schemas, PermissionAcceptEdits, nil)
+	got := filterSchemasForPermission(schemas, PermissionAcceptEdits, nil, false)
 	want := []core.ToolSchema{{Name: "Read"}, {Name: "Edit"}, {Name: "Write"}, {Name: "Bash"}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("filtered schemas = %+v, want %+v", got, want)

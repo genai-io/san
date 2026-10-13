@@ -273,6 +273,7 @@ func (f taskLifecycleFunc) TaskCreated(info task.TaskInfo)   { f.onCreated(info)
 func (f taskLifecycleFunc) TaskCompleted(info task.TaskInfo) { f.onCompleted(info) }
 
 func (m *model) FireSessionEnd(reason string) {
+	m.closeInteractions()
 	// Bounded for the same reason as checkPromptHook: this runs on the
 	// bubbletea goroutine while the user is quitting, and a SessionEnd hook
 	// that blocks makes the quit itself look hung.

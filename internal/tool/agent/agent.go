@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
 	"github.com/genai-io/san/internal/tool/toolresult"
@@ -162,6 +163,7 @@ func (t *AgentTool) execute(ctx context.Context, params map[string]any, cwd stri
 	// Build request — subagents always start with fresh context. Parent agent
 	// is responsible for putting all needed background into Prompt.
 	req := tool.AgentExecRequest{
+		ParentToolCallID:    core.ToolCallIDFromContext(ctx),
 		Agent:               agentName,
 		ResolvedAgentConfig: resolvedAgentConfig,
 		Prompt:              prompt,

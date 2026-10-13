@@ -259,7 +259,7 @@ func (t *WorkflowTool) ExecuteApproved(ctx context.Context, params map[string]an
 
 // Execute launches the run as one background task and returns at once; the
 // summary arrives as that task's completion notification.
-func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ string) toolresult.ToolResult {
+func (t *WorkflowTool) Execute(ctx context.Context, params map[string]any, _ string) toolresult.ToolResult {
 	w, err := t.prepare(params)
 	if err != nil {
 		return toolresult.NewErrorResult(t.Name(), err.Error())
@@ -270,7 +270,7 @@ func (t *WorkflowTool) Execute(_ context.Context, params map[string]any, _ strin
 			inputs[k] = fmt.Sprint(v)
 		}
 	}
-	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120)
+	id := t.start(w, inputs, cmp.Or(tool.GetString(params, "description"), "Run workflow "+w.Name), 120, core.ToolCallIDFromContext(ctx))
 	return toolresult.ToolResult{
 		Success: true,
 		Output: fmt.Sprintf("Workflow %s started in background.\nTask ID: %s\nStop: Ctrl+C (when foreground idle) or /workflow stop %s\n\n%s"+tool.BackgroundLaunchSuffix,
@@ -301,11 +301,11 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 	}
 	turns, _ := w.Bounds()
 	summary := fmt.Sprintf("Started workflow %s · up to %d turns · max %d parallel", w.Name, turns, w.MaxParallel)
-	return summary, t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width), nil
+	return summary, t.start(w, inputs, "/workflow "+command.QuoteArgument(name), width, ""), nil
 }
 
 // start runs the workflow under one background task and returns its id.
-func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int) string {
+func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int, parentToolCallID string) string {
 	width = workflowDisplayWidth(width)
 	ctx, cancel := context.WithCancel(context.Background())
 	bg := task.Default().CreateAgentTask(task.NewID(), "workflow", description, ctx, cancel)
@@ -367,7 +367,7 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 
 	go func() {
 		defer cancel()
-		runner := &nodeRunner{exec: t.executor, task: bg, name: w.Name}
+		runner := &nodeRunner{exec: t.executor, task: bg, name: w.Name, parentToolCallID: parentToolCallID}
 		flushText := func(nodeID, worker string) {
 			key := nodeID + "·" + worker
 			if content := strings.Join(strings.Fields(textBuffers[key]), " "); content != "" {
@@ -479,18 +479,19 @@ func workflowDisplayWidth(terminalWidth int) int {
 // nodeRunner is the workflow.NodeRunner seam: one node is one subagent turn
 // through the same executor, and so the same permission gate, as Agent.
 type nodeRunner struct {
-	exec           tool.AgentExecutor
-	task           *task.AgentTask
-	name           string
-	onActivity     func(nodeID, label, msg string)
-	onTextDelta    func(nodeID, label, fragment string)
-	onTextEnd      func(nodeID, label string, err error)
-	onToolStart    func(nodeID, worker, id, call string)
-	onToolResult   func(nodeID, worker, id, call, summary string, failed bool)
-	onWorkerStatus func(nodeID, worker string, status workflow.Status)
-	usageMu        sync.Mutex
-	steps          int
-	tokens         int
+	exec             tool.AgentExecutor
+	task             *task.AgentTask
+	name             string
+	parentToolCallID string
+	onActivity       func(nodeID, label, msg string)
+	onTextDelta      func(nodeID, label, fragment string)
+	onTextEnd        func(nodeID, label string, err error)
+	onToolStart      func(nodeID, worker, id, call string)
+	onToolResult     func(nodeID, worker, id, call, summary string, failed bool)
+	onWorkerStatus   func(nodeID, worker string, status workflow.Status)
+	usageMu          sync.Mutex
+	steps            int
+	tokens           int
 }
 
 func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, error) {
@@ -504,6 +505,8 @@ func (r *nodeRunner) RunNode(ctx context.Context, c workflow.Call) (string, erro
 		}
 	}
 	res, err := r.exec.Run(ctx, tool.AgentExecRequest{
+		ParentToolCallID: r.parentToolCallID,
+		Workflow:         &tool.WorkflowOrigin{TaskID: r.task.GetID(), Name: r.name, NodeID: n.ID, WorkerLabel: c.Label},
 		Agent:            n.Config["agent"],
 		Prompt:           c.Prompt,
 		Description:      r.name + "/" + label,

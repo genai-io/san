@@ -16,6 +16,7 @@ import (
 type QuestionPrompt struct {
 	active          bool
 	request         *tool.QuestionRequest
+	caller          string
 	width           int
 	currentQuestion int
 	selectedOption  map[int]int
@@ -44,6 +45,7 @@ func NewQuestionPrompt() *QuestionPrompt {
 func (p *QuestionPrompt) Show(req *tool.QuestionRequest, width int) {
 	p.active = true
 	p.request = req
+	p.caller = ""
 	p.width = width
 	p.currentQuestion = 0
 	p.selectedOption = make(map[int]int)
@@ -51,6 +53,11 @@ func (p *QuestionPrompt) Show(req *tool.QuestionRequest, width int) {
 	p.customAnswers = make(map[int]string)
 	p.showingCustom = false
 	p.customInput.Reset()
+}
+
+func (p *QuestionPrompt) ShowFrom(req *tool.QuestionRequest, width int, caller string) {
+	p.Show(req, width)
+	p.caller = caller
 }
 
 // Hide hides the question prompt
@@ -411,7 +418,11 @@ func (p *QuestionPrompt) Render() string {
 		sb.WriteString("\n")
 	}
 
-	header := getQuestionHeaderStyle().Render(currentQ.Header)
+	heading := currentQ.Header
+	if p.caller != "" {
+		heading = "@" + p.caller + " · " + heading
+	}
+	header := getQuestionHeaderStyle().Render(kit.TruncateText(heading, contentWidth-2))
 	sb.WriteString(" ")
 	sb.WriteString(header)
 	sb.WriteString("\n")

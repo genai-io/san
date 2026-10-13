@@ -327,19 +327,10 @@ func (m *OutputModel) retainActivity(msg AgentActivityMsg) {
 func (m *OutputModel) HandleActivity(msg AgentActivityMsg) tea.Cmd {
 	m.retainActivity(msg)
 
-	if m.AgentToUI == nil {
-		return m.Spinner.Tick
-	}
-	return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
+	return m.Spinner.Tick
 }
 
 func (m *OutputModel) HandleActivityTick(hasRunningTasks bool) tea.Cmd {
-	if m.AgentToUI != nil {
-		if hasRunningTasks {
-			return tea.Batch(m.Spinner.Tick, m.AgentToUI.Check())
-		}
-		return m.AgentToUI.Check()
-	}
 	if hasRunningTasks {
 		return m.Spinner.Tick
 	}

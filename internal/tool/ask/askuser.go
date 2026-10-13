@@ -13,9 +13,7 @@ import (
 )
 
 // AskUserQuestionTool prompts the user for input
-type AskUserQuestionTool struct {
-	requestCounter int
-}
+type AskUserQuestionTool struct{}
 
 const (
 	maxAskUserQuestions = 8
@@ -124,9 +122,8 @@ func (t *AskUserQuestionTool) PrepareInteraction(ctx context.Context, params map
 		}
 	}
 
-	t.requestCounter++
 	return &tool.QuestionRequest{
-		ID:        fmt.Sprintf("ask-%d", t.requestCounter),
+		ID:        tool.GenerateRequestID(),
 		Questions: questions,
 	}, nil
 }

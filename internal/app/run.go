@@ -54,6 +54,7 @@ func Run(opts setting.RunOptions) error {
 
 	m.flush.output = &terminalOutput{writer: os.Stdout}
 	finalModel, err := tea.NewProgram(m, tea.WithOutput(m.flush.output)).Run()
+	m.closeInteractions()
 	if outputErr := m.flush.output.Flush(); err == nil {
 		err = outputErr
 	}

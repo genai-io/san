@@ -420,11 +420,7 @@ func (m *model) finishScrollbackPrint(id uint64) tea.Cmd {
 			return tea.Quit
 		}
 	}
-	next := m.flush.finishScrollbackPrint(id)
-	if len(m.flush.pendingPrints) == 0 {
-		m.showDeferredApproval()
-	}
-	return next
+	return m.flush.finishScrollbackPrint(id)
 }
 
 func (m *model) clearScrollback(wipe tea.Cmd) tea.Cmd {
