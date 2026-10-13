@@ -105,6 +105,10 @@ func (p BuildParams) Schemas() []core.ToolSchema {
 }
 
 func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
+	return buildAgentWithOutbox(p, 0)
+}
+
+func buildAgentWithOutbox(p BuildParams, outboxBuf int) (core.Agent, *PermissionGate, error) {
 	if p.Provider == nil {
 		return nil, nil, fmt.Errorf("no LLM provider configured")
 	}
@@ -181,6 +185,7 @@ func buildAgent(p BuildParams) (core.Agent, *PermissionGate, error) {
 		ResultFilter:  p.ResultFilter,
 		CompactFunc:   compactFunc,
 		OnEvent:       p.OnEvent,
+		OutboxBuf:     outboxBuf,
 
 		StreamFirstChunkTimeout: p.StreamFirstChunkTimeout,
 		StreamIdleTimeout:       p.StreamIdleTimeout,
@@ -217,7 +222,8 @@ func RunOnce(ctx context.Context, p BuildParams, message core.Message, onText fu
 			}
 		}
 	}
-	ag, gate, err := buildAgent(p)
+	// Direct execution uses callbacks and has no outbox consumer.
+	ag, gate, err := buildAgentWithOutbox(p, -1)
 	if err != nil {
 		return nil, err
 	}

@@ -68,6 +68,10 @@ func ResetDefaultSession()         // test-only
   `Stop` applies a bounded default deadline and logs a run that outlives it.
   `Active()` changes only after the run goroutine exits. A run's error reaches
   the app as `core.AgentStopped`.
+- Headless execution: `RunOnce` builds the same prompt, tools, and permission
+  gate, then calls `ThinkAct` directly with outbox delivery disabled. Text and
+  recording still use synchronous observers, so long streams cannot fill an
+  unconsumed outbox.
 - Sending: callers pass the `core.Message` built from the conv row so both
   share one ID. `Send` appends to the agent's message queue (never blocks) and
   reports a stopped run instead of silently dropping input.
@@ -77,6 +81,9 @@ func ResetDefaultSession()         // test-only
 ```
 internal/agent/session_test.go — lifecycle serialization, message identity,
                                  and unexpected runner exits.
+internal/agent/runonce_stream_test.go — headless streams exceeding the default
+                                       outbox capacity, with and without text
+                                       callbacks, preserving event observers.
 ```
 
 A unit test for `BuildParams → core.Config` translation is missing and
