@@ -26,7 +26,7 @@ func interactionModel() *model {
 func interactionQuestion(m *model, ctx context.Context, id string) *conv.InteractionRequest {
 	return &conv.InteractionRequest{
 		Context: ctx, Owner: m.conv.AgentToUI,
-		Source: tool.AgentInteractionSource{AgentID: id, Name: "worker", TaskID: id},
+		Source: tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id},
 		Question: &conv.QuestionRequestMsg{
 			Request: &tool.QuestionRequest{ID: id, Questions: []tool.Question{{Header: "Choice", Question: "Pick a value", Options: []tool.QuestionOption{{Label: "first"}}}}},
 			Reply:   make(chan *tool.QuestionResponse, 1),
@@ -37,7 +37,7 @@ func interactionQuestion(m *model, ctx context.Context, id string) *conv.Interac
 func interactionApproval(m *model, ctx context.Context, id string) *conv.InteractionRequest {
 	return &conv.InteractionRequest{
 		Context: ctx, Owner: m.conv.AgentToUI,
-		Source:         tool.AgentInteractionSource{AgentID: id, Name: "worker", TaskID: id, PermissionMode: "default", Cwd: "/worker/cwd", ToolCallID: "worker-call"},
+		Source:         tool.AgentInteractionSource{AgentID: id, AgentName: "worker", TaskID: id, PermissionMode: "default", WorkingDirectory: "/worker/cwd", ToolCallID: "worker-call"},
 		Permission:     &agent.PermGateRequest{Context: ctx, ToolName: "Write", RequestID: id, Response: make(chan agent.PermGateResponse, 1)},
 		PermissionView: &perm.PermissionRequest{ID: id, ToolName: "Write", CallerAgent: "worker", OnceOnly: true},
 	}

@@ -313,6 +313,9 @@ branch view would hide their topology.
   `explore`, `edit` and `default` only. A UI answer grants that invocation once,
   never overrides hard denials or changes the node's policy. What `default`
   resolves to remains the subagent layer's business, the same as for `Agent`.
+  Approval and question headers name the workflow, run task ID, node, and
+  `for_each` worker label when present. These identify the source, not a shared
+  worker address; parallel nodes keep independent replies and cancellation.
 - `AgentStop` on the workflow's task cancels it: nodes that have not started
   fail, running nodes are interrupted, finished outputs are kept.
 - The `Workflow` tool is parent-only, like `Agent`: a subagent cannot start

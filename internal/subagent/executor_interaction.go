@@ -11,10 +11,16 @@ import (
 )
 
 func (r *preparedRun) interactionSource(ctx context.Context) tool.AgentInteractionSource {
+	var origin *tool.WorkflowOrigin
+	if r.req.Workflow != nil {
+		copy := *r.req.Workflow
+		origin = &copy
+	}
 	return tool.AgentInteractionSource{
-		AgentID: r.hookID, TaskID: r.req.TaskID, Name: r.cfg.displayName,
+		Workflow: origin,
+		AgentID:  r.hookID, TaskID: r.req.TaskID, AgentName: r.cfg.displayName,
 		ParentToolCallID: r.req.ParentToolCallID,
-		ToolCallID:       core.ToolCallIDFromContext(ctx), Cwd: r.currentCwd(),
+		ToolCallID:       core.ToolCallIDFromContext(ctx), WorkingDirectory: r.currentCwd(),
 		PermissionMode: string(r.cfg.permMode),
 	}
 }
@@ -38,7 +44,7 @@ func (e *Executor) interactionApproval(run *preparedRun) perm.PermissionFunc {
 		request := &perm.PermissionRequest{ToolName: name, Description: "Execute " + name}
 		if resolved, ok := tool.Get(name); ok {
 			if aware, ok := resolved.(tool.PermissionAwareTool); ok {
-				rich, err := aware.PreparePermission(ctx, input, source.Cwd)
+				rich, err := aware.PreparePermission(ctx, input, source.WorkingDirectory)
 				if err != nil {
 					return false, fmt.Sprintf("cannot prepare %s approval: %v", name, err)
 				}
@@ -50,7 +56,7 @@ func (e *Executor) interactionApproval(run *preparedRun) perm.PermissionFunc {
 		request.ID = tool.GenerateRequestID()
 		request.ToolName = name
 		request.CallerAgent = source.Label()
-		request.WorkingDirectory = source.Cwd
+		request.WorkingDirectory = source.WorkingDirectory
 		request.PermissionMode = displayPermissionMode(run.cfg.permMode)
 		request.AllowRules = nil
 		request.OnceOnly = true

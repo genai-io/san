@@ -727,7 +727,7 @@ func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {
 	}
 	return tea.Batch(m.enqueueInteraction(&conv.InteractionRequest{
 		Context: req.Context, Owner: m.conv.AgentToUI, Permission: req, PermissionView: m.preparePermissionRequest(req),
-		Source: tool.AgentInteractionSource{Cwd: m.env.CWD, PermissionMode: m.env.SessionMode()},
+		Source: tool.AgentInteractionSource{WorkingDirectory: m.env.CWD, PermissionMode: m.env.SessionMode()},
 	}), conv.PollPermGate(m.services.Agent.PermissionGate()))
 }
 

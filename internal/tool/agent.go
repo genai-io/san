@@ -67,7 +67,8 @@ type MessagesGetter func() []core.Message
 
 // AgentExecRequest contains parameters for agent execution.
 type AgentExecRequest struct {
-	ParentToolCallID    string // internal spawning call correlation; never model-facing
+	ParentToolCallID    string          // internal spawning call correlation; never model-facing
+	Workflow            *WorkflowOrigin // internal workflow attribution; never model-facing
 	Agent               string
 	ResolvedAgentConfig any // exact approval-time configuration; never model-facing
 	Prompt              string

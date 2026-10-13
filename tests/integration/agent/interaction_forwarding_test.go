@@ -42,7 +42,7 @@ func TestWorkerForwardedApprovalControlsExecution(t *testing.T) {
 					if _, err := os.Stat(marker); !os.IsNotExist(err) {
 						t.Error("tool ran before approval")
 					}
-					if source.Cwd != cwd || source.ToolCallID != "worker-call" || source.ParentToolCallID != "parent-call" || source.AgentID == "" || source.Name == "" {
+					if source.WorkingDirectory != cwd || source.ToolCallID != "worker-call" || source.ParentToolCallID != "parent-call" || source.AgentID == "" || source.AgentName == "" {
 						t.Errorf("wrong source: %+v", source)
 					}
 					if request.WorkingDirectory != cwd || request.PermissionMode == "" {
