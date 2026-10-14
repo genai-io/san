@@ -55,6 +55,12 @@ so the tree is kept at zero findings — see the comment at the top of
 After upgrading Go, run `make install-lint-tools` again. The pinned linter
 must support the compiler's export format as well as the Go language version.
 
+Tool installs run through `$(RETRY)` in the Makefile — five attempts with
+linear backoff — because transient `proxy.golang.org` / `sum.golang.org`
+errors are common enough to fail a build on their own. CI also caches
+`~/go/bin` under a key derived from the Makefile, so a cache hit downloads
+nothing at all.
+
 ## Vulnerability Scanning
 
 ```bash
