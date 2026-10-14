@@ -14,6 +14,12 @@ GOIMPORTS_VERSION := v0.43.0
 GOLANGCI_VERSION := v2.14.0
 GOVULNCHECK_VERSION := v1.7.0
 
+# Dev tools are installed from the network, and CI runners hit transient
+# proxy.golang.org / sum.golang.org errors ("INTERNAL_ERROR; received from
+# peer") often enough that one attempt flakes the job red. $(RETRY) re-runs a
+# command up to 5 times with linear backoff: RETRY go install foo@v1.
+RETRY := sh -c 'n=1; while ! "$$@"; do [ $$n -ge 5 ] && exit 1; echo "retry $$n/5: $$*" >&2; sleep $$((n*5)); n=$$((n+1)); done' --
+
 .PHONY: build build-all install clean release release-push test cover format format-check lint lint-go install-format-tools install-lint-tools check-format-tools check-lint-tools
 
 build:
@@ -32,16 +38,16 @@ install: build
 	cp $(BINDIR)/$(BINARY) $(HOME)/.local/bin/
 
 install-format-tools:
-	go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	@$(RETRY) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 install-lint-tools:
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@$(RETRY) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 check-format-tools:
-	@command -v goimports >/dev/null || go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
+	@command -v goimports >/dev/null || $(RETRY) go install golang.org/x/tools/cmd/goimports@$(GOIMPORTS_VERSION)
 
 check-lint-tools:
-	@command -v golangci-lint >/dev/null || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	@command -v golangci-lint >/dev/null || $(RETRY) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 format: check-format-tools
 	@gofmt -w $(GOFILES)
@@ -114,7 +120,7 @@ clean:
 # always a real exposure. CI runs the same command.
 .PHONY: vulncheck
 vulncheck:
-	@command -v govulncheck >/dev/null || go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	@command -v govulncheck >/dev/null || $(RETRY) go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	govulncheck ./...
 
 # Serve the website locally for testing. Opens http://localhost:8080 in the
