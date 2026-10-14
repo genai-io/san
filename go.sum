@@ -87,8 +87,8 @@ github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/gdamore/encoding v0.0.0-20151215212835-b23993cbb635/go.mod h1:yrQYJKKDTrHmbYxI7CYi+/hbdiDT2m4Hj+t0ikCjsrQ=
 github.com/gdamore/tcell v1.0.1-0.20180608172421-b3cebc399d6f/go.mod h1:tqyG50u7+Ctv1w5VX67kLzKcj9YXR/JSBZQq/+mLl1A=
-github.com/genai-io/sdk-go v0.8.1-0.20261014123301-7daf7f858a5e h1:VnprWEuVC0pCmIvo78neb652lJvVB9beKrKkDPJGTMc=
-github.com/genai-io/sdk-go v0.8.1-0.20261014123301-7daf7f858a5e/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
+github.com/genai-io/sdk-go v0.8.1-0.20261014124811-035c289bf9f3 h1:K2Q4TAeWeIOhqQacO02t6lDNMFzU+sMIbyT4CDPzlsA=
+github.com/genai-io/sdk-go v0.8.1-0.20261014124811-035c289bf9f3/go.mod h1:EMQ8/qN5VQwoFR7GOkVArTAmNIYQ0La9Fv2MwS1LcsY=
 github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
 github.com/go-logr/logr v1.4.3 h1:CjnDlHq8ikf6E492q6eKboGOC0T8CDaOvkHCIg8idEI=
 github.com/go-logr/logr v1.4.3/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
