@@ -100,7 +100,7 @@ func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
 	if err := opened.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new("late")}}); !errors.Is(err, ErrClosed) {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new("late")}}); !errors.Is(err, ErrClosed) {
 		t.Fatalf("closed state append: %v", err)
 	}
 	opened.RecordEvent(sdkagent.MessageAdded{Message: ai.UserMessage("late")})
@@ -120,7 +120,7 @@ func TestClosedSessionRejectsMessagesAndState(t *testing.T) {
 		t.Fatal("repeated Close released a newer lease")
 	}
 }
-func TestHydratedResumeDoesNotRewriteNativeHistory(t *testing.T) {
+func TestDisplayHydrationPreservesNativeResumeHistory(t *testing.T) {
 	store, err := NewStoreWithDir(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -176,7 +176,7 @@ func (s *Store) importHistory(history *History) error {
 		return err
 	}
 	return opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		GitBranch: getGitBranch(s.cwd), State: &transcript.StateRecord{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
+		GitBranch: getGitBranch(s.cwd), State: &transcript.StatePatch{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
 }
 
 func normalizeMetadata(meta *Metadata, msgs []core.Message, defaultCwd string, now time.Time) {
@@ -244,7 +244,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = opened.Close() }()
-	record := transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new("title"), Group: new("group"), Tasks: new([]todo.Item{{ID: "1", Subject: "work", Metadata: map[string]any{"worker": "original"}}})}}
+	record := transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new("title"), Group: new("group"), Tasks: new([]todo.Item{{ID: "1", Subject: "work", Metadata: map[string]any{"worker": "original"}}})}}
 	for range 3 {
 		if err := opened.Append(context.Background(), record); err != nil {
 			t.Fatal(err)
@@ -262,7 +262,7 @@ func TestRepeatedStateRecordsSkipUnchangedFieldsAndClearTasks(t *testing.T) {
 	if got := len(readAllRecords(t, store.projectDir, "s")); got != before {
 		t.Fatalf("unchanged state duplicated: %d -> %d", before, got)
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Tasks: new([]todo.Item{}), Group: new("")}}); err != nil {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Tasks: new([]todo.Item{}), Group: new("")}}); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := store.Read("s")

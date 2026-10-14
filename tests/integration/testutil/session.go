@@ -46,5 +46,5 @@ func ImportSession(store *session.Store, history *session.History) (err error) {
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: history.Messages}); err != nil {
 		return err
 	}
-	return opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
+	return opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new(meta.Title), LastPrompt: new(meta.LastPrompt), Mode: new(meta.Mode), AutoPilot: new(meta.AutoPilot), Group: new(meta.Group), Tasks: new(history.Tasks)}})
 }

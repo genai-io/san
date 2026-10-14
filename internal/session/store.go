@@ -113,7 +113,7 @@ func (s *Store) Create(opts CreateOptions) (*Session, error) {
 	if opts.ID == "" {
 		opts.ID = NewSessionID()
 	}
-	if err := transcript.ValidateID(opts.ID); err != nil {
+	if err := transcript.ValidateStorageID(opts.ID); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(s.TranscriptPath(opts.ID)); err == nil {
@@ -129,7 +129,7 @@ func (s *Store) Create(opts CreateOptions) (*Session, error) {
 
 // Open claims the session before reading and projecting its history once.
 func (s *Store) Open(id string) (*Session, *History, error) {
-	if err := transcript.ValidateID(id); err != nil {
+	if err := transcript.ValidateStorageID(id); err != nil {
 		return nil, nil, err
 	}
 	if _, err := os.Stat(s.TranscriptPath(id)); err != nil {
@@ -163,7 +163,7 @@ func (s *Store) Fork(sourceID string) (*Session, *History, error) {
 	// Group membership belongs to the source identity, not its conversation.
 	if history.Metadata.Group != "" {
 		at := time.Now()
-		if err := opened.Append(context.Background(), transcript.Record{Time: at, Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Group: new("")}}); err != nil {
+		if err := opened.Append(context.Background(), transcript.Record{Time: at, Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Group: new("")}}); err != nil {
 			return nil, nil, errors.Join(err, opened.Close(), s.Delete(id))
 		}
 		history.Metadata.Group = ""
@@ -173,7 +173,7 @@ func (s *Store) Fork(sourceID string) (*Session, *History, error) {
 }
 
 func (s *Store) copyTranscript(sourceID string) (string, error) {
-	if err := transcript.ValidateID(sourceID); err != nil {
+	if err := transcript.ValidateStorageID(sourceID); err != nil {
 		return "", err
 	}
 	s.mu.Lock()
@@ -209,10 +209,10 @@ func (s *Store) copyTranscript(sourceID string) (string, error) {
 }
 
 func (s *Store) PersistToolResult(sessionID, toolCallID, content string) error {
-	if err := transcript.ValidateID(sessionID); err != nil {
+	if err := transcript.ValidateStorageID(sessionID); err != nil {
 		return err
 	}
-	if err := transcript.ValidateID(toolCallID); err != nil {
+	if err := transcript.ValidateStorageID(toolCallID); err != nil {
 		return err
 	}
 	dir := s.toolResultsDir(sessionID)
@@ -244,7 +244,7 @@ func (s *Store) RecordSubagentConversation(parentSessionID, title, modelID, cwd 
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
 		return "", "", err
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Title: new(title)}}); err != nil {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new(title)}}); err != nil {
 		return "", "", err
 	}
 	return opened.ID(), opened.TranscriptPath(), nil

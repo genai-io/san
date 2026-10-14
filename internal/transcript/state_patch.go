@@ -7,42 +7,42 @@ import (
 	"github.com/genai-io/san/internal/todo"
 )
 
-func (p StateRecord) apply(s *State) {
+func (p StatePatch) applyTo(state *State) {
 	if p.Title != nil {
-		s.Title = *p.Title
+		state.Title = *p.Title
 	}
 	if p.LastPrompt != nil {
-		s.LastPrompt = *p.LastPrompt
+		state.LastPrompt = *p.LastPrompt
 	}
 	if p.Mode != nil {
-		s.Mode = *p.Mode
+		state.Mode = *p.Mode
 	}
 	if p.AutoPilot != nil {
-		s.AutoPilot = *p.AutoPilot
+		state.AutoPilot = *p.AutoPilot
 	}
 	if p.Group != nil {
-		s.Group = *p.Group
+		state.Group = *p.Group
 	}
 	if p.Tasks != nil {
-		s.Tasks = *p.Tasks
+		state.Tasks = *p.Tasks
 	}
 }
 
-// changes drops unchanged fields and owns the task payload retained in the cache.
-func (p StateRecord) changes(s State) (*StateRecord, error) {
-	if p.Title != nil && *p.Title == s.Title {
+// changesFrom drops unchanged fields and owns the task payload retained in the cache.
+func (p StatePatch) changesFrom(current State) (*StatePatch, error) {
+	if p.Title != nil && *p.Title == current.Title {
 		p.Title = nil
 	}
-	if p.LastPrompt != nil && *p.LastPrompt == s.LastPrompt {
+	if p.LastPrompt != nil && *p.LastPrompt == current.LastPrompt {
 		p.LastPrompt = nil
 	}
-	if p.Mode != nil && *p.Mode == s.Mode {
+	if p.Mode != nil && *p.Mode == current.Mode {
 		p.Mode = nil
 	}
-	if p.AutoPilot != nil && *p.AutoPilot == s.AutoPilot {
+	if p.AutoPilot != nil && *p.AutoPilot == current.AutoPilot {
 		p.AutoPilot = nil
 	}
-	if p.Group != nil && *p.Group == s.Group {
+	if p.Group != nil && *p.Group == current.Group {
 		p.Group = nil
 	}
 	if p.Tasks != nil {
@@ -55,7 +55,7 @@ func (p StateRecord) changes(s State) (*StateRecord, error) {
 		if err := json.Unmarshal(data, tasks); err != nil {
 			return nil, err
 		}
-		if len(*tasks) == 0 && len(s.Tasks) == 0 || reflect.DeepEqual(*tasks, s.Tasks) {
+		if len(*tasks) == 0 && len(current.Tasks) == 0 || reflect.DeepEqual(*tasks, current.Tasks) {
 			p.Tasks = nil
 		} else {
 			if *tasks == nil {

@@ -54,7 +54,7 @@ func NewStore(baseDir, projectID string) (*Store, error) {
 }
 
 func (s *Store) Start(ctx context.Context, cmd StartCommand) error {
-	if err := ValidateID(cmd.SessionID); err != nil {
+	if err := ValidateStorageID(cmd.SessionID); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -101,7 +101,7 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := ValidateID(rec.SessionID); err != nil {
+	if err := ValidateStorageID(rec.SessionID); err != nil {
 		return err
 	}
 	if rec.Time.IsZero() {
@@ -139,7 +139,7 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 		if rec.State == nil {
 			return fmt.Errorf("state payload is required")
 		}
-		patch, err := rec.State.changes(c.latestState)
+		patch, err := rec.State.changesFrom(c.latestState)
 		if err != nil {
 			return err
 		}
@@ -147,10 +147,10 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 			if rec.GitBranch == "" || rec.GitBranch == c.lastGitBranch {
 				return nil
 			}
-			patch = &StateRecord{}
+			patch = &StatePatch{}
 		}
 		rec.State = patch
-		patch.apply(&nextState)
+		patch.applyTo(&nextState)
 
 	case InferenceRequested, InferenceResponded, InferenceFailed:
 		if rec.Inference == nil {
@@ -239,10 +239,10 @@ func (s *Store) Append(ctx context.Context, rec Record) error {
 }
 
 func (s *Store) Fork(ctx context.Context, cmd ForkCommand) error {
-	if err := ValidateID(cmd.SourceSessionID); err != nil {
+	if err := ValidateStorageID(cmd.SourceSessionID); err != nil {
 		return err
 	}
-	if err := ValidateID(cmd.NewSessionID); err != nil {
+	if err := ValidateStorageID(cmd.NewSessionID); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -340,7 +340,7 @@ func rewriteRecordSessionID(id, oldSessionID, newSessionID string) string {
 }
 
 func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, error) {
-	if err := ValidateID(transcriptID); err != nil {
+	if err := ValidateStorageID(transcriptID); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -364,7 +364,7 @@ func (s *Store) Load(ctx context.Context, transcriptID string) (*Transcript, err
 
 // LoadHistory reads the selected chain across compaction boundaries without changing writer state.
 func (s *Store) LoadHistory(ctx context.Context, id string) (*Transcript, error) {
-	if err := ValidateID(id); err != nil {
+	if err := ValidateStorageID(id); err != nil {
 		return nil, err
 	}
 	s.mu.Lock()
@@ -566,7 +566,7 @@ func (s *Store) seedCacheLocked(id string, records []Record, tx *Transcript) {
 // write lock to run warmupCachesLocked. One O(N) scan per session per
 // process, then O(1).
 func (s *Store) LastMessageID(ctx context.Context, transcriptID string) (string, error) {
-	if err := ValidateID(transcriptID); err != nil {
+	if err := ValidateStorageID(transcriptID); err != nil {
 		return "", err
 	}
 	if err := ctx.Err(); err != nil {

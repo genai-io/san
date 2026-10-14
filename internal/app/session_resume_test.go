@@ -399,7 +399,7 @@ func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
 	m, _ := resumedModel(t, nil)
 	first := withID("pending", core.UserMessage("before", []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n"}}}))
 	m.SubmitToAgent(first)
-	if len(m.pendingMessages) != 1 {
+	if len(m.unsentMessages) != 1 {
 		t.Fatal("unconfigured input was discarded")
 	}
 	m.conv.Append(core.ChatMessage{ID: "display-only", Role: core.ChatUser, Content: "must not become history"})
@@ -423,7 +423,7 @@ func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
 			t.Fatal("pending input did not reach the agent")
 		}
 	}
-	if len(m.pendingMessages) != 0 {
+	if len(m.unsentMessages) != 0 {
 		t.Fatal("accepted input remained pending")
 	}
 }
@@ -435,7 +435,7 @@ func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
 			m.env.AutoPilot.Mission = "previous goal"
 			m.env.AutoPilot.MissionState = setting.MissionRunning
 			m.beforeGoal = new(m.env.AutoPilot)
-			m.pendingMessages = []core.Message{core.UserMessage("old input", nil)}
+			m.unsentMessages = []core.Message{core.UserMessage("old input", nil)}
 			var err error
 			if action == "clear" {
 				err = m.clearSession()
@@ -448,7 +448,7 @@ func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if m.beforeGoal != nil || m.env.AutoPilot.Mission != "" || m.env.AutoPilot.MissionState != "" || len(m.pendingMessages) != 0 {
+			if m.beforeGoal != nil || m.env.AutoPilot.Mission != "" || m.env.AutoPilot.MissionState != "" || len(m.unsentMessages) != 0 {
 				t.Fatalf("session inherited previous state: %+v", m.env.AutoPilot)
 			}
 		})

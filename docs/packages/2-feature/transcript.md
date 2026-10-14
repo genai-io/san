@@ -19,7 +19,7 @@ The package exposes a concrete `*Store`, plus `Record`, `Transcript`, and
 `Summary` values. SDK `ai.Message` and `ai.Schema`, and domain `todo.Item`
 payloads stay native.
 State patches are reduced to actual changes under the append mutex; unchanged
-fields produce no redundant record. `StateRecord` uses typed pointers for title,
+fields produce no redundant record. `StatePatch` uses typed pointers for title,
 prompt, mode, autopilot, group, and tasks; nil means unchanged, an explicit empty
 value clears. Task metadata is copied into its durable JSON form before caching.
 
@@ -43,6 +43,7 @@ func Project(records []Record) (*Transcript, error)
   content; a replacement selects an ordered chain with unique, nonempty IDs.
   Replaying the same IDs does not copy history or erase compaction ancestry,
   without reconstructing messages from display rows.
+- `state_patch.go` applies typed partial updates and removes unchanged fields.
 - `projector.go` follows the selected message-parent chain. Resume stops at the
   latest compaction boundary; history follows it back through older messages.
   Session ancestry uses a separate `parentSessionId`. Parent links are internal to

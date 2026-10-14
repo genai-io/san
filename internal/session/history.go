@@ -91,7 +91,7 @@ func withNotices(rows []core.ChatMessage, notices []transcript.NoticeRecord) []c
 // ChatRows reads attachments for display without changing the native conversation.
 func (s *Store) ChatRows(history *History) []core.ChatMessage {
 	rows := history.ChatRows()
-	if transcript.ValidateID(history.Metadata.ID) != nil {
+	if transcript.ValidateStorageID(history.Metadata.ID) != nil {
 		return rows
 	}
 	marker := "\n\n[Full output persisted to blobs/tool-result/" + history.Metadata.ID + "/"
@@ -111,7 +111,7 @@ func (s *Store) ChatRows(history *History) []core.ChatMessage {
 				continue
 			}
 			id, _, ok := strings.Cut(after, "]")
-			if !ok || transcript.ValidateID(id) != nil {
+			if !ok || transcript.ValidateStorageID(id) != nil {
 				continue
 			}
 			if data, err := os.ReadFile(filepath.Join(s.toolResultsDir(history.Metadata.ID), id)); err == nil {

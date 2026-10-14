@@ -131,7 +131,7 @@ func TestSessionAndSaveDoNotDoubleWrite(t *testing.T) {
 
 	// State writes share the same session and cannot copy the conversation.
 	if err := rec.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StateRecord{Title: new("hello")}}); err != nil {
+		State: &transcript.StatePatch{Title: new("hello")}}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -36,7 +36,7 @@ func TestStoreStartAppendListLoad(t *testing.T) {
 	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(2 * time.Second), ParentMessageID: "m1", GitBranch: "main", Type: MessageAppended, Message: &ai.Message{ID: "m2", Role: "assistant", Content: ai.Content{ai.TextBlock("world")}}}); err != nil {
 		t.Fatalf("AppendMessage(assistant): %v", err)
 	}
-	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: SessionStatePatched, State: &StateRecord{Title: new("Fix bug"), LastPrompt: new("hello")}}); err != nil {
+	if err := store.Append(context.Background(), Record{SessionID: "tx-1", Time: now.Add(3 * time.Second), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hello")}}); err != nil {
 		t.Fatalf("PatchState(): %v", err)
 	}
 
@@ -264,7 +264,7 @@ func TestStoreWritesExpectedEventShapes(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AppendInference(response): %v", err)
 	}
-	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(9 * time.Second), Type: SessionStatePatched, State: &StateRecord{Title: new("Trace shape"), LastPrompt: new("hello"), Mode: new("plan")}}); err != nil {
+	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(9 * time.Second), Type: SessionStatePatched, State: &StatePatch{Title: new("Trace shape"), LastPrompt: new("hello"), Mode: new("plan")}}); err != nil {
 		t.Fatalf("PatchState(): %v", err)
 	}
 	if err := store.Append(context.Background(), Record{SessionID: "tx-shape", Time: now.Add(10 * time.Second), Type: SessionCompacted, Compaction: &Compaction{MessageID: "m2"}}); err != nil {

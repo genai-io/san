@@ -78,7 +78,7 @@ func project(records []Record, stopAtCompaction bool) (*Transcript, error) {
 			if r.State == nil {
 				return nil, fmt.Errorf("state payload is required")
 			}
-			r.State.apply(&t.State)
+			r.State.applyTo(&t.State)
 			if t.ID == "" {
 				t.ID = r.SessionID
 			}

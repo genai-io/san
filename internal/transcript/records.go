@@ -76,7 +76,7 @@ type Record struct {
 
 	Messages    []ai.Message         `json:"messages,omitempty"`
 	Message     *ai.Message          `json:"message,omitempty"`
-	State       *StateRecord         `json:"state,omitempty"`
+	State       *StatePatch          `json:"state,omitempty"`
 	Start       *SessionStart        `json:"start,omitempty"`
 	Fork        *SessionFork         `json:"fork,omitempty"`
 	Compaction  *Compaction          `json:"compaction,omitempty"`
@@ -90,9 +90,9 @@ type Record struct {
 	Notice      *NoticeRecord        `json:"notice,omitempty"`
 }
 
-// StateRecord contains only changed fields; nil leaves a field unchanged.
+// StatePatch updates selected fields; nil leaves a field unchanged.
 // A non-nil pointer to an empty value explicitly clears it.
-type StateRecord struct {
+type StatePatch struct {
 	Title      *string      `json:"title,omitempty"`
 	LastPrompt *string      `json:"lastPrompt,omitempty"`
 	Mode       *string      `json:"mode,omitempty"`

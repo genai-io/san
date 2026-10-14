@@ -79,9 +79,9 @@ func TestEventsShape(t *testing.T) {
 
 	// session.state.patched: full first patch, partial change, then an empty/no-op
 	// patch must not write anything.
-	mustOK(t, "State1", store.Append(ctx, Record{SessionID: sid, Time: at(10), Type: SessionStatePatched, State: &StateRecord{Title: new("Fix bug"), LastPrompt: new("hi"), Mode: new("normal")}}))
-	mustOK(t, "State2", store.Append(ctx, Record{SessionID: sid, Time: at(11), Type: SessionStatePatched, State: &StateRecord{LastPrompt: new("hi please")}}))
-	mustOK(t, "StateNoChange", store.Append(ctx, Record{SessionID: sid, Time: at(12), Type: SessionStatePatched, State: &StateRecord{Title: new("Fix bug"), LastPrompt: new("hi please")}}))
+	mustOK(t, "State1", store.Append(ctx, Record{SessionID: sid, Time: at(10), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hi"), Mode: new("normal")}}))
+	mustOK(t, "State2", store.Append(ctx, Record{SessionID: sid, Time: at(11), Type: SessionStatePatched, State: &StatePatch{LastPrompt: new("hi please")}}))
+	mustOK(t, "StateNoChange", store.Append(ctx, Record{SessionID: sid, Time: at(12), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hi please")}}))
 
 	// compaction
 	mustOK(t, "Compact", store.Append(ctx, Record{SessionID: sid, Time: at(13), Type: SessionCompacted, Compaction: &Compaction{

@@ -73,7 +73,7 @@ quit   -> Runtime.Stop -> Session.Close
 ```
 
 Application state writes contain title, prompt preview, mode, autopilot, group,
-and tasks. `StateRecord` has typed optional fields: nil leaves a field unchanged;
+and tasks. `StatePatch` has typed optional fields: nil leaves a field unchanged;
 an explicit empty value clears it. Unused tag/worktree fields and generic JSON
 patch operations are removed. The transcript computes their actual differences atomically and skips
 unchanged fields. State records contain application data; native conversation

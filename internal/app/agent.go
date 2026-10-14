@@ -558,21 +558,21 @@ func (m *model) ensureAgentRuntime() (tea.Cmd, error) {
 type agentSendFailedMsg struct{ err error }
 
 func (m *model) sendToAgent(msg core.Message) tea.Cmd {
-	m.pendingMessages = append(m.pendingMessages, msg)
-	return m.sendPendingMessages()
+	m.unsentMessages = append(m.unsentMessages, msg)
+	return m.sendUnsentMessages()
 }
 
-func (m *model) sendPendingMessages() tea.Cmd {
+func (m *model) sendUnsentMessages() tea.Cmd {
 	if !m.services.Agent.Active() {
 		return nil
 	}
-	for len(m.pendingMessages) > 0 {
-		m.pendingMessages[0] = m.attachPendingReminders(m.pendingMessages[0])
+	for len(m.unsentMessages) > 0 {
+		m.unsentMessages[0] = m.attachPendingReminders(m.unsentMessages[0])
 		// Keep rejected input in native form so the next submission can retry it.
-		if err := m.services.Agent.Send(m.pendingMessages[0]); err != nil {
+		if err := m.services.Agent.Send(m.unsentMessages[0]); err != nil {
 			return func() tea.Msg { return agentSendFailedMsg{err: err} }
 		}
-		m.pendingMessages = m.pendingMessages[1:]
+		m.unsentMessages = m.unsentMessages[1:]
 	}
 	if !m.conv.Stream.Active {
 		m.conv.Stream = conv.StreamState{Active: true, Waiting: true}

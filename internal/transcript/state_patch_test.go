@@ -18,8 +18,8 @@ func TestStatePatchOwnsTasksAndClearsAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	tasks := []todo.Item{{ID: "one", Metadata: map[string]any{"nested": map[string]any{"value": "before"}}}}
-	patch := &StateRecord{Title: new("title"), Group: new("group"), Tasks: &tasks}
-	appendPatch := func(p *StateRecord) {
+	patch := &StatePatch{Title: new("title"), Group: new("group"), Tasks: &tasks}
+	appendPatch := func(p *StatePatch) {
 		t.Helper()
 		if err := store.Append(ctx, Record{SessionID: "s", Type: SessionStatePatched, State: p}); err != nil {
 			t.Fatal(err)
@@ -39,7 +39,7 @@ func TestStatePatchOwnsTasksAndClearsAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	appendPatch(&StateRecord{Group: new(""), Tasks: new([]todo.Item)})
+	appendPatch(&StatePatch{Group: new(""), Tasks: new([]todo.Item)})
 	loaded, err = store.Load(ctx, "s")
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestStatePatchOwnsTasksAndClearsAfterRestart(t *testing.T) {
 		t.Fatalf("clear or omitted field changed: %+v", loaded.State)
 	}
 	records := readRawRecordMaps(t, dir, "s")
-	appendPatch(&StateRecord{Title: new("title"), Group: new(""), Tasks: new([]todo.Item{})})
+	appendPatch(&StatePatch{Title: new("title"), Group: new(""), Tasks: new([]todo.Item{})})
 	if after := readRawRecordMaps(t, dir, "s"); len(after) != len(records) {
 		t.Fatal("unchanged fields wrote another record")
 	}

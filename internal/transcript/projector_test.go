@@ -52,8 +52,8 @@ func TestProjectStartAndAppendMessages(t *testing.T) {
 func TestProjectStatePatchLastWins(t *testing.T) {
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Title: new("A"), Mode: new("normal")}},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Title: new("B"), Mode: new("plan")}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StatePatch{Title: new("A"), Mode: new("normal")}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StatePatch{Title: new("B"), Mode: new("plan")}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -67,7 +67,7 @@ func TestProjectAutoPilotRoundTrip(t *testing.T) {
 	blob := `{"mission":"ship it","steers":{"turnEnd":true}}`
 	tr, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{AutoPilot: new(blob)}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StatePatch{AutoPilot: new(blob)}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
@@ -93,7 +93,7 @@ func TestProjectTasksPatch(t *testing.T) {
 	}
 	transcript, err := Project([]Record{
 		{SessionID: "tx-1", Time: time.Now(), Type: SessionStarted},
-		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StateRecord{Tasks: new([]todo.Item{task})}},
+		{SessionID: "tx-1", Time: time.Now(), Type: SessionStatePatched, State: &StatePatch{Tasks: new([]todo.Item{task})}},
 	})
 	if err != nil {
 		t.Fatalf("Project(): %v", err)
