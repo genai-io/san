@@ -41,7 +41,6 @@ func (m *model) contextUsage() conv.ContextUsage {
 	messages := m.services.Agent.Messages()
 	if sys == nil || tools == nil {
 		m.addUnstartedAgentUsage(&usage)
-		messages = m.seedAgentMessages("")
 	} else {
 		usage.SystemPrompt = ai.EstimateTokens(sys.Prompt())
 		for _, t := range tools.All() {

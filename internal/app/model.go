@@ -39,6 +39,9 @@ import (
 const defaultWidth = 80
 
 type model struct {
+	// pendingMessages retains input until the agent accepts it.
+	pendingMessages []core.Message
+
 	// ── Sub-models (one per event source / concern) ─────────────
 	userInput input.Model // Source 1: user keyboard input
 	// mainNotices is the TUI's notice-staging channel (Source 2) — NOT the main

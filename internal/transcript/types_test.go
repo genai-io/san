@@ -19,11 +19,7 @@ func TestTranscriptTypesCarryProjectedState(t *testing.T) {
 		UpdatedAt:       now,
 		Provider:        "openai",
 		Model:           "gpt-test",
-		Messages: []MessageNode{MessageNode{Message: ai.Message{ID: "msg-1", Role: "assistant", Content: ai.Content{ai.TextBlock("hello")}}, ParentMessageID: "msg-0",
-
-			Time:      now,
-			GitBranch: "main",
-		}},
+		Messages:        []ai.Message{{ID: "msg-1", Role: ai.RoleAssistant, Content: ai.TextContent("hello")}},
 		State: State{
 			Title:      "Fix persistence",
 			LastPrompt: "continue",
@@ -46,7 +42,6 @@ func TestTranscriptTypesCarryProjectedState(t *testing.T) {
 func TestProjectedTypesDoNotExposeJSONTags(t *testing.T) {
 	fields := []reflect.StructField{
 		reflect.TypeFor[Transcript]().Field(0),
-		reflect.TypeFor[MessageNode]().Field(0),
 		reflect.TypeFor[State]().Field(0),
 		reflect.TypeFor[Summary]().Field(0),
 	}
@@ -68,11 +63,10 @@ func TestMetadataHelpers(t *testing.T) {
 		UpdatedAt:       now.Add(time.Minute),
 		Provider:        "openai",
 		Model:           "gpt-test",
-		Messages:        []MessageNode{MessageNode{Message: ai.Message{ID: "m1"}}},
+		Messages:        []ai.Message{{ID: "m1"}},
 		State: State{
 			Title:      "Title",
 			LastPrompt: "continue",
-			Tag:        "tag",
 			Mode:       "plan",
 		},
 	})

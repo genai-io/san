@@ -189,6 +189,7 @@ func TestCompactRequestCarriesNoImagesForTextOnlyModel(t *testing.T) {
 		Images:  []core.Attachment{chartImage()},
 	})
 
+	m.services.Agent.SetMessages([]core.Message{core.UserMessage("what does this show", []core.Attachment{chartImage()})})
 	req := m.BuildCompactRequest("", "manual")
 
 	if len(req.Messages) == 0 {

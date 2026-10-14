@@ -19,7 +19,9 @@ The package exposes a concrete `*Store`, plus `Record`, `Transcript`, and
 `Summary` values. SDK `ai.Message` and `ai.Schema`, and domain `todo.Item`
 payloads stay native.
 State patches are reduced to actual changes under the append mutex; unchanged
-fields produce no redundant record.
+fields produce no redundant record. `StatePatch` uses typed pointers for title,
+prompt, mode, autopilot, group, and tasks; nil means unchanged, an explicit empty
+value clears. Task metadata is copied into its durable JSON form before caching.
 
 ```go
 func NewStore(baseDir, projectID string) (*Store, error)
@@ -40,10 +42,12 @@ func Project(records []Record) (*Transcript, error)
 - `store.go` durably appends before advancing caches. Message IDs name immutable
   content; a replacement selects an ordered chain with unique, nonempty IDs.
   Replaying the same IDs does not copy history or erase compaction ancestry,
-  including when the session adapter has hydrated blob-backed output.
+  without reconstructing messages from display rows.
+- `state_patch.go` applies typed partial updates and removes unchanged fields.
 - `projector.go` follows the selected message-parent chain. Resume stops at the
   latest compaction boundary; history follows it back through older messages.
-  Session ancestry uses a separate `parentSessionId`.
+  Session ancestry uses a separate `parentSessionId`. Parent links are internal to
+  projection; `Transcript.Messages` exposes native `[]ai.Message` directly.
 - `recovery.go` refreshes derived caches on every successful writer claim, so
   leaf IDs, inference/exchange counters, state, and tail recovery reflect
   intervening writes by other processes. Reads ignore an incomplete final JSON
@@ -51,9 +55,9 @@ func Project(records []Record) (*Transcript, error)
 - Each `transcripts/<id>.jsonl` has a derived `<id>.jsonl.meta`, validated against
   log size and modification time. Listing scans logs directly. Missing or
   corrupt summaries rebuild from the log.
-- Schema version `2` is declared on `session.started`. Fork preserves timestamps
+- Schema version `3` is declared on `session.started`. Fork preserves timestamps
   and rewrites attachment references to the child's blobs; the session adapter
-  copies those blobs.
+  copies those blobs. Earlier schemas are rejected without migration.
 
 ## Lifecycle
 
@@ -61,7 +65,8 @@ func Project(records []Record) (*Transcript, error)
 store mutex. `Claim` takes a cross-process file lock; its returned idempotent
 release function ends the writer lease and reports close errors. Callers hold
 that lease while writing a conversation. Append syncs message and state records
-before returning. Listing refreshes derived summaries lazily.
+before returning. Delete acquires the same lease and refuses active writers.
+Session and attachment identifiers must be single path components. Listing refreshes derived summaries lazily.
 
 ## Tests
 

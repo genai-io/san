@@ -76,20 +76,6 @@ func (s *Store) List() ([]Summary, error) {
 	return s.transcriptStore.List(context.Background(), s.projectID, transcript.ListOptions{})
 }
 
-func (s *Store) Latest() (*History, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	items, err := s.transcriptStore.List(context.Background(), s.projectID, transcript.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("no sessions found")
-	}
-	return s.readHistory(context.Background(), items[0].ID, false)
-}
-
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,13 +105,16 @@ func (s *Store) ReadChatHistory(id string) ([]core.ChatMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return snap.ChatRows(), nil
+	return s.ChatRows(snap), nil
 }
 
 // Create opens a new durable session. The caller owns it until Close.
 func (s *Store) Create(opts CreateOptions) (*Session, error) {
 	if opts.ID == "" {
 		opts.ID = NewSessionID()
+	}
+	if err := transcript.ValidateStorageID(opts.ID); err != nil {
+		return nil, err
 	}
 	if _, err := os.Stat(s.TranscriptPath(opts.ID)); err == nil {
 		return nil, fmt.Errorf("session %s already exists", opts.ID)
@@ -140,6 +129,9 @@ func (s *Store) Create(opts CreateOptions) (*Session, error) {
 
 // Open claims the session before reading and projecting its history once.
 func (s *Store) Open(id string) (*Session, *History, error) {
+	if err := transcript.ValidateStorageID(id); err != nil {
+		return nil, nil, err
+	}
 	if _, err := os.Stat(s.TranscriptPath(id)); err != nil {
 		return nil, nil, err
 	}
@@ -171,7 +163,7 @@ func (s *Store) Fork(sourceID string) (*Session, *History, error) {
 	// Group membership belongs to the source identity, not its conversation.
 	if history.Metadata.Group != "" {
 		at := time.Now()
-		if err := opened.Append(context.Background(), transcript.Record{Time: at, Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchGroup("")}}}); err != nil {
+		if err := opened.Append(context.Background(), transcript.Record{Time: at, Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Group: new("")}}); err != nil {
 			return nil, nil, errors.Join(err, opened.Close(), s.Delete(id))
 		}
 		history.Metadata.Group = ""
@@ -181,6 +173,9 @@ func (s *Store) Fork(sourceID string) (*Session, *History, error) {
 }
 
 func (s *Store) copyTranscript(sourceID string) (string, error) {
+	if err := transcript.ValidateStorageID(sourceID); err != nil {
+		return "", err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -214,20 +209,17 @@ func (s *Store) copyTranscript(sourceID string) (string, error) {
 }
 
 func (s *Store) PersistToolResult(sessionID, toolCallID, content string) error {
-	// Sanitize both sessionID and toolCallID to prevent path traversal
-	safeSessionID := filepath.Base(sessionID)
-	if safeSessionID == "." || safeSessionID == "/" || safeSessionID == "" {
-		return fmt.Errorf("invalid session ID: %q", sessionID)
+	if err := transcript.ValidateStorageID(sessionID); err != nil {
+		return err
 	}
-	safeName := filepath.Base(toolCallID)
-	if safeName == "." || safeName == "/" || safeName == "" {
-		return fmt.Errorf("invalid tool call ID: %q", toolCallID)
+	if err := transcript.ValidateStorageID(toolCallID); err != nil {
+		return err
 	}
-	dir := s.toolResultsDir(safeSessionID)
+	dir := s.toolResultsDir(sessionID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create tool result dir: %w", err)
 	}
-	return atomicfile.Write(filepath.Join(dir, safeName), []byte(content), 0o644)
+	return atomicfile.Write(filepath.Join(dir, toolCallID), []byte(content), 0o644)
 }
 
 // RecordSubagentConversation writes the completed child's native messages.
@@ -252,7 +244,7 @@ func (s *Store) RecordSubagentConversation(parentSessionID, title, modelID, cwd 
 	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.ConversationReplaced, Messages: messages}); err != nil {
 		return "", "", err
 	}
-	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchTitle(title)}}}); err != nil {
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched, State: &transcript.StatePatch{Title: new(title)}}); err != nil {
 		return "", "", err
 	}
 	return opened.ID(), opened.TranscriptPath(), nil
@@ -286,23 +278,12 @@ func (s *Store) readHistory(ctx context.Context, sessionID string, includeCompac
 	if tx == nil {
 		return nil, fmt.Errorf("session not found: %s", sessionID)
 	}
-	transcript.HydrateToolResultNodes(tx.ID, tx.Messages, func(toolCallID string) (string, error) {
-		data, err := os.ReadFile(filepath.Join(s.toolResultsDir(tx.ID), toolCallID))
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	})
 	sess := &History{
 		Metadata:    transcript.MetadataFromTranscript(tx),
 		Notices:     tx.Notices,
 		ToolDetails: tx.ToolDetails,
-		Messages:    make([]core.Message, len(tx.Messages)),
+		Messages:    tx.Messages,
 		Tasks:       tx.State.Tasks,
-	}
-
-	for i, n := range tx.Messages {
-		sess.Messages[i] = n.Message
 	}
 
 	if sess.Metadata.Title == "" {

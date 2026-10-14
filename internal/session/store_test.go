@@ -1,7 +1,13 @@
 package session
 
 import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/genai-io/san/internal/transcript"
 
 	"github.com/genai-io/sdk-go/pkg/ai"
 )
@@ -112,5 +118,79 @@ func TestStoreListPreservesCustomTitle(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected title %q in listing, got: %+v", "Session From Listing", list)
+	}
+}
+
+func TestStoreRejectsUnsafeIDsWithoutTouchingAttachments(t *testing.T) {
+	store, err := NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistToolResult("safe", "call", "keep"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{".", "..", "../escape", "a/b", `a\b`} {
+		t.Run(id, func(t *testing.T) {
+			if opened, err := store.Create(CreateOptions{ID: id}); err == nil {
+				_ = opened.Close()
+				t.Fatal("created unsafe ID")
+			}
+			if opened, _, err := store.Open(id); err == nil {
+				_ = opened.Close()
+				t.Fatal("opened unsafe ID")
+			}
+			if _, err := store.Read(id); err == nil {
+				t.Fatal("read unsafe ID")
+			}
+			if err := store.Delete(id); err == nil {
+				t.Fatal("deleted unsafe ID")
+			}
+			if err := store.PersistToolResult(id, "call", "bad"); err == nil {
+				t.Fatal("persisted unsafe session ID")
+			}
+			if err := store.PersistToolResult("safe", id, "bad"); err == nil {
+				t.Fatal("persisted unsafe attachment ID")
+			}
+		})
+	}
+	data, err := os.ReadFile(filepath.Join(store.toolResultsDir("safe"), "call"))
+	if err != nil || string(data) != "keep" {
+		t.Fatalf("unrelated output changed: %q, %v", data, err)
+	}
+}
+
+func TestDeleteRejectsLiveWriterAcrossStores(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStoreWithDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := NewStoreWithDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.Create(CreateOptions{ID: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	for _, deleting := range []*Store{store, other} {
+		if err := deleting.Delete("s"); err == nil {
+			t.Fatal("deleted active session")
+		}
+	}
+	msg := ai.UserMessage("still writable")
+	msg.ID = "m"
+	if err := opened.Append(context.Background(), transcript.Record{Type: transcript.MessageAppended, Message: &msg}); err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Delete("s"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Read("s"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("deleted transcript remains: %v", err)
 	}
 }

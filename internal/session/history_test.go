@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -49,5 +50,41 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	resumed, err = store.Read(snap.Metadata.ID)
 	if err != nil || len(resumed.Messages) != 1 {
 		t.Fatalf("reading history changed resume: %+v, %v", resumed, err)
+	}
+}
+
+func TestDisplayHydratesOnlyValidToolReferences(t *testing.T) {
+	store, err := NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PersistToolResult("s", "ok", "full"); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, text, want string }{
+		{"valid", "preview\n\n[Full output persisted to blobs/tool-result/s/ok]", "full"},
+		{"missing", "preview\n\n[Full output persisted to blobs/tool-result/s/missing]", ""},
+		{"other-session", "preview\n\n[Full output persisted to blobs/tool-result/other/ok]", ""},
+		{"traversal", "preview\n\n[Full output persisted to blobs/tool-result/s/../s/ok]", ""},
+		{"unfinished", "preview\n\n[Full output persisted to blobs/tool-result/s/ok", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &History{Metadata: Metadata{ID: "s"}, Messages: []ai.Message{{ID: "r", Role: ai.RoleUser, Content: ai.Content{
+				ai.ToolResultBlock(ai.ToolResult{ToolCallID: "one", Content: ai.TextContent(tc.text)}),
+				ai.ToolResultBlock(ai.ToolResult{ToolCallID: "two", Content: ai.TextContent(tc.text)}),
+			}}}}
+			original := h.Messages[0].Content.Clone()
+			rows := store.ChatRows(h)
+			want := tc.want
+			if want == "" {
+				want = tc.text
+			}
+			if len(rows) != 2 || rows[0].ToolResult.Text() != want || rows[1].ToolResult.Text() != want {
+				t.Fatalf("incorrect rows: %+v", rows)
+			}
+			if !reflect.DeepEqual(h.Messages[0].Content, original) {
+				t.Fatal("display mutated native content")
+			}
+		})
 	}
 }

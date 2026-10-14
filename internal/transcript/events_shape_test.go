@@ -79,17 +79,9 @@ func TestEventsShape(t *testing.T) {
 
 	// session.state.patched: full first patch, partial change, then an empty/no-op
 	// patch must not write anything.
-	mustOK(t, "State1", store.Append(ctx, Record{SessionID: sid, Time: at(10), Type: SessionStatePatched, State: &StateRecord{Ops: StateOpsDiff(State{}, State{Title: "Fix bug", LastPrompt: "hi", Mode: "normal"})}}))
-	mustOK(t, "State2", store.Append(ctx, Record{SessionID: sid, Time: at(11), Type: SessionStatePatched, State: &StateRecord{Ops: StateOpsDiff(
-		State{Title: "Fix bug", LastPrompt: "hi", Mode: "normal"},
-		State{Title: "Fix bug", LastPrompt: "hi please", Mode: "normal"},
-	)},
-	}))
-	mustOK(t, "StateNoChange", store.Append(ctx, Record{SessionID: sid, Time: at(12), Type: SessionStatePatched, State: &StateRecord{Ops: StateOpsDiff(
-		State{Title: "Fix bug", LastPrompt: "hi please"},
-		State{Title: "Fix bug", LastPrompt: "hi please"},
-	)},
-	}))
+	mustOK(t, "State1", store.Append(ctx, Record{SessionID: sid, Time: at(10), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hi"), Mode: new("normal")}}))
+	mustOK(t, "State2", store.Append(ctx, Record{SessionID: sid, Time: at(11), Type: SessionStatePatched, State: &StatePatch{LastPrompt: new("hi please")}}))
+	mustOK(t, "StateNoChange", store.Append(ctx, Record{SessionID: sid, Time: at(12), Type: SessionStatePatched, State: &StatePatch{Title: new("Fix bug"), LastPrompt: new("hi please")}}))
 
 	// compaction
 	mustOK(t, "Compact", store.Append(ctx, Record{SessionID: sid, Time: at(13), Type: SessionCompacted, Compaction: &Compaction{
@@ -185,21 +177,18 @@ func TestEventsShape(t *testing.T) {
 		t.Errorf("msg[2] gitBranch = %v, want feat/x", msgs[2]["gitBranch"])
 	}
 
-	// 4. session.state.patched: first record has 3 ops, second has 1 op, third must NOT exist.
+	// 4. session.state.patched: first record has 3 fields, second has 1 field, third must NOT exist.
 	patches := byType["session.state.patched"]
 	if len(patches) != 2 {
 		t.Fatalf("session.state.patched count = %d, want 2 (no-op patch must be skipped)", len(patches))
 	}
-	ops1 := patches[0]["state"].(map[string]any)["ops"].([]any)
-	if len(ops1) != 3 {
-		t.Errorf("first session.state.patched ops len = %d, want 3", len(ops1))
+	state1 := patches[0]["state"].(map[string]any)
+	if len(state1) != 3 {
+		t.Errorf("first state fields = %v, want 3", state1)
 	}
-	ops2 := patches[1]["state"].(map[string]any)["ops"].([]any)
-	if len(ops2) != 1 {
-		t.Errorf("second session.state.patched ops len = %d, want 1 (lastPrompt only)", len(ops2))
-	}
-	if got := ops2[0].(map[string]any)["path"]; got != "lastPrompt" {
-		t.Errorf("second session.state.patched op path = %v, want lastPrompt", got)
+	state2 := patches[1]["state"].(map[string]any)
+	if len(state2) != 1 || state2["lastPrompt"] == nil {
+		t.Errorf("second state fields = %v, want lastPrompt only", state2)
 	}
 
 	// 5. inference.requested has digests + messageIds; inference.responded has

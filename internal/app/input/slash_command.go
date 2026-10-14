@@ -706,24 +706,21 @@ func (c *SlashCommandController) handleCompactCommand(_ context.Context, args st
 	if c.env.LLM.Provider() == nil {
 		return NoProviderMsg, nil, nil
 	}
-	if len(c.env.Conversation.Messages) == 0 {
-		return "No active LLM session. Send a message first to initialize the client.", nil, nil
-	}
-	// Count what would actually be summarised, not the rows on screen: a
-	// notice is a row the model never sees, so counting rows let a lone
-	// summary through and summarised the summary.
-	sendable := c.env.Conversation.ConvertToProvider()
-	if len(sendable) < core.MinMessagesToCompact {
-		return "Not enough conversation history to compact.", nil, nil
-	}
 	if c.env.Conversation.Stream.Active {
 		return "Cannot compact while streaming.", nil, nil
 	}
+	request := c.env.BuildCompactRequest(strings.TrimSpace(args), "manual")
+	if len(request.Messages) == 0 {
+		return "No active LLM session. Send a message first to initialize the client.", nil, nil
+	}
+	if len(request.Messages) < core.MinMessagesToCompact {
+		return "Not enough conversation history to compact.", nil, nil
+	}
 	c.env.Conversation.Compact.Active = true
-	c.env.Conversation.Compact.SummaryFocus = strings.TrimSpace(args)
+	c.env.Conversation.Compact.SummaryFocus = request.SummaryFocus
 	c.env.Conversation.Compact.Phase = conv.PhaseSummarizing
-	c.env.Conversation.Compact.Count = len(sendable)
-	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(c.env.BuildCompactRequest(c.env.Conversation.Compact.SummaryFocus, "manual"))), nil
+	c.env.Conversation.Compact.Count = len(request.Messages)
+	return "", tea.Batch(c.env.SpinnerTickCmd(), conv.CompactCmd(request)), nil
 }
 
 func lookupSkill(svc *skill.Registry, cmd string) (*skill.Skill, bool) {

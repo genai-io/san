@@ -22,6 +22,7 @@ import (
 	"github.com/genai-io/san/internal/subagent"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/todo"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 	"github.com/genai-io/sdk-go/pkg/ai/aitest"
 )
@@ -212,7 +213,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 			stopped <- event.Err
 		}
 	}}
-	if err := m.services.Agent.Start(params, m.seedAgentMessages("")); err != nil {
+	if err := m.services.Agent.Start(params, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("failed", core.UserMessage("continue", nil))); err != nil {
@@ -227,7 +228,7 @@ func TestResumedParallelResultsSurviveFailureAndRetry(t *testing.T) {
 		t.Fatal("runtime did not report its failure")
 	}
 	m.StopAgentRuntime() // waits until execute has retired the failed run
-	seed := m.seedAgentMessages("")
+	seed := m.services.Agent.Messages()
 	if len(seed) != 4 || !reflect.DeepEqual(seed[:3], history) {
 		t.Fatalf("retry lost the native parallel-result chain: %+v", seed)
 	}
@@ -257,7 +258,7 @@ func TestCompactBeforeResumedRuntimeStartsPersistsTheNativeBoundary(t *testing.T
 	history := parallelResultChain()
 	m, store := resumedModel(t, history)
 	m.HandleCompactResult(conv.CompactResultMsg{Summary: "both files read", OriginalCount: len(history)})
-	seed := m.seedAgentMessages("")
+	seed := m.services.Agent.Messages()
 	if len(seed) != 1 || seed[0].Text() != core.FormatCompactSummary("both files read") {
 		t.Fatalf("inactive compaction retained old inference context: %+v", seed)
 	}
@@ -286,7 +287,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	provider := &textOnlyStubProvider{restartStubProvider{requests: make(chan []core.Message, 1)}}
 	m.env.LLMProvider = provider
 	w := m.services.Session
-	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, m.seedAgentMessages("")); err != nil {
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: w.RecordEvent}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.services.Agent.Send(withID("text", core.UserMessage("describe again", nil))); err != nil {
@@ -307,7 +308,7 @@ func TestTextOnlyModelSwitchPreservesDurableImages(t *testing.T) {
 	}
 	m.services.Agent.SetMessages(loaded.Messages)
 	m.env.LLMProvider = &restartStubProvider{}
-	if imageBlocks(m.seedAgentMessages("")[0]) != 1 {
+	if imageBlocks(m.services.Agent.Messages()[0]) != 1 {
 		t.Fatal("vision model could not recover the historical image")
 	}
 }
@@ -325,7 +326,7 @@ func TestRenameKeepsTheOpenedSessionForFollowingMessages(t *testing.T) {
 		if event, ok := event.(core.AgentStopped); ok {
 			stopped <- event.Err
 		}
-	}}, m.seedAgentMessages("")); err != nil {
+	}}, m.services.Agent.Messages()); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.renameSession("renamed"); err != nil {
@@ -389,6 +390,66 @@ func TestClearAndForkReleaseThePreviousGroupIdentityImmediately(t *testing.T) {
 			}
 			if cmd := m.handleMemberMsg(memberMsg{status: group.Joined}); cmd != nil {
 				t.Fatal("delayed group poll produced effects in the new session")
+			}
+		})
+	}
+}
+
+func TestPendingInputSurvivesUnconfiguredProviderInNativeForm(t *testing.T) {
+	m, _ := resumedModel(t, nil)
+	first := withID("pending", core.UserMessage("before", []core.Attachment{{Image: ai.Image{MediaType: "image/png", Data: "aW1n"}}}))
+	m.SubmitToAgent(first)
+	if len(m.pendingMessages) != 1 {
+		t.Fatal("unconfigured input was discarded")
+	}
+	m.conv.Append(core.ChatMessage{ID: "display-only", Role: core.ChatUser, Content: "must not become history"})
+	added := make(chan core.Message, 2)
+	provider := &restartStubProvider{requests: make(chan []core.Message, 4)}
+	if err := m.services.Agent.Start(agent.BuildParams{Provider: provider, ModelID: "m", OnEvent: func(e core.Event) {
+		if v, ok := e.(sdkagent.MessageAdded); ok && v.Message.Role == ai.RoleUser {
+			added <- v.Message
+		}
+	}}, m.services.Agent.Messages()); err != nil {
+		t.Fatal(err)
+	}
+	m.sendToAgent(withID("next", core.UserMessage("continue", nil)))
+	for _, want := range []core.Message{first, withID("next", core.UserMessage("continue", nil))} {
+		select {
+		case got := <-added:
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("accepted message = %+v, want %+v", got, want)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("pending input did not reach the agent")
+		}
+	}
+	if len(m.pendingMessages) != 0 {
+		t.Fatal("accepted input remained pending")
+	}
+}
+
+func TestSessionChangeClearsPreviousGoalAndPendingInput(t *testing.T) {
+	for _, action := range []string{"resume", "clear"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, nil)
+			m.env.AutoPilot.Mission = "previous goal"
+			m.env.AutoPilot.MissionState = setting.MissionRunning
+			m.beforeGoal = new(m.env.AutoPilot)
+			m.pendingMessages = []core.Message{core.UserMessage("old input", nil)}
+			var err error
+			if action == "clear" {
+				err = m.clearSession()
+			} else {
+				if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "other"}}); err != nil {
+					t.Fatal(err)
+				}
+				err = m.loadSessionByID("other")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.beforeGoal != nil || m.env.AutoPilot.Mission != "" || m.env.AutoPilot.MissionState != "" || len(m.pendingMessages) != 0 {
+				t.Fatalf("session inherited previous state: %+v", m.env.AutoPilot)
 			}
 		})
 	}

@@ -29,7 +29,7 @@ func (m *model) BuildCompactRequest(focus, trigger string) conv.CompactRequest {
 		// Summarization runs on the active model, so the chain has to clear the
 		// same bar as an agent turn: a text-only provider rejects image parts,
 		// and the conversation keeps images even when the model can't read them.
-		Messages:     client.RequestMessages(m.seedAgentMessages("")),
+		Messages:     client.RequestMessages(m.services.Agent.Messages()),
 		SummaryFocus: focus,
 		HookEngine:   m.services.Hook,
 		Trigger:      trigger,

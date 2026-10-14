@@ -51,6 +51,9 @@ func (s *Store) repairTailLocked(path string) error {
 
 // Position seeds a writer from the persisted leaf and inference sequence.
 func (s *Store) Position(ctx context.Context, id string) (string, int, int, error) {
+	if err := ValidateStorageID(id); err != nil {
+		return "", 0, 0, err
+	}
 	if err := ctx.Err(); err != nil {
 		return "", 0, 0, err
 	}
@@ -67,6 +70,9 @@ type writerLock struct{ file *os.File }
 
 // Claim permits one live writer per session, including across processes.
 func (s *Store) Claim(id string) (func() error, error) {
+	if err := ValidateStorageID(id); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.writers == nil {
@@ -94,4 +100,12 @@ func (s *Store) Claim(id string) (func() error, error) {
 		})
 		return closeErr
 	}, nil
+}
+
+// ValidateStorageID rejects identifiers that can escape a session's storage directory.
+func ValidateStorageID(id string) error {
+	if id == "" || id == "." || id == ".." || strings.ContainsAny(id, `/\`) {
+		return fmt.Errorf("invalid session or attachment ID %q", id)
+	}
+	return nil
 }

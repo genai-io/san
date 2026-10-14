@@ -102,6 +102,7 @@ func (m *model) recordNotice(n core.ChatMessage) {
 // replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.Session) {
 	if m.sessionID() != opened.ID() {
+		m.pendingMessages = nil
 		m.resetInteractions()
 		m.services.Reminder.DiscardPendingNotices()
 	}
@@ -138,14 +139,11 @@ func (m *model) buildSessionRecord() *transcript.Record {
 		title = session.GenerateTitle(messages)
 	}
 	return &transcript.Record{Type: transcript.SessionStatePatched,
-		State: &transcript.StateRecord{Ops: []transcript.PatchOp{
-			transcript.PatchTitle(title),
-			transcript.PatchLastPrompt(session.ExtractLastUserText(messages)),
-			transcript.PatchMode(m.env.SessionMode()),
-			transcript.PatchAutoPilot(marshalAutoPilot(m.env.AutoPilot)),
-			transcript.PatchGroup(currentMembership()),
-			transcript.PatchTasks(m.services.Tracker.Export()),
-		}}}
+		State: &transcript.StatePatch{
+			Title: new(title), LastPrompt: new(session.ExtractLastUserText(messages)),
+			Mode: new(m.env.SessionMode()), AutoPilot: new(marshalAutoPilot(m.env.AutoPilot)),
+			Group: new(currentMembership()), Tasks: new(m.services.Tracker.Export()),
+		}}
 }
 
 func (m *model) loadSessionByID(id string) error {
@@ -193,7 +191,7 @@ func (m *model) loadSessionByID(id string) error {
 }
 
 func (m *model) restoreHistory(sess *session.History) {
-	m.conv.Messages = sess.ChatRows()
+	m.conv.Messages = m.services.SessionStore.ChatRows(sess)
 	m.earlyNotices = nil
 	m.services.Agent.SetMessages(sess.Messages)
 	m.systemRemindersSent = slices.ContainsFunc(m.conv.Messages, func(msg core.ChatMessage) bool {
@@ -213,17 +211,14 @@ func (m *model) restoreHistory(sess *session.History) {
 		m.services.Tracker.Import(sess.Tasks)
 	}
 
-	// Restore the session's autopilot config; an empty blob (e.g. an older
-	// session) leaves the settings-seeded default in place. Rebuild the runtime
-	// snapshot so a mid-session /resume (the agent may already be running) takes
-	// the resumed steers/model/permission config immediately, not on the next
-	// /autopilot Save.
+	// Session-specific settings never inherit the previous conversation's goal.
+	m.beforeGoal = nil
+	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
 	if ar := parseAutoPilot(sess.Metadata.AutoPilot); !ar.IsZero() {
-		// A resumed run waits for the human instead of driving on its own.
-		if ar.MissionState == setting.MissionRunning {
-			ar.MissionState = setting.MissionPaused
-		}
 		m.env.AutoPilot = ar
+	}
+	if m.env.AutoPilot.MissionState == setting.MissionRunning {
+		m.env.AutoPilot.MissionState = setting.MissionPaused
 	}
 	m.rebuildAutopilotReviewer()
 
@@ -378,6 +373,10 @@ func (m *model) clearSession() error {
 	m.grp = groupState{polling: m.grp.polling}
 	m.env.SessionName = ""
 	m.earlyNotices = nil
+	m.pendingMessages = nil
+	m.beforeGoal = nil
+	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
+	m.rebuildAutopilotReviewer()
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(m.sessionID())
 	return nil
