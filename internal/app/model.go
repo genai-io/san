@@ -39,8 +39,8 @@ import (
 const defaultWidth = 80
 
 type model struct {
-	// unsentMessages retains input until the agent accepts it.
-	unsentMessages []core.Message
+	// pendingMessages retains input until the agent accepts it.
+	pendingMessages []core.Message
 
 	// ── Sub-models (one per event source / concern) ─────────────
 	userInput input.Model // Source 1: user keyboard input

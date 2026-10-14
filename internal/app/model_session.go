@@ -102,7 +102,7 @@ func (m *model) recordNotice(n core.ChatMessage) {
 // replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.Session) {
 	if m.sessionID() != opened.ID() {
-		m.unsentMessages = nil
+		m.pendingMessages = nil
 		m.resetInteractions()
 		m.services.Reminder.DiscardPendingNotices()
 	}
@@ -373,7 +373,7 @@ func (m *model) clearSession() error {
 	m.grp = groupState{polling: m.grp.polling}
 	m.env.SessionName = ""
 	m.earlyNotices = nil
-	m.unsentMessages = nil
+	m.pendingMessages = nil
 	m.beforeGoal = nil
 	m.env.AutoPilot = autopilotWithoutSessionFields(m.services.Setting.Snapshot().AutoPilot)
 	m.rebuildAutopilotReviewer()
