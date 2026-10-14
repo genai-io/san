@@ -79,6 +79,8 @@ type BackgroundTask interface {
 // TaskInfo is a snapshot of task information
 // It contains both common fields and type-specific fields
 type TaskInfo struct {
+	ParentSessionID string
+
 	// Common fields
 	ID          string
 	Type        TaskType

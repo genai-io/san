@@ -102,6 +102,8 @@ func (m *model) recordNotice(n core.ChatMessage) {
 // replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.Session) {
 	if m.sessionID() != opened.ID() {
+		m.env.SessionPermissions = setting.NewSessionPermissions()
+		m.env.ApplyModePermissions(m.env.CWD)
 		m.pendingMessages = nil
 		m.resetInteractions()
 		m.services.Reminder.DiscardPendingNotices()
@@ -156,6 +158,10 @@ func (m *model) loadSessionByID(id string) error {
 	if m.services.Agent.Active() {
 		return fmt.Errorf("previous agent is still stopping")
 	}
+	if m.workerMu != nil {
+		m.workerMu.Lock()
+		defer m.workerMu.Unlock()
+	}
 	var opened *session.Session
 	var sess *session.History
 	var err error
@@ -186,6 +192,7 @@ func (m *model) loadSessionByID(id string) error {
 	}
 
 	m.env.ResetContextDisplay()
+	m.ReconfigureAgentTool()
 
 	return nil
 }
@@ -276,6 +283,7 @@ func resumeWindowStart(messages []core.ChatMessage, tail int) int {
 }
 
 func (m *model) initTaskStorage(sessionID string) {
+	m.services.Task.SetSessionID(sessionID)
 	if m.services.Tracker.StorageDir() != "" {
 		return
 	}
@@ -331,6 +339,10 @@ func (m *model) forkSession() (string, error) {
 	if m.services.Agent.Active() {
 		return "", fmt.Errorf("agent is still stopping")
 	}
+	if m.workerMu != nil {
+		m.workerMu.Lock()
+		defer m.workerMu.Unlock()
+	}
 	opened, forked, err := m.services.SessionStore.Fork(m.sessionID())
 	if err != nil {
 		return "", err
@@ -344,6 +356,7 @@ func (m *model) forkSession() (string, error) {
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(forked.Metadata.ID)
 	m.services.Tracker.Import(forked.Tasks)
+	m.ReconfigureAgentTool()
 	return originalID, nil
 }
 
@@ -361,9 +374,15 @@ func (m *model) clearSession() error {
 	if m.services.Agent.Active() {
 		return fmt.Errorf("agent is still stopping")
 	}
+	if m.workerMu != nil {
+		m.workerMu.Lock()
+		defer m.workerMu.Unlock()
+	}
 	_ = m.services.Session.Close()
 	m.services.Session = nil
 	m.services.sessionID = session.NewSessionID()
+	m.env.SessionPermissions = setting.NewSessionPermissions()
+	m.env.ApplyModePermissions(m.env.CWD)
 	id := m.services.sessionID
 	group.BindSession(func() string { return id })
 	if m.services.Hook != nil {
@@ -379,5 +398,6 @@ func (m *model) clearSession() error {
 	m.rebuildAutopilotReviewer()
 	m.setTrackerStorageDir("")
 	m.initTaskStorage(m.sessionID())
+	m.ReconfigureAgentTool()
 	return nil
 }

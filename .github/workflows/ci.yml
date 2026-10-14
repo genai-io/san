@@ -36,6 +36,8 @@ jobs:
         run: make cover
       - name: Vet + lint + layer check
         run: make lint
+      - name: Inspector UI regression tests
+        run: make test-inspector-ui
 
   vuln:
     name: Known vulnerabilities

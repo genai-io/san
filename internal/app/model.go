@@ -39,6 +39,7 @@ import (
 const defaultWidth = 80
 
 type model struct {
+	workerMu *sync.Mutex // shared across render copies; initialized when task callbacks are wired
 	// pendingMessages retains input until the agent accepts it.
 	pendingMessages []core.Message
 

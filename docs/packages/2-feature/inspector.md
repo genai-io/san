@@ -34,47 +34,46 @@ func (s *Server) Handler() http.Handler
 Plus internal helpers (`replay.go`, `stream.go`) that the HTTP handlers
 call.
 
-### Known Violations
-
-This is another clean package: small surface (`New` + `Handler`), concrete
-return type, no god interface. Notes:
-
-- **No `Service` interface.** That's a feature, not a bug — the
-  inspector is a CLI subcommand's worker, not something other packages
-  consume.
-- **`replayCacheCapacity = 64` is a magic constant.** Move into an
-  `Options{ReplayCacheCapacity int}` struct so tests can override.
-
 ## Internals
 
 - `Server` (`server.go`) — HTTP server. Routes:
-  - `GET /api/sessions` — session list (from per-transcript summaries).
-  - `GET /api/sessions/{id}` — full transcript records as JSONL.
-  - `GET /api/sessions/{id}/replay/{idx}` — materialized replay state
-    at record N (system prompt + tool schemas + active message chain).
+  - `GET /api/sessions` — all transcript files, enriched with saved summaries;
+    unreadable files remain available for diagnosis.
+  - `GET /api/sessions/{id}/records?after={offset}` — complete JSONL records
+    from a byte offset, with `X-Next-Offset` for the next read.
+  - `GET /api/sessions/{id}/state/{recordID}` — materialized replay state
+    at a record (system prompt + tool schemas + active message chain).
   - `GET /api/sessions/{id}/stream` — SSE live-tail of new records.
   - `GET /` — embedded SPA from `ui/assets/`.
-- `replay.go` (`replayLRU` + `replayState`) — LRU-cached
-  point-in-time projection so timeline navigation stays cheap.
-- `stream.go` (`tailer`) — multiplexes one filesystem watcher across
-  many concurrent SSE connections per session.
-- `ui/embed.go` + `ui/assets/` — `go:embed` the static SPA.
+- `replay.go` projects state; `server.go` caches 64 snapshots, keyed by record
+  and file revision. Deleted or replaced files cannot return stale snapshots.
+  Integrity checks belong to the selected inference, not earlier failures.
+- `stream.go` polls per SSE client. Complete final records without a newline
+  are emitted; incomplete JSON waits for the next poll.
+- `ui/embed.go` + `ui/assets/` embed the static SPA. Request generations and
+  stream identity prevent old responses from changing a new selection. Markdown
+  links allow HTTP, HTTPS, mailto, and relative URLs, excluding executable schemes.
 
 ## Lifecycle
 
 - Construction: `New(projectDir)` opens a read-only handle to the
   project's transcript directory. No background goroutines until a
   request comes in.
-- Per-request: replay endpoints hit the LRU; SSE endpoints start a
-  per-session tailer that closes when all consumers disconnect.
+- Per-request: replay endpoints hit the LRU; each SSE connection polls every
+  500 ms and stops when the request is canceled. Reconnected streams replay
+  from the start; the browser deduplicates record IDs.
 - Shutdown: standard `http.Server.Shutdown` drains in-flight requests.
 
 ## Tests
 
 ```
-internal/inspector/server_test.go    — HTTP routes, SSE dedup across
-                                        reconnections, replay correctness.
+internal/inspector/server_test.go            — HTTP routes and replay correctness.
+internal/inspector/replay_regression_test.go — corruption, EOF records, cache lifetime, integrity.
+internal/inspector/ui/app.test.cjs           — delayed responses/streams, link safety, filters.
 ```
+
+Run `make test-inspector-ui` for the browser-state tests using Node's built-in
+test runner; `make ci` includes them alongside the Go tests.
 
 ## See Also
 

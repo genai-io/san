@@ -340,7 +340,7 @@ func (t *ShellTool) executeBackground(ctx context.Context, command, description,
 	childOutput.Close()
 
 	// Register with task manager
-	bgTask := task.Default().CreateBashTask(cmd, command, description, cancel)
+	bgTask := task.Default().CreateBashTask(ctx, cmd, command, description, cancel)
 
 	// Start goroutine to collect output and wait for completion
 	go func() {

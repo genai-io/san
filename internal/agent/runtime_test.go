@@ -173,7 +173,14 @@ func TestSessionUnexpectedExitClearsLifecycle(t *testing.T) {
 	if sess.Active() {
 		t.Fatal("session remained active after its runner exited")
 	}
+	if sess.Outbox() != ag.outbox {
+		t.Fatal("runtime discarded the channel before its final events could drain")
+	}
 	if err := sess.Send(core.Message{}); !errors.Is(err, ErrRuntimeInactive) {
 		t.Fatalf("Send after exit error = %v, want ErrRuntimeInactive", err)
+	}
+	sess.SetMessages(nil)
+	if sess.Outbox() != nil {
+		t.Fatal("replacing the conversation retained the retired outbox")
 	}
 }

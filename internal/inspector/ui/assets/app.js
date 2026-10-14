@@ -20,6 +20,8 @@ const promptMeta = $("#prompt-meta");
 const state = {
   currentSession: null,
   selectedRecordID: null,
+  detailRequest: 0,
+  promptRequest: 0,
   records: [],
   integrityFailures: 0,
   // Active-chain tracking: incrementally maintained on message.appended,
@@ -64,13 +66,13 @@ function isToolResultMessage(msg) {
 
 function classify(type) {
   if (!type) return "unknown";
+  if (type === "session.state.patched") return "state";
   if (type.startsWith("session."))         return "session";
   if (type === "conversation.replaced" || type.startsWith("message."))         return "message";
   if (type.startsWith("inference."))       return "inference";
   if (type === "tool.added" || type === "tool.removed") return "tool";
   if (type === "tool.invoked" || type === "tool.completed") return "tool";
   if (type.startsWith("system."))          return "system";
-  if (type === "session.state.patched") return "state";
   if (type === "hook.fired")            return "hook";
   if (type.startsWith("permission."))   return "permission";
   return "unknown";
@@ -235,6 +237,8 @@ function openSession(id, li) {
   }
   state.currentSession = id;
   state.selectedRecordID = null;
+  state.detailRequest++;
+  state.promptRequest++;
   state.records = [];
   state.seenIDs.clear();
   state.integrityFailures = 0;
@@ -254,9 +258,10 @@ function openSession(id, li) {
   state.eventSource = es;
   setStatus("connecting");
 
-  es.onopen = () => setStatus("recording", true);
-  es.onerror = () => setStatus("offline");
+  es.onopen = () => { if (state.eventSource === es) setStatus("recording", true); };
+  es.onerror = () => { if (state.eventSource === es) setStatus("offline"); };
   es.onmessage = (ev) => {
+    if (state.eventSource !== es) return;
     let rec;
     try {
       rec = JSON.parse(ev.data);
@@ -394,6 +399,7 @@ function appendRow(rec, idx) {
 }
 
 async function showDetail(idx, row) {
+  const request = ++state.detailRequest;
   for (const x of timeline.querySelectorAll(".row.active")) x.classList.remove("active");
   row.classList.add("active");
   const rec = state.records[idx];
@@ -446,9 +452,11 @@ async function showDetail(idx, row) {
   detail.replaceChildren(textBlock(raw + "\n\nLoading context at this inference…"));
   try {
     const replay = await fetchReplay(rec.id);
+    if (request !== state.detailRequest) return;
     updateIntegrityFromReplay(rec.id, replay);
     detail.replaceChildren(...inferenceDetailNodes(raw, replay));
   } catch (e) {
+    if (request !== state.detailRequest) return;
     detail.replaceChildren(textBlock(raw + "\n\nReplay state unavailable: " + e.message));
   }
 }
@@ -783,7 +791,7 @@ function kindLabel(kind, role) {
     reminder: "Harness reminder (<system-reminder>)",
     hook: "Hook-injected text",
     command: "Slash command expansion",
-    tool_use: "Tool call",
+    tool_call: "Tool call",
     tool_result: "Tool result",
     thinking: "Model thinking",
     image: "Image",
@@ -1128,11 +1136,13 @@ function wirePromptPanel() {
 }
 
 async function refreshPromptPanel(rec) {
+  const request = ++state.promptRequest;
   if (!mainEl.classList.contains("show-prompt")) return;
   promptMeta.textContent = "— at " + (rec.type || "?") + " " + (rec.id ? rec.id.slice(-12) : "");
   promptBody.replaceChildren(emptyNote("Loading…"));
   try {
     const replay = await fetchReplay(rec.id);
+    if (request !== state.promptRequest || !mainEl.classList.contains("show-prompt")) return;
     const md = (replay.composedSystem || "").trim();
     if (!md) {
       promptBody.replaceChildren(emptyNote("(no system sections at this record yet)"));
@@ -1140,6 +1150,7 @@ async function refreshPromptPanel(rec) {
     }
     promptBody.innerHTML = renderMarkdown(md);
   } catch (e) {
+    if (request !== state.promptRequest || !mainEl.classList.contains("show-prompt")) return;
     promptBody.replaceChildren(emptyNote("Failed to load: " + e.message));
   }
 }
@@ -1287,7 +1298,14 @@ function renderInline(text) {
   s = s.replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>");
   // Links [text](url)
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,
-    (_, t, u) => '<a href="' + escapeAttr(u) + '" target="_blank" rel="noreferrer">' + t + "</a>");
+    (_, t, u) => {
+      try {
+        if (!["http:", "https:", "mailto:"].includes(new URL(u, "http://localhost/").protocol)) return t;
+      } catch (_) {
+        return t;
+      }
+      return '<a href="' + escapeAttr(u) + '" target="_blank" rel="noreferrer">' + t + "</a>";
+    });
   // Bold **x** / __x__
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");

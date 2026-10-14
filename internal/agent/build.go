@@ -20,6 +20,7 @@ import (
 // BuildParams contains all values needed to construct a core.Agent.
 // The app layer assembles this from env, services, and workspace state.
 type BuildParams struct {
+	SessionID      string
 	Provider       llm.Provider
 	ModelID        string
 	MaxTokens      int

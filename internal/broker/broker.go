@@ -25,10 +25,11 @@ const Main = "main"
 // short human-facing notice (may be empty); Content is the body delivered to
 // the recipient.
 type Message struct {
-	From    string
-	To      string
-	Subject string
-	Content string
+	SessionID string // owning main conversation, retained across queued delivery
+	From      string
+	To        string
+	Subject   string
+	Content   string
 }
 
 // Deliver hands a routed message to a recipient. It must not block; it returns

@@ -15,6 +15,7 @@ import (
 	"github.com/genai-io/san/internal/core/system"
 	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/san/internal/proc"
+	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -232,6 +233,7 @@ func (e *Executor) executePreparedRun(ctx context.Context, run *preparedRun) (*c
 		agentAddr = run.hookID
 	}
 	ctx = tool.WithAgentID(ctx, agentAddr)
+	ctx = task.WithSessionID(ctx, e.parentSessionID)
 
 	// A background subagent registers its task id with the broker for the
 	// length of the run. A routed message enters its conversation at the next

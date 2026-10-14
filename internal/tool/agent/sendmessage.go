@@ -101,10 +101,11 @@ func (t *SendMessageTool) execute(ctx context.Context, params map[string]any) to
 
 	display := brokerSubject(from, subject)
 	delivered := broker.Send(broker.Message{
-		From:    from,
-		To:      to,
-		Subject: display,
-		Content: wrapAgentMessage(from, display, message),
+		SessionID: task.SessionIDFromContext(ctx),
+		From:      from,
+		To:        to,
+		Subject:   display,
+		Content:   wrapAgentMessage(from, display, message),
 	})
 	if !delivered {
 		return toolresult.NewErrorResult(t.Name(), undeliverableReason(to))

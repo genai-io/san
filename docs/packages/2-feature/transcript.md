@@ -57,7 +57,9 @@ func Project(records []Record) (*Transcript, error)
   corrupt summaries rebuild from the log.
 - Schema version `3` is declared on `session.started`. Fork preserves timestamps
   and rewrites attachment references to the child's blobs; the session adapter
-  copies those blobs. Earlier schemas are rejected without migration.
+  copies those blobs. Fork claims its destination, rejects existing transcripts,
+  and syncs the temporary file before publishing it. Earlier schemas are rejected
+  without migration.
 
 ## Lifecycle
 
@@ -74,6 +76,7 @@ Session and attachment identifiers must be single path components. Listing refre
 - `recovery_test.go` covers torn tails, sequential and competing writer leases,
   cache refresh across stores, summary independence, and schema validation.
 - `projector_test.go` covers message ancestry and compaction projection.
+- `fork_safety_test.go` covers occupied destinations and cross-store writer leases.
 - Session and app tests cover hydrated resume, error retry, and inactive
   compaction through the actual writer/runtime boundaries.
 

@@ -507,6 +507,32 @@ func runToCompletion(t *testing.T, wt *WorkflowTool, params map[string]any) task
 	return bg.GetStatus()
 }
 
+type switchExecutorOnLaunch func()
+
+func (f switchExecutorOnLaunch) TaskCreated(task.TaskInfo)   { f() }
+func (f switchExecutorOnLaunch) TaskCompleted(task.TaskInfo) {}
+
+func TestWorkflowKeepsExecutorAndSessionFromLaunch(t *testing.T) {
+	if err := task.Initialize(task.Options{OutputDir: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(task.ResetDefaultTracker)
+	task.Default().SetSessionID("first")
+	first, second := &scriptedExecutor{}, &scriptedExecutor{}
+	wt := NewWorkflowTool()
+	wt.SetExecutor(first)
+	// Switch after registration, before the background goroutine can start.
+	task.SetLifecycleHandler(switchExecutorOnLaunch(func() {
+		wt.SetExecutor(second)
+		task.Default().SetSessionID("second")
+	}))
+	t.Cleanup(func() { task.SetLifecycleHandler(nil) })
+	info := runToCompletion(t, wt, map[string]any{"definition": "```mermaid\nflowchart LR\n  review\n```\n\n## review\nReview\n"})
+	if info.ParentSessionID != "first" || len(first.reqs) != 1 || len(second.reqs) != 0 {
+		t.Fatalf("workflow followed a different session after launch: %+v", info)
+	}
+}
+
 const optimizer = "---\nname: polish\n---\n```mermaid\nflowchart LR\n  draft --> review\n  review -->|FAIL x3| draft\n  review -->|PASS| ship\n```\n\n## draft\nWrite it. Last review: {{review}}\n\n## review\nPASS or FAIL: {{draft}}\n\n## ship\nShip {{draft}}\n"
 
 func TestWorkflowToolStatesLoopRounds(t *testing.T) {

@@ -54,7 +54,7 @@ type Runtime interface {
 	// call (nil if it was not auto-reviewed), to stamp onto its rendered result.
 	TakeReviewDecision(callID string) *core.ReviewDecision
 	HasRunningTasks() bool
-	// AgentOutbox is the live agent's outbox, nil when none is running.
+	// AgentOutbox is the selected runtime's outbox, retained through its final events.
 	AgentOutbox() <-chan core.Event
 
 	// ── Transport lifetime ──────────────────────────────────────

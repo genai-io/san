@@ -104,8 +104,3 @@ func writeLines(w http.ResponseWriter, flusher http.Flusher, data []byte) error 
 	flusher.Flush()
 	return nil
 }
-
-// tailer is reserved for future fan-out (one watcher per file, many
-// subscribers). The MVP currently does per-client polling, which is simpler
-// and adequate for localhost use.
-type tailer struct{}
