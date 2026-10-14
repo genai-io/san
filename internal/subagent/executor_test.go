@@ -37,7 +37,7 @@ type stubSubagentSessionStore struct {
 	saveMessages []core.Message
 }
 
-func (s *stubSubagentSessionStore) SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {
+func (s *stubSubagentSessionStore) RecordSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error) {
 	s.saveParentID = parentSessionID
 	s.saveTitle = title
 	s.saveModelID = modelID

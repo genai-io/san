@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os/exec"
+
 	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 	"github.com/genai-io/sdk-go/pkg/ai"
 
@@ -22,7 +24,7 @@ import (
 // and one inference.responded record, with the request's MessageIDs/digests
 // preserved and the response's usage/stop_reason populated. The turn counter
 // links the pair.
-func TestWriterWritesRequestedAndRespondedPerTurn(t *testing.T) {
+func TestSessionWritesRequestedAndRespondedPerTurn(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -34,16 +36,15 @@ func TestWriterWritesRequestedAndRespondedPerTurn(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-1", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-1", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{{ID: "m1"}, {ID: "m2"}},
 	}})
-	rec.OnAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 42, Output: 8, CacheRead: 10},
 	}})
 
@@ -113,7 +114,7 @@ func TestWriterWritesRequestedAndRespondedPerTurn(t *testing.T) {
 // System mutations must produce one system.section.added per added/replaced
 // section and one system.section.removed per dropped section. Caller info is
 // preserved verbatim so trace consumers can answer "who changed this?".
-func TestWriterWritesSystemSectionEvents(t *testing.T) {
+func TestSessionWritesSystemSectionEvents(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -125,18 +126,17 @@ func TestWriterWritesSystemSectionEvents(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-sys", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-sys", AgentID: "main",
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.OnAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are X", Caller: "system:init",
 	})
-	rec.OnAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "identity", Slot: 0, Content: "You are Y", Caller: "command:/identity",
 	})
-	rec.OnAgentEvent(core.SystemChange{
+	rec.RecordEvent(core.SystemChange{
 		Name: "policy", Removed: true, Caller: "test:teardown",
 	})
 
@@ -166,7 +166,7 @@ func TestWriterWritesSystemSectionEvents(t *testing.T) {
 
 // Tool registry changes must produce one tool.added per Add and one
 // tool.removed per Remove. Schema/Name and Caller are preserved.
-func TestWriterWritesToolsChangeEvents(t *testing.T) {
+func TestSessionWritesToolsChangeEvents(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -178,20 +178,19 @@ func TestWriterWritesToolsChangeEvents(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-tools", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-tools", AgentID: "main",
 		Provider: "p", Model: "m", MaxTokens: 1,
 	})
 
-	rec.OnAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Read", Description: "read a file"},
 		Caller: "tools:init",
 	})
-	rec.OnAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Schema: core.ToolSchema{Name: "Bash", Description: "run shell"},
 		Caller: "mcp:Bash",
 	})
-	rec.OnAgentEvent(core.ToolsChange{
+	rec.RecordEvent(core.ToolsChange{
 		Name: "Bash", Removed: true, Caller: "mode:plan",
 	})
 
@@ -222,7 +221,7 @@ func TestWriterWritesToolsChangeEvents(t *testing.T) {
 // Compaction must persist the summary as a message.appended and a
 // session.compacted record whose SummaryMessageID is that summary's ID, so replay
 // reconstructs the compacted chain instead of the summarized-away history.
-func TestWriterWritesCompactionBoundary(t *testing.T) {
+func TestSessionWritesCompactionBoundary(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -234,15 +233,14 @@ func TestWriterWritesCompactionBoundary(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-c", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-c", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
 	// A pre-compaction message, then the summary append + compaction boundary.
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
-	rec.OnAgentEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: "sum-1", Role: ai.RoleUser, Content: ai.TextContent("Previous context:\nsummary")}})
+	rec.RecordEvent(core.Compacted{Summary: "summary", OriginalCount: 5, SummaryMessageID: "sum-1"})
 
 	records := readAllRecords(t, dir, "sess-c")
 	var summaryAppended bool
@@ -264,12 +262,12 @@ func TestWriterWritesCompactionBoundary(t *testing.T) {
 }
 
 // A nil-safe writer (no Store) must accept events without panicking.
-func TestWriterNilSafe(t *testing.T) {
-	var rec *Writer
-	rec.OnAgentEvent(sdkagent.MessageStart{})
+func TestSessionNilSafe(t *testing.T) {
+	var rec *Session
+	rec.RecordEvent(sdkagent.MessageStart{})
 
-	empty := NewWriter(WriterOptions{})
-	empty.OnAgentEvent(sdkagent.MessageStart{})
+	empty := &Session{}
+	empty.RecordEvent(sdkagent.MessageStart{})
 }
 
 func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record {
@@ -307,7 +305,7 @@ func readAllRecords(t *testing.T, baseDir, sessionID string) []transcript.Record
 
 // A failed call must land on disk as inference.failed, closing the pending
 // inference.requested so every request ends in exactly one terminal record.
-func TestWriterWritesInferenceFailed(t *testing.T) {
+func TestSessionWritesInferenceFailed(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-fail")
 	if err != nil {
@@ -319,21 +317,20 @@ func TestWriterWritesInferenceFailed(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-f", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-f", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096,
 	})
 
-	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System: "you are san", Messages: []core.Message{{ID: "m1"}},
 	}})
-	rec.OnAgentEvent(sdkagent.MessageEnd{
+	rec.RecordEvent(sdkagent.MessageEnd{
 		Attempt: 2,
 		Err:     &ai.Error{Kind: ai.KindOverloaded, Status: 529, Message: "overloaded"},
 	})
 	// Second failure with no request open: the first one consumed it, so this
 	// must not claim the same turn.
-	rec.OnAgentEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
+	rec.RecordEvent(sdkagent.MessageEnd{Attempt: 1, Err: errors.New("orphan")})
 
 	var failed []*transcript.InferenceRecord
 	for _, r := range readAllRecords(t, dir, "sess-f") {
@@ -361,7 +358,7 @@ func TestWriterWritesInferenceFailed(t *testing.T) {
 // A tool's details — an edit's diff — are recorded with its result, so a
 // resumed session can draw them again. They arrive on ToolEnd, before the
 // message carrying the result.
-func TestWriterKeepsToolDetailsWithTheResult(t *testing.T) {
+func TestSessionKeepsToolDetailsWithTheResult(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -372,13 +369,13 @@ func TestWriterKeepsToolDetailsWithTheResult(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := NewWriter(WriterOptions{Store: fs, SessionID: "sess-d", AgentID: "main"})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-d", AgentID: "main"})
 
 	diff := toolresult.FileChangeDetails{Path: "a.go", UnifiedDiff: "@@ -1 +1 @@\n-old\n+new\n", AddedLines: 1, RemovedLines: 1}
-	rec.OnAgentEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
+	rec.RecordEvent(sdkagent.ToolEnd{ID: "call-1", Name: "Edit", Result: sdkagent.Result{Details: diff}})
 	msg := core.ToolResultMessage(core.ToolResult{ToolCallID: "call-1", ToolName: "Edit", Content: ai.TextContent("Edited a.go")})
 	msg.ID = "m-result"
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: msg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: msg})
 
 	got, err := fs.Load(context.Background(), "sess-d")
 	if err != nil {
@@ -389,5 +386,33 @@ func TestWriterKeepsToolDetailsWithTheResult(t *testing.T) {
 	}
 	if len(got.Messages) != 1 || got.Messages[0].ToolResults()[0].Text() != "Edited a.go" {
 		t.Fatal("model result changed")
+	}
+}
+
+func TestInferenceRecordsTheWorkspaceGitBranch(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "--quiet"}, {"symbolic-ref", "HEAD", "refs/heads/session-test-branch"}, {"-c", "user.name=SessionTest", "-c", "user.email=session-test@example.invalid", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "--no-verify", "-m", "initial"}} {
+		command := exec.Command("git", args...)
+		command.Dir = dir
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v, %s", args, err, output)
+		}
+	}
+	store, err := NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.Create(CreateOptions{ID: "s", Cwd: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = opened.Close() }()
+	opened.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{}})
+	items, err := store.List()
+	if err != nil || len(items) != 1 || items[0].GitBranch != "session-test-branch" {
+		t.Fatalf("branch annotation: %+v, %v", items, err)
 	}
 }

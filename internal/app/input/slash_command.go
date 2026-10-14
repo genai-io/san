@@ -51,17 +51,18 @@ type SlashCommandEnv struct {
 	// Domain services. Commands read live state from these — never snapshot
 	// at deps construction time, since /something might mutate state that a
 	// later command reads (e.g. /disabled-tools then /tools).
-	Setting *setting.Settings
-	LLM     *llm.Conn
-	Session *session.Active
-	Skill   *skill.Registry
-	Plugin  *plugin.Registry
-	MCP     *mcp.Manager
-	Tracker *todo.Store
-	Cron    *cron.Scheduler
-	ToolSvc *tool.Registry
-	TaskSvc *task.Manager
-	Command *command.Registry
+	Setting      *setting.Settings
+	LLM          *llm.Conn
+	SessionStore *session.Store
+	SessionID    func() string
+	Skill        *skill.Registry
+	Plugin       *plugin.Registry
+	MCP          *mcp.Manager
+	Tracker      *todo.Store
+	Cron         *cron.Scheduler
+	ToolSvc      *tool.Registry
+	TaskSvc      *task.Manager
+	Command      *command.Registry
 
 	// Env-state callbacks. `m.env` lives in the parent app package and
 	// can't be imported here without a cycle, so its reads/writes are
@@ -83,7 +84,7 @@ type SlashCommandEnv struct {
 	HandleSkillInvocation   func() tea.Cmd
 	StartExternalEditor     func(path string) tea.Cmd
 	ReloadAfterPluginChange func() error
-	PersistSession          func() error
+	AppendSessionState      func() error
 	ReconfigureAgentTool    func()
 	StopAgentRuntime        func()
 	ResetAgentRuntime       func()
@@ -308,9 +309,7 @@ func (c *SlashCommandController) handleClearCommand(_ context.Context, _ string)
 		}
 	} else {
 		c.env.ResetAgentRuntime()
-		if c.env.Session != nil {
-			c.env.Session.SetID(session.NewSessionID())
-		}
+
 	}
 	c.env.Conversation.Stream.Stop()
 	c.env.Tool.Reset()
@@ -343,10 +342,10 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 	if len(c.env.Conversation.Messages) == 0 {
 		return "Nothing to fork — no messages in current session.", nil, nil
 	}
-	if err := c.env.PersistSession(); err != nil {
+	if err := c.env.AppendSessionState(); err != nil {
 		return "", nil, fmt.Errorf("failed to save session before fork: %w", err)
 	}
-	if c.env.Session.ID() == "" {
+	if c.env.SessionID() == "" {
 		return "No active session to fork.", nil, nil
 	}
 	originalID, err := c.env.ForkSession()
@@ -358,10 +357,7 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 }
 
 func (c *SlashCommandController) handleResumeCommand(_ context.Context, _ string) (string, tea.Cmd, error) {
-	if err := c.env.Session.EnsureStore(c.env.Cwd); err != nil {
-		return "", nil, fmt.Errorf("failed to initialize session store: %w", err)
-	}
-	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.Session.Store(), c.env.Cwd); err != nil {
+	if err := c.env.Input.Session.Selector.EnterSelect(c.env.Width, c.env.Height, c.env.SessionStore, c.env.Cwd); err != nil {
 		return "", nil, fmt.Errorf("failed to open session selector: %w", err)
 	}
 	return "", nil, nil

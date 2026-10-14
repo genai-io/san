@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 
 	tea "charm.land/bubbletea/v2"
@@ -112,13 +113,13 @@ func (m *model) showActiveInteraction() tea.Cmd {
 			view.AllowRules = nil
 		}
 		m.conv.Tool.MarkAwaitingApproval(callID)
-		if rec := m.services.Session.Writer(); rec != nil {
-			rec.RecordPermissionRequired(transcript.PermissionRecord{
+		if rec := m.services.Session; rec != nil {
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
 				RequestID: req.Permission.RequestID, Tool: req.Permission.ToolName,
 				Input: marshalPermInput(req.Permission.Input), Detail: interactionPermissionDetail(req, view),
 				OptionsOffered: input.BuildApprovalOptions(view), Source: transcript.PermissionSourceAsk,
 				Mode: req.Source.PermissionMode,
-			})
+			}})
 		}
 		m.userInput.Approval.Show(view, m.env.Width, m.env.Height)
 	case req.Question != nil:

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/genai-io/san/tests/integration/testutil"
+
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/genai-io/sdk-go/pkg/ai"
@@ -169,18 +171,19 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 			native = append(native, message)
 		}
 	}
-	snap := &session.Snapshot{Messages: native}
-	if err := store.Save(snap); err != nil {
+	snap := &session.History{Messages: native}
+	if err := testutil.ImportSession(store, snap); err != nil {
 		t.Fatal(err)
 	}
 	m := commitTestModel(core.ChatMessage{Role: core.ChatUser, Content: "only the current context"})
-	m.services.Session = session.NewActive(store, snap.Metadata.ID)
+	m.services.SessionStore = store
+	m.services.sessionID = snap.Metadata.ID
 	load := m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "out stored") {
 		t.Fatal("history did not read persisted messages")
 	}
-	if err := os.WriteFile(store.SessionPath(snap.Metadata.ID), []byte("broken record\n{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(store.TranscriptPath(snap.Metadata.ID), []byte("broken record\n{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	load = m.openHistory()
@@ -189,7 +192,7 @@ func TestHistoryLoadReadsStoreAndSurfacesCorruption(t *testing.T) {
 		t.Fatal("corrupt history must be reported, not silently replaced with current context")
 	}
 	// The unsaved first turn still has its in-memory messages.
-	m.services.Session.SetID("not-saved-yet")
+	m.services.sessionID = "not-saved-yet"
 	load = m.openHistory()
 	m.historyLoaded(load().(historyLoadedMsg))
 	if !strings.Contains(ansi.Strip(m.userInput.Transcript.Render()), "only the current context") {

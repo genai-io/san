@@ -156,35 +156,38 @@ func (m *model) syncMCPTools() {
 	}
 }
 
-func (m *model) buildAgentParams() agent.BuildParams {
+func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	params := m.promptParams()
 
 	maxTokens := kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
 	var onEvent func(core.Event)
-	rec := m.services.Session.NewWriter("main", m.env.LLMProvider.Name(), m.env.GetModelID(), maxTokens)
+	rec, err := m.openCurrentSession()
+	if err != nil {
+		return params, err
+	}
 	if rec != nil {
-		onEvent = rec.OnAgentEvent
+		onEvent = rec.RecordEvent
 		for _, n := range m.earlyNotices {
-			rec.RecordNotice(n.Content, n.AgentNotice)
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice}})
 		}
 		m.earlyNotices = nil
 		m.services.Hook.SetAuditCallback(func(a hook.HookFiredAudit) {
-			rec.RecordHook(transcript.HookRecord{
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.HookFired, Hook: &transcript.HookRecord{
 				Event:     a.Event,
 				Source:    a.Source,
 				Matcher:   a.Matcher,
 				Outcome:   a.Outcome,
 				Reason:    a.Reason,
 				LatencyMs: a.Duration.Milliseconds(),
-			})
+			}})
 		})
 		m.services.Skill.SetStateChangeObserver(func(name, previous, current, caller string) {
-			rec.RecordSkillState(transcript.SkillRecord{
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.SkillStateChanged, Skill: &transcript.SkillRecord{
 				Name:     name,
 				Previous: previous,
 				Current:  current,
 				Caller:   caller,
-			})
+			}})
 		})
 	}
 
@@ -235,16 +238,16 @@ func (m *model) buildAgentParams() agent.BuildParams {
 		input := marshalPermInput(args)
 		switch decision.Behavior {
 		case perm.Permit:
-			rec.RecordPermissionDecided(transcript.PermissionRecord{
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
 				Tool: name, Input: input, Decision: permDecisionFor(true), Source: transcript.PermissionSourceConfig,
 				Reason: decision.Reason, Mode: mode,
-			})
+			}})
 			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
 		case perm.Reject:
-			rec.RecordPermissionDecided(transcript.PermissionRecord{
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
 				Tool: name, Input: input, Decision: permDecisionFor(false), Source: transcript.PermissionSourceConfig,
 				Reason: decision.Reason, Mode: mode,
-			})
+			}})
 			return agent.PermDecisionResult{Decision: decision.Behavior, Reason: decision.Reason}
 		default:
 			return agent.PermDecisionResult{
@@ -299,10 +302,10 @@ func (m *model) buildAgentParams() agent.BuildParams {
 			return agent.PermReviewResult{} // fail closed → escalate to human
 		}
 		if rec != nil {
-			rec.RecordPermissionDecided(transcript.PermissionRecord{
+			_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
 				Tool: name, Input: marshalPermInput(args), Decision: permDecisionFor(true),
 				Source: transcript.PermissionSourceReviewer, Reason: verdict.Reason, Mode: m.env.SessionMode(),
-			})
+			}})
 		}
 		// Cache the approval as a session grant so an identical repeat hits the
 		// static fast path instead of the judge, shrinking the gray zone over
@@ -326,7 +329,7 @@ func (m *model) buildAgentParams() agent.BuildParams {
 	params.StreamFirstChunkTimeout = streamFirstChunk
 	params.StreamIdleTimeout = streamIdle
 
-	return params
+	return params, nil
 }
 
 // resolveReviewerModel picks the provider and model for the auto-review judge.
@@ -526,8 +529,11 @@ func (m *model) ensureAgentRuntime(pendingMessageID string) (tea.Cmd, error) {
 	// Rebuild the subagent executor alongside the main agent so it inherits the
 	// same effective disabled-tool snapshot after settings/persona drift.
 	m.ReconfigureAgentTool()
-	params := m.buildAgentParams()
-	if w := m.services.Session.Writer(); w != nil && w.Err() != nil {
+	params, err := m.buildAgentParams()
+	if err != nil {
+		return nil, err
+	}
+	if w := m.services.Session; w != nil && w.Err() != nil {
 		return nil, w.Err()
 	}
 	coreMessages := m.seedAgentMessages(pendingMessageID)
@@ -657,9 +663,7 @@ func (m *model) StopAgentRuntime() {
 	m.teardownSelfLearn()
 }
 
-// ResetAgentRuntime stops the agent without making its live chain eligible for
-// the next rebuild. Use it when the conversation itself is being cleared or
-// replaced (for example /clear and /resume).
+// ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() {
 	m.services.Agent.Reset()
 	m.resetInteractions()
@@ -774,8 +778,8 @@ func (m *model) ReconfigureAgentTool() {
 	executor.SetParentPermissionMode(func() subagent.PermissionMode {
 		return subagent.InheritedPermissionMode(perms.CurrentMode())
 	})
-	if m.services.Session.Store() != nil && m.services.Session.ID() != "" {
-		executor.SetSessionStore(m.services.Session.Store(), m.services.Session.ID())
+	if m.services.SessionStore != nil && m.sessionID() != "" {
+		executor.SetSessionStore(m.services.SessionStore, m.sessionID())
 	}
 	executor.SetProjectInstructions(m.env.CachedProjectInstructions)
 	executor.SetSkillsDirectory(m.services.Skill.PromptSection())

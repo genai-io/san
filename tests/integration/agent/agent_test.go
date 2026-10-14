@@ -75,7 +75,7 @@ func TestAgent_AdapterPreservesFailedTranscript(t *testing.T) {
 	if runErr == nil || result == nil || result.Success || result.AgentID == "" || result.OutputFile == "" {
 		t.Fatalf("failed execution lost transcript identity: result=%#v, err=%v", result, runErr)
 	}
-	saved, err := store.Load(result.AgentID)
+	saved, err := store.Read(result.AgentID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestAgent_BackgroundFailureRetainsInspectionFile(t *testing.T) {
 			if taskLog && info.OutputFile != initialFile {
 				t.Fatalf("failure replaced the task log: %q -> %q", initialFile, info.OutputFile)
 			}
-			if !taskLog && info.OutputFile != store.SessionPath(info.AgentSessionID) {
+			if !taskLog && info.OutputFile != store.TranscriptPath(info.AgentSessionID) {
 				t.Fatalf("without a task log failure must link the transcript: %#v", info)
 			}
 		})

@@ -10,7 +10,6 @@ import (
 	"github.com/genai-io/san/internal/agent"
 	"github.com/genai-io/san/internal/app/conv"
 	"github.com/genai-io/san/internal/app/input"
-	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/task"
 	"github.com/genai-io/san/internal/tool"
 	"github.com/genai-io/san/internal/tool/perm"
@@ -18,7 +17,7 @@ import (
 
 func interactionModel() *model {
 	m := fixedComposerModel(80, 24)
-	m.services.Session = &session.Active{}
+	m.services.Session = nil
 	m.services.Task = task.NewManager()
 	return m
 }

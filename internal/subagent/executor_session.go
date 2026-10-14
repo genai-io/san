@@ -17,7 +17,7 @@ func (e *Executor) persistSubagentSession(agentName, modelID, description string
 	if title == "" {
 		title = agentName
 	}
-	sessionID, transcriptPath, err := e.sessionStore.SaveSubagentConversation(e.parentSessionID, title, modelID, e.cwd, messages)
+	sessionID, transcriptPath, err := e.sessionStore.RecordSubagentConversation(e.parentSessionID, title, modelID, e.cwd, messages)
 	if err != nil {
 		log.Logger().Warn("Failed to persist subagent session",
 			zap.String("agent", agentName),

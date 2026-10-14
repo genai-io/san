@@ -16,7 +16,7 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snap := &Snapshot{
+	snap := &History{
 		Metadata: Metadata{ID: "history-test"},
 		Messages: []core.Message{
 			{ID: "prompt", Role: ai.RoleUser, Content: ai.TextContent("run a command")},
@@ -25,7 +25,7 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 			{ID: "summary", Role: ai.RoleUser, Content: ai.TextContent("compacted summary")},
 		},
 	}
-	if err := store.Save(snap); err != nil {
+	if err := store.importHistory(snap); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PersistToolResult(snap.Metadata.ID, "tc", "full output\nLAST_LINE"); err != nil {
@@ -34,11 +34,11 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 	if err := store.transcriptStore.Append(context.Background(), transcript.Record{SessionID: snap.Metadata.ID, Time: time.Now(), Type: transcript.SessionCompacted, Compaction: &transcript.Compaction{MessageID: "summary"}}); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := store.Load(snap.Metadata.ID)
+	resumed, err := store.Read(snap.Metadata.ID)
 	if err != nil || len(resumed.Messages) != 1 || resumed.Messages[0].ID != "summary" {
 		t.Fatalf("resume should still stop at compaction: %+v, %v", resumed, err)
 	}
-	history, err := store.LoadHistory(snap.Metadata.ID)
+	history, err := store.ReadChatHistory(snap.Metadata.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestHistoryIncludesCompactedResultsAndHydratesFullOutput(t *testing.T) {
 		t.Fatalf("history lost the compacted full result: %+v", history)
 	}
 	// Reading history must not change the persisted resume boundary.
-	resumed, err = store.Load(snap.Metadata.ID)
+	resumed, err = store.Read(snap.Metadata.ID)
 	if err != nil || len(resumed.Messages) != 1 {
 		t.Fatalf("reading history changed resume: %+v, %v", resumed, err)
 	}

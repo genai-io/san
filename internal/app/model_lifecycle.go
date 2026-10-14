@@ -43,7 +43,8 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	m.applyPersonaAgents()
 	m.wireReminderProviders()
 	m.conv.OnNotice = m.recordNotice
-	group.BindSession(m.services.Session.ID)
+	id := m.sessionID()
+	group.BindSession(func() string { return id })
 	m.userInput.Autopilot.SetMissionRefiner(m.missionRefine)
 	m.userInput.Autopilot.SetConfigSource(func() setting.AutoPilotSettings { return m.env.AutoPilot })
 	m.userInput.Autopilot.SetModelSource(m.autopilotModelRefs)
@@ -54,7 +55,7 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	// After the run options: a -c / -r start has adopted its session's task
 	// directory by now, and this is a no-op for it. Before, every resume left
 	// an empty tasks/<startup-id>/ behind and kept writing there.
-	m.initTaskStorage(m.services.Session.ID())
+	m.initTaskStorage(m.sessionID())
 	return m, nil
 }
 
@@ -170,33 +171,26 @@ func (m *model) ReloadAfterPluginChange() error {
 }
 
 func (m *model) applyContinueOption() error {
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
-		return fmt.Errorf("failed to initialize session store: %w", err)
+	if err := m.ensureSessionStore(); err != nil {
+		return err
 	}
-
-	sess, err := m.services.Session.ResumeLatest()
+	items, err := m.services.SessionStore.List()
 	if err != nil {
-		return fmt.Errorf("no previous session to continue: %w", err)
+		return err
 	}
-
-	m.restoreSessionData(sess)
-	return nil
+	if len(items) == 0 {
+		return fmt.Errorf("no previous session to continue")
+	}
+	return m.loadSessionByID(items[0].ID)
 }
 
-func (m *model) applyResumeOption(resumeID string) error {
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
-		return fmt.Errorf("failed to initialize session store: %w", err)
+func (m *model) applyResumeOption(id string) error {
+	if err := m.ensureSessionStore(); err != nil {
+		return err
 	}
-
-	if resumeID != "" {
-		sess, err := m.services.Session.Resume(resumeID)
-		if err != nil {
-			return fmt.Errorf("failed to load session %s: %w", resumeID, err)
-		}
-		m.restoreSessionData(sess)
-		return nil
+	if id != "" {
+		return m.loadSessionByID(id)
 	}
-
 	m.userInput.Session.PendingSelector = true
 	return nil
 }

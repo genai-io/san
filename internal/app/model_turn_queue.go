@@ -28,9 +28,7 @@ func (m *model) handleStopHookResult(msg stopHookResultMsg) tea.Cmd {
 	}
 	log.Logger().Sugar().Debugf("handleStopHookResult: hooks done, persisting")
 	var cmds []tea.Cmd
-	if cmd := m.persistAfterTurn(); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
+	m.appendTurnState()
 	if cmd := m.startPromptSuggestion(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}

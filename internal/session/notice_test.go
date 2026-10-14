@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"slices"
 	"testing"
 
@@ -19,17 +20,17 @@ func TestNoticesComeBackWhereTheyWereShown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec := NewActive(store, "s").NewWriter("main", "p", "m", 1000)
+	rec := mustSession(t, store.transcriptStore, CreateOptions{ID: "s", AgentID: "main"})
 	add := func(id string, role ai.Role, text string) {
-		rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
+		rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{ID: id, Role: role, Content: ai.TextContent(text)}})
 	}
-	rec.RecordNotice("Joined shop as @api", false)
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "Joined shop as @api", Agent: false}})
 	add("m1", ai.RoleUser, "hi")
-	rec.RecordNotice("@web joined group shop", false)
-	rec.RecordNotice("From @web: done", true)
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "@web joined group shop", Agent: false}})
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded, Notice: &transcript.NoticeRecord{Text: "From @web: done", Agent: true}})
 	add("m2", ai.RoleAssistant, "hello")
 
-	sess, err := store.Load("s")
+	sess, err := store.Read("s")
 	if err != nil {
 		t.Fatal(err)
 	}

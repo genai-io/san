@@ -29,3 +29,18 @@ func TestSetStorageDirRollsBackAfterConfigurationFailure(t *testing.T) {
 		t.Fatal("failed storage reconfiguration discarded in-memory items")
 	}
 }
+
+func TestExportOwnsTaskMetadataAndDependencies(t *testing.T) {
+	store := NewStore()
+	item := store.Create("work", "", "", map[string]any{"worker": "original"})
+	item.Blocks = []string{"2"}
+	item.BlockedBy = []string{"3"}
+	exported := store.Export()
+	exported[0].Metadata["worker"] = "changed"
+	exported[0].Blocks[0] = "changed"
+	exported[0].BlockedBy[0] = "changed"
+	current, ok := store.Get(item.ID)
+	if !ok || current.Metadata["worker"] != "original" || current.Blocks[0] != "2" || current.BlockedBy[0] != "3" {
+		t.Fatalf("export mutated source: %+v", current)
+	}
+}

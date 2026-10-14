@@ -12,7 +12,7 @@ import (
 	"github.com/genai-io/san/internal/transcript"
 )
 
-// TestWriterWritesMessageBeforeInference confirms the "causes before
+// TestSessionWritesMessageBeforeInference confirms the "causes before
 // consumers" invariant: when the agent appends a user message and immediately
 // fires PreInfer, the writer must land message.appended on disk first.
 //
@@ -20,7 +20,7 @@ import (
 // turn end, so the on-disk order was inference.requested → message.appended,
 // which made the viewer's "context at this inference" view incorrect (the
 // active chain looked empty).
-func TestWriterWritesMessageBeforeInference(t *testing.T) {
+func TestSessionWritesMessageBeforeInference(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -32,27 +32,26 @@ func TestWriterWritesMessageBeforeInference(t *testing.T) {
 		t.Fatalf("Start: %v", err)
 	}
 
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-order", AgentID: "main",
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-order", AgentID: "main",
 		Provider: "anthropic", Model: "claude-x", MaxTokens: 4096, Cwd: "/tmp",
 	})
 
 	// Simulate one turn: the user message appends, then the call that references
 	// it goes out.
 	userMsg := core.Message{ID: "m1", Role: ai.RoleUser, Content: ai.TextContent("hello")}
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: userMsg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: userMsg})
 
-	rec.OnAgentEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
+	rec.RecordEvent(sdkagent.MessageStart{Inference: &sdkagent.Inference{
 		System:   "you are san",
 		Messages: []core.Message{userMsg},
 	}})
 
 	// Assistant reply appends after PostInfer.
-	rec.OnAgentEvent(sdkagent.MessageEnd{Response: &ai.Response{
+	rec.RecordEvent(sdkagent.MessageEnd{Response: &ai.Response{
 		StopReason: ai.StopEndTurn, Usage: core.Usage{Input: 10, Output: 5},
 	}})
 	assistantMsg := core.Message{ID: "m2", Role: ai.RoleAssistant, Content: ai.TextContent("hi")}
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: assistantMsg})
+	rec.RecordEvent(sdkagent.MessageAdded{Message: assistantMsg})
 
 	records := readAllRecords(t, dir, "sess-order")
 
@@ -107,7 +106,7 @@ func TestWriterWritesMessageBeforeInference(t *testing.T) {
 // copy of the same message under a different ID. Without this guard the
 // JSONL would balloon by ~2× and the active chain projection would see
 // duplicate messages.
-func TestWriterAndSaveDoNotDoubleWrite(t *testing.T) {
+func TestSessionAndSaveDoNotDoubleWrite(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStoreWithDir(dir)
 	if err != nil {
@@ -120,26 +119,20 @@ func TestWriterAndSaveDoNotDoubleWrite(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-dup", AgentID: "main", Cwd: dir,
-	})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-dup", AgentID: "main", Cwd: dir})
 
-	// Writer writes the two messages (agent-side path).
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	// Session writes the two messages (agent-side path).
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m1", Role: ai.RoleUser, Content: ai.TextContent("hi"),
 	}})
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "agent-m2", Role: ai.RoleAssistant, Content: ai.TextContent("hello"),
 	}})
 
-	// TUI then calls Save with its own ChatMessage IDs. Without OmitMessageWrites,
-	// these would each spawn a second message.appended record.
-	snap := &Snapshot{
-		Metadata: Metadata{ID: "sess-dup", Cwd: dir},
-		Messages: []ai.Message{ai.Message{ID: "tui-m1", Role: ai.RoleUser, Content: ai.TextContent("hi")}, ai.Message{ID: "tui-m2", Role: ai.RoleAssistant, Content: ai.TextContent("hello")}},
-	}
-	if err := store.SaveState(snap); err != nil {
-		t.Fatalf("Save: %v", err)
+	// State writes share the same session and cannot copy the conversation.
+	if err := rec.Append(context.Background(), transcript.Record{Type: transcript.SessionStatePatched,
+		State: &transcript.StateRecord{Ops: []transcript.PatchOp{transcript.PatchTitle("hello")}}}); err != nil {
+		t.Fatal(err)
 	}
 
 	count := 0
@@ -157,7 +150,7 @@ func TestWriterAndSaveDoNotDoubleWrite(t *testing.T) {
 // so audit consumers can join the pair without timestamp heuristics. The ID
 // is supplied by the PermissionRules closure and flows through
 // PermGateRequest unchanged.
-func TestWriterPermissionRequiredDecidedShareRequestID(t *testing.T) {
+func TestSessionPermissionRequiredDecidedShareRequestID(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -168,16 +161,14 @@ func TestWriterPermissionRequiredDecidedShareRequestID(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-perm", AgentID: "main",
-	})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-perm", AgentID: "main"})
 
-	rec.RecordPermissionRequired(transcript.PermissionRecord{
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
 		RequestID: "req-42", Tool: "Bash", Source: "ask", Mode: "normal",
-	})
-	rec.RecordPermissionDecided(transcript.PermissionRecord{
+	}})
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
 		RequestID: "req-42", Tool: "Bash", Decision: "permit", Source: "user", Mode: "normal",
-	})
+	}})
 
 	var req, dec transcript.Record
 	for _, r := range readAllRecords(t, dir, "sess-perm") {
@@ -201,10 +192,10 @@ func TestWriterPermissionRequiredDecidedShareRequestID(t *testing.T) {
 }
 
 // On Continue/Resume the agent reloads prior messages via SetMessages
-// without firing OnAppend. If the writer doesn't seed lastMessageID from
+// without firing OnAppend. If the writer doesn't seed messageLeafID from
 // the existing transcript, the first new message lands with parentId=""
 // and the replay's leaf walk drops the entire loaded history.
-func TestWriterSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
+func TestSessionSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-seed")
 	if err != nil {
@@ -218,13 +209,11 @@ func TestWriterSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 
 	// Seed the file with two pre-existing messages, simulating a session
 	// the user is now resuming.
-	rec0 := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-seed", AgentID: "main",
-	})
-	rec0.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec0 := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
+	rec0.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m1", Role: ai.RoleUser, Content: ai.TextContent("first turn"),
 	}})
-	rec0.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec0.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "old-m2", Role: ai.RoleAssistant, Content: ai.TextContent("first reply"),
 	}})
 
@@ -232,11 +221,9 @@ func TestWriterSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 
 	// Simulate process restart with a fresh writer; without seeding it
 	// would write the next message with parentId="" and break the chain.
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-seed", AgentID: "main",
-	})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-seed", AgentID: "main"})
 
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "new-m3", Role: ai.RoleUser, Content: ai.TextContent("second turn"),
 	}})
 
@@ -254,7 +241,7 @@ func TestWriterSeedsLastMessageIDFromExistingTranscript(t *testing.T) {
 	}
 }
 
-func TestWriterPermissionRecordsCarryToolInput(t *testing.T) {
+func TestSessionPermissionRecordsCarryToolInput(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-perm-input")
 	if err != nil {
@@ -265,25 +252,23 @@ func TestWriterPermissionRecordsCarryToolInput(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := NewWriter(WriterOptions{
-		Store: fs, SessionID: "sess-pi", AgentID: "main",
-	})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-pi", AgentID: "main"})
 
-	rec.RecordPermissionRequired(transcript.PermissionRecord{
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionRequired, Permission: &transcript.PermissionRecord{
 		RequestID: "rq-1", Tool: "Bash",
 		Input:  []byte(`{"command":"git status"}`),
 		Source: "ask", Mode: "normal",
-	})
+	}})
 	// Scope is an opaque label set by the caller (the approval modal owns
 	// the vocabulary); transcript schema treats it as a pass-through string.
-	rec.RecordPermissionDecided(transcript.PermissionRecord{
+	_ = rec.Append(context.Background(), transcript.Record{Type: transcript.PermissionDecided, Permission: &transcript.PermissionRecord{
 		RequestID: "rq-1", Tool: "Bash",
 		Input:    []byte(`{"command":"git status"}`),
 		Decision: transcript.PermissionPermit,
 		Source:   transcript.PermissionSourceUser,
 		Scope:    "session",
 		Reason:   "user approved", Mode: "normal",
-	})
+	}})
 
 	var reqRec, decRec transcript.Record
 	for _, r := range readAllRecords(t, dir, "sess-pi") {
@@ -308,7 +293,7 @@ func TestWriterPermissionRecordsCarryToolInput(t *testing.T) {
 // A blank-content control signal (e.g. SigStop carrier) must not produce a
 // message.appended record on the wire — those entries aren't part of the
 // model-visible chain.
-func TestWriterSkipsEmptyMessages(t *testing.T) {
+func TestSessionSkipsEmptyMessages(t *testing.T) {
 	dir := t.TempDir()
 	fs, err := transcript.NewStore(dir, "proj-1")
 	if err != nil {
@@ -319,9 +304,9 @@ func TestWriterSkipsEmptyMessages(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	rec := NewWriter(WriterOptions{Store: fs, SessionID: "sess-skip", AgentID: "main"})
+	rec := mustSession(t, fs, CreateOptions{ID: "sess-skip", AgentID: "main"})
 
-	rec.OnAgentEvent(sdkagent.MessageAdded{Message: core.Message{
+	rec.RecordEvent(sdkagent.MessageAdded{Message: core.Message{
 		ID: "empty-1", Role: ai.RoleUser, // no content, no tool result, no images
 	}})
 

@@ -1,15 +1,13 @@
-// Session persistence and per-session task storage.
-// Save/load conversations + task snapshots to disk, wire the task tracker's
-// storage directory, fork a fresh session from the current one.
+// Opened-session selection, application state records, and native history restoration.
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 
-	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"github.com/genai-io/san/internal/app/kit"
@@ -21,145 +19,137 @@ import (
 	"github.com/genai-io/san/internal/session"
 	"github.com/genai-io/san/internal/setting"
 	"github.com/genai-io/san/internal/tool/fs"
+	"github.com/genai-io/san/internal/transcript"
 )
 
-func (m *model) PersistSession() error {
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
-		return err
+// sessionID also names a new conversation before its transcript is opened.
+func (m *model) sessionID() string {
+	if m.services.Session != nil {
+		return m.services.Session.ID()
 	}
-	sess := m.buildSessionSnapshot()
-	if sess == nil {
+	return m.services.sessionID
+}
+
+func (m *model) sessionTranscriptPath() string {
+	if m.services.SessionStore == nil || m.sessionID() == "" {
+		return ""
+	}
+	return m.services.SessionStore.TranscriptPath(m.sessionID())
+}
+
+func (m *model) ensureSessionStore() error {
+	if m.services.SessionStore != nil {
 		return nil
 	}
-
-	if err := m.services.Session.Save(sess); err != nil {
+	store, err := session.NewStore(m.env.CWD)
+	if err != nil {
 		return err
 	}
-
-	m.adoptSession(sess.Metadata.ID)
-	m.initTaskStorage(m.services.Session.ID())
-	m.ReconfigureAgentTool()
-
+	m.services.SessionStore = store
 	return nil
 }
 
-// recordNotice keeps a notice in the transcript, so a resume shows it where
-// it was.
+func (m *model) openCurrentSession() (*session.Session, error) {
+	if m.services.Session != nil {
+		return m.services.Session, m.services.Session.Err()
+	}
+	if err := m.ensureSessionStore(); err != nil {
+		return nil, err
+	}
+	var provider string
+	if m.env.LLMProvider != nil {
+		provider = m.env.LLMProvider.Name()
+	}
+	maxOutputTokens := setting.DefaultMaxTokens
+	if m.services.LLM != nil {
+		maxOutputTokens = kit.GetMaxOutput(m.services.LLM.Store(), m.env.CurrentModel, setting.DefaultMaxTokens)
+	}
+	if m.services.sessionID == "" {
+		m.services.sessionID = session.NewSessionID()
+		id := m.services.sessionID
+		group.BindSession(func() string { return id })
+	}
+	opened, err := m.services.SessionStore.Create(session.CreateOptions{ID: m.services.sessionID,
+		AgentID: "main", Provider: provider, Model: m.env.GetModelID(), MaxTokens: maxOutputTokens})
+	if err != nil {
+		return nil, err
+	}
+	m.replaceSession(opened)
+	return opened, nil
+}
+
+func (m *model) appendSessionState() error {
+	record := m.buildSessionRecord()
+	if record == nil {
+		return nil
+	}
+	opened, err := m.openCurrentSession()
+	if err != nil {
+		return err
+	}
+	return opened.Append(context.Background(), *record)
+}
+
 func (m *model) recordNotice(n core.ChatMessage) {
-	if rec := m.services.Session.Writer(); rec != nil {
-		rec.RecordNotice(n.Content, n.AgentNotice)
+	if opened := m.services.Session; opened != nil {
+		_ = opened.Append(context.Background(), transcript.Record{Type: transcript.NoticeAdded,
+			Notice: &transcript.NoticeRecord{Text: n.Content, Agent: n.AgentNotice}})
 		return
 	}
 	m.earlyNotices = append(m.earlyNotices, n)
 }
 
-// adoptSession makes id the current session everywhere that carries it: the
-// session service and the hook engine, whose session_id and transcript_path
-// would otherwise stay on the id minted at startup after a resume or fork.
-func (m *model) adoptSession(id string) {
-	m.services.Session.SetID(id)
-	m.services.Hook.SetSession(id, m.services.Session.TranscriptPath())
-	if g, self := group.Current(); g != "" && self.SessionID != id {
-		// Membership belongs to the previous durable identity. Drop it before
-		// any input or reminder can consume that session's pending messages.
+// replaceSession retires the prior session and UI context after opening the replacement.
+func (m *model) replaceSession(opened *session.Session) {
+	if m.sessionID() != opened.ID() {
+		m.resetInteractions()
+		m.services.Reminder.DiscardPendingNotices()
+	}
+	if previous := m.services.Session; previous != opened {
+		_ = previous.Close()
+	}
+	m.services.Session = opened
+	m.services.sessionID = opened.ID()
+	group.BindSession(opened.ID)
+	if m.services.Hook != nil {
+		m.services.Hook.SetSession(m.sessionID(), m.sessionTranscriptPath())
+	}
+	if g, self := group.Current(); g != "" && self.SessionID != m.sessionID() {
 		group.Release()
 		m.grp = groupState{polling: m.grp.polling}
 	}
 }
 
-type persistSessionDoneMsg struct{ err error }
-
-// Only safe when the session ID is already established (i.e. not the first save).
-func (m *model) persistSessionCmd() tea.Cmd {
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
-		log.Logger().Warn("failed to ensure session store for async persist", zap.Error(err))
-		return nil
-	}
-	sess := m.buildSessionSnapshot()
-	if sess == nil {
-		return nil
-	}
-
-	store := m.services.Session.Store()
-	writer := m.services.Session.Writer()
-	return func() tea.Msg {
-		if store == nil {
-			return persistSessionDoneMsg{err: fmt.Errorf("no session store")}
-		}
-		if writer != nil {
-			if err := writer.Err(); err != nil {
-				return persistSessionDoneMsg{err: err}
-			}
-			return persistSessionDoneMsg{err: store.SaveState(sess)}
-		}
-		return persistSessionDoneMsg{err: store.Save(sess)}
+func (m *model) appendTurnState() {
+	if err := m.appendSessionState(); err != nil {
+		log.Logger().Warn("session state append failed", zap.Error(err))
+		m.conv.AddNotice("Session was not saved: " + err.Error())
 	}
 }
 
-// persistAfterTurn saves the session at the end of a turn, choosing the
-// strategy by session state: the first save (no ID yet) runs synchronously so
-// the session ID, task storage, and transcript wiring are established before
-// the next turn; later saves go through the async command. Returns the async
-// command to batch, or nil when the synchronous path ran (it logs its own
-// error, matching how async failures surface via persistSessionDoneMsg).
-func (m *model) persistAfterTurn() tea.Cmd {
-	if m.services.Session.ID() != "" {
-		return m.persistSessionCmd()
-	}
-	if err := m.PersistSession(); err != nil {
-		log.Logger().Warn("failed to persist session at turn end", zap.Error(err))
-	}
-	return nil
-}
-
-// buildSessionSnapshot assembles the current conversation + task state into a
-// session.Snapshot ready to Save, or nil when there is nothing to persist (no
-// messages). Shared by the synchronous PersistSession and the async
-// persistSessionCmd so the snapshot stays identical across both paths.
-func (m *model) buildSessionSnapshot() *session.Snapshot {
+// buildSessionRecord contains application state only, never the message chain.
+func (m *model) buildSessionRecord() *transcript.Record {
 	if len(m.conv.Messages) == 0 {
 		return nil
 	}
-
-	msgs := m.services.Agent.Messages()
-	if len(msgs) == 0 {
-		msgs = m.conv.ConvertToProvider()
+	messages := m.services.Agent.Messages()
+	title := m.env.SessionName
+	if title == "" {
+		title = session.GenerateTitle(messages)
 	}
-
-	var providerName, modelID string
-	if m.env.CurrentModel != nil {
-		providerName = string(m.env.CurrentModel.Provider)
-		modelID = m.env.CurrentModel.ModelID
-	}
-
-	sess := &session.Snapshot{
-		Metadata: session.Metadata{
-			ID:         m.services.Session.ID(),
-			Provider:   providerName,
-			Model:      modelID,
-			Cwd:        m.env.CWD,
-			LastPrompt: session.ExtractLastUserText(msgs),
-			Mode:       m.env.SessionMode(),
-			AutoPilot:  marshalAutoPilot(m.env.AutoPilot),
-			Group:      currentMembership(),
-		},
-		Messages: msgs,
-		Tasks:    m.services.Tracker.Export(),
-	}
-
-	if sess.Metadata.Title == "" {
-		if m.env.SessionName != "" {
-			sess.Metadata.Title = m.env.SessionName
-		} else {
-			sess.Metadata.Title = session.GenerateTitle(sess.Messages)
-		}
-	}
-
-	return sess
+	return &transcript.Record{Type: transcript.SessionStatePatched,
+		State: &transcript.StateRecord{Ops: []transcript.PatchOp{
+			transcript.PatchTitle(title),
+			transcript.PatchLastPrompt(session.ExtractLastUserText(messages)),
+			transcript.PatchMode(m.env.SessionMode()),
+			transcript.PatchAutoPilot(marshalAutoPilot(m.env.AutoPilot)),
+			transcript.PatchGroup(currentMembership()),
+			transcript.PatchTasks(m.services.Tracker.Export()),
+		}}}
 }
 
 func (m *model) loadSessionByID(id string) error {
-	if err := m.services.Session.EnsureStore(m.env.CWD); err != nil {
+	if err := m.ensureSessionStore(); err != nil {
 		return err
 	}
 
@@ -168,7 +158,19 @@ func (m *model) loadSessionByID(id string) error {
 	if m.services.Agent.Active() {
 		return fmt.Errorf("previous agent is still stopping")
 	}
-	sess, err := m.services.Session.Resume(id)
+	var opened *session.Session
+	var sess *session.History
+	var err error
+	if m.services.Session != nil && m.sessionID() == id && m.services.Session.Err() == nil {
+		opened = m.services.Session
+		sess, err = m.services.SessionStore.Read(id)
+	} else {
+		if m.services.Session != nil && m.sessionID() == id {
+			_ = m.services.Session.Close()
+			m.services.Session = nil
+		}
+		opened, sess, err = m.services.SessionStore.Open(id)
+	}
 	if err != nil {
 		return err
 	}
@@ -177,12 +179,9 @@ func (m *model) loadSessionByID(id string) error {
 	// restart snapshot override the selected transcript on the next turn, and
 	// don't let the previous conversation's Reads satisfy Edit's
 	// read-before-modify gate in this one.
-	m.ResetAgentRuntime()
-	if m.services.Agent.Active() {
-		return fmt.Errorf("previous agent is still stopping")
-	}
+	m.replaceSession(opened)
 	fs.ResetFileViews()
-	m.restoreSessionData(sess)
+	m.restoreHistory(sess)
 
 	if len(sess.Tasks) == 0 {
 		m.services.Tracker.Reset()
@@ -193,7 +192,7 @@ func (m *model) loadSessionByID(id string) error {
 	return nil
 }
 
-func (m *model) restoreSessionData(sess *session.Snapshot) {
+func (m *model) restoreHistory(sess *session.History) {
 	m.conv.Messages = sess.ChatRows()
 	m.earlyNotices = nil
 	m.services.Agent.SetMessages(sess.Messages)
@@ -201,14 +200,14 @@ func (m *model) restoreSessionData(sess *session.Snapshot) {
 		return msg.Role == core.ChatUser && reminder.HasSystemReminder(msg.Content)
 	})
 	m.applyResumeWindow(m.services.Setting.Snapshot().ResumeWindowMessageCount())
-	m.adoptSession(sess.Metadata.ID)
+
 	m.env.SessionName = sess.Metadata.Title
 
 	// Leave any earlier session's tracker directory behind: initTaskStorage
 	// keeps a directory that is already set, and this session's items are
 	// re-imported below after SetStorageDir's disk load.
 	m.setTrackerStorageDir("")
-	m.initTaskStorage(m.services.Session.ID())
+	m.initTaskStorage(m.sessionID())
 
 	if len(sess.Tasks) > 0 {
 		m.services.Tracker.Import(sess.Tasks)
@@ -330,19 +329,19 @@ func (m *model) setTaskOutputDir(dir string) {
 }
 
 func (m *model) forkSession() (string, error) {
-	if m.services.Session.ID() == "" {
+	if m.sessionID() == "" {
 		return "", fmt.Errorf("no active session to fork")
 	}
 	m.StopAgentRuntime()
 	if m.services.Agent.Active() {
 		return "", fmt.Errorf("agent is still stopping")
 	}
-	forked, err := m.services.Session.Fork(m.services.Session.ID())
+	opened, forked, err := m.services.SessionStore.Fork(m.sessionID())
 	if err != nil {
 		return "", err
 	}
 	originalID := forked.Metadata.ParentSessionID
-	m.adoptSession(forked.Metadata.ID)
+	m.replaceSession(opened)
 	m.services.Agent.SetMessages(forked.Messages)
 	// Same storage switch as loadSessionByID: clear the tracker so
 	// initTaskStorage adopts the fork's directory, then re-import the tasks
@@ -358,7 +357,7 @@ func (m *model) forkSession() (string, error) {
 // a title from the conversation entries.
 func (m *model) renameSession(name string) error {
 	m.env.SessionName = name
-	return m.PersistSession()
+	return m.appendSessionState()
 }
 
 // clearSession starts a fresh durable identity after retiring the previous writer.
@@ -367,10 +366,19 @@ func (m *model) clearSession() error {
 	if m.services.Agent.Active() {
 		return fmt.Errorf("agent is still stopping")
 	}
-	m.adoptSession(session.NewSessionID())
+	_ = m.services.Session.Close()
+	m.services.Session = nil
+	m.services.sessionID = session.NewSessionID()
+	id := m.services.sessionID
+	group.BindSession(func() string { return id })
+	if m.services.Hook != nil {
+		m.services.Hook.SetSession(m.sessionID(), m.sessionTranscriptPath())
+	}
+	group.Release()
+	m.grp = groupState{polling: m.grp.polling}
 	m.env.SessionName = ""
 	m.earlyNotices = nil
 	m.setTrackerStorageDir("")
-	m.initTaskStorage(m.services.Session.ID())
+	m.initTaskStorage(m.sessionID())
 	return nil
 }

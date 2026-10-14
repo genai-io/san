@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/genai-io/san/internal/todo"
 )
 
 func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 	taskTime := time.Date(2026, 4, 6, 13, 0, 0, 0, time.UTC)
-	task := TodoItemSnapshot{
+	task := todo.Item{
 		ID:              "1",
 		Subject:         "Refactor",
 		Status:          "in_progress",
@@ -35,8 +37,8 @@ func TestPatchHelpersEncodeExpectedPayloads(t *testing.T) {
 		}
 	}
 
-	taskPatch := PatchTasks([]TodoItemSnapshot{task})
-	var decodedTasks []TodoItemSnapshot
+	taskPatch := PatchTasks([]todo.Item{task})
+	var decodedTasks []todo.Item
 	if err := json.Unmarshal(taskPatch.Value, &decodedTasks); err != nil {
 		t.Fatalf("Unmarshal(task patch): %v", err)
 	}

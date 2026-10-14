@@ -50,18 +50,6 @@ func (s *Store) summaryLocked(id string) (Summary, error) {
 	return item, nil
 }
 
-// Flush updates summaries for sessions touched by this store. Logs are already durable.
-func (s *Store) Flush() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id := range s.sessions {
-		if _, err := s.summaryLocked(id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 const previewRunes = 200
 
 func preview(s string) string {

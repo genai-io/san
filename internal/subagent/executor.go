@@ -54,7 +54,7 @@ type Executor struct {
 }
 
 type SubagentSessionStore interface {
-	SaveSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error)
+	RecordSubagentConversation(parentSessionID, title, modelID, cwd string, messages []core.Message) (string, string, error)
 }
 
 type runConfig struct {

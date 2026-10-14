@@ -72,7 +72,7 @@ func TestIndependentSessionsCannotOverwriteEachOthersSummaries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := a.Flush(); err != nil {
+	if _, err := a.List(context.Background(), "", ListOptions{IncludeSidechain: true}); err != nil {
 		t.Fatal(err)
 	}
 	fresh, err := NewStore(dir, "p")
@@ -176,7 +176,8 @@ func TestWriterLeaseRefreshesExternalHistoryAndCounters(t *testing.T) {
 	if err != nil || leaf != "m2" || inference != 2 || exchange != 3 {
 		t.Fatalf("position after lease handoff = %q, %d, %d, %v", leaf, inference, exchange, err)
 	}
-	state, err := b.LoadState(ctx, "s")
+	projected, err := b.Load(ctx, "s")
+	state := projected.State
 	if err != nil || state.Title != "updated by A" {
 		t.Fatalf("state after lease handoff = %+v, %v", state, err)
 	}

@@ -8,6 +8,9 @@ import (
 )
 
 func getGitBranch(dir string) string {
+	if dir == "" {
+		return ""
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--abbrev-ref", "HEAD")
