@@ -74,6 +74,11 @@ func ResetDefaultTracker()         // test-only
   `Remove(id)` evicts the record after completion.
 - Concurrency: registry is mutex-protected; per-task streams use their
   own buffers.
+- Every managed task keeps its launching `ParentSessionID`. Agent contexts pass
+  that identity into nested workers and background shells; launches outside an
+  agent use the manager's selected session. Switching sessions does not transfer
+  old workers' notices or lifecycle updates into the new conversation. The task
+  registry and output logs remain available for inspection.
 - Terminal notifications carry the error reason and any partial output
   together. Output above the notification's inline-size limit points at a
   healthy task log, including when the task failed or was stopped; the failure
@@ -100,6 +105,7 @@ func ResetDefaultTracker()         // test-only
 internal/task/manager_test.go        — register / get / list / kill.
 internal/task/bash_task_test.go      — output streaming and cancel.
 internal/task/hooks_test.go          — lifecycle hook emission.
+internal/task/session_test.go        — ownership across switches and nested launches.
 internal/task/output_observability_test.go — log errors and display-only progress.
 internal/task/output_disappearance_test.go — removed logs do not become false full reports.
 ```

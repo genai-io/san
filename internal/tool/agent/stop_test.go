@@ -95,7 +95,7 @@ func TestAgentStopRejectsBashTask(t *testing.T) {
 		_ = cmd.Wait()
 	})
 
-	bashTask := task.Default().CreateBashTask(cmd, "sleep 60", "Long command", func() {})
+	bashTask := task.Default().CreateBashTask(context.Background(), cmd, "sleep 60", "Long command", func() {})
 	defer task.Default().Remove(bashTask.GetID())
 
 	result := NewAgentStopTool().Execute(context.Background(), map[string]any{

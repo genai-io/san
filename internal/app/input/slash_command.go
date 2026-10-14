@@ -352,7 +352,6 @@ func (c *SlashCommandController) handleForkCommand(_ context.Context, _ string) 
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to fork session: %w", err)
 	}
-	c.env.ReconfigureAgentTool()
 	return fmt.Sprintf("Forked conversation. You are now in the fork.\nTo resume the original: san -r %s", originalID), nil, nil
 }
 

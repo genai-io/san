@@ -81,12 +81,16 @@ records contain messages. State appends happen in order on the application loop.
 Git branch annotations are recorded with inference requests on the agent goroutine,
 keeping Git subprocesses off the UI loop. Appends sync durable records before
 returning. Listing refreshes derived summaries lazily.
+Unreadable or unsupported transcripts are logged and skipped during listing;
+opening one explicitly still reports its error. Other sessions remain available.
 
 Native messages seed Runtime directly. UI rows never become the persistence
 source. Thinking signatures, encrypted reasoning, tool signatures, images, and
 content ordering survive. Request-time capability filtering does not mutate the
 native history. Runtime retains it through stops and errors. Inputs rejected before
 agent acceptance remain in a native pending queue; rebuilding never reads UI rows.
+Accepted input is announced and retained even when inference fails or a run stops
+before its next step. Runtime rejects sends once its mailbox starts stopping.
 `Store.ChatRows` expands persisted tool output only for display. Runtime receives
 the original preview and attachment reference, keeping resumed context bounded.
 
@@ -119,6 +123,10 @@ are disposable derived summaries. Earlier schema versions are rejected; no migra
   queued interactions, rejects requests from its retired UI owner, and discards
   pending one-time context. First open, same-ID resume, and failed opens retain
   the current UI owner and pending context.
+- Clear, fork, and resume to a different identity discard temporary permission
+  grants and reapply the selected permission mode. Same-ID and failed resume
+  preserve those grants. Retired outbox events cannot change the selected UI;
+  a naturally finished run keeps its outbox long enough to drain final events.
 - Runtime rebuilds reuse the opened Session. Agent-start events establish a new
   exchange offset without clearing durable history.
 - Clear resets Runtime, closes the old Session, releases group identity, and
@@ -152,6 +160,9 @@ compaction before runtime startup, image-preserving model switches, live renamin
 group identity changes, and UI/context isolation across session switches.
 Transcript tests cover recovery and atomic state patching; integration fixtures
 seed records through the public Append contract.
+`internal/app/session_isolation_test.go` covers temporary grants, worker notices,
+and stale outboxes. Runtime pending-input tests cover failure and early shutdown;
+`internal/session/list_recovery_test.go` covers malformed and old-version neighbors.
 
 Run `make ci`. Always stop Runtime before closing its Session. ReadChatHistory is for
 browsing; Open restores the active context. Never write UI rows or a read result

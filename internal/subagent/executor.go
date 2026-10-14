@@ -207,7 +207,7 @@ func (e *Executor) runPrepared(ctx context.Context, run *preparedRun) (*AgentRes
 
 // RunBackground executes an agent in the background and returns the task.
 func (e *Executor) RunBackground(req tool.AgentExecRequest) (*task.AgentTask, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), e.parentSessionID))
 	// Resolve inherited permissions before registration and goroutine scheduling,
 	// not later when the parent may already have changed modes.
 	if e.interactions == nil {

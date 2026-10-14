@@ -207,6 +207,7 @@ func (m *model) buildAgentParams() (agent.BuildParams, error) {
 	)
 
 	params.Provider = m.env.LLMProvider
+	params.SessionID = rec.ID()
 	params.ModelID = m.env.GetModelID()
 	params.MaxTokens = maxTokens
 	params.ThinkingEffort = m.env.EffectiveThinkingEffort()
@@ -671,10 +672,11 @@ func (m *model) ResetAgentRuntime() {
 func (m *model) AgentOutbox() <-chan core.Event { return m.services.Agent.Outbox() }
 
 func (m *model) ContinueOutbox() tea.Cmd {
-	if !m.services.Agent.Active() {
+	outbox := m.services.Agent.Outbox()
+	if outbox == nil {
 		return nil
 	}
-	return conv.DrainAgentOutbox(m.services.Agent.Outbox())
+	return conv.DrainAgentOutbox(outbox)
 }
 
 func (m *model) HandlePermGate(req *agent.PermGateRequest) tea.Cmd {

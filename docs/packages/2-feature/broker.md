@@ -31,13 +31,14 @@ package broker
 const Main = "main"
 
 type Message struct {
+	SessionID string // owning conversation for local worker messages
 	From    string // sender address
 	To      string // recipient address
 	Subject string // short human-facing notice (may be empty)
 	Content string // body delivered to the recipient
 }
 
-func Register(addr string, deliver func(Message)) // add a recipient
+func Register(addr string, deliver func(Message) bool) // add a recipient
 func Unregister(addr string)                      // remove it (idempotent)
 func Send(m Message) bool                          // routes to m.To; false when no one holds it
 func Reset()                                       // test-only
@@ -48,6 +49,9 @@ an address is held by exactly one agent at a time; `Register`/`Unregister` are
 a plain add/remove on the map. The registry is a process-wide singleton, like
 `task.Default()`. The delivery function runs outside the lock and must not
 block (it enqueues for the recipient and returns).
+Worker messages and completion notices carry their launching session. Main
+rejects a different session both before enqueueing and before applying a queued
+notice, so a switch cannot inject an old worker's result into the new session.
 
 ## Who uses it
 

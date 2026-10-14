@@ -13,7 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/genai-io/san/internal/log"
 	"github.com/genai-io/sdk-go/pkg/ai"
+	"go.uber.org/zap"
 )
 
 type Store struct {
@@ -403,7 +405,8 @@ func (s *Store) List(ctx context.Context, projectID string, opts ListOptions) ([
 		id := strings.TrimSuffix(file.Name(), ".jsonl")
 		item, err := s.summaryLocked(id)
 		if err != nil {
-			return nil, err
+			log.Logger().Warn("skipping unreadable session", zap.String("session", id), zap.Error(err))
+			continue
 		}
 		if opts.IncludeSidechain || !item.IsSidechain {
 			items = append(items, item)

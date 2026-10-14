@@ -33,8 +33,9 @@ import (
 // Content = display-only). Pure UI signals (e.g. the self-learn spinner start)
 // do not ride here — they have their own channels.
 type mainNotice struct {
-	Display string
-	Content string
+	SessionID string
+	Display   string
+	Content   string
 	// FromAgent marks a notice relayed in from a background agent (a subagent
 	// completion or interim report), so the UI renders its Display line as an
 	// inbound agent message rather than a plain system notice.
@@ -46,7 +47,7 @@ type mainNotice struct {
 // fromBrokerMessage converts a message the broker routed to "main" (a subagent
 // completion or an interim message) into a main-loop notice.
 func fromBrokerMessage(m broker.Message) mainNotice {
-	n := mainNotice{Display: m.Subject, Content: m.Content, FromAgent: true}
+	n := mainNotice{SessionID: m.SessionID, Display: m.Subject, Content: m.Content, FromAgent: true}
 	if strings.HasPrefix(m.Content, "<task-notification ") {
 		n.FinishedTaskID = m.From
 	}
@@ -122,10 +123,11 @@ func taskCompletionMessage(info task.TaskInfo) (broker.Message, bool) {
 		subject += " · output log unavailable"
 	}
 	return broker.Message{
-		From:    info.ID,
-		To:      broker.Main,
-		Subject: subject,
-		Content: b.String(),
+		SessionID: info.ParentSessionID,
+		From:      info.ID,
+		To:        broker.Main,
+		Subject:   subject,
+		Content:   b.String(),
 	}, true
 }
 

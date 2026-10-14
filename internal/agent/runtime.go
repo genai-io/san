@@ -12,6 +12,8 @@ import (
 
 	"github.com/genai-io/san/internal/core"
 	"github.com/genai-io/san/internal/log"
+	"github.com/genai-io/san/internal/task"
+	sdkagent "github.com/genai-io/sdk-go/pkg/agent"
 )
 
 var (
@@ -20,15 +22,19 @@ var (
 )
 
 type run struct {
-	agent  core.Agent
-	cancel context.CancelFunc
-	done   chan struct{}
+	agent   core.Agent
+	cancel  context.CancelFunc
+	done    chan struct{}
+	pending []core.Message // accepted inputs not yet announced by MessageAdded; Runtime.mu guards
+	stopped bool
+	onEvent func(core.Event)
 }
 
 type Runtime struct {
 	mu         sync.RWMutex
 	run        *run
-	messages   []core.Message // native chain retained between runs
+	outbox     <-chan core.Event // retained until reset/replacement so final events can drain
+	messages   []core.Message    // native chain retained between runs
 	permGate   *PermissionGate
 	pluginRoot string // see SetPluginRoot
 	// build is set by tests to substitute the agent; nil means buildAgent.
@@ -41,6 +47,22 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 
 	if s.run != nil {
 		return fmt.Errorf("agent session already active")
+	}
+	run := &run{done: make(chan struct{}), onEvent: params.OnEvent}
+	params.OnEvent = func(ev core.Event) {
+		switch e := ev.(type) {
+		case sdkagent.MessageAdded:
+			s.mu.Lock()
+			run.pending = slices.DeleteFunc(run.pending, func(m core.Message) bool { return m.ID == e.Message.ID })
+			s.mu.Unlock()
+		case core.AgentStopped:
+			s.mu.Lock()
+			run.stopped = true
+			s.mu.Unlock()
+		}
+		if run.onEvent != nil {
+			run.onEvent(ev)
+		}
 	}
 
 	builder := s.build
@@ -56,9 +78,10 @@ func (s *Runtime) Start(params BuildParams, messages []core.Message) error {
 		ag.SetMessages(messages)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	run := &run{agent: ag, cancel: cancel, done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(task.WithSessionID(context.Background(), params.SessionID))
+	run.agent, run.cancel = ag, cancel
 	s.run = run
+	s.outbox = ag.Outbox()
 	s.messages = nil
 	s.permGate = pg
 	go s.execute(run, ctx)
@@ -73,7 +96,19 @@ func (s *Runtime) execute(run *run, ctx context.Context) {
 	_ = run.agent.Run(ctx)
 
 	s.mu.Lock()
-	s.messages = run.agent.Messages()
+	run.stopped = true
+	messages := run.agent.Messages()
+	pending := slices.Clone(run.pending)
+	s.mu.Unlock()
+	// Input can arrive after the SDK's final boundary but before the mailbox stops.
+	for _, msg := range pending {
+		messages = append(messages, msg)
+		if run.onEvent != nil {
+			run.onEvent(sdkagent.MessageAdded{Message: msg})
+		}
+	}
+	s.mu.Lock()
+	s.messages = messages
 	s.run = nil
 	s.permGate = nil
 	s.pluginRoot = ""
@@ -148,6 +183,7 @@ func (s *Runtime) SetMessages(messages []core.Message) {
 		return
 	}
 	s.messages = slices.Clone(messages)
+	s.outbox = nil
 }
 
 // Reset stops the run and discards its conversation once shutdown completes.
@@ -157,25 +193,28 @@ func (s *Runtime) Reset() {
 	defer s.mu.Unlock()
 	if s.run == nil {
 		s.messages = nil
+		s.outbox = nil
 	}
 }
 
 // Send delivers a message to the active agent. Callers create the Message once
 // at the input boundary so the TUI projection, the inbox, and the transcript
-// share one ID; a message without one is stamped by the agent loop.
+// share one ID; a message without one is stamped on acceptance.
 func (s *Runtime) Send(msg core.Message) error {
-	s.mu.RLock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	run := s.run
-	s.mu.RUnlock()
 	if run == nil {
 		return ErrRuntimeInactive
 	}
 
-	select {
-	case <-run.done:
+	if run.stopped {
 		return ErrRuntimeStopped
-	default:
 	}
+	if msg.ID == "" {
+		msg.ID = core.NewMessageID()
+	}
+	run.pending = append(run.pending, msg)
 	run.agent.Append(msg)
 	return nil
 }
@@ -231,10 +270,7 @@ func (s *Runtime) InterruptTurn() {
 func (s *Runtime) Outbox() <-chan core.Event {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.run == nil {
-		return nil
-	}
-	return s.run.agent.Outbox()
+	return s.outbox
 }
 
 func (s *Runtime) PermissionGate() *PermissionGate {

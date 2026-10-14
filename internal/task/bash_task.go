@@ -16,6 +16,8 @@ import (
 // BashTask represents a background bash command task
 // It implements the BackgroundTask interface
 type BashTask struct {
+	parentSessionID string // fixed before registration
+
 	ID          string    // Unique task ID
 	Command     string    // The command being executed
 	Description string    // Brief description
@@ -278,6 +280,8 @@ func (t *BashTask) GetStatus() TaskInfo {
 	defer t.mu.RUnlock()
 
 	return TaskInfo{
+		ParentSessionID: t.parentSessionID,
+
 		ID:          t.ID,
 		Type:        TaskTypeBash,
 		Command:     t.Command,

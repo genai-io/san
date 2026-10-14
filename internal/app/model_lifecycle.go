@@ -30,6 +30,9 @@ func newModel(opts setting.RunOptions) (*model, error) {
 	// messages routed to it (subagent completions, interim messages) land on
 	// mainNotices and are injected at the next safe seam — see notify.go.
 	broker.Register(broker.Main, func(msg broker.Message) bool {
+		if msg.SessionID != "" && msg.SessionID != m.services.Task.SessionID() {
+			return false
+		}
 		return m.notifyMain(fromBrokerMessage(msg))
 	})
 
@@ -203,6 +206,9 @@ func (m *model) ensureMemoryContextLoaded() {
 }
 
 func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
+	if m.workerMu == nil {
+		m.workerMu = new(sync.Mutex)
+	}
 	trackerSvc := m.services.Tracker
 
 	fireHook := func(event hook.EventType, info task.TaskInfo) {
@@ -218,6 +224,11 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 
 	task.SetLifecycleHandler(taskLifecycleFunc{
 		onCreated: func(info task.TaskInfo) {
+			m.workerMu.Lock()
+			defer m.workerMu.Unlock()
+			if info.ParentSessionID != "" && info.ParentSessionID != m.services.Task.SessionID() {
+				return
+			}
 			fireHook(hook.TaskCreated, info)
 
 			// The entry is born here rather than off the launching tool's
@@ -229,6 +240,11 @@ func (m *model) wireTaskLifecycle(hookEngine hook.Handler) {
 			todo.TrackWorker(trackerSvc, info)
 		},
 		onCompleted: func(info task.TaskInfo) {
+			m.workerMu.Lock()
+			defer m.workerMu.Unlock()
+			if info.ParentSessionID != "" && info.ParentSessionID != m.services.Task.SessionID() {
+				return
+			}
 			fireHook(hook.TaskCompleted, info)
 			todo.CompleteWorker(trackerSvc, info)
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/genai-io/san/internal/atomicfile"
 	"github.com/genai-io/san/internal/group"
+	"github.com/genai-io/san/internal/task"
 
 	"github.com/genai-io/san/internal/broker"
 	"github.com/genai-io/san/internal/tool"
@@ -47,7 +48,7 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	var got broker.Message
 	broker.Register(broker.Main, func(m broker.Message) bool { got = m; return true })
 
-	ctx := tool.WithAgentID(context.Background(), "task-9")
+	ctx := tool.WithAgentID(task.WithSessionID(context.Background(), "parent-session"), "task-9")
 	result := NewSendMessageTool().Execute(ctx, map[string]any{
 		"to":      "main",
 		"subject": `blocked "test" & <build>`,
@@ -59,6 +60,9 @@ func TestSendMessage_SubagentReportsToMain(t *testing.T) {
 	}
 	if got.From != "task-9" || got.To != broker.Main {
 		t.Fatalf("addressing wrong: from=%q to=%q", got.From, got.To)
+	}
+	if got.SessionID != "parent-session" {
+		t.Fatalf("worker message lost its owning session: %+v", got)
 	}
 	if !strings.Contains(got.Content, `<agent-message from="task-9" `) {
 		t.Fatalf("sender envelope missing: %q", got.Content)

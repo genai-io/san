@@ -307,6 +307,7 @@ func (t *WorkflowTool) Launch(name string, inputs map[string]string, width int) 
 // start runs the workflow under one background task and returns its id.
 func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, description string, width int, parentToolCallID string) string {
 	width = workflowDisplayWidth(width)
+	executor := t.executor
 	ctx, cancel := context.WithCancel(context.Background())
 	bg := task.Default().CreateAgentTask(task.NewID(), "workflow", description, ctx, cancel)
 	statuses := make(map[string]workflow.Status, len(w.Nodes))
@@ -367,7 +368,7 @@ func (t *WorkflowTool) start(w *workflow.Workflow, inputs map[string]string, des
 
 	go func() {
 		defer cancel()
-		runner := &nodeRunner{exec: t.executor, task: bg, name: w.Name, parentToolCallID: parentToolCallID}
+		runner := &nodeRunner{exec: executor, task: bg, name: w.Name, parentToolCallID: parentToolCallID}
 		flushText := func(nodeID, worker string) {
 			key := nodeID + "·" + worker
 			if content := strings.Join(strings.Fields(textBuffers[key]), " "); content != "" {

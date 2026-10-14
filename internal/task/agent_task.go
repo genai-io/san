@@ -12,6 +12,8 @@ import (
 // AgentTask represents a background agent task
 // It implements the BackgroundTask interface
 type AgentTask struct {
+	parentSessionID string // fixed before registration
+
 	ID          string     // Unique task ID
 	AgentName   string     // Exact optional agent name
 	Description string     // Brief description of the task
@@ -299,6 +301,8 @@ func (t *AgentTask) GetStatus() TaskInfo {
 	defer t.mu.RUnlock()
 
 	return TaskInfo{
+		ParentSessionID: t.parentSessionID,
+
 		ID:             t.ID,
 		Type:           TaskTypeAgent,
 		Description:    t.Description,

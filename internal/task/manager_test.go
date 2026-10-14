@@ -15,7 +15,7 @@ func TestManager_CreateAndGet(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "echo", "test")
 	cmd.Start()
 
-	task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
+	task := m.CreateBashTask(ctx, cmd, "echo test", "Test task", cancel)
 
 	if task.ID == "" {
 		t.Error("task ID should not be empty")
@@ -49,7 +49,7 @@ func TestManager_List(t *testing.T) {
 	for range 3 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		m.CreateBashTask(cmd, "echo test", "Test task", cancel)
+		m.CreateBashTask(ctx, cmd, "echo test", "Test task", cancel)
 	}
 
 	tasks := m.List()
@@ -69,7 +69,7 @@ func TestManager_ListRunning(t *testing.T) {
 	for range 3 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
+		task := m.CreateBashTask(ctx, cmd, "echo test", "Test task", cancel)
 		tasks = append(tasks, task)
 	}
 
@@ -91,7 +91,7 @@ func TestManager_Remove(t *testing.T) {
 	cmd := exec.CommandContext(ctx, "echo", "test")
 	cmd.Start()
 
-	task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
+	task := m.CreateBashTask(ctx, cmd, "echo test", "Test task", cancel)
 	taskID := task.ID
 
 	m.Remove(taskID)
@@ -113,7 +113,7 @@ func TestManager_GenerateUniqueIDs(t *testing.T) {
 	for range 100 {
 		cmd := exec.CommandContext(ctx, "echo", "test")
 		cmd.Start()
-		task := m.CreateBashTask(cmd, "echo test", "Test task", cancel)
+		task := m.CreateBashTask(ctx, cmd, "echo test", "Test task", cancel)
 
 		if ids[task.ID] {
 			t.Errorf("duplicate ID generated: %s", task.ID)

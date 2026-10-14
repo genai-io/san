@@ -29,6 +29,7 @@ type Manager struct {
 	mu        sync.RWMutex
 	tasks     map[string]BackgroundTask
 	outputDir string
+	sessionID string
 }
 
 // NewManager creates a new *Manager.
@@ -39,9 +40,10 @@ func NewManager() *Manager {
 }
 
 // CreateBashTask creates and registers a new bash task
-func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
+func (m *Manager) CreateBashTask(ctx context.Context, cmd *exec.Cmd, command, description string, cancel context.CancelFunc) *BashTask {
 	id := NewID()
 	task := NewBashTask(id, command, description, cmd, cancel, m.outputPath(id))
+	task.parentSessionID = m.ownerSession(ctx)
 	m.RegisterTask(task)
 	return task
 }
@@ -50,6 +52,7 @@ func (m *Manager) CreateBashTask(cmd *exec.Cmd, command, description string, can
 // this manager's output store.
 func (m *Manager) CreateAgentTask(id, agentName, description string, ctx context.Context, cancel context.CancelFunc) *AgentTask {
 	task := NewAgentTask(id, agentName, description, ctx, cancel, m.outputPath(id))
+	task.parentSessionID = m.ownerSession(ctx)
 	m.RegisterTask(task)
 	return task
 }

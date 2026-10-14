@@ -186,6 +186,9 @@ func (m *model) onMainNotice(n mainNotice) tea.Cmd {
 // deliverNotice shows the notice immediately; its content reaches the running
 // agent at the next step boundary (see notify.go).
 func (m *model) deliverNotice(n mainNotice) tea.Cmd {
+	if n.SessionID != "" && n.SessionID != m.sessionID() {
+		return nil
+	}
 	if !m.conv.Stream.Active {
 		return m.injectAsNewTurn(n)
 	}
