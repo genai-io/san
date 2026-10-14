@@ -3,6 +3,22 @@
 All notable changes to San are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v1.24.3] - 2026-10-14
+
+### Added
+- Forward subagent interactions to the session UI ([@yanmxa](https://github.com/yanmxa) in [#623](https://github.com/genai-io/san/pull/623))
+
+### Changed
+- Keep native history across persistence and resume ([@yanmxa](https://github.com/yanmxa) in [#626](https://github.com/genai-io/san/pull/626))
+- Unify durable writes and simplify ownership ([@yanmxa](https://github.com/yanmxa) in [#625](https://github.com/genai-io/san/pull/625))
+
+### Fixed
+- Isolate conversations and harden transcript replay ([@yanmxa](https://github.com/yanmxa) in [#627](https://github.com/genai-io/san/pull/627))
+- Simplify the native transcript flow and session lifecycle ([@yanmxa](https://github.com/yanmxa) in [#624](https://github.com/genai-io/san/pull/624))
+- Prevent headless streams from blocking on the outbox ([@yanmxa](https://github.com/yanmxa) in [#619](https://github.com/genai-io/san/pull/619))
+- Simplify subagent configuration and surface failure reasons ([@yanmxa](https://github.com/yanmxa) in [#620](https://github.com/genai-io/san/pull/620))
+- Stabilize terminal startup and streaming rendering ([@yanmxa](https://github.com/yanmxa) in [#618](https://github.com/genai-io/san/pull/618))
+
 ## [v1.24.2] - 2026-10-12
 
 ### Added
