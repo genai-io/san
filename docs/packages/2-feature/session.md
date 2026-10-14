@@ -66,7 +66,7 @@ Store.Open(id) -> claim writer lease -> read/project once -> Session + History
                                                            |          +-> ChatRows -> dialogue UI
                                                            +-> later appends
 
-switch -> Runtime.Stop -> open replacement -> close previous Session
+switch -> Runtime.Stop -> open replacement -> retire previous Session/UI context
        -> restore history and bind identity/hooks/group/tasks
 clear  -> Runtime.Reset -> Session.Close -> select fresh identity
 quit   -> Runtime.Stop -> Session.Close
@@ -108,6 +108,10 @@ are disposable derived summaries.
   Every new lease refreshes cached state after another process's writes.
 - Failed opens release their candidate lease and do not redirect the selected
   session. A retired runtime's callback remains bound to its retired Session.
+- A successful identity switch cancels the previous session's displayed and
+  queued interactions, rejects requests from its retired UI owner, and discards
+  pending one-time context. First open, same-ID resume, and failed opens retain
+  the current UI owner and pending context.
 - Runtime rebuilds reuse the opened Session. Agent-start events establish a new
   exchange offset without clearing durable history.
 - Clear resets Runtime, closes the old Session, releases group identity, and
@@ -138,8 +142,9 @@ Session/native/event tests cover message roundtrips, write failure, request
 configuration, compaction, notice position, lease handoff, and fork ownership.
 `internal/app/session_resume_test.go` covers parallel tool results across retry,
 compaction before runtime startup, image-preserving model switches, live renaming,
-and group identity changes. Transcript tests cover recovery and atomic state
-patching; integration fixtures seed records through the public Append contract.
+group identity changes, and UI/context isolation across session switches.
+Transcript tests cover recovery and atomic state patching; integration fixtures
+seed records through the public Append contract.
 
 Run `make ci`. Always stop Runtime before closing its Session. ReadChatHistory is for
 browsing; Open restores the active context. Never write UI rows or a read result

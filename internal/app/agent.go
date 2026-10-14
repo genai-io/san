@@ -663,9 +663,7 @@ func (m *model) StopAgentRuntime() {
 	m.teardownSelfLearn()
 }
 
-// ResetAgentRuntime stops the agent without making its live chain eligible for
-// the next rebuild. Use it when the conversation itself is being cleared or
-// replaced (for example /clear and /resume).
+// ResetAgentRuntime stops the agent and clears its conversation and UI state.
 func (m *model) ResetAgentRuntime() {
 	m.services.Agent.Reset()
 	m.resetInteractions()

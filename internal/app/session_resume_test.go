@@ -1,7 +1,10 @@
 package app
 
 import (
+	"context"
 	"reflect"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,28 +42,148 @@ func resumedModel(t *testing.T, messages []core.Message) (*model, *session.Store
 	if err := testutil.ImportSession(store, &session.History{Metadata: session.Metadata{ID: "s"}, Messages: messages}); err != nil {
 		t.Fatal(err)
 	}
-	opened, snapshot, err := store.Open("s")
+	opened, history, err := store.Open("s")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = opened.Close() })
 	m := &model{
 		services: services{
 			Agent: &agent.Runtime{}, Session: opened, SessionStore: store, LLM: &llm.Conn{},
-			Tracker: todo.NewStore(), Reminder: reminder.NewService(),
+			sessionID: opened.ID(),
+			Setting:   setting.New(setting.NewData()),
+			Tracker:   todo.NewStore(), Reminder: reminder.NewService(),
 			Subagent: subagent.NewRegistry(),
 			Task:     task.NewManager(),
 			Hook:     hook.NewEngine(nil, "s", "", opened.TranscriptPath()),
 		},
-		conv: conv.NewModel(80),
+		conv:      conv.NewModel(80),
+		autopilot: new(atomic.Pointer[autopilotRuntime]),
 	}
 	m.env.CWD = t.TempDir()
 	m.env.SessionPermissions = setting.NewSessionPermissions()
 	m.env.CurrentModel = &llm.CurrentModelInfo{ModelID: "m"}
-	m.services.Agent.SetMessages(snapshot.Messages)
-	m.conv.Messages = snapshot.ChatRows()
+	m.services.Agent.SetMessages(history.Messages)
+	m.conv.Messages = history.ChatRows()
+	t.Cleanup(func() { _ = m.services.Session.Close() })
 	t.Cleanup(m.StopAgentRuntime)
 	return m, store
+}
+
+func TestResumeDiscardsPreviousSessionNotices(t *testing.T) {
+	m, store := resumedModel(t, parallelResultChain())
+	t.Cleanup(group.Forget)
+	if err := testutil.ImportSession(store, &session.History{
+		Metadata: session.Metadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m.services.Reminder.Enqueue("context belonging to the previous session")
+	if err := m.loadSessionByID("other"); err != nil {
+		t.Fatal(err)
+	}
+	next := m.attachPendingReminders(core.UserMessage("continue", nil))
+	if strings.Contains(next.Text(), "context belonging to the previous session") {
+		t.Fatal("resumed input contains context from the previous session")
+	}
+}
+
+func TestSessionSwitchRetiresPreviousWorkerRequests(t *testing.T) {
+	for _, action := range []string{"resume", "fork"} {
+		t.Run(action, func(t *testing.T) {
+			m, store := resumedModel(t, parallelResultChain())
+			t.Cleanup(group.Forget)
+			t.Cleanup(m.closeInteractions)
+			previousUI := m.conv.AgentToUI
+			question := interactionQuestion(m, context.Background(), "previous-question")
+			approval := interactionApproval(m, context.Background(), "previous-approval")
+			late := interactionQuestion(m, context.Background(), "late-question")
+			m.enqueueInteraction(question)
+			m.enqueueInteraction(approval)
+			if action == "resume" {
+				if err := testutil.ImportSession(store, &session.History{
+					Metadata: session.Metadata{ID: "other"}, Messages: []core.Message{ai.UserMessage("other conversation")},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := m.loadSessionByID("other"); err != nil {
+					t.Fatal(err)
+				}
+			} else if _, err := m.forkSession(); err != nil {
+				t.Fatal(err)
+			}
+			if !previousUI.Closed() || m.validInteraction(late) || m.conv.Modal.Question.IsActive() {
+				t.Fatal("previous session still owns the interaction UI")
+			}
+			select {
+			case reply := <-question.Question.Reply:
+				if !reply.Cancelled {
+					t.Fatal("previous question was answered instead of cancelled")
+				}
+			default:
+				t.Fatal("previous question was not cancelled")
+			}
+			select {
+			case reply := <-approval.Permission.Response:
+				if reply.Allow {
+					t.Fatal("queued approval was granted during the session switch")
+				}
+			default:
+				t.Fatal("queued approval was not cancelled")
+			}
+			m.enqueueInteraction(late)
+			select {
+			case reply := <-late.Question.Reply:
+				if !reply.Cancelled {
+					t.Fatal("late request from the previous session was answered")
+				}
+			default:
+				t.Fatal("late request from the previous session was accepted")
+			}
+		})
+	}
+}
+
+func TestSessionOpeningPreservesContextWithoutAnIdentitySwitch(t *testing.T) {
+	for _, action := range []string{"same-session", "closed-session", "missing-session", "first-open"} {
+		t.Run(action, func(t *testing.T) {
+			m, _ := resumedModel(t, parallelResultChain())
+			t.Cleanup(group.Forget)
+			if action == "closed-session" {
+				if err := m.services.Session.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if action == "first-open" {
+				if err := m.services.Session.Close(); err != nil {
+					t.Fatal(err)
+				}
+				m.services.Session = nil
+				m.services.sessionID = "fresh"
+				m.services.Agent.SetMessages(nil)
+				m.conv.Messages = nil
+			}
+			ui := m.conv.AgentToUI
+			m.services.Reminder.Enqueue("pending context for this identity")
+			var err error
+			switch action {
+			case "same-session", "closed-session":
+				err = m.loadSessionByID("s")
+			case "missing-session":
+				err = m.loadSessionByID("missing")
+			case "first-open":
+				_, err = m.openCurrentSession()
+			}
+			if (err != nil) != (action == "missing-session") {
+				t.Fatalf("session opening error = %v, action = %s", err, action)
+			}
+			if m.conv.AgentToUI != ui || ui.Closed() {
+				t.Fatal("opening the session retired its UI context")
+			}
+			if next := m.attachPendingReminders(core.UserMessage("continue", nil)); !strings.Contains(next.Text(), "pending context for this identity") {
+				t.Fatal("opening the session discarded its pending context")
+			}
+		})
+	}
 }
 
 func parallelResultChain() []core.Message {

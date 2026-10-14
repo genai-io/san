@@ -99,8 +99,12 @@ func (m *model) recordNotice(n core.ChatMessage) {
 	m.earlyNotices = append(m.earlyNotices, n)
 }
 
-// replaceSession retires the prior handle only after a replacement was opened.
+// replaceSession retires the prior session and UI context after opening the replacement.
 func (m *model) replaceSession(opened *session.Session) {
+	if m.sessionID() != opened.ID() {
+		m.resetInteractions()
+		m.services.Reminder.DiscardPendingNotices()
+	}
 	if previous := m.services.Session; previous != opened {
 		_ = previous.Close()
 	}
